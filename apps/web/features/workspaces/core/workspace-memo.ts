@@ -1,6 +1,7 @@
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
+import { once as onceForRequest } from "@web/utils/request-memo.ts";
 
 /**
  * workspace-memo — the request memo every `/teams` and `/businesses` server read shares, and the
@@ -11,35 +12,16 @@ import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBac
 
 // #region Request-scoped memo
 /**
- * One read per question per request, however many regions ask.
- *
- * A console page is resolved by its route handler AND by the lane, header and footer slots; without this
- * the detail would be read from Postgres four times for one page (the roster three times on the index).
- * Keyed on the `URL` OBJECT, the wallet precedent: Fresh hands the handler and every slot resolver of one
- * request the same instance and the next request a new one, so an entry can never outlive the request
- * that made it — which matters, because the read after a mutation must see the mutation. The stored
- * value is the PROMISE, so the three bands, resolved concurrently, share one read in flight.
+ * Run `run` at most once per request, actor and `key` — the shared request memo with the reader
+ * folded into the key, so no `/teams` or `/businesses` read can leave it out.
  */
-const READS = new WeakMap<URL, Map<string, Promise<unknown>>>();
-
-/** Run `run` at most once per request, actor and `key`; later callers share its promise. */
 export function once<T>(
 	url: URL,
 	actor: ReadActor,
 	key: string,
 	run: () => Promise<T>,
 ): Promise<T> {
-	let reads = READS.get(url);
-	if (!reads) {
-		reads = new Map();
-		READS.set(url, reads);
-	}
-	const slot = `${key}|${actor.userId}|${actor.contextId}`;
-	const hit = reads.get(slot) as Promise<T> | undefined;
-	if (hit) return hit;
-	const promise = run();
-	reads.set(slot, promise);
-	return promise;
+	return onceForRequest(url, `workspace|${key}|${actor.userId}|${actor.contextId}`, run);
 }
 // #endregion
 

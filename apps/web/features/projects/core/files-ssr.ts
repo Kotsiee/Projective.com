@@ -1,6 +1,7 @@
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { FileChannelRef, FileListPage } from "../types/projects-types.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
+import { once } from "@web/utils/request-memo.ts";
 import {
 	type FileChannelRoutes,
 	fileChannelRoutes,
@@ -58,8 +59,6 @@ export interface FileExplorerBootstrap {
 	title: string;
 }
 
-const READS = new WeakMap<URL, Map<string, Promise<FileExplorerBootstrap>>>();
-
 /** The project-scope index alone — one row of page, the whole channel set. */
 async function readIndex(projectId: string, actor: ReadActor): Promise<FileTreeIndex | null> {
 	const res = await ProjectBackendService.files({ projectId, channelId: null, limit: 1 }, actor);
@@ -70,7 +69,7 @@ async function readIndex(projectId: string, actor: ReadActor): Promise<FileTreeI
 
 /**
  * The explorer's first paint for this request, read once: the route and the header band slot both
- * ask (the URL object is the request's own, the workspace console's memo pattern).
+ * ask (the shared request memo).
  *
  * On `/projects/{project}/files` the node comes from `?in=`. A narrowed node (Project files, one
  * channel) still needs the WHOLE index, because the server answers a channel read with that channel
@@ -83,15 +82,8 @@ export function resolveFileExplorer(
 	actor: ReadActor,
 	channelRef: string | null = null,
 ): Promise<FileExplorerBootstrap> {
-	let reads = READS.get(url);
-	if (!reads) {
-		reads = new Map();
-		READS.set(url, reads);
-	}
-	const key = `${projectId}|${channelRef ?? ""}|${actor.userId}|${actor.contextId}`;
-	const hit = reads.get(key);
-	if (hit) return hit;
-	const read = (async (): Promise<FileExplorerBootstrap> => {
+	const key = `files|explorer|${projectId}|${channelRef ?? ""}|${actor.userId}|${actor.contextId}`;
+	return once(url, key, async (): Promise<FileExplorerBootstrap> => {
 		const detail = await ProjectBackendService.detail(projectId, actor);
 		const routes = detail.ok && detail.data ? fileChannelRoutes(detail.data.detail) : {};
 		const selection: FileTreeSelection = channelRef
@@ -129,8 +121,6 @@ export function resolveFileExplorer(
 			index: treeIndex,
 			title: selectionTitle(resolved, treeIndex?.channels ?? []),
 		};
-	})();
-	reads.set(key, read);
-	return read;
+	});
 }
 // #endregion

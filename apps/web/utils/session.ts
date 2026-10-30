@@ -24,6 +24,7 @@ import {
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 import { GUEST_CONTEXT, type UserContext } from "@projective/types/auth";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
+import { once } from "@web/utils/request-memo.ts";
 
 /** The resolved session decision for a request. */
 export interface SessionState {
@@ -54,24 +55,20 @@ export interface SessionState {
  */
 export type AccessCookieStatus = "absent" | "valid" | "invalid" | "unavailable";
 
-const accessChecks = new WeakMap<Request, Promise<AccessCookieStatus>>();
-
 /**
  * Verify the request's access cookie via {@link AuthBackendService.verifyAccessToken}, once per
- * request: the global middleware and a group guard share the same check.
+ * request (the shared request memo, scoped to the `Request`): the global middleware and a group guard
+ * share the same check.
  */
 export function verifyAccessCookie(req: Request): Promise<AccessCookieStatus> {
-	let check = accessChecks.get(req);
-	if (!check) {
+	return once<AccessCookieStatus>(req, "session|access-cookie", () => {
 		const token = readCookies(req)[SB_ACCESS_COOKIE];
-		check = token
+		return token
 			? AuthBackendService.verifyAccessToken(token).then((result) =>
 				result.ok ? "valid" : result.status === 503 ? "unavailable" : "invalid"
 			)
 			: Promise.resolve("absent");
-		accessChecks.set(req, check);
-	}
-	return check;
+	});
 }
 
 /** Who a request is, as far as its access cookie alone proves. */

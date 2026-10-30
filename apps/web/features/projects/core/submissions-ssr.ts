@@ -1,6 +1,7 @@
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { SubmissionListPage } from "../types/projects-types.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
+import { once } from "@web/utils/request-memo.ts";
 
 /**
  * submissions-ssr — the server-only bootstrap for the Submissions explorer's first paint. Calls the fat
@@ -32,12 +33,9 @@ export async function resolveSubmissionPage(
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 
-const READS = new WeakMap<URL, Map<string, Promise<SubmissionBootstrap>>>();
-
 /**
  * {@link resolveSubmissionPage}, read once per request: the route and the header band slot both ask
- * (Decision #317 — the band titles the node the body shows), keyed on the request's own URL object as
- * the workspace console's memo is.
+ * (Decision #317 — the band titles the node the body shows), through the shared request memo.
  */
 export function resolveSubmissionPageOnce(
 	url: URL,
@@ -46,17 +44,8 @@ export function resolveSubmissionPageOnce(
 	channelId?: string | null,
 	path?: string[],
 ): Promise<SubmissionBootstrap> {
-	let reads = READS.get(url);
-	if (!reads) {
-		reads = new Map();
-		READS.set(url, reads);
-	}
-	const key = `${projectId}|${channelId ?? ""}|${
+	const key = `submissions|page|${projectId}|${channelId ?? ""}|${
 		(path ?? []).join("/")
 	}|${actor.userId}|${actor.contextId}`;
-	const hit = reads.get(key);
-	if (hit) return hit;
-	const read = resolveSubmissionPage(projectId, actor, channelId, path);
-	reads.set(key, read);
-	return read;
+	return once(url, key, () => resolveSubmissionPage(projectId, actor, channelId, path));
 }

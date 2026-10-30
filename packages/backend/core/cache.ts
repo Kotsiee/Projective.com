@@ -40,7 +40,8 @@
  *
  * Anything a mutation invalidates within the TTL and cannot tolerate being stale, and anything
  * derived from a token that outlives it. This cache has no cross-process invalidation — it is
- * per-isolate — so {@link ArcCache.delete} and {@link ArcCache.clearTenant} bound one process only.
+ * per-isolate — so {@link ArcCache.delete} and {@link ArcCache.clearTenant} bound one process only;
+ * another isolate learns of a write through a KV version in the key (`cacheVersionTag`, `kv.ts`).
  * Treat the TTL as the real guarantee and invalidation as an optimisation, never the reverse.
  */
 
@@ -187,6 +188,8 @@ export class ArcCache<V> {
 	#b2 = new Set<string>();
 	/** Adaptive target size for `t1`; grows on a `b1` hit, shrinks on a `b2` hit. */
 	#p = 0;
+	/** Computes in progress, keyed exactly as their entry; see {@link through}. */
+	#flights = new Map<string, Promise<V>>();
 
 	readonly #max: number;
 	readonly #ttl: number;
@@ -299,8 +302,8 @@ export class ArcCache<V> {
 	 * Read a key. A hit in `t1` PROMOTES to `t2` — the second touch is precisely the evidence ARC
 	 * uses to separate a working-set key from a scan — and a hit in `t2` refreshes its recency.
 	 *
-	 * An expired entry is a miss AND is demoted to its ghost list rather than deleted outright, so
-	 * the adaptation still learns from it: the key was worth keeping, it simply aged out.
+	 * An expired entry is a miss and is DELETED, not demoted to its ghost list: ageing out says
+	 * nothing about capacity ({@link #expire} has the whole argument).
 	 */
 	get(key: string): V | undefined {
 		const inT1 = this.#t1.get(key);
@@ -423,31 +426,46 @@ export class ArcCache<V> {
 	}
 
 	/**
-	 * Read through the cache, computing on a miss.
+	 * Read through the cache, computing on a miss. Concurrent misses on one key share ONE compute
+	 * (single-flight, Decision #341, ruling E1 Q10).
 	 *
-	 * Concurrent callers are NOT coalesced: two simultaneous misses both compute. Coalescing would
-	 * need an in-flight promise map, and sharing one promise across callers means sharing whatever
-	 * it rejects with — a failure for one becomes a failure for all, including callers whose RLS
-	 * scope would have succeeded. Two duplicate reads is the cheaper mistake.
+	 * Sharing is safe because a key carries its tenant ({@link cacheKey} cannot be built without
+	 * one), so one key is one RLS scope: every caller joining a flight would have issued the same
+	 * query as the same identity, and would have got the same answer or the same failure. A
+	 * rejection reaches only that flight's callers and is never stored, so the next miss computes
+	 * afresh. An invalidation ({@link delete}, {@link deletePrefix}, {@link clear}) detaches a flight
+	 * in progress: a read issued after the write starts its own, and the older answer is not stored.
 	 */
-	async through(key: string, compute: () => Promise<V>): Promise<V> {
+	through(key: string, compute: () => Promise<V>): Promise<V> {
 		const hit = this.get(key);
-		if (hit !== undefined) return hit;
-		const value = await compute();
-		this.set(key, value);
-		return value;
+		if (hit !== undefined) return Promise.resolve(hit);
+		const joined = this.#flights.get(key);
+		if (joined) return joined;
+		// A synchronous throw from `compute` becomes the flight's rejection.
+		const flight: Promise<V> = Promise.try(compute)
+			.then((value) => {
+				if (this.#flights.get(key) === flight) this.set(key, value);
+				return value;
+			})
+			.finally(() => {
+				if (this.#flights.get(key) === flight) this.#flights.delete(key);
+			});
+		this.#flights.set(key, flight);
+		return flight;
 	}
 
-	/** Drop one key from every list, resident and ghost. */
+	/** Drop one key from every list, resident and ghost, and detach its flight. */
 	delete(key: string): void {
 		this.#t1.delete(key);
 		this.#t2.delete(key);
 		this.#b1.delete(key);
 		this.#b2.delete(key);
+		this.#flights.delete(key);
 	}
 
 	/**
-	 * Drop every key beginning with `prefix`, from the resident lists AND both ghost lists.
+	 * Drop every key beginning with `prefix`, from the resident lists AND both ghost lists, and
+	 * detach every flight under it ({@link through}).
 	 *
 	 * The ghosts go too, and that is not tidiness. A ghost is capacity evidence — "I evicted this and
 	 * I may have been wrong" — and after an invalidation the evidence is about a value that no longer
@@ -462,6 +480,9 @@ export class ArcCache<V> {
 		for (const key of [...this.#t2.keys()]) if (key.startsWith(prefix)) this.#t2.delete(key);
 		for (const key of [...this.#b1]) if (key.startsWith(prefix)) this.#b1.delete(key);
 		for (const key of [...this.#b2]) if (key.startsWith(prefix)) this.#b2.delete(key);
+		for (const key of [...this.#flights.keys()]) {
+			if (key.startsWith(prefix)) this.#flights.delete(key);
+		}
 	}
 
 	/**
@@ -475,12 +496,13 @@ export class ArcCache<V> {
 		this.deletePrefix(tenantPrefix(tenant));
 	}
 
-	/** Drop every entry and reset the adaptation. Counters are preserved. */
+	/** Drop every entry, detach every flight and reset the adaptation. Counters are preserved. */
 	clear(): void {
 		this.#t1.clear();
 		this.#t2.clear();
 		this.#b1.clear();
 		this.#b2.clear();
+		this.#flights.clear();
 		this.#p = 0;
 	}
 

@@ -1,6 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
+import { once } from "@web/utils/request-memo.ts";
 import { isSeller } from "./catalogue-model.ts";
 import { listParamsOf } from "./console-store.ts";
 import { EMPTY_FACET_COUNTS, parseConsoleUrl } from "../types/catalogue-types.ts";
@@ -55,28 +56,6 @@ const EMPTY_PAGE: CataloguePage = {
 	viewerId: "",
 };
 
-// #region Request-scoped memo
-/**
- * One read per question per request. The page, the lane and both bands resolve the catalogue; keyed on
- * the request's `URL` object (the `calendar-slots` / `wallet-ssr` precedent) so an entry cannot outlive
- * its request, with the stored PROMISE shared by the bands resolved concurrently.
- */
-const READS = new WeakMap<URL, Map<string, Promise<unknown>>>();
-
-function once<T>(url: URL, key: string, run: () => Promise<T>): Promise<T> {
-	let reads = READS.get(url);
-	if (!reads) {
-		reads = new Map();
-		READS.set(url, reads);
-	}
-	const hit = reads.get(key) as Promise<T> | undefined;
-	if (hit) return hit;
-	const promise = run();
-	reads.set(key, promise);
-	return promise;
-}
-// #endregion
-
 // #region Params
 /**
  * The console's list params for a URL — the same derivation the console store refetches with
@@ -103,7 +82,8 @@ export function resolveCataloguePage(
 	actor: ReadActor,
 	params: CatalogueListParams = {},
 ): Promise<CatalogueBootstrap> {
-	return once(url, `page|${actor.userId}|${actor.contextId}|${JSON.stringify(params)}`, async () => {
+	const key = `catalogue|page|${actor.userId}|${actor.contextId}|${JSON.stringify(params)}`;
+	return once(url, key, async () => {
 		const res = await CatalogueBackendService.list(params, actor, context.displayCurrency);
 		return {
 			page: res.ok && res.data ? res.data.page : EMPTY_PAGE,
@@ -122,7 +102,7 @@ export interface ListingRead {
 
 /** Resolve a single listing's editable detail (the manage page), as the acting seller. */
 export function resolveListing(id: string, url: URL, actor: ReadActor): Promise<ListingRead> {
-	return once(url, `listing|${actor.userId}|${actor.contextId}|${id}`, async () => {
+	return once(url, `catalogue|listing|${actor.userId}|${actor.contextId}|${id}`, async () => {
 		const res = await CatalogueBackendService.detail(id, actor);
 		if (res.ok && res.data) return { listing: res.data.listing, error: null };
 		return {

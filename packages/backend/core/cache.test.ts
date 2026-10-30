@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertNotEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertNotEquals, assertRejects, assertThrows } from "@std/assert";
 import { ArcCache, cacheKey, tenantPrefix } from "./cache.ts";
 
 /**
@@ -438,6 +438,76 @@ Deno.test("a rejected compute is not cached and does not poison the key", async 
 	}
 	assert(threw, "the rejection must propagate rather than being swallowed");
 	assertEquals(await cache.through("k", compute), "ok", "a retry must be allowed to succeed");
+});
+
+// #endregion
+
+// #region Single-flight
+
+/** A compute that settles only when the test says so, counting how often it was started. */
+function deferredCompute<T>() {
+	const started: Array<PromiseWithResolvers<T>> = [];
+	return {
+		started,
+		compute: () => {
+			const flight = Promise.withResolvers<T>();
+			started.push(flight);
+			return flight.promise;
+		},
+	};
+}
+
+Deno.test("concurrent misses on one key share one compute", async () => {
+	const cache = new ArcCache<string>({ maxEntries: 4, ttlMs: 60_000 });
+	const { started, compute } = deferredCompute<string>();
+	const first = cache.through("k", compute);
+	const second = cache.through("k", compute);
+	assertEquals(started.length, 1, "the second miss must join the first flight");
+	started[0].resolve("v");
+	assertEquals(await Promise.all([first, second]), ["v", "v"]);
+	assertEquals(await cache.through("k", compute), "v", "the flight's answer is cached");
+	assertEquals(started.length, 1);
+});
+
+Deno.test("a flight's rejection reaches only its own callers, and the next miss recomputes", async () => {
+	const cache = new ArcCache<string>({ maxEntries: 4, ttlMs: 60_000 });
+	const { started, compute } = deferredCompute<string>();
+	const first = cache.through("k", compute);
+	const second = cache.through("k", compute);
+	started[0].reject(new Error("boom"));
+	await assertRejects(() => first, Error, "boom");
+	await assertRejects(() => second, Error, "boom");
+
+	const retry = cache.through("k", compute);
+	assertEquals(started.length, 2, "a rejection is never cached and never left in flight");
+	started[1].resolve("ok");
+	assertEquals(await retry, "ok");
+
+	const sync = () => {
+		throw new Error("sync");
+	};
+	await assertRejects(() => cache.through("s", sync), Error, "sync");
+	assertEquals(await cache.through("s", () => Promise.resolve("ok")), "ok");
+});
+
+Deno.test("an invalidation during a flight: later reads start afresh, the older answer is not stored", async () => {
+	// A read that began before a write must not answer a read issued after it (the write's
+	// invalidation is what promises the next GET sees the mutation), nor be cached over the fresh one.
+	const cache = new ArcCache<string>({ maxEntries: 4, ttlMs: 60_000 });
+	const tenant = { userId: "u1", contextId: "" };
+	const key = cacheKey(tenant, "projects.board", { projectId: "p" });
+	const { started, compute } = deferredCompute<string>();
+
+	const before = cache.through(key, compute);
+	cache.clearTenant(tenant);
+	const after = cache.through(key, compute);
+	assertEquals(started.length, 2, "the read after the invalidation must not join the older flight");
+
+	started[1].resolve("after-write");
+	assertEquals(await after, "after-write");
+	started[0].resolve("before-write");
+	assertEquals(await before, "before-write", "the older flight still answers its own callers");
+	assertEquals(cache.get(key), "after-write", "the older answer must not overwrite the fresh one");
 });
 
 // #endregion

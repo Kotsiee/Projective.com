@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import type { SchedulePage } from "@projective/types/scheduling";
 import type { ReadActor } from "@server/services/read-actor.ts";
+import { once } from "@web/utils/request-memo.ts";
 import CalendarLane from "../islands/CalendarLane.island.tsx";
 import CalendarHeaderBand from "../islands/CalendarHeaderBand.island.tsx";
 import CalendarFooterRig from "../islands/CalendarFooterRig.island.tsx";
@@ -29,28 +30,13 @@ function isCalendar(url: URL): boolean {
 	return url.pathname === "/calendar" || url.pathname.startsWith("/calendar/");
 }
 
-/**
- * The request-scoped memo behind that sharing.
- *
- * Keyed on the `URL` OBJECT, not on its href: Fresh hands every resolver in one render the same
- * instance, and a different request is a different instance, so the entry cannot outlive the request
- * that made it and a `WeakMap` lets it be collected with the URL. An href-keyed cache would serve one
- * request's agenda to the next — including after an RSVP written between the two page views.
- *
- * It stores the PROMISE, so the three resolvers the layout starts together in one `Promise.all` wait
- * on a single read rather than racing three. The reader's identity is folded into the stored key:
- * it is the other input the read depends on, and if a layout ever resolved two readers against one
- * URL, the mismatch must miss rather than answer with the wrong person's calendar.
- */
-const PAGE_CACHE = new WeakMap<URL, { key: string; page: Promise<SchedulePage | null> }>();
-
+/** The reader's agenda, read once per request through the shared request memo. */
 function resolveOnce(url: URL, actor: ReadActor): Promise<SchedulePage | null> {
-	const key = `${actor.userId}|${actor.contextId}`;
-	const hit = PAGE_CACHE.get(url);
-	if (hit && hit.key === key) return hit.page;
-	const page = resolvePersonalCalendar(actor).then((r) => r.page);
-	PAGE_CACHE.set(url, { key, page });
-	return page;
+	return once(
+		url,
+		`calendar|agenda|${actor.userId}|${actor.contextId}`,
+		() => resolvePersonalCalendar(actor).then((r) => r.page),
+	);
 }
 
 /** The lane: search · kind filters, over an Events ⁄ Availability tab pair. */
