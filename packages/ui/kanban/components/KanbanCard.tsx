@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from "preact";
 import { cx } from "../../core/cx.ts";
 import { useDnd } from "../../dnd/core/context.ts";
 import { useSortable } from "../../dnd/hooks/useSortable.ts";
+import { useId } from "../../hooks/useId.ts";
 import type { KanbanItemRenderCtx } from "../core/types.ts";
 
 /**
@@ -16,9 +17,10 @@ import type { KanbanItemRenderCtx } from "../core/types.ts";
  *
  * The rendered content is therefore NON-interactive — the consumer's `render` must not nest its own
  * `role="button"`/`tabIndex` root inside this one, or every card becomes two tab stops that both
- * open it. A card that is neither draggable nor activatable renders inertly (no role, no tab stop),
- * and `data-draggable` lets the stylesheet promise a drag only where one exists (§3 gate 11 — a
- * `grab` cursor over a card that refuses to move is a control that renders and does nothing).
+ * open it. Its signals (icon-only glyphs, chips, counts) reach assistive tech as the card's
+ * description: the root's `aria-describedby` points at the rendered body. A card that is neither
+ * draggable nor activatable renders inertly (no role, no tab stop), and `data-draggable` lets the
+ * stylesheet promise a drag only where one exists (§3 gate 11 — a `grab` cursor over a card that refuses to move is a control that renders and does nothing).
  *
  * While dragging the source stays in place, dimmed; the floating ghost mirrors it and the enclosing
  * column draws the drop indicator.
@@ -46,6 +48,7 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 	});
 	const dragging = sortable.isDragging.value;
 	const interactive = draggable || !!onActivate;
+	const bodyId = useId(undefined, "kanban-card");
 
 	const onKeyDown = (e: KeyboardEvent): void => {
 		/*
@@ -82,13 +85,14 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 			role={interactive ? "button" : undefined}
 			tabIndex={interactive ? 0 : undefined}
 			aria-label={interactive ? label : undefined}
+			aria-describedby={interactive ? bodyId : undefined}
 			aria-roledescription={draggable ? sortable.attributes["aria-roledescription"] : undefined}
 			aria-keyshortcuts={draggable ? "Space" : undefined}
 			onPointerDown={draggable ? sortable.listeners.onPointerDown : undefined}
 			onClick={onActivate ? () => onActivate() : undefined}
 			onKeyDown={interactive ? onKeyDown : undefined}
 		>
-			<div class="ui-kanban__card-body">{render({ dragging, overlay: false })}</div>
+			<div id={bodyId} class="ui-kanban__card-body">{render({ dragging, overlay: false })}</div>
 		</div>
 	);
 }

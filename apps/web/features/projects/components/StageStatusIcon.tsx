@@ -6,8 +6,9 @@ import type { StageActivity } from "../types/projects-types.ts";
 /**
  * StageStatusIcon — the tiny icon-ONLY signal pinned beside a stage channel's name. Like the feed
  * card's {@link StatusIcon}, it renders a glyph for the stage's {@link StageActivity} and reveals the
- * human description ONLY on hover/focus through the portal-based `@projective/ui` {@link Tooltip} —
- * never inline text. A tonal `data-tone` colours the glyph so states read at a glance.
+ * human description ONLY on hover through the portal-based `@projective/ui` {@link Tooltip} — never
+ * inline text. It is not a tab stop: it always sits inside a focusable host (the channel link, the
+ * ticket card), whose accessible name or description carries the `aria-label`. A tonal `data-tone` colours the glyph so states read at a glance.
  */
 
 // #region Activity vocabulary
@@ -39,7 +40,6 @@ export function StageStatusIcon({ activity }: StageStatusIconProps): JSX.Element
 				data-tone={meta.tone}
 				role="img"
 				aria-label={meta.label}
-				tabIndex={0}
 			>
 				{meta.icon}
 			</span>

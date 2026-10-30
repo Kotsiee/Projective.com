@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
-import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useMemo, useRef } from "preact/hooks";
+import { type Signal, untracked, useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useMemo, useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/submission-explorer.css";
@@ -83,12 +83,12 @@ import {
 import { wantsReview } from "../core/ticket-view.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
+	displayZoom,
 	filesZoom,
 	gridColWidth,
 	listRowHeight,
 	listShowsThumbnails,
 	viewMode,
-	displayZoom,
 } from "../core/view-state.ts";
 import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { FileCard } from "../components/FileCard.tsx";
@@ -323,7 +323,13 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const buyingRevision = useSignal(false);
 	/** The raised round the pay dialog is paying for (Decision #199), with the address it was raised on. */
 	const payingRound = useSignal<
-		{ round: PaidRevisionRaised; stageId: string; submissionId: string; sellerName: string | null } | null
+		| {
+			round: PaidRevisionRaised;
+			stageId: string;
+			submissionId: string;
+			sellerName: string | null;
+		}
+		| null
 	>(null);
 	const payRoundOpen = useSignal(false);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
@@ -416,7 +422,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// #region Effective workflow (SSR baseline ⊕ dev override)
 	const viewer = resolveViewer(viewerIsClient.value, seam.value);
 	const format = effectiveFormat(baseFormat, seam.value);
-	const hasTasks = effectiveHasTasks(true, seam.value);
 	// The active submission: a real tree unit (dev status override applies) OR a self-created draft.
 	const hasActiveUnit = activeUnit.value !== null || localDraft.value !== null;
 	const effStatus: SubmissionStatus | null = activeUnit.value
@@ -435,7 +440,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// but a zero-length path, so it must be excluded).
 	const currentStageName =
 		breadcrumbs.value.find((c) => c.kind === "stage" && c.path.length > 0)?.label ?? null;
-	const seedKey = `${projectId}:${channelId ?? ""}:${path.value.join("/")}`;
 	const tickets = fulfilsTickets(format) ? pageTickets.value : [];
 	const revisions = effectiveRevisions(review.value?.revisions ?? null, seam.value);
 	// The freelancer's side of a paid round (Decision #167): its escrow is held, so the work can start.
@@ -537,12 +541,12 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// #region Toolbar handlers
 	// The toolbar — in the header band or above the grid — writes the shared intent and asks for a
 	// re-read of the node in view through here; unmounting resets that intent.
-	useEffect(() => registerExplorer(() => void reload(path.peek())), []);
+	useSignalEffect(() => registerExplorer(() => void reload(path.peek())));
 
 	// The header band titles the node in view; publishing the SSR node on mount is a no-op repaint.
-	useEffect(() => {
+	useSignalEffect(() => {
 		explorerTitle.value = nodeAt(tree.value, path.value)?.label ?? rootLabel;
-	}, [path.value, tree.value]);
+	});
 
 	// 3-state single-column sort: asc → desc → none (multi-column sort stays disabled for Submissions).
 	function applySort(key: FileSortKey): void {
@@ -912,47 +916,58 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	useCtrlWheelZoom(workspaceRef, filesZoom);
 
 	// Back/forward — re-scope to the URL's path without pushing a new entry.
-	useEffect(() => {
+	useSignalEffect(() => {
 		const onPop = () => navigate(pathFromUrl(), false);
 		globalThis.addEventListener("popstate", onPop);
 		return () => globalThis.removeEventListener("popstate", onPop);
-	}, []);
+	});
 
 	// Track the DEV Context Switcher: recompute capabilities live, and re-fetch with the new isolation
-	// when the effective freelancer/reviewer perspective changes (root task §2 + §7).
-	useEffect(() => {
-		const sync = () => {
-			const prev = seam.value;
-			const next = readDevSeam();
-			const prevFree = prev
-				? resolveViewer(viewerIsClient.value, prev).isFreelancer
-				: !viewerIsClient.value;
-			const nextFree = next
-				? resolveViewer(viewerIsClient.value, next).isFreelancer
-				: !viewerIsClient.value;
-			seam.value = next;
-			if (prevFree !== nextFree) {
-				localDraft.value = null; // a role flip discards any in-progress simulated draft
-				void reload(path.value);
-			}
-		};
-		sync();
-		return watchDevSeam(sync);
-	}, []);
+	// when the effective freelancer/reviewer perspective changes (root task §2 + §7). Untracked: the
+	// subscription is made once, and the signals `sync` reads must not re-run it.
+	useSignalEffect(() =>
+		untracked(() => {
+			const sync = () => {
+				const prev = seam.value;
+				const next = readDevSeam();
+				const prevFree = prev
+					? resolveViewer(viewerIsClient.value, prev).isFreelancer
+					: !viewerIsClient.value;
+				const nextFree = next
+					? resolveViewer(viewerIsClient.value, next).isFreelancer
+					: !viewerIsClient.value;
+				seam.value = next;
+				if (prevFree !== nextFree) {
+					localDraft.value = null; // a role flip discards any in-progress simulated draft
+					void reload(path.value);
+				}
+			};
+			sync();
+			return watchDevSeam(sync);
+		})
+	);
 
 	// A paid revision's Buy Now closing — paid or not — re-reads the page, so the unit shows what the
 	// payment did (the round opened and the work sent back) rather than the state before it.
-	useEffect(() => {
-		if (buyingRevision.peek() && !buyNowOpen.value) {
+	useSignalEffect(() => {
+		const open = buyNowOpen.value;
+		if (buyingRevision.peek() && !open) {
 			buyingRevision.value = false;
-			void reload(path.value);
+			untracked(() => void reload(path.peek()));
 		}
-	}, [buyNowOpen.value]);
+	});
 
 	// Rebuild the task checklist when the node / format changes (resets the freelancer's ticks).
-	useEffect(() => {
-		checklist.value = buildTaskChecklist(seedKey, { hasTickets: fulfilsTickets(format) });
-	}, [seedKey, format]);
+	// Computed, so a seam change that leaves the key and format equal does not reset the ticks.
+	const checklistSeed = useComputed(() =>
+		`${projectId}:${channelId ?? ""}:${path.value.join("/")}`
+	);
+	const checklistFormat = useComputed(() => effectiveFormat(baseFormat, seam.value));
+	useSignalEffect(() => {
+		checklist.value = buildTaskChecklist(checklistSeed.value, {
+			hasTickets: fulfilsTickets(checklistFormat.value),
+		});
+	});
 
 	/*
 	 * The hand-off from the ticket modal (root CLAUDE.md §8 Decision #65). A review opened inside a
@@ -963,22 +978,29 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	 * Gated on the resolved reviewer role, so a freelancer following the same link sees their files
 	 * rather than a review workspace they cannot act in.
 	 */
-	useEffect(() => {
+	const reviewUnitKey = useComputed(() => review.value?.unit.path.join("/"));
+	const reviewerRole = useComputed(() =>
+		resolveViewer(viewerIsClient.value, seam.value).isReviewer
+	);
+	useSignalEffect(() => {
+		void reviewUnitKey.value; // re-run when the review lands on another unit
+		const isReviewer = reviewerRole.value;
 		if (typeof location === "undefined") return;
 		if (!wantsReview(location.search)) return;
-		if (!review.value || !viewer.isReviewer) return;
-		openReview();
+		if (!review.peek() || !isReviewer) return;
+		untracked(openReview);
 		history.replaceState(history.state, "", location.pathname);
-	}, [review.value?.unit.path.join("/"), viewer.isReviewer]);
+	});
 
 	// Publish Tasks-panel availability to the footer toggle; reset on unmount.
-	useEffect(() => {
-		setTasksAvailable(hasTasks);
-	}, [hasTasks]);
-	useEffect(() => () => {
+	const tasksOn = useComputed(() => effectiveHasTasks(true, seam.value));
+	useSignalEffect(() => {
+		setTasksAvailable(tasksOn.value);
+	});
+	useSignalEffect(() => () => {
 		setTasksAvailable(false);
 		closeTasksPanel();
-	}, []);
+	});
 	// #endregion
 
 	const isEmpty = items.value.length === 0 && !loading.value;

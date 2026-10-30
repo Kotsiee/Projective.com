@@ -108,7 +108,7 @@
     inset-inline: 0;
     inset-block-end: -1px;
     block-size: 2px;
-    border-radius: 2px 2px 0 0;
+    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
     background: var(--primary);
     transform: scaleX(0);
     transform-origin: center;
@@ -467,22 +467,6 @@
     border-block-start: var(--hairline);
 }
 
-/* Role card (Direct Deliverable). */
-.proj-erole {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--surface-1);
-}
-
-.proj-erole__head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
 /* Skill tags. */
 .proj-etags {
     display: flex;
@@ -571,7 +555,8 @@
     font-size: 1rem;
 }
 
-/* Sticky save bar. */
+/* Sticky save bar — pinned to its scroll container, not the viewport, so a solid ramp tone and no
+   backdrop-filter (§3 gate 9). */
 .proj-editor__foot {
     position: sticky;
     inset-block-end: 0;
@@ -581,8 +566,7 @@
     gap: var(--space-3);
     margin-block-start: var(--space-2);
     padding: var(--space-3) 0;
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--surface);
     border-block-start: var(--hairline);
 }
 

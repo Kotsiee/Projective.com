@@ -25,6 +25,7 @@
 .tkv {
 	position: fixed;
 	inset: 0;
+	z-index: var(--z-portal, var(--z-modal));
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -114,7 +115,7 @@
 	min-inline-size: 0;
 	margin: 0;
 	font-size: var(--text-lg);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
@@ -392,7 +393,7 @@
 	inset-inline: var(--space-2);
 	inset-block-end: -1px;
 	block-size: 2px;
-	border-radius: 2px;
+	border-radius: var(--radius-xs);
 	background: var(--primary);
 	transform: scaleX(0);
 	transform-origin: center;
@@ -803,7 +804,7 @@
 .tkv-rich h2,
 .tkv-rich h3 {
 	margin-block: var(--space-4) var(--space-2);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
@@ -864,7 +865,7 @@
 	/* A primary RING with the numeral on the surface pair: `--on-primary` on `--primary` measures
 	   3.57:1 in dark mode (root CLAUDE.md §8 Decision #64's flagged token-layer issue), so the
 	   numeral is never set on the filled swatch. */
-	box-shadow: inset 0 0 0 1.5px var(--primary);
+	box-shadow: inset 0 0 0 var(--focus-ring-w) var(--primary);
 	font-size: var(--text-2xs);
 	font-weight: var(--fw-bold);
 	color: var(--on-surface);
@@ -1207,7 +1208,7 @@
 	block-size: 0.9375rem;
 	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface));
-	box-shadow: 0 0 0 2px var(--surface);
+	box-shadow: 0 0 0 var(--focus-ring-offset) var(--surface);
 	color: var(--text-secondary);
 }
 
@@ -1216,8 +1217,9 @@
 	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
 	color: var(--primary);
 	box-shadow:
-		0 0 0 2px var(--surface),
-		0 0 0 3.5px color-mix(in srgb, var(--primary) 45%, transparent);
+		0 0 0 var(--focus-ring-offset) var(--surface),
+		0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-w))
+			color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 
 .tkv-log__body {

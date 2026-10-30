@@ -17,6 +17,7 @@ import { MoneyView } from "@projective/ui/display/money";
 import { Button, InlineEdit, InputText } from "@projective/ui/fields";
 import { ConfirmPopup, Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { styleVars } from "@ui/core/style.ts";
 import { calendarTime } from "@projective/ui/calendar";
 import type {
 	CalendarEvent,
@@ -376,7 +377,11 @@ export function EventModal(props: EventModalProps): JSX.Element {
 
 	return (
 		<BodyPortal>
-			<div class="evm" data-state="open" style={`z-index:${stack.zIndex}`}>
+			<div
+				class="evm"
+				data-state="open"
+				style={styleVars({ "--evm-z": String(stack.zIndex) })}
+			>
 				<Backdrop visible onClick={creating ? undefined : onClose} />
 				<div
 					ref={panelRef}

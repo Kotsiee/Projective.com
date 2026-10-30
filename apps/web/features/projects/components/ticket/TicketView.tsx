@@ -342,7 +342,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 
 	return (
 		<BodyPortal>
-			<div class="tkv" data-state="open" style={`z-index:${stack.zIndex}`}>
+			<div class="tkv" data-state="open" style={`--z-portal:${stack.zIndex}`}>
 				<Backdrop visible onClick={creating ? undefined : onClose} />
 				<div
 					ref={panelRef}

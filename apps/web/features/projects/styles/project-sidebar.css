@@ -1170,6 +1170,7 @@
 
 .sess-vote__fill {
 	display: block;
+	inline-size: var(--fill, 0%);
 	block-size: 100%;
 	background: var(--primary);
 	border-radius: inherit;

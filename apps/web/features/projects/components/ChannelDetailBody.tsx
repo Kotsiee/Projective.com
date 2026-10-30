@@ -82,7 +82,7 @@ export function ChannelDetailBody(
 						aria-valuemax={100}
 						aria-label={`${title} progress`}
 					>
-						<span class="chan-progress__fill" style={`inline-size:${pct}%`} />
+						<span class="chan-progress__fill" style={`--fill:${pct}%`} />
 					</div>
 				</div>
 			)}

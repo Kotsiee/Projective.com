@@ -1,6 +1,7 @@
-import type { ComponentChildren, JSX, VNode } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { cx } from "@ui/core/cx.ts";
 import { InlineNotice } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { kindCopy, type VerificationState, type WorkspaceKind } from "@projective/types/workspace";
 import { lockLinkLabel, lockNextStep } from "../core/verification-lock-copy.ts";
 
@@ -24,7 +25,7 @@ import { lockLinkLabel, lockNextStep } from "../core/verification-lock-copy.ts";
  *
  * ## The one lock on the surface
  *
- * `.wsp-lock` is the only block in the feature's stylesheets that draws a lock, and `LockGlyph` is the
+ * `.wsp-lock` is the only block in the feature's stylesheets that draws a lock, and its registry `lock` is the
  * only padlock the feature draws at all. It marks a **process step the viewer can finish** — never money
  * they hold, and never a permission they lack. Everything else that is unavailable is simply not there.
  *
@@ -34,38 +35,6 @@ import { lockLinkLabel, lockNextStep } from "../core/verification-lock-copy.ts";
  * `verification === "verified"` (or the server stops sending a prompt) this component returns `null`, so
  * a finished entity's console carries no residue of the setup it has already completed.
  */
-
-// #region The lock glyph
-/**
- * The padlock.
- *
- * Deliberately local rather than added to `core/workspace-glyphs.tsx`: the shared register is a
- * navigation and module vocabulary, and a lock is not a destination. Keeping it here means the one place
- * that draws a lock is also the one place that owns it, and a future contributor cannot casually reach
- * for a padlock to decorate something that is merely unavailable.
- *
- * Drawn on the register's own terms — a `0 0 24 24` box at `1em` in `currentColor`, `stroke-width: 1.8`
- * — so it sits in the same icon system as every other glyph on the surface (§B.6).
- */
-const LockGlyph: VNode = (
-	<svg
-		viewBox="0 0 24 24"
-		width="1em"
-		height="1em"
-		fill="none"
-		stroke="currentColor"
-		stroke-width="1.8"
-		stroke-linecap="round"
-		stroke-linejoin="round"
-		aria-hidden="true"
-		focusable="false"
-	>
-		<rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2" />
-		<path d="M8.25 10.5V7.75a3.75 3.75 0 0 1 7.5 0v2.75" />
-		<path d="M12 14v2.5" />
-	</svg>
-);
-// #endregion
 
 // #region Copy
 /**
@@ -147,7 +116,7 @@ export function VerificationLock(props: VerificationLockProps): JSX.Element | nu
 		<InlineNotice
 			class={cx("wsp-lock", verification === "pending" && "wsp-lock--pending")}
 			align="start"
-			icon={LockGlyph}
+			icon={<Icon name="lock" />}
 		>
 			<span class="wsp-lock__text">{headline}</span>{" "}
 			<span class="wsp-lock__prompt">{lockNextStep(kind, verification, canManage)}</span>

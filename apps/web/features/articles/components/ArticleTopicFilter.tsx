@@ -1,9 +1,11 @@
 import type { JSX } from "preact";
+import { useContext } from "preact/hooks";
 import {
 	EDITORIAL_ARTICLE_TOPIC_LABEL,
 	EDITORIAL_ARTICLE_TOPICS,
 	type EditorialArticleTopic,
 } from "@projective/types/editorial";
+import { ArticleGlyphContext } from "../core/article-glyphs.ts";
 import { articlesIndexHref, toggleTopicHref } from "../core/index-query.ts";
 
 /** Props for {@link ArticleTopicFilter}. */
@@ -58,14 +60,11 @@ export function ArticleTopicFilter(
 function TopicChip(
 	{ href, label, count, current }: { href: string; label: string; count: number; current: boolean },
 ): JSX.Element {
+	const glyphs = useContext(ArticleGlyphContext);
 	return (
 		<a class="artl-topic" href={href} aria-current={current ? "true" : undefined}>
 			{current
-				? (
-					<svg class="artl-topic__check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-						<path d="M5 12.5l4.5 4.5L19 7.5" />
-					</svg>
-				)
+				? glyphs.chosen?.()
 				: null}
 			<span>{label}</span>
 			<span class="artl-topic__count" aria-hidden="true">{count}</span>

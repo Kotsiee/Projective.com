@@ -1,6 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
 import { ArticlesIndexView } from "../components/ArticlesIndexView.tsx";
+import { ARTICLE_ICONS } from "../components/article-icons.tsx";
+import { ArticleGlyphContext } from "../core/article-glyphs.ts";
 import ArticleMediaFade from "../islands/ArticleMediaFade.island.tsx";
 import { handler } from "./index-handler.ts";
 
@@ -14,7 +16,9 @@ export { handler };
 export default define.page<typeof handler>(function ArticlesIndexPage({ data }) {
 	return (
 		<>
-			<ArticlesIndexView index={data.index} />
+			<ArticleGlyphContext.Provider value={ARTICLE_ICONS}>
+				<ArticlesIndexView index={data.index} />
+			</ArticleGlyphContext.Provider>
 			<ArticleMediaFade />
 			<JsonLd graph={data.jsonLd} />
 		</>

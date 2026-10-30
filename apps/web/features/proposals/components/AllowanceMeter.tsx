@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import "../styles/proposals.css";
 import { settingsHref } from "@features/settings/core/settings-registry.ts";
 import {
@@ -43,7 +44,7 @@ export function AllowanceMeter(
 			{showsUpgrade(status)
 				? (
 					<a class="prop-meter__upgrade" href={settingsHref("billing")} onClick={onNavigate}>
-						Accelerate volume with Pro →
+						Accelerate volume with Pro <Icon name="arrow-right" />
 					</a>
 				)
 				: null}

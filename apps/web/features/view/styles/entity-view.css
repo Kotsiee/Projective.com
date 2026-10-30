@@ -2856,25 +2856,6 @@ a.evp-cta__btn--mono {
 	color: var(--text-secondary);
 }
 
-.evp-inquiry__text {
-	inline-size: 100%;
-	min-block-size: 6rem;
-	padding: var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-base);
-	background: var(--surface);
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-md);
-	line-height: var(--leading-normal);
-	resize: vertical;
-}
-
-.evp-inquiry__text:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
 .evp-inquiry__error {
 	margin: 0;
 	font-size: var(--text-sm);

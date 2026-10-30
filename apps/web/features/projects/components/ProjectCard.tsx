@@ -222,7 +222,7 @@ export function ProjectCard(
 				>
 					<span
 						class="proj-card__track-fill"
-						style={{ inlineSize: `${Math.round(fraction * 100)}%` }}
+						style={`--fill:${Math.round(fraction * 100)}%`}
 					/>
 				</span>
 			)}

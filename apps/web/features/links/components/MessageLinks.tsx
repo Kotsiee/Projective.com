@@ -60,6 +60,16 @@ function middot(parts: (string | null | undefined)[]): string {
 	return parts.filter((p): p is string => !!p).join(" · ");
 }
 
+/** A profile's rating as meta text: the registry star, the score, and the review count when known. */
+function ratingMeta(rating: string, reviews: number | null): JSX.Element {
+	return (
+		<>
+			<Icon name="star" filled />
+			{` ${rating}${reviews ? ` (${reviews})` : ""}`}
+		</>
+	);
+}
+
 /** A message body with its written links as anchors. */
 export function MessageText({ text }: { text: string }): JSX.Element {
 	const hosts = pageHosts.value;
@@ -89,7 +99,7 @@ export function MessageText({ text }: { text: string }): JSX.Element {
 interface RowFace {
 	lead: JSX.Element;
 	title: JSX.Element | string;
-	meta: string;
+	meta: JSX.Element | string;
 	state: "loading" | "ready" | "flagged" | "plain";
 }
 
@@ -133,13 +143,15 @@ function faceOf(target: LinkTarget, preview: LinkPreview | null | undefined): Ro
 			return {
 				lead: leadImage(preview.avatar, true),
 				title: preview.name,
-				meta: middot([
-					`@${preview.handle}`,
-					preview.rating
-						? `★ ${preview.rating}${preview.reviewCount ? ` (${preview.reviewCount})` : ""}`
-						: null,
-					preview.standing ? `Standing · ${preview.standing.label}` : null,
-				]),
+				meta: (
+					<>
+						{`@${preview.handle}`}
+						{preview.rating
+							? <>{" · "}{ratingMeta(preview.rating, preview.reviewCount)}</>
+							: null}
+						{preview.standing ? ` · Standing · ${preview.standing.label}` : null}
+					</>
+				),
 				state: "ready",
 			};
 		case "project":

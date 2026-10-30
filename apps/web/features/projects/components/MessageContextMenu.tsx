@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
 import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
+import { Kbd } from "@projective/ui/utils";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { placeMenu } from "../core/message-selection.ts";
 import { StarIcon } from "./glyphs.tsx";
@@ -168,7 +169,7 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 				>
 					<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(ReplyIcon)}</span>
 					<span class="msg-cmenu__label">Reply</span>
-					<span class="msg-cmenu__hint">{single ? "← →" : "One at a time"}</span>
+					<span class="msg-cmenu__hint">{single ? <Kbd keys={["←", "→"]} separator="" size="sm" /> : "One at a time"}</span>
 				</button>
 
 				<button

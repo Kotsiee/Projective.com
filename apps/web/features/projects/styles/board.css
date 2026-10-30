@@ -86,7 +86,7 @@
 
 .brd-empty__title {
 	font-size: 1rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 
@@ -244,7 +244,7 @@
 	min-inline-size: 0;
 	margin: 0;
 	font-size: 0.8125rem;
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	line-height: 1.35;
 	color: var(--on-surface);
 }
@@ -309,7 +309,7 @@
 	padding: 0 0.4rem;
 	border-radius: var(--radius-full);
 	font-size: 0.625rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
@@ -328,7 +328,7 @@
 
 .tkt__budget {
 	font-size: 0.6875rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	font-variant-numeric: tabular-nums;
 }
@@ -401,7 +401,7 @@
 	background: var(--surface);
 	cursor: default;
 	font-size: 0.6875rem;
-	font-weight: 700;
+	font-weight: var(--fw-semibold);
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--text-secondary);
@@ -434,17 +434,16 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 }
 
 .brd-list__draft,
-.brd-list__status,
-.brd-list__prio {
+.brd-list__status {
 	flex: none;
 	padding: 1px 0.45rem;
 	border-radius: var(--radius-full);
 	font-size: 0.6875rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .brd-list__draft {
@@ -458,39 +457,33 @@
 	padding: 1px 0.45rem;
 	border-radius: var(--radius-full);
 	font-size: 0.6875rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	background: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
 	color: color-mix(in srgb, var(--warning) 60%, var(--on-surface));
 }
 
-.brd-list__lane {
+.brd-list__lane,
+.brd-list__prio {
 	color: var(--text-secondary);
 }
 
-.brd-list__status[data-tone="success"],
-.brd-list__prio[data-tone="danger"] {
-	background: color-mix(in srgb, var(--danger) 16%, transparent);
-	color: var(--danger);
-}
-
 .brd-list__status[data-tone="success"] {
-	background: color-mix(in srgb, var(--success) 16%, transparent);
+	background: color-mix(in srgb, var(--success) var(--tint), transparent);
 	color: var(--success);
 }
 
 .brd-list__status[data-tone="progress"] {
-	background: color-mix(in srgb, var(--primary) 15%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 }
 
-.brd-list__status[data-tone="review"],
-.brd-list__prio[data-tone="warning"] {
-	background: color-mix(in srgb, var(--warning) 16%, transparent);
+.brd-list__status[data-tone="review"] {
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
 	color: var(--warning);
 }
 
 .brd-list__status[data-tone="info"] {
-	background: color-mix(in srgb, var(--info) 15%, transparent);
+	background: color-mix(in srgb, var(--info) var(--tint), transparent);
 	color: var(--info);
 }
 

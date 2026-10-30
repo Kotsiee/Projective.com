@@ -1,46 +1,5 @@
-import { page } from "fresh";
-import { define } from "@web/utils/state.ts";
-import { resolveAvailabilityPage } from "@web/features/calendar/core/calendar-ssr.ts";
-import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
-import { isRestrictedRequest } from "@web/utils/age-gate.ts";
-import { restrictBooking } from "@web/features/calendar/core/booking-gate.ts";
-import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
-
 /**
- * `/[handle]/availability` — the Availability page: the `@handle`'s real booking calendar (weekly working
- * hours, timezone, blackout dates, privacy-masked bookable/busy blocks, and public group sessions),
- * rendered by the reusable `@projective/ui/calendar` engine. A static sibling of `[tab].tsx`, so it wins
- * over the dynamic tab segment. Resolves the schedule server-side (the fat
- * {@link ScheduleBackendService.availability}, no HTTP hop) and hands it to the {@link ScheduleView} island;
- * the profile chrome (header · tabs) comes from the shared `[handle]/_layout.tsx`.
+ * `/[handle]/availability` — the profile's booking calendar. The controller lives in the calendar
+ * feature (`features/calendar/routes/availability.tsx`); this file only places it in the route tree.
  */
-export const handler = define.handlers({
-	async GET(ctx) {
-		const profile = ctx.state.profile;
-		ctx.state.title = profile
-			? `Availability · ${profile.name} · Projective`
-			: "Availability · Projective";
-		// Read live in the handler: the schedule comes from Postgres, and a page component cannot await.
-		const { page: resolved } = profile
-			? await resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state))
-			: { page: null };
-		// An under-18 viewer books nothing with anyone (Decision #208).
-		const schedule = restrictBooking(resolved, isRestrictedRequest(ctx.req, ctx.state.userContext));
-		return page({ schedule });
-	},
-});
-
-export default define.page<typeof handler>(function ProfileAvailabilityPage(ctx) {
-	const profile = ctx.state.profile;
-	if (!profile) return null;
-	return (
-		<ScheduleView
-			scope="availability"
-			handle={profile.handle}
-			sellerName={profile.name}
-			authed={!!ctx.state.isAuthenticated}
-			initial={ctx.data.schedule}
-			fullPage
-		/>
-	);
-});
+export { default, handler } from "@features/calendar/routes/availability.tsx";

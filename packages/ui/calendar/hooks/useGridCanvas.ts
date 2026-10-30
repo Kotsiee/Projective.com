@@ -526,8 +526,18 @@ export function useGridCanvas(opts: UseGridCanvasOptions): GridCanvasApi {
 		}
 		mo.observe(document.documentElement, { attributes: true, attributeFilter: themeAttrs });
 
-		const scheme = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
-		scheme?.addEventListener("change", invalidate);
+		/*
+		 * The media channels that restate a colour without touching any attribute: the OS scheme, the
+		 * OS contrast preference (the `prefers-contrast: more` overlay in `shell.css` and `_app.tsx`),
+		 * and forced colours, whose system-colour palette lives on the swatches in `grid.css`. The
+		 * in-app contrast switch is `data-contrast`, already watched above.
+		 */
+		const colourQueries = [
+			"(prefers-color-scheme: dark)",
+			"(prefers-contrast: more)",
+			"(forced-colors: active)",
+		].map((q) => globalThis.matchMedia?.(q));
+		for (const mq of colourQueries) mq?.addEventListener("change", invalidate);
 
 		// A photo finishing its (async, module-level) load is one more reason this frame needs to be
 		// painted again — see `core/avatar-cache.ts`. A plain `draw()`, not `invalidate()`: the palette
@@ -557,7 +567,7 @@ export function useGridCanvas(opts: UseGridCanvasOptions): GridCanvasApi {
 		return () => {
 			ro?.disconnect();
 			mo.disconnect();
-			scheme?.removeEventListener("change", invalidate);
+			for (const mq of colourQueries) mq?.removeEventListener("change", invalidate);
 			dprQuery?.removeEventListener("change", onDpr);
 			unwatchAvatars();
 		};

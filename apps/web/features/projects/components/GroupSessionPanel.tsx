@@ -99,25 +99,25 @@ export function GroupSessionPanel(
 
 			{/* Live reschedule vote — only while one is open. */}
 			{vote && (
-			<section class="sess-vote" aria-label="Reschedule vote">
-				<div class="sess-vote__head">
-					<span class="sess-vote__icon" aria-hidden="true">{PollIcon}</span>
-					<span class="sess-vote__title">Reschedule proposal</span>
-					<span class="sess-vote__tally">{vote.accepted}/{vote.total}</span>
-				</div>
-				<p class="sess-vote__prompt">{vote.prompt}</p>
-				<div
-					class="sess-vote__track"
-					role="progressbar"
-					aria-valuenow={votePct}
-					aria-valuemin={0}
-					aria-valuemax={100}
-					aria-label="Votes accepted"
-				>
-					<span class="sess-vote__fill" style={`inline-size:${votePct}%`} />
-				</div>
-				<span class="sess-vote__result">{vote.accepted} of {vote.total} accepted</span>
-			</section>
+				<section class="sess-vote" aria-label="Reschedule vote">
+					<div class="sess-vote__head">
+						<span class="sess-vote__icon" aria-hidden="true">{PollIcon}</span>
+						<span class="sess-vote__title">Reschedule proposal</span>
+						<span class="sess-vote__tally">{vote.accepted}/{vote.total}</span>
+					</div>
+					<p class="sess-vote__prompt">{vote.prompt}</p>
+					<div
+						class="sess-vote__track"
+						role="progressbar"
+						aria-valuenow={votePct}
+						aria-valuemin={0}
+						aria-valuemax={100}
+						aria-label="Votes accepted"
+					>
+						<span class="sess-vote__fill" style={`--fill:${votePct}%`} />
+					</div>
+					<span class="sess-vote__result">{vote.accepted} of {vote.total} accepted</span>
+				</section>
 			)}
 
 			{/* Channel tree — Sub-groups · Private messages */}

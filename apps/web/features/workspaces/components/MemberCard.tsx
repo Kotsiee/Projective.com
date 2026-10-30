@@ -3,6 +3,7 @@ import { useRef } from "preact/hooks";
 import { type AvatarSize, Badge, MetaLine, type MetaLineEntry } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import { ActionMenu, type ContextSurfaceSource, type MenuItem } from "@projective/ui/navigation";
 import {
 	kindCopy,
@@ -47,7 +48,7 @@ import { MessageButton } from "@web/features/projects/components/MemberSectionCa
 // #region Local icons
 /**
  * Local glyphs are **function components**, not module-level VNode constants: a roster of twenty
- * members mounts the kebab twenty times in one tree, and Preact reuses a VNode by identity, so a shared
+ * members mounts each glyph twenty times in one tree, and Preact reuses a VNode by identity, so a shared
  * constant would silently drop from every position but the first.
  */
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
@@ -68,33 +69,12 @@ function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
 	);
 }
 
-/** A vertical ellipsis — the row's own action menu. */
-export function KebabIcon(): JSX.Element {
-	return (
-		<Svg>
-			<circle cx="12" cy="5.2" r="1.4" fill="currentColor" stroke="none" />
-			<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
-			<circle cx="12" cy="18.8" r="1.4" fill="currentColor" stroke="none" />
-		</Svg>
-	);
-}
-
 /** A hollow warning triangle — flags a capability whose consequences are severe. */
 export function ConsequenceIcon(): JSX.Element {
 	return (
 		<Svg>
 			<path d="M12 4.5l8.5 15H3.5z" />
 			<path d="M12 10v4.2M12 17.2v.1" />
-		</Svg>
-	);
-}
-
-/** A magnifier — the roster's own search adornment. */
-export function SearchIcon(): JSX.Element {
-	return (
-		<Svg>
-			<circle cx="11" cy="11" r="6.2" />
-			<path d="M15.6 15.6L20 20" />
 		</Svg>
 	);
 }
@@ -284,7 +264,7 @@ export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element {
 						severity="secondary"
 						size="sm"
 						iconOnly
-						icon={<KebabIcon />}
+						icon={<Icon name="kebab" />}
 						aria-label={label}
 						aria-haspopup="menu"
 						aria-expanded={api.expanded}

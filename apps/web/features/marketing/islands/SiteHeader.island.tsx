@@ -33,9 +33,6 @@ import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
  * accordions. The theme toggle lives in the desktop actions and inside the drawer, never as a fourth
  * mobile header element. Dumb island — every megamenu leaf and the search just route to `/explore`.
  */
-const SEARCH_ICON =
-	"M8.5 3a5.5 5.5 0 1 0 3.4 9.8l3.6 3.7 1.4-1.4-3.7-3.6A5.5 5.5 0 0 0 8.5 3Zm0 2a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z";
-
 export default function SiteHeader(
 	{ authenticated = false, returnTo }: { authenticated?: boolean; returnTo?: string },
 ) {
@@ -229,7 +226,7 @@ export default function SiteHeader(
 											onClick={() => (activeMenu.value = null)}
 										>
 											{menu.viewAll.label}
-											<span class="site-header__mega-all-arrow" aria-hidden="true">→</span>
+											<Icon name="arrow-right" class="site-header__mega-all-arrow" />
 										</a>
 									</div>
 								</div>
@@ -295,9 +292,7 @@ export default function SiteHeader(
 						onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
 					/>
 					<button type="submit" class="site-header__search-go" aria-label="Search">
-						<svg viewBox="0 0 20 20" aria-hidden="true">
-							<path d={SEARCH_ICON} fill="currentColor" />
-						</svg>
+						<Icon name="search" size="sm" />
 					</button>
 				</form>
 
@@ -401,7 +396,7 @@ export default function SiteHeader(
 											</div>
 										))}
 										<a class="site-header__acc-all" href={menu.viewAll.href} onClick={closeMenu}>
-											{menu.viewAll.label} →
+											{menu.viewAll.label} <Icon name="arrow-right" />
 										</a>
 									</div>
 								</div>
