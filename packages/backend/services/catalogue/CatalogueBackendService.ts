@@ -52,8 +52,8 @@ const SIGNED_OUT = "Sign in to manage your catalogue.";
 const UNREACHABLE = "We couldn't reach your catalogue just now. Try again in a moment.";
 
 /**
- * After a successful write: drop the public catalogue's process-wide cache (a publish, a pause or a
- * save to a live listing changes what discovery shows, and a seller who publishes and opens their
+ * After a successful write: drop the public catalogue's cache in every isolate (a publish, a pause or
+ * a save to a live listing changes what discovery shows, and a seller who publishes and opens their
  * listing must not be told it does not exist for a TTL), and re-embed what changed in the background.
  */
 function afterWrite<T>(

@@ -2,6 +2,7 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
 import { ExploreBackendService } from "../explore/ExploreBackendService.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	fetchEditModel,
@@ -297,6 +298,7 @@ export class ProfileBackendService {
 		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
 		const saved = await saveProfile(target.data.owner, patch, actor);
 		if (!saved.ok) return fail(saved.status, { message: saved.message, errors: saved.errors });
+		invalidateCatalog();
 		reembedInBackground([handle.replace(/^@/, "")], "a profile save");
 		const model = await fetchEditModel(handle, actor);
 		if (!model) return unavailable();
@@ -311,7 +313,9 @@ export class ProfileBackendService {
 	): Promise<ServiceResult<ProfileMediaState>> {
 		const target = await ownedProfile(handle, actor);
 		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
-		return await applyProfileMedia(target.data.owner, handle, input, actor);
+		const applied = await applyProfileMedia(target.data.owner, handle, input, actor);
+		if (applied.ok) invalidateCatalog();
+		return applied;
 	}
 
 	/** Save the whole showcase grid (empty a slot, move items, edit alt text). */
@@ -322,7 +326,9 @@ export class ProfileBackendService {
 	): Promise<ServiceResult<ProfileMediaState>> {
 		const target = await ownedProfile(handle, actor);
 		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
-		return await saveShowcaseGrid(target.data.owner, handle, input, actor);
+		const saved = await saveShowcaseGrid(target.data.owner, handle, input, actor);
+		if (saved.ok) invalidateCatalog();
+		return saved;
 	}
 
 	/** The owner's schedule + call settings, for the Availability editor. */
