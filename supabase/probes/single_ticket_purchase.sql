@@ -151,7 +151,7 @@ BEGIN
     END;
     SELECT balance_cents INTO v_before FROM finance.wallets WHERE id = v_wallet;
     v_order := finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency,
-        jsonb_build_object(v_line::text, 30000), NULL, 'probe-ticket-order-c');
+        jsonb_build_object(v_line::text, 30000), NULL, 'probe-ticket-order-c', 30000);
     SELECT balance_cents INTO v_after FROM finance.wallets WHERE id = v_wallet;
     IF (v_order ->> 'charged_minor')::bigint <> 30000 OR v_before - v_after <> 30000 THEN
         RAISE EXCEPTION 'FAIL order % moved %', v_order, v_before - v_after;

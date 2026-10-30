@@ -175,7 +175,7 @@ BEGIN
 END $$;
 SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
 SELECT finance.place_wallet_order(pg_temp.s('basket')::uuid, ARRAY[pg_temp.s('line')::uuid], 'USD',
-    jsonb_build_object(pg_temp.s('line'), 5000), NULL, 'probe-paid-revision-1');
+    jsonb_build_object(pg_temp.s('line'), 5000), NULL, 'probe-paid-revision-1', 5000);
 RESET ROLE;
 SELECT pg_temp.ok((SELECT balance_cents FROM finance.wallets WHERE id = pg_temp.s('wallet')::uuid)
     = pg_temp.s('b0')::bigint - 5000, 'paid: the wallet paid 5000 once (no double debit)');

@@ -1,5 +1,7 @@
 import {
 	type CardPaymentHandoff,
+	type CardPaymentSweep,
+	type CardPaymentSweepOutcome,
 	type CardSetupConfig,
 	type CheckoutOrderLink,
 	type CardSetupHandoff,
@@ -58,6 +60,7 @@ import {
 	cardOwnerFor,
 	claimDueDepositRules,
 	claimStalePayouts,
+	claimUnsettledCardPayments,
 	completePayout,
 	type DbRefusal,
 	ensurePurchaseWallet,
@@ -69,8 +72,10 @@ import {
 	recordProcessorCustomer,
 	readInboundPayment,
 	recordSavedCard,
+	settleCardPayment,
 	type StalePayout,
 	syncPayoutAccount,
+	type UnsettledCardPayment,
 } from "./live-payments.ts";
 import {
 	classifyStripeError,
@@ -85,13 +90,14 @@ import {
 	createSetupIntent,
 	createTransfer,
 	findPayoutTransfer,
+	findSucceededIntent,
 	type IntentHandle,
 	retrieveConfirmedCard,
 	retrievePaymentIntent,
 	retrieveTransfersCapability,
 	type StripeFailure,
 } from "./stripe-rails.ts";
-import { applyStripePlan, planStripeEvent, syncConnectAccount } from "./stripe-webhook.ts";
+import { applyStripePlan, planStripeEvent, requireLedgerRow, syncConnectAccount } from "./stripe-webhook.ts";
 import { planStalePayout } from "./payout-sweep.ts";
 import { chargeScheduledDeposit } from "./scheduled-deposits.ts";
 import { paymentFundingState } from "./funding-state.ts";
@@ -177,6 +183,46 @@ async function settleStalePayout(
 			error instanceof Error ? error.message : error,
 		);
 		return result("retry", null, "left for the next sweep");
+	}
+}
+
+/**
+ * Settle one leased card payment Stripe already charged, or leave it: the recovery sweep's step
+ * (FINANCE_COMPLETENESS_AUDIT N1). A succeeded intent is applied exactly as its webhook would be,
+ * through `finance.settle_card_payment`, under the claim `evt_sweep_<intent>` — so a sweep that runs
+ * twice replays, and the real `payment_intent.succeeded` arriving later finds the payment settled.
+ */
+async function settleUnsettledCardPayment(
+	stripe: Stripe,
+	payment: UnsettledCardPayment,
+): Promise<CardPaymentSweep["results"][number]> {
+	const result = (outcome: CardPaymentSweepOutcome, intent: string | null, detail: string) => ({
+		paymentId: payment.paymentId,
+		outcome,
+		paymentIntent: intent,
+		detail,
+	});
+	try {
+		const intent = await findSucceededIntent(stripe, payment);
+		if (!intent) return result("unpaid", payment.providerRef, "no succeeded PaymentIntent yet");
+		const settled = requireLedgerRow(
+			await settleCardPayment({
+				eventId: `evt_sweep_${intent.id}`,
+				paymentIntent: intent.id,
+				paymentId: payment.paymentId,
+				amountReceived: intent.amountReceived,
+				currency: intent.currency,
+				livemode: intent.livemode,
+			}),
+		);
+		return result("settled", intent.id, settled.detail ?? settled.outcome);
+	} catch (error) {
+		console.error(
+			"[payments:card-sweep]",
+			payment.paymentId,
+			error instanceof Error ? error.message : error,
+		);
+		return result("retry", payment.providerRef, "left for the next sweep");
 	}
 }
 
@@ -299,15 +345,31 @@ async function cardPayment(
 	const begun = await beginCardPayment(actor.accessToken, request);
 	if (!begun.ok) return refused(begun.refusal);
 	let payment = begun.value.payment;
-	const replayed = begun.value.replayed;
+	let replayed = begun.value.replayed;
 
 	// The order this top-up pays for is named BEFORE any intent exists: a saved card is confirmed
 	// server-side the moment its intent is created, and the webhook settling it must already know
 	// which order to place (Decision #153). Write-once, so a replayed attempt re-names the same one.
 	if (checkout && payment.status === "requires_payment") {
 		const linked = await attachCheckoutOrder(actor.accessToken, payment.id, checkout);
-		if (!linked.ok) return refused(linked.refusal);
-		if (linked.value) payment = linked.value;
+		if (!linked.ok) {
+			// A second tab: drop this attempt and resume the live payment for the same lines, so the
+			// buyer is never charged twice.
+			const liveId = linked.refusal.details?.reason === "payment_in_progress"
+				? linked.refusal.details.paymentId
+				: null;
+			const live = typeof liveId === "string"
+				? await readInboundPayment(actor.accessToken, liveId).catch(() => null)
+				: null;
+			if (!live || (live.status !== "requires_payment" && live.status !== "processing")) {
+				return refused(linked.refusal);
+			}
+			if (!replayed) {
+				await abandonCardPayment(actor.accessToken, payment.id, "superseded by a payment in progress");
+			}
+			payment = live;
+			replayed = true;
+		} else if (linked.value) payment = linked.value;
 	}
 
 	// A replayed key names an attempt that already ended one way or another; its key cannot start
@@ -363,9 +425,11 @@ async function cardPayment(
 	if (!payment.providerRef) {
 		const bound = await attachCardPayment(actor.accessToken, payment.id, intent.id);
 		if (!bound.ok) {
-			// A PaymentIntent now exists that the ledger could not bind. It cannot be charged without its
-			// client secret, which is withheld here; the next retry under the same key re-creates the SAME
-			// intent (Stripe idempotency) and binds it.
+			// A PaymentIntent now exists that the ledger could not bind — and a saved card's was already
+			// charged at creation (`confirm: true`). Nothing is lost either way: the next retry under the
+			// same key re-creates the SAME intent (Stripe idempotency) and binds it, and without a retry
+			// `settle_card_payment` binds it by its `projective_payment_id` when the webhook arrives,
+			// or the card-payment sweep does (FINANCE_COMPLETENESS_AUDIT N1).
 			console.error("[payments:intent] could not bind", intent.id, bound.refusal.message);
 			return refused(bound.refusal);
 		}
@@ -1021,6 +1085,33 @@ export class PaymentBackendService {
 		const counts = { charged: 0, refused: 0, pending: 0 };
 		for (const run of claimed) counts[await chargeScheduledDeposit(run, deps)]++;
 		return ok({ claimed: claimed.length, retried: claimed.filter((run) => run.retry).length, ...counts });
+	}
+	// #endregion
+
+	// #region Unsettled card payments
+	/**
+	 * Credit every card payment Stripe charged but the ledger never settled — run by the scheduler
+	 * (`POST /api/finance/cron/card-payments`, FINANCE_COMPLETENESS_AUDIT N1). Each payment still
+	 * `requires_payment` / `processing` past its grace period is leased once per window
+	 * (`finance.claim_unsettled_card_payments`), looked up at Stripe by its intent or, when the bind was
+	 * lost, by its `projective_payment_id`, and a succeeded intent is settled through the webhook's own
+	 * door. Read-only at Stripe; a Stripe or database outage leaves the payment for the next sweep.
+	 */
+	static async sweepUnsettledCardPayments(limit = 50): Promise<Result<CardPaymentSweep>> {
+		if (!liveSettings()) return notConnected();
+		const claimed = await claimUnsettledCardPayments(limit);
+		const stripe = getStripe();
+		const results: CardPaymentSweep["results"] = [];
+		for (const payment of claimed) results.push(await settleUnsettledCardPayment(stripe, payment));
+		const count = (outcome: CardPaymentSweepOutcome) =>
+			results.filter((r) => r.outcome === outcome).length;
+		return ok({
+			claimed: claimed.length,
+			settled: count("settled"),
+			unpaid: count("unpaid"),
+			retry: count("retry"),
+			results,
+		});
 	}
 	// #endregion
 

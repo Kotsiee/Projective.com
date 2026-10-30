@@ -829,8 +829,16 @@ export class CheckoutBackendService {
 					if (!refused) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
 					return refusal(refused.message, [refused]);
 				}
-				const result = succeeded(data as PlacedOrder);
-				return ok({ result }, { message: `${result.message} It will be on the next monthly invoice.` });
+				// Written `invoiced` with nothing charged now: the order is billed on the monthly invoice.
+				const placed = succeeded(data as PlacedOrder);
+				const result: CheckoutResult = {
+					...placed,
+					walletDelta: null,
+					message: (data as PlacedOrder).replayed
+						? placed.message
+						: `Placed on account: ${charge.display} will be on the next monthly invoice.`,
+				};
+				return ok({ result }, { message: result.message });
 			}
 
 			if (byProcessor) {
@@ -912,16 +920,15 @@ export class CheckoutBackendService {
 				return ok({ result }, { message: result.message, status: 202 });
 			}
 
+			// The total the buyer was shown, in the charge currency: the database refuses any other net.
+			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
+			if (!charge) {
+				const message = "This basket mixes currencies. Pay for each currency separately.";
+				return refusal(message, [blocker("price_changed", message)]);
+			}
 			const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
 				"place_wallet_order",
-				{
-					p_basket_id: resolved.basketId,
-					p_item_ids: eligible.map((item) => item.id),
-					p_currency: chargeCurrency,
-					p_units: units,
-					p_promo_code: appliedCode,
-					p_idempotency_key: input.idempotencyKey,
-				},
+				{ ...rpcArgs, p_expected_minor: charge.minor },
 			);
 			if (error) {
 				const authority = businessAuthorityRefusal(error);

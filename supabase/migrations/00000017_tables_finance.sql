@@ -425,7 +425,11 @@ CREATE TABLE finance.deposit_rules (
     -- Who authorised the standing charge. Every run is recorded as an inbound payment made BY this
     -- person (finance.inbound_payments.created_by is NOT NULL), so a rule nobody authorised cannot run.
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    -- Set once by finance.update_deposit_rule(p_archive => true); an archived rule is inactive for good
+    -- (trg_deposit_rules_immutable). Rules are never deleted.
+    archived_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (archived_at IS NULL OR NOT active)
 );
 
 CREATE TABLE finance.payout_schedules (
@@ -1033,6 +1037,10 @@ CREATE TABLE finance.orders (
     subtotal_minor bigint NOT NULL CHECK (subtotal_minor >= 0),
     creator_discount_minor bigint NOT NULL DEFAULT 0 CHECK (creator_discount_minor >= 0),
     promo_discount_minor bigint NOT NULL DEFAULT 0 CHECK (promo_discount_minor >= 0),
+    -- The basket-wide promo code that discounted this order, as redeemed (upper-cased); NULL when none
+    -- did. Not a foreign key, for the reason finance.baskets.promo_code gives: a code withdrawn later
+    -- must not change what this order says it used.
+    promo_code text CHECK (promo_code IS NULL OR length(promo_code) <= 40),
     platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0),
 
     -- The fee RATE and MODE are stamped on the order, not looked up at read time. A platform that
@@ -1049,7 +1057,9 @@ CREATE TABLE finance.orders (
     processing_contribution_minor bigint NOT NULL DEFAULT 0 CHECK (processing_contribution_minor >= 0),
     total_minor bigint NOT NULL CHECK (total_minor >= 0),
     -- Zero on an invoiced order, which is why this is separate from `total_minor`: what was owed and
-    -- what was taken are different facts and an invoiced order has the second at zero.
+    -- what was taken are different facts and an invoiced order has the second at zero. An on-account
+    -- order (finance.place_on_account_order) is written `invoiced` with this zeroed: the platform's
+    -- on-account credit paid it, and the business pays on its monthly invoice.
     charged_minor bigint NOT NULL DEFAULT 0 CHECK (charged_minor >= 0),
 
     payment_provider text NOT NULL DEFAULT 'stripe',

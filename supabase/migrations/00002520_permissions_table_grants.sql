@@ -208,7 +208,8 @@ GRANT SELECT ON TABLE finance.income_smoothing TO authenticated;
 
 GRANT ALL ON TABLE finance.income_smoothing TO service_role;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE finance.wallet_pots TO authenticated;
+-- Read only: pots are written by definer doors (00002013).
+GRANT SELECT ON TABLE finance.wallet_pots TO authenticated;
 
 GRANT ALL ON TABLE finance.wallet_pots TO service_role;
 

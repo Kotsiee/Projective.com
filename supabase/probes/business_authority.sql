@@ -287,17 +287,17 @@ END $$;
 
 -- #region A business basket order needs `purchase` as well as vault `spend`
 SELECT pg_temp.expect_refused('finance role (spend, no purchase): place_wallet_order', pg_temp.id('theo'),
-    format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-1'')', pg_temp.id('basket')),
+    format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-1'', 0)', pg_temp.id('basket')),
     'missing_permission: purchase');
 SELECT pg_temp.expect_allowed('admin: place_wallet_order', pg_temp.id('hannah'),
-    format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-2'')', pg_temp.id('basket')));
+    format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-2'', 0)', pg_temp.id('basket')));
 
 DO $$
 DECLARE
     r record;
 BEGIN
     SELECT * INTO r FROM pg_temp.attempt(pg_temp.id('noor'),
-        format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-3'')', pg_temp.id('basket')));
+        format('SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], ''USD'', ''{}''::jsonb, NULL, ''bb2-probe-order-3'', 0)', pg_temp.id('basket')));
     IF pg_temp.is_authority_refusal(r.state, COALESCE(r.message, '')) THEN
         RAISE NOTICE 'PASS member: place_wallet_order — refused: % %', r.state, r.message;
     ELSE

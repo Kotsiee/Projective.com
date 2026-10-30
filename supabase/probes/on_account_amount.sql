@@ -10,6 +10,11 @@
 -- it. A replayed idempotency key still replays the order and credits nothing, whatever amount it
 -- carries.
 --
+-- The limit holds under concurrency (N5): the order takes a transaction-scoped advisory lock keyed on
+-- the business and currency before it reads what the business owes, so two baskets bought at once
+-- are serialised and the second reads the first's credit. Asserted by the lock being held after an
+-- order, and by an order that would pass the limit (counting every earlier basket) being refused PF402.
+--
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
 --     < supabase/probes/on_account_amount.sql
@@ -153,21 +158,25 @@ BEGIN
     END;
     -- #endregion
 
-    -- #region 3. The exact amount pays: credit = charge, the wallet's own money untouched
+    -- #region 3. The exact amount pays: credit = total, the wallet's own money untouched, and the order
+    -- is written `invoiced`, "On account", with nothing charged now (DB7)
     v_case := '3 exact amount pays';
     v_line := pg_temp.line(v_project, v_biz, v_currency, c_price);
     v_basket := pg_temp.basket_of(v_line);
     v_b0 := (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet);
     BEGIN
-        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
+        v_out := finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-3', c_price);
-        IF (SELECT charged_minor FROM finance.orders WHERE idempotency_key = 'probe-oa-3') = c_price
+        IF EXISTS (SELECT 1 FROM finance.orders WHERE idempotency_key = 'probe-oa-3' AND total_minor = c_price
+                      AND charged_minor = 0 AND status = 'invoiced' AND payment_method_label = 'On account')
+           AND v_out ->> 'status' = 'invoiced'
            AND pg_temp.credited(v_basket) = c_price
            AND (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) = v_b0 THEN
-            RAISE NOTICE 'PASS %: charged %, credited %, wallet unchanged', v_case, c_price, c_price;
+            RAISE NOTICE 'PASS %: invoiced on account for %, credited %, wallet unchanged', v_case, c_price, c_price;
         ELSE
-            v_fail := v_fail || format('%s: charged %s, credited %s, wallet %s', v_case,
-                (SELECT charged_minor FROM finance.orders WHERE idempotency_key = 'probe-oa-3'),
+            v_fail := v_fail || format('%s: order %s, credited %s, wallet %s', v_case,
+                (SELECT row_to_json(o)::text FROM (SELECT status, payment_method_label, total_minor, charged_minor
+                   FROM finance.orders WHERE idempotency_key = 'probe-oa-3') o),
                 pg_temp.credited(v_basket), (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) - v_b0);
         END IF;
     EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
@@ -189,6 +198,41 @@ BEGIN
                 (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) - v_b0);
         END IF;
     EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
+    END;
+    -- #endregion
+
+    -- #region 5. The order took the per-(business, currency) lock and holds it to commit (N5)
+    v_case := '5 on-account lock held';
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.pg_locks l
+         WHERE l.locktype = 'advisory' AND l.pid = pg_catalog.pg_backend_pid() AND l.granted
+           AND l.objsubid = 1
+           AND l.classid::bigint = (pg_catalog.hashtextextended('finance.on_account:' || v_biz::text || ':' || v_currency, 0) >> 32) & 4294967295
+           AND l.objid::bigint = pg_catalog.hashtextextended('finance.on_account:' || v_biz::text || ':' || v_currency, 0) & 4294967295
+    ) THEN
+        RAISE NOTICE 'PASS %: a concurrent on-account order for this business and currency waits for this one', v_case;
+    ELSE
+        v_fail := v_fail || format('%s: no advisory lock keyed on the business and currency', v_case);
+    END IF;
+    -- #endregion
+
+    -- #region 6. An order that would pass the limit is refused, the owed figure counting every basket
+    v_case := '6 limit counts every basket';
+    UPDATE security.platform_params
+       SET value = pg_catalog.to_jsonb(finance.fn_on_account_owed(v_biz, v_currency) + c_price - 1)
+     WHERE key = 'on_account_limit_cents';
+    v_line := pg_temp.line(v_project, v_biz, v_currency, c_price);
+    v_basket := pg_temp.basket_of(v_line);
+    BEGIN
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
+            jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-6', c_price);
+        v_fail := v_fail || format('%s: accepted past the limit', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLSTATE = 'PF402' THEN
+            RAISE NOTICE 'PASS %: % %', v_case, SQLSTATE, SQLERRM;
+        ELSE
+            v_fail := v_fail || format('%s: refused %s %s (expected PF402)', v_case, SQLSTATE, SQLERRM);
+        END IF;
     END;
     -- #endregion
 

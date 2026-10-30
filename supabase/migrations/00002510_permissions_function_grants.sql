@@ -948,7 +948,7 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- Paying a basket from the wallet (00001210 §11). A money-moving function a client may call: it
 -- authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
 -- moves money only through the service-role primitives it calls as its owner.
-GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
 
 -- Auto-funding and billing doors (00001250). Each authorises the caller itself: billing controls and
 -- paying an invoice on manage_billing; paying on account on fn_can_manage_basket + KYB + monthly
@@ -1133,8 +1133,11 @@ GRANT EXECUTE ON FUNCTION finance.abandon_identity_verification (uuid, text) TO 
 -- PROCESSOR doors: they apply what Stripe REPORTS, so no client role may call them — a user who could
 -- would be able to announce their own payment settled or their own account verified. Reached only
 -- from the signature-verified webhook and the fat service's own status reads, as service_role.
-REVOKE ALL ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean, uuid) TO service_role;
+-- The N1 recovery sweep's worklist: card payments still unsettled after the grace period.
+REVOKE ALL ON FUNCTION finance.claim_unsettled_card_payments (interval, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.claim_unsettled_card_payments (interval, integer) TO service_role;
 REVOKE ALL ON FUNCTION finance.record_card_payment_failure (text, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.record_card_payment_failure (text, text, text, text, boolean) TO service_role;
 REVOKE ALL ON FUNCTION finance.apply_identity_event (text, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
@@ -1163,6 +1166,10 @@ REVOKE ALL ON FUNCTION finance.record_processor_customer (text, uuid, text) FROM
 GRANT EXECUTE ON FUNCTION finance.record_processor_customer (text, uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION finance.create_deposit_rule (uuid, bigint, text, finance.deposit_interval, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.create_deposit_rule (uuid, bigint, text, finance.deposit_interval, uuid) TO authenticated;
+-- Pause / resume / re-price / archive (A13): the same authority as creating one; checked inside.
+REVOKE ALL ON FUNCTION finance.update_deposit_rule (uuid, boolean, bigint, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.update_deposit_rule (uuid, boolean, bigint, boolean) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fn_deposit_rules_immutable () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.set_income_smoother (text, bigint, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.set_income_smoother (text, bigint, boolean) TO authenticated;
 REVOKE ALL ON FUNCTION finance.my_verification_status () FROM PUBLIC, anon;

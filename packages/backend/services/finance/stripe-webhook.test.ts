@@ -32,7 +32,13 @@ Deno.test("payment_intent.succeeded settles what was RECEIVED, in upper-case cur
 			currency: "usd",
 			metadata: { projective_payment_id: "6f1f0d7e-2b0a-4c1e-9d6a-3b8e5f2a1c90" },
 		})),
-		{ kind: "payment_succeeded", paymentIntent: "pi_1", amountReceived: 4900, currency: "USD" },
+		{
+			kind: "payment_succeeded",
+			paymentIntent: "pi_1",
+			paymentId: "6f1f0d7e-2b0a-4c1e-9d6a-3b8e5f2a1c90",
+			amountReceived: 4900,
+			currency: "USD",
+		},
 	);
 });
 

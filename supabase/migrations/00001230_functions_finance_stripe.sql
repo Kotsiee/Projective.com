@@ -539,8 +539,12 @@ $$;
 -- payer, the payment must still be unpaid, and the caller must be able to spend from the basket NOW
 -- (finance.fn_can_manage_basket — the same guard place_wallet_order applies). Write-once: the same
 -- checkout again is a no-op; a DIFFERENT one for the same payment is refused, because one payment
--- paying for two orders is exactly the case this exists to prevent. Nothing here prices anything — the
--- units and the promo are re-checked against the catalogue by place_wallet_order when it runs.
+-- paying for two orders is exactly the case this exists to prevent. It is the card checkout's first
+-- step that knows the lines, and it runs before any PaymentIntent exists, so it is where a second tab
+-- is refused (PC409 `payment_in_progress`, the live payment's id in DETAIL) when another
+-- `requires_payment` / `processing` top-up already pays for any of the same basket lines. Nothing here
+-- prices anything — the units and the promo are re-checked against the catalogue by place_wallet_order
+-- when it runs.
 CREATE OR REPLACE FUNCTION finance.attach_checkout_order(p_payment_id uuid, p_checkout jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -554,6 +558,7 @@ DECLARE
     v_basket finance.baskets;
     v_checkout jsonb;
     v_key text := p_checkout ->> 'order_key';
+    v_other finance.inbound_payments;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
@@ -582,7 +587,8 @@ BEGIN
         RAISE EXCEPTION 'checkout: the order must be in the payment''s currency' USING ERRCODE = '22023';
     END IF;
 
-    SELECT * INTO v_basket FROM finance.baskets WHERE id = (p_checkout ->> 'basket_id')::uuid;
+    -- FOR UPDATE: two tabs naming the same basket at once are serialised for the check below.
+    SELECT * INTO v_basket FROM finance.baskets WHERE id = (p_checkout ->> 'basket_id')::uuid FOR UPDATE;
     IF NOT FOUND OR NOT finance.fn_can_manage_basket(v_basket.owner_type, v_basket.owner_id) THEN
         RAISE EXCEPTION 'checkout: that basket is not one you can pay for' USING ERRCODE = '42501';
     END IF;
@@ -603,6 +609,21 @@ BEGIN
     END IF;
     IF v_payment.status <> 'requires_payment' THEN
         RAISE EXCEPTION 'payment: this payment has already moved on' USING ERRCODE = 'PX409';
+    END IF;
+    -- A second tab paying for lines another live card payment already pays for is refused, naming that
+    -- payment (DETAIL) so the caller resumes it instead of charging twice.
+    SELECT * INTO v_other FROM finance.inbound_payments p
+     WHERE p.id <> v_payment.id
+       AND p.purpose = 'wallet_topup'
+       AND p.status IN ('requires_payment', 'processing')
+       AND p.checkout ->> 'basket_id' = v_basket.id::text
+       AND (p.checkout -> 'item_ids') ?| ARRAY(SELECT pg_catalog.jsonb_array_elements_text(v_checkout -> 'item_ids'))
+     ORDER BY p.created_at DESC
+     LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'payment_in_progress: A payment for these items is already in progress — finish it or wait for it to end'
+            USING ERRCODE = 'PC409',
+                  DETAIL = pg_catalog.jsonb_build_object('payment_id', v_other.id)::text;
     END IF;
 
     UPDATE finance.inbound_payments
@@ -651,7 +672,8 @@ CREATE OR REPLACE FUNCTION finance.settle_card_payment(
     p_provider_ref text,
     p_amount_received bigint,
     p_currency text,
-    p_livemode boolean
+    p_livemode boolean,
+    p_payment_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -709,7 +731,31 @@ BEGIN
       FROM finance.inbound_payments
      WHERE provider = 'stripe' AND provider_ref = p_provider_ref
        FOR UPDATE;
-    IF NOT FOUND THEN
+    -- Bind by the intent's metadata (FINANCE_COMPLETENESS_AUDIT N1). A saved card is charged at
+    -- creation (`confirm: true`) BEFORE attach_card_payment binds the intent, so a bind lost to a
+    -- dropped request left money Stripe captured that no delivery could ever match. Every intent
+    -- Projective creates names its payment (`metadata.projective_payment_id`, read from the signed
+    -- event), so an UNBOUND payment with that id is bound to this intent here and settled below. A
+    -- canceled one is bound too: a run canceled before its bind may still have been charged, and money
+    -- that arrived is credited, never dropped. Amount and currency are not part of the match — a
+    -- mismatch is bound and then handed to reconciliation below, where a human sees it.
+    IF NOT FOUND AND p_payment_id IS NOT NULL THEN
+        UPDATE finance.inbound_payments
+           SET provider_ref = p_provider_ref, updated_at = pg_catalog.now()
+         WHERE id = p_payment_id
+           AND provider = 'stripe'
+           AND provider_ref IS NULL
+           AND status IN ('requires_payment', 'processing', 'canceled', 'failed')
+        RETURNING * INTO v_payment;
+        IF FOUND THEN
+            UPDATE finance.idempotency_keys
+               SET status = 'succeeded',
+                   response = pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'provider_ref', p_provider_ref)
+             WHERE key = v_payment.idempotency_key
+               AND status <> 'succeeded';
+        END IF;
+    END IF;
+    IF v_payment.id IS NULL THEN
         PERFORM finance.fn_release_stripe_event(p_event_id);
         RETURN pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'no inbound payment is bound to this PaymentIntent yet',
@@ -889,7 +935,9 @@ BEGIN
     -- A top-up that pays for a checkout (Decision #153) places that order now, AS THE PAYER, under the
     -- order key the browser would use — the same claim swap and subtransaction as the escrow lock above.
     -- If the browser placed it first (or places it later), place_wallet_order replays on the key and no
-    -- second order exists. A refusal (a price that moved, a line no longer for sale, a spending limit)
+    -- second order exists. The payment's amount is the expected total, so an order that now nets to
+    -- anything else is refused rather than drawing the difference from the wallet's existing balance.
+    -- A refusal (a price that moved, a line no longer for sale, a spending limit)
     -- rolls back only the order: the money stays in the wallet, the reason is recorded, and the
     -- browser's own attempt re-asks under the same key and shows it.
     IF v_payment.purpose = 'wallet_topup' AND v_payment.checkout IS NOT NULL THEN
@@ -902,7 +950,8 @@ BEGIN
                 v_payment.checkout ->> 'currency',
                 v_payment.checkout -> 'units',
                 v_payment.checkout ->> 'promo_code',
-                v_payment.checkout ->> 'order_key'
+                v_payment.checkout ->> 'order_key',
+                v_payment.amount_cents
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
             IF v_order_id IS NULL THEN
@@ -1031,6 +1080,61 @@ BEGIN
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
         'outcome', 'applied', 'payment_id', v_payment.id, 'status', v_payment.status));
+END;
+$$;
+
+-- The recovery sweep's worklist (processor door, FINANCE_COMPLETENESS_AUDIT N1): card payments still
+-- unsettled — `requires_payment` or `processing`, bound or not — once `p_older_than` has passed since
+-- they last moved, from the last 30 days (Stripe's webhook retries stop after three). For each, the
+-- service asks Stripe whether an intent for it succeeded (by `provider_ref`, or by
+-- `metadata.projective_payment_id` when the bind was lost) and settles it through
+-- finance.settle_card_payment, so a charge whose every webhook delivery was lost is still credited.
+-- Each row is leased by touching `updated_at`, so overlapping sweeps skip it and one that is not yet
+-- paid is asked about again only one `p_older_than` later. An unbound scheduled deposit is left to
+-- finance.claim_due_deposit_rules, which re-sends it under its Stripe idempotency key (a lease here
+-- would starve that retry). Changes no money.
+CREATE OR REPLACE FUNCTION finance.claim_unsettled_card_payments(
+    p_older_than interval DEFAULT interval '15 minutes',
+    p_limit integer DEFAULT 50
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_out jsonb;
+BEGIN
+    WITH due AS (
+        SELECT p.id
+          FROM finance.inbound_payments p
+         WHERE p.provider = 'stripe'
+           AND p.status IN ('requires_payment', 'processing')
+           AND p.created_at > pg_catalog.now() - interval '30 days'
+           -- An unbound scheduled run is finance.claim_due_deposit_rules' to re-offer under its own lease.
+           AND (p.deposit_rule_id IS NULL OR p.provider_ref IS NOT NULL)
+           AND p.updated_at <= pg_catalog.now() - GREATEST(COALESCE(p_older_than, interval '15 minutes'), interval '1 minute')
+         ORDER BY p.updated_at
+         LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200)
+           FOR UPDATE SKIP LOCKED
+    ), leased AS (
+        UPDATE finance.inbound_payments p
+           SET updated_at = pg_catalog.now()
+          FROM due
+         WHERE p.id = due.id
+        RETURNING p.id, p.provider_ref, p.amount_cents, p.currency, p.created_at
+    )
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'payment_id', l.id,
+               'provider_ref', l.provider_ref,
+               'amount_cents', l.amount_cents,
+               'currency', l.currency,
+               'created_at', l.created_at
+           ) ORDER BY l.created_at), '[]'::jsonb)
+      INTO v_out
+      FROM leased l;
+    RETURN v_out;
 END;
 $$;
 -- #endregion

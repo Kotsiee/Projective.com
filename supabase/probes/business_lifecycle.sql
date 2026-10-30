@@ -174,7 +174,7 @@ DECLARE
     v_owner uuid := pg_temp.id('owner');
     v_doors text[][] := ARRAY[
         ['create_project', format($q$SELECT projects.create_project(jsonb_build_object('title', 'Probe', 'client_business_id', %L))$q$, pg_temp.id('helia'))],
-        ['place_wallet_order', format($q$SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], 'USD', '{}'::jsonb, NULL, 'probe-bb5-order-0001')$q$, pg_temp.id('basket'))],
+        ['place_wallet_order', format($q$SELECT finance.place_wallet_order(%L, ARRAY[gen_random_uuid()], 'USD', '{}'::jsonb, NULL, 'probe-bb5-order-0001', 0)$q$, pg_temp.id('basket'))],
         ['spend gate', format($q$SELECT finance.fn_assert_business_spend(%L, %L, 1000, 'project_stages', %L)$q$, pg_temp.id('helia_wallet'), v_owner, pg_temp.id('stage'))],
         ['fund_stage', format($q$SELECT projects.fund_stage(%L, %L)$q$, pg_temp.id('project'), pg_temp.id('stage'))],
         ['hire assertion', format($q$SELECT projects.fn_assert_business_actor(%L, 'hire')$q$, pg_temp.id('project'))],

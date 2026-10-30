@@ -41,7 +41,7 @@ const ORDER_COLS =
 	"id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor, " +
 	"creator_discount_minor, promo_discount_minor, platform_fee_minor, platform_fee_bp, " +
 	"platform_fee_mode, tax_minor, processing_contribution_minor, total_minor, charged_minor, " +
-	"payment_provider, payment_method_label";
+	"payment_provider, payment_method_label, promo_code";
 const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
 	"currency, fulfilment, asset_id, download_name, download_bytes, download_format, licence, " +
@@ -68,6 +68,7 @@ interface OrderRow {
 	charged_minor: number | string;
 	payment_provider: string;
 	payment_method_label: string;
+	promo_code: string | null;
 }
 
 interface LineRow {
@@ -441,6 +442,7 @@ function toOrder(order: OrderRow, lines: readonly LineRow[], owner: ResolvedOwne
 		invoice: null,
 		paymentMethodLabel: clip(order.payment_method_label || order.payment_provider, 120),
 		charged: receipt(order.charged_minor, order.currency),
+		promoCode: order.promo_code,
 		processingContribution: receipt(order.processing_contribution_minor, order.currency),
 		pendingCount: projected.filter((l) => l.fulfilment === "pending").length,
 		message: clip(STATUS_MESSAGE[order.status](total.display), 200),

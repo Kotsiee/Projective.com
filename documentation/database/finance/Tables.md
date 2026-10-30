@@ -221,7 +221,7 @@ fragments (`brand`, `last4`).
 | Table                      | Purpose & key columns                                                                                                                                                                                                                                                           |
 | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `finance.payment_methods`  | Unified funding + payout registry. `owner_type`/`owner_id`, `method_role` (`funding`/`payout`/`both`), `external_ref`, `is_default_funding`/`is_default_payout`. ⚠️ overlaps the existing `finance.payout_accounts` (Connect payout account) — reconcile (root `CLAUDE.md` §8). |
-| `finance.deposit_rules`    | Recurring deposit / standing instruction: `wallet_id`, `source_method_id`, `amount_cents`+`currency`, `interval` (weekly/monthly), `next_run_at`, `failure_count`.                                                                                                              |
+| `finance.deposit_rules`    | Recurring deposit / standing instruction: `wallet_id`, `source_method_id`, `amount_cents`+`currency`, `interval` (weekly/monthly/below_floor), `next_run_at`, `active`, `failure_count`, `last_error`, `created_by` (who authorised the charge), `archived_at` (set once by `update_deposit_rule(p_archive)`; CHECK an archived rule is inactive). Never deleted. Wallet, currency, card and interval never change (`trg_deposit_rules_immutable`). |
 | `finance.payout_schedules` | Payout cadence: `owner_type`/`owner_id`, `mode` (manual/scheduled_weekly/scheduled_monthly/threshold), `threshold_cents`, `destination_method_id`, `instant` (Instant Payout fee opt-in). `(owner, currency)` UNIQUE.                                                           |
 | `finance.income_smoothing` | AI "Income Smoother" enrolment: `user_id`, `enrolled`, `target_monthly_cents`, `fee_bp` (~0.5%), `eligibility_met`. `(user, currency)` UNIQUE. Eligibility numbers in `finance-model.md` §Money-Movement Rules.                                                                 |
 | `finance.wallet_pots`      | Sub-wallets / pots: `wallet_id`, `purpose` (tax/savings/goal/general), `name`, `balance_cents`, `auto_allocate_bp` (skim % of inbound payouts — the tax-pot auto-set-aside).                                                                                                    |
@@ -547,6 +547,21 @@ is in the wallet's ledger, the purpose was not applied. The spelling follows Str
 (`canceled`, one `l`) because these are the processor's own states, recorded as received; the
 payout enum's `cancelled` is Projective's word for its own act. Mirrored member-for-member by the
 Zod `InboundPaymentStatus` (`payments.contract.test.ts` reads the migration and fails on drift).
+
+### `finance.order_status` and the order record (`finance.orders`)
+
+`order_status`: `confirmed` · `processing` · `awaiting_payment` · `invoiced` · `refunded` ·
+`cancelled`, mirrored by the Zod `OrderStatus`. Writers today: `confirmed` by
+`finance.place_wallet_order` (a wallet order, including a card checkout's, which is placed only once its
+top-up settles); `invoiced` by `finance.place_on_account_order` (label "On account", `charged_minor` 0 —
+`total_minor` is what is owed, billed on the monthly invoice). `processing`, `awaiting_payment`,
+`refunded` and `cancelled` have no writer: `awaiting_payment` is kept for a provider-side step no path
+takes yet, and the refund / cancel writers wait for ruling M8 (FDD D-12). Never dropped (edit-in-place).
+
+`finance.orders.promo_code` (`text`, NULL, ≤ 40): the basket-wide promo the order redeemed, upper-cased
+as `finance.promo_codes.code`; `NULL` when no promo saved anything. Not a foreign key, for the reason
+`baskets.promo_code` gives. Mirrored by the Zod `Order.promoCode`. The code's `redemption_count` is
+raised by the same transaction, atomically under `max_redemptions` (DB7).
 
 ### `finance.purchasable_item_kind`
 

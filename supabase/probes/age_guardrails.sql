@@ -86,7 +86,7 @@ BEGIN
         'SELECT org.enable_freelancer_profile(''{}''::jsonb)',
         'SELECT projects.apply_to_project(''prj-none'', ''stg-none'')',
         'SELECT finance.begin_card_payment(''wallet_topup'', NULL, NULL, NULL, 1000, ''GBP'', ''ageprobe-card-1'')',
-        'SELECT finance.place_wallet_order(gen_random_uuid(), ARRAY[gen_random_uuid()], ''GBP'', ''{}''::jsonb, NULL, ''ageprobe-order-1'')',
+        'SELECT finance.place_wallet_order(gen_random_uuid(), ARRAY[gen_random_uuid()], ''GBP'', ''{}''::jsonb, NULL, ''ageprobe-order-1'', 0)',
         'SELECT projects.fund_stage(gen_random_uuid(), gen_random_uuid())',
         'SELECT projects.fund_ticket(gen_random_uuid(), gen_random_uuid())',
         'SELECT projects.fund_paid_revision(gen_random_uuid())',

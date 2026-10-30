@@ -110,10 +110,10 @@ SELECT set_config('request.jwt.claims',
     json_build_object('sub', current_setting('probe.buyer'), 'role', 'authenticated')::text, true);
 SELECT set_config('probe.order1', finance.place_wallet_order(
     current_setting('probe.basket')::uuid, ARRAY[current_setting('probe.li1')::uuid], 'USD',
-    jsonb_build_object(current_setting('probe.li1'), 18000), NULL, 'probe-single-' || current_setting('probe.li1')) ->> 'order_id', true);
+    jsonb_build_object(current_setting('probe.li1'), 18000), NULL, 'probe-single-' || current_setting('probe.li1'), 18000) ->> 'order_id', true);
 SELECT set_config('probe.order2', finance.place_wallet_order(
     current_setting('probe.basket')::uuid, ARRAY[current_setting('probe.li2')::uuid], 'USD',
-    jsonb_build_object(current_setting('probe.li2'), 96000), NULL, 'probe-block-' || current_setting('probe.li2')) ->> 'order_id', true);
+    jsonb_build_object(current_setting('probe.li2'), 96000), NULL, 'probe-block-' || current_setting('probe.li2'), 96000) ->> 'order_id', true);
 
 -- 3. Refusals, each in its own subtransaction so the order rolls back and nothing is charged.
 DO $$
@@ -122,19 +122,19 @@ DECLARE
 BEGIN
     BEGIN
         PERFORM finance.place_wallet_order(current_setting('probe.basket')::uuid, ARRAY[current_setting('probe.li3')::uuid],
-            'USD', jsonb_build_object(current_setting('probe.li3'), 18000), NULL, 'probe-clash-' || current_setting('probe.li3'));
+            'USD', jsonb_build_object(current_setting('probe.li3'), 18000), NULL, 'probe-clash-' || current_setting('probe.li3'), 18000);
         RAISE EXCEPTION 'FAIL 3: a second buyer was sold a paid slot';
     EXCEPTION WHEN SQLSTATE 'PS409' THEN RAISE NOTICE 'PASS 3: the paid slot is refused to a second booking (PS409)';
     END;
     BEGIN
         PERFORM finance.place_wallet_order(current_setting('probe.basket')::uuid, ARRAY[current_setting('probe.li4')::uuid],
-            'USD', jsonb_build_object(current_setting('probe.li4'), 18000), NULL, 'probe-past-' || current_setting('probe.li4'));
+            'USD', jsonb_build_object(current_setting('probe.li4'), 18000), NULL, 'probe-past-' || current_setting('probe.li4'), 18000);
         RAISE EXCEPTION 'FAIL 3: a time in the past was booked';
     EXCEPTION WHEN SQLSTATE 'PC409' THEN RAISE NOTICE 'PASS 3: a time that has passed is refused (PC409)';
     END;
     BEGIN
         PERFORM finance.place_wallet_order(current_setting('probe.basket')::uuid, ARRAY[current_setting('probe.li5')::uuid],
-            'USD', jsonb_build_object(current_setting('probe.li5'), 17000), NULL, 'probe-price-' || current_setting('probe.li5'));
+            'USD', jsonb_build_object(current_setting('probe.li5'), 17000), NULL, 'probe-price-' || current_setting('probe.li5'), 17000);
         RAISE EXCEPTION 'FAIL 3: a stale price was charged';
     EXCEPTION WHEN SQLSTATE 'PC409' THEN RAISE NOTICE 'PASS 3: a price the buyer did not see is refused (PC409)';
     END;

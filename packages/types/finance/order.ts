@@ -48,9 +48,15 @@ export const OrderStatus = z.enum([
 	"confirmed",
 	/** Money taken, at least one line still awaiting a provider-side step. */
 	"processing",
-	/** Awaiting a provider action (3-D Secure, a PayPal approval) — the order exists, the charge does not yet. */
+	/**
+	 * Awaiting a provider action (3-D Secure, a PayPal approval) — the order exists, the charge does not
+	 * yet. No path writes it today: a card checkout's order is placed only once its payment settles.
+	 */
 	"awaiting_payment",
-	/** Raised against a monthly statement rather than charged now. */
+	/**
+	 * Raised against a monthly statement rather than charged now: an on-account order
+	 * (`finance.place_on_account_order`), with `charged` zero and the label "On account".
+	 */
 	"invoiced",
 	/** Reversed in full. */
 	"refunded",
@@ -294,6 +300,8 @@ export const OrderSchema = z.object({
 	paymentMethodLabel: z.string().max(120),
 	/** What was actually charged now — zero on an invoiced order, which is the point of one. */
 	charged: MoneyViewSchema,
+	/** The basket-wide promo code redeemed on this order (`finance.orders.promo_code`), else `null`. */
+	promoCode: z.string().max(40).nullable(),
 	/**
 	 * The buyer's optional contribution toward gateway costs, if they opted in. A zero-valued
 	 * `MoneyView` rather than `null` so the arithmetic has no branch and the line can always render.
