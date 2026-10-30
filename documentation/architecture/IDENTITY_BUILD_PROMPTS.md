@@ -768,7 +768,8 @@ STEPS:
      - A missing or invalid dial falls back to 30 days, the legal ceiling, never longer.
      - deletion_requests_window_check (scheduled_for > requested_at) still holds.
   3. search.fn_prune_query_logs() deletes query_logs older than retention_search_query_log_days,
-     in batches.
+     in batches. The job (daily 04:36) calls it with no arguments, so it reads the dial itself, and
+     any parameter (a batch size, say) must have a default.
   4. security.fn_prune_security_logs().
      - Null ip and user_agent on security.audit_logs older than retention_security_log_months.
        The rows stay, because some are consent and lifecycle records kept for the consent class.
