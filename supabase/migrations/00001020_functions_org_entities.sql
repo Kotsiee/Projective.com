@@ -3843,8 +3843,7 @@ BEGIN
         'spend', CASE WHEN p_kind = 'business' AND v_sees_spend THEN jsonb_build_object(
                 'currency', v_currency,
                 'approval_threshold_minor', (SELECT w.approval_threshold_cents FROM finance.wallets w WHERE w.id = v_wallet),
-                'platform_threshold_minor', (SELECT NULLIF((pp.value #>> '{}')::bigint, 0) FROM security.platform_params pp
-                                              WHERE pp.key = 'vault_approval_threshold_cents'),
+                'platform_threshold_minor', NULLIF(finance.fn_param_minor('vault_approval_threshold_cents', v_currency), 0),
                 'approver_user_ids', (SELECT COALESCE(jsonb_agg(m.user_id ORDER BY org.fn_preset_rank(m.role) DESC, m.joined_at), '[]'::jsonb)
                     FROM org.business_members m
                    WHERE m.business_id = v_e.id AND m.status = 'active'

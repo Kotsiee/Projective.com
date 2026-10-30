@@ -86,7 +86,7 @@ BEGIN
     IF v_product IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no published single-owner product in %', v_currency; END IF;
     UPDATE catalogue.products SET price_cents = 1000 WHERE id = v_product;
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions)
     VALUES ('PROBEDB7', 'Probe 10% off', 'percent', 1000, 1);
     RAISE NOTICE 'fixture business=% buyer=% product=% %', v_biz, v_buyer, v_product, v_currency;

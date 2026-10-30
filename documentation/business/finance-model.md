@@ -520,10 +520,11 @@ Governs shared wallets (Business / Team / Enterprise).
   auto-fund drain spends as the project owner) **once** per spend (a basket's ticket line counts
   against the buyer at the basket, not again at its hold), and applies the approval threshold. The
   threshold is the wallet's own `approval_threshold_cents`, else the platform's
-  `vault_approval_threshold_cents` (seeded **0** = none) — one resolver, `fn_business_threshold`,
-  for every reader. The platform default becomes a **per-currency map**, like `min_withdrawal_minor`
-  (§13) (Decision #337, ruling M5 (e)) — **Not built yet**: one figure in minor units serves every
-  currency today. Team and personal spending are not governed by this gate.
+  `vault_approval_threshold_cents` in the wallet's currency — one resolver, `fn_business_threshold`,
+  for every reader. The platform default is a **per-currency map** in each currency's minor units,
+  like `min_withdrawal_minor` (§13), with a `default` for any currency it does not list (Decision
+  #337, ruling M5 (e)); it is seeded `{"default": 0}`, no threshold in any currency. Team and
+  personal spending are not governed by this gate.
 - **Approval thresholds** (`finance.spend_approvals`): a spend at/above the threshold above (or
   over a member's cap) is refused (`PA403 needs_approval` / `over_limit`) until a request for that
   same thing is approved by a member holding `approve_spend` who is not the requester — the owner's
@@ -578,11 +579,14 @@ Governs shared wallets (Business / Team / Enterprise).
   02:20 UTC), which also marks overdue invoices — Decision #172.
 - **Paying on account** (Decision #172): `finance.place_on_account_order` credits the business
   wallet (`on_account_credit`) and pays the order from it; the period's credit is the invoice's
-  amount due, settled by `finance.pay_invoice` (`invoice_payment`). **Limit: 25,000.00 owed per
-  currency** (`on_account_limit_cents` = 2 500 000 minor units, product owner 2026-10-10); an
-  overdue invoice withdraws the route. The limit becomes a **per-currency map** (Decision #337,
-  ruling M5 (e)) — **Not built yet**: today one 2 500 000 applies in every currency's minor units,
-  which is about £236 in INR and £13k in JPY.
+  amount due, settled by `finance.pay_invoice` (`invoice_payment`); an overdue invoice withdraws the
+  route. **Limit per currency** (`on_account_limit_cents`, a per-currency map in each currency's
+  minor units, Decision #337, ruling M5 (e)): **GBP 25,000.00** owed (product owner 2026-10-10), and
+  about £25,000 in each other display currency — £25,000 at the seeded reference rates, rounded to
+  two significant figures, pending product sign-off: USD 32,000.00; EUR 29,000.00; CHF 28,000.00;
+  CAD · SGD 43,000.00; AUD 48,000.00; JPY ¥4,800,000; INR ₹2,700,000; ZAR R580,000; NGN ₦50,000,000;
+  AED 120,000.00. The map has no default: a currency it does not list cannot be bought on account
+  (`PF402 limit_not_configured`) rather than be judged by one flat figure.
 - **Auto-funding & low balance** (Decision #172): `auto_fund_mode` (`off` · `add_to_basket` ·
   `from_wallet`) per business, `projects.auto_fund_override` per project; `low_balance_floor_cents`
   warns once per crossing (`wallet.low_balance`).

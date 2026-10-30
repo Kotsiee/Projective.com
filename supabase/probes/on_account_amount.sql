@@ -15,6 +15,11 @@
 -- are serialised and the second reads the first's credit. Asserted by the lock being held after an
 -- order, and by an order that would pass the limit (counting every earlier basket) being refused PF402.
 --
+-- The limit is per currency (FINANCE_AUDIT C15; Decision #337, ruling M5 (e)): `on_account_limit_cents`
+-- is a map in each currency's minor units, read through finance.fn_param_minor, so an INR order is
+-- judged against the INR entry, never GBP's figure or the default; a currency with no entry and no
+-- default is refused PF402 `limit_not_configured`, and its standing offers no headroom.
+--
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
 --     < supabase/probes/on_account_amount.sql
@@ -80,6 +85,7 @@ DECLARE
     v_line uuid;
     v_basket uuid;
     v_b0 bigint;
+    v_owed bigint;
     v_out jsonb;
     v_fail text[] := '{}';
     v_case text;
@@ -108,7 +114,7 @@ BEGIN
     END IF;
     v_wallet := finance.fn_ensure_wallet('business', v_biz, v_currency);
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     DELETE FROM finance.spending_limits WHERE wallet_id = v_wallet AND member_user_id = v_owner;
     -- Money already in the wallet: what a short `p_amount` used to take the rest from.
     PERFORM finance.fn_wallet_credit(v_biz, 'business', v_currency, 100000, 'topup', 'inbound_payments', gen_random_uuid());
@@ -219,7 +225,7 @@ BEGIN
     -- #region 6. An order that would pass the limit is refused, the owed figure counting every basket
     v_case := '6 limit counts every basket';
     UPDATE security.platform_params
-       SET value = pg_catalog.to_jsonb(finance.fn_on_account_owed(v_biz, v_currency) + c_price - 1)
+       SET value = jsonb_build_object(v_currency, finance.fn_on_account_owed(v_biz, v_currency) + c_price - 1)
      WHERE key = 'on_account_limit_cents';
     v_line := pg_temp.line(v_project, v_biz, v_currency, c_price);
     v_basket := pg_temp.basket_of(v_line);
@@ -228,12 +234,99 @@ BEGIN
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-6', c_price);
         v_fail := v_fail || format('%s: accepted past the limit', v_case);
     EXCEPTION WHEN OTHERS THEN
-        IF SQLSTATE = 'PF402' THEN
+        IF SQLSTATE = 'PF402' AND SQLERRM NOT LIKE 'limit_not_configured%' THEN
             RAISE NOTICE 'PASS %: % %', v_case, SQLSTATE, SQLERRM;
         ELSE
-            v_fail := v_fail || format('%s: refused %s %s (expected PF402)', v_case, SQLSTATE, SQLERRM);
+            v_fail := v_fail || format('%s: refused %s %s (expected PF402 past the limit)', v_case, SQLSTATE, SQLERRM);
         END IF;
     END;
+    -- #endregion
+
+    -- #region 7. An INR order is judged against the INR limit, never GBP's figure or the default (C15)
+    v_case := '7 INR judged against the INR limit';
+    UPDATE projects.projects SET currency = 'INR' WHERE id = v_project;
+    v_owed := finance.fn_on_account_owed(v_biz, 'INR');
+    -- One minor unit past the INR entry, while GBP's figure and the default would both allow it.
+    UPDATE security.platform_params
+       SET value = jsonb_build_object('GBP', 2500000, 'default', 999999999999, 'INR', v_owed + c_price - 1)
+     WHERE key = 'on_account_limit_cents';
+    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_basket := pg_temp.basket_of(v_line);
+    BEGIN
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+            jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-7a', c_price);
+        v_fail := v_fail || format('%s: accepted one unit past the INR entry', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLSTATE = 'PF402' AND SQLERRM NOT LIKE 'limit_not_configured%' THEN
+            RAISE NOTICE 'PASS %: one unit past the INR entry is refused % %', v_case, SQLSTATE, SQLERRM;
+        ELSE
+            v_fail := v_fail || format('%s: refused %s %s (expected PF402 past the limit)', v_case, SQLSTATE, SQLERRM);
+        END IF;
+    END;
+    -- Exactly the INR entry, while GBP's figure and the default would both refuse it.
+    UPDATE security.platform_params
+       SET value = jsonb_build_object('GBP', 1, 'default', 1, 'INR', v_owed + c_price)
+     WHERE key = 'on_account_limit_cents';
+    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_basket := pg_temp.basket_of(v_line);
+    BEGIN
+        v_out := finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+            jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-7b', c_price);
+        IF v_out ->> 'status' = 'invoiced'
+           AND (finance.get_on_account_standing(v_biz, 'INR') ->> 'limit_minor')::bigint = v_owed + c_price
+           AND (finance.get_on_account_standing(v_biz, 'INR') ->> 'headroom_minor')::bigint = 0 THEN
+            RAISE NOTICE 'PASS %: up to the INR entry pays, and the standing reads the INR limit', v_case;
+        ELSE
+            v_fail := v_fail || format('%s: answered %s, standing %s', v_case, v_out,
+                finance.get_on_account_standing(v_biz, 'INR'));
+        END IF;
+    EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
+    END;
+    -- #endregion
+
+    -- #region 8. A currency with no entry and no default is refused, never judged by a flat figure
+    v_case := '8 no entry and no default refused';
+    UPDATE security.platform_params SET value = '{"GBP": 2500000}'::jsonb WHERE key = 'on_account_limit_cents';
+    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_basket := pg_temp.basket_of(v_line);
+    BEGIN
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+            jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-8', c_price);
+        v_fail := v_fail || format('%s: accepted with no INR limit set', v_case);
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLSTATE = 'PF402' AND SQLERRM LIKE 'limit_not_configured:%' THEN
+            RAISE NOTICE 'PASS %: % %', v_case, SQLSTATE, SQLERRM;
+        ELSE
+            v_fail := v_fail || format('%s: refused %s %s (expected PF402 limit_not_configured)', v_case, SQLSTATE, SQLERRM);
+        END IF;
+    END;
+    IF (finance.get_on_account_standing(v_biz, 'INR') ->> 'headroom_minor')::bigint <> 0 THEN
+        v_fail := v_fail || format('%s: the standing offers headroom (%s)', v_case,
+            finance.get_on_account_standing(v_biz, 'INR'));
+    END IF;
+    -- #endregion
+
+    -- #region 9. The resolver: the currency's own entry, else the default, else NULL; definer-only
+    v_case := '9 fn_param_minor';
+    UPDATE security.platform_params SET value = '{"INR": 270000000, "default": 7}'::jsonb
+     WHERE key = 'on_account_limit_cents';
+    v_out := jsonb_build_object(
+        'inr', finance.fn_param_minor('on_account_limit_cents', ' inr '),
+        'jpy', finance.fn_param_minor('on_account_limit_cents', 'JPY'));
+    UPDATE security.platform_params SET value = '{"INR": 270000000}'::jsonb WHERE key = 'on_account_limit_cents';
+    v_out := v_out || jsonb_build_object('unset', finance.fn_param_minor('on_account_limit_cents', 'JPY'));
+    -- A bare number, the flat shape before the maps, reads as {"default": n}.
+    UPDATE security.platform_params SET value = '2500000'::jsonb WHERE key = 'on_account_limit_cents';
+    v_out := v_out || jsonb_build_object(
+        'bare', finance.fn_param_minor('on_account_limit_cents', 'INR'),
+        'missing', finance.fn_param_minor('probe_no_such_param', 'GBP'),
+        'client', has_function_privilege('authenticated', 'finance.fn_param_minor(text, text)', 'EXECUTE')
+               OR has_function_privilege('anon', 'finance.fn_param_minor(text, text)', 'EXECUTE'));
+    IF v_out = '{"inr": 270000000, "jpy": 7, "unset": null, "bare": 2500000, "missing": null, "client": false}'::jsonb THEN
+        RAISE NOTICE 'PASS %: own entry, else the default (a bare number is one), else NULL; no client may call it', v_case;
+    ELSE
+        v_fail := v_fail || format('%s: read %s', v_case, v_out);
+    END IF;
     -- #endregion
 
     PERFORM pg_temp.act(NULL);

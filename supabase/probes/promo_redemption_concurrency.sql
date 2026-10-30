@@ -68,7 +68,7 @@ BEGIN
     IF v_product IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no published single-owner product in %', v_currency; END IF;
     UPDATE catalogue.products SET price_cents = 1000 WHERE id = v_product;
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
-    UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+    UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
     INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions)
     VALUES (v_code, 'Probe race 10% off', 'percent', 1000, 1);
     -- Baskets 1 and 2 carry the code; basket 3 is the same-key race.

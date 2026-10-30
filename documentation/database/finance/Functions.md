@@ -38,9 +38,21 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   calls it directly (the basket, a transfer out).
 - **`finance.fn_business_threshold(wallet)`** → bigint (`00001210`, BUSINESSES_AUDIT BF19) — the
   approval threshold that governs one vault: `wallets.approval_threshold_cents`, else the platform's
-  `vault_approval_threshold_cents`, else `0` (none). Every threshold read uses it — the business
-  basket, the spend gate, `request_spend_approval`, `fn_redeem_spend_approval`'s `DETAIL` and the
-  auto-fund drain. Revoked from `PUBLIC`, `anon`, `authenticated`.
+  `vault_approval_threshold_cents` in the wallet's currency (`fn_param_minor`), else `0` (none).
+  Every threshold read uses it — the business basket, the spend gate, `request_spend_approval`,
+  `fn_redeem_spend_approval`'s `DETAIL` and the auto-fund drain. Revoked from `PUBLIC`, `anon`,
+  `authenticated`.
+- **`finance.fn_param_minor(key, currency)`** → bigint (`00001200`, Decision #337, ruling M5 (e)) —
+  one per-currency `security.platform_params` value in that currency's minor units: the map's entry
+  for the currency (trimmed, upper-cased), else its `"default"`, else `NULL`. A bare number, the
+  flat shape these params had before the maps, reads as `{"default": n}`, so a database still
+  holding one keeps its approval threshold rather than silently losing it. Each caller decides what
+  `NULL` means: no threshold (`fn_business_threshold`; `org.get_workspace_detail`'s
+  `platform_threshold_minor`), or no paying on account (`place_on_account_order` refuses;
+  `get_on_account_standing` reads a limit of 0). `LANGUAGE sql STABLE`; revoked from `PUBLIC`,
+  `anon`, `authenticated` (`00002510`). A member's read of the map (the checkout pre-flight)
+  resolves it with `@projective/types/finance` `paramMinor`, the same rule over
+  `PerCurrencyMinorSchema`.
 - **`finance.fn_assert_business_spend(wallet, actor, amount, ref_table, ref_id, count_envelope =
   true)`** → void (`00001210`, BUSINESSES_AUDIT BF21 / BF22 / §4.2) — **the one business spend
   gate**, called in the transaction that moves the money by `place_wallet_order` (and so
@@ -843,7 +855,7 @@ ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fu
 What a business owes on account in one currency: every `on_account_credit` credit to its wallet in
 that currency less every `invoice_payment` debit from it (`finance.transactions`, the currency
 matched case-insensitively; `0` when there are none). Read by `place_on_account_order` (owed +
-amount within `on_account_limit_cents`), `get_on_account_standing` (`owed_minor`) and
+amount within the currency's `on_account_limit_cents`), `get_on_account_standing` (`owed_minor`) and
 `org.fn_business_archive_blockers` (`on_account_owed` — each currency in which it is > 0, BB5).
 `LANGUAGE sql STABLE SECURITY DEFINER`; no grant to `authenticated` (the finance-wide `PUBLIC` /
 `anon` revoke, `00002510`), so only its definer callers read it.
@@ -856,7 +868,9 @@ already on an order replays that order through `place_wallet_order` without cred
 `p_amount > 0` (`22023`); the basket exists (`PB404`) and is a business's (`22023`);
 `fn_can_manage_basket` (`42501`); the workspace `purchase` capability (`PK403 missing_permission:
 purchase`, BB2); KYB, `intervaled_monthly` invoicing and no overdue invoice (each an un-prefixed
-`PK403`); owed (`fn_on_account_owed`) + `p_amount` within `on_account_limit_cents` (`PF402`) — read under a
+`PK403`); owed (`fn_on_account_owed`) + `p_amount` within the currency's `on_account_limit_cents`
+entry (`fn_param_minor`, Decision #337, ruling M5 (e); past it `PF402`, and a currency with no entry
+and no default `PF402 limit_not_configured:`) — read under a
 transaction-scoped advisory lock on `('finance.on_account', business, currency)`, so concurrent
 orders on different baskets are serialised and cannot pass the limit together (N5). The
 active-business check and the spend gate (BB3 / BB5) run once, inside `place_wallet_order`, on what
@@ -873,10 +887,12 @@ business pays on its monthly invoice), and the answer says `status: invoiced`. `
 
 ### `finance.get_on_account_standing(p_business_id, p_currency)` → `jsonb | NULL` (`00001250`)
 
-What the checkout and the Billing module read about paying on account: `{monthly, overdue,
-owed_minor, limit_minor, headroom_minor}` in that currency (`headroom_minor` floored at 0). `NULL`
-unless the caller passes `fn_owner_visible('business', …)`. `STABLE SECURITY DEFINER`, `search_path =
-finance, org, security, public`; granted to `authenticated` (`00002510`).
+What the checkout and the Billing module read about paying on account:
+`{monthly, overdue, owed_minor, limit_minor, headroom_minor}` in that currency (`headroom_minor`
+floored at 0; `limit_minor` the currency's `on_account_limit_cents` entry through `fn_param_minor`,
+`0` where none is set, so no headroom). `NULL` unless the caller passes
+`fn_owner_visible('business', …)`. `STABLE SECURITY DEFINER`,
+`search_path = finance, org, security, public`; granted to `authenticated` (`00002510`).
 
 ## 💸 Wallet movements (`00001210` §12)
 

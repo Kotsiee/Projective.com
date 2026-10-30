@@ -1187,6 +1187,7 @@ GRANT EXECUTE ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) TO s
 REVOKE ALL ON FUNCTION finance.fn_payout_destination (finance.wallets) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_deposit_charge_target (finance.deposit_rules) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_min_withdrawal_minor (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_param_minor (text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_minor_units_text (bigint, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_escrow_payer_wallet_type (uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_escrow_fee_bp (uuid, uuid) FROM PUBLIC, anon, authenticated;

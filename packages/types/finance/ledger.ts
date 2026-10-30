@@ -42,12 +42,42 @@ export const WalletSchema = z.object({
 	balanceCents: minorUnitsNonNeg,
 	/**
 	 * This vault's own spend-approval threshold. `null` is "no local override" — the platform's
-	 * `vault_approval_threshold_cents` then applies — not an unset field.
+	 * `vault_approval_threshold_cents` for this wallet's currency ({@link paramMinor}) then applies —
+	 * not an unset field.
 	 */
 	approvalThresholdCents: minorUnitsNonNeg.nullable(),
 	createdAt: timestamp,
 });
 export type Wallet = z.infer<typeof WalletSchema>;
+// #endregion
+
+// #region Per-currency platform params
+/**
+ * A per-currency `security.platform_params` value (Decision #337, ruling M5 (e)) —
+ * `on_account_limit_cents`, `vault_approval_threshold_cents`, `min_withdrawal_minor`: an amount per
+ * ISO currency in that currency's own minor units, with an optional `default` for any currency it
+ * does not list.
+ */
+export const PerCurrencyMinorSchema = z.record(
+	z.string().regex(/^(?:default|[A-Z]{3})$/),
+	minorUnitsNonNeg,
+);
+export type PerCurrencyMinor = z.infer<typeof PerCurrencyMinorSchema>;
+
+/**
+ * What a per-currency param sets in `currency`: its own entry, else its `default`, else `null` (unset;
+ * so is a value of any other shape) — `finance.fn_param_minor`'s rule, for a reader that sees the param
+ * as a member and cannot call that definer. A bare number, the flat shape these params had before,
+ * reads as `{ default: n }`, so a database that still holds one keeps its threshold. Each reader
+ * decides what unset means; none substitutes a flat figure of its own.
+ */
+export function paramMinor(value: unknown, currency: string): number | null {
+	const parsed = PerCurrencyMinorSchema.safeParse(
+		typeof value === "number" ? { default: value } : value,
+	);
+	if (!parsed.success) return null;
+	return parsed.data[currency.trim().toUpperCase()] ?? parsed.data.default ?? null;
+}
 // #endregion
 
 // #region Transaction ledger

@@ -45,7 +45,7 @@ SELECT set_config('probe.ticket', :'ticket', false) IS NOT NULL AS _probe \gset
 UPDATE finance.wallets w SET approval_threshold_cents = NULL
   FROM projects.projects p
  WHERE p.id = :'project' AND w.owner_type = 'business' AND w.owner_id = p.client_business_id;
-UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
 
 UPDATE projects.tickets
    SET required_stages = jsonb_build_array(

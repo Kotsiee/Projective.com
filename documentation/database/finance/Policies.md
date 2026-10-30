@@ -242,7 +242,8 @@ wallet with any amount. So (`00002510`):
   removed 2026-09-28, `fn_seed_business_wallet`), and the business spend gate's internals —
   `fn_business_threshold`, `fn_assert_business_spend`, `fn_close_spend_cover`,
   `fn_redeem_spend_approval`, `fn_business_envelopes` (BB3 / BB4 / BB9; revoked from `PUBLIC`, `anon`
-  and `authenticated`) — so no
+  and `authenticated`), and the per-currency param resolver `fn_param_minor` (Decision #337, ruling
+  M5 (e)) — so no
   client role can be found holding one even if a broad grant lands later. Every SQL caller of them is
   `SECURITY DEFINER`, so revoking them changed nothing that worked.
 - **`fn_reconcile_wallets` is service-role only** (Decision #186) — it reads every wallet's figures

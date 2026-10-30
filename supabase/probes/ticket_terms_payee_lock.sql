@@ -93,7 +93,7 @@ BEGIN
                balance_cents = balance_cents + 10 * current_setting('probe.agreed')::bigint
          WHERE id = v_wallet;
         DELETE FROM finance.spending_limits WHERE wallet_id = v_wallet AND member_user_id = c.owner;
-        UPDATE security.platform_params SET value = '0'::jsonb WHERE key = 'vault_approval_threshold_cents';
+        UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
 
         -- Two installments: the stage under way, then the next one.
         UPDATE projects.tickets

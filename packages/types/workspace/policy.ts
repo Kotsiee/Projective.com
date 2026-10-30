@@ -423,7 +423,8 @@ export const BusinessSpendPolicySchema = z.object({
 	approvalThresholdMinor: z.number().int().min(1).nullable(),
 	approvalThreshold: MoneyViewSchema.nullable(),
 	/**
-	 * The platform's `vault_approval_threshold_cents` — what the spend gate applies while
+	 * The platform's `vault_approval_threshold_cents` in the policy {@link currency} (its per-currency
+	 * map's entry, else its default — Decision #337, ruling M5 (e)) — what the spend gate applies while
 	 * {@link approvalThresholdMinor} is `null`; `null` when the platform sets none either.
 	 */
 	platformThresholdMinor: z.number().int().min(1).nullable().default(null),
