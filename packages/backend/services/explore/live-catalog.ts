@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
+import { bumpCacheVersion, cacheVersionTag } from "../../core/kv.ts";
 import { resolveSkill } from "./skills.ts";
 import {
 	byScore,
@@ -52,8 +53,9 @@ export { displayPrice } from "@projective/types/explore";
  * Services/Products rows all render the same thing — the PUBLIC marketplace — so they share one read
  * of it. {@link loadCatalog} fetches every published listing, product, article, public project and
  * listed profile, maps each onto the `ExploreItem` shape the cards already render, and keeps the
- * result for {@link CATALOG_TTL_MS}. The pure query layer (`./query.ts`) then filters, ranks and
- * groups that list exactly as it always has; only the SOURCE of the list changed.
+ * result until a write bumps the catalogue's version ({@link invalidateCatalog}) or
+ * {@link CATALOG_TTL_MS} passes. The pure query layer (`./query.ts`) then filters, ranks and groups
+ * that list exactly as it always has; only the SOURCE of the list changed.
  *
  * ## Why the anon client
  *
@@ -434,8 +436,20 @@ export interface Catalog {
 	loadedAt: number;
 }
 
-/** How long one load serves every request. Short: a seller's publish should appear quickly. */
-export const CATALOG_TTL_MS = 30_000;
+/**
+ * How long one load serves every request while no write bumps the catalogue's version. The version
+ * key is the freshness path ({@link invalidateCatalog}); this TTL is the backstop for writes made
+ * outside the services (the SQL console, a cron job) and for the derived figures no writer bumps
+ * (ratings, workload, Standing, Trending), so it sits at the low end of the 5-15 min band for public
+ * read models (Decision #341, ruling E1 Q11).
+ */
+export const CATALOG_TTL_MS = 5 * 60_000;
+
+/** The catalogue's version scope: `["cache","v","catalogue"]` in KV (Decision #339, ruling N2). */
+const CATALOG_VERSION = ["catalogue"];
+
+/** How long a load waits on KV for the version; past it, the entry is judged by its TTL alone. */
+export const VERSION_WAIT_MS = 100;
 
 /** The Trending window, in days. */
 export const TRENDING_WINDOW_DAYS = 7;
@@ -446,22 +460,53 @@ const TRENDING_READ_LIMIT = 48;
 /** Logged once per process, not once per load: a database seeded before a coefficient existed. */
 let reportedMissingWeights = false;
 
-let cached: { at: number; value: Promise<Catalog> } | null = null;
+/** A cache entry, with the catalogue version it was loaded under (absent: judged by its TTL alone). */
+interface CacheEntry {
+	at: number;
+	version?: string;
+	value: Promise<Catalog>;
+}
+
+let cached: CacheEntry | null = null;
 /** The last catalogue that loaded successfully — served by {@link peekCatalog} even once expired. */
 let latest: Catalog | null = null;
 /** The one read in flight, shared by every caller that waits on it. */
 let inflight: Promise<Catalog> | null = null;
 /** Bumped by {@link invalidateCatalog}, so a read that started before a write is never cached. */
 let generation = 0;
+/** The one version check in flight: no read waits on it, and a slow KV is asked once, not per read. */
+let versionCheck: Promise<void> | null = null;
+/** The corpus read — {@link readCatalog}, or a test's fake ({@link setCatalogReaderForTesting}). */
+let reader: () => Promise<Catalog> = readCatalog;
+
+/**
+ * The catalogue's version (`cacheVersionTag`), or `undefined` when KV has not answered within
+ * {@link VERSION_WAIT_MS}: a slow KV holds a load that long at most, and never a cached read.
+ */
+async function versionWithin(): Promise<string | undefined> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			cacheVersionTag(CATALOG_VERSION),
+			new Promise<undefined>((resolve) =>
+				timer = setTimeout(() => resolve(undefined), VERSION_WAIT_MS)
+			),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 /** Start (or join) the one catalogue read; a success becomes the fresh cache entry. */
 function reload(): Promise<Catalog> {
 	if (inflight) return inflight;
 	const gen = generation;
-	const read: Promise<Catalog> = readCatalog().then((catalog) => {
+	// Version first, corpus second: a write that commits mid-read bumps past this entry's version.
+	const read: Promise<Catalog> = versionWithin().then(async (version) => {
+		const catalog = await reader();
 		if (gen === generation) {
 			latest = catalog;
-			cached = { at: Date.now(), value: Promise.resolve(catalog) };
+			cached = { at: Date.now(), version, value: Promise.resolve(catalog) };
 		}
 		return catalog;
 	}).finally(() => {
@@ -472,24 +517,48 @@ function reload(): Promise<Catalog> {
 }
 
 /**
+ * Compare `entry`'s version with KV's in the background (`cacheVersionTag` reads KV at most once a
+ * second). Another isolate's bump expires the entry, and it refreshes through the SWR path.
+ */
+function checkVersion(entry: CacheEntry): void {
+	if (entry.version === undefined) return;
+	versionCheck ??= cacheVersionTag(CATALOG_VERSION).then((version) => {
+		if (cached !== entry || entry.version === version) return;
+		entry.at = -Infinity;
+		void loadCatalog();
+	}).finally(() => {
+		versionCheck = null;
+	});
+}
+
+/**
  * The public discovery catalogue — from cache when fresh, else one load shared by every concurrent
- * caller. Once an entry merely EXPIRES, callers are served the last good catalogue while one
- * background read refreshes it (stale-while-revalidate), so expiry never blocks a request. An empty
- * or invalidated cache waits for the read. A failed read is not cached: the next request retries.
+ * caller. Once an entry merely EXPIRES — its TTL passes, or another isolate's write bumps the
+ * catalogue's version — callers are served the last good catalogue while one background read
+ * refreshes it (stale-while-revalidate), so expiry never blocks a request. An empty or invalidated
+ * cache waits for the read. A failed read is not cached: the next request retries.
  */
 export function loadCatalog(): Promise<Catalog> {
-	if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.value;
+	if (cached && Date.now() - cached.at < CATALOG_TTL_MS) {
+		checkVersion(cached);
+		return cached.value;
+	}
 	const read = reload();
 	if (!cached || !latest) return read;
 	read.catch((error) => console.warn(`[explore] background catalogue refresh failed: ${error}`));
 	return Promise.resolve(latest);
 }
 
-/** Drop the cached catalogue — called after any write that changes what is published. */
+/**
+ * Drop the cached catalogue — called after a write that changes what is published, once it has
+ * committed. This isolate's next read waits for a fresh load, so the writer reads its own write; the
+ * bump of the catalogue's KV version (not awaited) expires every other isolate's copy within a second.
+ */
 export function invalidateCatalog(): void {
 	cached = null;
 	inflight = null;
 	generation++;
+	void bumpCacheVersion(CATALOG_VERSION);
 }
 
 /**
@@ -531,6 +600,11 @@ export function primeCatalogForTesting(
 	cached = catalog && options.serve ? { at: Date.now(), value: Promise.resolve(catalog) } : null;
 	inflight = null;
 	generation++;
+}
+
+/** Swap the corpus read for a test's fake; `null` restores the database read. Tests only. */
+export function setCatalogReaderForTesting(read: (() => Promise<Catalog>) | null): void {
+	reader = read ?? readCatalog;
 }
 
 /**

@@ -8,7 +8,6 @@ import {
 	type Catalog,
 	type CatalogEntity,
 	entityKey,
-	invalidateCatalog,
 	loadCatalog,
 } from "../explore/live-catalog.ts";
 import { EmbeddingBackendService } from "./EmbeddingBackendService.ts";
@@ -222,13 +221,13 @@ let cancelTimer: (() => void) | undefined;
  *
  * A no-op unless `EMBEDDINGS_ENABLED` holds (no request, so no development override). Every call adds
  * its ids to one queue and re-arms one trailing timer, so the run starts `REEMBED_SETTLE_MS` after the
- * last write: a seller's autosaves while editing a live listing cost one catalogue reload and one
- * embedding of the final text, not one per intermediate save. An item is in one run at a time; an id
- * queued again while its run is in flight waits for the next one. The catalogue is reloaded first, so
- * the text is the one last written; an item that is not public is skipped. A failure is logged once
- * and never reaches the write: the vector stays as it was. A queue lost with its isolate (a restart
- * inside the window) is caught up by the hash check — `deno task embeddings:backfill` embeds every
- * item whose stored hash no longer matches its text.
+ * last write: a seller's autosaves while editing a live listing cost one embedding of the final text,
+ * not one per intermediate save. An item is in one run at a time; an id queued again while its run is
+ * in flight waits for the next one. Every caller drops the cached catalogue with its write
+ * (`invalidateCatalog`), so the run reads the text last written; an item that is not public is
+ * skipped. A failure is logged once and never reaches the write: the vector stays as it was. A queue
+ * lost with its isolate (a restart inside the window) is caught up by the hash check —
+ * `deno task embeddings:backfill` embeds every item whose stored hash no longer matches its text.
  */
 export function reembedInBackground(itemIds: readonly string[], reason: string): void {
 	if (itemIds.length === 0 || !reembedDeps.isLive()) return;
@@ -279,7 +278,6 @@ async function runQueuedReembeds(): Promise<EmbeddingSyncReport | null> {
 }
 
 async function reembed(itemIds: readonly string[]): Promise<EmbeddingSyncReport> {
-	invalidateCatalog();
 	const targets = await embeddingTargets(await loadCatalog(), itemIds);
 	return syncEmbeddings(targets);
 }

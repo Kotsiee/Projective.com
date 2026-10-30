@@ -26,6 +26,7 @@ import {
 import { toDisplayCurrency } from "@projective/types/finance";
 import { fetchPartyCards } from "../profile/party-cards.ts";
 import { fetchProfileView } from "../profile/live-profile.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import { actorFrom, canReadLive, type ReadActor } from "../read-actor.ts";
 import { freelancerUnlockFailure } from "./freelancer-unlock.ts";
 import { fetchSetupProgress, SetupProgressReadError } from "./setup-progress.ts";
@@ -381,6 +382,7 @@ export class UserBackendService {
 				.schema("org")
 				.rpc("enable_freelancer_profile", { p_payload: { skills: input.skills } });
 			if (error) return freelancerUnlockFailure(error);
+			invalidateCatalog();
 			const parsed = FreelancerConversionResultSchema.safeParse({
 				freelancerProfileId: data?.freelancer_profile_id,
 				handle: data?.handle,

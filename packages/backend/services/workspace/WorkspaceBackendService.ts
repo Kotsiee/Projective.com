@@ -42,6 +42,7 @@ import * as writes from "./live-writes.ts";
 import * as channels from "./live-channels.ts";
 import * as links from "./live-invite-links.ts";
 import type { ChannelThread } from "./live-channels.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 
 /**
@@ -122,7 +123,8 @@ export class WorkspaceBackendService {
 
 	/**
 	 * Patch identity (name · tagline) through `update_workspace`, lifecycle through `set_workspace_status`.
-	 * A committed change refreshes the entity's discovery vector in the background (Decision #179).
+	 * A committed change drops the public catalogue in every isolate and refreshes the entity's
+	 * discovery vector in the background (Decision #179).
 	 */
 	static update(
 		input: UpdateWorkspaceInput,
@@ -130,7 +132,10 @@ export class WorkspaceBackendService {
 	): Promise<ServiceResult<WorkspaceDetail>> {
 		return guarded("update", actor, async (live) => {
 			const res = await writes.updateWorkspace(input, live);
-			if (res.ok && res.data) reembedInBackground([res.data.handle], "a workspace update");
+			if (res.ok && res.data) {
+				invalidateCatalog();
+				reembedInBackground([res.data.handle], "a workspace update");
+			}
 			return res;
 		});
 	}

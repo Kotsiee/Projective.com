@@ -162,7 +162,7 @@ import {
 } from "@projective/types/projects";
 
 import { resolveListing } from "../explore/listing-source.ts";
-import type { BlueprintRow } from "../explore/live-catalog.ts";
+import { type BlueprintRow, invalidateCatalog } from "../explore/live-catalog.ts";
 import { archiveServiceDraftRow, instantiateBlueprintRow } from "./live-instantiate.ts";
 import { BlueprintStageSchema } from "@projective/types/explore";
 import type {
@@ -2839,7 +2839,10 @@ export class ProjectBackendService {
 				return { data: { setup: outcome.data } };
 			},
 		);
-		if (live?.ok && live.data) reembedInBackground([live.data.setup.slug], "a project save");
+		if (live?.ok && live.data) {
+			invalidateCatalog();
+			reembedInBackground([live.data.setup.slug], "a project save");
+		}
 		if (live) return live;
 
 		const owner = writeOwnerOf(actor);
@@ -2909,6 +2912,7 @@ export class ProjectBackendService {
 			"Project archived.",
 			(a) => archiveProjectRow(a, slug, input),
 		);
+		if (live?.ok) invalidateCatalog();
 		if (live) return live;
 
 		const owner = writeOwnerOf(actor);

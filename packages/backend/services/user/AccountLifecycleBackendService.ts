@@ -12,6 +12,7 @@ import { getServiceClient, getUserClient, isAuthBackendLive } from "../../core/s
 import { serverEnv } from "../../core/env.ts";
 import { isBearerAuthorised } from "../../core/bearer.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import { lifecycleFailure, type RpcError } from "./account-lifecycle-refusals.ts";
 
 /**
@@ -89,6 +90,7 @@ export class AccountLifecycleBackendService {
 				p_handle: input.handle,
 			});
 			if (res.error) return lifecycleFailure(res.error as RpcError);
+			invalidateCatalog();
 			const parsed = HandlePolicyRowSchema.safeParse(res.data);
 			const previous = (res.data as { previous?: unknown } | null)?.previous;
 			if (!parsed.success || typeof previous !== "string") return malformed("handle change");
@@ -136,6 +138,7 @@ export class AccountLifecycleBackendService {
 				p_confirmation: input.confirmation,
 			});
 			if (res.error) return lifecycleFailure(res.error as RpcError);
+			invalidateCatalog();
 			const after = await AccountLifecycleBackendService.lifecycle(actor);
 			if (!after.ok || !after.data) return after;
 			return ok(after.data, {
@@ -160,6 +163,7 @@ export class AccountLifecycleBackendService {
 				p_scope: scope,
 			});
 			if (res.error) return lifecycleFailure(res.error as RpcError);
+			invalidateCatalog();
 			const parsed = AccountLifecycleRowSchema.safeParse(res.data);
 			if (!parsed.success) return malformed("account state");
 			return ok({ lifecycle: parsed.data }, {
