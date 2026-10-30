@@ -419,8 +419,11 @@ export function toConversationSummary(
 		lastActivityShort: compactActivityLabel(lastAt, ctx.now),
 		updatedAt: lastAt,
 		// NULL `last_read_at` means never opened, which is deliberately distinct from "opened and read
-		// nothing" — so a thread with any message in it is unread until the watermark exists.
+		// nothing" — so a thread with any message in it is unread until the watermark exists. The
+		// watermark moves when the viewer opens it (`comms.mark_dm_read`); a latest message of their
+		// own is never news to them, so it does not make the thread unread.
 		unread: ctx.messageCount > 0 &&
+			ctx.last?.sender_user_id !== ctx.viewerId &&
 			(!readAt || Date.parse(lastAt) > Date.parse(readAt)),
 		starred: ctx.viewer?.is_starred ?? false,
 		folder,

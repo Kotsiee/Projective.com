@@ -57,7 +57,12 @@ export const MessageDeltaSchema = z.strictObject({
 });
 export type MessageDelta = z.infer<typeof MessageDeltaSchema>;
 
-/** The plain text a Delta spells — the value `body` must equal. */
+/**
+ * The plain text a Delta spells — the value `body` must equal. Its SQL twin is
+ * `comms.fn_delta_text`, which the message tables' mask triggers use to drop any stored Delta that
+ * does not spell its body (or is not this exact normalised shape), so the agreement holds in the
+ * database too and a Delta can never carry words the PII mask did not see (SEC L2).
+ */
 export function messageDeltaText(delta: MessageDelta): string {
 	return delta.ops.map((op) => op.insert).join("");
 }

@@ -820,3 +820,29 @@ COMMENT ON FUNCTION projects.redeem_invite_link(text, text) IS
 'The holder of an active stage invite link asks to join: a pending project application on the link''s stage (invite_link_id set), project_activity, and application.received to the owner. Refused with the fn_invite_link_state sentence (DETAIL state=…) for every state but open. Seats nobody.';
 -- #endregion
 
+
+-- #region Invitation note mask (SEC L6)
+-- An invitation's `message` is the client's intro — the first thing a stranger reads from them.
+-- projects.invite_to_project masks it in the protected phase, but "Owner manages invitations"
+-- (00002011) is a FOR ALL policy, so the owner can also INSERT or UPDATE the row directly and skip that
+-- door. This BEFORE trigger is the floor every path meets: the same mask, in the same phase, on every
+-- write that sets the note. Masking an already-masked note changes nothing, so the door's own pass and
+-- this one compose. SECURITY DEFINER so the mask does not depend on the writer's EXECUTE grants.
+CREATE OR REPLACE FUNCTION projects.tg_mask_invitation_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.message IS NULL OR NEW.message = '' OR NOT projects.is_protected_phase(NEW.project_id) THEN
+        RETURN NEW;
+    END IF;
+    SELECT m.masked INTO NEW.message FROM comms.mask_pii(NEW.message) m;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.tg_mask_invitation_message() IS
+'BEFORE INSERT OR UPDATE OF message on projects.project_invitations: masks contact details in the note while the project is in its protected phase, whichever path wrote it.';
+-- #endregion

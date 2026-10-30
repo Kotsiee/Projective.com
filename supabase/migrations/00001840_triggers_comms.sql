@@ -8,8 +8,10 @@ CREATE TRIGGER trg_mask_message_pii
     FOR EACH ROW
     EXECUTE FUNCTION comms.tg_mask_message_pii();
 
+-- On UPDATE as well, though no client UPDATE door exists on dm_messages today: the mask and the Delta
+-- agreement (00001300) must not depend on that staying true.
 CREATE TRIGGER trg_dm_messages_mask_pii
-    BEFORE INSERT ON comms.dm_messages
+    BEFORE INSERT OR UPDATE OF body, body_delta ON comms.dm_messages
     FOR EACH ROW
     EXECUTE FUNCTION comms.tg_mask_dm_message_pii();
 

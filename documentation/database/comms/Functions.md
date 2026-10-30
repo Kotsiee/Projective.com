@@ -212,7 +212,7 @@ block or roll back the transaction that emitted the notification.
 | `comms.has_channel_access(uuid)`           | 0311      | Channel membership predicate used by RLS. |
 | `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage. Skips an archived stage or room and never provisions a Session's stage rooms (Decision #163). |
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
-| `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). |
+| `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). Takes the pair lock (`comms.fn_lock_dm_pair`, CAS M5) before the lookup, so two first messages racing each other find one thread instead of minting two; refuses `42501` with no acting user and `22023 recipient: invalid` for oneself (a self-DM would be one participant row twice, which `dm_participants_thread_user_key` refuses). |
 
 ## Group conversations (`00001300`, Decision #102)
 
@@ -286,7 +286,8 @@ not a participant (or not signed in) and `22023 'folder: not_a_folder'` for anyt
 invitation's intro or an application's cover note — into the pair's DM. It refuses (`42501`) unless
 an OPEN invitation or a PENDING application on `p_project_id` stands between the caller and the
 recipient, so it cannot be used to cold-message anybody; the body is required and at most 4,000
-characters. It finds the pair's non-group thread or creates one, restores a participant row the
+characters. It finds the pair's non-group thread or creates one — under the same pair lock as
+`get_or_create_dm_thread` (CAS M5), so the two doors cannot each mint a thread — restores a participant row the
 recipient had deleted, and — only when the request OPENS the thread (created, empty, or restored
 from the recipient's deletion) — files it: the recipient's row in `requests` unless the two follow
 each other (`org.profile_follows` both ways), the sender's in `primary`. An existing conversation is
@@ -326,11 +327,15 @@ person's availability is theirs (the comms schema does not revoke PUBLIC by defa
 
 ### `comms.tg_mask_dm_message_pii()` · `comms.fn_dm_protected_project(thread, sender, project) → uuid`
 
-`BEFORE INSERT ON comms.dm_messages`. Applies `comms.mask_pii` to the body — the same rules as the
+`BEFORE INSERT OR UPDATE OF body, body_delta ON comms.dm_messages` (no client `UPDATE` door exists;
+the trigger covers one anyway, with categories sticky as on a stage message). Applies `comms.mask_pii` to the body — the same rules as the
 stage-message filter (PRODUCT_SPEC §3 "Handover") — when the message falls under a protected
-engagement: the project the message names, while its handover is locked, or else a protected (`draft` / `active` /
-`on_hold`, handover not unlocked) project the sender and the thread's other participant are both
-engaged in (`projects.fn_engaged_projects`: owner, participant, live assignee or team member,
+engagement: the project the message names, while it is protected, or else a protected project the
+sender and the thread's other participant are both engaged in. "Protected" is
+`projects.is_protected_phase` — the stage rooms' own predicate; status is not part of it, so an owner
+setting `cancelled` does not lift the DM mask while the rooms stay masked (SEC L4 (c)). "Engaged" is
+`projects.fn_engaged_projects`: owner, participant, an active member of the client business (SEC
+L4 (a)), live assignee or team member,
 pending/accepted invitee or applicant). Sets `pii_masked` / `pii_categories`, and — like the stage
 filter `comms.tg_mask_message_pii` — sets `body_delta` to `NULL` whenever it rewrites the body: the
 Delta spells the unmasked words, and masking it run by run would miss a contact detail split across
@@ -380,6 +385,22 @@ there is none or `projects.is_protected_phase(project)` is false — i.e. once
 `projects.approve_stage`, or `projects.tg_project_handover_on_complete` on a force-completion). `is_protected_phase` defaults to **true** for an unknown
 id, so a missing project fails toward masking. The DM equivalent is `comms.tg_mask_dm_message_pii`
 above, which resolves the phase through `comms.fn_dm_protected_project`.
+
+### `comms.fn_delta_text(p_delta jsonb) → text` — Delta agreement (SEC L2)
+
+`IMMUTABLE`, `search_path = ''`, no client `EXECUTE` (the comms schema-wide revoke). The plain text a
+stored Delta spells — its `ops` runs' `insert`s joined in order, the SQL twin of `messageDeltaText`
+(`packages/types/projects/message-rich.ts`) — or `NULL` for anything that is not the normalised
+shape `MessageDeltaSchema` admits: an `{ ops }` envelope and nothing else, each op an object with a
+string `insert` and at most an `attributes` object of the four marks set to `true`.
+
+Both mask triggers run it FIRST, on every write and in every phase: a `body_delta` beside an empty
+body, or one whose text is not exactly `body`, is set to `NULL`. Before this, the mask read only
+`body` and returned early on an empty one, so `body: "hi"` beside a Delta spelling a phone number
+was stored verbatim and readable over PostgREST and realtime (Delta smuggling). Strict shape on
+purpose: a key the renderer ignores is still stored and readable. Every writer already sends an
+agreeing Delta and every read drops a disagreeing one, so the only Delta this removes is one no
+reader would render.
 
 **Masking contract (both triggers).** On any category hit, in one row write:
 
@@ -448,6 +469,26 @@ participant row's `is_muted`. Idempotent. `42501` when there is no acting user o
 a participant (the service answers 404); `22023 muted: required` for a `NULL`. Granted to
 `authenticated` only. Called by `MessagingBackendService.setMuted` (`POST
 /api/messaging/conversations/[id]/mute`); the entity channel header is its first caller.
+
+### `comms.mark_dm_read(p_thread_id uuid) → boolean`
+
+CAS M10. `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` only. Advances the
+caller's own undeleted participant row's `last_read_at` to `now()` — the watermark the inbox's
+`unread` compares the latest message against, which had no writer before, so every live thread
+with a message was unread forever. It moves only when there is something to read past it (never
+opened, or a message newer than the mark) and returns whether it moved, so the service drops the
+tenant's inbox cache only then. `42501` with no acting user or for a caller who is not an undeleted
+participant. Called by `MessagingBackendService.markRead`, which the `/messages/[conversationId]`
+page runs once it has served the latest page. The live inbox projection also never counts the
+viewer's own latest message as unread.
+
+### `comms.fn_lock_dm_pair(p_a uuid, p_b uuid) → void`
+
+CAS M5. `pg_advisory_xact_lock` on a key derived from the ORDERED pair, held to the caller's
+transaction end. `comms.get_or_create_dm_thread` and `comms.send_request_message` take it before
+their select-then-insert, so two first messages between the same two people serialise and the second
+finds the first one's thread; unrelated pairs never contend. No client `EXECUTE`. The row-level half
+is `dm_participants_thread_user_key UNIQUE (thread_id, user_id)` ([Tables.md](Tables.md)).
 
 ## Message favourites and pins (Decision #180)
 

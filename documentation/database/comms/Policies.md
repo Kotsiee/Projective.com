@@ -135,6 +135,14 @@ somebody else in the same statement — turning their own words into that person
 impersonation the `INSERT` policy closes, reached from the other side. Channel access is re-checked
 so an edit cannot outlive the sender's membership of the room.
 
+INSERT is column-scoped the same way (SEC L5, `00002520` §2): `authenticated` holds `INSERT
+(channel_id, sender_user_id, body, body_delta, reply_to_id, has_attachments, is_audio)` on
+`comms.project_messages` and the same plus `project_id` / `service_id` on `comms.dm_messages`. The
+`INSERT` policies say who may post into a room, never which columns a post may set, so the blanket
+grant let a client backdate `created_at` (dispute evidence), set `edited_at` / `deleted_at`, or
+write `pii_masked` / `pii_categories`, which the mask triggers own. The definer doors run as their
+owner and are unaffected.
+
 Soft delete goes through this same policy (`deleted_at`); nothing here is hard-deleted (root
 `CLAUDE.md` §5).
 

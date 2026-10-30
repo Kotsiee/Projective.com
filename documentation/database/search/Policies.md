@@ -33,6 +33,10 @@ row to themselves or to nobody, never to someone else.
 | :---------------- | :------------------------------------- | :------ | :---------------------------------- |
 | `profiles_index`  | Public can view profile search index   | SELECT  | `is_active = true`                  |
 | `projects_index`  | Public can view project search index   | SELECT  | `is_active = true`                  |
+
+`is_active` on both is the source's directory-listed predicate, written by the sync triggers
+([Functions.md](Functions.md#index-visibility-is-directory-visibility-sec-e6--g12)), so these policies
+admit nothing the public directory does not.
 | `services_index`  | Public can view service search index   | SELECT  | `is_public = true`                  |
 | `catalogue_index` | Public can view catalogue search index | SELECT  | `is_public = true` (Decision #179)  |
 

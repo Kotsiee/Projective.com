@@ -1,4 +1,8 @@
-import type { ConversationFolderSet, InboxFolder } from "@projective/types/messaging";
+import type {
+	ConversationFolderSet,
+	ConversationReadMarked,
+	InboxFolder,
+} from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import type { WriteOutcome } from "../projects/live-writes.ts";
 import { commsClient } from "./live-queries.ts";
@@ -57,6 +61,27 @@ export async function setLiveStarred(
 		throw new Error(`comms.set_dm_starred failed: ${error.message}`);
 	}
 	return { data: { starred } };
+}
+
+/**
+ * Mark a conversation read for the caller through `comms.mark_dm_read` (CAS M10), which writes only
+ * the caller's own `last_read_at`. `moved` is false when nothing was unread. A conversation with no
+ * thread yet has nothing to read and reads as a miss.
+ */
+export async function markLiveRead(
+	actor: ReadActor & { accessToken: string },
+	conversationId: string,
+): Promise<WriteOutcome<ConversationReadMarked>> {
+	const ref = await resolveThreadRef(actor, conversationId);
+	if (!ref || ref.kind === "virtual") return null;
+	const { data, error } = await commsClient(actor).rpc("mark_dm_read", {
+		p_thread_id: ref.threadId,
+	});
+	if (error) {
+		if (error.code === "42501") return null;
+		throw new Error(`comms.mark_dm_read failed: ${error.message}`);
+	}
+	return { data: { moved: data === true } };
 }
 
 /**

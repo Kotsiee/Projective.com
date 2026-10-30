@@ -172,8 +172,9 @@ BEGIN
 
     -- Mounted engagement attachment: the `project` bucket anchors on {project_id}, the same anchor
     -- 00002017_policies_storage.sql gates storage.objects on. Reusing that one gate is why a hub
-    -- read and a storage read can never disagree about who is on a project.
-    IF v_item.bucket_id = 'project' THEN
+    -- read and a storage read can never disagree about who is on a project. Stored bytes only: a link
+    -- or a mount has no object in the bucket, so its path anchors nothing (SEC G9).
+    IF v_item.bucket_id = 'project' AND v_item.source = 'supabase'::files.file_source THEN
         BEGIN
             v_project_id := (string_to_array (v_item.storage_path, '/')) [1]::uuid;
         EXCEPTION WHEN OTHERS THEN
@@ -606,6 +607,15 @@ BEGIN
             RAISE EXCEPTION USING
                 ERRCODE = '42501',
                 MESSAGE = 'files: a mounted asset is written by the connector service only';
+        END IF;
+        -- A link stores no object, so its synthesised address is fixed (SEC G9): `link` / its own id,
+        -- exactly what attachLink writes. Any other address would let a forged link row claim a
+        -- `project` path and surface in that project's file listing through fn_can_read.
+        IF NEW.source = 'link'::files.file_source
+           AND (NEW.bucket_id IS DISTINCT FROM 'link' OR NEW.storage_path IS DISTINCT FROM NEW.id::text) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: a link is stored at bucket link under its own id';
         END IF;
         IF NEW.source = 'link'::files.file_source
            AND (NEW.link_scan_status IS DISTINCT FROM 'pending'::files.link_scan_status

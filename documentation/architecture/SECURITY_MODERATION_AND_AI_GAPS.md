@@ -346,6 +346,15 @@ should say so (#340 (j)).
 
 ## 8. Prioritised backlog
 
+> **Status (2026-10-30, Wave 0 comms/search):** fixed in place, replayed by
+> `supabase/probes/trust_p1_comms_search.sql` — **L2** (`comms.fn_delta_text`; both mask triggers drop
+> a Delta that does not spell the body, in every phase), **E6 / G12** (`00001400`: `is_active` is the
+> directory's listed predicate; `sync_user_to_index` re-derives the freelancer row), **L4 (a) (c)**
+> (client-business members in `fn_engaged_projects`; the DM mask reads `is_protected_phase`, no status
+> filter), **L5** (column-scoped `INSERT` on both message tables), **L6** (invitation-note mask
+> trigger), **G9** (link rows pinned to `link` / their id; the project read arm needs stored bytes).
+> Still open from the P1 row: L4 (b) (d) (ruling T1), G16 (identity track).
+
 | Pri | Item | Area |
 | :-- | :-- | :-- |
 | P0 | E4 / G20 delete `scan-file`; G8 pin `target_*` on `INSERT` | edge + DB |

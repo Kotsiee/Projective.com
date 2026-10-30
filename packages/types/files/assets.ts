@@ -211,6 +211,18 @@ export const LinkAttachmentSchema = z.object({
 });
 export type LinkAttachment = z.infer<typeof LinkAttachmentSchema>;
 
+/** The bucket every link row names: a link stores no object, so the address is synthetic. */
+export const LINK_BUCKET = "link";
+
+/**
+ * The storage address a link row is written at — `link` / its own id. The only address
+ * `files.fn_guard_pipeline_columns` accepts for a client-inserted link (SEC G9): any other would
+ * let a forged row claim a `project` path and surface in that project's file listing.
+ */
+export function linkStorageAddress(id: string): { bucket_id: string; storage_path: string } {
+	return { bucket_id: LINK_BUCKET, storage_path: id };
+}
+
 // #endregion
 
 // #region Asset row

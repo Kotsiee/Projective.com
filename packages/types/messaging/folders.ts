@@ -40,6 +40,14 @@ export interface ConversationFolderSet {
  */
 export const SetConversationMutedSchema = z.object({ muted: z.boolean() });
 export type SetConversationMuted = z.infer<typeof SetConversationMutedSchema>;
+
+/**
+ * The answer to marking a conversation read for the caller (`comms.mark_dm_read`, CAS M10): whether
+ * the caller's own `comms.dm_participants.last_read_at` watermark moved. `false` means nothing was
+ * unread, or the fixture backend, which keeps its corpus's own flags.
+ */
+export const ConversationReadMarkedSchema = z.object({ moved: z.boolean() });
+export type ConversationReadMarked = z.infer<typeof ConversationReadMarkedSchema>;
 // #endregion
 
 // #region Rules

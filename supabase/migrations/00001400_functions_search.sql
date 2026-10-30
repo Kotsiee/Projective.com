@@ -67,6 +67,33 @@ END;
 $$;
 -- #endregion
 
+-- #region Index visibility = directory visibility (SEC E6 / G12)
+-- `is_active` is what makes an index row discoverable: the anon SELECT policies, the column grants and
+-- search.fn_nearest / fn_nearest_to_entity all answer from rows where it is true, and promise to
+-- answer nothing anon could not already read. So it is the source's own LISTED predicate, the one
+-- the public directory (org.profiles_index, 00003001) and the project policies apply, never wider:
+--   user, freelancer   users_public.visibility = 'public' (a freelancer row also needs is_freelancer)
+--   team, business     status = 'active' AND visibility = 'public'
+--   project            status = 'active' AND visibility = 'public'
+-- `unlisted` is reachable by handle and never discoverable; a draft, archived, completed or
+-- cancelled source is not listed at all. Before this, a team row was always active, a freelancer or
+-- business row kept whatever it was born with, and every non-draft public project was listed.
+
+/** Whether a person's freelancer row is listed: a public profile that is a freelancer. */
+CREATE OR REPLACE FUNCTION search.fn_freelancer_listed(p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT u.visibility = 'public' AND u.is_freelancer
+          FROM org.users_public u WHERE u.user_id = p_user_id
+    ), false);
+$$;
+-- #endregion
+
 CREATE OR REPLACE FUNCTION search.sync_team_to_index() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO search.profiles_index (
@@ -76,7 +103,8 @@ BEGIN
     VALUES (
         NEW.id, 'team', NEW.slug, to_tsvector('english', coalesce(NEW.slug, '')),
         jsonb_build_object('payout_model', NEW.payout_model),
-        NEW.rating_average, NEW.rating_count, search.fn_team_live_workload(NEW.id), NEW.available_since, true, now()
+        NEW.rating_average, NEW.rating_count, search.fn_team_live_workload(NEW.id), NEW.available_since,
+        NEW.status = 'active' AND NEW.visibility = 'public', now()
     )
     ON CONFLICT (entity_id, entity_type) DO UPDATE SET
         display_name = EXCLUDED.display_name, fts = EXCLUDED.fts,
@@ -84,6 +112,7 @@ BEGIN
         rating_average = EXCLUDED.rating_average, rating_count = EXCLUDED.rating_count,
         current_workload_intensity = EXCLUDED.current_workload_intensity,
         available_since = EXCLUDED.available_since,
+        is_active = EXCLUDED.is_active,
         updated_at = now();
     RETURN NEW;
 END;
@@ -92,19 +121,21 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 CREATE OR REPLACE FUNCTION search.sync_freelancer_to_index() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO search.profiles_index (
-        entity_id, entity_type, display_name, fts, metadata, 
-        rating_average, rating_count, current_workload_intensity, available_since, updated_at
+        entity_id, entity_type, display_name, fts, metadata,
+        rating_average, rating_count, current_workload_intensity, available_since, is_active, updated_at
     )
     VALUES (
         NEW.user_id, 'freelancer', 'Freelancer Profile', to_tsvector('english', array_to_string(NEW.skills, ' ')),
         jsonb_build_object('skills', NEW.skills),
-        NEW.rating_average, NEW.rating_count, NEW.current_workload_intensity, NEW.available_since, now()
+        NEW.rating_average, NEW.rating_count, NEW.current_workload_intensity, NEW.available_since,
+        search.fn_freelancer_listed(NEW.user_id), now()
     )
     ON CONFLICT (entity_id, entity_type) DO UPDATE SET
         fts = EXCLUDED.fts, metadata = search.profiles_index.metadata || EXCLUDED.metadata,
         rating_average = EXCLUDED.rating_average, rating_count = EXCLUDED.rating_count,
         current_workload_intensity = EXCLUDED.current_workload_intensity,
         available_since = EXCLUDED.available_since,
+        is_active = EXCLUDED.is_active,
         updated_at = now();
     RETURN NEW;
 END;
@@ -139,7 +170,7 @@ BEGIN
     VALUES (
         NEW.id, NEW.title, to_tsvector('english', NEW.status::text || ' ' || NEW.title),
         NEW.industry_category_id, NEW.status::text, NEW.target_project_start_date,
-        CASE WHEN NEW.visibility = 'public' AND NEW.status != 'draft' THEN true ELSE false END, now()
+        NEW.status = 'active' AND NEW.visibility = 'public', now()
     )
     ON CONFLICT (project_id) DO UPDATE SET
         title = EXCLUDED.title, fts = EXCLUDED.fts,
@@ -153,7 +184,7 @@ $$;
 CREATE OR REPLACE FUNCTION search.sync_user_to_index() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO search.profiles_index (
-        entity_id, entity_type, display_name, headline, fts, metadata, 
+        entity_id, entity_type, display_name, headline, fts, metadata,
         rating_average, rating_count, is_active, updated_at
     )
     VALUES (
@@ -168,6 +199,14 @@ BEGIN
         metadata = search.profiles_index.metadata || EXCLUDED.metadata,
         rating_average = EXCLUDED.rating_average, rating_count = EXCLUDED.rating_count,
         is_active = EXCLUDED.is_active, updated_at = now();
+
+    -- The person's freelancer row is listed by THIS row's visibility, which sync_freelancer_to_index
+    -- reads only when the freelancer profile itself changes. So a profile turned private, or a person
+    -- who stops being a freelancer, must take the freelancer row out here (SEC G12).
+    UPDATE search.profiles_index pi
+       SET is_active = search.fn_freelancer_listed(NEW.user_id), updated_at = now()
+     WHERE pi.entity_type = 'freelancer' AND pi.entity_id = NEW.user_id
+       AND pi.is_active IS DISTINCT FROM search.fn_freelancer_listed(NEW.user_id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
@@ -175,18 +214,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 CREATE OR REPLACE FUNCTION search.sync_business_to_index() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO search.profiles_index (
-        entity_id, entity_type, display_name, fts, metadata, 
-        rating_average, rating_count, updated_at
+        entity_id, entity_type, display_name, fts, metadata,
+        rating_average, rating_count, is_active, updated_at
     )
     VALUES (
         NEW.id, 'business', NEW.name, to_tsvector('english', coalesce(NEW.name, '')),
         jsonb_build_object('plan', NEW.plan),
-        NEW.rating_average, NEW.rating_count, now()
+        NEW.rating_average, NEW.rating_count, NEW.status = 'active' AND NEW.visibility = 'public', now()
     )
     ON CONFLICT (entity_id, entity_type) DO UPDATE SET
         display_name = EXCLUDED.display_name, fts = EXCLUDED.fts,
         metadata = search.profiles_index.metadata || EXCLUDED.metadata,
         rating_average = EXCLUDED.rating_average, rating_count = EXCLUDED.rating_count,
+        is_active = EXCLUDED.is_active,
         updated_at = now();
     RETURN NEW;
 END;
