@@ -151,6 +151,12 @@ side only, and nothing here creates `infra/safety-node/`.
   examples yield to it, and the app's Zod is copied from it.
 - **Order across the two repos.** Node N1 (the gateway) and N2 (ClamAV) before SN1; N3 (NudeNet,
   OCR, frame sampling and the video remux) before SN3 and SN5; N4 (Presidio) before SN6.
+- **The owner's #345 rulings (2026-10-30).** The route names stay, with a `/v1/` alias at the
+  gateway if one is ever needed (a). Every verdict uses the contract's
+  `{verdict, scores, model, version, ms}` envelope, and an engine failure is a typed `503`, never an
+  `error` verdict (b). A missing or wrong bearer gets a typed `401` (c). Projective's recognisers
+  travel per request from the app (EPI §6.2's `ad_hoc_recognizers`); the node stores none (d). Where
+  the image thresholds live (e) is still open.
 - **Sightengine stays in the app.** SN4 calls it for public media and public text only (ruling T2).
   The node has no Sightengine code and nudity never falls back to it, so the node file's N6 is
   withdrawn.
@@ -965,12 +971,15 @@ STEPS:
      are admitted today.
   2. Bring the node up from Projective-Safety with N2 merged there (`docker compose up`, the
      gateway on 127.0.0.1:8443, the bearer SAFETY_NODE_TOKEN).
-  3. Read N2's POST /scan/file in the node's contract: clean · infected · error, with engine,
-     db_version and db_time; a macro Office file comes back clean with flags ['macros'] (AV-5).
-     Copy its schema as Zod; never re-implement the scan here.
+  3. Read N2's POST /scan/file in the node's contract: the {verdict, scores, model, version, ms}
+     envelope, verdict clean · infected with the signature beside it, and the engine and
+     signature-database versions (with the database's date, for step 6) in version. An engine
+     failure is the contract's typed 503, never an error verdict (Decision #345 (b)). A macro
+     Office file comes back clean with flags ['macros'] (AV-5). Copy the schema as Zod; never
+     re-implement the scan here.
   4. App: at each hook, after the sniff and before the promote, scan the bytes already in memory.
      clean → continue; infected → refuse(row, hostile = true) (the object deleted, the row
-     quarantined, a person-readable reason); error or unreachable with MALWARE_SCAN_LIVE=true →
+     quarantined, a person-readable reason); a typed 503 or no answer with MALWARE_SCAN_LIVE=true →
      the row back to pending_upload and a 503; gate off → skip, one log line in development.
   5. AV-2: files.items.metadata.av = { engine, db_version, verdict, signature?, flags?, at }.
   6. Staleness: a db_time older than 24 h writes an ops.log_entries warn row, scope
@@ -985,7 +994,8 @@ ACCEPTANCE:
     metadata.av; a .docm with a macro → uploaded with flags ['macros']; the node stopped → 503
     and the row is pending_upload; a retry after a restart completes.
   - With the gate off nothing changes, and the dev axis drives each branch without the node.
-  - A request to the gateway without the bearer → 404; from another host → no route.
+  - A request to the gateway without the bearer, or with a wrong one → a typed 401 (Decision
+    #345 (c)); from another host → no route.
 SAME CHANGE: the env contract, .env.example and core/env.ts with their reader; EPI status marks;
 the dev axis; Zod for metadata.av; the PRODUCT_SPEC and SA malware-scan markers removed.
 SQL SESSION (the job and the dial): at most two SQL sessions at once, on disjoint migration files;
@@ -1092,7 +1102,9 @@ STEPS:
      through the pipeline since E8); public_assets writes except re-hosted favicons; the group
      photo (T3 (b)); a library row made Public (T3 (a)).
   3. Policy per EPI §6.3: NudeNet's exposed labels and OCR contact entities against
-     moderation_image_thresholds. clean → cut, write, attach. flagged → no public object; a 422
+     moderation_image_thresholds, sent with each /screen/* request (Decision #345 (e)).
+     🧑 #345 (e) is not ruled yet: confirm it with the owner before building that request field.
+     clean → cut, write, attach. flagged → no public object; a 422
      with the category; the correction notice; the original stays uploaded and private; an
      automated finding through R1 (detector nudenet or ocr; ids and scores only). unavailable →
      503.
