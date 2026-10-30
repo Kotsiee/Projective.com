@@ -262,8 +262,9 @@ contact/
 ### `quarantine` (Restricted)
 
 The entry point for **all** user uploads. Files are moved to their target bucket only after passing
-system checks (AV scan + MIME validation). The INSERT policy checks the path's first segment against
-`auth.uid()` as well as `owner`, so a user cannot write under another user's prefix.
+the service's checks: the magic-byte sniff and a full decode. No AV scan runs yet (see Deferred
+below; #340 (h)). The INSERT policy checks the path's first segment against `auth.uid()` as well as
+`owner`, so a user cannot write under another user's prefix.
 
 ```text
 quarantine/
@@ -537,12 +538,14 @@ an island can classify identically for instant UI.
 
 - **There is no malware scanner.** Promotion out of quarantine is wired, in-process, as the service
   role (`live-uploads.ts`, `media/library.ts`) — but `scanning` is only the magic-byte sniff that
-  refuses programs and executable markup. A real AV scan belongs between the sniff and the promote.
-  `files.items.target_bucket` is written only as the contact pipeline's destination marker
-  (`'contact'` at declare, cleared on promotion — `services/contact/live-attachments.ts`), and
-  nothing writes `target_path`: `fn_guard_pipeline_columns` refuses a client INSERT naming any other
-  target. The unauthenticated `scan-file` mock that streamed quarantine bytes to a row's `target_*`
-  as the service role is deleted (SECURITY_MODERATION_AND_AI_GAPS E4).
+  refuses programs and executable markup. A real AV scan belongs between the sniff and the promote:
+  ClamAV on the self-hosted safety node, called from `completeUpload` (EPI §6.4; #340 (h)), **not
+  built yet** (Decision #340, ruling T5). `files.items.target_bucket` is written only as the contact
+  pipeline's destination marker (`'contact'` at declare, cleared on promotion —
+  `services/contact/live-attachments.ts`), and nothing writes `target_path`:
+  `fn_guard_pipeline_columns` refuses a client INSERT naming any other target. The unauthenticated
+  `scan-file` mock that streamed quarantine bytes to a row's `target_*` as the service role is
+  deleted (SECURITY_MODERATION_AND_AI_GAPS E4).
 - **Abandoned uploads are never swept.** A `pending_upload` row whose browser went away before the
   `PUT` finished keeps its quarantine row (and any partial object) and **reserves its declared size**
   in `files.storage_usage` (see [Functions.md](Functions.md)). Harmless while

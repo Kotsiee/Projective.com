@@ -18,7 +18,7 @@
 
 | Phase | Prompts | Why this order |
 | :-- | :-- | :-- |
-| **0 — Rulings** | S0 | Records the #252 answers so later prompts cite a ruling instead of re-arguing it. |
+| **0 — Rulings** | S0 ✅ | Records the #252 answers so later prompts cite a ruling instead of re-arguing it. **Done 2026-10-30** (Wave 1.1): #252's OWNER RULINGS; the ruling table is `FOUNDER_QUESTIONNAIRE.md` Part C. |
 | **1 — Database & seeds** | S1 → S2 | S1 fixes state drift and adds the public catalogue read (no ruling needed beyond (m)). S2 adds annual prices and the agency tier (needs (a)–(c), (h)). |
 | **2 — Services & routes** | S3 → S4 | The read service and `/api/finance/plans` first; the checkout (S4) needs (f) and S3's contract. |
 | **3 — UI** | S5 → S6 → S7 | Fix the existing plan UI and the link helper; then the `/pricing` page; then the entry points (megamenu, footer, upgrade links). |
@@ -136,6 +136,19 @@ Commit on the branch you were given with a clear message; do not open a PR unles
 ## 2. Phase 0 — Rulings
 
 ### S0 — Record the #252 owner rulings
+
+> **✅ Done 2026-10-30 (Wave 1.1).** The owner answered (a)–(m) through `FOUNDER_QUESTIONNAIRE.md`
+> (S1–S8, M1's and M4's sub-questions, M10 (c)) and replaced the form's prices with a plan table.
+> The rulings are recorded on #252, the numbers in `finance-model.md` §16.1, and the §7 wording in
+> PRODUCT_SPEC. Changes the later prompts must carry:
+>
+> - **S2:** the agency tier is `team_agency` "Agency" and shares its figures with the seeded
+>   `enterprise` plan: £89/mo base, 15 seats, £6 a seat, annual by contract. Pro Team now includes
+>   10 seats (+£3.50) and Business Pro 10 managers (+£4.00, £39/mo). Team Free has 3 seats and a
+>   50/wk shared pool. Annual prices are explicit, and an extra seat on an annual plan costs 12 ×
+>   monthly. Agency and Enterprise storage is still open (🧑).
+> - **S4:** team co-owners may buy too.
+> - **S6:** the fee stays 5 % on every plan; negotiated rates are contract terms only.
 
 ```text
 PROMPT S0: Decision #252 — subscriptions, agency tier and /pricing rulings

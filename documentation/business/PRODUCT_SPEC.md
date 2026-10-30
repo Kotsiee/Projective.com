@@ -54,7 +54,10 @@ This format is used for tangible work outcomes. It merges traditional "File-base
   1. **Initiation:** Escrow is held before work starts — when the Client funds the ticket or its whole
      stage (prepaid, Decision #197), or at the latest when the Freelancer claims it. A ticket cannot
      move to "In Progress" without it (§Escrow Lifecycle for Tickets).
-  2. **Submission:** Freelancer checks off completed tasks and attaches any relevant files.
+  2. **Submission:** Freelancer checks off completed tasks and attaches any relevant files. Until it
+     is sent, a draft is the freelancer's own and their team's: the client sees it only once it is
+     submitted (Decision #338, ruling P5 (d)). **Not built yet:** today a reviewer can read an
+     unsent draft.
   3. **Review:** Client reviews the submission against the checklist.
   4. **Resolution:** Client Accepts the submission (the ticket completes and its escrow is released
      to the payee) or Requests Revision (Moves back to In Progress). Accepting asks for one
@@ -81,7 +84,20 @@ aligned on time and location.
   receive multi-channel alerts (Email, SMS, and Push) via the `NotificationService`. 3. **The
   Handshake:** Attendees can **Approve** the slot or **Counter-Propose** a new time. 4. **The
   Majority Rule:** For sessions involving multiple attendees (Group Sessions), any proposed change
-  to an established time requires a **Majority Consensus** ($>50\%$) to be finalized.
+  to an established time requires a **Majority Consensus** ($>50\%$) to be finalized. The majority
+  is counted over every attendee except the host, optional attendees included (Decision #343, ruling
+  C6 D5).
+- **The meeting is made for you.** Choosing a provider location (Zoom, Google Meet, MS Teams)
+  creates the meeting on the host's connected account when the event is created, and every attendee
+  gets their own join link (one per registrant where the provider supports it); nobody pastes a link
+  by hand. A host with no connected account is offered **Connect** or the platform's own room. **Not
+  built yet** (Decision #343, ruling C4).
+- **Today only in-app notices are delivered.** Email, push and SMS have no dispatcher yet; the SMS
+  setting shows only once the SMS provider (Twilio) is configured. **Not built yet** (Decision #339,
+  rulings P3 and N3).
+- **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
+  once (the host's own are not counted), and a replacement slot keeps the original event's length: a
+  move is a move, never an extension. **Not built yet** (Decision #343, ruling C6 D8).
 
 ###### B. Verification: The Digital Handshake
 
@@ -92,22 +108,37 @@ attendance.
   Zoom `participant_joined`).
 - **Proof of Presence:** Both the Freelancer and the Client must be logged in the room within the
   first 15 minutes for the session to be marked as "Successful."
+- **Who joined is matched by their own link.** The platform mints each attendee's join link, and
+  presence is matched on it; the email a provider reports is only a fallback, marked as weaker
+  evidence (Decision #343, ruling C4 (b)). A join with no "left" event is not counted as presence
+  for the rest of the sitting (ruling C5 (c)). **Not built yet.**
 - **Failure to Attend:** If the system detects a Freelancer no-show, the Escrow is flagged for an
   immediate refund.
+- **No evidence, no automatic release.** A sitting with no presence data at all is held for review
+  instead of paying out on negative consent (Decision #343, ruling C5 (a)). **Not built yet.**
 
 ###### C. Financial Integrity & The 24-Hour Rule
 
 The financial lifecycle of a session is governed by strict "Time-to-Event" (TTE) windows to protect
 both the freelancer’s time and the client’s capital.
 
-| Event                       | Timeline             | Financial Outcome                                                            |
-| :-------------------------- | :------------------- | :--------------------------------------------------------------------------- |
-| **Booking**                 | At Checkout          | **Escrow Locked:** Funds are held by Projective.                             |
-| **Cancellation (Standard)** | $>24\text{h}$ before | **Full Refund:** Escrow returned to Client.                                  |
-| **Cancellation (Late)**     | $<24\text{h}$ before | **Forfeit:** Escrow released to Freelancer (Time Protection).                |
-| **Freelancer Cancel**       | Any time             | **Auto-Refund:** Full Escrow returned to Client immediately.                 |
-| **Session Complete**        | T + 0                | **Pending Window:** 24-hour countdown begins.                                |
-| **Payout Release**          | T + 24h              | **Automatic Release:** Payment sent to Freelancer wallet (Negative Consent). |
+| Event                        | Timeline                     | Financial Outcome                                                                                                                                                                                                                                                                                    |
+| :--------------------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Booking**                  | At Checkout                  | **Escrow Locked:** Funds are held by Projective.                                                                                                                                                                                                                                                     |
+| **Cancellation (Standard)**  | $>24\text{h}$ before         | **Full Refund:** Escrow returned to Client.                                                                                                                                                                                                                                                          |
+| **Cancellation (Late)**      | $<24\text{h}$ before         | **Forfeit:** Escrow released to Freelancer (Time Protection).                                                                                                                                                                                                                                        |
+| **Freelancer Cancel**        | Any time                     | **Auto-Refund:** Full Escrow returned to Client immediately.                                                                                                                                                                                                                                         |
+| **Reschedule**               | Decided $>24\text{h}$ before | **Moves only outside the cancellation window:** a move must be decided before the cancellation-notice window opens, so every attendee can still cancel against either time. A provider-proposed move carried inside the window counts as a provider cancellation for anyone who did not vote for it. |
+| **Booked inside the window** | Within 60 min of booking     | **Grace:** a booking made inside the cancellation window may be cancelled for a full refund within an hour, while the sitting has not started.                                                                                                                                                       |
+| **Session Complete**         | T + 0                        | **Review Window:** 24-hour countdown begins.                                                                                                                                                                                                                                                         |
+| **Payout Release**           | T + 24h                      | **Automatic Release:** Payment sent to Freelancer wallet (Negative Consent) as **Pending**; it becomes Available after the 7-day clearing window (§Escrow, Wallets & Finance 5).                                                                                                                     |
+
+The Reschedule and Booked-inside-the-window rows are **Not built yet** (Decision #343, ruling C2
+(b)); events with no money behind them keep a 12-hour reschedule lockout. A late cancellation
+forfeits 100% (Decision #343, ruling C2 (a)); a provider may refund a forfeit voluntarily, **Not
+built yet** (Decision #337, ruling M8). The first 24 hours are the **review window**, distinct from
+the 7-day **Pending** clearing that follows (Decision #343, ruling C2 (c)); the windows' values are
+in `finance-model.md` §4.
 
 **Every sitting is its own transaction (Decision #211).** A 1-on-1 booking holds one escrow **per
 sitting**, so each row above is applied to each sitting against its own start and end: a block's
@@ -221,7 +252,10 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   based on predefined **Contribution Agreements**. A Team chooses its **split template** (Co-op ·
   Finder's fee · Benevolent dictator) and sets its members' stakes on its Payouts module. A member
   who may manage the Team's finances can write the template; which templates a plan unlocks is data;
-  rounding dust always stays with the Team Vault. The rules and figures are in
+  rounding dust always stays with the Team Vault. When a member leaves, their stake is redistributed
+  over the members who remain by the team's split rule (Decision #337, ruling M10 (b)). A team that
+  drops below the plan its template needs falls back to Co-op, and a departed finder's cut is
+  dropped rather than paid on (ruling M10 (a)) — **Not built yet**. The rules and figures are in
   [`finance-model.md` §5](finance-model.md#5-team-payouts-per-stage-smart-splits) (Decisions
   #228 (F), #234).
 - **Unified Identity:** Teams can create "Services" (Sessions) and bid on "Projects" as a single
@@ -276,15 +310,16 @@ Teams have total flexibility in how they deploy their talent across a Pipeline o
 Both Solo Freelancers and Teams have access to "Meta-Management" tools to handle their internal
 throughput.
 
-##### The Global Workload Kanban
+##### The Global Workload Kanban — **Planned** (Decision #338, ruling P3)
 
 Users can track their entire business lifecycle through a customizable Global Kanban. This board
-aggregates data from all active projects and proposals:
+aggregates data from all active projects and proposals. When it is built it is a read-only board
+over the same Workload Intensity sums the claim check uses:
 
 - **Proposals Sent:** Track open bids and active negotiations.
 - **Ready:** Projects/Stages where Escrow is locked and work can begin.
 - **In-Progress:** Active tickets currently being worked on.
-- **Complete:** Finalized work awaiting the 24-hour payout window.
+- **Complete:** Finalized work awaiting its review window and payout.
 
 ##### The "Board" Tab (Stage-Level)
 
@@ -309,7 +344,8 @@ MS Teams or Google Calendar, but with integrated financial protection.
   Google Meet, or Teams link). 2. **Notifications:** Attendees are notified via Webhook-driven
   Email, SMS, and In-App Push. 3. **The Handshake:** Attendees can **Approve** or
   **Counter-Propose**. 4. **Majority Decision:** In multi-attendee sessions (Group Sessions), a
-  change in time requires a majority consensus to be finalized.
+  change in time requires a majority consensus to be finalized. (Delivery channels, the meeting link
+  and the majority's denominator: §Stage Formats 2A.)
 
 ##### Cancellation & Escrow Protection
 
@@ -317,7 +353,7 @@ MS Teams or Google Calendar, but with integrated financial protection.
   Full Refund** of the escrowed amount to the attendee(s).
 - **Attendee Protection:** If an attendee cancels more than 24 hours in advance, they are refunded.
   Within the 24-hour window, the Escrow is forfeited to the Freelancer to compensate for the lost
-  time slot.
+  time slot. The reschedule window and the late-booking grace are in §Stage Formats 2C.
 
 ---
 
@@ -351,7 +387,11 @@ One-off projects are essentially single-ticket Pipelines designed for a specific
   and no milestones to run.
 - **Deadlines:** - **Soft Deadline:** A target date set by the client. Freelancers can be
   incentivised via a **Deadline Bonus**—a financial top-up released only if the final stage is
-  approved before the soft deadline.
+  approved before the soft deadline. One-offs and Pipelines both offer it (Decision #337, ruling
+  M7). The client funds the bonus together with the escrow it rides on, so the money exists before
+  it is promised; it is paid with that release when the work is approved in time, and refunded to
+  the client, with no fee taken, when the deadline is missed. Its rate is in `finance-model.md`.
+  **Not built yet:** until the bonus is held with the escrow, a non-zero bonus is refused.
   - **Hard Deadline:** Defined simply by the completion and approval of all internal stages.
 - **Visualization:** **Timeline View (Gantt Chart).** Focuses on the linear progression of stages
   toward a single delivery point.
@@ -389,6 +429,7 @@ Pipelines are designed for high-volume, recurring, or complex multi-part work.
 - **Structure:** Multiple "Tickets" moving through various columns/stages.
 - **Dynamics:** Ideal for ongoing maintenance, content production, or software development where
   work is fed into the system continuously.
+- **Deadline Bonus:** the same funded bonus as a One-Off (above; Decision #337, ruling M7).
 - **Visualization:** **Kanban Board.** Focuses on throughput, bottlenecks, and the current status of
   various work units.
 
@@ -713,13 +754,14 @@ address:
 **The showcase is a six-slot grid, and slot 1 is the profile's face.** In the editor each empty slot
 is a dashed placeholder and each filled one offers replace and remove on hover or focus (removal is
 confirmed). **Slot 1 is the primary thumbnail** every explore card, search result and public listing
-of the profile leads with, so it takes a still only; the other five take stills or videos. Choosing
-media for a slot or for the photo opens one **media selection modal**: the person's own library of
-uploaded images (and videos, filterable, where the target accepts them), newest first, beside an
-upload; then a cropper fixed to the target's shape — 1:1 for the photo, 16:10 for a showcase slot —
-with pan, zoom and rotation that can never leave empty space in the frame, a **Reset** back to the
-default crop before saving, and alternative text. The crop is applied by the platform to the
-original, never by the browser to a preview.
+of the profile leads with, so it takes a still only; the other five take stills, and videos once
+the platform can strip a video's metadata (until then a video is refused rather than published as
+uploaded, Decision #340). Choosing media for a slot or for the photo opens one **media selection
+modal**: the person's own library of uploaded images (and videos, filterable, where the target
+accepts them), newest first, beside an upload; then a cropper fixed to the target's shape — 1:1 for
+the photo, 16:10 for a showcase slot — with pan, zoom and rotation that can never leave empty space
+in the frame, a **Reset** back to the default crop before saving, and alternative text. The crop is
+applied by the platform to the original, never by the browser to a preview.
 
 **Nothing a person uploads is published until it has been checked.** Every upload lands in a
 quarantine first; the platform confirms from the bytes themselves what the file is — never from its
@@ -727,9 +769,12 @@ name or declared type — refuses anything that is not a picture or a video it c
 script is kept out and its bytes discarded), and only then admits it to the person's private
 library with smaller copies for every screen size. What a profile shows publicly is always a fresh
 copy the platform cut and re-encoded, so no location data from a camera or anything smuggled inside a
-file ever reaches a visitor. A new profile photo reaches every place that shows the person — the
-navigation bar, profile cards, project rosters and feeds, message senders — on their next load, and
-the tab it was changed in updates at once.
+file ever reaches a visitor. A library file a person makes public follows the same rule: visitors
+get a screened copy with its metadata stripped and the original stays private (Decision #340,
+ruling T3 (a)) — **Not built yet**: today a public library file is served as uploaded. A new
+profile photo reaches every place that shows the person — the navigation bar, profile cards,
+project rosters and feeds, message senders — on their next load, and the tab it was changed in
+updates at once.
 
 **Every retired address still resolves.** The eleven legacy tabs (`services` · `products` ·
 `projects` · `portfolio` · `education` · `articles` · `teams` · `businesses` · `members` ·
@@ -952,7 +997,13 @@ To maintain a secure and fair ecosystem, Projective implements an automated moni
 messaging channels.
 
 - **The Protected Phase:** From the initial proposal until the final Escrow release, messages are
-  monitored for **PII (Personally Identifiable Information)**.
+  monitored for **PII (Personally Identifiable Information)**. A conversation that starts on a
+  marketplace surface — a service inquiry, a listing, an Explore card or a proposal — is protected
+  from its first message, until a first escrow funds or 30 days pass. Ordinary profile-to-profile
+  messages between connected people are not protected. When an engagement, application or invitation
+  ends without the work going ahead, the conversation between its parties stays protected for a
+  cooling-off period (Decision #340, ruling T1). **Not built yet** for the marketplace-conversation
+  window and the cooling-off period.
 - **Restricted Data:** Sharing of bank details, external social media handles, personal emails, or
   phone numbers is strictly prohibited.
 - **Consequences:** Attempting to circumvent the platform’s payment system results in severe
@@ -973,7 +1024,7 @@ is authoritative: the other two may add checks but can never relax what the data
 
 | Tier | Where it runs | When | What it does | Status |
 | :--- | :------------ | :--- | :----------- | :----- |
-| **1 · Edge pre-filter** | In-process, inside the fat send services (Deno, TypeScript/WASM), before the insert | Synchronous, < 2 ms, $0 infrastructure | Normalises Unicode confusables/homoglyphs, extracts URLs and domains (`tldts` / `linkify-it`), Luhn-checks digit runs so a card number is caught and a long numeric reference is not; refuses a naive attempt before it is stored | **Planned.** Today Tier 1 is the composer's warning only — `packages/types/comms/pii.ts`, the regex twin of Tier 2 |
+| **1 · Edge pre-filter** | In-process, inside the fat send services (Deno, TypeScript/WASM), before the insert | Synchronous, < 2 ms, $0 infrastructure | Normalises Unicode confusables/homoglyphs, extracts URLs and domains (`tldts` / `linkify-it`), Luhn-checks digit runs so a card number is caught and a long numeric reference is not; refuses a naive attempt before it is stored | **Planned.** There is no Tier 1 today, and the message composer shows no warning: `packages/types/comms/pii.ts`, the regex twin of Tier 2, is used only by the feedback board (Decision #340 (k)) |
 | **2 · Database enforcement** | `BEFORE INSERT` triggers on `comms.project_messages` and `comms.dm_messages`, calling `comms.mask_pii` | Every insert, on every path (service, RPC or direct write) | While `projects.is_protected_phase` holds, rewrites each match to a category placeholder (`[email hidden]` · `[link hidden]` · `[handle hidden]` · `[phone hidden]`) and sets `pii_masked = true` + `pii_categories` | **Shipped** (`00001300` / `00001840`) |
 | **3 · Deep NLP** | Self-hosted Microsoft Presidio microservice (spaCy NER + rule matchers) | Asynchronous, after commit, off the send path | Scores obfuscated intent the regexes cannot see — spelled-out numerals, disguised handles, split addresses — and files the message for review | **Planned** |
 
@@ -986,6 +1037,11 @@ Rules that hold across the tiers:
   telling the user is an open question (Decision #147 flag (d)).
 - **Tiers 1 and 3 run only where Tier 2 would mask** — inside the protected phase — so the Projective
   Unlock lifts all three at once.
+- **Tier 3 reads across messages.** A number, address or handle split over several messages ("555",
+  "123", "4567") is caught by joining a sender's recent messages in a conversation over a short
+  window. The window lives only in the worker's memory and nothing it reads is kept: the report it
+  files (`evasion_fragmentation`) names the messages, never their text, and a penalty follows only
+  once a reviewer confirms it (Decision #340, ruling T2). Planned with Tier 3.
 
 ##### B. Public surfaces are never unlocked (Decision #147)
 
@@ -1007,12 +1063,13 @@ The rule covers every surface a stranger can read, and it does not lapse when a 
 | Digital products & catalogue listings | `catalogue.products.title` / `description`, `catalogue.listings.title` / `description` |
 | Public project briefs | `projects.projects.title` / `description` |
 
-Enforcement is at **creation and update time**, in the write door that owns each surface
-(`org.save_profile`, the catalogue and project write services): an offending field is **refused**
-with a `422` naming the field — never silently masked, because public copy is authored and the owner
-must see and fix it. **Not yet enforced** (Decision #147). The structured link surfaces
-(`org.profile_links`, a business's `website`) and article bodies are not settled by this rule —
-Decision #147 flag (a).
+Enforcement is at **creation and update time**, in the database: because clients can write some of
+these tables directly, each surface's table refuses an offending field itself, and the services turn
+that refusal into a `422` naming the field (Decision #340, ruling T2 (a); the profile, which only
+`org.save_profile` writes, is checked there) — never silently masked, because public copy is
+authored and the owner must see and fix it. **Not yet enforced** (Decision #147). The structured
+link surfaces (`org.profile_links`, a business's `website`) and article bodies are not settled by
+this rule — Decision #147 flag (a).
 
 ##### C. Content safety & moderation — the Two-Zone model (Decision #148)
 
@@ -1020,7 +1077,7 @@ Content is moderated by **where it is seen**, not by what it is. Two zones, two 
 
 | | **Public Glass Front** | **Private Collaborative Workspace** |
 | :- | :--------------------- | :---------------------------------- |
-| **Scope** | Public profiles (`org.users_public`: avatar, banner, `headline`, `bio`), the showcase carousel, digital marketplace listings (`catalogue`), public service cards (`marketplace.service_blueprints`), public project briefs | Project channels (`comms.project_messages`), stage deliverables (`projects.stage_submissions`), DMs (`comms.dm_messages`), project and message attachments (`files`) |
+| **Scope** | Public profiles (`org.users_public`: avatar, banner, `headline`, `bio`), the showcase carousel, digital marketplace listings (`catalogue`), public service cards (`marketplace.service_blueprints`), public project briefs, a library file made public, and a group's photo (world-readable by its link) (Decision #340, ruling T3) | Project channels (`comms.project_messages`), stage deliverables (`projects.stage_submissions`), DMs (`comms.dm_messages`), project and message attachments (`files`) |
 | **Audience** | Anyone, signed in or not; cached at the edge | Only the parties to the engagement or conversation |
 | **Regime** | **Proactive.** Automated pre-screening before anything is published | **Reactive.** No automated content screening; moderation starts from a user report |
 | **Screened for** | Explicit content (nudity, sexual content, graphic violence, hate symbols and speech) and platform leakage (§1.B) | Nothing automatically, except the protected-phase contact filter (§1.A), which is platform integrity and still applies |
@@ -1033,34 +1090,49 @@ plain-language correction notice naming the reason ("This image can't be used on
 it appears to contain nudity") and keeps the original in their private library, untouched, because
 a private copy harms nobody. Public text follows §1.B and is screened for hate speech the same way.
 Nothing in this zone is ever exempt — no creative brief, no Standing level and no plan buys an
-exception.
+exception. Nudity is screened by a self-hosted model; violence, hate symbols and toxic public text
+by a hosted service (Sightengine) that is sent public-zone material only, never a private file. An
+animated image or a video is screened one frame every 2 seconds, at most 30 frames, always including
+the first and the last, and every thumbnail cut from one of its frames is screened too (Decision
+#340, ruling T2; the density is a platform setting).
+
+**Known illegal imagery is matched in both zones.** Every upload, private ones included, is
+hash-matched against known illegal imagery; it is platform integrity, not content moderation, so the
+private zone's safe harbor below does not exempt it (Decision #340, ruling T5, pending counsel).
+**Planned**, with the rest of the screening.
 
 **Private zone — the creative safe harbor.** Creative and technical work routinely needs adult or
 explicit material: character and anatomy modelling for games, life drawing, film and script
 dialogue, voice acting with profanity, medical and forensic illustration. Inside a private
-collaboration none of this is scanned, flagged or blocked; an automated classifier here would
-misfire on legitimate work, chill the briefs Projective exists to host, and cost compute on every
-message and file. The safe harbor covers material that serves the work and is shared among the
-people engaged on it. It **never** covers content that is illegal (including any sexual content
-involving minors), harassment or threats directed at a participant, or explicit material sent to
-someone who has not engaged on that work — all reportable, and illegal content is escalated beyond
-the platform as the law requires.
+collaboration none of this is scanned, flagged or blocked (the known-illegal-imagery match above is
+the one exception); an automated classifier here would misfire on legitimate work, chill the briefs
+Projective exists to host, and cost compute on every message and file. The safe harbor covers
+material that serves the work and is shared among the people engaged on it. It **never** covers
+content that is illegal (including any sexual content involving minors), harassment or threats
+directed at a participant, or explicit material sent to someone who has not engaged on that work —
+all reportable, and illegal content is escalated beyond the platform as the law requires.
 
 **Reporting.** Any party who can see a message, submission, file, DM or public item can report it,
 choosing a reason. At filing, the platform freezes an **immutable snapshot** of what was reported —
 the content, its author, its context and timestamps — in the same spirit as the Evidence Vault
 (§Dispute Resolution 1), so editing or deleting the original afterwards changes nothing. A reviewer
 resolves each report as **dismissed** (no violation) or **actioned** (violation verified). The
-reported party is never shown who reported them.
+reported party is never shown who reported them. Automated findings (the publication screen, Tier 3)
+land in the same review queue as people's reports, marked with where they came from, and no
+automated finding penalises anyone until a reviewer confirms it. A refusal is logged only as a count
+per person per day, never its text (Decision #340, ruling T4).
 
 **Consequences tie into Standing.** An actioned report issues a penalty against the author, sized
 to the severity of the violation. Active penalties are the `penalty` term of the Reliability Index
 ($R_i$) (§Reputation 5 "What moves a rung"), so a verified violation lowers the score and can
 **demote the author's Standing rung** — with it the listing allowance, proposal bonus, discovery
 weighting and commission rate that rung carries. Serious or repeated violations escalate along the
-existing ladder (§1 **Consequences**: suspension through to a permanent ban). Every actioned
-outcome is a moderation decision and is therefore a **mandatory notification** to the person it
-affects (§Notifications rule 1). A penalty can expire or be reversed; it is never deleted.
+existing ladder (§1 **Consequences**: suspension through to a permanent ban). Every actioned outcome
+is a moderation decision and is therefore a **mandatory notification** to the person it affects
+(§Notifications rule 1). A penalty can expire or be reversed; it is never deleted. Every
+content-report penalty, automated or not, lands on this one Standing penalty term, and a person's
+discovery penalty is read by the platform's own ranking only — never by a guest or another user
+(Decision #340, ruling T4). **Not built yet:** today a guest can read the discovery penalty.
 
 #### 2. Channel Architecture
 
@@ -1113,8 +1185,12 @@ context without "ping fatigue."
 ##### E. Direct & Group Conversations (the global inbox)
 
 - **Scope:** Person-to-person, outside any project. A DM is **one thread per pair** — the same
-  record a project DM opens (unified messaging; `dm-{handle}`) — and a **group** is any thread
-  with three or more people, or one created with a name.
+  record a project DM opens (unified messaging; `dm-{handle}`) — and a **group** is any thread with
+  three or more people, or one created with a name. One send path writes every message, a thread is
+  addressed by its own opaque `cht-…` slug (`/messages/dm-<handle>` answers 303 to it), and a DM
+  sent inside a project is stamped with that project so the project shows the same thread the inbox
+  does; the two message stores stay separate (Decision #339, ruling N1). **Not built yet:** today
+  the unified thread exists only in the fixtures, and a project does not draw its DMs.
 - **Creating one:** from the `/messages` root (the empty state's _New message_ / _New group_), the
   inbox lane, or a listing/profile. One pick starts (or reopens) the pair's DM; several picks —
   or a named pick — start a group. An optional opening message is posted **in the same act**, so
@@ -1129,8 +1205,10 @@ context without "ping fatigue."
 - **A group's photo:** a group may carry its own picture, chosen when it is created (beside its
   name) or later from its header menu — **any member** may set, change or remove it, like the name.
   It is picked from the member's own media library (or uploaded) and cropped square; the server cuts
-  the published picture from the original. A DM has no photo of its own — its picture is the other
-  person's. A group with no photo shows a stand-in picture (temporarily `test_images/banner_5.jpg`).
+  the published picture from the original. Because anyone holding its link can open it, the picture
+  is screened like any public image (§1.C; Decision #340, ruling T3 (b)) — **Not built yet**. A DM
+  has no photo of its own — its picture is the other person's. A group with no photo shows a
+  stand-in picture (temporarily `test_images/banner_5.jpg`).
 - **Who is offered (the ranked picker):** before the viewer types, the picker suggests people
   ranked by how the viewer knows them, then by the most recent interaction, newest first —
   (1) a **shared team / business / enterprise**, (2) a **mutual follow**, (3) somebody the
@@ -1243,14 +1321,21 @@ Three product rules govern the whole surface:
 1. **Some alerts cannot be turned off.** Anything that moves money, changes access, or affects legal
    standing — escrow and payout events, chargebacks, invoices, identity-verification outcomes,
    password and new-device events, permission changes, moderation decisions, policy updates — is
-   **mandatory** and ignores every preference. A user is never left unaware that they were paid, that
-   a payout failed, or that someone signed in as them.
+   **mandatory** and ignores every preference, a global snooze included. A user is never left
+   unaware that they were paid, that a payout failed, or that someone signed in as them.
 2. **Quiet hours silence the interruption, not the record.** Inside a user's quiet window, push and
-   SMS are withheld; the in-app inbox still receives everything, so nothing is lost. A small set of
-   genuinely time-critical events (a session starting in minutes, a security alert, a failed payout)
-   is allowed to break through, and a **global snooze is pierced only by critical alerts**.
-3. **Unsubscribing from marketing never silences anything else.** An unsubscribe or a bounce
-   suppresses that address for Marketing only — a transactional or security email still reaches it.
+   SMS are withheld; the in-app inbox still receives everything, so nothing is lost. Only the event
+   types marked to override quiet hours — genuinely time-critical ones such as a session starting in
+   minutes, a security alert or a failed payout — break through for push and SMS (Decision #339,
+   ruling N3 (a)).
+3. **Unsubscribing from marketing never silences anything else.** An unsubscribe suppresses that
+   address for Marketing only — a transactional or security email still reaches it. A **hard
+   bounce** is different: the address cannot receive mail, so it is blocked for every category, and
+   the user is asked in the app to fix their email (Decision #339, ruling N3 (b)). **Not built
+   yet:** no email is sent yet, so neither rule is applied, and the in-app prompt does not exist.
+
+A muted chat stays muted on every device: the mute is kept on the server, not per device (Decision
+#339, ruling N3 (d)).
 
 Supporting behaviours the user should expect: repeated events of the same kind **collapse into one
 entry** rather than flooding the inbox (five messages in one channel become one line, not five); a
@@ -1337,6 +1422,14 @@ Designed for collaborator groups (Virtual Agencies).
   wallets based on their % stake, eliminating the "Master-Slave" payment delay common in traditional
   agencies.
 
+##### Automation that does not run yet is locked
+
+Payout schedules, pots and the **Income Smoother** are shown with a lock and the reason until each
+one's engine runs — payout schedules first, then pots, then the smoother; none of them saves a
+setting nothing acts on. A **pot** is an earmark inside the wallet, never a separate balance. The
+Income Smoother is **Planned** and gets its own entry here before it is built (Decision #337, ruling
+M6). **Not built yet:** today these controls save settings.
+
 #### 2. Escrow Lifetimes by Project Type
 
 Escrow is a "Locked" state. While the money is in Escrow, it belongs to neither the Client nor the
@@ -1346,7 +1439,7 @@ Freelancer—it is held by the platform’s secure ledger.
 | :------------ | :------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
 | **One-Off**¹  | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
 | **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket at the latest — or earlier, when the client prepays the ticket or its whole stage (Decision #197) (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approving a ticket's stage releases that stage's payout and automatically locks the escrow for the same ticket's **next** required stage (Decision #210 — see below). |
-| **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** 24 hours after the session ends (assuming no "No-Show" claim).                  |
+| **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** at the end of the 24-hour review window after the session ends (assuming no "No-Show" claim), into the 7-day Pending clearing (§5). |
 
 ¹ A **Task** is a one-off without milestones (`format = one_off`), so it follows the One-Off row:
 its single stage is its first and final deliverable.
@@ -1376,6 +1469,11 @@ Fund on arrival off, the ticket waits there unfunded (**Draft**) until the clien
 and the payee is told the same. The first stage of a run is never "arrived at" by an approval, so the
 setting is not offered there; sessions and personal projects have no chained escrow.
 
+**Each stage holds its own price.** A ticket travelling its chain is held, on every stage, at that
+stage's own ticket price — each stage is different work for a different payee — and a price set on
+the ticket never overrides the stages it passes through (Decision #338, ruling P6). **Not built
+yet:** today a ticket-level price overrides every stage price in its chain.
+
 **Column lock (Decision #210).** A board's work columns (In Progress, Review) refuse a claimed ticket
 whose escrow is not held: the board shows those columns as locked while the card is dragged and says
 why, instead of accepting a drop the platform would refuse. It is the work-start rule above shown
@@ -1401,7 +1499,8 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
 **Intervaled Invoicing** system.
 
 - **Monthly Consolidation:** Instead of triggering a credit card charge for every $50 ticket,
-  Projective tracks all Escrow activity within a 30-day window.
+  Projective tracks all Escrow activity within a monthly billing period, which runs from one billing
+  day to the next (a calendar month from the 1st when no billing day is chosen).
 - **Consolidated Invoice:** Once a month, on the Business's **billing day** (1–28, chosen in
   its invoicing terms; the 1st when it has not chosen), a Business in intervaled invoicing mode
   receives one legally compliant invoice **per currency** it spent in. **Projective is always the
@@ -1507,35 +1606,54 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
   split returns money to that person. Only the project's owner may fund it.
 - **Money leaves only to a verified payout account.** Whoever withdraws — freelancer, business or a
-  client taking a refund balance out — needs a Stripe payout account on file (Settings → Verification
-  & payouts). The wallet is debited when the withdrawal starts and credited back if Stripe refuses it.
-  A withdrawal has a per-currency minimum (about £10, `finance-model.md` §13), may name one of the
-  owner's own payout methods, and is never left in limbo: one whose confirmation is lost is completed,
-  re-sent or returned to the wallet by a sweep within minutes. A withdrawal the platform later
-  reverses comes back to the wallet; a bank that refuses the payout is reported to the owner, who must
-  update their bank details (Decision #202).
+  client taking a refund balance out — needs a Stripe payout account on file (Settings →
+  Verification & payouts). The wallet is debited when the withdrawal starts and credited back if
+  Stripe refuses it. A withdrawal has a per-currency minimum (about £10, `finance-model.md` §13),
+  may name one of the owner's own payout methods, and is never left in limbo: one whose confirmation
+  is lost is completed, re-sent or returned to the wallet by a sweep within minutes. A withdrawal
+  the platform later reverses comes back to the wallet. A bank that refuses the payout leaves the
+  money in the owner's Stripe payout account, where it already belongs to them: the owner is told to
+  update their bank details, and Stripe pays it out again once they do; it is not pulled back into
+  the platform wallet (Decision #202; Decision #337, ruling M9, pending counsel).
 - **Earned money clears a 7-day safety window before it can be used** (root `CLAUDE.md` §8 Decision
-  #191). A released escrow (a team's shares and vault cut included), a fair-exit or session payout and a
-  product sale show as **Pending** for `pending_release_days` (7) and then become **Available**. Until
-  then they can be neither withdrawn nor spent on the platform. Money a person or business puts in
-  themselves (a top-up or card payment), a refund, a transfer and a returned payout are Available at
-  once, so paying by card is never delayed.
-- **A lost card dispute is recovered from the payer, not the freelancer.** When a client's bank wins a
-  chargeback, the escrow that card payment funded (if still held) is refunded to the client's wallet
-  and the disputed amount is then taken back from that wallet (from anything it has still clearing
-  first, then from its Available balance); whatever the wallet cannot cover is the platform's loss. A won dispute returns the escrow to held. Whether money ALREADY released to a
-  freelancer is clawed back is **not yet decided** — today it is not (flagged in root `CLAUDE.md` §8
-  Decision #126 for a human).
+  #191). A released escrow (a team's shares and vault cut included), a fair-exit or session payout
+  (a session's once its 24-hour review window has passed) and a product sale show as **Pending** for
+  `pending_release_days` (7) and then become **Available**. Until then they can be neither withdrawn
+  nor spent on the platform. Money a person or business puts in themselves (a top-up or card
+  payment), a refund, a transfer and a returned payout are Available at once, so paying by card is
+  never delayed.
+- **Money that has cleared is yours; money still clearing can be held while a payment dispute is
+  open.** That sentence is the published rule (Decision #337, ruling M3). When a client's bank wins
+  a chargeback, the escrow that card payment funded (if still held) is refunded to the client's
+  wallet and the disputed amount is then taken back from that wallet (from anything it has still
+  clearing first, then from its Available balance); whatever the wallet cannot cover is the
+  platform's loss. A won dispute returns the escrow to held. When the disputed payment has already
+  been released, the payee's rows it funded that are still **Pending** are frozen (**on hold**) the
+  moment the dispute opens. A lost dispute is recovered from those frozen rows first, then from the
+  payer's wallet as above, then as the platform's loss; a won dispute returns them to Pending with
+  their original release date. Money that has become Available is never clawed back, and nothing
+  outside the 7-day clearing window is frozen. **Not built yet:** today a dispute is recovered from
+  the payer only (closes the question left open by Decision #126).
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
-  verified payout account are **onboarding gates**: a freelancer cannot apply for or accept paid work,
-  be assigned or claim a ticket, or create or join a team until both are in place (Decision #196). A
-  team is seated only when everyone with a share of its earnings is payout-ready; a team that already
-  holds a stage keeps working on it. Earnings that reach a person's own wallet or a team vault leave
-  only with a payout-ready withdrawer; a buyer's refund balance never needs ID. Whoever is refused is
-  told who has to act, and is linked to Settings → Verification when it is them. This is the
-  platform's **No Forever-Escrow Guarantee** — because every
-  earner is payable before any work is accepted, funds can never become locked in a permanent,
-  un-releasable escrow state.
+  verified payout account are **onboarding gates**: a freelancer cannot apply for or accept paid
+  work, be assigned or claim a ticket, or create or join a team until both are in place (Decision
+  #196). The same gate stands where a seller starts to earn without a ticket: publishing a listing,
+  taking a session or seat booking, and switching on paid calls (Decision #337, ruling M4) — **Not
+  built yet** at those three doors. A team is seated, and a team listing published or booked, only
+  when everyone with a share of its earnings is payout-ready; a team that already holds a stage
+  keeps working on it. A team invite shows each invitee's readiness on the roster (**Not built
+  yet**), and accepting is where an unready invitee is refused. Earnings that reach a person's own
+  wallet or a team vault leave only with a payout-ready withdrawer; a buyer's refund balance never
+  needs ID. Whoever is refused is told who has to act, and is linked to Settings → Verification when
+  it is them. This is the platform's **No Forever-Escrow Guarantee** — because every earner is
+  payable before any work is accepted, funds can never become locked in a permanent, un-releasable
+  escrow state.
+- **A silent client cannot hold money forever either.** A submission the client neither approves nor
+  disputes is approved automatically 14 days after it was sent, through the normal release, with
+  reminders to the client at 7 and 13 days (`finance-model.md` §8; Decision #337, ruling P3). **Not
+  built yet** — until it is, the guarantee above does not cover a client who simply goes silent.
+- **Instant payouts are Planned,** with their fee unset until they are priced (Decision #337, ruling
+  P3).
 - **Business owners verify to operate the pool.** Wallet verification (KYB) is required to _operate_
   a pooled Business Wallet — see §Identity Verification. (Concrete gates: `finance-model.md` §10
   KYC/KYB Gating.)
@@ -1559,9 +1677,24 @@ Projective is currency-global by design.
   settled.
 - **Settlement is reproducible.** The exchange rate used is captured at the moment money is
   committed, so a settlement figure never drifts with the market afterward.
+- **Your currency comes from your country.** An entity's currency is the currency of its owner's
+  confirmed country, through one country-to-currency map, and a new project defaults to its owner's
+  currency rather than US dollars. Location and browser settings only _suggest_ a country at
+  sign-up, for the person to confirm, and choose a guest's display currency; they never set an
+  entity's currency (Decision #337, ruling M5 (b)).
+- **Money is held per currency.** The platform keeps a separate balance for each of the twelve
+  display currencies, so money settles in the currency it was earned in (ruling M5 (a)). Thresholds
+  that guard money — the on-account limit and a vault's approval threshold — are set per currency
+  (ruling M5 (e)).
+- **Converting a balance is disclosed.** A wallet holder may convert a balance into another of the
+  twelve currencies at the mid-market rate plus a disclosed margin, paid by whoever converts; the
+  margin is shown before the conversion is confirmed (rulings M5 (c), (d)).
+- **Rates are fresh, and say so.** Rates come from a daily feed, and every converted figure carries
+  a mark when its rate is stale (ruling M5 (f)).
 
-(The base-currency choice, rate-snapshot mechanics, display-conversion service, and the **open**
-question of who bears the FX spread are all in `finance-model.md` §11 Multi-Currency & FX.)
+Everything from "Your currency comes from your country" down is **Not built yet** (Decision #337,
+ruling M5). (The base-currency choice, rate-snapshot mechanics, display-conversion service, the
+conversion margin and the staleness rule are in `finance-model.md` §11 Multi-Currency & FX.)
 
 #### 7. Subscriptions, Allowances & Entitlements
 
@@ -1641,40 +1774,58 @@ Anyone, signed in or not, can compare every plan at **`/pricing`** before they c
   plane), **Team / Agency** and **Business / Enterprise** (the entity plane). The plane a visitor
   sees first follows who they are acting as — a team context opens the team plans — and a link may
   name one plan to point at (an upgrade prompt names the next plan up). Pointing at a plan never
-  selects, starts or charges anything.
+  selects, starts or charges anything. The plane switcher sits in the page header; the page has no
+  purchase lane (Decision #252, ruling S1).
 - **Prices in your currency, charged in ours.** Plans are priced in the platform's base currency.
   Each price is shown in the viewer's display currency beside the base figure that will actually
   be charged (§6), and switching currency re-draws the page in place.
 - **The promises are on the page.** Beside the plans the page states what no plan changes: how much
   work a freelancer may hold, the Standing they have earned, the proposal ceiling that exists on
-  every tier, and the 5% service fee (pending Decision #252 (l)).
+  every tier, and the 5% service fee — one sentence saying it is the same on every plan, with the
+  Standing taper of the seller's commission on product sales as one line linking to help (Decision
+  #252 (l); Decision #337, ruling M1). An Agency or Enterprise contract may agree its own rate
+  through the platform's negotiated rates, but the page never says that a plan buys a lower fee.
 - **Honest about gaps.** A plan with no price yet reads "Price coming soon" and offers nothing to
-  press; a custom-priced plan offers a conversation, not a checkout. Until plans can be bought, no
-  plan offers a purchase button (pending Decision #252 (f)).
+  press; an annual contract (Agency, Enterprise) offers a conversation, not a checkout.
+- **How a plan is bought.** Through Stripe Billing Checkout, by card, as a recurring subscription: a
+  plan is platform revenue and never comes out of a wallet. On a team the owner or a co-owner buys;
+  on a business, a member holding the billing right. A downgrade takes effect at the end of the
+  period already paid for (Decision #252, ruling S5). Until that checkout exists, no plan offers a
+  purchase button.
+- **Which subscriptions keep a plan.** A trialing or active subscription, and a past-due one for 7
+  grace days; a paused subscription falls back to the free plan (Decision #252, ruling S6).
 - **Your plan.** A signed-in visitor sees which plan the account or entity they are acting as holds.
 
 ##### Agency scale — **Planned** (Decision #252)
 
-A large team (an agency) may pay for a tier above Pro Team (named pending Decision #252 (a)). What
+A large team (an agency) may pay for **Agency** (`team_agency`), the tier above Pro Team (Decision
+#252, ruling S1). Its price is a monthly base with a number of seats included and a price for each
+seat beyond them, an annual term by contract; Enterprise, the buyer-side column of the Business /
+Enterprise tab, carries the same figures (ruling S2; the figures are `finance-model.md` §16.1). What
 it buys is **footprint and tools**, never an edge over a solo freelancer in winning or doing work:
 
-- **What scales:** seats (unlimited), concurrent public projects, stored assets, audit retention,
-  treasury exports and analytics.
+- **What scales:** seats (no ceiling past the included ones, each paid for), concurrent public
+  projects, stored assets, audit retention, treasury exports and analytics. API access and a
+  dedicated account manager are **Planned** (ruling S2).
 - **What never scales:** each member's own Workload Intensity caps — a 200-seat agency still has
   every member capped individually, and a claimed ticket left unstarted returns to the backlog with
   its escrow refunded, so idle seats cannot park work; Standing, which is earned per subject and
   never bought; the discovery ranking, which no plan touches; and the 5% fee, which flexes only by
-  contract (§Escrow, Wallets & Finance 7, `finance-model.md` §16.4).
+  contract, through negotiated rates (§Escrow, Wallets & Finance 7, `finance-model.md` §16.4).
 - **One pool, with a ceiling.** An agency applies from one dedicated proposal pool that is larger
   than Pro Team's but **finite**, and does **not** grow with its seat count — otherwise the largest
-  rosters would crowd every shortlist, which is exactly what the allowance exists to stop (pending
-  Decision #252 (c) for the size).
+  rosters would crowd every shortlist, which is exactly what the allowance exists to stop. Its
+  weekly size and its buffer are in `finance-model.md` §16.1 (Decision #252, ruling S3).
 - **Every earner is payable.** The payout-ready onboarding gate (Decision #196) applies to every
   member of every roster: nobody unverified can join, hold a seat or take a share, however large
   the team.
-- **Not yet decided:** layered treasuries (an agency vault feeding department or squad reserves) and
-  importing boards and files from other tools are not part of the tier until they are specified
-  (pending Decision #252 (d), (g)).
+- **Treasury and imports.** An agency's treasury is the team's one split rule with a contribution
+  agreement per engagement on top — there are no layered vaults feeding department or squad reserves
+  (Decision #337, ruling M10 (c)). Importing boards and files from other tools starts with CSV and
+  ClickUp, with attachments mounted rather than copied — **Planned** (Decision #252, ruling S8).
+- **Single sign-on is Enterprise's.** It is **Planned**: the sign-in panel stays hidden, and the
+  roadmap is verified domains, then SAML, then seats granted on first sign-in (Decision #336, ruling
+  S7).
 
 ---
 
@@ -1804,9 +1955,27 @@ lowest-friction way for a client to establish fit and for a provider to qualify 
 | :--- | :--- | :--- |
 | Purpose | Establish fit, qualify a lead | Sell expertise directly |
 | Money | None | Provider-set price |
-| Escrow | **No** | Session money path (see the flag below) |
-| KYC gate | **No** | Follows the standard Session rules |
+| Escrow | **No** | Held at request on the provider's hidden Consultations engagement (below) |
+| KYC gate | **No** | The provider must be payout-ready to switch paid calls on |
 | Flow | Request → Confirm → auto-generated meeting link (the **Calendar Handshake**) | As above, plus payment |
+
+**Paid consultations are off until their money path exists** (Decision #343, ruling C1). Until then
+the paid card is hidden and a paid request is refused, because a paid call can otherwise be booked
+with no payment, no cap and no expiry. When built, a paid consultation's money is held on the
+provider's hidden **Consultations** engagement — one per provider, never shown as a project — at the
+moment of the request, so the host decides on a request that is already funded; it is refunded if
+the host declines or the request expires, and otherwise settles exactly as a 1-on-1 Session sitting
+does, creating no project either party manages and counting nothing toward Workload Intensity.
+Switching paid calls on needs the provider to be payout-ready (Decision #337, ruling M4). **Not
+built yet**, including the interim switch-off.
+
+**Who may move a call, and when** (Decision #343, ruling C3). The host confirms or declines a
+request (a decline refunds a paid one). Either side may propose a new time outside the reschedule
+lockout, or cancel at any time, the lateness of a cancel being derived from the time left. Either
+side may mark a no-show from 15 minutes after the start, backed by presence evidence where the call
+is tracked. A request nobody answered expires, checked every 15 minutes, and a courtesy call past
+its end time is completed by the platform. **Not built yet:** today a host cannot confirm, decline
+or reschedule from the product.
 
 The courtesy call is the common case and is deliberately frictionless: no payment surface, no
 verification wall, no negotiation. It must remain bookable even by a provider who has connected no
@@ -1829,14 +1998,12 @@ they belong to the provider, not the platform.
 
 - A **courtesy** call carries **no financial consequence**, because there is no money in it. A late
   cancel (inside the platform cancellation window) or a no-show is recorded as a **reliability
-  signal only**.
-  > **Open (flagged):** whether that reliability signal feeds the reputation / discovery-rank
-  > machinery in [§Reputation & Discovery](#reputation--discovery) needs a deliberate decision.
-- A **paid** consultation follows the Session cancellation rules. Those rules are subject to the
-  standing, already-logged conflict between [`finance-model.md`](finance-model.md) §4 (50% penalty)
-  and this document's Session table (full forfeit); per the source-of-truth hierarchy **this
-  document wins**. The schema records the resulting refund/penalty per call rather than assuming
-  either, so the ratified rule can be applied without a migration.
+  signal only**. That signal feeds Standing at a low weight, and only from a **presence-verified**
+  no-show — never a self-reported mark — with at most one mark per counterparty every 30 days, so it
+  cannot be used for retaliation (Decision #343, ruling C6 D7). **Not built yet.**
+- A **paid** consultation follows the Session cancellation rules: a late cancellation forfeits 100%
+  (Decision #343, ruling C2 (a), which settles the old conflict with `finance-model.md` §4), and the
+  reschedule lockout and the late-booking grace of §Stage Formats 2C apply through the session rail.
 
 **Attendance is evidence.** When a call runs on a connected conferencing provider, participant
 join/leave callbacks are logged as a **Digital Handshake** — the same evidence trail a delivered
@@ -1991,24 +2158,17 @@ and ensure accountability.
   `projects.fn_release_expired_claims` sweep auto-releases the ticket back to the backlog. A parked
   claim earns nothing: any escrow held at claim is **refunded to the client in full** and the
   freelancer is paid $0 — deliberately distinct from a mid-work removal (see "Freelancer Removal
-  Mid-Ticket"), where the freelancer is compensated.
+  Mid-Ticket"), where the freelancer is compensated. **Not built yet:** the sweep is written but not
+  yet scheduled; it is registered every 15 minutes with a row lock, a re-check that the ticket is
+  still only claimed, a ticket-history row and a notice to both sides (Decision #338, ruling Q0.3).
 
 #### 2. The Weighting Engine (Workload Intensity)
 
-Not all tasks are created equal. Projective calculates **Workload Intensity ($W_i$)** to measure a
-freelancer's true bandwidth. This score is derived from the **CREATE** category weight multiplied by
-a **Difficulty Multiplier**.
-
-##### Baseline Category Weights
-
-| Category    | Baseline Weight |
-| :---------- | :-------------- |
-| **Create**  | 1.5             |
-| **Advise**  | 1.2             |
-| **Educate** | 1.0             |
-| **Run**     | 0.8             |
-| **Test**    | 0.7             |
-| **Empower** | 0.5             |
+Not all tasks are created equal. Projective calculates **Workload Intensity ($W_i$)** to measure the
+load a ticket places on a freelancer's bandwidth: the caps below sum it over the tickets a
+freelancer holds, and a freelancer who thinks a ticket's figure is too low disputes it through
+Workload Intensity Reporting (§5). A ticket's $W_i$ comes from its **Difficulty Multiplier** alone;
+the CREATE category plays no part in it (Decision #338, ruling P4).
 
 ##### The Architect’s Override (Multipliers)
 
@@ -2018,7 +2178,12 @@ Clients can refine the intensity of a specific ticket using Difficulty Multiplie
 - **Standard:** 1.0x
 - **High:** 2.0x
 
-> **Formula:** $W_{ticket} = \text{CategoryWeight} \times \text{DifficultyMultiplier}$
+> **Formula:** $W_{ticket} = \text{DifficultyMultiplier}$
+
+How efficiently a freelancer actually works — the time they take against the time they said, the
+deadlines they meet, how far they slow down when several projects run at once — is a separate,
+measured number: the Reliability Index (§Reputation & Discovery 1). Search ranking weighs both
+heavily: $W_i$ as current load, $R_i$ as proven efficiency (§Reputation & Discovery 2).
 
 #### 3. Concurrency Limits
 
@@ -2049,12 +2214,15 @@ Clients can configure how work is distributed within a stage:
 
 - **Open Pull (Default):** Any hired freelancer can claim any "Ready" ticket, provided they have the
   capacity.
-- **Round Robin:** The system automatically assigns the next ticket to the freelancer with the
-  lowest current $W_i$.
+- **Round Robin — Planned (Decision #338, ruling P3):** The system automatically assigns the next
+  ticket to the freelancer with the lowest current $W_i$.
 - **Manual Assignment:** The Client/Business must explicitly assign tickets to specific freelancers.
-- **Parallel Stream (One-Offs):** In one-off projects, all freelancers work on the stage objectives
-  simultaneously. Payouts are tied to their individual seat contracts rather than specific ticket
-  units.
+- **Parallel Stream (One-Offs) — Planned (ruling P3):** In one-off projects, all freelancers work on
+  the stage objectives simultaneously. Payouts are tied to their individual seat contracts rather
+  than specific ticket units.
+
+Only Open Pull and Manual Assignment ship today; the two planned modes' doors stay closed until they
+are built.
 
 > **Implementation:** a stage's `assignment_mode` (`projects.assignment_routing_mode` enum:
 > `open_pull` | `round_robin` | `manual` | `parallel_stream`, set via
@@ -2082,8 +2250,9 @@ Clients can configure how work is distributed within a stage:
 
 Ticket payment is not a single lump-sum transaction. The system tracks a running **Amount Paid**
 against the ticket's Hard Budget, since clients may fund a ticket in installments (e.g., topping up
-a Business Wallet incrementally, or partial pre-authorization on Maintenance-cycle tickets — see
-"Escrow, Wallets & Finance" §4 for the intervaled-billing equivalent at the Business level).
+a Business Wallet incrementally — see "Escrow, Wallets & Finance" §4 for the intervaled-billing
+equivalent at the Business level). Maintenance cycles are **Planned**, and nothing is pre-authorised
+for them (Decision #337, ruling P3).
 
 ##### Purchase Methods
 
@@ -2175,16 +2344,23 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   delivering — until the work is handed back for review, or the ticket is reassigned or reset. This
   applies to the Admin/Owner seat whether or not freelancers have been onboarded to the project:
   before a claim the client moves freely, and payment state is a badge for the client, never a
-  barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.)
+  barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.) On the
+  client's side, an unclaimed ticket is moved by the project's review authority and the ticket
+  managers it granted (below) — nobody else on the project (Decision #338, ruling P5 (a)). **Not
+  built yet:** today any participant can move an unclaimed ticket.
 - **Who Moves a Claimed Ticket:** only its client and the freelancer who claimed it. Another
   freelancer on the project never moves someone else's ticket. The freelancer moves their own ticket
   between To do, In progress and In review. The New backlog, Done, another stage and every other move
   are the client's, and the client's are subject to the lock above. No move puts a claimed ticket
   into Claimed, Cancelled or Hidden. A claim enters Claimed, the stage's cancellation enters
   Cancelled and a workload report enters Hidden, and each settles or keeps the escrow on its own
-  terms. Moving delivered work back to Claimed would restart the claim's time-to-live, and an expired
-  claim is refunded to the client in full. All of this holds in the database on every path, not only
-  on the board (Decision #293).
+  terms. Moving delivered work back to Claimed would restart the claim's time-to-live, and an
+  expired claim is refunded to the client in full. All of this holds in the database on every path,
+  not only on the board (Decision #293). The board offers a claimed card for dragging only to
+  someone who may move it — on the client's side, the project's owner or an admin with explicit
+  permission (Decision #338, ruling P5 (b)); **Not built yet**: today every viewer can pick the card
+  up and the move is refused on drop. A business's project-manager freelancer, granted the same
+  permission, is a persona that is **Planned** and not yet specified.
 - **Funding Scope & Freelancer Visibility:** A ticket is paid for either **in full** (every stage it
   requires) or **per stage** (a designated set of stages). Freelancers **never** see an unpaid
   ticket: a ticket appears on a freelancer's board only when it is paid for the stage it currently
@@ -2214,7 +2390,10 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   Once claimed, ticket details (title, description, budget) are locked — for both parties. The
   freelancer who claimed it cannot reword or reprice it, change the stages it requires, or move it
   to another stage either: those are the terms the client's escrow is held against, and every hold
-  is priced from them. A freelancer never writes a ticket; they claim one (Decision #291).
+  is priced from them. A freelancer never writes a ticket; they claim one (Decision #291). The due
+  date stays what it was when the ticket was claimed; after the claim it changes only by agreement:
+  one side proposes a new date and it takes effect when the other accepts (Decision #338, ruling P5
+  (c)). **Not built yet:** today either party can change it alone.
 - **Delegated ticket managers:** A ticket's content is the client's. The one exception is a project
   manager a **Business** client explicitly lets manage tickets on its behalf: a freelancer it made a
   project Admin or Manager, then granted "manage tickets" from the Members tab (the grant takes the
@@ -2229,25 +2408,37 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
 
 ##### Deletion Protocol
 
-- **Pre-Claim Deletion:** Processed immediately — no escrow exists yet, so there is nothing to
-  release.
-- **Post-Claim Deletion:** Any escrowed funds are released to the freelancer in full, and the client
-  incurs no further charge. This mirrors the "Fair Exit" spirit described in `finance-model.md` §3,
-  but for outright ticket deletion (rather than a time-based split) the freelancer receives the full
-  escrowed amount, not a partial one.
+A ticket is **deleted** only while nothing has happened to it — never claimed, never funded and
+never submitted against. Anything else is **archived**, so its history and the evidence the
+Reliability Index and the Evidence Vault rely on are kept; projects and calendar events archive too,
+and are never deleted (Decision #338, ruling P2 (b)). The money follows how far the work got (ruling
+P2 (a)):
+
+- **Before work starts** (unclaimed, or claimed but not yet In progress): any escrow held is
+  refunded to the client in full, exactly as an expired claim is.
+- **Once work is in progress:** the escrow is split as a Fair Exit splits it, at ticket level,
+  through the ticket's own Fair Exit (§Stage Management 5).
+
+**Not built yet:** today a deletion after a claim releases the full escrow to the freelancer, and a
+deleted ticket takes its history with it.
 
 ##### Freelancer Removal Mid-Ticket
 
-If a freelancer is removed from a stage or project while actively holding a claimed ticket:
+If a freelancer is removed from a stage or project while actively holding a claimed ticket (Decision
+#338, ruling P2 (a)):
 
-1. Escrowed funds for that ticket are released to the freelancer immediately.
+1. Escrowed funds for that ticket follow the Deletion Protocol above: refunded to the client in full
+   if work had not started, split under the ticket's Fair Exit once it was in progress. **Not built
+   yet:** today they are released to the freelancer in full.
 2. The ticket's status is reset to **"New,"** returning it to the public backlog so another
    freelancer can claim it.
 
 ##### Dispute Mechanism: Workload Intensity Reporting
 
 A freelancer may report a ticket if they believe its assigned Workload Intensity ($W_i$, see
-"Resource Allocation & Ticketing" §2) does not reflect the actual effort required.
+"Resource Allocation & Ticketing" §2) does not reflect the actual effort required. **Not built
+yet:** the mechanism exists in the database but nothing in the product reaches it, and its expiry
+sweep is not scheduled. It is being built now rather than marked Planned (Decision #338, ruling P3).
 
 1. **Report Filed:** The ticket enters a 48-hour **"Hidden"** status — it is removed from public
    view and all work on it is suspended. **A report moves no money** (Decision #290): the
@@ -2324,6 +2515,12 @@ reference attachments, the NDA (the platform standard or the client's own docume
 location requirements, and the stage architecture — per stage its scope, tasks, required skills
 (max 10), duration, dependency, seat capacity, roles, submittable file kinds and NDA override.
 
+**A dependency drives the run.** A stage that depends on another opens when that stage completes,
+after its stated delay, and — when the run uses the Chain Reaction — its escrow is held on arrival
+from the stage's own price (§Escrow, Wallets & Finance 2). Dependencies never loop: a dependency
+that would make a cycle, or that names another project's stage, is refused (Decision #338, ruling
+P3). **Not built yet:** today a dependency is drawn on the Timeline and drives nothing.
+
 A stepper would impose an order on decisions that have none, and would hide from the client how
 much is left. The setup ladder measures progress instead, and its **required** subset (title, type,
 pricing, one staffing answer) is the narrower gate that opens Preview — so a project can read well
@@ -2349,7 +2546,7 @@ control over them, subject to the protections described below once tickets are a
 #### 1. Client Capabilities
 
 Clients are authorized to **create, rename, edit, reorder, and delete** stages at any point in a
-project's lifecycle.
+project's lifecycle — a delete archives the stage once anything has happened on it (§3).
 
 #### 2. Stage Reordering
 
@@ -2359,9 +2556,12 @@ Ordering) is preserved independently of where the stage sits in the overall proj
 
 #### 3. Stage Deletion
 
-- **Active Tickets:** If a stage containing active (claimed, escrowed) tickets is deleted, all
-  escrowed funds for those tickets are released to the freelancer(s) — the same outcome as a
-  post-claim ticket deletion.
+- **Only an untouched stage is deleted.** A stage that was never claimed, funded or submitted
+  against is deleted outright; any other stage is **archived** (Decision #338, ruling P2 (b)).
+- **Active Tickets:** each held escrow on an archived stage settles as a deleted ticket's does
+  (§Resource Allocation & Ticketing 5, Deletion Protocol): refunded to the client before work
+  starts, split under the ticket's Fair Exit once it is in progress. **Not built yet:** today such a
+  stage can still be hard-deleted, and deleting it releases every escrow to the freelancer(s).
 - **Dangling Requirements:** If the deleted stage was listed as a required stage on any other
   tickets (per the Multi-Stage Initialization rule above), it is automatically removed from those
   tickets' stage requirements rather than leaving a broken reference.
@@ -2401,6 +2601,27 @@ provider was hired against.
 The client is told this **before** it happens: publishing a project opens a confirmation naming
 exactly what will lock and when, so the constraint is something they accepted rather than something
 they discover.
+
+#### 5. Ending a Stage Early (Fair Exit)
+
+A client who ends a stage before it is done pays for the work under way at a tier the platform
+derives, never at their own discretion alone (Decision #338, ruling P1):
+
+- **The derived tier is a floor.** The server derives the payout tier from the stage's progress
+  (`finance-model.md` §3). The client may raise it, never lower it, and the payee may contest it
+  through the Evidence Vault (§Dispute Resolution 1). Once stage deadlines are reliable, the derived
+  tier becomes the payout itself and the client only confirms it.
+- **A stage with no deadline** has no elapsed share to measure, so its submissions decide: one on
+  file earns the 50% tier, an accepted one the 100% tier.
+- **Who is told:** the project's owner and the acting reviewer.
+- **A ticket that needs several stages** is cancelled when the stage it sits on is ended, so its
+  later stages never run.
+- **One ticket can be ended on its own.** A ticket-level Fair Exit settles a single ticket the same
+  way, which is what removing a freelancer or deleting a ticket mid-work uses (§Resource Allocation
+  & Ticketing 5).
+
+**Not built yet:** today the client chooses a 25, 50 or 75% split, and there is no ticket-level Fair
+Exit.
 
 ---
 
@@ -2465,9 +2686,32 @@ off-platform activity.
 
 When a project-derived asset is sold, the marketplace logic can be configured to support:
 
-- **Direct Sale:** Freelancer takes the revenue (minus platform fee).
+- **Direct Sale:** Freelancer takes the revenue minus the **marketplace commission**, which the
+  seller pays and which tapers with the seller's Standing (`finance-model.md` §16.3). A product sale
+  never charges the buyer the 5% service fee: the payer's-rate rule of Decision #187 covers escrow
+  fees only, and that stage-completion fee never tapers with Standing (Decision #337, ruling M1).
+  **Not built yet:** today a product sale charges the buyer's 5% and the commission ladder is never
+  applied.
 - **Shared Royalty:** A percentage of every sale is automatically routed to the original Client's
   wallet as a "Founding Partner" incentive for allowing the asset to be sold.
+
+#### 6. Orders, Refunds & Promo Codes
+
+The commerce rules every order follows (Decision #337, ruling M8):
+
+- **A digital product is not refunded once it has been downloaded,** except for non-delivery or a
+  defective file, which the buyer raises as a dispute; that recovery comes first from the seller's
+  money still clearing (§Escrow, Wallets & Finance 5).
+- **An order is refunded line by line.** When an escrow behind a line is refunded, that line becomes
+  refunded; the order becomes refunded only once every line is.
+- **An order's states are the ones it can reach.** An on-account order is **invoiced**; refunds and
+  cancellations write **refunded** and **cancelled**; the never-written `processing` and
+  `awaiting_payment` states are retired.
+- **A promo code is recorded on the order,** and by default each account may redeem a code once; a
+  code may allow more.
+
+These are **Not built yet**, except that an on-account order is already written as invoiced and a
+code is already recorded on its order.
 
 ---
 
@@ -2519,6 +2763,14 @@ This score is derived from hard data captured by the `ResourceAllocation` engine
   indicates a freelancer who understands requirements the first time.
 - **Retention:** The "LTV" of a freelancer-client relationship. It tracks how many clients return
   for a second project or add additional tickets to an existing pipeline.
+- **Estimate accuracy:** how long a freelancer says a piece of work will take, against how long it
+  actually takes.
+- **Deadline adherence:** the deadline a client asked for, against when the work was delivered.
+- **Load resilience:** how far a freelancer's delivery slows when several projects run at once.
+
+The last three are the platform's measure of how efficiently someone works, built from delivery data
+rather than from any category or self-declared figure. Until there is enough of a person's own data,
+they sit at a baseline. **Not built yet** (Decision #338, ruling P4).
 
 > **The "Architect" Tier:** Freelancers who consistently manage multi-person Stages with high
 > Velocity and Accuracy earn the "Architect" designation. This unlocks the ability to lead
@@ -2534,8 +2786,18 @@ To prevent "Marketplace Entrenchment," the search algorithm is **Workload-Aware*
   (even if short) track record receive a "Discovery Boost."
 - **Recommender Logic:** For freelancers browsing the "Explore" page, the system utilises their
   project history and "Saved" preferences to surface Pipelines and One-Offs that match their
-  demonstrated skill set. _How a save weighs in the ranking is not yet specified, so the saved signal
-  does not feed Explore ranking yet — Decision #180 flag (c)._
+  demonstrated skill set. _How a save weighs in the ranking is not yet specified, so the saved
+  signal does not feed Explore ranking yet — Decision #180 flag (c)._ Ranking each signed-in
+  person's results by their own context (context-aware ranking, with its shared result cache) is
+  **Not built yet** (Decision #339, ruling P3); the personal rails below are what ships.
+- **Load and efficiency weigh heavily.** A freelancer's current Workload Intensity load and the
+  Reliability Index's efficiency measures (§1) are both large factors in ranking (Decision #338,
+  ruling P4). **Not built yet** for the efficiency measures.
+- **Meaning, not only words.** A typed search is re-ranked by meaning: each result's quality score
+  is blended with how close it is in meaning to the search, a match below a similarity floor gains
+  nothing, and a few close matches the words alone missed join the results if they pass the same
+  filters. If the meaning service fails, the search falls back to the plain order (Decision #339,
+  ruling N4; the weight, the floor and the number of extras are in `finance-model.md` §16.7).
 
 How these apply (Decision #178; the concrete dials are in `finance-model.md` §16.7):
 
@@ -2740,8 +3002,11 @@ For Session-Based Services, disputes are largely automated through our conferenc
   cross-references the Zoom/Meet/Teams Webhook logs in the Evidence Vault.
 - **Deterministic Ruling:**
   - If the logs show the Freelancer never joined: **Instant Refund.**
-  - If the logs show both joined for >80% of the duration: **Claim Dismissed.**
-  - If the logs are ambiguous: **Escalated to Manual Audit.**
+  - If the logs show both joined for >80% of the duration: **Claim Dismissed.** Exactly 80% is not
+    enough (Decision #343, ruling C5 (b)); **Not built yet:** today the audit dismisses at 80%.
+  - If the logs are ambiguous: **Escalated to Manual Audit.** A presence matched only by the email a
+    provider reported counts as ambiguous (ruling C4 (b)), and a sitting with no logs at all is held
+    for review instead of being released (ruling C5 (a)).
 
 #### 4. Reputation Impact
 
@@ -2822,6 +3087,13 @@ prevent illicit activity.
   Level 2 and Level 3 verification.
 - **The "Safety Hold":** New accounts or high-risk transactions may be subject to a 72-hour security
   hold before funds can be withdrawn from the platform.
+- **Posture: not AML-obliged, AML-ready.** Projective operates as a platform that is not obliged
+  under anti-money-laundering law, but it captures from day one the records an obliged platform
+  would need — customer due-diligence and KYC references and the monitoring signals above — and
+  keeps them for the AML period. The programme around them (a reporting officer's role, a
+  suspicious-activity review queue, regulator registration, reporting exports) exists but stays
+  switched off, ready if a court or regulator rules that Projective is obliged (Decision #336,
+  ruling I1, pending counsel). **Not built yet.**
 
 #### 4. Legal Handover & IP Documents
 
@@ -2841,8 +3113,27 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
 - **PII Encryption:** Sensitive data (SSNs, Passport numbers) are never stored in plain text. We
   utilise **Supabase Vault** and AES-256 encryption at the application layer.
 - **Retention Policies:** We strictly adhere to GDPR/CCPA "Right to be Forgotten" protocols, while
-  maintaining the minimum data required by financial regulators for tax auditing (typically 7
-  years).
+  maintaining the minimum data required by financial regulators. Each class of record is kept for
+  the longest period any obligation could require; every period is a platform setting with a
+  per-country override, and the periods are in `finance-model.md` (retention) (Decision #336, ruling
+  I1, pending counsel).
+- **Erasure keeps only a legal-hold record.** When an account is erased, the platform keeps a
+  minimal, encrypted identity record (legal name, date of birth, country, verification references),
+  linked to the money records it must retain, readable only by the platform's own service, and
+  purged when the retention period ends (Decision #336, ruling I1 (a)).
+- **Two windows.** A freelancer who switches to a client-only account keeps their freelancer profile
+  for 90 days, as today; an explicit erasure request always completes within 30 days, on every path.
+  Both windows become platform settings (ruling I1 (b)).
+- **Seats are left at once.** Scheduling an erasure leaves every team and business seat immediately,
+  and the person's stake is redistributed by each team's split rule (ruling I1 (c)).
+- **Search forgets too.** Erasure removes the person's search vectors, search history and affinity
+  data (ruling I1 (d)).
+- **Backups.** Erased data survives only in encrypted backups until they expire (at most 30 days);
+  backups are never used for ordinary access, and any restore re-applies every erasure, from a log
+  holding no personal data, before the system goes live (ruling I1, pending counsel).
+
+Apart from the 90-day window, everything after "Retention Policies" above is **Not built yet**
+(Decision #336, ruling I1).
 
 ### Screen Sharing & Privacy Mode
 
@@ -2956,11 +3247,20 @@ signed in to, and it never reveals whether some other address has an account (De
 link was opened in this browser, the page continues in. If it was opened on another device, the
 page says "Email confirmed" and asks the reader to sign in here.
 
-`/login` additionally offers an **Enterprise SSO** path (new, 2026-07-13): the user enters a
-corporate email **domain** (e.g. `company.com`) which is resolved to that company's configured
-**SAML/OIDC** identity provider to begin the handshake (`/api/auth/sso`). SSO IdP wiring is deferred
-(the surface ships now, provider resolution lands with Supabase/enterprise onboarding); this sits
-alongside the roadmap's Microsoft/GitHub/Apple SSO in `SYSTEM_ARCHITECTURE.md` §Authentication.
+**Enterprise SSO is Planned, and hidden until it works** (Decision #336, ruling S7). `/login` shows
+no SSO path while no identity provider can answer it. The roadmap is verified company domains first,
+then SAML through the platform's auth provider, then seats granted on a member's first sign-in — on
+Enterprise plans only; this sits alongside the roadmap's Microsoft/GitHub/Apple SSO in
+`SYSTEM_ARCHITECTURE.md` §Authentication. **Not built yet:** today `/login` still shows an SSO panel
+(a corporate domain field, `/api/auth/sso`) that cannot complete. Alerting a domain's existing
+colleagues when someone signs up with it is off, and will return only for DNS-verified domains with
+free-mail domains excluded — **Planned** (ruling S7 (a)).
+
+**Two-step verification.** Anyone may turn on an authenticator-app code. A withdrawal, a change of
+payout account, an ownership transfer, a co-owner grant and an erasure always ask for that second
+step first, and the same actions re-check that the session has not been signed out elsewhere, since
+a signed-out session can otherwise act for up to an hour (Decision #336, ruling I3). **Not built
+yet.**
 
 ### Onboarding step sequence (single-screen, non-scrolling wizard)
 
@@ -2981,9 +3281,13 @@ Enterprise: scale — employees + industry + **website / corporate domain**)_ ·
 interests _(Individual: optional, max 5, **shown only when Freelancer**; Enterprise: structure —
 address + departments)_ · **1.5** identity _(Individual: first/last/username; Enterprise:
 legal/brand name, handle, CRN)_ · **1.6** credentials _(Individual: email, DoB, password;
-Enterprise: corporate email, phone, admin password)_. **Password setup is skipped entirely for
-OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** — authenticating
-mid-flow pre-fills their identity and returns them to the flow rather than bypassing it.
+Enterprise: corporate email, phone, the owning admin's DoB, admin password)_. Every natural person,
+an enterprise's owner included, has a profile with a date of birth, and existing owners are
+back-filled (Decision #336, ruling I2). **Not built yet:** until then an owner with no profile is
+refused at enterprise sign-up, because the age check fails closed. **Password setup is skipped
+entirely for OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** —
+authenticating mid-flow pre-fills their identity and returns them to the flow rather than bypassing
+it.
 
 The optional Purpose/Skills tags are chosen from an interactive **pill cluster** with a combobox for
 adding custom tags, capped at **5** per cluster.
@@ -3025,9 +3329,11 @@ Birth**, and the join form, the API and the database all enforce:
 
 (`MIN_AGE = 13`, `ADULT_AGE = 18`.) The mid-minor (13–15) and upper-minor (16–17) tiers are a
 classification only: the platform applies one restricted rule set to both, and the EU's national
-digital-consent ages (13 to 16) are not applied separately. A 13th or 18th birthday changes the state
-automatically. None of this adds a column to the work/delivery status machine in
-`PRODUCT_MANAGEMENT.md`.
+digital-consent ages (13 to 16) are not applied separately — a minor's data is processed on a basis
+other than consent, under one global rule, and nobody under 16 receives marketing email or
+non-essential cookies (Decision #336, ruling I4; **Not built yet** for the under-16 rule). A 13th or
+18th birthday changes the state automatically. None of this adds a column to the work/delivery
+status machine in `PRODUCT_MANAGEMENT.md`.
 
 **Birthdays turn over on the person's own date.** An age is whole years counted on today's date in
 the person's time zone — the zone their browser reports at sign-up, stored as the profile's time
@@ -3092,14 +3398,16 @@ and every project a restricted account creates is one:
 - A project stays personal for life — a minor's after their 18th birthday too; a new project is
   started to hire.
 
-**Legal responsibility for minors — the proxy model (post-MVP, disabled).** A future release may let a
-13–17-year-old contribute within a Team or Business. When it does, an **adult aged 18 or over** — the
-age of majority across the US, UK and EU, not a higher threshold — must hold the verified Team or
-Business vault, execute the stage contracts and assume full legal, contractual and IP-indemnification
-liability; the minor never holds money. **Raw guardian IDs are never stored for child freelancing**
-unless the platform is operating an enterprise entity proxy (GDPR Article 9 special-category
-exposure). For the MVP this is off: the database refuses every minor as a member of a Team, Business
-or Enterprise (the owner's decision, 2026-10-13).
+**Legal responsibility for minors — the proxy model (built behind a switch that stays off).** A
+13–17-year-old may contribute within a Team or Business once this is switched on. Then an **adult
+aged 18 or over** — the age of majority across the US, UK and EU, not a higher threshold — must hold
+the verified Team or Business vault, execute the stage contracts and assume full legal, contractual
+and IP-indemnification liability; the minor never holds money. **Raw guardian IDs are never stored
+for child freelancing** unless the platform is operating an enterprise entity proxy (data
+minimisation, GDPR Art. 5(1)(c)). The model is being built now, but its switch stays off until
+counsel approves it; until then the database refuses every minor as a member of a Team, Business or
+Enterprise (the owner's decision, 2026-10-13; Decision #336, ruling I4, pending counsel). **Not
+built yet.**
 
 ### Individual onboarding — "quick to onboard, slow to set up"
 
@@ -3127,7 +3435,8 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
   industry / sector.
 - **Initial IAM:** Initial **departments** (expandable top-level list); initial **admin/stakeholder
   invites** (repeatable Name · Email · base permission tier).
-- **Admin login:** the owning admin's name + password (signs in with the corporate email).
+- **Admin login:** the owning admin's name, date of birth and password (signs in with the corporate
+  email); the owner is a person with their own profile (Decision #336, ruling I2).
 
 > The enterprise is still created in a **Draft/Unverified** state; full KYB (registration
 > documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
@@ -3255,18 +3564,24 @@ share route is excluded from indexing. Every dead state — unknown, expired, re
 download limit — returns an **identical** not-found response, because a distinguishable failure
 tells a stranger that something is there.
 
+**What is admitted.** Every file is checked from its own bytes before it is admitted, and scanned
+for malware on the platform's own safety service. A document carrying macros (an Office file with
+macros) is admitted for private use only: it is recorded as such and never published (Decision #340,
+ruling T5). **Not built yet** for the malware scan and the macro rule.
+
 ### Storage quotas
 
 Storage is a **stock**, not a periodic allowance: it is metered against the owning principal's plan
 and does not reset. Quotas apply only to assets the platform itself stores — a file mounted from a
 connected drive counts against that provider, and a web link stores no bytes at all.
 
-| Plan tier                                                       | Included storage |
-| :-------------------------------------------------------------- | :--------------- |
-| Free (individual, team, business, enterprise)                 | 25 GB            |
-| Individual Pro                                                  | 150 GB           |
-| Team Pro · Business Pro                                         | 500 GB           |
-| Enterprise                                                    | Unlimited        |
+| Plan tier                                     | Included storage                                                                |
+| :-------------------------------------------- | :------------------------------------------------------------------------------ |
+| Free (individual, team, business, enterprise) | 25 GB                                                                           |
+| Individual Pro                                | 150 GB                                                                          |
+| Team Pro · Business Pro                       | 500 GB                                                                          |
+| Agency                                        | Not yet set (pending Decision #252, ruling S2)                                  |
+| Enterprise                                    | Unlimited, under review with Agency's figure (pending Decision #252, ruling S2) |
 
 Consistent with every other footprint cap, the quota **meters and warns before it refuses**:
 enforcement is gated by a platform parameter that ships off, so exceeding a quota is visible long
@@ -3395,11 +3710,10 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |
 |               | `/catalogue/[listing slug]` | `edit`                 | One listing's workspace — the Edit tab (basics, media showcase, SEO and reach, with the live feed card and the publish checklist beside it), then Preview, Analytics and Clients. Autosaves; the footer holds the save status, the publish gate and the lifecycle actions (Decision #304) |
 |               | `/catalogue/[listing slug]/simulate` | `simulate`    | The owner's buyer simulation (Decision #217(j)) — the real listing page, framed by the Preview tab with no shell; every buyer action shows what would happen and nothing is booked or charged. Owner only; anyone else gets a 404 |
-|               | `/messages`               | `index`                  | All messages list                                                                              |
-|               | `/messages/[message id]`  | `chat`                   | Active conversation                                                                            |
-|               |                           | `details`                | Message/Contact info                                                                           |
-|               |                           | `files/index`            | List shared files                                                                              |
-|               |                           | `files/[file id]`        | View specific file                                                                             |
+|               | `/messages`               | `index`                  | The inbox with no conversation open — the conversation list is the lane                        |
+|               | `/messages/[conversation]` | `index`                  | The conversation's Chat. A conversation is addressed by its opaque `cht-…` slug, and `/messages/dm-<handle>` answers 303 to the conversation with that person (Decision #339, ruling N1; **Not built yet** for the `cht-` slug) |
+|               |                           | `files`                  | The files shared in the conversation                                                           |
+|               |                           | `members`                | The conversation's members                                                                     |
 |               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |
 |               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
 |               | `/saved`                  | `index`                  | Everything the account saved, starred, favourited or followed (`?tab=` · `?collection=`) — Saved & Favourites |
@@ -3425,7 +3739,6 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `transactions`           | The full ledger, newest first, paged, with a CSV export                                         |
 |               |                           | `analytics`              | Cash flow over the window picked on the pinned range ruler, the balance breakdown, and money moved by category and by project |
 |               |                           | `invoices`               | A business vault's bills due, the accruing month and past statements (a non-business wallet is told it is not billed) |
-|               |                           | `create`                 | Setup new wallet                                                                               |
 |               |                           | `[wallet id]`            | View specific wallet — addressed as `?w=scope:id` on `/wallet` (a view filter), never a path segment |
 |               | `/checkout`               | `index`                  | **Step 1 — Basket & lists.** The acting principal's basket plus its named lists (a list is a named basket row, not a separate table). `/basket` **302→** here, query string preserved |
 |               |                           | `details`                | **Step 2 — Delivery & billing.** Distraction-free chrome (DESIGN_SYSTEM Part D.6). Auto-skips to `payment` when the saved details are already complete; `?edit=1` forces the form open |
@@ -3564,7 +3877,9 @@ Consistency across the monorepo is maintained through a robust layer of custom h
 - **State Persistence:** `useLocalStorage` / `useSessionStorage` for persistent UI states.
 - **Intersection Logic:** `useIntersectionObserver` for infinite scroll and lazy-loading components.
 - **Financial Math:** `useWorkloadIntensity` for real-time $W_i$ calculations in the UI.
-- **Presence:** `usePresence` for real-time collaboration signals via Supabase.
+- **Presence:** there is no real-time presence hook. `usePresence` (`@projective/ui/overlay`) is an
+  overlay's mount-and-exit helper, not a collaboration signal, and no message reaches an open page
+  live yet (Decision #339 (k)).
 
 ### 4. Charting & Visualization Suite
 

@@ -13,14 +13,20 @@ Event (RPC / trigger / cron)
                        ├─ collapse into a recent same-group row?
                        ├─ fn_resolve_channels   (catalog ∩ preferences ∩ quiet hours ∩ digest)
                        ├─ INSERT comms.notifications        ──► Realtime  (in-app, migration 0206)
+                       │     └─ AFTER INSERT on_notification_created_dispatch
+                       │           → fn_dispatch_notification ──► Edge Function (push/email/SMS)
                        ├─ INSERT comms.notification_deliveries (one per channel, per device)
-                       │     └─ trigger fn_dispatch_notification ──► Edge Function (push/email/SMS)
                        └─ security.audit_logs               (catalog rows flagged `audit`)
 ```
 
+The dispatch hook hangs off `comms.notifications`, not `notification_deliveries` (#339 (i)). It is
+off by default (`security.feature_flags` `comms.dispatch_webhook`, a placeholder
+`platform_params.comms_dispatch_url`) and posts with no authentication (#335 (e)).
+
 Time-based flows go the other way round: a scheduler calls `comms.fn_enqueue`, and
-`comms.fn_process_queue` (cron, every minute) turns each due promise into a real notification
-through the same `fn_notify`.
+`comms.fn_process_queue` turns each due promise into a real notification through the same
+`fn_notify`. It is meant to run every minute but is **not registered** in `00005060` today (#339
+(i); Decision #203 flag (a)).
 
 ---
 

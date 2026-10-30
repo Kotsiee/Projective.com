@@ -281,7 +281,8 @@ component state.
 **useFileProcessor** A non-visual hook for handling file pipelines.
 
 - **Functionality:** Manages a `processingQueue`. It takes a list of `FileProcessor` objects (e.g.,
-  Image Resizer, Virus Scanner) and applies them sequentially to files added via `FileDrop`.
+  an image resizer) and applies them sequentially to files added via `FileDrop`. Malware scanning is
+  never a client processor; it is server-side (§Storage Lifecycle, #340 (h)).
 
 **useCurrencyMask** Transforms a numeric signal into a localized currency string.
 
@@ -992,10 +993,11 @@ the conversation list / detail / contact-picker / settings projections — are t
 `MessagePage`/`ChatMessage` because a project channel and the inbox are one thread, **unified by
 `chatId`** (`PRODUCT_SPEC.md` §Unified Messaging) — so the fixtures derive the `dm-{handle}`
 conversation ids to match the project DM ids. Stub-first behind **`MESSAGING_BACKEND_LIVE`**
-(default off), gated by `isMessagingBackendLive()`; the live path (RLS-scoped `messages.*` tables)
-slots in behind that guard with zero shape churn. Full feature detail (the floating pop-out chat
-with navigation memory, the role-specific advanced filters, the profile quick-message popover, the
-`messagingRole` dev-context axis) is logged in the root `CLAUDE.md` §8 Decision #49.
+(default off), gated by `isMessagingBackendLive()`; the live path (the RLS-scoped `comms` tables
+`dm_threads` / `dm_messages` and `project_channels` / `project_messages`, #339 (k)) slots in behind
+that guard with zero shape churn. Full feature detail (the floating pop-out chat with navigation
+memory, the role-specific advanced filters, the profile quick-message popover, the `messagingRole`
+dev-context axis) is logged in the root `CLAUDE.md` §8 Decision #49.
 
 **Conversation writes and the ranked picker (Decision #102).** The inbox's two writes — starting a
 conversation (`POST /api/messaging/conversations`, one pick → the pair's DM, several or a named
@@ -1117,28 +1119,32 @@ send ─▶ Tier 1  in-process pre-filter (fat service, sync, <2 ms) ──refus
 callers) before the insert, in the same Deno process — no network hop, no per-call cost. Pipeline:
 (1) NFKC-normalise and fold Unicode confusables/homoglyphs (Cyrillic `а` → `a`, full-width digits,
 zero-width joiners stripped) so an obfuscated address is matched in its plain form; (2) extract URLs
-and bare domains with `linkify-it`, resolve the registrable domain with `tldts`, and match it against
-the payment / messaging host list `comms.mask_pii` carries; (3) run the four Tier 2 categories over
-the normalised text; (4) Luhn-check every 13–19 digit run so a payment card is refused while a long
-numeric reference is not. A hit is refused as `422` naming the category, shown inline by the
-composer. Hot paths may move into the `WASM` package (§Packages → WASM) when profiling warrants;
-the contract is unchanged. **Today Tier 1 is only the composer's advisory warning:**
-`packages/types/comms/pii.ts` (`maskPii` / `containsPii`), pinned to the SQL patterns by
-`pii.contract.test.ts`. Any category Tier 1 adds (card numbers, confusable-folded matches) must land
-in `comms.mask_pii` in the same change — otherwise a direct write stores what the edge refuses.
+and bare domains with `linkify-it`, resolve the registrable domain with `tldts`, and match it
+against the payment / messaging host list `comms.mask_pii` carries; (3) run the four Tier 2
+categories over the normalised text; (4) Luhn-check every 13–19 digit run so a payment card is
+refused while a long numeric reference is not. A hit is refused as `422` naming the category, shown
+inline by the composer. Hot paths may move into the `WASM` package (§Packages → WASM) when profiling
+warrants; the contract is unchanged. **Not built yet** (Decision #340, ruling T2): no message
+composer warns or refuses today (#340 (k)). The TS twin of the patterns,
+`packages/types/comms/pii.ts` (`maskPii` / `containsPii`, pinned to the SQL by
+`pii.contract.test.ts`), is used only by the feedback form and the fixture messaging path. Any
+category Tier 1 adds (card numbers, confusable-folded matches) must land in `comms.mask_pii` in the
+same change — otherwise a direct write stores what the edge refuses.
 
 **Tier 2 — database enforcement (shipped).** `trg_mask_message_pii` (`comms.project_messages`) and
-`trg_dm_messages_mask_pii` (`comms.dm_messages`), `BEFORE INSERT` (the stage-room one also on
-`UPDATE OF body, body_delta`), `SECURITY DEFINER`
-(`00001300` / `00001840`). Each resolves the protected engagement (`projects.is_protected_phase` for
-a channel's project; `comms.fn_dm_protected_project` for a DM), runs the `IMMUTABLE`
-`comms.mask_pii(text)`, and on any hit rewrites `body`, nulls `body_delta`, and sets `pii_masked` /
-`pii_categories`. It fires on every insert path, so a client that skips the services is still
-masked. A sender's edit (`edit_own_messages`, column grant `UPDATE (body, body_delta, edited_at,
-deleted_at)`) is masked the same way, and `pii_masked` / `pii_categories` are not client-writable, so
-an edit cannot clear an earlier hit (closes Decision #147 flag (c)). `comms.dm_messages` has no
-`UPDATE` policy. The phase cannot be lifted by a client: `handover_unlocked_at` is a derived column
-and `status` moves only through `set_project_status` (`00001895`).
+`trg_dm_messages_mask_pii` (`comms.dm_messages`), both
+`BEFORE INSERT OR UPDATE OF body, body_delta`, `SECURITY DEFINER` (`00001300` / `00001840`). Each
+first drops a `body_delta` that does not spell the stored `body` exactly (`comms.fn_delta_text`, in
+every phase), so a Delta cannot smuggle what the body hides (#340, SEC L2). Each then resolves the
+protected engagement (`projects.is_protected_phase` for a channel's project;
+`comms.fn_dm_protected_project` for a DM), runs the `IMMUTABLE` `comms.mask_pii(text)`, and on any
+hit rewrites `body`, nulls `body_delta`, and sets `pii_masked` / `pii_categories`. It fires on every
+insert path, so a client that skips the services is still masked. A sender's edit
+(`edit_own_messages`, column grant `UPDATE (body, body_delta, edited_at, deleted_at)`) is masked the
+same way, and `pii_masked` / `pii_categories` are not client-writable, so an edit cannot clear an
+earlier hit (closes Decision #147 flag (c)). `comms.dm_messages` has no `UPDATE` policy. The phase
+cannot be lifted by a client: `handover_unlocked_at` is a derived column and `status` moves only
+through `set_project_status` (`00001895`).
 
 **Tier 3 — asynchronous deep NLP (planned).** A dedicated, Dockerised **Microsoft Presidio**
 analyzer (spaCy NER + Presidio pattern/context recognisers, plus custom recognisers for spelled-out
@@ -1147,11 +1153,15 @@ fed **after commit** by a background worker draining a queue of candidate messag
 rows Tier 2 did not mask, plus rows Tier 1/2 flagged as near-misses — so message latency never
 depends on it. It returns entity spans and scores only; it never writes `comms.*_messages`. Scores
 above threshold become review-queue entries for the **Consequences** ladder (`PRODUCT_SPEC.md`
-§Messaging 1). The analyzer is reachable only from the worker on a private network, keeps no
-payload after scoring, and is not a sub-processor (message bodies never leave Projective's own
-infrastructure). The queue table, the review-queue table, the worker and the analyzer's environment
-key are not yet designed; each lands with its migration, Zod schema, `documentation/database/*` entry
-and Environment Variable Contract line in one change (§1 Additive Rule, Zod SSOT).
+§Messaging 1). The analyzer is reachable only from the worker on a private network, keeps no payload
+after scoring, and is not a sub-processor (message bodies never leave Projective's own
+infrastructure). **One thing does leave: a URL a message carries.** When a reader previews it
+(`POST /api/links/preview`) or opens it through `/exit`, `files/link-scan.ts` sends the URL alone,
+never the message, to Google Safe Browsing v4 (`files/link-reputation.ts`) (#340 (j)). The ruled
+replacement is Google Web Risk, the commercial twin (Decision #340, ruling T5), **not built yet**.
+The queue table, the review-queue table, the worker and the analyzer's environment key are not yet
+designed; each lands with its migration, Zod schema, `documentation/database/*` entry and
+Environment Variable Contract line in one change (§1 Additive Rule, Zod SSOT).
 
 **Why self-hosted, zero-SaaS.** Enterprise trust & safety APIs (Sift, Hive Moderation and peers) were
 rejected: per-message pricing scales with the busiest surface on the platform, every protected-phase
@@ -1939,8 +1949,9 @@ leaves `files.items` untouched.
 files read gate, never writes and never counts (Decision #161; §Asset Management → The file inspector
 and the streaming proxy).
 
-Gaps, stated: there is no third-party **malware** scan yet (the checks are a content sniff and a
-full decode), and variant bytes are not metered against the owner's storage quota.
+Gaps, stated: no **malware** scanner runs yet (the checks are a content sniff and a full decode;
+§Storage Lifecycle step 2 has the one description, #340 (h)), and variant bytes are not metered
+against the owner's storage quota.
 
 ### Teams & Businesses — the workspace console (live-only)
 
@@ -2347,8 +2358,11 @@ viruses.
 1. **Ingestion:** Files are initially uploaded to a `quarantine` bucket via a signed upload URL,
    under the uploader's own id prefix.
 2. **Validation:** The fat media service (service role) claims the row, sniffs the magic bytes and
-   fully decodes the file (see §Backend Services → The Public Profile). A third-party **malware**
-   scan by a security provider is the planned addition to this step and is not yet wired.
+   fully decodes the file (see §Backend Services → The Public Profile). **No malware scanner runs
+   today** (#340 (h)): the sniff and the decode are the only checks, and the `scan-file` Edge
+   Function mock that never scanned is deleted. The scan is **ClamAV on the self-hosted safety
+   node** (not a third-party provider), called from `live-uploads.ts` `completeUpload` between the
+   sniff and the promote (EPI §6.4; #335 (d)). **Not built yet** (Decision #340, ruling T5).
 3. **Promotion:** A file that passes is admitted to its destination (a person's private library in
    `personal`, with its WebP tiers) and the database record is updated; a public copy only ever
    reaches `avatars` / `showcase` as a pipeline-cut rendition. A file that fails is deleted from
@@ -2449,11 +2463,13 @@ logic and external integrations.
 
 ### The Notification Engine
 
-Migrations `20260724090000`–`20260724094000`. Zod SSOT `@projective/types/comms`; schema reference
+Migrations `00000016` (tables), `00001310` (functions), `00001840` (triggers), `00002012`
+(policies), `00003003` (views), `00004006` (indexes) and `00005010` (the catalog seed) (#339 (k)).
+Zod SSOT `@projective/types/comms`; schema reference
 [`database/comms/`](../database/comms/Tables.md).
 
-**Routing policy is data, not code.** `comms.notification_types` holds one row per event key
-(94 seeded) declaring its category, urgency, default channel fan-out, mute-ability, quiet-hours
+**Routing policy is data, not code.** `comms.notification_types` holds one row per event key (112
+seeded) declaring its category, urgency, default channel fan-out, mute-ability, quiet-hours
 override, dedupe window and audit flag. `comms.fn_resolve_channels` intersects that with the
 recipient's global / per-category / per-type preferences, their quiet hours and their digest cadence.
 Adding an event is a catalog row, not a code change in every emit site.
@@ -2461,8 +2477,9 @@ Adding an event is a catalog row, not a code change in every emit site.
 ```
 Event (RPC / trigger / cron)
   └─ comms.fn_notify ─┬─ INSERT comms.notifications ──► Supabase Realtime      (in-app)
+                      │     └─ AFTER INSERT trigger ──► dispatch Edge Function (push · email · SMS;
+                      │                                  flag-off, placeholder URL — #339 (i))
                       ├─ INSERT comms.notification_deliveries (per channel/device)
-                      │     └─ AFTER INSERT trigger ──► dispatch Edge Function (push · email · SMS)
                       └─ security.audit_logs                                    (financial/security events)
 pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (not registered yet — §Scheduled jobs)
 ```
@@ -2533,9 +2550,11 @@ request lifecycle.
   session claims) before any handler runs and resolves a tampered or expired one to a guest; the
   `(dashboard)` guard admits only a verified session, renewing or clearing the rest (§Sessions,
   "Access-token verification", Decision #205).
-- **Role-Based Access Control (RBAC):** Permissions are checked at the Service layer using custom
-  claims within the JWT (e.g., the acting context's `role`), ensuring that "Projective" users can
-  only access resources within the entities they are authorised for.
+- **Role-Based Access Control (RBAC):** Authority lives in SQL: `org.fn_member_can` (`00001020`) and
+  the RLS helpers decide what an acting context may do, re-checked inside every door. The JWT's
+  claims (`active_context` and its `role`) are chrome and scoping only. They pick what the shell
+  shows and which entity a request acts for, never what it may do, and no RLS policy reads them (K5;
+  #336 (C)).
 - **Session Integrity:** We use secure, HTTP-only cookies for session persistence to mitigate
   XSS-based token theft.
 
@@ -2545,10 +2564,12 @@ RLS is mandatory for all database tables to prevent cross-tenant data leakage.
 
 - **Tenant Isolation:** Every table containing user or entity data includes an
   owning-entity id or `user_id` column.
-- **Policies:** Migration series `0200_org_rls.sql` defines strict `USING` and `WITH CHECK` clauses
-  that verify the user's `auth.uid()` or an acting-context claim in `auth.jwt()` matches the row data.
-- **Bypassing:** Only the service-role key (used within authenticated Edge Functions) can bypass RLS
-  for administrative tasks like file scanning.
+- **Policies:** `00002001`–`00002021` (RLS enabled in `00002001`, then one file per schema family)
+  define strict `USING` and `WITH CHECK` clauses that verify the user's `auth.uid()` against the
+  row, through the RLS helpers. No policy reads an `auth.jwt()` claim (K5).
+- **Bypassing:** Only the service-role key can bypass RLS. The server holds it for privileged paths
+  such as the upload pipeline's promote; no Edge Function holds it today (`supabase/functions/` is
+  gone, #340 (h)).
 
 ### Function `EXECUTE` grants (deny by default)
 
@@ -2670,8 +2691,11 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   that leaves the simulation opens in a new tab (`PreviewFrameBridge`). Every other page still
   refuses to be framed.
   The streaming proxy's non-inline-safe responses carry their own `default-src 'none'; sandbox`.
-- **Secrets Management:** Sensitive keys (Stripe API, AWS keys) are stored in **Supabase Vault** and
-  accessed via environment variables in Edge Functions, never hardcoded in the repository.
+- **Secrets Management:** The app reads its keys (Stripe, storage connectors, providers) from its
+  own environment: `.env.local` first, then `.env`, per §Environment Variable Contract. No Edge
+  Function holds them (FA (d); #335 (k)). **Supabase Vault** holds only what the `pg_cron` /
+  `pg_net` jobs need: `CRON_APP_URL` and each http job's bearer (`secret_name`, §Scheduled jobs).
+  Nothing is hardcoded in the repository.
 
 ### Cryptography & WASM Integrity
 
@@ -2718,6 +2742,12 @@ PostgreSQL RLS.
   confirmed answer carries `signedIn` (whether the request holds a session), so the page continues
   in, or shows "Email confirmed — sign in" when the link was opened on another device. Resend and
   forgot-password were already uniform.
+- **Environment:** an unset `DENO_ENV` is production, so stub auth, dev overrides and relaxed
+  cookies need `DENO_ENV=development` by name (K10, IW-M1; §Environment Variable Contract).
+- **Enterprise SSO is SAML-first and flag-hidden.** Today `/login` and the sign-in prompt still show
+  the SSO entry (`SsoPanel`) with no provider configured. The ruled roadmap is to hide the panel
+  now, then verified domains → SAML through GoTrue → JIT seats, on the Enterprise plan only. **Not
+  built yet** (Decision #336 (f), ruling S7).
 - **Extensibility:** The architecture must be built to support a unified integration model later. As
   traction builds, the platform will expand to include Microsoft (Azure AD), GitHub, and Apple SSO.
 - **Database Sync:** A Supabase trigger automatically creates a corresponding public `users` profile
@@ -2871,8 +2901,8 @@ than one that is merely stale.
 
 | Layer            | Owner                                                        | Responsibility                                                                                                                                                              |
 | :--------------- | :----------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rates            | `finance.fx_rates` (+ a seeded floor, both directions)       | Append-only observations. `FxService` is the only reader.                                                                                                                   |
-| Engine           | `@server/services/finance/FxService.ts`                      | Per-base rate table cached 15 min in **Deno KV**, falling through to a per-isolate memory cache then to the seeded fixtures. `convertAmount()` returns the value **and** its `asOf` snapshot instant. Never throws; an unresolvable pair returns the ORIGIN unchanged. |
+| Rates            | `finance.fx_rates` (+ a seeded floor, both directions)       | Append-only observations. `FxService` is the only reader, as `anon` (public reference data). It reads only the rows quoted against the platform base (GBP), so the seeded inverse pairs are never read (FA (s)). |
+| Engine           | `@server/services/finance/FxService.ts`                      | One GBP-based table, re-based for any other base by one division through the pivot (`rebase`), cached 15 min in **Deno KV** with a per-isolate memory fallback. There are no fixtures: `fx-fixtures.ts` is deleted (FA (s)). `convertAmount()` returns the value **and** its `asOf` snapshot instant. Never throws; an unresolvable pair returns the ORIGIN unchanged. |
 | Preference       | `org.user_preferences.preferred_display_currency` / `locale` | Stamped into the JWT by `custom_access_token_hook`; a guest's choice rides the `pj.currency` cookie so SSR can read it. `PATCH /api/user/preferences` writes it under RLS.  |
 | Request scope    | `apps/web/utils/currency-context.ts`                         | Resolves the request's `(currency, locale, table)` and carries it through the whole render via `AsyncLocalStorage`.                                                        |
 | Presentation     | `@projective/ui/display` `MoneyView`                         | Renders it. Formats with `Intl.NumberFormat` on the viewer's locale; discloses the origin inline when the currencies differ.                                               |
@@ -3148,14 +3178,16 @@ It is a satellite of this section: where they differ, this section wins, and its
   `finance.escrows` — who is owed what); Stripe owns the **fiat rails**.
 - **Payment Flow:** We use **Separate Charges & Transfers** (§8 Decision #125). The Client's card is
   charged on the **platform** account (tap-and-pay, no client KYC) with no `transfer_data`; the
-  settled amount is credited to a Projective wallet and held in the platform's Stripe balance (acting
-  as Escrow); on approval the ledger releases it, and payouts move it to the connected Express account
-  as **Transfers** (grouped by `transfer_group`), the 5% fee retained by transferring less. This
-  line previously said **Destination Charges** while describing hold-in-platform-balance behaviour.
-  A destination charge transfers to the connected account the moment the payment succeeds, so it
-  cannot hold escrow until approval, needs the payee at charge time (a stage's payee is known only at
-  claim), and has one destination (a team payout splits across members). **Confirmed by the product
-  owner 2026-09-29** (Decision #125): Separate Charges & Transfers is the pattern.
+  settled amount is credited to a Projective wallet and held in the platform's Stripe balance
+  (acting as Escrow); on approval the ledger releases it, and payouts move it to the connected
+  Express account as **Transfers**, the 5% fee retained by transferring less. A transfer is grouped
+  per payout (`transfer_group` `projective_payout_<id>`), never by the charge it came from (FDD
+  X14). This line previously said **Destination Charges** while describing hold-in-platform-balance
+  behaviour. A destination charge transfers to the connected account the moment the payment
+  succeeds, so it cannot hold escrow until approval, needs the payee at charge time (a stage's payee
+  is known only at claim), and has one destination (a team payout splits across members).
+  **Confirmed by the product owner 2026-09-29** (Decision #125): Separate Charges & Transfers is the
+  pattern.
 - **Identity & readiness (KYC/KYB):** **Stripe Identity** performs the freelancer Level-2 gov-ID /
   liveness check; **Stripe Connect** onboarding performs business KYB. The verdicts are mirrored
   into the app-owned caches (`org.freelancer_profiles.kyc_*`, `org.business_profiles.kyb_*`) and the
@@ -3169,17 +3201,24 @@ It is a satellite of this section: where they differ, this section wins, and its
 - **FX:** cross-currency commits snapshot the rate used (`finance.fx_rates` → `fx_rate`/`fx_base`/
   `fx_as_of` on the ledger row) so settlement is reproducible; display conversion is read-time only.
 - **Webhooks:** The `PaymentService` listens on TWO event destinations. The snapshot endpoint
-  (`/api/finance/webhooks/stripe`, `STRIPE_WEBHOOK_SECRET`) takes `payment_intent.*`,
-  `identity.verification_session.*`, `transfer.created`, `transfer.reversed`,
-  `charge.dispute.created`/`.closed`, `account.updated` and `setup_intent.succeeded`, and — signed by
-  the platform's CONNECT destination (`STRIPE_CONNECT_WEBHOOK_SECRET`, which may share the URL; the
-  endpoint verifies against either secret) — a connected account's `payout.paid` / `payout.failed`
-  (Decision #202; a payout event without `event.account` is the platform's own and is ignored); the Accounts v2 **thin**-event endpoint
-  (`/api/finance/webhooks/stripe-v2`, `STRIPE_THIN_WEBHOOK_SECRET`) takes the recipient-capability and
-  account-updated events, which carry only an id, so the handler re-reads the account from Stripe before
-  applying anything. Both update the `transactions` ledger, the verification caches and
-  `finance.chargebacks`. Reconciliation compares the Stripe balance against the internal escrow pool
-  (and `finance.v_wallet_reconciliation` checks ledger self-consistency).
+  (`/api/finance/webhooks/stripe`, `STRIPE_WEBHOOK_SECRET`) takes exactly the
+  `HANDLED_STRIPE_EVENTS` of `@projective/types/finance` (`payments.ts`):
+  `payment_intent.succeeded`/`.payment_failed`/`.canceled`,
+  `identity.verification_session.verified`/`.requires_input`/`.canceled`, `transfer.created`,
+  `transfer.reversed`, `charge.dispute.created`/`.closed`, `account.updated` and
+  `setup_intent.succeeded`, and — signed by the platform's CONNECT destination
+  (`STRIPE_CONNECT_WEBHOOK_SECRET`, which may share the URL; the endpoint verifies against either
+  secret) — a connected account's `payout.paid` / `payout.failed` (Decision #202; a payout event
+  without `event.account` is the platform's own and is ignored); the Accounts v2 **thin**-event
+  endpoint (`/api/finance/webhooks/stripe-v2`, `STRIPE_THIN_WEBHOOK_SECRET`) takes the
+  recipient-capability and account-updated events, which carry only an id, so the handler re-reads
+  the account from Stripe before applying anything. Both update the `transactions` ledger, the
+  verification caches and `finance.chargebacks`. **Not handled** (FINANCE_AUDIT H3):
+  `charge.refunded` (a Dashboard refund is never ledgered), `charge.dispute.updated`,
+  `charge.dispute.funds_withdrawn` / `funds_reinstated`, `payout.canceled`, `transfer.updated`,
+  `identity.verification_session.processing` and `v2.core.account[requirements].updated`. **No
+  reconciliation against the Stripe balance is built** (FDD X14, L6): `finance.fn_reconcile_wallets`
+  and `finance.v_wallet_reconciliation` check the ledger's self-consistency only.
 - **Ledger integrity (Decision #186):** `finance.transactions` is the record and is **append-only
   for every role**: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` (`PL403`) even for the
   table owner and the service role (which holds only `SELECT` + `INSERT`), `wallet_id` is
@@ -3244,10 +3283,9 @@ It is a satellite of this section: where they differ, this section wins, and its
   payment without its ledger credit, and every `settlement_mismatch` / `business_archived` still
   awaiting a human.
 - **Every processor door is idempotent on the Stripe event id** (`stripe:<evt>` in
-  `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events:
-  the four above plus `payment_intent.payment_failed`/`.canceled` and
-  `identity.verification_session.requires_input`/`.canceled`. A test-mode event on a live deployment
-  (or the reverse) is acknowledged and ignored.
+  `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events: the
+  list under Webhooks above, which is `HANDLED_STRIPE_EVENTS` plus `HANDLED_STRIPE_THIN_EVENTS`. A
+  test-mode event on a live deployment (or the reverse) is acknowledged and ignored.
 - **Code:** `packages/backend/core/stripe.ts` (lazy client, key-shape validation, webhook
   verification with Web Crypto) · `services/finance/{PaymentBackendService,live-payments,stripe-rails,stripe-webhook}.ts`
   · Zod SSOT `@projective/types/finance` (`payments.ts`). SDK `npm:stripe@22`, API version pinned

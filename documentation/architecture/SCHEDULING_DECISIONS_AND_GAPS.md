@@ -3,9 +3,9 @@
 > **Evaluation, not binding.** This is the decision half of the scheduling audit. The evidence lives
 > in [`SCHEDULING_COMPLETENESS_AUDIT.md`](SCHEDULING_COMPLETENESS_AUDIT.md). Finding IDs (`S-nn`)
 > point there and are not restated here (`documentation/CLAUDE.md` rule 2). No code, migration or
-> source-of-truth document was changed. Every ruling below waits for a human. The contradictions it
-> found are proposed as **Decision #335** (§5). The number was the next free one in
-> `reference/decisions/README.md` on 2026-10-29; re-check it before logging.
+> source-of-truth document was changed. The owner ruled every decision below on 2026-10-30. The
+> contradictions it found and those rulings are recorded as **Decision #343** (§5). It was drafted
+> as "#335", a number the providers spec took the same day.
 >
 > Abbreviations: **T22** = `supabase/migrations/00000022_tables_scheduling.sql` · **T17** =
 > `…/00000017_tables_finance.sql` · **F1155** = `…/00001155_functions_projects_sessions.sql` ·
@@ -19,8 +19,9 @@
 
 > **Status 2026-10-30:** D0, S-26 and S-30 were fixed on 2026-10-29. D0 also covers `cohorts` and
 > `cohort_memberships`. On 2026-10-30 D0's two owner doors landed (`schedule_sitting`,
-> `retitle_sitting`), with S-05's calendar mirror. Until D2 is ruled, no vote can move a group
-> sitting. S-06, S-07, S-16 (for `anon`) and S-32 are also fixed. D1–D9 still wait for a ruling.
+> `retitle_sitting`), with S-05's calendar mirror. Until D2 is built, no vote can move a group
+> sitting. S-06, S-07, S-16 (for `anon`) and S-32 are also fixed. The owner ruled D1–D9 on
+> 2026-10-30 (Decision #343).
 
 | #      | Decision                                                              | Recommendation                                                                                                                                          | Why now                                                                                                                                                       |
 | :----- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -281,7 +282,7 @@ There are three definitions:
 **Recommendation:** keep the TS rule. It is the one settlement actually runs, and its reasoning
 holds: "a time they cannot make is a time that excludes them". Correct the enum comment, and make
 the workspace read call the same predicate (`role <> 'host'`). This is a new contradiction, so it
-goes into Decision #335.
+goes into Decision #343.
 
 ### 3.4 D6 — the runtime for calendar sync and room minting
 
@@ -304,7 +305,7 @@ adapters in **Edge Functions**. The codebase built none of them that way:
 - Amend SA §3.3 and §Edge Functions & Webhooks.
 
 One runtime, one guard model, one job registry. This is a new contradiction (SA vs code) and goes
-into Decision #335.
+into Decision #343.
 
 ### 3.5 D7 — courtesy-call reliability
 
@@ -349,9 +350,9 @@ and confirmed calls.
 5. **D1 Option C**, then **D2**, which D1 depends on for paid-call windows.
 6. **D5, D7, D8, D9**: these can run in parallel with steps 4 and 5.
 
-## 5. Proposed Decision #335 (draft, not logged)
+## 5. Decision #343 (drafted as "#335", recorded 2026-10-30)
 
-> **#335** Scheduling audit rulings (2026-10-29, proposed). **Contradictions surfaced, not
+> **#343** Scheduling audit rulings (2026-10-29, ruled 2026-10-30). **Contradictions surfaced, not
 > resolved:**
 >
 > - (a) The majority denominator has three definitions (`coordination.ts:651` counts optional seats;
@@ -366,4 +367,5 @@ and confirmed calls.
 > - (e) `DESIGN_SYSTEM.md:2902-2906` says the Month view paginates, while its §C.1 roster and
 >   `packages/ui/calendar/core/month-window.ts` scroll continuously.
 >
-> **Proposed rulings, awaiting the owner:** D0 to D9 of `SCHEDULING_DECISIONS_AND_GAPS.md`.
+> **Owner rulings (2026-10-30):** D1 to D9 of `SCHEDULING_DECISIONS_AND_GAPS.md` (D0 was a fix),
+> recorded in full on the row in `reference/decisions/decisions-122-126.md`.

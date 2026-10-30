@@ -9,7 +9,9 @@ domain follows once populated.
 ## `ops.reports` — not migrated
 
 The user-reporting table of the Two-Zone moderation model (Decision #148) **does not exist yet**:
-`00000013_tables_ops.sql` defines only `ops.admin_users` and `ops.log_entries`. Its proposed shape —
+`00000013_tables_ops.sql` defines six tables — `ops.admin_users`, `ops.log_entries`,
+`ops.scheduled_jobs`, `ops.http_job_dispatches`, `ops.contact_requests` and
+`ops.contact_request_attachments` — and no `ops.reports` (#340 (m)). Its proposed shape —
 `reporter_user_id`, `reported_subject_type`, `reported_subject_id`, `reason`, an immutable
 server-built `evidence_snapshot jsonb`, `status` (`pending` · `dismissed` · `actioned`) and
 `resolution_notes` — is in `SYSTEM_ARCHITECTURE.md` §Backend Services → Content moderation. It is

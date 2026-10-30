@@ -297,12 +297,14 @@ Constraints worth knowing: `ck_call_confirmed_has_slot` (a confirmed call must h
 or nothing, as on `events`).
 
 > ⚠️ **FLAGGED — paid calls cannot ride `finance.escrows` yet** (root `CLAUDE.md` §8).
-> `finance.escrows` requires **both** `project_stage_id` and `payer_business_id` NOT NULL, so a
-> standalone 1-1 paid call between an individual client and a freelancer has no legal escrow row.
-> `escrow_id` is nullable and populated only when a call attaches to an already-funded stage. The
-> two candidate fixes — (a) relax those two columns (a **protected** table, root `CLAUDE.md` §1), or
-> (b) auto-provision a session-format micro-project — both need human sign-off. Until then a paid
-> call records its own `payment_ref` and the money path is deferred.
+> `finance.escrows.project_stage_id` is NOT NULL, so a standalone 1-1 paid call has no escrow row.
+> `payer_business_id` is no longer the blocker: it is nullable since Decision #126, with
+> `payer_user_id` for an individual payer (exactly one is set). Session engagements are built
+> (Decision #211: a sitting's escrow rides its session-format project). `escrow_id` is nullable and
+> populated only when a call attaches to an already-funded stage; a paid call records its own
+> `payment_ref` and has no money path (scheduling (c); FDD X2). The ruled path is to refuse the paid
+> flavour now, then one hidden "Consultations" engagement per host on #211's session rail. **Not
+> built yet** (Decision #343, ruling C1).
 
 > ⚠️ **FLAGGED — cancellation economics.** `finance-model.md` §4 says a late session cancel forfeits
 > 50%; `PRODUCT_SPEC.md` §Sessions says full forfeit (and wins per the hierarchy). That conflict is
@@ -311,6 +313,10 @@ or nothing, as on `events`).
 > without another migration. The **courtesy** rules are new and deliberate: a free call has no
 > money, so a late cancel or no-show carries **no financial consequence** — it is a reliability
 > signal only. Whether that signal feeds `security.penalties` / discovery rank is also flagged.
+> **Both are now ruled** (Decision #343): a late cancel forfeits 100% (ruling C2 (a)), which is what
+> the code already does (#171), and courtesy-call reliability feeds Standing at low weight, from
+> presence-verified no-shows only, at most one mark per counterparty per 30 days (ruling C6, D7),
+> which is not built yet.
 
 #### The discovery-call lifecycle
 
