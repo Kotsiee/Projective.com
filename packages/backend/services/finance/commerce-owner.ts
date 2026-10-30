@@ -3,7 +3,6 @@ import { getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { FxService } from "./FxService.ts";
-import type { MoneyProjector } from "./commerce-money.ts";
 
 /**
  * commerce-owner — WHOSE money a basket, a saved card or a checkout spends, and what the platform
@@ -309,36 +308,57 @@ export async function listOwners(query: OwnerQuery, actor: ReadActor): Promise<R
 // #endregion
 
 // #region Wallet
+/** One of the account's wallets, as the balance read selects it. */
+interface WalletRow {
+	owner_type: string;
+	currency: string;
+	balance_cents: number | string;
+}
+
 /**
- * The account's spendable Projective balance in the read's display currency, in minor units.
+ * Per currency, the Available balance of the ONE wallet `finance.place_wallet_order` debits for a
+ * charge in it: the owner's own type first, so a person's `user` wallet before their `freelancer`
+ * one, exactly as the order function picks. Two wallets are never added together.
+ */
+export function payingWallets(
+	rows: readonly WalletRow[],
+	ownerType: PurchaseOwnerType,
+): Map<string, number> {
+	const out = new Map<string, number>();
+	for (const row of rows) {
+		const currency = row.currency.toUpperCase();
+		if (out.has(currency) && row.owner_type !== ownerType) continue;
+		out.set(currency, Number(row.balance_cents) || 0);
+	}
+	return out;
+}
+
+/**
+ * The account's spendable Projective balance per currency, each in its own minor units.
  *
  * `finance.wallets.balance_cents` is the AVAILABLE balance (the ledger is materialised single-entry:
  * escrow holds debit it, and releases credit it — see `documentation/database/finance/Tables.md`). An
- * account may hold one wallet per currency, and each is converted at the SAME table the rest of the
- * checkout is priced against before they are counted together. A wallet whose currency cannot be
- * converted is left out rather than added at an assumed rate, and an account with no wallet reads
- * zero — the SSOT's provider rules then refuse the wallet route with their own shortfall wording.
+ * order is paid from ONE wallet, the account's wallet in the charge currency (`place_wallet_order`
+ * refuses PF402 otherwise), so a cover is that wallet's balance against the charge in that currency:
+ * nothing here is converted, and no total is taken across currencies. A currency the account holds
+ * no wallet in is absent, which reads as nothing to pay from.
  *
- * Read with the caller's token (`View visible wallets`), so a non-member reads zero.
+ * Read with the caller's token (`View visible wallets`), so a non-member reads no wallet.
  */
-export async function walletAvailableMinor(
+export async function walletBalances(
 	owner: ResolvedOwner,
-	money: MoneyProjector,
 	actor: ReadActor,
-): Promise<number> {
-	if (!canReadLive(actor)) return 0;
+): Promise<Map<string, number>> {
+	if (!canReadLive(actor)) return new Map();
 	const types = owner.isEntity ? [owner.ownerType] : ["user", "freelancer"];
+	// shortcut: balance_cents is all spendable while no pot earmarks part of it; once pots earmark,
+	// net them out in this read's SQL, never by a subtraction in TS.
 	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
 		.from("wallets")
-		.select("currency, balance_cents")
+		.select("owner_type, currency, balance_cents")
 		.eq("owner_id", owner.ownerId)
 		.in("owner_type", types);
 	if (error) throw new Error(`finance.wallets read failed: ${error.message}`);
-	let total = 0;
-	for (const row of (data ?? []) as { currency: string; balance_cents: number | string }[]) {
-		if (!money.canConvert(row.currency)) continue;
-		total += money.convertMinor(Number(row.balance_cents) || 0, row.currency);
-	}
-	return total;
+	return payingWallets((data ?? []) as WalletRow[], owner.ownerType);
 }
 // #endregion

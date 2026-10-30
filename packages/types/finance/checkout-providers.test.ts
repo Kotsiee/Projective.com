@@ -1,10 +1,11 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import {
 	availableProviders,
 	PaymentProvider,
 	type ProviderContext,
 	type SavedCard,
 } from "./checkout.ts";
+import { formatMoney } from "./wallet.ts";
 
 /** A saved card with only the fields the offer reads changed from a neutral default. */
 function card(over: Partial<SavedCard> = {}): SavedCard {
@@ -32,7 +33,7 @@ function card(over: Partial<SavedCard> = {}): SavedCard {
 const person: ProviderContext = {
 	ownerType: "user",
 	actingIsMember: true,
-	walletAvailableMinor: 10_000,
+	wallet: { availableMinor: 10_000, chargeMinor: 8_010, currency: "USD" },
 	totalMinor: 8_010,
 	currency: "USD",
 	savedCards: [card()],
@@ -89,6 +90,34 @@ Deno.test("an entity pays by card only with a business card, and is told how to 
 Deno.test("a non-member of an entity is refused every route", () => {
 	const offer = availableProviders({ ...person, ownerType: "team", actingIsMember: false });
 	assert(offer.every((entry) => !entry.available && entry.reason !== null));
+});
+
+Deno.test("the wallet is offered only when the wallet in the charge's currency covers it, and a refusal names that wallet", () => {
+	const gbp = (availableMinor: number, chargeMinor: number) =>
+		offerOf({ ...person, wallet: { availableMinor, chargeMinor, currency: "GBP" } }).wallet;
+	assert(gbp(5_000, 4_000).available);
+	assert(gbp(5_000, 5_000).available);
+	const short = gbp(5_000, 8_000);
+	assert(!short.available);
+	assertStringIncludes(
+		short.reason ?? "",
+		`the GBP wallet, which holds ${formatMoney(5_000, "GBP")}`,
+	);
+	assertStringIncludes(short.reason ?? "", `${formatMoney(3_000, "GBP")} short`);
+});
+
+Deno.test("a wallet's shortfall is stated in its own currency and exponent, not the checkout's", () => {
+	const yen = offerOf({
+		...person,
+		wallet: { availableMinor: 500, chargeMinor: 800, currency: "JPY" },
+	});
+	assertStringIncludes(yen.wallet.reason ?? "", `${formatMoney(300, "JPY")} short`);
+});
+
+Deno.test("lines priced in more than one currency leave no wallet to pay from", () => {
+	const mixed = offerOf({ ...person, wallet: null });
+	assert(!mixed.wallet.available);
+	assertStringIncludes(mixed.wallet.reason ?? "", "mixes currencies");
 });
 
 Deno.test("a verified business pays by invoice only on monthly invoicing, with nothing overdue, inside its limit", () => {

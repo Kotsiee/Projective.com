@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { StageFundingQuote } from "@projective/types/finance";
+import { formatMoney, type StageFundingQuote } from "@projective/types/finance";
 import { stageFundingPlan, stageLockSentence } from "./stage-funding.ts";
 
 function quote(over: Partial<StageFundingQuote> = {}): StageFundingQuote {
@@ -33,6 +33,15 @@ Deno.test("a wallet short of the stage leaves only the card — fund_stage is al
 		"wallet",
 		"card",
 	]);
+});
+
+Deno.test("a stage follows the checkout's rule: only the wallet in the stage's currency covers it", () => {
+	// `get_stage_funding_quote` carries that one wallet's balance; a balance in another currency never enters.
+	const gbp = (amountMinor: number) =>
+		stageFundingPlan(quote({ currency: "GBP", amountMinor, walletBalanceMinor: 5_000 }));
+	assertEquals(gbp(8_000).methods, ["card"]);
+	assertEquals(gbp(4_000).methods, ["wallet", "card"]);
+	assertStringIncludes(gbp(8_000).walletLabel, formatMoney(5_000, "GBP"));
 });
 
 Deno.test("an individual payer's wallet is named as their own", () => {
