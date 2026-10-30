@@ -247,7 +247,6 @@ export interface ArticleRow {
 	title: string;
 	topic: string;
 	summary: string;
-	body: unknown;
 	cover_file_id: string | null;
 	read_minutes: number;
 	published_at: string | null;
@@ -429,6 +428,8 @@ export interface Catalog {
 	sponsoredSubjects: Set<string>;
 	/** Every active placement on a published listing, oldest flight first. */
 	placements: CatalogPlacement[];
+	/** Every `org.skills` label — the skills typeahead matches against it without a read of its own. */
+	skillLabels: string[];
 	/** When this load completed. */
 	loadedAt: number;
 }
@@ -448,30 +449,47 @@ let reportedMissingWeights = false;
 let cached: { at: number; value: Promise<Catalog> } | null = null;
 /** The last catalogue that loaded successfully — served by {@link peekCatalog} even once expired. */
 let latest: Catalog | null = null;
+/** The one read in flight, shared by every caller that waits on it. */
+let inflight: Promise<Catalog> | null = null;
+/** Bumped by {@link invalidateCatalog}, so a read that started before a write is never cached. */
+let generation = 0;
+
+/** Start (or join) the one catalogue read; a success becomes the fresh cache entry. */
+function reload(): Promise<Catalog> {
+	if (inflight) return inflight;
+	const gen = generation;
+	const read: Promise<Catalog> = readCatalog().then((catalog) => {
+		if (gen === generation) {
+			latest = catalog;
+			cached = { at: Date.now(), value: Promise.resolve(catalog) };
+		}
+		return catalog;
+	}).finally(() => {
+		if (inflight === read) inflight = null;
+	});
+	inflight = read;
+	return read;
+}
 
 /**
  * The public discovery catalogue — from cache when fresh, else one load shared by every concurrent
- * caller (the in-flight promise is what is cached, so a burst of requests after expiry triggers ONE
- * read, not one each). A failed load is not cached: the next request retries rather than being
- * served the failure for the whole TTL.
+ * caller. Once an entry merely EXPIRES, callers are served the last good catalogue while one
+ * background read refreshes it (stale-while-revalidate), so expiry never blocks a request. An empty
+ * or invalidated cache waits for the read. A failed read is not cached: the next request retries.
  */
 export function loadCatalog(): Promise<Catalog> {
-	const now = Date.now();
-	if (cached && now - cached.at < CATALOG_TTL_MS) return cached.value;
-	const value = readCatalog().then((catalog) => {
-		latest = catalog;
-		return catalog;
-	}).catch((error) => {
-		if (cached?.value === value) cached = null;
-		throw error;
-	});
-	cached = { at: now, value };
-	return value;
+	if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.value;
+	const read = reload();
+	if (!cached || !latest) return read;
+	read.catch((error) => console.warn(`[explore] background catalogue refresh failed: ${error}`));
+	return Promise.resolve(latest);
 }
 
 /** Drop the cached catalogue — called after any write that changes what is published. */
 export function invalidateCatalog(): void {
 	cached = null;
+	inflight = null;
+	generation++;
 }
 
 /**
@@ -511,6 +529,19 @@ export function primeCatalogForTesting(
 ): void {
 	latest = catalog;
 	cached = catalog && options.serve ? { at: Date.now(), value: Promise.resolve(catalog) } : null;
+	inflight = null;
+	generation++;
+}
+
+/**
+ * One published article's stored blocks — the catalogue projection carries no `body`, so the view
+ * page reads the one it renders. `null` when the article is gone or unpublished.
+ */
+export async function readArticleBody(articleId: string): Promise<unknown> {
+	const { data, error } = await getAnonClient().schema("catalogue").from("articles").select("body")
+		.eq("id", articleId).eq("status", "published").maybeSingle();
+	if (error) fail("catalogue.articles", error.message);
+	return data?.body ?? null;
 }
 
 // #endregion
@@ -551,7 +582,59 @@ function fail(table: string, message: string): never {
 	throw new Error(`explore catalogue: reading ${table} failed — ${message}`);
 }
 
-/** `select … where id in (…)`, chunked so a long id list never exceeds a URL's length. */
+/**
+ * PostgREST's `max_rows` (`supabase/config.toml`): the most rows one response carries. A longer
+ * result is cut to this length WITHOUT an error, so every catalogue read pages under it.
+ */
+export const PAGE_ROWS = 1000;
+
+/** One keyset page: rows in key order, strictly after `after` (`null` = the first page), at most `limit`. */
+export type PageReader = (
+	after: string | null,
+	limit: number,
+) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
+
+/**
+ * Every row a page reader can reach, read in keyset pages so the `max_rows` cap can never silently
+ * truncate a table. A page shorter than {@link PAGE_ROWS} is the last one, which is why the page size
+ * must equal the server cap: a larger page would come back cut and read as the end.
+ */
+export async function readAllPages<T>(
+	label: string,
+	key: keyof T & string,
+	page: PageReader,
+): Promise<T[]> {
+	const out: T[] = [];
+	let after: string | null = null;
+	for (;;) {
+		const { data, error } = await page(after, PAGE_ROWS);
+		if (error) fail(label, error.message);
+		const rows = (data ?? []) as T[];
+		out.push(...rows);
+		if (rows.length < PAGE_ROWS) return out;
+		after = String(rows[rows.length - 1][key]);
+	}
+}
+
+/** The slice of a PostgREST filter builder a keyset page needs. */
+interface KeysetQuery {
+	gt(column: string, value: string): KeysetQuery;
+	order(column: string): { limit(count: number): ReturnType<PageReader> };
+}
+
+/** Every row of `base()` (a filtered select), paged by its unique `key` column. */
+function readTable<T>(label: string, key: keyof T & string, base: () => KeysetQuery): Promise<T[]> {
+	return readAllPages<T>(
+		label,
+		key,
+		(after, limit) => (after === null ? base() : base().gt(key, after)).order(key).limit(limit),
+	);
+}
+
+/**
+ * `select … where id in (…)`, chunked so a long id list never exceeds a URL's length, the chunks read
+ * in parallel. A chunk that comes back at the row cap may have been cut, so it is halved and re-read.
+ */
 async function byIds<T>(
 	db: SupabaseClient,
 	schema: string,
@@ -561,64 +644,85 @@ async function byIds<T>(
 	ids: readonly string[],
 ): Promise<T[]> {
 	const unique = [...new Set(ids.filter((id) => !!id))];
-	const out: T[] = [];
-	for (let i = 0; i < unique.length; i += 100) {
-		const chunk = unique.slice(i, i + 100);
+	const read = async (chunk: string[]): Promise<T[]> => {
 		const { data, error } = await db.schema(schema).from(table).select(columns).in(column, chunk);
 		if (error) fail(`${schema}.${table}`, error.message);
-		out.push(...((data ?? []) as T[]));
-	}
-	return out;
+		const rows = (data ?? []) as T[];
+		if (rows.length < PAGE_ROWS) return rows;
+		if (chunk.length === 1) fail(`${schema}.${table}`, `over ${PAGE_ROWS} rows for one ${column}`);
+		const mid = chunk.length >> 1;
+		const halves = await Promise.all([read(chunk.slice(0, mid)), read(chunk.slice(mid))]);
+		return halves.flat();
+	};
+	const chunks: string[][] = [];
+	for (let i = 0; i < unique.length; i += 100) chunks.push(unique.slice(i, i + 100));
+	return (await Promise.all(chunks.map(read))).flat();
 }
 
 async function readCatalog(): Promise<Catalog> {
 	const db = getAnonClient();
 
 	const [
-		profilesRes,
-		listingsRes,
-		articlesRes,
-		projectsRes,
-		placementsRes,
-		skillsRes,
-		penaltiesRes,
+		profiles,
+		listings,
+		articles,
+		projects,
+		placementRows,
+		skillRows,
+		penalties,
 		weightsRes,
 		trendingRes,
 	] = await Promise
 		.all([
-			db.schema("org").from("profiles_index").select(
-				"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap, verification_stamp",
+			readTable<ProfileRow>(
+				"org.profiles_index",
+				"entity_id",
+				() =>
+					db.schema("org").from("profiles_index").select(
+						"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap, verification_stamp",
+					),
 			),
-			db.schema("catalogue").from("listings").select(
-				LISTING_COLUMNS,
-			).eq("status", "published"),
-			db.schema("catalogue").from("articles").select(
-				"id, slug, owner_user_id, owner_team_id, title, topic, summary, body, cover_file_id, read_minutes, published_at, created_at",
-			).eq("status", "published"),
-			db.schema("projects").from("projects").select(PROJECT_COLUMNS).eq("status", "active").eq(
-				"visibility",
-				"public",
+			readTable<ListingRow>(
+				"catalogue.listings",
+				"id",
+				() =>
+					db.schema("catalogue").from("listings").select(LISTING_COLUMNS).eq("status", "published"),
 			),
-			db.schema("marketplace").from("promoted_placements")
-				.select("entity_type, entity_id, surface")
-				.order("starts_at", { ascending: true }),
-			db.schema("org").from("skills").select("id, slug, label"),
+			// No `body`: no card renders it, and the view page reads its one article's (`readArticleBody`).
+			readTable<ArticleRow>(
+				"catalogue.articles",
+				"id",
+				() =>
+					db.schema("catalogue").from("articles").select(
+						"id, slug, owner_user_id, owner_team_id, title, topic, summary, cover_file_id, read_minutes, published_at, created_at",
+					).eq("status", "published"),
+			),
+			readTable<ProjectRow>(
+				"projects.projects",
+				"id",
+				() =>
+					db.schema("projects").from("projects").select(PROJECT_COLUMNS).eq("status", "active")
+						.eq("visibility", "public"),
+			),
+			readTable<PlacementRow & { id: string; starts_at: string }>(
+				"marketplace.promoted_placements",
+				"id",
+				() =>
+					db.schema("marketplace").from("promoted_placements")
+						.select("id, entity_type, entity_id, surface, starts_at"),
+			),
+			readTable<{ id: string; slug: string; label: string }>("org.skills", "id", () =>
+				db.schema("org").from("skills").select("id, slug, label")),
 			// The trust penalty's denormalised cache (security.fn_recalc_penalty_aggregates keeps it).
-			db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
-				.gt("discovery_penalty", 0),
+			readTable<PenaltyRow>("search.profiles_index", "entity_id", () =>
+				db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
+					.gt("discovery_penalty", 0)),
 			db.schema("search").rpc("ranking_weights"),
 			db.schema("search").rpc("trending_entities", {
 				p_days: TRENDING_WINDOW_DAYS,
 				p_limit: TRENDING_READ_LIMIT,
 			}),
 		]);
-	if (profilesRes.error) fail("org.profiles_index", profilesRes.error.message);
-	if (listingsRes.error) fail("catalogue.listings", listingsRes.error.message);
-	if (articlesRes.error) fail("catalogue.articles", articlesRes.error.message);
-	if (projectsRes.error) fail("projects.projects", projectsRes.error.message);
-	if (placementsRes.error) fail("marketplace.promoted_placements", placementsRes.error.message);
-	if (skillsRes.error) fail("org.skills", skillsRes.error.message);
-	if (penaltiesRes.error) fail("search.profiles_index", penaltiesRes.error.message);
 	if (weightsRes.error) fail("search.ranking_weights()", weightsRes.error.message);
 	if (trendingRes.error) fail("search.trending_entities()", trendingRes.error.message);
 
@@ -633,12 +737,8 @@ async function readCatalog(): Promise<Catalog> {
 		);
 	}
 
-	const profiles = (profilesRes.data ?? []) as ProfileRow[];
-	const listings = (listingsRes.data ?? []) as ListingRow[];
-	const articles = (articlesRes.data ?? []) as ArticleRow[];
-	const projects = (projectsRes.data ?? []) as ProjectRow[];
-	const placements = (placementsRes.data ?? []) as PlacementRow[];
-	const skillRows = (skillsRes.data ?? []) as Array<{ id: string; slug: string; label: string }>;
+	// Paged by id, so the oldest-flight-first order is restored here.
+	const placements = placementRows.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
 	const blueprintIds = listings.map((l) => l.service_blueprint_id).filter((x): x is string => !!x);
 	const productIds = listings.map((l) => l.product_id).filter((x): x is string => !!x);
@@ -746,7 +846,7 @@ async function readCatalog(): Promise<Catalog> {
 		requiredSkills,
 		skillRows,
 		placements,
-		penalties: (penaltiesRes.data ?? []) as PenaltyRow[],
+		penalties,
 		weights: weightRows,
 		trending: (trendingRes.data ?? []) as TrendingEntityRow[],
 	});
@@ -1503,6 +1603,7 @@ export function assemble(input: Inputs): Catalog {
 		profileById,
 		sponsoredSubjects,
 		placements,
+		skillLabels: input.skillRows.map((s) => s.label),
 		loadedAt: Date.now(),
 	};
 }

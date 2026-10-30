@@ -15,12 +15,11 @@ import type {
 import type { EntityView, SkillRef } from "@projective/types/explore";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { invalidateCatalog } from "../explore/live-catalog.ts";
+import { invalidateCatalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import { buildLiveViewPage } from "../explore/live-view.ts";
 import { resolveSkills } from "../explore/skills.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
-import { UserBackendService } from "../user/UserBackendService.ts";
 import { listingDetail, listListings } from "./live-catalogue.ts";
 import {
 	applyListingMedia,
@@ -187,16 +186,16 @@ export class CatalogueBackendService {
 
 	/**
 	 * The `org.skills` labels matching a typed prefix, as the skill refs a listing stores. Public
-	 * reference data, so no seller session is needed; an unreachable taxonomy is a 503, never an
-	 * invented list.
+	 * reference data, so no seller session is needed. Matched against the shared catalogue's taxonomy
+	 * rather than a read per keystroke; an unreachable taxonomy is a 503, never an invented list.
 	 */
 	static async skills(query: string): Promise<Result<{ skills: SkillRef[] }>> {
-		const taxonomy = await UserBackendService.starterSkills();
-		if (!taxonomy.ok || !taxonomy.data) {
-			return fail(taxonomy.status, { message: taxonomy.message ?? "Skills aren't available." });
+		try {
+			const { skillLabels } = await loadCatalog();
+			return ok({ skills: resolveSkills(matchSkillLabels(skillLabels, query)) });
+		} catch {
+			return fail(503, { message: "Skills aren't available." });
 		}
-		const labels = matchSkillLabels(taxonomy.data.skills.map((s) => s.label), query);
-		return ok({ skills: resolveSkills(labels) });
 	}
 
 	/**

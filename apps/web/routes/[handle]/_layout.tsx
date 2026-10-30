@@ -210,8 +210,10 @@ export default define.page(async function ProfileLayout(ctx) {
 		const tab: OwnerNavTab = segments[2] === "availability" ? "availability" : "edit";
 		return shell(
 			<div class="pf-scope pf-scope--edit">
-				{/* The owner nav is server-rendered; the sheet it needs rides this anchor even when the
-				    page below it (a refusal note) mounts no island. */}
+				{
+					/* The owner nav is server-rendered; the sheet it needs rides this anchor even when the
+				    page below it (a refusal note) mounts no island. */
+				}
 				<ProfileStyleAnchor />
 				{owner && (
 					<OwnerNav
@@ -230,8 +232,10 @@ export default define.page(async function ProfileLayout(ctx) {
 	if (segments[1] === "availability") {
 		return shell(
 			<div class="pf-scope pf-scope--calendar">
-				{/* The calendar and its identity strip are server-rendered here, so the profile sheet
-				    needs a carrier of its own on this branch (the island-carrier rule, Decision #39). */}
+				{
+					/* The calendar and its identity strip are server-rendered here, so the profile sheet
+				    needs a carrier of its own on this branch (the island-carrier rule, Decision #39). */
+				}
 				<ProfileStyleAnchor />
 				<ProfileCalendarHead profile={profile} />
 				<ctx.Component />
@@ -245,24 +249,24 @@ export default define.page(async function ProfileLayout(ctx) {
 	// A business sells nothing and is hired by nobody (Decision #244): it takes no listings at all, so
 	// no price or purchase surface can render on its page whatever a stale catalogue row says.
 	const business = profile.kind === "business";
-	// The listings render on every section, so they are resolved here, together.
-	const [services, products]: [ServiceItem[], ProductItem[]] = business
-		? [[], []]
-		: await Promise.all([
-			resolveProfileServices(profile.handle),
-			resolveProfileProducts(profile.handle),
-		]);
 	const seller = isSellerKind(profile.kind);
 	const actor = readActor(ctx);
-	// A seller's call offer feeds the Hire popover's consultation row (and the owner's preview shows
-	// the row their visitors see); a buyer entity takes none.
-	const consultation = seller ? await resolveConsultationOffer(profile, actor) : null;
-	// Only a signed-in VISITOR of a seller can add them to a project, so only that viewer pays for
-	// the read.
 	const restricted = isRestrictedRequest(ctx.req, context);
-	const hireProjects = authed && !owner && seller && !restricted
-		? await resolveHireProjects(actor, profile.handle)
-		: [];
+	// Independent reads, so they run in one wave. The listings render on every section. A seller's
+	// call offer feeds the Hire popover's consultation row (and the owner's preview shows the row
+	// their visitors see); a buyer entity takes none. Only a signed-in VISITOR of a seller can add
+	// them to a project, so only that viewer pays for the hire-projects read.
+	const [services, products, consultation, hireProjects]: [
+		ServiceItem[],
+		ProductItem[],
+		Awaited<ReturnType<typeof resolveConsultationOffer>> | null,
+		Awaited<ReturnType<typeof resolveHireProjects>>,
+	] = await Promise.all([
+		business ? [] : resolveProfileServices(profile.handle),
+		business ? [] : resolveProfileProducts(profile.handle),
+		seller ? resolveConsultationOffer(profile, actor) : null,
+		authed && !owner && seller && !restricted ? resolveHireProjects(actor, profile.handle) : [],
+	]);
 	// The migrated sticky header — resolved HERE, from the same reads the hero takes, so the band's
 	// rig and the hero's rig are hydrated from one answer and cannot offer different controls.
 	const stickyHeader = (

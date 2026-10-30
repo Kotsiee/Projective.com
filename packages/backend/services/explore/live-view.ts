@@ -4,7 +4,7 @@ import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
-import { displayPrice, entityKey, peekCatalog, stampOf } from "./live-catalog.ts";
+import { displayPrice, entityKey, peekCatalog, readArticleBody, stampOf } from "./live-catalog.ts";
 import { nearestToEntity } from "../search/embedding-index.ts";
 import { reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
 import {
@@ -739,10 +739,11 @@ function productViewFor(
 function articleViewFor(
 	catalog: Catalog,
 	item: Extract<ExploreItem, { type: "articles" }>,
+	body: unknown,
 ): ArticleViewExtra | undefined {
 	const row = catalog.articleBySlug.get(item.id);
 	if (!row) return undefined;
-	const stored = parseStoredList(StoredArticleBlockSchema, row.body);
+	const stored = parseStoredList(StoredArticleBlockSchema, body);
 	const toc: ArticleTocEntry[] = [];
 	const assets: ArticleAsset[] = [];
 	// Heading anchors follow the editorial content rules (`@projective/types/content` anchors), so an
@@ -965,7 +966,12 @@ export const NO_REVIEWS: EntityView["reviews"] = {
 
 /** Compose the full `/view/[id]` payload for a catalogue item, reviews included. */
 export async function buildLiveViewPage(catalog: Catalog, item: ExploreItem): Promise<EntityView> {
-	return composeViewPage(catalog, item, await reviewsFor(catalog, item));
+	const articleId = item.type === "articles" ? catalog.articleBySlug.get(item.id)?.id : undefined;
+	const [reviews, articleBody] = await Promise.all([
+		reviewsFor(catalog, item),
+		articleId ? readArticleBody(articleId) : null,
+	]);
+	return composeViewPage(catalog, item, reviews, articleBody);
 }
 
 /**
@@ -974,12 +980,14 @@ export async function buildLiveViewPage(catalog: Catalog, item: ExploreItem): Pr
  * The booking and instantiate paths need the listing's service shape (its model, session format,
  * stage template and intake questions) and nothing about its reviews; they call this with
  * {@link NO_REVIEWS} rather than paying for a reviews read they would discard. One composer serves
- * both, so the booking flow validates answers against exactly the intake the page rendered.
+ * both, so the booking flow validates answers against exactly the intake the page rendered. The
+ * article body arrives the same way, since the catalogue projection carries none.
  */
 export function composeViewPage(
 	catalog: Catalog,
 	item: ExploreItem,
 	reviews: EntityView["reviews"] = NO_REVIEWS,
+	articleBody: unknown = null,
 ): EntityView {
 	return {
 		item,
@@ -992,7 +1000,7 @@ export function composeViewPage(
 		similar: similarTo(catalog, item),
 		reviews,
 		project: item.type === "projects" ? projectViewFor(catalog, item) : undefined,
-		article: item.type === "articles" ? articleViewFor(catalog, item) : undefined,
+		article: item.type === "articles" ? articleViewFor(catalog, item, articleBody) : undefined,
 		service: item.type === "services" ? serviceViewFor(catalog, item) : undefined,
 		product: item.type === "products" ? productViewFor(catalog, item) : undefined,
 	};

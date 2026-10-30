@@ -168,6 +168,16 @@ export function defineEditorialSurface(
 // #endregion
 
 // #region Reading
+/** How long one live read of an editorial table is served before it is read again. */
+export const EDITORIAL_CACHE_TTL_MS = 5 * 60_000;
+
+/**
+ * Live reads by table, mapped but NOT yet filtered: visibility is asked at each caller's `now`, so a
+ * release dated an hour ahead still appears on time from a cached read. Editorial rows change only
+ * by migration, so expiry is the only invalidation they need.
+ */
+const liveCache = new Map<string, { at: number; records: unknown[] }>();
+
 /** What {@link readEditorialTable} answers: the mapped records and the road they came by. */
 export interface EditorialRead<Domain> {
 	records: Domain[];
@@ -186,7 +196,9 @@ export interface EditorialReadOptions {
 
 /**
  * Read one editorial table's records by the road this environment takes (see the module docblock),
- * keeping only those the table's `visible` predicate shows at `now` — on both roads alike.
+ * keeping only those the table's `visible` predicate shows at `now` — on both roads alike. A live
+ * read through the default client is cached for {@link EDITORIAL_CACHE_TTL_MS}; an injected client
+ * (a test) always reads fresh.
  *
  * Failures are answers, not throws: an unreachable or unexposed schema is a 503 (PostgREST answers
  * `PGRST106` until `editorial` is in `supabase/config.toml` and the stack restarted), and a row that
@@ -201,10 +213,15 @@ export async function readEditorialTable<Row extends Record<string, unknown>, Do
 	const now = options.now ?? new Date();
 	const { visible } = table;
 	const shown = (records: Domain[]): Domain[] =>
-		visible ? records.filter((record) => visible(record, now)) : records;
+		visible ? records.filter((record) => visible(record, now)) : [...records];
 	try {
 		if (source === "fixture") {
 			return ok({ records: shown(recordsFromRows(table, content.rows())), source });
+		}
+		const cacheable = options.client === undefined;
+		const hit = cacheable ? liveCache.get(table.table) : undefined;
+		if (hit && Date.now() - hit.at < EDITORIAL_CACHE_TTL_MS) {
+			return ok({ records: shown(hit.records as Domain[]), source });
 		}
 		const client = options.client ?? getAnonClient();
 		const { data, error } = await client.schema(table.schema).from(table.name).select("*");
@@ -214,7 +231,9 @@ export async function readEditorialTable<Row extends Record<string, unknown>, Do
 				details: { table: table.table, code: error.code ?? null },
 			});
 		}
-		return ok({ records: shown(recordsFromRows(table, data ?? [])), source });
+		const records = recordsFromRows(table, data ?? []);
+		if (cacheable) liveCache.set(table.table, { at: Date.now(), records });
+		return ok({ records: shown(records), source });
 	} catch (err) {
 		if (err instanceof RowMapperError) {
 			return fail(500, {
