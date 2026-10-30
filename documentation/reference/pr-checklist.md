@@ -6,6 +6,10 @@
 - [ ] Schema change edited **in place** into the consolidated `vvvvtooo_type_purpose.sql` files (no
       new ALTER-on-top migration; columns folded into `CREATE TABLE`); each statement in its correct
       category; Zod + `documentation/database/*` updated together.
+- [ ] A migration, RPC, policy or grant change passes `deno task test:probes:fresh` (`db:reset`,
+      then every `supabase/probes/*.sql`, the committing concurrency probes included), or
+      `deno task test:probes` when the shared local DB must not be reset. A new invariant ships its
+      probe (SYSTEM_ARCHITECTURE §Testing Protocols).
 - [ ] Islands dumb; routes thin; services fat; aliases only.
 - [ ] Pure CSS + BEM, token-only; Material lib only in `packages/ui/system/`.
 - [ ] Separation-hierarchy, a11y overlays, reduced-motion, ARIA, responsive all satisfied.
