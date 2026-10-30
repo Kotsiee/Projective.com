@@ -50,7 +50,7 @@ END $$;
 -- A member's live W_i, summed the way projects.check_ticket_capacity sums it.
 CREATE FUNCTION pg_temp.live_wi(p_user uuid) RETURNS numeric LANGUAGE sql AS $$
     SELECT COALESCE(sum(t.workload_intensity), 0) FROM projects.tickets t
-     WHERE t.current_assignee_id = p_user AND t.status::text IN ('claimed', 'in_progress', 'in_review');
+     WHERE t.current_assignee_id = p_user AND t.status::text IN ('claimed', 'in_progress', 'in_review', 'reported_hidden');
 $$;
 -- #endregion
 

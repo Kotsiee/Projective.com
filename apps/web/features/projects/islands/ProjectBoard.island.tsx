@@ -27,6 +27,7 @@ import {
 	buildBoardColumns,
 	formatTicketMoney,
 	providerVisibleCards,
+	STALE_MOVE_MESSAGE,
 	type TicketStatus,
 	ticketWorkLocked,
 	workColumnLocked,
@@ -164,6 +165,29 @@ function columnTarget(
 function isManualLane(col: BoardColumn): boolean {
 	return col.kind === "new" || (col.kind === "status" && col.status === "backlog");
 }
+
+// #region Per-card move queue
+/**
+ * One card's in-flight moves. Moves of the same card are sent one at a time, each against the card's
+ * last server-confirmed reading, so a chained second drag never reads as stale against the first.
+ * Plain state, not render state: the board renders `cards`, never this.
+ */
+interface CardMoveQueue {
+	/** Settles when the last queued move of this card has been answered. */
+	tail: Promise<void>;
+	/** Moves queued and not yet answered. */
+	pending: number;
+	/** The card as the server last confirmed it (the `expectedUpdatedAt` source and the refusal restore). */
+	confirmed: BoardCard;
+	/** Where the confirmed card sat in the board array before its first queued move. */
+	index: number;
+	/** A move was refused: the rest of this queue is dropped, never sent. */
+	refused: boolean;
+}
+
+/** Card id → its move queue; present only while that card has a move in flight. */
+const moveQueues = new Map<string, CardMoveQueue>();
+// #endregion
 
 /** The ticket as the commit endpoint wants it — the card's own fields, never a re-derived total. */
 export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
@@ -573,6 +597,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			status: "in_progress",
 			stageId: card.stageId,
 			sortOrder: null,
+			expectedUpdatedAt: card.updatedAt,
 		});
 		starting.value = false;
 		if (res.ok && res.data) {
@@ -643,34 +668,72 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 *
 	 * The board splices first so the drag lands under the pointer, then asks the server. On the way
 	 * back the RETURNED card replaces the optimistic one wholesale: a move can change claim state,
-	 * escrow and ordering, and the board has no standing to guess any of them. On refusal the whole
-	 * previous array is restored — not just the card's column, because the splice also reordered its
-	 * neighbours — and the reason is stated.
+	 * escrow and ordering, and the board has no standing to guess any of them.
+	 *
+	 * Moves are serialised per card (`moveQueues`): each request carries `expectedUpdatedAt`, the
+	 * card's last server-confirmed `updatedAt`, so the server refuses a move made against a reading
+	 * someone else has since changed (409, `STALE_MOVE_MESSAGE`) while a chained move of the same card
+	 * is checked against the answer to the one before it. While more moves of the card are queued a
+	 * success only records the confirmed card; the last answer puts the server's card on the board.
+	 * On refusal ONLY this card goes back to its last confirmed reading at its prior position — other
+	 * cards' in-flight moves are untouched — its remaining queued moves are dropped, a stale refusal
+	 * re-reads the card, and the reason is stated.
 	 */
-	async function commitMove(move: KanbanItemMove): Promise<void> {
-		const before = cards.value;
-		const card = before.find((c) => c.id === move.itemId);
+	function commitMove(move: KanbanItemMove): Promise<void> {
+		const card = cards.value.find((c) => c.id === move.itemId);
 		const col = boardColumns.find((c) => c.id === move.toColumn);
-		if (!card || !col) return;
+		if (!card || !col) return Promise.resolve();
 
 		const target = columnTarget(card, col);
 		const sortOrder = isManualLane(col) ? move.toIndex : null;
+		let queue = moveQueues.get(card.id);
+		if (!queue) {
+			queue = {
+				tail: Promise.resolve(),
+				pending: 0,
+				confirmed: card,
+				index: cards.value.indexOf(card),
+				refused: false,
+			};
+			moveQueues.set(card.id, queue);
+		}
+		const q = queue;
+		q.pending++;
 		applyItemMove(move, sortOrder);
 
-		const res = await BoardService.move({
-			projectId: props.projectId,
-			ticketId: card.id,
-			status: target.status,
-			stageId: target.stageId,
-			sortOrder,
+		q.tail = q.tail.then(async () => {
+			if (q.refused) {
+				q.pending--;
+				return;
+			}
+			const res = await BoardService.move({
+				projectId: props.projectId,
+				ticketId: card.id,
+				status: target.status,
+				stageId: target.stageId,
+				sortOrder,
+				expectedUpdatedAt: q.confirmed.updatedAt,
+			});
+			q.pending--;
+			if (res.ok && res.data) {
+				q.confirmed = res.data.card;
+				if (q.pending > 0) return;
+				moveQueues.delete(card.id);
+				const saved = res.data.card;
+				cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+				return;
+			}
+			q.refused = true;
+			if (moveQueues.get(card.id) === q) moveQueues.delete(card.id);
+			const rest = cards.value.filter((c) => c.id !== card.id);
+			const at = Math.min(q.index, rest.length);
+			cards.value = [...rest.slice(0, at), q.confirmed, ...rest.slice(at)];
+			if (res.errors?.ticket === "stale" || res.message === STALE_MOVE_MESSAGE) {
+				void reread(q.confirmed);
+			}
+			toast(res.message ?? "That move could not be saved.");
 		});
-		if (res.ok && res.data) {
-			const saved = res.data.card;
-			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
-			return;
-		}
-		cards.value = before;
-		toast(res.message ?? "That move could not be saved.");
+		return q.tail;
 	}
 
 	function warn(

@@ -110,7 +110,7 @@ export async function resolveHireProjects(
 		}, actor),
 		ProjectBackendService.hireCooldowns(handle, actor),
 	]);
-	return res.ok && res.data ? hireProjectsFrom(res.data.items, cooldowns) : [];
+	return res.ok && res.data ? hireProjectsFrom(res.data.items, cooldowns.data ?? {}) : [];
 }
 
 /** The owner editor's seed — `null` with the status when the viewer may not edit this profile. */

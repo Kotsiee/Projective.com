@@ -74,6 +74,23 @@ CREATE OR REPLACE TRIGGER trg_enforce_structure_variation_stages
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_enforce_structure_variation();
 
+-- The same caps when the shape itself changes (DL S6), judged at commit so a setup save may switch the
+-- shape and retire the extra stages in one transaction. A constraint trigger is never OR REPLACEd, so
+-- it is dropped first to keep this file re-runnable.
+DROP TRIGGER IF EXISTS trg_enforce_structure_variation_switch ON projects.projects;
+CREATE CONSTRAINT TRIGGER trg_enforce_structure_variation_switch
+    AFTER UPDATE OF structure_variation ON projects.projects
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD.structure_variation IS DISTINCT FROM NEW.structure_variation)
+    EXECUTE FUNCTION projects.fn_enforce_structure_variation_switch();
+
+-- A taken seat is never un-taken, so the shape and price locks that read it cannot be lifted (X8).
+CREATE OR REPLACE TRIGGER trg_stage_assignment_lock_guard
+    BEFORE UPDATE OR DELETE ON projects.stage_assignments
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_stage_assignment_lock_guard();
+
 CREATE OR REPLACE TRIGGER trg_stage_revision_terms
     BEFORE INSERT OR UPDATE OF file_revisions_allowed, extra_revision_price_cents ON projects.project_stages
     FOR EACH ROW

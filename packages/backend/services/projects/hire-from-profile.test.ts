@@ -418,18 +418,18 @@ Deno.test("hireCooldowns: a seller who declined inside 48 days is locked on that
 	hireLimiter.reset();
 	// `@juno` has a 5-day-old decline on every third fixture project; `@kenji`'s declines are 60
 	// days old everywhere, so nothing of theirs is active.
-	const juno = await ProjectBackendService.hireCooldowns("@juno", ALICE);
-	const kenji = await ProjectBackendService.hireCooldowns("kenji", ALICE);
+	const juno = (await ProjectBackendService.hireCooldowns("@juno", ALICE)).data ?? {};
+	const kenji = (await ProjectBackendService.hireCooldowns("kenji", ALICE)).data;
 	assert(Object.keys(juno).length > 0, "expected at least one locked project for @juno");
 	assertEquals(kenji, {});
 	for (const until of Object.values(juno)) assert(Date.parse(until) > Date.now());
 	// A guest has sent nothing.
 	assertEquals(
-		await ProjectBackendService.hireCooldowns("@juno", {
+		(await ProjectBackendService.hireCooldowns("@juno", {
 			userId: "",
 			contextId: "",
 			contextType: "personal",
-		}),
+		})).data,
 		{},
 	);
 });
@@ -437,7 +437,7 @@ Deno.test("hireCooldowns: a seller who declined inside 48 days is locked on that
 Deno.test("hire: a locked project refuses the send with the date it lifts; the brief carries it", async () => {
 	resetWriteStore();
 	hireLimiter.reset();
-	const cooldowns = await ProjectBackendService.hireCooldowns("@juno", ALICE);
+	const cooldowns = (await ProjectBackendService.hireCooldowns("@juno", ALICE)).data ?? {};
 	const [slug, until] = Object.entries(cooldowns)[0];
 	const brief = await ProjectBackendService.hireBrief(slug, ALICE, "@juno");
 	assert(brief.ok && brief.data, brief.message);

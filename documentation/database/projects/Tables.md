@@ -57,14 +57,19 @@ and high-level metadata.
 
 **Constraints:** `projects_slug_key` UNIQUE (`slug`) · `ck_projects_slug_shape` · `ck_projects_nda_document`
 (`nda_source = 'custom' OR nda_document_id IS NULL`) · `ck_projects_archived_at`
-(`(status = 'archived') = (archived_at IS NOT NULL)`). **Indexes:** `idx_projects_source_blueprint`
+(`(status = 'archived') = (archived_at IS NOT NULL)`) · `ck_projects_format_structure` (the shape
+is a pair, and only these pairs are storable: `one_off` + `one_off` \| `single_task` \|
+`single_stage`, `pipeline` + `standard` \| `single_stage`, `session` + `standard` — mirrors
+`STORED_SHAPE_PAIRS` in `@projective/types/projects/setup.ts`). **Indexes:** `idx_projects_source_blueprint`
 (`source_blueprint_id, owner_user_id, status` WHERE `source_blueprint_id IS NOT NULL`) ·
 `idx_projects_stale_drafts` (`last_activity_at` WHERE `status = 'draft' AND source_blueprint_id IS NOT
 NULL`) · `idx_projects_client_business` (`client_business_id` WHERE NOT NULL — the business console
 detail, its archive blockers and the bench). **Triggers:** `trg_projects_slug`
 (`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
 · `trg_update_project_counts` · `trg_project_handover_on_complete` · `trg_project_shape_lock` (freezes
-`format`/`structure_variation` once a seat is taken) · `trg_check_public_project_footprint` ·
+`format`/`structure_variation` once a seat is taken) · `trg_enforce_structure_variation_switch`
+(DEFERRED constraint trigger, AFTER UPDATE OF `structure_variation`: the switched-to shape's
+stage/ticket caps, judged at commit) · `trg_check_public_project_footprint` ·
 `trg_projects_touch_updated_at` (`projects.fn_touch_updated_at`, every `UPDATE` — `updated_at` is
 what the Overview's "details changed" lane mark reads, Decision #146).
 
@@ -190,7 +195,7 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 | `slug`                      | text UNIQUE                      | NOT NULL, no default. **The public address.** `stg-` + 10 symbols; minted once, immutable. |
 | `description`               | jsonb                            | NOT NULL `DEFAULT '{}'`.                                                                  |
 | `description_text`          | text                             | NOT NULL `DEFAULT ''`.                                                                    |
-| `sort_order`                | integer                          | NOT NULL. Execution order. Locked once the stage has started (`trg_stage_reorder_lock`).  |
+| `sort_order`                | integer                          | NOT NULL. Execution order; UNIQUE per project (`project_stages_project_sort_order_key`, archived stages keep their slot). Locked once the stage has started (`trg_stage_reorder_lock`). |
 | `status`                    | stage_status                     | NOT NULL `DEFAULT 'open'`. `open`, `assigned`, `in_progress`, `submitted`, `approved`, `revisions`, `paid`, `cancelled`. |
 | `file_upload_required`      | boolean                          | NOT NULL `DEFAULT false`.                                                                 |
 | `allowed_file_kinds`        | text[]                           | NOT NULL `DEFAULT '{}'`. Submittable kinds. **Empty = any.**                              |
@@ -232,11 +237,16 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 
 **Constraints:** `project_stages_slug_key` UNIQUE (`slug`) · `ck_project_stages_slug_shape`
 (`^stg-[23456789abcdefghjkmnopqrstuvwxyz]{10}$`) · `ck_project_stages_seat_count`
-(`(capacity = 'limited') = (seat_count IS NOT NULL)`). **Index:** `idx_project_stages_project`
+(`(capacity = 'limited') = (seat_count IS NOT NULL)`) · `project_stages_project_sort_order_key`
+UNIQUE (`project_id`, `sort_order`) `DEFERRABLE INITIALLY DEFERRED` (audit X17: one stage per
+position; archived stages keep their slot, so `create_stage` appends after the MAX over every stage
+and `reorder_stages` permutes the live stages within the slots they already hold — deferred so a
+reorder's intermediate collisions are judged at commit). **Index:** `idx_project_stages_project`
 (`project_id`). **Triggers:** `trg_project_stages_slug` (`fn_slug_guard('stg')`) ·
 `trg_stage_reorder_lock` (BEFORE UPDATE OF `sort_order`) · `trg_stage_delete_cascade` (BEFORE DELETE:
 releases held escrow for its active tickets, scrubs the stage from other tickets' `required_stages`,
-nulls dependants' `start_dependency_stage_id`) · `trg_enforce_structure_variation_stages` (BEFORE
+nulls dependants' `start_dependency_stage_id`, so a direct DELETE of a depended-on stage no longer
+fails on the self-FK — audit C4) · `trg_enforce_structure_variation_stages` (BEFORE
 INSERT: `single_task`/`single_stage` projects hold one non-archived stage) ·
 `trg_stage_revision_terms` (BEFORE INSERT OR UPDATE OF the two revision terms: copies / freezes the
 seller's allotment on a blueprint engagement) · `trg_project_stages_derived` (`revisions_used`). In
@@ -365,14 +375,18 @@ Maps a specific freelancer or team to a project stage.
 | `team_id`               | uuid            | FK → `org.teams.id` (optional).                                          |
 | `assigned_by`           | uuid            | NOT NULL. FK → `org.users_public.user_id`.                               |
 | `is_client_managed`     | boolean         | NOT NULL `DEFAULT false`.                                                |
-| `status`                | text            | NOT NULL, no CHECK. Written values include `assigned`, `accepted`, `pending_funding`; `released`/`cancelled`/`declined`/`completed` are the inactive set. |
+| `status`                | text            | NOT NULL. CHECK `ck_stage_assignments_status` (audit X8): `pending_funding` (parked on an unpublished draft), `assigned`/`accepted` (live), `completed`/`released`/`cancelled` (ended after work began), `declined` (never taken). `released`/`cancelled`/`declined`/`completed` are the inactive set. |
 | `created_at`            | timestamptz     | NOT NULL `DEFAULT now()`.                                                |
 
 **Indexes:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
 `COALESCE(freelancer_profile_id, team_id)`) WHERE `status NOT IN ('released', 'cancelled',
 'declined', 'completed')`: one active seat per assignee per stage · `idx_stage_assignments_stage`
-(`project_stage_id`, every status — the business bench reads completed seats too, Decision #241). In
-the `supabase_realtime` publication.
+(`project_stage_id`, every status — the business bench reads completed seats too, Decision #241).
+**Trigger:** `trg_stage_assignment_lock_guard` (BEFORE UPDATE OR DELETE,
+`projects.fn_stage_assignment_lock_guard`): a taken seat — any status but `declined`/`pending_funding`
+— cannot be deleted, returned to `declined`/`pending_funding`, or re-pointed at another stage or
+holder, so the shape and price locks that read this table cannot be lifted by a direct owner write.
+In the `supabase_realtime` publication.
 
 ### `projects.project_participants`
 
@@ -612,20 +626,22 @@ The unit of work a client commissions and a freelancer claims. Its lifecycle col
 | `required_stages`     | jsonb                    | NOT NULL | `'[]'`                   | The stages this ticket must pass, in order: `[{"stage_id": "uuid", "order": 1}]`.                                            |
 | `tasks`               | jsonb                    | NOT NULL | `'[]'`                   | The ticket's own checklist: `[{"id", "text", "done", "completed_by": [...]}]`, order-significant. Seeded from the stage's `default_tasks`; distinct from `stage_submissions.checked_item_ids`. |
 | `due_date`            | timestamptz              | null     | —                        | Refused unless the project has `allow_deadline_bonuses = true` (`trg_enforce_ticket_due_date`).                              |
-| `workload_intensity`  | numeric(4,2)             | NOT NULL | `1.00`                   | The agreed capacity cost $W_i$ (the multiplier's RESULT, not the multiplier). Summed into the assignee's `org.freelancer_profiles.current_workload_intensity`. |
+| `workload_intensity`  | numeric(4,2)             | NOT NULL | `1.00`                   | CHECK `> 0` (`ck_tickets_workload_intensity`, audit X4: a zero or negative figure would lower a load). The agreed capacity cost $W_i$ (the multiplier's RESULT, not the multiplier). Summed into the assignee's `org.freelancer_profiles.current_workload_intensity`. |
 | `payment_status`      | payment_status           | NOT NULL | `'unpaid'`               | `unpaid`, `needs_funding` (a lock trigger fired and the hold was refused — Decision #165), `escrow_funded`, `partially_released`, `released`, `refunded`. |
-| `unit_price_cents`    | bigint                   | null     | —                        | The agreed per-ticket price, minor units. No CHECK.                                                                          |
+| `unit_price_cents`    | bigint                   | null     | —                        | The agreed per-ticket price, minor units. CHECK `NULL` or `>= 0` (`ck_tickets_unit_price_cents`); `NULL` inherits the stage price. |
 | `total_amount_paid`   | bigint                   | NOT NULL | `0`                      | CHECK `>= 0`. Running total paid, minor units.                                                                               |
 | `sort_order`          | integer                  | null     | —                        | Manual order — valid only while `status = 'backlog'` (`trg_ticket_ordering_guard`); other lanes order by `updated_at DESC`. |
 | `claimed_at`          | timestamptz              | null     | —                        | Stamped on claim, cleared on unassignment (`trg_ticket_claim_before`).                                                       |
 | `hidden_until`        | timestamptz              | null     | —                        | End of the workload-report response window while the ticket is hidden (set by `fn_open_workload_report`).                    |
-| `workload_report_id`  | uuid                     | null     | —                        | The open `ticket_workload_reports.id`. **No FK.**                                                                            |
+| `workload_report_id`  | uuid                     | null     | —                        | The open `ticket_workload_reports.id`. FK `tickets_workload_report_id_fkey` → `ticket_workload_reports.id`, `ON DELETE SET NULL`, declared in the trailing `00000034_tables_fk_projects_workload.sql` (the two tables reference each other). |
 | `created_at`          | timestamptz              | NOT NULL | `now()`                  |                                                                                                                              |
 | `updated_at`          | timestamptz              | NOT NULL | `now()`                  | Refreshed on every UPDATE (`trg_ticket_touch_updated_at`).                                                                   |
 
 **Constraints:** PK (`id`) · `tickets_slug_key` UNIQUE (`slug`) · `ck_tickets_slug_shape`
-(`^tkt-[23456789abcdefghjkmnopqrstuvwxyz]{10}$`) · CHECK `total_amount_paid >= 0`. Outbound FKs are
-the four above (inline, default-named except `tickets_owner_user_id_fkey`). **Inbound FKs:**
+(`^tkt-[23456789abcdefghjkmnopqrstuvwxyz]{10}$`) · CHECK `total_amount_paid >= 0` ·
+`ck_tickets_workload_intensity` · `ck_tickets_unit_price_cents`. Outbound FKs are the four above
+(inline, default-named except `tickets_owner_user_id_fkey`) plus `tickets_workload_report_id_fkey`
+(trailing, `00000034`). **Inbound FKs:**
 `ticket_history.ticket_id` and `ticket_workload_reports.ticket_id` (`ON DELETE CASCADE`);
 `stage_submissions.ticket_id` and `stage_revision_requests.ticket_id` (no action — a ticket with
 submissions or revision requests cannot be deleted); `finance.escrows.ticket_id` (`ON DELETE SET
@@ -652,8 +668,8 @@ sort_order`).
 | `trg_ticket_claim_before`                | BEFORE UPDATE OF `current_assignee_id`, `status`                | Stamps `claimed_at`; unassignment resets to `backlog`.                                                                       |
 | `trg_ticket_delete_protocol`             | BEFORE DELETE                                                   | Releases held escrow before the row goes.                                                                                    |
 | `trg_ticket_escrow_sync`                 | AFTER UPDATE OF `current_assignee_id`, `status`                 | Claim → `finance.fn_hold_ticket_escrow`; `completed` or unassignment → `finance.fn_release_ticket_escrow`.                     |
-| `trg_sync_workload_intensity`            | AFTER INSERT OR DELETE OR UPDATE OF `current_assignee_id`, `status`, `workload_intensity` | Recomputes the old/new assignee's `current_workload_intensity` over `claimed`/`in_progress`/`in_review` tickets, and re-sums the search row of every team either one actively sits on (Decision #235). |
-| `trg_ticket_review_submission` (`00001820`) | AFTER UPDATE OF `status`                                     | Entering `in_review` files a placeholder `stage_submissions` row unless a `pending_review` one already exists.                |
+| `trg_sync_workload_intensity`            | AFTER INSERT OR DELETE OR UPDATE OF `current_assignee_id`, `status`, `workload_intensity` | Recomputes the old/new assignee's `current_workload_intensity` over `claimed`/`in_progress`/`in_review`/`reported_hidden` tickets, and re-sums the search row of every team either one actively sits on (Decision #235). |
+| `trg_ticket_review_submission` (`00001820`) | AFTER UPDATE OF `status`                                     | Entering `in_review` files a placeholder `stage_submissions` row unless a `pending_review` one already exists; leaving `in_review` closes any still-`pending_review` row — `accepted` into `completed`, else `revisions_requested` (DL S4). |
 
 **The slug is the deep link, not a path.** A ticket is opened by `?tkv=<slug>` on whichever page the
 viewer is already on (the modal is global — `apps/web/features/projects/islands/TicketDeepLinkHost`),
@@ -738,17 +754,19 @@ The formal handover of work for review — one row per delivery against a (stage
 | `notes`            | text        | null     | —                   | Legacy plain note; `submit_deliverable` writes `NULL` (the brief lives in `description`).                   |
 | `created_at`       | timestamptz | NOT NULL | `now()`             |                                                                                                             |
 | `title`            | text        | NOT NULL | —                   | `submit_deliverable` falls back to `New Submission #<number>`; the Review trigger writes `Review: <ticket title>`. |
-| `status`           | text        | **null** | `'pending_review'`  | CHECK `draft` \| `pending_review` \| `accepted` \| `revisions_requested` (`stage_submissions_status_check`). Not `NOT NULL`, so the CHECK admits `NULL`. Note the plural `revisions_requested`. |
+| `status`           | text        | NOT NULL | `'pending_review'`  | CHECK `draft` \| `pending_review` \| `accepted` \| `revisions_requested` (`stage_submissions_status_check`). Note the plural `revisions_requested`. |
 | `description`      | jsonb       | NOT NULL | `'{}'`              | The delivery note (the app stores `{"html": …}`).                                                           |
 | `checked_item_ids` | jsonb       | NOT NULL | `'[]'`              | The ticket `tasks` ids this delivery claims to satisfy.                                                     |
-| `number`           | integer     | null     | —                   | Per-stage sequence, `MAX(number) + 1` within `project_stage_id` at insert. No UNIQUE. `NULL` on drafts inserted directly. |
+| `number`           | integer     | null     | —                   | Per-stage sequence, `MAX(number) + 1` within `project_stage_id` at insert. UNIQUE per stage (`stage_submissions_stage_number_key`); `NULL` on drafts inserted directly, and repeatable. |
 | `reviewed_by`      | uuid        | null     | —                   | FK → `org.users_public.user_id` (default-named). Set by `review_submission`.                                |
 | `reviewed_at`      | timestamptz | null     | —                   | Set by `review_submission`.                                                                                 |
 | `feedback`         | jsonb       | null     | —                   | The reviewer's feedback; only `review_submission` writes it (`feedback->>'global'` seeds the revision request's reason). |
 | `revision_of`      | uuid        | null     | —                   | FK → `projects.stage_submissions.id` (self), `ON DELETE SET NULL`. The submission this one revises. No RPC writes it yet. |
 | `updated_at`       | timestamptz | NOT NULL | `now()`             | No touch trigger — the writers set it explicitly.                                                           |
 
-**Constraints:** `stage_submissions_pkey` · `stage_submissions_status_check` · the four FKs above.
+**Constraints:** `stage_submissions_pkey` · `stage_submissions_status_check` ·
+`stage_submissions_stage_number_key` UNIQUE (`project_stage_id`, `number`) — "Submission 3" names one
+row · the four FKs above.
 **Inbound FK:** `submission_files.submission_id` (`ON DELETE CASCADE`). **Indexes:**
 `idx_stage_submissions_stage` (`project_stage_id, created_at DESC`) · `idx_stage_submissions_ticket`
 (`ticket_id, created_at DESC`). No trigger fires **on** this table; it is in the `supabase_realtime`
@@ -761,7 +779,10 @@ needed). Both refuse a caller who is not the ticket's assignee (or on the stage'
 ticket outside the stage, refuse unknown or foreign files rather than skip them, set `revision_of`
 from the open revision round they resolve, and move the ticket to `in_review`.
 `trg_ticket_review_submission` (on `projects.tickets`) files a placeholder `pending_review` row when a
-ticket enters `in_review` with none pending — idempotent with the door, which writes first. The fat
+ticket enters `in_review` with none pending — idempotent with the door, which writes first — and,
+when the ticket leaves `in_review` by a move, `complete_ticket` or a stage settlement, closes any row
+still `pending_review` (`accepted` into `completed`, else `revisions_requested`; `reviewed_by`/
+`reviewed_at` stamped if unset; DL S4), so no row awaits a review that will never come. The fat
 service inserts `draft` rows directly under RLS; there is no client `UPDATE`. `projects.review_submission` (review authority only,
 `pending_review` rows only) sets `accepted` or `revisions_requested` with `reviewed_by`/`reviewed_at`/
 `feedback`; a revision request also inserts a `stage_revision_requests` row and bounces the ticket

@@ -1188,6 +1188,44 @@ export function stageTimingApplies(
  */
 export const ONBOARDED_ASSIGNMENT_EXCLUDED: readonly string[] = ["declined", "pending_funding"];
 
+/**
+ * `projects.stage_assignments.status` — the seat vocabulary, 1:1 with `ck_stage_assignments_status`.
+ *
+ * `pending_funding` is a seat parked on an unpublished draft; `assigned` and `accepted` are live;
+ * `completed`, `released` and `cancelled` ended after the seat was taken; `declined` was never taken.
+ * A taken seat never returns to `declined` or `pending_funding` and is never deleted
+ * (`trg_stage_assignment_lock_guard`), so the locks {@link countsAsOnboarded} drives cannot be lifted.
+ */
+export const StageAssignmentStatus = z.enum([
+	"pending_funding",
+	"assigned",
+	"accepted",
+	"completed",
+	"released",
+	"cancelled",
+	"declined",
+]);
+export type StageAssignmentStatus = z.infer<typeof StageAssignmentStatus>;
+
+/** The seat statuses that hold a stage now — the roster a claim or an owner's pin must be on. */
+export const LIVE_SEAT_STATUSES: readonly StageAssignmentStatus[] = ["assigned", "accepted"];
+
+/**
+ * The `(format, structure_variation)` pairs a project row may hold, 1:1 with
+ * `ck_projects_format_structure`: Task, milestone One-off and the legacy flat one-off; Pipeline and
+ * the legacy single-stage pipeline; Session.
+ */
+export const STORED_SHAPE_PAIRS: Readonly<Record<ProjectFormat, readonly ProjectStructure[]>> = {
+	one_off: ["one_off", "single_task", "single_stage"],
+	pipeline: ["standard", "single_stage"],
+	session: ["standard"],
+};
+
+/** Whether a format and structure may be stored together (`ck_projects_format_structure`). */
+export function isStoredShapePair(format: ProjectFormat, structure: ProjectStructure): boolean {
+	return STORED_SHAPE_PAIRS[format].includes(structure);
+}
+
 /** Whether one `projects.stage_assignments.status` counts as somebody having been onboarded. */
 export function countsAsOnboarded(status: string): boolean {
 	return !ONBOARDED_ASSIGNMENT_EXCLUDED.includes(status);

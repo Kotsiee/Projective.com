@@ -12,7 +12,7 @@
 -- ticket moves (projects.fn_sync_workload_intensity, 00001140) or a membership changes
 -- (trg_team_members_search_workload, 00001895).
 
-/** A team's live W_i: its active members' claimed / in_progress / in_review ticket intensity, summed. */
+/** A team's live W_i: its active members' claimed / in_progress / in_review / reported_hidden ticket intensity, summed. */
 CREATE OR REPLACE FUNCTION search.fn_team_live_workload(p_team_id uuid)
 RETURNS integer
 LANGUAGE sql
@@ -23,7 +23,7 @@ AS $$
         SELECT round(sum(tk.workload_intensity))::int
           FROM org.team_members tm
           JOIN projects.tickets tk ON tk.current_assignee_id = tm.user_id
-                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review')
+                                  AND tk.status::text IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')
          WHERE tm.team_id = p_team_id AND tm.status = 'active'
     ), 0);
 $$;

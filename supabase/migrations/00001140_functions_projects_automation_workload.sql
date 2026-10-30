@@ -202,7 +202,7 @@ BEGIN
             SELECT ROUND(SUM(t.workload_intensity))
             FROM projects.tickets t
             WHERE t.current_assignee_id = v_old
-              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status)
         ), 0)
         WHERE fp.user_id = v_old;
     END IF;
@@ -213,7 +213,7 @@ BEGIN
             SELECT ROUND(SUM(t.workload_intensity))
             FROM projects.tickets t
             WHERE t.current_assignee_id = v_new
-              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status)
         ), 0)
         WHERE fp.user_id = v_new;
     END IF;
@@ -235,6 +235,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, org;
 -- projects.check_ticket_capacity(p_ticket_id, p_user_id) -> jsonb verdict.
 -- Excludes the ticket itself from the "current" sums so re-checking an already-held ticket is a
 -- no-op rather than double-counting. Enforced by fn_assign_ticket_core on every claim/assignment.
+--
+-- "Held" is claimed · in_progress · in_review · reported_hidden (audit X4, DL W7). A suspended ticket
+-- is still the reporter's — payee, escrow and all — so leaving it out let a freelancer free their own
+-- capacity by filing a report and claim more during the window (PRODUCT_SPEC: W_i is a sum over the
+-- tickets HELD). Every other W_i sum (the profile counter, the gauge, the routing load, the
+-- workspace and team rosters, the team search row) uses the same four statuses.
+--
+-- VOLATILE and serialised per user: two claims by one person on different tickets used to read the
+-- same unlocked sum and could both pass, together breaking the cap. The per-user transaction lock is
+-- taken before anything is summed, and the user's held tickets are then locked, so a second claim
+-- waits for the first to commit and its sums (each statement takes a fresh snapshot here) include
+-- the ticket the first one took. The lock covers a user who holds nothing yet, which a row lock alone
+-- could not.
 CREATE OR REPLACE FUNCTION projects.check_ticket_capacity(p_ticket_id uuid, p_user_id uuid)
 RETURNS jsonb AS $$
 DECLARE
@@ -257,6 +270,13 @@ BEGIN
         RAISE EXCEPTION 'Ticket % not found.', p_ticket_id;
     END IF;
 
+    PERFORM pg_advisory_xact_lock(hashtextextended('projects.check_ticket_capacity:' || p_user_id::text, 0));
+    PERFORM 1 FROM projects.tickets t
+    WHERE t.current_assignee_id = p_user_id
+      AND t.id <> p_ticket_id
+      AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status)
+    FOR UPDATE;
+
     SELECT (value #>> '{}')::numeric INTO v_default_global
     FROM security.platform_params WHERE key = 'global_workload_cap_default';
     v_default_global := COALESCE(v_default_global, 10.00);
@@ -269,7 +289,7 @@ BEGIN
     FROM projects.tickets
     WHERE current_assignee_id = p_user_id
       AND id <> p_ticket_id
-      AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status);
+      AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status);
     v_proj_global := v_cur_global + v_ticket_wi;
 
     IF v_stage_id IS NOT NULL THEN
@@ -281,7 +301,7 @@ BEGIN
         WHERE t.current_assignee_id = p_user_id
           AND t.current_stage_id = v_stage_id
           AND t.id <> p_ticket_id
-          AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status);
+          AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status);
         v_proj_stage := v_cur_stage + v_ticket_wi;
     END IF;
 
@@ -291,7 +311,7 @@ BEGIN
             'Claiming this ticket (intensity %s) would put your global workload at %s, over your cap of %s. Submit current work before taking on more.',
             trim_scale(v_ticket_wi), trim_scale(v_proj_global), trim_scale(v_cap_global));
     ELSIF v_cap_stage IS NOT NULL AND v_proj_stage > v_cap_stage THEN
-        v_allowed := false; v_scope := 'project';
+        v_allowed := false; v_scope := 'stage';
         v_reason := format(
             'Claiming this ticket (intensity %s) would put your workload in this stage at %s, over the stage cap of %s.',
             trim_scale(v_ticket_wi), trim_scale(v_proj_stage), trim_scale(v_cap_stage));
@@ -310,7 +330,7 @@ BEGIN
         'stage_cap', v_cap_stage
     );
 END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, org, security, auth;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, projects, org, security, auth;
 
 -- projects.get_workload_capacity(p_user_id, p_project_id) -> jsonb for the Workload Capacity Gauge.
 -- Returns the live global figure (and a project-scoped figure when a project is supplied). NULL user
@@ -341,14 +361,14 @@ BEGIN
     INTO v_cur, v_ticket_count
     FROM projects.tickets
     WHERE current_assignee_id = p_user_id
-      AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status);
+      AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status);
 
     IF p_project_id IS NOT NULL THEN
         SELECT COALESCE(SUM(workload_intensity), 0) INTO v_cur_project
         FROM projects.tickets
         WHERE current_assignee_id = p_user_id
           AND project_id = p_project_id
-          AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status);
+          AND status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status);
     END IF;
 
     RETURN jsonb_build_object(
@@ -518,7 +538,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 
 -- Manual mode: the owner pins a specific individual, overriding routing. Capacity is still enforced
--- so an override cannot silently blow a freelancer past their cap.
+-- so an override cannot silently blow a freelancer past their cap, and the person pinned must hold a
+-- live seat on the ticket's stage — the same roster rule the self-claim meets (audit X8 / P0 4), so a
+-- pin cannot hand the client's money to someone never hired on the stage. A personal project has no
+-- roster: only its owner works it, and fn_assign_ticket_core skips the hiring gates there too.
 CREATE OR REPLACE FUNCTION projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -530,6 +553,13 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner may pin an assignee.' USING ERRCODE = 'insufficient_privilege';
     END IF;
     PERFORM projects.fn_assert_business_actor(v_project, 'hire');
+
+    IF NOT projects.fn_is_personal_project(v_project)
+        AND NOT projects.fn_holds_live_seat(
+            (SELECT t.current_stage_id FROM projects.tickets t WHERE t.id = p_ticket_id), p_assignee_id) THEN
+        RAISE EXCEPTION 'That person is not hired on this ticket''s stage, so it cannot be assigned to them.'
+            USING ERRCODE = 'check_violation';
+    END IF;
 
     RETURN projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
 END;
@@ -574,7 +604,7 @@ BEGIN
             SELECT COALESCE(SUM(t.workload_intensity), 0) AS wi
             FROM projects.tickets t
             WHERE t.current_assignee_id = r.profile_id
-              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+              AND t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status)
         ) load ON true
         ORDER BY load.wi ASC, r.profile_id
     LOOP
@@ -630,7 +660,7 @@ BEGIN
                 SELECT COALESCE(SUM(tk.workload_intensity), 0) AS wi
                 FROM projects.tickets tk
                 WHERE tk.current_assignee_id = r.profile_id
-                  AND tk.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+                  AND tk.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status, 'reported_hidden'::ticket_status)
             ) load ON true
             ORDER BY load.wi ASC, r.profile_id
         LOOP

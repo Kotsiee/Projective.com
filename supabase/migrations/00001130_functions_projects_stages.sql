@@ -81,8 +81,10 @@ BEGIN
 END;
 $$;
 
--- Deleting a stage releases held escrow for its active tickets and scrubs the stage id from any
--- other ticket that lists it as a required prerequisite.
+-- Deleting a stage releases held escrow for its active tickets, scrubs the stage id from any other
+-- ticket that lists it as a required prerequisite, and detaches every sibling stage that waited on it
+-- (audit C4). The last step is what lets a direct DELETE of a depended-on stage succeed rather than
+-- fail on `project_stages_start_dependency_stage_id_fkey`; `delete_stage` does the same itself.
 CREATE OR REPLACE FUNCTION projects.fn_stage_delete_cascade()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -104,6 +106,10 @@ BEGIN
         SELECT 1 FROM jsonb_array_elements(t.required_stages) e
         WHERE e->>'stage_id' = OLD.id::text
     );
+
+    UPDATE projects.project_stages ps
+    SET start_dependency_stage_id = NULL
+    WHERE ps.start_dependency_stage_id = OLD.id;
 
     RETURN OLD;
 END;
@@ -147,6 +153,45 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- The same caps, held when the SHAPE changes rather than when a row is added (audit F2, DL S6). A
+-- project switched to `single_task` while it still has two tickets would otherwise keep them, and
+-- the invariant would hold at insert only. A DEFERRED constraint trigger, judged at commit, because
+-- the setup save switches the shape first and retires the extra stages after it in the same
+-- transaction (`sanitize_single_room_topology`, through `projects.apply_write_batch`): the rule is
+-- about the state the save leaves, not the one it passes through. Tickets are never trimmed, so a
+-- switch the remaining tickets would break is refused.
+CREATE OR REPLACE FUNCTION projects.fn_enforce_structure_variation_switch()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_variation projects.structure_variation;
+    v_ticket_count integer;
+    v_stage_count integer;
+BEGIN
+    -- Re-read at commit: the row may have been switched again later in the same transaction.
+    SELECT p.structure_variation INTO v_variation FROM projects.projects p WHERE p.id = NEW.id;
+    IF v_variation IS NULL OR v_variation = 'standard'::projects.structure_variation THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT count(*) INTO v_ticket_count FROM projects.tickets t WHERE t.project_id = NEW.id;
+    SELECT count(*) INTO v_stage_count FROM projects.project_stages ps
+    WHERE ps.project_id = NEW.id AND ps.archived_at IS NULL;
+
+    IF v_variation = 'one_off'::projects.structure_variation AND v_ticket_count > 1 THEN
+        RAISE EXCEPTION 'One-off projects are limited to a single ticket.'
+            USING ERRCODE = 'check_violation';
+    ELSIF v_variation = 'single_task'::projects.structure_variation
+        AND (v_stage_count > 1 OR v_ticket_count > 1) THEN
+        RAISE EXCEPTION 'Single-task projects are limited to exactly one stage and one ticket.'
+            USING ERRCODE = 'check_violation';
+    ELSIF v_variation = 'single_stage'::projects.structure_variation AND v_stage_count > 1 THEN
+        RAISE EXCEPTION 'Single-stage pipelines are limited to exactly one lifecycle stage.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
 
 -- Post-onboarding shape lock (Decision #89 backstop): `format` and `structure_variation` freeze
 -- project-wide once any seat was genuinely taken. "Taken" is the same deny-list as
@@ -219,6 +264,56 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
+-- The seat half of the three locks above (audit X8). Each of them asks "has a seat been taken?" over
+-- `stage_assignments`, and the owner may write that table directly ("Owner manage assignments", FOR
+-- ALL). Without this, flipping a taken seat to `declined` or `pending_funding`, re-pointing it at
+-- another stage or another person, or deleting it would lift the shape and price locks on demand.
+-- A taken seat therefore only moves forward through the taken states (`assigned` → `accepted` →
+-- `completed` / `released` / `cancelled`) and is never deleted; a seat that was never taken
+-- (`declined`, `pending_funding`) stays free to change. No caller is exempt: no RPC un-takes a seat.
+CREATE OR REPLACE FUNCTION projects.fn_stage_assignment_lock_guard()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status IN ('declined', 'pending_funding') THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'A seat a freelancer has taken cannot be deleted; release it instead.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF NEW.status IN ('declined', 'pending_funding') THEN
+        RAISE EXCEPTION 'A seat a freelancer has taken cannot be returned to %.', NEW.status
+            USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.project_stage_id IS DISTINCT FROM OLD.project_stage_id
+        OR NEW.assignee_type IS DISTINCT FROM OLD.assignee_type
+        OR NEW.freelancer_profile_id IS DISTINCT FROM OLD.freelancer_profile_id
+        OR NEW.team_id IS DISTINCT FROM OLD.team_id THEN
+        RAISE EXCEPTION 'A seat a freelancer has taken stays on its stage and with its holder.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, projects;
+
+-- Does this person hold a live seat on this stage — their own, or an accepted team's they are an
+-- active member of? A released, completed or unfunded seat is not one. The roster rule behind both
+-- the self-claim and the owner's pin (PRODUCT_SPEC §The Claim-and-Commit Protocol).
+CREATE OR REPLACE FUNCTION projects.fn_holds_live_seat(p_stage_id uuid, p_user_id uuid)
+RETURNS boolean AS $$
+    SELECT p_stage_id IS NOT NULL AND p_user_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM projects.stage_assignments sa
+        WHERE sa.project_stage_id = p_stage_id
+          AND sa.status IN ('assigned', 'accepted')
+          AND ((sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = p_user_id)
+            OR (sa.assignee_type = 'team' AND sa.team_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM org.team_members tm
+                WHERE tm.team_id = sa.team_id AND tm.user_id = p_user_id AND tm.status = 'active')))
+    );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '';
 
 -- Ownership guard. Review authority (projects.can_review_project) may update the project row, but
 -- who owns the engagement and which business pays for it are the OWNER's to change — a business
@@ -651,10 +746,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, comms, 
 -- Ownership rather than `has_project_access`: an assigned freelancer legitimately reads the pipeline
 -- and must not be able to rewrite the client's sequencing.
 -- ---------------------------------------------------------------------------------------------
+--
+-- A FULL permutation only (audit X17): the list must name every live (unarchived) stage of the
+-- project exactly once and nothing else. A partial list used to renumber the named stages from 0 and
+-- leave the rest where they were — two stages at one position — and a foreign id was skipped
+-- silently. The live stages are permuted WITHIN the positions they already hold, so an archived
+-- stage keeps its slot and `project_stages_project_sort_order_key` stays satisfied (it is deferred,
+-- so the intermediate collisions of the loop are not judged until commit).
 CREATE OR REPLACE FUNCTION projects.reorder_stages(p_project_id uuid, p_ordered_ids uuid[])
 RETURNS void AS $$
 DECLARE
-  i integer;
+  v_live  uuid[];
+  v_slots integer[];
+  i       integer;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to reorder stages.' USING ERRCODE = 'insufficient_privilege';
@@ -664,10 +768,26 @@ BEGIN
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
-  FOR i IN 1 .. array_length(p_ordered_ids, 1) LOOP
+  -- Locked first, so a concurrent create or reorder cannot change the set between the check and the
+  -- writes.
+  PERFORM 1 FROM projects.project_stages ps WHERE ps.project_id = p_project_id FOR UPDATE;
+  SELECT COALESCE(array_agg(ps.id ORDER BY ps.id), '{}'), COALESCE(array_agg(ps.sort_order ORDER BY ps.sort_order), '{}')
+    INTO v_live, v_slots
+  FROM projects.project_stages ps
+  WHERE ps.project_id = p_project_id AND ps.archived_at IS NULL;
+
+  IF COALESCE(cardinality(p_ordered_ids), 0) <> cardinality(v_live)
+    OR (SELECT count(DISTINCT x) FROM unnest(p_ordered_ids) x) <> cardinality(v_live)
+    OR NOT (p_ordered_ids <@ v_live) THEN
+    RAISE EXCEPTION 'A reorder must list every stage of this project exactly once.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  FOR i IN 1 .. cardinality(p_ordered_ids) LOOP
     UPDATE projects.project_stages
-    SET sort_order = i - 1
-    WHERE id = p_ordered_ids[i] AND project_id = p_project_id;
+    SET sort_order = v_slots[i]
+    WHERE id = p_ordered_ids[i] AND project_id = p_project_id
+      AND sort_order IS DISTINCT FROM v_slots[i];
   END LOOP;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
@@ -2854,4 +2974,212 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+-- #endregion
+
+-- #region Transactional write batch (DL S7)
+-- A setup save and a ticket commit used to be several PostgREST requests — the project row, its
+-- status, its visibility, attachments, the stage reconcile (`create_stage` / `delete_stage` /
+-- `reorder_stages`), roles, `sanitize_single_room_topology`; a ticket row and then `move_ticket` —
+-- each its own transaction, so a refusal part-way left the earlier writes committed under a form that
+-- said nothing was saved. The services now PLAN those writes (the planning is unchanged) and send them
+-- here as one ordered list, which runs in one transaction: all of it lands or none of it does.
+--
+-- SECURITY INVOKER, deliberately. Every statement runs as the caller, under the same RLS policies and
+-- column grants the individual requests met, and each RPC it calls keeps its own authority check. The
+-- batch grants nothing a caller could not already do one request at a time; it only removes the gaps
+-- between them. The tables and functions it will touch are allowlisted below, so it is not a general
+-- SQL door either.
+--
+-- p_ops: a jsonb array of
+--   {"kind":"update","table":T,"id":uuid,"patch":{col:value},"field"?:f,"ref"?:name}
+--   {"kind":"insert","table":T,"row":{col:value},"field"?:f,"ref"?:name}
+--   {"kind":"delete","table":T,"match":{col:value},"expect"?:bool,"field"?:f}
+--   {"kind":"rpc","fn":F,"args":{...},"field"?:f,"ref"?:name}
+-- Any value of the exact shape {"$ref": name} is replaced by the value an earlier op stored under
+-- that name, so a stage created in the batch can be patched, given roles and ordered in the same
+-- batch. An UPDATE that touches no row (RLS filtered it, or the id names nothing) and a DELETE marked
+-- `expect` that removes none raise SQLSTATE 'PW403' `not_written`. Any failure is re-raised with its
+-- own code, message and detail and HINT `field:<f>`, so the service can attribute it to the form
+-- section the op came from. Returns {"refs": {name: value}}.
+
+-- Replace every {"$ref": name} in a value with the stored reference. Pure.
+CREATE OR REPLACE FUNCTION projects.fn_batch_resolve(p_value jsonb, p_refs jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_out jsonb;
+BEGIN
+    CASE pg_catalog.jsonb_typeof(p_value)
+    WHEN 'object' THEN
+        IF p_value ? '$ref' AND (SELECT count(*) FROM pg_catalog.jsonb_object_keys(p_value)) = 1 THEN
+            IF NOT p_refs ? (p_value ->> '$ref') THEN
+                RAISE EXCEPTION 'Write batch: unknown reference %.', p_value ->> '$ref'
+                    USING ERRCODE = 'invalid_parameter_value';
+            END IF;
+            RETURN p_refs -> (p_value ->> '$ref');
+        END IF;
+        SELECT COALESCE(pg_catalog.jsonb_object_agg(e.key, projects.fn_batch_resolve(e.value, p_refs)), '{}'::jsonb)
+          INTO v_out FROM pg_catalog.jsonb_each(p_value) e;
+        RETURN v_out;
+    WHEN 'array' THEN
+        SELECT COALESCE(pg_catalog.jsonb_agg(projects.fn_batch_resolve(e.value, p_refs) ORDER BY e.ord), '[]'::jsonb)
+          INTO v_out FROM pg_catalog.jsonb_array_elements(p_value) WITH ORDINALITY AS e(value, ord);
+        RETURN v_out;
+    ELSE
+        RETURN p_value;
+    END CASE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.apply_write_batch(p_ops jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, projects, auth
+AS $$
+DECLARE
+    v_refs   jsonb := '{}'::jsonb;
+    v_op     jsonb;
+    v_kind   text;
+    v_table  text;
+    v_field  text;
+    v_data   jsonb;
+    v_cols   text;
+    v_sel    text;
+    v_where  text;
+    v_count  integer;
+    v_value  jsonb;
+    v_args   jsonb;
+    v_state  text;
+    v_msg    text;
+    v_detail text;
+    i        integer;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to save changes.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF jsonb_typeof(p_ops) IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'Write batch: p_ops must be an array.' USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+
+    FOR i IN 0 .. jsonb_array_length(p_ops) - 1 LOOP
+        v_op := projects.fn_batch_resolve(p_ops -> i, v_refs);
+        v_kind := v_op ->> 'kind';
+        v_table := v_op ->> 'table';
+        v_field := v_op ->> 'field';
+        v_value := NULL;
+        BEGIN
+            IF v_kind IN ('update', 'insert', 'delete') THEN
+                IF NOT (
+                    (v_kind = 'update' AND v_table IN ('projects', 'project_stages', 'stage_staffing_roles', 'tickets'))
+                    OR (v_kind = 'insert' AND v_table IN ('stage_staffing_roles', 'project_attachments', 'tickets'))
+                    OR (v_kind = 'delete' AND v_table IN ('stage_staffing_roles', 'project_attachments'))
+                ) THEN
+                    RAISE EXCEPTION 'Write batch: % on % is not allowed.', v_kind, v_table
+                        USING ERRCODE = 'insufficient_privilege';
+                END IF;
+                v_data := CASE v_kind WHEN 'update' THEN v_op -> 'patch'
+                                      WHEN 'insert' THEN v_op -> 'row'
+                                      ELSE v_op -> 'match' END;
+                IF jsonb_typeof(v_data) IS DISTINCT FROM 'object' OR v_data = '{}'::jsonb THEN
+                    RAISE EXCEPTION 'Write batch: % needs a non-empty object.', v_kind
+                        USING ERRCODE = 'invalid_parameter_value';
+                END IF;
+                SELECT string_agg(format('%I', k), ', ' ORDER BY k),
+                       string_agg(format('r.%I', k), ', ' ORDER BY k),
+                       string_agg(format('t.%1$I IS NOT DISTINCT FROM r.%1$I', k), ' AND ' ORDER BY k)
+                  INTO v_cols, v_sel, v_where
+                  FROM jsonb_object_keys(v_data) k;
+            END IF;
+
+            CASE v_kind
+            WHEN 'update' THEN
+                EXECUTE format(
+                    'UPDATE projects.%1$I AS t SET (%2$s) = (SELECT %3$s FROM jsonb_populate_record(NULL::projects.%1$I, $1) AS r) '
+                    || 'WHERE t.id = $2 RETURNING to_jsonb(t.id)',
+                    v_table, v_cols, v_sel)
+                    INTO v_value USING v_data, (v_op ->> 'id')::uuid;
+                GET DIAGNOSTICS v_count = ROW_COUNT;
+                IF v_count = 0 THEN
+                    RAISE EXCEPTION 'not_written' USING ERRCODE = 'PW403';
+                END IF;
+            WHEN 'insert' THEN
+                EXECUTE format(
+                    'INSERT INTO projects.%1$I AS t (%2$s) SELECT %3$s FROM jsonb_populate_record(NULL::projects.%1$I, $1) AS r '
+                    || 'RETURNING to_jsonb(t) -> %4$L',
+                    v_table, v_cols, v_sel, 'id')
+                    INTO v_value USING v_data;
+                GET DIAGNOSTICS v_count = ROW_COUNT;
+                IF v_count = 0 THEN
+                    RAISE EXCEPTION 'not_written' USING ERRCODE = 'PW403';
+                END IF;
+            WHEN 'delete' THEN
+                EXECUTE format(
+                    'DELETE FROM projects.%1$I AS t USING jsonb_populate_record(NULL::projects.%1$I, $1) AS r WHERE %2$s',
+                    v_table, v_where)
+                    USING v_data;
+                GET DIAGNOSTICS v_count = ROW_COUNT;
+                IF v_count = 0 AND COALESCE((v_op ->> 'expect')::boolean, false) THEN
+                    RAISE EXCEPTION 'not_written' USING ERRCODE = 'PW403';
+                END IF;
+            WHEN 'rpc' THEN
+                v_args := COALESCE(v_op -> 'args', '{}'::jsonb);
+                CASE v_op ->> 'fn'
+                WHEN 'set_project_status' THEN
+                    v_value := to_jsonb(projects.set_project_status(
+                        (v_args ->> 'p_project_id')::uuid,
+                        (v_args ->> 'p_to_status')::project_status,
+                        v_args ->> 'p_reason'));
+                WHEN 'create_stage' THEN
+                    v_value := to_jsonb(projects.create_stage(
+                        (v_args ->> 'p_project_id')::uuid,
+                        v_args ->> 'p_name',
+                        COALESCE(v_args -> 'p_description', '{}'::jsonb),
+                        COALESCE(v_args ->> 'p_description_text', ''),
+                        (v_args ->> 'p_unit_price_cents')::bigint,
+                        COALESCE(v_args -> 'p_payload', '{}'::jsonb)));
+                WHEN 'delete_stage' THEN
+                    PERFORM projects.delete_stage((v_args ->> 'p_project_id')::uuid, (v_args ->> 'p_stage_id')::uuid);
+                WHEN 'reorder_stages' THEN
+                    PERFORM projects.reorder_stages(
+                        (v_args ->> 'p_project_id')::uuid,
+                        ARRAY(SELECT x::uuid FROM jsonb_array_elements_text(v_args -> 'p_ordered_ids') AS x));
+                WHEN 'sanitize_single_room_topology' THEN
+                    v_value := projects.sanitize_single_room_topology((v_args ->> 'p_project_id')::uuid);
+                WHEN 'move_ticket' THEN
+                    v_value := projects.move_ticket(
+                        (v_args ->> 'p_ticket_id')::uuid,
+                        (v_args ->> 'p_to_status')::ticket_status,
+                        (v_args ->> 'p_to_stage_id')::uuid,
+                        (v_args ->> 'p_sort_order')::integer,
+                        (v_args ->> 'p_expected_updated_at')::timestamptz);
+                ELSE
+                    RAISE EXCEPTION 'Write batch: % is not a batchable function.', v_op ->> 'fn'
+                        USING ERRCODE = 'insufficient_privilege';
+                END CASE;
+            ELSE
+                RAISE EXCEPTION 'Write batch: unknown op kind %.', v_kind
+                    USING ERRCODE = 'invalid_parameter_value';
+            END CASE;
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT,
+                v_detail = PG_EXCEPTION_DETAIL;
+            RAISE EXCEPTION USING ERRCODE = v_state, MESSAGE = v_msg, DETAIL = v_detail,
+                HINT = 'field:' || COALESCE(v_field, '');
+        END;
+
+        IF v_op ? 'ref' THEN
+            v_refs := v_refs || jsonb_build_object(v_op ->> 'ref', v_value);
+        END IF;
+    END LOOP;
+
+    RETURN jsonb_build_object('refs', v_refs);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.apply_write_batch (jsonb) IS
+'Runs a planned list of setup or ticket writes (allowlisted table updates/inserts/deletes and project RPCs) in ONE transaction as the caller (SECURITY INVOKER, RLS applies). {"$ref": name} values are bound to values stored by earlier ops. A no-op UPDATE raises PW403 not_written; every failure carries HINT field:<section>. Returns {"refs": {...}}. DL S7.';
 -- #endregion

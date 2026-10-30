@@ -3588,7 +3588,7 @@ BEGIN
                     SELECT e.email FROM org.user_emails e WHERE e.user_id = v_uid ORDER BY e.is_primary DESC NULLS LAST LIMIT 1) END,
                 'wi', (SELECT COALESCE(sum(t.workload_intensity), 0) FROM projects.tickets t
                         WHERE t.current_assignee_id = m.user_id
-                          AND t.status::text IN ('claimed', 'in_progress', 'in_review')),
+                          AND t.status::text IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')),
                 'wi_cap', COALESCE(fp.max_workload_intensity, v_cap_default),
                 'availability', fp.availability_status,
                 -- Payout stakes are for the people who run payouts (Decision #233), as the `payout`
@@ -3759,7 +3759,7 @@ BEGIN
                             JOIN org.team_members tm ON tm.team_id = v_e.id AND tm.user_id = t.current_assignee_id
                                                     AND tm.status = 'active'
                            WHERE t.current_stage_id = g.stage_id
-                             AND t.status::text IN ('claimed', 'in_progress', 'in_review')
+                             AND t.status::text IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')
                            GROUP BY t.current_assignee_id
                       ) a
                 ) w ON true)

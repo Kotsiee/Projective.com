@@ -152,8 +152,12 @@ import type {
 import {
 	type ClaimTicket,
 	composeWorkspace,
+	isSelfClaimable,
 	type ProjectWorkspace,
+	STALE_MOVE_MESSAGE,
 	TICKET_MANAGER_ROLES,
+	ticketTermsLocked,
+	ticketWorkLocked,
 	type WorkspaceViewer,
 } from "@projective/types/projects";
 
@@ -1741,7 +1745,7 @@ export class ProjectBackendService {
 			// The live queue is the same rows, but the roster read may have withheld the queue from a
 			// non-managing viewer; the dedicated read answers for the inviter regardless.
 			const cooldowns = await this.hireCooldowns(bare, actor);
-			brief.cooldownUntil = cooldowns[brief.projectId] ?? null;
+			brief.cooldownUntil = cooldowns.data?.[brief.projectId] ?? null;
 		}
 		return ok({ brief });
 	}
@@ -1751,15 +1755,16 @@ export class ProjectBackendService {
 	 * the read behind the profile's Add-to-project rows, which disable a locked project and print the
 	 * date it reopens. One query on the live branch ({@link fetchDeclinedInvitations}); on the stub
 	 * branch the declined invitations in each open project's roster, through the SAME
-	 * `activeInviteCooldown` the brief and the write use. A guest has sent nothing and gets `{}`.
+	 * `activeInviteCooldown` the brief and the write use. A guest has sent nothing and gets `{}`; a
+	 * failed project read fails, and callers degrade to no cooldowns.
 	 */
 	static async hireCooldowns(
 		handle: string,
 		actor: ReadActor,
-	): Promise<Record<string, string>> {
-		if (!actor.userId) return {};
+	): Promise<ServiceResult<Record<string, string>>> {
+		if (!actor.userId) return ok({});
 		const bare = handle.replace(/^@+/, "");
-		if (!bare) return {};
+		if (!bare) return ok({});
 		const nowMs = Date.now();
 
 		const live = await liveRead(
@@ -1783,11 +1788,11 @@ export class ProjectBackendService {
 				);
 				if (until) out[slug] = until;
 			}
-			return out;
+			return ok(out);
 		}
 
 		const feed = await this.list(OPEN_OWNED_FEED, actor);
-		if (!feed.ok || !feed.data) return {};
+		if (!feed.ok || !feed.data) return fail(feed.status, { message: feed.message });
 		const out: Record<string, string> = {};
 		for (const row of feed.data.items) {
 			const page = findMemberRoster({ projectId: row.slug }) ??
@@ -1802,7 +1807,7 @@ export class ProjectBackendService {
 			);
 			if (until) out[row.slug] = until;
 		}
-		return out;
+		return ok(out);
 	}
 
 	/**
@@ -2987,6 +2992,22 @@ export class ProjectBackendService {
 		const owner = writeOwnerOf(actor);
 		const existing = storedTicketCard(owner, input.projectId, input.clientId) ??
 			page.cards.find((card) => card.id === input.clientId);
+		// The terms lock (Decision #291): once anyone holds the ticket its title, brief and stages are
+		// frozen, as the database's content guard freezes them.
+		if (existing && ticketTermsLocked(existing)) {
+			const stageIds = (refs: readonly { stageId: string }[]) =>
+				refs.map((ref) => ref.stageId).join("|");
+			const changed = input.title !== existing.title ||
+				input.description.trim() !== (existing.description ?? "").trim() ||
+				stageIds(input.stages) !== stageIds(existing.stages);
+			if (changed) {
+				return fail(403, {
+					message:
+						"This ticket has been claimed by a freelancer; its content is locked to the client.",
+					errors: { title: "not_permitted" },
+				});
+			}
+		}
 		// A new ticket is inserted in `backlog` and then moved, exactly as the live path does.
 		const unfunded = needsFunding<{ card: BoardCard }>(
 			existing?.status ?? "backlog",
@@ -3047,6 +3068,21 @@ export class ProjectBackendService {
 		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
 			page.cards.find((card) => card.id === input.ticketId);
 		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		// `move_ticket`'s optimistic check: a move made against a reading someone has since changed.
+		if (
+			input.expectedUpdatedAt &&
+			Date.parse(input.expectedUpdatedAt) !== Date.parse(current.updatedAt)
+		) {
+			return fail(409, { message: STALE_MOVE_MESSAGE, errors: { ticket: "stale" } });
+		}
+		const relocates = input.status !== current.status || input.stageId !== current.stageId;
+		if (page.viewerIsClient && ticketWorkLocked(current) && relocates) {
+			return fail(403, {
+				message:
+					"A freelancer is working this ticket — it can be moved once the work is handed back.",
+				errors: { status: "not_permitted" },
+			});
+		}
 		const unfunded = needsFunding<{ card: BoardCard }>(current.status, input.status, current.escrowHeld);
 		if (unfunded) return unfunded;
 
@@ -3103,6 +3139,8 @@ export class ProjectBackendService {
 		if (!current.escrowHeld && current.funding?.state !== "funded") {
 			return refused(CLAIM_REFUSAL.needsFunding);
 		}
+		// What `claim_ticket` refuses beyond the cases worded above: not Ready, unstaged or personal.
+		if (!isSelfClaimable(current, stage)) return refused(CLAIM_REFUSAL.notOpen);
 
 		const card = claimedStubCard(current, { name: "You", avatar: null, handle: null }, Date.now());
 		putTicketCard(owner, input.projectId, card);

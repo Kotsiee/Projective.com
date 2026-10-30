@@ -10,6 +10,7 @@ import {
 	cumulativeStageCents,
 	DEFAULT_STAGE_SETUP,
 	FIELD_LOCKED_POST_ONBOARDING,
+	STALE_MOVE_MESSAGE,
 	isSingleRoomEngagement,
 	isTaskProject,
 	liveVisibilityFor,
@@ -70,6 +71,7 @@ import { getUserClient } from "../../core/supabase.ts";
 import { AutoFundMode } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { fetchMessageAttachments } from "./message-attachments.ts";
+import { batchFieldOf, type BatchId, WriteBatch } from "./write-batch.ts";
 import {
 	REPLY_ORIGINAL_COLUMNS,
 	REPLY_REFUSAL_MESSAGE,
@@ -897,6 +899,16 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		};
 	}
 
+	// A move made on a stale board (DL S8): `move_ticket` raises PS409 with this sentence when the row
+	// changed after the board read it. A conflict the mover resolves by refreshing, not a fault.
+	if (message.includes(STALE_MOVE_MESSAGE)) {
+		return {
+			status: 409,
+			message: STALE_MOVE_MESSAGE,
+			errors: field ? { [field]: "stale" } : undefined,
+		};
+	}
+
 	// No hold, no work (Decision #165): `fn_hold_ticket_escrow` and the ticket's work gate raise PF402
 	// with a "Needs funding — …" sentence. Payment required, not a fault: the client funds, then retries.
 	if (message.startsWith("Needs funding")) {
@@ -918,6 +930,9 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		message.includes("Name your project") ||
 		message.includes("free address for this project") ||
 		message.includes("are limited to") ||
+		// `reorder_stages` (audit X17) and the taken-seat guard (X8).
+		message.includes("exactly once") ||
+		message.includes("A seat a freelancer has taken") ||
 		message.includes("still open") ||
 		message.includes("unsettled") ||
 		// `comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`: a reply whose original is not
@@ -1032,6 +1047,36 @@ function notWritten(field?: string): WriteRefusal {
 		message: "You cannot make that change.",
 		errors: field ? { [field]: "not_permitted" } : undefined,
 	};
+}
+
+/**
+ * Send a planned {@link WriteBatch} to `projects.apply_write_batch`, which runs it in one transaction
+ * (DL S7), and return the values its kept ops stored — or the refusal for the op that failed, against
+ * the form section it names. Nothing in the batch is committed when any op fails.
+ *
+ * `PW403` is the function's own {@link notWritten} signal: an update RLS filtered to zero rows.
+ */
+async function runWriteBatch(
+	db: SupabaseClient,
+	batch: WriteBatch,
+): Promise<{ refs: Record<string, unknown> } | { refusal: WriteRefusal }> {
+	if (batch.empty) return { refs: {} };
+	const { data, error } = await db.rpc("apply_write_batch", { p_ops: batch.ops });
+	if (error) {
+		const field = batchFieldOf((error as { hint?: string | null }).hint);
+		if ((error as { code?: string }).code === "PW403") return { refusal: notWritten(field) };
+		return { refusal: refusalFrom(error.message, field) };
+	}
+	const refs = (data as { refs?: Record<string, unknown> } | null)?.refs ?? {};
+	return { refs };
+}
+
+/** The stored value behind a batch reference, as a string id, or `null`. */
+function refId(refs: Record<string, unknown>, id: BatchId | null): string | null {
+	if (id === null) return null;
+	if (typeof id === "string") return id;
+	const value = refs[id.$ref];
+	return typeof value === "string" ? value : null;
 }
 
 /**
@@ -1224,9 +1269,15 @@ export function stageTermsPatch(
  * must not be named in it at all. Removal goes through `projects.delete_stage` rather than a raw
  * DELETE because that function releases escrow on any claimed ticket sitting in the stage first —
  * a raw delete would strand the money.
+ *
+ * Nothing is sent from here: every write is planned into `batch`, which the caller runs as one
+ * transaction (DL S7). A stage created in this pass is named by a batch reference, so the extras, its
+ * roles and the reorder can all point at it before it exists. Returns the planned stage order (stored
+ * ids and references) so a later section of the same save can find the root stage.
  */
 async function reconcileStages(
 	actor: ReadActor & { accessToken: string },
+	batch: WriteBatch,
 	projectRowId: string,
 	stages: NonNullable<UpdateProject["stages"]>,
 	/**
@@ -1238,8 +1289,7 @@ async function reconcileStages(
 	 * resource", may remove anything.
 	 */
 	replace: boolean,
-): Promise<WriteRefusal | null> {
-	const db = projectsDb(actor);
+): Promise<BatchId[]> {
 	const existing = await fetchSetupStages(actor, projectRowId);
 	// ONE read for every stored role on the project, grouped once, rather than a read per stage: the
 	// per-stage reconciliation below needs the ids that are CURRENTLY stored, and a query inside the
@@ -1249,7 +1299,7 @@ async function reconcileStages(
 		? groupRolesByStage(await fetchStaffingRoles(actor, existing.map((row) => row.id)))
 		: new Map<string, StaffingRoleRow[]>();
 	const keep = new Set<string>();
-	const ordered: string[] = [];
+	const ordered: BatchId[] = [];
 
 	for (const [index, stage] of stages.entries()) {
 		const html = clamp(stage.description ?? "", RICH_TEXT_MAX);
@@ -1274,25 +1324,11 @@ async function reconcileStages(
 			// no column at all — and it must not be sent. PostgREST turns an empty body into an update
 			// that touches nothing and returns no rows, which {@link notWritten} would then read as a
 			// policy refusal and fail the whole save. The stage is still kept and still ordered below.
-			if (Object.keys(patch).length > 0) {
-				const { data: touched, error } = await db
-					.from("project_stages")
-					.update(patch)
-					.eq("id", stage.id)
-					.select("id");
-				if (error) return refusalFrom(error.message, "stages");
-				if (!touched || touched.length === 0) return notWritten("stages");
-			}
+			if (Object.keys(patch).length > 0) batch.update("project_stages", stage.id, patch, "stages");
 			// After the stage's own columns, so a save that the stage write was going to refuse cannot
 			// leave its roles rewritten behind it.
 			if (stage.roles !== undefined) {
-				const refusal = await reconcileStageRoles(
-					db,
-					stage.id,
-					stage.roles,
-					rolesByStage.get(stage.id) ?? [],
-				);
-				if (refusal) return refusal;
+				planStageRoleWrites(batch, stage.id, stage.roles, rolesByStage.get(stage.id) ?? []);
 			}
 			keep.add(stage.id);
 			ordered.push(stage.id);
@@ -1307,49 +1343,31 @@ async function reconcileStages(
 		// vocabulary (`seat_limit`, `allowed_file_categories`, `nda_override`), and the setup form now
 		// speaks the renamed one — a patch sent through it would be silently ignored and the save would
 		// look like it had landed. The terms follow as their own statement instead.
-		const { data, error } = await db.rpc("create_stage", {
+		const newId = batch.rpc("create_stage", {
 			p_project_id: projectRowId,
 			p_name: name,
 			p_description: { html },
 			p_description_text: flattenRichText(html),
 			p_unit_price_cents: stage.unitPriceCents ?? null,
-		});
-		if (error) return refusalFrom(error.message, "stages");
-		const newId = typeof data === "string" ? data : null;
-		if (!newId) return refusalFrom("create_stage returned no id", "stages");
+		}, "stages", true)!;
 		// `create_stage` takes neither skills nor a milestone, so both are a follow-up write rather than
 		// a widened RPC signature — the function is `SECURITY DEFINER` and its argument list is a schema
 		// decision. One statement for the pair, because two would be two chances to half-write a stage.
 		const extras: Record<string, unknown> = { ...stageTermsPatch(stage) };
 		if (stage.skills?.length) extras.skills = stage.skills;
 		if (stage.milestone) extras.milestone = clamp(stage.milestone, 240);
-		if (Object.keys(extras).length > 0) {
-			const { error: extraError } = await db
-				.from("project_stages")
-				.update(extras)
-				.eq("id", newId);
-			if (extraError) return refusalFrom(extraError.message, "stages");
-		}
-		// Only now, and this is the whole reason the call sits inside the loop rather than after it: a
-		// role is keyed to `project_stage_id`, so it has nowhere to point until `create_stage` has
-		// returned the id it will hang off. A stage minted in this pass has no stored roles, so the plan
-		// is resolved against an empty set rather than against a read that can only come back empty.
-		if (stage.roles !== undefined) {
-			const refusal = await reconcileStageRoles(db, newId, stage.roles, []);
-			if (refusal) return refusal;
-		}
-		keep.add(newId);
+		if (Object.keys(extras).length > 0) batch.update("project_stages", newId, extras, "stages");
+		// A role is keyed to `project_stage_id`, so it points at the reference `create_stage` will fill.
+		// A stage minted in this pass has no stored roles, so the plan is resolved against an empty set
+		// rather than against a read that can only come back empty.
+		if (stage.roles !== undefined) planStageRoleWrites(batch, newId, stage.roles, []);
 		ordered.push(newId);
 	}
 
 	if (replace) {
 		for (const row of existing) {
 			if (keep.has(row.id)) continue;
-			const { error } = await db.rpc("delete_stage", {
-				p_project_id: projectRowId,
-				p_stage_id: row.id,
-			});
-			if (error) return refusalFrom(error.message, "stages");
+			batch.rpc("delete_stage", { p_project_id: projectRowId, p_stage_id: row.id }, "stages");
 		}
 	}
 
@@ -1363,21 +1381,21 @@ async function reconcileStages(
 	// Compared as joined lists. The separator only has to be a character a uuid cannot contain, so
 	// two different orders can never render as one string; a comma is enough and, unlike a NUL, it
 	// leaves the file readable to grep and to a diff.
-	const asKey = (ids: readonly string[]) => ids.join(",");
+	const asKey = (ids: readonly BatchId[]) =>
+		ids.map((id) => (typeof id === "string" ? id : `ref:${id.$ref}`)).join(",");
 	const reordered = replace
 		? asKey(ordered) !== asKey(currentOrder)
 		: asKey(ordered) !== asKey(currentOrder.filter((id) => keep.has(id)));
+	// `reorder_stages` takes a FULL permutation of the live stages (audit X17). A PATCH names only the
+	// stages it touched, so the ones it left out keep their relative order after the ones it placed.
+	const full = replace ? ordered : [...ordered, ...currentOrder.filter((id) => !keep.has(id))];
 	if (ordered.length > 0 && reordered) {
-		const { error } = await db.rpc("reorder_stages", {
-			p_project_id: projectRowId,
-			p_ordered_ids: ordered,
-		});
 		// A refusal here is the started-stage lock, which is a rule the owner can act on rather than a
 		// fault. It is reported against `stages` so the form can say which section did not land.
-		if (error) return refusalFrom(error.message, "stages");
+		batch.rpc("reorder_stages", { p_project_id: projectRowId, p_ordered_ids: full }, "stages");
 	}
 
-	return null;
+	return replace ? ordered : full;
 }
 
 /**
@@ -1390,33 +1408,30 @@ async function reconcileStages(
  */
 async function reconcileRoles(
 	actor: ReadActor & { accessToken: string },
+	batch: WriteBatch,
 	projectRowId: string,
 	roles: NonNullable<UpdateProject["roles"]>,
 	/** Whether roles omitted from the payload are DELETED — a full replace only. See `reconcileStages`. */
 	replace: boolean,
-): Promise<WriteRefusal | null> {
-	const db = projectsDb(actor);
-	let stages = await fetchSetupStages(actor, projectRowId);
-	if (stages.length === 0) {
+	/** The stage order this same save already planned, when it carried a stage list. */
+	plannedStages: readonly BatchId[] | null,
+): Promise<void> {
+	const stored = plannedStages ? [] : await fetchSetupStages(actor, projectRowId);
+	let stageId: BatchId | undefined = plannedStages?.[0] ?? stored[0]?.id;
+	if (stageId === undefined) {
 		// A Direct Deliverable is one stage and one ticket (`fn_enforce_structure_variation`), and its
 		// roles have nowhere to hang until that stage exists. Creating it here rather than refusing
 		// keeps the form's first save from failing on a row the form never asked the owner about.
-		const { data, error } = await db.rpc("create_stage", {
+		stageId = batch.rpc("create_stage", {
 			p_project_id: projectRowId,
 			p_name: "Delivery",
 			p_description: { html: "" },
 			p_description_text: "",
 			p_unit_price_cents: null,
-		});
-		if (error) return refusalFrom(error.message, "roles");
-		stages = await fetchSetupStages(actor, projectRowId);
-		if (typeof data !== "string" || stages.length === 0) {
-			return refusalFrom("create_stage returned no id", "roles");
-		}
+		}, "roles", true)!;
 	}
 
-	const stageId = stages[0].id;
-	const existing = await fetchStaffingRoles(actor, [stageId]);
+	const existing = typeof stageId === "string" ? await fetchStaffingRoles(actor, [stageId]) : [];
 	const keep = new Set<string>();
 
 	for (const role of roles) {
@@ -1430,34 +1445,19 @@ async function reconcileRoles(
 			budget_amount_cents: role.budgetCents ?? null,
 		};
 		if (isExistingId(role.id, DRAFT_ROLE_PREFIX)) {
-			const { data: touched, error } = await db
-				.from("stage_staffing_roles")
-				.update(patch)
-				.eq("id", role.id)
-				.select("id");
-			if (error) return refusalFrom(error.message, "roles");
-			if (!touched || touched.length === 0) return notWritten("roles");
+			batch.update("stage_staffing_roles", role.id, patch, "roles");
 			keep.add(role.id);
 			continue;
 		}
-		const { data, error } = await db
-			.from("stage_staffing_roles")
-			.insert({ ...patch, project_stage_id: stageId })
-			.select("id")
-			.maybeSingle();
-		if (error) return refusalFrom(error.message, "roles");
-		const created = (data as { id?: string } | null)?.id;
-		if (created) keep.add(created);
+		batch.insert("stage_staffing_roles", { ...patch, project_stage_id: stageId }, "roles");
 	}
 
 	if (replace) {
 		for (const row of existing) {
 			if (keep.has(row.id)) continue;
-			const { error } = await db.from("stage_staffing_roles").delete().eq("id", row.id);
-			if (error) return refusalFrom(error.message, "roles");
+			batch.delete("stage_staffing_roles", { id: row.id }, "roles");
 		}
 	}
-	return null;
 }
 
 // #region Stage staffing roles
@@ -1465,7 +1465,7 @@ async function reconcileRoles(
  * What a stage's role list asks for, resolved WITHOUT touching the database.
  *
  * Separated from the write because the RULE is the only half of a reconciliation that can be
- * asserted. Everything in {@link reconcileStageRoles} below is RLS-scoped PostgREST I/O, which this
+ * asserted. Everything in {@link planStageRoleWrites} below is RLS-scoped PostgREST I/O, which this
  * repository cannot exercise (root CLAUDE.md §8 Decision #67(a) — no Docker, no psql), so the part
  * that decides create-versus-update-versus-remove is pinned by unit test and the statements are
  * reviewed at the site that issues them.
@@ -1555,41 +1555,19 @@ function stageRolePatch(role: StageStaffingRole): Record<string, unknown> {
 	};
 }
 
-async function reconcileStageRoles(
-	db: SupabaseClient,
-	stageId: string,
+function planStageRoleWrites(
+	batch: WriteBatch,
+	stageId: BatchId,
 	roles: readonly StageStaffingRole[],
 	existing: readonly StaffingRoleRow[],
-): Promise<WriteRefusal | null> {
+): void {
 	const plan = planStageRoles(existing.map((row) => row.id), roles);
-
-	for (const role of plan.update) {
-		const { data: touched, error } = await db
-			.from("stage_staffing_roles")
-			.update(stageRolePatch(role))
-			.eq("id", role.id)
-			.select("id");
-		if (error) return refusalFrom(error.message, "stages");
-		// The {@link notWritten} case: an UPDATE the policy filters out affects zero rows and raises
-		// nothing, so without reading the ids back a stranger's write reports "Saved".
-		if (!touched || touched.length === 0) return notWritten("stages");
-	}
-
+	// An UPDATE the policy filters out affects zero rows; the batch refuses it as `not_written`.
+	for (const role of plan.update) batch.update("stage_staffing_roles", role.id!, stageRolePatch(role), "stages");
 	for (const role of plan.create) {
-		const { data, error } = await db
-			.from("stage_staffing_roles")
-			.insert({ ...stageRolePatch(role), project_stage_id: stageId })
-			.select("id")
-			.maybeSingle();
-		if (error) return refusalFrom(error.message, "stages");
-		if (!data) return notWritten("stages");
+		batch.insert("stage_staffing_roles", { ...stageRolePatch(role), project_stage_id: stageId }, "stages");
 	}
-
-	for (const id of plan.remove) {
-		const { error } = await db.from("stage_staffing_roles").delete().eq("id", id);
-		if (error) return refusalFrom(error.message, "stages");
-	}
-	return null;
+	for (const id of plan.remove) batch.delete("stage_staffing_roles", { id }, "stages");
 }
 // #endregion
 
@@ -1649,13 +1627,14 @@ export function planAttachments(
  *
  * ## The incoming list is the DESIRED SET, on both verbs
  *
- * There is no `replace` flag here for the reason {@link reconcileStageRoles} has none: `attachments`
+ * There is no `replace` flag here for the reason {@link planStageRoleWrites} has none: `attachments`
  * is a whole array or an absent key, so a payload that carries it is stating the complete list. The
  * flag guards `reconcileStages` because deleting a stage releases escrow and an omitted stage might
  * only mean "unchanged"; neither is true of a link row that owns nothing.
  */
 async function reconcileAttachments(
 	db: SupabaseClient,
+	batch: WriteBatch,
 	projectRowId: string,
 	attachments: readonly ProjectAttachment[],
 ): Promise<WriteRefusal | null> {
@@ -1673,30 +1652,15 @@ async function reconcileAttachments(
 		.filter((id): id is string => typeof id === "string");
 	const plan = planAttachments(existingIds, attachments);
 
-	if (plan.attach.length > 0) {
-		const { data: inserted, error: insertError } = await db
-			.from("project_attachments")
-			.insert(plan.attach.map((id) => ({ project_id: projectRowId, attachment_id: id })))
-			.select("attachment_id");
-		if (insertError) return refusalFrom(insertError.message, "attachments");
-		// An INSERT the policy refuses RAISES rather than returning nothing, so this is the narrower
-		// case: a partially applied batch, which would otherwise report "Saved" over a file that is not
-		// attached.
-		if (!inserted || inserted.length < plan.attach.length) return notWritten("attachments");
+	// An INSERT the policy refuses RAISES, failing the batch.
+	for (const id of plan.attach) {
+		batch.insert("project_attachments", { project_id: projectRowId, attachment_id: id }, "attachments");
 	}
-
-	if (plan.detach.length > 0) {
-		const { data: removed, error: deleteError } = await db
-			.from("project_attachments")
-			.delete()
-			.eq("project_id", projectRowId)
-			.in("attachment_id", plan.detach)
-			.select("attachment_id");
-		if (deleteError) return refusalFrom(deleteError.message, "attachments");
-		// The {@link notWritten} case again, and load-bearing here: a DELETE the policy filters out
-		// removes zero rows and raises nothing, so a caller who may read the project but not edit it
-		// would be told the file was detached while it is still on the brief the work is judged against.
-		if (!removed || removed.length < plan.detach.length) return notWritten("attachments");
+	// `expect`, and load-bearing here: a DELETE the policy filters out removes zero rows and raises
+	// nothing, so a caller who may read the project but not edit it would be told the file was detached
+	// while it is still on the brief the work is judged against.
+	for (const id of plan.detach) {
+		batch.delete("project_attachments", { project_id: projectRowId, attachment_id: id }, "attachments", true);
 	}
 	return null;
 }
@@ -1705,17 +1669,9 @@ async function reconcileAttachments(
 /**
  * Everything about a patch that can be refused WITHOUT asking the database.
  *
- * Hoisted out of the reconcilers because the update is not one transaction: the column patch commits,
- * and only then does a later section refuse. The form is told nothing was saved — `commit()` adopts a
- * new baseline only on success — so the owner keeps editing a draft the database has already moved
- * past. Reachable from the shipped surface: "Add role" creates a role with no budget, and the setup
- * form always sends the whole `roles` section, so a title edit made in the same sitting committed
- * under a 422.
- *
- * A pre-check cannot cover every refusal — RLS, the immutability guards and the stage-reorder lock
- * all live in the database and are only knowable by asking. It covers the ones that ARE knowable
- * first, which is what stops the most common half-commit rather than pretending to prevent all of
- * them. The complete answer is one RPC doing the whole reconciliation in a single transaction.
+ * The save itself is one transaction (`projects.apply_write_batch`, DL S7), so a refusal from the
+ * database leaves nothing behind. These checks still run first because they answer with a specific
+ * field error before any read or write is spent, where the database answers with a sentence.
  */
 function validateUpdate(input: UpdateProject): WriteRefusal | null {
 	// Role pricing is NOT checked here, and its absence is the rule rather than an omission: a named
@@ -2026,27 +1982,24 @@ export async function applyProjectUpdate(
 		if (locked) return { refusal: locked };
 	}
 
+	// Every write below is PLANNED into one batch and sent once, at the end, to
+	// `projects.apply_write_batch`, which runs it in a single transaction (DL S7): a refusal anywhere
+	// leaves nothing of the save behind. The order of the plan is the order the statements run in, so
+	// every ordering argument below still holds — inside one transaction instead of across several.
+	const batch = new WriteBatch();
+
 	const patch = projectColumnPatch(input);
-	if (Object.keys(patch).length > 0) {
-		// `.select()` is what turns an RLS refusal into a refusal. Without it an UPDATE whose `USING`
-		// arm matches nothing affects zero rows and raises nothing, so a caller who may READ the row
-		// but not write it is told "Saved" over a row that never changed.
-		const { data: touched, error } = await db
-			.from("projects")
-			.update(patch)
-			.eq("id", row.id)
-			.select("id");
-		if (error) return { refusal: refusalFrom(error.message) };
-		if (!touched || touched.length === 0) return { refusal: notWritten() };
-	}
+	// An UPDATE whose RLS `USING` arm matches nothing affects zero rows and raises nothing; the batch
+	// refuses that as `not_written`, so a caller who may READ the row but not write it is never told
+	// "Saved" over a row that never changed.
+	if (Object.keys(patch).length > 0) batch.update("projects", row.id, patch);
 
 	if (input.status !== undefined && input.status !== row.status) {
-		const { error } = await db.rpc("set_project_status", {
+		batch.rpc("set_project_status", {
 			p_project_id: row.id,
 			p_to_status: input.status,
 			p_reason: null,
-		});
-		if (error) return { refusal: refusalFrom(error.message, "status") };
+		}, "status");
 	}
 
 	// AFTER the transition, deliberately, and this ordering is the whole safety property.
@@ -2066,23 +2019,13 @@ export async function applyProjectUpdate(
 	const effectiveIntent = (input.rules?.visibility ??
 		row.publish_visibility ?? row.visibility) as ProjectRules["visibility"];
 	const live = liveVisibilityFor(effectiveStatus, effectiveIntent);
-	if (live !== row.visibility) {
-		// No `.select()` guard here, unlike every other write in this function. The caller has already
-		// proven write access through the column patch or the status RPC above, and a zero-row result
-		// means the live column was concurrently set to the value we were going to set — which is the
-		// outcome we wanted. Refusing on it would fail a save that had in fact converged.
-		const { error } = await db
-			.from("projects")
-			.update({ visibility: live })
-			.eq("id", row.id);
-		if (error) return { refusal: refusalFrom(error.message, "rules") };
-	}
+	if (live !== row.visibility) batch.update("projects", row.id, { visibility: live }, "rules");
 
 	// Before the stages, deliberately. Two join-table statements own nothing and undo cleanly, where
 	// the stage reconciliation provisions channels and can release escrow on a delete — so the part of
 	// a save that cannot be taken back runs last, and a refusal there leaves less behind it.
 	if (input.attachments) {
-		const refusal = await reconcileAttachments(db, row.id, input.attachments);
+		const refusal = await reconcileAttachments(db, batch, row.id, input.attachments);
 		if (refusal) return { refusal };
 	}
 	const shape = {
@@ -2090,6 +2033,7 @@ export async function applyProjectUpdate(
 		structure: (input.structure ?? row.structure_variation) as ProjectStructure,
 	};
 	const singleRoom = isSingleRoomEngagement(shape);
+	let plannedStages: BatchId[] | null = null;
 	if (input.stages) {
 		// A Task holds one stage. A draft still carrying the stages a previous shape left behind sends
 		// them all; only the root is reconciled, so a retired stage is never re-created against the
@@ -2097,23 +2041,25 @@ export async function applyProjectUpdate(
 		const stages = singleRoom && isTaskProject(shape.format, shape.structure)
 			? [...input.stages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).slice(0, 1)
 			: input.stages;
-		const refusal = await reconcileStages(actor, row.id, stages, replace);
-		if (refusal) return { refusal };
+		plannedStages = await reconcileStages(actor, batch, row.id, stages, replace);
 	}
 	if (input.roles) {
-		const refusal = await reconcileRoles(actor, row.id, input.roles, replace);
-		if (refusal) return { refusal };
+		await reconcileRoles(actor, batch, row.id, input.roles, replace, plannedStages);
 	}
 
 	// A Task or Session presents one room, so whatever a previous shape left behind — extra stages,
 	// stage-bound rooms — is retired: deleted when it carries no history, archived when it does
 	// (`projects.sanitize_single_room_topology`). Last of the structural writes, so it sees the stages
 	// this same save just reconciled.
-	if (singleRoom) {
-		const { error } = await db.rpc("sanitize_single_room_topology", { p_project_id: row.id });
-		if (error) return { refusal: refusalFrom(error.message, "stages") };
-	}
+	if (singleRoom) batch.rpc("sanitize_single_room_topology", { p_project_id: row.id }, "stages");
 
+	const ran = await runWriteBatch(db, batch);
+	if ("refusal" in ran) return { refusal: ran.refusal };
+
+	// AFTER the batch has committed: the one write outside the transaction. It is a derived figure
+	// every save recomputes, so a failure here leaves a stale total the next save repairs, never a
+	// half-applied form.
+	//
 	// AFTER the stages, and re-read rather than computed from the payload. The project's own budget is
 	// the sum of its stage prices, so it can only be right once the stage writes have landed — and a
 	// total taken from the request body would be a figure the client chose for a column the feed, the
@@ -2477,35 +2423,33 @@ export async function commitTicketRow(
 		unit_price_cents: stageSet.rate,
 	};
 
+	// The row and its move are one transaction (DL S7): a move the database refuses used to leave the
+	// row written behind a form that said nothing was saved.
 	const editing = UUID_RE.test(input.clientId);
-	let ticketId = input.clientId;
+	const batch = new WriteBatch();
+	let ticketId: BatchId;
 	if (editing) {
-		const { error } = await db.from("tickets").update(columns).eq("id", input.clientId);
 		// `fn_ticket_immutability_guard` locks a claimed ticket's content and money terms to both parties
-		// (Decision #291), so this is a real refusal a reviewer can act on rather than a fault.
-		if (error) return { refusal: refusalFrom(error.message, "title") };
+		// (Decision #291), so its refusal is a real one a reviewer can act on rather than a fault.
+		batch.update("tickets", input.clientId, columns, "title");
+		ticketId = input.clientId;
 	} else {
-		const { data, error } = await db
-			.from("tickets")
-			.insert({ ...columns, project_id: project.id, status: "backlog" })
-			.select("id")
-			.maybeSingle();
-		if (error) return { refusal: refusalFrom(error.message, "title") };
-		const created = (data as { id?: string } | null)?.id;
-		if (!created) return { refusal: refusalFrom("tickets insert returned no id", "title") };
-		ticketId = created;
+		ticketId = batch.insert("tickets", { ...columns, project_id: project.id, status: "backlog" }, "title", true)!;
 	}
 
 	if (input.status !== "backlog" || editing) {
-		const { error } = await db.rpc("move_ticket", {
+		batch.rpc("move_ticket", {
 			p_ticket_id: ticketId,
 			p_to_status: input.status,
 			p_to_stage_id: input.stageId,
 			p_sort_order: null,
-		});
-		if (error) return { refusal: refusalFrom(error.message, "status") };
+		}, "status");
 	}
-	return { data: ticketId };
+	const ran = await runWriteBatch(db, batch);
+	if ("refusal" in ran) return { refusal: ran.refusal };
+	const id = refId(ran.refs, ticketId);
+	if (!id) return { refusal: refusalFrom("tickets insert returned no id", "title") };
+	return { data: id };
 }
 
 /**
@@ -2526,6 +2470,8 @@ export async function moveTicketRow(
 		p_to_status: input.status,
 		p_to_stage_id: input.stageId,
 		p_sort_order: input.sortOrder,
+		// The stale-move check (DL S8): refused 409 when the row changed after the board read it.
+		p_expected_updated_at: input.expectedUpdatedAt ?? null,
 	});
 	if (error) return { refusal: refusalFrom(error.message, "status") };
 	return { data: input.ticketId };
