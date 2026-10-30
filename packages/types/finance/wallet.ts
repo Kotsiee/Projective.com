@@ -146,6 +146,13 @@ export const WalletSwitcherSchema = z.object({
 	active: WalletRefSchema,
 	accounts: z.array(WalletRefSchema),
 	aggregate: WalletRefSchema,
+	/**
+	 * The `w` the read was asked for (the address's, else the active context's) and the `w` of the
+	 * wallet it shows. They differ only when the viewer cannot open the wallet asked for; a wallet page
+	 * then answers 303 to the resolved one ({@link walletPageRedirect}, Audit R5).
+	 */
+	requested: z.string().max(80),
+	resolved: z.string().max(80),
 });
 export type WalletSwitcher = z.infer<typeof WalletSwitcherSchema>;
 // #endregion
@@ -408,7 +415,10 @@ export type FundableStage = z.infer<typeof FundableStageSchema>;
 
 export const PersonalExtrasSchema = z.object({
 	incomeSmoother: IncomeSmootherStateSchema.nullable(),
+	/** The oldest tax pot (the rail's tile); every pot is in `pots`. */
 	taxPot: WalletPotViewSchema.nullable(),
+	/** Every pot on the wallet, oldest first, each in its own currency. */
+	pots: z.array(WalletPotViewSchema).max(40).default([]),
 	/** Freelancer projected income from capital locked on active stages. */
 	projectedFromLocked: MoneyViewSchema.nullable(),
 	/** Client funding-source label ("Visa ·· 6411"). */
@@ -729,6 +739,11 @@ export const WalletOverviewSchema = z.object({
 	available: MoneyViewSchema,
 	locked: MoneyViewSchema,
 	pending: MoneyViewSchema,
+	/**
+	 * Escrow under dispute plus earned money frozen inside its clearing window while a payment dispute
+	 * is open (`pending_releases.state = 'on_hold'`, Decision #337 ruling M3). Its own figure: never
+	 * counted as Pending, never dropped.
+	 */
 	onHold: MoneyViewSchema,
 	lifetime: MoneyViewSchema,
 	/**
@@ -1088,7 +1103,11 @@ export const StatementRowSchema = z.object({
 	totalOut: MoneyViewSchema,
 	totalFees: MoneyViewSchema,
 	status: StatementStatus,
-	hasPdf: z.boolean(),
+	/**
+	 * `/api/finance/statements/{id}/pdf` for an issued `finance.statements` row; `null` for the month
+	 * still accruing, which has no document yet.
+	 */
+	pdfHref: z.string().max(200).nullable(),
 });
 export type StatementRow = z.infer<typeof StatementRowSchema>;
 
@@ -1100,6 +1119,8 @@ export const BillRowSchema = z.object({
 	dueLabel: z.string().max(40),
 	status: InvoiceStatus,
 	overdue: z.boolean(),
+	/** `/api/finance/invoices/{id}/pdf`: the invoice as a document. */
+	pdfHref: z.string().max(200).nullable(),
 });
 export type BillRow = z.infer<typeof BillRowSchema>;
 
@@ -1138,6 +1159,13 @@ export const SpendApprovalViewSchema = z.object({
 	status: ApprovalStatus,
 	at: timestamp,
 	dateLabel: z.string().max(40),
+	/**
+	 * Whether `finance.decide_spend_approval` would take this viewer's decision: the request is pending,
+	 * someone else filed it, and the viewer holds `approve_spend` on the wallet (`manage_members`
+	 * implies it, as `fn_has_vault_capability` reads it). The one fact a Review control is drawn from
+	 * (Audit V6).
+	 */
+	decidable: z.boolean(),
 });
 export type SpendApprovalView = z.infer<typeof SpendApprovalViewSchema>;
 
@@ -1751,5 +1779,28 @@ export function walletPageSearch(value: WalletPageQuery, base?: URLSearchParams)
 		for (const [key, val] of base) if (!named.has(key)) out.append(key, val);
 	}
 	return out.toString();
+}
+
+/** The `notice` a wallet page carries once it was sent away from a wallet the viewer cannot open. */
+export const WALLET_UNAVAILABLE_NOTICE = "wallet-unavailable";
+
+/**
+ * The query a wallet page answers 303 with instead of rendering, or `null` when the address already
+ * says what the page shows. A corrected query goes to its canonical form ({@link walletPageSearch}).
+ * Once the read is known (`scope`), a wallet the viewer cannot open goes to the wallet the read
+ * resolved, without `do` and `back` (an intent meant for one wallet never runs on another) and with
+ * `notice=wallet-unavailable` (Audit R5, FINANCE_AUDIT §4.3).
+ */
+export function walletPageRedirect(
+	params: URLSearchParams,
+	scope?: { requested: string; resolved: string } | null,
+): string | null {
+	const { value, corrected } = parseWalletPageQuery(params);
+	if (scope && scope.requested !== scope.resolved) {
+		const base = new URLSearchParams(params);
+		base.set("notice", WALLET_UNAVAILABLE_NOTICE);
+		return walletPageSearch({ ...value, w: scope.resolved, do: null, back: null }, base);
+	}
+	return corrected ? walletPageSearch(value, params) : null;
 }
 // #endregion

@@ -272,6 +272,7 @@ Deno.test("upcoming leads with what needs the viewer and attaches only offered a
 			status: "pending",
 			at: "2026-09-29T10:00:00.000Z",
 			dateLabel: "Today",
+			decidable: false,
 		}],
 		canDecide: false,
 	});

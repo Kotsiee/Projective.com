@@ -181,22 +181,27 @@ export class WalletBackendService {
 	// #region Documents
 	/**
 	 * An invoice or a statement as a PDF, rendered on request from what the caller may read (RLS).
-	 * `404` when it does not exist or is not theirs to see.
+	 * Every refusal names its `details.code`: `signed_out` (401), `not_found` (404: it does not exist or
+	 * is not theirs to see) or `unavailable` (503).
 	 */
 	static async documentPdf(
 		kind: "invoice" | "statement",
 		id: string,
 		actor: ReadActor,
 	): Promise<Result<RenderedDocument>> {
-		if (!actor.userId || !actor.accessToken) return SIGNED_OUT as Result<RenderedDocument>;
+		if (!actor.userId || !actor.accessToken) {
+			return fail(401, { message: SIGNED_OUT.message, details: { code: "signed_out" } });
+		}
 		try {
 			const doc = kind === "invoice"
 				? await renderInvoicePdf(actor.accessToken, id)
 				: await renderStatementPdf(actor.accessToken, id);
-			return doc ? ok(doc) : fail(404, { message: `That ${kind} wasn't found.` });
+			return doc
+				? ok(doc)
+				: fail(404, { message: `That ${kind} wasn't found.`, details: { code: "not_found" } });
 		} catch (error) {
 			console.error(`[wallet:${kind}-pdf]`, error instanceof Error ? error.message : error);
-			return UNREACHABLE as Result<RenderedDocument>;
+			return fail(503, { message: UNREACHABLE.message, details: { code: "unavailable" } });
 		}
 	}
 	// #endregion

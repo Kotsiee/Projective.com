@@ -80,6 +80,10 @@ export interface WalletContext {
 	accounts: WalletAccount[];
 	/** The wallet this read is about, or the read-only rollup of all of them. */
 	target: WalletAccount | "aggregate";
+	/** The `wallet` param the read was asked for, canonical when it names a wallet ({@link resolveTarget}). */
+	requested: string;
+	/** The `wallet` param of {@link target}; differs from `requested` when that wallet could not be opened. */
+	resolved: string;
 	/**
 	 * The IANA zone the viewer's calendar runs in — what "Today" and a cash-flow day mean. The request's
 	 * own zone (the browser's) first, then the viewer's profile, then UTC.
@@ -93,7 +97,7 @@ export interface WalletContext {
 const ALL_CAPABILITIES: readonly VaultCapability[] = VaultCapability.options;
 
 /** A permission row's capabilities, expanded as `fn_has_vault_capability` reads them. */
-function expand(raw: readonly string[]): VaultCapability[] {
+export function expandCapabilities(raw: readonly string[]): VaultCapability[] {
 	if (raw.includes("manage_members")) return [...ALL_CAPABILITIES];
 	return ALL_CAPABILITIES.filter((cap) => raw.includes(cap));
 }
@@ -108,15 +112,39 @@ function roleOf(caps: readonly VaultCapability[]): VaultRole {
 // #endregion
 
 // #region Resolution
-/** Parse a `wallet` param; anything unrecognised is the personal wallet. */
-function parseWallet(raw: string | null | undefined): { scope: WalletScope; id: string } {
+/** Parse a `wallet` param (the id lowercased); `null` when it names no wallet. */
+function parseWallet(raw: string): { scope: WalletScope; id: string } | null {
 	if (raw === "aggregate") return { scope: "aggregate", id: "" };
-	if (!raw || raw === "personal") return { scope: "personal", id: "" };
+	if (raw === "personal") return { scope: "personal", id: "" };
 	const at = raw.indexOf(":");
 	const scope = at === -1 ? raw : raw.slice(0, at);
 	const id = at === -1 ? "" : raw.slice(at + 1).toLowerCase();
 	if ((scope === "team" || scope === "business" || scope === "enterprise") && id) return { scope, id };
-	return { scope: "personal", id: "" };
+	return null;
+}
+
+/**
+ * The account a read is about (Audit R5): the one the `wallet` param names when the viewer can open
+ * it, else their personal wallet. The fallback is never silent: `requested` (what was asked, canonical
+ * when it names a wallet) and `resolved` (the param of what is shown) then differ, and a wallet page
+ * answers 303 to the resolved address. `target` is `null` only when there is no personal wallet.
+ */
+export function resolveTarget(
+	accounts: readonly WalletAccount[],
+	raw: string,
+): { target: WalletAccount | "aggregate" | null; requested: string; resolved: string } {
+	const named = parseWallet(raw);
+	if (named?.scope === "aggregate") {
+		return { target: "aggregate", requested: "aggregate", resolved: "aggregate" };
+	}
+	const requested = !named
+		? raw
+		: named.scope === "personal"
+		? "personal"
+		: `${named.scope}:${named.id}`;
+	const target = (named && accounts.find((a) => a.scope === named.scope && a.id === named.id)) ??
+		accounts.find((a) => a.scope === "personal") ?? null;
+	return { target, requested, resolved: target?.key ?? requested };
 }
 
 /** The wallet the active context points at, when the request names none. */
@@ -183,7 +211,7 @@ export async function resolveWalletContext(
 	}));
 	const perms = new Map<string, VaultCapability[]>();
 	for (const p of (permsRes.data ?? []) as { wallet_id: string; capabilities: string[] | null }[]) {
-		perms.set(p.wallet_id, expand(p.capabilities ?? []));
+		perms.set(p.wallet_id, expandCapabilities(p.capabilities ?? []));
 	}
 
 	const accounts: WalletAccount[] = [];
@@ -216,11 +244,10 @@ export async function resolveWalletContext(
 	}
 	accounts.sort((a, b) => (a.scope === "personal" ? -1 : b.scope === "personal" ? 1 : 0));
 
-	const requested = parseWallet(query.wallet ?? activeKey(actor));
-	const target = requested.scope === "aggregate"
-		? "aggregate" as const
-		: accounts.find((a) => a.scope === requested.scope && a.id === requested.id) ??
-			accounts.find((a) => a.scope === "personal") ?? null;
+	const { target, requested, resolved } = resolveTarget(
+		accounts,
+		query.wallet?.trim() || activeKey(actor),
+	);
 	if (target === null) return null;
 
 	const ownCurrency = target === "aggregate" ? null : primaryCurrency(target);
@@ -242,6 +269,8 @@ export async function resolveWalletContext(
 		money: await moneyProjector(display),
 		accounts,
 		target,
+		requested,
+		resolved,
 		// A profile zone that cannot be read is no reason to fail the wallet: the calendar falls back to UTC.
 		timezone: safeTimeZone(query.timezone) ??
 			safeTimeZone((personRes.data as { timezone: string | null } | null)?.timezone) ?? "UTC",

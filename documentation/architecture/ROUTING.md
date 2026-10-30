@@ -323,10 +323,20 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `/wallet?w=business:<id>&do=top_up&back=<this checkout step>`; Billing's Top up (and an invoice
   review's _Top up the wallet_) is `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>/billing`;
   the Overview's setup step Add money is `/wallet?w=business:<id>&do=top_up&back=/businesses/<handle>`
-  (`addMoneyHrefFor`). `/wallet/transactions` also carries its filter bar
-  (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
-  (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
-  and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a
+  (`addMoneyHrefFor`). Every wallet page parses its query with `parseWalletPageQuery`
+  (`@projective/types/finance`; `walletPageRedirect` decides the redirect): an address it must
+  correct (an unknown value, a legacy window name, an uppercase id, an unsafe `back`) answers
+  **303** to its canonical form, keeping the params it does not name, so the island never repairs
+  its own address. A `?w=` the viewer cannot open, or an active context's wallet they no longer can,
+  answers **303** to the same page at the wallet the read resolved (their personal wallet), with
+  `do` and `back` dropped and `?notice=wallet-unavailable` added (FINANCE_AUDIT R5): a wallet is
+  never swapped silently under an address that names another. `/api/wallet/*` answers such a read
+  for the resolved wallet and says so (`switcher.requested` ≠ `switcher.resolved`), and
+  `POST /api/wallet/action` refuses a money action on such a wallet with a 403, so it never runs on
+  another one. `/wallet/transactions` also carries its filter bar (Decision #152): `?q=` the search,
+  `?dir=in|out` the direction, `?kind=a,b` the line families (`LEDGER_KIND_CHOICES`), each dropped
+  at its default (`withLedgerFilters`), so a filtered ledger links and reloads as it was.
+  The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a
   page address) so "Today" and a cash-flow day are the reader's calendar; `GET /api/wallet/transactions`
   pages by an opaque keyset `cursor` (`k:…`), and `GET /api/wallet/export` takes the same filters and
   answers a refusal as JSON, never as a file. `GET /api/finance/cards/setup` hands the Add payment

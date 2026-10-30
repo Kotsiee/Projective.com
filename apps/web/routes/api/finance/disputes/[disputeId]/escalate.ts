@@ -1,9 +1,8 @@
 import { define } from "@web/utils/state.ts";
+import { uuid } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
 import { toPaymentsResponse } from "@features/payments/core/respond.ts";
 import { DisputeBackendService } from "@server/services/finance/DisputeBackendService.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `POST /api/finance/disputes/[disputeId]/escalate` — either party sends an `awaiting_response` case to
@@ -11,10 +10,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		const id = ctx.params.disputeId;
-		if (!UUID_RE.test(id)) {
+		const id = uuid.safeParse(ctx.params.disputeId);
+		if (!id.success) {
 			return Response.json({ ok: false, message: "Unknown dispute." }, { status: 404 });
 		}
-		return toPaymentsResponse(await DisputeBackendService.escalate(id, readActor(ctx)));
+		return toPaymentsResponse(await DisputeBackendService.escalate(id.data, readActor(ctx)));
 	},
 });

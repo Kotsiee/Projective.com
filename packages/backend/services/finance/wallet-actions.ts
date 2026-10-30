@@ -167,6 +167,20 @@ function carried(result: ServiceResult<unknown>): Result {
 	}) as Result;
 }
 
+/**
+ * The account an action runs on, or its refusal. A money action never falls back: a wallet the
+ * viewer cannot open (the read resolved another, Audit R5) is refused before any door is called.
+ */
+export function actionTarget(
+	ctx: WalletContext,
+): { ctx: WalletContext; account: WalletAccount } | Result {
+	if (ctx.requested !== ctx.resolved) return refuse(403, "That wallet isn't available to you.");
+	if (ctx.target === "aggregate") {
+		return refuse(422, "Choose a wallet — the combined view is read-only.");
+	}
+	return { ctx, account: ctx.target };
+}
+
 /** Guard + resolve the wallet an action targets. */
 async function contextFor(
 	query: WalletQuery,
@@ -175,8 +189,7 @@ async function contextFor(
 ): Promise<{ ctx: WalletContext; account: WalletAccount } | Result> {
 	const ctx = await resolveWalletContext({ ...query, wallet: walletKey }, actor);
 	if (!ctx) return refuse(401, "Sign in to use your wallet.");
-	if (ctx.target === "aggregate") return refuse(422, "Choose a wallet — the combined view is read-only.");
-	return { ctx, account: ctx.target };
+	return actionTarget(ctx);
 }
 
 function isResult(value: unknown): value is Result {

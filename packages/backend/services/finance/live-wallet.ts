@@ -36,11 +36,18 @@ import type {
 	VaultMember,
 	WalletAction,
 	WalletOverview,
+	WalletPotView,
 	WalletSwitcher,
 	WalletVariant,
 	WalletVerification,
 } from "@projective/types/finance";
-import { allocationSlices, currencyExponent, walletVariant } from "@projective/types/finance";
+import {
+	allocationSlices,
+	currencyExponent,
+	incomeSmootherFeeMinor,
+	walletVariant,
+} from "@projective/types/finance";
+import type { MoneyProjector } from "./commerce-money.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import {
@@ -81,6 +88,7 @@ import {
 import {
 	aggregateRef,
 	availableOf,
+	expandCapabilities,
 	primaryCurrency,
 	refOf,
 	sumOf,
@@ -100,7 +108,8 @@ import { standingFor } from "./wallet-standing.ts";
  *   will receive, net of the fee already set); for a paying business, the capital it has committed.
  * - **Pending** — earned money (releases and product sales) inside the safety window, net of any
  *   chargeback recovery (`finance.pending_releases`, `pending-window.ts`). Not in `balance_cents`.
- * - **On hold** — escrow under dispute (`escrows.status = 'disputed'`).
+ * - **On hold** — escrow under dispute (`escrows.status = 'disputed'`), and earned money frozen in
+ *   its window while a payment dispute is open (`pending_releases.state = 'on_hold'`, ruling M3).
  *
  * Every figure is a stored amount converted once through the read's money projector; nothing here
  * invents a balance, a series or a counterparty. What a wallet does not have — no escrow, no pot, no
@@ -253,15 +262,33 @@ function escrowValue(account: WalletAccount, e: EscrowRow): number {
 	return paid ? e.amount_cents : Math.max(0, e.amount_cents - e.platform_fee_cents);
 }
 
-async function pendingFor(ctx: WalletContext, account: WalletAccount): Promise<PendingRow[]> {
+/**
+ * Earned money still inside its window, in the two states it can be in: `pending` (clearing) and
+ * `on_hold` (frozen while a payment dispute is open, ruling M3), each normalised to what it still
+ * holds. Kept apart: On hold is its own figure, never Pending and never dropped (FCA N22).
+ */
+export function pendingByState(
+	rows: readonly (PendingRowRaw & { state: string })[],
+): { pending: PendingRow[]; onHold: PendingRow[] } {
+	return {
+		pending: stillClearing(rows.filter((r) => r.state === "pending")),
+		onHold: stillClearing(rows.filter((r) => r.state === "on_hold")),
+	};
+}
+
+/** The account's earned money still inside its window ({@link pendingByState}). */
+async function pendingFor(
+	ctx: WalletContext,
+	account: WalletAccount,
+): Promise<{ pending: PendingRow[]; onHold: PendingRow[] }> {
 	const ids = walletIds(account);
-	if (ids.length === 0) return [];
+	if (ids.length === 0) return { pending: [], onHold: [] };
 	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("finance").from("pending_releases")
-		.select(PENDING_ROW_COLUMNS)
+		.select(`${PENDING_ROW_COLUMNS}, state`)
 		.in("wallet_id", ids)
-		.eq("state", "pending");
+		.in("state", ["pending", "on_hold"]);
 	if (error) throw new Error(`finance.pending_releases read failed: ${error.message}`);
-	return stillClearing((data ?? []) as PendingRowRaw[]);
+	return pendingByState((data ?? []) as (PendingRowRaw & { state: string })[]);
 }
 
 /** The `tkt-…` slug and title of each ticket an escrow holds for, read as the viewer. */
@@ -410,21 +437,101 @@ function actionsFor(
 }
 // #endregion
 
+// #region Platform params
+/** The platform params the wallet read applies. */
+export interface WalletParams {
+	/** `pending_release_days`: how long earned money clears before it is Available (Decision #191). */
+	pendingReleaseDays: number;
+	/** `income_smoother_fee_bp`: the fee an Income Smoother enrolment would capture now. */
+	smootherFeeBp: number;
+	/** `income_smoother_min_months`: the months of earnings an enrolment needs. */
+	smootherMinMonths: number;
+}
+
+/** Each param's fallback when it is unset: the one the database itself applies (`COALESCE(…, n)`). */
+const PARAM_FALLBACK = {
+	pending_release_days: 7,
+	income_smoother_fee_bp: 50,
+	income_smoother_min_months: 3,
+} as const;
+
+/**
+ * The wallet's params from `security.platform_params` rows: a missing or malformed value reads the
+ * database's own fallback, and a negative one reads as 0, as `GREATEST(…, 0)` does.
+ */
+export function walletParamsOf(rows: readonly { key: string; value: unknown }[]): WalletParams {
+	const param = (key: keyof typeof PARAM_FALLBACK): number => {
+		const raw = rows.find((r) => r.key === key)?.value;
+		const n = typeof raw === "number" || (typeof raw === "string" && raw.trim() !== "")
+			? Number(raw)
+			: Number.NaN;
+		return Number.isInteger(n) ? Math.max(0, n) : PARAM_FALLBACK[key];
+	};
+	return {
+		pendingReleaseDays: param("pending_release_days"),
+		smootherFeeBp: param("income_smoother_fee_bp"),
+		smootherMinMonths: param("income_smoother_min_months"),
+	};
+}
+
+/**
+ * The wallet's platform params, read as the viewer ("Read platform params"), so a window or a fee the
+ * wallet states is the one the server applies (FCA N20, N21).
+ */
+export async function walletParams(ctx: WalletContext): Promise<WalletParams> {
+	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("security")
+		.from("platform_params")
+		.select("key, value")
+		.in("key", Object.keys(PARAM_FALLBACK));
+	if (error) throw new Error(`security.platform_params read failed: ${error.message}`);
+	return walletParamsOf((data ?? []) as { key: string; value: unknown }[]);
+}
+// #endregion
+
 // #region Personal extras
-interface SmootherRow {
+/** A `finance.income_smoothing` row (one per person and currency, `uq_income_smoothing_user`). */
+export interface SmootherRow {
 	enrolled: boolean;
-	target_monthly_cents: number | null;
-	currency: string | null;
+	target_monthly_cents: number | string | null;
+	currency: string;
 	fee_bp: number;
 	eligibility_met: boolean;
 }
 
-/** The Income Smoother card, from the enrolment row and the earning history it is gated on. */
-function smootherState(ctx: WalletContext, row: SmootherRow | null, rows: readonly TxnRow[]): IncomeSmootherState {
-	const earnings = rows.filter((r) => r.direction === "credit" && reasonMeta(r.reason, "credit").category === "earning");
+/**
+ * The smoother row a wallet shows (Audit A7): an enrolment in the wallet's own currency, else any
+ * enrolment (an existing one is never hidden), else the own currency's row; `null` when none applies.
+ */
+export function smootherRowFor(
+	rows: readonly SmootherRow[],
+	own: string | null,
+): SmootherRow | null {
+	const same = (r: SmootherRow) => own !== null && r.currency.toUpperCase() === own.toUpperCase();
+	const enrolled = rows.filter((r) => r.enrolled);
+	return enrolled.find(same) ?? enrolled[0] ?? rows.find(same) ?? null;
+}
+
+/**
+ * The Income Smoother card for one currency (Audit A7, FCA N20): the history gate counts earnings in
+ * that currency only, as `finance.set_income_smoother` does; an enrolment keeps the fee it captured,
+ * and anything else is offered at today's `income_smoother_fee_bp`. The smoothed figure is the target
+ * less its floored fee, in minor units. The smoother is Planned and its enrolment locked; this only
+ * reads.
+ */
+export function smootherState(
+	projector: MoneyProjector,
+	row: SmootherRow | null,
+	currency: string,
+	rows: readonly TxnRow[],
+	params: WalletParams,
+): IncomeSmootherState {
+	const earnings = rows.filter((r) =>
+		r.direction === "credit" && r.currency.toUpperCase() === currency.toUpperCase() &&
+		reasonMeta(r.reason, "credit").category === "earning"
+	);
 	const first = earnings.reduce((min, r) => Math.min(min, Date.parse(r.created_at)), Number.POSITIVE_INFINITY);
 	const monthsElapsed = Number.isFinite(first) ? Math.floor((Date.now() - first) / (30 * DAY)) : 0;
-	const monthsRequired = 3;
+	const monthsRequired = params.smootherMinMonths;
 	const status: IncomeSmootherState["status"] = row?.enrolled
 		? "enrolled"
 		: row?.eligibility_met || monthsElapsed >= monthsRequired
@@ -433,19 +540,66 @@ function smootherState(ctx: WalletContext, row: SmootherRow | null, rows: readon
 	const weeksToGo = status === "ineligible"
 		? Math.max(0, Math.ceil(((monthsRequired * 30 * DAY) - (Number.isFinite(first) ? Date.now() - first : 0)) / (7 * DAY)))
 		: 0;
-	const feeBp = Number(row?.fee_bp ?? 50);
+	const feeBp = row?.enrolled ? Number(row.fee_bp) : params.smootherFeeBp;
 	const target = row?.enrolled && row.target_monthly_cents ? Number(row.target_monthly_cents) : null;
-	const currency = row?.currency ?? primaryCurrency(ctx.accounts[0]) ?? ctx.money.display;
 	return {
 		status,
 		feeBp,
 		monthsRequired,
 		monthsElapsed: Math.min(monthsElapsed, 999),
 		weeksToGo,
-		targetMonthly: target !== null ? money(ctx, target, currency) : null,
+		targetMonthly: target !== null ? projector.price(target, currency) : null,
 		// The smoothed figure after the fee — derived from the stored target, not projected income.
-		projected: target !== null ? money(ctx, Math.round(target * (1 - feeBp / 10000)), currency) : null,
+		projected: target !== null
+			? projector.price(target - incomeSmootherFeeMinor(target, feeBp), currency)
+			: null,
 	};
+}
+
+/** A person's smoother card on this wallet: every row they hold is read (one per currency), one shown. */
+async function smootherFor(
+	ctx: WalletContext,
+	account: WalletAccount,
+	rows: readonly TxnRow[],
+): Promise<IncomeSmootherState> {
+	const [res, params] = await Promise.all([
+		getUserClient(ctx.actor.accessToken).schema("finance").from("income_smoothing")
+			.select("enrolled, target_monthly_cents, currency, fee_bp, eligibility_met")
+			.eq("user_id", ctx.viewer.userId),
+		walletParams(ctx),
+	]);
+	if (res.error) throw new Error(`finance.income_smoothing read failed: ${res.error.message}`);
+	const own = primaryCurrency(account);
+	const row = smootherRowFor((res.data ?? []) as SmootherRow[], own);
+	return smootherState(ctx.money, row, row?.currency ?? own ?? ctx.money.display, rows, params);
+}
+
+/** Every pot on the account's wallets, oldest first, each in its own currency. */
+async function potsOf(ctx: WalletContext, account: WalletAccount): Promise<WalletPotView[]> {
+	const ids = walletIds(account);
+	if (ids.length === 0) return [];
+	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("finance")
+		.from("wallet_pots")
+		.select("id, purpose, name, balance_cents, currency, auto_allocate_bp")
+		.in("wallet_id", ids)
+		.order("created_at", { ascending: true })
+		.order("id", { ascending: true })
+		.limit(40);
+	if (error) throw new Error(`finance.wallet_pots read failed: ${error.message}`);
+	return ((data ?? []) as {
+		id: string;
+		purpose: WalletPotView["purpose"];
+		name: string;
+		balance_cents: number | string;
+		currency: string;
+		auto_allocate_bp: number;
+	}[]).map((pot) => ({
+		id: pot.id,
+		purpose: pot.purpose,
+		name: clip(pot.name, 120),
+		balance: money(ctx, Number(pot.balance_cents) || 0, pot.currency),
+		autoAllocateBp: Number(pot.auto_allocate_bp) || 0,
+	}));
 }
 
 async function personalExtras(
@@ -456,11 +610,12 @@ async function personalExtras(
 ): Promise<PersonalExtras> {
 	const db = getUserClient(ctx.actor.accessToken);
 	if (!ctx.viewer.isFreelancer) {
-		const [methodsRes] = await Promise.all([
+		const [methodsRes, pots] = await Promise.all([
 			db.schema("finance").from("payment_methods")
 				.select("brand, last4, label, is_default_funding, status, method_role")
 				.eq("owner_id", ctx.viewer.userId)
 				.in("owner_type", ["user", "freelancer"]),
+			potsOf(ctx, account),
 		]);
 		if (methodsRes.error) throw new Error(`finance.payment_methods read failed: ${methodsRes.error.message}`);
 		const methods = (methodsRes.data ?? []) as {
@@ -484,7 +639,8 @@ async function personalExtras(
 		}
 		return {
 			incomeSmoother: null,
-			taxPot: null,
+			taxPot: pots.find((p) => p.purpose === "tax") ?? null,
+			pots,
 			projectedFromLocked: null,
 			fundingSource: source
 				? clip([source.brand ?? source.label ?? "Card", source.last4 ? `·· ${source.last4}` : null].filter(Boolean).join(" "), 120)
@@ -494,39 +650,14 @@ async function personalExtras(
 		};
 	}
 
-	const [smootherRes, potsRes] = await Promise.all([
-		db.schema("finance").from("income_smoothing")
-			.select("enrolled, target_monthly_cents, currency, fee_bp, eligibility_met")
-			.eq("user_id", ctx.viewer.userId)
-			.maybeSingle(),
-		walletIds(account).length > 0
-			? db.schema("finance").from("wallet_pots")
-				.select("id, purpose, name, balance_cents, currency, auto_allocate_bp")
-				.in("wallet_id", walletIds(account))
-				.eq("purpose", "tax")
-			: Promise.resolve({ data: [], error: null }),
+	const [incomeSmoother, pots] = await Promise.all([
+		smootherFor(ctx, account, rows),
+		potsOf(ctx, account),
 	]);
-	if (smootherRes.error) throw new Error(`finance.income_smoothing read failed: ${smootherRes.error.message}`);
-	if (potsRes.error) throw new Error(`finance.wallet_pots read failed: ${potsRes.error.message}`);
-	const pot = ((potsRes.data ?? []) as {
-		id: string;
-		purpose: "tax";
-		name: string;
-		balance_cents: number;
-		currency: string;
-		auto_allocate_bp: number;
-	}[])[0];
 	return {
-		incomeSmoother: smootherState(ctx, smootherRes.data as SmootherRow | null, rows),
-		taxPot: pot
-			? {
-				id: pot.id,
-				purpose: "tax",
-				name: clip(pot.name, 120),
-				balance: money(ctx, Number(pot.balance_cents) || 0, pot.currency),
-				autoAllocateBp: Number(pot.auto_allocate_bp) || 0,
-			}
-			: null,
+		incomeSmoother,
+		taxPot: pots.find((p) => p.purpose === "tax") ?? null,
+		pots,
 		projectedFromLocked: lockedNet,
 		fundingSource: null,
 		spentThisMonth: null,
@@ -845,7 +976,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	if (ctx.target === "aggregate") return aggregateOverview(ctx);
 	const account = ctx.target;
 	const variant = walletVariant(account.scope);
-	const [rows, escrows, pending] = await Promise.all([
+	const [rows, escrows, { pending, onHold: frozen }] = await Promise.all([
 		readLedger(ctx, walletIds(account), { limit: LEDGER_WINDOW }),
 		escrowsFor(ctx, account),
 		pendingFor(ctx, account),
@@ -859,7 +990,10 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	// held — a penny that does not exist, on the one surface whose job is to be exact.
 	const locked = sumOf(ctx.money, liveEscrows.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })));
 	const pendingView = sumOf(ctx.money, pending.map((p) => ({ minor: p.amount_cents, currency: p.currency })));
-	const onHold = sumOf(ctx.money, disputed.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })));
+	const onHold = sumOf(ctx.money, [
+		...disputed.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
+		...frozen.map((p) => ({ minor: p.amount_cents, currency: p.currency })),
+	]);
 	const available = availableOf(ctx.money, account);
 	const seller = account.scope === "team" || (account.scope === "personal" && ctx.viewer.isFreelancer);
 
@@ -986,7 +1120,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		capital: ctx.money.derived(capitalMinor),
 		allocation: allocationSlices({ available, pending: pendingView, locked, on_hold: onHold }),
 		lockedStageCount: new Set(liveEscrows.map((e) => e.project_stage_id)).size,
-		heldCaseCount: disputed.length,
+		heldCaseCount: disputed.length + new Set(frozen.map((p) => p.escrow_id ?? p.order_id)).size,
 		incoming: incoming.slice(0, 12),
 		flow: flowSeries(ctx, rows, 90, 12),
 		flowRange: "90d",
@@ -1054,7 +1188,7 @@ export function switcherOf(ctx: WalletContext): WalletSwitcher {
 	const accounts = ctx.accounts.map((a) => refOf(ctx.money, a));
 	const aggregate = aggregateRef(ctx.money, ctx.accounts);
 	const active = ctx.target === "aggregate" ? aggregate : refOf(ctx.money, ctx.target);
-	return { active, accounts, aggregate };
+	return { active, accounts, aggregate, requested: ctx.requested, resolved: ctx.resolved };
 }
 // #endregion
 
@@ -1180,9 +1314,6 @@ function sumRows(ctx: WalletContext, rows: readonly FlowBucketRow[]): MoneyView 
 	return sumOf(ctx.money, rows.map((r) => ({ minor: r.total_cents, currency: r.currency })));
 }
 
-/** Release-window days before released escrow becomes spendable (finance-model §Fund states). */
-const SAFETY_WINDOW_DAYS = 7;
-
 export async function activityOf(ctx: WalletContext, range: ActivityRange): Promise<ActivityView> {
 	const now = Date.now();
 	const ids = walletsInView(ctx);
@@ -1274,9 +1405,12 @@ export async function activityOf(ctx: WalletContext, range: ActivityRange): Prom
 	let topProjects: ProjectAllocation[] = [];
 	if (ctx.target !== "aggregate") {
 		const account = ctx.target;
-		const [escrows, pending] = await Promise.all([
+		// On-hold money is contested and dated by nothing, so no projection counts it: the overview's
+		// On hold figure carries it.
+		const [escrows, { pending }, params] = await Promise.all([
 			escrowsFor(ctx, account),
 			pendingFor(ctx, account),
+			walletParams(ctx),
 		]);
 		const live = escrows.filter(isLive);
 		const seller = account.scope === "team" || (account.scope === "personal" && ctx.viewer.isFreelancer);
@@ -1303,7 +1437,15 @@ export async function activityOf(ctx: WalletContext, range: ActivityRange): Prom
 				return e ? [e.project_stage_id] : [];
 			}),
 		]);
-		releases = releaseSchedule(ctx, account, live, pending, escrowById, stages);
+		releases = releaseSchedule(
+			ctx,
+			account,
+			live,
+			pending,
+			escrowById,
+			stages,
+			params.pendingReleaseDays,
+		);
 		topProjects = projectAllocation(ctx, account, live, pending, escrowById, stages, moved);
 	}
 
@@ -1328,8 +1470,9 @@ export async function activityOf(ctx: WalletContext, range: ActivityRange): Prom
 
 /**
  * The projected clearances, soonest first: releases clearing their window on a known date, then
- * escrow on stages with a due date (projected to clear a safety window after it), then escrow awaiting
- * approval with nothing to date it. Escrow is grouped per stage, as the overview groups it.
+ * escrow on stages with a due date (projected to clear `pendingDays` — `pending_release_days`, the
+ * window the server applies — after it), then escrow awaiting approval with nothing to date it.
+ * Escrow is grouped per stage, as the overview groups it.
  */
 function releaseSchedule(
 	ctx: WalletContext,
@@ -1338,6 +1481,7 @@ function releaseSchedule(
 	pending: readonly PendingRow[],
 	escrowById: ReadonlyMap<string, EscrowRow>,
 	stages: ReadonlyMap<string, StageFacts>,
+	pendingDays: number,
 ): ReleaseItem[] {
 	const items: ReleaseItem[] = [];
 	for (const p of pending) {
@@ -1369,7 +1513,7 @@ function releaseSchedule(
 				group.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
 			),
 			state: "locked",
-			at: Number.isFinite(due) ? new Date(due + SAFETY_WINDOW_DAYS * DAY).toISOString() : null,
+			at: Number.isFinite(due) ? new Date(due + pendingDays * DAY).toISOString() : null,
 			basis: Number.isFinite(due) ? "stage_due" : "awaiting_approval",
 		});
 	}
@@ -1581,7 +1725,8 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 	const ownerTypes = account.scope === "personal" ? ["user", "freelancer"] : [account.scope];
 	const ownerId = account.scope === "personal" ? ctx.viewer.userId : account.id;
 	const scheduleCurrency = primaryCurrency(account) ?? ctx.money.display;
-	const [methods, scheduleRes, historyRes, smootherRes, rows] = await Promise.all([
+	const seller = variant === "personal" && ctx.viewer.isFreelancer;
+	const [methods, scheduleRes, historyRes, incomeSmoother] = await Promise.all([
 		methodsFor(ctx, account),
 		// One schedule per owner per currency (`uq_payout_schedule_owner`): the wallet's own currency's.
 		db.from("payout_schedules")
@@ -1598,19 +1743,13 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 				.order("created_at", { ascending: false })
 				.limit(24)
 			: Promise.resolve({ data: [], error: null }),
-		variant === "personal" && ctx.viewer.isFreelancer
-			? db.from("income_smoothing")
-				.select("enrolled, target_monthly_cents, currency, fee_bp, eligibility_met")
-				.eq("user_id", ctx.viewer.userId)
-				.maybeSingle()
-			: Promise.resolve({ data: null, error: null }),
-		variant === "personal" && ctx.viewer.isFreelancer
+		seller
 			? readLedger(ctx, walletIds(account), { limit: LEDGER_WINDOW })
-			: Promise.resolve([] as TxnRow[]),
+				.then((rows) => smootherFor(ctx, account, rows))
+			: Promise.resolve(null),
 	]);
 	if (scheduleRes.error) throw new Error(`finance.payout_schedules read failed: ${scheduleRes.error.message}`);
 	if (historyRes.error) throw new Error(`finance.payouts read failed: ${historyRes.error.message}`);
-	if (smootherRes.error) throw new Error(`finance.income_smoothing read failed: ${smootherRes.error.message}`);
 
 	const destinations = methods.filter((m) => m.method_role !== "funding").map((m) => ({
 		id: m.id,
@@ -1660,9 +1799,7 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 				: null,
 		},
 		destinations,
-		incomeSmoother: variant === "personal" && ctx.viewer.isFreelancer
-			? smootherState(ctx, smootherRes.data as SmootherRow | null, rows)
-			: null,
+		incomeSmoother,
 		instantAvailable: availableOf(ctx.money, account),
 		// The Instant Payout fee magnitude is undecided platform-wide (finance-model §1.4) — never a figure.
 		instantFeeLabel: "A small fee applies — shown before you confirm",
@@ -1673,22 +1810,81 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 // #endregion
 
 // #region Invoices + access
+/** A `finance.statements` row, as the Invoices page reads it. */
+export interface StatementDbRow {
+	id: string;
+	period_start: string;
+	currency: string;
+	total_in_cents: number | string;
+	total_out_cents: number | string;
+	total_fees_cents: number | string;
+	status: StatementRow["status"];
+}
+
+/** A month as the Invoices page names it ("September 2026"), on the UTC calendar statements run on. */
+function monthLabel(at: string): string {
+	return new Date(at).toLocaleDateString("en-GB", {
+		month: "long",
+		year: "numeric",
+		timeZone: "UTC",
+	});
+}
+
+/**
+ * An issued statement as the Invoices page lists it (Audit R10): the document's own figures in its own
+ * currency, and its PDF. `withCurrency` names the currency, for a vault with statements in several.
+ */
+export function statementRowOf(
+	projector: MoneyProjector,
+	s: StatementDbRow,
+	withCurrency: boolean,
+): StatementRow {
+	const label = monthLabel(s.period_start);
+	return {
+		id: s.id,
+		periodLabel: clip(withCurrency ? `${label} · ${s.currency.toUpperCase()}` : label, 60),
+		totalIn: projector.price(Number(s.total_in_cents) || 0, s.currency),
+		totalOut: projector.price(Number(s.total_out_cents) || 0, s.currency),
+		totalFees: projector.price(Number(s.total_fees_cents) || 0, s.currency),
+		status: s.status,
+		pdfHref: `/api/finance/statements/${s.id}/pdf`,
+	};
+}
+
 export async function invoicesOf(ctx: WalletContext): Promise<InvoicesView> {
 	if (ctx.target === "aggregate" || ctx.target.scope !== "business") {
 		return { current: null, statements: [], bills: [], caps: [] };
 	}
 	const account = ctx.target;
 	const db = getUserClient(ctx.actor.accessToken);
-	const [billsRes, rows, caps] = await Promise.all([
+	const monthStart = new Date();
+	monthStart.setUTCDate(1);
+	monthStart.setUTCHours(0, 0, 0, 0);
+	const since = monthStart.toISOString();
+	const [billsRes, statementsRes, rows, caps] = await Promise.all([
 		db.schema("finance").from("invoices")
 			.select("id, project_stage_id, invoice_type, total_cents, currency, status, due_date, created_at")
 			.eq("issue_to_business_id", account.id)
 			.in("status", ["issued", "overdue"])
 			.order("due_date", { ascending: true }),
-		readLedger(ctx, walletIds(account), { since: new Date(Date.now() - 200 * DAY).toISOString(), limit: LEDGER_WINDOW }),
+		// Past statements are the documents the billing run issued on each 1st (`fn_generate_statement`).
+		db.schema("finance").from("statements")
+			.select(
+				"id, period_start, currency, total_in_cents, total_out_cents, total_fees_cents, status",
+			)
+			.eq("owner_type", "business")
+			.eq("owner_id", account.id)
+			.lt("period_start", since)
+			.order("period_start", { ascending: false })
+			.order("currency", { ascending: true })
+			.limit(12),
+		readLedger(ctx, walletIds(account), { since, limit: LEDGER_WINDOW }),
 		spendingCaps(ctx, account),
 	]);
 	if (billsRes.error) throw new Error(`finance.invoices read failed: ${billsRes.error.message}`);
+	if (statementsRes.error) {
+		throw new Error(`finance.statements read failed: ${statementsRes.error.message}`);
+	}
 	const billRows = (billsRes.data ?? []) as {
 		id: string;
 		project_stage_id: string | null;
@@ -1719,45 +1915,52 @@ export async function invoicesOf(ctx: WalletContext): Promise<InvoicesView> {
 				: `Due in ${days} ${days === 1 ? "day" : "days"}`,
 			status: overdue ? "overdue" : "issued",
 			overdue,
+			pdfHref: `/api/finance/invoices/${b.id}/pdf`,
 		} as BillRow;
 	});
 
-	// Statements are the wallet's own monthly totals, read from its ledger; the current month is still
-	// accruing. No PDF is generated in this environment, so none is offered.
-	const months = new Map<string, { inMinor: number; outMinor: number; fees: number }>();
+	// The month still accruing has no document yet. It is drawn on the statement's own terms
+	// (`fn_generate_statement`): money in, money out without fees, and fees, each summed in the
+	// currency it is held in and converted once.
+	const inflow: { minor: number; currency: string }[] = [];
+	const outflow: { minor: number; currency: string }[] = [];
+	const fees: { minor: number; currency: string }[] = [];
 	for (const r of rows) {
-		const d = new Date(r.created_at);
-		const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-		const bucket = months.get(key) ?? { inMinor: 0, outMinor: 0, fees: 0 };
-		const minor = convert(ctx, r.amount_cents, r.currency);
-		if (r.direction === "credit") bucket.inMinor += minor;
-		else bucket.outMinor += minor;
-		if (reasonMeta(r.reason, r.direction).category === "fee") bucket.fees += minor;
-		months.set(key, bucket);
+		const held = { minor: r.amount_cents, currency: r.currency };
+		if (r.direction === "credit") inflow.push(held);
+		else (reasonMeta(r.reason, "debit").category === "fee" ? fees : outflow).push(held);
 	}
-	const thisMonth = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
-	const periodLabel = (key: string) =>
-		new Date(`${key}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-	const toStatement = (key: string, b: { inMinor: number; outMinor: number; fees: number }, current: boolean): StatementRow => ({
-		id: `statement-${account.id}-${key}`,
-		periodLabel: current ? `${periodLabel(key)} · accruing` : periodLabel(key),
-		totalIn: ctx.money.derived(b.inMinor),
-		totalOut: ctx.money.derived(b.outMinor),
-		totalFees: ctx.money.derived(b.fees),
-		status: current ? "draft" : "final",
-		hasPdf: false,
-	});
-	const current = months.get(thisMonth);
+	const issued = (statementsRes.data ?? []) as StatementDbRow[];
+	const several = new Set(issued.map((s) => s.currency.toUpperCase())).size > 1;
 	return {
-		current: toStatement(thisMonth, current ?? { inMinor: 0, outMinor: 0, fees: 0 }, true),
-		statements: [...months.entries()]
-			.filter(([key]) => key !== thisMonth)
-			.sort((a, b) => b[0].localeCompare(a[0]))
-			.slice(0, 12)
-			.map(([key, b]) => toStatement(key, b, false)),
+		current: {
+			id: `statement-${account.id}-${since.slice(0, 7)}`,
+			periodLabel: `${monthLabel(since)} · accruing`,
+			totalIn: sumOf(ctx.money, inflow),
+			totalOut: sumOf(ctx.money, outflow),
+			totalFees: sumOf(ctx.money, fees),
+			status: "draft",
+			pdfHref: null,
+		},
+		statements: issued.map((s) => statementRowOf(ctx.money, s, several)),
 		bills,
 		caps,
 	};
+}
+
+/**
+ * Whether `finance.decide_spend_approval` would take this viewer's decision (Audit V6): the request is
+ * pending, someone else filed it, and the viewer holds `approve_spend` in the capability set the door
+ * reads ({@link expandCapabilities}: `manage_members` implies it). The projection grants a member the
+ * same capabilities on every wallet of an entity, so the account's set is the request wallet's.
+ */
+export function decidableBy(
+	viewerId: string,
+	capabilities: readonly VaultCapability[],
+	approval: { requested_by: string; status: string },
+): boolean {
+	return approval.status === "pending" && approval.requested_by !== viewerId &&
+		capabilities.includes("approve_spend");
 }
 
 export async function accessOf(ctx: WalletContext): Promise<AccessView> {
@@ -1790,9 +1993,7 @@ export async function accessOf(ctx: WalletContext): Promise<AccessView> {
 
 	const perms = new Map<string, VaultCapability[]>();
 	for (const p of (permsRes.data ?? []) as { member_user_id: string; capabilities: string[] | null }[]) {
-		const caps = p.capabilities ?? [];
-		const all: VaultCapability[] = ["view", "add_funds", "spend", "distribute", "withdraw", "manage_members", "manage_billing"];
-		perms.set(p.member_user_id, caps.includes("manage_members") ? all : all.filter((c) => caps.includes(c)));
+		perms.set(p.member_user_id, expandCapabilities(p.capabilities ?? []));
 	}
 	const approvals = (approvalsRes.data ?? []) as {
 		id: string;
@@ -1844,6 +2045,7 @@ export async function accessOf(ctx: WalletContext): Promise<AccessView> {
 				status: a.status,
 				at: new Date(a.created_at).toISOString(),
 				dateLabel: dateLabel(a.created_at, now, ctx.timezone),
+				decidable: decidableBy(ctx.viewer.userId, account.capabilities, a),
 			};
 		}),
 		audit: audit.map((a) => {

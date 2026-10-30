@@ -35,11 +35,13 @@ export function toPaymentsResponse<T>(result: ServiceResult<T>): Response {
 
 /**
  * A rendered document as a download: `application/pdf`, attachment, never cached by anything in
- * between (a financial document is private). A refusal answers as JSON with its status.
+ * between (a financial document is private). A refusal answers as JSON `{ ok, code, message }` with
+ * its status, `code` from the service's `details.code` (`not_found` · `signed_out` · `unavailable`).
  */
 export function pdfResponse(result: ServiceResult<{ filename: string; bytes: Uint8Array<ArrayBuffer> }>): Response {
 	if (!result.ok || !result.data) {
-		return Response.json({ ok: false, message: result.message }, { status: result.status });
+		const code = typeof result.details?.code === "string" ? result.details.code : "unavailable";
+		return Response.json({ ok: false, code, message: result.message }, { status: result.status });
 	}
 	const safeName = result.data.filename.replace(/[^A-Za-z0-9._-]/g, "_");
 	return new Response(result.data.bytes, {
