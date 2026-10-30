@@ -156,9 +156,10 @@ compose, 6.2 Presidio, 6.3 NudeNet+OCR, 6.4 ClamAV, 6.6 dev/prod) and
 
 ### N2: ClamAV (`/scan/file`) — TRUST SN1 waits for it
 
-- Stream the bytes to clamd over INSTREAM on the internal network. Return
-  `clean | infected | error`, the signature name, and the engine, `db_version` and `db_time` (TRUST
-  SN1 stores them on the file row).
+- Stream the bytes to clamd over INSTREAM on the internal network. Return `clean | infected` in the
+  contract's envelope, with the signature name, and the engine, `db_version` and `db_time` in
+  `version` (TRUST SN1 stores them on the file row). clamd's size limit is a typed 413 and a socket
+  error a typed 503, never a verdict (Decision #345 (b)).
 - clamd.conf per EPI §6.4: StreamMaxLength and MaxFileSize 64M, MaxScanSize 256M, MaxRecursion 16,
   ConcurrentDatabaseReload no, AlertEncrypted no.
 - `AlertOLE2Macros yes` (ruling AV-5): `Heuristics.OLE2.ContainsMacros` maps to
@@ -171,8 +172,9 @@ compose, 6.2 Presidio, 6.3 NudeNet+OCR, 6.4 ClamAV, 6.6 dev/prod) and
 
 ### N3: NudeNet + OCR (`/screen/image`, `/screen/video`), and the video remux — TRUST SN3 and SN5 wait for it
 
-- NudeNet v3 with thresholds read from env, defaulting to the EPI §6.3 values. Tesseract OCR text is
-  returned for the app's Tier 1/2 text checks.
+- NudeNet v3. Thresholds come from the request's optional `moderation_image_thresholds` JSON field
+  (the app's `platform_params` value), falling back to env defaults set to the EPI §6.3 values
+  (Decision #345 (e)). Tesseract OCR text is returned for the app's Tier 1/2 text checks.
 - Re-decode every image with Pillow, and refuse decompression bombs: set a max-pixels limit and
   refuse anything over it.
 - Video and GIF: ffmpeg samples one frame every 2 s, at most 30, always the first and last (ruling
@@ -186,12 +188,14 @@ compose, 6.2 Presidio, 6.3 NudeNet+OCR, 6.4 ClamAV, 6.6 dev/prod) and
 
 ### N4: Presidio (Tier 3) — TRUST SN6 waits for it
 
-- Analyzer and anonymizer images from EPI §6.2, plus custom recognizers for the platform's leak
-  patterns: IBAN, crypto wallets, phone numbers with ≥ 9 digits, and "contact me on…" handles. The
-  `pii.fixtures.ts` corpus in the main repo (TRUST P1d writes it) defines them; port it to a JSON
-  fixture here.
+- Analyzer and anonymizer images from EPI §6.2. Projective's recognisers for its leak patterns
+  (IBAN, crypto wallets, phone numbers with ≥ 9 digits, "contact me on…" handles) travel per request
+  from the app as `ad_hoc_recognizers` (EPI §6.2; Decision #345 (d)), so Tier 2 and Tier 3 share one
+  pattern source and the node holds none. Port the main repo's `pii.fixtures.ts` corpus (TRUST P1d
+  writes it) and its recognisers to a JSON fixture here, as the test corpus only.
 - `/presidio/analyzer/analyze` returns entity types and scores, **never** the matched text.
-- Tests: every corpus case scores as expected; the response contains no substring of the input.
+- Tests: every corpus case, sent with its recognisers, scores as expected; the response contains no
+  substring of the input.
 
 ### N5: Smoke test, CI and the deploy script
 

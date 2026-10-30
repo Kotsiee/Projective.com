@@ -599,7 +599,10 @@ The full behaviour is in the SSOT. In outline:
 > Its route contract is that repo's `contract/openapi.yaml`: `GET /healthz`, `POST /scan/file`,
 > `POST /screen/image`, `POST /screen/video`, `POST /presidio/analyzer/analyze`, and the
 > `POST /remux/video` its N3 adds. Where this section's reference configuration and examples say
-> `/v1/…`, the contract wins. The app side is `TRUST_SAFETY_BUILD_PROMPTS.md` (Decision #340).
+> `/v1/…`, the contract wins. Every verdict carries `{verdict, scores, model, version, ms}`; an
+> engine failure is a typed `503` and a missing or wrong bearer a typed `401`, never a verdict. That
+> repo's `compose.yaml`, `gateway/Caddyfile` and `clamav/clamd.conf` supersede §6.1's reference
+> configuration. The app side is `TRUST_SAFETY_BUILD_PROMPTS.md` (Decision #340).
 
 **Authority:** `SYSTEM_ARCHITECTURE.md` §Contact & financial leakage prevention (Decision #147),
 §Content moderation: the Two-Zone model (Decision #148) and §Storage Lifecycle; `PRODUCT_SPEC.md`
@@ -935,27 +938,37 @@ plus sampled frames.
 **The contract (`safety-api`).**
 
 ```http
-POST /v1/images/screen HTTP/1.1
+POST /screen/image HTTP/1.1
 Authorization: Bearer XXXX-XXXX
 Content-Type: multipart/form-data; boundary=…
 
 image=<decoded PNG/WebP of the original, longest edge ≤ 1280 px>
 purpose=avatar|showcase|catalogue|public_asset
-frames[]=<optional: up to 16 sampled stills for a video>
+moderation_image_thresholds=<optional JSON: the platform_params value; absent → the node's env defaults>
 ```
+
+A video or GIF goes to `POST /screen/video` (`video`, `purpose`, the same optional
+`moderation_image_thresholds`) instead; the node samples its frames per ruling T2 (Decision #340).
+Both answer the same envelope:
 
 ```json
 {
 	"verdict": "flagged",
-	"models": { "nudenet": "3.x / 320n", "ocr": "presidio-image-redactor x.y + tesseract z" },
-	"categories": [{ "label": "FEMALE_BREAST_EXPOSED", "score": 0.81, "frame": 0 }],
-	"text_entities": [{ "entity_type": "PHONE_NUMBER", "score": 0.74, "frame": 0 }],
-	"elapsed_ms": 412
+	"scores": {
+		"frames": 1,
+		"categories": [{ "label": "FEMALE_BREAST_EXPOSED", "score": 0.81, "frame": 0 }],
+		"text_entities": [{ "entity_type": "PHONE_NUMBER", "score": 0.74, "frame": 0 }]
+	},
+	"model": "nudenet+ocr",
+	"version": { "nudenet": "3.x / 320n", "ocr": "presidio-image-redactor x.y + tesseract z" },
+	"ms": 412
 }
 ```
 
 **Policy.** Thresholds live in `security.platform_params` `moderation_image_thresholds`
-(**Proposed**). A starting point:
+(**Proposed**). The app sends them with each request, and the node decides with them; the node's env
+holds the table below as the fallback when the field is absent (Decision #345 (e)). A starting
+point:
 
 | Signal                                                                                                       | Default threshold | Verdict                                                     |
 | :----------------------------------------------------------------------------------------------------------- | :---------------- | :---------------------------------------------------------- |
@@ -972,9 +985,10 @@ frames[]=<optional: up to 16 sampled stills for a video>
 - **unavailable:** answer 503, retryable. Nothing publishes unscreened.
 
 **Verdict record (Proposed).** `files.publication_screenings`: `id`, `item_id`, `purpose`,
-`verdict`, `scores jsonb` (Zod-typed), `model_versions jsonb`, `decided_at`, `actor_user_id`. Every
-verdict is kept so that a disputed refusal can be audited (Decision #148). It lands with its
-migration, Zod schema and `documentation/database/files/*` entry.
+`verdict`, `scores jsonb` (Zod-typed; the response's `scores`), `model_versions jsonb` (its
+`version`), `decided_at`, `actor_user_id`. Every verdict is kept so that a disputed refusal can be
+audited (Decision #148). It lands with its migration, Zod schema and
+`documentation/database/files/*` entry.
 
 **Hosted fallback.** OpenAI moderation or Sightengine stays **off by default**, per the SSOT. If it
 is ever enabled, it receives public-bound images only and becomes a listed sub-processor (§3.4).
@@ -997,7 +1011,7 @@ request and no extra storage read.
 **The contract.**
 
 ```http
-POST /v1/files/scan HTTP/1.1
+POST /scan/file HTTP/1.1
 Authorization: Bearer XXXX-XXXX
 Content-Type: application/octet-stream
 X-Content-SHA256: <hex>
@@ -1007,22 +1021,31 @@ Content-Length: <n>
 ```
 
 ```json
-{ "verdict": "infected", "signature": "Win.Test.EICAR_HDB-1", "engine": { "clamav": "1.x", "db_version": 27xxx, "db_time": "2026-10-29T03:12:00Z" } }
+{
+	"verdict": "infected",
+	"signature": "Eicar-Test-Signature",
+	"flags": [],
+	"scores": {},
+	"model": "clamav",
+	"version": { "clamav": "1.x", "db_version": "27xxx", "db_time": "2026-10-29T03:12:00Z" },
+	"ms": 38
+}
 ```
 
 `safety-api` streams the body to clamd with the `zINSTREAM` command: 4-byte big-endian
-length-prefixed chunks, ended by a zero-length chunk. It maps `stream: OK` to `clean`, `… FOUND` to
-`infected`, and `INSTREAM size limit exceeded` or any socket error to `error`.
+length-prefixed chunks, ended by a zero-length chunk. It maps `stream: OK` to `clean` and `… FOUND`
+to `infected`. `INSTREAM size limit exceeded` answers a typed `413` and a socket error a typed
+`503`; neither is a verdict (Decision #345).
 
 **Status mapping.** Use the existing helpers and the real enum (`files.file_status`:
 `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined`):
 
-| Verdict                                         | Action                                                                                                                             |
-| :---------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| `clean`                                         | Continue to the promote                                                                                                            |
-| `infected`                                      | `refuse(row, hostile = true, …)`: the quarantine object is deleted and the row becomes `quarantined` with a person-readable reason |
-| `error` / unreachable, `MALWARE_SCAN_LIVE=true` | `markRow(id, "pending_upload")` and answer 503. The client retries `uploadComplete`                                                |
-| `MALWARE_SCAN_LIVE=false`                       | Skip, as today, and log one line per upload in development                                                                         |
+| Verdict                                       | Action                                                                                                                             |
+| :-------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `clean`                                       | Continue to the promote                                                                                                            |
+| `infected`                                    | `refuse(row, hostile = true, …)`: the quarantine object is deleted and the row becomes `quarantined` with a person-readable reason |
+| `503` / unreachable, `MALWARE_SCAN_LIVE=true` | `markRow(id, "pending_upload")` and answer 503. The client retries `uploadComplete`                                                |
+| `MALWARE_SCAN_LIVE=false`                     | Skip, as today, and log one line per upload in development                                                                         |
 
 **`clamd.conf` essentials.**
 

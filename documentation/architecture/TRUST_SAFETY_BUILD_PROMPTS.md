@@ -155,8 +155,9 @@ side only, and nothing here creates `infra/safety-node/`.
   gateway if one is ever needed (a). Every verdict uses the contract's
   `{verdict, scores, model, version, ms}` envelope, and an engine failure is a typed `503`, never an
   `error` verdict (b). A missing or wrong bearer gets a typed `401` (c). Projective's recognisers
-  travel per request from the app (EPI §6.2's `ad_hoc_recognizers`); the node stores none (d). Where
-  the image thresholds live (e) is still open.
+  travel per request from the app (EPI §6.2's `ad_hoc_recognizers`); the node stores none (d). The
+  app sends `moderation_image_thresholds` with each `/screen/*` request as one optional JSON form
+  field, and the node falls back to its env defaults without it (e).
 - **Sightengine stays in the app.** SN4 calls it for public media and public text only (ruling T2).
   The node has no Sightengine code and nudity never falls back to it, so the node file's N6 is
   withdrawn.
@@ -1102,8 +1103,7 @@ STEPS:
      through the pipeline since E8); public_assets writes except re-hosted favicons; the group
      photo (T3 (b)); a library row made Public (T3 (a)).
   3. Policy per EPI §6.3: NudeNet's exposed labels and OCR contact entities against
-     moderation_image_thresholds, sent with each /screen/* request (Decision #345 (e)).
-     🧑 #345 (e) is not ruled yet: confirm it with the owner before building that request field.
+     moderation_image_thresholds, sent with each /screen/* request (Decision #345 (e), ruled).
      clean → cut, write, attach. flagged → no public object; a 422
      with the category; the correction notice; the original stays uploaded and private; an
      automated finding through R1 (detector nudenet or ocr; ids and scores only). unavailable →
