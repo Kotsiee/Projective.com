@@ -147,8 +147,9 @@ export const DM_SHIELD_REFUSAL =
 export const UNDER_MINIMUM_REASON = "under_minimum";
 
 /**
- * The HttpOnly session cookie the join route sets once it has refused an under-13 date of birth, and
- * refuses every further individual sign-up while it lasts (Decision #208). It carries no data.
+ * The HttpOnly session cookie the join route sets once it has refused an under-13 date of birth (an
+ * individual's or an enterprise owner's), and refuses every further sign-up while it lasts (Decision
+ * #208). It carries no data.
  */
 export const JOIN_AGE_LOCK_COOKIE = "pj_join_age_lock";
 

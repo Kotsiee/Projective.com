@@ -25,13 +25,16 @@ import {
 	verificationPollLimiter,
 } from "./verification-status.ts";
 import { refreshFailure, SESSION_EXPIRED_MESSAGE } from "./refresh-outcome.ts";
-import type { CreateEnterprise } from "@projective/types/org";
+import type { CreateEnterprise, EnterpriseOwner } from "@projective/types/org";
+import { handleAlternatives, localHandleRefusal } from "@projective/types/workspace";
 import {
 	AGE_SQLSTATE,
 	bracketFromDob,
+	ENTERPRISE_OWNER_MINOR_REFUSAL,
 	isJoinable,
 	UNDER_MINIMUM_REASON,
 	UNDER_MINIMUM_REFUSAL,
+	USERNAME_RE,
 } from "@projective/types/auth";
 
 // #region GoTrue mapping helpers
@@ -113,6 +116,28 @@ export function usernameCandidates(typed: string): string[] {
 }
 // #endregion
 
+// #region The enterprise owner's @handle
+/**
+ * The `@handle` candidates for an enterprise owner, best first. Step 1.6 asks for no username
+ * (PRODUCT_SPEC §Enterprise onboarding), so it is derived: the name as `first-last` (accents
+ * dropped, `owner` when no Latin letter is left), its `handleAlternatives`, then one random variant
+ * so a common name always has a way in. Each fits the sign-up shape ({@link USERNAME_RE}) and the
+ * namespace rule `public.create_enterprise` re-checks (`org.fn_handle_refusal`). The owner can
+ * change it later. Pure, and exported for its test.
+ */
+export function ownerHandleCandidates(
+	firstName: string,
+	lastName: string,
+	random: string = crypto.randomUUID().slice(0, 6),
+): string[] {
+	const stem = `${firstName} ${lastName}`.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+/, "").slice(0, 23).replace(/-+$/, "");
+	const base = stem.length >= 3 ? stem : "owner";
+	return [base, ...handleAlternatives(base), `${base}-${random}`]
+		.filter((handle) => USERNAME_RE.test(handle) && localHandleRefusal(handle) === null);
+}
+// #endregion
+
 /**
  * AuthBackendService — the FAT server-side auth service.
  *
@@ -171,13 +196,15 @@ export interface ProvisionEnterpriseInput {
 	locale?: string;
 	/** An offerable display currency → the owner's `org.user_preferences.preferred_display_currency`. */
 	displayCurrency?: string;
+	/** The owner as a person; the service derives their `username` ({@link ownerHandleCandidates}). */
+	owner: Omit<EnterpriseOwner, "username">;
 	/**
 	 * The validated enterprise to provision (the {@link CreateEnterprise} SSOT shape from
-	 * `@projective/types`). The live path admin-creates the owner identity, then inserts it into
-	 * `org.enterprises` + seeds the owner's `org.enterprise_members` row via the
-	 * `public.create_enterprise` RPC (migrations 0314/0315).
+	 * `@projective/types`). The live path admin-creates the owner identity, then provisions the
+	 * owner's profile, inserts `org.enterprises` and seeds the owner's `org.enterprise_members` row via
+	 * the `public.create_enterprise` RPC (migrations 0314/0315).
 	 */
-	enterprise: CreateEnterprise;
+	enterprise: Omit<CreateEnterprise, "owner">;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
@@ -301,10 +328,12 @@ export class AuthBackendService {
 	 *  - **Individual, OAuth completion** — the caller is already authenticated (they OAuth'd, landed
 	 *    profile-less on `/join`), so provision in-context via the `complete_onboarding` RPC. OAuth
 	 *    email is pre-verified → `requiresVerification: false`.
-	 *  - **Enterprise** — admin-create the owner identity, then insert the enterprise + owner membership
-	 *    atomically via the `create_enterprise` RPC (migrations 0314/0315); when that RPC fails, the
-	 *    owner identity is deleted again. Email unconfirmed → the confirmation email is dispatched,
-	 *    then `requiresVerification: true`.
+	 *  - **Enterprise** — an owner under 18 is refused before anything is written. Otherwise admin-create
+	 *    the owner identity, then provision the owner's profile, the enterprise and the owner membership
+	 *    atomically via the `create_enterprise` RPC (migrations 0314/0315), under the first derived
+	 *    `@handle` it does not refuse as taken (`23505`). When the RPC fails, the owner identity is
+	 *    deleted again. Email unconfirmed → the confirmation email is dispatched, then
+	 *    `requiresVerification: true`.
 	 *
 	 * Every refusal GoTrue or the database returns is answered with {@link JOIN_REFUSED} (or its
 	 * enterprise / onboarding sibling), never the raw text, so `/join` does not reveal whether an
@@ -347,15 +376,20 @@ export class AuthBackendService {
 	}
 
 	static async provisionAccount(input: ProvisionAccountInput): Promise<ServiceResult<AuthPayload>> {
+		// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
+		const person = input.type === "individual" ? input : input.owner;
+		const bracket = bracketFromDob(person.dob, person.timeZone);
+		if (!isJoinable(bracket)) {
+			return AuthBackendService.refuseUnderMinimum(person);
+		}
 		if (input.type === "individual") {
-			// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
-			if (!isJoinable(bracketFromDob(input.dob, input.timeZone))) {
-				return AuthBackendService.refuseUnderMinimum(input);
-			}
 			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
 			if (!input.oauth && (!input.password || input.password.length < 8)) {
 				return fail(422, { errors: { password: "Use at least 8 characters." } });
 			}
+		} else if (bracket === "restricted") {
+			// The owner holds the enterprise's seat, and no minor holds one (Decision #208).
+			return fail(422, { errors: { dob: ENTERPRISE_OWNER_MINOR_REFUSAL } });
 		}
 
 		if (!isAuthBackendLive()) {
@@ -385,15 +419,22 @@ export class AuthBackendService {
 				}
 				// The owner account and the enterprise are two writes. When the second fails (a taken
 				// handle surfaces as a unique_violation), the first is undone, so a retry with the same
-				// address is not refused as "already registered" (IW-H8).
+				// address is not refused as "already registered" (IW-H8). The owner's handle cannot be
+				// probed first (nobody is signed in, and the service role has no USAGE on `org`), so the
+				// RPC's own re-check is the probe: a taken one (23505) unwinds the call whole, and the
+				// next derived handle is tried.
+				const usernames = ownerHandleCandidates(input.owner.firstName, input.owner.lastName);
 				let rpcFailed = true;
 				try {
-					const { error: rpcError } = await admin.rpc("create_enterprise", {
-						p_owner: created.user.id,
-						p_payload: input.enterprise,
-					});
-					if (rpcError) console.error("[auth:create-enterprise]", rpcError.code);
-					rpcFailed = !!rpcError;
+					for (const username of usernames) {
+						const { error: rpcError } = await admin.rpc("create_enterprise", {
+							p_owner: created.user.id,
+							p_payload: { ...input.enterprise, owner: { ...input.owner, username } },
+						});
+						if (rpcError) console.error("[auth:create-enterprise]", rpcError.code);
+						rpcFailed = !!rpcError;
+						if (rpcError?.code !== "23505") break;
+					}
 				} catch (e) {
 					console.error("[auth:create-enterprise]", e instanceof Error ? e.name : "error");
 				}
@@ -462,9 +503,10 @@ export class AuthBackendService {
 
 	/**
 	 * Delete an enterprise owner's GoTrue user whose enterprise could not be written. The account was
-	 * created moments ago in this request, holds no profile (an enterprise owner gets no
-	 * `users_public` row) and has never signed in, so nothing else references it. A failed delete is
-	 * logged, not surfaced: the sign-up is refused either way.
+	 * created moments ago in this request and has never signed in, and it holds no profile:
+	 * `create_enterprise` writes the owner's `users_public` row in the enterprise's own transaction,
+	 * so a refused call leaves none. Nothing else references it. A failed delete is logged, not
+	 * surfaced: the sign-up is refused either way.
 	 */
 	private static async discardOrphanedOwner(userId: string): Promise<void> {
 		try {

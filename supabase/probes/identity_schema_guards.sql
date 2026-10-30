@@ -6,9 +6,11 @@
 --     `org` and `security` pins a search_path, and org.enable_freelancer_profile pins it EMPTY.
 --   * IW-M10: org.enterprise_members.status is `active` or `left` (CHECK).
 --   * IW-L: org.teams.visibility is `public`, `unlisted` or `invite_only` (CHECK).
---   * IW-H2 (whatever F4 rules): org.fn_is_minor fails CLOSED — an identity (auth.users) with no
---     profile row has no date of birth and is not provably adult; an id naming no identity (a team or
---     business id passed polymorphically) and a NULL user (no person) stay false.
+--   * IW-H2: org.fn_is_minor fails CLOSED — an identity (auth.users) with no profile row has no date
+--     of birth and is not provably adult; an id naming no identity (a team or business id passed
+--     polymorphically) and a NULL user (no person) stay false. F4 is ruled (Decision #336, ruling
+--     I2): public.create_enterprise now gives the owner a profile (enterprise_owner_profile.sql), so
+--     the profile-less identity left is an OAuth sign-up before /join completes; it takes no seat.
 --   * IW-L1: an archived enterprise is refused by security.switch_enterprise_context and dropped from
 --     the claims at the next mint (public.custom_access_token_hook).
 --   * IW-L2: a freelancer context slot is re-verified at mint: a given-up profile (`is_freelancer`
@@ -100,7 +102,7 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM org.enterprises e WHERE e.owner_user_id = u.user_id)
      ORDER BY u.username LIMIT 1;
     INSERT INTO probe_ids (k, id) VALUES ('GHOST', gen_random_uuid());
-    -- A profile-less identity, as an OAuth sign-up (or an enterprise owner, Decision #87(b)) leaves it.
+    -- A profile-less identity, as an OAuth sign-up leaves it until /join completes.
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data, email_confirmed_at)
     SELECT id, 'guards-probe-' || id || '@projective.invalid', 'authenticated', 'authenticated', '{}'::jsonb, now()
       FROM probe_ids WHERE k = 'GHOST';
@@ -110,7 +112,8 @@ BEGIN
     IF EXISTS (SELECT 1 FROM org.users_public WHERE user_id = (SELECT id FROM probe_ids WHERE k = 'GHOST')) THEN
         RAISE EXCEPTION 'FAIL fixture — the profile-less identity was given a profile';
     END IF;
-    -- An enterprise the client owns, with the client's owner seat (the owner is an adult with a DoB).
+    -- An enterprise the client owns, with the client's owner seat. No `owner` block: the client already
+    -- holds a profile with a DoB, so create_enterprise provisions nothing.
     INSERT INTO probe_ids (k, id)
     SELECT 'ENT', public.create_enterprise((SELECT id FROM probe_ids WHERE k = 'CLIENT'), jsonb_build_object(
         'legalName', 'Guards Probe Ltd', 'handle', 'guardsprobe' || substr(md5(random()::text), 1, 8),

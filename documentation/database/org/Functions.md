@@ -139,16 +139,17 @@ own preferences remain owner-scoped per `org/Policies.md` (Decision #47).
 A new row then takes the browser's hints from the sign-up metadata — `locale` and
 `display_currency`, sent by `/join` (`preferenceHints` in `@projective/types/org`, validated again
 by the join schema) — each kept only when the platform offers it, else left at the column default.
-An enterprise owner gets no `org.users_public` row (Decision #87 flag (b)), so their owner
-membership seeds theirs.
+An enterprise owner is provisioned like anyone else, inside `public.create_enterprise` (Decision
+#336, ruling I2), from the hints on their GoTrue identity, so these same triggers seed theirs. The
+owner-membership trigger that seeded them while owners had no profile (`on_enterprise_owner_created`
+→ `org.seed_owner_preferences`) is retired.
 
 | Function | Role |
 | :-- | :-- |
 | `org.fn_supported_locale(p_locale text) → text` | The `org.supported_locales` tag `p_locale` names, ignoring case and `_` / `-`; else `NULL`. `STABLE`. |
 | `org.fn_supported_display_currency(p_code text) → text` | `p_code` upper-cased when it is the platform base (`security.platform_params.base_currency`) or has a seeded `finance.fx_rates` row both ways against it — the `DISPLAY_CURRENCIES` rule; else `NULL`. `STABLE`. |
 | `org.fn_signup_meta(p_user_id uuid) → jsonb` | The metadata a person is provisioned from: the payload `public.provision_user_profile` publishes for the transaction (setting `projective.signup_meta`, keyed by user — `complete_onboarding`'s payload never reaches `auth.users`), else `auth.users.raw_user_meta_data`; `'{}'` when neither. `SECURITY DEFINER`. |
-| `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. Called by both seed triggers. |
-| `org.seed_owner_preferences() → trigger` | `on_enterprise_owner_created`, `AFTER INSERT ON org.enterprise_members` `WHEN (NEW.role = 'owner')` (`00001810`): seeds the owner's preferences from the metadata `AuthBackendService` gives the owner identity. `comms.notification_prefs` is seeded here only when the owner already has a profile row — that table keys onto `org.users_public`, so a profile-less owner's row waits for one (Decision #207 flag). `SECURITY DEFINER`. |
+| `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. Called by `org.seed_user_preferences`. |
 
 None is granted to a client role (`org` is deny-by-default, `00002510`). The notification side is
 `comms.fn_seed_notification_prefs` ([comms/Functions.md](../comms/Functions.md#triggers)). Probe:
@@ -173,20 +174,44 @@ Keyed off `auth.uid()`; safe to call from any policy `USING`/`WITH CHECK` clause
 
 Atomic enterprise provisioning, called by `@projective/backend`'s `AuthBackendService`
 (service-role) **after** it admin-creates the owner identity in GoTrue. In one transaction it:
-inserts `org.enterprises` (owner = `p_owner`; `NULLIF` collapses the client's empty-string
-defaults to `NULL`, and the 0314 `industry_other` CHECK still applies), seeds the owner's
-`org.enterprise_members` row (`role = 'owner'`), and writes an `enterprise.created` entry to
+provisions the owner's profile (below); inserts `org.enterprises` (owner = `p_owner`; `NULLIF`
+collapses the client's empty-string defaults to `NULL`, and the 0314 `industry_other` CHECK still
+applies); seeds the owner's `org.enterprise_members` row (`role = 'owner'`); points the owner's
+`security.session_context` at the new enterprise; and writes an `enterprise.created` entry to
 `security.audit_logs` (definer context, because that table isn't granted to `authenticated` — cf.
 `provision_user_profile` in 0304). `p_payload` is the camelCase `@projective/types`
 `CreateEnterprise` shape. Returns the new org id.
 
+**The owner is a person** (Decision #336, ruling I2; IW-H2, IW-M7). `p_payload.owner` —
+`{ firstName, lastName, username, dob, timeZone }` (`EnterpriseOwnerSchema`) — is provisioned FIRST
+through `provision_user_profile`, with the identity's GoTrue email (unconfirmed at sign-up),
+`objective = 'client'`, `visibility = 'private'`, and the `locale` / `display_currency` hints the
+identity's metadata carries; that metadata holds no `username` or `dob`, so `handle_new_user` left
+the identity profile-less. So the owner gets a `users_public` row with a date of birth, the
+corporate email as the primary `user_emails` row, and preferences from the profile triggers. The
+`username` is derived from the owner's name by the service (step 1.6 asks for none) and re-checked
+here with `org.fn_handle_refusal`: `23505` taken, `22023` any other refusal. A refusal unwinds the
+whole call, so nothing is left behind and the service can still delete the GoTrue user: under 13 →
+`PM422` (`org.fn_check_dob`); 13–17 → `PM403` at the owner seat (`trg_workspace_member_adult`).
+Without an `owner` block, `p_owner` must already hold a profile: a profile-less owner is still
+refused `PM403` at the seat, because `org.fn_is_minor` fails closed. The session context is written
+directly, as `provision_user_profile` writes it, because `security.fn_set_session_context` acts for
+`auth.uid()` and this service-role call has none. So the first token after confirmation carries the
+enterprise context (`onboarded = true`, boolean `isClient` / `isFreelancer`, Decision #87 (c)), and
+`switch_enterprise_context` / `clear_session_context` work for the owner: `session_context` keys
+onto `org.users_public`, so they used to fail `23503`. Probe:
+`supabase/probes/enterprise_owner_profile.sql`.
+
 **Handles share one namespace** (2026-10-06): the handle is trimmed and lower-cased, then checked
 with `org.fn_handle_refusal` BEFORE the insert — the same rule (3–40 chars, lowercase letters,
 digits and hyphens, not reserved, not taken by any person, team, business or enterprise) and the
-same sentence the create forms' availability probe shows. A taken handle raises `23505`, any other
-refusal `22023`; `AuthBackendService` returns the message with a 422. The `UNIQUE` on
-`enterprises.handle` only ever saw other enterprises, so before this an enterprise could claim
-a person's `@username` and the two fought over `/{handle}`.
+same sentence the create forms' availability probe shows. It is checked after the owner's profile is
+written, so an enterprise handle equal to the owner's is taken too. A taken handle raises `23505`,
+any other refusal `22023`. On a `23505`, `AuthBackendService` calls again with the owner's next
+derived handle, because the namespace cannot be probed before sign-in (the service role has no
+`USAGE` on `org`). Any other refusal gets its generic enterprise refusal, with a 422. The `UNIQUE`
+on `enterprises.handle` only ever saw other enterprises, so before this an enterprise could claim a
+person's `@username` and the two fought over `/{handle}`.
 
 **Grant:** `service_role` only, and explicitly `REVOKE`d from `PUBLIC`, `anon` and `authenticated`
 (`00002510`) — it trusts the `p_owner` it is handed, and Postgres grants a new `public` function to
@@ -204,7 +229,7 @@ functions below are `SECURITY DEFINER` with `SET search_path = public, org, pg_t
 
 | Function                                                                                                             | Role                                                                                                                                                                                                                              | `EXECUTE`                                                                                                                                            |
 | :------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `public.provision_user_profile(p_user_id uuid, p_email text, p_email_confirmed_at timestamptz, p_meta jsonb) → void` | Creates `users_public`, the primary `user_emails` row, the freelancer profile (objective `freelancer`/`seller`), `security.session_context` and the `user.onboarded` audit entry for the uid it is handed. Trusts every argument but `dob`, which `org.fn_check_dob` refuses before any write: `22023` missing, in the future or before 1900; `PM422` under 13 (Decision #190). | `service_role` only, explicitly `REVOKE`d from `PUBLIC`, `anon`, `authenticated`. Its callers are the two definers below, which run it as its owner. |
+| `public.provision_user_profile(p_user_id uuid, p_email text, p_email_confirmed_at timestamptz, p_meta jsonb) → void` | Creates `users_public` (`unlisted`, or `private` when the metadata's `visibility` says so — sign-up metadata never makes a profile public), the primary `user_emails` row, the freelancer profile (objective `freelancer`/`seller`), `security.session_context` and the `user.onboarded` audit entry for the uid it is handed. Trusts every argument but `dob`, which `org.fn_check_dob` refuses before any write: `22023` missing, in the future or before 1900; `PM422` under 13 (Decision #190). | `service_role` only, explicitly `REVOKE`d from `PUBLIC`, `anon`, `authenticated`. Its callers are the two definers below and `public.create_enterprise` (an enterprise's owner, `private`), which run it as its owner. |
 | `public.handle_new_user() → trigger`                                                                                 | `on_auth_user_created`: provisions at once when the sign-up metadata carries `username` and `dob` (the email/password wizard); OAuth sign-ups stay profile-less. An under-13 `dob` aborts the GoTrue sign-up itself (`PM422`; GoTrue answers "Database error saving new user"), so a direct GoTrue sign-up cannot skip the age floor. | trigger, revoked from every client role.                                                                                                             |
 | `public.complete_onboarding(p_payload jsonb) → void`                                                                 | `/join` completion for an OAuth sign-up: `28000` signed out, `23505` already onboarded, `22023` without `username`/`dob`; then provisions `auth.uid()` with the GoTrue email — so `PM422` for a `dob` under 13. | `authenticated`, `service_role`.                                                                                                                     |
 | `public.handle_email_confirmed() → trigger`                                                                          | Mirrors GoTrue's first `email_confirmed_at` into `org.user_emails.verified_at`.                                                                                                                                                   | trigger, revoked from every client role.                                                                                                             |
@@ -236,7 +261,7 @@ with `fn_age_years(dob, timezone) < 18`, `fn_is_minor`'s rule spelled out.
 | `org.fn_age_years(p_dob date, p_zone text DEFAULT NULL) → integer` | Whole years since `p_dob` on `fn_today_in(p_zone)` (`age()`, so a 29 February birthday turns over on 1 March). `STABLE`. |
 | `org.fn_check_dob(p_dob date, p_zone text DEFAULT NULL) → void` | The one date-of-birth rule: `22023` when missing, in the future (in `p_zone`) or before 1900; `PM422` under 13. Called by `provision_user_profile` and the trigger below. |
 | `org.trg_users_public_dob_guard() → trigger` | `trg_users_public_dob_guard`, BEFORE INSERT / UPDATE OF `dob` on `org.users_public`: runs `fn_check_dob(NEW.dob, NEW.timezone)` on every write path.                |
-| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is **not provably 18** today: 13–17 in their own zone, or an identity (`auth.users` row) with no profile row and so no date of birth. It **fails closed** (IW-H2, 2026-10-30, whatever FOUNDER_QUESTIONNAIRE F4 rules): it used to answer `false` without a profile row, so a profile-less enterprise owner passed every `fn_assert_adult` door. An id naming no identity (a team or business id passed polymorphically, e.g. `trg_project_joiner_adult`'s participant) and `NULL` (the service role) stay `false`. Consequence until F4 lands: `public.create_enterprise` cannot seat a profile-less owner (`trg_workspace_member_adult`, `PM403`). `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`), the seller-persona rule in `provision_user_profile` (a minor who chose "freelancer" starts as a client) and `fn_compute_profile_setup_progress` (never suggests `become_partner` to a minor). |
+| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is **not provably 18** today: 13–17 in their own zone, or an identity (`auth.users` row) with no profile row and so no date of birth. It **fails closed** (IW-H2, 2026-10-30, whatever FOUNDER_QUESTIONNAIRE F4 rules): it used to answer `false` without a profile row, so a profile-less enterprise owner passed every `fn_assert_adult` door. An id naming no identity (a team or business id passed polymorphically, e.g. `trg_project_joiner_adult`'s participant) and `NULL` (the service role) stay `false`. F4 is ruled (Decision #336, ruling I2): `public.create_enterprise` provisions the owner's profile with a date of birth before it seats them, and a profile-less owner is still refused at the seat (`trg_workspace_member_adult`, `PM403`). `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`), the seller-persona rule in `provision_user_profile` (a minor who chose "freelancer" starts as a client) and `fn_compute_profile_setup_progress` (never suggests `become_partner` to a minor). |
 | `org.fn_assert_adult(p_user uuid) → void`    | The one buy/sell gate: raises `PM403` for a minor; a `NULL` user (the service role) passes. `SECURITY DEFINER`.                              |
 
 `org.fn_assert_adult` is called with the acting person by every door that spends, earns, sells or

@@ -1,6 +1,11 @@
 import { assert, assertEquals } from "@std/assert";
 import { bracketFromDob, computeAge, todayIn, UNDER_MINIMUM_REFUSAL } from "./age.ts";
-import { IndividualJoinSchema, JoinSchema } from "./join.ts";
+import {
+	ENTERPRISE_OWNER_MINOR_REFUSAL,
+	EnterpriseJoinSchema,
+	IndividualJoinSchema,
+	JoinSchema,
+} from "./join.ts";
 
 /** The date `years` years (and `days` days) before today in `zone`, as an ISO date. */
 function isoYearsAgo(years: number, days = 0, zone = "UTC"): string {
@@ -44,6 +49,37 @@ Deno.test("join: a future, malformed, impossible or pre-1900 date of birth is no
 Deno.test("join: a client-sent restricted flag is stripped, never carried", () => {
 	const parsed = JoinSchema.parse({ ...individual, dob: isoYearsAgo(16), restricted: false });
 	assert(!("restricted" in parsed));
+});
+
+const enterprise = {
+	type: "enterprise",
+	legalName: "Acme Ltd",
+	corporateEmail: "owner@acme.example",
+	phone: "+44 20 7946 0000",
+	address: { street: "1 Acme Way", city: "London", postcode: "EC1A 1AA", country: "GB" },
+	employeeTier: "1-50",
+	industry: "software",
+	password: "correct horse",
+	ownerFirstName: "Grace",
+	ownerLastName: "Hopper",
+	timeZone: "UTC",
+};
+
+function ownerDobIssue(dob: string | undefined): string | undefined {
+	const parsed = EnterpriseJoinSchema.safeParse({ ...enterprise, dob });
+	return parsed.success ? undefined : parsed.error.issues.find((i) => i.path[0] === "dob")?.message;
+}
+
+Deno.test("join: an enterprise owner's date of birth is required and gets the minimum-age copy", () => {
+	assert(ownerDobIssue(undefined) !== undefined);
+	assertEquals(ownerDobIssue(isoYearsAgo(12)), UNDER_MINIMUM_REFUSAL);
+	assertEquals(ownerDobIssue("2001-02-30"), "Enter a real date of birth.");
+});
+
+Deno.test("join: an enterprise owner must be 18 or over", () => {
+	assertEquals(ownerDobIssue(isoYearsAgo(18, 1)), ENTERPRISE_OWNER_MINOR_REFUSAL);
+	assertEquals(ownerDobIssue(isoYearsAgo(15)), ENTERPRISE_OWNER_MINOR_REFUSAL);
+	assertEquals(ownerDobIssue(isoYearsAgo(18)), undefined);
 });
 
 Deno.test("join: an unknown time zone is dropped, so the age counts in UTC", () => {
