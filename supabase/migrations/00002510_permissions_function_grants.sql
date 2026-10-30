@@ -250,28 +250,6 @@ EXECUTE ON FUNCTION search.fn_norm (
 authenticated,
 service_role;
 
--- Service role only (SECURITY_MODERATION_AND_AI_GAPS E5): both are definers that join org.users_public
--- and projects.projects past their RLS — real names of private profiles, non-active projects — with an
--- unclamped limit, and no app path calls them (Explore ranks in ExploreBackendService).
-REVOKE ALL ON FUNCTION search.fn_search_entities (text, text, jsonb, text, integer, integer, uuid, public.vector)
-FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION search.fn_search_global (text, uuid, integer) FROM PUBLIC, anon, authenticated;
-
-GRANT
-EXECUTE ON FUNCTION search.fn_search_entities (
-    text,
-    text,
-    jsonb,
-    text,
-    integer,
-    integer,
-    uuid,
-    public.vector
-) TO service_role;
-
-GRANT
-EXECUTE ON FUNCTION search.fn_search_global (text, uuid, integer) TO service_role;
-
 GRANT
 EXECUTE ON FUNCTION search.fn_log_query (
     text,

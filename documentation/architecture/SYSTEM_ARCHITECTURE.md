@@ -2356,7 +2356,9 @@ All file uploads follow a "Quarantine-First" protocol to protect the platform fr
 viruses.
 
 1. **Ingestion:** Files are initially uploaded to a `quarantine` bucket via a signed upload URL,
-   under the uploader's own id prefix.
+   under the uploader's own id prefix. It is the only bucket a client writes: no `authenticated`
+   storage policy grants a write on any other, so the service role writes every other object
+   (Decision #340, Q0.2 (a)).
 2. **Validation:** The fat media service (service role) claims the row, sniffs the magic bytes and
    fully decodes the file (see §Backend Services → The Public Profile). **No malware scanner runs
    today** (#340 (h)): the sniff and the decode are the only checks, and the `scan-file` Edge

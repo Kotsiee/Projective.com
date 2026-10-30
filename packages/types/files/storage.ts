@@ -14,7 +14,8 @@ import { z } from "zod";
  *
  * THE INVARIANT: the first path segment of every object is the RLS anchor
  * (`(storage.foldername(name))[1]` in the policies). The builders below always emit that anchor
- * first, so a path produced here is guaranteed to satisfy the matching policy's `WITH CHECK`.
+ * first, so a path produced here is guaranteed to satisfy the matching policy. Outside `quarantine`
+ * those policies only read: the service role is every other bucket's only writer.
  *
  * Only enum/primitive Zod is used so the module is stable across Zod majors (matching
  * `community/newsletter.ts`, `explore/items.ts`).
@@ -41,8 +42,9 @@ export type StorageBucket = z.infer<typeof StorageBucket>;
 
 /**
  * Access tier of a bucket.
- * - `public`  — object URLs are edge-cached and world-readable (write still owner-scoped).
- * - `private` — read via short-lived signed URLs; RLS governs read + write.
+ * - `public`  — object URLs are edge-cached and world-readable; the service role writes.
+ * - `private` — read via short-lived signed URLs; RLS governs read; the service role writes
+ *   (`quarantine` alone takes the uploader's own write).
  * - `service` — service-role ONLY; no `authenticated` policy exists (KYC/KYB).
  */
 export const StorageAccess = z.enum(["public", "private", "service"]);
@@ -122,7 +124,7 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 	public_assets: {
 		access: "public",
 		maxBytes: 10 * MiB,
-		allowedMime: [...IMAGE_MIME, "image/svg+xml"],
+		allowedMime: [...IMAGE_MIME],
 		anchor: "owner_id",
 		purpose: "Misc public assets (general / legacy).",
 	},
@@ -349,7 +351,7 @@ export function verificationLocation(
 	};
 }
 
-/** `avatars/{entity}/{entityId}/{filename}` — public read; owner write. */
+/** `avatars/{entity}/{entityId}/{filename}` — public read; service-role write. */
 export function avatarLocation(
 	entity: AvatarEntity,
 	entityId: string,
@@ -358,7 +360,7 @@ export function avatarLocation(
 	return { bucket: "avatars", path: join(entity, entityId, filename) };
 }
 
-/** `catalogue/{sellerId}/{listingId}/...segments` — public read; seller write. */
+/** `catalogue/{sellerId}/{listingId}/...segments` — public read; service-role write. */
 export function catalogueLocation(
 	sellerId: string,
 	listingId: string,
@@ -367,7 +369,7 @@ export function catalogueLocation(
 	return { bucket: "catalogue", path: join(sellerId, listingId, ...segments) };
 }
 
-/** `public_assets/{ownerId}/...segments` — public read; owner write. */
+/** `public_assets/{ownerId}/...segments` — public read; service-role write. */
 export function publicAssetLocation(
 	ownerId: string,
 	...segments: Array<string | number>
