@@ -30,7 +30,8 @@ Deno.test("simulating nothing has one spelling: no cookie at all", () => {
 Deno.test("an unrecognised value is ignored axis by axis, never trusted", () => {
 	// A hand-edited cookie must not be able to invent an access level the type does not have.
 	assertEquals(parseLandingSim("access=admin&status=draft"), { access: null, status: "draft" });
-	assertEquals(parseLandingSim("access=owner&status=archived"), { access: "owner", status: null });
+	assertEquals(parseLandingSim("access=owner&status=deleted"), { access: "owner", status: null });
+	assertEquals(parseLandingSim("status=archived"), { access: null, status: "archived" });
 	assertEquals(parseLandingSim("garbage"), NO_LANDING_SIM);
 });
 

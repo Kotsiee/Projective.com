@@ -3,6 +3,7 @@
  * progression ladder.
  */
 export * from "./enterprises.ts";
+export * from "./identity.ts";
 export * from "./preferences.ts";
 export * from "./locales.ts";
 export * from "./date-format.ts";

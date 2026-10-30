@@ -15,7 +15,7 @@ accounts start with no active profile until they create a Business or Team.
 
 | Column                   | Type         | Notes                                                                                                                                                           |
 | :----------------------- | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_id`                | uuid         | PK, FK → `auth.users.id`.                                                                                                                                       |
+| `user_id`                | uuid         | PK, FK → `auth.users.id` **and** FK → `org.users_public.user_id` (`session_context_user_id_fkey1`), both NO ACTION.                                                                                                                                       |
 | `active_profile_type`    | profile_type | `freelancer` or `business`.                                                                                                                                     |
 | `active_profile_id`      | uuid         | UUID of the active profile.                                                                                                                                     |
 | `active_team_id`         | uuid         | Optional active team context.                                                                                                                                   |

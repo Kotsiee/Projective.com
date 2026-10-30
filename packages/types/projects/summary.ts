@@ -27,8 +27,18 @@ const timestamp = z.string();
 export const ProjectFormat = z.enum(["one_off", "pipeline", "session"]);
 export type ProjectFormat = z.infer<typeof ProjectFormat>;
 
-/** `project_status` — engagement lifecycle (nothing is hard-deleted; `cancelled`/`completed` rest). */
-export const ProjectStatus = z.enum(["draft", "active", "on_hold", "completed", "cancelled"]);
+/**
+ * `project_status` — engagement lifecycle. Nothing is hard-deleted: `cancelled` / `completed` rest,
+ * and `archived` is the shelved state (`archived_at` is set exactly when it is, `ck_projects_archived_at`).
+ */
+export const ProjectStatus = z.enum([
+	"draft",
+	"active",
+	"on_hold",
+	"completed",
+	"cancelled",
+	"archived",
+]);
 export type ProjectStatus = z.infer<typeof ProjectStatus>;
 
 /**

@@ -25,6 +25,10 @@ data remains isolated while providing a searchable directory for the platform.
 | `interests`                              | text[]  | Discovery signal.                                                                                                                                      |
 | `rating_*` · `*_project_count` · `service_count` · `product_count` | numeric/int | Platform-computed; written only by definer triggers.                                                                          |
 | `is_freelancer` · `has_business` · `has_team` · `is_operator`      | boolean     | Capability flags; written only by definer RPCs.                                                                                |
+| `created_at` / `updated_at`              | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                                         |
+
+Zod row schema: `UsersPublicRowSchema` (`@projective/types/org`, `identity.ts`), held to this table
+column for key by `packages/types/org/identity-tables.contract.test.ts`.
 
 **`visibility` is a closed vocabulary** because three readers branch on it: the public directory view
 (`org.profiles_index` lists `public`, resolves `unlisted` by handle, omits the rest), the profile
@@ -54,6 +58,12 @@ The "Seller" persona. A user has exactly one freelancer profile.
 | :---------------------------------- | :------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
 | `user_id`                           | uuid                 | PK, FK → `auth.users.id`.                                                                                                            |
 | `skills`                            | text[]               | Fast-lookup array of skill tags.                                                                                                     |
+| `availability_status`               | text                 | Nullable, default `available`. **No CHECK**; the values written are `available` · `limited` · `unavailable` (erasure writes `unavailable`). |
+| `current_workload_intensity`        | integer              | `NOT NULL DEFAULT 0`. Cached load figure.                                                                                            |
+| `available_since`                   | timestamptz          | `NOT NULL DEFAULT now()`.                                                                                                            |
+| `rating_average` / `rating_count`   | numeric(3,2) / int   | Platform-computed seller rating cache.                                                                                               |
+| `max_workload_intensity`            | numeric(6,2)         | The Global Soft Cap on summed active-ticket Workload Intensity; `NULL` = the platform default.                                        |
+| `created_at` / `updated_at`         | timestamptz          | `NOT NULL DEFAULT now()`.                                                                                                            |
 | `is_freelancer` (on `users_public`) | boolean              | Denormalised persona flag; flipped to `true` by `org.enable_freelancer_profile` when a client unlocks a freelancer profile.          |
 | `kyc_status`                        | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) / `pending` / `verified` / `rejected` / `expired`. The earner's KYC cache — written only by `finance.apply_identity_event` from the signed Stripe Identity webhook (Decision #125); a `verified` value never regresses on a late event. |
 | `kyc_tier`                          | smallint             | **Additive.** Verification ladder tier (1 Basic / 2 Verified / 3 Business). `CHECK (kyc_tier IS NULL OR kyc_tier BETWEEN 1 AND 3)` — the same ladder `finance.verification_cases.tier` holds. A verified Identity session raises it to at least 2. |
@@ -61,6 +71,9 @@ The "Seller" persona. A user has exactly one freelancer profile.
 | `payout_ready`                      | boolean              | **Additive.** Cache of "this person has a VERIFIED Stripe payout account" — recomputed by `finance.sync_payout_account` from what Stripe reports, never by a client. The onboarding GATE is `finance.fn_freelancer_payout_ready`, which requires this flag AND `kyc_status = 'verified'`. |
 | `identity_provider_ref`             | text                 | **Additive.** The latest Stripe Identity session id (`vs_…`; **no PII**), mirrored by `finance.attach_identity_session` until the person is verified. |
 | `hire_intake`                       | jsonb                | NOT NULL `DEFAULT '[]'`. The seller's HIRE intake — an ordered `IntakeField[]`, `CHECK` array ≤ 12 (`ck_freelancer_profiles_hire_intake_shape`). |
+
+Zod row schema: `FreelancerProfileRowSchema` (`@projective/types/org`, `identity.ts`). The FK →
+`auth.users` is `ON DELETE CASCADE`.
 
 > ⚠️ `kyc_*` is **identity/KYC** verification — distinct from **email** verification
 > (`org.user_emails.verified_at`, migration 0312). Gating rule in `finance-model.md` §KYC/KYB
@@ -77,6 +90,18 @@ projects).
 | `id`               | uuid                 | PK.                                                                                                                       |
 | `owner_user_id`    | uuid                 | FK → `auth.users.id`.                                                                                                     |
 | `name`             | text                 | Business display name.                                                                                                    |
+| `legal_name` · `tax_id` | text            | Registered name and tax id, both nullable.                                                                                |
+| `logo_file_id` / `banner_file_id` | uuid  | FK → `files.items.id`, `ON DELETE SET NULL`.                                                                              |
+| `headline` · `bio` | text · jsonb         | `headline NOT NULL DEFAULT ''`; `bio NOT NULL DEFAULT '{}'`.                                                              |
+| `country` · `timezone` · `languages` | text · text · text[] | Location and languages; `languages NOT NULL DEFAULT '{}'`.                                              |
+| `address_line_1` · `address_city` · `address_zip` | text | Billing address, nullable.                                                                             |
+| `invoicing_mode`   | text                 | `NOT NULL DEFAULT 'per_transaction'`, `CHECK IN ('per_transaction','intervaled_monthly')`.                               |
+| `billing_day`      | smallint             | `CHECK BETWEEN 1 AND 28`; the monthly invoice day.                                                                        |
+| `auto_fund_mode`   | text                 | `NOT NULL DEFAULT 'off'`, `CHECK IN ('off','add_to_basket','from_wallet')`: what a ticket entering Needs funding does (PRODUCT_SPEC §Escrow, Wallets & Finance #4). |
+| `low_balance_floor_cents` | bigint        | `CHECK (NULL OR > 0)`; the wallet floor in `default_currency` minor units below which a debit warns.                     |
+| `system_penalty_score` | numeric(6,2)     | `NOT NULL DEFAULT 0`.                                                                                                     |
+| `rating_*` · `*_project_count` · `service_count` · `product_count` | numeric/int | Platform-computed caches.                                                      |
+| `created_at` / `updated_at` | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                 |
 | `plan`             | text                 | Subscription tier (default: `free`).                                                                                      |
 | `billing_email`    | text                 | Primary contact for invoices.                                                                                             |
 | `default_currency` | text                 | Origin currency for the pooled fund (default `USD`).                                                                      |
@@ -86,6 +111,8 @@ projects).
 | `slug`             | text                 | The business's `@handle` — one namespace with people, teams and enterprises (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
 | `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. Only `active` transacts (`org.fn_assert_business_active`, BB5). |
 | `visibility`       | text                 | `CHECK IN ('public','unlisted','invite_only')` (`business_profiles_visibility_check`), default `invite_only` — a team's values (Decision #230 (h)). `org.profiles_index` lists an `active` business only when `public`, resolves it by handle when `unlisted`, and omits it when `invite_only` (or not active). It also decides whether a stranger may open the business's `/@handle` at all: `org.fn_profile_visible` admits an outsider only while it is `active` and `public`/`unlisted` (BP1, Decision #244). Created `invite_only` by `org.create_workspace`; set by `org.update_workspace`. Seeded businesses are `public`. |
+
+Zod row schema: `BusinessProfileRowSchema` (`@projective/types/workspace`, `rows.ts`).
 
 > A business is created by **`org.create_workspace`** (Decision #61) — never a client INSERT, and
 > the retired `org.create_business` no longer exists. Its members, roles and invitations are the
@@ -209,8 +236,18 @@ Micro-agencies or collaborative units.
 | `visibility`         | text  | `NOT NULL DEFAULT 'invite_only'` — `CHECK IN ('public','unlisted','invite_only')` (`teams_visibility_check`, 2026-10-30; the `business_profiles` vocabulary, Zod `WorkspaceVisibility`); created `invite_only` by `org.create_workspace`, set by `org.update_workspace`. `org.profiles_index` lists an `active` team only when `public` and resolves it by handle when `unlisted`. It decides, with `status`, whether a stranger may open the team's `/@handle`: `org.fn_profile_visible` admits an outsider only while it is `active` and `public`/`unlisted`; a member always, told why by `get_profile_view`'s `workspace.hidden_reason` (Teams P1). Seeded teams are `public`. |
 | `subscription_tier`  | text  | The team's plan tier. **Guarded** (`trg_teams_immutable`) — a plan is bought, never PATCHed.                                                |
 | `treasury_wallet_id` | uuid  | The team's wallet, set by `org.create_workspace` (and by the seed). Guarded.                                                                |
-| `payout_model`       | text  | Internal distribution logic.                                                                                                                |
+| `payout_model`       | text  | Internal distribution logic. `NOT NULL DEFAULT 'manager_discretion'`, no CHECK.                                                            |
+| `default_payout_settings` | jsonb | Nullable, default `'{}'`.                                                                                                              |
+| `avatar_file_id` / `banner_file_id` | uuid | FK → `files.items.id`, `ON DELETE SET NULL`.                                                                                   |
+| `headline` · `bio`   | text · jsonb | `headline` nullable (default `''`); `bio NOT NULL DEFAULT '{}'`.                                                                     |
+| `current_workload_intensity` · `available_since` | integer · timestamptz | Seller load cache and availability start, both `NOT NULL`.                                     |
+| `rating_*` · `*_project_count` · `service_count` · `product_count` | numeric/int | Platform-computed caches.                                                                 |
+| `created_at` / `updated_at` | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                            |
 | `hire_intake`        | jsonb | NOT NULL `DEFAULT '[]'`. Same shape and CHECK as `org.freelancer_profiles.hire_intake` (`ck_teams_hire_intake_shape`).                     |
+
+Zod row schema: `TeamRowSchema` (`@projective/types/workspace`, `rows.ts`); the role and member
+rows below are `TeamRoleRowSchema` / `BusinessRoleRowSchema` and `TeamMemberRowSchema` /
+`BusinessMemberRowSchema` in the same file.
 
 > **No `member_limit` column** (removed 2026-09-28). A team's seat cap is the `team_seats`
 > entitlement of its plan (`finance.fn_effective_limit`, enforced by `org.fn_assert_seat`); a second
@@ -669,6 +706,7 @@ column, because a user can belong to several enterprises.
 | `logo_file_id`        | uuid                                  | FK → `files.items.id` (ON DELETE SET NULL).                                           |
 | `billing_email`       | text                                  | Invoicing contact.                                                                    |
 | `default_currency`    | text                                  | Default `USD`.                                                                        |
+| `created_at` / `updated_at` | timestamptz                     | `NOT NULL DEFAULT now()`.                                                             |
 
 ### `org.enterprise_members`
 
@@ -681,8 +719,13 @@ Join table mapping users to enterprises with a role — the multi-tenant link.
 | `user_id`         | uuid                    | FK → `auth.users.id` (ON DELETE CASCADE).                       |
 | `role`            | `org.enterprise_role` | `owner` / `admin` / `member`.                                   |
 | `status`          | text                    | Default `active`; `CHECK IN ('active','left')` (`ck_enterprise_member_status`, IW-M10), the seat vocabulary of the team and business rosters. Every reader matches `active`. Zod `EnterpriseMemberStatus`. |
+| `departments`     | text[]                  | `NOT NULL DEFAULT '{}'`. The departments the member sits in: names from the parent's `enterprises.departments` (no FK on an array element; the application keeps them in step). A member in N departments is listed under each. |
 | `invited_by`      | uuid                    | FK → `auth.users.id` (ON DELETE SET NULL).                      |
+| `joined_at` / `created_at` | timestamptz    | `NOT NULL DEFAULT now()`.                                       |
 | UNIQUE            | —                       | `(enterprise_id, user_id)` — one membership per user per org. |
+
+Zod row schemas: `EnterpriseSchema` / `EnterpriseMemberSchema` (`@projective/types/org`,
+`enterprises.ts`). `status` is the `EnterpriseMemberStatus` enum, matching `ck_enterprise_member_status`.
 
 ---
 

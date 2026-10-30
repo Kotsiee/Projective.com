@@ -24,4 +24,5 @@ export * from "./common.ts";
 export * from "./invite-links.ts";
 export * from "./members.ts";
 export * from "./policy.ts";
+export * from "./rows.ts";
 export * from "./workspace.ts";

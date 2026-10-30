@@ -73,7 +73,7 @@ export function countByFilter(items: readonly ProjectSummary[]): Record<Portfoli
 		completed: 0,
 	};
 	for (const it of items) {
-		if (it.status !== "cancelled") counts[it.status]++;
+		if (it.status !== "cancelled" && it.status !== "archived") counts[it.status]++;
 	}
 	return counts;
 }
@@ -142,6 +142,7 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 /**

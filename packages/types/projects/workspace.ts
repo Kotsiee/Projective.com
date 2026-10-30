@@ -344,6 +344,8 @@ function stateOf(status: ProjectStatus): WorkspaceStageState {
 		case "completed":
 			return "delivered";
 		case "cancelled":
+		// Shelved work is out of the run, as withdrawn work is.
+		case "archived":
 			return "cancelled";
 	}
 }

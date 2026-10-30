@@ -190,11 +190,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * Coerce `project_status` onto the Zod {@link ProjectStatus}.
- *
- * The column carries an `archived` member the Zod enum does not, so an archived project degrades to
- * `cancelled` — the closest representable "no longer running" — while {@link STATUS_LABEL} still
- * prints the true word. A row that failed to parse would take the whole dashboard down instead.
+ * Coerce `project_status` onto the Zod {@link ProjectStatus}, 1:1. A value outside the enum degrades
+ * to `cancelled`, the closest "no longer running": a row that failed to parse would take the whole
+ * dashboard down instead.
  */
 function toProjectStatus(raw: string): ProjectStatus {
 	switch (raw) {
@@ -203,6 +201,7 @@ function toProjectStatus(raw: string): ProjectStatus {
 		case "on_hold":
 		case "completed":
 		case "cancelled":
+		case "archived":
 			return raw;
 		default:
 			return "cancelled";

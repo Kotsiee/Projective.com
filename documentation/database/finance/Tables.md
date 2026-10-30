@@ -107,6 +107,7 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 
 | Column                         | Type                 | Notes                                             |
 | :----------------------------- | :------------------- | :------------------------------------------------ |
+| `id`                           | uuid                 | PK.                                               |
 | `project_stage_id`             | uuid                 | FK → `projects.project_stages` (RESTRICT).        |
 | `ticket_id`                    | uuid                 | FK → `projects.tickets` (SET NULL).               |
 | `revision_id`                  | uuid                 | FK → `projects.stage_revision_requests` (RESTRICT). The paid revision round this escrow pays for (Decision #167), written by `finance.fn_hold_revision_escrow`; `NULL` = the ticket's **base** escrow. Decision #189. |
@@ -119,8 +120,14 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `platform_fee_cents`           | bigint               | Fee applied at release (0 while held).            |
 | `deadline_bonus_cents`         | bigint               | Optional bonus.                                   |
 | `currency`                     | text                 | Origin currency.                                  |
-| `status`                       | text                 | `held`/`released`/`refunded`/`disputed`/`funded`. |
+| `status`                       | text                 | `held`/`released`/`refunded`/`disputed`/`funded` (`EscrowStatus`; no CHECK). |
+| `created_at`                   | timestamptz          | `NOT NULL DEFAULT now()`.                         |
+| `released_at`                  | timestamptz          | When it was released to the payee: what a consolidated invoice selects its period by. |
+| `auto_funded`                  | boolean              | `NOT NULL DEFAULT false`. Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. |
 | `fx_rate`,`fx_base`,`fx_as_of` | —                    | **Additive** FX snapshot (`20260723090000`).      |
+
+Zod row schema: `EscrowSchema` (`@projective/types/finance`, `ledger.ts`). Every finance row schema is
+held to its table column for key by `packages/types/finance/finance-tables.contract.test.ts`.
 
 **One held base escrow per ticket (Decision #189).** `uq_escrows_ticket_base_held` is a partial
 UNIQUE index on `(ticket_id) WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL`:

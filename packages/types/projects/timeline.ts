@@ -160,6 +160,7 @@ export const STAGE_STATUS_WORD: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 /** The plain word for a ticket's status, in the board's display vocabulary (Decision #35). */

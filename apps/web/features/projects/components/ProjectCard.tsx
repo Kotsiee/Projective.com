@@ -33,10 +33,11 @@ const STATUS_TITLE: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 /** Statuses that read as "rested" — the card dims to a low-contrast state (opacity shift, no pill). */
-const RESTED = new Set<ProjectStatus>(["completed", "cancelled"]);
+const RESTED = new Set<ProjectStatus>(["completed", "cancelled", "archived"]);
 // #endregion
 
 // #region Kebab menu

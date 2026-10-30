@@ -32,6 +32,7 @@ const STATUS_LABEL: Record<HireBrief["status"], string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 const STATUS_TONE: Record<HireBrief["status"], "success" | "warning" | "neutral" | "danger"> = {
@@ -40,6 +41,7 @@ const STATUS_TONE: Record<HireBrief["status"], "success" | "warning" | "neutral"
 	on_hold: "warning",
 	completed: "neutral",
 	cancelled: "danger",
+	archived: "neutral",
 };
 
 const ROLE_LABEL: Record<HireBrief["members"][number]["role"], string> = {

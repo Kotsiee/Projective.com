@@ -6,6 +6,7 @@
  * Import via the sub-path (`@projective/types/auth`) or the barrel.
  */
 export * from "./user-context.ts";
+export * from "./session-context.ts";
 export * from "./identities.ts";
 export * from "./age.ts";
 export * from "./join.ts";

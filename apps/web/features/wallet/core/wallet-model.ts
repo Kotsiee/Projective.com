@@ -12,7 +12,12 @@ import type {
 	WalletQuery,
 	WalletScope,
 } from "../types/wallet-types.ts";
-import { LedgerKind as LedgerKindEnum } from "../types/wallet-types.ts";
+import {
+	LedgerKind as LedgerKindEnum,
+	LEGACY_FLOW_PERIODS,
+	WALLET_SEARCH_MAX,
+	WalletFlowPeriod,
+} from "../types/wallet-types.ts";
 
 // #region Wallet param (scope:id) ⇄ query
 /** Encodes a wallet reference as the `?w=` param (`personal` · `team:{id}` · `aggregate`). */
@@ -154,10 +159,10 @@ export function hasInvoices(business: unknown): boolean {
  * A cash-flow window as the pinned range ruler names it — and as the page's `?flow=` param
  * carries it, so a window can be linked and survives a reload.
  */
-export type FlowPeriod = "7d" | "1m" | "3m" | "6m" | "1y" | "5y" | "all";
+export type FlowPeriod = WalletFlowPeriod;
 
 /** Every period, in ruler order (shortest window first). */
-export const FLOW_PERIODS: readonly FlowPeriod[] = ["7d", "1m", "3m", "6m", "1y", "5y", "all"];
+export const FLOW_PERIODS: readonly FlowPeriod[] = WalletFlowPeriod.options;
 
 /** The period the page opens on when `?flow=` names none. */
 export const DEFAULT_FLOW_PERIOD: FlowPeriod = "1m";
@@ -200,17 +205,6 @@ const PERIOD_PHRASE: Readonly<Record<FlowPeriod, string>> = {
 	all: "all time",
 };
 
-/**
- * The names `?flow=` carried before the ruler, so a bookmarked window still opens on the same span
- * rather than falling back to the default.
- */
-const LEGACY_PERIOD: Readonly<Record<string, FlowPeriod>> = {
-	week: "7d",
-	month: "1m",
-	quarter: "3m",
-	year: "1y",
-};
-
 /** The server window a period is summed over. */
 export function periodRange(period: FlowPeriod): ActivityRange {
 	return PERIOD_RANGE[period];
@@ -248,7 +242,7 @@ export function toFlowPeriod(
 	fallback: FlowPeriod = DEFAULT_FLOW_PERIOD,
 ): FlowPeriod {
 	if (FLOW_PERIODS.includes(raw as FlowPeriod)) return raw as FlowPeriod;
-	return (raw && LEGACY_PERIOD[raw]) || fallback;
+	return (raw && LEGACY_FLOW_PERIODS[raw]) || fallback;
 }
 // #endregion
 
@@ -313,8 +307,6 @@ export function settlementLabel(settlement: LedgerSettlement): string {
 	return SETTLEMENT_LABEL[settlement];
 }
 
-const SEARCH_MAX = 160;
-
 function kindsFrom(raw: string | null): LedgerKind[] {
 	if (!raw) return [];
 	const wanted = new Set(raw.split(",").map((k) => k.trim()));
@@ -325,7 +317,7 @@ function kindsFrom(raw: string | null): LedgerKind[] {
 export function ledgerFiltersFrom(sp: URLSearchParams): LedgerFilters {
 	const dir = sp.get("dir");
 	return {
-		q: (sp.get("q") ?? "").slice(0, SEARCH_MAX),
+		q: (sp.get("q") ?? "").slice(0, WALLET_SEARCH_MAX),
 		dir: dir === "in" || dir === "out" ? dir : "all",
 		kinds: kindsFrom(sp.get("kind")),
 		period: toFlowPeriod(sp.get("flow"), defaultPeriodFor("transactions")),
@@ -393,7 +385,7 @@ export function ledgerApiParamsFrom(sp: URLSearchParams): TransactionListParams 
 	const direction = sp.get("direction");
 	const dir = sp.get("dir");
 	return {
-		search: sp.get("search")?.slice(0, SEARCH_MAX) || undefined,
+		search: sp.get("search")?.slice(0, WALLET_SEARCH_MAX) || undefined,
 		direction: direction === "credit" || direction === "debit" ? direction : undefined,
 		fundState: (sp.get("fundState") || undefined) as TransactionListParams["fundState"],
 		category: (sp.get("category") || undefined) as TransactionListParams["category"],

@@ -110,7 +110,12 @@ export const EscrowSchema = z.object({
 	 * (Decision #211). `null` on a cohort seat, which settles after the cohort's last sitting.
 	 */
 	sessionEventId: uuid.nullable(),
-	payerBusinessId: uuid,
+	/**
+	 * The payer is a client business OR an individual client: exactly one of the two is set
+	 * (`ck_escrows_one_payer`, Decision #126).
+	 */
+	payerBusinessId: uuid.nullable(),
+	payerUserId: uuid.nullable(),
 	/** Both `null` on a PREPAID escrow nobody has claimed yet; the claim binds them (Decision #197). */
 	payeeType: EscrowPayeeType.nullable(),
 	payeeId: uuid.nullable(),
@@ -118,11 +123,15 @@ export const EscrowSchema = z.object({
 	platformFeeCents: minorUnitsNonNeg,
 	deadlineBonusCents: minorUnitsNonNeg,
 	currency,
-	status: z.string().max(20),
+	status: EscrowStatus,
 	fxRate: z.number().nullable(),
 	fxBase: currency.nullable(),
 	fxAsOf: timestamp.nullable(),
 	createdAt: timestamp,
+	/** When it was released to the payee — what a consolidated invoice selects its period by. */
+	releasedAt: timestamp.nullable(),
+	/** Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. */
+	autoFunded: z.boolean(),
 });
 export type Escrow = z.infer<typeof EscrowSchema>;
 
