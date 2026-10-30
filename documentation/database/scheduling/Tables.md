@@ -30,7 +30,10 @@ not identity).
 | **Pre-engagement** calls (no project) | `scheduling.discovery_calls`                                        | New                                             |
 
 A `scheduling.events` row may **mirror** a `projects.session_events` row for calendar rendering via
-`source_session_event_id`; the projects row stays the source of truth.
+`source_session_event_id`; the projects row stays the source of truth. Every sitting is mirrored
+when it is written — a 1-1's by `projects.fn_book_session_slot`, a group's by
+`projects.schedule_sitting` (since 2026-10-30, audit S-05) — so every sitting occupies its
+provider's free/busy.
 
 ---
 
@@ -114,10 +117,10 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
 | `meeting_provider` · `meeting_provider_label` · `meeting_pending` | text · text · boolean | The online room's provider (a slug, or `custom`; deliberately no FK), its display label, and "still to be minted". Readable wherever the row is. |
 | `meeting_url` · `meeting_passcode` · `meeting_details` | text      | **The room.** Withheld from every client role at the COLUMN level (`00002520`, since 2026-09-28): a party — the creator, or someone seated — reads them through `scheduling.get_event_rooms`. See [Policies.md](Policies.md). `meeting_url` is https only (`ck_event_meeting_url_https`, since 2026-10-29): a schedule's manager writes the row directly and every party is shown it as a join link, so a `javascript:` URL was stored script. |
-| `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`).                                                |
+| `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`). On a group sitting's mirror, `capacity` is the cohort's `max_seats` and `attendee_count` its paid seats, kept current by `projects.fn_sync_sitting_mirrors` whenever a seat starts or ends. |
 | `source_connection_id`            | uuid                      | → `integrations.user_connections` (SET NULL) when mirrored in.                        |
 | `external_event_id`               | text                      | The provider's own id.                                                                |
-| `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session.             |
+| `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session. Written by `fn_book_session_slot` (a 1-1: host + client on the roster) and `schedule_sitting` (a group sitting: **no roster**, so it blocks free/busy and both booking gates but is never put to a reschedule round, `trg_sitting_round_guard`). Either mirror is also anchored to the engagement (`project_id`), so no client policy writes it. |
 | `created_by`                      | uuid                      | → `auth.users` (SET NULL).                                                            |
 | CHECK                             | —                         | `schedule_id IS NOT NULL OR project_id IS NOT NULL` (always anchored).                |
 | UNIQUE                            | —                         | `(source_connection_id, external_event_id)` — the re-sync upsert key.                 |

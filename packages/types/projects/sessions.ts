@@ -248,6 +248,57 @@ export const LessonProgressInputSchema = z.object({ done: z.boolean() });
 export type LessonProgressInput = z.infer<typeof LessonProgressInputSchema>;
 // #endregion
 
+// #region Sitting doors
+/** The longest title a sitting takes — `schedule_sitting` / `retitle_sitting` refuse a longer one. */
+export const SITTING_TITLE_MAX = 200;
+/** The longest a single sitting may run, in hours — `schedule_sitting`'s `INTERVAL '24 hours'`. */
+export const SITTING_MAX_HOURS = 24;
+
+const sittingTitle = z.string().trim().min(1).max(SITTING_TITLE_MAX);
+
+/**
+ * `projects.schedule_sitting` — the provider adds a sitting to a GROUP cohort they host (00001155
+ * §4c). The sitting is mirrored onto their calendar with no roster, so it blocks their free/busy and
+ * both booking gates, and no reschedule vote can move it. Once a seat is taken the database also
+ * refuses a sitting before the cohort's first one (and a first sitting inside the cancellation notice):
+ * a seat's refund is judged against that first sitting.
+ */
+export const ScheduleSittingInputSchema = z.object({
+	cohortId: uuid,
+	title: sittingTitle,
+	startsAt: iso,
+	endsAt: iso,
+}).refine(
+	(v) => {
+		const span = Date.parse(v.endsAt) - Date.parse(v.startsAt);
+		return Number.isFinite(span) && span > 0 && span <= SITTING_MAX_HOURS * 3_600_000;
+	},
+	{
+		message: `A session needs a start and a later end, at most ${SITTING_MAX_HOURS} hours apart.`,
+		path: ["endsAt"],
+	},
+);
+export type ScheduleSittingInput = z.infer<typeof ScheduleSittingInputSchema>;
+
+/** `projects.retitle_sitting` — the provider renames one of their sittings and its calendar mirror. */
+export const RetitleSittingInputSchema = z.object({
+	sittingId: uuid,
+	title: sittingTitle,
+});
+export type RetitleSittingInput = z.infer<typeof RetitleSittingInputSchema>;
+
+/** What either door answers: the sitting as it now stands, and its calendar mirror. */
+export const SittingWriteSchema = z.object({
+	sittingId: uuid,
+	slug: z.string().regex(/^ssn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$/),
+	calendarEventId: uuid.nullable(),
+	title: z.string().min(1).max(SITTING_TITLE_MAX),
+	startsAt: iso,
+	endsAt: iso,
+});
+export type SittingWrite = z.infer<typeof SittingWriteSchema>;
+// #endregion
+
 // #region Presence
 /**
  * One participant joining or leaving a room, reduced from a provider's webhook by its adapter. The

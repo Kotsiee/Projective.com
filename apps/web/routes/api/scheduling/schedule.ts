@@ -1,6 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { restrictBooking } from "@features/calendar/core/booking-gate.ts";
 import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
@@ -10,7 +12,8 @@ import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBack
  * {@link ScheduleBackendService.entitySchedule} and map the result.
  *
  * A public marketing surface, so the viewer travels with the read: a stranger gets the session's seat
- * COUNT (§Part 1.4) and never the people in those seats.
+ * COUNT (§Part 1.4) and never the people in those seats. An under-18 viewer gets the page with nothing
+ * on it bookable, as the SSR route paints it (Decision #208).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -20,8 +23,15 @@ export const handler = define.handlers({
 		if (!entityId) {
 			return Response.json({ ok: false, message: "Missing entityId." }, { status: 400 });
 		}
+		const res = await ScheduleBackendService.entitySchedule(
+			{ entityId },
+			viewerFromState(ctx.state),
+		);
+		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		return toSchedulingResponse(
-			await ScheduleBackendService.entitySchedule({ entityId }, viewerFromState(ctx.state)),
+			res.ok && res.data
+				? { ...res, data: { page: restrictBooking(res.data.page, restricted) } }
+				: res,
 		);
 	},
 });

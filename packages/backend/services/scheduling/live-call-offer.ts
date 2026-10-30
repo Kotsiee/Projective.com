@@ -4,10 +4,10 @@ import type { ProfileOwnerType } from "@projective/types/profile";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
-	CALL_COLUMNS,
-	type CallRow,
+	callFee,
+	PUBLIC_CALL_COLUMNS,
+	type PublicCallRow,
 	scheduleOwnerType,
-	toCallSettings,
 } from "./live-owner-availability.ts";
 
 /**
@@ -19,7 +19,8 @@ import {
  * call flavours exist, how long they run or what they cost. It needs no session: the "View call
  * settings" policy lets anyone read the settings of a PUBLISHED schedule, so the anonymous client
  * answers a guest and a member identically (a signed-in owner additionally sees their own draft, but
- * this reader ignores an unpublished schedule either way — a draft offers nothing).
+ * this reader ignores an unpublished schedule either way — a draft offers nothing). It selects only
+ * {@link PUBLIC_CALL_COLUMNS}: the anonymous client holds no grant on the host's caps and cooldown.
  *
  * Returns `null` when the owner takes no calls (no published schedule, calls switched off, or no
  * flavour on offer — a paid call with no fee is no offer), and `undefined` when the database could
@@ -49,7 +50,7 @@ export async function readPublicCallOffer(
 		if (!row || !row.is_published) return null;
 		const [call, platforms] = await Promise.all([
 			client.schema("scheduling").from("call_settings")
-				.select(CALL_COLUMNS)
+				.select(PUBLIC_CALL_COLUMNS)
 				.eq("schedule_id", row.id)
 				.maybeSingle(),
 			client.schema("scheduling").from("call_platforms")
@@ -59,20 +60,20 @@ export async function readPublicCallOffer(
 		]);
 		if (call.error || platforms.error) return undefined;
 		if (!call.data) return null;
-		const settings = toCallSettings(call.data as CallRow);
-		const priced = settings.paidEnabled && settings.feeAmountMinor !== null &&
-			settings.feeAmountMinor > 0 &&
-			settings.feeCurrency !== null;
-		if (!settings.acceptsCalls || (!settings.courtesyEnabled && !priced)) return null;
+		const settings = call.data as PublicCallRow;
+		const { feeAmountMinor, feeCurrency } = callFee(settings);
+		const priced = settings.paid_enabled && feeAmountMinor !== null && feeAmountMinor > 0 &&
+			feeCurrency !== null;
+		if (!settings.accepts_calls || (!settings.courtesy_enabled && !priced)) return null;
 		return {
 			acceptsCalls: true,
-			courtesyEnabled: settings.courtesyEnabled,
-			courtesyDurationMinutes: settings.courtesyDurationMinutes,
+			courtesyEnabled: settings.courtesy_enabled,
+			courtesyDurationMinutes: settings.courtesy_duration_minutes,
 			paidEnabled: priced,
-			paidDurationMinutes: settings.paidDurationMinutes,
-			feeAmountMinor: priced ? settings.feeAmountMinor : null,
-			feeCurrency: priced ? settings.feeCurrency : null,
-			agendaRequired: settings.agendaRequired,
+			paidDurationMinutes: settings.paid_duration_minutes,
+			feeAmountMinor: priced ? feeAmountMinor : null,
+			feeCurrency: priced ? feeCurrency : null,
+			agendaRequired: settings.agenda_required,
 			platforms: ((platforms.data ?? []) as Array<{ provider_slug: string }>)
 				.map((p) => ConferencingProviderSchema.safeParse(p.provider_slug))
 				.flatMap((r) => (r.success ? [r.data] : [])),

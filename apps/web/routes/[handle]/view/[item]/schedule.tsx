@@ -4,6 +4,8 @@ import { Icon } from "@projective/ui/icons";
 import { define } from "@web/utils/state.ts";
 import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts";
 import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { restrictBooking } from "@web/features/calendar/core/booking-gate.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.tsx";
 import { warmCatalog } from "@server/services/explore/live-catalog.ts";
@@ -20,7 +22,12 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		// The service below resolves the listing synchronously from the loaded catalogue.
 		await warmCatalog();
-		const { page: schedule } = await resolveSchedulePage(ctx.params.item, viewerFromState(ctx.state));
+		const { page: resolved } = await resolveSchedulePage(
+			ctx.params.item,
+			viewerFromState(ctx.state),
+		);
+		// An under-18 viewer books nothing with anyone (Decision #208).
+		const schedule = restrictBooking(resolved, isRestrictedRequest(ctx.req, ctx.state.userContext));
 		ctx.state.title = schedule
 			? `${schedule.title} · Schedule · Projective`
 			: "Schedule · Projective";

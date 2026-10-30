@@ -192,24 +192,33 @@ projection (`isEventParty` / `redactEventForViewer` in `packages/types/schedulin
 
 | Table             | SELECT                                                                | Write                                                                                                               |
 | :---------------- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| `call_settings`   | `anon` when `fn_schedule_is_public`, else owner side                  | `fn_can_manage_schedule` (ALL)                                                                                      |
+| `call_settings`   | `anon` when `fn_schedule_is_public` (public columns only, below), else owner side | `fn_can_manage_schedule` (ALL)                                                                          |
 | `call_platforms`  | Same as `call_settings` — a booker picks a platform BEFORE signing in | `fn_can_manage_schedule` (ALL). Discloses only which providers are offered; never a connection, token or account id |
 | `discovery_calls` | Host **or** requester **or** admin — never `anon`                     | **No client `INSERT` or `UPDATE` policy**, and `SELECT` is the only table grant — `scheduling.request_discovery_call` is the only door |
 | `call_attendance` | `fn_is_call_party`                                                    | None — webhooks write as service-role                                                                               |
 | `call_audit`      | `fn_is_call_party`                                                    | None — the audit trigger writes it                                                                                  |
 
 `call_settings` is visitor-readable on purpose: someone must be able to learn **whether** calls are
-offered, **how long** they run, and **what a paid one costs** before signing in. The private fields
-— caps, cooldowns, buffers — are excluded at the projection layer (`PublicCallOfferSchema` in
-`packages/types/scheduling/calls.ts`), not by a second policy.
+offered, **how long** they run, and **what a paid one costs** before signing in, and the slot grid
+needs the buffers, notice and horizon it is drawn under. The anti-abuse settings do not need to be
+public, and since 2026-10-30 (audit S-16) a visitor cannot read them.
 
-> ⚠️ **Still open: the projection is the only thing excluding them.** The `View call settings`
-> policy is a row policy `TO anon, authenticated` and the table grant is plain `SELECT … TO anon`, so
-> a guest querying PostgREST directly reads the whole row — `courtesy_max_per_week`,
-> `courtesy_cooldown_days`, `auto_confirm`, the buffers, the notice and horizon. The slot grid
-> legitimately needs the buffers, notice and horizon; the caps and cooldowns do not need to be
-> public. Closing it means a column-level grant (the `events` technique) or a definer read of the
-> public slice; not done.
+**Column-level grant for `anon` (`00002520`, the `events` technique).** A guest may SELECT
+`schedule_id`, `accepts_calls`, `courtesy_enabled`, `courtesy_duration_minutes`, `paid_enabled`,
+`paid_duration_minutes`, `fee_amount_minor`, `fee_currency`, `buffer_before_minutes`,
+`buffer_after_minutes`, `min_notice_minutes`, `max_advance_days` and `agenda_required`, and nothing
+else. `courtesy_max_per_week`, `courtesy_cooldown_days`, `auto_confirm` and `preferred_provider_slug`
+are withheld: a cap and a cooldown tell a requester exactly how to game them. The public readers ask
+for no more. `readPublicCallOffer` selects `PUBLIC_CALL_COLUMNS` (`live-owner-availability.ts`), and
+the slot grid selects its four guards (`live-slots.ts`). The booking gate is a definer and reads the
+whole row.
+
+> ⚠️ **Still open: a signed-in non-party still reads the caps.** `authenticated` keeps table-level
+> SELECT, because the owner's Availability editor reads the whole row as its owner
+> (`live-owner-availability.ts`, `CALL_COLUMNS`), and the `View call settings` row policy admits any
+> signed-in viewer of a published schedule. Closing it needs an owner read door for the editor (a
+> definer that returns the full row to `fn_can_manage_schedule` only), then the same column grant for
+> `authenticated`.
 
 ### Why there is no insert or update policy, and why the rules are in a trigger
 
@@ -297,7 +306,8 @@ discovery-call UPDATE path (all above), plus the rostered-event guard, the resch
 confirmed slot, the midnight band edge, the provider-local courtesy week and the timezone check
 ([Functions.md](Functions.md)). **Not** closed, and recorded rather than silently accepted:
 
-- **`call_settings` caps and cooldowns are `anon`-readable** through PostgREST (above).
+- **`call_settings` caps and cooldowns are readable by any signed-in user** through PostgREST
+  (above). The `anon` half was closed on 2026-10-30 (S-16).
 - **No discovery-call management RPCs** — confirm / decline / reschedule / cancel / complete /
   no-show have no client write path (above).
 - **One attendee can fill a round's twelve-slot cap** with unapproved slots and lock the host out
