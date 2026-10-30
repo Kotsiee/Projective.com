@@ -178,7 +178,7 @@ const NEUTRAL_CATEGORY_WEIGHT = 1;
  * The difficulty multiplier every ticket and every stage ref is reported at.
  *
  * The enum is not stored. `projects.tickets` has `workload_intensity numeric(4,2)`, which is the
- * RESULT of the multiplier rather than the multiplier — `projects.fn_check_workload_capacity` sums
+ * RESULT of the multiplier rather than the multiplier — `projects.check_ticket_capacity` sums
  * that column directly — and with {@link NEUTRAL_CATEGORY_WEIGHT} unknown the two factors cannot be
  * separated back out of their product.
  *

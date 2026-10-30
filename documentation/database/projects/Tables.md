@@ -177,6 +177,9 @@ touches the latter, so a draft that was merely renamed would keep escaping a swe
 
 ### `projects.project_stages`
 
+Zod row schema: `ProjectStageRowSchema` (`@projective/types/projects`, `rows.ts`); `status` is
+`StageStatus`, 1:1 with the `stage_status` enum.
+
 Atomic units of work. Each stage has its own status, schedule, pricing and delivery terms. There is
 **no stage-archetype column**: every archetype's configuration columns (file, session) coexist on
 one row, so a stage's kind is implicit in which columns the owner filled (see
@@ -353,6 +356,9 @@ policy — the definer door is the only writer. **Index:** `idx_service_instanti
 ## 👥 Staffing & Participation
 
 ### `projects.stage_assignments`
+
+Zod row schema: `StageAssignmentRowSchema` (`@projective/types/projects`, `rows.ts`); `status` is
+`StageAssignmentStatus`.
 
 Maps a specific freelancer or team to a project stage.
 
@@ -591,6 +597,9 @@ reads; no write policy — every write is a definer door (`get_stage_invite_link
 
 ### `projects.tickets`
 
+Zod row schema: `TicketRowSchema` (`@projective/types/projects`, `rows.ts`). `workload_intensity` is a
+number there (strictly positive, at most 99.99), not the `TicketIntensity` enum the composer offers.
+
 The unit of work a client commissions and a freelancer claims. Its lifecycle columns (`status`,
 `current_stage_id`, `claimed_at`, `payment_status`, `unit_price_cents`) are written only by the
 `SECURITY DEFINER` ticket RPCs; the board's commit writes the client-owned content.
@@ -726,6 +735,10 @@ resumes the work.
 ## 🚀 Execution & Quality Control
 
 ### `projects.stage_submissions`
+
+Zod row schema: `StageSubmissionRowSchema` (`@projective/types/projects`, `rows.ts`); `status` is
+`StoredSubmissionStatus`, the stored spelling. All four are held to this file column for key by
+`packages/types/projects/projects-tables.contract.test.ts`.
 
 The formal handover of work for review — one row per delivery against a (stage, ticket).
 

@@ -160,6 +160,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 /** The engagement's format in words, for the middot-separated meta line. */

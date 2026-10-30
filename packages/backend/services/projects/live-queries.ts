@@ -55,22 +55,19 @@ import type { ContextType } from "@projective/types/auth";
  * concern behind its own gate, and emitting a guessed path would render as a broken image on every
  * row.
  *
- * ## The status contradiction, handled rather than hidden
+ * ## Archived engagements stay out of the feed
  *
- * The Postgres `project_status` enum carries six members; the Zod `ProjectStatus` carries five — it
- * has no `archived` (that member was added to the database by Decision #80 and never reached the
- * SSOT). A row in that state therefore cannot be represented, so {@link ARCHIVED_STATUS} rows are
- * EXCLUDED from the feed at the query level rather than coerced into some other status. Excluding is
- * correct on its own terms — archived is this platform's soft delete, and a soft-deleted engagement
- * does not belong in a feed — but it is worth knowing that the alternative was never available.
+ * {@link ARCHIVED_STATUS} rows are EXCLUDED at the query level. Archived is this platform's soft
+ * delete (Decision #80), and a soft-deleted engagement does not belong in the feed, although the Zod
+ * `ProjectStatus` can represent it.
  */
 
 // #region Constants
 
-/** The soft-delete terminal state. Present in the DB enum, absent from the Zod SSOT — see the docblock. */
+/** The soft-delete terminal state, which the feed never lists — see the docblock. */
 const ARCHIVED_STATUS = "archived";
 
-/** The five `project_status` members the Zod SSOT can represent. */
+/** The `project_status` members the feed lists: every one but {@link ARCHIVED_STATUS}. */
 const REPRESENTABLE_STATUS: readonly string[] = [
 	"draft",
 	"active",
@@ -196,7 +193,7 @@ function toFormat(raw: string): ProjectFormat {
 	return raw === "one_off" || raw === "session" ? raw : "pipeline";
 }
 
-/** Coerce a `project_status` value; anything unrepresentable becomes `active`. See the docblock. */
+/** Coerce a `project_status` value; anything the feed does not list becomes `active`. See the docblock. */
 function toStatus(raw: string): ProjectStatus {
 	return (REPRESENTABLE_STATUS.includes(raw) ? raw : "active") as ProjectStatus;
 }

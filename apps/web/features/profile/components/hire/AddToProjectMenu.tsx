@@ -42,6 +42,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 export function AddToProjectMenu(

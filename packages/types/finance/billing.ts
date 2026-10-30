@@ -126,6 +126,11 @@ export const ChargebackSchema = z.object({
 	reason: z.string().max(400).nullable(),
 	openedAt: timestamp,
 	resolvedAt: timestamp.nullable(),
+	/**
+	 * On a LOST dispute, the part of the clawback the payer's wallet could not cover: the platform's
+	 * loss, recorded rather than forced into a negative balance. 0 until the case is lost.
+	 */
+	unrecoveredCents: minorUnitsNonNeg,
 	createdAt: timestamp,
 });
 export type Chargeback = z.infer<typeof ChargebackSchema>;

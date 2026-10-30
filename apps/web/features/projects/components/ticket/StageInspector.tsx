@@ -60,6 +60,7 @@ const STAGE_STATUS_LABEL: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 const STAGE_TONE: Record<ProjectStatus, string> = {
@@ -68,6 +69,7 @@ const STAGE_TONE: Record<ProjectStatus, string> = {
 	on_hold: "warning",
 	completed: "success",
 	cancelled: "muted",
+	archived: "muted",
 };
 
 /** One label/value line in the operating-metadata list. */

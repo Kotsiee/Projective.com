@@ -630,6 +630,7 @@ export const DEV_PROJECT_STATUSES: ReadonlyArray<DevOption<DevProjectStatus>> = 
 	{ value: "on_hold", label: "On hold" },
 	{ value: "completed", label: "Completed" },
 	{ value: "cancelled", label: "Cancelled" },
+	{ value: "archived", label: "Archived" },
 ];
 
 /**

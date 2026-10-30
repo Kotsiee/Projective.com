@@ -358,6 +358,40 @@ export function ticketWorkLocked(card: { claimed: boolean; status: TicketStatus 
 	return card.claimed && (card.status === "claimed" || card.status === "in_progress");
 }
 
+/**
+ * Whether a ticket's terms are frozen to both parties (Decision #291): once somebody holds it, its
+ * content, price, stages and workload stay as the client set them. Mirrors
+ * `projects.fn_ticket_immutability_guard`, which refuses the same edits on the live path.
+ */
+export function ticketTermsLocked(card: { claimed: boolean }): boolean {
+	return card.claimed;
+}
+
+/**
+ * The ticket statuses a person HOLDS, whose `workload_intensity` counts against their caps
+ * (`projects.check_ticket_capacity`). `reported_hidden` is held: a suspended ticket keeps its payee
+ * and escrow, so filing a workload report never frees capacity (DL W7).
+ */
+export const HELD_TICKET_STATUSES: ReadonlySet<TicketStatus> = new Set([
+	"claimed",
+	"in_progress",
+	"in_review",
+	"reported_hidden",
+]);
+
+/** Which ceiling a refused claim met: the person's global cap or the stage's hard cap. */
+export const CapacityScope = z.enum(["global", "stage"]);
+export type CapacityScope = z.infer<typeof CapacityScope>;
+
+/**
+ * `projects.tickets.workload_intensity` — numeric(4,2), strictly positive (`ck_tickets_workload_intensity`):
+ * a zero or negative figure would lower the sums the caps are judged on.
+ */
+export const TicketWorkloadIntensity = z.number().positive().max(99.99);
+
+/** `projects.tickets.unit_price_cents` — NULL inherits the stage price; never negative. */
+export const TicketUnitPriceCents = z.number().int().min(0).nullable();
+
 /** The ticket statuses that are work: entering one from outside them needs a held escrow (#165). */
 export const WORK_STATUSES: ReadonlySet<TicketStatus> = new Set([
 	"claimed",

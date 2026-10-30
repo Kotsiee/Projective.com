@@ -334,6 +334,8 @@ function noticeText(status: ProjectStatus, viewer: WorkspaceViewer): string | nu
 			return "This project is completed. Its rooms, files and history stay here.";
 		case "cancelled":
 			return "This project was cancelled. Its rooms, files and history stay here.";
+		case "archived":
+			return "This project is archived. Its rooms, files and history stay here.";
 		case "active":
 			return null;
 	}

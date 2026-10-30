@@ -10,7 +10,7 @@ import {
 	uuid,
 } from "./common.ts";
 import { TransactionDirection, WalletBalancesSchema } from "./ledger.ts";
-import { type ConvertedAmount, DEFAULT_LOCALE } from "./fx.ts";
+import { type ConvertedAmount, DEFAULT_LOCALE, DISPLAY_CURRENCIES } from "./fx.ts";
 import { KycStatus, VerificationTier } from "./verification.ts";
 import { DepositInterval, MethodRole, PayoutMode, PotPurpose } from "./methods.ts";
 import {
@@ -1466,7 +1466,15 @@ export function capabilitiesForRole(role: VaultRole): VaultCapability[] {
 		// `manage_members` implies every capability in finance.fn_has_vault_capability, approving spends
 		// included — a preset that omitted `approve_spend` could never surface it (#125(e)).
 		case "admin":
-			return ["view", "add_funds", "spend", "distribute", "withdraw", "manage_members", "approve_spend"];
+			return [
+				"view",
+				"add_funds",
+				"spend",
+				"distribute",
+				"withdraw",
+				"manage_members",
+				"approve_spend",
+			];
 		case "pm":
 			return ["view", "add_funds", "spend"];
 		case "member":
@@ -1504,5 +1512,244 @@ export interface WalletQuery {
 	 * UTC, when absent or not a zone.
 	 */
 	timezone?: string | null;
+}
+// #endregion
+
+// #region Page query (the address bar's SSOT)
+/**
+ * A cash-flow window as the pinned range ruler names it and the page's `?flow=` carries it, in ruler
+ * order (shortest window first).
+ */
+export const WalletFlowPeriod = z.enum(["7d", "1m", "3m", "6m", "1y", "5y", "all"]);
+export type WalletFlowPeriod = z.infer<typeof WalletFlowPeriod>;
+
+/**
+ * The names `?flow=` carried before the ruler. A bookmarked window still opens on the same span, and
+ * the address is corrected to the ruler's name.
+ */
+export const LEGACY_FLOW_PERIODS: Readonly<Record<string, WalletFlowPeriod>> = {
+	week: "7d",
+	month: "1m",
+	quarter: "3m",
+	year: "1y",
+};
+
+/**
+ * The actions a link may open (`?do=`, Decision #243): the wallet's own movement and configuration
+ * dialogs. `request_spend` is not one: a spend request is raised from the thing being bought.
+ */
+export const WALLET_INTENT_ACTIONS: ReadonlySet<WalletAction> = new Set<WalletAction>([
+	"top_up",
+	"withdraw",
+	"transfer",
+	"distribute",
+	"fund_escrow",
+	"new_recurring",
+	"add_method",
+	"set_payout",
+	"enrol_smoother",
+]);
+
+/** The path prefixes a wallet intent may return to (`?back=`). */
+const WALLET_BACK_PREFIXES: readonly string[] = ["/checkout"];
+
+/**
+ * A business's Billing module, its handle spelled as a handle is (`CreateWorkspaceInputSchema`: 3–40
+ * lowercase letters, digits and inner hyphens), followed by nothing, a query or a fragment.
+ */
+export const WALLET_BACK_BILLING =
+	/^\/businesses\/[a-z0-9][a-z0-9-]{1,38}[a-z0-9]\/billing(?=$|[?#])/;
+/** A business console's Overview: the console root, the same handle rule, and nothing deeper. */
+export const WALLET_BACK_OVERVIEW = /^\/businesses\/[a-z0-9][a-z0-9-]{1,38}[a-z0-9](?=$|[?#])/;
+const WALLET_BACK_PATTERNS: readonly RegExp[] = [WALLET_BACK_BILLING, WALLET_BACK_OVERVIEW];
+
+/**
+ * A same-origin path the wallet may send the viewer back to, or `null`. `back` is an open-redirect
+ * surface, so it is allowlisted: it must start with an allowed prefix followed by `/`, `?`, `#` or
+ * nothing (or match an allowed page), and carry no scheme, no protocol-relative `//`, no backslash
+ * and no control character.
+ */
+export function safeWalletBack(raw: string | null | undefined): string | null {
+	const path = raw?.trim() ?? "";
+	if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return null;
+	if ([...path].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) return null;
+	const allowed = WALLET_BACK_PREFIXES.some((prefix) =>
+		path === prefix ||
+		["/", "?", "#"].includes(path.charAt(prefix.length)) && path.startsWith(prefix)
+	) || WALLET_BACK_PATTERNS.some((pattern) => pattern.test(path));
+	return allowed && path.length <= 600 ? path : null;
+}
+
+/** The longest ledger search the address carries (`?q=`). */
+export const WALLET_SEARCH_MAX = 160;
+
+/** The direction toggle as the address names it; `all` is the default and is never written. */
+export const WalletPageDirection = z.enum(["in", "out"]);
+export type WalletPageDirection = z.infer<typeof WalletPageDirection>;
+
+/** `personal` · `aggregate` · `team:<uuid>` · `business:<uuid>` · `enterprise:<uuid>` (lowercase id). */
+const WALLET_PARAM_RE =
+	/^(?:personal|aggregate|(?:team|business|enterprise):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/**
+ * The canonical query of a wallet page (`/wallet`, `/wallet/transactions`, `/wallet/analytics`,
+ * `/wallet/invoices`). A field is `null` (or empty) when the address does not carry it; what that
+ * means (the active context's wallet, the page's default window) is the page's call.
+ */
+export interface WalletPageQuery {
+	/** `?w=`: which wallet. */
+	w: string | null;
+	/** `?flow=`: the cash-flow window. */
+	flow: WalletFlowPeriod | null;
+	/** `?display=`: an explicit display currency, one of {@link DISPLAY_CURRENCIES}. */
+	display: string | null;
+	/** `?tz=`: the IANA zone the browser's calendar runs in. */
+	tz: string | null;
+	/** `?do=`: a wallet intent, one of {@link WALLET_INTENT_ACTIONS}. */
+	do: WalletAction | null;
+	/** `?back=`: where a finished intent returns to ({@link safeWalletBack}). */
+	back: string | null;
+	/** `?q=`: the ledger search, trimmed, at most {@link WALLET_SEARCH_MAX} characters. */
+	q: string | null;
+	/** `?dir=`: the ledger direction. */
+	dir: WalletPageDirection | null;
+	/** `?kind=`: the ledger line families, de-duplicated, in {@link LedgerKind} order, never `other`. */
+	kind: LedgerKind[];
+}
+
+/** A parsed wallet page query, and whether the address had to change to say it canonically. */
+export interface WalletPageQueryResult {
+	value: WalletPageQuery;
+	/**
+	 * `true` when the address carried a value that was dropped or rewritten (an unknown action, a
+	 * legacy window name, an uppercase id, an unsafe `back`, …): the route should redirect, or the
+	 * island `replaceState`, to {@link walletPageSearch}(value).
+	 */
+	corrected: boolean;
+}
+
+function isZone(zone: string): boolean {
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone: zone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+const DISPLAY_CODES: ReadonlySet<string> = new Set(DISPLAY_CURRENCIES.map((c) => c.code));
+const PAGE_KINDS: readonly LedgerKind[] = LedgerKind.options.filter((k) => k !== "other");
+
+/** One raw query param: absent, or the string the address carries. */
+const rawParam = z.string().optional();
+
+/**
+ * The wallet pages' query, parsed from the first value of each param (Audit R3). Unknown values never
+ * throw: each is dropped or normalised, and the result says so through `corrected`, so a route can
+ * answer with the canonical address instead of silently rendering a different one. Params it does
+ * not name (`notice`, campaign tags) are neither read nor judged.
+ */
+export const WalletPageQuerySchema = z
+	.object({
+		w: rawParam,
+		flow: rawParam,
+		display: rawParam,
+		tz: rawParam,
+		do: rawParam,
+		back: rawParam,
+		q: rawParam,
+		dir: rawParam,
+		kind: rawParam,
+	})
+	.transform((raw): WalletPageQueryResult => {
+		let corrected = false;
+		/** One param's canonical value; the address is corrected when its spelling differs from `given`. */
+		function take<T>(
+			given: string | undefined,
+			canonical: T | null,
+			spelled: string | null,
+		): T | null {
+			if (given === undefined) return null;
+			if (spelled !== given) corrected = true;
+			return canonical;
+		}
+
+		const wLower = raw.w?.trim().toLowerCase();
+		const w = wLower !== undefined && WALLET_PARAM_RE.test(wLower) ? wLower : null;
+
+		const flowRaw = raw.flow?.trim() ?? "";
+		const flowParsed = WalletFlowPeriod.safeParse(flowRaw);
+		const flow = flowParsed.success ? flowParsed.data : LEGACY_FLOW_PERIODS[flowRaw] ?? null;
+
+		const displayUpper = raw.display?.trim().toUpperCase();
+		const display = displayUpper !== undefined && DISPLAY_CODES.has(displayUpper)
+			? displayUpper
+			: null;
+
+		const tzRaw = raw.tz?.trim();
+		const tz = tzRaw && isZone(tzRaw) ? tzRaw : null;
+
+		const doRaw = raw.do?.trim();
+		const action = doRaw && WALLET_INTENT_ACTIONS.has(doRaw as WalletAction)
+			? doRaw as WalletAction
+			: null;
+
+		const back = safeWalletBack(raw.back);
+
+		const q = raw.q?.trim().slice(0, WALLET_SEARCH_MAX) || null;
+
+		const dirParsed = WalletPageDirection.safeParse(raw.dir?.trim());
+		const dir = dirParsed.success ? dirParsed.data : null;
+
+		const wanted = new Set((raw.kind ?? "").split(",").map((k) => k.trim()));
+		const kind = PAGE_KINDS.filter((k) => wanted.has(k));
+
+		const value: WalletPageQuery = {
+			w: take(raw.w, w, w),
+			flow: take(raw.flow, flow, flow),
+			display: take(raw.display, display, display),
+			tz: take(raw.tz, tz, tz),
+			do: take(raw.do, action, action),
+			back: take(raw.back, back, back),
+			q: take(raw.q, q, q),
+			dir: take(raw.dir, dir, dir),
+			kind: take(raw.kind, kind, kind.length > 0 ? kind.join(",") : null) ?? [],
+		};
+		return { value, corrected };
+	});
+
+/**
+ * Parse a wallet page's query string into `{ value, corrected }` ({@link WalletPageQuerySchema}).
+ * Only the first value of a repeated param is read, as `URLSearchParams.get` reads it.
+ */
+export function parseWalletPageQuery(params: URLSearchParams): WalletPageQueryResult {
+	const first: Record<string, string> = {};
+	for (const [key, val] of params) if (!(key in first)) first[key] = val;
+	return WalletPageQuerySchema.parse(first);
+}
+
+/**
+ * The canonical query string of a parsed page query, in a fixed param order with every absent field
+ * left off. The params of `base` the schema does not name (`notice`, …) follow, unchanged.
+ */
+export function walletPageSearch(value: WalletPageQuery, base?: URLSearchParams): string {
+	const fields: [string, string | null][] = [
+		["w", value.w],
+		["flow", value.flow],
+		["display", value.display],
+		["tz", value.tz],
+		["do", value.do],
+		["back", value.back],
+		["q", value.q],
+		["dir", value.dir],
+		["kind", value.kind.length > 0 ? value.kind.join(",") : null],
+	];
+	const out = new URLSearchParams();
+	for (const [key, val] of fields) if (val !== null) out.set(key, val);
+	if (base) {
+		const named = new Set(fields.map(([key]) => key));
+		for (const [key, val] of base) if (!named.has(key)) out.append(key, val);
+	}
+	return out.toString();
 }
 // #endregion

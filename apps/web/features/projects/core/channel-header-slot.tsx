@@ -32,6 +32,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 	on_hold: "On hold",
 	completed: "Completed",
 	cancelled: "Cancelled",
+	archived: "Archived",
 };
 
 const KIND_LABEL: Record<ChannelMeta["kind"], string> = {

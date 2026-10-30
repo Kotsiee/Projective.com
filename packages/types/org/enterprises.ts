@@ -86,6 +86,12 @@ export const EnterpriseMemberSchema = z.object({
 	userId: uuid,
 	role: EnterpriseRole,
 	status: z.string().max(20),
+	/**
+	 * The departments this member sits in: names drawn from the parent's
+	 * {@link EnterpriseSchema} `departments` catalogue (an array element cannot carry a FK, so the
+	 * agreement is the application's job). A member in N departments is listed under each.
+	 */
+	departments: z.array(z.string().max(60)),
 	invitedBy: uuid.nullable(),
 	joinedAt: timestamp,
 	createdAt: timestamp,
