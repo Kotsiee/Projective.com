@@ -30,10 +30,8 @@ CREATE INDEX IF NOT EXISTS idx_channel_files_channel
 CREATE INDEX IF NOT EXISTS idx_dm_participants_folder
     ON comms.dm_participants (user_id, inbox_folder);
 
--- Membership checks, the roster and the reply-promotion trigger all look a participant up by
--- (thread, person).
-CREATE INDEX IF NOT EXISTS idx_dm_participants_thread_user
-    ON comms.dm_participants (thread_id, user_id);
+-- Membership checks, the roster and the reply-promotion trigger look a participant up by
+-- (thread, person) through the index of UNIQUE dm_participants_thread_user_key (00000016).
 
 -- A thread's newest messages: the inbox tail, the feed's keyset walk, and the request routing's
 -- "has anything been said here yet" probe.

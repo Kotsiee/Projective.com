@@ -14,6 +14,7 @@ import type {
 	SetVisibility,
 	ShareLink,
 } from "@projective/types/files";
+import { linkStorageAddress } from "@projective/types/files";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { clamp } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -314,8 +315,7 @@ export async function attachLink(actor: Actor, input: LinkAttach): Promise<Resul
 		id,
 		...ownerColumns(actor, owner),
 		folder_id: input.folderId ?? null,
-		bucket_id: "link",
-		storage_path: id,
+		...linkStorageAddress(id),
 		display_name: clamp(preview.title || preview.domain, 200),
 		original_name: clamp(preview.url, 200),
 		mime_type: "text/uri-list",

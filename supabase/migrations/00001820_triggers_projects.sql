@@ -97,3 +97,10 @@ CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT ON projects.project_partic
 CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT ON projects.stage_assignments
     FOR EACH ROW EXECUTE FUNCTION projects.trg_project_joiner_adult('freelancer_profile_id');
 -- #endregion
+
+-- An invitation note is masked in the protected phase on every write path, not only through
+-- invite_to_project (00001135, SEC L6).
+CREATE TRIGGER trg_project_invitations_mask_message
+    BEFORE INSERT OR UPDATE OF message ON projects.project_invitations
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.tg_mask_invitation_message();

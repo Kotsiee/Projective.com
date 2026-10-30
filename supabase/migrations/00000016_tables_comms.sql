@@ -227,6 +227,10 @@ CREATE TABLE comms.dm_participants (
     with
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT dm_participants_pkey PRIMARY KEY (id),
+        -- One participant row per person per thread (CAS M5). Every door that adds a person already
+        -- skips or restores an existing row; this makes a race between two of them fail loudly
+        -- instead of leaving a doubled roster. Its index also serves the (thread, person) lookups.
+        CONSTRAINT dm_participants_thread_user_key UNIQUE (thread_id, user_id),
         CONSTRAINT dm_participants_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
         CONSTRAINT dm_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id),
         CONSTRAINT dm_participants_inbox_folder_check CHECK (inbox_folder IN ('primary', 'requests', 'archived'))

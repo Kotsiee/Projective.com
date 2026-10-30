@@ -76,8 +76,9 @@ async function resolveThreadId(
 	if (identity.error) throw new Error(`org.users_public read failed: ${identity.error.message}`);
 	const target = (identity.data as IdentityRow | null)?.user_id;
 	if (!target) return null;
-	// One cannot open a DM with oneself: the RPC would happily mint a two-row thread whose both
-	// participants are the caller, and the inbox would then render a conversation with nobody in it.
+	// One cannot open a DM with oneself. The RPC refuses it too (`recipient: invalid`, since a thread
+	// whose both participants are the caller would break UNIQUE (thread_id, user_id)); answering the
+	// miss here keeps it a 404 rather than a failed write.
 	if (target === actor.userId) return null;
 
 	const thread = await commsClient(actor).rpc("get_or_create_dm_thread", {

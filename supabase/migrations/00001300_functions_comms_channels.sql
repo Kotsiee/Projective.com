@@ -3,6 +3,24 @@
 -- Consolidated verbatim from: 0113_get_or_create_dm_thread.sql, 0311_e7_private_channels_pii_handover.sql
 -- ============================================================================
 
+-- Serialise every "find the pair's thread, else open one" for one unordered pair of people until the
+-- caller's transaction ends (CAS M5). Both doors that open a pair's DM select-then-insert, so two
+-- first messages racing each other each found nothing and each minted a thread — two records for one
+-- pair, which unified messaging promises never exists. A transaction-scoped advisory lock keyed on the
+-- ordered pair makes the second caller wait and then find the first one's thread; unrelated pairs
+-- never contend. (UNIQUE (thread_id, user_id) on dm_participants is the row-level half: it cannot say
+-- "one thread per pair", which spans rows.)
+CREATE OR REPLACE FUNCTION comms.fn_lock_dm_pair(p_a uuid, p_b uuid)
+RETURNS void
+LANGUAGE sql
+VOLATILE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+        'comms.dm_pair:' || LEAST(p_a, p_b)::text || ':' || GREATEST(p_a, p_b)::text, 0
+    ));
+$$;
+
 -- `p_subject_listing` (Decision #217(g)): the listing a buyer pressed Contact on. A thread this call
 -- OPENS then becomes a `service_inquiry` about that listing; an existing service inquiry without a
 -- subject gains it. A thread already under way between the pair keeps its kind — unified messaging
@@ -19,6 +37,14 @@ DECLARE
     v_current_user_id uuid := auth.uid();
     v_thread_id uuid;
 BEGIN
+    IF v_current_user_id IS NULL THEN
+        RAISE EXCEPTION 'get_or_create_dm_thread: no acting user' USING ERRCODE = '42501';
+    END IF;
+    -- A DM with oneself would be one participant row twice, which UNIQUE (thread_id, user_id) refuses.
+    IF target_user_id IS NULL OR target_user_id = v_current_user_id THEN
+        RAISE EXCEPTION 'recipient: invalid' USING ERRCODE = '22023';
+    END IF;
+
     -- The subject must be a live listing the recipient sells; otherwise a thread could claim to be
     -- about a listing that has nothing to do with them.
     IF p_subject_listing IS NOT NULL AND NOT EXISTS (
@@ -34,6 +60,7 @@ BEGIN
     -- it (nothing requires the thread to hold ONLY these two), so a "message this person" from a
     -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
     -- thread (unified messaging, one record per pair); a group and an entity channel are not.
+    PERFORM comms.fn_lock_dm_pair(v_current_user_id, target_user_id);
     SELECT t.id INTO v_thread_id
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_current_user_id
@@ -308,6 +335,52 @@ BEGIN
 END;
 $$;
 
+-- The plain text a stored Delta spells: its `ops` runs' `insert`s joined in order — the SQL twin of
+-- `messageDeltaText` (packages/types/projects/message-rich.ts). NULL for anything that is not the
+-- normalised shape `MessageDeltaSchema` admits: an `{ ops }` envelope and nothing else, each op an
+-- object with a string `insert` and at most an `attributes` object of the four marks set to `true`.
+-- Strict on purpose: a key the renderer ignores (a second `text`, a mark set to a string) is still
+-- stored and still readable over PostgREST and realtime, so it is as good a hiding place for a
+-- phone number as a run the body does not contain (SECURITY_MODERATION_AND_AI_GAPS L2).
+CREATE OR REPLACE FUNCTION comms.fn_delta_text(p_delta jsonb)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_op jsonb;
+    v_text text := '';
+BEGIN
+    IF p_delta IS NULL OR jsonb_typeof(p_delta) <> 'object'
+       OR jsonb_typeof(p_delta -> 'ops') IS DISTINCT FROM 'array'
+       OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_delta) k WHERE k <> 'ops') THEN
+        RETURN NULL;
+    END IF;
+
+    FOR v_op IN SELECT e.op FROM jsonb_array_elements(p_delta -> 'ops') WITH ORDINALITY AS e(op, ord) ORDER BY e.ord LOOP
+        IF jsonb_typeof(v_op) <> 'object'
+           OR jsonb_typeof(v_op -> 'insert') IS DISTINCT FROM 'string'
+           OR EXISTS (SELECT 1 FROM jsonb_object_keys(v_op) k WHERE k NOT IN ('insert', 'attributes')) THEN
+            RETURN NULL;
+        END IF;
+        IF v_op ? 'attributes' THEN
+            IF jsonb_typeof(v_op -> 'attributes') <> 'object'
+               OR EXISTS (
+                   SELECT 1 FROM jsonb_each(v_op -> 'attributes') a
+                    WHERE a.key NOT IN ('bold', 'italic', 'underline', 'strike')
+                       OR a.value <> 'true'::jsonb
+               ) THEN
+                RETURN NULL;
+            END IF;
+        END IF;
+        v_text := v_text || (v_op ->> 'insert');
+    END LOOP;
+
+    RETURN NULLIF(v_text, '');
+END;
+$$;
+
 -- BEFORE INSERT OR UPDATE gate: mask + flag messages sent while the parent project is in its
 -- protected phase. This is the authoritative enforcement point — it fires for every insert path
 -- (service or direct) and for every edit of `body` / `body_delta`, since the sender's column grant
@@ -322,6 +395,13 @@ $$;
 -- renders plain. Losing the bold on a sentence is the cheap failure here; a leaked phone number is
 -- not. (The read side would also discard the stale Delta, which no longer spells the body — but the
 -- original words must not be STORED, not merely go unrendered.)
+--
+-- The Delta must also AGREE with the body before the mask ever looks at it (Delta smuggling, SEC L2):
+-- the mask reads only `body`, so `body: "hi"` beside a Delta that spells a phone number would pass
+-- untouched, and an empty body skipped the gate entirely. A Delta that does not spell the stored body
+-- exactly (comms.fn_delta_text) is dropped on every write, in every phase — every writer already
+-- sends an agreeing one (`messageDeltaText(delta) === body`), and the read side discards a disagreeing
+-- one anyway, so the only Delta this ever removes is one no reader would render.
 CREATE OR REPLACE FUNCTION comms.tg_mask_message_pii()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -333,6 +413,11 @@ DECLARE
     v_masked text;
     v_cats text[];
 BEGIN
+    IF NEW.body_delta IS NOT NULL
+       AND (coalesce(NEW.body, '') = '' OR comms.fn_delta_text(NEW.body_delta) IS DISTINCT FROM NEW.body) THEN
+        NEW.body_delta := NULL;
+    END IF;
+
     IF NEW.body IS NULL OR NEW.body = '' THEN
         RETURN NEW;
     END IF;
@@ -360,6 +445,12 @@ $$;
 -- project is still protected; otherwise a live, protected project the sender and another member of
 -- the thread are BOTH party to. A client cannot opt a message out: omitting `project_id` only sends
 -- the lookup to the derivation, and naming an unrelated project can only add masking.
+--
+-- "Protected" is projects.is_protected_phase and nothing else, the predicate a stage room's mask
+-- reads (SEC L4 (c)). Status is deliberately not part of it: a `cancelled` project an owner may set
+-- at any time is not the Projective Unlock, and a status filter here let cancelling an engagement lift
+-- its DM mask while its rooms stayed masked. Who counts as party to a project is
+-- projects.fn_engaged_projects, which includes the client business's active members (L4 (a)).
 CREATE OR REPLACE FUNCTION comms.fn_dm_protected_project(
     p_thread_id uuid,
     p_sender uuid,
@@ -372,11 +463,10 @@ SET search_path = public, comms, projects
 AS $$
     SELECT COALESCE(
         (SELECT p.id FROM projects.projects p
-          WHERE p.id = p_project_id AND p.handover_unlocked_at IS NULL),
+          WHERE p.id = p_project_id AND projects.is_protected_phase(p.id)),
         (SELECT p.id
            FROM projects.projects p
-          WHERE p.handover_unlocked_at IS NULL
-            AND p.status IN ('draft', 'active', 'on_hold')
+          WHERE projects.is_protected_phase(p.id)
             AND p.id IN (SELECT e.project_id FROM projects.fn_engaged_projects(p_sender) e)
             AND p.id IN (
                 SELECT e.project_id
@@ -388,10 +478,11 @@ AS $$
     );
 $$;
 
--- BEFORE INSERT gate for direct messages: the same mask + flag comms.tg_mask_message_pii applies to
+-- BEFORE INSERT OR UPDATE gate for direct messages: the same mask + flag comms.tg_mask_message_pii applies to
 -- a stage room, applied whenever the thread falls under a protected engagement — a hiring request,
 -- an application, or two parties already working together. A masked body drops its formatting for
--- the reason stated on that function: the Delta spells the unmasked words.
+-- the reason stated on that function: the Delta spells the unmasked words. A Delta that does not
+-- spell the body is dropped first, in every phase, for the Delta-smuggling reason given there.
 CREATE OR REPLACE FUNCTION comms.tg_mask_dm_message_pii()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -402,6 +493,11 @@ DECLARE
     v_masked text;
     v_cats text[];
 BEGIN
+    IF NEW.body_delta IS NOT NULL
+       AND (coalesce(NEW.body, '') = '' OR comms.fn_delta_text(NEW.body_delta) IS DISTINCT FROM NEW.body) THEN
+        NEW.body_delta := NULL;
+    END IF;
+
     IF NEW.body IS NULL OR NEW.body = '' THEN
         RETURN NEW;
     END IF;
@@ -415,7 +511,9 @@ BEGIN
         NEW.body := v_masked;
         NEW.body_delta := NULL;
         NEW.pii_masked := true;
-        NEW.pii_categories := v_cats;
+        NEW.pii_categories := CASE WHEN TG_OP = 'UPDATE'
+            THEN ARRAY(SELECT DISTINCT c FROM unnest(coalesce(OLD.pii_categories, '{}') || v_cats) c)
+            ELSE v_cats END;
     END IF;
 
     RETURN NEW;
@@ -1015,6 +1113,45 @@ $$;
 COMMENT ON FUNCTION comms.set_dm_muted(uuid, boolean) IS
 'Set the caller''s own mute on a thread they are an undeleted participant of (Decision #308). SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
 
+-- Mark a conversation read for the caller only (CAS M10): the participant row's `last_read_at`, the
+-- watermark the inbox compares the latest message against. Before this door the column had no writer,
+-- so every live thread with a message in it was unread forever. The watermark moves only when there is
+-- something to read past it — never opened, or a message newer than the mark — so opening a read
+-- thread writes nothing. Returns whether it moved, which is what tells the caller its cached inbox is
+-- stale. Refuses a caller who is not an undeleted participant, in the shape of the folder doors.
+CREATE OR REPLACE FUNCTION comms.mark_dm_read(p_thread_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'mark_dm_read: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF NOT comms.is_dm_participant(p_thread_id) THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE comms.dm_participants p
+    SET last_read_at = pg_catalog.now()
+    WHERE p.thread_id = p_thread_id
+      AND p.user_id = v_me
+      AND p.deleted_at IS NULL
+      AND (p.last_read_at IS NULL OR EXISTS (
+          SELECT 1 FROM comms.dm_messages m
+           WHERE m.thread_id = p_thread_id AND m.created_at > p.last_read_at
+      ));
+
+    RETURN FOUND;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.mark_dm_read(uuid) IS
+'Advance the caller''s own read watermark (dm_participants.last_read_at) on a thread they are an undeleted participant of; true when it moved. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
+
 -- Post the opening message of a hiring request into the pair's DM, opening the thread if there is
 -- none. The caller must hold an OPEN engagement with the recipient on `p_project_id` — a pending
 -- invitation they issued, or a pending application of theirs to the recipient's project — so the
@@ -1074,6 +1211,8 @@ BEGIN
         RAISE EXCEPTION 'No open request to this person on that project' USING ERRCODE = '42501';
     END IF;
 
+    -- The same pair lock as comms.get_or_create_dm_thread: the two doors open the same thread.
+    PERFORM comms.fn_lock_dm_pair(v_me, p_recipient);
     SELECT t.id INTO v_thread
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_me

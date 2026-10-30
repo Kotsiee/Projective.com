@@ -1270,6 +1270,8 @@ REVOKE ALL ON FUNCTION comms.set_dm_muted(uuid, boolean) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.set_dm_muted(uuid, boolean) TO authenticated;
 
+GRANT EXECUTE ON FUNCTION comms.mark_dm_read(uuid) TO authenticated;
+
 REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;

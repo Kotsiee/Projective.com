@@ -1496,6 +1496,11 @@ $$;
 
 -- TRUE while the project is still in its protected phase (before the Projective Unlock). Defaults to
 -- TRUE for an unknown project id so the filter fails safe (masks) rather than open.
+--
+-- The ONE protected-phase predicate: the stage-room mask, the DM mask (comms.fn_dm_protected_project)
+-- and the request / invitation / application masks all read it. Only the Unlock ends the phase —
+-- `status` is not part of it, because an owner can set `cancelled` at any time and that must not lift
+-- the contact filter on the people they were negotiating with (SEC L4 (c)).
 CREATE OR REPLACE FUNCTION projects.is_protected_phase(p_project_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -1510,7 +1515,9 @@ AS $$
 $$;
 
 -- Every project a given person is party to, for ANY user rather than auth.uid(): the owner, a
--- freelancer or business participant, a live stage assignee (in person or through an active team),
+-- freelancer or business participant, an active member of the client business (SEC L4 (a) — any of
+-- them configures and pays for the engagement, so any of them is a counterparty, not only its owner),
+-- a live stage assignee (in person or through an active team),
 -- an open or accepted invitee, and an open or accepted applicant. Read by the DM PII filter, which
 -- has to ask the question about the OTHER member of a thread as well as the sender. Internal — no
 -- client grant (00002510).
@@ -1529,6 +1536,18 @@ AS $$
     SELECT pp.project_id FROM projects.project_participants pp
       JOIN org.business_profiles bp ON bp.id = pp.profile_id
      WHERE pp.profile_type = 'business' AND bp.owner_user_id = p_user_id
+    UNION
+    SELECT pp.project_id FROM projects.project_participants pp
+      JOIN org.business_members bm ON bm.business_id = pp.profile_id
+     WHERE pp.profile_type = 'business' AND bm.user_id = p_user_id AND bm.status = 'active'
+    UNION
+    SELECT p.id FROM projects.projects p
+      JOIN org.business_profiles bp ON bp.id = p.client_business_id
+     WHERE bp.owner_user_id = p_user_id
+    UNION
+    SELECT p.id FROM projects.projects p
+      JOIN org.business_members bm ON bm.business_id = p.client_business_id
+     WHERE bm.user_id = p_user_id AND bm.status = 'active'
     UNION
     SELECT ps.project_id FROM projects.stage_assignments sa
       JOIN projects.project_stages ps ON ps.id = sa.project_stage_id

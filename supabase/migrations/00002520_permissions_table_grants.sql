@@ -310,7 +310,7 @@ GRANT ALL ON TABLE comms.channel_suppressions TO service_role;
 GRANT ALL ON TABLE comms.delivery_events TO service_role;
 -- #endregion
 
--- #region 2. Column-scoped UPDATE — what an own-row UPDATE policy cannot say
+-- #region 2. Column-scoped UPDATE and INSERT — what a row policy cannot say
 -- 00002500 grants `ALL ON ALL TABLES IN SCHEMA comms` to `authenticated`. An UPDATE policy answers
 -- WHOSE row may change, never WHICH columns, so on the two comms tables carrying an own-row UPDATE
 -- policy over server-authored content the blanket grant made that content writable:
@@ -340,6 +340,24 @@ GRANT UPDATE (read_at, seen_at, archived_at) ON TABLE comms.notifications TO aut
 REVOKE UPDATE ON TABLE comms.project_messages FROM authenticated;
 
 GRANT UPDATE (body, body_delta, edited_at, deleted_at) ON TABLE comms.project_messages TO authenticated;
+
+-- INSERT is column-scoped on both message tables for the same reason (SEC L5). An INSERT policy
+-- answers whether the sender may post into this room, never which columns a post may set, so the
+-- blanket grant let a client insert `created_at` (backdating dispute evidence), `edited_at`,
+-- `deleted_at`, or `pii_masked` / `pii_categories` (the mask triggers own those). A post names its
+-- room, its author (the policies pin it to the caller), its words, its reply and its two media flags;
+-- a DM may also name the project or service it is about, which comms.fn_dm_protected_project can only
+-- turn into MORE masking. Everything else is a default or a trigger's. The definer doors
+-- (send_request_message, the auto-reply) run as their owner and are unaffected.
+REVOKE INSERT ON TABLE comms.project_messages FROM authenticated;
+
+GRANT INSERT (channel_id, sender_user_id, body, body_delta, reply_to_id, has_attachments, is_audio)
+    ON TABLE comms.project_messages TO authenticated;
+
+REVOKE INSERT ON TABLE comms.dm_messages FROM authenticated;
+
+GRANT INSERT (thread_id, sender_user_id, project_id, service_id, body, body_delta, reply_to_id, has_attachments, is_audio)
+    ON TABLE comms.dm_messages TO authenticated;
 -- #endregion
 
 -- comms notification view grants → 00003005_permissions_view_grants.sql (views, Category 3).

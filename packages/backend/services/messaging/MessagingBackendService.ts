@@ -8,6 +8,7 @@ import type {
 	ConversationListPage,
 	ConversationListParams,
 	ConversationMembersAdded,
+	ConversationReadMarked,
 	ConversationSummary,
 	CreateConversation,
 	CreatedConversation,
@@ -102,7 +103,7 @@ import {
 import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store.ts";
 import { inPartition } from "./partition.ts";
 import { resolveThreadRef, virtualSummary } from "./live-threads.ts";
-import { setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
+import { markLiveRead, setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
 import { setMessagePin } from "./live-message-marks.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
 import { fetchConversationContext } from "./live-context.ts";
@@ -130,13 +131,15 @@ import { findConversationContext } from "./context-fixtures.ts";
  * {@link tenantOf}, which cannot produce a key without an identity — see `../../core/cache.ts` on
  * why that is enforced by the type rather than by convention.
  *
- * ## Degradation is deliberate and one-directional
+ * ## Fixtures are for the fixture backend only (CAS M24)
  *
- * A live read that throws (RLS refusing, a broker error, a column that moved) falls back to the
- * fixture projection rather than surfacing a 500. That keeps a chrome surface renderable, and it is
- * safe in exactly one direction: fixtures are a fabricated corpus belonging to nobody, so falling
- * back can never disclose one tenant's rows to another. It is logged through {@link liveFailed} so
- * a silent permanent fallback is visible in a log rather than looking like a working live path.
+ * The fixture corpus answers only while the gate is OFF (`dev:mock`, tests). With the gate ON, a
+ * request that cannot read live — a guest, or a signed-in actor without a usable token — is a `401`
+ * ({@link sessionRequired}), and a live read that throws is a `503` ({@link liveUnavailable}). Both
+ * used to fall back to the fixtures, which put a fabricated inbox in front of a real person: invented
+ * people and messages under their own name, and `dm-{handle}` ids that could resolve to real
+ * accounts on the next send. A failure is logged through {@link liveFailed} so a broken live path is
+ * visible in a log.
  *
  * ## Every method reaches Postgres
  *
@@ -161,17 +164,29 @@ import { findConversationContext } from "./context-fixtures.ts";
 // #region Live-path helpers
 
 /**
- * Record that a live read failed and the fixtures answered instead.
+ * Record that a live call failed. The caller answers with a failure status, never the fixtures.
  *
- * Deliberately `console.warn` rather than a thrown error or a silent swallow. Thrown, a transient
- * broker hiccup takes down a surface the fixtures could have rendered; silent, a permanently broken
- * live path is indistinguishable from a working one — which is precisely how five tables came to be
+ * Deliberately `console.warn` rather than a silent swallow: a permanently broken live path must not
+ * be indistinguishable from a working one — which is precisely how five tables came to be
  * default-denied without anybody noticing.
  */
 function liveFailed(method: string, error: unknown): void {
 	const reason = error instanceof Error ? error.message : String(error);
-	console.warn(`[MessagingBackendService.${method}] live read failed, serving fixtures: ${reason}`);
+	console.warn(`[MessagingBackendService.${method}] live call failed: ${reason}`);
 }
+
+/** The live backend is on, but this request has no identity Postgres can check (CAS M24). */
+function sessionRequired<T>(): ServiceResult<T> {
+	return fail(401, { message: "Sign in again to use your messages." });
+}
+
+/** The live backend is on, but it could not answer this read (CAS M24). */
+function liveUnavailable<T>(): ServiceResult<T> {
+	return fail(503, { message: "Messages are unavailable right now. Please try again." });
+}
+
+/** A live read's answer: the value (`null` for "no such row"), or the failure to answer with. */
+type LiveAnswer<T> = { value: T | null } | { refused: ServiceResult<never> };
 
 /** The reference clock for pre-formatted labels on the live path. */
 function clock(): number {
@@ -179,12 +194,11 @@ function clock(): number {
 }
 
 /**
- * Run a cached live read, or return `undefined` to mean "the caller should use the fixtures".
+ * Run a cached live read, or return `undefined` to mean "the gate is off; use the fixtures".
  *
- * The `undefined` return is deliberately distinct from the `null` a resolver returns for "no such
- * row": `undefined` means the live path did not run or could not answer, so the fixture branch takes
- * over; `null` means the database was asked and said no, which is a real 404 the caller must not
- * paper over with a fabricated fixture.
+ * With the gate on the answer is always a {@link LiveAnswer}: the value — whose `null` means the
+ * database was asked and said no, a real 404 — or a `401` / `503` refusal the caller returns as is.
+ * Never the fixtures (CAS M24).
  */
 async function liveRead<T>(
 	method: string,
@@ -192,17 +206,20 @@ async function liveRead<T>(
 	namespace: string,
 	key: unknown,
 	run: (actor: ReadActor & { accessToken: string }) => Promise<T | null>,
-): Promise<T | null | undefined> {
-	if (!isMessagingBackendLive() || !actor || !canReadLive(actor)) return undefined;
+): Promise<LiveAnswer<T> | undefined> {
+	if (!isMessagingBackendLive()) return undefined;
+	if (!actor || !canReadLive(actor)) return { refused: sessionRequired() };
 	try {
-		return await cachedRead(
-			messagingReadCache,
-			cacheKey(tenantOf(actor), namespace, key),
-			() => run(actor),
-		);
+		return {
+			value: await cachedRead(
+				messagingReadCache,
+				cacheKey(tenantOf(actor), namespace, key),
+				() => run(actor),
+			),
+		};
 	} catch (error) {
 		liveFailed(method, error);
-		return undefined;
+		return { refused: liveUnavailable() };
 	}
 }
 
@@ -272,7 +289,7 @@ export class MessagingBackendService {
 		params: ConversationListParams,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ page: ConversationListPage }>> {
-		if (!isMessagingBackendLive() || !canReadLive(actor)) {
+		if (!isMessagingBackendLive()) {
 			// Created-this-process conversations join the corpus page once they carry a message.
 			return ok({
 				page: overlayCreatedConversations(
@@ -282,6 +299,7 @@ export class MessagingBackendService {
 				),
 			});
 		}
+		if (!canReadLive(actor)) return sessionRequired();
 		try {
 			const key = cacheKey(tenantOf(actor), "messaging.conversations", params);
 			const page = await cachedRead(messagingReadCache, key, async () => {
@@ -291,14 +309,7 @@ export class MessagingBackendService {
 			return ok({ page });
 		} catch (error) {
 			liveFailed("conversations", error);
-			// Created-this-process conversations join the corpus page once they carry a message.
-			return ok({
-				page: overlayCreatedConversations(
-					findConversations(params, stubOverlay(actor)),
-					params,
-					actor,
-				),
-			});
+			return liveUnavailable();
 		}
 	}
 
@@ -307,7 +318,8 @@ export class MessagingBackendService {
 		id: string,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ detail: ConversationDetail }>> {
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const key = cacheKey(tenantOf(actor), "messaging.conversation", { id });
 				const summary = await cachedRead(
@@ -322,6 +334,7 @@ export class MessagingBackendService {
 				return fail(404, { message: "No such conversation." });
 			} catch (error) {
 				liveFailed("conversation", error);
+				return liveUnavailable();
 			}
 		}
 		const detail = findConversationDetail(id, stubOverlay(actor));
@@ -334,7 +347,8 @@ export class MessagingBackendService {
 		params: ConversationMessageParams,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ page: MessagePage }>> {
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const key = cacheKey(tenantOf(actor), "messaging.messages", params);
 				const page = await cachedRead(messagingReadCache, key, async () => {
@@ -382,6 +396,7 @@ export class MessagingBackendService {
 				return ok({ page });
 			} catch (error) {
 				liveFailed("messages", error);
+				return liveUnavailable();
 			}
 		}
 		const page = findConversationMessagePage(params);
@@ -418,7 +433,8 @@ export class MessagingBackendService {
 			return fail(401, { message: "Sign in to send a message." });
 		}
 
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const outcome = await insertDmMessage(actor, input);
 				if (outcome === null) {
@@ -490,7 +506,8 @@ export class MessagingBackendService {
 		if (actor.userId.length === 0) {
 			return fail(401, { message: "Sign in to organise your conversations." });
 		}
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const outcome = await setLiveFolder(actor, conversationId, folder);
 				if (outcome === null) return fail(404, { message: "No such conversation." });
@@ -525,11 +542,15 @@ export class MessagingBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<{ starred: boolean }>> {
 		if (!canReadLive(actor)) return fail(401, { message: "Sign in to star conversations." });
-		if (!isMessagingBackendLive()) return fail(503, { message: "Starring needs the live backend." });
+		if (!isMessagingBackendLive()) {
+			return fail(503, { message: "Starring needs the live backend." });
+		}
 		try {
 			const outcome = await setLiveStarred(actor, conversationId, starred);
 			if (outcome === null) return fail(404, { message: "No such conversation." });
-			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			if ("refusal" in outcome) {
+				return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			}
 			invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
 			return ok(outcome.data, { message: starred ? "Conversation starred." : "Star removed." });
 		} catch (error) {
@@ -553,12 +574,40 @@ export class MessagingBackendService {
 		try {
 			const outcome = await setLiveMuted(actor, conversationId, muted);
 			if (outcome === null) return fail(404, { message: "No such conversation." });
-			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			if ("refusal" in outcome) {
+				return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			}
 			invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
 			return ok(outcome.data, { message: muted ? "Muted." : "Unmuted." });
 		} catch (error) {
 			liveFailed("setMuted", error);
 			return fail(502, { message: "That mute could not be saved — please try again." });
+		}
+	}
+
+	/**
+	 * Mark a conversation read for the viewer (CAS M10) — called when `/messages/[conversationId]`
+	 * opens. Live only, through `comms.mark_dm_read`; the fixture backend keeps its corpus's own
+	 * unread flags, so there it is a no-op. The tenant's inbox cache is dropped only when the watermark
+	 * actually moved, so re-opening a read conversation costs the cache nothing.
+	 */
+	static async markRead(
+		conversationId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<ConversationReadMarked>> {
+		if (!isMessagingBackendLive()) return ok({ moved: false });
+		if (!canReadLive(actor)) return sessionRequired();
+		try {
+			const outcome = await markLiveRead(actor, conversationId);
+			if (outcome === null) return fail(404, { message: "No such conversation." });
+			if ("refusal" in outcome) {
+				return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			}
+			if (outcome.data.moved) invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+			return ok(outcome.data);
+		} catch (error) {
+			liveFailed("markRead", error);
+			return fail(502, { message: "That conversation could not be marked read." });
 		}
 	}
 
@@ -576,7 +625,9 @@ export class MessagingBackendService {
 		try {
 			const outcome = await setMessagePin(actor, messageId, pinned);
 			if (outcome === null) return fail(404, { message: "No such message." });
-			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			if ("refusal" in outcome) {
+				return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			}
 			const tenant = tenantPrefix(tenantOf(actor));
 			invalidatePrefix(messagingReadCache, tenant);
 			invalidatePrefix(projectsReadCache, tenant);
@@ -599,7 +650,8 @@ export class MessagingBackendService {
 		if (actor.userId.length === 0) {
 			return fail(401, { message: "Sign in to read a conversation." });
 		}
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const summary = await liveConversation(actor, conversationId, clock());
 				if (!summary) return fail(404, { message: "No such conversation." });
@@ -657,7 +709,11 @@ export class MessagingBackendService {
 			params,
 			(a) => fetchRankedContacts(a, params, clock()),
 		);
-		if (live !== undefined && live !== null) return ok({ contacts: live });
+		if (live) {
+			if ("refused" in live) return live.refused;
+			if (live.value) return ok({ contacts: live.value });
+			return sessionRequired();
+		}
 		return ok({ contacts: findRankedContacts(params) });
 	}
 
@@ -681,7 +737,8 @@ export class MessagingBackendService {
 			return fail(401, { message: "Sign in to start a conversation." });
 		}
 
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const outcome = await createLiveConversation(actor, input, clock());
 				if (outcome === null) {
@@ -796,7 +853,8 @@ export class MessagingBackendService {
 			return fail(401, { message: "Sign in to change a group's photo." });
 		}
 
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const outcome = await setLiveGroupPhoto(actor, conversationId, input.photo);
 				if (outcome === null) return fail(404, { message: "No such conversation." });
@@ -843,7 +901,8 @@ export class MessagingBackendService {
 			return fail(401, { message: "Sign in to add people to a conversation." });
 		}
 
-		if (isMessagingBackendLive() && canReadLive(actor)) {
+		if (isMessagingBackendLive()) {
+			if (!canReadLive(actor)) return sessionRequired();
 			try {
 				const outcome = await addLiveMembers(actor, input);
 				if (outcome === null) {
@@ -901,9 +960,10 @@ export class MessagingBackendService {
 			params,
 			(a) => fetchConversationFilePage(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) return fail(404, { message: "No such conversation." });
-			return ok({ page: live });
+		if (live) {
+			if ("refused" in live) return live.refused;
+			if (!live.value) return fail(404, { message: "No such conversation." });
+			return ok({ page: live.value });
 		}
 		const page = findConversationFilePage(params);
 		if (!page) return fail(404, { message: "No such conversation." });
@@ -946,7 +1006,10 @@ export class MessagingBackendService {
 				return await fetchAttachmentSources(a, assetId, { conversationId }, clock());
 			},
 		);
-		if (live) return ok({ sources: live });
+		if (live) {
+			if ("refused" in live) return live.refused;
+			return ok({ sources: live.value ?? [] });
+		}
 		return ok({ sources: findAttachmentSources(assetId, scope) });
 	}
 
@@ -965,9 +1028,10 @@ export class MessagingBackendService {
 			{ conversationId },
 			(a) => fetchConversationRoster(a, conversationId),
 		);
-		if (live !== undefined) {
-			if (!live) return fail(404, { message: "No such conversation." });
-			return ok({ page: live });
+		if (live) {
+			if ("refused" in live) return live.refused;
+			if (!live.value) return fail(404, { message: "No such conversation." });
+			return ok({ page: live.value });
 		}
 		const page = findConversationRoster(conversationId);
 		if (!page) return fail(404, { message: "No such conversation." });
@@ -987,9 +1051,13 @@ export class MessagingBackendService {
 			{ role, q },
 			(a) => fetchContacts(a, role, q),
 		);
-		// A contact list has no "no such row" state — an empty result is a real answer — so only
-		// `undefined` sends this to the fixtures.
-		if (live !== undefined && live !== null) return ok({ contacts: live });
+		// A contact list has no "no such row" state — an empty result is a real answer — so only the
+		// gate being off sends this to the fixtures.
+		if (live) {
+			if ("refused" in live) return live.refused;
+			if (live.value) return ok({ contacts: live.value });
+			return sessionRequired();
+		}
 		return ok({ contacts: findContacts(role, q) });
 	}
 
@@ -1005,7 +1073,12 @@ export class MessagingBackendService {
 			{ role },
 			(a) => fetchMessagingSettings(a, role),
 		);
-		if (live !== undefined && live !== null) return ok({ settings: live });
+		if (live) {
+			if ("refused" in live) return live.refused;
+			// `null` is the read's "no identity" answer, which `liveRead` has already ruled out.
+			if (live.value) return ok({ settings: live.value });
+			return sessionRequired();
+		}
 		return ok({ settings: findSettings(role) });
 	}
 

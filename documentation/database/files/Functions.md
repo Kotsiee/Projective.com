@@ -123,7 +123,7 @@ the other (the `scheduling` refusal-function precedent).
 | `owner_type = 'team'` and `org.is_active_team_member(owner_entity_id)`              |
 | `owner_type = 'business'` and `org.is_active_business_member(owner_entity_id)`      |
 | `owner_type = 'enterprise'` and `org.is_enterprise_member(owner_entity_id)`     |
-| `bucket_id = 'project'` and `projects.has_project_access({project_id} path anchor)` |
+| `bucket_id = 'project'`, `source = 'supabase'` and `projects.has_project_access({project_id} path anchor)` (stored bytes only — a link or mount anchors nothing, SEC G9) |
 | attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
 | filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
 | `purpose = 'contact'` (a `/contact` attachment, Decision #276), linked to a request (`ops.contact_request_attachments`), and the reader is `security.is_admin()` — a file its sender removed or never sent is not readable |
@@ -344,7 +344,9 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
   the connector service only", Decision #313). A **link** starts `link_scan_status = 'pending'` with
   no `link_scanned_at`, `link_favicon_url`, `link_title` or `link_description` — what the scan
   concluded and read from the page is the scan's to write (`42501` "a link starts pending",
-  Decision #314) — and a non-link row carries no `link_*` column at all (`42501` "only a link
+  Decision #314); its synthetic address is fixed at `bucket_id = 'link'`, `storage_path = id::text`
+  (`linkStorageAddress`, `@projective/types/files`; `42501` "a link is stored at bucket link under its
+  own id", SEC G9), so a forged link cannot claim a `project` path and surface in that project's files — and a non-link row carries no `link_*` column at all (`42501` "only a link
   carries a link facet").
 - **UPDATE — the bytes:** a client may not change `status`, `bucket_id`, `storage_path`,
   `target_bucket`, `target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`,

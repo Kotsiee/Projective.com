@@ -301,16 +301,18 @@ star, mute and file it independently.
 
 | Column         | Type        | Notes |
 | :------------- | :---------- | :---- |
-| `last_read_at` | timestamptz | NULL = never opened (distinct from "opened, read nothing"). |
+| `last_read_at` | timestamptz | NULL = never opened (distinct from "opened, read nothing"). Written only by `comms.mark_dm_read` (CAS M10), which the conversation page calls on open. |
 | `is_starred`   | boolean     | |
 | `inbox_folder` | text        | `'primary'` (default) · `'requests'` · `'archived'` — `dm_participants_inbox_folder_check`. A hiring request files the recipient's row in `requests` (`comms.send_request_message`); their own reply moves it to `primary` (`comms.fn_promote_thread_on_reply`); the participant's moves go through `comms.set_dm_inbox_folder` (no client `UPDATE` policy). |
 | `is_archived`  | boolean     | **GENERATED** `(inbox_folder = 'archived') STORED` — the folder and the flag cannot disagree. |
 | `is_muted`     | boolean     | |
 | `deleted_at`   | timestamptz | Soft delete for this participant only; separate from Archive on purpose. |
 
-Indexes (`00004006`): `idx_dm_participants_folder (user_id, inbox_folder)` — the folder tabs;
-`idx_dm_participants_thread_user (thread_id, user_id)` — the per-message participant lookups the
-two `BEFORE INSERT` triggers on `dm_messages` make.
+Constraint `dm_participants_thread_user_key UNIQUE (thread_id, user_id)` (`00000016`, CAS M5): one row
+per person per thread — every door that adds a person already skips or restores an existing row, so
+a race between two of them now fails loudly instead of doubling the roster. Its index serves the
+per-message participant lookups the two `BEFORE INSERT` triggers on `dm_messages` make. Index
+(`00004006`): `idx_dm_participants_folder (user_id, inbox_folder)` — the folder tabs.
 
 ### `comms.auto_responses`
 
@@ -344,7 +346,7 @@ The individual message entries for DMs.
 | `sender_user_id`  | uuid    | FK → `org.users_public.user_id`. |
 | `project_id`      | uuid    | The project a request message is about (`comms.send_request_message`); read by the PII filter. |
 | `body`            | text    | Message content — stored masked while the pair's engagement is protected. The one source of words: search, previews and the PII mask read it. |
-| `body_delta`      | jsonb   | NULL, or the body's inline formatting as a Quill Delta (`MessageDeltaSchema` in `packages/types/projects/message-rich.ts`: runs of text with Bold · Italic · Underline · Strikethrough). Its runs, joined, spell `body` exactly — see [`comms.project_messages`](#commsproject_messages). `dm_messages_body_delta_object`: `NULL` or a JSON object. Nulled by `comms.tg_mask_dm_message_pii` when it rewrites the body. |
+| `body_delta`      | jsonb   | NULL, or the body's inline formatting as a Quill Delta (`MessageDeltaSchema` in `packages/types/projects/message-rich.ts`: runs of text with Bold · Italic · Underline · Strikethrough). Its runs, joined, spell `body` exactly — see [`comms.project_messages`](#commsproject_messages). `dm_messages_body_delta_object`: `NULL` or a JSON object. Nulled by `comms.tg_mask_dm_message_pii` when it rewrites the body, and on every write where it does not spell the body (`comms.fn_delta_text`, SEC L2). |
 | `reply_to_id`     | uuid    | NULL, or the message this one answers. **Self-FK** `dm_messages_reply_to_id_fkey` → `comms.dm_messages.id` `ON DELETE SET NULL`; must be in the same **thread** (`comms.tg_guard_dm_message_reply`). |
 | `has_attachments` | boolean | Flag for UI optimization. Advisory (no trigger maintains it); read only for a reply quote's `media` label. |
 | `is_audio`        | boolean | The message is a voice memo. Advisory, like `has_attachments`. |
@@ -421,11 +423,13 @@ CREATE TABLE comms.project_messages (
 source of words (search, notification and inbox previews, link previews, the PII mask).
 `body_delta` is NULL for an unformatted message, otherwise a Quill Delta `{ ops }` reduced to runs
 of text carrying only Bold · Italic · Underline · Strikethrough (`MessageDeltaSchema`,
-`packages/types/projects/message-rich.ts`). The runs, joined, spell `body` exactly. That is not a
-CHECK (spelling a Delta in SQL is a jsonb walk per insert); it is held on both sides of the column —
-the send schemas refuse a disagreeing payload, and every read drops a Delta that does not spell the
-body it shows (`messageDeltaFor`) — so formatting can be lost but a word the body lacks can never
-render. `comms.tg_mask_message_pii` nulls it whenever it rewrites the body. The CHECK pins only the
+`packages/types/projects/message-rich.ts`). The runs, joined, spell `body` exactly. The database
+holds it: both mask triggers drop a Delta that does not spell the body or is not the normalised shape
+(`comms.fn_delta_text`, SEC L2 — a disagreeing Delta was a place to store a contact detail the mask
+never read). So do both sides of the column — the send schemas refuse a disagreeing payload, and every
+read drops a Delta that does not spell the body it shows (`messageDeltaFor`) — so formatting can be
+lost but a word the body lacks can never render. `comms.tg_mask_message_pii` nulls it whenever it
+rewrites the body. The CHECK pins only the
 envelope (a JSON object).
 
 **`pii_masked` / `pii_categories` — the protected-phase contact filter (Decision #147).** Same

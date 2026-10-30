@@ -157,7 +157,9 @@ assignment on **that stage** whose status is not `released` / `cancelled` / `dec
 id = p_project_id), true)` — true until the Projective Unlock, and **true for an unknown id**, so the
 PII mask fails closed. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects`.
 `EXECUTE`: `authenticated`, `service_role` (`00002510`; it discloses one boolean per project id). No
-caller check.
+caller check. **The one protected-phase predicate** (SEC L4 (c)): the stage-room mask, the DM mask
+(`comms.fn_dm_protected_project`) and the request / invitation / application masks all read it, and
+only the Unlock ends the phase — `status` is not part of it, so `cancelled` does not lift the filter.
 
 ### `projects.get_viewer_hired_teams(p_project_id uuid) → TABLE (team_id uuid, project_stage_id uuid)`
 
@@ -1754,9 +1756,19 @@ It reads ONLY rows the caller is a party to — the inviter or invitee, the appl
 
 ### `projects.fn_engaged_projects(p_user_id uuid) → TABLE (project_id uuid)`
 
-`00001100`. Every project a user is engaged in — owner, participant, live assignee or team member,
-pending/accepted invitee or applicant. Read by the DM contact filter
+`00001100`. Every project a user is engaged in — owner, participant, an active member (or the owner)
+of the client business through `project_participants` or `projects.client_business_id` (SEC L4 (a)),
+live assignee or team member, pending/accepted invitee or applicant. Read by the DM contact filter
 (`comms.fn_dm_protected_project`). **`EXECUTE`: owner only** — no client role and no `service_role`.
+
+### `projects.tg_mask_invitation_message()` — trigger
+
+`00001135`, SEC L6. `trg_project_invitations_mask_message` (`00001820`), `BEFORE INSERT OR UPDATE OF
+message ON projects.project_invitations`, `SECURITY DEFINER`, `search_path = ''`. Masks the note with
+`comms.mask_pii` while `projects.is_protected_phase(project_id)`. `invite_to_project` already masked
+the intro, but the "Owner manages invitations" `FOR ALL` policy let the owner write the row directly
+and skip that door; this is the floor every path meets. Masking a masked note changes nothing, so
+the door's pass and this one compose.
 
 🚨 **`projects.release_ticket_to_backlog(uuid)` had the default `PUBLIC` EXECUTE and no caller check
 of its own** — any signed-in caller who knew a ticket id could release its escrow and un-claim it (the

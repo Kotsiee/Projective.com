@@ -39,6 +39,29 @@ duplicated by a second write. The bindings in `00001800` are named for their sou
 `trg_sync_user_search`, `trg_sync_business_search` (`org.business_profiles`),
 `trg_sync_service_search`, `trg_sync_product_listing_search` and `trg_sync_article_search`.
 
+### Index visibility is directory visibility (SEC E6 / G12)
+
+`is_active` is what makes a profile or project index row discoverable: the anon `SELECT` policies,
+the column grants and `search.fn_nearest` / `fn_nearest_to_entity` all answer from rows where it is
+true. So each sync writes the source's own LISTED predicate — the one the public directory
+(`org.profiles_index`, `00003001`) and the project policies apply — on insert and on every update:
+
+| Row | `is_active` |
+| :-- | :-- |
+| `user` | `users_public.visibility = 'public'` |
+| `freelancer` | `search.fn_freelancer_listed(user_id)`: the person's `visibility = 'public'` and `is_freelancer` |
+| `team`, `business` | `status = 'active' AND visibility = 'public'` |
+| project | `status = 'active' AND visibility = 'public'` (the "Public can view active published projects" policy) |
+
+`unlisted` is reachable by handle and never discoverable; a draft, archived, completed or cancelled
+source is not listed. Before this a team row was always active, a freelancer or business row kept
+the value it was born with, and every non-draft public project was listed, so a direct REST or RPC
+caller could see more than the directory shows. A freelancer row's visibility lives on
+`org.users_public`, so `search.sync_user_to_index` also re-derives the person's freelancer row (a
+profile turned private takes it out). `search.fn_freelancer_listed` is `STABLE SECURITY DEFINER`,
+`search_path = ''`. Erasure of search data (G16) is the identity track's. Probe:
+`supabase/probes/trust_p1_comms_search.sql`.
+
 ### A team's live W_i (Decision #235, closing #233 FLAG (a))
 
 A team row's `current_workload_intensity` is its active members' **live** W_i — Σ

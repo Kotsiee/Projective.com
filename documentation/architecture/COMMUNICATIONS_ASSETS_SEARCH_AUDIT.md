@@ -417,6 +417,12 @@ buyer trust faster than a missing relevance signal costs conversion.
 
 Security items are prioritised in the companion's §8; they gate everything below.
 
+> **Status (2026-10-30, Wave 0 comms/search):** **M5** fixed (`comms.fn_lock_dm_pair` in both DM
+> openers; `dm_participants_thread_user_key UNIQUE (thread_id, user_id)`), **M10** fixed
+> (`comms.mark_dm_read`, called when `/messages/[conversationId]` opens), **M24** fixed (with
+> `MESSAGING_BACKEND_LIVE` on, no session is a `401` and a failed live read a `503`; fixtures answer
+> only with the gate off). Project-room read marks (`unread: false`) are not part of M10's fix.
+
 | Pri | Item | Area |
 | :-- | :-- | :-- |
 | P0 | SEC §8 P0 block (E1–E8) | DB + edge + UI |

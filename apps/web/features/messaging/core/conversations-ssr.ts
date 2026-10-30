@@ -67,6 +67,15 @@ export async function resolveConversationMessages(
 }
 
 /**
+ * Mark a conversation read for the viewer once its Chat tab has been served (CAS M10). Opening the
+ * conversation IS the read, so the page does it rather than a client call after paint. A failure
+ * leaves the conversation unread, which is the safe direction, so it does not fail the page.
+ */
+export async function markConversationRead(id: string, actor: ReadActor): Promise<void> {
+	await MessagingBackendService.markRead(id, actor);
+}
+
+/**
  * Resolve the conversation's shared-attachment page (the Files tab first paint). Returns the SAME
  * {@link FileListPage} projection the engagement File Explorer reads, so the route hands it straight to
  * the shared `FilesView` — mirrors {@link resolveFilePage}.
