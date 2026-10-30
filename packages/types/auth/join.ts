@@ -71,6 +71,17 @@ const dob = z.string().min(1, "Date of birth is required.").regex(
 );
 
 /**
+ * The browser's IANA zone. Stored as the profile's `timezone`, it is the zone every layer counts
+ * this person's birthdays in; an unknown one is dropped and the age counts in UTC.
+ */
+const timeZone = z.string().trim().max(64).optional().transform((zone) =>
+	isTimeZone(zone) ? zone : undefined
+);
+
+/** The join-form copy for an enterprise owner aged 13–17: the owner holds the enterprise's seat. */
+export const ENTERPRISE_OWNER_MINOR_REFUSAL = "An enterprise's owner must be 18 or over.";
+
+/**
  * Individual (quick) onboarding. `password` is optional because SSO/OAuth signups skip password
  * setup (`oauth: true`); the service requires it only when `oauth` is false.
  */
@@ -84,13 +95,7 @@ export const IndividualJoinSchema = z.object({
 	lastName: name,
 	username: z.string().trim().regex(USERNAME_RE, "Invalid username."),
 	dob,
-	/**
-	 * The browser's IANA zone. Stored as the profile's `timezone`, it is the zone every layer counts
-	 * this person's birthdays in; an unknown one is dropped and the age counts in UTC.
-	 */
-	timeZone: z.string().trim().max(64).optional().transform((zone) =>
-		isTimeZone(zone) ? zone : undefined
-	),
+	timeZone,
 	locale,
 	displayCurrency,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
@@ -113,7 +118,8 @@ export type IndividualJoin = z.infer<typeof IndividualJoinSchema>;
 /**
  * Enterprise (comprehensive, multi-step) onboarding. Enterprises are **client/buyer-only** on
  * Projective (they hire, they don't sell), so `intent` is pinned to `client`. `website` is the
- * optional corporate web footprint.
+ * optional corporate web footprint. The owner is a person with their own profile (Decision #336,
+ * ruling I2): their name, date of birth and zone are asked for, and their `@handle` is derived.
  */
 export const EnterpriseJoinSchema = z.object({
 	type: z.literal("enterprise"),
@@ -139,8 +145,24 @@ export const EnterpriseJoinSchema = z.object({
 	locale,
 	displayCurrency,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
+	ownerFirstName: name,
+	ownerLastName: name,
+	dob,
+	timeZone,
 	password,
 	redirectTo,
+}).superRefine((value, ctx) => {
+	// The owner holds the enterprise's seat, and no minor holds one (Decision #208): the database
+	// refuses 13–17 anyway (PM403), so the form says why first.
+	const bracket = bracketFromDob(value.dob, value.timeZone);
+	const message = bracket === "unknown"
+		? "Enter a real date of birth."
+		: bracket === "blocked"
+		? UNDER_MINIMUM_REFUSAL
+		: bracket === "restricted"
+		? ENTERPRISE_OWNER_MINOR_REFUSAL
+		: null;
+	if (message) ctx.addIssue({ code: "custom", path: ["dob"], message });
 });
 export type EnterpriseJoin = z.infer<typeof EnterpriseJoinSchema>;
 

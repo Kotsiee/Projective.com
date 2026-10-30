@@ -10,9 +10,10 @@ import { fail, type ServiceResult } from "@server/services/ServiceResult.ts";
 import { isSecureRequest, readCookies, sessionClearCookies } from "@web/utils/auth-cookies.ts";
 
 /**
- * Answer an individual join, and when it was refused for an under-13 date of birth, lock this browser
- * session against another attempt (Decision #208) and — if the OAuth identity was discarded — clear
- * the session cookies that pointed at it. The lock cookie carries no data.
+ * Answer a join, and when it was refused for an under-13 date of birth (an individual's or an
+ * enterprise owner's), lock this browser session against another attempt (Decision #208) and — if
+ * the OAuth identity was discarded — clear the session cookies that pointed at it. The lock cookie
+ * carries no data.
  */
 function withAgeLock<T extends object>(req: Request, result: ServiceResult<T>): Response {
 	const res = toAuthResponse(req, result);
@@ -48,13 +49,12 @@ export const handler = define.handlers({
 			return Response.json({ ok: false, message: "Invalid request body." }, { status: 400 });
 		}
 
-		const individual = typeof body === "object" && body.type === "individual";
-		if (individual && readCookies(ctx.req)[JOIN_AGE_LOCK_COOKIE] === "1") {
+		if (readCookies(ctx.req)[JOIN_AGE_LOCK_COOKIE] === "1") {
 			return toAuthResponse(ctx.req, fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } }));
 		}
 
 		const parsed = JoinSchema.safeParse(body);
-		if (individual && !parsed.success && fieldErrors(parsed.error).dob === UNDER_MINIMUM_REFUSAL) {
+		if (!parsed.success && fieldErrors(parsed.error).dob === UNDER_MINIMUM_REFUSAL) {
 			return withAgeLock(
 				ctx.req,
 				await AuthBackendService.refuseUnderMinimum({
@@ -107,7 +107,7 @@ export const handler = define.handlers({
 			);
 		}
 
-		return toAuthResponse(
+		return withAgeLock(
 			ctx.req,
 			await AuthBackendService.provisionAccount({
 				type: "enterprise",
@@ -115,6 +115,12 @@ export const handler = define.handlers({
 				password: data.password,
 				locale: data.locale,
 				displayCurrency: data.displayCurrency,
+				owner: {
+					firstName: data.ownerFirstName,
+					lastName: data.ownerLastName,
+					dob: data.dob,
+					timeZone: data.timeZone,
+				},
 				enterprise: {
 					legalName: data.legalName,
 					tradingName: data.tradingName,

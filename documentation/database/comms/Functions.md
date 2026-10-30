@@ -217,8 +217,9 @@ sign-up metadata (`org.fn_signup_meta`), which inserts the row and, only when it
 `timezone` to the profile's zone, else the sign-up `timezone` hint — only a zone Postgres resolves,
 because quiet hours and digests run `AT TIME ZONE` it, otherwise the `UTC` default — and `locale` to
 the supported sign-up locale (`org.fn_supported_locale`), else `NULL` (Decision #207). An invoker
-function: a client calling it directly meets the INSERT-own policy. `org.seed_owner_preferences` calls
-it for an enterprise owner who already has a profile row ([org/Functions.md](../org/Functions.md)).
+function: a client calling it directly meets the INSERT-own policy. An enterprise owner is seeded by
+the same trigger, since `public.create_enterprise` gives them a profile row
+([org/Functions.md](../org/Functions.md)).
 `comms.fn_ensure_notification_prefs(user_id)` is the callable defaults-only equivalent.
 
 ### The dispatch webhook

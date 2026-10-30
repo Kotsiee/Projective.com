@@ -21,6 +21,10 @@ const enterprise = {
 	employeeTier: "1-50",
 	industry: "software",
 	password: "correct horse",
+	ownerFirstName: "Grace",
+	ownerLastName: "Hopper",
+	dob: "1980-12-09",
+	timeZone: "UTC",
 };
 
 Deno.test("join hints: a supported locale and display currency are kept, canonical", () => {

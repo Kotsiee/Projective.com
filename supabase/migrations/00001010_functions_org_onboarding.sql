@@ -86,12 +86,14 @@ BEGIN
         'projective.signup_meta', jsonb_build_object('user_id', p_user_id, 'meta', p_meta)::text, true
     );
 
-    -- 1. Core profile
+    -- 1. Core profile. Sign-up metadata may make it private (an enterprise owner's, Decision #336
+    -- ruling I2), never public: every other profile starts unlisted.
     INSERT INTO org.users_public (
         user_id, first_name, last_name, username, dob, timezone, visibility,
         interests, is_freelancer, avatar_file_id
     ) VALUES (
-        p_user_id, v_first_name, v_last_name, v_username, v_dob, v_timezone, 'unlisted',
+        p_user_id, v_first_name, v_last_name, v_username, v_dob, v_timezone,
+        CASE WHEN p_meta->>'visibility' = 'private' THEN 'private' ELSE 'unlisted' END,
         v_interests, v_is_freelancer, v_avatar_file_id
     );
 
@@ -276,10 +278,10 @@ $$;
 --
 -- Additive: adds one SECURITY DEFINER function; no table/column/FK is changed. Pairs with
 -- 0314_enterprises.sql. Called by @projective/backend's AuthBackendService (service-role) AFTER it
--- admin-creates the owner identity in GoTrue: it inserts org.enterprises and seeds the owner's
--- org.enterprise_members row in a single transaction, and writes the onboarding audit entry
--- (security.audit_logs is definer-only — see 0205/0304 — so provisioning that audits must run here,
--- not in the TS service).
+-- admin-creates the owner identity in GoTrue: it provisions the owner's profile, inserts
+-- org.enterprises, seeds the owner's org.enterprise_members row and points the owner's session at the
+-- enterprise in a single transaction, and writes the onboarding audit entries (security.audit_logs is
+-- definer-only — see 0205/0304 — so provisioning that audits must run here, not in the TS service).
 --
 -- The payload keys are the camelCase @projective/types `CreateEnterprise` shape, so the service can
 -- pass the validated object straight through as jsonb.
@@ -293,6 +295,11 @@ AS $$
 DECLARE
     v_enterprise uuid;
     v_handle text := lower(btrim(COALESCE(p_payload->>'handle', '')));
+    v_owner jsonb := p_payload->'owner';
+    v_username text := lower(btrim(COALESCE(p_payload #>> '{owner,username}', '')));
+    v_email text;
+    v_confirmed timestamptz;
+    v_meta jsonb;
     v_refusal text;
 BEGIN
     IF p_owner IS NULL THEN
@@ -302,10 +309,40 @@ BEGIN
         RAISE EXCEPTION 'legalName and handle are required' USING ERRCODE = '22023';
     END IF;
 
+    -- The owner is a person with a profile and a date of birth (Decision #336, ruling I2), written
+    -- first so a refusal unwinds the whole call: under 13 → PM422 (org.fn_check_dob), 13–17 → PM403 at
+    -- the owner seat below. The @handle comes from the service, derived from the name (step 1.6 asks
+    -- for none), and is re-checked against the one namespace. The locale and display-currency hints
+    -- ride the identity's metadata, which carries no username or dob, so public.handle_new_user left
+    -- it profile-less. Without an `owner` block the owner must already hold a profile: a profile-less
+    -- one is refused PM403 at the seat, because org.fn_is_minor fails closed.
+    IF jsonb_typeof(v_owner) = 'object' THEN
+        v_refusal := org.fn_handle_refusal(v_username);
+        IF v_refusal IS NOT NULL THEN
+            RAISE EXCEPTION '%', v_refusal
+                USING ERRCODE = CASE WHEN org.fn_handle_taken(v_username) THEN '23505' ELSE '22023' END;
+        END IF;
+        SELECT a.email, a.email_confirmed_at, jsonb_build_object(
+                   'first_name', v_owner->>'firstName',
+                   'last_name', v_owner->>'lastName',
+                   'username', v_username,
+                   'dob', v_owner->>'dob',
+                   'timezone', v_owner->>'timeZone',
+                   'objective', 'client',
+                   'visibility', 'private',
+                   'locale', a.raw_user_meta_data->>'locale',
+                   'display_currency', a.raw_user_meta_data->>'display_currency')
+          INTO v_email, v_confirmed, v_meta
+          FROM auth.users a
+         WHERE a.id = p_owner;
+        PERFORM public.provision_user_profile(p_owner, v_email, v_confirmed, v_meta);
+    END IF;
+
     -- One handle namespace across people, teams, businesses and enterprises (00001020 §9). The
     -- UNIQUE on org.enterprises.handle only ever saw other enterprises, so an enterprise could
     -- claim a person's `@username` or a team's slug and the two would fight over `/{handle}`. The
-    -- refusal is the same sentence the create forms' availability probe shows.
+    -- refusal is the same sentence the create forms' availability probe shows. Checked after the
+    -- owner's profile, so an enterprise handle equal to the owner's is taken too.
     v_refusal := org.fn_handle_refusal(v_handle);
     IF v_refusal IS NOT NULL THEN
         RAISE EXCEPTION '%', v_refusal
@@ -351,6 +388,14 @@ BEGIN
     INSERT INTO org.enterprise_members (enterprise_id, user_id, role, status)
     VALUES (v_enterprise, p_owner, 'owner', 'active');
 
+    -- The owner's first acting context is the enterprise, so the first token after confirmation
+    -- carries it (IW-M7). Written directly, as provision_user_profile writes it:
+    -- security.fn_set_session_context acts for auth.uid(), which a service-role call does not have.
+    UPDATE security.session_context
+       SET active_profile_type = NULL, active_profile_id = NULL, active_team_id = NULL,
+           active_enterprise_id = v_enterprise, updated_at = now()
+     WHERE user_id = p_owner;
+
     -- AC6-style immutable onboarding audit (mirrors provision_user_profile in 0304).
     INSERT INTO security.audit_logs (
         user_id, action, entity_table, entity_id, metadata, actor_profile_id
@@ -388,9 +433,8 @@ $$;
 -- org.supported_locales, a display currency with seeded rates both ways in finance.fx_rates — and
 -- otherwise left to the column default. A row that already exists is never touched.
 --
--- An enterprise owner gets no org.users_public row (Decision #87 flag (b)), so the owner membership
--- public.create_enterprise writes seeds theirs (org.seed_owner_preferences). Their
--- comms.notification_prefs waits for a profile row, because that table keys onto org.users_public.
+-- An enterprise owner is provisioned like anyone else, inside public.create_enterprise (Decision #336,
+-- ruling I2), so these seeders cover them too.
 
 -- #region 1. Sign-up preference seeding
 -- The supported locale a tag names, matched ignoring case and `_` / `-`, in its canonical form.
@@ -436,7 +480,8 @@ $$;
 
 -- The sign-up metadata a person is being provisioned from: the payload public.provision_user_profile
 -- publishes for the transaction (keyed by user, so it never applies to anybody else), else the
--- identity's raw_user_meta_data — the enterprise owner's path. '{}' when there is neither.
+-- identity's raw_user_meta_data — a profile written outside provisioning, as the seed writes them.
+-- '{}' when there is neither.
 CREATE OR REPLACE FUNCTION org.fn_signup_meta(p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -494,26 +539,6 @@ $$;
 
 COMMENT ON FUNCTION org.seed_user_preferences() IS
   'Seeds org.user_preferences when a public profile is created (email + OAuth signup), from the supported sign-up locale and display-currency hints. Idempotent. Decisions #47, #207.';
-
-CREATE OR REPLACE FUNCTION org.seed_owner_preferences()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_meta jsonb := org.fn_signup_meta(NEW.user_id);
-BEGIN
-    PERFORM org.fn_seed_user_preferences(NEW.user_id, v_meta);
-    IF EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = NEW.user_id) THEN
-        PERFORM comms.fn_seed_notification_prefs(NEW.user_id, v_meta);
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-COMMENT ON FUNCTION org.seed_owner_preferences() IS
-  'Seeds an enterprise owner''s org.user_preferences from their owner membership (they get no public profile), and their comms.notification_prefs when a profile exists. Idempotent. Decision #207.';
 -- #endregion
 
 -- #region 2. Profile setup progress (Decision #155)

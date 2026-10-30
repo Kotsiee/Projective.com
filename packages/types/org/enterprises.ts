@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ISO_DATE_RE, USERNAME_RE } from "../auth/join.ts";
 
 /**
  * org.enterprises — the Zod SSOT for the **client/buyer-only** corporate entity.
@@ -108,6 +109,21 @@ export type EnterpriseMember = z.infer<typeof EnterpriseMemberSchema>;
 
 // #region Insert shape (onboarding wizard payload → columns the app sets)
 /**
+ * A new enterprise's owner: a person with their own profile (Decision #336, ruling I2), which
+ * `public.create_enterprise` writes in the same transaction as the enterprise — private, client-side,
+ * and refused for anyone under 18. `username` is their `@handle`, derived from their name by the
+ * service (the wizard asks for none); `timeZone` is the zone their birthdays are counted in.
+ */
+export const EnterpriseOwnerSchema = z.object({
+	firstName: z.string().min(1).max(60),
+	lastName: z.string().min(1).max(60),
+	username: z.string().regex(USERNAME_RE),
+	dob: z.string().regex(ISO_DATE_RE),
+	timeZone: z.string().max(64).optional(),
+});
+export type EnterpriseOwner = z.infer<typeof EnterpriseOwnerSchema>;
+
+/**
  * The fields the `/join` enterprise flow supplies when provisioning a new enterprise. The DB
  * derives id/owner/status/verification/timestamps; the CHECK constraint on `industry_other` is
  * mirrored here as a refinement so the same rule is enforced client-, service-, and DB-side.
@@ -129,6 +145,7 @@ export const CreateEnterpriseSchema = z.object({
 	industryOther: z.string().max(80).default(""),
 	departments: z.array(z.string().max(60)).max(50).default([]),
 	purpose: z.array(z.string().max(40)).max(20).default([]),
+	owner: EnterpriseOwnerSchema,
 }).superRefine((value, ctx) => {
 	if (value.primaryIndustry === "other" && value.industryOther.trim().length === 0) {
 		ctx.addIssue({

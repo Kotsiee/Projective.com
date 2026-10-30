@@ -111,8 +111,8 @@ BEGIN
     -- #region Enterprise owner
     -- A profile-less identity (Decision #87(b)) can no longer open an enterprise: it has no date of
     -- birth, org.fn_is_minor fails closed on that (IW-H2), and the owner seat is refused by
-    -- trg_workspace_member_adult. Until FOUNDER_QUESTIONNAIRE F4 gives every owner a DoB, the
-    -- owner-membership preference seed (org.seed_owner_preferences) has no profile-less owner to serve.
+    -- trg_workspace_member_adult. A new owner now gets a profile inside public.create_enterprise (F4,
+    -- Decision #336 ruling I2), so the profile triggers seed theirs (enterprise_owner_profile.sql).
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data)
     VALUES (v_owner, 'prefs-probe-' || v_owner || '@projective.invalid', 'authenticated', 'authenticated',
         jsonb_build_object('objective', 'enterprise', 'locale', 'ja-JP', 'display_currency', 'JPY'));

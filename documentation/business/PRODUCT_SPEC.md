@@ -3350,8 +3350,9 @@ everywhere. A 29 February birthday turns over on 1 March in a common year.
 2. **No retention.** The refused date of birth, the IP address and the contact details are neither
    stored nor logged.
 3. **No retry.** The browser session is locked once an under-13 date of birth is submitted: the join
-   page shows only the minimum-age message, and the server refuses further individual sign-ups from
-   that session, so stepping back and changing the birth year does not reopen the form.
+   page shows only the minimum-age message, and the server refuses every further sign-up from that
+   session, individual or enterprise, so stepping back and changing the birth year does not reopen
+   the form.
 
 #### 13 – 17 — Restricted
 
@@ -3438,7 +3439,10 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 - **Initial IAM:** Initial **departments** (expandable top-level list); initial **admin/stakeholder
   invites** (repeatable Name · Email · base permission tier).
 - **Admin login:** the owning admin's name, date of birth and password (signs in with the corporate
-  email); the owner is a person with their own profile (Decision #336, ruling I2).
+  email); the owner is a person with their own profile (Decision #336, ruling I2). Their personal
+  `@handle` is derived from their name (they can change it later), their profile starts private, and
+  the account opens in the enterprise's context. The owner must be 18 or over: under 13 is refused
+  and locks the browser session as on the individual path, and 13–17 is refused.
 
 > The enterprise is still created in a **Draft/Unverified** state; full KYB (registration
 > documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
