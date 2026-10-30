@@ -5,12 +5,15 @@ import type {
 	FundEscrowInput,
 	IncomeSmootherEnrolInput,
 	PayoutScheduleInput,
+	RecurringRuleAction,
 	SpendDecisionInput,
 	SpendRequestInput,
 	TopUpInput,
 	TransferInput,
+	WalletActionRequest,
 	WalletActionResult,
 	WalletCardHandoff,
+	WalletLockCode,
 	WalletQuery,
 	WithdrawInput,
 } from "@projective/types/finance";
@@ -22,9 +25,9 @@ import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { formatMoney, unpricedTicketsSentence } from "@projective/types/finance";
-import { overviewOf } from "./live-wallet.ts";
+import { LOCK_REASON, overviewOf } from "./live-wallet.ts";
 import { readStageFundingQuote } from "./stage-funding.ts";
-import { createDepositRule, setIncomeSmoother } from "./live-payments.ts";
+import { createDepositRule, refusalOf, setIncomeSmoother } from "./live-payments.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { resolveWalletContext, type WalletAccount, type WalletContext, type WalletRow } from "./wallet-scope.ts";
 
@@ -130,9 +133,18 @@ function governedRefusal(error: { code?: string; message: string }): Result {
 	}
 }
 
-/** The wallet `key` for a scope + id, as the read query names it. */
-function keyOf(scope: string, id: string): string {
-	return scope === "personal" || !id ? "personal" : `${scope}:${id}`;
+/**
+ * The wallet `key` for a scope + id, as the read query names it; `null` for a vault scope with no id,
+ * which names no wallet and is never read as the personal one.
+ */
+function keyOf(scope: string, id: string): string | null {
+	if (scope === "personal" || scope === "aggregate") return scope;
+	return id ? `${scope}:${id}` : null;
+}
+
+/** An automation control refused because its engine does not run yet (Decision #337, ruling M6). */
+function locked(code: WalletLockCode): Result {
+	return fail(409, { message: LOCK_REASON[code], details: { reason: code } }) as Result;
 }
 
 function accountOf(ctx: WalletContext, scope: string, id: string): WalletAccount | null {
@@ -185,8 +197,9 @@ export function actionTarget(
 async function contextFor(
 	query: WalletQuery,
 	actor: ReadActor,
-	walletKey: string,
+	walletKey: string | null,
 ): Promise<{ ctx: WalletContext; account: WalletAccount } | Result> {
+	if (walletKey === null) return refuse(422, "Choose a wallet.");
 	const ctx = await resolveWalletContext({ ...query, wallet: walletKey }, actor);
 	if (!ctx) return refuse(401, "Sign in to use your wallet.");
 	return actionTarget(ctx);
@@ -284,7 +297,8 @@ export async function addRecurring(input: DepositRuleInput, query: WalletQuery, 
 /** Save a card: answers with the SetupIntent the Payment Element confirms in `setup` mode. */
 export async function addMethod(input: AddMethodInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const scope = cardScopeOf(input.scope);
-	if (!scope) return refuse(422, "Choose the account the card is for.");
+	const key = keyOf(input.scope, input.contextId);
+	if (!scope || !key) return refuse(422, "Choose the account the card is for.");
 	if (input.methodRole === "payout") {
 		return refuse(422, "Payouts go to your payout account — set it up from Verification & payouts.");
 	}
@@ -293,17 +307,21 @@ export async function addMethod(input: AddMethodInput, query: WalletQuery, actor
 		contextId: scope === "personal" ? null : input.contextId,
 	}, actor);
 	if (!setup.ok || !setup.data) return carried(setup);
-	return after(query, actor, keyOf(input.scope, input.contextId), "Enter the card to save it.", {
+	return after(query, actor, key, "Enter the card to save it.", {
 		setup: setup.data,
 	}, 201);
 }
 
-/** Enrol in (or leave) the Income Smoother — the database decides eligibility and the fee. */
+/**
+ * Enrol in (or leave) the Income Smoother — the database decides eligibility and the fee. Enrolment
+ * is locked while the smoother is Planned (Decision #337, ruling M6); leaving never is.
+ */
 export async function enrolSmoother(
 	input: IncomeSmootherEnrolInput,
 	query: WalletQuery,
 	actor: ReadActor,
 ): Promise<Result> {
+	if (input.enrol !== false) return locked("smoother_planned");
 	if (!actor.userId || !actor.accessToken) return refuse(401, "Sign in to use your wallet.");
 	const set = await setIncomeSmoother(actor.accessToken, {
 		currency: input.currency.toUpperCase(),
@@ -444,20 +462,26 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 
 // #region Settings
 /**
- * Set the wallet's payout schedule. Saved through RLS (`Manage own payout schedule` — the withdraw
- * capability); it applies once payouts run, which the Payouts page states.
+ * The `finance.payout_schedules` row a save writes, or its refusal: the schedule of the currency the
+ * action names (FCA N17); with none named, the wallet's only currency. A wallet holding several is
+ * never guessed at: the save is refused until the action names one.
  */
-export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
-	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
-	if (isResult(resolved)) return resolved;
-	const { ctx, account } = resolved;
-	const row = account.rows[0];
-	if (!row) return refuse(409, "This account has no wallet yet.");
-	if (input.mode === "threshold" && !input.thresholdMinor) {
-		return refuse(422, "A threshold schedule needs an amount.");
+export function payoutScheduleRow(account: WalletAccount, input: PayoutScheduleInput) {
+	if (!input.currency && account.rows.length > 1) {
+		const message =
+			"This account holds more than one currency. Choose which one these payouts are for.";
+		return fail(422, { message, errors: { currency: message } }) as Result;
 	}
-
-	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance").from("payout_schedules").upsert({
+	const row = input.currency ? rowIn(account, input.currency) : account.rows[0];
+	if (!row) {
+		return refuse(
+			409,
+			input.currency
+				? `This account holds no ${input.currency.toUpperCase()}.`
+				: "This account has no wallet yet.",
+		);
+	}
+	return {
 		owner_type: row.owner_type,
 		owner_id: row.owner_id,
 		currency: row.currency,
@@ -466,7 +490,24 @@ export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, 
 		destination_method_id: input.destinationId,
 		instant: input.instant,
 		active: true,
-	}, { onConflict: "owner_type,owner_id,currency" });
+	};
+}
+
+/**
+ * Set the wallet's payout schedule. Saved through RLS (`Manage own payout schedule` — the withdraw
+ * capability). Only a manual schedule saves while no engine runs the others (Decision #337, ruling M6).
+ */
+export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	if (input.mode !== "manual") return locked("schedule_not_running");
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { ctx, account } = resolved;
+	const schedule = payoutScheduleRow(account, input);
+	if (isResult(schedule)) return schedule;
+
+	const db = getUserClient(ctx.actor.accessToken).schema("finance");
+	const { error } = await db.from("payout_schedules")
+		.upsert(schedule, { onConflict: "owner_type,owner_id,currency" });
 	if (error) {
 		return refuse(
 			error.code === "42501" ? 403 : 422,
@@ -556,5 +597,77 @@ export async function decideSpend(input: SpendDecisionInput, query: WalletQuery,
 		account.key,
 		status === "expired" ? "That request had expired." : input.decision === "approve" ? "Request approved." : "Request declined.",
 	);
+}
+// #endregion
+
+// #region Recurring rules
+/** A recurring-rule action, as `POST /api/wallet/action` carries it. */
+export type RecurringRuleRequest = Extract<WalletActionRequest, { action: RecurringRuleAction }>;
+
+/**
+ * The change each recurring-rule action asks `finance.update_deposit_rule` for, and what it says once
+ * made. A resume or a new amount is the caller's consent to the charge: the door makes them the rule's
+ * author (`created_by`), so the card is then charged on their authority, and the message says so.
+ */
+export function recurringChange(input: RecurringRuleRequest): {
+	args: { p_active?: boolean; p_amount_cents?: number; p_archive?: boolean };
+	message: string;
+} {
+	switch (input.action) {
+		case "pause_recurring":
+			return { args: { p_active: false }, message: "Recurring deposit paused." };
+		case "resume_recurring":
+			return {
+				args: { p_active: true },
+				message: "Recurring deposit resumed. It now charges the card on your authority.",
+			};
+		case "edit_recurring":
+			return {
+				args: { p_amount_cents: input.amountMinor },
+				message: "Amount changed. The deposit now charges the card on your authority.",
+			};
+		case "archive_recurring":
+			return { args: { p_archive: true }, message: "Recurring deposit removed." };
+	}
+}
+
+/**
+ * Pause, resume, re-price or remove one recurring deposit through `finance.update_deposit_rule`, the
+ * only door that changes a rule (FCA A13): it takes the owner of a personal wallet or an `add_funds`
+ * holder on a vault, and re-checks the card before a change that can lead to a charge. The rule must be
+ * on the wallet the action names, and a new amount must be in the rule's own currency.
+ */
+export async function changeRecurring(
+	input: RecurringRuleRequest,
+	query: WalletQuery,
+	actor: ReadActor,
+): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { ctx, account } = resolved;
+	const db = getUserClient(ctx.actor.accessToken).schema("finance");
+	const { data, error: readError } = await db.from("deposit_rules")
+		.select("wallet_id, currency").eq("id", input.ruleId).maybeSingle();
+	if (readError) throw new Error(`finance.deposit_rules read failed: ${readError.message}`);
+	const rule = data as { wallet_id: string; currency: string } | null;
+	if (!rule || !account.rows.some((row) => row.id === rule.wallet_id)) {
+		return refuse(404, "That recurring deposit isn't on this wallet.");
+	}
+	const held = rule.currency.toUpperCase();
+	if (input.action === "edit_recurring" && input.currency.toUpperCase() !== held) {
+		return refuse(409, `This deposit is in ${held}. Enter the amount in ${held}.`);
+	}
+
+	const change = recurringChange(input);
+	const { error } = await db.rpc("update_deposit_rule", { p_rule: input.ruleId, ...change.args });
+	if (error) {
+		const refusal = refusalOf(error, "update_deposit_rule");
+		return fail(refusal.status, {
+			message: refusal.message,
+			errors: refusal.errors,
+			details: refusal.details,
+		}) as Result;
+	}
+	return after(query, actor, account.key, change.message);
 }
 // #endregion

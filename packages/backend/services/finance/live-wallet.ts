@@ -35,6 +35,7 @@ import type {
 	VaultCapability,
 	VaultMember,
 	WalletAction,
+	WalletLockCode,
 	WalletOverview,
 	WalletPotView,
 	WalletSwitcher,
@@ -45,6 +46,7 @@ import {
 	allocationSlices,
 	currencyExponent,
 	incomeSmootherFeeMinor,
+	RecurringRuleAction,
 	walletVariant,
 } from "@projective/types/finance";
 import type { MoneyProjector } from "./commerce-money.ts";
@@ -128,6 +130,18 @@ export const PROCESSOR_REASON: Readonly<Partial<Record<WalletAction, string>>> =
 	withdraw: "Withdrawals need a payout processor, which isn't connected in this environment.",
 	new_recurring: "Recurring deposits need a payment processor, which isn't connected in this environment.",
 	add_method: "Payment methods are added through the payment processor, which isn't connected in this environment.",
+};
+
+/**
+ * What each automation lock says (Decision #337, ruling M6): the reason a LockedDialog shows, and the
+ * message of the refusal a locked control's action answers with.
+ */
+export const LOCK_REASON: Readonly<Record<WalletLockCode, string>> = {
+	schedule_not_running:
+		"Weekly, monthly and threshold payouts don't run yet, so payouts stay manual for now.",
+	pots_not_running: "Pots don't set money aside yet, so they can't be changed for now.",
+	smoother_planned:
+		"The Income Smoother is planned but doesn't run yet, so you can't enrol for now.",
 };
 
 const DAY = 86_400_000;
@@ -371,12 +385,21 @@ function verificationFor(ctx: WalletContext, account: WalletAccount, variant: Wa
 // #endregion
 
 // #region Actions
+/** What {@link actionsFor} decides for one viewer on one wallet. */
+export interface OfferedActions {
+	offered: WalletAction[];
+	unavailable: { action: WalletAction; reason: string }[];
+	locks: { code: WalletLockCode; reason: string }[];
+	recurring: RecurringRuleAction[];
+}
+
 /**
  * What this viewer may do on this wallet (capability → absence), then which of those cannot run here
  * (environment → locked, with the reason). The two gates behave differently on purpose — see the
- * footer rig — and the verification lock is applied on the client from `verification`.
+ * footer rig — and the verification lock is applied on the client from `verification`. Automation
+ * whose engine does not run is offered LOCKED, never dropped (Decision #337, ruling M6).
  */
-function actionsFor(
+export function actionsFor(
 	variant: WalletVariant,
 	account: WalletAccount,
 	accounts: readonly WalletAccount[],
@@ -384,7 +407,7 @@ function actionsFor(
 	fundable: readonly FundableStage[],
 	vaultHolds: boolean,
 	splitAgreed: boolean,
-): { offered: WalletAction[]; unavailable: { action: WalletAction; reason: string }[] } {
+): OfferedActions {
 	const caps = account.capabilities;
 	const offered: WalletAction[] = [];
 	const personal = variant === "personal";
@@ -414,6 +437,9 @@ function actionsFor(
 		if (action === "fund_escrow" && fundable.length === 0) {
 			unavailable.push({ action, reason: "No stage is waiting for funding." });
 		}
+		if (action === "enrol_smoother") {
+			unavailable.push({ action, reason: LOCK_REASON.smoother_planned });
+		}
 		if (action === "distribute") {
 			if (!splitAgreed) unavailable.push({ action, reason: "Agree how this team splits its income first." });
 			else if (!vaultHolds) unavailable.push({ action, reason: "The vault has nothing to distribute." });
@@ -433,7 +459,19 @@ function actionsFor(
 			}
 		}
 	}
-	return { offered, unavailable };
+
+	// Built in this order: payout schedules (DB4), pots (DB5, UI3), then the Income Smoother.
+	const locked: WalletLockCode[] = [];
+	if (offered.includes("set_payout")) locked.push("schedule_not_running");
+	// A pot is saved by the owner of a personal wallet, or by a `distribute` holder on a vault.
+	if (personal || caps.includes("distribute")) locked.push("pots_not_running");
+	if (smoother) locked.push("smoother_planned");
+	const locks = locked.map((code) => ({ code, reason: LOCK_REASON[code] }));
+
+	// `finance.update_deposit_rule` takes the owner of a personal wallet (who holds every capability
+	// there) or an `add_funds` holder on a vault.
+	const recurring = caps.includes("add_funds") ? [...RecurringRuleAction.options] : [];
+	return { offered, unavailable, locks, recurring };
 }
 // #endregion
 
@@ -1082,7 +1120,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	const verification = verificationFor(ctx, account, variant);
 	const vaultHolds = account.rows.some((r) => r.balance_cents > 0);
 	const splitAgreed = (team?.members.length ?? 0) > 0 && team?.splitRule.label !== "No split agreed yet";
-	const { offered, unavailable } = actionsFor(
+	const { offered, unavailable, locks, recurring } = actionsFor(
 		variant,
 		account,
 		ctx.accounts,
@@ -1127,6 +1165,8 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		recent: await toLedgerLines(ctx, rows.slice(0, 8)),
 		quickActions: offered.slice(0, 10),
 		unavailable: unavailable.slice(0, 10),
+		locks,
+		recurringActions: recurring,
 		capabilities: account.capabilities,
 		verification,
 		standing,
@@ -1173,6 +1213,8 @@ async function aggregateOverview(ctx: WalletContext): Promise<WalletOverview> {
 		recent: await toLedgerLines(ctx, rows.slice(0, 8)),
 		quickActions: [],
 		unavailable: [],
+		locks: [],
+		recurringActions: [],
 		capabilities: ["view"],
 		verification: personal ? verificationFor(ctx, personal, "personal") : verificationFor(ctx, ctx.accounts[0], "personal"),
 		standing: null,
@@ -1665,6 +1707,8 @@ export async function fundingOf(ctx: WalletContext): Promise<FundingView> {
 			? getUserClient(ctx.actor.accessToken).schema("finance").from("deposit_rules")
 				.select("id, source_method_id, amount_cents, currency, interval, next_run_at, active, failure_count, last_error")
 				.in("wallet_id", walletIds(account))
+				// A removed rule is archived for good and never runs again; it is no longer the wallet's.
+				.is("archived_at", null)
 			: Promise.resolve({ data: [], error: null }),
 	]);
 	if (rulesRes.error) throw new Error(`finance.deposit_rules read failed: ${rulesRes.error.message}`);

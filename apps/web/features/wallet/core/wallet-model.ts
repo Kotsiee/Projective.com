@@ -41,12 +41,16 @@ export function defaultWalletParam(context: UserContext): string {
 	}
 }
 
-/** Serialises the wallet + display currency into a `/api/wallet/*` query string. */
+/**
+ * Serialises the wallet + display currency into a wallet query string. The wallet is always named,
+ * `w=personal` included: a missing `w` means the acting context's wallet, which in a team or business
+ * context is not the personal one.
+ */
 export function buildWalletQuery(
 	opts: { wallet?: string | null; display?: string | null },
 ): string {
 	const qs = new URLSearchParams();
-	if (opts.wallet && opts.wallet !== "personal") qs.set("w", opts.wallet);
+	if (opts.wallet) qs.set("w", opts.wallet);
 	if (opts.display) qs.set("display", opts.display);
 	return qs.toString();
 }
