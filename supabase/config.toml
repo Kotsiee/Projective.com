@@ -173,7 +173,7 @@ objects_path = "./seed-assets/project"
 [storage.buckets.public_assets]
 public = true
 file_size_limit = "10MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]
+allowed_mime_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
 objects_path = "./seed-assets/public_assets"
 
 [auth]

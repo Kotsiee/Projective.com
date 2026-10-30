@@ -17,8 +17,9 @@
 
 -- #region Private system + collaboration buckets
 
--- Virus-scan / MIME-validation landing zone. Every user upload lands here first; a SECURITY DEFINER
--- promote moves clean files to their target bucket (files.items.target_bucket / target_path).
+-- Virus-scan / MIME-validation landing zone, and the only bucket a client writes (00002017). Every
+-- user upload lands here first; the service role promotes a clean file in process (live-uploads.ts,
+-- media/library.ts, contact/live-attachments.ts). Nothing writes files.items.target_path.
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -29,7 +30,7 @@ VALUES (
         NULL
     ) ON CONFLICT (id) DO NOTHING;
 
--- Project / channel / stage collaboration files. Read+write gated by projects.has_project_access().
+-- Project / channel / stage collaboration files. Read gated by projects.has_project_access().
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -40,7 +41,7 @@ VALUES (
         NULL
     ) ON CONFLICT (id) DO NOTHING;
 
--- Global DM / inbox attachments (NOT project-scoped). Read+write gated by comms.dm_participants
+-- Global DM / inbox attachments (NOT project-scoped). Read gated by comms.dm_participants
 -- membership on the {thread_id} path anchor.
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -119,7 +120,8 @@ VALUES (
 
 -- #region Public edge-cached buckets
 
--- Misc public assets (legacy general bucket). Public read; per-owner write on the {owner_id} anchor.
+-- Misc public assets (legacy general bucket). Public read; service-role write. Raster only: an SVG is
+-- markup a browser executes, and re-hosted link favicons are raster (link-favicon.ts).
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -127,10 +129,10 @@ VALUES (
         'public_assets',
         true,
         10485760,
-        ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']
+        ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
     ) ON CONFLICT (id) DO NOTHING;
 
--- Profile / team / business / enterprise branding: avatars, banners, logos. Public read; owner write.
+-- Profile / team / business / enterprise branding: avatars, banners, logos. Public read; service-role write.
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -141,7 +143,7 @@ VALUES (
         ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
     ) ON CONFLICT (id) DO NOTHING;
 
--- Marketplace storefront media: product images + service showcase. Public read; seller write.
+-- Marketplace storefront media: product images + service showcase. Public read; service-role write.
 INSERT INTO
     storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (

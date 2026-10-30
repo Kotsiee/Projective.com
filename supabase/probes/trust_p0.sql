@@ -4,8 +4,9 @@
 --   E2  a reviewer cannot stamp `handover_unlocked_at` or move `status` past set_project_status
 --   E3  comms definers (fn_notify, the runners) are not client RPCs; action_url is an in-app path
 --   E4  a client cannot declare an upload's promotion target (the scan-file write primitive)
---   E5  the uncalled search definers are not guest RPCs
+--   E5  the uncalled search definers are deleted (Q0.2 (f))
 --   E7  comms.message_file_details runs as the reader
+--   E8  a client writes no bucket but quarantine, reads are unchanged, public_assets takes no SVG (Q0.2 (a))
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -153,11 +154,11 @@ RESET ROLE;
 -- #region E5 + E7. Search definers and the attachment view
 DO $$
 BEGIN
-    IF has_function_privilege('anon', 'search.fn_search_entities(text,text,jsonb,text,integer,integer,uuid,vector)', 'EXECUTE')
-       OR has_function_privilege('authenticated', 'search.fn_search_global(text,uuid,integer)', 'EXECUTE') THEN
-        RAISE EXCEPTION 'FAIL a search definer is still a client RPC';
+    IF to_regprocedure('search.fn_search_entities(text,text,jsonb,text,integer,integer,uuid,vector)') IS NOT NULL
+       OR to_regprocedure('search.fn_search_global(text,uuid,integer)') IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL a dead search definer still exists';
     END IF;
-    RAISE NOTICE 'PASS E5 search definers service-only';
+    RAISE NOTICE 'PASS E5 search definers deleted';
 
     IF NOT EXISTS (SELECT 1 FROM pg_class WHERE oid = 'comms.message_file_details'::regclass
                    AND 'security_invoker=true' = ANY (reloptions)) THEN
@@ -165,6 +166,96 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS E7 attachment view runs as the reader';
 END $$;
+-- #endregion
+
+-- #region E8. Client writes to the six buckets
+-- One object per bucket, where the old policies let `actor` write: the actor's own object, except in
+-- `project`, where it is another participant's (the old UPDATE asked for access, not ownership).
+DO $$
+DECLARE
+    v_owner uuid := current_setting('probe.owner')::uuid;
+    v_project uuid; v_assignee uuid; v_holder uuid;
+    v_thread uuid; v_dm_user uuid;
+    v_team uuid; v_member uuid;
+    v_writers text;
+    v_cases jsonb;
+BEGIN
+    SELECT string_agg(polname, ', ') INTO v_writers FROM pg_policy
+    WHERE polrelid = 'storage.objects'::regclass AND polcmd <> 'r'
+      AND polname <> 'Authenticated users can upload to quarantine';
+    IF v_writers IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL storage write policies outside quarantine: %', v_writers;
+    END IF;
+    IF (SELECT coalesce('image/svg+xml' = ANY (allowed_mime_types), true) FROM storage.buckets WHERE id = 'public_assets') THEN
+        RAISE EXCEPTION 'FAIL public_assets accepts SVG';
+    END IF;
+    RAISE NOTICE 'PASS E8 quarantine is the only client-written bucket; public_assets takes no SVG';
+
+    SELECT ps.project_id, sa.freelancer_profile_id, p.owner_user_id INTO v_project, v_assignee, v_holder
+    FROM projects.stage_assignments sa
+    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+    JOIN projects.projects p ON p.id = ps.project_id
+    WHERE sa.assignee_type = 'freelancer' AND sa.status NOT IN ('declined', 'cancelled', 'released')
+      AND sa.freelancer_profile_id <> p.owner_user_id
+    ORDER BY 1, 2 LIMIT 1;
+    SELECT thread_id, user_id INTO v_thread, v_dm_user FROM comms.dm_participants ORDER BY 1, 2 LIMIT 1;
+    SELECT team_id, user_id INTO v_team, v_member FROM org.team_members WHERE status = 'active' ORDER BY 1, 2 LIMIT 1;
+    IF v_project IS NULL OR v_thread IS NULL OR v_team IS NULL THEN
+        RAISE EXCEPTION 'FAIL no fixture: an engaged freelancer, a DM participant and an active team member';
+    END IF;
+
+    v_cases := jsonb_build_array(
+        jsonb_build_object('bucket', 'project', 'actor', v_assignee, 'holder', v_holder, 'path', v_project || '/e8/peer.txt'),
+        jsonb_build_object('bucket', 'messages', 'actor', v_dm_user, 'holder', v_dm_user, 'path', v_thread || '/e8/own.txt'),
+        jsonb_build_object('bucket', 'personal', 'actor', v_owner, 'holder', v_owner, 'path', 'users/' || v_owner || '/e8/own.txt'),
+        jsonb_build_object('bucket', 'workspace', 'actor', v_member, 'holder', v_member, 'path', v_team || '/e8/own.txt'),
+        jsonb_build_object('bucket', 'public_assets', 'actor', v_owner, 'holder', v_owner, 'path', v_owner || '/e8/own.png'),
+        jsonb_build_object('bucket', 'catalogue', 'actor', v_owner, 'holder', v_owner, 'path', v_owner || '/e8/own.png'));
+    INSERT INTO storage.objects (bucket_id, name, owner)
+    SELECT c.bucket, c.path, c.holder FROM jsonb_to_recordset(v_cases) AS c(bucket text, path text, holder uuid);
+    PERFORM set_config('probe.e8', v_cases::text, true);
+END $$;
+
+SET LOCAL ROLE authenticated;
+
+DO $$
+DECLARE
+    c record;
+    n integer;
+BEGIN
+    -- The Storage API sets this for its own deletes. Without it storage.protect_delete refuses every SQL
+    -- DELETE before a policy is asked, and the DELETE check would pass for the wrong reason.
+    PERFORM set_config('storage.allow_delete_query', 'true', true);
+    FOR c IN SELECT * FROM jsonb_to_recordset(current_setting('probe.e8')::jsonb) AS t(bucket text, actor uuid, path text)
+    LOOP
+        PERFORM set_config('request.jwt.claims',
+            json_build_object('sub', c.actor, 'role', 'authenticated')::text, true);
+        BEGIN
+            INSERT INTO storage.objects (bucket_id, name, owner) VALUES (c.bucket, c.path || '.new', c.actor);
+            RAISE EXCEPTION 'FAIL % accepted a client INSERT', c.bucket;
+        EXCEPTION WHEN insufficient_privilege THEN NULL;
+        END;
+        UPDATE storage.objects SET metadata = '{}'::jsonb WHERE bucket_id = c.bucket AND name = c.path;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        IF n > 0 THEN RAISE EXCEPTION 'FAIL % accepted a client UPDATE', c.bucket; END IF;
+        DELETE FROM storage.objects WHERE bucket_id = c.bucket AND name = c.path;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        IF n > 0 THEN RAISE EXCEPTION 'FAIL % accepted a client DELETE', c.bucket; END IF;
+        IF NOT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = c.bucket AND name = c.path) THEN
+            RAISE EXCEPTION 'FAIL % lost its read', c.bucket;
+        END IF;
+        RAISE NOTICE 'PASS E8 % refuses a client INSERT, UPDATE and DELETE; its read is unchanged', c.bucket;
+    END LOOP;
+
+    PERFORM set_config('request.jwt.claims',
+        json_build_object('sub', gen_random_uuid(), 'role', 'authenticated')::text, true);
+    IF EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'personal') THEN
+        RAISE EXCEPTION 'FAIL a stranger reads a personal object';
+    END IF;
+    RAISE NOTICE 'PASS E8 a personal object stays its owner''s to read';
+END $$;
+
+RESET ROLE;
 -- #endregion
 
 ROLLBACK;

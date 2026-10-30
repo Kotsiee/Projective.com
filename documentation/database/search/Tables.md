@@ -79,10 +79,10 @@ no write.
 - `rail_depth`: the furthest `(scrollLeft + clientWidth) / scrollWidth` reached in one
   `[data-rail-id]` track, re-sent only when it grows by more than 0.01.
 
-> **Ranking caveat.** `search.fn_search_global` / `fn_search_entities` compute popularity as
-> `count(*)` over this table with no `event_type` filter, so impressions count as much as clicks
-> there. The app's live discovery path does not call those RPCs (it ranks in `query.ts`), but anything
-> that adopts them should switch to `sum(weight)` or exclude impressions first.
+> **Ranking caveat.** A ranking that reads popularity from this table should take `sum(weight)` or
+> exclude impressions: a bare `count(*)` with no `event_type` filter counts an impression as much as
+> a click. The deleted `search.fn_search_entities` did exactly that (Decision #340, Q0.2 (f)); the
+> app's live discovery path ranks in `query.ts`.
 
 ## `search.search_weights` — the scoring matrix's coefficients
 

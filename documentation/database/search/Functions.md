@@ -6,13 +6,12 @@ Declared in `00001400_functions_search.sql`; the triggers that fire them are in
 
 Documented here: the **index-sync triggers**, `fn_log_query`, the **discovery-signal** functions
 (`ranking_weights`, `trending_entities`, `record_view`) and the **embedding** functions
-(`fn_set_embedding`, `fn_nearest`, `fn_nearest_to_entity` — Decision #179). The other ranking and
-query RPCs (`fn_search_entities`, which now takes a trailing nullable `p_query_embedding vector(1024)`
-and scores the vector term 0 without one, `fn_search_global`, `fn_search_analytics`, `fn_get_weights`,
-`fn_set_weight`, `fn_norm`, `is_admin`) are not yet written up. `fn_mock_embedding` is deleted.
-`fn_search_entities` and `fn_search_global` are `service_role` only: both are definers that join
-`org.users_public` and `projects.projects` past their RLS, and no app path calls them
-(SECURITY_MODERATION_AND_AI_GAPS E5).
+(`fn_set_embedding`, `fn_nearest`, `fn_nearest_to_entity` — Decision #179). The other query and
+admin RPCs (`fn_search_analytics`, `fn_get_weights`, `fn_set_weight`, `fn_norm`, `is_admin`) are not
+yet written up. `fn_mock_embedding` is deleted, and so are `fn_search_entities` and
+`fn_search_global` (Decision #340, Q0.2 (f)): uncalled definers that joined `org.users_public` and
+`projects.projects` past their RLS (SECURITY_MODERATION_AND_AI_GAPS E5, G11). Discovery ranks in the
+app (`ExploreBackendService`); `fn_norm`'s only caller was `fn_search_entities`.
 
 ---
 
@@ -68,8 +67,8 @@ A team row's `current_workload_intensity` is its active members' **live** W_i �
 `projects.tickets.workload_intensity` over the `claimed` / `in_progress` / `in_review` tickets whose
 `current_assignee_id` is an active `org.team_members` row, rounded — the same figure
 `org.profiles_index`'s team `workload` computes. The dead `org.teams.current_workload_intensity` is
-never read (#233 (a)); the ranking's workload term (`search.fn_search_entities`,
-`1 − fn_norm(current_workload_intensity, 100)`) reads this live figure for teams.
+never read (#233 (a)). No SQL ranking reads the index figure since `search.fn_search_entities` was
+deleted (Decision #340, Q0.2 (f)); discovery ranks on `org.profiles_index`'s `workload`.
 
 | Function | Kind | What it does |
 | :-- | :-- | :-- |

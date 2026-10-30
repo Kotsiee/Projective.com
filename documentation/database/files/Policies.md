@@ -309,11 +309,11 @@ These policies govern the **bytes**, not the registry rows above; the two layers
 independently, which is why a `files.items` read leaking metadata (hole 1) never leaked the objects
 themselves.
 
-Four policies, anchored on `{entity_id}` and gated by **active membership** of that entity — team
-**or** business **or** enterprise, OR-ed because one uuid anchor may name any of the three.
+One policy, a read, anchored on `{entity_id}` and gated by **active membership** of that entity —
+team **or** business **or** enterprise, OR-ed because one uuid anchor may name any of the three.
 Deliberately **not** `auth.uid() = owner`: an entity asset must outlive the member who uploaded it.
-`DELETE` is narrower than `UPDATE` on purpose (any member may revise a shared asset; only the
-uploader may destroy one).
+No member writes the bucket directly: the `/files` pipeline promotes an upload here as the service
+role (Decision #340, Q0.2 (a)).
 
 > Multiple permissive `SELECT` policies on `storage.objects` are **OR-combined**. The workspace
 > rules are written as the sole policies for that bucket; adding a broad "any authenticated" read
@@ -334,9 +334,9 @@ Full predicate, path convention and the metering consequence:
   `(storage.foldername(name))[1] = auth.uid()::text` beside `auth.uid() = owner`, so a user cannot
   write objects under another user's prefix.
 
-> Still open, flagged rather than changed: `catalogue` and `public_assets` keep owner write policies
-> on public buckets, so an owner can still place an unscanned file there directly. Closing them needs
-> their upload paths moved onto the pipeline first.
+> Closed by Decision #340 (Q0.2 (a)): `catalogue` and `public_assets` also have public `SELECT` and
+> no client write policy, like every bucket but `quarantine`. The service role writes them, and
+> `public_assets` takes raster images only (no SVG).
 
 ## `storage.objects` — the `contact` bucket (Decision #276)
 
