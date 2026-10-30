@@ -2184,8 +2184,8 @@ the command palette.
     hands the original `401` back instead) and the request is not background work: one marked
     `x-pj-background`, a `keepalive` send or a background path gets the `401` back and its surface
     degrades, because a read nobody asked for must not navigate the page (Decision #348 — the basket
-    badge's mount-time read). Feature `api.ts` transports adopt it by swapping
-    `fetch`→`apiFetch` (done for `features/projects/core/api.ts`).
+    badge's mount-time read). Feature `api.ts` transports adopt it by swapping `fetch`→`apiFetch`
+    (done for `features/projects/core/api.ts`).
   - **Claim-changing mutations re-issue the session themselves.** `POST /api/context/switch`,
     `POST /api/user/freelancer`, `POST /api/user/handle`, a freelancer-profile `POST`/`DELETE
     /api/user/lifecycle`, and a `PATCH /api/user/preferences` touching locale · display currency ·
