@@ -137,6 +137,8 @@ RAM VPS" (SN1); SA §Content moderation's and EPI §6.3's "hosted fallback, off 
 
 ### 0.5 The safety node lives in its own repo
 
+Recorded as Decision #345, with its open conflicts against EPI §6.
+
 The owner created the node's repository, `Projective-Safety`, a sibling folder of this repo, and
 committed its N0 (the scaffold and the HTTP contract) there, as
 [`SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md`](SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md) §1 recommended.

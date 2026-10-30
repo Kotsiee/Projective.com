@@ -594,7 +594,7 @@ The full behaviour is in the SSOT. In outline:
 
 ## 6. Content moderation and upload safety: the safety node
 
-> **As built (2026-10-30).** The node is its own repository, `Projective-Safety`
+> **As built (2026-10-30; Decision #345).** The node is its own repository, `Projective-Safety`
 > ([`SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md`](../architecture/SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md)).
 > Its route contract is that repo's `contract/openapi.yaml`: `GET /healthz`, `POST /scan/file`,
 > `POST /screen/image`, `POST /screen/video`, `POST /presidio/analyzer/analyze`, and the

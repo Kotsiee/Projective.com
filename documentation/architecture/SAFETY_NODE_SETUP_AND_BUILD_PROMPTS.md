@@ -10,10 +10,10 @@
 >   #335, Proposed);
 > - `SECURITY_MODERATION_AND_AI_GAPS.md` §2–§6 (SEC, #340).
 >
-> **Reconciled 2026-10-30 with [`TRUST_SAFETY_BUILD_PROMPTS.md`](TRUST_SAFETY_BUILD_PROMPTS.md).**
-> This file owns the node: the human setup (H1–H5) and the node prompts (N0–N5). Every change in
-> this repo is a TRUST prompt (§5 maps them), the rulings this work waited for are made (§2), and N6
-> is withdrawn because the app calls Sightengine itself (TRUST SN4).
+> **Reconciled 2026-10-30 with [`TRUST_SAFETY_BUILD_PROMPTS.md`](TRUST_SAFETY_BUILD_PROMPTS.md)**
+> (Decision #345). This file owns the node: the human setup (H1–H5) and the node prompts (N0–N5).
+> Every change in this repo is a TRUST prompt (§5 maps them), the rulings this work waited for are
+> made (§2), and N6 is withdrawn because the app calls Sightengine itself (TRUST SN4).
 
 ## 0. What already exists and what does not
 
