@@ -28,7 +28,9 @@ const PROBES_DIR = "supabase/probes";
 const CONTAINER = Deno.env.get("PROBES_DB_CONTAINER") ?? "supabase_db_Projective";
 // ON_ERROR_STOP is forced here, not trusted to each file: a probe without it carries on in autocommit
 // after a failed guard and still exits 0.
-const PSQL = ["psql", "-U", "postgres", "-d", "postgres", "-X", "-q", "-v", "ON_ERROR_STOP=1"];
+const PSQL = ["psql", "-d", "postgres", "-X", "-q", "-v", "ON_ERROR_STOP=1"];
+// Committing probes open dblink sessions, and only a superuser may open one without a password.
+const psqlUser = (commits: boolean) => ["-U", commits ? "supabase_admin" : "postgres"];
 // The two markers a committing probe uses to refuse the shared database.
 const COMMIT_MARKERS = [":{?disposable}", "probe.allow_commit"];
 
@@ -54,7 +56,7 @@ async function psql(sql: string, commits = false): Promise<{ code: number; out: 
 	const env = commits ? ["-e", "PGOPTIONS=-c probe.allow_commit=on"] : [];
 	const vars = commits ? ["-v", "disposable=1"] : [];
 	const child = new Deno.Command("docker", {
-		args: ["exec", "-i", ...env, CONTAINER, ...PSQL, ...vars],
+		args: ["exec", "-i", ...env, CONTAINER, ...PSQL, ...psqlUser(commits), ...vars],
 		stdin: "piped",
 		stdout: "piped",
 		stderr: "piped",
@@ -104,15 +106,20 @@ for await (const entry of Deno.readDir(PROBES_DIR)) {
 	const name = entry.name.replace(/\.sql$/, "");
 	if (names.length === 0 || names.includes(name)) files.push(name);
 }
-files.sort();
 if (files.length === 0) {
 	console.error(`No probe matched ${names.join(", ")} in ${PROBES_DIR}.`);
 	Deno.exit(2);
 }
+const sources = new Map<string, string>();
+for (const name of files) sources.set(name, await Deno.readTextFile(`${PROBES_DIR}/${name}.sql`));
+// Committing probes run last: the seed rows they leave behind would break the fixtures of later probes.
+const commitsRank = (name: string) =>
+	Number(COMMIT_MARKERS.some((m) => sources.get(name)!.includes(m)));
+files.sort((a, b) => commitsRank(a) - commitsRank(b) || a.localeCompare(b));
 
 const results: ProbeResult[] = [];
 for (const name of files) {
-	const result = await runProbe(name, await Deno.readTextFile(`${PROBES_DIR}/${name}.sql`));
+	const result = await runProbe(name, sources.get(name)!);
 	results.push(result);
 	const tag = { pass: "PASS", fail: "FAIL", skip: "SKIP" }[result.status];
 	const time = result.status === "skip" ? "" : ` (${result.ms} ms)`;

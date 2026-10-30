@@ -80,9 +80,7 @@ const ROWS: Readonly<Record<string, RowContract>> = {
 	"finance.verification_cases": { schema: VerificationCaseSchema },
 	// The column is spelled `last4`, not `last_4`.
 	"finance.payment_methods": { schema: PaymentMethodSchema, rename: { last4: "last4" } },
-	// `created_by` gains its key with the deposit-rule authority work (FINANCE_COMPLETENESS_AUDIT A13),
-	// which also adds `archived_at` to the table and the schema together.
-	"finance.deposit_rules": { schema: DepositRuleSchema, omitted: ["created_by"] },
+	"finance.deposit_rules": { schema: DepositRuleSchema },
 	"finance.payout_schedules": { schema: PayoutScheduleSchema },
 	"finance.income_smoothing": { schema: IncomeSmoothingSchema },
 	"finance.wallet_pots": { schema: WalletPotSchema },

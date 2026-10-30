@@ -213,11 +213,14 @@ UPDATE projects.stage_assignments sa SET status = 'released'
   FROM projects.project_stages ps, projects.projects pr, org.users_public u
  WHERE ps.id = sa.project_stage_id AND pr.id = ps.project_id AND pr.title = 'Helia wallet redesign'
    AND u.user_id = sa.freelancer_profile_id AND u.username = 'marisdelacroix';
--- Juno's documentation seat is declined: she has hired nowhere else at Helia.
+-- Juno's documentation seat is declined: she has hired nowhere else at Helia. The seed seats her, and
+-- a taken seat cannot be returned to declined, so the fixture bypasses that guard to stage the row.
+SET LOCAL session_replication_role = replica;
 UPDATE projects.stage_assignments sa SET status = 'declined'
   FROM projects.project_stages ps, projects.projects pr, org.users_public u
  WHERE ps.id = sa.project_stage_id AND pr.id = ps.project_id AND pr.title = 'Meridian design system'
    AND u.user_id = sa.freelancer_profile_id AND u.username = 'juno';
+SET LOCAL session_replication_role = origin;
 SELECT pg_temp.act('priyaraman');
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.check((SELECT (e->>'engagements')::int = 1 AND (e->>'live_now')::boolean
