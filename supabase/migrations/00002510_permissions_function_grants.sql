@@ -1837,6 +1837,13 @@ GRANT EXECUTE ON FUNCTION security.switch_session_context (public.profile_type, 
 GRANT EXECUTE ON FUNCTION security.switch_team_context (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION security.switch_enterprise_context (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION security.clear_session_context () TO authenticated;
+
+-- The operator predicate (IW-M8). Executable by PUBLIC until now, i.e. by every role in the cluster.
+-- It IS an arm of policies on tables a guest reads (integrations.plugins, plugin_versions, and the
+-- `TO public` org policies), and a policy expression runs as the invoking role, so both client roles
+-- keep it; it answers only about auth.uid(), which is false for a guest.
+REVOKE ALL ON FUNCTION security.is_admin () FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION security.is_admin () TO anon, authenticated, service_role;
 -- #endregion
 
 -- #region Scheduling privacy doors (2026-09-28)

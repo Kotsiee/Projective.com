@@ -43,6 +43,13 @@ export const EnterpriseVerificationLevel = z.enum([
 	"verified",
 ]);
 export type EnterpriseVerificationLevel = z.infer<typeof EnterpriseVerificationLevel>;
+
+/**
+ * `org.enterprise_members.status` — CHECK `ck_enterprise_member_status`, the seat vocabulary the team
+ * and business rosters share: `active`, or `left` once the holder departs.
+ */
+export const EnterpriseMemberStatus = z.enum(["active", "left"]);
+export type EnterpriseMemberStatus = z.infer<typeof EnterpriseMemberStatus>;
 // #endregion
 
 // #region Row shapes
@@ -85,7 +92,7 @@ export const EnterpriseMemberSchema = z.object({
 	enterpriseId: uuid,
 	userId: uuid,
 	role: EnterpriseRole,
-	status: z.string().max(20),
+	status: EnterpriseMemberStatus,
 	invitedBy: uuid.nullable(),
 	joinedAt: timestamp,
 	createdAt: timestamp,

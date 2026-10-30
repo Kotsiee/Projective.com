@@ -52,6 +52,11 @@ CREATE TABLE security.session_context (
 
 ## 🛡️ Trust & Verification
 
+> **RLS is on for every table below** (`00002001`). `feature_flags`, `turnstile_verifications`,
+> `refresh_tokens` and `audit_logs` carry no policy and no client grant: definer-only (IW-M6,
+> [Policies.md](Policies.md)). `refresh_tokens` and `turnstile_verifications` are referenced by
+> nothing; their removal awaits the owner's approval.
+
 ### `security.feature_flags`
 
 Allows for granular rollout of new features (e.g., Phase 2 payments or Phase 3 templates) without

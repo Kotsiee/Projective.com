@@ -21,6 +21,7 @@ import {
 	managerCapContextOf,
 	managerCapNotice,
 	seatsFull,
+	viewerRankOf,
 } from "../core/members-model.ts";
 
 /**
@@ -32,7 +33,8 @@ import {
  * and nothing ever navigates to Members to open it.
  *
  * **The role list holds only roles the inviter may grant** — never the owner seat, never one carrying
- * a capability they lack (`grantableRoles`, the mirror of `org.invite_workspace_member`). The plan's
+ * a capability they lack, never one at or above their own rank (`grantableRoles`, the mirror of
+ * `org.invite_workspace_member`). The plan's
  * free seats caption the header and cap the batch (pending invitations hold seats); on a business,
  * rows offered a manager's role past the plan's manager headroom close Send with the manager-cap
  * notice (BU7, `inviteManagerOverflow`). People already in the entity, already invited, or the
@@ -51,7 +53,7 @@ export interface InviteModalProps {
 export default function InviteModal(props: InviteModalProps): JSX.Element {
 	const ws = props.workspace;
 	const copy = kindCopy(ws.kind);
-	const grantable = grantableRoles(ws.roles, ws.viewerCapabilities);
+	const grantable = grantableRoles(ws.roles, ws.viewerCapabilities, viewerRankOf(ws));
 	const roles = grantable.map((r) => ({ id: r.id, name: r.name }));
 	const defaultRoleId = inviteRoleSeed(grantable, inviteSeedRoleId.value);
 	const memberHandles = new Set(ws.members.map((m) => m.handle.toLowerCase()));

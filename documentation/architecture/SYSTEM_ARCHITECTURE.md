@@ -2578,7 +2578,8 @@ included.
   can revoke. Add any new function to the consolidated `00001xxx` files, never after `00002510`.
 - **Pinned `search_path`.** A `SECURITY DEFINER` sets `search_path` (`''` or an explicit list of the
   schemas it reads), so a caller's `search_path` cannot redirect an unqualified name. Every definer
-  in every exposed schema does, except `security.is_admin()`.
+  in every exposed schema does; `security.is_admin()`, the last exception, was pinned and taken off
+  `PUBLIC` on 2026-10-30 (IW-M8).
 - **An INVOKER calling a revoked function fails.** Its body, and an INVOKER trigger's, runs as the
   invoking role, so a call it makes to a revoked function raises `permission denied` for that role.
   Make the caller a definer rather than granting the callee (see `security.fn_slug_guard`).

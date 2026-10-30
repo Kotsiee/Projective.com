@@ -332,7 +332,10 @@ CREATE TABLE org.teams (
         jsonb_typeof(hire_intake) = 'array' AND jsonb_array_length(hire_intake) <= 12
     ),
     CONSTRAINT teams_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users(id),
-    CONSTRAINT teams_status_check CHECK (status IN ('draft', 'active', 'archived'))
+    CONSTRAINT teams_status_check CHECK (status IN ('draft', 'active', 'archived')),
+    -- The business_profiles vocabulary (org.update_workspace refuses anything else); a raw write can
+    -- no longer store a value the directory and the console cannot read.
+    CONSTRAINT teams_visibility_check CHECK (visibility IN ('public', 'unlisted', 'invite_only'))
 );
 
 -- A role an entity grants its members — layers 1 and 2 of the permission engine
@@ -976,7 +979,11 @@ CREATE TABLE org.enterprise_members (
     CONSTRAINT enterprise_members_org_fkey FOREIGN KEY (enterprise_id) REFERENCES org.enterprises (id) ON DELETE CASCADE,
     CONSTRAINT enterprise_members_user_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE,
     CONSTRAINT enterprise_members_inviter_fkey FOREIGN KEY (invited_by) REFERENCES auth.users (id) ON DELETE SET NULL,
-    CONSTRAINT enterprise_members_unique UNIQUE (enterprise_id, user_id)
+    CONSTRAINT enterprise_members_unique UNIQUE (enterprise_id, user_id),
+    -- The seat vocabulary team_members and business_members use (IW-M10): a seat is `active` or, once
+    -- its holder departs, `left`. Every reader matches `status = 'active'`, so a free-text value was a
+    -- seat that silently counted for nothing.
+    CONSTRAINT ck_enterprise_member_status CHECK (status IN ('active', 'left'))
 );
 -- #endregion
 

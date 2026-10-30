@@ -27,8 +27,9 @@ migration-numbering and RLS conventions.
 ## `org.enable_freelancer_profile(p_payload jsonb) → jsonb`
 
 **Migration:** `supabase/migrations/00001020_functions_org_entities.sql` (from `0313`) ·
-**Security:** `SECURITY DEFINER` · **Grant:** `authenticated` (explicitly `REVOKE`d from `PUBLIC`,
-`anon` in `00002510`).
+**Security:** `SECURITY DEFINER`, `search_path = ''` (every identifier qualified; it was
+`public, org, security, auth` until 2026-10-30, IW-L) · **Grant:** `authenticated` (explicitly
+`REVOKE`d from `PUBLIC`, `anon` in `00002510`).
 
 The self-serve "Become a Partner" conversion — how a user who onboarded as a Client/Operator unlocks
 a freelancer profile after the fact (persona is no longer fixed at signup; cf.
@@ -235,7 +236,7 @@ with `fn_age_years(dob, timezone) < 18`, `fn_is_minor`'s rule spelled out.
 | `org.fn_age_years(p_dob date, p_zone text DEFAULT NULL) → integer` | Whole years since `p_dob` on `fn_today_in(p_zone)` (`age()`, so a 29 February birthday turns over on 1 March). `STABLE`. |
 | `org.fn_check_dob(p_dob date, p_zone text DEFAULT NULL) → void` | The one date-of-birth rule: `22023` when missing, in the future (in `p_zone`) or before 1900; `PM422` under 13. Called by `provision_user_profile` and the trigger below. |
 | `org.trg_users_public_dob_guard() → trigger` | `trg_users_public_dob_guard`, BEFORE INSERT / UPDATE OF `dob` on `org.users_public`: runs `fn_check_dob(NEW.dob, NEW.timezone)` on every write path.                |
-| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is 13–17 today in their own zone; `false` without a profile row. `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`), the seller-persona rule in `provision_user_profile` (a minor who chose "freelancer" starts as a client) and `fn_compute_profile_setup_progress` (never suggests `become_partner` to a minor). |
+| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is **not provably 18** today: 13–17 in their own zone, or an identity (`auth.users` row) with no profile row and so no date of birth. It **fails closed** (IW-H2, 2026-10-30, whatever FOUNDER_QUESTIONNAIRE F4 rules): it used to answer `false` without a profile row, so a profile-less enterprise owner passed every `fn_assert_adult` door. An id naming no identity (a team or business id passed polymorphically, e.g. `trg_project_joiner_adult`'s participant) and `NULL` (the service role) stay `false`. Consequence until F4 lands: `public.create_enterprise` cannot seat a profile-less owner (`trg_workspace_member_adult`, `PM403`). `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`), the seller-persona rule in `provision_user_profile` (a minor who chose "freelancer" starts as a client) and `fn_compute_profile_setup_progress` (never suggests `become_partner` to a minor). |
 | `org.fn_assert_adult(p_user uuid) → void`    | The one buy/sell gate: raises `PM403` for a minor; a `NULL` user (the service role) passes. `SECURITY DEFINER`.                              |
 
 `org.fn_assert_adult` is called with the acting person by every door that spends, earns, sells or
@@ -618,6 +619,7 @@ would be a capability oracle.
 | `fn_member_capabilities(kind, entity, user)`           | A member's EFFECTIVE set: `role ∪ granted − revoked`, kind-filtered, **revocation wins**. Empty for anybody who is not an ACTIVE member.                                                                     |
 | `fn_member_can(kind, entity, cap)`                     | Does the CALLER hold `cap`? The one predicate every write RPC gates on.                                                                                                                                         |
 | `fn_member_seat(kind, entity, user)`                   | The active membership row as `(member_id, preset, rank)`; no row when not a member.                                                                                                                             |
+| `fn_assert_role_below(actor_rank, role_base, field)`   | `IMMUTABLE`. **The rank rule** (SA "only someone you outrank"; IW-H4, IW-M4, 2026-10-30): raises `42501 <field>: that role does not rank below yours` unless `fn_preset_rank(role_base) < actor_rank`. Equal is refused as well as higher, and so is no seat (`NULL`). Asked by `invite_workspace_member`, `respond_to_join_request`, `update_workspace_member` (`roleId`) and `upsert_workspace_role` (`basePreset`, and `role` on an edit). Internal: no client `EXECUTE`. TS twin: `grantableRoles` / `baseOptions` / `roleLock` (`apps/web/features/workspaces/core/`), pinned by `workspace.contract.test.ts`. |
 | `is_team_lead(team_id)`                                | **Redefined:** "lead" is no longer a role name — it is holding `bind_seat` on the team (the owner, admin and lead presets carry it; a custom role may). Still read by `projects.apply_to_seat` and `scheduling.fn_owner_manages`. |
 
 ### §7 — Money authority is DERIVED from the workspace capabilities
@@ -842,10 +844,12 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   entitlement (`NULL` = unlimited; a business has none). Active members **plus pending, unexpired
   invitations** count (`fn_team_seats_used`), or an owner could over-invite and have acceptances
   refused. `55000` when full.
-- **`fn_business_role_is_manager(business, role)`** / **`fn_business_member_is_manager(business,
-  user)`** — does a role, or an active member's effective capabilities, count against the business's
-  `business_managers` cap (Decision #230 (b)): admin-ranked, or holding `manage_projects`; never the
-  owner. Internal. A business's manager cap is not a seat cap: it is the plan gate
+- **`fn_business_role_is_manager(business, role)`** /
+  **`fn_business_member_is_manager(business,
+  user)`** — does a role, or an active member's
+  effective capabilities, count against the business's `business_managers` cap (Decision #230 (b)):
+  admin-ranked, or holding `manage_projects`; never the owner. Internal. A business's manager cap is
+  not a seat cap: it is the plan gate
   `finance.fn_assert_business_entitlement(business, 'business_managers', extra)`, `PK402`, behind
   `business_plan_gates_enforced` — checked by `invite_workspace_member` (a manager's role, +1),
   `respond_to_workspace_invitation` (accepting one, +0 — the invitation is counted),
@@ -854,40 +858,44 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   plan gates. `update_workspace_member` also refuses a non-null spend ceiling without
   `pooled_wallet_full`.
 - **`invite_workspace_member(kind, entity, handle, email, role, note) → {id}`** — `authenticated`,
-  needs `invite_members`. Exactly one of `handle` / `email`; the entity must not be archived; the role
-  must be a live role of THIS entity, never owner-ranked ("ownership moves only by transfer"), and —
-  because offering a role is granting it (`mayGrant`) — carry nothing the caller lacks. A handle must
-  resolve, not be the caller, not already be a member, and for a `team` pass `fn_assert_team_persona`
-  (HINT `other`); an email must look like one (≤ 160) and is persona-checked only at accept. Seat
-  cap checked. Inserts `pending` with a fresh 48-hex token and **`expires_at = now() + 14 days`**; a
-  second pending offer collides on the partial unique index → `23505` ("they already have a pending
-  invitation"). Notifies a platform invitee with `{kind}.invite`. Audits `{kind}.member_invited`.
-- **`fn_is_invitee(invitation)`** — is the caller the addressee: by identity, by handle, or by one of
-  their **VERIFIED** `org.user_emails` (never an unverified one — registering someone else's address
-  must not intercept their invitations). Internal.
+  needs `invite_members`. Exactly one of `handle` / `email`; the entity must not be archived; the
+  role must be a live role of THIS entity, never owner-ranked ("ownership moves only by transfer"),
+  and — because offering a role is granting it (`mayGrant`) — carry nothing the caller lacks and
+  rank strictly below the caller's own seat (`fn_assert_role_below`, `42501 roleId:`). A handle must
+  resolve, not be the caller, not already be a member, and for a `team` pass
+  `fn_assert_team_persona` (HINT `other`); an email must look like one (≤ 160) and is
+  persona-checked only at accept. Seat cap checked. Inserts `pending` with a fresh 48-hex token and
+  **`expires_at = now() + 14 days`**; a second pending offer collides on the partial unique index →
+  `23505` ("they already have a pending invitation"). Notifies a platform invitee with
+  `{kind}.invite`. Audits `{kind}.member_invited`.
+- **`fn_is_invitee(invitation)`** — is the caller the addressee: by identity, by handle, or by one
+  of their **VERIFIED** `org.user_emails` (never an unverified one — registering someone else's
+  address must not intercept their invitations). Internal.
 - **`respond_to_workspace_invitation(invitation, accept) → {status, kind, id, handle?, member_id?}`**
-  (accepting a TEAM invitation needs the invitee to pass `fn_assert_team_persona` — `PK403
-  persona_not_freelancer`, Decision #228 (A) — and then be payout-ready — `PK403 payout_not_ready`,
-  Decision #196; declining is never gated)
-  — `authenticated`, invitee only (anyone else gets `P0002`). Refuses an answered (`55000`) or expired
-  (`55000`) invitation. Decline → `declined` + `responded_at`. Accept seats through
-  **`fn_admit_workspace_member`** with **0** seats added (the invitation already holds a counted
-  seat), marks the row `accepted` and notifies the inviter with `{kind}.member_joined`.
-- **`fn_admit_workspace_member(kind, entity, user, role, by, extra, subject) → member_id`** — the ONE
-  admission (Decision #318): an accepted invitation and an approved join request both seat through it,
-  so the two cannot apply different guards. In order: `fn_assert_adult`, an entity that is not
-  archived (`55000`), a finished account (`42501`), for a team `fn_assert_team_persona` and
-  `finance.fn_assert_payout_ready`, a live role (`55000`), `fn_assert_seat(…, extra)` and a business's
-  manager cap (`fn_assert_business_entitlement(…, 'business_managers', extra)`). Inserts or
-  **reactivates** the membership at the role with cleared overrides (for a team, a **0 bp** stake),
-  then re-projects the vault and the membership flags. `extra` is 0 for an invitation, 1 for a
-  request (which holds no seat); `subject` (`invitation` · `request`) words the refusals. Internal.
+  (accepting a TEAM invitation needs the invitee to pass `fn_assert_team_persona` —
+  `PK403
+  persona_not_freelancer`, Decision #228 (A) — and then be payout-ready —
+  `PK403 payout_not_ready`, Decision #196; declining is never gated) — `authenticated`, invitee only
+  (anyone else gets `P0002`). Refuses an answered (`55000`) or expired (`55000`) invitation. Decline
+  → `declined` + `responded_at`. Accept seats through **`fn_admit_workspace_member`** with **0**
+  seats added (the invitation already holds a counted seat), marks the row `accepted` and notifies
+  the inviter with `{kind}.member_joined`.
+- **`fn_admit_workspace_member(kind, entity, user, role, by, extra, subject) → member_id`** — the
+  ONE admission (Decision #318): an accepted invitation and an approved join request both seat
+  through it, so the two cannot apply different guards. In order: `fn_assert_adult`, an entity that
+  is not archived (`55000`), a finished account (`42501`), for a team `fn_assert_team_persona` and
+  `finance.fn_assert_payout_ready`, a live role (`55000`), `fn_assert_seat(…, extra)` and a
+  business's manager cap (`fn_assert_business_entitlement(…, 'business_managers', extra)`). Inserts
+  or **reactivates** the membership at the role with cleared overrides (for a team, a **0 bp**
+  stake), then re-projects the vault and the membership flags. `extra` is 0 for an invitation, 1 for
+  a request (which holds no seat); `subject` (`invitation` · `request`) words the refusals.
+  Internal.
 - **`revoke_workspace_invitation(invitation) → {id, status}`** — `authenticated`, needs
   `invite_members` on the inviting entity (else `P0002`, the same as not found). Pending only →
   `revoked` + `revoked_at` / `revoked_by`.
 - **`resend_workspace_invitation(invitation) → {id, status}`** — same gate; pending only. Re-mints
-  the token and **renews `expires_at` to now + 14 days** (a lapsed pending row is resendable — expiry
-  is derived, not a status); re-notifies a platform invitee.
+  the token and **renews `expires_at` to now + 14 days** (a lapsed pending row is resendable —
+  expiry is derived, not a status); re-notifies a platform invitee.
 
 ### §12b — Invite links & join requests (Decision #318)
 
@@ -933,9 +941,10 @@ terms** (Decision #145): a link only lets its holder ASK. Tables:
   `P0002`, the same as not found); pending only (`55000`). Decline → `declined` + `responded_at` /
   `responded_by`, notifies the requester `{kind}.join_request_declined`. Approve seats them at `role`
   (default the role they asked for) — the role passes the invitation test for the APPROVER (live,
-  never owner, nothing they lack) — through `fn_admit_workspace_member` with **1** seat added (a
-  request holds none, so a full team refuses `55000 plan:`); records the seated role, notifies
-  `{kind}.join_request_accepted`, audits `{kind}.member_joined` (`via: join_request`).
+  never owner, nothing they lack, ranked strictly below them) — through `fn_admit_workspace_member`
+  with **1** seat added (a request holds none, so a full team refuses `55000 plan:`); records the
+  seated role, notifies `{kind}.join_request_accepted`, audits `{kind}.member_joined`
+  (`via: join_request`).
 - **`withdraw_join_request(request) → {id, status}`** — `authenticated`, the requester only (anyone
   else `P0002`); pending only → `withdrawn`.
 
@@ -950,21 +959,23 @@ pending request that asked for it is not a blocker (the approval picks a live ro
   nobody to absorb it, the owner does. The split still totals exactly 10000.
 - **`update_workspace_member(kind, member, patch) → {id}` or `{id, status: 'left'}`** —
   `authenticated`. Patch keys: `role_id`, `granted` / `revoked` (text[]), `title`, `reports_to`
-  (member id or null), `can_spend`, `spend_limit_minor`, `per_transaction_minor`, `period`, `remove`,
-  and on a business `confirm` (the typed word a reserved grant needs) and `relinquish` (text[]).
+  (member id or null), `can_spend`, `spend_limit_minor`, `per_transaction_minor`, `period`,
+  `remove`, and on a business `confirm` (the typed word a reserved grant needs) and `relinquish`
+  (text[]).
   - **`relinquish`** (business, the caller's OWN seat — the one change to one's own permissions):
-    drops the listed owner-reserved grants (§7b). Anything else listed → `22023`; someone else's seat
-    or the owner's → `42501`. Re-projects the vault; audits `business.reserved_relinquished`.
-  - **`remove`**: the owner can never leave or be removed here (`55000`, "transfer ownership first");
-    anyone may remove THEMSELVES (leave); removing someone else needs `remove_members` **and**
-    `manage_roles` **and** to outrank them. The row goes `left` with `left_at`, overrides and the
-    reporting edge cleared, direct reports re-rooted; a team departure calls
+    drops the listed owner-reserved grants (§7b). Anything else listed → `22023`; someone else's
+    seat or the owner's → `42501`. Re-projects the vault; audits `business.reserved_relinquished`.
+  - **`remove`**: the owner can never leave or be removed here (`55000`, "transfer ownership
+    first"); anyone may remove THEMSELVES (leave); removing someone else needs `remove_members`
+    **and** `manage_roles` **and** to outrank them. The row goes `left` with `left_at`, overrides
+    and the reporting edge cleared, direct reports re-rooted; a team departure calls
     `fn_rebalance_departed_stake`. Vault re-projected (the departed member's row goes inert), flags
     refreshed, `{kind}.member_removed` notified (not on self-leave).
   - Everything else changes somebody ELSE's standing: never your own row (`42501`), never the
     owner's, and only with `manage_roles` over someone you **outrank**. A new role must be a live,
-    non-owner role of the entity carrying nothing you lack; a grant must apply to the kind and be
-    held by you; a revocation must apply to the kind.
+    non-owner role of the entity carrying nothing you lack and ranking strictly below you
+    (`fn_assert_role_below`, IW-M4); a grant must apply to the kind and be held by you; a revocation
+    must apply to the kind.
   - Spend envelope (business only; needs `manage_finances`): `can_spend` moves the `spend_funds`
     override through `fn_set_member_capability` (granting needs you to hold `spend_funds`);
     `spend_limit_minor` / `per_transaction_minor` / `period` (`weekly`·`monthly`·`total`, default
@@ -995,12 +1006,15 @@ pending request that asked for it is not a blocker (the approval picks a live ro
 ### §15 — Custom roles
 
 - **`upsert_workspace_role(kind, entity, role, name, summary, capabilities, base_preset = 'member') → {id}`**
-  — `authenticated`, needs `manage_roles`. `role = NULL` creates; otherwise updates a live custom role
-  (a preset is read-only → "duplicate it to a custom role"). Name 1–48 (unique among live roles →
-  `23505`), summary ≤ 160; `base_preset` is `admin` · `lead` · `member` (no `lead` on a business) and
-  may not rank above the caller; the capability list is kind-filtered and may carry nothing the
-  caller lacks, and on a business none of the owner-reserved rights (§7b, `22023`). An update re-touches every holder (so `fn_member_role_sync` re-derives `role`) and
-  re-projects the vault — a role edit flows to its holders.
+  — `authenticated`, needs `manage_roles`. `role = NULL` creates; otherwise updates a live custom
+  role (a preset is read-only → "duplicate it to a custom role"). Name 1–48 (unique among live roles
+  → `23505`), summary ≤ 160; `base_preset` is `admin` · `lead` · `member` (no `lead` on a business)
+  and must rank strictly below the caller (`basePreset:`); an edit must also find the role as it
+  stands ranked below the caller (`role:`), so an admin cannot demote the admin-ranked role a peer
+  holds and then remove the peer (IW-H4), nor edit the role they hold themselves. The capability
+  list is kind-filtered and may carry nothing the caller lacks, and on a business none of the
+  owner-reserved rights (§7b, `22023`). An update re-touches every holder (so `fn_member_role_sync`
+  re-derives `role`) and re-projects the vault — a role edit flows to its holders.
 - **`archive_workspace_role(kind, entity, role) → {id, archived}`** — `authenticated`, needs
   `manage_roles`. Custom roles only; refused (`55000`) while any ACTIVE member holds it or a PENDING
   invitation offers it. Sets `archived_at` (the role-delete path is gone — nothing is hard-deleted).

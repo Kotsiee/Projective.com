@@ -2,8 +2,9 @@
 -- Probe: sign-up preference seeding (Decision #207) — org.seed_user_preferences and
 -- comms.seed_notification_prefs read the browser's locale, zone and display-currency hint from the
 -- sign-up metadata on both provisioning paths (the GoTrue on_auth_user_created trigger and
--- public.complete_onboarding), keep only supported values, and fall back to the column defaults; a
--- profile-less enterprise owner gets org.user_preferences from the owner membership.
+-- public.complete_onboarding), keep only supported values, and fall back to the column defaults; an
+-- onboarded enterprise owner keeps the preferences they chose, and a profile-less identity cannot open
+-- an enterprise at all (no DoB: org.fn_is_minor fails closed, IW-H2).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -107,22 +108,24 @@ BEGIN
     IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || format('%s — got %s / %s / %s / %s', v_label, v_up.locale, v_up.preferred_display_currency, v_np.timezone, v_np.locale); END IF;
     -- #endregion
 
-    -- #region Enterprise owner: no profile row, preferences from the owner membership
+    -- #region Enterprise owner
+    -- A profile-less identity (Decision #87(b)) can no longer open an enterprise: it has no date of
+    -- birth, org.fn_is_minor fails closed on that (IW-H2), and the owner seat is refused by
+    -- trg_workspace_member_adult. Until FOUNDER_QUESTIONNAIRE F4 gives every owner a DoB, the
+    -- owner-membership preference seed (org.seed_owner_preferences) has no profile-less owner to serve.
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data)
     VALUES (v_owner, 'prefs-probe-' || v_owner || '@projective.invalid', 'authenticated', 'authenticated',
         jsonb_build_object('objective', 'enterprise', 'locale', 'ja-JP', 'display_currency', 'JPY'));
-    PERFORM public.create_enterprise(v_owner, jsonb_build_object(
-        'legalName', 'Prefs Probe ' || v_tag || ' Ltd', 'handle', 'prefsorg' || v_tag,
-        'corporateEmail', 'owner-' || v_tag || '@projective.invalid'));
-
-    SELECT * INTO v_up FROM org.user_preferences WHERE user_id = v_owner;
-    v_label := 'a profile-less enterprise owner gets user_preferences (ja-JP / JPY)';
-    v_ok := FOUND AND v_up.locale = 'ja-JP' AND v_up.preferred_display_currency = 'JPY';
-    IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || format('%s — got %s / %s', v_label, v_up.locale, v_up.preferred_display_currency); END IF;
-
-    v_label := 'a profile-less enterprise owner gets no notification_prefs (FK onto users_public)';
-    v_ok := NOT EXISTS (SELECT 1 FROM comms.notification_prefs WHERE user_id = v_owner);
-    IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || v_label; END IF;
+    v_label := 'a profile-less identity cannot open an enterprise (no DoB, fn_is_minor fails closed: PM403)';
+    BEGIN
+        PERFORM public.create_enterprise(v_owner, jsonb_build_object(
+            'legalName', 'Prefs Probe ' || v_tag || ' Ltd', 'handle', 'prefsorg' || v_tag,
+            'corporateEmail', 'owner-' || v_tag || '@projective.invalid'));
+        v_failures := v_failures || (v_label || ' — it went through');
+    EXCEPTION WHEN SQLSTATE 'PM403' THEN
+        v_ok := NOT EXISTS (SELECT 1 FROM org.enterprises WHERE owner_user_id = v_owner);
+        IF v_ok THEN RAISE NOTICE 'PASS %', v_label; ELSE v_failures := v_failures || (v_label || ' — an enterprise row survived'); END IF;
+    END;
 
     -- An onboarded person who creates an enterprise keeps the preferences they already chose.
     UPDATE org.user_preferences SET locale = 'it-IT', preferred_display_currency = 'EUR' WHERE user_id = v_email;

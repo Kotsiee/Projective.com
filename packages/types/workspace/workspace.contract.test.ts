@@ -210,6 +210,56 @@ Deno.test("org.fn_preset_rank ranks the presets exactly as roleRank does", () =>
 	assert(/ELSE 0 END/.test(rankBody), "an unknown preset must rank below every real one");
 });
 
+Deno.test("org.fn_assert_role_below: only a role ranking STRICTLY below the actor passes (IW-H4/M4)", () => {
+	const body = functionBody(entities, "org.fn_assert_role_below");
+	const match = /org\.fn_preset_rank\(p_role_base\) (>=|>) p_actor_rank/.exec(body);
+	assert(match, "org.fn_assert_role_below no longer compares the role's rank with the actor's");
+	assert(/p_actor_rank IS NULL OR/.test(body), "an actor with no seat must be refused");
+	assert(/ERRCODE = '42501'/.test(body), "the rank refusal is an authority refusal (42501)");
+	// "Only someone you outrank" (SYSTEM_ARCHITECTURE §Teams & Businesses): equal is refused.
+	for (const actor of WorkspaceRole.options) {
+		for (const base of WorkspaceRole.options) {
+			const refused = match[1] === ">="
+				? roleRank(base) >= roleRank(actor)
+				: roleRank(base) > roleRank(actor);
+			assertEquals(
+				!refused,
+				roleRank(base) < roleRank(actor),
+				`a ${actor} offering a ${base}-ranked role`,
+			);
+		}
+	}
+});
+
+Deno.test("every door that offers, assigns or edits a role asks the rank rule, naming its own input", () => {
+	const doors: [string, string[]][] = [
+		["org.invite_workspace_member", ["roleId"]],
+		["org.respond_to_join_request", ["roleId"]],
+		["org.update_workspace_member", ["roleId"]],
+		// The rank the role WILL take, and the rank it holds NOW (so its holders) on an edit.
+		["org.upsert_workspace_role", ["basePreset", "role"]],
+	];
+	for (const [door, fields] of doors) {
+		const body = functionBody(entities, door);
+		const asked = [...body.matchAll(/org\.fn_assert_role_below\([^;]*, '(\w+)'\);/g)].map((m) =>
+			m[1]
+		);
+		assertEquals(asked, fields, `${door} asks the rank rule for ${fields.join(" and ")}`);
+	}
+	// The edit branch holds the role as it stands — its base, not the one requested.
+	assert(
+		/fn_assert_role_below\(v_actor_rank, v_existing\.base_preset, 'role'\)/.test(
+			functionBody(entities, "org.upsert_workspace_role"),
+		),
+		"a role edit must be refused on the role's CURRENT rank (a peer admin's role)",
+	);
+	// The member door's own target check stays strict too.
+	assert(
+		/v_actor_rank <= v_target_rank/.test(functionBody(entities, "org.update_workspace_member")),
+		"update_workspace_member must refuse a target at the actor's rank",
+	);
+});
+
 Deno.test("org.fn_is_reserved_handle reserves exactly RESERVED_HANDLES", () => {
 	const start = reservedBody.indexOf("ARRAY[");
 	assert(start >= 0, "org.fn_is_reserved_handle no longer lists its handles in an ARRAY");

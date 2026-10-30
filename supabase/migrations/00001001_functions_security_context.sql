@@ -46,11 +46,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, security, search, org;
 
+-- Whether the CALLER is a platform operator. A definer, because ops.admin_users is readable by no
+-- client role; it answers only about auth.uid(), so it is no oracle. The search_path is pinned
+-- (IW-M8): a definer resolving names through the caller's path could be steered to a planted
+-- `ops.admin_users`. EXECUTE is granted by name in 00002510, not to PUBLIC.
 CREATE OR REPLACE FUNCTION security.is_admin()
 RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
+SET search_path = ''
 AS $$
   SELECT EXISTS (
     SELECT 1
@@ -96,7 +101,9 @@ BEGIN
 END;
 $$;
 
--- A freelancer profile (the caller's own) or a business the caller is an active member of.
+-- A freelancer profile (the caller's own, live) or a business the caller is an active member of. A
+-- freelancer profile given up (00001060: `is_freelancer` off for its 90-day window) is not live; the
+-- access-token hook (00001700) asks the same question at every mint.
 CREATE OR REPLACE FUNCTION security.switch_session_context(
   p_type public.profile_type,
   p_id uuid
@@ -111,7 +118,11 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
   END IF;
   IF p_type = 'freelancer' THEN
-    IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles f WHERE f.user_id = auth.uid() AND f.user_id = p_id) THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM org.freelancer_profiles f
+      JOIN org.users_public u ON u.user_id = f.user_id
+      WHERE f.user_id = auth.uid() AND f.user_id = p_id AND u.is_freelancer
+    ) THEN
       RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you do not have a freelancer profile';
     END IF;
   ELSIF p_type = 'business' THEN
@@ -151,7 +162,9 @@ BEGIN
 END;
 $$;
 
--- An enterprise the caller owns or is an active member of (buyer-only, Decisions #9/#10).
+-- An enterprise the caller owns or is an active member of (buyer-only, Decisions #9/#10), and that is
+-- not archived (IW-L1) — the rule the team and business switches already apply to their entity, and
+-- the list ContextBackendService.enterprises offers. The access-token hook re-checks it at every mint.
 CREATE OR REPLACE FUNCTION security.switch_enterprise_context(p_enterprise_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -162,10 +175,12 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = p_enterprise_id AND o.owner_user_id = auth.uid())
-     AND NOT EXISTS (
-       SELECT 1 FROM org.enterprise_members m
-       WHERE m.enterprise_id = p_enterprise_id AND m.user_id = auth.uid() AND m.status = 'active'
+  IF NOT EXISTS (
+       SELECT 1 FROM org.enterprises o
+       WHERE o.id = p_enterprise_id AND o.status <> 'archived'
+         AND (o.owner_user_id = auth.uid()
+              OR EXISTS (SELECT 1 FROM org.enterprise_members m
+                         WHERE m.enterprise_id = o.id AND m.user_id = auth.uid() AND m.status = 'active'))
      ) THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this enterprise';
   END IF;

@@ -126,10 +126,13 @@ BEGIN
   -- and dropped (back to personal, raw claims included) the moment it does not — a member removed
   -- from a team, or a team archived, stops acting as it at the next mint instead of carrying the
   -- claim until they happen to switch. security.current_context() reads these raw claims for RLS.
-  IF v_enterprise_id IS NOT NULL AND NOT (
-       EXISTS (SELECT 1 FROM org.enterprises o WHERE o.id = v_enterprise_id AND o.owner_user_id = v_user_id)
-       OR EXISTS (SELECT 1 FROM org.enterprise_members m
-                  WHERE m.enterprise_id = v_enterprise_id AND m.user_id = v_user_id AND m.status = 'active')) THEN
+  -- Each slot asks exactly what its security.switch_* asked when it was written (00001001).
+  IF v_enterprise_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM org.enterprises o
+        WHERE o.id = v_enterprise_id AND o.status <> 'archived'
+          AND (o.owner_user_id = v_user_id
+               OR EXISTS (SELECT 1 FROM org.enterprise_members m
+                          WHERE m.enterprise_id = o.id AND m.user_id = v_user_id AND m.status = 'active'))) THEN
     v_enterprise_id := NULL;
   END IF;
   IF v_team_id IS NOT NULL AND NOT EXISTS (
@@ -140,6 +143,14 @@ BEGIN
   IF v_profile_type = 'business' AND NOT EXISTS (
        SELECT 1 FROM org.business_members bm JOIN org.business_profiles b ON b.id = bm.business_id
         WHERE bm.business_id = v_profile_id AND bm.user_id = v_user_id AND bm.status = 'active' AND b.status <> 'archived') THEN
+    v_profile_type := NULL;
+    v_profile_id := NULL;
+  END IF;
+  -- The freelancer slot is the caller's own LIVE profile (IW-L2): a profile given up keeps its row
+  -- for the 90-day window with `is_freelancer` off, and must not keep riding the raw claim.
+  IF v_profile_type = 'freelancer' AND NOT COALESCE(
+       v_profile_id = v_user_id AND v_is_freelancer
+       AND EXISTS (SELECT 1 FROM org.freelancer_profiles f WHERE f.user_id = v_user_id), false) THEN
     v_profile_type := NULL;
     v_profile_id := NULL;
   END IF;

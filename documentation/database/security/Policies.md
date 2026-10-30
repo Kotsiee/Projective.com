@@ -1,9 +1,23 @@
 # security: Policies
 
-Only `security.session_context` is documented so far; the rest of the `security` schema's policies
-(penalties, audit logs, feature flags, …) remain _Not yet documented._ — this file is scaffolded to
-match the domain/kind structure described in [../README.md](../README.md). See `brain2.md`'s Database
-section for the general migration-numbering and RLS conventions.
+`security.session_context` and the four policy-less tables are documented here; the penalties and
+platform-params policies remain _Not yet documented._ — this file is scaffolded to match the
+domain/kind structure described in [../README.md](../README.md). See `brain2.md`'s Database section
+for the general migration-numbering and RLS conventions.
+
+**RLS is on for every `security` table** (`00002001`; probe
+`supabase/probes/rls_exposed_tables.sql`). `security` is exposed to PostgREST
+(`supabase/config.toml`), so a table guarded only by holding no grant was one stray `GRANT` from
+public.
+
+## `security.audit_logs` · `feature_flags` · `refresh_tokens` · `turnstile_verifications` — definer-only
+
+**RLS on, no policy, no client grant** (IW-M6, 2026-10-30). Until then all four had RLS **off** and
+relied on holding no table grant alone. RLS with no policy is default-deny for every client role,
+whatever a later grant says. Their writers and readers are `SECURITY DEFINER` functions owned by the
+table owner, which RLS does not bind (no `FORCE`, as everywhere in the tree). `refresh_tokens` and
+`turnstile_verifications` are referenced by nothing; dropping them waits on the owner's approval
+(FOUNDER_QUESTIONNAIRE), so until then they are held shut like the rest.
 
 ## `security.session_context` — read-only to the client
 

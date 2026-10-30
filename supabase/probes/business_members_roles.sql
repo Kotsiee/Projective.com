@@ -15,8 +15,9 @@
 --   * the templates' capability lists (apps/web/features/workspaces/core/role-templates.ts — keep the
 --     two ARRAYs marked `template:` below in step with it) pass org.upsert_workspace_role's
 --     grant-what-you-hold and rank rules for the owner and an admin; an author who holds less is
---     refused the full list (and any rank above theirs), and the editor's filtered seed (`seedFrom`)
---     passes. The Project Manager ranks as a member (#249 (a)), so an admin governs its holders:
+--     refused the full list, and the editor's filtered seed (`seedFrom`) passes. A role must rank
+--     strictly below its author (org.fn_assert_role_below, IW-H4), so a member-ranked author — even
+--     one granted Change roles — may author no role at all. The Project Manager ranks as a member (#249 (a)), so an admin governs its holders:
 --     they sit in the admin's `editable_member_ids` and still take a manager seat.
 --   * a role EDIT that makes its holders managers past the ceiling is refused, and one on a role
 --     nobody holds or is offered is not — the rule the Roles matrix locks a cell by.
@@ -282,19 +283,30 @@ END $$;
 SELECT pg_temp.expect('1g the owner grants M1 Change roles', pg_temp.id('PRIYA'),
     format($q$SELECT org.update_workspace_member('business', %L, '{"granted": ["manage_roles"]}'::jsonb)$q$,
            pg_temp.id('MM1')), NULL, NULL);
-SELECT pg_temp.expect('1h M1 is refused the full Project Manager list (grant-what-you-hold)', pg_temp.id('M1'),
-    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'PM by M1', '', %L::org.workspace_capability[], 'member')$q$,
-           pg_temp.id('H'), pg_temp.pm_caps()), '42501', 'capabilities:');
+SELECT pg_temp.expect('1h M1 is refused even a member-ranked role — nothing ranks below a member', pg_temp.id('M1'),
+    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'Observer by M1', '', %L::org.workspace_capability[], 'member')$q$,
+           pg_temp.id('H'), pg_temp.observer_caps()), '42501', 'basePreset:');
 SELECT pg_temp.expect('1i M1 is refused an admin rank — a role never ranks above its author', pg_temp.id('M1'),
     format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'PM by M1', '', %L::org.workspace_capability[], 'admin')$q$,
            pg_temp.id('H'), pg_temp.observer_caps()), '42501', 'basePreset:');
--- The editor's seed for M1 (`seedFrom`): the template filtered to what M1 holds, its rank clamped to M1's.
-SELECT pg_temp.expect('1j M1''s filtered Project Manager seed (Add funds, View analytics; base member) passes', pg_temp.id('M1'),
-    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'PM by M1', '', %L::org.workspace_capability[], 'member')$q$,
-           pg_temp.id('H'), ARRAY['contribute_funds', 'view_analytics']::org.workspace_capability[]), NULL, NULL);
-SELECT pg_temp.expect('1k M1''s Observer seed passes unchanged', pg_temp.id('M1'),
-    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'Observer by M1', '', %L::org.workspace_capability[], 'member')$q$,
-           pg_temp.id('H'), pg_temp.observer_caps()), NULL, NULL);
+-- An author who outranks the role but holds less: the admin, with Hire taken away for the moment.
+SELECT pg_temp.expect('1j the owner takes Hire from the admin', pg_temp.id('PRIYA'),
+    format($q$SELECT org.update_workspace_member('business', %L, '{"revoked": ["hire"]}'::jsonb)$q$,
+           (SELECT m.id FROM org.business_members m
+             WHERE m.business_id = pg_temp.id('H') AND m.user_id = pg_temp.id('HANNAH'))), NULL, NULL);
+SELECT pg_temp.expect('1k the admin without Hire is refused the full Project Manager list (grant-what-you-hold)',
+    pg_temp.id('HANNAH'),
+    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'PM without Hire', '', %L::org.workspace_capability[], 'member')$q$,
+           pg_temp.id('H'), pg_temp.pm_caps()), '42501', 'capabilities:');
+-- The editor's seed for that author (`seedFrom`): the template filtered to what they hold.
+SELECT pg_temp.expect('1l the filtered Project Manager seed (no Hire; base member) passes', pg_temp.id('HANNAH'),
+    format($q$SELECT org.upsert_workspace_role('business', %L, NULL, 'PM without Hire', '', %L::org.workspace_capability[], 'member')$q$,
+           pg_temp.id('H'), ARRAY['manage_projects', 'purchase', 'contribute_funds', 'spend_funds', 'view_analytics']::org.workspace_capability[]),
+    NULL, NULL);
+SELECT pg_temp.expect('1m the owner gives the admin Hire back', pg_temp.id('PRIYA'),
+    format($q$SELECT org.update_workspace_member('business', %L, '{"revoked": []}'::jsonb)$q$,
+           (SELECT m.id FROM org.business_members m
+             WHERE m.business_id = pg_temp.id('H') AND m.user_id = pg_temp.id('HANNAH'))), NULL, NULL);
 -- #endregion
 
 -- #region 2. Headroom moves with what the cap counts
