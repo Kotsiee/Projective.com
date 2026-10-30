@@ -142,7 +142,7 @@ BEGIN
     VALUES (v_basket, 'project_ticket', v_project, v_stage, v_ticket, 'Probe line', 15000, v_currency) RETURNING id INTO v_line;
     v_o0 := pg_temp.spent(v_wallet, v_owner); v_p0 := pg_temp.spent(v_wallet, v_pm);
     BEGIN
-        PERFORM finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency, jsonb_build_object(v_line::text, 15000), NULL, 'probe-gate-order-2');
+        PERFORM finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency, jsonb_build_object(v_line::text, 15000), NULL, 'probe-gate-order-2', 15000);
         IF pg_temp.spent(v_wallet, v_owner) - v_o0 = 15000 AND pg_temp.spent(v_wallet, v_pm) = v_p0
            -- and the order leaves no cover behind for a later door in this transaction to ride on
            AND COALESCE(NULLIF(current_setting('finance.spend_cover', true), '')::jsonb -> 'budget' ->> v_wallet::text, '0') = '0'
@@ -202,7 +202,7 @@ BEGIN
     INSERT INTO finance.basket_items (basket_id, item_type, item_id, stage_id, ticket_id, title, unit_price_minor, currency)
     VALUES (v_basket, 'project_ticket', v_project, v_stage, v_ticket, 'Probe line', 30000, v_currency) RETURNING id INTO v_line;
     BEGIN
-        PERFORM finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency, jsonb_build_object(v_line::text, 30000), NULL, 'probe-gate-order-5');
+        PERFORM finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency, jsonb_build_object(v_line::text, 30000), NULL, 'probe-gate-order-5', 30000);
         v_fail := v_fail || format('%s: passed (expected PA403 needs_approval)', v_case);
     EXCEPTION WHEN OTHERS THEN
         GET STACKED DIAGNOSTICS v_code = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;

@@ -345,15 +345,31 @@ async function cardPayment(
 	const begun = await beginCardPayment(actor.accessToken, request);
 	if (!begun.ok) return refused(begun.refusal);
 	let payment = begun.value.payment;
-	const replayed = begun.value.replayed;
+	let replayed = begun.value.replayed;
 
 	// The order this top-up pays for is named BEFORE any intent exists: a saved card is confirmed
 	// server-side the moment its intent is created, and the webhook settling it must already know
 	// which order to place (Decision #153). Write-once, so a replayed attempt re-names the same one.
 	if (checkout && payment.status === "requires_payment") {
 		const linked = await attachCheckoutOrder(actor.accessToken, payment.id, checkout);
-		if (!linked.ok) return refused(linked.refusal);
-		if (linked.value) payment = linked.value;
+		if (!linked.ok) {
+			// A second tab: drop this attempt and resume the live payment for the same lines, so the
+			// buyer is never charged twice.
+			const liveId = linked.refusal.details?.reason === "payment_in_progress"
+				? linked.refusal.details.paymentId
+				: null;
+			const live = typeof liveId === "string"
+				? await readInboundPayment(actor.accessToken, liveId).catch(() => null)
+				: null;
+			if (!live || (live.status !== "requires_payment" && live.status !== "processing")) {
+				return refused(linked.refusal);
+			}
+			if (!replayed) {
+				await abandonCardPayment(actor.accessToken, payment.id, "superseded by a payment in progress");
+			}
+			payment = live;
+			replayed = true;
+		} else if (linked.value) payment = linked.value;
 	}
 
 	// A replayed key names an attempt that already ended one way or another; its key cannot start

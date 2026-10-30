@@ -734,7 +734,7 @@ same gate the checkout's `invoice` provider applies (refused `PK403 kyb_required
 `supabase/probes/business_invoicing_terms_kyb.sql`). Returns
 `{ invoicing_mode, billing_day }`.
 
-### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
+### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_expected_minor)` → jsonb
 
 **Age gate:** a caller under 18 is refused `PM403` right after the sign-in check (`org.fn_assert_adult`, Decision #190) —
 which covers `finance.place_on_account_order`, which pays through this function.
@@ -743,7 +743,9 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 
 1. **Idempotency first.** An order already carrying `p_idempotency_key` is returned with
    `replayed: true` and nothing is charged. A key belonging to an order the caller cannot see is
-   refused (`42501`).
+   refused (`42501`). The lookup is **repeated once the basket is locked**, so the same key sent twice
+   at once replays the first order instead of refusing on lines it already consumed (DB7, CO11; probe
+   `promo_redemption_concurrency.sql` §2).
 2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; for a business
    basket the caller must also hold the workspace `purchase` capability (`org.fn_member_can`; `PK403`
    `missing_permission: purchase`, BB2 — `finance.place_on_account_order` asks the same right after its
@@ -756,12 +758,19 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**
    (Decision #166, below); every other kind is `PS501` (a whole project, a service or a session
    escrows against something a basket line does not carry). For a product the listing must still be published; its currency must be `p_currency`; it
-   needs a delivery address (`PD422`); a buyer cannot buy their own listing (`PU422`); and
+   needs a delivery address (`PD422`); a buyer cannot buy their own listing (`PU422`) — a solo seller's,
+   or one owned by a team the buyer is an active member of, and the same for a session or a cohort
+   seat (DB7, CO18); and
    `p_units ->> line_id` — the unit price the buyer was **shown**, in the listing's own currency — must
    equal the catalogue price now (`PC409`). The stored basket snapshot is never charged.
 5. **The promo the buyer saw applied.** `p_promo_code` `NULL` → no promo, whatever code sits on the
    basket (a code the page refused applies nothing here either). Non-null → it must still be the
    basket's code, still valid, and applicable (a flat code only in its own currency) — or `PC409`.
+   The code is read `FOR UPDATE` and redeemed **atomically**: `redemption_count + 1` only while under
+   `max_redemptions`, else `PC409 promo_exhausted:` — two orders racing for the last redemption get
+   exactly one (DB7, CO6; probe `promo_redemption_concurrency.sql` §1). Then the net must equal
+   `p_expected_minor`, the total the buyer was shown, or `PC409 price_changed:` before any money moves
+   (CO4; probe `checkout_charge_assert.sql`).
 6. **The wallet** in `p_currency` is locked (a personal owner's `user` and `freelancer` wallets are
    interchangeable) and must cover the net (`PF402`). A **business** payer then passes
    `fn_assert_business_spend(wallet, caller, net, 'baskets', basket)` once for the whole charge — KYB,
@@ -783,8 +792,8 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees, `platform_fee_bp` the rate
    charged), one `finance.order_lines` row per
    line (fulfilment `download`, the first manifest entry's name, size and format, the licence), each
-   basket line stamped `purchased_at`, the basket's promo cleared, the code's `redemption_count`
-   incremented when it saved anything.
+   basket line stamped `purchased_at`, the basket's promo cleared, and `orders.promo_code` the code
+   redeemed in step 5 (`NULL` when no promo saved anything).
 
 Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
 currency the wallet actually moved, never re-converted.
@@ -852,10 +861,14 @@ transaction-scoped advisory lock on `('finance.on_account', business, currency)`
 orders on different baskets are serialised and cannot pass the limit together (N5). The
 active-business check and the spend gate (BB3 / BB5) run once, inside `place_wallet_order`, on what
 the order actually charges; a refusal there rolls the credit back with it. `p_amount` is caller input,
-so the order's `charged_minor` must equal it or the whole call is refused `PC409` (the checkout's
-"price changed") and the credit with it: a surplus would otherwise stay in the wallet as spendable,
-withdrawable balance, and a shortfall would come out of money already there (FINANCE_COMPLETENESS_AUDIT
-CO20; `supabase/probes/on_account_amount.sql`). `SECURITY DEFINER`,
+so it is passed as `place_wallet_order`'s `p_expected_minor` (refused `PC409 price_changed:` before any
+debit) and the order's charge must still equal it afterwards, or the whole call is refused `PC409`
+(the checkout's "price changed") and the credit with it: a surplus would otherwise stay in the wallet
+as spendable, withdrawable balance, and a shortfall would come out of money already there
+(FINANCE_COMPLETENESS_AUDIT CO20; `supabase/probes/on_account_amount.sql`). The key is checked again
+once the advisory lock is held, so a twin of the same attempt replays rather than crediting twice.
+The order is then written **`invoiced`**, `payment_method_label` "On account", `charged_minor` 0 (the
+business pays on its monthly invoice), and the answer says `status: invoiced`. `SECURITY DEFINER`,
 `search_path = finance, org, security, public`; granted to `authenticated` (`00002510`).
 
 ### `finance.get_on_account_standing(p_business_id, p_currency)` → `jsonb | NULL` (`00001250`)
@@ -1341,8 +1354,12 @@ payment's, and the caller able to spend from the basket NOW (`finance.fn_can_man
 `place_wallet_order` applies). `p_checkout` needs `basket_id`, `item_ids` (non-empty), `currency`,
 `units` and an `order_key` of 8–120 characters; it is stored normalised. **Write-once:** the same
 checkout again is a no-op, a different one is `PX409` — one payment paying for two orders is the case
-this exists to prevent. Prices nothing: the units and promo are re-checked against the catalogue when
-`place_wallet_order` runs. Executable by `authenticated` only.
+this exists to prevent. **Second tab (DB7, CO13):** the basket is locked `FOR UPDATE`, and a checkout
+whose `item_ids` overlap another `requires_payment` / `processing` top-up's on the same basket is
+refused `PC409 payment_in_progress:` with `DETAIL` `{"payment_id": …}` naming the live payment, so the
+service resumes that payment rather than starting a second charge. This runs before any PaymentIntent
+exists — the first step of a card checkout that knows its lines. Prices nothing: the units and promo
+are re-checked against the catalogue when `place_wallet_order` runs. Executable by `authenticated` only.
 
 ### Card payments — processor doors
 
@@ -1375,8 +1392,10 @@ The escrows it created are recorded in `locked_escrow_ids`. A lock that names a 
 `revision_id` (Decision #199, checked first) runs `projects.fund_paid_revision` the same way: the round's
 escrow is held, the round opens and the work is sent back. For a `wallet_topup` carrying a
 `checkout` (Decision #153) it then runs `finance.place_wallet_order` **as the payer**, the same claim
-swap and subtransaction, under the checkout's `order_key` — the key the browser places the same order
-under, so whichever arrives second replays and exactly one order exists; a refusal rolls back only the
+swap and subtransaction, under the checkout's `order_key` and with the payment's `amount_cents` as
+`p_expected_minor` — the key the browser places the same order under, so whichever arrives second
+replays and exactly one order exists; an order that no longer nets to the amount paid is refused
+rather than drawing the difference from the wallet (`settled_unapplied`, #200); a refusal rolls back only the
 order, recorded in `order_error`, and the money stays in the wallet. Notifies `escrow.funded` or
 `wallet.topup_succeeded` (with the lock failure, the placed order, or the order refusal spelled out).
 Returns `order_id` / `order_error` beside the lock outcome.

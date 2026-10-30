@@ -53,7 +53,7 @@ DECLARE
     v_line uuid := pg_temp.line(p_basket);
 BEGIN
     RETURN format(
-        'SELECT finance.place_wallet_order(%L, ARRAY[%L]::uuid[], ''USD'', %L::jsonb, NULL, %L)',
+        'SELECT finance.place_wallet_order(%L, ARRAY[%L]::uuid[], ''USD'', %L::jsonb, NULL, %L, 60000)',
         p_basket, v_line, jsonb_build_object(v_line::text, 60000), 'bb4-probe-' || gen_random_uuid());
 END $$;
 

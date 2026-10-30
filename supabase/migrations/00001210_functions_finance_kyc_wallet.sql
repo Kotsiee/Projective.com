@@ -1233,14 +1233,23 @@ and KYB verification (PK403 kyb_required).';
 --   * A sale credits the seller through the pending window (finance.fn_wallet_credit_pending, keyed to
 --     the order): it reaches their Available balance `pending_release_days` later (Decision #191).
 --   * A team-owned product credits the team's wallet; distributing it to members is the team's own
---     Distribute action.
+--     Distribute action. Nobody buys their own listing: a solo seller's, or one owned by a team the
+--     buyer is an active member of (products, sessions and cohort seats alike).
+--   * `p_expected_minor` is the total the buyer was shown, in the charge currency. The re-priced net
+--     must equal it or the call refuses (PC409 `price_changed`) before any money moves; on the card
+--     path the webhook passes the PaymentIntent's amount, so a mismatch leaves the top-up in the wallet
+--     (`settled_unapplied`, Decision #200) instead of drawing the difference from an existing balance.
+--   * A promo is redeemed atomically: the code is read FOR UPDATE and its count is raised only while
+--     under `max_redemptions`; the redemption lost to a concurrent order refuses PC409
+--     `promo_exhausted`. The code applied is recorded on the order (`orders.promo_code`).
 CREATE OR REPLACE FUNCTION finance.place_wallet_order(
     p_basket_id uuid,
     p_item_ids uuid[],
     p_currency text,
     p_units jsonb,
     p_promo_code text,
-    p_idempotency_key text
+    p_idempotency_key text,
+    p_expected_minor bigint
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1309,6 +1318,18 @@ BEGIN
     SELECT * INTO v_basket FROM finance.baskets WHERE id = p_basket_id FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'That basket no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+    -- The same key racing itself: the twin waited on the basket lock above while this order committed,
+    -- so it replays now instead of refusing on lines the first attempt already consumed.
+    SELECT * INTO v_existing FROM finance.orders WHERE idempotency_key = p_idempotency_key;
+    IF FOUND THEN
+        IF NOT finance.fn_owner_visible (v_existing.owner_type, v_existing.owner_id) THEN
+            RAISE EXCEPTION 'That payment key belongs to another account' USING ERRCODE = '42501';
+        END IF;
+        RETURN pg_catalog.jsonb_build_object(
+            'order_id', v_existing.id, 'reference', v_existing.reference, 'status', v_existing.status,
+            'charged_minor', v_existing.charged_minor, 'currency', v_existing.currency, 'replayed', true
+        );
     END IF;
     IF NOT finance.fn_can_manage_basket (v_basket.owner_type, v_basket.owner_id) THEN
         RAISE EXCEPTION 'Only a member who can spend from this account can pay from it'
@@ -1467,6 +1488,7 @@ BEGIN
         IF v_line.item_type = 'course_group_session' THEN
             SELECT h.id AS hold_id, h.seats AS hold_seats, h.user_id, h.status, c.project_stage_id,
                    sb.id AS blueprint_id, sb.currency AS listing_currency,
+                   sb.freelancer_profile_id, sb.owner_team_id,
                    COALESCE(sb.session_price_cents, sb.price_cents) AS session_price
               INTO v_seat
               FROM projects.cohort_seat_holds h
@@ -1480,6 +1502,12 @@ BEGIN
                OR v_seat.hold_seats IS DISTINCT FROM COALESCE(v_line.seats, 1) THEN
                 RAISE EXCEPTION 'Your seat reservation for % is no longer held — reserve the seat again', v_line.title
                     USING ERRCODE = 'PC409';
+            END IF;
+            IF (v_seat.freelancer_profile_id = v_uid AND v_seat.owner_team_id IS NULL)
+               OR EXISTS (SELECT 1 FROM org.team_members tm
+                           WHERE tm.team_id = v_seat.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active') THEN
+                RAISE EXCEPTION 'You can''t book a seat on your own listing — remove % to pay for the rest', v_line.title
+                    USING ERRCODE = 'PU422';
             END IF;
             IF pg_catalog.upper(v_seat.listing_currency) <> v_currency THEN
                 RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(v_seat.listing_currency), v_currency
@@ -1530,7 +1558,9 @@ BEGIN
                 RAISE EXCEPTION 'Pick a new time for % — the one you chose has passed', v_line.title
                     USING ERRCODE = 'PC409';
             END IF;
-            IF v_sess.freelancer_profile_id = v_uid AND v_sess.owner_team_id IS NULL THEN
+            IF (v_sess.freelancer_profile_id = v_uid AND v_sess.owner_team_id IS NULL)
+               OR EXISTS (SELECT 1 FROM org.team_members tm
+                           WHERE tm.team_id = v_sess.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active') THEN
                 RAISE EXCEPTION 'You can''t book your own session — remove % to pay for the rest', v_line.title
                     USING ERRCODE = 'PU422';
             END IF;
@@ -1581,7 +1611,9 @@ BEGIN
             RAISE EXCEPTION 'Add the address % should be delivered to', v_line.title
                 USING ERRCODE = 'PD422';
         END IF;
-        IF v_line.owner_user_id = v_uid AND v_line.owner_team_id IS NULL THEN
+        IF (v_line.owner_user_id = v_uid AND v_line.owner_team_id IS NULL)
+           OR EXISTS (SELECT 1 FROM org.team_members tm
+                       WHERE tm.team_id = v_line.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active') THEN
             RAISE EXCEPTION 'You can''t buy your own listing — remove % to pay for the rest', v_line.title
                 USING ERRCODE = 'PU422';
         END IF;
@@ -1635,13 +1667,14 @@ BEGIN
             RAISE EXCEPTION 'Your promo code changed while you were paying — review the total and try again'
                 USING ERRCODE = 'PC409';
         END IF;
+        -- FOR UPDATE: a concurrent order on the same code waits here, then reads its committed count.
         SELECT * INTO v_promo FROM finance.promo_codes
-         WHERE code = pg_catalog.upper(pg_catalog.btrim(p_promo_code));
+         WHERE code = pg_catalog.upper(pg_catalog.btrim(p_promo_code))
+         FOR UPDATE;
         IF NOT FOUND
            OR v_promo.deactivated_at IS NOT NULL
            OR (v_promo.starts_at IS NOT NULL AND v_promo.starts_at > pg_catalog.now())
            OR (v_promo.expires_at IS NOT NULL AND v_promo.expires_at <= pg_catalog.now())
-           OR (v_promo.max_redemptions IS NOT NULL AND v_promo.redemption_count >= v_promo.max_redemptions)
         THEN
             RAISE EXCEPTION 'Your promo code is no longer valid — review the total and try again'
                 USING ERRCODE = 'PC409';
@@ -1657,9 +1690,23 @@ BEGIN
                 USING ERRCODE = 'PC409';
         END IF;
         v_promo_minor := LEAST(GREATEST(v_promo_minor, 0), v_subtotal - v_creator);
+        IF v_promo_minor > 0 THEN
+            UPDATE finance.promo_codes
+               SET redemption_count = redemption_count + 1
+             WHERE id = v_promo.id
+               AND (max_redemptions IS NULL OR redemption_count < max_redemptions);
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'promo_exhausted: Your promo code has been used up — remove it to pay the full price'
+                    USING ERRCODE = 'PC409';
+            END IF;
+        END IF;
     END IF;
 
     v_net := v_subtotal - v_creator - v_promo_minor;
+    IF p_expected_minor IS DISTINCT FROM v_net THEN
+        RAISE EXCEPTION 'price_changed: The total changed while you were paying — review it and try again'
+            USING ERRCODE = 'PC409';
+    END IF;
 
     -- The paying wallet: the account's wallet in the charge currency. A personal account's wallet may
     -- carry either personal type.
@@ -1702,11 +1749,12 @@ BEGIN
         id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor,
         creator_discount_minor, promo_discount_minor, platform_fee_minor, platform_fee_bp,
         platform_fee_mode, tax_minor, processing_contribution_minor, total_minor, charged_minor,
-        payment_provider, payment_method_label, idempotency_key
+        payment_provider, payment_method_label, idempotency_key, promo_code
     ) VALUES (
         v_order_id, v_reference, 'confirmed', pg_catalog.now(), v_basket.owner_type, v_basket.owner_id,
         v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, v_fee_bp, 'seller_deducted', 0,
-        0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key
+        0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key,
+        CASE WHEN v_promo_minor > 0 THEN v_promo.code END
     );
 
     -- The products are paid here; each ticket line's share leaves the wallet as its escrow hold below.
@@ -1850,9 +1898,6 @@ BEGIN
     END IF;
     UPDATE finance.orders SET platform_fee_minor = v_fee_total WHERE id = v_order_id;
     UPDATE finance.baskets SET updated_at = pg_catalog.now(), promo_code = NULL WHERE id = v_basket.id;
-    IF v_promo.id IS NOT NULL AND v_promo_minor > 0 THEN
-        UPDATE finance.promo_codes SET redemption_count = redemption_count + 1 WHERE id = v_promo.id;
-    END IF;
 
     RETURN pg_catalog.jsonb_build_object(
         'order_id', v_order_id, 'reference', v_reference, 'status', 'confirmed',
@@ -1861,7 +1906,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) IS
+COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
 applied (none sent → none applied), debit the wallet, credit each seller net of the payer''s effective platform fee (truncated),
@@ -1870,10 +1915,12 @@ write the order and its lines, consume the basket lines. Digital products, and o
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
 membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks
 (Decision #211), which settle into a one-seat cohort with one escrow per sitting
-(projects.fn_book_session_slot); every other kind is refused. Idempotent on the key. Refusal
-SQLSTATEs: 42501 not allowed · PK403 verification · PB404 basket gone · PC409 basket/price/promo/seat
-hold changed, or a session time that passed · PD422 a line needs a delivery address · PU422 your own
-listing, or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
+(projects.fn_book_session_slot); every other kind is refused. The net must equal p_expected_minor (the
+total the buyer saw). A promo is redeemed atomically against its cap and recorded on the order.
+Idempotent on the key, re-checked after the basket lock. Refusal SQLSTATEs: 42501 not allowed · PK403
+verification · PB404 basket gone · PC409 basket/price/promo/seat hold changed, price_changed (the net is
+not p_expected_minor), promo_exhausted (the cap was reached), or a session time that passed · PD422 a
+line needs a delivery address · PU422 your own listing (yours, or your team''s), or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
 session time was taken · PS501 not payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad
 attempt key.';
 -- #endregion

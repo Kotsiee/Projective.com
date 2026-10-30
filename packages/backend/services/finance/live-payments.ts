@@ -324,6 +324,28 @@ export async function attachCheckoutOrder(
 			console.warn("[payments:attach_checkout_order] not deployed — no server-side order backstop for", paymentId);
 			return { ok: true, value: null };
 		}
+		// Another tab's live payment already pays for these lines: named so the caller can resume it.
+		if (error.code === "PC409" && error.message.startsWith("payment_in_progress:")) {
+			let live: unknown = null;
+			try {
+				live = error.details
+					? (JSON.parse(error.details) as { payment_id?: unknown }).payment_id
+					: null;
+			} catch {
+				live = null;
+			}
+			return {
+				ok: false,
+				refusal: {
+					status: 409,
+					message: error.message.replace(/^payment_in_progress:\s*/, ""),
+					details: {
+						reason: "payment_in_progress",
+						paymentId: typeof live === "string" ? live : null,
+					},
+				},
+			};
+		}
 		return { ok: false, refusal: refusalOf(error, "attach_checkout_order") };
 	}
 	return { ok: true, value: inboundPaymentOf(data as Row) };

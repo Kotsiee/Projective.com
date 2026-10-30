@@ -539,8 +539,12 @@ $$;
 -- payer, the payment must still be unpaid, and the caller must be able to spend from the basket NOW
 -- (finance.fn_can_manage_basket — the same guard place_wallet_order applies). Write-once: the same
 -- checkout again is a no-op; a DIFFERENT one for the same payment is refused, because one payment
--- paying for two orders is exactly the case this exists to prevent. Nothing here prices anything — the
--- units and the promo are re-checked against the catalogue by place_wallet_order when it runs.
+-- paying for two orders is exactly the case this exists to prevent. It is the card checkout's first
+-- step that knows the lines, and it runs before any PaymentIntent exists, so it is where a second tab
+-- is refused (PC409 `payment_in_progress`, the live payment's id in DETAIL) when another
+-- `requires_payment` / `processing` top-up already pays for any of the same basket lines. Nothing here
+-- prices anything — the units and the promo are re-checked against the catalogue by place_wallet_order
+-- when it runs.
 CREATE OR REPLACE FUNCTION finance.attach_checkout_order(p_payment_id uuid, p_checkout jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -554,6 +558,7 @@ DECLARE
     v_basket finance.baskets;
     v_checkout jsonb;
     v_key text := p_checkout ->> 'order_key';
+    v_other finance.inbound_payments;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
@@ -582,7 +587,8 @@ BEGIN
         RAISE EXCEPTION 'checkout: the order must be in the payment''s currency' USING ERRCODE = '22023';
     END IF;
 
-    SELECT * INTO v_basket FROM finance.baskets WHERE id = (p_checkout ->> 'basket_id')::uuid;
+    -- FOR UPDATE: two tabs naming the same basket at once are serialised for the check below.
+    SELECT * INTO v_basket FROM finance.baskets WHERE id = (p_checkout ->> 'basket_id')::uuid FOR UPDATE;
     IF NOT FOUND OR NOT finance.fn_can_manage_basket(v_basket.owner_type, v_basket.owner_id) THEN
         RAISE EXCEPTION 'checkout: that basket is not one you can pay for' USING ERRCODE = '42501';
     END IF;
@@ -603,6 +609,21 @@ BEGIN
     END IF;
     IF v_payment.status <> 'requires_payment' THEN
         RAISE EXCEPTION 'payment: this payment has already moved on' USING ERRCODE = 'PX409';
+    END IF;
+    -- A second tab paying for lines another live card payment already pays for is refused, naming that
+    -- payment (DETAIL) so the caller resumes it instead of charging twice.
+    SELECT * INTO v_other FROM finance.inbound_payments p
+     WHERE p.id <> v_payment.id
+       AND p.purpose = 'wallet_topup'
+       AND p.status IN ('requires_payment', 'processing')
+       AND p.checkout ->> 'basket_id' = v_basket.id::text
+       AND (p.checkout -> 'item_ids') ?| ARRAY(SELECT pg_catalog.jsonb_array_elements_text(v_checkout -> 'item_ids'))
+     ORDER BY p.created_at DESC
+     LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'payment_in_progress: A payment for these items is already in progress — finish it or wait for it to end'
+            USING ERRCODE = 'PC409',
+                  DETAIL = pg_catalog.jsonb_build_object('payment_id', v_other.id)::text;
     END IF;
 
     UPDATE finance.inbound_payments
@@ -914,7 +935,9 @@ BEGIN
     -- A top-up that pays for a checkout (Decision #153) places that order now, AS THE PAYER, under the
     -- order key the browser would use — the same claim swap and subtransaction as the escrow lock above.
     -- If the browser placed it first (or places it later), place_wallet_order replays on the key and no
-    -- second order exists. A refusal (a price that moved, a line no longer for sale, a spending limit)
+    -- second order exists. The payment's amount is the expected total, so an order that now nets to
+    -- anything else is refused rather than drawing the difference from the wallet's existing balance.
+    -- A refusal (a price that moved, a line no longer for sale, a spending limit)
     -- rolls back only the order: the money stays in the wallet, the reason is recorded, and the
     -- browser's own attempt re-asks under the same key and shows it.
     IF v_payment.purpose = 'wallet_topup' AND v_payment.checkout IS NOT NULL THEN
@@ -927,7 +950,8 @@ BEGIN
                 v_payment.checkout ->> 'currency',
                 v_payment.checkout -> 'units',
                 v_payment.checkout ->> 'promo_code',
-                v_payment.checkout ->> 'order_key'
+                v_payment.checkout ->> 'order_key',
+                v_payment.amount_cents
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
             IF v_order_id IS NULL THEN

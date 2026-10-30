@@ -548,6 +548,21 @@ is in the wallet's ledger, the purpose was not applied. The spelling follows Str
 payout enum's `cancelled` is Projective's word for its own act. Mirrored member-for-member by the
 Zod `InboundPaymentStatus` (`payments.contract.test.ts` reads the migration and fails on drift).
 
+### `finance.order_status` and the order record (`finance.orders`)
+
+`order_status`: `confirmed` · `processing` · `awaiting_payment` · `invoiced` · `refunded` ·
+`cancelled`, mirrored by the Zod `OrderStatus`. Writers today: `confirmed` by
+`finance.place_wallet_order` (a wallet order, including a card checkout's, which is placed only once its
+top-up settles); `invoiced` by `finance.place_on_account_order` (label "On account", `charged_minor` 0 —
+`total_minor` is what is owed, billed on the monthly invoice). `processing`, `awaiting_payment`,
+`refunded` and `cancelled` have no writer: `awaiting_payment` is kept for a provider-side step no path
+takes yet, and the refund / cancel writers wait for ruling M8 (FDD D-12). Never dropped (edit-in-place).
+
+`finance.orders.promo_code` (`text`, NULL, ≤ 40): the basket-wide promo the order redeemed, upper-cased
+as `finance.promo_codes.code`; `NULL` when no promo saved anything. Not a foreign key, for the reason
+`baskets.promo_code` gives. Mirrored by the Zod `Order.promoCode`. The code's `redemption_count` is
+raised by the same transaction, atomically under `max_redemptions` (DB7).
+
 ### `finance.purchasable_item_kind`
 
 `digital_product` · `project_ticket` · `one_off_project` · `one_off_task` · `service_ticket` ·

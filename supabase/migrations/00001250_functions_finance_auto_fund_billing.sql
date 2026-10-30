@@ -477,8 +477,10 @@ $$;
 -- (`on_account_limit_cents`, finance-model §15). `p_amount` is the charge the checkout computed for
 -- these lines. It is caller input, so it must equal what place_wallet_order actually charges or the
 -- whole call is refused PC409: a surplus would stay in the wallet as spendable balance, and a shortfall
--- would come out of money already there (FINANCE_COMPLETENESS_AUDIT CO20). A replayed key replays the
--- order without crediting again.
+-- would come out of money already there (FINANCE_COMPLETENESS_AUDIT CO20). It is also the total the buyer
+-- saw, so place_wallet_order refuses it as `p_expected_minor` before any debit; the charged = credit
+-- assert after it stays as the backstop. A replayed key replays the order without crediting again,
+-- including the twin that waited on the locks below. The order is written `invoiced`, "On account".
 CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -505,7 +507,8 @@ BEGIN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
     END IF;
     IF EXISTS (SELECT 1 FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key) THEN
-        RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key);
+        RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
+            p_idempotency_key, p_amount);
     END IF;
     IF p_amount IS NULL OR p_amount <= 0 THEN
         RAISE EXCEPTION 'Nothing to pay on account' USING ERRCODE = '22023';
@@ -547,6 +550,11 @@ BEGIN
     -- below is a new statement, so it sees every on-account credit committed while this waited.
     PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended('finance.on_account:' || v_business.id::text || ':' || v_currency, 0));
+    -- The same key racing itself waited on the locks above; crediting again would mint a surplus.
+    IF EXISTS (SELECT 1 FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key) THEN
+        RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
+            p_idempotency_key, p_amount);
+    END IF;
     SELECT COALESCE((pp.value #>> '{}')::bigint, 0) INTO v_limit
       FROM security.platform_params pp WHERE pp.key = 'on_account_limit_cents';
     IF finance.fn_on_account_owed(v_business.id, v_currency) + p_amount > COALESCE(v_limit, 0) THEN
@@ -558,13 +566,18 @@ BEGIN
     -- below, on what the order actually charges; a refusal there takes this credit back with it.
     PERFORM finance.fn_ensure_wallet('business', v_business.id, v_currency);
     PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
-    v_order := finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key);
+    v_order := finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
+        p_idempotency_key, p_amount);
     IF (SELECT o.charged_minor FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key)
        IS DISTINCT FROM p_amount THEN
         RAISE EXCEPTION 'The amount to pay on account no longer matches this order — review the basket and try again'
             USING ERRCODE = 'PC409';
     END IF;
-    RETURN v_order;
+    UPDATE finance.orders
+       SET status = 'invoiced', payment_method_label = 'On account', charged_minor = 0,
+           updated_at = pg_catalog.now()
+     WHERE id = (v_order ->> 'order_id')::uuid;
+    RETURN v_order || pg_catalog.jsonb_build_object('status', 'invoiced', 'charged_minor', 0);
 END;
 $$;
 

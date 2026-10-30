@@ -76,7 +76,7 @@ BEGIN
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_buyer, 'role', 'authenticated')::text, true);
     v_order := finance.place_wallet_order(v_basket, ARRAY[v_line], v_currency,
-        jsonb_build_object(v_line::text, 1050), NULL, 'probe-187-' || gen_random_uuid());
+        jsonb_build_object(v_line::text, 1050), NULL, 'probe-187-' || gen_random_uuid(), 1050);
     PERFORM set_config('request.jwt.claims', NULL, true);
 
     SELECT o.platform_fee_minor, o.platform_fee_bp INTO v_fee, v_fee_bp

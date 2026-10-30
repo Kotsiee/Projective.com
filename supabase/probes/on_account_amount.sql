@@ -158,21 +158,25 @@ BEGIN
     END;
     -- #endregion
 
-    -- #region 3. The exact amount pays: credit = charge, the wallet's own money untouched
+    -- #region 3. The exact amount pays: credit = total, the wallet's own money untouched, and the order
+    -- is written `invoiced`, "On account", with nothing charged now (DB7)
     v_case := '3 exact amount pays';
     v_line := pg_temp.line(v_project, v_biz, v_currency, c_price);
     v_basket := pg_temp.basket_of(v_line);
     v_b0 := (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet);
     BEGIN
-        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
+        v_out := finance.place_on_account_order(v_basket, ARRAY[v_line], v_currency,
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-3', c_price);
-        IF (SELECT charged_minor FROM finance.orders WHERE idempotency_key = 'probe-oa-3') = c_price
+        IF EXISTS (SELECT 1 FROM finance.orders WHERE idempotency_key = 'probe-oa-3' AND total_minor = c_price
+                      AND charged_minor = 0 AND status = 'invoiced' AND payment_method_label = 'On account')
+           AND v_out ->> 'status' = 'invoiced'
            AND pg_temp.credited(v_basket) = c_price
            AND (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) = v_b0 THEN
-            RAISE NOTICE 'PASS %: charged %, credited %, wallet unchanged', v_case, c_price, c_price;
+            RAISE NOTICE 'PASS %: invoiced on account for %, credited %, wallet unchanged', v_case, c_price, c_price;
         ELSE
-            v_fail := v_fail || format('%s: charged %s, credited %s, wallet %s', v_case,
-                (SELECT charged_minor FROM finance.orders WHERE idempotency_key = 'probe-oa-3'),
+            v_fail := v_fail || format('%s: order %s, credited %s, wallet %s', v_case,
+                (SELECT row_to_json(o)::text FROM (SELECT status, payment_method_label, total_minor, charged_minor
+                   FROM finance.orders WHERE idempotency_key = 'probe-oa-3') o),
                 pg_temp.credited(v_basket), (SELECT balance_cents FROM finance.wallets WHERE id = v_wallet) - v_b0);
         END IF;
     EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);

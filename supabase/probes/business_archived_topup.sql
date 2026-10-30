@@ -637,7 +637,8 @@ BEGIN
                 v_payment.checkout ->> 'currency',
                 v_payment.checkout -> 'units',
                 v_payment.checkout ->> 'promo_code',
-                v_payment.checkout ->> 'order_key'
+                v_payment.checkout ->> 'order_key',
+                v_payment.amount_cents
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
             IF v_order_id IS NULL THEN

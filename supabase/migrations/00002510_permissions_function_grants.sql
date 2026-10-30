@@ -948,7 +948,7 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- Paying a basket from the wallet (00001210 §11). A money-moving function a client may call: it
 -- authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
 -- moves money only through the service-role primitives it calls as its owner.
-GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
 
 -- Auto-funding and billing doors (00001250). Each authorises the caller itself: billing controls and
 -- paying an invoice on manage_billing; paying on account on fn_can_manage_basket + KYB + monthly
