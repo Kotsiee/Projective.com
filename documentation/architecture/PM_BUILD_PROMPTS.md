@@ -48,14 +48,14 @@ merged):
 
 ### 0.2 Order
 
-| Phase                                       | Prompts                | Why this order                                                                                                                                                                                                                                                                                                                                           |
-| :------------------------------------------ | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — Guards**                              | WP1 ∥ D7a              | WP1 needs only the jobs branch merged. D7a is the DL §2 cycle guard, which both answers to D7 needed. Their migration files are disjoint, so they may share the 2-session SQL cap.                                                                                                                                                                       |
-| **2 — Money exits (the finance window)**    | WP4a → WP4b → P6 → GH1 | All four wait for F·DB3 and F·DB6 and run while no finance prompt holds `00001200` / `00001240`. Serial: each shares a migration file with the next (§0.4). WP4b calls WP4a's ticket-level door.                                                                                                                                                         |
-| **3 — Workload & reliability**              | WP5a → WP5b            | WP5a closes a report on the settlements WP4 built (W4). WP5b measures delivery from GH1's `submitted_at` and WP4a's stage clock.                                                                                                                                                                                                                         |
-| **4 — Stage state & the dependency engine** | S3 → D7b               | S3 follows D7a (both edit `00001100` and `00001850`). D7b follows D7a (the guard), P6 (each stage's own price) and GH1 (`00001150`).                                                                                                                                                                                                                     |
-| **5 — Board & addresses**                   | WP8 → WP9; WP6         | WP8 is app-only: it may start at once, beside any SQL step that leaves the board files alone (its B.3 wait, WP3's UNIQUE on submission `number`, is met). WP9 takes the second SQL slot when nobody holds `00001150`, `00001850` or `00002011`: right after phase 1, while phase 2 waits for finance. WP6 waits for O·WP5 and follows WP5a (`00001110`). |
-| **Last**                                    | Z1                     | The docs sweep and the audits' status columns.                                                                                                                                                                                                                                                                                                           |
+| Phase                                       | Prompts                | Why this order                                                                                                                                                                                                                                                                                                                                                    |
+| :------------------------------------------ | :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Guards**                              | WP1 ∥ D7a              | WP1 needs only the jobs branch merged. D7a is the DL §2 cycle guard, which both answers to D7 needed. Their migration files are disjoint, so they may share the 2-session SQL cap.                                                                                                                                                                                |
+| **2 — Money exits (the finance window)**    | WP4a → WP4b → P6 → GH1 | All four wait for F·DB3 and F·DB6 and run while no finance prompt holds `00001200` / `00001240`. Serial: each shares a migration file with the next (§0.4). WP4b calls WP4a's ticket-level door.                                                                                                                                                                  |
+| **3 — Workload & reliability**              | WP5a → WP5b            | WP5a closes a report on the settlements WP4 built (W4). WP5b measures delivery from GH1's `submitted_at` and WP4a's stage clock.                                                                                                                                                                                                                                  |
+| **4 — Stage state & the dependency engine** | S3 → D7b               | S3 follows D7a (both edit `00001100` and `00001850`). D7b follows D7a (the guard), P6 (each stage's own price) and GH1 (`00001150`).                                                                                                                                                                                                                              |
+| **5 — Board & addresses**                   | WP8 → WP9; WP6         | WP8 is app-only: it may start at once, beside any SQL step that leaves the board files alone (its B.3 wait, WP3's UNIQUE on submission `number`, is met). WP9 takes the second SQL slot when nobody holds `00001150`, `00001850` or `00002011`: right after phase 1, while phase 2 waits for finance. WP6 follows WP5a (`00001110`); O·WP5b and O·WP6 follow WP6. |
+| **Last**                                    | Z1                     | The docs sweep and the audits' status columns.                                                                                                                                                                                                                                                                                                                    |
 
 ### 0.3 Cross-track waits
 
@@ -64,7 +64,7 @@ merged):
 | WP1                                         | the jobs branch (`claude/wave1-jobs-sql-c504e8`) merged          | it switches on the row that branch registered paused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | WP4a, WP4b, P6, GH1                         | F·DB3 and F·DB6 merged                                           | DB3 makes the release and Fair Exit doors refuse an open dispute (`PD409 dispute_open`), which WP4a's contest and GH1's sweep rely on; DB6 freezes a payee's pending rows on a dispute. While these four run they hold `00001200` (WP4b and P6 edit it; GH1 releases through `fn_release_ticket_escrow` in it) and `00001240` (WP4b edits it; GH1's releases enter the pending window there). F's later serial money prompts on those files (N3 commission, N4 bonus, N6/N8, the payout gate, the conservation view, the FX feed) go before them or after them, never beside them. |
 | GH1                                         | the comms worker (`comms-process-queue`, on the jobs branch)     | its 7- and 13-day reminders are queued promises (`comms.fn_enqueue`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| WP6                                         | O·WP5 (RED SC-3: one home for shared pure rules)                 | the move rule lives in that home. WP6 builds the board's `canMove` flag (SC-4), which O·WP6 adopts instead of rebuilding.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| O·WP5b, O·WP6                               | WP6                                                              | WP6 owns the move matrix end to end (RED L-03): the SQL rule, its TS mirror in `board.ts` with the parity test, and the board's `canMove` flag. O·WP5b (`fn_is_work_status`, `00001110` / `00001140`) and O·WP6 (claimable, the funding rollup, walletCovers) share its files and reuse its rule.                                                                                                                                                                                                                                                                                  |
 | M·search (the load and reliability weights) | WP5b                                                             | finance-model §16.7's "Load and reliability" row needs the efficiency terms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | T·P2 hardening triggers                     | WP4b                                                             | they touch ticket text (B.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | I·IW-M13                                    | every SQL prompt here                                            | it touches the project readers (B.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -103,7 +103,8 @@ Inside this track:
 - `00002011`: WP4b, WP5a, WP9.
 - `00001100`: D7a, S3, D7b. `00001850`: D7a, WP4a, WP5a, WP5b, S3, WP9.
 - The board files (`packages/types/projects/board.ts`, `live-board.ts`, `ProjectBoard.island.tsx`,
-  `board-state.ts`): WP4b, P6, WP5a, S3, D7b, WP6 and WP8, beside O·WP5 and O·WP6.
+  `board-state.ts`): WP4b, P6, WP5a, S3, D7b, WP6 and WP8; O·WP6 follows WP6. `00001110` and
+  `00001140` are also O·WP5b's, which follows WP6 too.
 - `ProjectBackendService.ts`: WP4a, WP4b, WP5a and WP6. `live-writes.ts`: D7a, WP4b, P6, WP5a, D7b
   and WP9. `live-submissions.ts`: GH1 and WP9.
 
@@ -1212,17 +1213,19 @@ by agreement
 
 ROLE: Full-stack engineer.
 
-CONTEXT: DL D12, D16-b; audit X11; RED L-03, SC-3, SC-4; ADC Q14; #293 (b), (c), (d); #294 (b);
+CONTEXT: DL D12, D16-b; audit X11; RED L-03, SC-4; ADC Q14; #293 (b), (c), (d); #294 (b);
 #291 (c) (Decision #338, rulings P5 (a), (b), (c), (e); #341 (n)). Today any participant can move
 an unclaimed ticket: fn_assert_ticket_move returns at once for a ticket with no assignee
 (00001110:97), and move_ticket asks only has_project_access (00001120:399). That includes moving a
 paid ticket into an unpaid stage, which hides it from everyone. canDrag is true for every
 client-side viewer and for every provider on a stage board (ProjectBoard.island.tsx:303-308), so
 the board offers drops the database refuses (L-03). due_date is not among the claimed terms
-fn_ticket_immutability_guard freezes, so either party may change it alone. WAIT for O·WP5 (RED
-SC-3: one home for shared pure rules, with its parity-test harness). This prompt builds the board's
-canMove flag (SC-4); O·WP6 adopts it and must not run beside this prompt. It follows PM-WP5a
-(00001110).
+fn_ticket_immutability_guard freezes, so either party may change it alone. This prompt owns the
+move matrix end to end (RED L-03, agreed with the O track): the SQL rule, its pure TS mirror in
+packages/types/projects/board.ts with the SQL-probe parity test, and the board's canMove flag
+replacing canDrag. O·WP5b (fn_is_work_status in 00001110 / 00001140) and O·WP6 (claimable, the
+funding rollup, walletCovers on the same board files) run after it merges and reuse it. It follows
+PM-WP5a (00001110).
 
 🧑 DECISION — who on the client side may move a claimed ticket (STOP before step 5; a new
 contradiction, PM_BUILD_PROMPTS §0.5). PRODUCT_SPEC.md:2351-2363 (ruling P5 (b)) says "the
@@ -1246,9 +1249,8 @@ FILES:
     due_date_proposed_by, due_date_proposed_at)
   - supabase/migrations/00002510_permissions_function_grants.sql;
     00005010_seed_notification_catalog.sql (ticket.due_date_proposed, ticket.due_date_answered)
-  - the shared pure-rule home O·WP5 created (else packages/types/projects/board.ts):
-    ticketMoveAllowed and its parity test
-  - packages/types/projects/{board.ts (BoardCard.canMove, moveTargets), rows.ts}
+  - packages/types/projects/{board.ts (ticketMoveAllowed and its parity test; BoardCard.canMove,
+    moveTargets), rows.ts}
   - packages/backend/services/projects/{live-board.ts (viewerIsClientOf, :1392, stops gating
     moves), ProjectBackendService.ts (the stub move, :3079)} + tests
   - apps/web/routes/api/projects/ticket/due-date.ts (new)
