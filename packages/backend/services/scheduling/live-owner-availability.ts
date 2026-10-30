@@ -77,9 +77,41 @@ export interface CallRow {
 export const CALL_COLUMNS =
 	"accepts_calls, courtesy_enabled, courtesy_duration_minutes, courtesy_max_per_week, courtesy_cooldown_days, paid_enabled, paid_duration_minutes, fee_amount_minor, fee_currency, buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_advance_days, auto_confirm, agenda_required";
 
+/**
+ * The columns of a call offer a visitor may read: `00002520` grants `anon` these (and the grid's
+ * guards) and no others. The caps, the cooldown and `auto_confirm` are withheld from the anonymous
+ * client, so a public reader that asked for {@link CALL_COLUMNS} would fail for every guest.
+ */
+export const PUBLIC_CALL_COLUMNS =
+	"accepts_calls, courtesy_enabled, courtesy_duration_minutes, paid_enabled, paid_duration_minutes, fee_amount_minor, fee_currency, agenda_required";
+
+/** One `scheduling.call_settings` row as selected by {@link PUBLIC_CALL_COLUMNS}. */
+export type PublicCallRow = Pick<
+	CallRow,
+	| "accepts_calls"
+	| "courtesy_enabled"
+	| "courtesy_duration_minutes"
+	| "paid_enabled"
+	| "paid_duration_minutes"
+	| "fee_amount_minor"
+	| "fee_currency"
+	| "agenda_required"
+>;
+
+/** A row's fee as figures: a finite amount and a trimmed currency, each `null` when absent. */
+export function callFee(
+	row: Pick<CallRow, "fee_amount_minor" | "fee_currency">,
+): { feeAmountMinor: number | null; feeCurrency: string | null } {
+	const fee = row.fee_amount_minor === null ? null : Number(row.fee_amount_minor);
+	return {
+		feeAmountMinor: fee !== null && Number.isFinite(fee) ? fee : null,
+		feeCurrency: row.fee_currency?.trim() || null,
+	};
+}
+
 /** A call-settings row as the editor's value. */
 export function toCallSettings(row: CallRow): OwnerCallSettings {
-	const fee = row.fee_amount_minor === null ? null : Number(row.fee_amount_minor);
+	const { feeAmountMinor, feeCurrency } = callFee(row);
 	return {
 		acceptsCalls: row.accepts_calls,
 		courtesyEnabled: row.courtesy_enabled,
@@ -88,8 +120,8 @@ export function toCallSettings(row: CallRow): OwnerCallSettings {
 		courtesyCooldownDays: row.courtesy_cooldown_days,
 		paidEnabled: row.paid_enabled,
 		paidDurationMinutes: row.paid_duration_minutes,
-		feeAmountMinor: fee !== null && Number.isFinite(fee) ? fee : null,
-		feeCurrency: row.fee_currency?.trim() || null,
+		feeAmountMinor,
+		feeCurrency,
 		bufferBeforeMinutes: row.buffer_before_minutes,
 		bufferAfterMinutes: row.buffer_after_minutes,
 		minNoticeMinutes: row.min_notice_minutes,

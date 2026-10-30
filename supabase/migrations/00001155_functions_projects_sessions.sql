@@ -11,6 +11,8 @@
 --   4. Confirm             fn_confirm_seat       — hold → membership + escrow, when the order settles
 --  4b. Book a 1-1          fn_book_session_slot  — a one-seat cohort, one escrow PER SITTING, the calendar
 --                          mirror and a block's n-1 scheduling handshakes (Decision #211)
+--  4c. Group sittings      schedule_sitting · retitle_sitting — the provider's doors; the calendar
+--                          mirror a vote cannot move (trg_sitting_round_guard)
 --   5. Cancel              cancel_cohort_membership — PRODUCT_SPEC's late-cancel rule (full forfeit <24h),
 --                          per sitting on a 1-1
 --   6. Presence            record_presence       — the provider webhook's door (service_role only)
@@ -351,6 +353,7 @@ BEGIN
     UPDATE projects.cohort_seat_holds
        SET status = 'converted', membership_id = v_membership, updated_at = pg_catalog.now()
      WHERE id = v_hold.id;
+    PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
 
     PERFORM comms.fn_notify(
         v_project.owner_user_id, 'session.booked', 'Seat booked',
@@ -558,9 +561,11 @@ $$;
 -- working hours — the listing's compiled availability preset when there is one, else the weekly bands
 -- (scheduling.fn_band_covers with the blueprint, Decision #217 (d)); the pencilled-in later sittings
 -- are agreed through their handshakes instead.
--- The first sitting's time is re-tested against the provider's calendar under a lock on it, so two
--- buyers paying for the same slot at once queue here and the second is refused (and charged nothing —
--- the whole order rolls back) rather than both being seated.
+-- The first sitting's time is re-tested against the provider's calendar under a lock on it
+-- (scheduling.fn_slot_is_free: their events, their requested and confirmed discovery calls, their
+-- blackouts, with the schedule's buffers), so two buyers paying for the same slot at once queue here
+-- and the second is refused (and charged nothing — the whole order rolls back) rather than both being
+-- seated. A discovery call request and a new group sitting take the same lock.
 CREATE OR REPLACE FUNCTION projects.fn_book_session_slot(
     p_blueprint_id uuid,
     p_buyer uuid,
@@ -637,8 +642,9 @@ BEGIN
             RAISE EXCEPTION 'That time is outside the provider''s hours — pick another; nothing was charged'
                 USING ERRCODE = 'PS409';
         END IF;
-        IF scheduling.fn_has_conflicting_event(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes))
-           OR scheduling.fn_is_blacked_out(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes)) THEN
+        -- The discovery-call gate's own predicate: blackouts, events and requested or confirmed calls,
+        -- with the schedule's buffers — the rule the slot grid offered the time under.
+        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes)) THEN
             RAISE EXCEPTION 'That time was just taken — pick another; nothing was charged' USING ERRCODE = 'PS409';
         END IF;
     END IF;
@@ -754,8 +760,260 @@ engagement, write the sittings (the first at the picked time, the rest provision
 escrow per sitting from the paying wallet, mirror each sitting onto the provider''s calendar, and for a
 block open a 1-on-1 reschedule round on each provisional sitting due set_session_schedule_hours after
 payment (Decision #211). Refusals roll the whole order back: 22023 · PU422 own session / payer · PF402 ·
-PC409 time passed or listing gone · PM403 the buyer is under 18 · PS409 the time was taken or is
-outside the provider''s working hours (the listing''s compiled preset, else the weekly bands).';
+PC409 time passed or listing gone · PM403 the buyer is under 18 · PS409 the time is not free on the
+provider''s calendar (scheduling.fn_slot_is_free: events, discovery calls, blackouts, buffers) or is
+outside their working hours (the listing''s compiled preset, else the weekly bands).';
+-- #endregion
+
+-- #region 4c. Group sittings — the provider's two doors (D0, S-05)
+-- No client role writes `projects.session_events` (00002520): the payout sweep reads a sitting's time
+-- and status, so a writable sitting was a way to be paid for one that never happened. A provider still
+-- has to set when a group cohort meets, and what each meeting is called. These two definers are the
+-- only way they do, and neither touches a sitting's status, its rooms or its money:
+--
+--   * schedule_sitting — adds a sitting to a GROUP cohort the caller hosts, and mirrors it onto the
+--     provider's calendar (`scheduling.events.source_session_event_id`) as fn_book_session_slot does for
+--     a 1-1, so it blocks their free/busy, the discovery-call gate and the 1-1 booking gate;
+--   * retitle_sitting  — renames a sitting, and its calendar mirror with it.
+--
+-- Neither MOVES a sitting, and nothing else may move a group one. Its mirror carries no roster, so the
+-- coordination planner refuses to negotiate it ("an event with no roster is not something people
+-- negotiate"), and trg_sitting_round_guard refuses any reschedule round on it at the table, whichever
+-- role writes. The reason is money: a seat's cancellation is judged against the cohort's first
+-- sitting, so a majority vote that moves a sitting inside the cancellation notice leaves every attendee
+-- who voted against it forfeiting their seat for a change the provider initiated
+-- (SCHEDULING_DECISIONS_AND_GAPS §2.2). Until ruling D2 sets the windows a vote must respect, a group
+-- sitting keeps the time it was given. A 1-1 sitting is still agreed 1-on-1 (`counterparty`): the one
+-- attendee who must accept the move is the only person it affects.
+
+-- The paid seats on a cohort, as the calendar shows them on every one of its sitting mirrors
+-- (`attendee_count` beside `capacity`). Called wherever a group seat starts or ends, so the "3 / 10
+-- attending" on the provider's calendar is never a figure from the day the sitting was scheduled.
+CREATE OR REPLACE FUNCTION projects.fn_sync_sitting_mirrors(p_cohort_id uuid)
+RETURNS void
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH x AS (
+        SELECT COALESCE(sum(cm.seats), 0)::integer AS seats
+          FROM projects.cohort_memberships cm
+         WHERE cm.cohort_id = p_cohort_id AND cm.status <> 'cancelled'
+    )
+    UPDATE scheduling.events ev
+       SET attendee_count = x.seats, updated_at = pg_catalog.now()
+      FROM x, projects.session_events se
+     WHERE se.cohort_id = p_cohort_id
+       AND ev.source_session_event_id = se.id
+       AND ev.attendee_count IS DISTINCT FROM x.seats;
+$$;
+
+-- The provider adds a sitting to one of their group cohorts. Refusals: 42501 signed out or not the
+-- cohort's host · PM403 under 18 · 22023 an empty or over-long title, no span, a span over 24 hours, a
+-- start that has passed · P0002 no such cohort · PU422 a 1-1 booking's cohort · PS409 the cohort or its
+-- engagement has ended, the time is not free on the provider's calendar, or the sitting would move the
+-- cohort's start earlier for people who have already paid.
+--
+-- That last refusal is the same money as the vote's. A seat is refunded or forfeited against the
+-- cohort's FIRST sitting, so a new sitting before it would pull every seat-holder towards — or straight
+-- into — the forfeit window. Once any seat is taken (paid, or held while its buyer pays), a new sitting
+-- goes after the first one; a cohort with seats taken and no sitting yet gets its first one more than
+-- `session_cancel_notice_hours` away, so every seat-holder can still cancel for a full refund.
+CREATE OR REPLACE FUNCTION projects.schedule_sitting(
+    p_cohort_id uuid,
+    p_title text,
+    p_starts_at timestamptz,
+    p_ends_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_title text := pg_catalog.btrim(COALESCE(p_title, ''));
+    v_notice integer := projects.fn_session_param('session_cancel_notice_hours', 24);
+    v_cohort projects.cohorts;
+    v_project projects.projects;
+    v_first timestamptz;
+    v_schedule uuid;
+    v_sitting projects.session_events;
+    v_mirror uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to schedule a session' USING ERRCODE = '42501';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF v_title = '' OR pg_catalog.length(v_title) > 200 THEN
+        RAISE EXCEPTION 'Give the session a title of up to 200 characters' USING ERRCODE = '22023';
+    END IF;
+    IF p_starts_at IS NULL OR p_ends_at IS NULL OR p_ends_at <= p_starts_at
+       OR p_ends_at - p_starts_at > INTERVAL '24 hours' THEN
+        RAISE EXCEPTION 'A session needs a start and a later end, at most 24 hours apart' USING ERRCODE = '22023';
+    END IF;
+    IF p_starts_at <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'That time has passed — pick one that is still ahead' USING ERRCODE = '22023';
+    END IF;
+
+    -- The lock reserve_seat and fn_confirm_seat take, so the seat count below cannot change under it.
+    SELECT * INTO v_cohort FROM projects.cohorts WHERE id = p_cohort_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That cohort no longer exists' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_project FROM projects.projects WHERE id = v_cohort.project_id;
+    IF NOT projects.fn_is_session_host(v_project.id, v_uid) THEN
+        RAISE EXCEPTION 'Only the session''s provider can schedule its sittings' USING ERRCODE = '42501';
+    END IF;
+    IF v_project.session_kind <> 'group' THEN
+        RAISE EXCEPTION 'A 1-1 booking''s sessions are the ones its client booked — agree a new time from the calendar instead'
+            USING ERRCODE = 'PU422';
+    END IF;
+    IF v_cohort.status NOT IN ('enrolling', 'active') OR v_project.status NOT IN ('draft', 'active') THEN
+        RAISE EXCEPTION 'This cohort has ended — it takes no new sessions' USING ERRCODE = 'PS409';
+    END IF;
+
+    IF projects.fn_cohort_seats_taken(v_cohort.id) > 0 THEN
+        SELECT min(se.start_time) INTO v_first
+          FROM projects.session_events se
+         WHERE se.cohort_id = v_cohort.id AND se.status IN ('scheduled', 'completed');
+        IF v_first IS NOT NULL AND p_starts_at < v_first THEN
+            RAISE EXCEPTION 'People have paid for this cohort from its first session — add this one after it'
+                USING ERRCODE = 'PS409';
+        END IF;
+        IF v_first IS NULL AND p_starts_at <= pg_catalog.now() + pg_catalog.make_interval(hours => v_notice) THEN
+            RAISE EXCEPTION USING ERRCODE = 'PS409',
+                MESSAGE = pg_catalog.format('People have paid for a seat already — their first session must be more than %s hours away, so they can still cancel for a refund', v_notice);
+        END IF;
+    END IF;
+
+    v_schedule := projects.fn_session_host_schedule(v_project.id);
+    IF v_schedule IS NOT NULL THEN
+        PERFORM 1 FROM scheduling.schedules WHERE id = v_schedule FOR UPDATE;
+        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_ends_at) THEN
+            RAISE EXCEPTION 'That time clashes with something already on your calendar — pick another'
+                USING ERRCODE = 'PS409';
+        END IF;
+    END IF;
+
+    INSERT INTO projects.session_events (cohort_id, title, start_time, end_time)
+    VALUES (v_cohort.id, v_title, p_starts_at, p_ends_at)
+    RETURNING * INTO v_sitting;
+
+    -- No roster: the sitting is the provider's to keep, not a meeting its seat-holders vote to move
+    -- (above). Anchored to the engagement as well as the schedule, so no client policy reaches it.
+    INSERT INTO scheduling.events (
+        schedule_id, project_id, kind, status, title, starts_at, ends_at, capacity,
+        source_session_event_id, created_by
+    ) VALUES (
+        v_schedule, v_project.id, 'session'::scheduling.event_kind, 'confirmed'::scheduling.event_status,
+        v_title, p_starts_at, p_ends_at, v_cohort.max_seats, v_sitting.id, v_project.owner_user_id
+    )
+    RETURNING id INTO v_mirror;
+    PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
+
+    RETURN pg_catalog.jsonb_build_object(
+        'sitting_id', v_sitting.id, 'slug', v_sitting.slug, 'calendar_event_id', v_mirror,
+        'title', v_sitting.title, 'starts_at', v_sitting.start_time, 'ends_at', v_sitting.end_time
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.schedule_sitting(uuid, text, timestamptz, timestamptz) IS
+'The provider''s door for adding a sitting to a group cohort they host: writes the sitting and its
+roster-less calendar mirror (so it blocks free/busy and both booking gates, and no vote can move it).
+Refusals: 42501 · PM403 · 22023 title / span / time passed · P0002 · PU422 a 1-1 cohort · PS409 ended,
+not free on the calendar, or earlier than the first sitting (or inside the cancellation notice) once a
+seat is taken.';
+
+-- The provider renames one of their sittings — a 1-1's or a group's — and its calendar mirror with it.
+-- Nothing else about the sitting changes. Refusals: 42501 signed out or not the host · 22023 an empty or
+-- over-long title · P0002 no such sitting.
+CREATE OR REPLACE FUNCTION projects.retitle_sitting(p_sitting_id uuid, p_title text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_title text := pg_catalog.btrim(COALESCE(p_title, ''));
+    v_project uuid;
+    v_sitting projects.session_events;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to rename a session' USING ERRCODE = '42501';
+    END IF;
+    IF v_title = '' OR pg_catalog.length(v_title) > 200 THEN
+        RAISE EXCEPTION 'Give the session a title of up to 200 characters' USING ERRCODE = '22023';
+    END IF;
+    SELECT c.project_id INTO v_project
+      FROM projects.session_events se
+      JOIN projects.cohorts c ON c.id = se.cohort_id
+     WHERE se.id = p_sitting_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That session no longer exists' USING ERRCODE = 'P0002';
+    END IF;
+    IF NOT projects.fn_is_session_host(v_project, v_uid) THEN
+        RAISE EXCEPTION 'Only the session''s provider can rename it' USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE projects.session_events SET title = v_title, updated_at = pg_catalog.now()
+     WHERE id = p_sitting_id
+    RETURNING * INTO v_sitting;
+    UPDATE scheduling.events SET title = v_title, updated_at = pg_catalog.now()
+     WHERE source_session_event_id = p_sitting_id AND title IS DISTINCT FROM v_title;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'sitting_id', v_sitting.id, 'slug', v_sitting.slug,
+        'calendar_event_id', (SELECT ev.id FROM scheduling.events ev
+                               WHERE ev.source_session_event_id = p_sitting_id ORDER BY ev.created_at LIMIT 1),
+        'title', v_sitting.title, 'starts_at', v_sitting.start_time, 'ends_at', v_sitting.end_time
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.retitle_sitting(uuid, text) IS
+'The provider''s door for renaming a sitting (1-1 or group) and its calendar mirror; nothing else about
+the sitting changes. Refusals: 42501 · 22023 title · P0002.';
+
+-- BEFORE INSERT OR UPDATE OF event_id, mode on scheduling.event_reschedules (00001860). A reschedule
+-- round on a sitting's calendar mirror is legal only as a 1-on-1 (`counterparty`) on a 1-1 engagement
+-- (`session_kind = 'normal'`, fn_book_session_slot's) — the provider and their one client agreeing.
+-- A group sitting is never put to a round (§4c above): the planner already refuses one with no roster,
+-- and this makes it true of the TABLE, for the service role too. Every other event passes.
+CREATE OR REPLACE FUNCTION projects.trg_sitting_round_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_kind text;
+BEGIN
+    SELECT p.session_kind INTO v_kind
+      FROM scheduling.events ev
+      JOIN projects.session_events se ON se.id = ev.source_session_event_id
+      JOIN projects.cohorts c ON c.id = se.cohort_id
+      JOIN projects.projects p ON p.id = c.project_id
+     WHERE ev.id = NEW.event_id;
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+    IF v_kind IS DISTINCT FROM 'normal' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000',
+            MESSAGE = 'event: a group session''s sitting keeps its time — it is not put to a reschedule round';
+    END IF;
+    IF NEW.mode IS DISTINCT FROM 'counterparty' THEN
+        RAISE EXCEPTION USING ERRCODE = '55000',
+            MESSAGE = 'event: a 1-1 sitting is agreed between its provider and client — it is never put to a vote';
+    END IF;
+    RETURN NEW;
+END;
+$$;
 -- #endregion
 
 -- #region 5. Cancel a seat — the late-cancel rule
@@ -891,6 +1149,8 @@ BEGIN
     IF v_per_sitting THEN
         UPDATE projects.cohorts SET status = 'cancelled'::projects.cohort_status
          WHERE id = v_cohort.id AND max_seats = 1 AND status IN ('enrolling', 'active');
+    ELSE
+        PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
     END IF;
 
     PERFORM comms.fn_notify(

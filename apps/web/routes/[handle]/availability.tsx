@@ -3,6 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { resolveAvailabilityPage } from "@web/features/calendar/core/calendar-ssr.ts";
 import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { restrictBooking } from "@web/features/calendar/core/booking-gate.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 
 /**
@@ -24,9 +25,7 @@ export const handler = define.handlers({
 			? await resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state))
 			: { page: null };
 		// An under-18 viewer books nothing with anyone (Decision #208).
-		const schedule = resolved && isRestrictedRequest(ctx.req, ctx.state.userContext)
-			? { ...resolved, viewerCanBook: false }
-			: resolved;
+		const schedule = restrictBooking(resolved, isRestrictedRequest(ctx.req, ctx.state.userContext));
 		return page({ schedule });
 	},
 });

@@ -519,8 +519,20 @@ scheduling.event_attachments TO service_role;
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 
-GRANT SELECT ON TABLE scheduling.call_settings TO anon,
-authenticated;
+-- Column-level for a visitor: what a call offer shows and the guards the slot grid is drawn under
+-- (both read with the anonymous client), and NOT the anti-abuse settings — the weekly cap, the
+-- cooldown, whether the host auto-confirms — which tell a requester exactly how to game them, nor the
+-- host's preferred provider. The definer gate (fn_call_request_refusal) reads every column regardless.
+GRANT SELECT (
+    schedule_id, accepts_calls, courtesy_enabled, courtesy_duration_minutes, paid_enabled,
+    paid_duration_minutes, fee_amount_minor, fee_currency, buffer_before_minutes, buffer_after_minutes,
+    min_notice_minutes, max_advance_days, agenda_required
+) ON TABLE scheduling.call_settings TO anon;
+
+-- The owner's Availability editor reads and writes the whole row under the "Manage call settings"
+-- policy. A signed-in non-party still reads the caps through "View call settings" (Policies.md, still
+-- open): closing that needs an owner read door for the editor.
+GRANT SELECT ON TABLE scheduling.call_settings TO authenticated;
 
 GRANT
 INSERT,

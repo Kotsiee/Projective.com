@@ -1993,6 +1993,14 @@ REVOKE ALL ON FUNCTION projects.trg_sitting_follows_calendar () FROM PUBLIC, ano
 REVOKE ALL ON FUNCTION projects.trg_session_handshake_closed () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) TO service_role;
+-- Group sittings (00001155 §4c). The provider's two doors authorise the caller with auth.uid(); the
+-- mirror count and the round guard are internal.
+REVOKE ALL ON FUNCTION projects.schedule_sitting (uuid, text, timestamptz, timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.schedule_sitting (uuid, text, timestamptz, timestamptz) TO authenticated;
+REVOKE ALL ON FUNCTION projects.retitle_sitting (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.retitle_sitting (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_sync_sitting_mirrors (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.trg_sitting_round_guard () FROM PUBLIC, anon, authenticated, service_role;
 -- #endregion
 
 -- #region Disputes (00001260, Decision #212)

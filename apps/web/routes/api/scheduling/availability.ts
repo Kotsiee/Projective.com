@@ -1,6 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { restrictBooking } from "@features/calendar/core/booking-gate.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
@@ -11,7 +13,8 @@ import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBack
  *
  * Deliberately reachable signed-out — a freelancer's availability is a public page — which is
  * precisely why the viewer travels with the read: the service withholds the roster, the meeting link
- * and the host's earnings from anyone who is not a party to an event.
+ * and the host's earnings from anyone who is not a party to an event. An under-18 viewer gets the page
+ * with nothing on it bookable, as the SSR route paints it (Decision #208).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -19,8 +22,12 @@ export const handler = define.handlers({
 		if (!handle) {
 			return Response.json({ ok: false, message: "Missing handle." }, { status: 400 });
 		}
+		const res = await ScheduleBackendService.availability({ handle }, viewerFromState(ctx.state));
+		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		return toSchedulingResponse(
-			await ScheduleBackendService.availability({ handle }, viewerFromState(ctx.state)),
+			res.ok && res.data
+				? { ...res, data: { page: restrictBooking(res.data.page, restricted) } }
+				: res,
 		);
 	},
 });

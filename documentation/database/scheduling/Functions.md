@@ -88,7 +88,11 @@ Does the span intersect a blackout?
 
 The composite: rejects on blackout, conflicting event, or an existing `proposed`/`confirmed` call.
 Falls back to `security.platform_params.discovery_call_default_buffer_minutes` when no settings row
-exists.
+exists. It is the one free-time predicate of all three booking gates: the discovery-call gate (§4),
+the 1-1 session gate (`projects.fn_book_session_slot`, audit S-06: before 2026-10-30 that gate tested
+events and blackouts only, so a paid session could be booked on top of a requested or confirmed
+call) and a new group sitting (`projects.schedule_sitting`). Each caller holds the schedule's row
+lock while it asks (§7).
 
 **Buffer geometry.** Buffers belong to **every** commitment, not just the one being requested — an
 existing call at 14:00–14:15 with a 10-minute trailing buffer must block a 14:15 request. Comparing
@@ -286,7 +290,17 @@ a platform and (optionally) the listing the call is about; everything else is de
 
 The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
 existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs
-with the caller's `auth.uid()`. The host is then told through the notification engine
+with the caller's `auth.uid()`.
+
+**One request at a time per schedule** (audit S-07, 2026-10-30). Before anything is derived, the
+function takes `SELECT … FROM scheduling.schedules WHERE id = p_schedule FOR UPDATE`. The gate reads
+the calls already on the schedule, so under READ COMMITTED two requests for one slot used to read
+each other as absent, both pass and double-book the host. The second now waits on the row, and its
+insert's gate (a fresh statement, so a fresh snapshot) sees the first. It is the same lock
+`projects.fn_book_session_slot` and `projects.schedule_sitting` take, so a call, a 1-1 booking and a
+new group sitting queue behind one another. Probe: `supabase/probes/scheduling_slot_integrity.sql`.
+
+The host is then told through the notification engine
 (`comms.fn_notify`, type `availability.booking_request`), which never raises and routes by the
 host's own preferences. Returns `{ id, status }`.
 
@@ -455,6 +469,14 @@ the deadline has arrived are the pure predicates in `@projective/types/schedulin
 `majorityProposal`, `canReschedule`), applied by `coordination-plan.ts` before this is called. This
 function owns only what a rule cannot: that the round is still open when it is closed, that the
 winner belongs to it, and that the round, the event and the log line land together.
+
+**A session sitting's mirror is negotiated 1-on-1 or not at all.** `trg_sitting_round_guard`
+(`BEFORE INSERT OR UPDATE OF event_id, mode` on `event_reschedules`, function
+`projects.trg_sitting_round_guard` in `00001155` §4c) refuses (`55000`) any round on an event whose
+`source_session_event_id` names a sitting, unless the round is `counterparty` and the sitting's
+engagement is a 1-1 (`session_kind = 'normal'`). So no round, and no vote, can move a group sitting,
+whichever role writes — see [`database/projects/Functions.md`](../projects/Functions.md) § Sessions —
+group sittings for why (a seat's refund is judged against the cohort's first sitting).
 
 `SECURITY INVOKER`; `EXECUTE` to `service_role` only (`00002510`) — there is no client write path
 into coordination. Settlement is **lazy**: the service calls it on the read path when `settleVote`

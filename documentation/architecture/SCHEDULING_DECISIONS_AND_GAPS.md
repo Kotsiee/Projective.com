@@ -17,9 +17,10 @@
 
 ## 0. The rulings needed, in order of urgency
 
-> **Status 2026-10-29:** D0, S-26 and S-30 are fixed. D0 also covers `cohorts` and
-> `cohort_memberships`, and needed no new owner doors, because nothing in the app wrote sittings as
-> a client. D1–D9 still wait for a ruling.
+> **Status 2026-10-30:** D0, S-26 and S-30 were fixed on 2026-10-29. D0 also covers `cohorts` and
+> `cohort_memberships`. On 2026-10-30 D0's two owner doors landed (`schedule_sitting`,
+> `retitle_sitting`), with S-05's calendar mirror. Until D2 is ruled, no vote can move a group
+> sitting. S-06, S-07, S-16 (for `anon`) and S-32 are also fixed. D1–D9 still wait for a ruling.
 
 | #      | Decision                                                              | Recommendation                                                                                                                                          | Why now                                                                                                                                                       |
 | :----- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |

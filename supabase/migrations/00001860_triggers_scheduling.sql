@@ -87,6 +87,13 @@ CREATE OR REPLACE TRIGGER trg_session_handshake_closed
     FOR EACH ROW
     WHEN (NEW.status IN ('resolved', 'lapsed') AND OLD.status IS DISTINCT FROM NEW.status)
     EXECUTE FUNCTION projects.trg_session_handshake_closed ();
+
+-- A sitting's mirror is negotiated only 1-on-1, and only for a 1-1 engagement: a group sitting is never
+-- put to a reschedule round, so no majority can move a seat-holder's sitting under them
+-- (`projects.trg_sitting_round_guard`, 00001155 §4c).
+CREATE OR REPLACE TRIGGER trg_sitting_round_guard
+    BEFORE INSERT OR UPDATE OF event_id, mode ON scheduling.event_reschedules
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_sitting_round_guard ();
 -- #endregion
 
 -- #region Scheduling and under-18 accounts (Decision #208)

@@ -1,4 +1,4 @@
-# Scheduling, Calendar & Sessions — Completeness Audit (2026-10-29)
+ **Fixed 2026-10-30.** Both routes, `/[handle]/availability` and the island's `/api/scheduling/{availability,schedule}` refetch apply `restrictBooking` (`features/calendar/core/booking-gate.ts`) with `isRestrictedRequest`: nothing books and no call offer rides along. |||||
 
 > **Evaluation, not binding.** Read-only audit of the scheduling domain:
 >
@@ -374,8 +374,8 @@ busyness, and that causes double-bookings rather than disclosure.
 
 ## 10. Finding register
 
-> **Status 2026-10-29:** S-01, S-26 and S-30 are fixed (the fix column says how). Every other
-> finding is open.
+> **Status 2026-10-30:** S-01, S-26 and S-30 (2026-10-29) and S-05, S-06, S-07, S-16 and S-32
+> (2026-10-30) are fixed; the fix column says how. Every other finding is open.
 
 Severity: **P0** money, security or data integrity · **P1** functional gap against the spec · **P2**
 hygiene, drift or polish.

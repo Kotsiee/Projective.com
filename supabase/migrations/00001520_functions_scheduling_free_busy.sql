@@ -116,8 +116,8 @@ COMMENT ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestamptz) IS
 --
 -- The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
 -- existing BEFORE INSERT gate (`fn_enforce_call_request` → `fn_call_request_refusal`), which fires
--- here because the insert runs with the caller's `auth.uid()`. A refusal raises `check_violation`
--- with a short machine-readable reason the app maps to a sentence.
+-- here because the insert runs with the caller's `auth.uid()`, under a row lock on the schedule. A
+-- refusal raises `check_violation` with a short machine-readable reason the app maps to a sentence.
 CREATE OR REPLACE FUNCTION scheduling.request_discovery_call(
     p_schedule uuid,
     p_call_type scheduling.call_type,
@@ -150,6 +150,13 @@ BEGIN
     IF NOT scheduling.fn_schedule_is_public (p_schedule) THEN
         RAISE EXCEPTION 'Discovery call refused: calls_not_offered' USING ERRCODE = 'check_violation';
     END IF;
+
+    -- One request at a time per schedule. The gate below reads the calls already on it, and two
+    -- requests for one slot under READ COMMITTED each read the other as absent — both passed, and the
+    -- host was double-booked. The second now waits here, and its insert's gate then sees the first.
+    -- The lock projects.fn_book_session_slot and projects.schedule_sitting take, so a call, a 1-1
+    -- booking and a new group sitting queue behind one another instead of landing on one slot.
+    PERFORM 1 FROM scheduling.schedules WHERE id = p_schedule FOR UPDATE;
 
     v_host := scheduling.fn_schedule_host (p_schedule);
     IF v_host IS NULL THEN

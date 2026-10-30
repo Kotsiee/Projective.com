@@ -856,7 +856,10 @@ Who is enrolled in a cohort. One row per (cohort, user) — `cohort_memberships_
 
 ### `projects.session_events`
 
-One scheduled sitting of a cohort.
+One scheduled sitting of a cohort. Written by definers only: `fn_book_session_slot` (a 1-1's
+sittings), `projects.schedule_sitting` / `retitle_sitting` (the provider's doors for a group
+cohort), and the cancel and payout paths. Each sitting has a `scheduling.events` mirror
+(`source_session_event_id`) on its provider's calendar.
 
 | Column              | Type                          | Notes                                                                |
 | :------------------ | :---------------------------- | :------------------------------------------------------------------- |
