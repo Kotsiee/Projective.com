@@ -50,9 +50,17 @@ collapse into a recent same-`group_key` row if the catalog defines a window → 
 fan-out → insert the notification → resolve the deep link → materialise one delivery row per channel
 (and per device for push) → write `security.audit_logs` when the catalog says `audit`.
 
+The collapse first takes `pg_advisory_xact_lock(hashtextextended(user_id::text || group_key, 0))`,
+held to the end of the caller's transaction, so a concurrent event with the same recipient and
+`group_key` waits and then refreshes the row: two at once end as one row with `group_count` 2 (CAS
+N3). `fn_notify_many` takes its recipients in id order, so two fan-outs over one key cannot deadlock
+on those locks.
+
 **⚠️ It never raises.** The whole body is wrapped in an exception handler that returns `NULL`. It is
 called from inside escrow and stage RPCs — a notification problem must never roll back a money
-movement. The audit write has its own inner handler for the same reason.
+movement. The audit write and the auto-registration have their own inner handlers for the same
+reason. Each handler first raises a `WARNING` naming the type key and the SQLSTATE, never the
+payload, so a lost notification or audit row shows in the database log (CAS N1).
 
 ### `comms.fn_notify_many(p_user_ids uuid[], …) → integer`
 
@@ -67,13 +75,15 @@ once) and **the actor is never notified about their own action**.
 
 The routing matrix in one function. Precedence, highest first:
 
-1. **catalog `mandatory`** — returns `default_channels`, ignoring every preference.
+1. **catalog `mandatory`** — returns `default_channels`, ignoring every preference and the snooze;
+   inside quiet hours it drops `push`/`sms` unless the type sets `overrides_quiet_hours` (Decision
+   #339, ruling N3 (a)).
 2. **global snooze** (`muted_until`) — silences everything except `critical`.
 3. **per-type mute** — total, or narrowed to specific transports.
 4. **per-category toggles** — `COALESCE(category, global)`.
 5. **global toggles**.
 6. **quiet hours** — drops `push`/`sms` only (the inbox and email still land), unless the catalog
-   row sets `overrides_quiet_hours`.
+   row sets `overrides_quiet_hours`. The same rule holds a mandatory type's push and SMS (item 1).
 7. **digest deferral** — a digestible, `low`/`medium` event's **email** is rolled up instead of
    sent. The in-app row is unaffected; the inbox is always real time.
 
@@ -110,6 +120,19 @@ no context would otherwise render as `/projects/`).
 | `comms.fn_enqueue(…) → uuid`                                            | Schedules a future notification. A deterministic `dedupe_key` makes re-running a scheduler a no-op and upserts a moved reminder in place.                     |
 | `comms.fn_cancel_queued(dedupe_key, entity_table, entity_id) → integer` | Cancels by key (the session was cancelled) or by entity (the project ended).                                                                                  |
 | `comms.fn_process_queue(p_limit) → integer`                             | Cron worker. Claims due rows `FOR UPDATE SKIP LOCKED` so two overlapping ticks cannot double-send; three failures park a row as `failed` with linear backoff. |
+
+`fn_enqueue` never raises either: a failed write logs a `WARNING` (type key and SQLSTATE) and
+returns `NULL`. It has no caller yet (CAS N11). The door is sound, and each caller belongs to the
+track that owns the reason for the reminder:
+
+| Caller                                          | Track                                                                         |
+| :---------------------------------------------- | :---------------------------------------------------------------------------- |
+| Session reminders (T-60 / T-15 / T-5)           | Scheduling (`SCHEDULING_BUILD_PROMPTS.md` SCH-WP3)                            |
+| The abandoned-basket nudge                      | Finance SV4, as COMMS NT1 assigns it (see the flag below)                     |
+| The 7- and 13-day ghosting auto-approve notices | Finance and projects (`PM_BUILD_PROMPTS.md` PM-GH1; Decision #337, ruling P3) |
+
+⚠️ `FINANCE_BUILD_PROMPTS.md` (SV4 step 5 and its cross-track notes) hands the abandoned-basket
+nudge back to comms, so neither track's prompt builds that caller yet.
 
 ---
 
@@ -155,8 +178,14 @@ could call `fn_notify` could spoof any notification to any user; one that could 
 | `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
 
 `fn_escalate_unread` is idempotent by construction: a `NOT EXISTS` guard on an existing `email`
-delivery row is what stops every tick sending another copy. `fn_build_digests` is idempotent by the
-unique index on `(user_id, period, window_start)`.
+delivery row is what stops every tick sending another copy. It adds the email only where the
+person's email channel for that type is on, read in the router's order: a snooze withholds it unless
+the event is `critical`, then a live mute of the type that covers email, then the category's email
+toggle, else the global one (CAS N9). `fn_build_digests` is idempotent by the unique index on
+`(user_id, period, window_start)`. It picks every person whose cadence for some category is this
+period — the category row's `digest_frequency`, else the global one, as the router defers on — and
+rolls up the digestible rows of only those categories whose email is on, so a per-category digest is
+no longer lost (CAS N10).
 
 `comms.fn_local_now(timezone, at)` is the safe local-clock helper the digest gate uses — a bad IANA
 zone degrades to UTC instead of aborting the run for every other user.

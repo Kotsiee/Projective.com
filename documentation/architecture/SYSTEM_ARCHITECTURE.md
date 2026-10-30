@@ -2514,8 +2514,10 @@ pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
   poll `/api/notifications/summary` (30 s, visible tabs only, one poller per page) and re-read the
   list head when it rises — Decision #173. The table stays in the Realtime publication for any
   future server-side consumer.
-- **`mandatory` types bypass preferences entirely** — security, money-movement, legal and moderation
-  events are not suppressible, and a `marketing_only` unsubscribe can never silence them.
+- **`mandatory` types bypass preferences and the snooze** — security, money-movement, legal and
+  moderation events are not suppressible, and a `marketing_only` unsubscribe can never silence them.
+  Quiet hours still hold back their push and SMS unless the type overrides them (#339, ruling N3
+  (a)).
 - **Webhook idempotency is a unique index.** `comms.delivery_events (provider, provider_event_id)`
   is the concrete implementation of the standard above: a replayed gateway callback can never
   double-apply. Its row is never deleted — only its `raw` body is compacted after 30 days.

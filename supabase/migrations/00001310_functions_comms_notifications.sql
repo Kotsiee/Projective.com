@@ -135,11 +135,14 @@ $$;
 --      array means "recorded, delivered nowhere" — the user muted it.
 --   3. The in-app inbox shows a row only when `in_app` is among its channels (see
 --      `comms.notification_feed`). Realtime already streams the table (migration 0206).
---   4. `mandatory` catalog types ignore every user preference. Security, money-movement, legal and
---      moderation events are not suppressible.
---   5. `critical` urgency pierces a global snooze; `overrides_quiet_hours` pierces quiet hours.
+--   4. `mandatory` catalog types ignore every user preference and the global snooze. Security,
+--      money-movement, legal and moderation events are not suppressible.
+--   5. `critical` urgency pierces a global snooze. Quiet hours hold back push and SMS for every type,
+--      mandatory ones included, unless the type sets `overrides_quiet_hours` (Decision #339, ruling
+--      N3 (a)).
 --   6. NOTHING IN HERE EVER RAISES. `fn_notify` is called from inside escrow and stage RPCs — a
---      notification problem must never roll back a money movement.
+--      notification problem must never roll back a money movement. A handler logs a WARNING with
+--      the type key and the SQLSTATE, never the payload.
 -- =============================================================================================
 
 -- #region 1. Quiet hours — the recurring, timezone-aware predicate
@@ -221,8 +224,8 @@ COMMENT ON FUNCTION comms.fn_is_suppressed(comms.notification_channel, text, com
 
 -- #region 3. The router — resolve the channel fan-out for one (recipient, event)
 -- Precedence, highest first:
---   catalog.mandatory  >  global snooze (unless critical)  >  per-type mute  >
---   per-category toggles  >  global toggles  >  quiet hours  >  digest deferral
+--   catalog.mandatory (quiet hours still apply)  >  global snooze (unless critical)  >
+--   per-type mute  >  per-category toggles  >  global toggles  >  quiet hours  >  digest deferral
 CREATE OR REPLACE FUNCTION comms.fn_resolve_channels(p_user_id uuid, p_type_key text)
 RETURNS comms.notification_channel[]
 LANGUAGE plpgsql
@@ -252,8 +255,12 @@ BEGIN
         RETURN '{}'::comms.notification_channel[];
     END IF;
 
-    -- (1) Mandatory events ignore every preference.
+    -- (1) Mandatory events ignore every preference and the snooze, but not quiet hours: push and SMS
+    -- wait unless the type overrides them (Decision #339, ruling N3 (a)).
     IF v_type.mandatory THEN
+        IF NOT v_type.overrides_quiet_hours AND comms.fn_is_quiet_hours(p_user_id) THEN
+            RETURN array_remove(array_remove(v_type.default_channels, 'push'), 'sms');
+        END IF;
         RETURN v_type.default_channels;
     END IF;
 
@@ -332,7 +339,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_resolve_channels(uuid, text) IS
-    'Resolves the delivery fan-out for one (recipient, event key) by intersecting the catalog default_channels with the recipient''s global, per-category and per-type preferences, quiet hours and digest cadence. Mandatory types bypass all of it. Never raises.';
+    'Resolves the delivery fan-out for one (recipient, event key) by intersecting the catalog default_channels with the recipient''s global, per-category and per-type preferences, quiet hours and digest cadence. Mandatory types bypass the preferences and the snooze; quiet hours still hold back their push and SMS unless the type overrides them. Never raises.';
 
 -- #endregion
 
@@ -429,6 +436,7 @@ BEGIN
             ON CONFLICT (key) DO NOTHING;
             SELECT * INTO v_type FROM comms.notification_types WHERE key = v_key;
         EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'comms.fn_notify: % not auto-registered (SQLSTATE %)', v_key, SQLSTATE;
             v_type := NULL;
         END;
     END IF;
@@ -438,8 +446,11 @@ BEGIN
     v_channels := comms.fn_resolve_channels(p_user_id, v_key);
 
     -- ── Collapse. A second event with the same (recipient, group_key) inside the catalog's window
-    -- refreshes the existing row rather than adding another line to the inbox.
+    -- refreshes the existing row rather than adding another line to the inbox. The lock, held to the
+    -- end of the caller's transaction, makes a concurrent same-group event wait and then collapse.
     IF p_group_key IS NOT NULL AND v_type.group_window IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended(p_user_id::text || p_group_key, 0));
+
         SELECT n.id INTO v_existing
         FROM comms.notifications n
         WHERE n.user_id = p_user_id
@@ -537,19 +548,20 @@ BEGIN
             );
         EXCEPTION WHEN OTHERS THEN
             -- An audit-write problem must never roll back the money movement that emitted this.
-            NULL;
+            RAISE WARNING 'comms.fn_notify: % audit row not written (SQLSTATE %)', v_key, SQLSTATE;
         END;
     END IF;
 
     RETURN v_id;
 EXCEPTION WHEN OTHERS THEN
     -- Rule 6: nothing in the notification engine may abort its caller.
+    RAISE WARNING 'comms.fn_notify: % not written (SQLSTATE %)', COALESCE(v_key, p_type), SQLSTATE;
     RETURN NULL;
 END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_notify IS
-    'Writes one notification: resolves the catalog key (aliases included), collapses into a recent same-group row when the catalog defines a window, resolves the channel fan-out against the recipient''s preferences, materialises per-channel delivery rows, and audits when the catalog says so. Compatible superset of the six-argument 0305 signature. Never raises — a notification failure must never roll back an escrow or stage transition.';
+    'Writes one notification: resolves the catalog key (aliases included), collapses into a recent same-group row when the catalog defines a window (under a per-recipient, per-group transaction lock), resolves the channel fan-out against the recipient''s preferences, materialises per-channel delivery rows, and audits when the catalog says so. Compatible superset of the six-argument 0305 signature. Never raises — a failure logs a WARNING with the type key and SQLSTATE and returns NULL, so it never rolls back an escrow or stage transition.';
 
 -- #endregion
 
@@ -576,10 +588,12 @@ DECLARE
     v_count integer := 0;
 BEGIN
     -- DISTINCT so a user who is both (say) stage lead and team member is told once. The actor is
-    -- never notified about their own action.
+    -- never notified about their own action. Ordered, so two fan-outs over one group_key take
+    -- fn_notify's collapse locks in the same order and cannot deadlock.
     FOR v_uid IN
         SELECT DISTINCT u FROM unnest(COALESCE(p_user_ids, '{}'::uuid[])) AS u
         WHERE u IS NOT NULL AND (p_actor_user_id IS NULL OR u <> p_actor_user_id)
+        ORDER BY u
     LOOP
         IF comms.fn_notify(
             v_uid, p_type, p_title, p_body, p_entity_table, p_entity_id,
@@ -643,6 +657,7 @@ BEGIN
 
     RETURN v_id;
 EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'comms.fn_enqueue: % not queued (SQLSTATE %)', p_type, SQLSTATE;
     RETURN NULL;
 END;
 $$;
@@ -909,8 +924,11 @@ $$;
 -- double-send.
 
 -- (a) Unread escalation: "still unread after the user's escalate_after window → fall back to email".
--- Only for urgent, non-digestible events that were pushed but not read. The `NOT EXISTS` guard on an
--- existing email delivery row is what stops every cron tick sending another copy.
+-- Only for urgent, non-digestible events that were pushed but not read, and only where the person's
+-- email channel for that type is on as the router resolves it: the snooze (a critical event pierces
+-- it), then a live mute covering email, then the category toggle, then the global one. The
+-- `NOT EXISTS` guard on an existing email delivery row is what stops every cron tick sending another
+-- copy.
 CREATE OR REPLACE FUNCTION comms.fn_escalate_unread(p_limit integer DEFAULT 500)
 RETURNS integer
 LANGUAGE plpgsql
@@ -925,11 +943,20 @@ BEGIN
         SELECT n.id, n.user_id, n.category
         FROM comms.notifications n
         JOIN comms.notification_prefs p ON p.user_id = n.user_id
+        LEFT JOIN comms.notification_category_prefs c ON c.user_id = n.user_id AND c.category = n.category
         LEFT JOIN comms.notification_types t ON t.key = n.type
         WHERE n.read_at IS NULL
           AND n.archived_at IS NULL
           AND n.urgency IN ('critical', 'high')
-          AND p.email IS TRUE
+          AND (p.muted_until IS NULL OR p.muted_until <= now() OR n.urgency = 'critical')
+          AND NOT EXISTS (
+              SELECT 1 FROM comms.notification_type_mutes m
+              WHERE m.user_id = n.user_id
+                AND m.type_key = n.type
+                AND (m.muted_until IS NULL OR m.muted_until > now())
+                AND (COALESCE(cardinality(m.channels), 0) = 0 OR 'email' = ANY (m.channels))
+          )
+          AND COALESCE(c.email, p.email) IS TRUE
           AND p.escalate_after IS NOT NULL
           AND n.created_at <= now() - p.escalate_after
           -- Bounded window: an unread notification from last month is not escalated today.
@@ -974,8 +1001,9 @@ END;
 $$;
 
 -- (b) Digest builder. Run hourly; picks the users whose LOCAL clock has just reached their
--- digest hour (and, for weekly, their digest weekday). The unique index on
--- (user_id, period, window_start) makes a double tick a no-op.
+-- digest hour (and, for weekly, their digest weekday), and rolls up only the categories whose cadence
+-- (the category row's, else the global one — the router's COALESCE) is this period and whose email
+-- is on. The unique index on (user_id, period, window_start) makes a double tick a no-op.
 CREATE OR REPLACE FUNCTION comms.fn_build_digests(p_period comms.digest_frequency)
 RETURNS integer
 LANGUAGE plpgsql
@@ -999,15 +1027,24 @@ BEGIN
     -- The local-clock gate lives in the WHERE clause (via the safe helper) so the loop body is
     -- reached only for users who are actually due right now.
     FOR v_user IN
-        SELECT p.user_id, p.timezone, p.digest_hour, p.digest_weekday
+        SELECT p.user_id, array_agg(k.category) AS categories
         FROM comms.notification_prefs p
-        WHERE p.digest_frequency = p_period
-          AND p.email IS TRUE
+        CROSS JOIN unnest(enum_range(NULL::comms.notification_category)) AS k(category)
+        LEFT JOIN comms.notification_category_prefs c ON c.user_id = p.user_id AND c.category = k.category
+        WHERE (
+                p.digest_frequency = p_period
+                OR p.user_id IN (
+                    SELECT c2.user_id FROM comms.notification_category_prefs c2 WHERE c2.digest_frequency = p_period
+                )
+          )
           AND EXTRACT(HOUR FROM comms.fn_local_now(p.timezone))::int = p.digest_hour
           AND (
                 p_period <> 'weekly'
                 OR EXTRACT(ISODOW FROM comms.fn_local_now(p.timezone))::int = COALESCE(p.digest_weekday, 1)
           )
+          AND COALESCE(c.digest_frequency, p.digest_frequency) = p_period
+          AND COALESCE(c.email, p.email) IS TRUE
+        GROUP BY p.user_id
     LOOP
         SELECT array_agg(n.id ORDER BY n.created_at DESC),
                jsonb_object_agg(n.category::text, n.cnt)
@@ -1017,6 +1054,7 @@ BEGIN
             FROM comms.notifications n2
             LEFT JOIN comms.notification_types t ON t.key = n2.type
             WHERE n2.user_id = v_user.user_id
+              AND n2.category = ANY (v_user.categories)
               AND n2.created_at >= v_start
               AND n2.created_at < v_end
               AND n2.archived_at IS NULL

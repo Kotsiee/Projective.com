@@ -17,12 +17,14 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
    means "recorded, delivered nowhere"** — the user muted it.
 3. The in-app inbox shows a row only when `in_app` is among its channels (the
    `comms.notification_feed` view filters on exactly that). Realtime already streams the table.
-4. `mandatory` catalog types **ignore every user preference** — security, money-movement, legal and
-   moderation events are not suppressible.
-5. `critical` urgency pierces a global snooze; a catalog row's `overrides_quiet_hours` pierces quiet
-   hours.
+4. `mandatory` catalog types **ignore every user preference and the global snooze** — security,
+   money-movement, legal and moderation events are not suppressible.
+5. `critical` urgency pierces a global snooze. Quiet hours hold back push and SMS for **every**
+   type, mandatory ones included, unless the catalog row sets `overrides_quiet_hours` (Decision
+   #339, ruling N3 (a)); the inbox and email still land.
 6. **Nothing in the engine ever raises.** `comms.fn_notify` is called from inside escrow and stage
-   RPCs — a notification problem must never roll back a money movement.
+   RPCs — a notification problem must never roll back a money movement. A handler logs a `WARNING`
+   with the type key and the SQLSTATE (never the payload) and returns `NULL`.
 
 ### `comms.notification_types`
 
