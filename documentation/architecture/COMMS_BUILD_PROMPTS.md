@@ -7,7 +7,7 @@
 > `N*`, `S*`, `D*`) under the owner's rulings on **Decision #339** (N1–N4 and the P3 rows). They
 > also write RED WP12 and WP14 of
 > [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md)
-> (`D-04`, `D-05`, `D-13`, `D-17`, `D-22`, `D-28`, `D-29`). Every prompt cites its evidence by
+> (`D-04`, `D-05`, `D-06`, `D-13`, `D-22`, `D-28`, `D-29`). Every prompt cites its evidence by
 > finding ID and its ruling as `(Decision #NNN, ruling X)`. Paste each prompt into its **own fresh
 > session**, after the standard header (§1).
 >
@@ -95,11 +95,26 @@ These cannot run in parallel because they edit the same files:
 - **`00005010` (the notification catalog).** It is not in §B.0, but several tracks add rows to it
   (C·WP3 notices, F·DB4's schedule-failure notice, P·WP1's claim-TTL notices). One writer at a time;
   here MS4, NT3 and NT5.
-- **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`.** The optimisation
-  track's request memo (RED D-06, D-23 / SC-9) never runs beside MS2, MS3 or MS5. That track also
-  owns `packages/backend/core/cache.ts`; MS3 adds `cache-version.ts` and leaves `cache.ts` alone.
-- **`00001400` and the `search` schema.** The identity track's erasure (SEC G16, CAS S17) and the
-  trust track's search grants and policies (SEC G13–G15) never run beside SR1 or SR3.
+- **The shared cache primitives (the optimisation track's RED WP10a).** WP10a builds
+  `apps/web/utils/request-memo.ts` (`once(url, key, run)`), single-flight in `ArcCache.through`
+  (`packages/backend/core/cache.ts`), `cachedGlobal(key, ttlMs, fetch)` in
+  `packages/backend/core/kv.ts`, and the KV version keys (`bumpCacheVersion(scope)` plus a versioned
+  read). MS2, MS3 and SR3 consume them. If one of those prompts runs first, it creates the primitive
+  it needs at that path with that name (the version keys in
+  `packages/backend/core/cache-version.ts`), and WP10a then only migrates the old copies. No prompt
+  here edits `cache.ts`. WP10a never runs beside MS2, MS3 or SR3.
+- **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`.** MS2, MS3 and MS5
+  here; nothing in the optimisation track (RED WP12, QW-5 and D-22 are this file's).
+- **`00001400`, `00002510` and the `search` schema.** The trust track's E8 deletes
+  `search.fn_search_entities` / `fn_search_global` (Q0.2 (f)) and runs first; SR1 then skips its
+  deletion step. The identity track's erasure (SEC G16, CAS S17) and the trust track's search grants
+  and policies (SEC G13–G15) never run beside SR1 or SR3.
+- **`services/search/voyage-client.ts`.** The trust track's W1 pins the Voyage host (#339 (d),
+  ruling T5); SR2 skips that code step if W1 has merged.
+- **`00000016` (`comms.dm_threads`).** The trust track's P2b adds `marketplace_window_until` after
+  MS1 and MS2, and never runs beside MS5.
+- **`services/explore/live-view.ts`.** The "Similar" rail's cache (RED D-17) is the optimisation
+  track's; SR3 does not touch it.
 - **`packages/backend/core/env.ts`, `.env.example` and SYSTEM_ARCHITECTURE's Environment Variable
   Contract.** NT2–NT5 and SR2 append keys, and so do other tracks: pull first, append only.
 - **`AccountSection.tsx`** (NT3) may meet the identity track's MFA work (I3), and **`_app.tsx`**
@@ -111,15 +126,17 @@ These cannot run in parallel because they edit the same files:
 **Cross-track waits** (⏳ = waits for):
 
 - The track starts after Wave 0's S-A3, which has merged (`a158bc4a`).
-- NT2 ⏳ the Wave 1.3 jobs session. That session registers the comms queue worker, escalation,
-  digests, sweep, reaper and compaction, which drive NT1's engine; NT1's last acceptance line needs
-  them too.
+- NT2 ⏳ the Wave 1.3 jobs session's merge. That session has registered all seven comms jobs (queue
+  worker, escalation, daily and weekly digests, sweep, reaper and compaction), which drive NT1's
+  engine, so no prompt here registers them; NT1's last acceptance line needs the merge too.
 - T·Tier 1 pre-filter ⏳ **MS2**. MS2 gives it one insertion point instead of two (SEC §2.3):
   `MessagingBackendService.sendMessage(actor, ref, input)`, between the authorisation and the
   insert.
-- T·P2 hardening (`00001300`) ⏳ MS1, and never beside MS4 or MS5.
-- O·RED WP3's invalidation half (D-14, the catalogue version bump) and O·RED WP13 (D-08, the chrome
-  endpoint) ⏳ **MS3**'s `cache-version.ts`. This file builds neither.
+- T·P2 hardening (`00001300`) ⏳ MS1, and never beside MS4 or MS5. T·P2b (a new `comms.dm_threads`
+  column) ⏳ MS1 and MS2.
+- O·RED WP3's invalidation half (D-14, the catalogue version bump) ⏳ the KV version keys (MS3 or
+  O·WP10a, whichever lands first). O·RED WP13 (D-08, the chrome endpoint, which folds in
+  `/api/notifications/summary`'s 30 s poll) ⏳ **MS3**'s long-poll. This file builds neither.
 - SR3 ⏳ MS3. SR4 ⏳ P·WP5 (the Reliability Index's efficiency measure; Decision #338, ruling P4).
 - I·erasure (EPI §3.5 rule 8: delete `comms.device_tokens`, ask the email provider to delete the
   contact) ⏳ NT3 (a provider exists) and NT4 (tokens are written).
@@ -155,8 +172,14 @@ margin (#337 M5), the Agency contract-rate fee (#252 against #187), or any ⚖�
 
 **Notes for the coordinator.**
 
-- Part C maps Q0.2 (f) (delete `search.fn_search_entities` / `fn_search_global`) to the T and O
-  tracks. The brief puts RED WP14 (D-29) here, so SR1 claims it. Dedupe at merge.
+- Q0.2 (f) (delete `search.fn_search_entities` / `fn_search_global`, RED D-29) has two claimants:
+  the trust track's E8, which runs first, and SR1 here (RED WP14). SR1 skips the deletion once E8
+  has merged. The trust track's W1 and SR2 likewise both carry the Voyage pin (#339 (d)); SR2 skips
+  it once W1 has merged.
+- RED D-27 (encode `(created_at, id)` in the message cursor) is listed under this track by the
+  optimisation file, but MS3 declines it: the code keeps a message-id cursor on purpose, because a
+  JavaScript timestamp loses the microsecond precision the keyset needs (`live-queries.ts:216-230`).
+  Record it as declined, not as owned.
 - `comms.dm_threads.slug` already holds the entity-channel name (Decision #306), and
   `security.fn_slug_guard` writes `NEW.slug`. Ruling N1's `cht-` slug therefore lives in a new
   column, `ref` (MS1).
@@ -166,8 +189,9 @@ margin (#337 M5), the Agency contract-rate fee (#252 against #187), or any ⚖�
 - Not written here, because they are outside §B.3's track M row: CAS M11 (edit or delete one's own
   message, with a re-mask), M18 (voice-memo drift), M21 (Zod on the messaging GET routes), N4/N5
   (payload hygiene and legacy keys: #336 (e), #57 (a)), N7 beyond `message.*`, S21 (lexical
-  relevance), S33 (`query_logs` retention is the jobs session's; SEC G13 is the trust track's), CAS
-  §3 (F1–F33: files, streaming and the inspector) and D4 (the asset picker's `--fw-bold` title,
+  relevance), S33 (the jobs session seeded `search-query-log-retention` dormant until the identity
+  track writes `search.fn_prune_query_logs`; SEC G13 is the trust track's P2d), CAS §3 (F1–F33:
+  files, streaming and the inspector) and D4 (the asset picker's `--fw-bold` title,
   `features/files/styles/asset-picker.css:115`, still open). Z1 lists each one as Open with no
   owner, unless another track's file claims it.
 
@@ -394,8 +418,11 @@ CONTEXT:
     stores stay separate (Decision #339, ruling N1). Root CLAUDE.md §4 and #88: uuids do not route.
   - Findings: CAS M1; M3 (two doors: /api/messaging/messages/send → MessagingBackendService, and
     /api/projects/messages/send → ProjectBackendService.sendMessage :3163); M4; M23 (no send rate
-    limit); M25 / D9 (a soft 404); RED D-04, D-05, and D-13 (the conversations cache key includes
-    the params, so every page refetches the whole inbox: MessagingBackendService.ts:304).
+    limit); M25 / D9 (a soft 404); RED D-04, D-05, D-06 (the page and its header, footer and panel
+    slots each run resolveConversation, and nothing coalesces them:
+    features/messaging/core/conversation-{header,footer,panel}-slot.tsx) and D-13 (the
+    conversations cache key includes the params, so every page refetches the whole inbox:
+    MessagingBackendService.ts:304). RED QW-5 is D-06 + D-13.
   - The trust track's Tier 1 pre-filter plugs into the door this prompt makes (one insertion
     point, SEC §2.3). Keep the door's shape plain: parse → authorise → [Tier 1 goes here] → insert
     → bump and notify.
@@ -410,6 +437,8 @@ FILES:
   - apps/web/routes/api/messaging/messages/send.ts, apps/web/routes/api/projects/messages/send.ts
   - apps/web/routes/(dashboard)/messages/[conversationId]/{_layout,index,files,members}.tsx,
     apps/web/features/messaging/core/{conversations-ssr.ts, MessagingService.ts}
+  - apps/web/utils/request-memo.ts (consume `once(url, key, run)` from the optimisation track's
+    RED WP10a; if it has not landed, create it at this path with this signature)
   - apps/web/features/projects/core/chat-context.ts (channelHref :34, conversationMessageHref) and
     the project route segment that resolves a channel ref
   - every builder of a /messages/ address (grep -rn "/messages/" apps packages --include=*.ts*)
@@ -448,6 +477,8 @@ STEPS:
      round trip (D-04); fetchConversation reads one participant row, its roster and
      inbox_tails([thread]) (D-05). The read cache key drops the params: rows are cached once per
      tenant and the params are applied after (D-13), as ProjectBackendService.ts:1061 does.
+     conversations-ssr.ts wraps resolveConversation in once(url, key, run), so the page and its
+     three slots share one read per request (D-06).
   7. ROUTING: the two messages rows; the entry-surface table (a project DM is
      /projects/:projectSlug/cht-…); the send API rows (one door behind both routes); the dm- note
      (303, or the virtual conversation). PRODUCT_SPEC: remove the **Not built yet** at :1192-1193
@@ -462,7 +493,8 @@ ACCEPTANCE:
     404; a uuid conversation id is a 404; dm-<handle> with a thread answers 303 with Location
     /messages/cht-…, and with none, the virtual conversation.
   - A unit test asserts that the inbox read makes one inbox_tails call for N threads (no
-    per-thread read), and that two inbox pages reuse one cached row set.
+    per-thread read), that two inbox pages reuse one cached row set, and that one
+    /messages/cht-… request resolves the conversation once across the page and its three slots.
   - grep -rn 'messages/${' apps packages finds no uuid-built address.
   - In the browser (deno task dev, two seeded personas on one project): a DM sent from the
     project's Private Messages group appears under /messages, and back. Screenshots at 1440 and
@@ -487,13 +519,17 @@ CONTEXT:
     (the "Chat sound" switch does nothing).
   - This also unblocks RED WP3's invalidation half (D-14: the catalogue's version bump across
     isolates) and RED WP13 (D-08: the chrome endpoint, invalidated on profile and preference
-    writes). Build the primitive they will use; build neither of them (optimisation track).
+    writes, which will fold in /api/notifications/summary's 30 s poll, #173). Build neither of them
+    (optimisation track), and leave the notification summary poll as it is.
+  - The KV version keys are a shared primitive of the optimisation track's RED WP10a
+    (bumpCacheVersion(scope) plus a versioned read). If WP10a has landed, use its functions; if
+    not, create them as step 2 says, and WP10a adopts them.
 
 FILES:
   - supabase/migrations/00002600_permissions_realtime_publication.sql (remove the five comms
     tables; the projects.* tables stay)
-  - packages/backend/core/cache-version.ts (new) + cache-version.test.ts; packages/backend/core/
-    kv.ts (read only; openSharedKv)
+  - packages/backend/core/cache-version.ts (new, unless RED WP10a has landed it) +
+    cache-version.test.ts; packages/backend/core/kv.ts (read only; openSharedKv)
   - packages/backend/services/messaging/{MessagingBackendService.ts, live-queries.ts}
   - packages/types/messaging/* (the since response)
   - apps/web/routes/api/messaging/since.ts (new, thin)
@@ -509,10 +545,11 @@ FILES:
 STEPS:
   1. Publication: delete the five `ALTER PUBLICATION supabase_realtime ADD TABLE comms.*` lines in
      place. The probe asserts that pg_publication_tables lists no comms table.
-  2. cache-version.ts: bumpVersion(scope) and currentVersion(scope) over openSharedKv(), with keys
-     ["cache","v",…scope]. currentVersion is memoised per isolate for at most 1 s. With no KV, both
-     are no-ops that answer null, and callers fall back to their TTL. The version rides in the
-     ArcCache key (cacheKey(tenant, ns, { …params, v })), so core/cache.ts is NOT edited (the
+  2. packages/backend/core/cache-version.ts (unless RED WP10a already provides it):
+     bumpCacheVersion(scope) and cacheVersion(scope) over openSharedKv(), with keys
+     ["cache","v",…scope]. cacheVersion is memoised per isolate for at most 1 s. With no KV, both
+     are no-ops (cacheVersion answers null) and callers fall back to their TTL. The version rides
+     in the ArcCache key (cacheKey(tenant, ns, { …params, v })), so core/cache.ts is NOT edited (the
      optimisation track owns it). The scopes now: ["messaging", userId] and ["thread", ref] (a
      room's scope is its channel id). Export the scope type, so the catalogue and chrome scopes can
      join it later.
@@ -552,7 +589,7 @@ local DB, on disjoint migration files, each announcing its resets; finish with y
 ACCEPTANCE:
   - comms_realtime_publication.sql: no comms table in supabase_realtime; the projects tables are
     unchanged.
-  - cache-version.test.ts: after a bump, currentVersion changes within 1 s; with no KV it answers
+  - cache-version.test.ts: after a bump, cacheVersion changes within 1 s; with no KV it answers
     null and never throws.
   - A route test (with a short hold): a matching If-None-Match and no write → 304 after the hold; a
     bump during the hold → 200 with the new message; a non-participant → 404.
@@ -727,8 +764,10 @@ ROLE: Postgres engineer (comms notifications). First of the notification chain.
 CONTEXT:
   - Ruling: mandatory notices ignore preferences and snooze, and only types flagged
     overrides_quiet_hours break quiet hours for push and SMS (Decision #339, ruling N3 (a)). Q0.3:
-    the Wave 1.3 jobs session registers the queue worker, escalation, digests, sweep, reaper and
-    compaction in 00005060, so this engine is about to run for real.
+    the Wave 1.3 jobs session has registered the queue worker, escalation, digests, sweep, reaper
+    and compaction in 00005060 (comms-process-queue, comms-escalate-unread, comms-digest-daily,
+    comms-digest-weekly, comms-sweep-expired, comms-reap-devices, comms-compact-events), so this
+    engine runs for real once that branch merges. Register nothing here.
   - Findings (CAS §2.2, §2.4), all in 00001310_functions_comms_notifications.sql: N1 (a catch-all
     returns NULL with no WARNING, and the audit insert is swallowed the same way: fn_notify :381,
     handlers :431, :538, :545); N2 (fn_resolve_channels :226 returns early for a mandatory type,
@@ -745,7 +784,10 @@ FILES:
   - supabase/probes/notify_engine.sql (new; the collapse race uses dblink, and the runner runs
     committing probes last)
   - documentation/database/comms/{Functions,Tables}.md (the router precedence list; rule 5 of the
-    routing contract; the jobs table's "not registered" banner once Wave 1.3 has merged)
+    routing contract; the §Scheduled jobs table and its "none is registered" banner, which the
+    Wave 1.3 jobs session left stale when it registered the seven jobs: link the rows in 00005060
+    rather than restating minutes, which it moved) and SYSTEM_ARCHITECTURE.md :2440-2442 and :2484
+    ("not registered yet")
 
 STEPS:
   1. Warnings: every handler in fn_notify, fn_notify_many and fn_enqueue still returns NULL, but
@@ -1202,9 +1244,11 @@ STEPS:
      functions only; the sync triggers' half stays with its owner).
   3. fn_set_embedding refuses a vector whose norm is not 1 ± 1e-3 (CAS S3), with a distinct
      SQLSTATE that the embedding sync logs and skips.
-  4. Delete fn_search_entities and fn_search_global and their grant lines. Delete search.fn_norm
-     as well if no caller remains (today only fn_search_entities reads it). The search_weights rows
-     that only they read stay, because they are data; list them in the commit message.
+  4. Delete fn_search_entities and fn_search_global and their grant lines, unless the trust
+     track's E8 has already done so (it claims the same Q0.2 (f) deletion and runs first; then
+     only check). Delete search.fn_norm as well if no caller remains (today only
+     fn_search_entities reads it). The search_weights rows that only they read stay, because they
+     are data; list them in the commit message.
 
 SAME CHANGE: migrations edited in place + database/search docs; the SYSTEM_ARCHITECTURE and EPI
 tuning notes.
@@ -1278,11 +1322,13 @@ STEPS:
      (x-discovery-ranking: heuristic, reason client_budget). A page view is never a 429.
   3. A scheduled backfill (S14): the cron route does the work of `deno task embeddings:backfill`
      for at most N stale items (a hash or model mismatch) per run, and is a no-op when
-     isEmbeddingsLive() is false. One job row goes in 00005060.
+     isEmbeddingsLive() is false. One job row goes in 00005060, at an hourly minute no other row
+     uses (the Wave 1.3 jobs session spread the existing ones; read the file first).
   4. Voyage pinned (#339 (d), T5): voyage-client.ts always calls https://api.voyageai.com, and a key
      that does not start `pa-` counts as absent. VOYAGE_API_BASE remains only to point tests at a
      mock. EPI §3.4's row becomes "Voyage AI", privacy.ts names Voyage only, and EPI §11 gains the
-     go-live line "Voyage's written no-training and retention terms on file".
+     go-live line "Voyage's written no-training and retention terms on file". The trust track's W1
+     carries the same pin under ruling T5: if W1 has merged, only check that all of this holds.
   5. Dials parity (N4): semantic.contract.test.ts reads the "Semantic blend" row of
      finance-model.md §16.7 and asserts that SEMANTIC_BLEND_WEIGHT, the 0.30 floor,
      SEMANTIC_EXTRA_RELATIVE and the 12-extra cap equal it (the file-reading pattern of
@@ -1322,10 +1368,10 @@ CONTEXT:
     in Deno KV". PRODUCT_SPEC:2791-2792 marks it **Not built yet**.
   - Findings: CAS S25 (an empty personalisation hook region:
     services/explore/ExploreBackendService.ts:403-404, "user vectors re-rank the personal rails");
-    S24 (offset paging over a list recomputed per request); RED D-17 (the /view "Similar" rail runs
-    fn_nearest_to_entity on every request over public data, services/explore/live-view.ts); ADC Q11
-    (viewer-scoped data stays in the tenant memory tier, KV holds only small global values, and raw
-    text is never a key: EPI §3.5 rule 7).
+    S24 (offset paging over a list recomputed per request); ADC Q11 (viewer-scoped data stays in
+    the tenant memory tier, KV holds only small global values, and raw text is never a key: EPI
+    §3.5 rule 7). The /view "Similar" rail's cache (RED D-17, services/explore/live-view.ts) is the
+    optimisation track's anonymous-tenant cache; do not touch it here.
   - anon and authenticated can never read a vector (00002520), so the viewer's context vector must
     be computed inside a definer that returns ids and scores only.
 
@@ -1346,8 +1392,9 @@ FILES:
   - supabase/migrations/00002510_permissions_function_grants.sql (EXECUTE to authenticated only)
   - supabase/migrations/00005050_seed_reference_data.sql (search.search_weights: context_affinity)
   - packages/backend/services/explore/{ExploreBackendService.ts, semantic.ts, similarity-cache.ts,
-    live-view.ts, ranking.ts, personalise.ts} + tests; packages/backend/core/cache-version.ts (the
-    catalogue scope)
+    ranking.ts, personalise.ts} + tests; packages/backend/core/kv.ts (cachedGlobal, from the
+    optimisation track's RED WP10a; if it has not landed, create it there with that signature) and
+    the version keys (the catalogue scope)
   - apps/web/features/devtools/core/dev-context.ts + apps/web/utils/dev-seam.ts (contextRanking)
   - supabase/probes/context_ranking.sql (new)
   - documentation: PRODUCT_SPEC.md:2791-2792 (remove the marker and state the rule);
@@ -1368,14 +1415,14 @@ STEPS:
      the similarity into signed-in recommended orders with search.search_weights 'context_affinity'
      (seeded at the ruled value). The result is cached per tenant, in memory only (ArcCache, 5
      minutes).
-  3. The pgvector KV cache: a search's resolved neighbours (ids and scores, never vectors) and the
-     "Similar" rail's neighbours go to Deno KV under ["cache","nearest",model,dims,catalogueVersion,
-     category,sha256(normalised query)] and ["cache","similar",model,dims,catalogueVersion,
-     entityId] for 15 minutes, behind the existing per-isolate LRU (RED D-17). The catalogue
-     version comes from MS3's cache-version.ts; it is null until RED WP3's invalidation half bumps
-     it, so the TTL governs until then. Every hit is still re-resolved against the anon catalogue,
-     so a stale entry can cost relevance, never visibility. Values stay under 64 KiB. Context
-     results never go to KV.
+  3. The pgvector KV cache (SA:3028): a search's resolved neighbours (ids and scores, never
+     vectors) are stored through cachedGlobal(key, ttlMs, fetch) under ["cache","nearest",model,
+     dims,catalogueVersion,category,sha256(normalised query)] for 15 minutes, behind the existing
+     per-isolate LRU (similarity-cache.ts), so every isolate shares one fn_nearest call per query.
+     The catalogue version comes from the KV version keys; it is null until RED WP3's invalidation
+     half bumps it, so the TTL governs until then. Every hit is still re-resolved against the anon
+     catalogue, so a stale entry can cost relevance, never visibility. Values stay under 64 KiB.
+     Context results never go to KV.
   4. Paging stability (S24): page 2 and later of a search read the cached ordered id list for
      (params, the catalogue's loadedAt) instead of re-ranking, so a heuristic fallback on page 2
      can no longer duplicate or skip results.
