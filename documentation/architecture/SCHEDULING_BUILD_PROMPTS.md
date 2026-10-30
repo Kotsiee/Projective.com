@@ -11,9 +11,9 @@
 > header (§1).
 >
 > **Before you start:** main must carry Wave 1.1 (`94d22e84`, the rulings) and the Wave 1.3 jobs
-> session's `00005060` set. Run the prompts in the §0 order. A prompt marked **🧑 DECISION** stops
-> and puts the named question to a human before it changes that behaviour. It presents the options
-> with a recommendation. §0.3 lists every stop.
+> session's `00005060` set (`e18489d4` on `claude/wave1-jobs-sql-c504e8`). Run the prompts in the §0
+> order. A prompt marked **🧑 DECISION** stops and puts the named question to a human before it
+> changes that behaviour. It presents the options with a recommendation. §0.3 lists every stop.
 >
 > **Verified done in Wave 0** (against git: `942c8dde` and `e30b4111`, merged at `be031aa2` and
 > `8c825070`):
@@ -32,8 +32,9 @@
 > - S-16's signed-in half (SCH-WP3).
 > - S-38 and S-40 (SCH-WP10).
 >
-> `scheduling.fn_expire_discovery_calls`, the `paid_unavailable` refusal, a vote-settlement job and
-> a reminder producer do not exist yet.
+> `scheduling.fn_expire_discovery_calls`, `scheduling.fn_settle_votes`, the `paid_unavailable`
+> refusal and a reminder producer do not exist yet. The jobs set seeded a dormant job row for each
+> of the first two, and each row registers itself on the first reset after its function exists.
 >
 > **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file it
 > edits, never a new "fix" file.
@@ -71,15 +72,15 @@ These cannot run in parallel because they edit the same files:
 
 The §B.0 hot files have one writer at a time:
 
-| Hot file                                                                    | This track writes it in                                                         | Other writers: never at the same time                                                                     |
-| :-------------------------------------------------------------------------- | :------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| `00001155` (sessions)                                                       | every SCH work package                                                          | none                                                                                                      |
-| `00005060` (jobs)                                                           | SCH-WP2 (only if the Wave 1.3 row is missing), WP3, WP4a, WP4b, WP7             | finance, comms, PM, security; and only once the Wave 1.3 jobs set has merged                              |
-| `00002510` (grants)                                                         | every SQL prompt                                                                | many: edit it last in your session, after re-reading it                                                   |
-| `00001300` (comms)                                                          | none: SCH-WP3 only calls `comms.fn_notify`, `fn_enqueue` and `fn_cancel_queued` | M track                                                                                                   |
-| `stripe-webhook.ts` + `00001230`                                            | none: SCH-WP6 rides the existing card → order path                              | F·DB2, F·DB6, S·S4. If SCH-WP6 finds `00001230` enumerating line kinds, that edit waits for them          |
-| `features/devtools` + `dev-seam.ts`                                         | SCH-WP3, WP4b, WP6, WP7, WP8                                                    | F·SV4, F·UI3, S·S4, S·S6, I·F6                                                                            |
-| `00001020` · `00001060` · `00001240` · `live-wallet.ts` / `wallet-scope.ts` | none                                                                            | SCH-WP4a adds the revoke-on-disconnect door that I's erasure chain will call; it does not edit `00001060` |
+| Hot file                                                                    | This track writes it in                                                                                                                | Other writers: never at the same time                                                                     |
+| :-------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `00001155` (sessions)                                                       | every SCH work package                                                                                                                 | none                                                                                                      |
+| `00005060` (jobs)                                                           | SCH-WP3, WP4a, WP4b (new rows only). SCH-WP2 and WP7 never edit it: their rows are seeded dormant and wait for their functions by name | finance, comms, PM, security; and only once the Wave 1.3 jobs set (`e18489d4`) has merged                 |
+| `00002510` (grants)                                                         | every SQL prompt                                                                                                                       | many: edit it last in your session, after re-reading it                                                   |
+| `00001300` (comms)                                                          | none: SCH-WP3 only calls `comms.fn_notify`, `fn_enqueue` and `fn_cancel_queued`                                                        | M track                                                                                                   |
+| `stripe-webhook.ts` + `00001230`                                            | none: SCH-WP6 rides the existing card → order path                                                                                     | F·DB2, F·DB6, S·S4. If SCH-WP6 finds `00001230` enumerating line kinds, that edit waits for them          |
+| `features/devtools` + `dev-seam.ts`                                         | SCH-WP3, WP4b, WP6, WP7, WP8                                                                                                           | F·SV4, F·UI3, S·S4, S·S6, I·F6                                                                            |
+| `00001020` · `00001060` · `00001240` · `live-wallet.ts` / `wallet-scope.ts` | none                                                                                                                                   | SCH-WP4a adds the revoke-on-disconnect door that I's erasure chain will call; it does not edit `00001060` |
 
 Shared files that are not on the §B.0 list:
 
@@ -99,13 +100,14 @@ Shared files that are not on the §B.0 list:
 
 ### 0.2 Cross-track waits
 
-| Step                     | Waits on                                                                                                                                                                                                                          | Why                                                                                                                  |
-| :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| SCH-WP2                  | the Wave 1.3 jobs session                                                                                                                                                                                                         | Its guarded row registers SCH-WP2's expiry function.                                                                 |
-| SCH-WP3                  | the comms queue worker (Wave 1.3) for reminders; M's notify engine (N8–N12) for email and push                                                                                                                                    | In-app notices work today through `comms.fn_notify`. A reminder is a queued row that the worker turns into a notice. |
-| SCH-WP6                  | F·DB7 (Wave 0; done except the per-user promo cap and the refunded and cancelled writers) and F·SV4 (`place_wallet_order`'s callers, `p_expected_minor`, checkout blockers). Better after F's M8 prompt and F's payout gate (M4). | A paid call is a checkout line, and a declined call's refund is an order-line refund.                                |
-| SCH-WP9 (D7 only)        | none, but never beside T's step that reworks penalty aggregation                                                                                                                                                                  | They write the same table, `security.penalties`.                                                                     |
-| Other tracks on this one | T·P2 hardening ⏳ SCH-WP10 (triggers on event text). I·IW-M13 ⏳ every SCH SQL step. P·WP8 and SCH-WP10 both write calendar URL rules into `ROUTING.md` (P7), so they do not run together.                                        | Part B §B.3                                                                                                          |
+| Step                     | Waits on                                                                                                                                                                                                                          | Why                                                                                                                               |
+| :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| SCH-WP2                  | the Wave 1.3 jobs set (`e18489d4`)                                                                                                                                                                                                | Its dormant row `scheduling-expire-discovery-calls` registers once `scheduling.fn_expire_discovery_calls` exists.                 |
+| SCH-WP3                  | M's notify engine (N8–N12), for email and push only                                                                                                                                                                               | The comms queue worker (`comms-process-queue`, every minute) is live, so in-app notices and queued reminders are delivered today. |
+| SCH-WP7                  | the Wave 1.3 jobs set (`e18489d4`)                                                                                                                                                                                                | Its dormant row `scheduling-settle-votes` registers once `scheduling.fn_settle_votes` exists.                                     |
+| SCH-WP6                  | F·DB7 (Wave 0; done except the per-user promo cap and the refunded and cancelled writers) and F·SV4 (`place_wallet_order`'s callers, `p_expected_minor`, checkout blockers). Better after F's M8 prompt and F's payout gate (M4). | A paid call is a checkout line, and a declined call's refund is an order-line refund.                                             |
+| SCH-WP9 (D7 only)        | none, but never beside T's step that reworks penalty aggregation                                                                                                                                                                  | They write the same table, `security.penalties`.                                                                                  |
+| Other tracks on this one | T·P2 hardening ⏳ SCH-WP10 (triggers on event text). I·IW-M13 ⏳ every SCH SQL step. P·WP8 and SCH-WP10 both write calendar URL rules into `ROUTING.md` (P7), so they do not run together.                                        | Part B §B.3                                                                                                                       |
 
 ### 0.3 Open decisions (🧑) and new contradictions
 
@@ -223,7 +225,11 @@ Hard rules (merge gates; reject your own diff if any of these fails):
     CalendarSyncBackendService and RoomBackendService) and returns ServiceResult<T> (#10). A cron
     route checks its bearer in constant time and answers 404 otherwise
     (apps/web/routes/api/scheduling/cron/horizon.ts is the pattern). Its job is a row in 00005060
-    (Decision #203), written only while you own that file.
+    (Decision #203), written only while you own that file. Two scheduling rows already wait there,
+    dormant, for a function by name: scheduling-expire-discovery-calls for
+    scheduling.fn_expire_discovery_calls, and scheduling-settle-votes for
+    scheduling.fn_settle_votes. Name those functions exactly (any arguments must have defaults)
+    and never edit their rows.
   - Islands never import Supabase or @server/*; they call /api/* through their feature's core
     service. Signal-first state; useEffect only for external DOM/browser APIs. No useState.
   - Path aliases only; folders components/ islands/ styles/ hooks/ wrappers/ types/ core/; no src/.
@@ -288,10 +294,11 @@ CONTEXT:
     account can squat a provider's slots for max_advance_days. The parameter exists
     (discovery_call_proposal_ttl_hours, 00005001:150); the sweep does not.
   - Done in Wave 0 (942c8dde): S-06 and S-07. Do not redo them.
-  - Registration: the Wave 1.3 jobs session registered discovery-call expiry in 00005060 ONLY where
-    its function exists (a to_regprocedure guard, the pattern at 00005060:42-58). This prompt writes
-    that function, and the guarded row turns it on at the next reset. You register the job yourself
-    only if main has no such row.
+  - Registration: the Wave 1.3 jobs set (e18489d4) seeded the row scheduling-expire-discovery-calls
+    (1,16,31,46 * * * *) dormant in 00005060. It waits for a function named exactly
+    scheduling.fn_expire_discovery_calls (its guard is to_regproc by name, so any argument must have
+    a default) and registers itself on the first reset after the function exists. Do NOT edit
+    00005060.
 
 FILES:
   - supabase/migrations/00001520_functions_scheduling_free_busy.sql (request_discovery_call refuses
@@ -301,7 +308,6 @@ FILES:
   - supabase/migrations/00002510_permissions_function_grants.sql (the sweep is service_role only)
   - supabase/migrations/00005010_seed_notification_catalog.sql (a `call.expired` row: category
     schedule, in_app + email, shaped like availability.booking_request)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (ONLY if step 4 finds no row)
   - packages/types/scheduling/calls.ts (CallRefusalReason and CALL_REFUSAL_COPY gain
     paid_unavailable; a PAID_CALLS_LIVE = false constant; the stale flags at :23-34)
   - packages/backend/services/scheduling/live-call-offer.ts (:63, `priced`)
@@ -326,11 +332,10 @@ STEPS:
      else: the transition trigger lets a writer with no auth.uid() through unchecked, so the WHERE
      clause is the only guard. It notifies the requester and the host (`call.expired`) and returns
      the count. It is idempotent.
-  4. Registration. After your reset, run SELECT name, schedule, enabled FROM ops.scheduled_jobs
-     WHERE command LIKE '%fn_expire_discovery_calls%'. Give the function EXACTLY the signature the
-     jobs session's to_regprocedure guard names (grep 00005060): a mismatch leaves the job silently
-     unregistered. If main has no such row, add a guarded sql row yourself (every 15 minutes, offset
-     from the quarter hours like session-scheduling-handshakes) and say so in your report.
+  4. Registration needs no 00005060 edit. Name the function exactly as the dormant row expects
+     (scheduling.fn_expire_discovery_calls, every argument with a default): any other name leaves
+     the job silently unregistered. After your reset, SELECT name, schedule, enabled FROM
+     ops.scheduled_jobs WHERE name = 'scheduling-expire-discovery-calls' shows it enabled.
   5. Hide the paid flavour through one seam, PAID_CALLS_LIVE = false in calls.ts. While it is
      false, live-call-offer.ts reports paidEnabled false, so ConsultationModal and
      SessionBookingModal (:261, :320) render no paid card. Grep every other reader of paidEnabled.
@@ -362,8 +367,8 @@ ACCEPTANCE:
   - discovery_call_expiry.sql (ROLLBACK): a paid request → paid_unavailable; a courtesy request
     still lands; a proposed call past its TTL, and one past its start, → expired; a confirmed call
     is untouched; a second run changes nothing; get_free_busy no longer returns the expired span.
-  - ops.scheduled_jobs holds exactly one enabled row that calls fn_expire_discovery_calls, and
-    `deno task cron:run <its name>` runs it.
+  - After your reset the dormant row scheduling-expire-discovery-calls is registered and enabled,
+    and `deno task cron:run scheduling-expire-discovery-calls` runs it.
   - group_sitting_doors.sql, scheduling_slot_integrity.sql and session_settlement.sql still pass.
   - Signed in as a seeded provider with paid calls on, neither the profile's Consultation modal nor
     the listing's booking modal shows a paid card (screenshots at 1440 and 390).
@@ -396,9 +401,9 @@ CONTEXT:
     proposed (audit §6), so the doors carry the lockout.
   - Reminders have no producer (S-18). session.reminder_60m/15m/5m are in the catalog
     (00005010:73-75) and discovery_call_reminder_lead_minutes is in 00005001:145.
-    comms.fn_enqueue and fn_cancel_queued (00001310 §7) queue reminders; comms.fn_process_queue,
-    registered by the Wave 1.3 jobs session, delivers them. Email and push wait for M's notify
-    engine; in-app works now.
+    comms.fn_enqueue and fn_cancel_queued (00001310 §7) queue reminders, and the live
+    comms-process-queue job (every minute, Wave 1.3) delivers them, so in-app notices and reminders
+    work now. Email and push wait for M's notify engine.
   - S-16's anon half is done (942c8dde: a column grant on call_settings). Signed-in users still read
     every column, the caps, cooldown and auto_confirm included, because the owner's editor reads
     CALL_COLUMNS through the table.
@@ -428,8 +433,9 @@ FILES:
     call_settings column grant instead of the table grant)
   - supabase/migrations/00005010_seed_notification_catalog.sql (call.confirmed, call.declined,
     call.time_proposed, call.cancelled, call.no_show, call.reminder)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (scheduling-reminders every 5 minutes; it
-    is not in the Q0.3 set, so this prompt registers it)
+  - supabase/migrations/00005060_seed_scheduled_jobs.sql (one new row, scheduling-reminders, every 5
+    minutes. No dormant row exists for it, so this prompt adds it, owning 00005060 only while it
+    runs; never touch the two dormant scheduling rows)
   - packages/types/scheduling/calls.ts (CallActionInputSchema, a union discriminated on `action`)
   - packages/backend/services/booking/BookingBackendService.ts (callAction; the refusal copy)
   - packages/backend/services/scheduling/live-calendar.ts (a call's booking event carries callId,
@@ -977,7 +983,9 @@ CONTEXT:
     (coordination.ts:56, :68). Their SQL twins are fn_vote_deadline (00001510:470-494) and
     SCH-WP3's call lockout. The lockout is TS-only, and the service role is trusted to apply it
     (S-12). Vote settlement runs only on a read (S-13), so a deadline nobody reads moves nothing and
-    tells nobody.
+    tells nobody. The Wave 1.3 jobs set seeded scheduling-settle-votes (11,26,41,56 * * * *)
+    dormant: it waits for a function named scheduling.fn_settle_votes, the sql job S-13
+    recommends. Do NOT edit 00005060.
   - SCH-WP1 froze group sittings. schedule_sitting mirrors a group sitting with NO roster, and
     trg_sitting_round_guard (00001155:988) refuses every round on it, because a vote carried inside
     the notice would make dissenters forfeit. Nothing in the app calls schedule_sitting or
@@ -1005,16 +1013,14 @@ FILES:
     noticeHours), voteLeadHoursFor(…); the constants become the non-money defaults), with
     coordination.test.ts and coordination.contract.test.ts
   - supabase/migrations/00001510_functions_scheduling.sql (scheduling.fn_event_is_money_bearing;
-    fn_vote_deadline reads it and the parameter; SCH-WP3's call lockout uses it)
+    fn_vote_deadline reads it and the parameter; SCH-WP3's call lockout uses it;
+    scheduling.fn_settle_votes)
   - supabase/migrations/00001155_functions_projects_sessions.sql (cancel_cohort_membership: the
     grace and the backstop; fn_sync_sitting_mirrors keeps a roster of active seat-holders on a
     group mirror; trg_sitting_round_guard admits a vote on a group mirror, after the 🧑)
   - supabase/migrations/00005001_seed_platform_params.sql (session_late_booking_grace_minutes = 60)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (the vote-settlement http job; if the Wave
-    1.3 set already holds a row for it, point that row at the route below)
   - packages/backend/services/scheduling/{coordination-plan.ts, live-coordination-writes.ts,
-    live-calendar.ts, ScheduleBackendService.ts} (settleDueVotes; the planner reads the window)
-  - apps/web/routes/api/scheduling/cron/votes.ts (new; SCHEDULING_CRON_SECRET, like cron/horizon.ts)
+    live-calendar.ts} (the planner reads the window)
   - packages/backend/services/sessions/SessionBackendService.ts and the session routes
     (scheduleSitting and retitleSitting over the two doors); the session workspace UI (the
     provider's Add a sitting and Rename; the seat's Cancel, S-22)
@@ -1048,10 +1054,16 @@ STEPS:
      /calendar.
   6. After the 🧑: trg_sitting_round_guard admits a voting round on a group mirror, and a started
      cohort's dissenter gets the exit the ruling chose.
-  7. Vote settlement (S-13): ScheduleBackendService.settleDueVotes(limit) runs the same settleVote +
-     close_reschedule_round path as the read, for every voting round past its deadline (SKIP
-     LOCKED), and sends the deadline notices. The http job calls it every 5 minutes; the read path
-     keeps settling too.
+  7. Vote settlement (S-13): scheduling.fn_settle_votes(p_limit integer DEFAULT 200), a SECURITY
+     DEFINER sql function, settles every `voting` round past its deadline (FOR UPDATE SKIP LOCKED).
+     A slot backed by more than half of the entitled voters (every roster seat except the host's,
+     optional included: the TS rule D5 ratifies) wins, and the round closes `resolved` through
+     close_reschedule_round, which moves the event; otherwise it closes `lapsed`. It sends the
+     round's notices. The majority rule now lives in SQL as well as in settleVote, so
+     coordination.contract.test.ts runs both over the same fixtures, as it already does for
+     fn_vote_deadline. The read path keeps settling too; both close under the round lock, so
+     whichever runs second finds the round closed. Name it exactly: the dormant
+     scheduling-settle-votes row registers on your next reset.
   8. S-22: the seat's Cancel in the session workspace states the outcome before the press: "full
      refund", "full refund: inside your hour's grace" or "the provider keeps the payment". The
      service computes it; the island never does.
@@ -1070,8 +1082,9 @@ SAME CHANGE:
   - finance-model §4 :185-192.
   - PRODUCT_MANAGEMENT §3.5 (lifecycle changes): a group sitting now takes rounds (:229); the review
     window's name (:232); the four named caps become two per class of event; the window rule's
-    marker (:358); the "there is no cron in this layer" sentence now names the settlement job.
-  - ROUTING.md: rows for cron/votes and the sitting routes.
+    marker (:358); the "there is no cron in this layer" sentence now names the
+    scheduling-settle-votes job.
+  - ROUTING.md: rows for the sitting routes.
   - The sessionCancelWindow Dev Context Switcher axis.
 
 VERIFY (SQL):
@@ -1087,7 +1100,8 @@ ACCEPTANCE:
     carries and moves the sitting, with its seat-holders on the roster.
   - coordination.test.ts and coordination.contract.test.ts pass with the new pins. The planner
     refuses slot_inside_lockout at 23 h for a sitting and allows it for a sync.
-  - The cron route: a wrong bearer → 404; a round past its deadline settles with nobody reading it.
+  - With nobody reading it, a round past its deadline settles on the next run (`deno task cron:run
+    scheduling-settle-votes`), and the SQL and TS settlements agree on every contract fixture.
   - Screenshots of the seat's Cancel in each window state, at 1440 and 390.
 ```
 
