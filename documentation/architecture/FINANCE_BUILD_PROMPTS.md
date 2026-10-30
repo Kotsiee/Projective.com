@@ -12,9 +12,10 @@
 > never-recorded "Decision #251" is superseded by #337, and F0 is retired (ruling Q0.1).
 >
 > **Done, each verified in git:** A12 and CO20 (`660c9658`); DB1's remainder, N1 and N5 (`172f9d66`;
-> N1's cron job is registered by the Wave 1 jobs session); DB7 except the per-account promo cap and
-> the refunded and cancelled writers (`24cbab02`; the rest is DB19); SV1's Zod half (`4c9482a2`,
-> `388d9952`; its two CHECKs are DB8's). UI1 and UI2 are partly fixed (D6, D11, D16).
+> N1's cron job, `finance-sweep-card-payments`, is registered by the Wave 1 jobs session in
+> `e18489d4`); DB7 except the per-account promo cap and the refunded and cancelled writers
+> (`24cbab02`; the rest is DB19); SV1's Zod half (`4c9482a2`, `388d9952`; its two CHECKs are DB8's).
+> UI1 and UI2 are partly fixed (D6, D11, D16).
 >
 > **How to use it:** paste each prompt into its **own fresh session**, after the standard header
 > (§1), in the §0 order. A prompt marked **🧑 DECISION** stops at the named step and puts the
@@ -71,7 +72,8 @@ Why this order:
 - `00000017`: DB4, DB5, DB6, DB8, DB11, DB12, DB13, DB18, DB19, DB21.
 - `00001200`: DB3, DB8, DB10, DB13, DB16, DB17, DB20.
 - `00002510`: DB2, DB3, DB4, DB5, DB10, DB11, DB14, DB16, DB17, DB18, DB21 (SV7 if it adds a read).
-- `00005060`: DB3 (only a job the jobs session left), DB4, DB16, DB17.
+- `00005060`: DB4, DB16, DB17. (DB3 only names its two functions; the jobs session seeded their
+  rows.)
 - `00005001`: DB4, DB8, DB9, DB10, DB13, DB18. `00001830`: DB5, DB18, DB19.
 - `wallet-actions.ts`: SV3, DB4, DB5, DB14, DB18.
 - `CheckoutBackendService.ts`, `live-basket.ts`, `checkout-refusal.ts`, `commerce-*.ts`: SV4, SV5,
@@ -87,7 +89,7 @@ Why this order:
 | Hot file                             | Finance prompts that write it                                                        | Other writers (never at the same time)                                                      |
 | :----------------------------------- | :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
 | `00001240` (finance money)           | DB2, DB3, DB4, DB5, DB6, DB8, DB15, DB18, DB21, SV8                                  | PM-WP4                                                                                      |
-| `00005060` (jobs)                    | DB3 (only a job the jobs session left), DB4, DB16, DB17                              | the Wave 1 jobs session (first); comms, PM, scheduling and security packages that add a job |
+| `00005060` (jobs)                    | DB4, DB16, DB17 (DB3's two rows are already seeded, dormant)                         | the Wave 1 jobs session (first); comms, PM, scheduling and security packages that add a job |
 | `00001155` (sessions)                | DB3 (L9's forfeit path), DB15 (booking backstops)                                    | every SCH work package                                                                      |
 | `00001020` (workspaces)              | DB9 (entity wallet currency), DB10 (a threshold reader)                              | identity rank, archive and seat items; SA G4                                                |
 | `00001060` (erasure)                 | none                                                                                 | identity erasure, SEC G16                                                                   |
@@ -104,9 +106,11 @@ Why this order:
   SCH-WP6 and DB15.
 - **DB15** waits for SCH-WP2's interim to merge and runs while no SCH work package is running
   (`00001155`, `00001510`). **DB3** needs no SCH package running either (`00001155`).
-- **DB3, DB4, DB16 and DB17** wait for the Wave 1 jobs session to merge. After it, each owns
-  `00005060` only while it runs; DB3 first checks whether the jobs session already wrote the
-  spend-approval expiry and the idempotency-key sweep.
+- **DB3, DB4, DB16 and DB17** wait for the Wave 1 jobs session (`e18489d4`) to merge. DB4, DB16 and
+  DB17 then each own `00005060` only while they run. DB3 never edits it: the jobs session seeds
+  `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys` dormant, and each registers
+  on the first reset after DB3's `finance.fn_expire_spend_approvals` /
+  `finance.fn_sweep_idempotency_keys` exists (matched by name).
 - **PM-WP4** (the Fair Exit floor, the ticket-level Fair Exit, removal refunds) waits for DB3 and
   DB6 (B.3). DB13 and DB20 never run beside it: all three edit `00001200`'s release paths.
 - **PM's ghosting auto-approve** (FDD D-9 (a), `PM_BUILD_PROMPTS.md`) releases through
@@ -431,7 +435,9 @@ ROLE: Postgres engineer.
 CONTEXT: FA K4 (FDD X11: finance-model.md §10 marks the enterprise half Not built yet), V4, A16,
 S4, L9, V2 and L8, all still open (FCA §5; L9 now has three paths: F1200's ticket and fair-exit
 releases and S1155's forfeit). No ruling is needed. Decision #337, ruling Q0.3: the Wave 1 jobs
-session registers the spend-approval expiry and the idempotency-key sweep in 00005060.
+session (e18489d4) seeds both of this prompt's jobs dormant in 00005060, each waiting by name for
+its function: 'finance-expire-spend-approvals' (hourly at :12) and 'finance-sweep-idempotency-keys'
+(daily at 04:27). This prompt writes the two functions and never edits 00005060.
 
 FILES:
   - supabase/migrations/00001210_functions_finance_kyc_wallet.sql (fn_assert_business_spend;
@@ -444,7 +450,6 @@ FILES:
   - supabase/migrations/00001155_functions_projects_sessions.sql (the forfeit release path): HOT
   - supabase/migrations/00001895_triggers_derived_columns.sql (the owner backstop, beside the
     vault-sync triggers)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql, only for a job the jobs session left
   - supabase/migrations/00002510_permissions_function_grants.sql
   - supabase/probes/finance_doors.sql (new)
   - documentation/database/finance/Functions.md, documentation/database/org/Functions.md (the
@@ -457,10 +462,10 @@ STEPS:
      (org.enterprises.verification_level = 'verified'). One predicate, reused.
   2. V4: transfer_funds INTO a team, business or enterprise wallet needs
      fn_has_vault_capability(dest, 'add_funds') → PK403 'missing_permission: add_funds'.
-  3. A16: finance.fn_expire_spend_approvals() moves pending rows past expires_at to 'expired' (the
-     existing value). FIRST check main: if the jobs session already wrote the function and its job,
-     verify them against this step and move on; otherwise write the function and an hourly job row
-     (the to_regprocedure-guarded pattern in 00005060).
+  3. A16: finance.fn_expire_spend_approvals moves pending rows past expires_at to 'expired' (the
+     existing value). Name it exactly that, with a default for any argument: the dormant job
+     'finance-expire-spend-approvals' registers itself on the first reset after the function
+     exists. Do not edit 00005060.
   4. S4: fn_effective_platform_fee_bp RAISEs (PX500 'platform_fee_not_configured') when
      platform_fee_bp is missing. A silent 0 would waive the fee.
   5. L9: fn_release_ticket_escrow, fn_fair_exit_release and the S1155 forfeit release refuse
@@ -468,13 +473,16 @@ STEPS:
      true. PM's ghosting auto-approve and PM-WP4 release through these and inherit the refusal.
   6. V2: AFTER UPDATE OF owner_user_id ON org.teams and org.business_profiles → re-project the
      vault (org.fn_sync_vault_permissions), beside the existing backstop triggers.
-  7. L8: the idempotency-key sweep deletes finance.idempotency_keys past expires_at + 30 days,
-     except scope 'stripe.webhook' (kept for replay safety; document why). Check main as in step 3.
+  7. L8: finance.fn_sweep_idempotency_keys deletes finance.idempotency_keys past expires_at + 30
+     days, except scope 'stripe.webhook' (kept for replay safety; document why). The same name rule
+     as step 3 applies: the dormant job 'finance-sweep-idempotency-keys' registers itself.
 
 ACCEPTANCE:
   - finance_doors.sql asserts each refusal and each allowed path: an unverified enterprise, a member
     without add_funds, a missing fee param, a release during an open dispute, an owner change that
     re-projects the vault.
+  - After your `deno task test:probes:fresh`, ops.scheduled_jobs and cron.job hold both jobs, and
+    scheduled_jobs.sql passes.
   - grep -n "silent no-op" supabase/migrations/00001200_functions_finance_core.sql → none.
   - finance_invariants.sql and conservation_identity.sql pass.
 
@@ -484,7 +492,8 @@ local DB, on disjoint migration files, each reset announced first; finish with y
 SAME CHANGE: migrations edited in place; documentation/database/{finance,org}/*;
 PRODUCT_MANAGEMENT.md §3.5 (the approval lifecycle's writer); the finance-model.md §10 marker
 removed.
-HOT: 00001240, 00001155 (no SCH work package beside it), 00002510, 00005060 (steps 3 and 7 only).
+HOT: 00001240, 00001155 (no SCH work package beside it), 00002510. Not 00005060: the jobs session
+owns both rows.
 ```
 
 ### DB4 — Payout schedules run (M6, first in the build order)
@@ -1663,10 +1672,10 @@ STEPS:
   3. checkout-refusal.ts maps the PC409 prefixes promo_exhausted, price_changed and
      payment_in_progress to buyer copy; payment_in_progress resumes the returned payment.
   4. N23: the on-account headroom is read in the charge currency (get_on_account_standing with it).
-  5. CO15: the N1 recovery sweep (cron/card-payments, registered by the jobs session) also cancels
-     an intent still requires_* after 24 h (with an idempotency key); the handled
-     payment_intent.canceled webhook marks the row. No new job. The abandoned-basket nudge is a
-     comms notification, not this prompt's.
+  5. CO15: the N1 recovery sweep (the jobs session's 'finance-sweep-card-payments' job, POST
+     /api/finance/cron/card-payments) also cancels an intent still requires_* after 24 h (with an
+     idempotency key); the handled payment_intent.canceled webhook marks the row. No new job. The
+     abandoned-basket nudge is a comms notification, not this prompt's.
   6. N34: Zod uuid on the order, line and calendar routes.
   7. Dev Context Switcher: checkoutPayment (ok · declined · authenticate · timeout · unapplied ·
      price_changed · promo_exhausted), applied in the service under the dev seam: DevOverrides +
