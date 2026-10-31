@@ -20,18 +20,8 @@ import { timestamp, uuid } from "./rows.ts";
  * - `paid` — a chargeable consultation, priced by the provider (PRODUCT_SPEC.md §Why Sessions are
  *   Fixed: session pricing is provider-set, never negotiated).
  *
- * ⚠️ **Flagged (root CLAUDE.md §8).** A paid call cannot yet ride `finance.escrows`: that table
- * requires both `project_stage_id` and `payer_business_id` NOT NULL, so a standalone 1-1 call
- * between an individual client and a freelancer has no legal escrow row. {@link DiscoveryCallSchema}
- * `escrowId` is therefore nullable and populated only when a call attaches to an already-funded
- * stage. Relaxing those columns (a PROTECTED table) or auto-provisioning a session-format
- * micro-project are the two candidate fixes; both need human sign-off.
- *
- * ⚠️ **Flagged.** Cancellation economics are recorded as OUTCOMES (`refundAmountMinor` /
- * `penaltyAmountMinor`), never hard-coded, because `finance-model.md` §4 (50% forfeit) and
- * `PRODUCT_SPEC.md` §Sessions (full forfeit) still disagree. The COURTESY rules are new and
- * deliberate: a free call has no money, so a late cancel or no-show carries no financial
- * consequence and is a reliability signal only.
+ * Paid calls stay off until their money path is built (Decision #343, ruling C1).
+ * A late cancellation forfeits 100 %, recorded as an outcome (Decision #343, ruling C2 (a)).
  */
 
 // #region Money primitives (reused shape, not a fork)
@@ -47,13 +37,25 @@ export const CallType = z.enum(["courtesy", "paid"]);
 export type CallType = z.infer<typeof CallType>;
 
 /**
+ * Whether the paid flavour is live: the one seam that turns it off (Decision #343, ruling C1).
+ *
+ * Nothing writes a paid call's payment or escrow yet. While this is `false`, the public call
+ * offer reports `paidEnabled: false` whatever the host stored, so no surface draws a paid card;
+ * the booking service refuses a paid request (`paid_unavailable`), as
+ * `scheduling.request_discovery_call` always does; and the owner's Availability editor shows the
+ * paid switch locked, its stored setting kept. The paid money path's build removes it. Typed
+ * `boolean`, not `false`, so the branches it closes stay type-checked.
+ */
+export const PAID_CALLS_LIVE = false as boolean;
+
+/**
  * `scheduling.call_status` — the discovery-call DOMAIN lifecycle (PRODUCT_MANAGEMENT.md §3.5;
  * never a delivery-board column).
  *
  * ```
  * proposed  → confirmed → completed
  * proposed  → declined            (host says no)
- * proposed  → expired             (nobody answered before the slot passed)
+ * proposed  → expired             (unanswered for the proposal TTL, or until the slot began)
  * confirmed → cancelled           (either party; `cancelledBy` + `isLateCancel` record which/when)
  * confirmed → no_show             (`noShowParty` records who)
  * ```
@@ -93,13 +95,16 @@ export const CallAction = z.enum([
 export type CallAction = z.infer<typeof CallAction>;
 
 /**
- * The machine-readable refusal codes `scheduling.fn_call_request_refusal` returns. A reason rather
- * than a bare boolean lets the UI explain a refusal without re-deriving the rules client-side.
+ * The machine-readable refusal codes `scheduling.fn_call_request_refusal` returns, plus
+ * `paid_unavailable`, which the request door (`scheduling.request_discovery_call`) raises before
+ * the gate: paid calls are off ({@link PAID_CALLS_LIVE}). A reason rather than a bare boolean lets
+ * the UI explain a refusal without re-deriving the rules client-side.
  */
 export const CallRefusalReason = z.enum([
 	"calls_not_offered",
 	"courtesy_not_offered",
 	"paid_not_offered",
+	"paid_unavailable",
 	"duration_mismatch",
 	"duration_exceeds_platform_max",
 	"inside_minimum_notice",
@@ -237,7 +242,7 @@ export const DiscoveryCallSchema = z.object({
 	feeCurrency: currency.nullable(),
 	/** Opaque provider payment reference (Stripe PaymentIntent). No PII. */
 	paymentRef: z.string().max(200).nullable(),
-	/** Populated only when the call attaches to an already-funded stage — see the flag above. */
+	/** The hold behind a paid call; nothing writes it while {@link PAID_CALLS_LIVE} is false. */
 	escrowId: uuid.nullable(),
 	/** Recorded outcomes, not a hard-coded policy. */
 	refundAmountMinor: minorUnits.nullable(),
@@ -360,6 +365,7 @@ export const CALL_REFUSAL_COPY: Record<CallRefusalReason, string> = {
 	calls_not_offered: "This person isn't taking calls right now.",
 	courtesy_not_offered: "Free intro calls aren't offered here.",
 	paid_not_offered: "Paid consultations aren't offered here.",
+	paid_unavailable: "Paid consultations aren't available yet.",
 	duration_mismatch: "Pick one of the offered call lengths.",
 	duration_exceeds_platform_max: "That call is longer than we allow.",
 	inside_minimum_notice: "That's too soon — pick a later slot.",

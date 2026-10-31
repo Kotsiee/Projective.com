@@ -190,11 +190,11 @@ through a ticket-level Fair Exit door. Today either act pays the freelancer 100%
   `session_cancel_notice_hours`. Every other event keeps the 12 h lockout. A booking made inside the
   window gets a 60-minute grace. A sitting the provider moves inside the window counts as a provider
   cancellation for every attendee who did not support the move.
-- **Paid discovery calls** (Decision #343, ruling C1) — **Not built yet**. Paid calls are off until
-  they have a money path: a paid request is refused (`paid_unavailable`) and the paid card hidden.
-  Then each host gets one hidden _Consultations_ engagement on the session rail (Decision #211): the
-  fee is held at request and refunded in full on decline or expiry, and enabling paid calls needs a
-  payout-ready host (§10).
+- **Paid discovery calls** (Decision #343, ruling C1). Paid calls are off until they have a money
+  path: a paid request is refused (`paid_unavailable`) and the paid card hidden. Then each host gets
+  one hidden _Consultations_ engagement on the session rail (Decision #211): the fee is held at
+  request and refunded in full on decline or expiry, and enabling paid calls needs a payout-ready
+  host (§10). That money path is **Not built yet**.
 
 ### Maintenance-Based (Run/Test)
 

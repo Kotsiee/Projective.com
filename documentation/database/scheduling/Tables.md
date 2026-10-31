@@ -303,8 +303,9 @@ or nothing, as on `events`).
 > (Decision #211: a sitting's escrow rides its session-format project). `escrow_id` is nullable and
 > populated only when a call attaches to an already-funded stage; a paid call records its own
 > `payment_ref` and has no money path (scheduling (c); FDD X2). The ruled path is to refuse the paid
-> flavour now, then one hidden "Consultations" engagement per host on #211's session rail. **Not
-> built yet** (Decision #343, ruling C1).
+> flavour now, then one hidden "Consultations" engagement per host on #211's session rail
+> (Decision #343, ruling C1). The refusal is built: `request_discovery_call` refuses a paid request
+> (`paid_unavailable`), so no new paid row is written. The engagement is **Not built yet**.
 
 > ⚠️ **FLAGGED — cancellation economics.** `finance-model.md` §4 says a late session cancel forfeits
 > 50%; `PRODUCT_SPEC.md` §Sessions says full forfeit (and wins per the hierarchy). That conflict is
@@ -323,7 +324,7 @@ or nothing, as on `events`).
 ```
 proposed  → confirmed → completed
 proposed  → declined            (host says no)
-proposed  → expired             (unanswered before the slot passed)
+proposed  → expired             (unanswered for the proposal TTL, or until the slot began)
 confirmed → cancelled           (either party; cancelled_by + is_late_cancel record which/when)
 confirmed → no_show             (no_show_party records who)
 ```
@@ -337,10 +338,17 @@ occupied and left the new one bookable by somebody else. `declined` / `cancelled
 `scheduling.fn_enforce_call_transition` and mirrored in `PRODUCT_MANAGEMENT.md` §3.5.
 
 > ⚠️ **Only the first arrow has a client door today.** A client creates a call through
-> `request_discovery_call` (`proposed`, or `confirmed` under `auto_confirm`). The client `UPDATE`
-> policy and grant were removed on 2026-09-28 because either party could rewrite any column of the
-> row ([Policies.md](Policies.md)), and the definer RPCs that are to replace them — each naming who
-> may make which move — do not exist yet, so every later transition is currently service-role only.
+> `request_discovery_call` (`proposed`, or `confirmed` under `auto_confirm`; a courtesy call only,
+> since a paid request is refused `paid_unavailable`). The client `UPDATE` policy and grant were
+> removed on 2026-09-28 because either party could rewrite any column of the row
+> ([Policies.md](Policies.md)), and the definer RPCs that are to replace them — each naming who may
+> make which move — do not exist yet, so every later transition is currently service-role only.
+>
+> **`proposed → expired` has its writer** (audit S-11): `scheduling.fn_expire_discovery_calls`, the
+> `scheduling-expire-discovery-calls` job every 15 minutes, expires a request once it has waited
+> `discovery_call_proposal_ttl_hours` (72) since `proposed_at` or once its proposed start has come,
+> so an unanswered request stops holding the host's free/busy. It tells both people
+> (`call.expired`). See [Functions.md](Functions.md) §7b.
 
 ### `scheduling.call_attendance`
 

@@ -158,3 +158,16 @@ VALUES
 ('feedback.status_changed',  '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '1 day',           NULL,                                        NULL, 'An idea you suggested or voted for on the feedback board moved to Planned, In progress, Shipped or Archived.')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
+
+
+-- #region [scheduling] Discovery-call expiry (S-11)
+-- Sent by scheduling.fn_expire_discovery_calls to the requester and the host of a call request nobody
+-- answered within discovery_call_proposal_ttl_hours or before its start. Shaped like
+-- `availability.booking_request`, at medium urgency: nothing is left to act on. No action URL: an
+-- expired call leaves both calendars.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('call.expired',             '{}',                'schedule',  'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A discovery call request expired: nobody confirmed it within the proposal window or before its start time.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion

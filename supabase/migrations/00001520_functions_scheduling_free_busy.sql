@@ -106,13 +106,17 @@ COMMENT ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestamptz) IS
 -- the call is about. Everything else is derived:
 --
 --   * the host is the schedule's accountable person (`fn_schedule_host`), never a caller's claim;
---   * a paid call's fee is the host's own configured fee, never a caller's figure;
 --   * the platform must be one the host offers, or absent when they offer none;
 --   * the listing must be a published blueprint the host sells;
 --   * an agenda is demanded when the host demands one;
 --   * the status is `proposed`, or `confirmed` when the host auto-confirms;
 --   * the host is told, through the notification engine (`availability.booking_request`), so a
 --     request does not sit unseen until somebody happens to open their calendar.
+--
+-- Only a courtesy call comes through here. A paid one is refused `paid_unavailable` (Decision #343,
+-- ruling C1): nothing writes a paid call's payment or escrow, so this door used to book one with no
+-- money behind it, born `confirmed` under auto_confirm. Its money path, once built, is checkout,
+-- never this door, so the signature stays as it is.
 --
 -- The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
 -- existing BEFORE INSERT gate (`fn_enforce_call_request` → `fn_call_request_refusal`), which fires
@@ -146,6 +150,11 @@ BEGIN
     END IF;
     -- Booking a call with a seller is the start of buying (Decision #208).
     PERFORM org.fn_assert_adult(v_requester);
+
+    -- Before the schedule lock and the insert: a paid request never queues behind a real one.
+    IF p_call_type = 'paid'::scheduling.call_type THEN
+        RAISE EXCEPTION 'Discovery call refused: paid_unavailable' USING ERRCODE = 'check_violation';
+    END IF;
 
     IF NOT scheduling.fn_schedule_is_public (p_schedule) THEN
         RAISE EXCEPTION 'Discovery call refused: calls_not_offered' USING ERRCODE = 'check_violation';
@@ -207,11 +216,11 @@ BEGIN
         ELSE 'proposed'::scheduling.call_status
     END;
 
+    -- A courtesy call carries no fee (ck_call_fee_matches_type).
     INSERT INTO scheduling.discovery_calls (
         host_schedule_id, host_user_id, requester_user_id, call_type, status,
         proposed_start, proposed_end, confirmed_start, confirmed_end, confirmed_at,
-        requester_timezone, agenda, service_blueprint_id, provider_slug,
-        fee_amount_minor, fee_currency
+        requester_timezone, agenda, service_blueprint_id, provider_slug
     )
     VALUES (
         p_schedule, v_host, v_requester, p_call_type, v_status,
@@ -222,9 +231,7 @@ BEGIN
         NULLIF(btrim(COALESCE(p_requester_timezone, '')), ''),
         NULLIF(btrim(COALESCE(p_agenda, '')), ''),
         p_service_blueprint_id,
-        p_provider_slug,
-        CASE WHEN p_call_type = 'paid'::scheduling.call_type THEN s.fee_amount_minor END,
-        CASE WHEN p_call_type = 'paid'::scheduling.call_type THEN s.fee_currency END
+        p_provider_slug
     )
     RETURNING id INTO v_id;
 
@@ -238,10 +245,7 @@ BEGIN
             THEN 'A call was booked with you'
             ELSE 'Someone requested a call with you'
         END,
-        CASE WHEN p_call_type = 'paid'::scheduling.call_type
-            THEN 'A paid consultation'
-            ELSE 'A free introductory call'
-        END,
+        'A free introductory call',
         'scheduling.discovery_calls',
         v_id,
         jsonb_build_object('starts_at', p_starts_at, 'call_type', p_call_type, 'status', v_status),
@@ -276,5 +280,5 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) IS
-'The only way a client requests a discovery call. Derives the host, the fee and the status from the schedule; the BEFORE INSERT gate judges the slot. Raises check_violation "Discovery call refused: <reason>".';
+'The only way a client requests a discovery call, and a courtesy one only: a paid request is refused paid_unavailable (Decision #343, ruling C1). Derives the host and the status from the schedule; the BEFORE INSERT gate judges the slot. Raises check_violation "Discovery call refused: <reason>".';
 -- #endregion

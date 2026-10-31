@@ -28,11 +28,17 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 96 keys
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 113 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
 `packages/types/comms/catalog.contract.test.ts` fails when a `comms.fn_notify` call in a migration,
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
+
+**Added 2026-10-31 (audit S-11; Decision #343, ruling C3):** `call.expired` (schedule · medium ·
+in_app + email, not mandatory, not digestible; no action URL — an expired call leaves both calendars)
+— sent by `scheduling.fn_expire_discovery_calls` to the requester and the host of a discovery-call
+request nobody answered within `discovery_call_proposal_ttl_hours` or before its start. Seeded in its
+own `[scheduling]` region of `00005010`.
 
 **Added 2026-10-17 (Decision #276):** `contact.received` (system · medium · in_app + email, not
 mandatory, digestible; no action URL — there is no operator contact desk yet) — sent by

@@ -186,7 +186,7 @@ status.
 
 > Both enforcement triggers **skip when `auth.uid()` is NULL**: a service-role caller (conferencing
 > webhook, expiry sweep, backfill) owns the rules in its own layer. The triggers guard the client
-> path.
+> path. The expiry sweep's own WHERE clause is its only guard (§7b).
 
 ---
 
@@ -282,7 +282,8 @@ choose. The caller now supplies the schedule, the flavour, the time, an agenda, 
 a platform and (optionally) the listing the call is about; everything else is derived:
 
 - the **host** is `fn_schedule_host(schedule)`, never a caller's claim;
-- a paid call's **fee** is the host's configured `fee_amount_minor` / `fee_currency`;
+- the **flavour** is courtesy only, so the row carries no fee: a paid request is refused
+  `paid_unavailable` (below);
 - the **platform** must be one of the host's `call_platforms`, and is required when they list any;
 - the **listing** must be a published blueprint the host (or the host's team) sells;
 - an **agenda** is demanded when `agenda_required`;
@@ -291,6 +292,16 @@ a platform and (optionally) the listing the call is about; everything else is de
 The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
 existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs
 with the caller's `auth.uid()`.
+
+**Paid calls are refused** (audit S-02; Decision #343, ruling C1). Nothing writes a paid call's
+`payment_ref` or `escrow_id`, so this door booked a paid consultation with no money behind it, born
+`confirmed` under `auto_confirm`, outside the courtesy caps and with nothing to expire it. A request
+with `call_type = 'paid'` now raises `paid_unavailable`, after the sign-in and age checks and before
+the schedule lock and the insert, so it never queues behind a real request. The signature is
+unchanged and the refusal is permanent: the ruled money path (one hidden Consultations engagement per
+host on the session rail) books a paid call through checkout, never through this door. The app hides
+the flavour through one seam, `PAID_CALLS_LIVE` (`packages/types/scheduling/calls.ts`): the public
+call offer reports `paidEnabled: false` and the booking service refuses a paid request first.
 
 **One request at a time per schedule** (audit S-07, 2026-10-30). Before anything is derived, the
 function takes `SELECT … FROM scheduling.schedules WHERE id = p_schedule FOR UPDATE`. The gate reads
@@ -310,6 +321,7 @@ reason is either one of the gate codes in §4 or one of these:
 | Code                   | Cause                                                        |
 | :--------------------- | :----------------------------------------------------------- |
 | `not_signed_in`        | No `auth.uid()`.                                             |
+| `paid_unavailable`     | A paid call: off until its money path exists (above).        |
 | `calls_not_offered`    | The schedule is unpublished, has no host, or takes no calls. |
 | `self_booking`         | The requester is the host.                                   |
 | `agenda_required`      | The host requires an agenda and none was given.              |
@@ -318,6 +330,35 @@ reason is either one of the gate codes in §4 or one of these:
 | `listing_mismatch`     | The listing is unpublished or not the host's to sell.        |
 
 `EXECUTE` to `authenticated` and `service_role`; revoked from `anon` and `PUBLIC`.
+
+---
+
+## 7b. Expiring unanswered requests (`00001510` §7)
+
+### `scheduling.fn_expire_discovery_calls(limit = 500) → integer`
+
+The writer of `proposed → expired` (audit S-11; Decision #343, ruling C3). A `proposed` call holds
+its slot in free/busy, the booking gate (`fn_slot_is_free`) and both agendas until it is answered,
+so before this sweep a request nobody answered held the host's time for good, and one account could
+hold every slot of a calendar out to its booking horizon. The sweep moves a call to `expired` once
+it has waited `discovery_call_proposal_ttl_hours` (72) since `proposed_at`, or once its
+`proposed_start` has come, whichever is first. It touches nothing else on the row, and an expiry is
+not a response, so `responded_at` stays empty. It tells the requester and the host (`call.expired`,
+in-app and email, through `comms.fn_notify`), and returns how many calls it expired.
+
+`fn_enforce_call_transition` checks nothing for a writer with no `auth.uid()`, and the job has none,
+so the WHERE clause is the sweep's only guard: still `proposed`, and past one of the two times.
+Candidates are taken `FOR UPDATE SKIP LOCKED`, so two overlapping runs never take one call and a call
+being answered at that moment waits for the next run; a row that changed before its lock is re-read
+and dropped if it no longer qualifies. A run takes at most `limit` calls. It is idempotent: a second
+run finds nothing to expire and tells nobody again. `trg_log_call_event` writes the `expired` audit
+line, with no actor.
+
+`SECURITY DEFINER`, `search_path = ''`. `EXECUTE` to `service_role` only (revoked from `PUBLIC`,
+`anon` and `authenticated`). Scheduled as `scheduling-expire-discovery-calls` at minutes 1, 16, 31
+and 46 (`00005060`): the seed registers that row by this function's name, so it registers itself on
+the first reset after the function exists. `deno task cron:run scheduling-expire-discovery-calls`
+runs it by hand. Probe: `supabase/probes/discovery_call_expiry.sql`.
 
 ---
 
@@ -686,14 +727,12 @@ edit does not.
 - **A public slice of `call_settings`** — the table is `anon`-readable row-wide, so a visitor can
   read the courtesy caps and cooldowns the public offer (`PublicCallOfferSchema`) omits. Still open;
   see [Policies.md](Policies.md).
-- **The expiry sweep** — a scheduled job moving `proposed` calls past
-  `discovery_call_proposal_ttl_hours` to `expired`. The state and the parameter exist; the cron does
-  not.
 - **Room provisioning** — minting a meeting URL via the host's `integrations.user_connections`
   token. The columns, the provider resolution (`integrations.fn_conferencing_provider`), and the
   audit action (`link_generated`) exist; the Edge Function does not.
-- **Paid-call settlement** — blocked on the flagged `finance.escrows` shape question. See
-  [Tables.md](Tables.md).
+- **Paid-call settlement** — ruled (Decision #343, ruling C1): one hidden Consultations engagement
+  per host on the session rail, the fee held at request. **Not built yet**; until then the paid
+  flavour is refused (§7). See [Tables.md](Tables.md).
 - **A reschedule-settlement sweep** — a vote whose deadline passes while nobody opens the calendar
   is settled the next time anybody reads it (`settleVote` on the read path), so the event's position
   in the database is correct only once somebody has looked. Notifications that should fire at the
