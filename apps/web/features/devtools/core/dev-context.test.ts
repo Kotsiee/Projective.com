@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { assert, assertEquals, assertFalse } from "@std/assert";
+import { CHECKOUT_PAYMENT_SIM_COOKIE, parseCheckoutPaymentSim } from "@projective/types/finance";
 import { parseBackgroundForce } from "@features/landing/core/background-gate.ts";
 import {
 	LANDING_METRICS_SIM_COOKIE,
@@ -305,5 +306,80 @@ Deno.test("landingMetrics — an unknown attribute value reads as auto", async (
 		root.dataset.devLandingMetrics = "some";
 		assertEquals(seam.readDevSeam()?.landingMetrics, "auto");
 	});
+});
+// #endregion
+
+// #region checkoutPayment (Pay's answer, server-side through a cookie, FINANCE_AUDIT CO29)
+const PAYMENT_ATTR = "data-dev-checkout-payment";
+
+/** The last write of the checkout-payment cookie. */
+function lastPaymentCookie(writes: readonly string[]): string | undefined {
+	return writes.filter((w) => w.startsWith(`${CHECKOUT_PAYMENT_SIM_COOKIE}=`)).at(-1);
+}
+
+Deno.test("checkoutPayment — the inert default is ok; every other option is a simulation the route reads", () => {
+	assertEquals(ctx.DEV_DEFAULTS.checkoutPayment, "ok");
+	assertEquals(ctx.DEV_CHECKOUT_PAYMENTS.map((o) => o.value), [
+		"ok",
+		"declined",
+		"authenticate",
+		"timeout",
+		"unapplied",
+		"price_changed",
+		"promo_exhausted",
+	]);
+	for (const { value } of ctx.DEV_CHECKOUT_PAYMENTS) {
+		assertEquals(parseCheckoutPaymentSim(value), value === "ok" ? null : value);
+	}
+});
+
+Deno.test("checkoutPayment — reflect writes the attribute and the cookie while it simulates, and deletes both", async () => {
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, checkoutPayment: "declined" });
+		assertEquals(root.attributes.get(PAYMENT_ATTR), "declined");
+		assertEquals(seam.readDevSeam()?.checkoutPayment, "declined");
+		assertEquals(
+			lastPaymentCookie(writes),
+			`${CHECKOUT_PAYMENT_SIM_COOKIE}=declined; path=/; samesite=lax`,
+		);
+
+		ctx.patchDevContext({ checkoutPayment: "promo_exhausted" });
+		assertEquals(
+			lastPaymentCookie(writes),
+			`${CHECKOUT_PAYMENT_SIM_COOKIE}=promo_exhausted; path=/; samesite=lax`,
+		);
+
+		// `ok` is the ABSENT attribute and no cookie, never the stamped word.
+		ctx.patchDevContext({ checkoutPayment: "ok" });
+		assertFalse(root.attributes.has(PAYMENT_ATTR));
+		assertEquals(seam.readDevSeam()?.checkoutPayment, "ok");
+		assertEquals(
+			lastPaymentCookie(writes),
+			`${CHECKOUT_PAYMENT_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`,
+		);
+	});
+});
+
+Deno.test("checkoutPayment — switching simulation off deletes the attribute and removes the cookie", async () => {
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, checkoutPayment: "timeout" });
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(PAYMENT_ATTR));
+		assertEquals(
+			lastPaymentCookie(writes),
+			`${CHECKOUT_PAYMENT_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`,
+		);
+	});
+});
+
+Deno.test("checkoutPayment — an unknown attribute or cookie value reads as no simulation", async () => {
+	await withDocument((root) => {
+		root.dataset.devPersona = "client";
+		root.dataset.devCheckoutPayment = "refund";
+		assertEquals(seam.readDevSeam()?.checkoutPayment, "ok");
+	});
+	assertEquals(parseCheckoutPaymentSim("refund"), null);
+	assertEquals(parseCheckoutPaymentSim(undefined), null);
+	assertEquals(parseCheckoutPaymentSim(" timeout "), "timeout");
 });
 // #endregion

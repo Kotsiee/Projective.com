@@ -18,7 +18,7 @@
  * Reading it grants no access; it only changes what the developer's own browser draws.
  */
 
-import type { AutoFundMode, FundingState } from "@projective/types/finance";
+import type { AutoFundMode, CheckoutPaymentSim, FundingState } from "@projective/types/finance";
 import type {
 	DiscoveryActivitySim,
 	DiscoveryViewerSim,
@@ -265,6 +265,16 @@ export type DevCheckoutGate =
 	| "no_approver"
 	| "pool_short"
 	| "kyb_required";
+
+/**
+ * What a checkout's payment answers when the buyer presses Pay (FINANCE_AUDIT CO29): `ok` the real
+ * answer; `declined` · `authenticate` · `timeout` · `unapplied` the processor's, on a card or express
+ * payment; `price_changed` · `promo_exhausted` the order door's PC409 refusals, on any route.
+ * SERVER-side: the switcher mirrors it into the `pj.dev.checkout-payment` cookie, which
+ * `POST /api/checkout/create` passes to `CheckoutBackendService.create` in development only, and the
+ * service answers with it in place of the money call once every real check has passed.
+ */
+export type DevCheckoutPayment = CheckoutPaymentSim;
 
 /**
  * The simulated spend-request queue on a business's Spend module (Decision #246): `empty` no requests,
@@ -565,6 +575,8 @@ export interface DevSeamState {
 	basketScenario?: DevBasketScenario;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
 	checkoutGate?: DevCheckoutGate;
+	/** The simulated payment outcome. Optional like `walletAurora`; absent reads as `ok`. */
+	checkoutPayment?: DevCheckoutPayment;
 	/** The simulated Spend request queue. Optional like `walletAurora`; absent reads as `auto`. */
 	spendRequests?: DevSpendRequests;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
@@ -780,6 +792,15 @@ const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
 	"pool_short",
 	"kyb_required",
 ];
+const CHECKOUT_PAYMENTS: readonly DevCheckoutPayment[] = [
+	"ok",
+	"declined",
+	"authenticate",
+	"timeout",
+	"unapplied",
+	"price_changed",
+	"promo_exhausted",
+];
 const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [
 	"auto",
 	"empty",
@@ -875,6 +896,8 @@ export function readDevSeam(): DevSeamState | null {
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
+		// Absent = `ok`, its inert value: `reflect()` omits the attribute while nothing is simulated.
+		checkoutPayment: coerce(ds.devCheckoutPayment, CHECKOUT_PAYMENTS, "ok"),
 		spendRequests: coerce(ds.devSpendRequests, SPEND_REQUEST_SIMS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),

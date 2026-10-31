@@ -14,6 +14,7 @@ import {
 	DEV_BUSINESS_PLAN_GATES,
 	DEV_CATALOGUE_ANALYTICS,
 	DEV_CHECKOUT_GATES,
+	DEV_CHECKOUT_PAYMENTS,
 	DEV_CLIENT_PIPELINES,
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_DISCOVERY_VIEWERS,
@@ -792,6 +793,22 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.checkoutGate}
 						disabled={!o.enabled}
 						onChange={(checkoutGate) => patchDevContext({ checkoutGate })}
+					/>
+				</Field>
+
+				{
+					/* What Pay's payment answers (FINANCE_AUDIT CO29). A declined card, a bank's challenge, a
+				    processor outage, a charge whose order is refused and the door's PC409s cannot be made to
+				    happen on cue, so the checkout service answers with them in place of the money call, once
+				    every real check has passed — server-side, through its cookie, in development only. */
+				}
+				<Field label="Checkout payment" hint="what Pay answers">
+					<Segment
+						name="Checkout payment"
+						options={DEV_CHECKOUT_PAYMENTS}
+						value={o.checkoutPayment}
+						disabled={!o.enabled}
+						onChange={(checkoutPayment) => patchDevContext({ checkoutPayment })}
 					/>
 				</Field>
 

@@ -291,6 +291,21 @@ export function resetAttempt(): void {
 	attemptKey.value = null;
 }
 
+/**
+ * Whether a charge's outcome ends the attempt, so the next Pay mints a new key ({@link resetAttempt}).
+ *
+ * Only a refusal does: `succeeded` / `pending` / `requires_action` are the states where a repeat would
+ * be real money, and a replay — the order this key already placed, or this key's own card payment
+ * handed back — always answers as one of them. And not every refusal: `payment_in_progress` says another
+ * live card payment already pays for these lines (FINANCE_AUDIT CO11), and a fresh key would start a
+ * second charge for them, so the attempt keeps its key until that payment ends. Any other refusal moved
+ * no money, and replaying it forever would leave "try again" unable to try anything.
+ */
+export function endsAttempt(result: CheckoutResult): boolean {
+	return result.status === "failed" &&
+		!result.blockers.some((blocker) => blocker.code === "payment_in_progress");
+}
+
 /*
  * `clientBlockers` / `payBlocked` were removed with the payment step's footer band.
  *

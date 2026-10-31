@@ -655,10 +655,12 @@ export type StalePayoutSweep = z.infer<typeof StalePayoutSweepSchema>;
  * What the card-payment recovery sweep did with one payment still unsettled after its grace period
  * (`POST /api/finance/cron/card-payments`, FINANCE_COMPLETENESS_AUDIT N1): `settled` (Stripe holds a
  * succeeded intent for it and `finance.settle_card_payment` credited it, or held it for
- * reconciliation), `unpaid` (no succeeded intent yet — asked again a grace period later), `retry`
+ * reconciliation), `unpaid` (no succeeded intent yet — asked again a grace period later), `canceled`
+ * (its intent still waited on the payer 24 hours after it was created, so the sweep cancelled it at
+ * Stripe; the `payment_intent.canceled` webhook then marks the payment, FINANCE_AUDIT CO15), `retry`
  * (Stripe or the ledger could not be reached; the next sweep tries again).
  */
-export const CardPaymentSweepOutcome = z.enum(["settled", "unpaid", "retry"]);
+export const CardPaymentSweepOutcome = z.enum(["settled", "unpaid", "canceled", "retry"]);
 export type CardPaymentSweepOutcome = z.infer<typeof CardPaymentSweepOutcome>;
 
 /** One card-payment sweep's answer: how many payments it leased, and what happened to each. */
@@ -666,6 +668,7 @@ export const CardPaymentSweepSchema = z.object({
 	claimed: z.number().int().min(0),
 	settled: z.number().int().min(0),
 	unpaid: z.number().int().min(0),
+	canceled: z.number().int().min(0),
 	retry: z.number().int().min(0),
 	results: z.array(z.object({
 		paymentId: uuid,

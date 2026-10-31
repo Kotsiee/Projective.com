@@ -34,8 +34,6 @@ const person: ProviderContext = {
 	ownerType: "user",
 	actingIsMember: true,
 	wallet: { availableMinor: 10_000, chargeMinor: 8_010, currency: "USD" },
-	totalMinor: 8_010,
-	currency: "USD",
 	savedCards: [card()],
 	kybStatus: null,
 	verificationTier: null,
@@ -120,21 +118,52 @@ Deno.test("lines priced in more than one currency leave no wallet to pay from", 
 	assertStringIncludes(mixed.wallet.reason ?? "", "mixes currencies");
 });
 
+/** A KYB-verified business on monthly invoicing with room left, paying a GBP 80.10 charge. */
+const business: ProviderContext = {
+	...person,
+	ownerType: "business",
+	kybStatus: "verified",
+	verificationTier: 3,
+	wallet: { availableMinor: 0, chargeMinor: 8_010, currency: "GBP" },
+	onAccount: { monthly: true, overdue: false, limitMinor: 2_500_000, headroomMinor: 10_000 },
+};
+
 Deno.test("a verified business pays by invoice only on monthly invoicing, with nothing overdue, inside its limit", () => {
-	const business: ProviderContext = {
-		...person,
-		ownerType: "business",
-		kybStatus: "verified",
-		verificationTier: 3,
-		onAccount: { monthly: true, overdue: false, headroomMinor: 10_000 },
-	};
 	assert(offerOf(business).invoice.available);
-	const notMonthly = offerOf({ ...business, onAccount: { monthly: false, overdue: false, headroomMinor: 10_000 } });
+	const standing = business.onAccount!;
+	const notMonthly = offerOf({ ...business, onAccount: { ...standing, monthly: false } });
 	assert(!notMonthly.invoice.available);
 	assert(notMonthly.invoice.reason?.includes("monthly invoicing"));
-	const overdue = offerOf({ ...business, onAccount: { monthly: true, overdue: true, headroomMinor: 10_000 } });
+	const overdue = offerOf({ ...business, onAccount: { ...standing, overdue: true } });
 	assert(overdue.invoice.reason?.includes("overdue"));
-	const short = offerOf({ ...business, onAccount: { monthly: true, overdue: false, headroomMinor: 8_000 } });
+	const short = offerOf({ ...business, onAccount: { ...standing, headroomMinor: 8_000 } });
 	assert(!short.invoice.available);
 	assert(short.invoice.reason?.includes("on-account limit"));
+});
+
+Deno.test("the on-account headroom is judged and quoted in the charge's currency, never the display one (N23)", () => {
+	// GBP 85 left under the limit covers a GBP 80.10 charge, whatever the checkout is read in.
+	assert(
+		offerOf({ ...business, onAccount: { ...business.onAccount!, headroomMinor: 8_500 } }).invoice
+			.available,
+	);
+	const short =
+		offerOf({ ...business, onAccount: { ...business.onAccount!, headroomMinor: 8_000 } }).invoice;
+	assertStringIncludes(short.reason ?? "", `${formatMoney(8_000, "GBP")} left`);
+});
+
+Deno.test("a currency with no on-account limit is one paying on account isn't offered in, said before any setting", () => {
+	const none = offerOf({
+		...business,
+		onAccount: { monthly: false, overdue: true, limitMinor: 0, headroomMinor: 0 },
+	}).invoice;
+	assert(!none.available);
+	assertStringIncludes(none.reason ?? "", "Paying on account isn't offered in GBP");
+	assert(!(none.reason ?? "").includes("0.00"), "a missing limit is never quoted as headroom");
+});
+
+Deno.test("lines in two currencies can't go on one invoice", () => {
+	const mixed = offerOf({ ...business, wallet: null }).invoice;
+	assert(!mixed.available);
+	assertStringIncludes(mixed.reason ?? "", "mixes currencies");
 });

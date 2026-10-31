@@ -22,6 +22,7 @@ import {
 	chosenProvider,
 	clearDraft,
 	currentCheckoutContext,
+	endsAttempt,
 	lastResult,
 	newAttemptKey,
 	persistDraft,
@@ -79,9 +80,10 @@ import type {
  * Three things were lifted from the single-page checkout unchanged because each is load-bearing and
  * each was arrived at by measurement rather than preference:
  *
- * 1. **`expectedTotalMinor` is a witness statement, not a calculation.** It is the total the buyer
- *    was SHOWN; the server recomputes and refuses on mismatch, which is what turns a price that moved
- *    between render and submit into a `price_changed` refusal instead of a silent overcharge.
+ * 1. **`expectedCharge` is a witness statement, not a calculation.** It is the charge the buyer was
+ *    SHOWN — the session's `charge`, in the listings' own currency; the server recomputes and refuses
+ *    on mismatch, which is what turns a price that moved between render and submit into a
+ *    `price_changed` refusal instead of a silent overcharge.
  * 2. **The attempt key is minted once per attempt and dropped when the purchase changes.** A retry
  *    replays an outcome; a genuinely different purchase must never replay the previous one's.
  * 3. **The outcome claims focus, and re-claims it.** The confirm dialog restores focus to its trigger
@@ -111,8 +113,8 @@ import type {
  *
  * **It computes no money.** Every figure is a server-computed `MoneyView`. The voluntary contribution
  * in particular is never added client-side: opting in re-reads the session with `contribute=1`, and
- * the whole totals block comes back recomputed, which is also what keeps `expectedTotalMinor`
- * agreeing with the server's own recompute at charge time.
+ * the whole totals block comes back recomputed, which is also what keeps `expectedCharge` agreeing
+ * with the server's own recompute at charge time.
  *
  * **It has no footer band.** The step runs in focus chrome (§D.6) and owns its actions here.
  */
@@ -402,9 +404,12 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			cardId: provider === "card" ? chosenCardId.value : null,
 			promoCode: current.promo?.valid ? current.promo.code : null,
 			currency: current.currency,
-			// The total the buyer was SHOWN. Never recomputed here — the server re-verifies it and
-			// refuses on mismatch, which is what makes a moved price a refusal instead of an overcharge.
-			expectedTotalMinor: current.totals.total.minor,
+			// The charge the buyer was SHOWN, in the listings' own currency. Never recomputed here — the
+			// server re-verifies it and refuses on mismatch, which is what makes a moved price a refusal
+			// instead of an overcharge.
+			expectedCharge: current.charge
+				? { minor: current.charge.minor, currency: current.charge.currency }
+				: null,
 			// The SERVER's own contribution figure, echoed back rather than re-derived. It is part of
 			// the total above, so a write that omitted it would make the server's recompute lower by
 			// exactly the contribution and refuse every attempt as `price_changed`.
@@ -440,11 +445,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 				);
 				if (typeof globalThis.location !== "undefined") globalThis.location.href = href;
 			}
-			// A FAILED charge moved no money, so there is nothing to protect against a duplicate of —
-			// and replaying a stored refusal forever would leave "try again" unable to try anything.
-			// `succeeded` / `pending` / `requires_action` keep the key, because those are the states
-			// where a repeat would be real money.
-			if (data.result.status === "failed") resetAttempt();
+			// A refusal ends the attempt unless a payment for these lines is still live (`endsAttempt`).
+			if (endsAttempt(data.result)) resetAttempt();
 		});
 		await reload();
 	}, [reload]);
@@ -490,7 +492,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			cardId: null,
 			promoCode: current.promo?.valid ? current.promo.code : null,
 			currency: current.currency,
-			expectedTotalMinor: current.totals.total.minor,
+			expectedCharge: current.charge
+				? { minor: current.charge.minor, currency: current.charge.currency }
+				: null,
 			processingContributionMinor: current.totals.processingContribution.minor,
 			billingContextId: current.buyer.contextId,
 			idempotencyKey: key,

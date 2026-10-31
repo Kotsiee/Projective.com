@@ -160,34 +160,115 @@ export interface SucceededIntent {
 	livemode: boolean;
 }
 
+/** A PaymentIntent as the recovery sweep decides on it: its status, and when Stripe created it. */
+export interface SweptIntent extends SucceededIntent {
+	status: string;
+	/** When Stripe created the intent, in epoch milliseconds. */
+	createdMs: number;
+}
+
+/** What the recovery sweep does with one payment: settle an intent, cancel one, or leave it. */
+export type CardSweepPlan =
+	| { kind: "settle"; intent: SweptIntent }
+	| { kind: "cancel"; intent: SweptIntent }
+	| { kind: "wait" };
+
 /**
- * The succeeded PaymentIntent for one inbound payment, or `null` while it has none — the recovery
- * sweep's question (FINANCE_COMPLETENESS_AUDIT N1). A bound payment is read by its intent id; an
- * unbound one (its bind was lost after Stripe charged it) is found by the `projective_payment_id`
- * every intent here carries ({@link paymentIntentParams}). Search is eventually consistent, which the
- * sweep's grace period absorbs. Read-only: it never creates or confirms anything.
+ * How long an intent may wait on its payer before the recovery sweep cancels it (FINANCE_AUDIT CO15) —
+ * the life of a checkout attempt, past which nobody is coming back to it.
  */
-export async function findSucceededIntent(
+export const STALE_INTENT_MS = 24 * 60 * 60 * 1000;
+
+/** The statuses in which an intent still waits on its payer: nothing has been charged or authorised. */
+const AWAITING_PAYER: ReadonlySet<string> = new Set([
+	"requires_payment_method",
+	"requires_confirmation",
+	"requires_action",
+]);
+
+/** The PaymentIntent fields the sweep reads. */
+interface IntentFields {
+	id: string;
+	status: string;
+	/** Unix seconds. */
+	created: number;
+	amount_received: number;
+	currency: string;
+	livemode: boolean;
+}
+
+function sweptOf(intent: IntentFields): SweptIntent {
+	return {
+		id: intent.id,
+		status: intent.status,
+		createdMs: intent.created * 1000,
+		amountReceived: intent.amount_received,
+		currency: intent.currency.toUpperCase(),
+		livemode: intent.livemode,
+	};
+}
+
+/** Whether an intent still waits on its payer, created more than {@link STALE_INTENT_MS} before `nowMs`. */
+function isStale(intent: SweptIntent, nowMs: number): boolean {
+	return AWAITING_PAYER.has(intent.status) && nowMs - intent.createdMs > STALE_INTENT_MS;
+}
+
+/**
+ * The PaymentIntents for one inbound payment — the recovery sweep's read (FINANCE_COMPLETENESS_AUDIT
+ * N1). A bound payment is read by its intent id; an unbound one (its bind was lost after Stripe
+ * charged it) is found by the `projective_payment_id` every intent here carries
+ * ({@link paymentIntentParams}). Search is eventually consistent, which the sweep's grace period
+ * absorbs. Read-only: it never creates, confirms or cancels anything.
+ */
+export async function findPaymentIntents(
 	stripe: Stripe,
 	payment: { paymentId: string; providerRef: string | null },
-): Promise<SucceededIntent | null> {
+): Promise<SweptIntent[]> {
 	const candidates = payment.providerRef
 		? [await stripe.paymentIntents.retrieve(payment.providerRef)]
 		: (await stripe.paymentIntents.search({
 			query: `metadata['projective_payment_id']:'${payment.paymentId}'`,
 			limit: 10,
 		})).data;
-	const intent = candidates.find((pi) =>
-		pi.status === "succeeded" && pi.metadata?.projective_payment_id === payment.paymentId
-	);
-	return intent
-		? {
-			id: intent.id,
-			amountReceived: intent.amount_received,
-			currency: intent.currency.toUpperCase(),
-			livemode: intent.livemode,
-		}
-		: null;
+	return candidates
+		.filter((pi) => pi.metadata?.projective_payment_id === payment.paymentId)
+		.map(sweptOf);
+}
+
+/**
+ * The recovery sweep's decision for one payment's intents — pure. A succeeded intent is settled. Else
+ * one still waiting on its payer 24 hours after Stripe created it is canceled: an attempt abandoned at
+ * the card step, which would otherwise keep its basket lines from a second tab's payment
+ * (`attach_checkout_order`'s `payment_in_progress`) until its 30-day lease ran out (FINANCE_AUDIT CO15).
+ * Anything else — processing, younger, already canceled — waits for the next sweep.
+ */
+export function planCardSweep(intents: readonly SweptIntent[], nowMs: number): CardSweepPlan {
+	const succeeded = intents.find((intent) => intent.status === "succeeded");
+	if (succeeded) return { kind: "settle", intent: succeeded };
+	const stale = intents.find((intent) => isStale(intent, nowMs));
+	return stale ? { kind: "cancel", intent: stale } : { kind: "wait" };
+}
+
+/**
+ * Cancel an intent the sweep found stale. It is re-read first, so one that moved since — the payer
+ * came back, the bank answered — is left alone; and canceled under an idempotency key derived from
+ * the intent itself, so two sweeps that both reach it cancel it once. Stripe's
+ * `payment_intent.canceled` webhook then marks the payment: this writes nothing to the ledger.
+ * Answers with the status the intent was left in.
+ */
+export async function cancelStaleIntent(
+	stripe: Stripe,
+	intentId: string,
+	nowMs: number,
+): Promise<{ canceled: boolean; status: string }> {
+	const fresh = await stripe.paymentIntents.retrieve(intentId);
+	if (!isStale(sweptOf(fresh), nowMs)) return { canceled: false, status: fresh.status };
+	const canceled = await stripe.paymentIntents.cancel(intentId, {
+		cancellation_reason: "abandoned",
+	}, {
+		idempotencyKey: stripeIdempotencyKey("cancel_stale_intent", intentId),
+	});
+	return { canceled: canceled.status === "canceled", status: canceled.status };
 }
 // #endregion
 

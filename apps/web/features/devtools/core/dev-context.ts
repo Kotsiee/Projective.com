@@ -30,6 +30,7 @@ import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
 import {
+	CHECKOUT_PAYMENT_SIM_COOKIE,
 	OPERATOR_DESK_OVERRIDE_COOKIE,
 	PAYOUT_OVERRIDE_COOKIE,
 	PLAN_GATES_OVERRIDE_COOKIE,
@@ -47,6 +48,7 @@ import {
 	type DevBusinessPlanGates,
 	type DevCatalogueAnalytics,
 	type DevCheckoutGate,
+	type DevCheckoutPayment,
 	type DevClientPipeline,
 	type DevDiscoveryActivity,
 	type DevDiscoveryViewer,
@@ -117,6 +119,7 @@ export type {
 	DevBusinessPlanGates,
 	DevCatalogueAnalytics,
 	DevCheckoutGate,
+	DevCheckoutPayment,
 	DevClientPipeline,
 	DevDiscoveryActivity,
 	DevDiscoveryViewer,
@@ -396,6 +399,15 @@ export interface DevOverrides {
 	 */
 	checkoutGate: DevCheckoutGate;
 	/**
+	 * What Pay's payment answers (FINANCE_AUDIT CO29): the real answer, or — after every real check has
+	 * passed — a declined card, the bank's 3-D Secure step, the processor unreachable, a card charged
+	 * whose order was refused (the money left in the wallet), or the order door's `price_changed` /
+	 * `promo_exhausted`. Its own axis because none of these can be made to happen on cue. Server-side,
+	 * through the `pj.dev.checkout-payment` cookie `POST /api/checkout/create` reads in development
+	 * only; the processor's answers replace a card or express charge, the door's any route's.
+	 */
+	checkoutPayment: DevCheckoutPayment;
+	/**
 	 * A business Spend module's request queue (Decision #246): none, two waiting on the viewer, the
 	 * viewer's own (Withdraw), the decided history in every terminal state (withdrawn included), or the
 	 * viewer as an approver of a business still in KYB. Its own axis because each takes another member's
@@ -543,6 +555,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	notifications: "auto",
 	basketScenario: "auto",
 	checkoutGate: "auto",
+	checkoutPayment: "ok",
 	spendRequests: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
@@ -886,6 +899,20 @@ export const DEV_CHECKOUT_GATES: ReadonlyArray<DevOption<DevCheckoutGate>> = [
 	{ value: "kyb_required", label: "KYB" },
 ];
 
+/**
+ * What Pay's payment answers (FINANCE_AUDIT CO29). `As it happens` makes the real call; the rest answer
+ * in its place once every real check has passed — the card ones on a card or express payment only.
+ */
+export const DEV_CHECKOUT_PAYMENTS: ReadonlyArray<DevOption<DevCheckoutPayment>> = [
+	{ value: "ok", label: "As it happens" },
+	{ value: "declined", label: "Card declined" },
+	{ value: "authenticate", label: "Bank asks 3-D Secure" },
+	{ value: "timeout", label: "Processor unreachable" },
+	{ value: "unapplied", label: "Charged, order refused" },
+	{ value: "price_changed", label: "Price changed" },
+	{ value: "promo_exhausted", label: "Promo used up" },
+];
+
 /** Business Spend request queues (Decision #246). */
 export const DEV_SPEND_REQUESTS: ReadonlyArray<DevOption<DevSpendRequests>> = [
 	{ value: "auto", label: "Auto" },
@@ -1139,6 +1166,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devBasketScenario;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
 		else delete root.dataset.devCheckoutGate;
+		if (next.checkoutPayment !== "ok") root.dataset.devCheckoutPayment = next.checkoutPayment;
+		else delete root.dataset.devCheckoutPayment;
 		if (next.spendRequests !== "auto") root.dataset.devSpendRequests = next.spendRequests;
 		else delete root.dataset.devSpendRequests;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
@@ -1223,6 +1252,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
+		delete root.dataset.devCheckoutPayment;
 		delete root.dataset.devSpendRequests;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
@@ -1253,7 +1283,19 @@ function reflect(next: DevOverrides): void {
 	writePlanGatesCookie(next);
 	writeOperatorModeCookie(next);
 	writeOperatorDeskCookie(next);
+	writeCheckoutPaymentCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+/**
+ * Mirror the checkout-payment axis into the `pj.dev.checkout-payment` cookie — the only channel that
+ * reaches `CheckoutBackendService.create`, through its route in development only. Written while
+ * simulation is on and the axis is not `ok`; removed otherwise.
+ */
+function writeCheckoutPaymentCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.checkoutPayment !== "ok"
+		? `${CHECKOUT_PAYMENT_SIM_COOKIE}=${next.checkoutPayment}; path=/; samesite=lax`
+		: `${CHECKOUT_PAYMENT_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /**

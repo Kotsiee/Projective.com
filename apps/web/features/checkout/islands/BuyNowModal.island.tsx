@@ -232,14 +232,13 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 			cardId: provider === "card" ? chosenCardId.value : null,
 			promoCode: view.promo?.valid ? view.promo.code : null,
 			currency: view.currency,
-			// The total the buyer was SHOWN. A witness statement, not a computation — the server
-			// recomputes it and refuses on mismatch.
-			expectedTotalMinor: view.totals.total.minor,
+			// The charge the buyer was SHOWN, in the listings' own currency. A witness statement, not a
+			// computation — the server recomputes it and refuses on mismatch.
+			expectedCharge: view.charge
+				? { minor: view.charge.minor, currency: view.charge.currency }
+				: null,
 			// Buy Now never offers the voluntary gateway contribution — there is no control here to
-			// accept one with — so it is explicitly nothing. It is sent rather than omitted because the
-			// server recomputes the total from what the write carries, and a contribution the client
-			// left out of the write but had included in `expectedTotalMinor` refuses every attempt as
-			// `price_changed`.
+			// accept one with — so it is explicitly nothing.
 			processingContributionMinor: 0,
 			idempotencyKey: newAttemptKey(),
 		}, scopeOf(base, target));

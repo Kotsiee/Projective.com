@@ -1,6 +1,10 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import { CreateCheckoutSchema } from "@projective/types/finance";
+import {
+	CHECKOUT_PAYMENT_SIM_COOKIE,
+	CreateCheckoutSchema,
+	parseCheckoutPaymentSim,
+} from "@projective/types/finance";
 import {
 	invalidPayload,
 	malformedBody,
@@ -10,18 +14,25 @@ import { CheckoutBackendService } from "@server/services/finance/CheckoutBackend
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { refuseIfRestricted } from "@web/utils/age-gate.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
+import { readCookies } from "@web/utils/auth-cookies.ts";
 
 /**
  * `POST /api/checkout/create` — charge a checkout ({@link CreateCheckoutSchema}).
  *
  * The payload names the exact lines being paid for (so a basket changed in another tab cannot widen the
- * charge), the provider, the card for a card payment, the total the buyer was SHOWN, and a
+ * charge), the provider, the card for a card payment, the charge the buyer was SHOWN, and a
  * client-minted `idempotencyKey`.
  *
  * Two protections live in the fat service, not here: the attempt is **idempotent** on that key, so a
  * double-click or a retry after a dropped response replays the stored outcome instead of charging
- * twice; and `expectedTotalMinor` is **re-verified** against a freshly computed total, refusing on
- * mismatch — a client-supplied total the server accepts blindly is a price-tampering hole.
+ * twice; and `expectedCharge` is **re-verified** against a freshly computed charge in the listings' own
+ * currency, refusing on mismatch — a client-supplied figure the server accepts blindly is a
+ * price-tampering hole.
+ *
+ * In development only (`DENO_ENV=development`), the Dev Context Switcher's `checkoutPayment` cookie is
+ * passed through, so the service can answer with a simulated payment outcome; any other environment
+ * never reads it.
  *
  * The route answers `200` with a {@link CheckoutResult}: a refusal is an OUTCOME the surface renders
  * (status · message · blockers), not a transport error. Thin: parse + Zod-validate (mapping issues to
@@ -37,11 +48,15 @@ export const handler = define.handlers({
 		if (raw === null || typeof raw !== "object") return malformedBody();
 		const parsed = CreateCheckoutSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
+		const payment = isDevelopmentEnv()
+			? parseCheckoutPaymentSim(readCookies(ctx.req)[CHECKOUT_PAYMENT_SIM_COOKIE])
+			: null;
 		return toCheckoutResponse(
 			await CheckoutBackendService.create(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
 				readActor(ctx),
+				{ payment },
 			),
 		);
 	},
