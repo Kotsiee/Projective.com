@@ -5,6 +5,7 @@ import {
 	EnterpriseJoinSchema,
 	IndividualJoinSchema,
 	JoinSchema,
+	OwnerCompletionSchema,
 } from "./join.ts";
 
 /** The date `years` years (and `days` days) before today in `zone`, as an ISO date. */
@@ -80,6 +81,40 @@ Deno.test("join: an enterprise owner must be 18 or over", () => {
 	assertEquals(ownerDobIssue(isoYearsAgo(18, 1)), ENTERPRISE_OWNER_MINOR_REFUSAL);
 	assertEquals(ownerDobIssue(isoYearsAgo(15)), ENTERPRISE_OWNER_MINOR_REFUSAL);
 	assertEquals(ownerDobIssue(isoYearsAgo(18)), undefined);
+});
+
+const owner = { type: "owner", firstName: "Grace", lastName: "Hopper", timeZone: "UTC" };
+
+function completionIssue(value: Record<string, unknown>, field: string): string | undefined {
+	const parsed = OwnerCompletionSchema.safeParse(value);
+	return parsed.success ? undefined : parsed.error.issues.find((i) => i.path[0] === field)?.message;
+}
+
+Deno.test("join: a profile-less owner's completion needs a name and a real date of birth", () => {
+	const parsed = OwnerCompletionSchema.parse({ ...owner, dob: isoYearsAgo(40) });
+	assertEquals(parsed.firstName, "Grace");
+	assertEquals(parsed.redirectTo, "/home");
+	assertEquals(
+		completionIssue({ ...owner, dob: "2001-02-30" }, "dob"),
+		"Enter a real date of birth.",
+	);
+	assert(completionIssue({ ...owner, dob: "" }, "dob") !== undefined);
+	assert(
+		completionIssue({ ...owner, firstName: " ", dob: isoYearsAgo(40) }, "firstName") !== undefined,
+	);
+});
+
+Deno.test("join: an owner's completion leaves the age rule to the service", () => {
+	// A refused owner keeps the account (it holds the enterprise) and is flagged for a person to
+	// follow up, so the refusal belongs to `completeOwnerProfile`, not to the schema.
+	assert(OwnerCompletionSchema.safeParse({ ...owner, dob: isoYearsAgo(15) }).success);
+	assert(OwnerCompletionSchema.safeParse({ ...owner, dob: isoYearsAgo(11) }).success);
+});
+
+Deno.test("join: the one endpoint schema routes an owner's completion by its type", () => {
+	const parsed = JoinSchema.parse({ ...owner, dob: isoYearsAgo(40), email: "x@acme.example" });
+	assertEquals(parsed.type, "owner");
+	assert(!("email" in parsed), "the account's email is GoTrue's, never the body's");
 });
 
 Deno.test("join: an unknown time zone is dropped, so the age counts in UTC", () => {

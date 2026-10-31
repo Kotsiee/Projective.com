@@ -1,7 +1,9 @@
 import { assertEquals } from "@std/assert";
 import {
+	isOwnerCompletion,
 	joinCompletionTarget,
 	oauthSimulationTarget,
+	ownerCompletionTarget,
 	resolveAuthScreenBounce,
 	resolveOnboardingBounce,
 } from "./auth-routing.ts";
@@ -113,7 +115,7 @@ Deno.test("an ABSENT onboarding claim lets the page render", () => {
 
 Deno.test("an identity /join cannot complete is left alone rather than sent to a dead end", () => {
 	// No pre-fill means no email, and /join renders that field read-only for an already-authenticated
-	// account — so the form could not be submitted. An enterprise owner is exactly this shape.
+	// account — so the OAuth form could not be submitted; and with no owner objective there is no other.
 	assertEquals(resolveOnboardingBounce({ onboarded: false }, null, at("/projects")), null);
 });
 Deno.test("a CONFIRMED absent profile is sent to /join with its pre-fill and its captured path", () => {
@@ -166,5 +168,68 @@ Deno.test("a missing pre-fill still produces a usable /join address", () => {
 	assertEquals(url.searchParams.get("firstName"), null);
 	assertEquals(url.searchParams.get("avatar"), null);
 	assertEquals(url.searchParams.get("redirectTo"), "/projects");
+});
+// #endregion
+
+// #region The profile-less enterprise owner (Decision #336, ruling I2)
+Deno.test("a profile-less owner token is sent to /join?complete=owner with its captured path", () => {
+	const url = new URL(
+		resolveOnboardingBounce({ onboarded: false }, null, at("/projects?create=1"), "enterprise")!,
+		"https://projective.test",
+	);
+	assertEquals(url.pathname, "/join");
+	assertEquals(url.searchParams.get("complete"), "owner");
+	assertEquals(url.searchParams.get("redirectTo"), "/projects?create=1");
+	assertEquals(url.searchParams.get("oauth"), null, "GoTrue holds the email: no pre-fill");
+});
+
+Deno.test("an onboarded owner, or a token with no onboarding claim, keeps today's behaviour", () => {
+	assertEquals(
+		resolveOnboardingBounce({ onboarded: true }, null, at("/projects"), "enterprise"),
+		null,
+	);
+	assertEquals(resolveOnboardingBounce({}, null, at("/projects"), "enterprise"), null);
+	assertEquals(resolveOnboardingBounce(undefined, null, at("/projects"), "enterprise"), null);
+	assertEquals(resolveOnboardingBounce(null, null, at("/projects"), "enterprise"), null);
+});
+
+Deno.test("an OAuth pre-fill keeps today's /join?oauth completion, whatever the objective says", () => {
+	const url = new URL(
+		resolveOnboardingBounce({ onboarded: false }, ADA, at("/wallet"), "enterprise")!,
+		"https://projective.test",
+	);
+	assertEquals(url.searchParams.get("oauth"), "google");
+	assertEquals(url.searchParams.get("complete"), null);
+});
+
+Deno.test("a profile-less account with no pre-fill and no owner objective is still left alone", () => {
+	for (const objective of [undefined, null, "client", "freelancer", "Enterprise", 1]) {
+		assertEquals(
+			resolveOnboardingBounce({ onboarded: false }, null, at("/projects"), objective),
+			null,
+			String(objective),
+		);
+	}
+});
+
+Deno.test("the owner destination is one the auth-screen guard lets render", () => {
+	// The same composition as the OAuth case: without the exemption, the guard would send the signed-in
+	// owner back to the captured path, and this bounce would send them here again.
+	const target = resolveOnboardingBounce({ onboarded: false }, null, at("/wallet"), "enterprise")!;
+	assertEquals(resolveAuthScreenBounce(at(target), true), null);
+	assertEquals(resolveAuthScreenBounce(at("/join?complete=yes"), true), DEFAULT_REDIRECT);
+});
+
+Deno.test("the owner builder refuses a hostile or looping return path", () => {
+	for (const hostile of ["//evil.example", "https://evil.example/x", "/login", "/join"]) {
+		const url = new URL(ownerCompletionTarget(hostile), "https://projective.test");
+		assertEquals(url.searchParams.get("redirectTo"), DEFAULT_REDIRECT, hostile);
+	}
+});
+
+Deno.test("only complete=owner marks the owner step", () => {
+	assertEquals(isOwnerCompletion(new URLSearchParams("complete=owner&redirectTo=/home")), true);
+	assertEquals(isOwnerCompletion(new URLSearchParams("complete=Owner")), false);
+	assertEquals(isOwnerCompletion(new URLSearchParams("oauth=google")), false);
 });
 // #endregion

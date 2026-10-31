@@ -21,6 +21,7 @@ export default function JoinExperience(props: JoinFormProps) {
 				accountType: props.accountType,
 				intent: props.intent,
 				prefill: props.prefill,
+				complete: props.complete,
 			}),
 		[],
 	);

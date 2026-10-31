@@ -25,10 +25,12 @@ import {
 	verificationPollLimiter,
 } from "./verification-status.ts";
 import { refreshFailure, SESSION_EXPIRED_MESSAGE } from "./refresh-outcome.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import type { CreateEnterprise, EnterpriseOwner } from "@projective/types/org";
 import { handleAlternatives, localHandleRefusal } from "@projective/types/workspace";
 import {
 	AGE_SQLSTATE,
+	type AgeBracket,
 	bracketFromDob,
 	ENTERPRISE_OWNER_MINOR_REFUSAL,
 	isJoinable,
@@ -75,12 +77,17 @@ export const JOIN_REFUSED =
 /** The refusal when the enterprise record itself could not be written (the owner account is undone). */
 export const ENTERPRISE_REFUSED =
 	"We couldn't register that business. Check its handle and details, then try again.";
-/** The refusal when an OAuth identity could not finish onboarding. */
-const ONBOARDING_REFUSED =
+/** The refusal when an OAuth identity or a profile-less owner could not finish onboarding. */
+export const ONBOARDING_REFUSED =
 	"We couldn't finish setting up your account. Check your details and try again.";
 /** The refusal when provisioning failed on our side. */
 const JOIN_UNAVAILABLE =
 	"We couldn't finish creating your account just now. Please try again in a moment.";
+/** `public.complete_onboarding`'s refusal when the caller already has a profile (also `23505`). */
+const ALREADY_ONBOARDED = /already completed onboarding/i;
+/** The `ops.log_entries` line a refused owner completion leaves for a person to follow up. */
+const MINOR_OWNER_LOG =
+	"An enterprise owner without a profile gave a date of birth under 18. The account holds an enterprise, so it was kept without a profile; follow up with the owner.";
 
 /** Whether a sign-in identifier is an email address (carries `@`) rather than a username. */
 function isEmailIdentifier(identifier: string): boolean {
@@ -211,6 +218,25 @@ export interface ProvisionEnterpriseInput {
 
 /** Fields the fat service needs to provision an individual or enterprise account. */
 export type ProvisionAccountInput = ProvisionIndividualInput | ProvisionEnterpriseInput;
+
+/** A profile-less enterprise owner finishing step 1.6 at their next sign-in (`/join?complete=owner`). */
+export interface CompleteOwnerProfileInput {
+	/** The caller's access token: the profile is written under their JWT, never the service role. */
+	accessToken?: string;
+	/** The caller's id from the verified session. It only names the account a refusal is flagged for. */
+	userId?: string;
+	firstName: string;
+	lastName: string;
+	dob: string;
+	/** The browser's IANA zone: the profile's `timezone`, and the zone its birthdays are counted in. */
+	timeZone?: string;
+	/** A supported browser locale for the owner's preferences, unless some are seeded already. */
+	locale?: string;
+	/** An offerable display currency for the owner's preferences, unless some are seeded already. */
+	displayCurrency?: string;
+	/** Server-sanitised return path. */
+	redirectTo: string;
+}
 
 /** Credentials for a password sign-in. */
 export interface AuthenticateInput {
@@ -359,13 +385,18 @@ export class AuthBackendService {
 	): Promise<ServiceResult<AuthPayload>> {
 		let discarded = false;
 		if (input.oauth && input.accessToken && isAuthBackendLive()) {
-			const { data, error } = await getUserClient(input.accessToken).rpc("discard_underage_signup", {
-				p_dob: input.dob,
-				p_zone: input.timeZone ?? null,
-			});
+			const { data, error } = await getUserClient(input.accessToken).rpc(
+				"discard_underage_signup",
+				{
+					p_dob: input.dob,
+					p_zone: input.timeZone ?? null,
+				},
+			);
 			if (error) {
 				console.error("[auth:discard-underage]", error.code);
-				return fail(503, { message: "We couldn't finish this just now. Please try again in a moment." });
+				return fail(503, {
+					message: "We couldn't finish this just now. Please try again in a moment.",
+				});
 			}
 			discarded = data === true;
 		}
@@ -476,6 +507,8 @@ export class AuthBackendService {
 					console.error("[auth:complete-onboarding]", error.code);
 					return fail(422, { message: ONBOARDING_REFUSED });
 				}
+				// The new profile is unlisted, so `org.profiles_index` and every isolate's catalogue hold it.
+				invalidateCatalog();
 				return ok({ requiresVerification: false, redirectTo: input.redirectTo });
 			}
 
@@ -490,6 +523,8 @@ export class AuthBackendService {
 				console.error("[auth:join]", error?.code ?? error?.status ?? "no-user");
 				return fail(422, { message: JOIN_REFUSED });
 			}
+			// `public.handle_new_user` wrote an unlisted profile with the identity: the catalogue holds it.
+			invalidateCatalog();
 			return ok({
 				requiresVerification: true,
 				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
@@ -514,6 +549,130 @@ export class AuthBackendService {
 			if (error) console.error("[auth:orphan-cleanup]", error.code ?? error.status);
 		} catch (e) {
 			console.error("[auth:orphan-cleanup]", e instanceof Error ? e.name : "error");
+		}
+	}
+
+	/**
+	 * Give a profile-less enterprise owner their profile (Decision #336, ruling I2). An owner created
+	 * before step 1.6 asked for a person holds an account and an enterprise but no `org.users_public`
+	 * row, so `org.fn_is_minor` fails closed for them. The dashboard guard sends them to
+	 * `/join?complete=owner` at their next sign-in, and that step posts here. Everything runs under the
+	 * owner's JWT, never the service role.
+	 *
+	 * - **Under 18:** the sign-up refusals (under 13 also locks the browser session). The account is
+	 *   never deleted, because it holds the enterprise: it stays profile-less, which fails closed, and
+	 *   one `ops.log_entries` row names it so a person follows up ({@link flagMinorOwner}).
+	 * - **18 or over:** the first derived `@handle` ({@link ownerHandleCandidates}) that
+	 *   `org.check_handle` reports free, across the one handle namespace, goes to
+	 *   `public.complete_onboarding` as a private client profile, as `create_enterprise` writes a new
+	 *   owner's. A handle claimed between the check and the write moves on to the next, and a profile
+	 *   that already exists (a second tab) is a success. A private profile is outside
+	 *   `org.profiles_index`, so the catalogue is not invalidated.
+	 *
+	 * The token still says `onboarded: false` afterwards. The dashboard guard renews it before acting on
+	 * that, so the bounce ends (Decision #87 (C)). Stub: the age refusals hold; success touches nothing.
+	 */
+	static async completeOwnerProfile(
+		input: CompleteOwnerProfileInput,
+	): Promise<ServiceResult<AuthPayload>> {
+		const bracket = bracketFromDob(input.dob, input.timeZone);
+		if (bracket === "unknown") return fail(422, { errors: { dob: "Enter a real date of birth." } });
+		if (!isAuthBackendLive()) {
+			return bracket === "full"
+				? ok({ requiresVerification: false, redirectTo: input.redirectTo })
+				: AuthBackendService.refuseMinorOwner(bracket);
+		}
+		if (!input.accessToken) return fail(401, { message: SESSION_EXPIRED_MESSAGE });
+		if (bracket !== "full") {
+			await AuthBackendService.flagMinorOwner(input.accessToken, input.userId, bracket);
+			return AuthBackendService.refuseMinorOwner(bracket);
+		}
+
+		const user = getUserClient(input.accessToken);
+		const meta = {
+			first_name: input.firstName,
+			last_name: input.lastName,
+			dob: input.dob,
+			timezone: input.timeZone ?? null,
+			objective: "client",
+			visibility: "private",
+			locale: input.locale ?? null,
+			display_currency: input.displayCurrency ?? null,
+		};
+		try {
+			for (const username of ownerHandleCandidates(input.firstName, input.lastName)) {
+				const { data: probe, error: probeError } = await user.schema("org").rpc("check_handle", {
+					p_handle: username,
+				});
+				if (probeError) {
+					console.error("[auth:owner-completion]", probeError.code);
+					return fail(422, { message: ONBOARDING_REFUSED });
+				}
+				if ((probe as { available?: unknown } | null)?.available !== true) continue;
+
+				const { error } = await user.rpc("complete_onboarding", {
+					p_payload: { ...meta, username },
+				});
+				if (!error || (error.code === "23505" && ALREADY_ONBOARDED.test(error.message))) {
+					return ok({ requiresVerification: false, redirectTo: input.redirectTo });
+				}
+				if (error.code !== "23505") {
+					console.error("[auth:owner-completion]", error.code);
+					return fail(422, { message: ONBOARDING_REFUSED });
+				}
+			}
+		} catch (e) {
+			console.error("[auth:owner-completion]", e instanceof Error ? e.name : "error");
+			return fail(500, { message: JOIN_UNAVAILABLE });
+		}
+		return fail(422, { message: ONBOARDING_REFUSED });
+	}
+
+	/**
+	 * The sign-up refusals for an owner under 18: under 13 carries {@link UNDER_MINIMUM_REASON}, so the
+	 * route locks the browser session, and nothing is discarded (the account holds the enterprise).
+	 */
+	private static refuseMinorOwner(bracket: AgeBracket): ServiceResult<AuthPayload> {
+		return bracket === "blocked"
+			? fail(422, {
+				errors: { dob: UNDER_MINIMUM_REFUSAL },
+				details: { reason: UNDER_MINIMUM_REASON, discarded: false },
+			})
+			: fail(422, { errors: { dob: ENTERPRISE_OWNER_MINOR_REFUSAL } });
+	}
+
+	/**
+	 * Leave one `ops.log_entries` row for a person to follow up: a profile-less owner gave a date of
+	 * birth under 18, and their account can neither be deleted (it holds the enterprise) nor act (it
+	 * has no profile). Written as the owner. `user_id` stays NULL because it keys onto a profile they do
+	 * not have, so the account's id rides in `data`; the date of birth is never written. A failed write
+	 * goes to the console instead and is never surfaced: the refusal stands either way.
+	 */
+	private static async flagMinorOwner(
+		accessToken: string,
+		userId: string | undefined,
+		bracket: AgeBracket,
+	): Promise<void> {
+		const data = { owner: userId ?? null, bracket };
+		try {
+			const { error } = await getUserClient(accessToken).schema("ops").from("log_entries")
+				.insert({
+					client_id: crypto.randomUUID(),
+					level: "warn",
+					message: MINOR_OWNER_LOG,
+					occurred_at: new Date().toISOString(),
+					source: "server",
+					scope: "auth.owner-completion",
+					data,
+					user_id: null,
+				});
+			if (error) console.error("[auth:owner-completion] flag not stored", error.code, data);
+		} catch (e) {
+			console.error(
+				"[auth:owner-completion] flag not stored",
+				e instanceof Error ? e.name : e,
+				data,
+			);
 		}
 	}
 

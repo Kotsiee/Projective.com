@@ -3283,11 +3283,14 @@ Enterprise: scale — employees + industry + **website / corporate domain**)_ ·
 interests _(Individual: optional, max 5, **shown only when Freelancer**; Enterprise: structure —
 address + departments)_ · **1.5** identity _(Individual: first/last/username; Enterprise:
 legal/brand name, handle, CRN)_ · **1.6** credentials _(Individual: email, DoB, password;
-Enterprise: corporate email, phone, the owning admin's DoB, admin password)_. Every natural person,
-an enterprise's owner included, has a profile with a date of birth, and existing owners are
-back-filled (Decision #336, ruling I2). **Not built yet:** until then an owner with no profile is
-refused at enterprise sign-up, because the age check fails closed. **Password setup is skipped
-entirely for OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** —
+Enterprise: the owning admin's first and last name and DoB, corporate email, phone, admin
+password)_. Every natural person, an enterprise's owner included, has a profile with a date of birth
+(Decision #336, ruling I2). An owner whose account predates this step has none, so at their next
+sign-in they are asked for their name and date of birth before they can use the app, and their
+profile is created private, as a new owner's is. An owner who gives a date of birth under 18 there
+is refused as at sign-up. Their account holds the enterprise, so it is never deleted: it stays
+without a profile, so it cannot act, and a person is flagged to follow up. **Password setup is
+skipped entirely for OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** —
 authenticating mid-flow pre-fills their identity and returns them to the flow rather than bypassing
 it.
 

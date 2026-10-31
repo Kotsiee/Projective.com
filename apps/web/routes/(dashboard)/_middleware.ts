@@ -35,8 +35,9 @@ import { mayUseTeamsRequest } from "@web/utils/operator-mode.ts";
  * routed them to `/join` once and nothing routed them back, so abandoning that form left an account
  * that reaches every surface in here and can finish no write on any of them: projects, tickets and
  * catalogue rows all key onto `org.users_public(user_id)`, so a create dies on a foreign key that
- * surfaces as a 500 against whichever field the writer happened to name. See
- * {@link resolveOnboardingBounce} for which accounts are sent back and which are deliberately not.
+ * surfaces as a 500 against whichever field the writer happened to name. An enterprise owner created
+ * before step 1.6 asked for a person is profile-less too, and is sent to `/join?complete=owner`
+ * (Decision #336, ruling I2). See {@link resolveOnboardingBounce} for which accounts are sent back.
  *
  * **3. May this account see the page?** A restricted (13–17) account is sent home from every
  * surface {@link isRestrictedPath} names. Then `/teams*` is freelancer-only (Decision #228 (A)): a
@@ -98,10 +99,12 @@ export default define.middleware(async (ctx) => {
 		}
 	}
 
+	const claims = decodeAccessClaims(accessToken);
 	const onboarding = resolveOnboardingBounce(
 		ctx.state.userContext,
-		oauthPrefillFromClaims(decodeAccessClaims(accessToken)),
+		oauthPrefillFromClaims(claims),
 		ctx.url,
+		claims?.user_metadata?.objective,
 	);
 	if (onboarding) {
 		const res = new Response(null, {
