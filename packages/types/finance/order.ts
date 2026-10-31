@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { currency, minorUnitsNonNeg, timestamp } from "./common.ts";
+import { basisPoints, currency, minorUnitsNonNeg, timestamp } from "./common.ts";
 import { FxSnapshotSchema } from "./ledger.ts";
 import { PurchasableItemKind, PurchaseOwnerType, reference } from "./basket.ts";
 import { MoneyViewSchema } from "./wallet.ts";
@@ -118,6 +118,21 @@ export const OrderLineSchema = z.object({
 	quantity: z.number().int().min(1).max(999),
 	/** What this line was charged, server-computed. */
 	lineTotal: MoneyViewSchema,
+	/**
+	 * This line's share of the order's basket-wide promo (`finance.order_lines.promo_discount_minor`;
+	 * the shares sum to the order's promo discount). What the buyer paid for the line is
+	 * `lineTotal − promoDiscount`, the base its fee was charged on.
+	 */
+	promoDiscount: MoneyViewSchema,
+	/**
+	 * The fee taken on this line at purchase, as recorded (`finance.order_lines.platform_fee_minor`): a
+	 * product's SELLER commission, deducted from the seller's credit and never added to the buyer's total
+	 * (Decision #337, ruling M1). Zero on an escrow line, whose fee is the payer's rate, charged when its
+	 * escrow is released. The order's `totals.platformFee` is the sum of these.
+	 */
+	platformFee: MoneyViewSchema,
+	/** The rate {@link platformFee} was charged at, in basis points; `null` on an escrow line. */
+	platformFeeBp: basisPoints.nullable(),
 	/** The resolved fulfilment route. Drives which action the confirmation row renders. */
 	fulfilment: FulfilmentKind,
 	/** A display-ready sentence for a `pending` line ("Starts when Stage 2 is funded"). */
@@ -327,6 +342,45 @@ export const OrderPageSchema = z.object({
 	})).max(20),
 });
 export type OrderPage = z.infer<typeof OrderPageSchema>;
+// #endregion
+
+// #region Seller commission
+/**
+ * One currency of a seller's product sales over the last year, as `finance.get_seller_commission` sums
+ * the recorded order lines (Decision #337, ruling M1; FCA N19). Never summed across currencies and never
+ * recomputed: a line's fee is the one {@link OrderLineSchema.platformFee} recorded when it was sold.
+ */
+export const SellerCommissionWindowSchema = z.object({
+	currency,
+	/** The product lines counted: their order still stands and their rate was recorded. */
+	lines: z.number().int().min(0),
+	/** What the buyers paid for those lines (`line_total_minor − promo_discount_minor`). */
+	paid_minor: minorUnitsNonNeg,
+	/** The commission recorded on them (`platform_fee_minor`). */
+	fee_minor: minorUnitsNonNeg,
+	/** The same lines at the next rung's tier rate, truncated per line; `null` at the top rung. */
+	at_next_minor: minorUnitsNonNeg.nullable(),
+});
+export type SellerCommissionWindow = z.infer<typeof SellerCommissionWindowSchema>;
+
+/**
+ * `finance.get_seller_commission`'s answer, for the seller themselves or an active member of the
+ * selling team: the rate their next product sale is charged — `finance.fn_effective_commission_bp`,
+ * the resolver `place_wallet_order` charges with, so a previewed commission is the charged one — and
+ * what their recorded sales paid. Kept out of `fee.ts`, which stays a dependency-free leaf for the
+ * landing's lazy demos.
+ */
+export const SellerCommissionSchema = z.object({
+	commission_bp: basisPoints,
+	/** The Standing rung the rate was resolved at. */
+	level: z.number().int().min(1).max(5),
+	/** The next rung's tier rate; `null` at the top rung. */
+	next_commission_bp: basisPoints.nullable(),
+	/** Where the trailing year the windows cover begins. */
+	since: timestamp,
+	currencies: z.array(SellerCommissionWindowSchema),
+});
+export type SellerCommission = z.infer<typeof SellerCommissionSchema>;
 // #endregion
 
 // #region Calendar export (pure builders — one implementation, three formats)

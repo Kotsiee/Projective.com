@@ -392,13 +392,17 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 
 ### Effective rates
 
-- **`finance.fn_effective_commission_bp(subject_type, subject_id) → integer`** — negotiated rate
-  → `standing_commission_tiers` for the rung → `800` (8%). This is the **earned** marketplace
-  taper.
-- **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) → integer`** — negotiated
-  rate → `security.platform_params.platform_fee_bp` → `0`. The 5% project service fee does
-  **not** taper with Standing and is not bundled with any plan; the only sanctioned flex is an
-  admin-approved `finance.negotiated_rates` row for an Enterprise/Business volume commitment.
+- **`finance.fn_effective_commission_bp(subject_type, subject_id) → integer`** — negotiated rate →
+  `standing_commission_tiers` for the rung → `800` (8%). This is the **earned** marketplace taper;
+  the negotiated rate is an Agency's (a `team` row's `marketplace_commission_bp`, Decision #252).
+  `place_wallet_order` charges it on every product line, for the product's owning team or person
+  (Decision #337, ruling M1), and `get_seller_commission` reads it for the seller.
+- **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) → integer`** — negotiated rate →
+  `security.platform_params.platform_fee_bp` → `0`. The PAYER's rate, which escrow fees are charged
+  at (Decision #187); a product sale pays the seller's commission instead. The 5% project service
+  fee does **not** taper with Standing and is not bundled with any plan; the only sanctioned flex is
+  an admin-approved `finance.negotiated_rates` row for an Enterprise, Business or Agency volume
+  commitment (an Agency's applies when it buys).
 
 ### Allowance metering
 
@@ -701,11 +705,14 @@ application maps it once:
 `owner_type · owner_id · name · handle · avatar_bucket · avatar_path · is_member · can_spend ·
 kyb_status · currency · invoicing_mode · billing_day · billing · person · departments`
 
-`get_purchase_owner` (plpgsql, because the resolver lives in a later file) adds **`platform_fee_bp`**:
-the rate a payment from this owner is charged, `fn_effective_platform_fee_bp(owner_type, owner_id)`
-(a negotiated rate, else the param) — the rate `place_wallet_order` applies, so the checkout preview
-and the charge cannot disagree (Decision #187). It is `NULL` unless the caller passes
-`fn_owner_visible` for that owner: a negotiated rate is a commercial term, not part of the public face.
+`get_purchase_owner` (plpgsql, because the resolver lives in a later file) adds
+**`platform_fee_bp`**: the rate a payment from this owner is charged,
+`fn_effective_platform_fee_bp(owner_type, owner_id)` (a negotiated rate, else the param) — the
+payer's rate `place_wallet_order` stamps on the order and an escrow release charges (Decision #187).
+A product line is charged its seller's commission instead (Decision #337, ruling M1;
+`get_seller_commission` below), so this rate previews escrow lines only. It is `NULL` unless the
+caller passes `fn_owner_visible` for that owner: a negotiated rate is a commercial term, not part of
+the public face.
 
 | Owner kind     | Who gets an answer                    | What a non-member sees                                   |
 | :------------- | :------------------------------------ | :------------------------------------------------------- |
@@ -792,18 +799,22 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    before the order is finalised. A team or enterprise payer clears its own wallet threshold and the
    member's spending limit inline (`PA403`), unchanged.
 7. **Money moves through the ledger primitives**: `fn_wallet_debit(… 'order_payment', 'orders', id)`
-   on the buyer; per line, a pro-rata share of the promo (the remainder on the last line, so shares
-   sum exactly), the platform fee on what was actually paid for that line — the **payer's** effective
-   rate, `fn_effective_platform_fee_bp(basket owner_type, owner_id)` (a negotiated rate, else
-   `platform_fee_bp` = 500), the resolver an escrow release charges through `fn_escrow_fee_bp`, and
-   **truncated** (`(paid × bp) / 10000`, Decision #187) — and
-   `fn_wallet_credit(… 'product_sale', 'orders', id)` of the rest to the seller — the owning team's
-   wallet for a team listing, else the person's `freelancer`/`user` wallet. A seller with no wallet in
-   the currency gets one first, because `fn_wallet_credit` refuses a missing wallet (`PW404`).
+   on the buyer; per product line, a pro-rata share of the promo (the remainder on the last line, so
+   shares sum exactly), the **seller's** marketplace commission on what was actually paid for that
+   line — `fn_effective_commission_bp(seller)` for the owning team, else the owning person (a
+   negotiated rate, else their Standing rung's tier rate, 8% → 6.5%; Decision #337, ruling M1), so
+   two sellers in one basket each pay their own, and **truncated** (`(paid × bp) / 10000`, Decision
+   #187) — and `fn_wallet_credit_pending(… 'product_sale', 'orders', id)` of the rest to the seller
+   — the owning team's wallet for a team listing, else the person's `freelancer`/`user` wallet. A
+   seller with no wallet in the currency gets one first, because the pending credit refuses a
+   missing wallet (`PW404`). The buyer's own rate or contract never touches a product line.
 8. **The record**: `finance.orders` (status `confirmed`, provider `wallet`, reference
-   `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees, `platform_fee_bp` the rate
-   charged), one `finance.order_lines` row per
-   line (fulfilment `download`, the first manifest entry's name, size and format, the licence), each
+   `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees, `platform_fee_bp` the
+   **payer's** effective rate, `fn_effective_platform_fee_bp(basket owner_type, owner_id)` — the
+   rate the escrow lines are charged at release through `fn_escrow_fee_bp`), one
+   `finance.order_lines` row per line (fulfilment `download`, the first manifest entry's name, size
+   and format, the licence; the line's `promo_discount_minor` share, its commission
+   `platform_fee_minor` and rate `platform_fee_bp`; an escrow line records `0` and no rate), each
    basket line stamped `purchased_at`, the basket's promo cleared, and `orders.promo_code` the code
    redeemed in step 5 (`NULL` when no promo saved anything).
 
@@ -849,6 +860,32 @@ ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fu
 > wallet is not materialised (#54(i)). A sale credits the seller through the 7-day pending window
 > (`fn_wallet_credit_pending`, keyed to the order — Decision #191), so it reaches their Available
 > balance only when it clears.
+
+Probes: `supabase/probes/product_commission.sql` (the seller's rate per line, L1 against L5, a mixed
+basket, an escrow line beside a product, promo shares) and `platform_fee_single_source.sql`.
+
+### `finance.get_seller_commission(p_subject_type, p_subject_id)` → jsonb (`00001210`)
+
+The marketplace commission as the **seller** sees it (Decision #337, ruling M1; FCA N19): the
+self-scoped wrapper over `fn_effective_commission_bp`, which no client role may call for an
+arbitrary subject ([Policies.md](Policies.md#-function-privileges-2026-09-23)). A person answers
+about themselves (`user` or `freelancer`, one Standing), a team to its active members
+(`fn_owner_visible`); signed out or anyone else `42501`; any other subject type `22023`.
+`LANGUAGE plpgsql STABLE SECURITY DEFINER` (the resolvers live in `00001220`), `EXECUTE` for
+`authenticated` only.
+
+`{ commission_bp, level, next_commission_bp, since, currencies }`. `commission_bp` is the rate
+`place_wallet_order` charges the subject's next sale, so a previewed commission is the charged one.
+`next_commission_bp` is the next rung's tier rate (`NULL` at the top). `currencies` holds, per
+currency, the subject's product lines of the last year (`since`) whose order still stands (not
+`refunded` or `cancelled`) and whose rate was recorded: `lines`, `paid_minor` (what the buyers paid,
+`line_total_minor − promo_discount_minor` summed), `fee_minor` (Σ the recorded `platform_fee_minor`)
+and `at_next_minor` (the same lines at `next_commission_bp`, truncated per line; `NULL` at the top
+rung). A line belongs to its product's owner, the rule the fee follows. Nothing is summed across
+currencies. The answer is the Zod `SellerCommissionSchema` (`packages/types/finance/order.ts`); the
+wallet's Standing card reads it (`packages/backend/services/finance/wallet-standing.ts`). Probe:
+`product_commission.sql` §5 (the preview is the charged rate; a stranger, a non-member, a signed-out
+caller and a business are refused).
 
 ### `finance.fn_on_account_owed(p_business_id, p_currency)` → bigint (`00001250`)
 

@@ -256,9 +256,11 @@ wallet with any amount. So (`00002510`):
 - **The subject-taking resolvers moved to the service role** — `fn_freelancer_payout_ready`,
   `fn_business_kyb_verified`, `fn_active_plan`, `fn_effective_limit`, `fn_has_entitlement`,
   `fn_effective_commission_bp`, `fn_effective_platform_fee_bp`, `fn_current_allowance`,
-  `fn_footprint_usage`, `fn_footprint_remaining`. Each takes ANY subject, so a client grant would hand
-  any signed-in account another person's KYC readiness, plan, usage and negotiated rates. A surface
-  that needs the viewer's own figures should get a self-scoped wrapper.
+  `fn_footprint_usage`, `fn_footprint_remaining`. Each takes ANY subject, so a client grant would
+  hand any signed-in account another person's KYC readiness, plan, usage and negotiated rates. A
+  surface that needs the viewer's own figures should get a self-scoped wrapper — as the seller's
+  commission has: `get_seller_commission` (`authenticated` only, revoked from `PUBLIC` and `anon`)
+  answers only a seller about themselves or a team to its active members (Decision #337, ruling M1).
 - **`authenticated` keeps exactly** the predicates the policies call (`fn_owner_visible`,
   `fn_can_view_wallet`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`, `fn_owner_capability`,
   `fn_reads_wallet_envelopes` (BB6 — the `spending_limits` / `spend_approvals` SELECT policies ask it)

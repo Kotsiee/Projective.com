@@ -6,8 +6,10 @@
 --     < supabase/probes/platform_fee_single_source.sql
 --
 -- A KYB-verified business is given an active negotiated rate of 300 bp. Then:
---   1. finance.place_wallet_order charges each seller the PAYER's effective rate, truncated: a 1,050
---      line at 300 bp is a fee of 31 (31.5 truncated), never 500 bp and never half-up (53 / 32).
+--   1. finance.place_wallet_order records the PAYER's effective rate on the order (300 bp, the rate an
+--      escrow release charges), while a product line pays its SELLER's commission instead (Decision
+--      #337, ruling M1), truncated: a 1,050 line from an L3 seller at 750 bp is 78 (78.75 truncated),
+--      never the payer's 300 (31) and never half-up (79). These checks raise.
 --   2. finance.get_purchase_owner hands that rate to a member of the payer, and to nobody else.
 --   3. finance.preview_team_split projects a team release with the escrow payer's effective rate,
 --      exactly as finance.fn_release_ticket_escrow would charge it.
@@ -39,6 +41,8 @@ DECLARE
     v_order jsonb;
     v_fee bigint;
     v_fee_bp integer;
+    v_line_fee bigint;
+    v_line_bp integer;
     v_credit bigint;
 BEGIN
     SELECT b.id, b.owner_user_id, w.currency
@@ -67,6 +71,9 @@ BEGIN
     UPDATE catalogue.products SET price_cents = 1050 WHERE id = v_product;
     INSERT INTO finance.negotiated_rates (subject_type, subject_id, platform_fee_bp, contract_ref, starts_at)
     VALUES ('business', v_business, 300, 'PROBE-187', now() - interval '1 day');
+    -- The seller on L3 (750 bp), so a half-up rounding would show as 79.
+    INSERT INTO org.entity_standing (subject_type, subject_id, level) VALUES ('freelancer', v_seller, 3)
+    ON CONFLICT (subject_type, subject_id) DO UPDATE SET level = 3;
 
     INSERT INTO finance.baskets (owner_type, owner_id, name) VALUES ('business', v_business, 'Probe 187')
     RETURNING id INTO v_basket;
@@ -81,6 +88,8 @@ BEGIN
 
     SELECT o.platform_fee_minor, o.platform_fee_bp INTO v_fee, v_fee_bp
       FROM finance.orders o WHERE o.id = (v_order ->> 'order_id')::uuid;
+    SELECT ol.platform_fee_minor, ol.platform_fee_bp INTO v_line_fee, v_line_bp
+      FROM finance.order_lines ol WHERE ol.order_id = (v_order ->> 'order_id')::uuid;
     -- A product sale is an earned credit: it waits out the pending window in finance.pending_releases
     -- (Decision #191) and reaches finance.transactions only at maturity, so read both, once each.
     SELECT (SELECT COALESCE(SUM(pr.amount_cents), 0) FROM finance.pending_releases pr
@@ -91,21 +100,19 @@ BEGIN
                AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.transaction_id = t.id))
       INTO v_credit;
 
-    IF v_fee_bp = 300 THEN
-        RAISE NOTICE 'PASS place_wallet_order records the payer''s negotiated rate (300 bp)';
-    ELSE
-        RAISE NOTICE 'FAIL place_wallet_order recorded % bp, expected the negotiated 300', v_fee_bp;
+    IF v_fee_bp IS DISTINCT FROM 300 THEN
+        RAISE EXCEPTION 'PROBE FAIL: the order recorded % bp, expected the payer''s negotiated 300', v_fee_bp;
     END IF;
-    IF v_fee = 31 THEN
-        RAISE NOTICE 'PASS place_wallet_order fee on 1050 at 300 bp is 31 (truncated)';
-    ELSE
-        RAISE NOTICE 'FAIL place_wallet_order fee on 1050 is %, expected 31 (300 bp, truncated)', v_fee;
+    RAISE NOTICE 'PASS the order records the payer''s negotiated rate (300 bp)';
+    IF v_line_bp IS DISTINCT FROM 750 OR v_line_fee IS DISTINCT FROM 78 OR v_fee IS DISTINCT FROM 78 THEN
+        RAISE EXCEPTION 'PROBE FAIL: the product line paid % at % bp (order fee %), expected its L3 seller''s 78 at 750 bp',
+            v_line_fee, v_line_bp, v_fee;
     END IF;
-    IF v_credit = 1050 - 31 THEN
-        RAISE NOTICE 'PASS the seller is credited 1019';
-    ELSE
-        RAISE NOTICE 'FAIL the seller is credited %, expected 1019', v_credit;
+    RAISE NOTICE 'PASS the product line pays its seller''s 750 bp: 78 on 1050 (truncated), not the payer''s 300';
+    IF v_credit IS DISTINCT FROM 1050 - 78 THEN
+        RAISE EXCEPTION 'PROBE FAIL: the seller is credited %, expected 972', v_credit;
     END IF;
+    RAISE NOTICE 'PASS the seller is credited 972';
 END;
 $$;
 -- #endregion

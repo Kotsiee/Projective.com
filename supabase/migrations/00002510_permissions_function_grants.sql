@@ -933,6 +933,12 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- moves money only through the service-role primitives it calls as its owner.
 GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
 
+-- The seller's own marketplace commission (00001210 §11; Decision #337, ruling M1). It answers only a
+-- seller about themselves, or a team to its active members, which is why fn_effective_commission_bp
+-- itself stays service-role only.
+REVOKE ALL ON FUNCTION finance.get_seller_commission(text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.get_seller_commission(text, uuid) TO authenticated;
+
 -- Auto-funding and billing doors (00001250). Each authorises the caller itself: billing controls and
 -- paying an invoice on manage_billing; paying on account on fn_can_manage_basket + KYB + monthly
 -- invoicing + the on-account limit, crediting only through the primitives it calls as its owner; the

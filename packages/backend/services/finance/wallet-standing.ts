@@ -1,13 +1,13 @@
 import type {
+	SellerCommissionWindow,
 	StandingComponent,
 	StandingGate,
 	StandingRung,
 	WalletStanding,
 } from "@projective/types/finance";
-import { PLATFORM_FEE_BP } from "@projective/types/finance";
+import { PLATFORM_FEE_BP, SellerCommissionSchema } from "@projective/types/finance";
 import { getUserClient } from "../../core/supabase.ts";
 import type { TxnRow } from "./wallet-ledger.ts";
-import { reasonMeta } from "./wallet-ledger.ts";
 import type { WalletContext } from "./wallet-scope.ts";
 
 /**
@@ -15,10 +15,11 @@ import type { WalletContext } from "./wallet-scope.ts";
  * Reliability Index, what the next rung asks for, and what the commission taper is worth in money.
  *
  * Everything is read: the ladder (`org.standing_levels`), the commission per rung
- * (`finance.standing_commission_tiers`), and the subject's own cached composite
- * (`org.entity_standing`, written by `org.fn_recompute_standing`). A seller with no row yet is a new
- * seller — rung 1, score 0 — which is the truth, not a placeholder. Standing is earned and can never be
- * bought, so nothing here reads a plan.
+ * (`finance.standing_commission_tiers`), the subject's own cached composite (`org.entity_standing`,
+ * written by `org.fn_recompute_standing`), and `finance.get_seller_commission` — the rate the subject's
+ * next product sale is charged and the fees their sales recorded (Decision #337, ruling M1). A seller
+ * with no row yet is a new seller — rung 1, score 0 — which is the truth, not a placeholder. Standing is
+ * earned and can never be bought, so nothing here reads a plan.
  */
 
 // #region Components
@@ -31,26 +32,26 @@ const COMPONENTS: readonly { key: StandingComponent["key"]; label: string; weigh
 	{ key: "workload", label: "Workload reliability", weight: 10 },
 	{ key: "tenure", label: "Tenure", weight: 5 },
 ];
-
-const YEAR = 365 * 86_400_000;
 // #endregion
 
 /**
  * The Standing projection for a seller subject (`freelancer` for a person, `team` for a team vault),
- * priced against the subject's trailing-12-month earnings in `rows`. `null` for a subject that carries
- * no Standing — a buyer.
+ * its commission priced against the fees the subject's product sales of the last 12 months recorded.
+ * `null` for a subject that carries no Standing — a buyer. `_rows` (the wallet's ledger) is not read: a
+ * sale's credit is net of its fee and an escrow release pays no commission, so the figures come from
+ * the order lines.
  */
 export async function standingFor(
 	ctx: WalletContext,
 	subject: { type: "freelancer" | "team"; id: string },
-	rows: readonly TxnRow[],
+	_rows: readonly TxnRow[],
 ): Promise<WalletStanding | null> {
 	const db = getUserClient(ctx.actor.accessToken);
 	// The flat platform fee as the database applies it to this subject: `get_purchase_owner` resolves
 	// `finance.fn_effective_platform_fee_bp` (a negotiated rate, else the platform param) for a caller
 	// who can see the subject's finances. A person is a `user` owner; a team vault is a `team`.
 	const ownerType = subject.type === "team" ? "team" : "user";
-	const [levelsRes, tiersRes, standingRes, feeRes] = await Promise.all([
+	const [levelsRes, tiersRes, standingRes, feeRes, salesRes] = await Promise.all([
 		db.schema("org").from("standing_levels").select("level, label, min_score, min_completed_stages").order("level"),
 		db.schema("finance").from("standing_commission_tiers").select("level, marketplace_commission_bp"),
 		db.schema("org").from("entity_standing")
@@ -62,12 +63,19 @@ export async function standingFor(
 			p_owner_type: ownerType,
 			p_owner_id: subject.id,
 		}),
+		// The commission as `place_wallet_order` charges it: the same resolver, for this subject.
+		db.schema("finance").rpc("get_seller_commission", {
+			p_subject_type: subject.type,
+			p_subject_id: subject.id,
+		}),
 	]);
 	if (levelsRes.error) throw new Error(`org.standing_levels read failed: ${levelsRes.error.message}`);
 	if (tiersRes.error) throw new Error(`finance.standing_commission_tiers read failed: ${tiersRes.error.message}`);
 	if (standingRes.error) throw new Error(`org.entity_standing read failed: ${standingRes.error.message}`);
 	if (feeRes.error) throw new Error(`finance.get_purchase_owner failed: ${feeRes.error.message}`);
+	if (salesRes.error) throw new Error(`finance.get_seller_commission failed: ${salesRes.error.message}`);
 	const effectiveFeeBp = (feeRes.data as { platform_fee_bp?: number | null } | null)?.platform_fee_bp;
+	const sales = SellerCommissionSchema.parse(salesRes.data);
 
 	const commission = new Map<number, number>();
 	for (const t of (tiersRes.data ?? []) as { level: number; marketplace_commission_bp: number }[]) {
@@ -119,18 +127,20 @@ export async function standingFor(
 		};
 	});
 
-	// The taper made concrete: the commission the trailing year's earnings carried at this rung, and
-	// what the same volume would carry at the next. Priced against real earnings, never projected.
-	const since = Date.now() - YEAR;
-	let volume = 0;
-	for (const r of rows) {
-		if (r.direction !== "credit" || Date.parse(r.created_at) < since) continue;
-		if (reasonMeta(r.reason, r.direction).category !== "earning") continue;
-		if (!ctx.money.canConvert(r.currency)) continue;
-		volume += ctx.money.convertMinor(r.amount_cents, r.currency);
-	}
-	const hasVolume = volume > 0;
-	const nextBp = next && next.commissionBp !== current.commissionBp ? next.commissionBp : null;
+	// The taper made concrete from what the sales recorded: the commission the trailing year's product
+	// sales were charged, and what the same lines would cost at the next rung, both summed by the
+	// database per currency. Shown in the display currency only when every currency converts: a total
+	// that left one out would understate the commission.
+	const commissionBp = sales.commission_bp;
+	const nextBp = sales.next_commission_bp !== null && sales.next_commission_bp < commissionBp
+		? sales.next_commission_bp
+		: null;
+	const windows = sales.currencies;
+	const priced = windows.length > 0 && windows.every((w) => ctx.money.canConvert(w.currency));
+	const sum = (pick: (w: SellerCommissionWindow) => number | null) =>
+		ctx.money.derived(
+			windows.reduce((total, w) => total + ctx.money.convertMinor(pick(w) ?? 0, w.currency), 0),
+		);
 
 	return {
 		subject: subject.type,
@@ -143,15 +153,13 @@ export async function standingFor(
 		scoreToNext,
 		stagesToNext,
 		blockedBy,
-		commissionBp: current.commissionBp,
+		commissionBp,
 		nextCommissionBp: nextBp,
 		platformFeeBp: typeof effectiveFeeBp === "number" ? effectiveFeeBp : PLATFORM_FEE_BP,
 		components,
-		commissionPaid: hasVolume ? ctx.money.derived(Math.round((volume * current.commissionBp) / 10000)) : null,
-		commissionAtNext: hasVolume && nextBp !== null
-			? ctx.money.derived(Math.round((volume * nextBp) / 10000))
-			: null,
-		volumeWindow: hasVolume ? ctx.money.derived(volume) : null,
+		commissionPaid: priced ? sum((w) => w.fee_minor) : null,
+		commissionAtNext: priced && nextBp !== null ? sum((w) => w.at_next_minor) : null,
+		volumeWindow: priced ? sum((w) => w.paid_minor) : null,
 		windowLabel: "Last 12 months",
 	};
 }

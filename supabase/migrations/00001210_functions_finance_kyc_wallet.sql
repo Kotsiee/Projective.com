@@ -972,9 +972,11 @@ facts to members only; an enterprise answers members only. NULL when there is no
 may know. The shape is identical for every kind.';
 
 -- The owner a basket or checkout is scoped to, with the platform fee rate a payment from it is charged
--- (finance.fn_effective_platform_fee_bp, the rate place_wallet_order applies) — told only to a caller
--- who can see that owner's finances, since a negotiated rate is a commercial term. plpgsql, not sql:
--- the resolver is declared in a later file (00001220), and a sql body is validated at CREATE.
+-- (finance.fn_effective_platform_fee_bp: the payer's rate place_wallet_order stamps on the order and an
+-- escrow release charges; a product line pays its seller's commission instead, Decision #337 ruling
+-- M1) — told only to a caller who can see that owner's finances, since a negotiated rate is a
+-- commercial term. plpgsql, not sql: the resolver is declared in a later file (00001220), and a sql
+-- body is validated at CREATE.
 CREATE OR REPLACE FUNCTION finance.get_purchase_owner(p_owner_type text, p_owner_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1225,12 +1227,19 @@ and KYB verification (PK403 kyb_required).';
 --   * The charge is made in the lines' own currency, which must be one the paying wallet holds. The
 --     display-currency figure the buyer saw is a conversion the application verifies separately; the
 --     money that moves is integer minor units with no FX in it.
---   * The platform fee is the PAYER's effective rate (finance.fn_effective_platform_fee_bp for the
---     basket owner: an active negotiated rate, else `security.platform_params.platform_fee_bp`, 500 =
---     5%, Decision #2) — the same resolver an escrow release charges through fn_escrow_fee_bp
---     (Decision #187). It is charged per line on what was actually paid, truncated to the minor unit,
---     and deducted from each seller's credit. The fee is retained (debited from the buyer, not credited to a seller); the platform's own Fee
---     Collection wallet is not materialised yet (#54(i)).
+--   * A digital product pays its SELLER's marketplace commission (Decision #337, ruling M1):
+--     finance.fn_effective_commission_bp for the line's owning team, else its owning person — a
+--     negotiated rate, else their Standing rung's (8% → 6.5%, finance.standing_commission_tiers). It
+--     is charged per line on what was actually paid for that line (after its promo share), truncated
+--     to the minor unit, deducted from the seller's credit, and recorded on the order line with its
+--     rate; the order's `platform_fee_minor` is their sum. The fee is retained (debited from the
+--     buyer, not credited to a seller); the platform's own Fee Collection wallet is not materialised
+--     yet (#54(i)).
+--   * An escrow line (a ticket, a paid revision, a seat, a session) is charged no fee here. Its fee is
+--     the PAYER's effective rate (finance.fn_effective_platform_fee_bp for the basket owner: an active
+--     negotiated rate, else `security.platform_params.platform_fee_bp`, 500 = 5%, Decision #2), which
+--     an escrow release charges through fn_escrow_fee_bp (Decision #187). The order records that
+--     rate as its `platform_fee_bp`.
 --   * A sale credits the seller through the pending window (finance.fn_wallet_credit_pending, keyed to
 --     the order): it reaches their Available balance `pending_release_days` later (Decision #191).
 --   * A team-owned product credits the team's wallet; distributing it to members is the team's own
@@ -1260,6 +1269,7 @@ SET search_path = finance, catalogue, org, security, public
 AS $$
 DECLARE
     v_fee_bp integer;
+    v_line_bp integer;
     v_uid uuid := auth.uid();
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
     v_wanted uuid[];
@@ -1765,8 +1775,8 @@ BEGIN
     END IF;
 
     -- Each line: its share of the promo (pro rata by what the line costs after creator discounts, the
-    -- remainder on the last line so the shares sum exactly), the fee on what was actually paid for it,
-    -- and the seller's credit for the rest.
+    -- remainder on the last line so the shares sum exactly), its seller's commission on what was
+    -- actually paid for it, and the seller's credit for the rest.
     v_remaining_promo := v_promo_minor;
     v_eligible_base := v_subtotal - v_creator;
     FOR v_line IN SELECT value AS l, ordinality AS n FROM pg_catalog.jsonb_array_elements(v_lines) WITH ORDINALITY
@@ -1855,8 +1865,6 @@ BEGIN
         END IF;
         v_remaining_promo := v_remaining_promo - v_share;
         v_paid := (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint - v_share;
-        v_fee := (GREATEST(v_paid, 0) * v_fee_bp) / 10000;
-        v_fee_total := v_fee_total + v_fee;
 
         IF v_line.l ->> 'owner_team_id' IS NOT NULL THEN
             v_seller_type := 'team';
@@ -1868,8 +1876,12 @@ BEGIN
              ORDER BY (w.owner_type = 'freelancer') DESC LIMIT 1;
             v_seller_type := COALESCE(v_seller_type, 'freelancer');
         END IF;
-        -- A seller with no wallet in this currency gets one: `fn_wallet_credit` is a silent no-op on a
-        -- missing wallet, and a sale must never vanish.
+        -- The seller's own rate, so two sellers in one basket each pay theirs.
+        v_line_bp := finance.fn_effective_commission_bp (v_seller_type, v_seller_id);
+        v_fee := (GREATEST(v_paid, 0) * v_line_bp) / 10000;
+        v_fee_total := v_fee_total + v_fee;
+        -- A seller with no wallet in this currency gets one first: the pending credit refuses a missing
+        -- wallet (PW404), which would refuse the buyer's whole order.
         INSERT INTO finance.wallets (owner_type, owner_id, currency)
         VALUES (v_seller_type, v_seller_id, v_currency)
         ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
@@ -1879,11 +1891,13 @@ BEGIN
         v_manifest := v_line.l -> 'manifest' -> 0;
         INSERT INTO finance.order_lines (
             order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-            currency, fulfilment, download_name, download_bytes, download_format, licence, position
+            currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment,
+            download_name, download_bytes, download_format, licence, position
         ) VALUES (
             v_order_id, (v_line.l ->> 'id')::uuid, 'digital_product', (v_line.l ->> 'item_id')::uuid,
             v_line.l ->> 'title', 'Instant download', (v_line.l ->> 'quantity')::integer,
-            (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint, v_currency, 'download',
+            (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint, v_currency,
+            v_share, v_line_bp, v_fee, 'download',
             v_manifest ->> 'name',
             CASE WHEN pg_catalog.jsonb_typeof(v_manifest -> 'bytes') = 'number' THEN (v_manifest ->> 'bytes')::bigint END,
             v_line.l ->> 'format', v_line.l ->> 'licence', v_i - 1
@@ -1910,8 +1924,10 @@ $$;
 COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
-applied (none sent → none applied), debit the wallet, credit each seller net of the payer''s effective platform fee (truncated),
-write the order and its lines, consume the basket lines. Digital products, and one-ticket project lines
+applied (none sent → none applied), debit the wallet, credit each seller net of their own marketplace
+commission (fn_effective_commission_bp, truncated, recorded on the line with its rate; Decision #337
+ruling M1), write the order (platform_fee_minor the lines'' sum, platform_fee_bp the payer''s rate, which
+escrow lines are charged at release) and its lines, consume the basket lines. Digital products, and one-ticket project lines
 (Decision #166), which settle by holding that ticket''s escrow (projects.fund_ticket) instead of a
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
 membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks
@@ -1924,6 +1940,92 @@ not p_expected_minor), promo_exhausted (the cap was reached), or a session time 
 line needs a delivery address · PU422 your own listing (yours, or your team''s), or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
 session time was taken · PS501 not payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad
 attempt key.';
+
+-- The marketplace commission as the SELLER sees it (Decision #337, ruling M1): the rate their next
+-- product sale is charged — finance.fn_effective_commission_bp, the resolver place_wallet_order charges
+-- with, so a previewed commission is the charged one — and what their product sales of the last twelve
+-- months paid, read from the fee recorded on each order line, never recomputed. Per currency, because
+-- adding currencies together is a conversion this read does not make. `at_next_minor` prices the same
+-- lines at the next rung's tier rate, truncated per line as a sale is charged; NULL at the top rung. A
+-- line counts while its order stands (not refunded or cancelled) and belongs to its product's owner,
+-- the rule the fee itself follows. A person answers about themselves (`user` or `freelancer`, one
+-- Standing), a team to its active members. plpgsql, not sql: the resolvers live in a later file
+-- (00001220).
+CREATE OR REPLACE FUNCTION finance.get_seller_commission(p_subject_type text, p_subject_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_level smallint;
+    v_next integer;
+    v_since timestamptz := pg_catalog.now() - interval '1 year';
+BEGIN
+    IF auth.uid () IS NULL THEN
+        RAISE EXCEPTION 'Sign in to see your commission' USING ERRCODE = '42501';
+    END IF;
+    IF p_subject_type IS NULL OR p_subject_type NOT IN ('user', 'freelancer', 'team') OR p_subject_id IS NULL THEN
+        RAISE EXCEPTION 'A marketplace commission is paid by a person or a team that sells'
+            USING ERRCODE = '22023';
+    END IF;
+    IF NOT finance.fn_owner_visible (p_subject_type, p_subject_id) THEN
+        RAISE EXCEPTION 'Only the seller can see what their sales paid' USING ERRCODE = '42501';
+    END IF;
+
+    v_level := finance.fn_subject_standing_level (p_subject_type, p_subject_id);
+    SELECT t.marketplace_commission_bp INTO v_next
+      FROM finance.standing_commission_tiers t
+     WHERE t.level = v_level + 1;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'commission_bp', finance.fn_effective_commission_bp (p_subject_type, p_subject_id),
+        'level', v_level,
+        'next_commission_bp', v_next,
+        'since', v_since,
+        'currencies', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'currency', s.currency,
+                       'lines', s.lines,
+                       'paid_minor', s.paid_minor,
+                       'fee_minor', s.fee_minor,
+                       'at_next_minor', s.at_next_minor
+                   ) ORDER BY s.currency)
+              FROM (
+                SELECT ol.currency,
+                       pg_catalog.count(*) AS lines,
+                       pg_catalog.sum(GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0)) AS paid_minor,
+                       pg_catalog.sum(ol.platform_fee_minor) AS fee_minor,
+                       CASE WHEN v_next IS NOT NULL THEN pg_catalog.sum(
+                           (GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0) * v_next) / 10000)
+                       END AS at_next_minor
+                  FROM finance.order_lines ol
+                  JOIN finance.orders o ON o.id = ol.order_id
+                  JOIN catalogue.products p ON p.id = ol.item_id
+                 WHERE ol.item_type = 'digital_product'
+                   AND ol.platform_fee_bp IS NOT NULL
+                   AND ol.created_at >= v_since
+                   AND o.status NOT IN ('refunded', 'cancelled')
+                   AND CASE WHEN p_subject_type = 'team'
+                            THEN p.owner_team_id = p_subject_id
+                            ELSE p.owner_team_id IS NULL AND p.owner_user_id = p_subject_id
+                       END
+                 GROUP BY ol.currency
+              ) s
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION finance.get_seller_commission(text, uuid) IS
+'The seller''s marketplace commission (Decision #337, ruling M1), for the seller themselves or a member
+of the selling team: `commission_bp` (fn_effective_commission_bp, the rate place_wallet_order charges
+their next sale), `level`, `next_commission_bp` (the next rung''s tier rate, NULL at the top), `since`,
+and `currencies`: per currency over the last twelve months, `lines`, `paid_minor` (what buyers paid for
+those lines), `fee_minor` (the commission recorded on them) and `at_next_minor` (the same lines at
+`next_commission_bp`, truncated per line; NULL at the top). Only lines with a recorded rate count.
+Refusals: 42501 signed out or not the seller · 22023 not a selling subject.';
 -- #endregion
 
 -- #region 12. Wallet movements — transfers, team distributions, spend decisions (2026-09-23)
@@ -2146,7 +2248,7 @@ BEGIN
         v_share := (p_amount * m.percent_bp) / 10000;
         CONTINUE WHEN v_share <= 0;
         -- A member's personal wallet in the vault's currency; one is created if they have none, because
-        -- `fn_wallet_credit` is a silent no-op on a missing wallet and a share must never vanish.
+        -- `fn_wallet_credit` refuses a missing wallet (PW404), which would refuse the whole distribution.
         SELECT w.owner_type INTO v_member_type
           FROM finance.wallets w
          WHERE w.owner_id = m.member_user_id AND w.currency = v_vault.currency

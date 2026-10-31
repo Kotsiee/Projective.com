@@ -44,8 +44,9 @@ const ORDER_COLS =
 	"payment_provider, payment_method_label, promo_code";
 const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
-	"currency, fulfilment, asset_id, download_name, download_bytes, download_format, licence, " +
-	"stage_id, scheduled_at, timezone, duration_minutes, seats, conferencing_provider, position, ticket_id";
+	"currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment, asset_id, " +
+	"download_name, download_bytes, download_format, licence, stage_id, scheduled_at, timezone, " +
+	"duration_minutes, seats, conferencing_provider, position, ticket_id";
 
 interface OrderRow {
 	id: string;
@@ -82,6 +83,10 @@ interface LineRow {
 	quantity: number;
 	line_total_minor: number | string;
 	currency: string;
+	promo_discount_minor: number | string;
+	/** The seller commission's rate on a product line (Decision #337, ruling M1); `null` on an escrow line. */
+	platform_fee_bp: number | null;
+	platform_fee_minor: number | string;
 	fulfilment: FulfilmentKind;
 	asset_id: string | null;
 	download_name: string | null;
@@ -370,6 +375,9 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		payeeName: line.ticket_id ? ctx.payees.get(line.ticket_id) ?? null : null,
 		quantity: line.quantity,
 		lineTotal: receipt(line.line_total_minor, line.currency),
+		promoDiscount: receipt(line.promo_discount_minor, line.currency),
+		platformFee: receipt(line.platform_fee_minor, line.currency),
+		platformFeeBp: line.platform_fee_bp,
 		fulfilment: natural,
 		pendingNote: null,
 		assetId: download ? line.asset_id : null,
@@ -401,6 +409,11 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 	};
 }
 
+/**
+ * The order row's own totals. `platformFee` is the sum of the lines' recorded fees (each product line's
+ * seller commission); `platformFeeBp` is the payer's rate stamped on the order, which its escrow lines
+ * are charged at release. A product line's own rate is on the line (`OrderLine.platformFeeBp`).
+ */
 function totalsOf(order: OrderRow): CheckoutTotals {
 	const money = (minor: number | string) => receipt(minor, order.currency);
 	const subtotal = Number(order.subtotal_minor) || 0;
