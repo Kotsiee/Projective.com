@@ -10,6 +10,7 @@ import { Alert } from "@projective/ui/feedback";
 import { Dialog } from "@projective/ui/feedback";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { SettingsBreadcrumb } from "@features/settings/components/SettingsBreadcrumb.tsx";
 
 import {
 	connectionIsRecoverable,
@@ -253,6 +254,7 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 	return (
 		<div class="ints">
 			<header class="ints__head">
+				<SettingsBreadcrumb section="integrations" />
 				<h1 class="ints__title">Integrations</h1>
 				<p class="ints__lede">
 					Services you have given this account permission to use on your behalf. Signing in with a

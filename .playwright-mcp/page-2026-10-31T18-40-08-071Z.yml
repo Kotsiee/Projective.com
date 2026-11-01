@@ -1,0 +1,760 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - link "Skip to main content" [ref=f3e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner:
+      - generic [ref=f3e4]:
+        - link "Projective" [ref=f3e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Main" [ref=f3e10]:
+          - list [ref=f3e11]:
+            - listitem [ref=f3e12]:
+              - link "How it works" [ref=f3e13] [cursor=pointer]:
+                - /url: /features#demo
+            - listitem [ref=f3e14]:
+              - link "Explore" [ref=f3e15] [cursor=pointer]:
+                - /url: /explore
+              - button "Explore menu" [ref=f3e16] [cursor=pointer]
+            - listitem [ref=f3e18]:
+              - link "Pricing" [ref=f3e19] [cursor=pointer]:
+                - /url: /features#pricing
+            - listitem [ref=f3e20]:
+              - link "Features" [ref=f3e21] [cursor=pointer]:
+                - /url: /features
+        - search [ref=f3e22]:
+          - generic [ref=f3e23]:
+            - searchbox "Search Projective" [ref=f3e27]
+            - generic [ref=f3e29]: Ctrl /
+        - generic [ref=f3e31]:
+          - button "Switch to dark theme" [ref=f3e32] [cursor=pointer]
+          - link "Sign in" [ref=f3e39] [cursor=pointer]:
+            - /url: /login?redirectTo=%2Ffeatures
+          - link "Get started" [ref=f3e40] [cursor=pointer]:
+            - /url: /join?redirectTo=%2Ffeatures
+    - main [ref=f3e41]:
+      - generic [ref=f3e42]:
+        - generic [ref=f3e44]:
+          - paragraph [ref=f3e45]: Features
+          - heading "Everything Projective does" [level=1] [ref=f3e46]
+          - paragraph [ref=f3e47]: Try each feature with example data. No real money moves.
+        - navigation "Chapters" [ref=f3e48]:
+          - list [ref=f3e49]:
+            - listitem [ref=f3e50]:
+              - link "Find & hire" [ref=f3e51] [cursor=pointer]:
+                - /url: "#find-and-hire"
+                - generic [aria-hidden] [ref=f3e52]: "01"
+                - text: Find & hire
+            - listitem [ref=f3e53]:
+              - link "Run the work" [ref=f3e54] [cursor=pointer]:
+                - /url: "#run-the-work"
+                - generic [aria-hidden] [ref=f3e55]: "02"
+                - text: Run the work
+            - listitem [ref=f3e56]:
+              - link "Money" [ref=f3e57] [cursor=pointer]:
+                - /url: "#money"
+                - generic [aria-hidden] [ref=f3e58]: "03"
+                - text: Money
+            - listitem [ref=f3e59]:
+              - link "Trust" [ref=f3e60] [cursor=pointer]:
+                - /url: "#trust"
+                - generic [aria-hidden] [ref=f3e61]: "04"
+                - text: Trust
+            - listitem [ref=f3e62]:
+              - link "Coming soon" [ref=f3e63] [cursor=pointer]:
+                - /url: "#coming-soon"
+                - generic [aria-hidden] [ref=f3e64]: "05"
+                - text: Coming soon
+        - region [ref=f3e65]:
+          - generic [ref=f3e66]:
+            - generic [ref=f3e67]:
+              - paragraph [aria-hidden] [ref=f3e68]: "01"
+              - heading "Find & hire" [level=2] [ref=f3e69]
+            - img "Booking example." [ref=f3e74]:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - paragraph: One-to-one session
+                        - paragraph: Times shown in your time zone (London). The freelancer is in New York.
+                        - generic:
+                          - generic:
+                            - text: You · London
+                            - generic: Tue 20 Oct
+                          - generic:
+                            - text: The freelancer · New York
+                            - generic: Tue 20 Oct
+                        - group:
+                          - generic:
+                            - generic:
+                              - generic [aria-hidden]: 2:00 pm
+                              - generic: 2:00 pm, already booked
+                            - generic:
+                              - text: 9:00 am
+                              - generic: in New York
+                          - generic:
+                            - generic:
+                              - generic [aria-hidden]: 3:00 pm
+                              - generic: 3:00 pm, 60 minutes
+                            - generic:
+                              - text: 10:00 am
+                              - generic: in New York
+                          - generic:
+                            - generic:
+                              - generic [aria-hidden]: 4:00 pm
+                              - generic: 4:00 pm, already booked
+                            - generic:
+                              - text: 11:00 am
+                              - generic: in New York
+                          - generic:
+                            - generic:
+                              - generic [aria-hidden]: 5:00 pm
+                              - generic: 5:00 pm, 60 minutes
+                            - generic:
+                              - text: 12:00 pm
+                              - generic: in New York
+                      - generic:
+                        - paragraph: Group session
+                        - paragraph:
+                          - generic: Brand workshop
+                          - generic: Wed 21 Oct · 6:00 pm
+                        - list:
+                          - listitem:
+                            - generic: Maya · Host
+                          - listitem:
+                            - generic [aria-hidden]: "Y"
+                            - generic: You · Waiting
+                          - listitem:
+                            - generic: Theo · Waiting
+                          - listitem:
+                            - generic: Ines · Waiting
+            - list [ref=f3e75]:
+              - listitem [ref=f3e76]:
+                - heading "Search as you type" [level=3] [ref=f3e77]
+                - paragraph [ref=f3e78]: Search people, teams, services and projects, with suggestions as you type.
+              - listitem [ref=f3e79]:
+                - heading "Services & sessions" [level=3] [ref=f3e80]
+                - paragraph [ref=f3e81]: Book a live session. Your payment is held until 24 hours after it ends.
+                - paragraph [ref=f3e82]: "Coming soon: digital products with instant download."
+                - 'link "Learn more : Services & sessions" [ref=f3e84] [cursor=pointer]':
+                  - /url: /help/disputes-and-fair-exit/session-cancellations
+                  - text: Learn more
+                  - generic [ref=f3e85]: ": Services & sessions"
+        - region [ref=f3e86]:
+          - generic [ref=f3e87]:
+            - generic [ref=f3e88]:
+              - paragraph [aria-hidden] [ref=f3e89]: "02"
+              - heading "Run the work" [level=2] [ref=f3e90]
+            - img "Example work board with five columns." [ref=f3e95]:
+              - generic:
+                - generic:
+                  - paragraph: Website refresh· Work board
+                  - paragraph: Your wallet£600.00
+                - generic:
+                  - generic:
+                    - generic:
+                      - region:
+                        - generic:
+                          - generic: New
+                          - generic [aria-hidden]: "1"
+                        - list:
+                          - listitem:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: Launch emails
+                                  - generic:
+                                    - generic: Launch
+                                    - generic: Draft
+                      - region:
+                        - generic:
+                          - generic: Ready
+                          - generic [aria-hidden]: "1"
+                        - list:
+                          - listitem:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: Homepage design
+                                  - generic:
+                                    - generic: Design
+                                    - generic:
+                                      - generic: Needs funding
+                                      - generic: £2,500
+                                  - generic: Pay for this stage
+                      - region:
+                        - generic:
+                          - generic: In Progress
+                          - generic [aria-hidden]: "1"
+                        - list:
+                          - listitem:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: Logo v2
+                                  - generic:
+                                    - generic: Design
+                                    - generic: £400
+                      - region:
+                        - generic:
+                          - generic: Review
+                          - generic [aria-hidden]: "1"
+                        - list:
+                          - listitem:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: Case study
+                                  - generic:
+                                    - generic: Design
+                                    - generic: £250
+                                  - generic: Approve and pay
+                      - region:
+                        - generic:
+                          - generic: Completed
+                          - generic [aria-hidden]: "1"
+                        - list:
+                          - listitem:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: Brand colours
+                                  - generic:
+                                    - generic: Design
+                                    - generic:
+                                      - generic: Team paid
+                                      - generic: £300
+            - list [ref=f3e96]:
+              - listitem [ref=f3e97]:
+                - heading "Work board" [level=3] [ref=f3e98]
+                - paragraph [ref=f3e99]: Every job you post runs on a board. Work starts once it's paid for.
+                - generic [ref=f3e100]:
+                  - 'button "Try it : Work board" [ref=f3e101] [cursor=pointer]':
+                    - text: Try it
+                    - generic [ref=f3e102]: ": Work board"
+                  - 'link "Learn more : Work board" [ref=f3e103] [cursor=pointer]':
+                    - /url: /help/projects-and-stages/claim-and-start-a-ticket
+                    - text: Learn more
+                    - generic [ref=f3e104]: ": Work board"
+              - listitem [ref=f3e105]:
+                - heading "Timeline" [level=3] [ref=f3e106]
+                - paragraph [ref=f3e107]: See every stage on a timeline. Zoom out to months or in to days.
+              - listitem [ref=f3e108]:
+                - heading "Booking" [level=3] [ref=f3e109]
+                - paragraph [ref=f3e110]: Pick a time in your time zone. Moving a group session? Attendees vote.
+                - 'button "Try it : Booking" [ref=f3e112] [cursor=pointer]':
+                  - text: Try it
+                  - generic [ref=f3e113]: ": Booking"
+              - listitem [ref=f3e114]:
+                - heading "Ways to work" [level=3] [ref=f3e115]
+                - paragraph [ref=f3e116]: See how a task, a job, ongoing work and a session each run.
+                - 'link "Learn more : Ways to work" [ref=f3e118] [cursor=pointer]':
+                  - /url: /help/getting-started/choose-a-project-type
+                  - text: Learn more
+                  - generic [ref=f3e119]: ": Ways to work"
+              - listitem [ref=f3e120]:
+                - heading "Team room" [level=3] [ref=f3e121]
+                - paragraph [ref=f3e122]: Chat and share files in one room. New messages mask contact details mid-project.
+                - 'link "Learn more : Team room" [ref=f3e124] [cursor=pointer]':
+                  - /url: /help/account-and-security/contact-details-in-messages
+                  - text: Learn more
+                  - generic [ref=f3e125]: ": Team room"
+        - region [ref=f3e126]:
+          - generic [ref=f3e127]:
+            - generic [ref=f3e128]:
+              - paragraph [aria-hidden] [ref=f3e129]: "03"
+              - heading "Money" [level=2] [ref=f3e130]
+            - img "Payment protection example." [ref=f3e135]:
+              - generic:
+                - generic:
+                  - paragraph: A £5,000 project in 3 stages
+                - list:
+                  - listitem:
+                    - generic: Stage 1
+                    - generic: £1,500
+                    - generic: Funded
+                  - listitem:
+                    - generic: Stage 2
+                    - generic: £2,000
+                  - listitem:
+                    - generic: Stage 3
+                    - generic: £1,500
+                - generic:
+                  - list [aria-hidden]:
+                    - listitem: Held safely
+                    - listitem: You approve
+                    - listitem: Team paid
+                    - listitem: Clears in 7 days
+                    - listitem: Withdraw to bank
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: You pay £1,500 for Stage 1. It's held safely, marked Funded.
+                      - paragraph: Your wallet goes down by exactly £1,500, with no fee on top.
+                  - generic:
+                    - generic:
+                      - term: Your wallet
+                      - definition:
+                        - generic:
+                          - generic [aria-hidden]:
+                            - generic: £
+                            - generic: 3,500
+                            - generic: ".00"
+                          - generic: £3,500.00
+            - list [ref=f3e136]:
+              - listitem [ref=f3e137]:
+                - heading "Payment protection" [level=3] [ref=f3e138]
+                - paragraph [ref=f3e139]: Pay for each stage before it starts. The team is paid when you approve.
+                - generic [ref=f3e140]:
+                  - 'button "Try it : Payment protection" [ref=f3e141] [cursor=pointer]':
+                    - text: Try it
+                    - generic [ref=f3e142]: ": Payment protection"
+                  - 'link "Learn more : Payment protection" [ref=f3e143] [cursor=pointer]':
+                    - /url: /help/escrow-and-payments/what-is-escrow
+                    - text: Learn more
+                    - generic [ref=f3e144]: ": Payment protection"
+              - listitem [ref=f3e145]:
+                - heading "Team pay" [level=3] [ref=f3e146]
+                - paragraph [ref=f3e147]: Watch a stage payment split into each member's agreed share, to the penny.
+                - generic [ref=f3e148]:
+                  - 'button "Try it : Team pay" [ref=f3e149] [cursor=pointer]':
+                    - text: Try it
+                    - generic [ref=f3e150]: ": Team pay"
+                  - 'link "Learn more : Team pay" [ref=f3e151] [cursor=pointer]':
+                    - /url: /help/teams-and-businesses/create-a-team
+                    - text: Learn more
+                    - generic [ref=f3e152]: ": Team pay"
+              - listitem [ref=f3e153]:
+                - heading "Fair Exit & no-shows" [level=3] [ref=f3e154]
+                - paragraph [ref=f3e155]: If work stops, end the stage fairly. Missed a session? Report a no-show.
+                - 'link "Learn more : Fair Exit & no-shows" [ref=f3e157] [cursor=pointer]':
+                  - /url: /help/disputes-and-fair-exit/end-a-stage-with-fair-exit
+                  - text: Learn more
+                  - generic [ref=f3e158]: ": Fair Exit & no-shows"
+        - region [ref=f3e159]:
+          - generic [ref=f3e160]:
+            - generic [ref=f3e161]:
+              - paragraph [aria-hidden] [ref=f3e162]: "04"
+              - heading "Trust" [level=2] [ref=f3e163]
+            - list [ref=f3e164]:
+              - listitem [ref=f3e165]:
+                - heading "Verification" [level=3] [ref=f3e166]
+                - paragraph [ref=f3e167]: Stripe checks ID and bank details before anyone takes paid project work.
+                - 'link "Learn more : Verification" [ref=f3e169] [cursor=pointer]':
+                  - /url: /help/payouts-and-verification/get-payout-ready
+                  - text: Learn more
+                  - generic [ref=f3e170]: ": Verification"
+              - listitem [ref=f3e171]:
+                - heading "Files & sharing" [level=3] [ref=f3e172]
+                - paragraph [ref=f3e173]: Preview files and share links that expire. Program files like .exe are refused.
+        - region [ref=f3e174]:
+          - generic [ref=f3e175]:
+            - generic [ref=f3e176]:
+              - paragraph [aria-hidden] [ref=f3e177]: "05"
+              - heading "Coming soon" [level=2] [ref=f3e178]
+            - list [ref=f3e179]:
+              - listitem [ref=f3e180]:
+                - heading "Sell your best work" [level=3] [ref=f3e181]
+                - paragraph [ref=f3e182]: "Coming soon: turn great work into a template you can sell, with a share for the client who commissioned it."
+              - listitem [ref=f3e183]:
+                - heading "Connected tools" [level=3] [ref=f3e184]
+                - paragraph [ref=f3e185]: "Coming soon: link the tools your team already uses."
+              - listitem [ref=f3e186]:
+                - heading "Tax pot" [level=3] [ref=f3e187]
+                - paragraph [ref=f3e188]: "Coming soon: set money aside for tax automatically."
+      - region [ref=f3e189]:
+        - generic [ref=f3e190]:
+          - generic [ref=f3e191]:
+            - paragraph [ref=f3e192]: See it work
+            - heading "See a project run, step by step." [level=2] [ref=f3e193]
+            - generic [ref=f3e194]:
+              - paragraph [ref=f3e195]: Example only. No real money moves.
+              - paragraph [ref=f3e196]: "You play both sides: the client pays and approves; the freelancer starts the work."
+          - generic [ref=f3e197]:
+            - tablist "Examples" [ref=f3e199]:
+              - tab "Work board" [selected] [ref=f3e200] [cursor=pointer]
+              - tab "Payment protection" [ref=f3e201] [cursor=pointer]
+              - tab "Booking" [ref=f3e202] [cursor=pointer]
+              - tab "Team pay" [ref=f3e203] [cursor=pointer]
+            - tabpanel "Work board" [ref=f3e204]:
+              - generic [ref=f3e206]:
+                - img "Example work board with five columns." [ref=f3e208]:
+                  - generic:
+                    - generic:
+                      - paragraph: Website refresh· Work board
+                      - paragraph: Your wallet£600.00
+                    - generic:
+                      - generic:
+                        - generic:
+                          - region:
+                            - generic:
+                              - generic: New
+                              - generic [aria-hidden]: "1"
+                            - list:
+                              - listitem:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - paragraph: Launch emails
+                                      - generic:
+                                        - generic: Launch
+                                        - generic: Draft
+                          - region:
+                            - generic:
+                              - generic: Ready
+                              - generic [aria-hidden]: "1"
+                            - list:
+                              - listitem:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - paragraph: Homepage design
+                                      - generic:
+                                        - generic: Design
+                                        - generic:
+                                          - generic: Needs funding
+                                          - generic: £2,500
+                                      - generic: Pay for this stage
+                          - region:
+                            - generic:
+                              - generic: In Progress
+                              - generic [aria-hidden]: "1"
+                            - list:
+                              - listitem:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - paragraph: Logo v2
+                                      - generic:
+                                        - generic: Design
+                                        - generic: £400
+                          - region:
+                            - generic:
+                              - generic: Review
+                              - generic [aria-hidden]: "1"
+                            - list:
+                              - listitem:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - paragraph: Case study
+                                      - generic:
+                                        - generic: Design
+                                        - generic: £250
+                                      - generic: Approve and pay
+                          - region:
+                            - generic:
+                              - generic: Completed
+                              - generic [aria-hidden]: "1"
+                            - list:
+                              - listitem:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - paragraph: Brand colours
+                                      - generic:
+                                        - generic: Design
+                                        - generic:
+                                          - generic: Team paid
+                                          - generic: £300
+                - paragraph [ref=f3e209]: Every job you post runs on a board. Work only starts on a task once it's paid for. Approve a stage, and the task moves on to its next stage.
+              - paragraph [ref=f3e211]: Work only starts once it's paid for. Approve, and it moves on.
+            - status [ref=f3e212]
+      - region [ref=f3e213]:
+        - generic [ref=f3e215]:
+          - generic [ref=f3e216]:
+            - paragraph [ref=f3e217]: Payment protection
+            - heading "Money held safely, stage by stage." [level=2] [ref=f3e218]
+            - paragraph [ref=f3e219]: "This is payment protection (escrow): when you pay for a stage, the money is held safely before any work starts."
+          - list [ref=f3e220]:
+            - listitem [ref=f3e221]:
+              - heading "Held before work starts" [level=3] [ref=f3e222]
+              - paragraph [ref=f3e223]: Work only starts once the stage is paid for. Until then, the task can't move into work.
+            - listitem [ref=f3e224]:
+              - heading "Paid when you approve" [level=3] [ref=f3e225]
+              - paragraph [ref=f3e226]: The team is paid when you accept their work or approve the stage.
+            - listitem [ref=f3e227]:
+              - heading "A fair way out" [level=3] [ref=f3e228]
+              - paragraph [ref=f3e229]: "If work stops, end the stage with Fair Exit. You pick how much was done: 25%, 50% or 75%. The rest comes straight back to you, fee-free."
+            - listitem [ref=f3e230]:
+              - heading "Missed sessions" [level=3] [ref=f3e231]
+              - paragraph [ref=f3e232]: Booked a live session that didn't happen? Report a no-show, and a Projective reviewer decides.
+            - listitem [ref=f3e233]:
+              - heading "Checked before they take on project work" [level=3] [ref=f3e234]
+              - paragraph [ref=f3e235]: Stripe checks a person's photo ID and bank details first. Only then can they take paid project work, join a team or withdraw earnings.
+            - listitem [ref=f3e236]:
+              - heading "Clears in 7 days" [level=3] [ref=f3e237]
+              - paragraph [ref=f3e238]: When you approve, the team's money clears in 7 days. Then they can withdraw it.
+            - listitem [ref=f3e239]:
+              - heading "Refunds without fees" [level=3] [ref=f3e240]
+              - paragraph [ref=f3e241]: Refunds go straight back into your Projective wallet, with no fee.
+            - listitem [ref=f3e242]:
+              - heading "Every penny on record" [level=3] [ref=f3e243]
+              - paragraph [ref=f3e244]: Every change to a wallet balance is written to a log that can't be edited or deleted. Balances are checked against it every night. Each payment goes out once, never twice.
+          - figure "Where the money is" [ref=f3e245]:
+            - list [ref=f3e247]:
+              - listitem [ref=f3e248]:
+                - generic [ref=f3e250]: Held safely
+                - generic [ref=f3e251]: before any work starts
+              - listitem [ref=f3e252]:
+                - generic [ref=f3e254]: You approve
+              - listitem [ref=f3e255]:
+                - generic [ref=f3e257]: Team paid
+                - generic [ref=f3e258]: minus the 5% fee
+              - listitem [ref=f3e259]:
+                - generic [ref=f3e261]: Clears in 7 days
+              - listitem [ref=f3e262]:
+                - generic [ref=f3e264]: Withdraw to bank
+            - generic [ref=f3e265]:
+              - paragraph [ref=f3e266]: Fair Exit on a £2,000 stage
+              - paragraph [ref=f3e267]: "At 50%: the team gets £950. You get £1,000 back, fee-free."
+          - paragraph [ref=f3e268]:
+            - link "Get help with payments" [ref=f3e269] [cursor=pointer]:
+              - /url: /help
+      - region [ref=f3e270]:
+        - generic [ref=f3e271]:
+          - generic [ref=f3e272]:
+            - paragraph [ref=f3e273]: Pricing
+            - heading "A 5% fee. You pay the price you see." [level=2] [ref=f3e274]:
+              - generic [ref=f3e275]: A 5% fee.
+              - generic [ref=f3e276]: You pay the price you see.
+            - paragraph [ref=f3e277]: The fee comes out of the team's payment when it's paid out. You pay the stage price, with nothing on top. There's no fee on refunds.
+            - generic [ref=f3e278]:
+              - paragraph [ref=f3e279]: On a £2,000 stage you pay £2,000. The team receives £1,900 after the 5% fee.
+              - paragraph [ref=f3e280]: On a £10.50 stage, the fee is 52p and the team receives £9.98.
+          - generic [ref=f3e281]:
+            - generic [ref=f3e282]:
+              - generic [ref=f3e284]:
+                - generic [ref=f3e285]: Stage price
+                - generic [ref=f3e286]:
+                  - generic [ref=f3e287]: £
+                  - textbox "Stage price" [ref=f3e288]: 2,000
+                  - button "Take £100 off the stage price" [ref=f3e289] [cursor=pointer]: −
+                  - button "Add £100 to the stage price" [ref=f3e290] [cursor=pointer]: +
+                - paragraph [ref=f3e291]: Type what one stage costs.
+                - group "Try:" [ref=f3e292]:
+                  - button "£500" [ref=f3e295] [cursor=pointer]
+                  - generic [ref=f3e296]:
+                    - text: ·
+                    - button "£2,000" [ref=f3e297] [cursor=pointer]
+                  - generic [ref=f3e298]:
+                    - text: ·
+                    - button "£5,000" [ref=f3e299] [cursor=pointer]
+              - generic [ref=f3e301]:
+                - generic [ref=f3e303]:
+                  - term [ref=f3e304]: You pay
+                  - definition [ref=f3e305]: £2,000.00
+                - paragraph [ref=f3e306]: "From the team's payment:"
+                - generic [ref=f3e307]:
+                  - generic [ref=f3e308]:
+                    - term [ref=f3e309]: Projective fee (5%)
+                    - definition [ref=f3e310]: −£100.00
+                  - generic [ref=f3e311]:
+                    - term [ref=f3e312]: The team receives
+                    - definition [ref=f3e313]: £1,900.00
+              - status [ref=f3e314]
+            - list [ref=f3e315]:
+              - listitem [ref=f3e316]: Clears in 7 days, then they can withdraw it.
+              - listitem [ref=f3e317]: We round the fee down to the nearest penny.
+              - listitem [ref=f3e318]: Paying a team? The team's vault share comes off, then the rest splits into each member's share.
+              - listitem [ref=f3e319]: Example only.
+      - region [ref=f3e320]:
+        - generic [ref=f3e321]:
+          - generic [ref=f3e322]:
+            - paragraph [ref=f3e323]: FAQ
+            - heading "Common questions." [level=2] [ref=f3e324]
+          - generic [ref=f3e325]:
+            - group [ref=f3e326]:
+              - generic "Is my money safe? (How escrow works)" [ref=f3e327] [cursor=pointer]
+              - paragraph [ref=f3e330]: Projective uses payment protection (escrow). When you pay for a stage, the money is held safely. Work can't start until it is. The team is paid when you accept their work or approve the stage. If work stops, Fair Exit lets you end the stage fairly.
+            - group [ref=f3e331]:
+              - generic "Who pays the 5% fee?" [ref=f3e332] [cursor=pointer]
+            - group [ref=f3e335]:
+              - generic "What if the work stops halfway?" [ref=f3e336] [cursor=pointer]
+            - group [ref=f3e339]:
+              - generic "When does the team get paid?" [ref=f3e340] [cursor=pointer]
+            - group [ref=f3e343]:
+              - generic "Where do refunds go?" [ref=f3e344] [cursor=pointer]
+            - group [ref=f3e347]:
+              - generic "Do I need to show ID to hire?" [ref=f3e348] [cursor=pointer]
+            - group [ref=f3e351]:
+              - generic "How do ready-made teams work?" [ref=f3e352] [cursor=pointer]
+            - group [ref=f3e355]:
+              - generic "What if a live session doesn't happen?" [ref=f3e356] [cursor=pointer]
+          - link "More answers in Help" [ref=f3e359] [cursor=pointer]:
+            - /url: /help
+      - region [ref=f3e360]:
+        - generic [ref=f3e361]:
+          - heading "Find your team." [level=2] [ref=f3e362]
+          - paragraph [ref=f3e363]: Search for the help you need. Pay safely, one stage at a time.
+          - generic [ref=f3e365]:
+            - search "Find your team." [ref=f3e366]:
+              - generic [ref=f3e367]: Search freelancers, teams, services and projects
+              - generic [ref=f3e368]:
+                - combobox "Search in" [ref=f3e370] [cursor=pointer]:
+                  - option "All" [selected]
+                  - option "Freelancers & teams"
+                  - option "Services"
+                  - option "Projects"
+                  - option "Businesses"
+                - combobox "Search freelancers, teams, services and projects" [ref=f3e372]
+                - generic [aria-hidden] [ref=f3e373]:
+                  - generic [ref=f3e374]: /
+                  - text: to search
+                - button "Search" [ref=f3e375] [cursor=pointer]
+            - status [ref=f3e377]
+          - generic [ref=f3e379]:
+            - link "Hire a team" [ref=f3e380] [cursor=pointer]:
+              - /url: /explore?category=teams
+            - link "Offer your skills" [ref=f3e381] [cursor=pointer]:
+              - /url: /join?intent=freelancer
+  - contentinfo [ref=f3e382]:
+    - generic [ref=f3e383]:
+      - generic [ref=f3e384]:
+        - link "Projective — home" [ref=f3e385] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f3e389]: Projective
+        - paragraph [ref=f3e390]: The place to find, hire and work with ready-made teams.
+      - navigation "Quick links" [ref=f3e391]:
+        - group [ref=f3e392]:
+          - generic "For helpers" [ref=f3e393]
+          - list [ref=f3e395]:
+            - listitem [ref=f3e396]:
+              - link "Find helper gigs" [ref=f3e397] [cursor=pointer]:
+                - /url: /explore?category=projects
+            - listitem [ref=f3e398]:
+              - link "Showcase your services" [ref=f3e399] [cursor=pointer]:
+                - /url: /catalogue?create=service
+            - listitem [ref=f3e400]:
+              - link "How it works" [ref=f3e401] [cursor=pointer]:
+                - /url: /help/getting-started/what-is-projective
+        - group [ref=f3e402]:
+          - generic "For clients" [ref=f3e403]
+          - list [ref=f3e405]:
+            - listitem [ref=f3e406]:
+              - link "Hire ready-made teams" [ref=f3e407] [cursor=pointer]:
+                - /url: /explore?category=teams
+            - listitem [ref=f3e408]:
+              - link "Post a new project" [ref=f3e409] [cursor=pointer]:
+                - /url: /projects?create=1
+            - listitem [ref=f3e410]:
+              - link "Safe & easy payments" [ref=f3e411] [cursor=pointer]:
+                - /url: /help/escrow-and-payments/what-is-escrow
+            - listitem [ref=f3e412]:
+              - link "Fees" [ref=f3e413] [cursor=pointer]:
+                - /url: /help/escrow-and-payments/fees
+        - group [ref=f3e414]:
+          - generic "Explore & learn" [ref=f3e415]
+          - list [ref=f3e417]:
+            - listitem [ref=f3e418]:
+              - link "Features" [ref=f3e419] [cursor=pointer]:
+                - /url: /features
+            - listitem [ref=f3e420]:
+              - link "Services directory" [ref=f3e421] [cursor=pointer]:
+                - /url: /explore?category=services
+            - listitem [ref=f3e422]:
+              - link "Ready-made teams" [ref=f3e423] [cursor=pointer]:
+                - /url: /explore?category=teams
+            - listitem [ref=f3e424]:
+              - link "Member articles" [ref=f3e425] [cursor=pointer]:
+                - /url: /explore?category=articles
+        - group [ref=f3e426]:
+          - generic "Company" [ref=f3e427]
+          - list [ref=f3e429]:
+            - listitem [ref=f3e430]:
+              - link "About" [ref=f3e431] [cursor=pointer]:
+                - /url: /about
+            - listitem [ref=f3e432]:
+              - link "Changelog" [ref=f3e433] [cursor=pointer]:
+                - /url: /changelog
+            - listitem [ref=f3e434]:
+              - link "Articles" [ref=f3e435] [cursor=pointer]:
+                - /url: /articles
+            - listitem [ref=f3e436]:
+              - link "Contact" [ref=f3e437] [cursor=pointer]:
+                - /url: /contact
+        - group [ref=f3e438]:
+          - generic "Help" [ref=f3e439]
+          - list [ref=f3e441]:
+            - listitem [ref=f3e442]:
+              - link "Help centre" [ref=f3e443] [cursor=pointer]:
+                - /url: /help
+            - listitem [ref=f3e444]:
+              - link "Feedback & roadmap" [ref=f3e445] [cursor=pointer]:
+                - /url: /feedback
+        - group [ref=f3e446]:
+          - generic "Legal" [ref=f3e447]
+          - list [ref=f3e449]:
+            - listitem [ref=f3e450]:
+              - link "Terms of Service" [ref=f3e451] [cursor=pointer]:
+                - /url: /legal/terms
+            - listitem [ref=f3e452]:
+              - link "Privacy Policy" [ref=f3e453] [cursor=pointer]:
+                - /url: /legal/privacy
+            - listitem [ref=f3e454]:
+              - link "Cookie Policy" [ref=f3e455] [cursor=pointer]:
+                - /url: /legal/cookies
+            - listitem [ref=f3e456]:
+              - link "Acceptable Use Policy" [ref=f3e457] [cursor=pointer]:
+                - /url: /legal/acceptable-use
+            - listitem [ref=f3e458]:
+              - link "Payment protection terms" [ref=f3e459] [cursor=pointer]:
+                - /url: /legal/escrow-terms
+            - listitem [ref=f3e460]:
+              - link "Ownership transfer deed" [ref=f3e461] [cursor=pointer]:
+                - /url: /legal/ip-transfer-deed
+            - listitem [ref=f3e462]:
+              - link "All legal documents" [ref=f3e463] [cursor=pointer]:
+                - /url: /legal
+      - generic [ref=f3e464]:
+        - generic [ref=f3e465]: Stay updated
+        - paragraph [ref=f3e466]: New teams, new features, and the odd good idea. No spam, ever.
+        - generic [ref=f3e468]:
+          - textbox "Email address" [ref=f3e469]:
+            - /placeholder: you@example.com
+          - button "Subscribe" [ref=f3e470] [cursor=pointer]
+        - paragraph [ref=f3e473]: We only use your email for updates.
+      - generic [ref=f3e475]:
+        - generic [ref=f3e476]: Get set up
+        - list [ref=f3e477]:
+          - listitem [ref=f3e478]:
+            - link "Create an account" [ref=f3e479] [cursor=pointer]:
+              - /url: /join
+          - listitem [ref=f3e480]:
+            - link "Complete your profile" [ref=f3e481] [cursor=pointer]:
+              - /url: /settings
+          - listitem [ref=f3e482]:
+            - link "Post your first project" [ref=f3e483] [cursor=pointer]:
+              - /url: /projects?create=1
+          - listitem [ref=f3e484]:
+            - link "Set up payouts" [ref=f3e485] [cursor=pointer]:
+              - /url: /settings/verification
+          - listitem [ref=f3e486]:
+            - link "See how it all works" [ref=f3e487] [cursor=pointer]:
+              - /url: /help/getting-started/what-is-projective
+    - generic [ref=f3e488]:
+      - generic [ref=f3e489]: © 2026 Projective. All rights reserved.
+      - navigation "Legal" [ref=f3e491]:
+        - link "Terms of Service" [ref=f3e492] [cursor=pointer]:
+          - /url: /legal/terms
+        - link "Privacy Policy" [ref=f3e493] [cursor=pointer]:
+          - /url: /legal/privacy
+        - link "Cookie Policy" [ref=f3e494] [cursor=pointer]:
+          - /url: /legal/cookies
+        - link [ref=f3e495] [cursor=pointer]:
+          - /url: /contact?intent=support
+          - text: Contact Help
+          - tooltip "Every request gets a reference number." [ref=f3e496]
+  - generic [ref=f3e501]:
+    - menu "Developer tools":
+      - menuitem "Switch Context"
+      - generic [aria-hidden]: Switch Context
+      - menuitem "Open Log Inspector"
+      - generic [aria-hidden]: Open Log Inspector
+      - menuitem "Toggle Ownership"
+      - generic [aria-hidden]: Toggle Ownership
+      - menuitem "Invites"
+      - generic [aria-hidden]: Invites
+      - menuitem "Clear Cache"
+      - generic [aria-hidden]: Clear Cache
+    - button "Developer tools" [ref=f3e502] [cursor=pointer]

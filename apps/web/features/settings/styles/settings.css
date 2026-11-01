@@ -62,7 +62,7 @@
 .stg-head__lede {
 	margin: 0;
 	max-inline-size: var(--measure);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
@@ -100,7 +100,7 @@
 .stg-block__lede {
 	margin: 0;
 	max-inline-size: var(--measure);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
@@ -131,14 +131,14 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	line-height: var(--leading-snug);
 	color: var(--on-surface);
 }
 
 .stg-row__desc {
 	max-inline-size: var(--measure);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
@@ -166,7 +166,7 @@
 .stg-note {
 	margin: 0;
 	max-inline-size: var(--measure);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
@@ -185,7 +185,7 @@
 	align-items: center;
 	gap: var(--space-1);
 	align-self: flex-start;
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
 	color: var(--primary);
 	text-decoration: none;
@@ -214,7 +214,7 @@
 	gap: var(--space-2);
 	min-block-size: var(--leading-normal);
 	margin: 0;
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -258,7 +258,7 @@
 }
 
 .stg-footer__dirty {
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -292,7 +292,7 @@
 
 .stg-statusline__label {
 	grid-area: label;
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 
@@ -301,14 +301,14 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
 .stg-statusline__detail {
 	grid-area: detail;
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -344,7 +344,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
 	line-height: var(--leading-snug);
 	color: var(--on-surface);
@@ -393,20 +393,20 @@
 }
 
 .stg-facts__row dt {
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
 .stg-facts__row dd {
 	margin: 0;
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 
 .stg-facts__note {
 	display: block;
 	margin-block-start: var(--space-px);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -458,7 +458,7 @@
 .stg-cards__name,
 .stg-ws__name {
 	overflow-wrap: anywhere;
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
@@ -477,13 +477,13 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
 .stg-ws__meta,
 .stg-emails__sign {
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -502,7 +502,7 @@
 }
 
 .stg-emails__ask {
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 
@@ -528,13 +528,13 @@
 }
 
 .stg-ws__acting-label {
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 
 .stg-hours {
 	gap: var(--space-1);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 /* #endregion */
@@ -589,7 +589,7 @@
 .stg-matrix {
 	inline-size: 100%;
 	border-collapse: collapse;
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 }
 
 .stg-matrix thead th {
@@ -627,14 +627,14 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 
 .stg-matrix__desc {
 	display: block;
 	margin-block-start: var(--space-px);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 
@@ -662,7 +662,7 @@
 .stg-nav__empty {
 	margin: 0;
 	padding-inline: var(--space-2);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 }
 
@@ -695,25 +695,14 @@
 	padding: var(--space-6) var(--space-6) var(--space-8);
 }
 
-.stg-console__back {
-	display: none;
-	align-items: center;
-	gap: var(--space-1);
-	align-self: flex-start;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	color: var(--primary);
-	text-decoration: none;
+/* The first crumb's inline padding is pulled back so its text sits on the title's edge below it. */
+.stg-crumbs {
+	margin-inline-start: calc(-1 * var(--space-1));
 }
 
-/* Below the shell breakpoint the lane is gone, so the page carries its own way back up. */
 @media (max-width: 767px) {
 	.stg-console {
 		padding: var(--space-4);
-	}
-
-	.stg-console__back {
-		display: inline-flex;
 	}
 }
 /* #endregion */

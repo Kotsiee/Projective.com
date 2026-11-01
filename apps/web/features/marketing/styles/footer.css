@@ -3,33 +3,32 @@
  * guest shell on Explore, /view and /@handle; LandingShell on `/`, where it renders outside
  * `.lp-root`). Its `--lp-*` tokens are its own, declared on `.lp-footer` from app tokens — no landing
  * token reaches it (Decision #285 (B); renamed after P8). Token-only, strict BEM; theme-adaptive
- * in light + dark via the shared surface/outline/on-surface tokens (no hardcoded palette). A
- * masthead + a secondary row over a thin utility bar; the nav stacks are native `<details>` (mobile
- * accordions, force-open on desktop) and the newsletter + recently-viewed rail are the two islands.
- * Non-interactive groups separate by spacing + weight, never boxed (§B.4). Sits at the natural bottom
- * of the window-scroll layout — no fixed positioning.
+ * in light + dark through the theme engine's solid ramp (no hardcoded palette). One row of five
+ * lanes — brand · three link stacks · newsletter + social; the nav stacks are native `<details>`
+ * (mobile accordions, force-open on desktop) and the newsletter is an island. Non-interactive groups
+ * separate by spacing + weight, never boxed (§B.4). Sits at the natural bottom of the window-scroll
+ * layout — no fixed positioning.
  *
  * This sheet is the SOLE owner of the footer's responsive table. `landing.css` used to carry two
  * unscoped `.lp-footer__inner` / `.lp-footer__nav` overrides at different breakpoints (768px and
  * 560px), which meant the footer reflowed differently on `/` — same specificity, later in the cascade,
- * so the landing sheet won wherever it loaded. Worse than the inconsistency: its 560px rule put the
- * nav in TWO columns exactly where this sheet turns each group into a full-width accordion row, so the
- * per-row hairlines ran down two half-width stacks. Both were deleted rather than duplicated here —
- * one footer, one table.
+ * so the landing sheet won wherever it loaded. Both were deleted rather than duplicated here — one
+ * footer, one table.
  */
 
 .lp-footer {
 	/* The footer's own tokens, from app tokens: it never reads the landing's `.lp-root` sheet. */
 	--lp-pad-x: clamp(1.25rem, 5vw, 5rem);
-	--lp-hair: var(--hairline-color);
-	--lp-hair-strong: color-mix(in srgb, var(--outline) 32%, transparent);
-	--lp-field: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	/* The newsletter field's two hooks — a page reusing the field (the changelog) sets its own. */
+	--lp-field: var(--surface-2);
+	--lp-hair-strong: var(--hairline-strong-color);
 	--lp-link: var(--on-surface-variant);
 
-	background: var(--surface-2);
+	/* One solid step off the canvas (§B.4.2) under the footer's one hairline. */
+	background: var(--surface-1);
 	color: var(--on-surface);
-	padding: clamp(3.5rem, 7vw, 6rem) var(--lp-pad-x) clamp(1.75rem, 3.5vw, 2.75rem);
-	border-block-start: 1px solid var(--lp-hair);
+	padding: clamp(3rem, 6vw, 5rem) var(--lp-pad-x) clamp(2.5rem, 5vw, 4rem);
+	border-block-start: var(--hairline);
 	/*
 	 * Sink to the foot of whatever column holds it, should that column be a flex column taller than
 	 * its content. Inside the authenticated shell the footer sits in `.ui-page-canvas__footer`, after
@@ -40,61 +39,20 @@
 	margin-block-start: auto;
 }
 
-/* #region Masthead grid
-   Three lanes, two rows, and the six link stacks own the middle lane across BOTH rows. Row 1 holds
-   the brand and the newsletter; row 2 continues them — "get set up" directly under the brand,
-   "recently viewed" under the newsletter — so neither outer lane leaves a hole beside the two rows of
-   stacks, and the middle lane is the wide one (3fr) so a stack holds each label on one line at the
-   desktop widths. A separate full-width secondary row was the earlier shape: under six stacks it was
-   pushed below both rows of them and left the outer lanes empty for their whole height. Widening to
-   five tracks does not fit either: at `--container-xl` (80rem) four gutters of
-   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set. Rows cost vertical space,
-   which a footer has; columns cost measure, which it does not. */
+/* #region Lanes
+   Brand · the three stacks (one subgrid-free nav of three tracks) · newsletter. The middle lane is the
+   wide one so a stack holds each label on one line at the desktop widths; the gutters are tighter
+   than a three-lane footer's because five columns of text share one `--container-xl` measure. */
 .lp-footer__inner {
 	display: grid;
-	grid-template-columns: 1fr 3fr 1.25fr;
-	gap: clamp(2.5rem, 5vw, 5.5rem);
+	grid-template-columns: 1fr 3.25fr 1.25fr;
+	gap: clamp(2rem, 4vw, 4rem);
 	max-inline-size: var(--container-xl);
 	margin-inline: auto;
 }
-
-/* Explicit placement, never implicit flow. The recently-viewed rail is absent entirely on a device
-   with no history (it cannot SSR), so an implicit placement would silently move the onboarding stack
-   the moment the reader had opened something. */
-.lp-footer__brand-col {
-	grid-column: 1;
-	grid-row: 1;
-}
-
-.lp-footer__nav {
-	grid-column: 2;
-	grid-row: 1 / span 2;
-}
-
-.lp-footer__news {
-	grid-column: 3;
-	grid-row: 1;
-}
-
-/* Row 2's wrapper takes no box on desktop: its two blocks are cells of the masthead grid itself.
-   Separated from row 1 by the grid's own row gap and nothing else — §B.4's ladder starts at spacing,
-   and this footer already spends its one hairline above the utility bar. */
-.lp-footer__aux {
-	display: contents;
-}
-
-.lp-footer__setup {
-	grid-column: 1;
-	grid-row: 2;
-}
-
-.lp-footer__recent {
-	grid-column: 3;
-	grid-row: 2;
-}
 /* #endregion */
 
-/* #region Column 1 — brand + social */
+/* #region Lane 1 — brand */
 .lp-footer__brand {
 	display: inline-flex;
 	align-items: center;
@@ -127,56 +85,19 @@
 	color: var(--on-surface-variant);
 }
 
-.lp-footer__social {
-	list-style: none;
+.lp-footer__copy {
 	margin: 0;
-	padding: 0;
-	display: flex;
-	gap: var(--space-2);
-}
-
-.lp-footer__social-link {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
-	border-radius: var(--radius-md);
-	color: var(--on-surface-variant);
-	border: 1px solid var(--lp-hair);
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-medium) var(--spring-standard);
-}
-
-.lp-footer__social-link:hover {
-	color: var(--on-surface);
-	border-color: var(--lp-hair-strong);
-	background: var(--lp-field);
-	transform: translateY(-2px);
-}
-
-.lp-footer__social-link:focus-visible {
-	outline: none;
-}
-
-.lp-footer__social-icon {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
+	font-size: 0.85rem;
+	color: var(--text-secondary);
 }
 /* #endregion */
 
-/* #region Column 2 — navigation stacks
-   Six stacks in three tracks: the audience stacks on the first row, Company · Help · Legal on the
-   second, each row as tall as its longest stack. `align-content: start` keeps the two rows together
-   when the outer lanes make the masthead taller than the stacks. */
+/* #region Lanes 2–4 — navigation stacks */
 .lp-footer__nav {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
 	align-content: start;
-	gap: var(--space-6);
+	gap: var(--space-5);
 }
 
 .lp-footer__group {
@@ -197,7 +118,7 @@
 }
 
 .lp-footer__group-title,
-.lp-footer__block-title {
+.lp-footer__news-title {
 	display: block;
 	font-size: 0.8rem;
 	font-weight: 600;
@@ -240,14 +161,9 @@
 }
 /* #endregion */
 
-/* #region Column 3 — newsletter */
-.lp-footer__news-title {
-	display: block;
-	font-size: 0.8rem;
-	font-weight: 600;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
+/* #region Lane 5 — newsletter */
+.lp-footer__news {
+	min-inline-size: 0;
 }
 
 .lp-footer__news-lede {
@@ -259,35 +175,40 @@
 	color: var(--on-surface-variant);
 }
 
+/* One command field: the input and its submit inside a single pill, no inner container. */
 .lp-footer__news-field {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: 0.35rem 0.35rem 0.35rem 0.9rem;
+	box-sizing: border-box;
+	/* 44px: `--fld-h-md` is 40px, too shallow to inset the 36px submit inside the border. */
+	block-size: 2.75rem;
+	padding-inline: var(--space-4) var(--space-1);
 	background: var(--lp-field);
 	border: 1px solid var(--lp-hair-strong);
-	border-radius: var(--radius-xl);
+	border-radius: var(--radius-full);
 	transition:
 		border-color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
 
+/* Form controls keep a focus indicator under the product's no-ring directive (`global.css`): the
+   field family's border + glow, drawn as a shadow so nothing shifts. */
 .lp-footer__news-field:focus-within {
-	border-color: var(--primary);
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--fld-focus-glow);
 }
 
-/* The ring is keyboard-only; the border tint above stays for every route into the field. */
-.lp-footer__news-field:has(:focus-visible) {
-	box-shadow: none;
-}
-
-.lp-footer__news-field--invalid {
+.lp-footer__news-field--invalid,
+.lp-footer__news-field--invalid:focus-within {
 	border-color: var(--danger);
 }
 
 .lp-footer__news-input {
 	flex: 1 1 auto;
 	min-inline-size: 0;
+	block-size: 100%;
+	padding: 0;
 	border: none;
 	background: transparent;
 	color: var(--on-surface);
@@ -296,8 +217,8 @@
 }
 
 .lp-footer__news-input::placeholder {
-	color: var(--on-surface-variant);
-	opacity: 0.7;
+	color: var(--text-secondary);
+	opacity: 1;
 }
 
 .lp-footer__news-input:focus {
@@ -309,22 +230,22 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2.35rem;
-	block-size: 2.35rem;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	padding: 0;
 	border: none;
-	border-radius: var(--radius-lg);
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	color: var(--on-primary);
 	cursor: pointer;
 	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard),
 		opacity var(--dur-fast) var(--ease-standard);
 }
 
-.lp-footer__news-submit:hover:not(:disabled) {
-	transform: translateY(-1px);
-	box-shadow: var(--elevation-low);
+.lp-footer__news-submit:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
 }
 
 .lp-footer__news-submit:disabled {
@@ -341,175 +262,92 @@
 	block-size: 1.15rem;
 }
 
-.lp-footer__news-error {
-	display: block;
-	margin-block-start: var(--space-2);
+/* Always rendered, two lines reserved: the longest message wraps once at the lane's width, so the
+   outcome appearing never moves the note or the social row. */
+.lp-footer__news-status {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-block-size: calc(2 * 1.45em);
+	margin: var(--space-2) 0 0;
 	font-size: 0.8rem;
+	line-height: 1.45;
+	color: var(--on-surface);
+}
+
+.lp-footer__news-status--error {
 	color: var(--danger);
 }
 
+.lp-footer__news-check {
+	flex: 0 0 auto;
+	inline-size: 1.45em;
+	block-size: 1.45em;
+	color: var(--success);
+}
+
 .lp-footer__news-note {
-	margin-block-start: var(--space-3);
+	margin: 0;
 	font-size: 0.78rem;
 	line-height: 1.5;
-	color: var(--on-surface-variant);
-	opacity: 0.85;
-}
-
-.lp-footer__news-done {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-block-start: var(--space-2);
-	font-size: 0.925rem;
-	color: var(--on-surface);
-}
-
-.lp-footer__news-check {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.4rem;
-	block-size: 1.4rem;
-	border-radius: 50%;
-	background: color-mix(in srgb, var(--success) var(--tint-strong), transparent);
-	color: var(--success);
-	font-size: 0.8rem;
-	font-weight: 700;
+	color: var(--text-secondary);
 }
 /* #endregion */
 
-/* #region Utility bar */
-.lp-footer__base {
+/* #region Social row — directly under the newsletter */
+.lp-footer__social {
+	list-style: none;
+	/* Pulled out by the target's inset so the first glyph lines up with the text above it. */
+	margin: var(--space-5) 0 0 calc((1.125rem - 2rem) / 2);
+	padding: 0;
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
 	flex-wrap: wrap;
-	gap: var(--space-4);
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	margin-block-start: clamp(2.5rem, 5vw, 4rem);
-	padding-block-start: var(--space-5);
-	border-block-start: 1px solid var(--lp-hair);
-}
-
-.lp-footer__copy {
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-footer__utility {
-	display: flex;
-	align-items: center;
-	gap: clamp(1rem, 3vw, 2rem);
-	flex-wrap: wrap;
-}
-
-.lp-footer__legal {
-	display: flex;
-	align-items: center;
-	gap: clamp(0.85rem, 2vw, 1.5rem);
-	flex-wrap: wrap;
-}
-
-.lp-footer__legal-link {
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-	text-decoration: none;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.lp-footer__legal-link:hover {
-	color: var(--on-surface);
-}
-
-.lp-footer__legal-link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-
-.lp-footer__legal-link--help {
-	display: inline-flex;
-	align-items: center;
 	gap: var(--space-1);
 }
 
-/* Micro-tooltip on "Contact Help" — CSS-only hover/focus reveal. */
-.lp-footer__tip {
-	position: relative;
+.lp-footer__social-link {
 	display: inline-flex;
 	align-items: center;
-}
-
-.lp-footer__tip-icon {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	color: var(--on-surface-variant);
-}
-
-.lp-footer__tip-bubble {
-	position: absolute;
-	inset-block-end: calc(100% + 0.5rem);
-	inset-inline-end: 0;
-	inline-size: max-content;
-	max-inline-size: 15rem;
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-md);
-	background: var(--surface-3);
-	color: var(--on-surface);
-	border: 1px solid var(--lp-hair);
-	box-shadow: var(--elevation-low);
-	font-size: 0.78rem;
-	line-height: 1.4;
-	opacity: 0;
-	transform: translateY(4px);
-	pointer-events: none;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border-radius: var(--radius-full);
+	color: var(--text-secondary);
 	transition:
-		opacity var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
 }
 
-.lp-footer__legal-link--help:hover .lp-footer__tip-bubble,
-.lp-footer__legal-link--help:focus-visible .lp-footer__tip-bubble {
-	opacity: 1;
-	transform: translateY(0);
+.lp-footer__social-link:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.lp-footer__social-link:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.lp-footer__social-link:focus-visible {
+	outline: none;
+}
+
+.lp-footer__social-icon {
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
 }
 /* #endregion */
 
-/* #region Responsive — collapse to a single stack with accordions */
+/* #region Responsive — one column, then accordions */
 @media (max-width: 900px) {
 	.lp-footer__inner {
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: 1fr;
 		gap: clamp(2rem, 5vw, 3rem);
 	}
-	.lp-footer__brand-col {
-		grid-column: 1 / -1;
-		grid-row: auto;
-	}
-	.lp-footer__nav {
-		grid-column: 1 / -1;
-		grid-row: auto;
-	}
-	.lp-footer__news {
-		grid-column: auto;
-		grid-row: auto;
-	}
-	/* Two tracks now, and the secondary blocks become their own full-width row again, side by side,
-	   each stating its own column — the recently-viewed rail is absent on a device with no history,
-	   and implicit flow would let the onboarding stack drift into whichever cell happened to be free. */
-	.lp-footer__aux {
-		grid-column: 1 / -1;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: clamp(2rem, 5vw, 3rem);
-	}
-	.lp-footer__setup {
-		grid-column: 1;
-		grid-row: auto;
-	}
-	.lp-footer__recent {
-		grid-column: 2;
-		grid-row: auto;
+	/* Full width would stretch the field across the page; a measure keeps it a field. */
+	.lp-footer__news-form {
+		max-inline-size: 26rem;
 	}
 }
 
@@ -520,10 +358,10 @@
 		gap: 0;
 	}
 	.lp-footer__group {
-		border-block-start: 1px solid var(--lp-hair);
+		border-block-start: var(--hairline);
 	}
 	.lp-footer__group:last-child {
-		border-block-end: 1px solid var(--lp-hair);
+		border-block-end: var(--hairline);
 	}
 	.lp-footer__group-head {
 		cursor: pointer;
@@ -535,38 +373,8 @@
 	.lp-footer__group[open] .lp-footer__group-chevron {
 		transform: rotate(180deg);
 	}
-	/* Scoped to the accordion: the secondary row's stacks are not `<details>` and still need the gap
-	   between their title and their first link. */
 	.lp-footer__group .lp-footer__links {
 		margin-block: 0 var(--space-4);
-	}
-}
-
-@media (max-width: 640px) {
-	.lp-footer__inner {
-		grid-template-columns: 1fr;
-	}
-
-	/* One column: the two secondary blocks stack, and both are pinned to it explicitly for the same
-	   reason as above. The gap tightens to the section rhythm — at this width the masthead clamp is
-	   generous enough to read as a page break rather than a group separation. */
-	.lp-footer__aux {
-		grid-template-columns: 1fr;
-		gap: var(--space-7);
-	}
-	.lp-footer__setup,
-	.lp-footer__recent {
-		grid-column: 1;
-	}
-
-	.lp-footer__base {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--space-3);
-	}
-	.lp-footer__utility {
-		flex-direction: column;
-		align-items: flex-start;
 	}
 }
 
@@ -579,13 +387,29 @@
 	}
 }
 
-/* Honour reduced-motion — every transition jumps to its final state (§B.2). */
+/* Reduced motion, BOTH channels (§A.5 · §B.12.1): the OS setting and the in-app overlay. Transitions
+   jump to their end state, and the press compression is removed outright — a zero duration would
+   still snap the control to its pressed size. */
 @media (prefers-reduced-motion: reduce) {
 	.lp-footer__social-link,
 	.lp-footer__news-submit,
-	.lp-footer__group-chevron,
-	.lp-footer__tip-bubble {
+	.lp-footer__group-chevron {
 		transition: none;
 	}
+	.lp-footer__social-link:active,
+	.lp-footer__news-submit:active:not(:disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .lp-footer__social-link,
+:root[data-motion="reduced"] .lp-footer__news-submit,
+:root[data-motion="reduced"] .lp-footer__group-chevron {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .lp-footer__social-link:active,
+:root[data-motion="reduced"] .lp-footer__news-submit:active:not(:disabled) {
+	transform: none;
 }
 /* #endregion */

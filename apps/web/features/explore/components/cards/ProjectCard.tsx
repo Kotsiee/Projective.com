@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import { Fragment, type JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
@@ -78,11 +78,14 @@ export function ProjectCard(
 			<p class="ex-proj__desc">{item.summary}</p>
 
 			{item.skills.length > 0 && (
-				<ul class="ex-proj__skills" role="list">
-					{item.skills.map((skill) => (
-						<li class="ex-proj__skill" key={skill.label}>{skill.label}</li>
+				<p class="ex-proj__skills">
+					{item.skills.map((skill, i) => (
+						<Fragment key={skill.label}>
+							{i > 0 && <span class="ex-card__dot" aria-hidden="true">·</span>}
+							{skill.label}
+						</Fragment>
 					))}
-				</ul>
+				</p>
 			)}
 		</article>
 	);

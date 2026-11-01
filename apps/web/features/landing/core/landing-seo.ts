@@ -1,15 +1,15 @@
 /**
- * landing-seo — the head facts and the structured data of `/` (`flows/LANDING.md` §4.0): the title,
- * the meta description and the social-card pair, and the schema.org graph — the organisation, the
- * website with its `SearchAction` into Explore, and the FAQPage, whose questions and answers are the
- * visible FAQ's own strings (`core/faq.ts`), so the two can never disagree.
+ * landing-seo — the head facts and the structured data of the front page `/` (`flows/LANDING.md`
+ * §4.0), which serves a guest the Explore Home (Decision #349): the title, the meta description and
+ * the social-card pair, and the schema.org graph — the organisation and the website with its
+ * `SearchAction` into Explore. The FAQPage moved with the questions to `/features`
+ * (`features-seo.ts`).
  *
- * Pure (no islands, no DOM), so the page controller, the thin route and the page's render test share
- * it. Built on the marketing pages' builders (`@features/marketing/core/seo.ts`).
+ * Pure (no islands, no DOM), so the thin route and its tests share it. Built on the marketing pages'
+ * builders (`@features/marketing/core/seo.ts`).
  */
 import {
 	absoluteUrl,
-	faqPageJsonLd,
 	type JsonLdGraph,
 	jsonLdGraph,
 	type JsonLdNode,
@@ -18,7 +18,6 @@ import {
 	pageMeta,
 	webSiteJsonLd,
 } from "@features/marketing/core/seo.ts";
-import type { FaqEntry } from "@features/landing/core/faq.ts";
 
 // #region Copy
 /**
@@ -34,7 +33,7 @@ export const LANDING_META = {
 		"Search freelancers, teams and services. Pay for each stage before it starts. The team is paid when you approve.",
 } as const;
 
-/** The script node the landing's graph is emitted in. */
+/** The script node the front page's graph is emitted in. */
 export const LANDING_JSONLD_ID = "landing-jsonld";
 // #endregion
 
@@ -59,14 +58,12 @@ export function landingPageMeta(origin: string): PageMeta {
 }
 
 /**
- * The landing's schema.org graph: the organisation; the website with a `SearchAction` into
- * Explore's free-text search (`/explore?q=`); and the FAQPage of the questions section, its every
- * question and answer the visible text word for word ("escrow" with it, Decision #283 (C)).
+ * The front page's schema.org graph: the organisation, and the website with a `SearchAction` into
+ * Explore's free-text search (`/explore?q=`).
  *
  * @param origin The site's public origin, for the graph's absolute ids and URLs.
- * @param faq The questions exactly as the page prints them (`faqEntries`).
  */
-export function landingGraph(origin: string, faq: readonly FaqEntry[]): JsonLdGraph {
+export function landingGraph(origin: string): JsonLdGraph {
 	const site: JsonLdNode = {
 		...webSiteJsonLd(origin),
 		potentialAction: {
@@ -78,13 +75,6 @@ export function landingGraph(origin: string, faq: readonly FaqEntry[]): JsonLdGr
 			"query-input": "required name=search_term_string",
 		},
 	};
-	const questions = faq.length > 0
-		? faqPageJsonLd({
-			origin,
-			path: "/",
-			items: faq.map((entry) => ({ question: entry.question, answer: entry.answer })),
-		})
-		: null;
-	return jsonLdGraph(organizationJsonLd(origin), site, questions);
+	return jsonLdGraph(organizationJsonLd(origin), site);
 }
 // #endregion

@@ -20,7 +20,7 @@ export interface PricingProps {
  * island in its panel. The fee's label is formatted here, on the server, from the basis points
  * (500 → "5%", the same formatter `/about` prints the fee with), so the island never carries the
  * formatting module. Without a fee the island is still mounted — it draws nothing, and carries
- * this section's stylesheet and that of "The numbers so far" (`LiveNumbers`).
+ * this section's stylesheet.
  */
 export function Pricing({ feeBp }: PricingProps): JSX.Element {
 	const fee: PricingFee | null = feeBp === null

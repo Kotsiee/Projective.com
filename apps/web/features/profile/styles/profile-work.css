@@ -411,22 +411,6 @@
     color: var(--on-surface-variant);
 }
 
-.pf .ex-pill {
-    background: var(--pf-tag-bg);
-    color: var(--pf-tag-ink);
-}
-
-.pf .ex-pill__icon,
-.pf .ex-pill:hover .ex-pill__icon {
-    color: var(--pf-tag-ink);
-}
-
-.pf .ex-pill:hover,
-.pf .ex-card:hover .ex-pill:hover {
-    background: var(--surface-2);
-    color: var(--on-surface);
-}
-
 /*
  * The verification crest is deliberately NOT monochromed here. It is a claim, not chrome: the hero
  * above draws it in the shared stamp ink (`verification-stamp.css`, Decision #155), and the same

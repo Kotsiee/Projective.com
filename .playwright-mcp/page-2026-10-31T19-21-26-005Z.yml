@@ -1,0 +1,347 @@
+- generic [active] [ref=f16e1]:
+  - generic [ref=f16e2]:
+    - link "Skip to content" [ref=f16e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner:
+      - generic [ref=f16e4]:
+        - link "Projective" [ref=f16e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Main" [ref=f16e10]:
+          - list [ref=f16e11]:
+            - listitem [ref=f16e12]:
+              - link "How it works" [ref=f16e13] [cursor=pointer]:
+                - /url: /features#demo
+            - listitem [ref=f16e14]:
+              - link "Explore" [ref=f16e15] [cursor=pointer]:
+                - /url: /explore
+              - button "Explore menu" [ref=f16e16] [cursor=pointer]
+            - listitem [ref=f16e18]:
+              - link "Pricing" [ref=f16e19] [cursor=pointer]:
+                - /url: /features#pricing
+            - listitem [ref=f16e20]:
+              - link "Features" [ref=f16e21] [cursor=pointer]:
+                - /url: /features
+        - search [ref=f16e22]:
+          - generic [ref=f16e23]:
+            - searchbox "Search Projective" [ref=f16e27]
+            - generic [ref=f16e29]: Ctrl /
+        - generic [ref=f16e31]:
+          - button "Switch to dark theme" [ref=f16e32] [cursor=pointer]
+          - link "Sign in" [ref=f16e39] [cursor=pointer]:
+            - /url: /login?redirectTo=%2Fexplore%3Fq%3DBrand%2Bidentity
+          - link "Get started" [ref=f16e40] [cursor=pointer]:
+            - /url: /join?redirectTo=%2Fexplore%3Fq%3DBrand%2Bidentity
+    - main [ref=f16e41]:
+      - generic [ref=f16e43]:
+        - generic [ref=f16e44]:
+          - heading "Brand identity" [level=1] [ref=f16e45]
+          - search [ref=f16e46]:
+            - 'button "Search scope: All" [ref=f16e48] [cursor=pointer]': All
+            - generic [ref=f16e52]:
+              - combobox "Search within results" [ref=f16e53]: Brand identity
+              - status [ref=f16e54]
+            - button "Clear search" [ref=f16e55] [cursor=pointer]
+            - button "Search" [ref=f16e58] [cursor=pointer]
+          - generic [ref=f16e62]:
+            - generic [ref=f16e63]: Related
+            - generic [ref=f16e64]:
+              - button "Figma" [ref=f16e65] [cursor=pointer]
+              - button "Design systems" [ref=f16e66] [cursor=pointer]
+              - button "TypeScript" [ref=f16e67] [cursor=pointer]
+              - button "Branding" [ref=f16e68] [cursor=pointer]
+              - button "Typography" [ref=f16e69] [cursor=pointer]
+              - button "Art direction" [ref=f16e70] [cursor=pointer]
+        - generic [ref=f16e71]:
+          - complementary "Search filters" [ref=f16e72]:
+            - generic [ref=f16e74]:
+              - heading "Filters" [level=2] [ref=f16e77]
+              - generic [ref=f16e78]:
+                - button "Rating" [expanded] [ref=f16e80] [cursor=pointer]
+                - generic [ref=f16e84]:
+                  - paragraph [ref=f16e85]: Minimum rating
+                  - generic [ref=f16e86]:
+                    - slider "Minimum rating" [ref=f16e87] [cursor=pointer]
+                    - generic [aria-hidden] [ref=f16e103]: Any
+              - generic [ref=f16e104]:
+                - button "Trust" [expanded] [ref=f16e106] [cursor=pointer]
+                - button "Verified only" [ref=f16e112] [cursor=pointer]
+          - generic [ref=f16e114]:
+            - generic [ref=f16e115]:
+              - generic [ref=f16e116]:
+                - paragraph [ref=f16e117]:
+                  - strong [ref=f16e118]: "4"
+                  - text: results
+                  - generic [ref=f16e119]: for "Brand identity"
+                - button "Hide filters" [pressed] [ref=f16e120] [cursor=pointer]
+              - combobox "Sort results" [ref=f16e127] [cursor=pointer]:
+                - generic [ref=f16e128]: Recommended
+            - generic [ref=f16e133]:
+              - region [ref=f16e134]:
+                - generic [ref=f16e135]:
+                  - heading [level=2] [ref=f16e136]:
+                    - link "Services you can buy" [ref=f16e137] [cursor=pointer]:
+                      - /url: /explore?q=Brand+identity&category=services
+                  - link "Show all" [ref=f16e138] [cursor=pointer]:
+                    - /url: /explore?q=Brand+identity&category=services
+                - list [ref=f16e142]:
+                  - listitem [ref=f16e143]:
+                    - article [ref=f16e144]:
+                      - link "Brand identity sprint by Atelier Nova — $4,800" [ref=f16e145] [cursor=pointer]:
+                        - /url: /view/svc-xw32tu2h4a?type=services
+                      - generic [ref=f16e146]:
+                        - button "Share Brand identity sprint" [ref=f16e148] [cursor=pointer]
+                        - link "Sign in to save this" [ref=f16e156] [cursor=pointer]:
+                          - /url: /login?redirectTo=%2Fview%2Fsvc-xw32tu2h4a%3Ftype%3Dservices
+                      - img "Sponsored" [ref=f16e161]:
+                        - generic [aria-hidden] [ref=f16e162]: AD
+                      - generic [ref=f16e163]:
+                        - link "Atelier Nova" [ref=f16e165] [cursor=pointer]:
+                          - /url: /@ateliernova
+                        - heading "Brand identity sprint" [level=3] [ref=f16e171]
+                        - generic [ref=f16e172]:
+                          - generic [ref=f16e173]: Pipeline service
+                          - generic [ref=f16e174]: ·10-day delivery
+                        - generic [ref=f16e175]:
+                          - img "Rated 4.9 out of 5, 3 ratings" [ref=f16e177]:
+                            - generic [aria-hidden] [ref=f16e182]:
+                              - text: "4.9"
+                              - generic [ref=f16e183]: (3)
+                          - generic [ref=f16e184]:
+                            - generic [ref=f16e185]:
+                              - text: From
+                              - generic [ref=f16e186]:
+                                - generic [aria-hidden] [ref=f16e187]:
+                                  - generic [ref=f16e188]: £
+                                  - generic [ref=f16e189]: "94"
+                                  - generic [ref=f16e190]: ".49"
+                                - generic [ref=f16e191]: approximately £94.49, converted from US$120.00 USD at a rate of 0.787402
+                            - generic [ref=f16e192]: / ticket
+                      - paragraph [ref=f16e193]: A staged identity system — discovery, concept routes, and a final kit with a Webflow handoff.
+              - region [ref=f16e194]:
+                - generic [ref=f16e195]:
+                  - heading [level=2] [ref=f16e196]:
+                    - link "Freelancers & Teams you can hire" [ref=f16e197] [cursor=pointer]:
+                      - /url: /explore?q=Brand+identity&category=freelancers
+                  - link "Show all" [ref=f16e198] [cursor=pointer]:
+                    - /url: /explore?q=Brand+identity&category=freelancers
+                - list [ref=f16e202]:
+                  - listitem [ref=f16e203]:
+                    - article [ref=f16e204]:
+                      - link "Atelier Nova — Brand identity studio — strategy, identity systems and launch assets" [ref=f16e205] [cursor=pointer]:
+                        - /url: /@ateliernova
+                      - generic [ref=f16e206]:
+                        - button "Share Atelier Nova" [ref=f16e208] [cursor=pointer]
+                        - link "Sign in to save this" [ref=f16e216] [cursor=pointer]:
+                          - /url: /login?redirectTo=%2F%40ateliernova
+                      - generic [ref=f16e221]:
+                        - generic [ref=f16e222]:
+                          - generic [ref=f16e225]: Atelier Nova
+                          - generic [ref=f16e227]: "@ateliernova"
+                        - paragraph [ref=f16e228]: Brand identity studio — strategy, identity systems and launch assets
+                        - list [ref=f16e230]:
+                          - listitem [ref=f16e231]: 3 members
+                      - paragraph [ref=f16e232]: Brand identity studio — strategy, identity systems and launch assets
+                  - listitem [ref=f16e233]:
+                    - article [ref=f16e234]:
+                      - link "Inês Duarte — Brand designer — founder of Atelier Nova" [ref=f16e235] [cursor=pointer]:
+                        - /url: /@inesduarte
+                      - generic [ref=f16e236]:
+                        - button "Share Inês Duarte" [ref=f16e238] [cursor=pointer]
+                        - link "Sign in to save this" [ref=f16e246] [cursor=pointer]:
+                          - /url: /login?redirectTo=%2F%40inesduarte
+                      - generic [ref=f16e249]: Available now
+                      - generic [ref=f16e253]:
+                        - generic [ref=f16e254]:
+                          - generic [ref=f16e257]:
+                            - generic [ref=f16e258]: Inês Duarte
+                            - img "Payout verified" [ref=f16e260]
+                          - generic [ref=f16e264]: "@inesduarte"
+                        - paragraph [ref=f16e265]: Brand designer — founder of Atelier Nova
+                        - paragraph [ref=f16e266]:
+                          - text: Porto, Portugal
+                          - generic [ref=f16e267]: · Portuguese, English, +1 more
+                      - paragraph [ref=f16e269]: Brand designer — founder of Atelier Nova
+              - region [ref=f16e270]:
+                - generic [ref=f16e271]:
+                  - heading [level=2] [ref=f16e272]:
+                    - link "Projects you can join" [ref=f16e273] [cursor=pointer]:
+                      - /url: /explore?q=Brand+identity&category=projects
+                  - link "Show all" [ref=f16e274] [cursor=pointer]:
+                    - /url: /explore?q=Brand+identity&category=projects
+                - list [ref=f16e278]:
+                  - listitem [ref=f16e279]:
+                    - article [ref=f16e280]:
+                      - link "Verdant brand refresh for Helia Finance — $32,000" [ref=f16e281] [cursor=pointer]:
+                        - /url: /view/prj-k9gmv68pe9?type=projects
+                      - generic [ref=f16e282]:
+                        - button "Share Verdant brand refresh" [ref=f16e284] [cursor=pointer]
+                        - link "Sign in to save this" [ref=f16e292] [cursor=pointer]:
+                          - /url: /login?redirectTo=%2Fview%2Fprj-k9gmv68pe9%3Ftype%3Dprojects
+                      - generic [ref=f16e295]:
+                        - link "Priya Raman" [ref=f16e297] [cursor=pointer]:
+                          - /url: /@priyaraman
+                          - img [ref=f16e299]:
+                            - generic [ref=f16e300]: PR
+                        - generic [ref=f16e304]: Posted 16 days ago
+                      - heading "Verdant brand refresh" [level=3] [ref=f16e305]
+                      - list "Project stages" [ref=f16e306]:
+                        - listitem [ref=f16e307]:
+                          - generic [ref=f16e308]: Brand refresh delivery
+                      - paragraph [ref=f16e309]: A full brand refresh for Verdant, Helia's savings product — positioning, identity system, and launch assets — delivered as one scoped engagement.
+                      - paragraph [ref=f16e310]: Branding·Identity systems·Typography
+    - contentinfo [ref=f16e311]:
+      - generic [ref=f16e312]:
+        - generic [ref=f16e313]:
+          - link "Projective — home" [ref=f16e314] [cursor=pointer]:
+            - /url: /
+            - generic [ref=f16e318]: Projective
+          - paragraph [ref=f16e319]: The place to find, hire and work with ready-made teams.
+        - navigation "Quick links" [ref=f16e320]:
+          - group [ref=f16e321]:
+            - generic "For helpers" [ref=f16e322]
+            - list [ref=f16e324]:
+              - listitem [ref=f16e325]:
+                - link "Find helper gigs" [ref=f16e326] [cursor=pointer]:
+                  - /url: /explore?category=projects
+              - listitem [ref=f16e327]:
+                - link "Showcase your services" [ref=f16e328] [cursor=pointer]:
+                  - /url: /catalogue?create=service
+              - listitem [ref=f16e329]:
+                - link "Sell your products" [ref=f16e330] [cursor=pointer]:
+                  - /url: /catalogue?create=product
+              - listitem [ref=f16e331]:
+                - link "How it works" [ref=f16e332] [cursor=pointer]:
+                  - /url: /help/getting-started/what-is-projective
+          - group [ref=f16e333]:
+            - generic "For clients" [ref=f16e334]
+            - list [ref=f16e336]:
+              - listitem [ref=f16e337]:
+                - link "Hire ready-made teams" [ref=f16e338] [cursor=pointer]:
+                  - /url: /explore?category=teams
+              - listitem [ref=f16e339]:
+                - link "Post a new project" [ref=f16e340] [cursor=pointer]:
+                  - /url: /projects?create=1
+              - listitem [ref=f16e341]:
+                - link "Safe & easy payments" [ref=f16e342] [cursor=pointer]:
+                  - /url: /help/escrow-and-payments/what-is-escrow
+              - listitem [ref=f16e343]:
+                - link "Fees" [ref=f16e344] [cursor=pointer]:
+                  - /url: /help/escrow-and-payments/fees
+          - group [ref=f16e345]:
+            - generic "Explore & learn" [ref=f16e346]
+            - list [ref=f16e348]:
+              - listitem [ref=f16e349]:
+                - link "Features" [ref=f16e350] [cursor=pointer]:
+                  - /url: /features
+              - listitem [ref=f16e351]:
+                - link "Services directory" [ref=f16e352] [cursor=pointer]:
+                  - /url: /explore?category=services
+              - listitem [ref=f16e353]:
+                - link "Products marketplace" [ref=f16e354] [cursor=pointer]:
+                  - /url: /explore?category=products
+              - listitem [ref=f16e355]:
+                - link "Trending teams" [ref=f16e356] [cursor=pointer]:
+                  - /url: /explore?category=teams
+              - listitem [ref=f16e357]:
+                - link "Member articles" [ref=f16e358] [cursor=pointer]:
+                  - /url: /explore?category=articles
+          - group [ref=f16e359]:
+            - generic "Company" [ref=f16e360]
+            - list [ref=f16e362]:
+              - listitem [ref=f16e363]:
+                - link "About" [ref=f16e364] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=f16e365]:
+                - link "Changelog" [ref=f16e366] [cursor=pointer]:
+                  - /url: /changelog
+              - listitem [ref=f16e367]:
+                - link "Articles" [ref=f16e368] [cursor=pointer]:
+                  - /url: /articles
+              - listitem [ref=f16e369]:
+                - link "Contact" [ref=f16e370] [cursor=pointer]:
+                  - /url: /contact
+          - group [ref=f16e371]:
+            - generic "Help" [ref=f16e372]
+            - list [ref=f16e374]:
+              - listitem [ref=f16e375]:
+                - link "Help centre" [ref=f16e376] [cursor=pointer]:
+                  - /url: /help
+              - listitem [ref=f16e377]:
+                - link "Feedback & roadmap" [ref=f16e378] [cursor=pointer]:
+                  - /url: /feedback
+          - group [ref=f16e379]:
+            - generic "Legal" [ref=f16e380]
+            - list [ref=f16e382]:
+              - listitem [ref=f16e383]:
+                - link "Terms of Service" [ref=f16e384] [cursor=pointer]:
+                  - /url: /legal/terms
+              - listitem [ref=f16e385]:
+                - link "Privacy Policy" [ref=f16e386] [cursor=pointer]:
+                  - /url: /legal/privacy
+              - listitem [ref=f16e387]:
+                - link "Cookie Policy" [ref=f16e388] [cursor=pointer]:
+                  - /url: /legal/cookies
+              - listitem [ref=f16e389]:
+                - link "Acceptable Use Policy" [ref=f16e390] [cursor=pointer]:
+                  - /url: /legal/acceptable-use
+              - listitem [ref=f16e391]:
+                - link "Escrow Terms" [ref=f16e392] [cursor=pointer]:
+                  - /url: /legal/escrow-terms
+              - listitem [ref=f16e393]:
+                - link "IP Transfer Deed" [ref=f16e394] [cursor=pointer]:
+                  - /url: /legal/ip-transfer-deed
+              - listitem [ref=f16e395]:
+                - link "All legal documents" [ref=f16e396] [cursor=pointer]:
+                  - /url: /legal
+        - generic [ref=f16e397]:
+          - generic [ref=f16e398]: Stay updated
+          - paragraph [ref=f16e399]: New teams, new features, and the odd good idea. No spam, ever.
+          - generic [ref=f16e401]:
+            - textbox "Email address" [ref=f16e402]:
+              - /placeholder: you@example.com
+            - button "Subscribe" [ref=f16e403] [cursor=pointer]
+          - paragraph [ref=f16e406]: We only use your email for updates. Unsubscribe any time.
+        - generic [ref=f16e408]:
+          - generic [ref=f16e409]: Get set up
+          - list [ref=f16e410]:
+            - listitem [ref=f16e411]:
+              - link "Create an account" [ref=f16e412] [cursor=pointer]:
+                - /url: /join
+            - listitem [ref=f16e413]:
+              - link "Complete your profile" [ref=f16e414] [cursor=pointer]:
+                - /url: /settings
+            - listitem [ref=f16e415]:
+              - link "Post your first project" [ref=f16e416] [cursor=pointer]:
+                - /url: /projects?create=1
+            - listitem [ref=f16e417]:
+              - link "Set up payouts" [ref=f16e418] [cursor=pointer]:
+                - /url: /settings/verification
+            - listitem [ref=f16e419]:
+              - link "See how it all works" [ref=f16e420] [cursor=pointer]:
+                - /url: /help/getting-started/what-is-projective
+      - generic [ref=f16e421]:
+        - generic [ref=f16e422]: © 2026 Projective. All rights reserved.
+        - navigation "Legal" [ref=f16e424]:
+          - link "Terms of Service" [ref=f16e425] [cursor=pointer]:
+            - /url: /legal/terms
+          - link "Privacy Policy" [ref=f16e426] [cursor=pointer]:
+            - /url: /legal/privacy
+          - link "Cookie Policy" [ref=f16e427] [cursor=pointer]:
+            - /url: /legal/cookies
+          - link [ref=f16e428] [cursor=pointer]:
+            - /url: /contact?intent=support
+            - text: Contact Help
+            - tooltip "Every request gets a reference number." [ref=f16e429]
+  - generic [ref=f16e434]:
+    - menu "Developer tools":
+      - menuitem "Switch Context"
+      - generic [aria-hidden]: Switch Context
+      - menuitem "Open Log Inspector"
+      - generic [aria-hidden]: Open Log Inspector
+      - menuitem "Toggle Ownership"
+      - generic [aria-hidden]: Toggle Ownership
+      - menuitem "Invites"
+      - generic [aria-hidden]: Invites
+      - menuitem "Clear Cache"
+      - generic [aria-hidden]: Clear Cache
+    - button "Developer tools" [ref=f16e435] [cursor=pointer]

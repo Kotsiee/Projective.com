@@ -58,8 +58,6 @@ export interface DemoHostProps {
 	initial: DemoId;
 	/** The platform fee in basis points from the server, or `null` when it is unavailable. */
 	feeBp: number | null;
-	/** Render "See everything Projective does" → `/features` (work order L5; `/` turns it on). */
-	features?: boolean;
 	/** The Work board's poster: the server-rendered still of its board. */
 	children?: ComponentChildren;
 	/** Payment protection's poster: the server-rendered still of its opening picture. */
@@ -93,8 +91,7 @@ export interface DemoHostProps {
  * stylesheet imported by a server component never reaches the page.
  */
 export default function DemoHost(
-	{ initial, feeBp, features = false, children, paymentsPoster, bookingPoster, splitsPoster }:
-		DemoHostProps,
+	{ initial, feeBp, children, paymentsPoster, bookingPoster, splitsPoster }: DemoHostProps,
 ): JSX.Element {
 	const active = useSignal<DemoId>(initial);
 	const hydrated = useSignal(false);
@@ -180,6 +177,8 @@ export default function DemoHost(
 			const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
 			if (!(anchor instanceof HTMLAnchorElement) || anchor.target) return;
 			if (anchor.closest('[role="tablist"]')) return;
+			// A "Try it" FeatureDemoDialog has made a dialog button opens its dialog, not this stage.
+			if (anchor.getAttribute("aria-haspopup") === "dialog") return;
 			const id = samePageDemoLink(anchor.getAttribute("href") ?? "", location.pathname);
 			if (!id) return;
 			event.preventDefault();
@@ -200,7 +199,6 @@ export default function DemoHost(
 			rootRef={root}
 			active={active.value}
 			feeBp={feeBp}
-			features={features}
 			roving={hydrated.value}
 			posters={{
 				board: children,

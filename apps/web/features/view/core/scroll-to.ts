@@ -13,7 +13,8 @@ const BREATHING_ROOM = 16;
  * The height of the chrome a scroll target has to clear.
  *
  * `siteHeaderHeight + middleNavHeaderHeight + extraPadding`, resolved from the shell that is actually
- * rendering — the guest shell pins an ~88px pill header, the authenticated L-shell a 48px top bar.
+ * rendering — the guest band pins 1rem under the 56px docked bar, the authenticated L-shell under a
+ * 48px top bar.
  *
  * **The band is counted at its FULL height even though it measures 0 right now.** Both sticky header
  * bands reveal by `max-block-size` and are collapsed until the hero scrolls past (§D.7.6), so
@@ -31,12 +32,13 @@ export function chromeOffset(): number {
 		const cs = getComputedStyle(root);
 		const rootPx = Number.parseFloat(cs.fontSize) || 16;
 		const isGuest = !!document.querySelector(".guest-shell");
+		const guestBand = document.querySelector(".guest-shell__subheader");
 
-		const top = cssLength(
-			cs.getPropertyValue(isGuest ? "--site-header-h" : "--shell-topbar-h"),
-			rootPx,
-			isGuest ? 88 : 48,
-		);
+		// The guest pin line is a `calc()` token, which a custom-property read returns unresolved; the
+		// band's own computed `top` is that line in px (72 = the 3.5rem docked bar + 1rem).
+		const top = isGuest
+			? (guestBand && Number.parseFloat(getComputedStyle(guestBand).top)) || 72
+			: cssLength(cs.getPropertyValue("--shell-topbar-h"), rootPx, 48);
 
 		// The band only exists on a route that registered one; `null` means there is nothing to clear.
 		const hasBand = !!document.querySelector(

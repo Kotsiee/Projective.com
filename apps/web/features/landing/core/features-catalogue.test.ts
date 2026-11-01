@@ -186,7 +186,7 @@ Deno.test("Try it only where a demo was built: V1, V2, V4 and V5, each a DemoId,
 	assertEquals(tried, [["V1", "board"], ["V4", "booking"], ["V2", "payments"], ["V5", "splits"]]);
 	for (const [, demo] of tried) assert(isDemoId(demo));
 	assertEquals(tried.map(([, demo]) => demo).sort(), [...DEMO_IDS].sort());
-	assertEquals(featureTryHref("board"), "/?demo=board#demo");
+	assertEquals(featureTryHref("board"), "/features?demo=board#demo");
 	assertEquals(FEATURES_COPY.tryIt, "Try it");
 	assertEquals(tryLabel("Work board"), "Try it: Work board");
 	for (const entry of FEATURE_CATALOGUE) {

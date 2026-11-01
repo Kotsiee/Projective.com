@@ -17,8 +17,8 @@
  * No animation of its own (§2.7: nothing moves in this section): the glyph's turn follows the
  * visitor's press, at `--lp-dur-fast`, which both reduced-motion channels collapse to 0ms. Press
  * feedback is `scale()` on the glyph alone, removed under both channels. No focus ring (Decision
- * #285 (A)). Tokens only. Delivered by the LandingHeader island (a server component's stylesheet
- * reaches no page).
+ * #285 (A)). Tokens only. Delivered by the FeatureDemoDialog island, which `/features` always renders (a server component's
+ * stylesheet reaches no page).
  */
 
 /* #region Section */

@@ -56,7 +56,7 @@ export function ExploreScreen(
 			<AmbientPalette />
 			{
 				/* Records which items this DEVICE opens, so the Home's "Continue where you left off" rail
-			    and the footer's "Recently viewed" stack have something true to read. Renders nothing;
+			    has something true to read. Renders nothing;
 			    finds its subjects by `data-item-id` rather than being threaded through every card, so the
 			    cards stay server components. */
 			}

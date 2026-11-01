@@ -3775,8 +3775,8 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/services`               | `index`                  |                                                                                                |
 |               |                           | `create`                 |                                                                                                |
 |               |                           | `availability`           |                                                                                                |
-| **Public**    | `/index`                  |                          | Landing Page                                                                                   |
-|               | `/features`               |                          | Everything Projective does (L5, [`flows/LANDING.md`](../flows/LANDING.md) §2.5–§2.6, §4.12): an editorial chapter index — Find & hire · Run the work · Money · Trust · Coming soon — where each feature is a row with its one-line description, "Try it" (the landing's example demo, example data, no real money moves) only where a demo exists, and "Learn more" only where a help article exists; the Coming soon rows are static. Off-system (`LandingShell`, Decision #280), indexable, listed in the sitemap, linked from the header, the demo stage, the footer and `/about` |
+| **Public**    | `/index`                  |                          | Front page (Decision #349): a guest's Explore Home (the `/explore` feed); a signed-in visitor is sent on to `/explore`|
+|               | `/features`               |                          | Everything Projective does (L5, [`flows/LANDING.md`](../flows/LANDING.md) §2.5–§2.6, §4.12): an editorial chapter index — Find & hire · Run the work · Money · Trust · Coming soon — where each feature is a row with its one-line description, "Try it" (the landing's example demo, example data, no real money moves) only where a demo exists, and "Learn more" only where a help article exists; the Coming soon rows are static. After the index, the deep dives that left `/` (Decision #349): the demo stage, Payment protection, Pricing and the common questions. Off-system (`LandingShell`, Decision #280), indexable, listed in the sitemap, linked from the header, the footer and `/about` |
 |               | `/about`                  |                          | The mission page (Decision #277): the shift from working alone to protected teamwork, the friction set against the model, live platform figures (money protected in escrow, stages delivered, median funding → approval, the platform fee — real aggregates only, each hidden below `public_metrics_min_n`, updated hourly), an interactive walkthrough of one stage's money (Fund → Prepaid escrow → Claim → In progress → Submit → Accept & release → 7-day clearing → Withdraw), the founders (once real ones are supplied; until then the band is not drawn), how it's built (no certification claims), and Start a project / Talk to sales |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
 |               | `/pricing`                |                          | **Planned** (Decision #252) — every plan by audience (Individual · Team / Agency · Business / Enterprise) over the two payment planes, in the viewer's currency, with what no plan changes (§Escrow, Wallets & Finance 7 "Public pricing") |
@@ -4004,8 +4004,9 @@ easily accessible.
 The Projective brand is built on a "Calm Tech" aesthetic, utilizing a teal-primary palette that
 invokes trust and clarity.
 
-**Off-system surfaces:** `/` and `/features` run under the scoped `lp-` exemption (Decision #280);
-their direction, tokens, copy and claims table live in [`flows/LANDING.md`](../flows/LANDING.md).
+**Off-system surfaces:** `/features` runs under the scoped `lp-` exemption (Decision #280; `/` left
+it when it became the Explore Home, Decision #349); its direction, tokens, copy and claims table live
+in [`flows/LANDING.md`](../flows/LANDING.md).
 
 #### Logo Specifications
 

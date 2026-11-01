@@ -4,12 +4,14 @@ import { type Browser, type BrowserContext, chromium, type Page } from "npm:play
 import { Buffer } from "node:buffer";
 
 /**
- * landing-hero.spec — the landing hero search in a real browser (work order L2 of
- * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`; `flows/LANDING.md` §4.1): without JavaScript the form
- * submits `category` and `q` to `/explore`; hydrated, typing opens the grouped suggestions, the
- * arrow keys drive `aria-activedescendant` and keep the active row in sight, Escape closes the
- * panel, Enter lands on `explorePath(category, q)`, and `/` focuses the field once its hint and
- * `aria-keyshortcuts` show. No sign-in: the landing is the same for a guest.
+ * landing-hero.spec — the landing hero search (`HeroSearch`) in a real browser (work order L2 of
+ * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`; `flows/LANDING.md` §4.1, §4.11). Decision #349 retired the
+ * hero on `/`, so the one instance left is `/features`' final call to action (`#get-started`), the
+ * page's only search, which takes the `/` shortcut: without JavaScript the form submits `category`
+ * and `q` to `/explore`; hydrated, typing opens the grouped suggestions, the arrow keys drive
+ * `aria-activedescendant` and keep the active row in sight, Escape closes the panel, Enter lands on
+ * `explorePath(category, q)`, and `/` focuses the field once its hint and `aria-keyshortcuts` show.
+ * No sign-in: `/features` is the same for a guest.
  *
  * Two ways to run it (`deno task test:e2e`):
  *   - against a RUNNING server: `E2E_LANDING_URL` (else `E2E_BASE_URL`, else
@@ -32,13 +34,16 @@ const ARTIFACTS = Deno.env.get("E2E_ARTIFACTS") ?? Deno.makeTempDirSync({ prefix
 const DESKTOP = { width: 1280, height: 800 };
 
 /**
- * The hero's controls by what the page names them (the no-JavaScript form's field names, the input's
- * shortcut and the listbox's accessible name), so the suite needs none of the landing's own classes.
+ * The search's controls by what the page names them (the final section's anchor, the no-JavaScript
+ * form's field names, the input's shortcut and the listbox's accessible name), so the suite needs
+ * none of the landing's own classes.
  */
-const QUERY = 'input[name="q"]';
-const CATEGORY = 'select[name="category"]';
-const BOUND_QUERY = 'input[name="q"][aria-keyshortcuts="/"]';
-const OPTIONS = '[role="listbox"][aria-label="Suggestions"] [role="option"]';
+const PAGE = "/features";
+const QUERY = '#get-started input[name="q"]';
+const CATEGORY = '#get-started select[name="category"]';
+const BOUND_QUERY = '#get-started input[name="q"][aria-keyshortcuts="/"]';
+const LISTBOX = '#get-started [role="listbox"][aria-label="Suggestions"]';
+const OPTIONS = `${LISTBOX} [role="option"]`;
 // #endregion
 
 // #region Harness
@@ -105,9 +110,9 @@ async function contextFor(
 	return context;
 }
 
-/** The hero search once its island has hydrated: the input declares `/` only from then on. */
+/** The search once its island has hydrated: the input declares `/` only from then on. */
 async function hydratedHero(page: Page): Promise<void> {
-	await page.goto("/", { waitUntil: "load", timeout: 60_000 });
+	await page.goto(PAGE, { waitUntil: "load", timeout: 60_000 });
 	await page.waitForSelector(BOUND_QUERY, { timeout: 30_000 });
 }
 
@@ -127,7 +132,7 @@ async function shot(page: Page, name: string): Promise<void> {
 // #endregion
 
 Deno.test({
-	name: "landing hero — no-JS submit → suggestions → keys → Enter → / focuses",
+	name: "landing hero search on /features — no-JS submit → suggestions → keys → Enter → / focuses",
 	sanitizeOps: false,
 	sanitizeResources: false,
 	async fn(t) {
@@ -138,7 +143,7 @@ Deno.test({
 				const context = await contextFor(browser, app, { javaScriptEnabled: false });
 				const page = await context.newPage();
 				try {
-					await page.goto("/", { waitUntil: "load", timeout: 60_000 });
+					await page.goto(PAGE, { waitUntil: "load", timeout: 60_000 });
 					await page.selectOption(CATEGORY, "freelancers");
 					await page.fill(QUERY, "landing page");
 					await Promise.all([
@@ -195,13 +200,13 @@ Deno.test({
 						await page.keyboard.press("ArrowUp");
 						const last = await page.getAttribute(QUERY, "aria-activedescendant");
 						assert(last, "ArrowUp names the last option");
-						const inSight = await page.evaluate((id) => {
+						const inSight = await page.evaluate(({ id, listbox }) => {
 							const option = document.getElementById(id)?.getBoundingClientRect();
-							const list = document.querySelector('[role="listbox"][aria-label="Suggestions"]');
+							const list = document.querySelector(listbox);
 							const panel = list?.parentElement?.getBoundingClientRect();
 							return !!option && !!panel && option.top >= panel.top - 1 &&
 								option.bottom <= panel.bottom + 1;
-						}, last);
+						}, { id: last, listbox: LISTBOX });
 						assert(inSight, "the active option is scrolled into the panel's view");
 
 						await Promise.all([
@@ -223,7 +228,7 @@ Deno.test({
 			);
 
 			await t.step(
-				"/ focuses the hero search once its hint and aria-keyshortcuts show",
+				"/ focuses the search once its hint and aria-keyshortcuts show",
 				async () => {
 					const context = await contextFor(browser, app);
 					const page = await context.newPage();
@@ -231,16 +236,17 @@ Deno.test({
 						await hydratedHero(page);
 						assertEquals(await page.getAttribute(QUERY, "aria-keyshortcuts"), "/");
 						assert(
-							await page.getByText("to search").first().isVisible(),
+							await page.locator("#get-started").getByText("to search").first().isVisible(),
 							"the hint shows",
 						);
 						await page.locator("body").click({ position: { x: 4, y: 400 } });
 						await page.keyboard.press("/");
 						assert(
-							await page.evaluate(() =>
-								document.activeElement === document.querySelector('input[name="q"]')
+							await page.evaluate(
+								(query) => document.activeElement === document.querySelector(query),
+								QUERY,
 							),
-							"/ focuses the hero search",
+							"/ focuses the search",
 						);
 					} catch (error) {
 						await shot(page, "slash");

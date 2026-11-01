@@ -72,6 +72,14 @@ export function isFocusHeaderSearchShortcut(event: ShortcutKey): boolean {
 	return event.key === "/";
 }
 
+/**
+ * The hint for {@link isFocusHeaderSearchShortcut}, as the search pills show it: `⌘ /` on an Apple
+ * device, `Ctrl /` elsewhere. Read from the user agent once hydrated; the server renders `Ctrl /`.
+ */
+export function headerSearchShortcutLabel(userAgent: string): string {
+	return /Mac|iPhone|iPad|iPod/.test(userAgent) ? "⌘ /" : "Ctrl /";
+}
+
 // #region The feedback sequence — "g" then "f" (Decision #272)
 /** How long after `g` an `f` still completes the sequence. */
 export const FEEDBACK_SEQUENCE_WINDOW_MS = 1000;

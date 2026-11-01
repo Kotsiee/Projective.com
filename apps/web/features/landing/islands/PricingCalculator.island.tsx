@@ -1,6 +1,5 @@
 /// <reference lib="dom" />
 import "../styles/lp-pricing.css";
-import "../styles/lp-numbers.css";
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";

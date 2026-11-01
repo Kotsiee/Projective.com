@@ -126,7 +126,7 @@ Deno.test("openDemo: a chunk that fails after a pointer-down warm-up sends the p
 	assertEquals(imports, 1, "the press joined the warm-up's import");
 	assertEquals(shown, []);
 	assertEquals(navigated, [featureTryHref("booking")]);
-	assertEquals(navigated, ["/?demo=booking#demo"]);
+	assertEquals(navigated, ["/features?demo=booking#demo"]);
 });
 
 Deno.test("openDemo: an arrived chunk is shown; a failure after the dialog moved on stays put", async () => {

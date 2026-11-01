@@ -52,11 +52,11 @@ Deno.test("?demo= opens exactly the tab it names; anything else opens the Work b
 Deno.test("each tab links to itself on the page's stage, and the link parses back to the tab", () => {
 	for (const id of DEMO_IDS) {
 		const href = demoHref(id);
-		assertEquals(href, `/?demo=${id}#demo`);
+		assertEquals(href, `/features?demo=${id}#demo`);
 		assertEquals(demoFromUrl(href), id);
-		assertEquals(samePageDemoLink(href, "/"), id);
+		assertEquals(samePageDemoLink(href, "/features"), id);
 	}
-	assertEquals(demoHref("splits", "/features"), "/features?demo=splits#demo");
+	assertEquals(demoHref("splits", "/"), "/?demo=splits#demo");
 });
 
 Deno.test("opening a tab writes ?demo= and keeps the path, the other parameters and the hash", () => {
@@ -124,7 +124,6 @@ Deno.test("the stage's words are §4.4's, and every caption is under 15 words", 
 		"resetLabel" in DEMO_STAGE_COPY,
 		"Start again is named by its own words (WCAG 2.5.3)",
 	);
-	assertEquals(DEMO_STAGE_COPY.moreHref, "/features");
 	assertEquals(DEMO_TABS.board.posterLabel, "Example work board with five columns.");
 	for (const id of DEMO_IDS) assert(DEMO_TABS[id].posterLabel.length > 0, `${id}: a named poster`);
 	assertEquals(

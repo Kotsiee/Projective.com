@@ -1,90 +1,50 @@
-import { page } from "fresh";
-import type { LandingHero, LandingPayload } from "@projective/types/explore";
-import type { PublicMetrics } from "@projective/types/marketing";
-import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
-import { PublicMetricsService } from "@server/services/marketing/PublicMetricsService.ts";
 import { define } from "@web/utils/state.ts";
-import { isRestrictedRequest } from "@web/utils/age-gate.ts";
-import { readCookies } from "@web/utils/auth-cookies.ts";
-import { IS_DEV } from "@web/utils/dev.ts";
-import { LandingPage, landingPageMeta } from "@features/landing/routes/LandingPage.tsx";
-import { tkvRedirect } from "@features/landing/core/strip-tkv.ts";
-import { heroViewerOf } from "@features/landing/core/hero-search.ts";
-import { DEMO_PARAM, parseDemoId } from "@features/landing/core/demo-stage.ts";
+import { ensureSession } from "@web/utils/session.ts";
+import ExplorePage, {
+	exploreResponse,
+	sessionCookieHeaders,
+} from "@features/explore/routes/ExplorePage.tsx";
+import { frontPageRedirect } from "@features/explore/core/front-page.ts";
 import {
-	applyLandingMetricsSim,
-	LANDING_METRICS_SIM_COOKIE,
-	parseLandingMetricsSim,
-} from "@features/landing/core/metrics-sim.ts";
+	LANDING_JSONLD_ID,
+	landingGraph,
+	landingPageMeta,
+} from "@features/landing/core/landing-seo.ts";
+import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
 import { applyPageMeta } from "@features/marketing/core/seo.ts";
 import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 
-/** The hero search when its read failed: no typewriter examples, no Trending rows, no chips. */
-const NO_HERO_SEARCH: LandingHero = { terms: [], trending: [], chips: [] };
+/** A `303 See Other` to `location`, carrying the session's renewed or wiped cookies. */
+function seeOther(location: string, cookies: [string, string][] = []): Response {
+	return new Response(null, { status: 303, headers: [["location", location], ...cookies] });
+}
 
 /**
- * Public landing route (thin controller). A `?tkv=` ticket deep link is answered first with a 303 to
- * the same address without it (`tkvRedirect`, Decision #286 (A)). Otherwise it puts the page's head
- * facts on request state — the root `_app` renders them into `<head>` — and reads, through the fat
- * discovery service, the live marketplace and the hero search's data (`landingHero`: the trending
- * terms, the typewriter's confirmed examples and the "Try:" chips), and, through the public metrics
- * service, the live figures — the numbers section's, and the platform fee every fee clause and
- * simulated payout uses (`platformFeeBp`), handed through whole. The calls to action read
- * three viewer facts, never the whole context; "restricted" honours the Dev Context Switcher's age
- * override as every public surface does (`isRestrictedRequest`). `?demo=` names the demo stage's
- * open tab, so a deep link renders it open with no JavaScript. A failed read renders the page with
- * that part withheld rather than an error document — failed metrics hide the numbers and drop every
- * fee clause — since the landing's story does not depend on the database being up. In development
- * only, the Dev Context Switcher's `landingMetrics` axis (`pj.dev.landing-metrics`) forces the
- * numbers' threshold result over the read (`applyLandingMetricsSim`).
+ * `/` — the front page (thin controller; Decision #349). A guest is served the Explore Home through
+ * the controller `/explore` uses ({@link exploreResponse}), under the front page's head copy and
+ * structured data. Everyone else is sent on with a `303` ({@link frontPageRedirect}), decided here and
+ * never in the page: a `?demo=` deep link to `/features`; a signed-in session (renewed in place when
+ * it lapsed, its cookies minted on the redirect) or any search to `/explore` with the same query.
+ *
+ * A `?tkv=` ticket link needs no server strip any more: a guest's shell strips it, and a signed-in
+ * visitor carries it to `/explore`, whose shell opens the ticket.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const redirect = tkvRedirect(ctx.url);
-		if (redirect) return redirect;
-		const origin = siteOrigin(ctx.url);
-		applyPageMeta(ctx.state, landingPageMeta(origin));
-		const [res, search, metrics] = await Promise.all([
-			ExploreBackendService.landing(),
-			ExploreBackendService.landingHero(),
-			PublicMetricsService.get(),
-		]);
-		const landing: LandingPayload | null = res.ok && res.data ? res.data : null;
-		const metricsSim = IS_DEV
-			? parseLandingMetricsSim(readCookies(ctx.req)[LANDING_METRICS_SIM_COOKIE])
-			: null;
-		const publicMetrics: PublicMetrics | null = applyLandingMetricsSim(
-			metrics.ok && metrics.data ? metrics.data : null,
-			metricsSim,
-		);
-		const context = ctx.state.userContext;
-		const viewer = heroViewerOf(
-			ctx.state.isAuthenticated === true,
-			context
-				? {
-					isFreelancer: context.isFreelancer === true,
-					restricted: isRestrictedRequest(ctx.req, context),
-				}
-				: null,
-		);
-		return page({
-			landing,
-			origin,
-			hero: { ...(search.ok && search.data ? search.data : NO_HERO_SEARCH), viewer },
-			metrics: publicMetrics,
-			demo: parseDemoId(ctx.url.searchParams.get(DEMO_PARAM)),
-		});
+		const session = await ensureSession(ctx.req);
+		const location = frontPageRedirect(ctx.url, session.authenticated);
+		if (location) return seeOther(location, sessionCookieHeaders(session));
+		const res = await exploreResponse(ctx, session);
+		applyPageMeta(ctx.state, landingPageMeta(siteOrigin(ctx.url)));
+		return res;
 	},
 });
 
-export default define.page<typeof handler>(function LandingRoute({ data }) {
+export default define.page<typeof handler>(function FrontPage(props) {
 	return (
-		<LandingPage
-			landing={data.landing}
-			origin={data.origin}
-			hero={data.hero}
-			metrics={data.metrics}
-			demo={data.demo}
-		/>
+		<>
+			<JsonLd graph={landingGraph(siteOrigin(props.url))} id={LANDING_JSONLD_ID} />
+			<ExplorePage {...props} />
+		</>
 	);
 });

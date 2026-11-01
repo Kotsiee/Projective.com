@@ -31,19 +31,19 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: var(--text-base);
+	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
 .stg-plans__note {
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 
 .stg-plans__price {
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	color: var(--on-surface);
 	white-space: nowrap;
 }

@@ -3,44 +3,55 @@ import { assert, assertEquals } from "@std/assert";
 import { type Browser, type BrowserContext, chromium, type Page } from "npm:playwright-core@1.56.1";
 
 /**
- * landing.spec — the landing pages' launch smoke (work order L6 of
- * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`; `flows/LANDING.md` §4.0, §4.1, §4.4, §4.10, §4.12):
+ * landing.spec — the front page's and `/features`' launch smoke (work order L6 of
+ * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`; `flows/LANDING.md` §4.0, §4.4, §4.10, §4.11, §4.12), after
+ * Decision #349 made `/` a guest's Explore Home and moved the landing's demo stage, Payment
+ * protection, Pricing and questions to `/features`:
  *
- * - **SEO** on `/` and `/features`: the §4.0 / §4.12 `<title>` and meta description ("escrow" in the
- *   landing's), one canonical (the page's path, no query), `index, follow`, the Open Graph block and
+ * - **SEO** on `/` and `/features`: the `<title>` and meta description ("escrow" in the front
+ *   page's), one canonical (the page's path, no query), `index, follow`, the Open Graph block and
  *   the Twitter card `applyPageMeta` writes, exactly one `<h1>`, headings that never skip a level,
- *   and the JSON-LD graph: Organization, WebSite with a `SearchAction` into
- *   `{origin}/explore?q={search_term_string}` and a FAQPage whose every question and answer is the
- *   visible FAQ's text on `/`; WebPage and an ItemList of the printed rows on `/features`. The head
- *   tags must also sit in the document's `<head>`, where crawlers read them. Then `/sitemap.xml`
- *   lists both pages and `robots.txt` lets crawlers in.
+ *   and the JSON-LD graph: Organization and WebSite on both; on `/` the WebSite's `SearchAction` into
+ *   `{origin}/explore?q={search_term_string}` and no FAQPage; on `/features` a WebPage, an ItemList
+ *   of the printed rows and a FAQPage whose every question and answer is the visible FAQ's text. The
+ *   head tags must also sit in the document's `<head>`, where crawlers read them. Then
+ *   `/sitemap.xml` lists both pages and `robots.txt` lets crawlers in.
  * - **Smoke** at 375 / 768 / 1280 / 1600 px, light and dark, on both pages: no console error or
  *   uncaught throw, no failed or ≥ 400 subresource request (an unresolved `/test_images` path, a
  *   missing chunk or font), every image decodes (lazy ones forced eager), no horizontal scroll, one
  *   `<h1>`, and the colour scheme applied. A full-page screenshot of each is saved.
- * - **The hero search** reaches `/explore` with `q` and `category`, hydrated (type, then Enter; the
- *   category sheet below `--bp-md`) and without JavaScript (the plain form submit), and so does the
- *   final call to action's search.
- * - **Deep links**: `?demo=payments` opens the Payment protection tab with and without JavaScript, and
- *   `?tkv=` answers `303` to the same address without it, every other parameter kept.
+ * - **The search**: `/features`' final call to action's search, the page's only one, reaches
+ *   `/explore` with `q` and `category`, hydrated (type, then Enter; the category sheet below
+ *   `--bp-md`) and without JavaScript (the plain form submit, by Enter and by Search).
+ * - **Redirects** (`features/explore/core/front-page.ts`): `/?demo=` answers `303` to
+ *   `/features?demo=…#demo`; a search on `/` (`?q=`, `?category=`) and a signed-in visitor `303` to
+ *   `/explore` with the same query; a guest's `/` with no search — `?tkv=` included, which the guest
+ *   shell strips — is the page itself. `/features?demo=payments` opens the Payment protection tab
+ *   with and without JavaScript, and `/features?tkv=` answers `303` to the same address without it.
  * - **Focus after a refused move** (WCAG 2.4.3): on a phone, where a Work board card cannot be
  *   dragged, choosing a lane the board refuses from the card's "Move to…" leaves focus on that
- *   "Move to…", on `/` and inside `/features`' "Try it" dialog — never on `<body>`.
+ *   "Move to…", in `/features`' demo stage and inside its "Try it" dialog — never on `<body>`.
  *
  * It reads the pages by what they print and name (roles, field names, ids from the copy deck), never
- * the landing's own classes. Every page is visited as a guest; every non-GET `/api/**` call except
- * `/api/auth/*` is answered `204` in the browser, so nothing is written.
+ * the landing's own classes. Every page is visited as a guest except the signed-in redirect, which
+ * signs in through `/api/auth/login` as a seed persona (ignored on a stub-auth server, which sets no
+ * session); every other non-GET `/api/**` call except `/api/auth/*` is answered `204` in the
+ * browser, so nothing is written.
  *
  * It drives a RUNNING server (`deno task test:e2e`): `E2E_LANDING_URL`, else `E2E_BASE_URL`, else
- * `http://localhost:13217` (the `web-catalogue-e2e` launch config the catalogue suite uses). For the
- * launch gate, point it at the production build: `deno task build`, then `deno task serve` (or
- * `deno serve -A --port <port> apps/web/_fresh/server.js`).
+ * `http://localhost:13217` (the `web-catalogue-e2e` launch config the catalogue suite uses). A Vite
+ * dev server such as `web-front-mock` (port 13470, `dev:mock`) fails the `<head>` check on every page
+ * (its injected styles open a second `<head>`) and ignores the signed-in step, and its hot reloads
+ * can interrupt a smoke visit. For the launch gate, point it at the production build:
+ * `deno task build`, then `deno task serve` (or `deno serve -A --port <port> apps/web/_fresh/server.js`).
  *
  * Environment: `E2E_SITE_ORIGIN` (the origin the pages publish in canonical URLs and JSON-LD —
  * `siteOrigin()`: `APP_URL` in production, else the request's; default the base URL's origin),
- * `E2E_CHROMIUM` (a browser executable; else `/opt/pw-browsers/chromium` when present, else the
- * Playwright-managed Chromium, else installed Chrome), `E2E_ARTIFACTS` (the report and failure
- * screenshots), `E2E_SHOTS` (the smoke's screenshots; default `<artifacts>/shots`).
+ * `E2E_IDENTIFIER` / `E2E_PASSWORD` (the signed-in redirect's account; default `marisdelacroix` and
+ * the shared dev password documented in Seed.md), `E2E_CHROMIUM` (a browser executable; else
+ * `/opt/pw-browsers/chromium` when present, else the Playwright-managed Chromium, else installed
+ * Chrome), `E2E_ARTIFACTS` (the report and failure screenshots), `E2E_SHOTS` (the smoke's
+ * screenshots; default `<artifacts>/shots`).
  */
 
 // #region Configuration
@@ -48,11 +59,13 @@ const BASE = Deno.env.get("E2E_LANDING_URL") ?? Deno.env.get("E2E_BASE_URL") ??
 	"http://localhost:13217";
 const ORIGIN = new URL(BASE).origin;
 const SITE = (Deno.env.get("E2E_SITE_ORIGIN") ?? ORIGIN).replace(/\/+$/, "");
+const ROOT = new URL("../../../../", import.meta.url);
+const IDENTIFIER = Deno.env.get("E2E_IDENTIFIER") ?? "marisdelacroix@projective.dev";
 const ARTIFACTS = Deno.env.get("E2E_ARTIFACTS") ??
 	Deno.makeTempDirSync({ prefix: "pj-e2e-landing-" });
 const SHOTS = Deno.env.get("E2E_SHOTS") ?? `${ARTIFACTS}/shots`;
 
-/** One landing page's head copy, word for word from the copy deck. */
+/** One page's head copy, word for word from the copy deck. */
 interface PageHead {
 	path: "/" | "/features";
 	/** A file-safe name for screenshots. */
@@ -66,7 +79,7 @@ interface PageHead {
 
 const HEADS: readonly PageHead[] = [
 	{
-		// `flows/LANDING.md` §4.0, §4.1 (headline option 1).
+		// `flows/LANDING.md` §4.0 head copy over the Explore Home's own h1 (Decision #349).
 		path: "/",
 		id: "home",
 		title: "Projective — Hire a ready-made team with payment protection",
@@ -75,7 +88,7 @@ const HEADS: readonly PageHead[] = [
 		ogTitle: "Hire a ready-made team with payment protection",
 		ogDescription:
 			"Search freelancers, teams and services. Pay for each stage before it starts. The team is paid when you approve.",
-		h1: "Hire a ready-made team. Pay one stage at a time.",
+		h1: "Find the people who make it real.",
 	},
 	{
 		// `flows/LANDING.md` §4.12: the page's Open Graph pair is its document title and description.
@@ -104,10 +117,9 @@ const VARIANTS: readonly Variant[] = [375, 768, 1280, 1600].flatMap((width) =>
 	(["light", "dark"] as const).map((scheme) => ({ width, height: HEIGHTS[width], scheme }))
 );
 
-/** The hero's search controls by their field names; the shortcut marks the hydrated hero. */
-const HERO_FORM = 'form[role="search"]';
+/** `/features`' final search by its section and field names; the shortcut marks it hydrated. */
 const FINAL_FORM = '#get-started form[role="search"]';
-const HYDRATED_QUERY = 'input[name="q"][aria-keyshortcuts="/"]';
+const HYDRATED_QUERY = '#get-started input[name="q"][aria-keyshortcuts="/"]';
 // #endregion
 
 // #region Harness
@@ -131,6 +143,16 @@ async function launch(): Promise<Browser> {
 	} catch {
 		return await chromium.launch({ channel: "chrome", headless: true });
 	}
+}
+
+/** The shared dev password: `E2E_PASSWORD`, else the one Seed.md documents. */
+async function password(): Promise<string> {
+	const env = Deno.env.get("E2E_PASSWORD");
+	if (env) return env;
+	const seed = await Deno.readTextFile(new URL("documentation/database/Seed.md", ROOT));
+	const match = seed.match(/uses the password \*\*`([^`]+)`\*\*/);
+	if (!match) throw new Error("Set E2E_PASSWORD: Seed.md no longer documents the dev password.");
+	return match[1];
 }
 
 /**
@@ -440,24 +462,7 @@ Deno.test({
 								`${SITE}/explore?q={search_term_string}`,
 							);
 							assertEquals(action?.["query-input"], "required name=search_term_string");
-							const faq = ofType("FAQPage");
-							assertEquals(faq.length, 1, "one FAQPage");
-							const listed = (faq[0].mainEntity as LdNode[]).map((q) => ({
-								question: String(q.name),
-								answer: String((q.acceptedAnswer as LdNode).text),
-							}));
-							const visible = await page.evaluate(() =>
-								[...document.querySelectorAll("#faq details")].map((d) => ({
-									question: d.querySelector("summary > span")?.textContent ?? "",
-									answer: d.querySelector(":scope > p")?.textContent ?? "",
-								}))
-							);
-							assert(visible.length > 0, "the FAQ prints its questions");
-							assertEquals(listed, visible, "the FAQPage is the visible FAQ, word for word");
-							assert(
-								/escrow/i.test(JSON.stringify(faq[0])),
-								"the FAQPage keeps escrow (Decision #283 (C))",
-							);
+							assertEquals(ofType("FAQPage").length, 0, "the questions moved to /features");
 						} else {
 							const pages = ofType("WebPage");
 							const lists = ofType("ItemList");
@@ -492,6 +497,25 @@ Deno.test({
 								[...document.querySelectorAll("main li[id] > h3")].map((h) => h.parentElement!.id)
 							);
 							assertEquals(items.map((i) => i.id), order, "the ItemList is in page order");
+
+							const faq = ofType("FAQPage");
+							assertEquals(faq.length, 1, "one FAQPage");
+							const listed = (faq[0].mainEntity as LdNode[]).map((q) => ({
+								question: String(q.name),
+								answer: String((q.acceptedAnswer as LdNode).text),
+							}));
+							const visible = await page.evaluate(() =>
+								[...document.querySelectorAll("#faq details")].map((d) => ({
+									question: d.querySelector("summary > span")?.textContent ?? "",
+									answer: d.querySelector(":scope > p")?.textContent ?? "",
+								}))
+							);
+							assert(visible.length > 0, "the FAQ prints its questions");
+							assertEquals(listed, visible, "the FAQPage is the visible FAQ, word for word");
+							assert(
+								/escrow/i.test(JSON.stringify(faq[0])),
+								"the FAQPage keeps escrow (Decision #283 (C))",
+							);
 						}
 					} catch (error) {
 						await shot(page, `seo-${head.id}`);
@@ -512,8 +536,8 @@ Deno.test({
 						assertEquals(
 							types,
 							head.path === "/"
-								? ["FAQPage", "Organization", "WebSite"]
-								: ["ItemList", "Organization", "WebPage", "WebSite"],
+								? ["Organization", "WebSite"]
+								: ["FAQPage", "ItemList", "Organization", "WebPage", "WebSite"],
 						);
 					} finally {
 						await live.close();
@@ -594,7 +618,7 @@ Deno.test({
 			const robots = await context.request.get("/robots.txt");
 			assertEquals(robots.status(), 200);
 			const txt = await robots.text();
-			for (const path of ["/", "/features", "/?demo=payments", "/features?section=money"]) {
+			for (const path of ["/", "/features", "/features?demo=payments", "/features?section=money"]) {
 				const verdict = robotsAllows(txt, path);
 				assert(verdict.allowed, `robots.txt disallows ${path}: ${verdict.matched.join(", ")}`);
 			}
@@ -678,20 +702,20 @@ Deno.test({
 });
 
 Deno.test({
-	name: "landing hero search reaches /explore with q and category — with JavaScript and without",
+	name:
+		"landing search — /features' final search reaches /explore with q and category, with JavaScript and without",
 	sanitizeOps: false,
 	sanitizeResources: false,
 	async fn(t) {
 		await Deno.mkdir(SHOTS, { recursive: true });
 		const browser = await launch();
 		/**
-		 * Search from one form: pick the category (the native select where it shows, else the
-		 * hydrated category sheet), type or fill the query, submit, and return where it landed.
+		 * Search from the final call to action: pick the category (the native select where it shows,
+		 * else the hydrated category sheet), type or fill the query, submit, and return where it landed.
 		 */
 		const search = async (
 			variant: Variant,
 			javaScriptEnabled: boolean,
-			form: string,
 			query: { category: string; label: string; q: string },
 			submit: "enter" | "button",
 		) => {
@@ -699,9 +723,9 @@ Deno.test({
 			const page = await context.newPage();
 			const seen = observe(page, javaScriptEnabled);
 			try {
-				await page.goto("/", { waitUntil: "load", timeout: 120_000 });
+				await page.goto("/features", { waitUntil: "load", timeout: 120_000 });
 				if (javaScriptEnabled) await page.waitForSelector(HYDRATED_QUERY, { timeout: 30_000 });
-				const scope = page.locator(form).first();
+				const scope = page.locator(FINAL_FORM).first();
 				const select = scope.locator('select[name="category"]');
 				if (await select.isVisible()) {
 					await select.selectOption(query.category);
@@ -752,19 +776,23 @@ Deno.test({
 				await context.close();
 			}
 		};
-		const hero = { category: "freelancers", label: "Freelancers & teams", q: "landing page" };
-		const final = { category: "services", label: "Services", q: "design system" };
+		const freelancers = {
+			category: "freelancers",
+			label: "Freelancers & teams",
+			q: "landing page",
+		};
+		const services = { category: "services", label: "Services", q: "design system" };
 		try {
 			for (const variant of [VARIANTS[0], VARIANTS[4]]) {
 				await t.step(`hydrated, type + Enter, ${label(variant)}`, async () => {
-					await search(variant, true, HERO_FORM, hero, "enter");
+					await search(variant, true, freelancers, "enter");
 				});
 				await t.step(`no JavaScript, form submit, ${label(variant)}`, async () => {
-					await search(variant, false, HERO_FORM, hero, "enter");
+					await search(variant, false, freelancers, "enter");
 				});
 			}
-			await t.step("the final call to action's search, no JavaScript, Search pressed", async () => {
-				await search(VARIANTS[5], false, FINAL_FORM, final, "button");
+			await t.step("no JavaScript, Search pressed", async () => {
+				await search(VARIANTS[5], false, services, "button");
 			});
 		} finally {
 			await browser.close();
@@ -773,7 +801,8 @@ Deno.test({
 });
 
 Deno.test({
-	name: "landing deep links — ?demo=payments opens its tab; ?tkv= answers 303 and keeps the rest",
+	name:
+		"landing redirects — /?demo= to /features#demo; a search or a session to /explore; /features?demo= opens its tab",
 	sanitizeOps: false,
 	sanitizeResources: false,
 	async fn(t) {
@@ -781,7 +810,7 @@ Deno.test({
 		/** The demo stage's tabs as the page marks them: label, selection and whether its panel shows. */
 		const tabs = (page: Page) =>
 			page.evaluate(() =>
-				[...document.querySelectorAll('[role="tablist"] [role="tab"]')].map((tab) => ({
+				[...document.querySelectorAll('#demo [role="tablist"] [role="tab"]')].map((tab) => ({
 					label: (tab.textContent ?? "").trim(),
 					selected: tab.getAttribute("aria-selected") === "true",
 					shown: !document.getElementById(tab.getAttribute("aria-controls") ?? "")?.hidden,
@@ -795,15 +824,78 @@ Deno.test({
 				tab.selected === (tab.label === "Payment protection") &&
 				tab.shown === tab.selected
 			);
+		/** Each request's status and `Location`, unfollowed. */
+		const answers = async (
+			context: BrowserContext,
+			cases: ReadonlyArray<readonly [string, string | null]>,
+		) => {
+			for (const [path, location] of cases) {
+				const res = await context.request.get(path, { maxRedirects: 0 });
+				assertEquals(
+					{ status: res.status(), location: res.headers()["location"] ?? null },
+					location === null ? { status: 200, location: null } : { status: 303, location },
+					path,
+				);
+			}
+		};
 		try {
+			await t.step(
+				"a guest: ?demo= → /features#demo, a search → /explore, else the page",
+				async () => {
+					const context = await browser.newContext({ baseURL: BASE });
+					try {
+						await answers(context, [
+							["/?demo=payments", "/features?demo=payments#demo"],
+							["/?demo=board&q=a&utm_source=news", "/features?demo=board#demo"],
+							["/?q=logo", "/explore?q=logo"],
+							["/?category=services&q=brand", "/explore?category=services&q=brand"],
+							["/", null],
+							["/?utm_source=news", null],
+							["/?tkv=x", null],
+							["/features?tkv=x", "/features"],
+							["/features?section=money&tkv=x", "/features?section=money"],
+							["/features?demo=payments", null],
+						]);
+					} finally {
+						await context.close();
+					}
+				},
+			);
+
+			const member = await browser.newContext({ baseURL: BASE });
+			try {
+				const res = await member.request.post("/api/auth/login", {
+					data: { identifier: IDENTIFIER, password: await password(), remember: true },
+					// The `/api` write guard wants this site's Origin, which a browser would send.
+					headers: { origin: ORIGIN },
+				});
+				assertEquals(res.status(), 200, `sign-in as ${IDENTIFIER} failed (${res.status()})`);
+				// A server on stub auth (`dev:mock`) signs in without a session cookie: then the rule is
+				// `front-page.test.ts`'s alone, and the step reports itself ignored.
+				const session = (await member.cookies()).some((c) => c.name === "sb-access-token");
+				await t.step({
+					name: "signed in: / → /explore with the same query",
+					ignore: !session,
+					fn: async () => {
+						await answers(member, [
+							["/", "/explore"],
+							["/?tkv=tkt-x", "/explore?tkv=tkt-x"],
+							["/?demo=payments", "/features?demo=payments#demo"],
+						]);
+					},
+				});
+			} finally {
+				await member.close();
+			}
+
 			for (const javaScriptEnabled of [false, true]) {
 				await t.step(
-					`?demo=payments ${javaScriptEnabled ? "hydrated" : "without JavaScript"}`,
+					`/features?demo=payments ${javaScriptEnabled ? "hydrated" : "without JavaScript"}`,
 					async () => {
 						const context = await contextFor(browser, VARIANTS[5], { javaScriptEnabled });
 						const page = await context.newPage();
 						try {
-							await page.goto("/?demo=payments", { waitUntil: "load", timeout: 120_000 });
+							await page.goto("/features?demo=payments", { waitUntil: "load", timeout: 120_000 });
 							if (javaScriptEnabled) await settle(page, 1_500);
 							const list = await tabs(page);
 							assert(paymentsOpen(list), JSON.stringify(list));
@@ -814,40 +906,14 @@ Deno.test({
 				);
 			}
 
-			await t.step("?tkv= answers 303 to the same address without it", async () => {
-				const context = await browser.newContext({ baseURL: BASE });
-				try {
-					for (
-						const [path, location] of [
-							["/?tkv=x", "/"],
-							["/?tkv=x&demo=payments&q=a", "/?demo=payments&q=a"],
-							["/?utm_source=news&tkv=&tkv=y&demo=board", "/?utm_source=news&demo=board"],
-							["/features?tkv=x", "/features"],
-							["/features?section=money&tkv=x", "/features?section=money"],
-						] as const
-					) {
-						const res = await context.request.get(path, { maxRedirects: 0 });
-						assertEquals(
-							{ status: res.status(), location: res.headers()["location"] ?? null },
-							{ status: 303, location },
-							path,
-						);
-					}
-					const plain = await context.request.get("/?demo=payments", { maxRedirects: 0 });
-					assertEquals(plain.status(), 200, "no ticket link, no redirect");
-				} finally {
-					await context.close();
-				}
-			});
-
-			await t.step("a browser following /?tkv=x&demo=payments lands on the open tab", async () => {
+			await t.step("a browser following /?demo=payments lands on the open tab", async () => {
 				const context = await contextFor(browser, VARIANTS[5]);
 				const page = await context.newPage();
 				try {
-					await page.goto("/?tkv=x&demo=payments", { waitUntil: "load", timeout: 120_000 });
+					await page.goto("/?demo=payments", { waitUntil: "load", timeout: 120_000 });
 					await settle(page, 1_500);
 					const url = new URL(page.url());
-					assertEquals(`${url.pathname}${url.search}`, "/?demo=payments");
+					assertEquals(`${url.pathname}${url.search}${url.hash}`, "/features?demo=payments#demo");
 					const list = await tabs(page);
 					assert(paymentsOpen(list), JSON.stringify(list));
 				} finally {
@@ -862,7 +928,7 @@ Deno.test({
 
 Deno.test({
 	name:
-		"landing Work board — a refused \"Move to…\" choice keeps focus on the card's menu, on / and in /features' dialog",
+		"landing Work board — a refused \"Move to…\" choice keeps focus on the card's menu, in /features' demo stage and its dialog",
 	sanitizeOps: false,
 	sanitizeResources: false,
 	async fn(t) {
@@ -907,17 +973,17 @@ Deno.test({
 			return await focusOf(page);
 		};
 		try {
-			await t.step("/ at 375, light", async () => {
+			await t.step("/features' demo stage at 375, light", async () => {
 				const context = await contextFor(browser, VARIANTS[0]);
 				const page = await context.newPage();
 				try {
-					await page.goto("/?demo=board", { waitUntil: "load", timeout: 120_000 });
+					await page.goto("/features?demo=board", { waitUntil: "load", timeout: 120_000 });
 					await settle(page, 1_500);
-					await page.getByRole("tab", { name: "Work board", exact: true }).click();
+					await page.locator("#demo").getByRole("tab", { name: "Work board", exact: true }).click();
 					const focus = await refusedMove(page, page.locator("#demo"));
 					assertEquals(focus, { name: MENU, expanded: "false", inDemo: true, inDialog: false });
 				} catch (error) {
-					await shot(page, "board-refused-move-home-375");
+					await shot(page, "board-refused-move-stage-375");
 					throw error;
 				} finally {
 					await context.close();

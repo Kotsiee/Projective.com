@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
 
 /**
- * Footer icon set — small, self-contained inline SVGs for the public footer (social tray, newsletter
- * submit, help affordance, live-status dot). Each inherits `currentColor` and is `aria-hidden` (the
+ * Footer icon set — small, self-contained inline SVGs for the public footer (social row, newsletter
+ * submit, accordion chevron). Each inherits `currentColor` and is `aria-hidden` (the
  * accessible name lives on the wrapping control), so they carry zero dependency and theme with the
  * surrounding text. Kept beside `PublicFooter` as feature-local presentation, not a `@projective/ui`
  * primitive. The brand mark itself is NOT here — it is shared across the shell, the guest header and
@@ -11,12 +11,13 @@ import type { JSX } from "preact";
 
 type IconProps = { class?: string };
 
-/** The social tray's brand marks, drawn once in `brand-marks.tsx` and named here for the footer. */
+/** The social row's brand marks, drawn once in `brand-marks.tsx` and named here for the footer. */
 export {
-	DribbbleMark as DribbbleIcon,
-	GitHubMark as GitHubIcon,
+	InstagramMark as InstagramIcon,
 	LinkedInMark as LinkedInIcon,
+	TikTokMark as TikTokIcon,
 	XMark as XIcon,
+	YouTubeMark as YouTubeIcon,
 } from "@features/shell/components/brand-marks.tsx";
 
 /** Icon-only submit affordance for the newsletter field (an outward arrow). */
@@ -45,22 +46,6 @@ export function ChevronIcon(props: IconProps): JSX.Element {
 				stroke-linecap="round"
 				stroke-linejoin="round"
 			/>
-		</svg>
-	);
-}
-
-/** A quiet help/question affordance for the "Contact Help" micro-tooltip. */
-export function HelpIcon(props: IconProps): JSX.Element {
-	return (
-		<svg class={props.class} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-			<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
-			<path
-				d="M9.6 9.4a2.4 2.4 0 0 1 4.7.7c0 1.6-2.3 2-2.3 3.4"
-				stroke="currentColor"
-				stroke-width="1.6"
-				stroke-linecap="round"
-			/>
-			<circle cx="12" cy="16.6" r="1" fill="currentColor" />
 		</svg>
 	);
 }

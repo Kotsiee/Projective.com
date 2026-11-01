@@ -36,7 +36,7 @@
 	margin: 0;
 	color: var(--on-surface);
 	font-size: var(--text-2xl);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 .ints__lede {
 	margin: 0;

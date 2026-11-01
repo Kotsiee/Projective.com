@@ -1,17 +1,40 @@
 /*
- * Public marketing shell — native window scroll + a full-width header that morphs on scroll.
- * Token-only BEM. Scoped to the guest/public surface (the authenticated dashboard keeps the
+ * Guest shell + the one guest header (SiteHeader) — native window scroll + a header that floats,
+ * inset and taller, at the top of the page and docks full-width on scroll. Token-only BEM. Scoped
+ * to the guest/public surface and the landing pages (the authenticated dashboard keeps the
  * DESIGN_SYSTEM.md Part D nested-frame shell). Loaded via the SiteHeader island import.
  */
 :root {
-	--site-bar-h: calc(var(--space-7) + var(--space-2)); /* 3.5rem */
-	--site-header-gap: var(--space-4);
+	/* The bar's height while it floats at the top of the page, and once docked. */
+	--site-bar-h: calc(var(--space-8) + var(--space-2)); /* 4.5rem */
+	--site-bar-h-docked: calc(var(--space-7) + var(--space-2)); /* 3.5rem */
+	/* The gap the floating bar keeps above itself (none once docked), and its share of the width. */
+	--site-header-gap: var(--space-3);
+	--site-bar-inset-w: 92%;
 	--site-header-h: calc(var(--site-bar-h) + var(--site-header-gap) * 2); /* reserved flow height */
-	/* The gap the SCROLLED pill keeps above itself, and the pill's bottom edge once scrolled. An
-	   in-page sticky element that must sit flush under the floating header pins to this, not to the
-	   reserved flow band above — that band is 1.25rem taller than the pill it reserves room for. */
-	--site-header-scrolled-gap: var(--space-3);
-	--site-header-pinned-h: calc(var(--site-bar-h) + var(--site-header-scrolled-gap));
+	/* The docked bar's bottom edge. An in-page sticky element that must sit flush under the header
+	   pins to this, not to the reserved flow band above — that band is 2.5rem taller than the docked
+	   bar, because it reserves room for the floating one. */
+	--site-header-pinned-h: var(--site-bar-h-docked);
+	/* The docked row's side gutters (the floating bar pads by `--space-5`). */
+	--site-gutter: clamp(var(--space-5), 4vw, 2.5rem);
+	/* The pill search's width at rest, and while it is focused or holding a query. */
+	--site-search-w: 15rem;
+	--site-search-w-open: 22rem;
+	/* The bar's hit-target floor (links, icon buttons, the search pill). */
+	--site-ctl-h: 2.25rem;
+	--site-press-scale: 0.96;
+	/* The glass veil (both states) — see `.site-header__bar::before` for why it is not lighter. */
+	--site-glass-veil: 85%;
+}
+
+/* Below --bp-lg: a shorter floating bar, and touch-sized controls. */
+@media (max-width: 1023.98px) {
+	:root {
+		--site-bar-h: var(--space-8); /* 4rem */
+		--site-gutter: var(--space-4);
+		--site-ctl-h: 2.5rem;
+	}
 }
 
 /* #region Shell */
@@ -50,7 +73,7 @@
 }
 /* #endregion */
 
-/* #region Header — full width, transparent at top → floating glass pill when scrolled */
+/* #region Header — floating and inset at the top → docked full width when scrolled */
 .site-header {
 	position: fixed;
 	inset-block-start: 0;
@@ -58,60 +81,92 @@
 	z-index: var(--z-nav, 200);
 	display: flex;
 	justify-content: center;
-	padding: 0 clamp(0.5rem, 2vw, 1.5rem);
+	padding-block-start: var(--site-header-gap);
+	/* The landing renders this bar inside `.lp-root`, whose type the bar must not inherit. */
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	letter-spacing: var(--tracking-normal);
+	color: var(--on-surface);
 	/* The band passes clicks through; only the bar is interactive. */
 	pointer-events: none;
 	transition: padding var(--dur-medium) var(--spring-standard);
 }
 
 .site-header--scrolled {
-	padding-block-start: var(--site-header-scrolled-gap);
-	padding-inline: clamp(0.75rem, 3vw, 2rem);
-}
-
-.site-header__bar {
-	pointer-events: auto;
-	inline-size: 100%;
-	max-inline-size: 100%;
-	block-size: var(--site-bar-h);
-	display: flex;
-	align-items: center;
-	gap: var(--space-4);
-	padding-inline: var(--space-4);
-	background: transparent;
-	border: 1px solid transparent;
-	border-radius: 0;
-	box-shadow: none;
-	backdrop-filter: none;
-	transition:
-		max-inline-size var(--dur-medium) var(--spring-standard),
-		background-color var(--dur-medium) var(--ease-standard),
-		border-color var(--dur-medium) var(--ease-standard),
-		border-radius var(--dur-medium) var(--ease-standard),
-		box-shadow var(--dur-medium) var(--ease-standard),
-		backdrop-filter var(--dur-medium) var(--ease-standard);
+	padding-block-start: 0;
 }
 
 /*
- * Scrolled state: condense into a floating, rounded, glass shell with a hairline border.
- *
- * The veil is 85%, not 62%. This bar floats over page content, photography included, so its
- * backdrop is content rather than a theme surface, and 62% left `--on-surface` at 4.02:1 against a
- * bright image in dark mode — under AA on the site's own wordmark and nav. 85% measures 9.28:1 dark
- * and 12.11:1 light against the worst-case photo, and still reads unmistakably as glass: the blur
- * and the saturate are doing the visual work here, not the transparency.
- *
- * The accent-coloured items in this header (`__mega-all`, the `:hover` states) all live inside the
- * megamenu, which paints its own opaque panel, so they are not on this composite.
+ * At the top the bar floats: inset to `--site-bar-inset-w` of the viewport (never wider than the
+ * page's container, so it lines up with the content below), rounded, taller, glass with no border
+ * and no shadow. Docked, it spans the viewport edge to edge, shorter, its row held to the container
+ * by gutters, and the underlay takes a bottom hairline and a soft shadow. Every geometry property
+ * rides one spring, so the bar widens and shortens as one gesture.
  */
-.site-header--scrolled .site-header__bar {
+.site-header__bar {
+	--site-bar-cur-h: var(--site-bar-h);
+	pointer-events: auto;
+	position: relative;
+	/* The underlay's negative z-index stays inside the bar. */
+	isolation: isolate;
+	inline-size: var(--site-bar-inset-w);
 	max-inline-size: var(--container-xl);
-	background: color-mix(in srgb, var(--surface) 85%, transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	block-size: var(--site-bar-cur-h);
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	padding-inline: var(--space-5);
+	border-radius: var(--radius-2xl);
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		max-inline-size var(--dur-medium) var(--spring-standard),
+		block-size var(--dur-medium) var(--spring-standard),
+		padding var(--dur-medium) var(--spring-standard),
+		border-radius var(--dur-medium) var(--spring-standard);
+}
+
+.site-header--scrolled .site-header__bar {
+	--site-bar-cur-h: var(--site-bar-h-docked);
+	inline-size: 100%;
+	max-inline-size: 100%;
+	padding-inline: max(var(--site-gutter), (100% - var(--container-xl)) / 2);
+	border-radius: 0;
+}
+
+/*
+ * The glass, on an underlay (§B.4.3): a `backdrop-filter` on the bar itself would make it the
+ * containing block for every fixed descendant and the backdrop root of the megamenu's own glass.
+ *
+ * The veil is 85% in both states, not the 60% / 40% of a decorative frost. This bar sits over page
+ * content, photography included, so its backdrop is content rather than a theme surface, and 62%
+ * left `--on-surface` at 4.02:1 against a bright image in dark mode — under AA on the site's own
+ * wordmark and nav. 85% measures 9.28:1 dark and 12.11:1 light against the worst-case photo, and
+ * still reads unmistakably as glass: the blur and the saturate do the visual work here, not the
+ * transparency. The accent-coloured items in this header (`__mega-all`, the pillar marks) all live
+ * inside the megamenu, which paints its own panel, so they are not on this composite.
+ */
+.site-header__bar::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface) var(--site-glass-veil), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	border-color: var(--hairline-color);
-	border-radius: calc(var(--radius-lg));
-	box-shadow: var(--elevation-medium);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	border-block-end: 1px solid transparent;
+	box-shadow: none;
+	pointer-events: none;
+	transition:
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-medium) var(--ease-standard),
+		box-shadow var(--dur-medium) var(--ease-standard);
+}
+
+.site-header--scrolled .site-header__bar::before {
+	border-block-end-color: var(--hairline-color);
+	box-shadow: var(--elevation-low);
 }
 
 .site-header__brand {
@@ -127,55 +182,142 @@
 }
 
 /* Was a bare `--primary` rounded square standing in for a logo the project did not have yet. Now
-   the real mark: height-driven, width from its own 520:485 ratio, tinted via `currentColor`. */
+   the real mark: height-driven, width from its own 520:485 ratio, tinted via `currentColor`. It
+   steps down with the docked bar, the row's one typographic compaction. */
 .site-header__mark {
-	block-size: 20px;
+	block-size: 22px;
 	inline-size: auto;
 	color: var(--primary);
+	transition: block-size var(--dur-medium) var(--spring-standard);
+}
+
+.site-header--scrolled .site-header__mark {
+	block-size: 20px;
 }
 
 .site-header__nav {
-	/* Positioning context for the megamenu panels — anchored to the nav's left edge (not the narrow
-	   individual trigger) so a wide panel never overflows the right viewport edge. */
+	/* Positioning context for the megamenu — anchored to the nav's leading edge (not the narrow
+	   Explore item) so the wide panel never overflows the trailing viewport edge. */
 	position: relative;
+	flex: 0 0 auto;
+}
+
+.site-header__links {
 	display: flex;
 	align-items: center;
-	gap: var(--space-4);
-	margin-inline-start: var(--space-2);
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* A link is a text-colour shift and nothing else on hover: no fill, no pill behind it. */
+.site-header__link {
+	position: relative;
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-block-size: var(--site-ctl-h);
+	padding-inline: var(--space-3);
+	color: var(--on-surface-variant);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	white-space: nowrap;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+/* Reserves the semibold label's width, so the current page's heavier label never nudges its
+   neighbours from one page to the next. Hidden, so it is never read out. */
+.site-header__link::after {
+	content: attr(data-label);
+	block-size: 0;
+	overflow: hidden;
+	visibility: hidden;
+	font-weight: var(--fw-semibold);
+	pointer-events: none;
+	user-select: none;
+}
+
+/* The current-page mark: a small primary dot under the label. */
+.site-header__link::before {
+	content: "";
+	position: absolute;
+	inset-block-end: 1px;
+	inset-inline-start: 50%;
+	inline-size: 4px;
+	block-size: 4px;
+	margin-inline-start: -2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	opacity: 0;
+	transform: scale(0);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-snappy);
+}
+
+.site-header__link:hover,
+.site-header__explore.is-open .site-header__link {
+	color: var(--on-surface);
+}
+
+/* The link to the page the visitor is on: full ink, the semibold label and the dot, so the state is
+   carried by more than colour. */
+.site-header__link[aria-current="page"] {
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.site-header__link[aria-current="page"]::before {
+	opacity: 1;
+	transform: none;
+}
+
+/* The drawer's link keeps the primary underline: a full-width row has no centre for a dot. */
+.site-header__drawer-link[aria-current="page"] {
+	color: var(--on-surface);
+	text-decoration-line: underline;
+	text-decoration-color: var(--primary);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 0.45em;
 }
 /* #endregion */
 
-/* #region Discovery megamenu (desktop hover panels) */
-/* A pillar wraps its trigger + panel. The panel is a DOM descendant, so moving the pointer from the
-   trigger down into the panel never fires the pillar's mouseleave — that, plus the transparent
-   padding bridge on `.site-header__mega`, is the "safe hover bridge". */
-.site-header__pillar {
+/* #region Explore megamenu (desktop) */
+/* The Explore item wraps its link, its disclosure button and the panel. The panel is a DOM descendant,
+   so moving the pointer from the item down into the panel never fires the item's mouseleave — that,
+   plus the transparent padding bridge on `.site-header__mega`, is the "safe hover bridge". */
+.site-header__explore {
 	display: inline-flex;
 	align-items: center;
 }
 
-.site-header__pillar-trigger {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
+/* The link keeps symmetric padding, so its dot centres under the label; the caret button tucks into
+   the link's trailing padding instead. */
+.site-header__explore-toggle {
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--space-5);
+	block-size: var(--site-ctl-h);
+	margin-inline-start: calc(var(--space-2) * -1);
 	padding: 0;
 	border: 0;
+	border-radius: var(--radius-full);
 	background: transparent;
-	font: inherit;
-	font-size: 0.925rem;
-	font-weight: 500;
 	color: var(--on-surface-variant);
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 
-.site-header__pillar-trigger:hover,
-.site-header__pillar.is-open .site-header__pillar-trigger {
+.site-header__explore-toggle:hover,
+.site-header__explore.is-open .site-header__explore-toggle {
 	color: var(--on-surface);
 }
 
-/* Caret — a small chevron that flips when its panel is open. */
-.site-header__pillar-caret {
+/* Caret — a small chevron that flips when the panel is open. */
+.site-header__caret {
 	inline-size: 6px;
 	block-size: 6px;
 	border-right: 2px solid currentColor;
@@ -187,21 +329,21 @@
 		opacity var(--dur-fast) var(--ease-standard);
 }
 
-.site-header__pillar.is-open .site-header__pillar-caret {
+.site-header__explore.is-open .site-header__caret {
 	transform: translateY(1px) rotate(-135deg);
 	opacity: 0.8;
 }
 
-/* The dropdown wrapper — anchored to the nav's left, spanning below the row. Its top padding is the
-   invisible bridge connecting the trigger to the visible glass card. Hidden + inert until open, with
-   a fast ease-out slide (-10px → 0) and fade that reverses on close. */
+/* The dropdown wrapper — anchored to the nav's leading edge, spanning below the row. Its top padding
+   is the invisible bridge connecting the item to the visible glass card: the room the bar leaves
+   under the nav (it changes height as it docks), plus a gap clear of the bar's edge. Hidden + inert
+   until open, with a fast ease-out slide (-10px → 0) and fade that reverses on close. */
 .site-header__mega {
 	position: absolute;
 	inset-block-start: 100%;
 	inset-inline-start: 0;
-	inline-size: min(40rem, calc(100vw - 3rem));
-	max-inline-size: calc(100vw - 3rem);
-	padding-block-start: var(--space-3);
+	inline-size: min(52rem, calc(100vw - 3rem));
+	padding-block-start: calc((var(--site-bar-cur-h) - var(--site-ctl-h)) / 2 + var(--space-2));
 	z-index: 50;
 	opacity: 0;
 	transform: translateY(-10px);
@@ -213,7 +355,7 @@
 		visibility 0s linear var(--dur-medium);
 }
 
-.site-header__pillar.is-open .site-header__mega {
+.site-header__explore.is-open .site-header__mega {
 	opacity: 1;
 	transform: translateY(0);
 	visibility: visible;
@@ -223,10 +365,16 @@
 		transform var(--dur-medium) var(--spring-standard);
 }
 
-/* The glass card itself — same premium recipe as the scrolled header shell: theme-aware translucent
-   surface, backdrop blur, hairline outline, generous radius, deep elevation. */
+/*
+ * The glass card: the pillars down a leading column, the shown pillar's groups beside them. Each
+ * pillar's link and pane are one DOM group (`display: contents`), so Tab walks a pillar, then its own
+ * links, then the next pillar; the grid alone moves every pane into the second column.
+ */
 .site-header__mega-inner {
-	padding: var(--space-5) var(--space-6);
+	display: grid;
+	grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+	column-gap: var(--space-6);
+	padding: var(--space-4);
 	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -235,25 +383,69 @@
 	box-shadow: var(--elevation-high);
 }
 
-.site-header__mega-tagline {
-	margin: 0 0 var(--space-4);
-	font-size: 0.85rem;
-	font-weight: 500;
-	color: var(--on-surface-variant);
+.site-header__mega-group {
+	display: contents;
 }
 
-.site-header__mega-cols {
+/* A pillar: its name over its one-line pitch. The shown one takes a tonal tint (separation by tint,
+   never a box) and its name the primary ink. */
+.site-header__mega-pillar {
+	grid-column: 1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-3);
+	border-radius: var(--radius-lg);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__mega-pillar.is-active {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.site-header__mega-pillar-label {
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__mega-pillar.is-active .site-header__mega-pillar-label {
+	color: var(--primary);
+}
+
+/* One line at most: a longer pitch ends in an ellipsis (the full text stays in the DOM). */
+.site-header__mega-tagline {
+	overflow: hidden;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface-variant);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Every pane spans the pillar rows in the second column; only the shown one renders (`hidden`). */
+.site-header__mega-pane {
+	grid-column: 2;
+	grid-row: 1 / span 4;
 	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: var(--space-4) var(--space-6);
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	align-content: start;
+	gap: var(--space-4) var(--space-5);
+	padding-block: var(--space-3);
+}
+
+.site-header__mega-pane[hidden] {
+	display: none;
 }
 
 /* Separation by type weight + spacing only — no boxes (DESIGN_SYSTEM separation hierarchy). */
 .site-header__mega-heading {
 	margin: 0 0 var(--space-2);
-	font-size: 0.7rem;
-	font-weight: 600;
-	letter-spacing: 0.06em;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--on-surface-variant);
 }
@@ -270,9 +462,9 @@
 /* Thin-weight leaf links that lift in colour + opacity on hover. */
 .site-header__mega-link {
 	display: block;
-	padding: 0.3rem 0;
-	font-size: 0.9rem;
-	font-weight: 400;
+	padding-block: var(--space-1);
+	font-size: var(--text-md);
+	font-weight: var(--fw-normal);
 	color: var(--on-surface-variant);
 	text-decoration: none;
 	opacity: 0.85;
@@ -286,23 +478,19 @@
 	opacity: 1;
 }
 
-.site-header__mega-link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-sm);
-}
-
-/* Prominent "browse all" action — a single hairline separates it from the grid (allowed: separator,
-   not a box). */
+/* The one "browse everything" action, under the pane, after a single hairline (a separator, not a
+   box). */
 .site-header__mega-all {
+	grid-column: 2;
+	grid-row: 5;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	margin-block-start: var(--space-4);
-	padding-block-start: var(--space-4);
+	margin-block-start: var(--space-3);
+	padding-block-start: var(--space-3);
 	border-block-start: 1px solid var(--hairline-color);
-	inline-size: 100%;
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--primary);
 	text-decoration: none;
 }
@@ -314,125 +502,93 @@
 .site-header__mega-all:hover .site-header__mega-all-arrow {
 	transform: translateX(4px);
 }
-
-.site-header__pillar-trigger:focus-visible,
-.site-header__mega-all:focus-visible {
-	outline: none;
-	border-radius: var(--radius-sm);
-}
 /* #endregion */
 
-/* #region Header search (with entity dropdown) */
+/* #region Pill search */
+/* Pushed to the trailing edge, it is the one element of the row that gives up width when room runs
+   short (`flex-shrink`), so a focused field fills what is left rather than shoving the nav aside. */
 .site-header__search {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
+	min-inline-size: var(--site-ctl-h);
+	margin-inline-start: auto;
+}
+
+/* At rest: a command-palette pill — a faint tint, one hairline, muted ink, the shortcut docked at
+   the trailing end. Focused or holding a query: it widens and lifts onto the solid surface with a
+   firmer hairline and a soft shadow (the app draws no focus ring, so the lift is the focus). */
+.site-header__search-field {
 	display: flex;
 	align-items: center;
-	gap: var(--space-1);
-	max-inline-size: 26rem;
-	margin-inline: auto;
-	padding-inline-end: var(--space-1);
-	block-size: calc(var(--site-bar-h) - var(--space-4));
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	gap: var(--space-2);
+	inline-size: var(--site-search-w);
+	max-inline-size: 100%;
+	block-size: var(--site-ctl-h);
+	padding-inline: var(--space-3) var(--space-2);
+	box-sizing: border-box;
 	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-faint), transparent);
+	color: var(--on-surface-variant);
+	/* Collapsed to its glyph (below --bp-xl), the empty input must not hang past the edge. */
+	overflow: hidden;
+	cursor: text;
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		padding var(--dur-medium) var(--spring-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 
-.site-header__entity {
-	position: relative;
+.site-header__search-field:hover {
+	border-color: var(--hairline-strong-color);
+}
+
+.site-header__search-field:focus-within,
+.site-header__search-field:has(.site-header__search-input:not(:placeholder-shown)) {
+	inline-size: var(--site-search-w-open);
+	padding-inline-end: var(--space-3);
+	background: var(--surface);
+	border-color: var(--hairline-strong-color);
+	box-shadow: var(--elevation-low);
+	color: var(--on-surface);
+}
+
+.site-header__search-icon {
 	flex: 0 0 auto;
-	block-size: 100%;
-}
-
-.site-header__entity-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	block-size: 100%;
-	padding-inline: var(--space-3);
-	border: 0;
-	border-inline-end: 1px solid var(--hairline-color);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 600;
-	cursor: pointer;
-	border-start-start-radius: var(--radius-lg);
-	border-end-start-radius: var(--radius-lg);
-}
-
-.site-header__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.site-header__chevron {
-	inline-size: 6px;
-	block-size: 6px;
-	border-right: 2px solid currentColor;
-	border-bottom: 2px solid currentColor;
-	transform: translateY(-1px) rotate(45deg);
-	opacity: 0.6;
-}
-
-/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
-.site-header__entity-menu {
-	min-inline-size: 11rem;
-	margin: 0;
-	padding: var(--space-1);
-	list-style: none;
-	background: var(--surface-2);
-	border: 1px solid var(--hairline-color);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
-}
-
-.site-header__entity-option {
-	padding: 0.65rem 0.9rem;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	font-size: 0.875rem;
-	font-weight: 500;
-}
-
-/* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
-.site-header__entity-option:hover,
-.site-header__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
-}
-
-.site-header__entity-option:focus-visible {
-	outline: none;
 }
 
 .site-header__search-input {
 	flex: 1 1 auto;
 	min-inline-size: 0;
-	border: 0;
-	background: transparent;
-	color: inherit;
-	font: inherit;
-	font-size: 0.9rem;
-	outline: none;
-	padding-inline-start: var(--space-2);
-}
-
-.site-header__search-go {
-	flex: 0 0 auto;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 28px;
-	block-size: 28px;
 	padding: 0;
 	border: 0;
 	background: transparent;
-	color: var(--on-surface-variant);
-	cursor: pointer;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-md);
+	outline: none;
 }
 
-.site-header__search-go:hover {
-	color: var(--primary);
+.site-header__search-input::placeholder {
+	color: var(--on-surface-variant);
+}
+
+/* The native clear glyph would sit in a field this small with no room for the text it clears. */
+.site-header__search-input::-webkit-search-cancel-button {
+	appearance: none;
+}
+
+/* The shortcut hint: shown at rest only — in use, the field's width is the query's. */
+.site-header__search-hint {
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.site-header__search-field:focus-within .site-header__search-hint,
+.site-header__search-field:has(.site-header__search-input:not(:placeholder-shown)) .site-header__search-hint {
+	display: none;
 }
 /* #endregion */
 
@@ -440,89 +596,116 @@
 .site-header__actions {
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
+	gap: var(--space-2);
 	flex: 0 0 auto;
 }
 
+/* Sign in — a ghost pill: muted ink at rest, a tonal wash and full ink on hover. The transparent
+   border is what draws it under forced colours. */
 .site-header__signin {
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--on-surface);
+	display: inline-flex;
+	align-items: center;
+	min-block-size: var(--site-ctl-h);
+	padding-inline: var(--space-4);
+	border: 1px solid transparent;
+	border-radius: var(--radius-full);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface-variant);
 	text-decoration: none;
+	white-space: nowrap;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .site-header__signin:hover {
-	color: var(--primary);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
 }
 
+/*
+ * Get started — the tier-2 structural pair (§B.8, Decision #157): monochrome inverted, solid
+ * `--on-surface` · `--surface` ink, so it is black on white in light mode and white on black in dark
+ * by construction (17.14:1 light / 14.93:1 dark, widening under high contrast). Its hover is a
+ * shadow lift, never a lighter fill: any tonal step on this fill moves it toward its own label.
+ * Fill and ink cross-fade on the theme's clock.
+ */
 .site-header__cta {
 	display: inline-flex;
 	align-items: center;
-	padding: 0.5rem 1rem;
-	font-size: 0.9rem;
-	font-weight: 600;
+	min-block-size: var(--site-ctl-h);
+	padding-inline: calc(var(--space-4) + var(--space-1));
+	border: 1px solid transparent;
+	border-radius: var(--radius-full);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
 	line-height: 1;
-	color: var(--on-primary);
-	background: var(--primary);
-	border-radius: var(--radius-lg);
+	color: var(--surface);
+	background: var(--on-surface);
 	text-decoration: none;
+	white-space: nowrap;
 	box-shadow: var(--elevation-low);
 	transition:
 		box-shadow var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-slow) var(--ease-standard);
+		background-color var(--dur-slow) var(--ease-standard),
+		color var(--dur-slow) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .site-header__cta:hover {
 	box-shadow: var(--elevation-medium);
 }
 
-.site-header__icon-btn {
+/* The theme toggle — a circular ghost icon button (overrides the base `.theme-toggle` chrome;
+   higher specificity). Scoped to the bar and its drawer: `AuthShell` styles its own. */
+:is(.site-header, .site-header__drawer) .theme-toggle.theme-toggle--icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 36px;
-	block-size: 36px;
-	border-radius: 50%;
-	color: var(--on-surface);
-	text-decoration: none;
-	background: color-mix(in srgb, var(--surface-2) 50%, transparent);
-	border: 1px solid var(--hairline-color);
-}
-
-/* Minimal, icon-only theme toggle (overrides the base .theme-toggle chrome; higher specificity). */
-.theme-toggle.theme-toggle--icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 36px;
-	block-size: 36px;
+	flex: 0 0 auto;
+	inline-size: var(--site-ctl-h);
+	block-size: var(--site-ctl-h);
 	padding: 0;
-	border-radius: 50%;
-	border: 1px solid var(--hairline-color);
-	background: color-mix(in srgb, var(--surface-2) 45%, transparent);
-	color: var(--on-surface);
+	border: 1px solid transparent;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface-variant);
 	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
-.theme-toggle.theme-toggle--icon:hover {
-	background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+:is(.site-header, .site-header__drawer) .theme-toggle.theme-toggle--icon:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
 }
 
-.theme-toggle.theme-toggle--icon svg {
+:is(.site-header, .site-header__drawer) .theme-toggle.theme-toggle--icon svg {
 	display: block;
 }
 
-.site-header__signin:focus-visible,
-.site-header__cta:focus-visible,
-.site-header__icon-btn:focus-visible,
-.site-header__brand:focus-visible,
-.site-header__entity-btn:focus-visible,
-.site-header__search-go:focus-visible,
-.theme-toggle.theme-toggle--icon:focus-visible {
-	outline: none;
-	border-radius: var(--radius-sm);
+/* Press feedback is scale only, and goes under both reduced-motion channels. */
+:is(.site-header__cta, .site-header__signin, .site-header__burger, .theme-toggle.theme-toggle--icon):active {
+	transform: scale(var(--site-press-scale));
+	transition-duration: var(--dur-press);
 }
 
+@media (prefers-reduced-motion: reduce) {
+	:is(.site-header__cta, .site-header__signin, .site-header__burger, .theme-toggle.theme-toggle--icon):active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"]
+	:is(.site-header__cta, .site-header__signin, .site-header__burger, .theme-toggle.theme-toggle--icon):active {
+	transform: none;
+}
+
+/* The burger — the theme toggle's circular ghost, at the touch size the bar takes below --bp-lg. */
 .site-header__burger {
 	display: none;
 	flex: 0 0 auto;
@@ -530,20 +713,28 @@
 	align-items: center;
 	justify-content: center;
 	gap: 5px;
-	inline-size: 42px;
-	block-size: 42px;
-	padding: 0 10px;
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid var(--hairline-color);
+	inline-size: var(--site-ctl-h);
+	block-size: var(--site-ctl-h);
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
 	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__burger:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .site-header__burger span {
 	display: block;
-	inline-size: 20px;
+	inline-size: 18px;
 	block-size: 2px;
-	background: var(--on-surface);
+	background: currentColor;
 	border-radius: 2px;
 	transition:
 		transform var(--dur-medium) var(--spring-standard),
@@ -557,6 +748,22 @@
 
 .site-header__burger.is-open span:last-child {
 	transform: translateY(-3.5px) rotate(-45deg);
+}
+
+/* The app-wide no-focus-ring directive (`apps/web/styles/global.css`), restated against the bar's own
+   resets. */
+:is(
+	.site-header__brand,
+	.site-header__link,
+	.site-header__explore-toggle,
+	.site-header__mega-pillar,
+	.site-header__mega-link,
+	.site-header__mega-all,
+	.site-header__signin,
+	.site-header__cta,
+	.theme-toggle.theme-toggle--icon
+):focus-visible {
+	outline: none;
 }
 /* #endregion */
 
@@ -587,7 +794,7 @@
 	outline: none;
 }
 
-/* #region Mobile drawer accordions — the four discovery pillars, translated for touch */
+/* #region Mobile drawer accordions — the discovery pillars, translated for touch */
 .site-header__acc {
 	border-block-end: 1px solid color-mix(in srgb, var(--outline) 12%, transparent);
 }
@@ -701,7 +908,7 @@
 	border-radius: var(--radius-sm);
 }
 
-/* Retained utility links (How it works · Pricing) below the discovery accordions. */
+/* The bar's "Main" links below the discovery accordions. */
 .site-header__drawer-secondary {
 	display: flex;
 	flex-direction: column;
@@ -741,58 +948,130 @@
 	padding-block: 0.75rem;
 }
 
+/* In the drawer, Sign in is a full-width outlined pill in full ink beside the monochrome one. */
 .site-header__signin--block {
-	display: inline-flex;
-	align-items: center;
-	border-radius: var(--radius-lg);
-	border: 1px solid color-mix(in srgb, var(--outline) 26%, transparent);
+	border-color: var(--hairline-strong-color);
+	color: var(--on-surface);
 }
 /* #endregion */
 
-/* #region Responsive — strict 3-element mobile header (icon mark · compact search · burger) */
-@media (max-width: 900px) {
-	/* Drop everything that isn't one of the three permitted mobile elements. */
+/* #region Solid fallbacks for the glass (the bar's underlay, the megamenu card) */
+/* Plain selector lists, not `:is()`: a pseudo-element is not valid inside `:is()`, and its forgiving
+   parse would drop the underlay silently. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.site-header__bar::before,
+	.site-header__mega-inner {
+		background: var(--surface);
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	.site-header__bar::before,
+	.site-header__mega-inner {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: var(--surface);
+	}
+}
+
+@media (prefers-contrast: more) {
+	:root:not([data-contrast="normal"]) .site-header__bar::before,
+	:root:not([data-contrast="normal"]) .site-header__mega-inner {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: var(--surface);
+	}
+}
+
+:root[data-contrast="high"] .site-header__bar::before,
+:root[data-contrast="high"] .site-header__mega-inner {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	background: var(--surface);
+}
+
+@media (forced-colors: active) {
+	.site-header__bar::before,
+	.site-header__mega-inner {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: Canvas;
+	}
+}
+/* #endregion */
+
+/* #region Responsive */
+/* Below --bp-xl the pill search rests as a circle around its glyph and widens only while in use, so
+   the full row (brand · four links · actions) keeps its room down to --bp-lg. */
+@media (max-width: 1279.98px) {
+	.site-header__search-field {
+		inline-size: var(--site-ctl-h);
+		padding-inline: calc((var(--site-ctl-h) - 1rem) / 2 - 1px);
+	}
+
+	.site-header__search-field:focus-within,
+	.site-header__search-field:has(.site-header__search-input:not(:placeholder-shown)) {
+		padding-inline: var(--space-3);
+	}
+
+	.site-header__search-hint {
+		display: none;
+	}
+}
+
+/* A touch-first device zooms the page into any field set under 16px; this one is set at 16px. */
+@media (hover: none) and (pointer: coarse) {
+	.site-header__search-input {
+		font-size: var(--text-base);
+	}
+}
+
+/* Below --bp-lg: the strict 3-element header (mark · search · burger). */
+@media (max-width: 1023.98px) {
 	.site-header__nav,
-	.site-header__actions,
-	.site-header__brand-text {
+	.site-header__actions {
 		display: none;
 	}
 
 	.site-header__bar {
 		gap: var(--space-3);
-		padding-inline: var(--space-3);
 	}
 
-	/* (1) Icon-only mark — the wordmark is stripped above. */
-	.site-header__brand {
-		gap: 0;
-	}
-
-	/* (2) Compressed search — still carries its entity dropdown, fills the middle, shrinks freely. */
+	/* The search fills the middle at every rest state; focus only lifts it. */
 	.site-header__search {
-		max-inline-size: none;
-		margin-inline: 0;
+		flex: 1 1 auto;
 		min-inline-size: 0;
 	}
 
-	.site-header__entity-btn {
-		padding-inline: var(--space-2);
-		font-size: 0.8rem;
+	.site-header__search-field,
+	.site-header__search-field:focus-within,
+	.site-header__search-field:has(.site-header__search-input:not(:placeholder-shown)) {
+		inline-size: 100%;
+		padding-inline: var(--space-3);
 	}
 
-	.site-header__search-input {
-		font-size: 0.85rem;
-	}
-
-	/* (3) Veggie-burger drawer trigger. */
 	.site-header__burger {
 		display: flex;
 	}
 
 	/* When the drawer is open, collapse the bar to mark + X only. */
 	.site-header--menu-open .site-header__search {
-		display: none;
+		visibility: hidden;
 	}
 }
 
+/* Below --bp-md the mark stands alone (the link keeps its name). */
+@media (max-width: 767.98px) {
+	.site-header__brand-text {
+		display: none;
+	}
+
+	.site-header__brand {
+		gap: 0;
+	}
+
+	.site-header__bar {
+		padding-inline: var(--space-3);
+	}
+}
 /* #endregion */

@@ -7,13 +7,8 @@
  * in-app high-contrast overlay; the OS channel must declare the same values). {@link contrastTable}
  * evaluates every §3.3 pairing in each state against the worst ground of its family:
  *
- *   - **Grounds.** The solid canvas, the three surfaces, the warm editorial pair, and the hero stack:
- *     canvas, spotlight peak and lit grid line (the lit layer blends darken / lighten over the base
- *     grid, so where the two cross the lit line is what paints). Decision #288 retired the
- *     constellation and the B9 halo, so no other layer sits under hero text.
- *   - **Grain.** B10 grain at `--lp-grain-opacity` composited over the ground in both polarities
- *     (white and black), the worse kept — a conservative bound, since grain never paints over
- *     surfaces or fills. The high-contrast states carry no grain (`--lp-grain-opacity: 0`).
+ *   - **Grounds.** The solid canvas, the three surfaces and the warm editorial pair. Decision #349
+ *     retired the hero with its grid, spotlight and grain, so every ground is solid.
  *   - **Glass.** The header bar's glass is `--lp-bg` at `--lp-glass-veil` over white or black content.
  *   - **The demo viewport.** Inside `.lp-demo__viewport` the ground is the product's own surface —
  *     the app's `--bg` and surfaces, as `_app.tsx` emits them from its seed — so the demo-stage
@@ -212,7 +207,6 @@ export function viewportScheme(state: ThemeState): ViewportScheme {
 interface Palette {
 	color(token: string): Rgb;
 	number(token: string): number;
-	grain: number;
 	ground: Record<GroundKey, Rgb>;
 }
 
@@ -222,12 +216,10 @@ type GroundKey =
 	| "surface-2"
 	| "surface-3"
 	| "warm-bg"
-	| "warm-surface"
-	| "hero";
+	| "warm-surface";
 
 /** The ground families the table names. */
 const CANVAS: readonly GroundKey[] = ["bg", "surface-1", "surface-2", "surface-3"];
-const HERO: readonly GroundKey[] = ["hero"];
 const EDITORIAL: readonly GroundKey[] = ["warm-bg", "warm-surface"];
 
 function palette(tokens: TokenSet): Palette {
@@ -236,9 +228,8 @@ function palette(tokens: TokenSet): Palette {
 		if (v === undefined) throw new Error(`lp-theme.css: ${token} is not declared`);
 		return v;
 	};
-	const rgba = (token: string) => parseColor(raw(token));
 	const color = (token: string) => {
-		const c = rgba(token);
+		const c = parseColor(raw(token));
 		if (c.alpha !== 1) throw new Error(`${token} is translucent; it is not a solid ink or fill`);
 		return c.rgb;
 	};
@@ -247,39 +238,23 @@ function palette(tokens: TokenSet): Palette {
 		if (!Number.isFinite(n)) throw new Error(`${token} is not a number`);
 		return n;
 	};
-	const over = (under: Rgb, token: string) => {
-		const c = rgba(token);
-		return composite(under, c.rgb, c.alpha);
-	};
-	const bg = color("--lp-bg");
 	return {
 		color,
 		number,
-		grain: number("--lp-grain-opacity"),
 		ground: {
-			bg,
+			bg: color("--lp-bg"),
 			"surface-1": color("--lp-surface-1"),
 			"surface-2": color("--lp-surface-2"),
 			"surface-3": color("--lp-surface-3"),
 			"warm-bg": color("--lp-warm-bg"),
 			"warm-surface": color("--lp-warm-surface"),
-			hero: over(over(bg, "--lp-spot"), "--lp-grid-line-lit"),
 		},
 	};
 }
 
-/** `ink` against `ground`, with grain over the ground in its worse polarity when `grain` is set. */
-function pair(p: Palette, ink: Rgb, ground: Rgb, grain: boolean): number {
-	if (!grain || p.grain === 0) return contrastRatio(ink, ground);
-	return Math.min(
-		contrastRatio(ink, composite(ground, WHITE, p.grain)),
-		contrastRatio(ink, composite(ground, BLACK, p.grain)),
-	);
-}
-
 /** The worst of `ink` over every ground in `family`. */
-function worst(p: Palette, ink: Rgb, family: readonly GroundKey[], grain: boolean): number {
-	return Math.min(...family.map((g) => pair(p, ink, p.ground[g], grain)));
+function worst(p: Palette, ink: Rgb, family: readonly GroundKey[]): number {
+	return Math.min(...family.map((g) => contrastRatio(ink, p.ground[g])));
 }
 // #endregion
 
@@ -321,12 +296,11 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		label: string,
 		inks: readonly string[],
 		family: readonly GroundKey[],
-		opts: Partial<ContrastRow> & { grain?: boolean } = {},
+		opts: Partial<ContrastRow> = {},
 	) => {
-		const grain = opts.grain ?? true;
 		rows.push({
 			label,
-			values: per((p) => inks.map((ink) => worst(p, p.color(ink), family, grain))),
+			values: per((p) => inks.map((ink) => worst(p, p.color(ink), family))),
 			join: " / ",
 			floor: AA,
 			floorText: "4.5 (7)",
@@ -335,7 +309,7 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		});
 	};
 
-	// Text on the canvas and the hero.
+	// Text on the canvas.
 	for (
 		const [name, ink] of [
 			["text", "--lp-text"],
@@ -346,17 +320,11 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		] as const
 	) {
 		text(`${name} on canvas + surface-1..3`, [ink], CANVAS);
-		text(
-			`${name} on hero effects`,
-			[ink],
-			HERO,
-			name === "text-2" ? { floorText: "4.5 (7); dark aim 7" } : {},
-		);
 	}
 	text(
 		"text · text-2 on the transparent header bar (at the top of the page, once hydrated)",
 		["--lp-text", "--lp-text-2"],
-		HERO,
+		["bg"],
 		{ join: " · " },
 	);
 
@@ -367,10 +335,10 @@ export function contrastTable(sheet: string): ContrastRow[] {
 	text("amber-ink / teal-ink on editorial", ["--lp-amber-ink", "--lp-teal-ink"], EDITORIAL);
 
 	// Filled controls.
-	const fill = (label: string, ink: string, fills: readonly string[], grain = true) =>
+	const fill = (label: string, ink: string, fills: readonly string[]) =>
 		rows.push({
 			label,
-			values: per((p) => fills.map((f) => pair(p, p.color(ink), p.color(f), grain))),
+			values: per((p) => fills.map((f) => contrastRatio(p.color(ink), p.color(f)))),
 			join: " / ",
 			floor: AA,
 			floorText: "4.5 (7)",
@@ -392,8 +360,7 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		"--lp-teal-fill-active",
 	]);
 	// The brand pair is the product's `--primary` pair, byte-identical in all four states (§A.1.1),
-	// so its floor is gate 12's 4.5:1 everywhere; it sits on the field's solid surface, which no grain
-	// reaches.
+	// so its floor is gate 12's 4.5:1 everywhere.
 	rows.push({
 		label: "on-brand on brand / hover / active (the hero Search; invariant in all four states)",
 		values: per((p) =>
@@ -409,7 +376,7 @@ export function contrastTable(sheet: string): ContrastRow[] {
 	fill("text on surface-2 / surface-3 (outlined and ghost hover)", "--lp-text", [
 		"--lp-surface-2",
 		"--lp-surface-3",
-	], false);
+	]);
 
 	// The glass header bar, once scrolled.
 	rows.push({
@@ -501,22 +468,21 @@ export function contrastTable(sheet: string): ContrastRow[] {
 	) =>
 		rows.push({
 			label,
-			values: per((p) => families.map((f) => worst(p, ink(p), f, false))),
+			values: per((p) => families.map((f) => worst(p, ink(p), f))),
 			join: " · ",
 			floor: NON_TEXT,
 			floorText: "3 (4.5)",
 			passText: "PASS",
 			...opts,
 		});
-	boundary("edge vs canvas + surfaces · hero · editorial", (p) => p.color("--lp-edge"), [
+	boundary("edge vs canvas + surfaces · editorial", (p) => p.color("--lp-edge"), [
 		CANVAS,
-		HERO,
 		EDITORIAL,
 	]);
 	boundary(
-		"amber-edge vs canvas + surfaces · hero · editorial",
+		"amber-edge vs canvas + surfaces · editorial",
 		(p) => p.color("--lp-amber-edge"),
-		[CANVAS, HERO, EDITORIAL],
+		[CANVAS, EDITORIAL],
 	);
 	boundary(
 		"field-edge vs canvas · field (the search's contour)",
@@ -526,16 +492,15 @@ export function contrastTable(sheet: string): ContrastRow[] {
 			["surface-1"],
 		],
 	);
-	boundary("mono fill vs canvas + surfaces · hero", (p) => p.color("--lp-mono"), [CANVAS, HERO]);
+	boundary("mono fill vs canvas + surfaces", (p) => p.color("--lp-mono"), [CANVAS]);
 	boundary(
 		"brand fill vs canvas · field (at rest; its label names the control)",
 		(p) => p.color("--lp-brand"),
 		[["bg"], ["surface-1"]],
 		{ floor: { normal: 3, hc: 3 }, floorText: "3" },
 	);
-	boundary("teal-fill vs canvas + surfaces · hero · editorial", (p) => p.color("--lp-teal-fill"), [
+	boundary("teal-fill vs canvas + surfaces · editorial", (p) => p.color("--lp-teal-fill"), [
 		CANVAS,
-		HERO,
 		EDITORIAL,
 	]);
 	rows.push({
@@ -546,9 +511,8 @@ export function contrastTable(sheet: string): ContrastRow[] {
 		floorText: "3 (4.5)",
 		passText: "PASS",
 	});
-	boundary("focus vs canvas + surfaces · hero · editorial", (p) => p.color("--lp-focus"), [
+	boundary("focus vs canvas + surfaces · editorial", (p) => p.color("--lp-focus"), [
 		CANVAS,
-		HERO,
 		EDITORIAL,
 	]);
 	rows.push({

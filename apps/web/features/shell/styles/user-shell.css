@@ -49,119 +49,91 @@
 
 /* #endregion */
 
-/* #region Integrated search — mirrors the guest `site-header__search` 1:1 (root CLAUDE.md Decision #47) */
+/* #region Integrated search — the guest header's pill search (`site-header__search-field`, Decisions #347, #348) */
+/* At rest: a command-palette pill — a faint tint, one hairline, muted ink, the shortcut docked at its
+   end. Focused or holding a query: it widens and lifts onto the solid surface with a firmer hairline
+   and a soft shadow (the app draws no focus ring, so the lift is the focus). It keeps the 2.5rem
+   height of the header's 40px utility buttons. The form is the field, so the typeahead anchors to
+   its full width. */
 .shell-search {
-    flex: 1 1 auto;
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    max-inline-size: 26rem;
-    padding-inline-end: var(--space-1);
-    block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
-    border-radius: var(--radius-lg);
-}
-
-.shell-search:hover,
-.shell-search:focus-within {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-/* Scope/entity selector segment */
-.shell-search__entity {
-    position: relative;
-    flex: 0 0 auto;
-    block-size: 100%;
-}
-
-.shell-search__entity-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-3);
-    block-size: 100%;
-    padding-inline: var(--space-3);
-    border: 0;
-    border-inline-end: 1px solid var(--hairline-color);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    border-start-start-radius: var(--radius-lg);
-    border-end-start-radius: var(--radius-lg);
-}
-
-.shell-search__entity-btn:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.shell-search__chevron {
-    inline-size: 6px;
-    block-size: 6px;
-    border-right: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-    transform: translateY(-1px) rotate(45deg);
-    opacity: 0.6;
-}
-
-/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
-.shell-search__entity-menu {
-    min-inline-size: 11rem;
-    margin: 0;
-    padding: var(--space-1);
-    list-style: none;
-    background: var(--surface-2);
+    gap: var(--space-2);
+    flex: 0 1 auto;
+    inline-size: 15rem;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    block-size: 2.5rem;
+    padding-inline: var(--space-3) var(--space-2);
+    box-sizing: border-box;
     border: 1px solid var(--hairline-color);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--elevation-high);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-faint), transparent);
+    color: var(--on-surface-variant);
+    transition:
+        inline-size var(--dur-medium) var(--spring-standard),
+        padding var(--dur-medium) var(--spring-standard),
+        background-color var(--dur-slow) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard),
+        box-shadow var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
-.shell-search__entity-option {
-    padding: 0.65rem 0.9rem;
-    border-radius: var(--radius-base);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
+.shell-search:hover {
+    border-color: var(--hairline-strong-color);
 }
 
-/* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
-.shell-search__entity-option:hover,
-.shell-search__entity-option[aria-selected="true"] {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+.shell-search:focus-within,
+.shell-search:has(.shell-search__search-input:not(:placeholder-shown)) {
+    inline-size: 22rem;
+    padding-inline-end: var(--space-3);
+    background: var(--surface);
+    border-color: var(--hairline-strong-color);
+    box-shadow: var(--elevation-low);
     color: var(--on-surface);
 }
 
-.shell-search__entity-option:focus-visible {
-    outline: none;
+/* The shortcut hint: shown at rest only — in use, the field's width is the query's. */
+.shell-search__hint {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.shell-search:focus-within .shell-search__hint,
+.shell-search:has(.shell-search__search-input:not(:placeholder-shown)) .shell-search__hint {
+    display: none;
+}
+
+.shell-search__icon {
+    flex: 0 0 auto;
 }
 
 .shell-search__search-input {
     flex: 1 1 auto;
     min-inline-size: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: 0.9rem;
-    outline: none;
-}
-
-.shell-search__search-go {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 28px;
-    block-size: 28px;
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--on-surface-variant);
-    cursor: pointer;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-md);
+    outline: none;
 }
 
-.shell-search__search-go:hover {
-    color: var(--primary);
+.shell-search__search-input::placeholder {
+    color: var(--on-surface-variant);
+}
+
+/* The native clear glyph would crowd a field this small. */
+.shell-search__search-input::-webkit-search-cancel-button {
+    appearance: none;
+}
+
+/* A touch-first device zooms the page into any field set under 16px; this one is set at 16px. */
+@media (hover: none) and (pointer: coarse) {
+    .shell-search__search-input {
+        font-size: var(--text-base);
+    }
 }
 
 /* #endregion */

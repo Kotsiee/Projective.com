@@ -6,7 +6,7 @@
 
 .ui-breadcrumb {
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 }
 
 .ui-breadcrumb__list {
@@ -52,7 +52,7 @@ a.ui-breadcrumb__crumb:hover {
 
 .ui-breadcrumb__crumb--current {
 	color: var(--on-surface);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	cursor: default;
 }
 

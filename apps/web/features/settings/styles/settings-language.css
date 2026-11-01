@@ -25,7 +25,7 @@
 }
 
 .stg-locale__name {
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	unicode-bidi: isolate;

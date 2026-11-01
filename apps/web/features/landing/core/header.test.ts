@@ -25,22 +25,22 @@ function currentOn(page: string): string[] {
 }
 // #endregion
 
-Deno.test("the bar's links: How it works · Explore · Pricing · Features, Explore from --bp-lg", () => {
+Deno.test("the bar's links: How it works · Explore · Pricing · Features", () => {
 	assertEquals(
-		LANDING_NAV_LINKS.map((link) => [link.label, link.href, link.wide === true]),
+		LANDING_NAV_LINKS.map((link) => [link.label, link.href]),
 		[
-			["How it works", "/#how-it-works", false],
-			["Explore", "/explore", true],
-			["Pricing", "/#pricing", false],
-			["Features", "/features", false],
+			["How it works", "/features#demo"],
+			["Explore", "/explore"],
+			["Pricing", "/features#pricing"],
+			["Features", "/features"],
 		],
 	);
-	assertEquals(landingNavAnchors(), ["how-it-works", "pricing"]);
+	assertEquals(landingNavAnchors(), ["demo", "pricing"]);
 });
 
 Deno.test("every whole-page link in the bar has a route file behind it", () => {
 	for (const link of LANDING_NAV_LINKS) {
-		if (link.href.startsWith("/#")) continue;
+		if (link.href.includes("#")) continue;
 		const file = new URL(`.${link.href}.tsx`, PUBLIC_ROUTES);
 		assert(isFile(file), `${link.label} → ${link.href}: no route file ${file.pathname}`);
 	}

@@ -1,8 +1,9 @@
 import type { JSX } from "preact";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
-import LandingBackground from "@features/landing/islands/LandingBackground.island.tsx";
 import HeroSearch from "@features/landing/islands/HeroSearch.island.tsx";
 import FeatureDemoDialog from "@features/landing/islands/FeatureDemoDialog.island.tsx";
+import DemoStage from "@features/landing/components/DemoStage.tsx";
+import { Pricing } from "@features/landing/components/Pricing.tsx";
 import { FINAL_SEARCH_SUFFIX, FINAL_TITLE_ID } from "@features/landing/components/FinalCta.tsx";
 import {
 	FeaturesPageView,
@@ -18,17 +19,15 @@ import {
 } from "@features/landing/core/demos/board-model.ts";
 import { DEMO_BOARD } from "@features/landing/core/demos/board-fixtures.ts";
 import { featureDemoEntries } from "@features/landing/core/feature-dialog.ts";
+import type { DemoId } from "@features/landing/core/demos/demo-contract.ts";
 
 export { featuresPageMeta } from "@features/landing/core/features-seo.ts";
 
 // #region Page
 /** What the thin route reads for the page. */
 export interface FeaturesPageProps extends Omit<FeaturesPageViewProps, "islands" | "viewer"> {
-	/**
-	 * The platform fee in basis points (`PublicMetricsService` `platformFeeBp`), or `null` when the
-	 * read failed — then every fee clause in the stills and the demos drops (`flows/LANDING.md` §4).
-	 */
-	feeBp: number | null;
+	/** The demo stage's open tab, from `?demo=` (default `board`). */
+	demo: DemoId;
 	/** The final search's data (`ExploreBackendService.landingHero`) and the viewer facts. */
 	hero: {
 		terms: string[];
@@ -51,11 +50,14 @@ export interface FeaturesPageProps extends Omit<FeaturesPageViewProps, "islands"
  *     rows beside their head, never a placeholder in a product window (Decision #302 (C), §8);
  *   - the "Try it" dialog ({@link FeatureDemoDialog}), handed the server's fee and the four rows with
  *     a demo;
- *   - the final call to action's background and its search — the page's only search, so it takes the
+ *   - the demo stage ({@link DemoStage}) on the tab `?demo=` names — where a "Try it" lands with no
+ *     JavaScript — and Pricing ({@link Pricing}) with its calculator, each handed the server's fee;
+ *   - the final call to action's search — the page's only search, so it takes the
  *     `/` shortcut (Decision #282 FLAG (a), §2.6 note 7), with no typewriter, its landmark named by the
  *     section's h2.
  */
-export function FeaturesPage({ feeBp, hero, ...view }: FeaturesPageProps): JSX.Element {
+export function FeaturesPage({ hero, demo, ...view }: FeaturesPageProps): JSX.Element {
+	const { feeBp } = view;
 	const board = createBoard(DEMO_BOARD, { feeBp });
 	const [still] = scriptFrames(board, []);
 	return (
@@ -77,7 +79,8 @@ export function FeaturesPage({ feeBp, hero, ...view }: FeaturesPageProps): JSX.E
 					),
 					"money": <PaymentsPoster feeBp={feeBp} />,
 				},
-				finalBackground: <LandingBackground variant="final" />,
+				demo: <DemoStage demo={demo} feeBp={feeBp} />,
+				pricing: <Pricing feeBp={feeBp} />,
 				finalSearch: (
 					<HeroSearch
 						idSuffix={FINAL_SEARCH_SUFFIX}

@@ -22,13 +22,14 @@ import {
  * (`variant="hero"`, centred and capped at 44rem) and the `/explore` header (`variant="bar"`, a
  * compact full-width bar). Both wear the site header's search anatomy and tokens — one hairline pill
  * on a `--surface-2` tint, a fused scope selector whose trailing edge is the divider, a plain field,
- * and a quiet icon-only magnifier in the pill's own ink (see `hero-search.css`). The placeholder
- * types itself out phrase-by-phrase with a blinking caret, cycling every few seconds; a row of
- * trending queries sits below. The glyphs are the registry's (§B.7), as on the results bar, rather
- * than the header's hand-authored ones. Submitting or
- * choosing a category/trending tag navigates to `/explore` with `?category=` + `?q=` — a real
- * navigation, so the server re-renders the correct layout (Home ↔ Search Results). Reduced-motion
- * shows a static placeholder. The field is the shared `SearchSuggest` typeahead.
+ * and a quiet icon-only magnifier in the pill's own ink (see `hero-search.css`; the Explore gateway
+ * restyles the hero variant as an elevated command pill, `explore.css`). The placeholder types itself
+ * out phrase-by-phrase with a blinking caret, cycling every few seconds; a row of discovery prompts
+ * sits below. The glyphs are the registry's (§B.7), as on the results bar, rather
+ * than the header's hand-authored ones. Submitting, or pressing one of the "Try" discovery prompts
+ * (which first writes its words into the field's signal), navigates to `/explore` with `?category=` +
+ * `?q=` — a real navigation, so the server re-renders the correct layout (Home ↔ Search Results).
+ * Reduced-motion shows a static placeholder. The field is the shared `SearchSuggest` typeahead.
  */
 
 // #region Static config
@@ -61,13 +62,11 @@ const PHRASES: Record<SearchScope, string[]> = {
 	],
 };
 
-const TRENDING = [
-	"Webflow build",
-	"Brand refresh",
-	"AI product design",
-	"Realtime backend",
-	"Pitch deck",
-];
+/**
+ * The discovery prompts under the bar (Decision #350): fixed queries, so the row is labelled "Try",
+ * never "Trending", and each is one the corpus answers, so no press lands on an empty page.
+ */
+const PROMPTS = ["Design system", "Brand identity", "Mobile app", "Landing page"];
 // #endregion
 
 export interface SearchBarProps {
@@ -248,13 +247,16 @@ export default function SearchBar({
 			</form>
 
 			<div class="hero-search__trending">
-				<span class="hero-search__trending-label">Trending</span>
-				{TRENDING.map((t) => (
+				<span class="hero-search__trending-label">Try</span>
+				{PROMPTS.map((t) => (
 					<button
 						key={t}
 						type="button"
 						class="hero-search__tag"
-						onClick={() => go(t)}
+						onClick={() => {
+							query.value = t;
+							go(t);
+						}}
 					>
 						{t}
 					</button>

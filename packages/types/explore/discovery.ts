@@ -111,21 +111,6 @@ export interface PlatformStats {
 }
 
 /**
- * Everything the public landing page renders, resolved in one server call. The home feed is the
- * payload's spine — without it there is nothing to show — while the quotes and the running totals are
- * garnish: when either read fails the page still renders, with that part simply absent.
- */
-export interface LandingPayload {
-	home: HomeFeed;
-	/** Real reviews worth quoting; empty when there are none or the read failed. */
-	testimonials: Testimonial[];
-	/** The running totals, or `null` when they could not be read. */
-	stats: PlatformStats | null;
-	/** The hero's backdrop — the platform's own public asset, or `null` when it is not uploaded. */
-	heroImage: string | null;
-}
-
-/**
  * The landing hero search's server-derived data (`ExploreBackendService.landingHero`,
  * `flows/LANDING.md` §4.1): every list may be empty, and the page withholds that part when it is.
  */

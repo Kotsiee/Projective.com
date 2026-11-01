@@ -183,9 +183,10 @@
 	* edge of the middle-nav HEADER BAND in whichever shell is hosting the page. That is one rule; it
 	* just resolves to two different places, because the band is a different kind of object in each:
 	*
-	*   guest  — `.guest-shell__subheader` is `position: fixed` at `--site-header-h`, FLOATING over the
-	*            content. Pinning the lane to the same line makes the band and the lane read as one row
-	*            of floating panels rather than two objects at unrelated heights.
+	*   guest  — `.guest-shell__subheader` is `position: fixed` at `--guest-pin-top` (one `--space-4`
+	*            under the docked bar), FLOATING over the content. Pinning the lane to the same line
+	*            makes the band and the lane read as one row of floating panels rather than two objects
+	*            at unrelated heights.
 	*   authed — `.ui-middle-nav__header` is a grid row at the very top of the content region, and the
 	*            page's own block padding puts the hero 24px below it. Pinning there instead keeps the
 	*            lane level with the hero at rest, so nothing jumps on the first scroll.
@@ -196,18 +197,18 @@
 	* either — its BOX is inset inline to clear the lane (see the band block below), so the two tile
 	* side by side instead of stacking, which is the §D.7.2 rule for two pinned regions in one region.
 	*
-	* `--evp-pin-lift` pulls the lane up out of the page's own top padding in the guest shell, where the
-	* pin line (88px) sits ABOVE the frame's natural top (112px). Without it the lane would start 24px
-	* low and only reach the band's line after a scroll — the alignment would be true of the pinned
-	* state and false of the state the reader arrives in. The authed shell pins AT the frame top, so it
-	* lifts nothing.
+	* `--evp-pin-lift` pulls the lane up out of the page's own top padding in the guest shell, so at rest
+	* it starts level with the reserved header band rather than 24px below it. The guest pin line sits
+	* higher still (it is measured from the DOCKED bar), so the lane travels that difference and then
+	* pins — and at rest the band is collapsed, so there is nothing yet for it to align with. The authed
+	* shell pins AT the frame top, so it lifts nothing.
 	*
 	* The column height subtracts the pin line, not the frame top, so a pinned lane's foot lands exactly
 	* one page-gutter above the viewport floor and can never push the document taller than the screen.
 	*/
 	--evp-chrome-h: var(--site-header-h, 5.5rem);
 	--evp-frame-top: calc(var(--evp-chrome-h) + var(--space-5));
-	--evp-pin-top: var(--evp-chrome-h);
+	--evp-pin-top: var(--guest-pin-top, var(--evp-chrome-h));
 	--evp-pin-lift: var(--space-5);
 	--evp-col-h: calc(100dvh - var(--evp-pin-top) - var(--space-5));
 
@@ -2422,7 +2423,7 @@ a.evp-cta__btn--mono {
 .guest-shell .evp-track__item,
 .guest-shell #evp-reviews {
 	scroll-margin-block-start: calc(
-		var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h) + var(--space-4)
+		var(--guest-pin-top) + var(--shell-midnav-header-h) + var(--space-4)
 	);
 }
 
@@ -2554,7 +2555,7 @@ a.evp-cta__btn--mono {
  * `.evp`, so the page's own `padding-inline` cannot reach it.
  *
  * THE GUEST BAND IS DIFFERENT, ON PURPOSE. `.guest-shell__subheader` is `position: fixed` and floats
- * over the content; its lane pins to the SAME line (see the `--evp-pin-*` note), so the two still tile
+ * over the content; its lane pins to the SAME line (`--guest-pin-top`), so the two still tile
  * as one row of floating panels and the END reservation stays. Only the START reservation for the
  * retired strip is dropped — the band begins at the page gutter, where the back link's row does.
  *

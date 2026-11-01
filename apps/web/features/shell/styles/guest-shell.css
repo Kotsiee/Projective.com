@@ -34,6 +34,18 @@
 	/* The package's pinned-chrome hook (packages/ui styles/index.css): in-page sticky parts — the
 	   editorial TOC rail, reading progress, heading scroll margins — clear the SCROLLED header pill. */
 	--chrome-pinned-h: var(--site-header-pinned-h, 0px);
+	/* The line every floating guest panel pins to: one `--space-4` under the DOCKED bar. Pinned panels
+	   only matter once the page has scrolled, and by then the bar has docked, so the reserved floating
+	   band (`--site-header-h`, 2.5rem taller) would leave dead space between the two. */
+	--guest-pin-top: calc(var(--site-header-pinned-h, 3.5rem) + var(--space-4));
+	/* The bottom edge of the floating chrome an in-page sticky element clears — the bar, plus the
+	   sub-header band while it is revealed (below). */
+	--guest-band-end: var(--guest-pin-top);
+}
+
+/* The band reveals by `max-block-size` to `--shell-midnav-header-h`; until then it measures 0. */
+.guest-shell:has(.guest-shell__subheader .pf-stickyhead[data-condensed="true"]) {
+	--guest-band-end: calc(var(--guest-pin-top) + var(--shell-midnav-header-h));
 }
 
 /* Collapsed rail width — from the pre-painted root attribute (no flash). */
@@ -80,11 +92,11 @@
 .ui-guest-aside {
 	position: sticky;
 	margin-inline-end: 0;
-	inset-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
+	inset-block-start: var(--guest-pin-top);
 	align-self: flex-start;
 	flex: 0 0 var(--guest-aside-cur-w);
 	inline-size: var(--guest-aside-cur-w);
-	block-size: calc(100dvh - var(--site-header-h, 5.5rem) - var(--guest-inset) * 2);
+	block-size: calc(100dvh - var(--guest-pin-top) - var(--guest-inset));
 	z-index: var(--z-sticky);
 	display: flex;
 	flex-direction: column;
@@ -135,9 +147,13 @@
 /* #endregion */
 
 /* #region Floating middle sub-header (the route sticky header) — glass on a ::before underlay */
+/*
+ * `fixed`, not `sticky`: the band overlays the body and reserves no room, so revealing it shifts
+ * nothing (CLS 0). It pins on the same line as the aside, so the two read as one row of panels.
+ */
 .guest-shell__subheader {
 	position: fixed;
-	inset-block-start: var(--site-header-h, 5.5rem);
+	inset-block-start: var(--guest-pin-top);
 	inset-inline-start: var(--guest-body-inset-inline);
 	inset-inline-end: var(--guest-inset);
 	z-index: var(--z-sticky);
@@ -213,7 +229,8 @@
 		 */
 		gap: var(--guest-inset);
 		padding-inline: var(--guest-inset);
-		padding-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
+		/* One `--space-4` under the FLOATING bar at rest (the reserved band minus the gap it keeps below). */
+		padding-block-start: calc(var(--site-header-h) - var(--site-header-gap) + var(--space-4));
 	}
 
 	.guest-shell[data-has-aside="true"] .guest-shell__body {
@@ -237,6 +254,11 @@
 	.ui-guest-aside,
 	.guest-shell__subheader {
 		display: none;
+	}
+
+	/* No band renders here, so nothing below the bar needs clearing even while its header condenses. */
+	.guest-shell:has(.guest-shell__subheader .pf-stickyhead[data-condensed="true"]) {
+		--guest-band-end: var(--guest-pin-top);
 	}
 
 	/*

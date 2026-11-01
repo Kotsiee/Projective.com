@@ -1,6 +1,6 @@
 /**
- * Global-navigation megamenu taxonomy — the discovery "idea board" behind the four public nav
- * pillars (Helpers · Services · Projects · Products). Each leaf is a canonical deep-link into
+ * Global-navigation megamenu taxonomy — the discovery "idea board" behind the guest header's Explore
+ * item: four pillars (Helpers · Services · Projects · Products). Each leaf is a canonical deep-link into
  * `/explore`, pre-filling the category scope + a human search term so a hover is a one-click jump
  * into a live, filtered results page. ELI5-friendly copy per PRODUCT_SPEC voice guidelines — plain
  * words over jargon ("People ready to jump in", never "resource pool").
@@ -28,7 +28,10 @@ export interface MegaMenu {
 	key: string;
 	/** Trigger word shown in the nav row. */
 	label: string;
-	/** One-line ELI5 intro shown above the columns. */
+	/**
+	 * The pillar's one-line pitch under its name. The pillar column shows one line (~34 characters;
+	 * longer ends in an ellipsis), so it stays within 30 — pinned by `footer-links.test.ts`.
+	 */
 	tagline: string;
 	/** Grouped discovery links (rendered as columns on desktop, sub-groups on mobile). */
 	columns: MegaColumn[];
@@ -67,7 +70,7 @@ export const MEGA_MENUS: MegaMenu[] = [
 	{
 		key: "helpers",
 		label: "Helpers",
-		tagline: "Talented people and teams ready to jump in on your work.",
+		tagline: "Freelancers and teams to hire.",
 		columns: [
 			{
 				heading: "Design & Creative",
@@ -102,7 +105,7 @@ export const MEGA_MENUS: MegaMenu[] = [
 	{
 		key: "services",
 		label: "Services",
-		tagline: "Ready-made packages — pick one and get going in minutes.",
+		tagline: "Ready-made packages to buy.",
 		columns: [
 			{
 				heading: "Design & Brand",
@@ -137,7 +140,7 @@ export const MEGA_MENUS: MegaMenu[] = [
 	{
 		key: "projects",
 		label: "Projects",
-		tagline: "Post what you need and let the right people come to you.",
+		tagline: "Post a brief, get applicants.",
 		columns: [
 			{
 				heading: "Design help",
@@ -172,7 +175,7 @@ export const MEGA_MENUS: MegaMenu[] = [
 	{
 		key: "products",
 		label: "Products",
-		tagline: "Instant digital downloads to kickstart your next build.",
+		tagline: "Instant digital downloads.",
 		columns: [
 			{
 				heading: "Design assets",
@@ -204,16 +207,5 @@ export const MEGA_MENUS: MegaMenu[] = [
 		],
 		viewAll: { label: "Browse all products", href: explorePath("products") },
 	},
-];
-
-/**
- * Secondary utility links retained on the mobile drawer only (removed from the top-level desktop nav
- * in favour of the discovery pillars, but still reachable on small screens). Pricing is the help
- * centre's fees article until the `/pricing` page ships (Decision #252); `footer-links.test.ts`
- * resolves every href here against the route tree and the help content.
- */
-export const SECONDARY_LINKS: MegaLink[] = [
-	{ label: "How it works", href: "/#how-it-works" },
-	{ label: "Pricing", href: "/help/escrow-and-payments/fees" },
 ];
 // #endregion

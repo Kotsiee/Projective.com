@@ -1,8 +1,11 @@
 import type { ComponentChildren, JSX } from "preact";
 import { JsonLd } from "@features/marketing/components/JsonLd.tsx";
-import { BackgroundFallback } from "@features/landing/components/BackgroundFallback.tsx";
 import { FeatureIndex } from "@features/landing/components/FeatureIndex.tsx";
+import { PaymentProtection } from "@features/landing/components/PaymentProtection.tsx";
+import { Faq } from "@features/landing/components/Faq.tsx";
 import { FinalCta } from "@features/landing/components/FinalCta.tsx";
+import { faqEntries } from "@features/landing/core/faq.ts";
+import { protectionTermsHref } from "@features/landing/core/protection-terms.ts";
 import type { HeroViewer } from "@features/landing/core/hero-search.ts";
 import {
 	type FeatureChapterId,
@@ -27,8 +30,10 @@ export interface FeaturesIslands {
 	dialog: ComponentChildren;
 	/** Each chapter's picture, a real-component still of a demo; a chapter with none prints bare. */
 	stills: Partial<Record<FeatureChapterId, ComponentChildren>>;
-	/** The final call to action's background (`LandingBackground variant="final"`). */
-	finalBackground: ComponentChildren;
+	/** The demo stage (`DemoStage`), opened on the tab `?demo=` names (`#demo`). */
+	demo: ComponentChildren;
+	/** Pricing with its calculator (`Pricing`). */
+	pricing: ComponentChildren;
 	/** The final call to action's search (`HeroSearch`, `idSuffix` `-final`): the page's only one. */
 	finalSearch: ComponentChildren;
 }
@@ -41,6 +46,11 @@ export interface FeaturesPageViewProps {
 	viewer: HeroViewer;
 	/** The chapter `?section=` asked for, or `null`. */
 	section: FeatureChapterId | null;
+	/**
+	 * The platform fee in basis points, or `null` when the read failed — then Payment protection and
+	 * the questions drop every fee clause (`flows/LANDING.md` §4).
+	 */
+	feeBp: number | null;
 	islands: FeaturesIslands;
 }
 // #endregion
@@ -52,23 +62,25 @@ export interface FeaturesPageViewProps {
  * below, one list for both), then:
  *
  *   1. the page head: the section-header "Features", the page's one h1 and its subline `[P9]`, on the
- *      landing's static grid (the B7 picture with no spotlight: nothing on this page moves while
- *      browsing, §2.7);
+ *      solid canvas (no grid, Decision #349);
  *   2. the chapter index ({@link FeatureIndex}): the chapter navigation, then the five chapters, each a
  *      landmark labelled by its h2;
- *   3. the final call to action (`#get-started`), with the page's only search.
+ *   3. the deep dives that left the front page when `/` became the Explore Home (Decision #349): the
+ *      demo stage (`#demo`), Payment protection, Pricing and the questions (`#faq`, its FAQPage in the
+ *      graph);
+ *   4. the final call to action (`#get-started`), with the page's only search.
  *
  * The "Try it" dialog mounts last: it shows nothing until a "Try it" is pressed.
  */
 export function FeaturesPageView(
-	{ origin, viewer, section, islands }: FeaturesPageViewProps,
+	{ origin, viewer, section, feeBp, islands }: FeaturesPageViewProps,
 ): JSX.Element {
+	const faq = faqEntries(feeBp);
 	return (
 		<>
-			<JsonLd graph={featuresGraph(origin, printedFeatures())} id={FEATURES_JSONLD_ID} />
+			<JsonLd graph={featuresGraph(origin, printedFeatures(), faq)} id={FEATURES_JSONLD_ID} />
 			<div class="lp-features">
 				<header class="lp-features__head">
-					<BackgroundFallback variant="hero" />
 					<div class="lp-features__head-inner">
 						<p class="lp-eyebrow">{FEATURES_COPY.eyebrow}</p>
 						<h1 id={FEATURES_TITLE_ID} class="lp-display lp-display--hero lp-features__title">
@@ -79,11 +91,11 @@ export function FeaturesPageView(
 				</header>
 				<FeatureIndex target={section} stills={islands.stills} />
 			</div>
-			<FinalCta
-				background={islands.finalBackground}
-				search={islands.finalSearch}
-				viewer={viewer}
-			/>
+			{islands.demo}
+			<PaymentProtection termsHref={protectionTermsHref()} feeBp={feeBp} />
+			{islands.pricing}
+			<Faq feeBp={feeBp} entries={faq} />
+			<FinalCta search={islands.finalSearch} viewer={viewer} />
 			{islands.dialog}
 		</>
 	);

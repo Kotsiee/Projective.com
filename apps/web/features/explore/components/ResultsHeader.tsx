@@ -22,11 +22,11 @@ function scopeOf(category: ExploreCategory): SearchScope {
 
 /**
  * ResultsHeader — the Dribbble-style header for the Search Results page: the active query rendered
- * large in a thin display weight, a search bar in the SAME shape as the site header's
- * (`site-header__search`: a fused scope selector → the field → a submit glyph, plus a clear control
- * once something is typed), and a minimal row of clickable "Related" search tags. The scope
- * vocabulary is the shared `SEARCH_SCOPES`, so the two bars offer the same choices and the results
- * page can re-scope in place. The field is the shared `SearchSuggest` typeahead; `/` focuses it from
+ * large in a thin display weight, a search bar in the SAME shape as the shared hero `SearchBar` (a
+ * fused scope selector → the field → a submit glyph, plus a clear control once something is typed;
+ * the headers' bars are scope-less ghosts since Decision #347), and a minimal row of clickable
+ * "Related" search tags. The scope vocabulary is the shared `SEARCH_SCOPES`, so the two in-page bars
+ * offer the same choices and the results page can re-scope in place. The field is the shared `SearchSuggest` typeahead; `/` focuses it from
  * anywhere on the page outside a field. Presentational —
  * the parent island owns the query state; `onSearch` re-runs the search with a term + scope (Enter,
  * a suggestion, a scope pick, or the clear control), and `onRelated` re-runs it for a tag.

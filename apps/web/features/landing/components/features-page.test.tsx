@@ -5,13 +5,16 @@
  * rows with a demo, named "Try it: {title}" (its visible words first), a working link with no
  * JavaScript; "Learn more" only where a help article exists; Coming soon rows with no control at
  * all; real stills only, a chapter with none printed bare; the JSON-LD ItemList naming exactly the
- * visible rows with their visible words; `?section=` marking its chapter; no id twice.
+ * visible rows with their visible words; `?section=` marking its chapter; the deep dives that left
+ * `/` (the demo stage, Payment protection, Pricing, the questions with their FAQPage) after the index
+ * and before the final call to action; no grid background; no id twice.
  *
  * The page controller (`routes/FeaturesPage.tsx`) mounts islands whose stylesheets cannot load under
  * `deno test`, so this renders `FeaturesPageView` with the parts those islands paint on the server:
  * the final search's own markup (`HeroSearchForm`), the Booking and Work board real stills
- * (`BookingPoster`, `BoardPicture`), and stand-ins for the dialog (it renders nothing until pressed)
- * and the Payment protection still (its MoneyView figures carry an island stylesheet).
+ * (`BookingPoster`, `BoardPicture`), and stand-ins for the dialog (it renders nothing until pressed),
+ * the Payment protection still (its MoneyView figures carry an island stylesheet), the demo stage and
+ * Pricing (each mounts an island).
  */
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
@@ -36,6 +39,11 @@ import {
 } from "../core/features-catalogue.ts";
 import { SECTION_TARGET_ATTR, TRY_DEMO_ATTR, TRY_FEATURE_ATTR } from "../core/feature-dialog.ts";
 import { FEATURES_JSONLD_ID } from "../core/features-seo.ts";
+import { FAQ_SECTION_ID, faqEntries } from "../core/faq.ts";
+import { DEMO_SECTION_ID } from "../core/demo-stage.ts";
+import { PROTECTION_SECTION_ID } from "./PaymentProtection.tsx";
+import { PRICING_SECTION_ID } from "./PricingView.tsx";
+import { landingNavAnchors } from "../core/header.ts";
 
 // #region HTML reading
 /** One element of the rendered markup. */
@@ -145,6 +153,7 @@ function render(section: FeatureChapterId | null = null): Node {
 			origin={ORIGIN}
 			viewer={GUEST_VIEWER}
 			section={section}
+			feeBp={500}
 			islands={{
 				dialog: <div data-standin="dialog" />,
 				stills: {
@@ -160,7 +169,8 @@ function render(section: FeatureChapterId | null = null): Node {
 					),
 					"money": <div role="img" aria-label="Payment protection example." />,
 				},
-				finalBackground: <div class="lp-bg lp-bg--final" aria-hidden="true" role="none" />,
+				demo: <section id={DEMO_SECTION_ID} data-standin="demo" />,
+				pricing: <section id={PRICING_SECTION_ID} data-standin="pricing" />,
 				finalSearch: finalSearch(),
 			}}
 		/>,
@@ -339,6 +349,47 @@ Deno.test("?section= marks its chapter for the island: the target, a focusable h
 	assertEquals(find(marked[0], (n) => n.tag === "h2")[0].attrs.tabindex, "-1");
 	const current = find(page, (n) => n.attrs["aria-current"] === "location");
 	assertEquals(current.map((n) => n.attrs.href), ["#money"]);
+});
+
+Deno.test("after the index: the demo stage, Payment protection, Pricing, the questions, then the end", () => {
+	const page = render();
+	const order = [
+		DEMO_SECTION_ID,
+		PROTECTION_SECTION_ID,
+		PRICING_SECTION_ID,
+		FAQ_SECTION_ID,
+		FINAL_SECTION_ID,
+	];
+	const ids = find(page, (n) => n.tag === "section" && order.includes(n.attrs.id)).map((n) =>
+		n.attrs.id
+	);
+	assertEquals(ids, order);
+	const lastChapter = chapters(page).at(-1)!.attrs.id;
+	const all = find(page, (n) => typeof n.attrs.id === "string").map((n) => n.attrs.id);
+	assert(
+		all.indexOf(lastChapter) < all.indexOf(DEMO_SECTION_ID),
+		"the deep dives follow the index",
+	);
+});
+
+Deno.test("JSON-LD: the FAQPage asks exactly the visible questions, on /features", () => {
+	const page = render();
+	const script = find(page, (n) => n.tag === "script" && n.attrs.id === FEATURES_JSONLD_ID);
+	const graph = JSON.parse(script[0].raw) as { "@graph": Array<Record<string, unknown>> };
+	const faq = graph["@graph"].find((node) => node["@type"] === "FAQPage")!;
+	assert(String(faq["@id"]).startsWith(`${ORIGIN}/features`));
+	const asked = (faq.mainEntity as Array<{ name: string }>).map((q) => q.name);
+	assertEquals(asked, faqEntries(500).map((entry) => entry.question));
+});
+
+Deno.test("the header bar's anchors land on sections this page renders", () => {
+	const ids = find(render(), (n) => typeof n.attrs.id === "string").map((n) => n.attrs.id);
+	for (const anchor of landingNavAnchors()) assert(ids.includes(anchor), `#${anchor} is missing`);
+});
+
+Deno.test("no grid background: the head and the final call to action sit on the solid canvas", () => {
+	const page = render();
+	assertEquals(find(page, (n) => hasClass("lp-bg")(n)).length, 0);
 });
 
 Deno.test("the page ends with the final call to action and its search; no id twice", () => {

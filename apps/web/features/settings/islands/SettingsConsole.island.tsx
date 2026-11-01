@@ -1,13 +1,13 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
-import { Icon } from "@projective/ui/icons";
 import type { UserContext } from "@projective/types/auth";
 import type { SettingsSectionEnvelope, SettingsSectionKey } from "@projective/types/settings";
 import { useEffectiveContext } from "@features/shell/core/effective-context.ts";
 import { entryByAnchor, settingsHref } from "../core/settings-registry.ts";
 import { SETTINGS_FOCUS_EVENT, type SettingsFocusDetail } from "../core/settings-bridge.ts";
 import { SettingsSectionView } from "../components/SettingsSectionView.tsx";
+import { SettingsBreadcrumb } from "../components/SettingsBreadcrumb.tsx";
 
 // #region Stylesheet carrier
 import "../styles/settings.css";
@@ -53,10 +53,7 @@ export default function SettingsConsole(props: SettingsConsoleProps): JSX.Elemen
 
 	return (
 		<div class="stg-console">
-			<a class="stg-console__back" href="/settings">
-				<Icon name="chevron-left" size="sm" aria-hidden="true" />
-				All settings
-			</a>
+			<SettingsBreadcrumb section={props.section} />
 			<SettingsSectionView
 				section={props.section}
 				mode="page"

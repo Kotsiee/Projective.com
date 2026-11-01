@@ -53,11 +53,10 @@
 }
 
 /*
- * The results search bar mirrors `site-header__search` (site-shell.css) part for part — a fused
- * scope selector → the field → a submit glyph on one hairline-ringed pill — so the two bars read as
- * the same control at two sizes. This one is taller and wider (it sits in the page's hero band, not
- * a 40px chrome strip) and adds a clear control once something is typed; the glyphs are the
- * registry's (§B.7) rather than the header's hand-authored ones.
+ * The results search bar mirrors the hero `SearchBar` (hero-search.css) part for part — a fused
+ * scope selector → the field → a submit glyph on one hairline-ringed pill — so the two in-page bars
+ * read as the same control (the headers' bars are scope-less ghosts since Decision #347). This one
+ * adds a clear control once something is typed; the glyphs are the registry's (§B.7).
  */
 .ex-results-head__search {
 	display: flex;

@@ -1,0 +1,1339 @@
+- generic [active] [ref=f17e1]:
+  - generic [ref=f17e2]:
+    - link "Skip to content" [ref=f17e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - banner:
+      - generic [ref=f17e4]:
+        - link "Projective" [ref=f17e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Main" [ref=f17e10]:
+          - list [ref=f17e11]:
+            - listitem [ref=f17e12]:
+              - link "How it works" [ref=f17e13] [cursor=pointer]:
+                - /url: /features#demo
+            - listitem [ref=f17e14]:
+              - link "Explore" [ref=f17e15] [cursor=pointer]:
+                - /url: /explore
+              - button "Explore menu" [ref=f17e16] [cursor=pointer]
+            - listitem [ref=f17e18]:
+              - link "Pricing" [ref=f17e19] [cursor=pointer]:
+                - /url: /features#pricing
+            - listitem [ref=f17e20]:
+              - link "Features" [ref=f17e21] [cursor=pointer]:
+                - /url: /features
+        - search [ref=f17e22]:
+          - generic [ref=f17e23]:
+            - searchbox "Search Projective" [ref=f17e27]
+            - generic [ref=f17e29]: Ctrl /
+        - generic [ref=f17e31]:
+          - button "Switch to light theme" [ref=f17e32] [cursor=pointer]
+          - link "Sign in" [ref=f17e39] [cursor=pointer]:
+            - /url: /login?redirectTo=%2F
+          - link "Get started" [ref=f17e40] [cursor=pointer]:
+            - /url: /join?redirectTo=%2F
+    - main [ref=f17e41]:
+      - generic [ref=f17e42]:
+        - generic [ref=f17e45]:
+          - heading [level=1] [ref=f17e46]:
+            - text: Find the people who
+            - emphasis [ref=f17e47]: make it real.
+          - paragraph [ref=f17e48]: The marketplace for collaborative talent and modular squads.
+          - generic [ref=f17e50]:
+            - search [ref=f17e51]:
+              - button "All" [ref=f17e53] [cursor=pointer]
+              - generic [ref=f17e56]:
+                - generic [ref=f17e58]:
+                  - combobox "Search all" [ref=f17e59]
+                  - status [ref=f17e60]
+                - generic [aria-hidden]:
+                  - generic: Find
+                  - generic: an
+              - button "Search" [ref=f17e61] [cursor=pointer]
+            - generic [ref=f17e65]:
+              - generic [ref=f17e66]: Try
+              - button "Design system" [ref=f17e67] [cursor=pointer]
+              - button "Brand identity" [ref=f17e68] [cursor=pointer]
+              - button "Mobile app" [ref=f17e69] [cursor=pointer]
+              - button "Landing page" [ref=f17e70] [cursor=pointer]
+        - generic [ref=f17e72]:
+          - region [ref=f17e74]:
+            - heading "Trending this week" [level=2] [ref=f17e76]
+            - paragraph [ref=f17e77]: What people are opening and saving this week
+            - list [ref=f17e78]:
+              - listitem [ref=f17e79]:
+                - article [ref=f17e80]:
+                  - link "Brand identity sprint by Atelier Nova — $4,800" [ref=f17e81] [cursor=pointer]:
+                    - /url: /view/svc-xw32tu2h4a?type=services
+                  - generic [ref=f17e82]:
+                    - button "Share Brand identity sprint" [ref=f17e84] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e92] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-xw32tu2h4a%3Ftype%3Dservices
+                  - img "Sponsored" [ref=f17e97]:
+                    - generic [aria-hidden] [ref=f17e98]: AD
+                  - generic [ref=f17e99]:
+                    - link "Atelier Nova" [ref=f17e101] [cursor=pointer]:
+                      - /url: /@ateliernova
+                    - heading "Brand identity sprint" [level=3] [ref=f17e107]
+                    - generic [ref=f17e108]:
+                      - generic [ref=f17e109]: Pipeline service
+                      - generic [ref=f17e110]: ·10-day delivery
+                    - generic [ref=f17e111]:
+                      - img "Rated 4.9 out of 5, 3 ratings" [ref=f17e113]:
+                        - generic [aria-hidden] [ref=f17e118]:
+                          - text: "4.9"
+                          - generic [ref=f17e119]: (3)
+                      - generic [ref=f17e120]:
+                        - generic [ref=f17e121]:
+                          - text: From
+                          - generic [ref=f17e122]:
+                            - generic [aria-hidden] [ref=f17e123]:
+                              - generic [ref=f17e124]: £
+                              - generic [ref=f17e125]: "94"
+                              - generic [ref=f17e126]: ".49"
+                            - generic [ref=f17e127]: approximately £94.49, converted from US$120.00 USD at a rate of 0.787402
+                        - generic [ref=f17e128]: / ticket
+                  - paragraph [ref=f17e129]: A staged identity system — discovery, concept routes, and a final kit with a Webflow handoff.
+              - listitem [ref=f17e130]:
+                - article [ref=f17e131]:
+                  - link "Maris Delacroix — Product design lead — design systems and end-to-end product work" [ref=f17e132] [cursor=pointer]:
+                    - /url: /@marisdelacroix
+                  - generic [ref=f17e133]:
+                    - button "Share Maris Delacroix" [ref=f17e135] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e143] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40marisdelacroix
+                  - generic [ref=f17e146]: Available now
+                  - generic [ref=f17e150]:
+                    - generic [ref=f17e151]:
+                      - generic [ref=f17e154]:
+                        - generic [ref=f17e155]: Maris Delacroix
+                        - img "Payout verified" [ref=f17e157]
+                      - generic [ref=f17e161]: "@marisdelacroix"
+                    - paragraph [ref=f17e162]: Product design lead — design systems and end-to-end product work
+                    - paragraph [ref=f17e163]:
+                      - text: London, United Kingdom
+                      - generic [ref=f17e164]: · English, French
+                    - generic [ref=f17e165]:
+                      - img "Rated 5.0 out of 5 from 1 reviews" [ref=f17e166]:
+                        - generic [aria-hidden] [ref=f17e171]:
+                          - text: "5.0"
+                          - generic [ref=f17e172]: (1)
+                      - list [ref=f17e173]:
+                        - listitem [ref=f17e174]: 2 services
+                        - listitem [ref=f17e175]: 1 product
+                  - paragraph [ref=f17e176]: Product design lead — design systems and end-to-end product work
+              - listitem [ref=f17e177]:
+                - article [ref=f17e178]:
+                  - link "Helia wallet redesign for Helia Finance — $48,000" [ref=f17e179] [cursor=pointer]:
+                    - /url: /view/prj-6ndtxa9u9x?type=projects
+                  - generic [ref=f17e180]:
+                    - button "Share Helia wallet redesign" [ref=f17e182] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e190] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprj-6ndtxa9u9x%3Ftype%3Dprojects
+                  - link "Hannah Cole" [ref=f17e195] [cursor=pointer]:
+                    - /url: /@hannahcole
+                    - img [ref=f17e197]:
+                      - generic [ref=f17e198]: HC
+                  - heading "Helia wallet redesign" [level=3] [ref=f17e202]
+                  - list "Project stages" [ref=f17e203]:
+                    - listitem [ref=f17e204]:
+                      - generic [ref=f17e205]: Discovery and research
+                    - listitem [ref=f17e206]:
+                      - generic [ref=f17e209]: UX and flows
+                    - listitem [ref=f17e210]:
+                      - generic [ref=f17e213]: Visual design and handoff
+                  - paragraph [ref=f17e214]: "Reimagine the Helia consumer wallet end to end: research, flows, visual design and a handoff engineering can build from without a second round of questions."
+                  - paragraph [ref=f17e215]: UX research·User interviews·UX·Figma·Prototyping·Design systems
+          - region [ref=f17e217]:
+            - generic [ref=f17e218]:
+              - heading [level=2] [ref=f17e219]:
+                - link "Services you may like" [ref=f17e220] [cursor=pointer]:
+                  - /url: /explore?category=services
+              - generic [ref=f17e223]:
+                - button "Scroll Services backwards" [disabled] [ref=f17e225]
+                - button "Scroll Services forwards" [ref=f17e229] [cursor=pointer]
+            - list [ref=f17e232]:
+              - listitem [ref=f17e233]:
+                - 'link "Sponsored: Brand identity sprint" [ref=f17e234] [cursor=pointer]':
+                  - /url: /view/svc-xw32tu2h4a
+                  - generic [ref=f17e237]:
+                    - generic [ref=f17e238]:
+                      - generic [ref=f17e241]: Atelier Nova
+                      - generic [ref=f17e242]: · Sponsored
+                    - heading "Brand identity sprint" [level=3] [ref=f17e243]
+                    - paragraph [ref=f17e244]: A staged identity system — discovery, concept routes, and a final kit with a Webflow handoff.
+                    - generic [ref=f17e245]: View service
+              - listitem [ref=f17e249]:
+                - article [ref=f17e250]:
+                  - link "Design mentorship block by Studio Fern — $960" [ref=f17e251] [cursor=pointer]:
+                    - /url: /view/svc-6fp93nfw7f?type=services
+                  - generic [ref=f17e252]:
+                    - button "Share Design mentorship block" [ref=f17e254] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e262] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-6fp93nfw7f%3Ftype%3Dservices
+                  - generic [ref=f17e267]:
+                    - link "Studio Fern" [ref=f17e269] [cursor=pointer]:
+                      - /url: /@studiofern
+                    - heading "Design mentorship block" [level=3] [ref=f17e275]
+                    - generic [ref=f17e276]:
+                      - generic [ref=f17e277]: 1:1 session
+                      - generic [ref=f17e278]: ·6 × 45-minute sessions
+                    - generic [ref=f17e279]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e281]:
+                        - generic [aria-hidden] [ref=f17e286]:
+                          - text: "4.9"
+                          - generic [ref=f17e287]: (2)
+                      - generic [ref=f17e288]:
+                        - generic [ref=f17e290]:
+                          - generic [aria-hidden] [ref=f17e291]:
+                            - generic [ref=f17e292]: £
+                            - generic [ref=f17e293]: "125"
+                            - generic [ref=f17e294]: ".98"
+                          - generic [ref=f17e295]: approximately £125.98, converted from US$160.00 USD at a rate of 0.787402
+                        - generic [ref=f17e296]: / session
+                  - paragraph [ref=f17e297]: Six fortnightly 1:1s with a senior product designer — portfolio, craft, and the career conversation nobody schedules.
+              - listitem [ref=f17e298]:
+                - article [ref=f17e299]:
+                  - link "Live portfolio review by Studio Fern — $180" [ref=f17e300] [cursor=pointer]:
+                    - /url: /view/svc-2zqfnr9jez?type=services
+                  - generic [ref=f17e301]:
+                    - button "Share Live portfolio review" [ref=f17e303] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e311] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-2zqfnr9jez%3Ftype%3Dservices
+                  - generic [ref=f17e316]:
+                    - link "Studio Fern" [ref=f17e318] [cursor=pointer]:
+                      - /url: /@studiofern
+                    - heading "Live portfolio review" [level=3] [ref=f17e324]
+                    - generic [ref=f17e325]:
+                      - generic [ref=f17e326]: 1:1 session
+                      - generic [ref=f17e327]: ·60-minute session
+                    - generic [ref=f17e328]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e330]:
+                        - generic [aria-hidden] [ref=f17e335]:
+                          - text: "4.9"
+                          - generic [ref=f17e336]: (2)
+                      - generic [ref=f17e337]:
+                        - generic [ref=f17e339]:
+                          - generic [aria-hidden] [ref=f17e340]:
+                            - generic [ref=f17e341]: £
+                            - generic [ref=f17e342]: "141"
+                            - generic [ref=f17e343]: ".73"
+                          - generic [ref=f17e344]: approximately £141.73, converted from US$180.00 USD at a rate of 0.787402
+                        - generic [ref=f17e345]: / session
+                  - paragraph [ref=f17e346]: A booked 1:1 call — a working editor walks your portfolio and leaves a written action plan.
+              - listitem [ref=f17e347]:
+                - article [ref=f17e348]:
+                  - link "Realtime MVP build by North Loop — $9,500" [ref=f17e349] [cursor=pointer]:
+                    - /url: /view/svc-3j594g3c4s?type=services
+                  - generic [ref=f17e350]:
+                    - button "Share Realtime MVP build" [ref=f17e352] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e360] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-3j594g3c4s%3Ftype%3Dservices
+                  - generic [ref=f17e365]:
+                    - link "North Loop" [ref=f17e367] [cursor=pointer]:
+                      - /url: /@northloop
+                    - heading "Realtime MVP build" [level=3] [ref=f17e373]
+                    - generic [ref=f17e374]:
+                      - generic [ref=f17e375]: Pipeline service
+                      - generic [ref=f17e376]: ·4-week delivery
+                    - generic [ref=f17e377]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e379]:
+                        - generic [aria-hidden] [ref=f17e384]:
+                          - text: "4.9"
+                          - generic [ref=f17e385]: (2)
+                      - generic [ref=f17e386]:
+                        - generic [ref=f17e387]:
+                          - text: From
+                          - generic [ref=f17e388]:
+                            - generic [aria-hidden] [ref=f17e389]:
+                              - generic [ref=f17e390]: £
+                              - generic [ref=f17e391]: "125"
+                              - generic [ref=f17e392]: ".98"
+                            - generic [ref=f17e393]: approximately £125.98, converted from US$160.00 USD at a rate of 0.787402
+                        - generic [ref=f17e394]: / ticket
+                  - paragraph [ref=f17e395]: A working realtime product MVP on Deno + Postgres, shipped in weekly milestones you sign off.
+              - listitem [ref=f17e396]:
+                - article [ref=f17e397]:
+                  - link "Landing page in a week by Juno Park — $2,400" [ref=f17e398] [cursor=pointer]:
+                    - /url: /view/svc-wjohm5fqgo?type=services
+                  - generic [ref=f17e399]:
+                    - button "Share Landing page in a week" [ref=f17e401] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e409] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-wjohm5fqgo%3Ftype%3Dservices
+                  - generic [ref=f17e414]:
+                    - link "Juno Park" [ref=f17e416] [cursor=pointer]:
+                      - /url: /@juno
+                    - heading "Landing page in a week" [level=3] [ref=f17e422]
+                    - generic [ref=f17e423]:
+                      - generic [ref=f17e424]: One-off service
+                      - generic [ref=f17e425]: ·5-day delivery
+                    - generic [ref=f17e426]:
+                      - img "Rated 4.8 out of 5, 2 ratings" [ref=f17e428]:
+                        - generic [aria-hidden] [ref=f17e433]:
+                          - text: "4.8"
+                          - generic [ref=f17e434]: (2)
+                      - generic [ref=f17e435]:
+                        - generic [ref=f17e437]:
+                          - generic [aria-hidden] [ref=f17e438]:
+                            - generic [ref=f17e439]: £
+                            - generic [ref=f17e440]: 1,889
+                            - generic [ref=f17e441]: ".76"
+                          - generic [ref=f17e442]: approximately £1,889.76, converted from US$2,400.00 USD at a rate of 0.787402
+                        - generic [ref=f17e443]: / project
+                  - paragraph [ref=f17e444]: One high-converting landing page — copy polish, responsive build, and analytics wired in five days.
+              - listitem [ref=f17e445]:
+                - article [ref=f17e446]:
+                  - link "Design-system foundation by Maris Delacroix — $3,200" [ref=f17e447] [cursor=pointer]:
+                    - /url: /view/svc-y2rf7cgefy?type=services
+                  - generic [ref=f17e448]:
+                    - button "Share Design-system foundation" [ref=f17e450] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e458] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-y2rf7cgefy%3Ftype%3Dservices
+                  - generic [ref=f17e463]:
+                    - generic [ref=f17e464]:
+                      - link "Maris Delacroix" [ref=f17e465] [cursor=pointer]:
+                        - /url: /@marisdelacroix
+                      - img "Payout verified" [ref=f17e472]
+                    - heading "Design-system foundation" [level=3] [ref=f17e476]
+                    - generic [ref=f17e477]:
+                      - generic [ref=f17e478]: Pipeline service
+                      - generic [ref=f17e479]: ·2-week delivery
+                    - generic [ref=f17e480]:
+                      - img "Rated 4.9 out of 5, 3 ratings" [ref=f17e482]:
+                        - generic [aria-hidden] [ref=f17e487]:
+                          - text: "4.9"
+                          - generic [ref=f17e488]: (3)
+                      - generic [ref=f17e489]:
+                        - generic [ref=f17e490]:
+                          - text: From
+                          - generic [ref=f17e491]:
+                            - generic [aria-hidden] [ref=f17e492]:
+                              - generic [ref=f17e493]: £
+                              - generic [ref=f17e494]: "70"
+                              - generic [ref=f17e495]: ".87"
+                            - generic [ref=f17e496]: approximately £70.87, converted from US$90.00 USD at a rate of 0.787402
+                        - generic [ref=f17e497]: / ticket
+                  - paragraph [ref=f17e498]: Tokens, core components, and usage docs delivered as a living Figma library plus a coded foundation.
+              - listitem [ref=f17e499]:
+                - article [ref=f17e500]:
+                  - link "Design systems workshop by Maris Delacroix — $90" [ref=f17e501] [cursor=pointer]:
+                    - /url: /view/svc-ruxa6p25af?type=services
+                  - generic [ref=f17e502]:
+                    - button "Share Design systems workshop" [ref=f17e504] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e512] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-ruxa6p25af%3Ftype%3Dservices
+                  - generic [ref=f17e517]:
+                    - generic [ref=f17e518]:
+                      - link "Maris Delacroix" [ref=f17e519] [cursor=pointer]:
+                        - /url: /@marisdelacroix
+                      - img "Payout verified" [ref=f17e526]
+                    - heading "Design systems workshop" [level=3] [ref=f17e530]
+                    - generic [ref=f17e531]:
+                      - generic [ref=f17e532]: Group session
+                      - generic [ref=f17e533]: ·2-hour class
+                    - generic [ref=f17e534]:
+                      - img "Rated 4.8 out of 5, 3 ratings" [ref=f17e536]:
+                        - generic [aria-hidden] [ref=f17e541]:
+                          - text: "4.8"
+                          - generic [ref=f17e542]: (3)
+                      - generic [ref=f17e543]:
+                        - generic [ref=f17e545]:
+                          - generic [aria-hidden] [ref=f17e546]:
+                            - generic [ref=f17e547]: £
+                            - generic [ref=f17e548]: "70"
+                            - generic [ref=f17e549]: ".87"
+                          - generic [ref=f17e550]: approximately £70.87, converted from US$90.00 USD at a rate of 0.787402
+                        - generic [ref=f17e551]: / seat
+                  - paragraph [ref=f17e552]: "A live, multi-seat workshop: build a token-driven design system alongside a small cohort, seats sold per attendee."
+              - listitem [ref=f17e553]:
+                - article [ref=f17e554]:
+                  - link "Packaging art direction by Ren Koda — $1,900" [ref=f17e555] [cursor=pointer]:
+                    - /url: /view/svc-8mj874dtcq?type=services
+                  - generic [ref=f17e556]:
+                    - button "Share Packaging art direction" [ref=f17e558] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e566] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-8mj874dtcq%3Ftype%3Dservices
+                  - generic [ref=f17e571]:
+                    - generic [ref=f17e572]:
+                      - link "Ren Koda" [ref=f17e573] [cursor=pointer]:
+                        - /url: /@renkoda
+                      - img "Payout verified" [ref=f17e580]
+                    - heading "Packaging art direction" [level=3] [ref=f17e584]
+                    - generic [ref=f17e585]:
+                      - generic [ref=f17e586]: Direct deliverable
+                      - generic [ref=f17e587]: ·7-day delivery
+                    - generic [ref=f17e588]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e590]:
+                        - generic [aria-hidden] [ref=f17e595]:
+                          - text: "4.9"
+                          - generic [ref=f17e596]: (2)
+                      - generic [ref=f17e597]:
+                        - generic [ref=f17e599]:
+                          - generic [aria-hidden] [ref=f17e600]:
+                            - generic [ref=f17e601]: £
+                            - generic [ref=f17e602]: 1,496
+                            - generic [ref=f17e603]: ".06"
+                          - generic [ref=f17e604]: approximately £1,496.06, converted from US$1,900.00 USD at a rate of 0.787402
+                        - generic [ref=f17e605]: / deliverable
+                  - paragraph [ref=f17e606]: "A single, self-contained packaging scope: art direction, dielines, and print-ready files from a defined team."
+              - listitem [ref=f17e607]:
+                - article [ref=f17e608]:
+                  - link "Product launch film by Ren Koda — $6,100" [ref=f17e609] [cursor=pointer]:
+                    - /url: /view/svc-tjkvo5gsav?type=services
+                  - generic [ref=f17e610]:
+                    - button "Share Product launch film" [ref=f17e612] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e620] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fsvc-tjkvo5gsav%3Ftype%3Dservices
+                  - generic [ref=f17e625]:
+                    - generic [ref=f17e626]:
+                      - link "Ren Koda" [ref=f17e627] [cursor=pointer]:
+                        - /url: /@renkoda
+                      - img "Payout verified" [ref=f17e634]
+                    - heading "Product launch film" [level=3] [ref=f17e638]
+                    - generic [ref=f17e639]:
+                      - generic [ref=f17e640]: One-off service
+                      - generic [ref=f17e641]: ·3-week delivery
+                    - generic [ref=f17e642]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e644]:
+                        - generic [aria-hidden] [ref=f17e649]:
+                          - text: "4.9"
+                          - generic [ref=f17e650]: (2)
+                      - generic [ref=f17e651]:
+                        - generic [ref=f17e653]:
+                          - generic [aria-hidden] [ref=f17e654]:
+                            - generic [ref=f17e655]: £
+                            - generic [ref=f17e656]: 4,803
+                            - generic [ref=f17e657]: ".15"
+                          - generic [ref=f17e658]: approximately £4,803.15, converted from US$6,100.00 USD at a rate of 0.787402
+                        - generic [ref=f17e659]: / project
+                  - paragraph [ref=f17e660]: A 60-second launch film — script, 3D motion, sound design, and cutdowns for every channel.
+          - region [ref=f17e662]:
+            - generic [ref=f17e663]:
+              - heading [level=2] [ref=f17e664]:
+                - link "Freelancers to watch out for" [ref=f17e665] [cursor=pointer]:
+                  - /url: /explore?category=freelancers
+              - generic [ref=f17e668]:
+                - button "Scroll Freelancers backwards" [disabled] [ref=f17e670]
+                - button "Scroll Freelancers forwards" [ref=f17e674] [cursor=pointer]
+            - list [ref=f17e677]:
+              - listitem [ref=f17e678]:
+                - article [ref=f17e679]:
+                  - link "Tomasz Wójcik — Backend engineer — North Loop" [ref=f17e680] [cursor=pointer]:
+                    - /url: /@tomaszwojcik
+                  - generic [ref=f17e681]:
+                    - button "Share Tomasz Wójcik" [ref=f17e683] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e691] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40tomaszwojcik
+                  - generic [ref=f17e694]: Available now
+                  - generic [ref=f17e698]:
+                    - generic [ref=f17e699]:
+                      - img "Tomasz Wójcik" [ref=f17e700]:
+                        - generic [ref=f17e701]: TW
+                      - generic [ref=f17e703]:
+                        - generic [ref=f17e704]: Tomasz Wójcik
+                        - img "Payout verified" [ref=f17e706]
+                      - generic [ref=f17e710]: "@tomaszwojcik"
+                    - paragraph [ref=f17e711]: Backend engineer — North Loop
+                    - paragraph [ref=f17e712]:
+                      - text: Kraków, Poland
+                      - generic [ref=f17e713]: · PL, English
+                  - paragraph [ref=f17e715]: Backend engineer — North Loop
+              - listitem [ref=f17e716]:
+                - article [ref=f17e717]:
+                  - link "Chloe Winters — Freelance copywriter — brand voice and UX writing" [ref=f17e718] [cursor=pointer]:
+                    - /url: /@chloewinters
+                  - generic [ref=f17e719]:
+                    - button "Share Chloe Winters" [ref=f17e721] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e729] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40chloewinters
+                  - generic [ref=f17e732]: Available now
+                  - generic [ref=f17e736]:
+                    - generic [ref=f17e737]:
+                      - img "Chloe Winters" [ref=f17e738]:
+                        - generic [ref=f17e739]: CW
+                      - generic [ref=f17e741]: Chloe Winters
+                      - generic [ref=f17e743]: "@chloewinters"
+                    - paragraph [ref=f17e744]: Freelance copywriter — brand voice and UX writing
+                    - paragraph [ref=f17e745]:
+                      - text: Edinburgh, United Kingdom
+                      - generic [ref=f17e746]: · English
+                      - text: ·New
+                  - paragraph [ref=f17e748]: Freelance copywriter — brand voice and UX writing
+              - listitem [ref=f17e749]:
+                - article [ref=f17e750]:
+                  - link "Juno Park — Frontend engineer — Preact, signals, accessibility" [ref=f17e751] [cursor=pointer]:
+                    - /url: /@juno
+                  - generic [ref=f17e752]:
+                    - button "Share Juno Park" [ref=f17e754] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e762] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40juno
+                  - generic [ref=f17e765]: Available now
+                  - generic [ref=f17e769]:
+                    - generic [ref=f17e770]:
+                      - generic [ref=f17e773]: Juno Park
+                      - generic [ref=f17e775]: "@juno"
+                    - paragraph [ref=f17e776]: Frontend engineer — Preact, signals, accessibility
+                    - paragraph [ref=f17e777]:
+                      - text: Lisbon, Portugal
+                      - generic [ref=f17e778]: · KO, English, +1 more
+                    - list [ref=f17e780]:
+                      - listitem [ref=f17e781]: 1 service
+                      - listitem [ref=f17e782]: 1 product
+                  - paragraph [ref=f17e783]: Frontend engineer — Preact, signals, accessibility
+              - listitem [ref=f17e784]:
+                - article [ref=f17e785]:
+                  - link "Samuel Nkemelu — Mobile engineer (iOS and Android) — North Loop mobile lead" [ref=f17e786] [cursor=pointer]:
+                    - /url: /@samuelnkemelu
+                  - generic [ref=f17e787]:
+                    - button "Share Samuel Nkemelu" [ref=f17e789] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e797] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40samuelnkemelu
+                  - generic [ref=f17e800]: Available now
+                  - generic [ref=f17e804]:
+                    - generic [ref=f17e805]:
+                      - img "Samuel Nkemelu" [ref=f17e806]:
+                        - generic [ref=f17e807]: SN
+                      - generic [ref=f17e809]:
+                        - generic [ref=f17e810]: Samuel Nkemelu
+                        - img "Payout verified" [ref=f17e812]
+                      - generic [ref=f17e816]: "@samuelnkemelu"
+                    - paragraph [ref=f17e817]: Mobile engineer (iOS and Android) — North Loop mobile lead
+                    - paragraph [ref=f17e818]:
+                      - text: Lagos, Nigeria
+                      - generic [ref=f17e819]: · English, IG
+                  - paragraph [ref=f17e821]: Mobile engineer (iOS and Android) — North Loop mobile lead
+              - listitem [ref=f17e822]:
+                - article [ref=f17e823]:
+                  - link "Maris Delacroix — Product design lead — design systems and end-to-end product work" [ref=f17e824] [cursor=pointer]:
+                    - /url: /@marisdelacroix
+                  - generic [ref=f17e825]:
+                    - button "Share Maris Delacroix" [ref=f17e827] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e835] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40marisdelacroix
+                  - generic [ref=f17e838]: Available now
+                  - generic [ref=f17e842]:
+                    - generic [ref=f17e843]:
+                      - generic [ref=f17e846]:
+                        - generic [ref=f17e847]: Maris Delacroix
+                        - img "Payout verified" [ref=f17e849]
+                      - generic [ref=f17e853]: "@marisdelacroix"
+                    - paragraph [ref=f17e854]: Product design lead — design systems and end-to-end product work
+                    - paragraph [ref=f17e855]:
+                      - text: London, United Kingdom
+                      - generic [ref=f17e856]: · English, French
+                    - generic [ref=f17e857]:
+                      - img "Rated 5.0 out of 5 from 1 reviews" [ref=f17e858]:
+                        - generic [aria-hidden] [ref=f17e863]:
+                          - text: "5.0"
+                          - generic [ref=f17e864]: (1)
+                      - list [ref=f17e865]:
+                        - listitem [ref=f17e866]: 2 services
+                        - listitem [ref=f17e867]: 1 product
+                  - paragraph [ref=f17e868]: Product design lead — design systems and end-to-end product work
+              - listitem [ref=f17e869]:
+                - article [ref=f17e870]:
+                  - link "Aiko Tanaka — Illustrator and visual designer — Studio Fern, Atelier Nova" [ref=f17e871] [cursor=pointer]:
+                    - /url: /@aikotanaka
+                  - generic [ref=f17e872]:
+                    - button "Share Aiko Tanaka" [ref=f17e874] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e882] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40aikotanaka
+                  - generic [ref=f17e885]: Available now
+                  - generic [ref=f17e889]:
+                    - generic [ref=f17e890]:
+                      - img "Aiko Tanaka" [ref=f17e891]:
+                        - generic [ref=f17e892]: AT
+                      - generic [ref=f17e894]:
+                        - generic [ref=f17e895]: Aiko Tanaka
+                        - img "Payout verified" [ref=f17e897]
+                      - generic [ref=f17e901]: "@aikotanaka"
+                    - paragraph [ref=f17e902]: Illustrator and visual designer — Studio Fern, Atelier Nova
+                    - paragraph [ref=f17e903]:
+                      - text: Osaka, Japan
+                      - generic [ref=f17e904]: · JA, English
+                  - paragraph [ref=f17e906]: Illustrator and visual designer — Studio Fern, Atelier Nova
+              - listitem [ref=f17e907]:
+                - article [ref=f17e908]:
+                  - link "Lena Müller — UX researcher — Atelier Nova" [ref=f17e909] [cursor=pointer]:
+                    - /url: /@lenamueller
+                  - generic [ref=f17e910]:
+                    - button "Share Lena Müller" [ref=f17e912] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e920] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40lenamueller
+                  - generic [ref=f17e923]: Available now
+                  - generic [ref=f17e927]:
+                    - generic [ref=f17e928]:
+                      - img "Lena Müller" [ref=f17e929]:
+                        - generic [ref=f17e930]: LM
+                      - generic [ref=f17e932]:
+                        - generic [ref=f17e933]: Lena Müller
+                        - img "Payout verified" [ref=f17e935]
+                      - generic [ref=f17e939]: "@lenamueller"
+                    - paragraph [ref=f17e940]: UX researcher — Atelier Nova
+                    - paragraph [ref=f17e941]:
+                      - text: Berlin, Germany
+                      - generic [ref=f17e942]: · German, English
+                  - paragraph [ref=f17e944]: UX researcher — Atelier Nova
+              - listitem [ref=f17e945]:
+                - article [ref=f17e946]:
+                  - link "Saoirse Byrne — Editorial designer and mentor — Studio Fern" [ref=f17e947] [cursor=pointer]:
+                    - /url: /@saoirsebyrne
+                  - generic [ref=f17e948]:
+                    - button "Share Saoirse Byrne" [ref=f17e950] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e958] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40saoirsebyrne
+                  - generic [ref=f17e961]: Available now
+                  - generic [ref=f17e965]:
+                    - generic [ref=f17e966]:
+                      - generic [ref=f17e969]:
+                        - generic [ref=f17e970]: Saoirse Byrne
+                        - img "Payout verified" [ref=f17e972]
+                      - generic [ref=f17e976]: "@saoirsebyrne"
+                    - paragraph [ref=f17e977]: Editorial designer and mentor — Studio Fern
+                    - paragraph [ref=f17e978]:
+                      - text: Dublin, Ireland
+                      - generic [ref=f17e979]: · English, GA
+                  - paragraph [ref=f17e981]: Editorial designer and mentor — Studio Fern
+              - listitem [ref=f17e982]:
+                - article [ref=f17e983]:
+                  - link "Kwame Mensah — Full-stack engineer — Deno, Postgres, realtime — North Loop" [ref=f17e984] [cursor=pointer]:
+                    - /url: /@kwamemensah
+                  - generic [ref=f17e985]:
+                    - button "Share Kwame Mensah" [ref=f17e987] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e995] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40kwamemensah
+                  - generic [ref=f17e998]: Available now
+                  - generic [ref=f17e1002]:
+                    - generic [ref=f17e1003]:
+                      - generic [ref=f17e1006]:
+                        - generic [ref=f17e1007]: Kwame Mensah
+                        - img "Payout verified" [ref=f17e1009]
+                      - generic [ref=f17e1013]: "@kwamemensah"
+                    - paragraph [ref=f17e1014]: Full-stack engineer — Deno, Postgres, realtime — North Loop
+                    - paragraph [ref=f17e1015]:
+                      - text: Manchester, United Kingdom
+                      - generic [ref=f17e1016]: · English, TW
+                  - paragraph [ref=f17e1018]: Full-stack engineer — Deno, Postgres, realtime — North Loop
+              - listitem [ref=f17e1019]:
+                - article [ref=f17e1020]:
+                  - link "Inês Duarte — Brand designer — founder of Atelier Nova" [ref=f17e1021] [cursor=pointer]:
+                    - /url: /@inesduarte
+                  - generic [ref=f17e1022]:
+                    - button "Share Inês Duarte" [ref=f17e1024] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1032] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40inesduarte
+                  - generic [ref=f17e1035]: Available now
+                  - generic [ref=f17e1039]:
+                    - generic [ref=f17e1040]:
+                      - generic [ref=f17e1043]:
+                        - generic [ref=f17e1044]: Inês Duarte
+                        - img "Payout verified" [ref=f17e1046]
+                      - generic [ref=f17e1050]: "@inesduarte"
+                    - paragraph [ref=f17e1051]: Brand designer — founder of Atelier Nova
+                    - paragraph [ref=f17e1052]:
+                      - text: Porto, Portugal
+                      - generic [ref=f17e1053]: · Portuguese, English, +1 more
+                  - paragraph [ref=f17e1055]: Brand designer — founder of Atelier Nova
+              - listitem [ref=f17e1056]:
+                - article [ref=f17e1057]:
+                  - link "Ren Koda — 3D and motion designer — launch films, WebGL, packaging" [ref=f17e1058] [cursor=pointer]:
+                    - /url: /@renkoda
+                  - generic [ref=f17e1059]:
+                    - button "Share Ren Koda" [ref=f17e1061] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1069] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40renkoda
+                  - generic [ref=f17e1074]:
+                    - generic [ref=f17e1075]:
+                      - generic [ref=f17e1078]:
+                        - generic [ref=f17e1079]: Ren Koda
+                        - img "Payout verified" [ref=f17e1081]
+                      - generic [ref=f17e1085]: "@renkoda"
+                    - paragraph [ref=f17e1086]: 3D and motion designer — launch films, WebGL, packaging
+                    - paragraph [ref=f17e1087]:
+                      - text: Berlin, Germany
+                      - generic [ref=f17e1088]: · JA, English, +1 more
+                    - list [ref=f17e1090]:
+                      - listitem [ref=f17e1091]: 2 services
+                      - listitem [ref=f17e1092]: 2 products
+                  - paragraph [ref=f17e1093]: 3D and motion designer — launch films, WebGL, packaging
+              - listitem [ref=f17e1094]:
+                - article [ref=f17e1095]:
+                  - link "Studio Fern — Editorial design, illustration and mentoring for designers" [ref=f17e1096] [cursor=pointer]:
+                    - /url: /@studiofern
+                  - generic [ref=f17e1097]:
+                    - button "Share Studio Fern" [ref=f17e1099] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1107] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40studiofern
+                  - generic [ref=f17e1112]:
+                    - generic [ref=f17e1113]:
+                      - generic [ref=f17e1116]: Studio Fern
+                      - generic [ref=f17e1118]: "@studiofern"
+                    - paragraph [ref=f17e1119]: Editorial design, illustration and mentoring for designers
+                    - list [ref=f17e1121]:
+                      - listitem [ref=f17e1122]: 2 members
+                  - paragraph [ref=f17e1123]: Editorial design, illustration and mentoring for designers
+              - listitem [ref=f17e1124]:
+                - article [ref=f17e1125]:
+                  - link "North Loop — Realtime product engineering — Deno, Postgres, native mobile" [ref=f17e1126] [cursor=pointer]:
+                    - /url: /@northloop
+                  - generic [ref=f17e1127]:
+                    - button "Share North Loop" [ref=f17e1129] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1137] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40northloop
+                  - generic [ref=f17e1142]:
+                    - generic [ref=f17e1143]:
+                      - generic [ref=f17e1146]: North Loop
+                      - generic [ref=f17e1148]: "@northloop"
+                    - paragraph [ref=f17e1149]: Realtime product engineering — Deno, Postgres, native mobile
+                    - generic [ref=f17e1150]:
+                      - img "Rated 4.8 out of 5 from 1 reviews" [ref=f17e1151]:
+                        - generic [aria-hidden] [ref=f17e1156]:
+                          - text: "4.8"
+                          - generic [ref=f17e1157]: (1)
+                      - list [ref=f17e1158]:
+                        - listitem [ref=f17e1159]: 3 members
+                  - paragraph [ref=f17e1160]: Realtime product engineering — Deno, Postgres, native mobile
+              - listitem [ref=f17e1161]:
+                - article [ref=f17e1162]:
+                  - link "Atelier Nova — Brand identity studio — strategy, identity systems and launch assets" [ref=f17e1163] [cursor=pointer]:
+                    - /url: /@ateliernova
+                  - generic [ref=f17e1164]:
+                    - button "Share Atelier Nova" [ref=f17e1166] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1174] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2F%40ateliernova
+                  - generic [ref=f17e1179]:
+                    - generic [ref=f17e1180]:
+                      - generic [ref=f17e1183]: Atelier Nova
+                      - generic [ref=f17e1185]: "@ateliernova"
+                    - paragraph [ref=f17e1186]: Brand identity studio — strategy, identity systems and launch assets
+                    - list [ref=f17e1188]:
+                      - listitem [ref=f17e1189]: 3 members
+                  - paragraph [ref=f17e1190]: Brand identity studio — strategy, identity systems and launch assets
+          - generic [ref=f17e1192]:
+            - region [ref=f17e1193]:
+              - generic [ref=f17e1194]:
+                - generic [ref=f17e1195]: Offer your skills
+                - heading "Become a Freelancer" [level=2] [ref=f17e1196]
+                - paragraph [ref=f17e1197]: Turn your craft into income. Set up services, get hired, and get paid safely at each step.
+              - link "Start freelancing" [ref=f17e1198] [cursor=pointer]:
+                - /url: /join?intent=freelancer
+            - button "Dismiss Become a Freelancer" [ref=f17e1199] [cursor=pointer]
+          - region [ref=f17e1204]:
+            - heading [level=2] [ref=f17e1206]:
+              - link "Projects worth your time" [ref=f17e1207] [cursor=pointer]:
+                - /url: /explore?category=projects
+            - list [ref=f17e1208]:
+              - listitem [ref=f17e1209]:
+                - article [ref=f17e1210]:
+                  - link "Loop mobile app for Atlas Labs — $76,000" [ref=f17e1211] [cursor=pointer]:
+                    - /url: /view/prj-67o7d44y6x?type=projects
+                  - generic [ref=f17e1212]:
+                    - button "Share Loop mobile app" [ref=f17e1214] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1222] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprj-67o7d44y6x%3Ftype%3Dprojects
+                  - generic [ref=f17e1225]:
+                    - link "Miguel Santos" [ref=f17e1227] [cursor=pointer]:
+                      - /url: /@miguelsantos
+                      - img [ref=f17e1229]:
+                        - generic [ref=f17e1230]: MS
+                    - generic [ref=f17e1234]: Posted 6 days ago
+                  - heading "Loop mobile app" [level=3] [ref=f17e1235]
+                  - list "Project stages" [ref=f17e1236]:
+                    - listitem [ref=f17e1237]:
+                      - generic [ref=f17e1238]: Architecture and design
+                    - listitem [ref=f17e1239]:
+                      - generic [ref=f17e1242]: iOS build
+                    - listitem [ref=f17e1243]:
+                      - generic [ref=f17e1246]: Android build
+                    - listitem [ref=f17e1247]:
+                      - generic [ref=f17e1250]: QA and release
+                  - paragraph [ref=f17e1251]: "Ship the Loop mobile app on iOS and Android for Atlas customers: architecture, two native builds, and a release with QA."
+                  - paragraph [ref=f17e1252]: Swift·Kotlin·Design systems·React Native
+              - listitem [ref=f17e1253]:
+                - article [ref=f17e1254]:
+                  - link "Atlas analytics platform for Atlas Labs — $120,000" [ref=f17e1255] [cursor=pointer]:
+                    - /url: /view/prj-xghufr2r5b?type=projects
+                  - generic [ref=f17e1256]:
+                    - button "Share Atlas analytics platform" [ref=f17e1258] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1266] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprj-xghufr2r5b%3Ftype%3Dprojects
+                  - generic [ref=f17e1269]:
+                    - link "Daniel Okafor" [ref=f17e1271] [cursor=pointer]:
+                      - /url: /@danielokafor
+                      - img [ref=f17e1273]:
+                        - generic [ref=f17e1274]: DO
+                    - generic [ref=f17e1278]: Posted 2 months ago
+                  - heading "Atlas analytics platform" [level=3] [ref=f17e1279]
+                  - list "Project stages" [ref=f17e1280]:
+                    - listitem [ref=f17e1281]:
+                      - generic [ref=f17e1282]: Data model and ingestion
+                    - listitem [ref=f17e1283]:
+                      - generic [ref=f17e1286]: Dashboard build
+                    - listitem [ref=f17e1287]:
+                      - generic [ref=f17e1290]: Rollout and documentation
+                  - paragraph [ref=f17e1291]: "Build the Atlas analytics platform: ingestion and warehouse model, a realtime dashboard shell, mobile companion screens, then rollout and documentation."
+                  - paragraph [ref=f17e1292]: Postgres·Deno·TypeScript·Realtime systems·Swift
+              - listitem [ref=f17e1293]:
+                - article [ref=f17e1294]:
+                  - link "Verdant brand refresh for Helia Finance — $32,000" [ref=f17e1295] [cursor=pointer]:
+                    - /url: /view/prj-k9gmv68pe9?type=projects
+                  - generic [ref=f17e1296]:
+                    - button "Share Verdant brand refresh" [ref=f17e1298] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1306] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprj-k9gmv68pe9%3Ftype%3Dprojects
+                  - generic [ref=f17e1309]:
+                    - link "Priya Raman" [ref=f17e1311] [cursor=pointer]:
+                      - /url: /@priyaraman
+                      - img [ref=f17e1313]:
+                        - generic [ref=f17e1314]: PR
+                    - generic [ref=f17e1318]: Posted 16 days ago
+                  - heading "Verdant brand refresh" [level=3] [ref=f17e1319]
+                  - list "Project stages" [ref=f17e1320]:
+                    - listitem [ref=f17e1321]:
+                      - generic [ref=f17e1322]: Brand refresh delivery
+                  - paragraph [ref=f17e1323]: A full brand refresh for Verdant, Helia's savings product — positioning, identity system, and launch assets — delivered as one scoped engagement.
+                  - paragraph [ref=f17e1324]: Branding·Identity systems·Typography
+              - listitem [ref=f17e1325]:
+                - article [ref=f17e1326]:
+                  - link "Helia wallet redesign for Helia Finance — $48,000" [ref=f17e1327] [cursor=pointer]:
+                    - /url: /view/prj-6ndtxa9u9x?type=projects
+                  - generic [ref=f17e1328]:
+                    - button "Share Helia wallet redesign" [ref=f17e1330] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1338] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprj-6ndtxa9u9x%3Ftype%3Dprojects
+                  - generic [ref=f17e1341]:
+                    - link "Hannah Cole" [ref=f17e1343] [cursor=pointer]:
+                      - /url: /@hannahcole
+                      - img [ref=f17e1345]:
+                        - generic [ref=f17e1346]: HC
+                    - generic [ref=f17e1350]: Posted 21 days ago
+                  - heading "Helia wallet redesign" [level=3] [ref=f17e1351]
+                  - list "Project stages" [ref=f17e1352]:
+                    - listitem [ref=f17e1353]:
+                      - generic [ref=f17e1354]: Discovery and research
+                    - listitem [ref=f17e1355]:
+                      - generic [ref=f17e1358]: UX and flows
+                    - listitem [ref=f17e1359]:
+                      - generic [ref=f17e1362]: Visual design and handoff
+                  - paragraph [ref=f17e1363]: "Reimagine the Helia consumer wallet end to end: research, flows, visual design and a handoff engineering can build from without a second round of questions."
+                  - paragraph [ref=f17e1364]: UX research·User interviews·UX·Figma·Prototyping·Design systems
+          - region [ref=f17e1366]:
+            - generic [ref=f17e1367]:
+              - heading [level=2] [ref=f17e1368]:
+                - link "Digital Products you may need" [ref=f17e1369] [cursor=pointer]:
+                  - /url: /explore?category=products
+              - generic [ref=f17e1372]:
+                - button "Scroll Digital Products backwards" [disabled] [ref=f17e1374]
+                - button "Scroll Digital Products forwards" [ref=f17e1378] [cursor=pointer]
+            - group "Product categories" [ref=f17e1381]:
+              - button "All" [pressed] [ref=f17e1382]
+              - button "Templates" [ref=f17e1383]
+              - button "Icons" [ref=f17e1384]
+              - button "3d" [ref=f17e1385]
+              - button "Presets" [ref=f17e1386]
+            - list [ref=f17e1387]:
+              - listitem [ref=f17e1388]:
+                - 'link "Sponsored: Aurora UI kit" [ref=f17e1389] [cursor=pointer]':
+                  - /url: /view/prd-uazch28xge
+                  - generic [ref=f17e1392]:
+                    - generic [ref=f17e1393]:
+                      - generic [ref=f17e1396]: Atelier Nova
+                      - generic [ref=f17e1397]: · Sponsored
+                    - heading "Aurora UI kit" [level=3] [ref=f17e1398]
+                    - paragraph [ref=f17e1399]: Aurora UI kit — a ready-to-buy download from Atelier Nova.
+                    - generic [ref=f17e1400]: View product
+              - listitem [ref=f17e1404]:
+                - article [ref=f17e1405]:
+                  - link "Editorial type system by Studio Fern — $120" [ref=f17e1406] [cursor=pointer]:
+                    - /url: /view/prd-db52j79haz?type=products
+                  - generic [ref=f17e1407]:
+                    - button "Share Editorial type system" [ref=f17e1409] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1417] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-db52j79haz%3Ftype%3Dproducts
+                  - generic [ref=f17e1422]:
+                    - heading "Editorial type system" [level=3] [ref=f17e1423]
+                    - paragraph [ref=f17e1424]:
+                      - link "Studio Fern" [ref=f17e1425] [cursor=pointer]:
+                        - /url: /@studiofern
+                      - generic [aria-hidden] [ref=f17e1426]: ·
+                      - generic [ref=f17e1427]: templates
+                    - generic [ref=f17e1428]:
+                      - img "Rated 4.9 out of 5, 2 ratings" [ref=f17e1430]:
+                        - generic [aria-hidden] [ref=f17e1435]:
+                          - text: "4.9"
+                          - generic [ref=f17e1436]: (2)
+                      - generic [ref=f17e1439]:
+                        - generic [aria-hidden] [ref=f17e1440]:
+                          - generic [ref=f17e1441]: £
+                          - generic [ref=f17e1442]: "94"
+                          - generic [ref=f17e1443]: ".49"
+                        - generic [ref=f17e1444]: approximately £94.49, converted from US$120.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1445]: Editorial type system — a ready-to-buy download from Studio Fern.
+              - listitem [ref=f17e1446]:
+                - article [ref=f17e1447]:
+                  - link "Iconography set — 640 by Maris Delacroix — $38" [ref=f17e1448] [cursor=pointer]:
+                    - /url: /view/prd-ygm4yd4t7h?type=products
+                  - generic [ref=f17e1449]:
+                    - button "Share Iconography set — 640" [ref=f17e1451] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1459] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-ygm4yd4t7h%3Ftype%3Dproducts
+                  - generic [ref=f17e1464]:
+                    - heading "Iconography set — 640" [level=3] [ref=f17e1465]
+                    - paragraph [ref=f17e1466]:
+                      - link "Maris Delacroix" [ref=f17e1467] [cursor=pointer]:
+                        - /url: /@marisdelacroix
+                      - generic [aria-hidden] [ref=f17e1468]: ·
+                      - generic [ref=f17e1469]: icons
+                    - generic [ref=f17e1470]:
+                      - img "Rated 4.8 out of 5, 2 ratings" [ref=f17e1472]:
+                        - generic [aria-hidden] [ref=f17e1477]:
+                          - text: "4.8"
+                          - generic [ref=f17e1478]: (2)
+                      - generic [ref=f17e1481]:
+                        - generic [aria-hidden] [ref=f17e1482]:
+                          - generic [ref=f17e1483]: £
+                          - generic [ref=f17e1484]: "29"
+                          - generic [ref=f17e1485]: ".92"
+                        - generic [ref=f17e1486]: approximately £29.92, converted from US$38.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1487]: Iconography set — 640 — a ready-to-buy download from Maris Delacroix.
+              - listitem [ref=f17e1488]:
+                - article [ref=f17e1489]:
+                  - link "Motion primitives by Juno Park — $49" [ref=f17e1490] [cursor=pointer]:
+                    - /url: /view/prd-wurb2hdchh?type=products
+                  - generic [ref=f17e1491]:
+                    - button "Share Motion primitives" [ref=f17e1493] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1501] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-wurb2hdchh%3Ftype%3Dproducts
+                  - generic [ref=f17e1506]:
+                    - heading "Motion primitives" [level=3] [ref=f17e1507]
+                    - paragraph [ref=f17e1508]:
+                      - link "Juno Park" [ref=f17e1509] [cursor=pointer]:
+                        - /url: /@juno
+                      - generic [aria-hidden] [ref=f17e1510]: ·
+                      - generic [ref=f17e1511]: templates
+                    - generic [ref=f17e1512]:
+                      - img "Rated 4.8 out of 5, 2 ratings" [ref=f17e1514]:
+                        - generic [aria-hidden] [ref=f17e1519]:
+                          - text: "4.8"
+                          - generic [ref=f17e1520]: (2)
+                      - generic [ref=f17e1523]:
+                        - generic [aria-hidden] [ref=f17e1524]:
+                          - generic [ref=f17e1525]: £
+                          - generic [ref=f17e1526]: "38"
+                          - generic [ref=f17e1527]: ".58"
+                        - generic [ref=f17e1528]: approximately £38.58, converted from US$49.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1529]: Motion primitives — a ready-to-buy download from Juno Park.
+              - listitem [ref=f17e1530]:
+                - article [ref=f17e1531]:
+                  - link "Notion ops suite by Studio Fern — $29" [ref=f17e1532] [cursor=pointer]:
+                    - /url: /view/prd-krvd3a9qfw?type=products
+                  - generic [ref=f17e1533]:
+                    - button "Share Notion ops suite" [ref=f17e1535] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1543] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-krvd3a9qfw%3Ftype%3Dproducts
+                  - generic [ref=f17e1548]:
+                    - heading "Notion ops suite" [level=3] [ref=f17e1549]
+                    - paragraph [ref=f17e1550]:
+                      - link "Studio Fern" [ref=f17e1551] [cursor=pointer]:
+                        - /url: /@studiofern
+                      - generic [aria-hidden] [ref=f17e1552]: ·
+                      - generic [ref=f17e1553]: templates
+                    - generic [ref=f17e1554]:
+                      - img "Rated 4.7 out of 5, 2 ratings" [ref=f17e1556]:
+                        - generic [aria-hidden] [ref=f17e1561]:
+                          - text: "4.7"
+                          - generic [ref=f17e1562]: (2)
+                      - generic [ref=f17e1565]:
+                        - generic [aria-hidden] [ref=f17e1566]:
+                          - generic [ref=f17e1567]: £
+                          - generic [ref=f17e1568]: "22"
+                          - generic [ref=f17e1569]: ".83"
+                        - generic [ref=f17e1570]: approximately £22.83, converted from US$29.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1571]: Notion ops suite — a ready-to-buy download from Studio Fern.
+              - listitem [ref=f17e1572]:
+                - article [ref=f17e1573]:
+                  - link "3D product scenes by Ren Koda — $95" [ref=f17e1574] [cursor=pointer]:
+                    - /url: /view/prd-zz2dqxe2fc?type=products
+                  - generic [ref=f17e1575]:
+                    - button "Share 3D product scenes" [ref=f17e1577] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1585] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-zz2dqxe2fc%3Ftype%3Dproducts
+                  - generic [ref=f17e1590]:
+                    - heading "3D product scenes" [level=3] [ref=f17e1591]
+                    - paragraph [ref=f17e1592]:
+                      - link "Ren Koda" [ref=f17e1593] [cursor=pointer]:
+                        - /url: /@renkoda
+                      - generic [aria-hidden] [ref=f17e1594]: ·
+                      - generic [ref=f17e1595]: 3d
+                    - generic [ref=f17e1596]:
+                      - img "Rated 4.7 out of 5, 2 ratings" [ref=f17e1598]:
+                        - generic [aria-hidden] [ref=f17e1603]:
+                          - text: "4.7"
+                          - generic [ref=f17e1604]: (2)
+                      - generic [ref=f17e1607]:
+                        - generic [aria-hidden] [ref=f17e1608]:
+                          - generic [ref=f17e1609]: £
+                          - generic [ref=f17e1610]: "74"
+                          - generic [ref=f17e1611]: ".80"
+                        - generic [ref=f17e1612]: approximately £74.80, converted from US$95.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1613]: 3D product scenes — a ready-to-buy download from Ren Koda.
+              - listitem [ref=f17e1614]:
+                - article [ref=f17e1615]:
+                  - link "Dashboard blocks by North Loop — $65" [ref=f17e1616] [cursor=pointer]:
+                    - /url: /view/prd-6h2rwb4834?type=products
+                  - generic [ref=f17e1617]:
+                    - button "Share Dashboard blocks" [ref=f17e1619] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1627] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-6h2rwb4834%3Ftype%3Dproducts
+                  - generic [ref=f17e1632]:
+                    - heading "Dashboard blocks" [level=3] [ref=f17e1633]
+                    - paragraph [ref=f17e1634]:
+                      - link "North Loop" [ref=f17e1635] [cursor=pointer]:
+                        - /url: /@northloop
+                      - generic [aria-hidden] [ref=f17e1636]: ·
+                      - generic [ref=f17e1637]: templates
+                    - generic [ref=f17e1638]:
+                      - img "Rated 4.7 out of 5, 2 ratings" [ref=f17e1640]:
+                        - generic [aria-hidden] [ref=f17e1645]:
+                          - text: "4.7"
+                          - generic [ref=f17e1646]: (2)
+                      - generic [ref=f17e1649]:
+                        - generic [aria-hidden] [ref=f17e1650]:
+                          - generic [ref=f17e1651]: £
+                          - generic [ref=f17e1652]: "51"
+                          - generic [ref=f17e1653]: ".18"
+                        - generic [ref=f17e1654]: approximately £51.18, converted from US$65.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1655]: Dashboard blocks — a ready-to-buy download from North Loop.
+              - listitem [ref=f17e1656]:
+                - article [ref=f17e1657]:
+                  - link "Grain — Lightroom pack by Ren Koda — $24" [ref=f17e1658] [cursor=pointer]:
+                    - /url: /view/prd-qxxdgv7493?type=products
+                  - generic [ref=f17e1659]:
+                    - button "Share Grain — Lightroom pack" [ref=f17e1661] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1669] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fprd-qxxdgv7493%3Ftype%3Dproducts
+                  - generic [ref=f17e1674]:
+                    - heading "Grain — Lightroom pack" [level=3] [ref=f17e1675]
+                    - paragraph [ref=f17e1676]:
+                      - link "Ren Koda" [ref=f17e1677] [cursor=pointer]:
+                        - /url: /@renkoda
+                      - generic [aria-hidden] [ref=f17e1678]: ·
+                      - generic [ref=f17e1679]: presets
+                    - generic [ref=f17e1680]:
+                      - img "Rated 4.7 out of 5, 2 ratings" [ref=f17e1682]:
+                        - generic [aria-hidden] [ref=f17e1687]:
+                          - text: "4.7"
+                          - generic [ref=f17e1688]: (2)
+                      - generic [ref=f17e1691]:
+                        - generic [aria-hidden] [ref=f17e1692]:
+                          - generic [ref=f17e1693]: £
+                          - generic [ref=f17e1694]: "18"
+                          - generic [ref=f17e1695]: ".90"
+                        - generic [ref=f17e1696]: approximately £18.90, converted from US$24.00 USD at a rate of 0.787402
+                  - paragraph [ref=f17e1697]: Grain — Lightroom pack — a ready-to-buy download from Ren Koda.
+          - region [ref=f17e1699]:
+            - generic [ref=f17e1700]:
+              - heading "New here? Start with these" [level=2] [ref=f17e1701]
+              - link "All help articles" [ref=f17e1702] [cursor=pointer]:
+                - /url: /help
+            - list [ref=f17e1706]:
+              - listitem [ref=f17e1707]:
+                - link "What is Projective? 1 min" [ref=f17e1708] [cursor=pointer]:
+                  - /url: /help/getting-started/what-is-projective
+                  - generic [ref=f17e1714]: What is Projective?
+                  - generic [ref=f17e1715]: 1 min
+              - listitem [ref=f17e1716]:
+                - 'link "Task, One-off or Pipeline: which project type fits? 1 min" [ref=f17e1717] [cursor=pointer]':
+                  - /url: /help/getting-started/choose-a-project-type
+                  - generic [ref=f17e1723]: "Task, One-off or Pipeline: which project type fits?"
+                  - generic [ref=f17e1724]: 1 min
+              - listitem [ref=f17e1725]:
+                - 'link "How hiring works: invitations, applications and calls 1 min" [ref=f17e1726] [cursor=pointer]':
+                  - /url: /help/getting-started/hire-your-first-freelancer
+                  - generic [ref=f17e1732]: "How hiring works: invitations, applications and calls"
+                  - generic [ref=f17e1733]: 1 min
+          - region [ref=f17e1735]:
+            - generic [ref=f17e1736]:
+              - heading [level=2] [ref=f17e1737]:
+                - link "Articles & Guides to help you through" [ref=f17e1738] [cursor=pointer]:
+                  - /url: /explore?category=articles
+              - search [ref=f17e1739]:
+                - searchbox "Search articles & guides" [ref=f17e1743]
+              - generic [ref=f17e1746]:
+                - button "Scroll Articles & Guides backwards" [disabled] [ref=f17e1748]
+                - button "Scroll Articles & Guides forwards" [ref=f17e1752] [cursor=pointer]
+            - list [ref=f17e1755]:
+              - listitem [ref=f17e1756]:
+                - article [ref=f17e1757]:
+                  - link "How to hire a whole team, not just one person" [ref=f17e1758] [cursor=pointer]:
+                    - /url: /view/art-edrkw36c6x?type=articles
+                  - generic [ref=f17e1759]:
+                    - button "Share How to hire a whole team, not just one person" [ref=f17e1761] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1769] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fart-edrkw36c6x%3Ftype%3Darticles
+                  - generic [ref=f17e1775]:
+                    - heading "How to hire a whole team, not just one person" [level=3] [ref=f17e1776]
+                    - paragraph [ref=f17e1777]:
+                      - text: hiring
+                      - generic [ref=f17e1778]: ·6 min read
+                      - generic [ref=f17e1779]:
+                        - text: ·
+                        - time [ref=f17e1780]: 1 Oct 2026
+                    - paragraph [ref=f17e1781]: How to hire a whole team, not just one person — a practical guide from the Projective team.
+                    - generic [ref=f17e1783]:
+                      - link "Studio Fern — view profile" [ref=f17e1784] [cursor=pointer]:
+                        - /url: /@studiofern
+                      - link "@studiofern" [ref=f17e1787] [cursor=pointer]:
+                        - /url: /@studiofern
+              - listitem [ref=f17e1788]:
+                - article [ref=f17e1789]:
+                  - 'link "Escrow, explained: how your money stays safe" [ref=f17e1790] [cursor=pointer]':
+                    - /url: /view/art-72ngxoevhj?type=articles
+                  - generic [ref=f17e1791]:
+                    - 'button "Share Escrow, explained: how your money stays safe" [ref=f17e1793] [cursor=pointer]'
+                    - link "Sign in to save this" [ref=f17e1801] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fart-72ngxoevhj%3Ftype%3Darticles
+                  - generic [ref=f17e1807]:
+                    - 'heading "Escrow, explained: how your money stays safe" [level=3] [ref=f17e1808]'
+                    - paragraph [ref=f17e1809]:
+                      - text: payments
+                      - generic [ref=f17e1810]: ·4 min read
+                      - generic [ref=f17e1811]:
+                        - text: ·
+                        - time [ref=f17e1812]: 26 Sept 2026
+                    - paragraph [ref=f17e1813]: "Escrow, explained: how your money stays safe — a practical guide from the Projective team."
+                    - generic [ref=f17e1815]:
+                      - link "North Loop — view profile" [ref=f17e1816] [cursor=pointer]:
+                        - /url: /@northloop
+                      - link "@northloop" [ref=f17e1819] [cursor=pointer]:
+                        - /url: /@northloop
+              - listitem [ref=f17e1820]:
+                - article [ref=f17e1821]:
+                  - link "Paying step by step across stages" [ref=f17e1822] [cursor=pointer]:
+                    - /url: /view/art-c6fmwh937h?type=articles
+                  - generic [ref=f17e1823]:
+                    - button "Share Paying step by step across stages" [ref=f17e1825] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1833] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fart-c6fmwh937h%3Ftype%3Darticles
+                  - generic [ref=f17e1839]:
+                    - heading "Paying step by step across stages" [level=3] [ref=f17e1840]
+                    - paragraph [ref=f17e1841]:
+                      - text: payments
+                      - generic [ref=f17e1842]: ·5 min read
+                      - generic [ref=f17e1843]:
+                        - text: ·
+                        - time [ref=f17e1844]: 21 Sept 2026
+                    - paragraph [ref=f17e1845]: Paying step by step across stages — a practical guide from the Projective team.
+                    - generic [ref=f17e1847]:
+                      - link "Maris Delacroix — view profile" [ref=f17e1848] [cursor=pointer]:
+                        - /url: /@marisdelacroix
+                      - link "@marisdelacroix" [ref=f17e1851] [cursor=pointer]:
+                        - /url: /@marisdelacroix
+              - listitem [ref=f17e1852]:
+                - article [ref=f17e1853]:
+                  - link "Running a small team without the chaos" [ref=f17e1854] [cursor=pointer]:
+                    - /url: /view/art-swzpgs5ohx?type=articles
+                  - generic [ref=f17e1855]:
+                    - button "Share Running a small team without the chaos" [ref=f17e1857] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1865] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fart-swzpgs5ohx%3Ftype%3Darticles
+                  - generic [ref=f17e1871]:
+                    - heading "Running a small team without the chaos" [level=3] [ref=f17e1872]
+                    - paragraph [ref=f17e1873]:
+                      - text: teams
+                      - generic [ref=f17e1874]: ·7 min read
+                      - generic [ref=f17e1875]:
+                        - text: ·
+                        - time [ref=f17e1876]: 16 Sept 2026
+                    - paragraph [ref=f17e1877]: Running a small team without the chaos — a practical guide from the Projective team.
+                    - generic [ref=f17e1879]:
+                      - link "Atelier Nova — view profile" [ref=f17e1880] [cursor=pointer]:
+                        - /url: /@ateliernova
+                      - link "@ateliernova" [ref=f17e1883] [cursor=pointer]:
+                        - /url: /@ateliernova
+              - listitem [ref=f17e1884]:
+                - article [ref=f17e1885]:
+                  - link "Getting started on Projective" [ref=f17e1886] [cursor=pointer]:
+                    - /url: /view/art-omtu2mepgj?type=articles
+                  - generic [ref=f17e1887]:
+                    - button "Share Getting started on Projective" [ref=f17e1889] [cursor=pointer]
+                    - link "Sign in to save this" [ref=f17e1897] [cursor=pointer]:
+                      - /url: /login?redirectTo=%2Fview%2Fart-omtu2mepgj%3Ftype%3Darticles
+                  - generic [ref=f17e1903]:
+                    - heading "Getting started on Projective" [level=3] [ref=f17e1904]
+                    - paragraph [ref=f17e1905]:
+                      - text: getting-started
+                      - generic [ref=f17e1906]: ·3 min read
+                      - generic [ref=f17e1907]:
+                        - text: ·
+                        - time [ref=f17e1908]: 11 Sept 2026
+                    - paragraph [ref=f17e1909]: Getting started on Projective — a practical guide from the Projective team.
+                    - generic [ref=f17e1911]:
+                      - link "Juno Park — view profile" [ref=f17e1912] [cursor=pointer]:
+                        - /url: /@juno
+                      - link "@juno" [ref=f17e1915] [cursor=pointer]:
+                        - /url: /@juno
+          - generic [ref=f17e1917]:
+            - region [ref=f17e1918]:
+              - generic [ref=f17e1919]:
+                - generic [ref=f17e1920]: Build together
+                - heading "Launch a Team" [level=2] [ref=f17e1921]
+                - paragraph [ref=f17e1922]: Assemble a micro-agency, take on bigger projects, and share the work — and the reward.
+              - link "Launch a team" [ref=f17e1923] [cursor=pointer]:
+                - /url: /join?intent=team
+            - button "Dismiss Launch a Team" [ref=f17e1924] [cursor=pointer]
+    - contentinfo [ref=f17e1928]:
+      - generic [ref=f17e1929]:
+        - generic [ref=f17e1930]:
+          - link "Projective — home" [ref=f17e1931] [cursor=pointer]:
+            - /url: /
+            - generic [ref=f17e1935]: Projective
+          - paragraph [ref=f17e1936]: The place to find, hire and work with ready-made teams.
+        - navigation "Quick links" [ref=f17e1937]:
+          - group [ref=f17e1938]:
+            - generic "For helpers" [ref=f17e1939]
+            - list [ref=f17e1941]:
+              - listitem [ref=f17e1942]:
+                - link "Find helper gigs" [ref=f17e1943] [cursor=pointer]:
+                  - /url: /explore?category=projects
+              - listitem [ref=f17e1944]:
+                - link "Showcase your services" [ref=f17e1945] [cursor=pointer]:
+                  - /url: /catalogue?create=service
+              - listitem [ref=f17e1946]:
+                - link "Sell your products" [ref=f17e1947] [cursor=pointer]:
+                  - /url: /catalogue?create=product
+              - listitem [ref=f17e1948]:
+                - link "How it works" [ref=f17e1949] [cursor=pointer]:
+                  - /url: /help/getting-started/what-is-projective
+          - group [ref=f17e1950]:
+            - generic "For clients" [ref=f17e1951]
+            - list [ref=f17e1953]:
+              - listitem [ref=f17e1954]:
+                - link "Hire ready-made teams" [ref=f17e1955] [cursor=pointer]:
+                  - /url: /explore?category=teams
+              - listitem [ref=f17e1956]:
+                - link "Post a new project" [ref=f17e1957] [cursor=pointer]:
+                  - /url: /projects?create=1
+              - listitem [ref=f17e1958]:
+                - link "Safe & easy payments" [ref=f17e1959] [cursor=pointer]:
+                  - /url: /help/escrow-and-payments/what-is-escrow
+              - listitem [ref=f17e1960]:
+                - link "Fees" [ref=f17e1961] [cursor=pointer]:
+                  - /url: /help/escrow-and-payments/fees
+          - group [ref=f17e1962]:
+            - generic "Explore & learn" [ref=f17e1963]
+            - list [ref=f17e1965]:
+              - listitem [ref=f17e1966]:
+                - link "Features" [ref=f17e1967] [cursor=pointer]:
+                  - /url: /features
+              - listitem [ref=f17e1968]:
+                - link "Services directory" [ref=f17e1969] [cursor=pointer]:
+                  - /url: /explore?category=services
+              - listitem [ref=f17e1970]:
+                - link "Products marketplace" [ref=f17e1971] [cursor=pointer]:
+                  - /url: /explore?category=products
+              - listitem [ref=f17e1972]:
+                - link "Trending teams" [ref=f17e1973] [cursor=pointer]:
+                  - /url: /explore?category=teams
+              - listitem [ref=f17e1974]:
+                - link "Member articles" [ref=f17e1975] [cursor=pointer]:
+                  - /url: /explore?category=articles
+          - group [ref=f17e1976]:
+            - generic "Company" [ref=f17e1977]
+            - list [ref=f17e1979]:
+              - listitem [ref=f17e1980]:
+                - link "About" [ref=f17e1981] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=f17e1982]:
+                - link "Changelog" [ref=f17e1983] [cursor=pointer]:
+                  - /url: /changelog
+              - listitem [ref=f17e1984]:
+                - link "Articles" [ref=f17e1985] [cursor=pointer]:
+                  - /url: /articles
+              - listitem [ref=f17e1986]:
+                - link "Contact" [ref=f17e1987] [cursor=pointer]:
+                  - /url: /contact
+          - group [ref=f17e1988]:
+            - generic "Help" [ref=f17e1989]
+            - list [ref=f17e1991]:
+              - listitem [ref=f17e1992]:
+                - link "Help centre" [ref=f17e1993] [cursor=pointer]:
+                  - /url: /help
+              - listitem [ref=f17e1994]:
+                - link "Feedback & roadmap" [ref=f17e1995] [cursor=pointer]:
+                  - /url: /feedback
+          - group [ref=f17e1996]:
+            - generic "Legal" [ref=f17e1997]
+            - list [ref=f17e1999]:
+              - listitem [ref=f17e2000]:
+                - link "Terms of Service" [ref=f17e2001] [cursor=pointer]:
+                  - /url: /legal/terms
+              - listitem [ref=f17e2002]:
+                - link "Privacy Policy" [ref=f17e2003] [cursor=pointer]:
+                  - /url: /legal/privacy
+              - listitem [ref=f17e2004]:
+                - link "Cookie Policy" [ref=f17e2005] [cursor=pointer]:
+                  - /url: /legal/cookies
+              - listitem [ref=f17e2006]:
+                - link "Acceptable Use Policy" [ref=f17e2007] [cursor=pointer]:
+                  - /url: /legal/acceptable-use
+              - listitem [ref=f17e2008]:
+                - link "Escrow Terms" [ref=f17e2009] [cursor=pointer]:
+                  - /url: /legal/escrow-terms
+              - listitem [ref=f17e2010]:
+                - link "IP Transfer Deed" [ref=f17e2011] [cursor=pointer]:
+                  - /url: /legal/ip-transfer-deed
+              - listitem [ref=f17e2012]:
+                - link "All legal documents" [ref=f17e2013] [cursor=pointer]:
+                  - /url: /legal
+        - generic [ref=f17e2014]:
+          - generic [ref=f17e2015]: Stay updated
+          - paragraph [ref=f17e2016]: New teams, new features, and the odd good idea. No spam, ever.
+          - generic [ref=f17e2018]:
+            - textbox "Email address" [ref=f17e2019]:
+              - /placeholder: you@example.com
+            - button "Subscribe" [ref=f17e2020] [cursor=pointer]
+          - paragraph [ref=f17e2023]: We only use your email for updates. Unsubscribe any time.
+        - generic [ref=f17e2025]:
+          - generic [ref=f17e2026]: Get set up
+          - list [ref=f17e2027]:
+            - listitem [ref=f17e2028]:
+              - link "Create an account" [ref=f17e2029] [cursor=pointer]:
+                - /url: /join
+            - listitem [ref=f17e2030]:
+              - link "Complete your profile" [ref=f17e2031] [cursor=pointer]:
+                - /url: /settings
+            - listitem [ref=f17e2032]:
+              - link "Post your first project" [ref=f17e2033] [cursor=pointer]:
+                - /url: /projects?create=1
+            - listitem [ref=f17e2034]:
+              - link "Set up payouts" [ref=f17e2035] [cursor=pointer]:
+                - /url: /settings/verification
+            - listitem [ref=f17e2036]:
+              - link "See how it all works" [ref=f17e2037] [cursor=pointer]:
+                - /url: /help/getting-started/what-is-projective
+      - generic [ref=f17e2038]:
+        - generic [ref=f17e2039]: © 2026 Projective. All rights reserved.
+        - navigation "Legal" [ref=f17e2041]:
+          - link "Terms of Service" [ref=f17e2042] [cursor=pointer]:
+            - /url: /legal/terms
+          - link "Privacy Policy" [ref=f17e2043] [cursor=pointer]:
+            - /url: /legal/privacy
+          - link "Cookie Policy" [ref=f17e2044] [cursor=pointer]:
+            - /url: /legal/cookies
+          - link [ref=f17e2045] [cursor=pointer]:
+            - /url: /contact?intent=support
+            - text: Contact Help
+            - tooltip "Every request gets a reference number." [ref=f17e2046]
+  - generic [ref=f17e2051]:
+    - menu "Developer tools":
+      - menuitem "Switch Context"
+      - generic [aria-hidden]: Switch Context
+      - menuitem "Open Log Inspector"
+      - generic [aria-hidden]: Open Log Inspector
+      - menuitem "Toggle Ownership"
+      - generic [aria-hidden]: Toggle Ownership
+      - menuitem "Invites"
+      - generic [aria-hidden]: Invites
+      - menuitem "Clear Cache"
+      - generic [aria-hidden]: Clear Cache
+    - button "Developer tools" [ref=f17e2052] [cursor=pointer]

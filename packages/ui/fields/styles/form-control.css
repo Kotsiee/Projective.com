@@ -1,6 +1,9 @@
 /*
  * FormControl — the label/control/hint stack. Grouping via spacing + type weight only (no bordering
- * box — §B.4). The label/hint helper classes live in field.css; this file owns the vertical rhythm.
+ * box — §B.4). The label/hint helper classes live in field.css; this file owns the vertical rhythm:
+ * `--space-2` label → control. The hint keeps its `--space-1` margin because its reserved
+ * `--fld-hint-min-h` line box adds the rest, so the VISIBLE control → hint gap is also ≈ `--space-2`.
+ * Sibling controls in a form sit `--space-3` apart (DESIGN_SYSTEM §B.4.1).
  */
 
 .ui-form-control {
@@ -12,7 +15,7 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
-	margin-block-end: var(--space-1);
+	margin-block-end: var(--space-2);
 }
 .ui-form-control__labelrow > .ui-field-label {
 	margin-block-end: 0;

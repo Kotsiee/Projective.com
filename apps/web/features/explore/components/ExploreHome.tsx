@@ -9,8 +9,6 @@ import { PromoSlot } from "./promos/PromoSlot.tsx";
 import { DiscoveryRails } from "./DiscoveryRails.tsx";
 import { HomeGrid } from "./HomeGrid.tsx";
 import { RailCell as Cell } from "./RailCell.tsx";
-import CategoryChips from "../islands/CategoryChips.island.tsx";
-import RecommendedPanel from "../islands/RecommendedPanel.island.tsx";
 import ContinueRail from "../islands/ContinueRail.island.tsx";
 import HomeRail from "../islands/HomeRail.island.tsx";
 import PromoGate from "../islands/PromoGate.island.tsx";
@@ -20,7 +18,6 @@ import type {
 	ArticleItem,
 	HomeFeed,
 	ProductItem,
-	ProfileItem,
 	PromoAnchor,
 	PromoSlot as PromoSlotModel,
 } from "../types/explore-types.ts";
@@ -30,10 +27,12 @@ import type {
  *
  * Two blocks, and the split is the whole layout:
  *
- * **The fold** — hero, category chips, Recommended panel — is a fixed-height grid sized to the first
- * screen, so a reader lands on something they can act on without scrolling. Its last row is
- * `minmax(0, 1fr)`, so the recommendations absorb whatever the hero and the chips leave rather than
- * the page hoping three stacked regions happen to add up.
+ * **The fold** is the hero: the search a reader can act on without scrolling. A guest — for whom this
+ * is the front page `/` (Decision #349) — gets the full-height gateway on the page canvas
+ * (`ex-hero--gateway`, Decision #350); the signed-in frame keeps it at its content height. There is
+ * no separate
+ * Recommended block: the rails below already lead with the ranked work (the discovery rails, then
+ * each section in the scoring engine's order).
  *
  * **The body** is a stack of horizontal rails, one idiom repeated: a two-tone heading, a scroll
  * progress separator, paging arrows, and a drag-scrollable row of equal-height cards. Every section
@@ -53,9 +52,8 @@ import type {
  * rail's own cells; conversion and editorial slots follow the section their `after` names, and the
  * conversion slots pass through {@link PromoGate} for their audience and the device's dismissals.
  *
- * One consequence worth naming: Businesses and Individuals no longer have dedicated body sections.
- * They are reachable from the Recommended panel's People toggle, from the category chip bar (which is
- * why that bar carries more than the four chips the design calls out), and from the footer.
+ * One consequence worth naming: Businesses and Individuals have no dedicated body sections. They are
+ * reachable from the freelancers-and-teams rail, the header's Explore megamenu and the footer.
  */
 export function ExploreHome(
 	{ feed, authed = false, viewerFreelancer = false, viewerRestricted = false }: {
@@ -67,9 +65,6 @@ export function ExploreHome(
 		viewerRestricted?: boolean;
 	},
 ): JSX.Element {
-	// The Recommended panel's People toggle mixes freelancers and teams — the Home's own long-standing
-	// answer to "who can help", and the pairing the `?category=freelancers` query itself returns.
-	const people: ProfileItem[] = [...feed.recommended.people];
 	const services = featureInRail(feed.services, feed.promos, "services");
 	const products = featureInRail(feed.products, feed.promos, "products");
 	const after = (anchor: PromoAnchor) => (
@@ -83,50 +78,11 @@ export function ExploreHome(
 	return (
 		<>
 			<div class="ex-fold">
-				<ExploreHomeHeader />
+				<ExploreHomeHeader gateway={!authed} />
 			</div>
 
 			<div class="ex-shelves">
-				<div class="ex-chipbar">
-					<CategoryChips />
-				</div>
-
-				<div class="ex-fold ex-fold--rec">
-					<div class="ex-fold__inner">
-						<RecommendedPanel>
-							<Panel id="services" label="Recommended services">
-								{feed.recommended.services.map((s) => (
-									<Cell key={s.id}>
-										<ServiceCard item={s} authed={authed} />
-									</Cell>
-								))}
-							</Panel>
-							<Panel id="products" label="Recommended products">
-								{feed.recommended.products.map((p) => (
-									<Cell key={p.id}>
-										<ProductCard item={p} authed={authed} layout="fixed" />
-									</Cell>
-								))}
-							</Panel>
-							<Panel id="projects" label="Recommended projects">
-								{feed.recommended.projects.map((p) => (
-									<Cell key={p.id}>
-										<ProjectCard item={p} authed={authed} />
-									</Cell>
-								))}
-							</Panel>
-							<Panel id="people" label="Recommended people">
-								{people.map((p) => (
-									<Cell key={p.id}>
-										<ProfileCard item={p} authed={authed} />
-									</Cell>
-								))}
-							</Panel>
-						</RecommendedPanel>
-					</div>
-				</div>
-
-				<div class="ex-home" id="ex-home-shelves">
+				<div class="ex-home">
 					{
 						/* Client-only by necessity — the history it reads is per-device `localStorage`, so this
 					    renders nothing at all until it has hydrated and found something. See the island. */
@@ -265,20 +221,6 @@ function Promos(
 					)
 			)}
 		</>
-	);
-}
-
-/**
- * One Recommended panel: a full rail track that the island shows or hides. Each keeps its own scroll
- * position, so returning to a category returns the reader to where they left it.
- */
-function Panel(
-	{ id, label, children }: { id: string; label: string; children: JSX.Element[] },
-): JSX.Element {
-	return (
-		<div class="ex-rec__panel ex-rail__track" role="list" data-rec-panel={id} aria-label={label}>
-			{children}
-		</div>
 	);
 }
 

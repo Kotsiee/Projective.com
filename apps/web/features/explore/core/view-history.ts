@@ -9,7 +9,7 @@ import type { ExploreEntity } from "../types/explore-types.ts";
  * This is the DEVICE's history, kept for every reader — a guest included. A signed-in person also has
  * a server-side history (`org.recent_views`, recorded when they open an item and read under their own
  * token for the Home's "Because you viewed" rail), but `/explore` is a public surface where the viewer
- * may not be signed in at all, so "Continue" and the footer's "Recently viewed" read this one. It is
+ * may not be signed in at all, so "Continue" reads this one. It is
  * `localStorage`, and it is honest about the three things that makes true: it is per-device (a phone
  * and a laptop disagree), it is cleared by private browsing, and it cannot be read during SSR.
  *

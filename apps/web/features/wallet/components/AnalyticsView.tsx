@@ -558,8 +558,8 @@ function ChartInspector(
 /**
  * `/wallet/analytics` — an uncarded 12-column grid of regions (DESIGN_SYSTEM §B.4 / §B.9.7) under the
  * shared `.fx-toolbar` holding which charts to show; the window is the footer band's ruler. A KPI strip across the top; cash flow (8) beside the category volume (4); the release schedule
- * (8) beside the top projects (4). Regions are separated by generous asymmetric whitespace and ONE
- * hairline per boundary — no region is boxed, nothing is nested, and the columns collapse by CONTAINER
+ * (8) beside the top projects (4). Regions are separated by asymmetric whitespace alone, with no rule
+ * between charts — no region is boxed, nothing is nested, and the columns collapse by CONTAINER
  * width, not the viewport's, because the lane and the panel decide how wide the canvas is.
  *
  * Every figure is the server's; the charts are the same figures drawn, each with a readable twin. A

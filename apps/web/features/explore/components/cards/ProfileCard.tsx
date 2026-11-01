@@ -158,7 +158,8 @@ export function ProfileCard(
 					)}
 				</div>
 			</div>
-			<CardReveal text={item.summary} />
+			{/* The live catalogue fills `summary` with the headline already shown above; never reveal it twice. */}
+			{item.summary.trim() !== item.craft.trim() && <CardReveal text={item.summary} />}
 		</article>
 	);
 }

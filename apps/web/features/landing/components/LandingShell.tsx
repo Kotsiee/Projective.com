@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { PAGE_CANVAS_MAIN_ID } from "@projective/ui/navigation";
 import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
-import LandingHeader from "@features/landing/islands/LandingHeader.island.tsx";
+import SiteHeader from "@features/marketing/islands/SiteHeader.island.tsx";
 
 /** Props for {@link LandingShell}. */
 export interface LandingShellProps {
@@ -20,14 +20,19 @@ export interface LandingShellProps {
  *
  * `.lp-root` is the full-bleed canvas the `--lp-*` tokens are scoped to. Inside it: the skip link
  * "Skip to main content" (the first Tab stop) aimed at the app's one skip-link target,
- * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the header bar ({@link LandingHeader}); and
- * the `<main>` landmark. The unchanged {@link PublicFooter} (Decision #13) renders OUTSIDE
- * `.lp-root`, so no landing token reaches the footer and no footer-local `--lp-*` token reaches the
- * landing (Decision #285 (B)). It names no Products surface: a product bought today is not
- * delivered, so the landing pages offer neither the marketplace nor "Sell your products" until W2
- * (§4.1, Decisions #281 k, #298). It is held to the landing's claims gate (`claimsGate`, §5.2): the
- * legal documents by their plain names (#283 (C), (D)), "Ready-made teams" for a directory nothing
- * orders by trend, and no unsubscribe promise until an unsubscribe path exists.
+ * `PAGE_CANVAS_MAIN_ID` (Decision #285 (C)); the app's one guest header ({@link SiteHeader}, the bar
+ * every guest page wears, with no Products pillar here); and the `<main>` landmark. The unchanged
+ * {@link PublicFooter} (Decision #13) renders OUTSIDE `.lp-root`, so no landing token reaches the
+ * footer and no footer-local `--lp-*` token reaches the landing (Decision #285 (B)). It names no
+ * Products surface: a product bought today is not delivered, so the landing pages offer neither the
+ * marketplace nor "Sell your products" until W2 (§4.1, Decisions #281 k, #298). It is held to the
+ * landing's claims gate (`claimsGate`, §5.2): the legal documents by their plain names (#283 (C),
+ * (D)), "Ready-made teams" for a directory nothing orders by trend, and no unsubscribe promise until
+ * an unsubscribe path exists.
+ *
+ * The landing's own sheets (`lp-theme.css`, `lp-shell.css`, `lp-faq.css`, `lp-final.css`) ride the
+ * `FeatureDemoDialog` island, which `/features` — the one landing page since `/` became the Explore
+ * Home (Decision #349) — always renders.
  */
 export function LandingShell(
 	{ authenticated, returnTo, children }: LandingShellProps,
@@ -36,7 +41,7 @@ export function LandingShell(
 		<>
 			<div class="lp-root">
 				<a class="lp-skip" href={`#${PAGE_CANVAS_MAIN_ID}`}>Skip to main content</a>
-				<LandingHeader authenticated={authenticated} returnTo={returnTo} />
+				<SiteHeader authenticated={authenticated} returnTo={returnTo} products={false} />
 				<main class="lp-main" id={PAGE_CANVAS_MAIN_ID} tabIndex={-1}>
 					{children}
 				</main>

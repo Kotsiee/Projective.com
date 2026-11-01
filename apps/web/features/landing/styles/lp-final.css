@@ -2,18 +2,17 @@
  * lp-final — the final call to action, `#get-started` (`documentation/flows/LANDING.md` §2.1 note
  * 24, §2.2 note 22, §2.3 note 22, §2.7, §4.11; Decision #288).
  *
- *   - `.lp-final`: the page's closing region, a positioned, isolated inline-size container the B7
- *     background (`.lp-bg--final`, `lp-background.css`) fills from beneath, its grid resolving its
- *     origin in this section's own container units, so its lines run on the hero's. It sits one
- *     layer above the footer that follows, so the second search's suggestions panel opens over it.
+ *   - `.lp-final`: the page's closing region, a positioned, isolated inline-size container on the
+ *     solid canvas (no grid, Decision #349). It sits one layer above the footer that follows, so the
+ *     search's suggestions panel opens over it.
  *   - `.lp-final__inner`: one centred column — the h2, its subline, the search (`.lp-final__search`,
  *     on the hero field's measure), then the calls to action (`.lp-final__ctas`), whose row centres
  *     under the field. Below --bp-md the outlined "Hire a team" takes the column's width and the
  *     text link sits centred under it.
  *
  * Static text on the solid canvas; the field is the region's one full contour and its submit the
- * one fill (§B.8.2). Nothing moves here but the spotlight under a fine pointer (§2.7). Tokens only.
- * Delivered by the LandingHeader island (a server component's stylesheet reaches no page).
+ * one fill (§B.8.2). Nothing here moves (§2.7). Tokens only. Delivered by the FeatureDemoDialog island, which `/features` always renders
+ * (a server component's stylesheet reaches no page).
  */
 
 /* #region Section */

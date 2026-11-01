@@ -387,6 +387,39 @@
 			],
 			"port": 13441,
 			"autoPort": false
+		},
+		{
+			"name": "web-explore-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13455'; deno task dev:mock --port 13455 --strictPort"
+			],
+			"port": 13455,
+			"autoPort": false
+		},
+		{
+			"name": "web-front-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13470'; deno task dev:mock --port 13470 --strictPort"
+			],
+			"port": 13470,
+			"autoPort": false
+		},
+		{
+			"name": "web-gateway-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13472'; deno task dev:mock --port 13472 --strictPort"
+			],
+			"port": 13472,
+			"autoPort": false
 		}
 	]
 }

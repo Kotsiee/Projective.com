@@ -14,139 +14,19 @@
 
 /* #region The above-the-fold block */
 /*
- * THE FOLD — hero, category chips, and the Recommended panel. Three stacked `auto` rows: each takes
- * its content's height, and the page scrolls beneath. Nothing here reads the viewport.
+ * THE FOLD — the hero alone (the chip bar went with #347, the Recommended panel with #349). An
+ * `auto` row with no padding of its own: the hero's bottom `--space-7` is the space above the first
+ * heading, so the canvas runs from the hero into the rails with no seam (#350).
  */
 .ex-fold {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	gap: var(--space-4);
-	padding-block-end: var(--space-4);
 }
 
-/*
- * The fold's inner measure — shared by the chip bar and the Recommended panel so their leading edges
- * line up with each other and with every section heading below the fold.
- *
- * FULL WIDTH: no `max-inline-size`. The page fills the main content area, which is already inset by
- * whatever chrome the shell renders — the guest shell's page gutter, or the L-shell's rail and frame.
- * Capping it a second time at `--container-xl` stranded up to 300px of the region on a wide screen
- * while the shell was still reserving its own inset outside that, so the surface read as narrower than
- * every other page in the product at exactly the width where it had the most to show.
- */
-.ex-fold__inner {
-	inline-size: 100%;
-	padding-inline: var(--ex-pad-x);
-	box-sizing: border-box;
-	min-block-size: 0;
-}
 /* #endregion */
 
-/* #region Category chip bar */
-/*
- * A single non-looping row of category chips with paging arrows and edge fades.
- *
- * The fade is a MASK, not a gradient overlay. An overlay has to know the colour behind it and would
- * be wrong the moment the page ground changes; a mask dissolves the chips into whatever is actually
- * there. The two sides are independent lengths driven by the island's boundary state, so the fade and
- * its arrow disappear together at each end — an affordance for scrolling that persists when there is
- * nothing left to scroll is a control that lies.
- *
- * Both are logical: the island reports "at start" / "at end" in reading order, and the RTL rule flips
- * only the gradient's direction, because `mask-image` has no logical-direction keyword.
- */
-/*
- * Centred, and the centring lives on the OUTER row rather than on the scroller.
- *
- * `justify-content: center` on a scroll container is the classic trap: once the content overflows,
- * the overflow is split across both ends and the first item becomes unreachable in several engines —
- * you cannot scroll back past the start. Centring the row and letting the scroller shrink to its
- * content (`flex: 0 1 auto`) gives the same result when the chips fit, and degrades correctly to a
- * full-width scroller anchored at the start when they do not.
- */
-.ex-chips {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-.ex-chips__scroller {
-	--ex-fade-w: 2.5rem;
-	--ex-fade-s: 0px;
-	--ex-fade-e: 0px;
-
-	flex: 0 1 auto;
-	min-inline-size: 0;
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	overflow-x: auto;
-	overflow-y: hidden;
-	/*
-	* No `scroll-behavior: smooth` here. `pageScroll` already passes an explicit `behavior` and drops it
-	* to `auto` under `prefers-reduced-motion` — declaring smoothness in CSS as well would make EVERY
-	* programmatic scroll of this element animate, including the ones that have nothing to do with the
-	* arrows, and it would do so past the reduced-motion check the arrows honour.
-	*/
-	scroll-snap-type: x proximity;
-	scrollbar-width: none;
-	padding-block: var(--space-1);
-	-webkit-mask-image: linear-gradient(
-		to right,
-		transparent 0,
-		var(--ex-fade-ink) var(--ex-fade-s),
-		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
-		transparent 100%
-	);
-	mask-image: linear-gradient(
-		to right,
-		transparent 0,
-		var(--ex-fade-ink) var(--ex-fade-s),
-		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
-		transparent 100%
-	);
-}
-
-[dir="rtl"] .ex-chips__scroller {
-	-webkit-mask-image: linear-gradient(
-		to left,
-		transparent 0,
-		var(--ex-fade-ink) var(--ex-fade-s),
-		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
-		transparent 100%
-	);
-	mask-image: linear-gradient(
-		to left,
-		transparent 0,
-		var(--ex-fade-ink) var(--ex-fade-s),
-		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
-		transparent 100%
-	);
-}
-
-.ex-chips__scroller::-webkit-scrollbar {
-	display: none;
-}
-
-.ex-chips__scroller.is-dragging,
-.ex-chips__scroller.is-gliding {
-	scroll-snap-type: none;
-}
-
-.ex-chips__scroller.is-dragging {
-	cursor: grabbing;
-	user-select: none;
-}
-
-.ex-chips__scroller[data-at-start="false"] {
-	--ex-fade-s: var(--ex-fade-w);
-}
-
-.ex-chips__scroller[data-at-end="false"] {
-	--ex-fade-e: var(--ex-fade-w);
-}
+/* #region Chips and the paging arrow */
+/* The chip is the rails' facet filter (`RailFrame`); the arrow pages every rail. */
 
 /*
  * The chip itself — a subtle rounded rectangle, matching the tag family's corner rather than the
@@ -228,12 +108,6 @@
 	cursor: default;
 }
 
-/* The chip bar's arrows are the one place the brief asks for the control to disappear at a boundary —
-   there it is a scroll AFFORDANCE paired with the fade, and the two must agree. */
-.ex-chips .ex-railbtn:disabled {
-	visibility: hidden;
-}
-
 .ex-chip[aria-current="true"],
 .ex-chip[aria-pressed="true"],
 .ex-chip[aria-current="true"]:hover,
@@ -262,212 +136,6 @@
 
 :root[data-motion="reduced"] .ex-chip:active {
 	transform: none;
-}
-/* #endregion */
-
-/* #region Shelves — the sticky chip bar over the Recommended panel and the body */
-.ex-shelves {
-	--ex-chipbar-top: var(--shell-topbar-h, 3rem);
-	--ex-chipbar-ground: var(--frame-surface, var(--surface));
-
-	display: block;
-}
-
-.guest-shell .ex-shelves {
-	--ex-chipbar-top: var(--site-header-pinned-h, 4.25rem);
-}
-
-.ex-chipbar {
-	position: sticky;
-	inset-block-start: var(--ex-chipbar-top);
-	z-index: var(--z-sticky);
-	padding: var(--space-2) var(--ex-pad-x);
-	background: var(--ex-chipbar-ground);
-	border-block-end: 1px solid transparent;
-	transition: border-color var(--dur-fast) var(--ease-standard);
-}
-
-.ex-chipbar[data-stuck="true"] {
-	border-block-end-color: var(--ex-hair);
-}
-
-.ex-fold--rec {
-	padding-block-start: var(--space-2);
-}
-
-.ex-home[data-filter] > :not([data-shelf]) {
-	display: none;
-}
-
-.ex-home[data-filter="freelancers"] > [data-shelf]:not([data-shelf="freelancers"]),
-.ex-home[data-filter="services"] > [data-shelf]:not([data-shelf="services"]),
-.ex-home[data-filter="products"] > [data-shelf]:not([data-shelf="products"]),
-.ex-home[data-filter="projects"] > [data-shelf]:not([data-shelf="projects"]),
-.ex-home[data-filter="articles"] > [data-shelf]:not([data-shelf="articles"]) {
-	display: none;
-}
-
-.ex-home {
-	scroll-margin-block-start: calc(var(--ex-chipbar-top) + 3.5rem);
-}
-/* #endregion */
-
-/* #region Recommended panel (20 / 80) */
-/*
- * A 20/80 split: a vertical stack of category toggles on the left, the selected category's rail on
- * the right. The toggles are real fragment links, so the panel is navigable and shareable before any
- * script runs; the island upgrades them to in-place switches.
- *
- * All four lists are rendered server-side and switched by CSS. That is what makes the first paint
- * correct and the switch instant — a client-fetched panel would show an empty box for one round trip
- * on the surface the reader lands on first.
- */
-.ex-rec {
-	display: grid;
-	grid-template-columns: minmax(9rem, 20%) minmax(0, 1fr);
-	grid-template-rows: auto auto;
-	/*
-	* Two gaps, not one. The column gap separates the toggles from the rail and wants room; the ROW gap
-	* only separates the "Recommended" eyebrow from the panel beneath it, and at `--space-5` it was
-	* spending 24px on a label that is already set apart by size, weight and colour.
-	*/
-	gap: var(--space-2) var(--space-5);
-	min-inline-size: 0;
-}
-
-.ex-rec__head {
-	grid-column: 1 / -1;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	min-inline-size: 0;
-}
-
-/* "Recommended" is a small muted label, not a heading that competes with the hero above it. */
-.ex-rec__label {
-	margin: 0;
-	font-size: var(--text-xs);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--tracking-wide);
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
-}
-
-.ex-rec__nav {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-}
-
-/* The toggle column. */
-.ex-rec__tabs {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	min-inline-size: 0;
-}
-
-.ex-rec__tab {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-3);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface-variant);
-	font: inherit;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.ex-rec__tab:hover {
-	background: var(--ex-tag-bg);
-	color: var(--on-surface);
-}
-
-.ex-rec__tab:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/*
- * The active toggle. Three redundant channels — a tonal fill, a heavier weight, and a full-contrast
- * ink — so the state does not rest on colour alone (§A.5). `aria-current` is the hook rather than a
- * class, because the attribute is the thing assistive tech reads and a class that could disagree with
- * it is a second source of truth for one fact.
- */
-.ex-rec__tab[aria-current="true"] {
-	background: color-mix(in srgb, var(--primary) 16%, transparent);
-	color: var(--on-surface);
-	font-weight: var(--fw-semibold);
-}
-
-.ex-rec__tab-icon {
-	flex: 0 0 auto;
-	color: var(--on-surface-variant);
-}
-
-.ex-rec__tab[aria-current="true"] .ex-rec__tab-icon {
-	color: var(--primary);
-}
-
-.ex-rec__tab-label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/*
- * The right column. It holds all four tracks; exactly one is displayed, and each keeps its own scroll
- * position — so a reader who scrolls into the products rail, looks at services, then comes back finds
- * products where they left it rather than reset to the start.
- */
-.ex-rec__stage {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	min-inline-size: 0;
-}
-
-/*
- * `.ex-rec .ex-rec__panel`, not a bare `.ex-rec__panel`. A panel IS a `.ex-rail__track`, whose own
- * `display: flex` is declared LATER in this sheet at the same (0,1,0) specificity — so a single-class
- * `display: none` lost the cascade and every panel rendered at once, stacked. Measured: all four
- * reported `display: flex`. The descendant selector puts the hide rule a class ahead of the track's
- * layout, and the active rule an attribute ahead of that.
- */
-.ex-rec .ex-rec__panel {
-	display: none;
-}
-
-/*
- * The active panel is a plain rail track: its height is the height of its tallest card, exactly as a
- * body section's is. There is deliberately NO height floor on the cells. One was here (380px) and it
- * was the whole cause of the dead band the fold's cards carried: every card fills its cell on the
- * block axis and pins its foot to the bottom with `margin-block-start: auto`, so a cell taller than
- * the card's content opens a gap between the title and the foot — measured ~90px on a 256px service
- * card — that no amount of tuning inside the card can close. Same-type cards are within a line of
- * each other, so the row equalises on its own.
- */
-.ex-rec[data-active="services"] [data-rec-panel="services"],
-.ex-rec[data-active="products"] [data-rec-panel="products"],
-.ex-rec[data-active="projects"] [data-rec-panel="projects"],
-.ex-rec[data-active="people"] [data-rec-panel="people"] {
-	display: flex;
-	align-items: stretch;
 }
 /* #endregion */
 
@@ -839,85 +507,6 @@
 	font-size: var(--text-sm);
 }
 
-/*
- * The Recommended panel's cells run narrower than the body rails so more of a category is visible
- * beside the 20% toggle column. Scoped to `.ex-fold` rather than to a rail modifier: the panel builds
- * its own tracks rather than composing `HomeRail`.
- */
-.ex-fold .ex-rail__track {
-	--ex-cell-w: clamp(13rem, 18vw, 16rem);
-
-	padding-block: var(--space-1) var(--space-3);
-}
-
-/*
- * COMPACT COPY FOR THE FOLD. The fold's cards are the body's cards at a narrower width, and they
- * carry the SAME bands: the seller, the title, the classification row (delivery model + turnaround
- * for a service, category for a product), the rating and the price. Nothing is dropped — a reader
- * comparing a recommendation against the services rail two screens down is comparing two cards that
- * disclose the same facts, and a card missing its middle row does not read as compact, it reads as a
- * card with a hole in it.
- *
- * What IS scaled, and why each is safe to scale:
- *  - One line of title. The full text is one click away and is printed whole in the card's accessible
- *    name either way, and a one-line title is what keeps eight narrow cards on one flat baseline.
- *  - The classification row's trailing fact steps down one size to the same `--text-2xs` the chip
- *    already uses, so the two halves of the row read as one register in a cell too narrow for two.
- *  - The body padding and the foot's top padding tighten, because the foot no longer has a long body
- *    to separate itself from.
- *
- * The cuts this block used to make — hiding the classification row outright, and the profile card's
- * metadata line — date from when the fold was sized to the viewport and had to buy height wherever
- * it could. The fold is auto-height now, so there is nothing to buy and the rows are back.
- */
-.ex-fold .ex-card__body {
-	padding: var(--space-2);
-	gap: var(--space-2);
-}
-
-.ex-fold .ex-card__title {
-	-webkit-line-clamp: 1;
-	line-clamp: 1;
-}
-
-.ex-fold .ex-card__aside {
-	font-size: var(--text-2xs);
-}
-
-.ex-fold .ex-card__foot {
-	padding-block-start: var(--space-1);
-}
-
-/*
- * The profile card takes the same scaling: a one-line headline (the body's is two) and a tighter
- * body rhythm. Its `location · languages` metadata line stays — it is the card's most qualifying fact
- * and the one the body's card prints, so it is the one a reader would miss.
- */
-.ex-fold .ex-pcard__body {
-	padding: 0 var(--space-2) var(--space-2);
-	gap: var(--space-1);
-}
-
-.ex-fold .ex-pcard__headline {
-	-webkit-line-clamp: 1;
-	line-clamp: 1;
-	margin-block-start: var(--space-1);
-}
-
-.ex-fold .ex-pcard__meta {
-	-webkit-line-clamp: 1;
-	line-clamp: 1;
-}
-
-.ex-fold .ex-pcard__foot {
-	padding-block-start: var(--space-1);
-}
-
-/* The project card has no media to absorb the difference, so its variable field gives way instead. */
-.ex-fold .ex-proj__desc {
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-}
 /* #endregion */
 
 /* #region "Continue where you left off" */
@@ -958,7 +547,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--ex-section-gap);
-	padding-block: clamp(1.5rem, 3vw, 2.75rem);
+	padding-block: 0 clamp(1.5rem, 3vw, 2.75rem);
 }
 
 /* Every section shares one measure — full width, page gutter only — so the headings and the first card
@@ -998,28 +587,6 @@
 
 /* #region Responsive */
 @media (max-width: 900px) {
-	.ex-rec {
-		grid-template-columns: minmax(0, 1fr);
-		gap: var(--space-3);
-	}
-
-	/* The toggle column becomes a horizontal row — it is still a switch, just laid out along the axis
-	   that has room. */
-	.ex-rec__tabs {
-		flex-direction: row;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.ex-rec__tabs::-webkit-scrollbar {
-		display: none;
-	}
-
-	.ex-rec__tab {
-		inline-size: auto;
-		flex: 0 0 auto;
-	}
-
 	.ex-continue {
 		max-inline-size: none;
 	}
@@ -1033,10 +600,6 @@
 	/* One column. Half a phone width is not a project brief, it is a column of ellipses. */
 	.ex-rail__grid {
 		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.ex-fold .ex-rail__track {
-		--ex-cell-w: min(72vw, 15rem);
 	}
 
 	/* The progress track needs room the phone header does not have; the arrows carry the state alone. */
@@ -1065,51 +628,17 @@
 		flex: 1 1 100%;
 	}
 
-	.ex-chipbar {
-		padding-inline: 0;
-	}
-
-	.ex-chips {
-		justify-content: flex-start;
-	}
-
-	.ex-chips > :not(.ex-chips__scroller) {
-		display: none;
-	}
-
-	.ex-chips__scroller {
-		flex: 1 1 auto;
-		padding-inline: var(--ex-pad-x);
-		scroll-padding-inline: var(--ex-pad-x);
-	}
-
-	.ex-rec__tab {
-		flex: 1 1 0;
-		justify-content: center;
-		min-inline-size: 0;
-		padding-inline: var(--space-2);
-	}
-
 	.ex-card {
 		--card-pad-media: var(--space-3);
-	}
-}
-
-@media (max-width: 479.98px) {
-	.ex-rec__tab-icon {
-		display: none;
 	}
 }
 /* #endregion */
 
 /* #region Hover-intent reserve (Decision #174) */
+/* Only a track that holds a shelf reserves room for one; a rail of profiles or projects keeps its base. */
 @media (hover: hover) and (pointer: fine) {
-	.ex-rail__track {
+	.ex-rail__track:has(.ex-card__reveal) {
 		padding-block-end: calc(var(--space-4) + var(--ex-reveal-reserve));
-	}
-
-	.ex-fold .ex-rail__track {
-		padding-block-end: calc(var(--space-3) + var(--ex-reveal-reserve));
 	}
 }
 /* #endregion */

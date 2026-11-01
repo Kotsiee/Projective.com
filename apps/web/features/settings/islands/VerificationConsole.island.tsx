@@ -13,6 +13,7 @@ import type { VerificationStatus } from "@projective/types/finance";
 import type { EarnedVerificationStamp } from "@projective/types/org";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { StatusMark } from "../components/SettingsParts.tsx";
+import { SettingsBreadcrumb } from "../components/SettingsBreadcrumb.tsx";
 import {
 	kybCopy,
 	kycCopy,
@@ -108,6 +109,7 @@ export default function VerificationConsole(props: VerificationConsoleProps): JS
 	return (
 		<section class="vrf" aria-labelledby="vrf-title">
 			<header class="vrf__head">
+				<SettingsBreadcrumb section="verification" />
 				<h1 id="vrf-title" class="vrf__title">Verification &amp; payouts</h1>
 				<p class="vrf__lede">
 					Paying on Projective never needs an ID check. Earning does: freelancers verify their

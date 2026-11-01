@@ -1,6 +1,11 @@
 /// <reference lib="dom" />
 import { DEMO_MODULES } from "../components/demos/demo-modules.ts";
-import "../styles/lp-background.css";
+// `/features`, the one landing page, always renders this island, so it carries the landing's shared
+// sheets too: a server component's stylesheet reaches no page.
+import "../styles/lp-theme.css";
+import "../styles/lp-shell.css";
+import "../styles/lp-faq.css";
+import "../styles/lp-final.css";
 import "../styles/lp-features.css";
 import "../styles/lp-feature-dialog.css";
 import type { JSX } from "preact";

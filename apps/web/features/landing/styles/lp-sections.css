@@ -30,8 +30,7 @@
  * section after the hero (§2.7), each paints final — no scroll-linked reveal can leave a head
  * half-faded at rest.
  *
- * Delivered through `lp-shell.css`'s `@import` (the LandingHeader island carries that sheet to every
- * landing page; a server component's own stylesheet import reaches no page). It is inlined ahead of
+ * Delivered through `lp-shell.css`'s `@import` (the FeatureDemoDialog island, which `/features` always renders, carries that sheet; a server component's own stylesheet import reaches no page). It is inlined ahead of
  * lp-shell's rules, so a rule here that restyles one of its register classes (`.lp-heading`,
  * `.lp-body`, `.lp-lead`, `.lp-meta`) is scoped to the section and outranks it.
  */

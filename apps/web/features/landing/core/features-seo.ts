@@ -9,6 +9,7 @@
  * public pages' builders (`@features/marketing/core/seo.ts`).
  */
 import {
+	faqPageJsonLd,
 	itemListId,
 	itemListJsonLd,
 	type JsonLdGraph,
@@ -25,6 +26,7 @@ import {
 	FEATURES_META,
 	FEATURES_PATH,
 } from "@features/landing/core/features-catalogue.ts";
+import type { FaqEntry } from "@features/landing/core/faq.ts";
 
 /** The script node the page's graph is emitted in. */
 export const FEATURES_JSONLD_ID = "features-jsonld";
@@ -55,8 +57,13 @@ export function featuresPageMeta(origin: string): PageMeta {
  *
  * @param origin The site's public origin, for the graph's absolute ids and URLs.
  * @param rows The rows exactly as the page prints them (`printedFeatures()`).
+ * @param faq The questions exactly as the page prints them (`faqEntries`), as its FAQPage node.
  */
-export function featuresGraph(origin: string, rows: readonly FeatureEntry[]): JsonLdGraph {
+export function featuresGraph(
+	origin: string,
+	rows: readonly FeatureEntry[],
+	faq: readonly FaqEntry[],
+): JsonLdGraph {
 	const page = {
 		...webPageJsonLd({
 			origin,
@@ -76,5 +83,12 @@ export function featuresGraph(origin: string, rows: readonly FeatureEntry[]): Js
 			url: `${FEATURES_PATH}#${row.id}`,
 		})),
 	});
-	return jsonLdGraph(page, list, webSiteJsonLd(origin), organizationJsonLd(origin));
+	const questions = faq.length > 0
+		? faqPageJsonLd({
+			origin,
+			path: FEATURES_PATH,
+			items: faq.map((entry) => ({ question: entry.question, answer: entry.answer })),
+		})
+		: null;
+	return jsonLdGraph(page, list, webSiteJsonLd(origin), organizationJsonLd(origin), questions);
 }

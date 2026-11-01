@@ -1,12 +1,11 @@
 /*
  * SearchBar — the shared discovery search. Token-only BEM.
  *
- * THE BAR IS THE HEADER'S BAR AT A LARGER SIZE. Its anatomy and every token it reads are the site
- * header's (`site-header__search`, site-shell.css): one hairline-ringed pill on a 55% `--surface-2`
- * tint, a fused scope selector whose trailing edge IS the divider, a plain field, and a quiet
- * icon-only submit that lives INSIDE the pill rather than beside it. The results-page bar
- * (`ex-results-head__search`) already mirrors the header this way; this sheet closes the last gap so
- * the three bars read as one control at three sizes.
+ * THE BAR IS THE HEADER'S FORMER BAR AT A LARGER SIZE (the headers' bars became scope-less ghosts
+ * in Decision #347; this recipe now lives here and in the results bar): one hairline-ringed pill on
+ * a 55% `--surface-2` tint, a fused scope selector whose trailing edge IS the divider, a plain field,
+ * and a quiet icon-only submit that lives INSIDE the pill rather than beside it. The results-page bar
+ * (`ex-results-head__search`) mirrors it, so the two in-page bars read as one control.
  *
  * What it used to be, and why each part changed:
  *  - A 74% glass slab with its own backdrop blur and `--elevation-high`. The header bar has no blur

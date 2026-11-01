@@ -38,10 +38,11 @@ export function demoFromUrl(url: URL | string, base = "https://projective.invali
 }
 
 /**
- * A link that opens `id` on the stage of the page at `path`: `/?demo=board#demo`. Without
- * JavaScript the server renders that tab (the thin controller reads `demo`).
+ * A link that opens `id` on the stage of the page at `path`: `/features?demo=board#demo` (the stage
+ * lives on `/features`, Decision #349). Without JavaScript the server renders that tab (the thin
+ * controller reads `demo`).
  */
-export function demoHref(id: DemoId, path = "/"): string {
+export function demoHref(id: DemoId, path = "/features"): string {
 	return `${path}?${DEMO_PARAM}=${id}#${DEMO_SECTION_ID}`;
 }
 
@@ -57,7 +58,7 @@ export function urlWithDemo(href: string, id: DemoId): string {
 
 /**
  * The tab a same-page link opens, or `null` when `href` is not one: it must point at `pagePath`,
- * name a tab in `?demo=` and land on `#demo` (`/?demo=board#demo`, the hero's "Try it yourself").
+ * name a tab in `?demo=` and land on `#demo` (`/features?demo=board#demo`, a row's "Try it").
  */
 export function samePageDemoLink(href: string, pagePath: string): DemoId | null {
 	let url: URL;
@@ -132,8 +133,6 @@ export const DEMO_STAGE_COPY = {
 	tablist: "Examples",
 	/** "Start again": its visible words are its whole accessible name (WCAG 2.5.3, Decision #298). */
 	reset: "Start again",
-	more: "See everything Projective does",
-	moreHref: "/features",
 } as const;
 
 /** One tab's words: its label, the caption under the viewport and its poster's name. */

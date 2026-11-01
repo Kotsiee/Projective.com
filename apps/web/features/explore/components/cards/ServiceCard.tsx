@@ -100,6 +100,7 @@ export function ServiceCard(
 					}
 					{(item.delivery || fresh) && (
 						<span class="ex-card__aside">
+							<span class="ex-card__dot" aria-hidden="true">·</span>
 							{item.delivery}
 							{fresh && <NewFact separated={!!item.delivery} />}
 						</span>
@@ -140,7 +141,8 @@ export function ServiceCard(
 						<span class="ex-pricebadge__amount">
 							{price.isFloor && (
 								<>
-									<span class="ex-pricebadge__from">From</span>{" "}
+									<span class="ex-pricebadge__from">From</span>
+									{" "}
 								</>
 							)}
 							{price.amount

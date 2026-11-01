@@ -1,7 +1,7 @@
 .wlt-dlg__body {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-4);
+	gap: var(--space-3);
 }
 
 .wlt-dlg__foot {

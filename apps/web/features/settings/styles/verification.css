@@ -31,7 +31,7 @@
 	margin: 0;
 	color: var(--on-surface);
 	font-size: var(--text-2xl);
-	font-weight: var(--fw-semibold);
+	font-weight: var(--fw-medium);
 }
 
 .vrf__lede,
@@ -39,7 +39,7 @@
 	margin: 0;
 	max-inline-size: 46rem;
 	color: var(--text-secondary);
-	font-size: var(--text-sm);
+	font-size: var(--text-md);
 	line-height: 1.6;
 }
 

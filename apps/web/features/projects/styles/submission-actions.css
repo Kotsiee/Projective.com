@@ -141,7 +141,7 @@
 .subm-modal__form {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-4);
+	gap: var(--space-3);
 	margin-block-start: var(--space-4);
 }
 .subm-modal__field {

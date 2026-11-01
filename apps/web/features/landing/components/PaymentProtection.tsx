@@ -84,7 +84,7 @@ export const PROTECTION_COPY = {
 } as const;
 
 /** The section's anchor. */
-export const PROTECTION_SECTION_ID = "payment-protection";
+export const PROTECTION_SECTION_ID = "protection";
 
 /** The h2's id: the section is labelled by it. */
 export const PROTECTION_TITLE_ID = "payment-protection-title";
@@ -194,7 +194,7 @@ export interface PaymentProtectionProps {
 }
 
 /**
- * PaymentProtection — the trust section, `#payment-protection` (`flows/LANDING.md` §2.1 notes 16–17,
+ * PaymentProtection — the trust section, `#protection` (`flows/LANDING.md` §2.1 notes 16–17,
  * §2.2 notes 15–16, §2.3 notes 15–16, §4.6), in the secondary editorial voice: a solid warm band
  * (`--lp-warm-bg`, full-bleed), the serif display at `--fw-medium` (Decision #288), sans body.
  *

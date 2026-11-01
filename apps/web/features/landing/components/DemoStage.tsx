@@ -24,11 +24,6 @@ export interface DemoStageProps {
 	 * `null` when it is unavailable — then every fee clause drops (`flows/LANDING.md` §4).
 	 */
 	feeBp: number | null;
-	/**
-	 * Link to `/features` beside the tabs ("See everything Projective does", work order L5). `/`
-	 * turns it on; off, no link renders — a stage shown on `/features` itself would lead nowhere new.
-	 */
-	features?: boolean;
 }
 
 /**
@@ -44,7 +39,7 @@ export interface DemoStageProps {
  * Team pay's rows to the penny ({@link TeamPayPoster}), each handed over as a JSX prop. The island
  * opens tabs in place and loads only the open tab's demo once the stage nears the viewport.
  */
-export default function DemoStage({ demo, feeBp, features = false }: DemoStageProps): JSX.Element {
+export default function DemoStage({ demo, feeBp }: DemoStageProps): JSX.Element {
 	const board = createBoard(DEMO_BOARD, { feeBp });
 	const [still] = scriptFrames(board, []);
 	return (
@@ -54,7 +49,6 @@ export default function DemoStage({ demo, feeBp, features = false }: DemoStagePr
 				<DemoHost
 					initial={demo}
 					feeBp={feeBp}
-					features={features}
 					paymentsPoster={<PaymentsPoster feeBp={feeBp} />}
 					bookingPoster={<BookingPoster />}
 					splitsPoster={<TeamPayPoster feeBp={feeBp} />}

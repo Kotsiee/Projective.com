@@ -21,9 +21,11 @@ export interface NewsletterFormProps {
  * NewsletterForm — the "stay updated" capture, in the footer by default and reusable on a page with a
  * `topic` (the changelog subscribes to `changelog`). A DUMB island (no DB, no logic): it holds the
  * email input, delegates validation + the network round-trip to the thin {@link NewsletterService}
- * (which Zod-validates against the SSOT before hitting `/api/newsletter/subscribe`), and reflects the
- * returned {@link NewsletterResult} as an inline field error or a success confirmation. The submit is
- * icon-only; the accessible name lives on the button, the status is announced via `aria-live`.
+ * (which Zod-validates against `NewsletterSubscribeSchema` before hitting `/api/newsletter/subscribe`),
+ * and reflects the returned {@link NewsletterResult} in one status line under the field — a retry
+ * warning or the success confirmation. That line is always in the DOM at a reserved height and is a
+ * polite live region, so the outcome is announced without interrupting and nothing below it moves.
+ * The submit is icon-only; the accessible name lives on the button.
  */
 export default function NewsletterForm(
 	{ topic = "general", source = "footer" }: NewsletterFormProps,
@@ -34,12 +36,13 @@ export default function NewsletterForm(
 	const done = useSignal(false);
 	// One id per instance, so two captures on one page (the footer's and a page's own, even with the
 	// same topic) never share an id or an ambiguous aria-describedby.
-	const errorId = useId(undefined, "lp-footer-news-error");
+	const statusId = useId(undefined, "lp-footer-news-status");
 
 	async function onSubmit(e: Event) {
 		e.preventDefault();
 		if (submitting.value) return;
 		error.value = null;
+		done.value = false;
 
 		submitting.value = true;
 		const result = await NewsletterService.subscribe(email.value.trim(), source, topic);
@@ -54,15 +57,6 @@ export default function NewsletterForm(
 		email.value = "";
 	}
 
-	if (done.value) {
-		return (
-			<p class="lp-footer__news-done" role="status">
-				<Icon name="check" class="lp-footer__news-check" />
-				You're on the list — thanks for subscribing.
-			</p>
-		);
-	}
-
 	return (
 		<form class="lp-footer__news-form" onSubmit={onSubmit} noValidate>
 			<div class={`lp-footer__news-field${error.value ? " lp-footer__news-field--invalid" : ""}`}>
@@ -73,11 +67,12 @@ export default function NewsletterForm(
 					onInput={(e) => {
 						email.value = (e.currentTarget as HTMLInputElement).value;
 						if (error.value) error.value = null;
+						done.value = false;
 					}}
 					placeholder="you@example.com"
 					aria-label="Email address"
 					aria-invalid={error.value ? "true" : "false"}
-					aria-describedby={error.value ? errorId : undefined}
+					aria-describedby={error.value ? statusId : undefined}
 					autoComplete="email"
 					disabled={submitting.value}
 				/>
@@ -90,9 +85,20 @@ export default function NewsletterForm(
 					<ArrowIcon class="lp-footer__news-arrow" />
 				</button>
 			</div>
-			{error.value
-				? <span class="lp-footer__news-error" id={errorId} role="alert">{error.value}</span>
-				: null}
+			<p
+				id={statusId}
+				class={`lp-footer__news-status${error.value ? " lp-footer__news-status--error" : ""}`}
+				role="status"
+			>
+				{error.value ?? (done.value
+					? (
+						<>
+							<Icon name="check" class="lp-footer__news-check" />
+							You're on the list — thanks for subscribing.
+						</>
+					)
+					: null)}
+			</p>
 		</form>
 	);
 }

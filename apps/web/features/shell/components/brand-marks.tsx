@@ -212,6 +212,39 @@ export function DribbbleMark(props: MarkProps): JSX.Element {
 	);
 }
 
+/** YouTube — the rounded screen with its play triangle. */
+export function YouTubeMark(props: MarkProps): JSX.Element {
+	return (
+		<svg class={props.class} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+			<rect
+				x="2.5"
+				y="5"
+				width="19"
+				height="14"
+				rx="4.5"
+				stroke="currentColor"
+				stroke-width="1.6"
+			/>
+			<path d="M10 9.2v5.6l4.8-2.8L10 9.2Z" fill="currentColor" />
+		</svg>
+	);
+}
+
+/** TikTok — the hooked note. */
+export function TikTokMark(props: MarkProps): JSX.Element {
+	return (
+		<svg class={props.class} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+			<path
+				d="M14 3.5v11a3.75 3.75 0 1 1-3.75-3.75M14 3.5c.4 2.6 2.3 4.4 5 4.6"
+				stroke="currentColor"
+				stroke-width="1.6"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			/>
+		</svg>
+	);
+}
+
 /** GitHub — the octocat. */
 export function GitHubMark(props: MarkProps): JSX.Element {
 	return (

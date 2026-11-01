@@ -7,6 +7,7 @@ import { FeaturesPage, featuresPageMeta } from "@features/landing/routes/Feature
 import { tkvRedirect } from "@features/landing/core/strip-tkv.ts";
 import { heroViewerOf } from "@features/landing/core/hero-search.ts";
 import { parseSection, SECTION_PARAM } from "@features/landing/core/features-catalogue.ts";
+import { DEMO_PARAM, parseDemoId } from "@features/landing/core/demo-stage.ts";
 import { applyPageMeta } from "@features/marketing/core/seo.ts";
 import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 
@@ -17,7 +18,8 @@ import { siteOrigin } from "@features/marketing/core/site-origin.ts";
  * on request state (the §4.12 title and description, canonical `/features` with no query), reads the
  * platform fee through the public metrics service (the stills and demos print every fee clause from
  * it, and drop them when the read fails) and the final search's trending terms through the discovery
- * service, and hands the page the chapter `?section=` names (an unknown value names none). The final
+ * service, and hands the page the chapter `?section=` names (an unknown value names none) and the
+ * demo stage's tab `?demo=` names (default `board`; Decision #349 moved the stage here). The final
  * call to action reads three viewer facts, never the whole context, exactly as `/` does. A failed read
  * renders the page with that part withheld, never an error document.
  */
@@ -50,6 +52,7 @@ export const handler = define.handlers({
 				viewer,
 			},
 			section: parseSection(ctx.url.searchParams.get(SECTION_PARAM)),
+			demo: parseDemoId(ctx.url.searchParams.get(DEMO_PARAM)),
 		});
 	},
 });
@@ -61,6 +64,7 @@ export default define.page<typeof handler>(function FeaturesRoute({ data }) {
 			feeBp={data.feeBp}
 			hero={data.hero}
 			section={data.section}
+			demo={data.demo}
 		/>
 	);
 });

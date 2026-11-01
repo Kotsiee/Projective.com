@@ -1,24 +1,22 @@
 import { assert, assertEquals } from "@std/assert";
 import { ExploreCategory } from "@projective/types/explore";
-import { isLegalSlug, LEGAL_DOCUMENT_SLUGS } from "@projective/types/content";
+import { isLegalSlug } from "@projective/types/content";
 import { HELP_ARTICLES, HELP_CATEGORIES } from "@server/services/editorial/content/help.ts";
 import { parseContactIntent } from "@projective/types/contact";
 import { parseConsoleUrl } from "@projective/types/catalogue";
 import {
-	FOOTER_SETUP_LINKS,
 	footerGroups,
 	type FooterLink,
-	footerUtilityLinks,
-	HELP_FEES,
 	HELP_WHAT_IS_ESCROW,
-	HELP_WHAT_IS_PROJECTIVE,
 	LIST_PRODUCT_HREF,
 	LIST_SERVICE_HREF,
 	newsletterNote,
 	PLAIN_LEGAL_LABELS,
 	POST_PROJECT_HREF,
+	PRICING_HREF,
+	START_TEAM_HREF,
 } from "./footer-links.ts";
-import { MEGA_MENUS, SECONDARY_LINKS } from "./megamenu-data.ts";
+import { MEGA_MENUS } from "./megamenu-data.ts";
 
 // #region Route tree
 const ROUTES = new URL("../../../routes/", import.meta.url);
@@ -114,12 +112,7 @@ function deadLinkReason(href: string): string | null {
 }
 
 const TODAY = "2026-10-18";
-const ALL_FOOTER_LINKS: FooterLink[] = [
-	...footerGroups(TODAY).flatMap((g) => g.links),
-	...FOOTER_SETUP_LINKS,
-	...footerUtilityLinks(TODAY).legal,
-	footerUtilityLinks(TODAY).contactHelp,
-];
+const ALL_FOOTER_LINKS: FooterLink[] = footerGroups(TODAY).flatMap((g) => g.links);
 // #endregion
 
 Deno.test("the route reader finds the public pages and the dynamic ones", () => {
@@ -134,7 +127,7 @@ Deno.test("the route reader finds the public pages and the dynamic ones", () => 
 	assert(deadLinkReason("/explore?category=squads") !== null);
 });
 
-Deno.test("every footer, onboarding and utility link reaches a page that exists", () => {
+Deno.test("every footer link reaches a page that exists", () => {
 	const dead = ALL_FOOTER_LINKS
 		.map((link) => ({ link, reason: deadLinkReason(link.href) }))
 		.filter((x) => x.reason !== null)
@@ -143,136 +136,130 @@ Deno.test("every footer, onboarding and utility link reaches a page that exists"
 });
 
 Deno.test("every megamenu link reaches a page that exists", () => {
-	const links = [
-		...SECONDARY_LINKS,
-		...MEGA_MENUS.flatMap((menu) => [menu.viewAll, ...menu.columns.flatMap((c) => c.links)]),
-	];
+	const links = MEGA_MENUS.flatMap((menu) => [
+		menu.viewAll,
+		...menu.columns.flatMap((c) => c.links),
+	]);
 	const dead = links
 		.map((link) => ({ link, reason: deadLinkReason(link.href) }))
 		.filter((x) => x.reason !== null)
 		.map((x) => `${x.link.label} → ${x.link.href}: ${x.reason}`);
 	assertEquals(dead, []);
-	assertEquals(SECONDARY_LINKS.find((l) => l.label === "Pricing")?.href, HELP_FEES);
 });
 
-Deno.test("the footer's groups: three audience stacks, then Company, Help and Legal", () => {
+Deno.test("every megamenu pillar's tagline fits its one line (30 characters at most)", () => {
+	const long = MEGA_MENUS.filter((menu) => menu.tagline.length > 30)
+		.map((menu) => `${menu.label}: ${menu.tagline}`);
+	assertEquals(long, []);
+});
+
+Deno.test("the footer's groups: two audience stacks, then Company & legal", () => {
 	const groups = footerGroups(TODAY);
 	assertEquals(groups.map((g) => g.title), [
-		"For helpers",
+		"For talent & teams",
 		"For clients",
-		"Explore & learn",
-		"Company",
-		"Help",
-		"Legal",
+		"Company & legal",
 	]);
 	const by = (title: string) => groups.find((g) => g.title === title)!.links;
-	assertEquals(by("Company").map((l) => l.href), ["/about", "/changelog", "/articles", "/contact"]);
-	assertEquals(by("Help").map((l) => [l.href, l.opens ?? null]), [
-		["/help", null],
-		["/feedback", "feedback"],
+	assertEquals(by("For talent & teams").map((l) => l.href), [
+		"/explore?category=projects",
+		"/become-partner",
+		LIST_SERVICE_HREF,
+		LIST_PRODUCT_HREF,
+		START_TEAM_HREF,
 	]);
-	assertEquals(
-		by("Legal").map((l) => l.href),
-		[...LEGAL_DOCUMENT_SLUGS.map((slug) => `/legal/${slug}`), "/legal"],
-	);
-	assertEquals(by("Legal")[0].label, "Terms of Service");
-	const named = (label: string) => ALL_FOOTER_LINKS.find((l) => l.label === label)?.href;
-	assertEquals(named("How it works"), HELP_WHAT_IS_PROJECTIVE);
-	assertEquals(named("Safe & easy payments"), HELP_WHAT_IS_ESCROW);
-	assertEquals(named("Contact Help"), "/contact?intent=support");
+	assertEquals(by("For clients").map((l) => l.href), [
+		"/explore?category=teams",
+		"/explore?category=services",
+		POST_PROJECT_HREF,
+		HELP_WHAT_IS_ESCROW,
+		"/features",
+		PRICING_HREF,
+	]);
+	assertEquals(by("Company & legal").map((l) => l.href), [
+		"/about",
+		"/articles",
+		"/help",
+		"/contact",
+		"/legal/terms",
+		"/legal/privacy",
+		"/legal/cookies",
+		"/legal/escrow-terms",
+		"/legal",
+	]);
+	assertEquals(by("Company & legal")[4].label, "Terms of Service");
+	// PRODUCT_SPEC's banned page copy, and no status line nothing measures (Decision #279).
+	const words = [...groups.map((g) => g.title), ...ALL_FOOTER_LINKS.map((l) => l.label)];
+	assertEquals(words.filter((w) => /squad|micro-agency|status|operational/i.test(w)), []);
 });
 
-Deno.test("the landing pages' footer names no Products marketplace until delivery ships", () => {
-	const explore = (products?: boolean) =>
-		footerGroups(TODAY, products === undefined ? {} : { products })
-			.find((g) => g.title === "Explore & learn")!.links.map((l) => l.label);
-	assertEquals(explore(), [
-		"Features",
-		"Services directory",
-		"Products marketplace",
-		"Trending teams",
-		"Member articles",
-	]);
-	assertEquals(explore(false), [
-		"Features",
-		"Services directory",
-		"Trending teams",
-		"Member articles",
-	]);
-	const helpers = (products: boolean) =>
-		footerGroups(TODAY, { products }).find((g) => g.title === "For helpers")!.links
+Deno.test("the landing pages' footer names no Products surface until delivery ships", () => {
+	const talent = (products: boolean) =>
+		footerGroups(TODAY, { products }).find((g) => g.title === "For talent & teams")!.links
 			.map((l) => l.label);
-	assertEquals(helpers(true).includes("Sell your products"), true);
-	assertEquals(helpers(false), ["Find helper gigs", "Showcase your services", "How it works"]);
+	assertEquals(talent(true).includes("Sell your products"), true);
+	assertEquals(talent(false), [
+		"Find projects",
+		"Become a partner",
+		"Showcase your services",
+		"Start a team",
+	]);
+	assertEquals(
+		footerGroups(TODAY, { products: false }).flatMap((g) => g.links)
+			.some((l) => /product/i.test(l.label) || l.href.includes("product")),
+		false,
+	);
 	const shell = Deno.readTextFileSync(
 		new URL("../../landing/components/LandingShell.tsx", import.meta.url),
 	);
 	assertEquals(shell.includes("<PublicFooter products={false} claimsGate />"), true);
 });
 
-Deno.test("the landing pages' footer holds to their claims gate; every other page keeps #289 (B)'s words", () => {
+Deno.test("the landing pages' footer holds to their claims gate; every other page keeps the titles", () => {
 	const landing = footerGroups(TODAY, { products: false, claimsGate: true });
-	const utility = footerUtilityLinks(TODAY, { claimsGate: true });
-	const labels = [
-		...landing.flatMap((g) => g.links),
-		...utility.legal,
-		utility.contactHelp,
-	].map((l) => l.label);
+	const labels = landing.flatMap((g) => g.links).map((l) => l.label);
 	// Decision #283 (C) keeps "escrow" to four slots and (D) bans "IP"; nothing measures a trend.
 	assertEquals(labels.filter((l) => /escrow|\bIP\b|trending/i.test(l)), []);
 	const legal = (groups: ReturnType<typeof footerGroups>) =>
-		groups.find((g) => g.title === "Legal")!.links;
-	const plain = legal(landing);
+		groups.find((g) => g.title === "Company & legal")!.links.filter((l) =>
+			l.href.startsWith("/legal/")
+		);
 	assertEquals(
-		plain.find((l) => l.href === "/legal/escrow-terms")?.label,
+		legal(landing).find((l) => l.href === "/legal/escrow-terms")?.label,
 		"Payment protection terms",
 	);
+	assertEquals(legal(landing).map((l) => l.href), legal(footerGroups(TODAY)).map((l) => l.href));
 	assertEquals(
-		plain.find((l) => l.href === "/legal/ip-transfer-deed")?.label,
-		"Ownership transfer deed",
+		legal(footerGroups(TODAY)).find((l) => l.href === "/legal/escrow-terms")?.label,
+		"Escrow Terms",
 	);
-	assertEquals(plain.map((l) => l.href), legal(footerGroups(TODAY)).map((l) => l.href));
-	const titled = legal(footerGroups(TODAY));
-	assertEquals(titled.find((l) => l.href === "/legal/escrow-terms")?.label, "Escrow Terms");
-	assertEquals(titled.find((l) => l.href === "/legal/ip-transfer-deed")?.label, "IP Transfer Deed");
 	for (const slug of Object.keys(PLAIN_LEGAL_LABELS)) assertEquals(isLegalSlug(slug), true, slug);
-	const teams = (claimsGate: boolean) =>
-		footerGroups(TODAY, { claimsGate }).flatMap((g) => g.links)
-			.filter((l) => l.href === "/explore?category=teams" && l.label !== "Hire ready-made teams")
-			.map((l) => l.label);
-	assertEquals(teams(true), ["Ready-made teams"]);
-	assertEquals(teams(false), ["Trending teams"]);
 	assertEquals(newsletterNote(true), "We only use your email for updates.");
 	assertEquals(newsletterNote(), "We only use your email for updates. Unsubscribe any time.");
 	const footer = Deno.readTextFileSync(
 		new URL("../components/PublicFooter.tsx", import.meta.url),
 	);
-	assertEquals(footer.includes("footerUtilityLinks(today, { claimsGate })"), true);
+	assertEquals(footer.includes("footerGroups(legalToday(), { products, claimsGate })"), true);
 	assertEquals(footer.includes("newsletterNote(claimsGate)"), true);
 });
 
-Deno.test("the product overview leads Explore & learn on every page: Features → /features", () => {
-	for (const products of [true, false]) {
-		const [first] = footerGroups(TODAY, { products })
-			.find((g) => g.title === "Explore & learn")!.links;
-		assertEquals(first, { label: "Features", href: "/features" });
-	}
+Deno.test("the product overview and its pricing are named once each", () => {
 	assertEquals(ALL_FOOTER_LINKS.filter((l) => l.href === "/features").length, 1);
-});
-
-Deno.test("no footer label points at the help hub in place of a page it names", () => {
-	const hub = ALL_FOOTER_LINKS.filter((l) => l.href === "/help").map((l) => l.label);
-	assertEquals(hub, ["Help centre"]);
-	assertEquals(ALL_FOOTER_LINKS.some((l) => /status|operational/i.test(l.label)), false);
+	assertEquals(ALL_FOOTER_LINKS.filter((l) => l.href === PRICING_HREF).map((l) => l.label), [
+		"Pricing",
+	]);
+	assertEquals(ALL_FOOTER_LINKS.filter((l) => l.href === "/help").map((l) => l.label), [
+		"Help centre",
+	]);
 });
 
 Deno.test("an action's words lead to where it is taken — never a browse page, never sign-up", () => {
 	const named = (label: string) => ALL_FOOTER_LINKS.find((l) => l.label === label)?.href;
 	assertEquals(named("Showcase your services"), LIST_SERVICE_HREF);
 	assertEquals(named("Sell your products"), LIST_PRODUCT_HREF);
-	assertEquals(named("Post a new project"), POST_PROJECT_HREF);
-	assertEquals(named("Post your first project"), POST_PROJECT_HREF);
-	assertEquals(named("See how it all works"), HELP_WHAT_IS_PROJECTIVE);
+	assertEquals(named("Post a project"), POST_PROJECT_HREF);
+	assertEquals(named("Start a team"), START_TEAM_HREF);
+	assertEquals(named("Become a partner"), "/become-partner");
 	assertEquals(
 		parseConsoleUrl(new URL(LIST_SERVICE_HREF, "https://projective.test")).createKind,
 		"service",
@@ -284,9 +271,9 @@ Deno.test("an action's words lead to where it is taken — never a browse page, 
 	// A seller's or a poster's action never lands on a buyer's browse page, and never on `/join`, which
 	// bounces the signed-in reader who gets this same footer (`publicFooterFor`) to their home.
 	const actions = ALL_FOOTER_LINKS.filter((l) =>
-		/^(showcase|sell|post|set up|complete)\b/i.test(l.label)
+		/^(showcase|sell|post|start|become)\b/i.test(l.label)
 	);
-	assertEquals(actions.length, 6);
+	assertEquals(actions.length, 5);
 	for (const link of actions) {
 		assert(!link.href.startsWith("/explore"), `${link.label} → ${link.href}`);
 		assert(!link.href.startsWith("/join"), `${link.label} → ${link.href}`);

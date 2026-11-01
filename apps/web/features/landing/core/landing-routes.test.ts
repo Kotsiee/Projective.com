@@ -52,8 +52,8 @@ const IMPORTS_STRIP =
 const GET_STARTS_WITH_REDIRECT =
 	/\bGET\s*\(\s*(\w+)\s*\)\s*\{\s*const\s+(\w+)\s*=\s*tkvRedirect\(\s*\1\.url\s*\)\s*;\s*if\s*\(\s*\2\s*\)\s*return\s+\2\s*;/;
 
-Deno.test("the layout's landing paths are / and /features", () => {
-	assertEquals(landingPaths().sort(), ["/", "/features"]);
+Deno.test("the layout's landing path is /features alone (`/` is the Explore Home, Decision #349)", () => {
+	assertEquals(landingPaths(), ["/features"]);
 });
 
 Deno.test("every landing route answers ?tkv= with tkvRedirect before anything else", () => {

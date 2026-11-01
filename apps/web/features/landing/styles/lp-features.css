@@ -3,9 +3,8 @@
  * flows/LANDING.md` §2.5, §2.6, §4.12; work order L5, its bento grid superseded by #288):
  *
  *   - `.lp-features__head`: the page head — the section header, the one h1 in the display register
- *     and its subline — over the landing's static B7 grid (`.lp-bg--hero` with no island: nothing on
- *     this page moves while browsing, §2.7). An isolated inline-size container, as the hero is, so the
- *     grid's origin resolves on the content's left edge.
+ *     and its subline — on the solid canvas (no grid, Decision #349; nothing on this page moves while
+ *     browsing, §2.7).
  *   - `.lp-features__nav`: the chapters as a numbered index of in-page links. One sideways row below
  *     --bp-md; from --bp-md it pins under the bar on the canvas's solid tone with one hairline under
  *     it, the chapter the reader is in (at first the one a `?section=` named) marked in the stronger

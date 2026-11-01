@@ -49,7 +49,6 @@ import type {
 	ExploreParams,
 	HomeFeed,
 	LandingHero,
-	LandingPayload,
 	PlatformStats,
 	ProductItem,
 	ProfileItem,
@@ -660,30 +659,6 @@ export class ExploreBackendService {
 		} catch (error) {
 			return unavailable(error);
 		}
-	}
-
-	/**
-	 * Everything the public landing page renders, in one call: the live home feed (its showcase
-	 * sections), real testimonials, the platform's running totals and the hero backdrop. A failure of
-	 * any read fails the whole — the landing page then renders its error state rather than a mix of real
-	 * sections and silently empty ones. The landing page is the same for everyone, so its feed is the
-	 * shared one: no viewer pass runs here.
-	 */
-	static async landing(): Promise<ServiceResult<LandingPayload>> {
-		const [home, testimonials, stats] = await Promise.all([
-			ExploreBackendService.home({ actor: ANONYMOUS_READER }),
-			ExploreBackendService.testimonials(),
-			ExploreBackendService.stats(),
-		]);
-		if (!home.ok || !home.data) return fail(home.status, { message: home.message });
-		// The quotes and the totals are garnish: a failed read leaves that part absent rather than
-		// taking the whole page down with it (the failure is already logged by `unavailable`).
-		return ok({
-			home: home.data,
-			testimonials: testimonials.ok && testimonials.data ? testimonials.data : [],
-			stats: stats.ok && stats.data ? stats.data : null,
-			heroImage: publicObjectUrl("public_assets", "platform/marketing/hero.webp"),
-		});
 	}
 
 	/**

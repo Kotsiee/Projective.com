@@ -128,6 +128,36 @@ body {
 	outline: none;
 }
 
+/* The icon toggle's two glyphs share one cell; `:root[data-theme]` (pre-painted) picks the shown
+   one, so the first frame is right. The flip turns the leaving glyph out as the arriving one turns
+   in; both reduced-motion channels zero the clocks, so it becomes a plain swap. */
+.theme-toggle__glyphs {
+	display: inline-grid;
+	place-items: center;
+}
+
+.theme-toggle__glyph {
+	grid-area: 1 / 1;
+	transition:
+		transform var(--dur-slow) var(--spring-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.theme-toggle__glyph--moon,
+:root[data-theme="dark"] .theme-toggle__glyph--sun {
+	opacity: 0;
+	transform: rotate(-90deg) scale(0.5);
+}
+
+:root[data-theme="dark"] .theme-toggle__glyph--sun {
+	transform: rotate(90deg) scale(0.5);
+}
+
+:root[data-theme="dark"] .theme-toggle__glyph--moon {
+	opacity: 1;
+	transform: none;
+}
+
 /* #region Scrollbar tracks — app-side surface roots */
 /*
  * The unified scrollbar lives in `@projective/ui/styles`: one always-visible 10px bar on the root
@@ -190,7 +220,6 @@ body {
 }
 
 .shv__stage,
-.site-header__entity-menu,
 .hero-search__menu {
 	--scrollbar-track: var(--surface-2);
 }

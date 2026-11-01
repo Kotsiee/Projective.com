@@ -1,15 +1,11 @@
 /**
- * The three editorial text sections as the server renders them (`flows/LANDING.md` §4.2, §4.6,
- * §4.8): each is one landmark labelled by its one h2, its copy is the deck's word for word, it says
- * none of the banned words (#281, #283), "escrow" appears once on the protection band and nowhere
- * else, every fee figure follows the server's rate (never a literal 5%), and nothing in them is a
- * filled money control — the teams section's one fill is tier 2, per viewer.
+ * Payment protection as the server renders it on `/features` (`flows/LANDING.md` §4.6; Decision #349
+ * moved it off `/`): one landmark labelled by its one h2, its copy the deck's word for word, none of
+ * the banned words (#281, #283), "escrow" once, every fee figure the server's rate (never a literal
+ * 5%), and nothing in it a filled money control.
  */
 import { assert, assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
-import { explorePath } from "@features/marketing/core/megamenu-data.ts";
-import { GUEST_VIEWER, type HeroViewer } from "../core/hero-search.ts";
-import { WHY_COPY, WHY_SECTION_ID, WHY_TITLE_ID, WhyDifferent } from "./WhyDifferent.tsx";
 import {
 	PaymentProtection,
 	PROTECTION_COPY,
@@ -17,15 +13,6 @@ import {
 	PROTECTION_TITLE_ID,
 	protectionFlow,
 } from "./PaymentProtection.tsx";
-import {
-	FOR_TEAMS_COPY,
-	FOR_TEAMS_SECTION_ID,
-	FOR_TEAMS_TITLE_ID,
-	ForTeams,
-	teamsBar,
-	teamsCtas,
-} from "./ForTeams.tsx";
-import { evenSplitOf, teamPayView } from "../core/demos/split-model.ts";
 
 // #region Helpers
 /** The text a reader gets: tags dropped, entities decoded, white space collapsed. */
@@ -88,33 +75,6 @@ function assertNoBanned(text: string): void {
 // #endregion
 
 // #region Why it's different
-Deno.test("WhyDifferent: one labelled landmark, the deck's copy, a real table", () => {
-	const html = renderToString(<WhyDifferent />);
-	const text = textOf(html);
-	assertLandmark(html, WHY_SECTION_ID, WHY_TITLE_ID);
-	for (
-		const line of [
-			WHY_COPY.eyebrow,
-			WHY_COPY.title,
-			WHY_COPY.subtitle,
-			WHY_COPY.oldWay,
-			WHY_COPY.ours,
-		]
-	) {
-		assert(text.includes(line), line);
-	}
-	for (const row of WHY_COPY.rows) {
-		for (const line of [row.label, row.old, row.ours]) assert(text.includes(line), line);
-	}
-	assertEquals(WHY_COPY.rows.length, 5);
-	assertEquals(count(html, /role="columnheader"/), 2);
-	assertEquals(count(html, /<th[^>]*scope="row"/), 5);
-	assertEquals(count(html, /class="lp-meta lp-why__cue" aria-hidden="true"/), 10);
-	assertEquals(count(text, /team-as-a-service/i), 1, "the subtitle is its one place");
-	assertEquals(count(text, /escrow/i), 0);
-	assertFalse(/\d+%/.test(text), "no figures at all");
-	assertNoBanned(text);
-});
 // #endregion
 
 // #region Payment protection
@@ -174,93 +134,5 @@ Deno.test("PaymentProtection: the rail's fee and the Fair Exit figures follow th
 	for (const label of protectionFlow(null).stops.map((stop) => stop.label)) {
 		assert(none.includes(label));
 	}
-});
-// #endregion
-
-// #region For freelancers and teams
-const CLIENT: HeroViewer = { authenticated: true, isFreelancer: false, restricted: false };
-const FREELANCER: HeroViewer = { authenticated: true, isFreelancer: true, restricted: false };
-const RESTRICTED: HeroViewer = { authenticated: true, isFreelancer: false, restricted: true };
-
-Deno.test("ForTeams: one labelled landmark, the deck's copy, no escrow", () => {
-	const html = renderToString(<ForTeams viewer={GUEST_VIEWER} feeBp={500} />);
-	const text = textOf(html);
-	assertLandmark(html, FOR_TEAMS_SECTION_ID, FOR_TEAMS_TITLE_ID);
-	for (
-		const line of [
-			FOR_TEAMS_COPY.eyebrow,
-			FOR_TEAMS_COPY.title,
-			FOR_TEAMS_COPY.subline,
-			FOR_TEAMS_COPY.smallPrint,
-		]
-	) {
-		assert(text.includes(line), line);
-	}
-	assertEquals(FOR_TEAMS_COPY.points.length, 8);
-	assertEquals(count(html, /<h3\b/), 8);
-	for (const point of FOR_TEAMS_COPY.points) {
-		assert(text.includes(point.title), point.title);
-		assert(text.includes(point.body), point.body);
-	}
-	assert(text.includes("Coming soon with Pro Team"), "the paid rules are labelled Coming soon");
-	assertEquals(count(text, /escrow/i), 0);
-	assertNoBanned(text);
-});
-
-Deno.test("ForTeams: Offer your skills follows the hero's mapping as the one tier-2 fill", () => {
-	const projects = explorePath("projects");
-	const html = (viewer: HeroViewer) => renderToString(<ForTeams viewer={viewer} />);
-	const fills = (markup: string) => count(markup, /lp-btn--structural/);
-
-	const guest = html(GUEST_VIEWER);
-	assertEquals(fills(guest), 1);
-	assertMatch(guest, /href="\/join\?intent=freelancer">Offer your skills<\/a>/);
-	assertMatch(guest, new RegExp(`href="${projects.replace("?", "\\?")}">Find open projects</a>`));
-
-	const client = html(CLIENT);
-	assertEquals(fills(client), 1);
-	assertMatch(client, /href="\/become-partner">Offer your skills<\/a>/);
-
-	for (const viewer of [FREELANCER, RESTRICTED]) {
-		const markup = html(viewer);
-		assertEquals(fills(markup), 0, "no fill: one link to open projects, never two");
-		assertEquals(count(markup, new RegExp(`href="${projects.replace("?", "\\?")}"`)), 1);
-		assertFalse(markup.includes("Offer your skills"));
-	}
-	assertEquals(teamsCtas(FREELANCER).offer, null);
-	assertEquals(teamsCtas(RESTRICTED).offer, null);
-});
-
-Deno.test("ForTeams: the team-pay figure follows the server's rate, and hides without it", () => {
-	const at = (feeBp: number | null) =>
-		renderToString(<ForTeams viewer={GUEST_VIEWER} feeBp={feeBp} />);
-	const five = textOf(at(500));
-	assert(five.includes("Example · a £2,000 stage"));
-	assert(five.includes("A £2,000 stage is approved. The 5% fee leaves £1,900.00."));
-	for (const amount of ["£570.11", "£569.94", "£190.01"]) assert(five.includes(amount), amount);
-	assert(five.includes("The team keeps 10% in its shared vault: £190.00."), "the vault first");
-	assert(five.includes("Any spare penny goes to the vault. It all adds up."), "the penny");
-	assertFalse(/\d+(?:\.\d+)?% £/.test(five), "amounts only: no column of percentages");
-	assertFalse(five.includes("33.34%"), "never a share of the remainder printed as a share of all");
-	assertFalse(five.includes("Then members can withdraw it."), "point 4 says it once");
-
-	const other = textOf(at(250));
-	assert(other.includes("The 2.5% fee leaves £1,950.00."));
-	assertFalse(FEE_LITERAL.test(other), "no literal 5% when the rate is 2.5%");
-
-	const none = at(null);
-	assertFalse(none.includes("lp-teams__figure"), "no figure without the rate");
-	assertMatch(none, /lp-teams__top lp-teams__top--text/);
-	assertFalse(FEE_LITERAL.test(textOf(none)));
-	assertFalse(/£\d/.test(textOf(none)), "no amounts at all");
-});
-
-Deno.test("ForTeams: the bar's segments cover what the team receives, in the rows' order", () => {
-	const segments = teamsBar(teamPayView(evenSplitOf(), 500));
-	assertEquals(segments.map((s) => s.tone), ["1", "2", "3", "vault"]);
-	const last = segments[segments.length - 1];
-	assert(Math.abs(last.x + last.width - 100) < 0.01, "the bar ends at 100%");
-	assert(segments.every((s, i) => i === 0 || s.x > segments[i - 1].x + segments[i - 1].width));
-	assertEquals(teamsBar(teamPayView(evenSplitOf(), null)), []);
 });
 // #endregion

@@ -338,6 +338,12 @@
     transition: inset-block-start var(--dur-medium) var(--spring-standard);
 }
 
+/* The guest band floats under the docked bar instead of sitting under a 48px top bar: clear its
+   bottom edge (`--guest-band-end`, guest-shell.css) by one `--space-4`. */
+.guest-shell .vw-revagg {
+    inset-block-start: calc(var(--guest-band-end) + var(--space-4));
+}
+
 @media (prefers-reduced-motion: reduce) {
     .vw-revagg {
         transition: none;
@@ -468,6 +474,12 @@
  * the hero would be worse than the problem it solved. Sticking it to its list keeps the control with
  * its data and stops it reading as body content that scrolled past.
  */
+/* Guest: under the floating band's bottom edge, one `--space-1` above the aggregate beside it — the
+   same step the authenticated pair keeps. */
+.guest-shell .vw-revlist__toolbar {
+    inset-block-start: calc(var(--guest-band-end) + var(--space-3));
+}
+
 .vw-revlist__toolbar {
     position: sticky;
     /*

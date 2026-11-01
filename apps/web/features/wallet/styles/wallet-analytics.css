@@ -1,9 +1,9 @@
 /*
  * /wallet/analytics — an uncarded 12-column regional grid (DESIGN_SYSTEM §B.4 / §B.9.7).
  *
- * No region is a box. Regions separate by asymmetric whitespace (`--space-7` above a header,
- * `--space-3` below it) and, where two regions meet, ONE hairline — a row boundary is a block-start
- * hairline, a column boundary an inline-start hairline — never a border, a tint and a shadow at once.
+ * No region is a box, and no line runs between two charts. Regions separate by asymmetric whitespace
+ * alone (`--space-7` between regions, row and column alike; `--space-3` below a header), so a header
+ * binds to its own chart and the gutter does the dividing (§B.4 tier 1).
  * Columns are decided by the grid's own width (`@container wlt-an`), because the lane and the right
  * panel decide how wide the canvas is, not the viewport.
  */
@@ -46,10 +46,9 @@
  * `--space-7` gaps of minimum width — 528px — and push every region past a phone-width page.
  */
 .wlt-an__grid {
-	--wlt-an-gap: var(--space-8);
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	column-gap: var(--wlt-an-gap);
+	gap: var(--space-7);
 }
 
 /* Refetch keeps the frame: the previous window stays drawn, quieter, until the next one lands. */
@@ -61,18 +60,8 @@
 	grid-column: 1 / -1;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--space-3);
 	min-inline-size: 0;
-	padding-block: var(--wlt-an-gap) var(--space-2);
-}
-
-.wlt-an__region:first-of-type {
-	padding-block-start: var(--space-2);
-}
-
-/* Each later row starts on one hairline. */
-.wlt-an__region + .wlt-an__region {
-	border-block-start: var(--hairline);
 }
 
 .wlt-an__head {
@@ -112,17 +101,8 @@
 		grid-column: span 8;
 	}
 
-	/* A narrow region beside a wide one: the column boundary is its own single hairline, and the row
-	   hairline it would otherwise also carry is dropped — one device per boundary. */
 	.wlt-an__region[data-span="4"] {
 		grid-column: span 4;
-		margin-inline-start: calc(-1 * var(--wlt-an-gap) / 2);
-		padding-inline-start: calc(var(--wlt-an-gap) / 2);
-		border-inline-start: var(--hairline);
-	}
-
-	.wlt-an__region[data-span="8"] + .wlt-an__region[data-span="4"] {
-		border-block-start: var(--hairline);
 	}
 }
 
@@ -206,8 +186,9 @@
 /*
  * #region Chart inspector — the media and document inspectors' split
  *
- * The chart large on the left; on the right, separated by ONE hairline, the window, the control that
- * re-cuts it and the figures behind it. Stacked below `--bp-md`, where the dialog is a bottom sheet.
+ * The chart large on the left; on the right, across a `--space-7` gutter (no rule), the window, the
+ * control that re-cuts it and the figures behind it. Stacked below `--bp-md`, where the dialog is a
+ * bottom sheet.
  */
 .wlt-inspect {
 	--wlt-area-h: min(26rem, 48vh);
@@ -219,17 +200,11 @@
 @media (min-width: 768px) {
 	.wlt-inspect {
 		grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
-		gap: 0;
+		gap: var(--space-7);
 		min-block-size: min(32rem, 70vh);
 	}
 
-	.wlt-inspect__stage {
-		padding-inline-end: var(--space-6);
-	}
-
 	.wlt-inspect__aside {
-		padding-inline-start: var(--space-6);
-		border-inline-start: var(--hairline);
 		max-block-size: 70vh;
 		overflow-y: auto;
 	}

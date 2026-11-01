@@ -78,15 +78,16 @@
 	--lp-r-search: var(--lp-r-md);
 	--lp-r-btn: var(--lp-r-sm);
 
-	/* Layout. The header is a full-width bar (§2.8): 3.5rem below --bp-md, 4rem from it. */
+	/* Layout. The header is the app's one guest header (`SiteHeader`): until scrolled its bar is
+	   `--site-bar-h` tall and floats `--site-header-gap` below the top of the page. */
 	--lp-gutter: clamp(1rem, 0.25rem + 3.5vw, 3rem);
 	--lp-section-pad: clamp(4rem, 2.5rem + 6.5vw, 9rem);
 	/* A canvas section's foot: less below its last element than above the next head (§B.4.1 tier
 	   1), so two canvas sections never meet across a doubled pad. Bands keep the full pad inside
 	   their tone. */
 	--lp-section-pad-end: calc(var(--lp-section-pad) * 0.6);
-	--lp-header-h: 3.5rem;
-	--lp-header-inset: 0px;
+	--lp-header-h: var(--site-bar-h, 3.5rem);
+	--lp-header-inset: var(--site-header-gap, 0px);
 	/* The hero's top: the bar, then 24px at 375 growing to 38px at 768; from --bp-lg it follows the
 	   viewport's height instead (§2.8), so a laptop's first screen holds the headline, the search
 	   and the board's first row. */
@@ -119,23 +120,7 @@
 	--lp-theatre-h: 15.25rem;
 	--lp-theatre-h-poster: 14.375rem;
 
-	/* Effects geometry (mode-invariant; the colours live in the mode blocks) */
-	--lp-spot-r: clamp(18rem, 36vw, 36rem);
-	/* The spotlight's resting place: the hero's top-right corner, over the grid's quarter and away
-	   from the headline, so the words rest on calm canvas until a pointer moves (§2.8). */
-	--lp-spot-x: 88%;
-	--lp-spot-y: 0%;
-	/* B7 grid: integer cells, so every line lands on a whole pixel. Its origin is the content
-	   container's left edge, so one vertical line runs down the h1's edge; it resolves in the hero's
-	   own container units (`.lp-hero` is an inline-size container), rounded to a pixel. */
-	--lp-grid-size: 48px;
-	--lp-grid-size-wide: 64px;
-	--lp-grid-origin: round(
-		nearest,
-		calc(var(--lp-gutter) + max(0px, (100cqw - var(--lp-maxw)) / 2)),
-		1px
-	);
-	--lp-grain-size: 160px;
+	/* Effects geometry (mode-invariant) */
 	--lp-glass-veil: 82%;
 	--lp-glass-blur: 16px;
 	--lp-glass-saturate: 1.4;
@@ -154,13 +139,6 @@
 	--lp-dur-demo: 900ms;
 	--lp-dur-demo-hold: 1600ms;
 	--lp-stagger: 50ms;
-	/* The headline's blur-fade reveal (§3.6): each word rises and sharpens, staggered; the last word
-	   lands at 0.62s. The display's largest word is the desktop LCP element and counts once its
-	   animation ends, so the clock stays inside the 800ms LCP − FCP gate (§2.8). */
-	--lp-dur-word: 440ms;
-	--lp-stagger-word: 20ms;
-	--lp-word-blur: 12px;
-	--lp-word-rise: 16px;
 	--lp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 	--lp-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 	--lp-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -172,7 +150,6 @@
 
 @media (min-width: 768px) {
 	:is(.lp-root, .lp-portal) {
-		--lp-header-h: 4rem;
 		--lp-field-h: 3.75rem;
 	}
 }
@@ -261,13 +238,6 @@
 	--lp-held-ink: #0a5a62;
 	--lp-held-fill: #e5f2f3;
 
-	/* Effects. The spotlight is neutral: a disc is invisible on the pale canvas, so in light mode it
-	   shows only as the lit grid under it. */
-	--lp-spot: transparent;
-	--lp-grid-line: rgb(16 20 23 / 0.05);
-	--lp-grid-line-lit: rgb(16 20 23 / 0.1);
-	--lp-grain-opacity: 0.035;
-
 	/* Shadows (`--shadow-intensity` is the app's global depth knob) */
 	--lp-shadow-1:
 		0 1px 2px rgb(16 20 23 / calc(0.05 * var(--shadow-intensity))),
@@ -339,11 +309,6 @@
 	--lp-held-ink: #6ccdd5;
 	--lp-held-fill: #0e2528;
 
-	--lp-spot: rgb(255 255 255 / 0.035);
-	--lp-grid-line: rgb(255 255 255 / 0.04);
-	--lp-grid-line-lit: rgb(255 255 255 / 0.09);
-	--lp-grain-opacity: 0.04;
-
 	--lp-shadow-1:
 		inset 0 1px 0 rgb(255 255 255 / 0.04),
 		0 1px 2px rgb(0 0 0 / calc(0.5 * var(--shadow-intensity)));
@@ -386,10 +351,6 @@
 		--lp-refuse-edge: #9a2a2a;
 		--lp-ok-ink: #0a4c33;
 		--lp-held-ink: #06444a;
-		--lp-spot: transparent;
-		--lp-grid-line: rgb(16 20 23 / 0.08);
-		--lp-grid-line-lit: rgb(16 20 23 / 0.08);
-		--lp-grain-opacity: 0;
 		--lp-glass-veil: 88%;
 		--lp-hair: rgb(0 0 0 / 0.18);
 		--lp-hair-strong: rgb(0 0 0 / 0.28);
@@ -422,10 +383,6 @@
 		--lp-refuse-edge: #e0766c;
 		--lp-ok-ink: #8feac1;
 		--lp-held-ink: #93e3ea;
-		--lp-spot: transparent;
-		--lp-grid-line: rgb(255 255 255 / 0.06);
-		--lp-grid-line-lit: rgb(255 255 255 / 0.06);
-		--lp-grain-opacity: 0;
 		--lp-glass-veil: 88%;
 		--lp-hair: rgb(255 255 255 / 0.16);
 		--lp-hair-strong: rgb(255 255 255 / 0.24);
@@ -461,10 +418,6 @@
 	--lp-refuse-edge: #9a2a2a;
 	--lp-ok-ink: #0a4c33;
 	--lp-held-ink: #06444a;
-	--lp-spot: transparent;
-	--lp-grid-line: rgb(16 20 23 / 0.08);
-	--lp-grid-line-lit: rgb(16 20 23 / 0.08);
-	--lp-grain-opacity: 0;
 	--lp-glass-veil: 88%;
 	--lp-hair: rgb(0 0 0 / 0.18);
 	--lp-hair-strong: rgb(0 0 0 / 0.28);
@@ -497,10 +450,6 @@
 	--lp-refuse-edge: #e0766c;
 	--lp-ok-ink: #8feac1;
 	--lp-held-ink: #93e3ea;
-	--lp-spot: transparent;
-	--lp-grid-line: rgb(255 255 255 / 0.06);
-	--lp-grid-line-lit: rgb(255 255 255 / 0.06);
-	--lp-grain-opacity: 0;
 	--lp-glass-veil: 88%;
 	--lp-hair: rgb(255 255 255 / 0.16);
 	--lp-hair-strong: rgb(255 255 255 / 0.24);
@@ -545,10 +494,6 @@
 		--lp-dur-demo: 0ms;
 		--lp-dur-demo-hold: 0ms;
 		--lp-stagger: 0ms;
-		--lp-dur-word: 0ms;
-		--lp-stagger-word: 0ms;
-		--lp-word-blur: 0px;
-		--lp-word-rise: 0px;
 		--lp-reveal-distance: 0px;
 		--lp-press-scale: 1;
 	}
@@ -563,10 +508,6 @@
 	--lp-dur-demo: 0ms;
 	--lp-dur-demo-hold: 0ms;
 	--lp-stagger: 0ms;
-	--lp-dur-word: 0ms;
-	--lp-stagger-word: 0ms;
-	--lp-word-blur: 0px;
-	--lp-word-rise: 0px;
 	--lp-reveal-distance: 0px;
 	--lp-press-scale: 1;
 }

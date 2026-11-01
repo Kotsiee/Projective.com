@@ -1,5 +1,5 @@
 /*
- * Lane chrome (`ui-lane-*`) — the shared control vocabulary of a middle-nav lane: the pill search, circular icon buttons, the icon-only quick-filter row, collapsible section
+ * Lane chrome (`ui-lane-*`) — the shared control vocabulary of a middle-nav lane: the `sm` search field, circular icon buttons, the icon-only quick-filter row, collapsible section
  * groups, and the pinned footer with its collapse toggle.
  *
  * This is the SINGLE SOURCE OF TRUTH for lane chrome. Every lane surface (the `/projects` feed, the
@@ -195,29 +195,39 @@
 
 .ui-lane-search__icon {
 	position: absolute;
-	inset-inline-start: 0.7rem;
+	inset-inline-start: var(--fld-px-sm);
 	display: inline-flex;
-	font-size: 0.95rem;
+	font-size: var(--icon-sm);
 	color: var(--text-secondary);
 	pointer-events: none;
 }
 
 .ui-lane-search__input {
 	inline-size: 100%;
+	/* The `sm` field shell — the same block size as every `.ui-lane-iconbtn` beside it in the
+	   `LaneBar`, so the search row reads as one control strip. */
+	block-size: var(--fld-h-sm);
 	/* The leading clearance must follow the icon, which is placed logically
 	   (`.ui-lane-search__icon` → `inset-inline-start`). A physical `padding-left` strands it on the
 	   wrong edge under `dir="rtl"`: the icon flips to the trailing edge while the clearance stays put,
 	   so typed text runs straight into the glyph with zero gap. */
-	padding-block: 0.5rem;
-	padding-inline: 2.1rem 0.7rem;
+	padding-block: 0;
+	padding-inline: calc(var(--fld-px-sm) + var(--icon-sm) + var(--space-2)) var(--fld-px-sm);
 	font: inherit;
-	font-size: 0.8125rem;
+	font-size: var(--fld-fs-sm);
 	color: var(--on-surface);
-	/* No fill in any state: the glyph and placeholder name the field, the focus edge marks it live. */
+	/* No fill at rest: the glyph and placeholder name the field. Hover takes the next SOLID ramp
+	   step over the band's `--surface-1` (§B.4.2); the focus edge marks it live. */
 	background: transparent;
-	border: 1px solid transparent;
-	border-radius: var(--radius-full);
-	transition: border-color var(--dur-fast) var(--ease-standard);
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--fld-r-sm);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-search__input:hover {
+	background: var(--surface-2);
 }
 
 .ui-lane-search__input::placeholder {
@@ -238,9 +248,10 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2.1rem;
-	block-size: 2.1rem;
-	font-size: 1.1rem;
+	/* Square on the `sm` field height, so it lines up with the `LaneSearch` it sits beside. */
+	inline-size: var(--fld-h-sm);
+	block-size: var(--fld-h-sm);
+	font-size: var(--icon-sm);
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;

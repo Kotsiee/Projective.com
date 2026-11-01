@@ -1,10 +1,5 @@
 /// <reference lib="dom" />
 import { assert, assertEquals, assertFalse } from "@std/assert";
-import { parseBackgroundForce } from "@features/landing/core/background-gate.ts";
-import {
-	LANDING_METRICS_SIM_COOKIE,
-	parseLandingMetricsSim,
-} from "@features/landing/core/metrics-sim.ts";
 import type * as DevContextModule from "./dev-context.ts";
 import type * as DevSeamModule from "@web/utils/dev-seam.ts";
 
@@ -56,7 +51,7 @@ const ctx: typeof DevContextModule = await import(
 // #endregion
 
 // #region Fake document
-const ATTR = "data-dev-landing-background";
+const ATTR = "data-dev-wallet-aurora";
 
 /** `dataset` key → attribute name, the HTML spec's camelCase-to-kebab mapping. */
 function dataAttr(key: string): string {
@@ -103,74 +98,63 @@ async function withDocument(fn: (root: ReturnType<typeof fakeRoot>) => void | Pr
 // #endregion
 
 // #region Defaults and options
-Deno.test("landingBackground — the inert default is auto", () => {
-	assertEquals(ctx.DEV_DEFAULTS.landingBackground, "auto");
-	assertEquals(ctx.devOverrides.value.landingBackground, "auto");
-});
-
-Deno.test("landingBackground — the options are the landing gate's BackgroundForce values, in order", () => {
-	assertEquals(ctx.DEV_LANDING_BACKGROUNDS.map((o) => [o.value, o.label]), [
-		["auto", "Auto"],
-		["static", "Static only"],
-		["spotlight", "Force spotlight"],
-	]);
-	for (const { value } of ctx.DEV_LANDING_BACKGROUNDS) {
-		assertEquals(parseBackgroundForce(value), value);
-	}
+Deno.test("walletAurora — the inert default is auto", () => {
+	assertEquals(ctx.DEV_DEFAULTS.walletAurora, "auto");
+	assertEquals(ctx.devOverrides.value.walletAurora, "auto");
 });
 // #endregion
 
 // #region reflect()
-Deno.test("reflect — writes data-dev-landing-background only while it overrides, and deletes it", async () => {
+Deno.test("reflect — writes data-dev-wallet-aurora only while it overrides, and deletes it", async () => {
 	await withDocument((root) => {
-		ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
-		assertEquals(root.attributes.get(ATTR), "spotlight");
-		assertEquals(seam.readDevSeam()?.landingBackground, "spotlight");
+		ctx.patchDevContext({ enabled: true, walletAurora: "animated" });
+		assertEquals(root.attributes.get(ATTR), "animated");
+		assertEquals(seam.readDevSeam()?.walletAurora, "animated");
 
-		ctx.patchDevContext({ landingBackground: "static" });
+		ctx.patchDevContext({ walletAurora: "static" });
 		assertEquals(root.attributes.get(ATTR), "static");
-		assertEquals(seam.readDevSeam()?.landingBackground, "static");
+		assertEquals(seam.readDevSeam()?.walletAurora, "static");
 
 		// `auto` is the ABSENT attribute, never the stamped word.
-		ctx.patchDevContext({ landingBackground: "auto" });
+		ctx.patchDevContext({ walletAurora: "auto" });
 		assertFalse(root.attributes.has(ATTR));
-		assertEquals(seam.readDevSeam()?.landingBackground, "auto");
+		assertEquals(seam.readDevSeam()?.walletAurora, "auto");
 	});
 });
 
 Deno.test("reflect — switching simulation off deletes the attribute; switching it on restores it", async () => {
 	await withDocument((root) => {
-		ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
+		ctx.patchDevContext({ enabled: true, walletAurora: "animated" });
 		ctx.setDevEnabled(false);
 		assertFalse(root.attributes.has(ATTR));
 		assertEquals(seam.readDevSeam(), null);
 
 		ctx.setDevEnabled(true);
-		assertEquals(root.attributes.get(ATTR), "spotlight");
+		assertEquals(root.attributes.get(ATTR), "animated");
 	});
 });
 
 Deno.test("reflect — a reset deletes the attribute and returns the store to auto", async () => {
 	await withDocument((root) => {
-		ctx.patchDevContext({ enabled: true, landingBackground: "static" });
+		ctx.patchDevContext({ enabled: true, walletAurora: "static" });
 		ctx.resetDevContext();
 		assertFalse(root.attributes.has(ATTR));
-		assertEquals(ctx.devOverrides.value.landingBackground, "auto");
+		assertEquals(ctx.devOverrides.value.walletAurora, "auto");
 	});
 });
 
 Deno.test("reflect — subscribers receive the decoded value on every change", async () => {
 	await withDocument(() => {
 		const seen: Array<string | undefined> = [];
-		const stop = seam.subscribeDevSeam((state) => seen.push(state?.landingBackground));
+		const stop = seam.subscribeDevSeam((state) => seen.push(state?.walletAurora));
 		try {
-			ctx.patchDevContext({ enabled: true, landingBackground: "spotlight" });
-			ctx.patchDevContext({ landingBackground: "auto" });
+			ctx.patchDevContext({ enabled: true, walletAurora: "animated" });
+			ctx.patchDevContext({ walletAurora: "auto" });
 			ctx.setDevEnabled(false);
 		} finally {
 			stop();
 		}
-		assertEquals(seen, ["spotlight", "auto", undefined]);
+		assertEquals(seen, ["animated", "auto", undefined]);
 	});
 });
 
@@ -181,7 +165,7 @@ Deno.test("hydrate — a blob saved before the axis existed reads as auto", asyn
 			JSON.stringify({ enabled: true, accountType: "freelancer" }),
 		);
 		ctx.hydrateDevContext();
-		assertEquals(ctx.devOverrides.value.landingBackground, "auto");
+		assertEquals(ctx.devOverrides.value.walletAurora, "auto");
 		assertFalse(root.attributes.has(ATTR));
 		assertEquals(root.attributes.get("data-dev-persona"), "freelancer");
 	});
@@ -192,15 +176,15 @@ Deno.test("hydrate — a blob saved before the axis existed reads as auto", asyn
 Deno.test("readDevSeam — an unknown attribute value reads as auto", async () => {
 	await withDocument((root) => {
 		root.dataset.devPersona = "client";
-		root.dataset.devLandingBackground = "webgl";
-		assertEquals(seam.readDevSeam()?.landingBackground, "auto");
+		root.dataset.devWalletAurora = "webgl";
+		assertEquals(seam.readDevSeam()?.walletAurora, "auto");
 	});
 });
 
 Deno.test("readDevSeam — a production build never reads the axis or subscribes", async () => {
 	await withDocument((root) => {
 		root.dataset.devPersona = "client";
-		root.dataset.devLandingBackground = "spotlight";
+		root.dataset.devWalletAurora = "animated";
 		assert(root.attributes.has(ATTR));
 		assertEquals(prodSeam.readDevSeam(), null);
 
@@ -209,101 +193,6 @@ Deno.test("readDevSeam — a production build never reads the axis or subscribes
 		globalThis.dispatchEvent(new CustomEvent(prodSeam.DEV_SEAM_EVENT));
 		stop();
 		assertEquals(calls, 0);
-	});
-});
-// #endregion
-
-// #region landingMetrics (the numbers section's threshold, server-side through a cookie)
-const METRICS_ATTR = "data-dev-landing-metrics";
-
-/** Run `fn` against a fake `document` whose cookie writes are recorded in order. */
-async function withCookieJar(
-	fn: (root: ReturnType<typeof fakeRoot>, writes: string[]) => void | Promise<void>,
-) {
-	const root = fakeRoot();
-	const writes: string[] = [];
-	Object.defineProperty(globalThis, "document", {
-		value: {
-			documentElement: root,
-			get cookie() {
-				return "";
-			},
-			set cookie(value: string) {
-				writes.push(value);
-			},
-		},
-		configurable: true,
-		writable: true,
-	});
-	try {
-		await fn(root, writes);
-	} finally {
-		ctx.resetDevContext();
-		delete (globalThis as { document?: unknown }).document;
-	}
-}
-
-/** The last write of the landing-numbers cookie. */
-function lastMetricsCookie(writes: readonly string[]): string | undefined {
-	return writes.filter((w) => w.startsWith(`${LANDING_METRICS_SIM_COOKIE}=`)).at(-1);
-}
-
-Deno.test("landingMetrics — the inert default is auto; the options are the route's two simulations", () => {
-	assertEquals(ctx.DEV_DEFAULTS.landingMetrics, "auto");
-	assertEquals(ctx.DEV_LANDING_METRICS.map((o) => [o.value, o.label]), [
-		["auto", "Auto"],
-		["hidden", "All hidden"],
-		["shown", "All shown"],
-	]);
-	for (const { value } of ctx.DEV_LANDING_METRICS) {
-		assertEquals(parseLandingMetricsSim(value), value === "auto" ? null : value);
-	}
-});
-
-Deno.test("landingMetrics — reflect writes the attribute and the cookie while it overrides, and deletes both", async () => {
-	await withCookieJar((root, writes) => {
-		ctx.patchDevContext({ enabled: true, landingMetrics: "shown" });
-		assertEquals(root.attributes.get(METRICS_ATTR), "shown");
-		assertEquals(seam.readDevSeam()?.landingMetrics, "shown");
-		assertEquals(
-			lastMetricsCookie(writes),
-			`${LANDING_METRICS_SIM_COOKIE}=shown; path=/; samesite=lax`,
-		);
-
-		ctx.patchDevContext({ landingMetrics: "hidden" });
-		assertEquals(root.attributes.get(METRICS_ATTR), "hidden");
-		assertEquals(
-			lastMetricsCookie(writes),
-			`${LANDING_METRICS_SIM_COOKIE}=hidden; path=/; samesite=lax`,
-		);
-
-		ctx.patchDevContext({ landingMetrics: "auto" });
-		assertFalse(root.attributes.has(METRICS_ATTR));
-		assertEquals(seam.readDevSeam()?.landingMetrics, "auto");
-		assertEquals(
-			lastMetricsCookie(writes),
-			`${LANDING_METRICS_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`,
-		);
-	});
-});
-
-Deno.test("landingMetrics — switching simulation off deletes the attribute and removes the cookie", async () => {
-	await withCookieJar((root, writes) => {
-		ctx.patchDevContext({ enabled: true, landingMetrics: "shown" });
-		ctx.setDevEnabled(false);
-		assertFalse(root.attributes.has(METRICS_ATTR));
-		assertEquals(
-			lastMetricsCookie(writes),
-			`${LANDING_METRICS_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`,
-		);
-	});
-});
-
-Deno.test("landingMetrics — an unknown attribute value reads as auto", async () => {
-	await withDocument((root) => {
-		root.dataset.devPersona = "client";
-		root.dataset.devLandingMetrics = "some";
-		assertEquals(seam.readDevSeam()?.landingMetrics, "auto");
 	});
 });
 // #endregion

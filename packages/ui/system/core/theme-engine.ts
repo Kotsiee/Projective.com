@@ -238,6 +238,9 @@ export function buildScheme(
 			// light-fill/dark-ink in dark mode. `button.css` cannot therefore blend every severity in one
 			// direction, which is why the hover/active shade is a per-severity token (§B.12.4).
 			"--primary": hx(core.a1.tone(55)),
+			// The seed's mid tone, identical in both modes: decorative light only, never a fill or ink
+			// (the Explore hero's glow, Decision #354).
+			"--primary-mid": hx(core.a1.tone(55)),
 			"--on-primary": hx(core.a1.tone(98)),
 			"--secondary": hx(core.a2.tone(fg(80))),
 			"--on-secondary": hx(core.a2.tone(on(20))),
@@ -281,6 +284,7 @@ export function buildScheme(
 			// The same two constants as the dark branch, and deliberately not `fg()`/`on()`. See
 			// BRAND_TONE.
 			"--primary": hx(core.a1.tone(45)),
+			"--primary-mid": hx(core.a1.tone(55)),
 			"--on-primary": hx(core.a1.tone(98)),
 			"--secondary": hx(core.a2.tone(fg(40))),
 			"--on-secondary": hx(core.a2.tone(on(98))),

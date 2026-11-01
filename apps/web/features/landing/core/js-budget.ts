@@ -225,96 +225,30 @@ export const APP_ISLANDS: readonly BudgetIsland[] = [
 
 /**
  * The islands the `(public)/_layout.tsx` landing branch mounts beside `LandingShell`. No ticket host
- * (the landing routes strip `?tkv=` with a 303, `strip-tkv.ts`), and the chat host's lazy stand-in
+ * (the landing route strips `?tkv=` with a 303, `strip-tkv.ts`), and the chat host's lazy stand-in
  * for a signed-in visitor: the real `ChatPopoutHost` is a lazy chunk behind it (Decision #286 (A)).
  */
 export const LANDING_LAYOUT_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/landing/islands/LazyChatHost.island.tsx", audience: "signed-in" },
 ];
 
-/** The islands `LandingShell` renders itself: the header bar. */
+/** The islands `LandingShell` renders itself: the app's one guest header. */
 export const LANDING_SHELL_ISLANDS: readonly BudgetIsland[] = [
-	{ path: "apps/web/features/landing/islands/LandingHeader.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/marketing/islands/SiteHeader.island.tsx", audience: "everyone" },
 ];
 
 /** The islands of the `PublicFooter` that `LandingShell` renders after `.lp-root`. */
 export const LANDING_FOOTER_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/marketing/islands/FooterLinkGroups.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/marketing/islands/NewsletterForm.island.tsx", audience: "everyone" },
-	{ path: "apps/web/features/marketing/islands/RecentlyViewed.island.tsx", audience: "everyone" },
 ];
 
 /** Every landing page with its controller's islands. */
 export const LANDING_PAGES: readonly BudgetPage[] = [
 	{
-		path: "/",
-		controller: "apps/web/features/landing/routes/LandingPage.tsx",
-		islands: [
-			{
-				path: "apps/web/features/landing/islands/LandingBackground.island.tsx",
-				audience: "everyone",
-			},
-			{
-				path: "apps/web/features/marketing/islands/SchemaInjector.island.tsx",
-				audience: "everyone",
-			},
-			{
-				path: "apps/web/features/landing/islands/HeroSearch.island.tsx",
-				audience: "everyone",
-				ownMax: LANDING_JS_BUDGET.heroIsland,
-			},
-			{
-				// The theatre's toggle and timeline wiring; its player is a lazy chunk (L2 target 12 kB).
-				path: "apps/web/features/landing/islands/HeroTheatre.island.tsx",
-				audience: "everyone",
-				ownMax: 12 * KB,
-			},
-			{
-				// How it works: the reading-line observer behind the sticky money flow (L3 target 8 kB).
-				path: "apps/web/features/landing/islands/MoneyFlow.island.tsx",
-				audience: "everyone",
-				ownMax: 8 * KB,
-			},
-			{
-				// The demo stage's tabs, URL state and live region (L3 target 8 kB). Each demo
-				// (`components/demos/*.demo.tsx`) is a lazy chunk it imports for the open tab only,
-				// capped at LANDING_JS_BUDGET.lazyChunk like every landing-owned lazy chunk.
-				path: "apps/web/features/landing/islands/DemoHost.island.tsx",
-				audience: "everyone",
-				ownMax: 8 * KB,
-			},
-			{
-				// Pricing's calculator (L4 target 6 kB). Mounted with or without a fee: it carries the
-				// Pricing and "The numbers so far" stylesheets.
-				path: "apps/web/features/landing/islands/PricingCalculator.island.tsx",
-				audience: "everyone",
-				ownMax: 6 * KB,
-			},
-			{
-				// Ways to work's rails: their scroll buttons and end fades. Mounted with or without
-				// rails: it carries the section's stylesheet.
-				path: "apps/web/features/landing/islands/RailScroll.island.tsx",
-				audience: "everyone",
-				ownMax: 4 * KB,
-			},
-			{
-				// `@projective/ui`'s MoneyView: its island module default-exports the same function
-				// How it works and the demo posters render, and Fresh registers an island by that
-				// identity, so every figure they print hydrates as one (`islandBindingsOf`).
-				path: "packages/ui/display/islands/MoneyView.island.tsx",
-				audience: "everyone",
-			},
-		],
-	},
-	{
 		path: "/features",
 		controller: "apps/web/features/landing/routes/FeaturesPage.tsx",
 		islands: [
-			{
-				// The final call to action's B7 grid: its spotlight follows a fine pointer only.
-				path: "apps/web/features/landing/islands/LandingBackground.island.tsx",
-				audience: "everyone",
-			},
 			{
 				path: "apps/web/features/marketing/islands/SchemaInjector.island.tsx",
 				audience: "everyone",
@@ -337,6 +271,21 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 				path: "apps/web/features/landing/islands/FeatureDemoDialog.island.tsx",
 				audience: "everyone",
 				ownMax: 22 * KB,
+			},
+			{
+				// The demo stage's tabs, URL state and live region (L3 target 8 kB), here since `/` became
+				// the Explore Home (Decision #349). Each demo (`components/demos/*.demo.tsx`) is a lazy
+				// chunk it imports for the open tab only, capped at LANDING_JS_BUDGET.lazyChunk.
+				path: "apps/web/features/landing/islands/DemoHost.island.tsx",
+				audience: "everyone",
+				ownMax: 8 * KB,
+			},
+			{
+				// Pricing's calculator (L4 target 6 kB). Mounted with or without a fee: it carries the
+				// Pricing stylesheet.
+				path: "apps/web/features/landing/islands/PricingCalculator.island.tsx",
+				audience: "everyone",
+				ownMax: 6 * KB,
 			},
 			{
 				// The Payment protection still's figures (`PaymentsPoster`): MoneyView renders as its

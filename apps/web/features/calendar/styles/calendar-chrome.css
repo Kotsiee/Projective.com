@@ -1157,7 +1157,7 @@
 .cal-export {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--space-6);
 }
 
 .cal-export__section {

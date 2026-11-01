@@ -5,7 +5,7 @@ import { armHeroMorph, bindHeroMorph } from "../core/hero-morph.ts";
 import type { ExploreEntity } from "../types/explore-types.ts";
 
 /**
- * ViewHistory — the writer behind "Continue where you left off" and the footer's "Recently viewed".
+ * ViewHistory — the writer behind "Continue where you left off".
  *
  * It renders NOTHING. One island per page, finding its subjects by attribute rather than being
  * threaded through every card — the same shape as `AmbientPalette`, and for the same reason: the

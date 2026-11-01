@@ -47,11 +47,6 @@ export interface DemoStageViewProps {
 	active: DemoId;
 	/** The platform fee in basis points from the server, or `null` (every fee clause drops). */
 	feeBp: number | null;
-	/**
-	 * Render "See everything Projective does" → `/features` beside the tabs (work order L5; `/` turns
-	 * it on). Off, the bar holds the tabs alone.
-	 */
-	features: boolean;
 	/** The open tab's live demo, or `null` while its poster shows. */
 	live: ComponentChildren | null;
 	/**
@@ -119,14 +114,6 @@ export function DemoStageView(props: DemoStageViewProps): JSX.Element {
 						);
 					})}
 				</div>
-				{props.features
-					? (
-						<a class="lp-demo__more" href={DEMO_STAGE_COPY.moreHref}>
-							{DEMO_STAGE_COPY.more}
-							<span aria-hidden="true">→</span>
-						</a>
-					)
-					: null}
 			</div>
 			{DEMO_IDS.map((id) => {
 				const ids = demoDomIds(id);

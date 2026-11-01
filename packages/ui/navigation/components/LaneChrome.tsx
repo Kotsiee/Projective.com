@@ -229,8 +229,9 @@ export interface LaneSearchProps {
 }
 
 /**
- * LaneSearch — the lane's pill search field with a leading, pointer-transparent glyph. The full border
- * on focus is permitted: this is an interactive control (§B.4).
+ * LaneSearch — the lane's `sm` search field (`--fld-h-sm`, `--fld-r-sm`) with a leading,
+ * pointer-transparent glyph; every {@link LaneIconButton} beside it in a {@link LaneBar} shares its
+ * block size. The full border on focus is permitted: this is an interactive control (§B.4).
  */
 export function LaneSearch(props: LaneSearchProps): JSX.Element {
 	return (

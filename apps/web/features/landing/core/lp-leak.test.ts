@@ -2,15 +2,15 @@
  * lp-leak.test — the landing namespace's leak gate (Decision #280 (E), allowlist per #285 (B)).
  *
  * The `lp-` classes and `--lp-*` tokens are a scoped exemption from the design system, legal only
- * in `apps/web/features/landing/**`, the `/` route (`routes/(public)/index.tsx`) and the `/features`
- * route (`routes/(public)/features.tsx`). This reads every `.ts`, `.tsx`, `.js`, `.jsx` and `.css`
+ * in `apps/web/features/landing/**` and the `/features` route (`routes/(public)/features.tsx`) — `/`
+ * left the scope when it became the Explore Home (Decision #349). This reads every `.ts`, `.tsx`, `.js`, `.jsx` and `.css`
  * file under `apps/web/` and `packages/` and fails, naming `file:line`, on any `lp-` name or
  * `--lp-*` custom property anywhere else.
  *
  * The allowlist is the footer's pre-existing block and nothing else, kept until it is renamed after
  * P8 (#285 (B)). It applies only inside {@link FOOTER_FAMILY}, the files #285 (B) names:
  *   - a class in the `lp-footer` BEM family exactly (`lp-footer`, `lp-footer__x`, `lp-footer__x--y`),
- *     plus the three ids and one keyframes name that block already uses ({@link FOOTER_NAMES});
+ *     plus the two ids and one keyframes name that block already uses ({@link FOOTER_NAMES});
  *   - an `--lp-*` token declared in the same file that reads it (the footer-local tokens);
  *   - `marketing/styles/hero-search.css` reading `--lp-hair-strong` (with an app-token fallback).
  * Any other file is held to the full rule: a stylesheet that declares `--lp-text` to restyle the
@@ -39,7 +39,6 @@ const SCANNED = /\.(tsx?|jsx?|css)$/;
 /** The exempt paths (Decision #280 (A)). */
 function isExempt(path: string): boolean {
 	return path.startsWith("apps/web/features/landing/") ||
-		path === "apps/web/routes/(public)/index.tsx" ||
 		path === "apps/web/routes/(public)/features.tsx";
 }
 
@@ -48,7 +47,6 @@ const FOOTER_FAMILY: ReadonlySet<string> = new Set([
 	"apps/web/features/marketing/components/PublicFooter.tsx",
 	"apps/web/features/marketing/islands/FooterLinkGroups.island.tsx",
 	"apps/web/features/marketing/islands/NewsletterForm.island.tsx",
-	"apps/web/features/marketing/islands/RecentlyViewed.island.tsx",
 	"apps/web/features/marketing/styles/footer.css",
 	"apps/web/features/marketing/styles/hero-search.css",
 	"apps/web/features/shell/styles/guest-shell.css",
@@ -57,11 +55,10 @@ const FOOTER_FAMILY: ReadonlySet<string> = new Set([
 /** The `lp-footer` BEM family: the block, an element, and either one's modifier. */
 const FOOTER_CLASS = /^lp-footer(?:__[a-z0-9-]+)?(?:--[a-z0-9-]+)?$/;
 
-/** The names outside that pattern the footer block already uses: three ids and one keyframes. */
+/** The names outside that pattern the footer block already uses: two ids and one keyframes. */
 const FOOTER_NAMES: ReadonlySet<string> = new Set([
 	"lp-footer-brand",
-	"lp-footer-news-error",
-	"lp-footer-recent",
+	"lp-footer-news-status",
 	"lp-footer-breathe",
 ]);
 
@@ -284,7 +281,10 @@ Deno.test("the scanner catches a planted leak and honours the allowlist", () => 
 
 	// The exempt paths may use the namespace freely.
 	assertEquals(findLeaks("apps/web/features/landing/styles/lp-shell.css", ".lp-root {}"), []);
-	assertEquals(findLeaks("apps/web/routes/(public)/index.tsx", `<div class="lp-root" />`), []);
+	assertEquals(
+		findLeaks("apps/web/routes/(public)/index.tsx", `<div class="lp-root" />`).length,
+		1,
+	);
 	assertEquals(findLeaks("apps/web/routes/(public)/features.tsx", `<div class="lp-root" />`), []);
 	assertEquals(
 		findLeaks("apps/web/routes/(public)/about.tsx", `<div class="lp-root" />`).length,

@@ -16,10 +16,11 @@ import LazyChatHost from "@features/landing/islands/LazyChatHost.island.tsx";
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
 
 /**
- * The off-system marketing pages (Decision #280) render in their own LandingShell for guests AND
- * signed-in visitors — never a redirect (Decision #284 (8)).
+ * The off-system marketing page (Decision #280) renders in its own LandingShell for guests AND
+ * signed-in visitors — never a redirect (Decision #284 (8)). `/` is the Explore Home now, in the
+ * guest shell like `/explore`; a signed-in visitor never renders it (Decision #349).
  */
-const LANDING_PATHS = new Set(["/", "/features"]);
+const LANDING_PATHS = new Set(["/features"]);
 
 /**
  * Public surface shell — resolves to one of two navigation profiles by auth state (DESIGN_SYSTEM.md
@@ -29,8 +30,8 @@ const LANDING_PATHS = new Set(["/", "/features"]);
  * (site-wide auth is resolved in the global middleware).
  *
  * The `(auth)` group (join/login/forgot-password/verify) is exempted: those pages own a full-window
- * split-screen shell, so both shells are suppressed for them. The landing pages (`/`, `/features`)
- * are exempted too: they render in {@link LandingShell} whatever the auth state.
+ * split-screen shell, so both shells are suppressed for them. The landing page (`/features`) is
+ * exempted too: it renders in {@link LandingShell} whatever the auth state.
  */
 export default define.page(function PublicLayout(ctx) {
 	if (AUTH_PATHS.has(ctx.url.pathname)) {

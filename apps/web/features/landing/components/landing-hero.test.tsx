@@ -1,19 +1,18 @@
 /**
- * The landing hero as the server renders it (`flows/LANDING.md` §2.8, §4.1): one h1 with the
- * recommended headline set word by word for its reveal and no eyebrow above it, the
+ * The landing search and its calls to action as the server renders them in `/features`'s final call
+ * to action (`flows/LANDING.md` §4.1, §4.11; the hero left with `/`, Decision #349): the
  * no-JavaScript search form (`role="search"`, `GET /explore`, fields `q` and `category` over the
  * five real categories), its visually hidden label, the combobox wiring, the `/` hint promised only
- * once it works, a recent search's named remove button beside its option, the "Try:" line and the
- * calls to action per viewer, with the search's submit the hero's one fill. The island-bound page
- * controller imports CSS and cannot load under `deno test`, so the hero is rendered with the
- * search's own markup (`HeroSearchForm`, exactly what the island paints first) and stand-ins for
- * the other islands.
+ * once it works, a recent search's named remove button beside its option, and the calls to action
+ * per viewer, with the search's submit the region's one fill. The island imports CSS and cannot load
+ * under `deno test`, so the section renders the search's own markup (`HeroSearchForm`, exactly what
+ * the island paints first).
  */
 import { assert, assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
 import { SUGGEST_QUERY_MAX } from "@projective/types/explore";
 import { explorePath } from "@features/marketing/core/megamenu-data.ts";
-import { HERO_COPY, HERO_HEADLINE_TEXT, LandingHero } from "./LandingHero.tsx";
+import { FinalCta } from "./FinalCta.tsx";
 import { HeroSearchForm, type HeroSearchFormProps, heroSearchIds } from "./HeroSearchForm.tsx";
 import {
 	DEFAULT_HERO_CATEGORY,
@@ -48,35 +47,14 @@ function firstPaint(over: Partial<HeroSearchFormProps> = {}): HeroSearchFormProp
 
 function render(
 	viewer: HeroViewer = GUEST_VIEWER,
-	chips: string[] = ["brand identity", "landing page"],
 	search: HeroSearchFormProps = firstPaint(),
 ): string {
-	return renderToString(
-		<LandingHero
-			background={<div id="bg-slot" />}
-			search={<HeroSearchForm {...search} />}
-			chips={chips}
-			viewer={viewer}
-			theatre={<div id="theatre-slot" />}
-		/>,
-	);
+	return renderToString(<FinalCta search={<HeroSearchForm {...search} />} viewer={viewer} />);
 }
 
 /** Count of `needle` in `hay`. */
 function count(hay: string, needle: string): number {
 	return hay.split(needle).length - 1;
-}
-
-/** The h1's markup, its opening tag included. */
-function headingOf(html: string): string {
-	const open = html.indexOf("<h1");
-	assert(open !== -1, "no h1");
-	return html.slice(open, html.indexOf("</h1>", open) + "</h1>".length);
-}
-
-/** An element's text content as a reader gets it: tags dropped, whitespace collapsed. */
-function textOf(markup: string): string {
-	return markup.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 
 /** The opening tag of the first element carrying `marker`. */
@@ -88,45 +66,10 @@ function tagWith(html: string, marker: string): string {
 // #endregion
 
 // #region Structure
-Deno.test("LandingHero: one h1 whose text is the recommended headline, character for character", () => {
-	const html = render();
-	assertEquals(count(html, "<h1"), 1);
-	assertEquals(HERO_HEADLINE_TEXT, "Hire a ready-made team. Pay one stage at a time.");
-	const h1 = headingOf(html);
-	assertEquals(textOf(h1), HERO_HEADLINE_TEXT);
-	assert(html.includes(HERO_COPY.lead));
-	// No eyebrow: the h1 already says "ready-made team", and a reader would hear it twice.
-	assertFalse(html.includes("lp-eyebrow") || html.includes("Ready-made teams ·"));
-	assertMatch(tagWith(html, 'id="hero"'), /^<section id="hero" class="lp-hero">$/);
-	assertFalse(html.includes("<main"));
-	// Background first, the theatre after the calls to action, and the theatre the last group.
-	const bg = html.indexOf('id="bg-slot"');
-	const ctas = html.indexOf("lp-hero__ctas");
-	assert(bg < html.indexOf("<h1") && ctas < html.indexOf('id="theatre-slot"'));
-	assert(html.indexOf('class="lp-hero__top"') < html.indexOf("<h1"));
-});
-
-Deno.test("LandingHero: the headline's words are numbered boxes, nothing hidden from a reader", () => {
-	const h1 = headingOf(render());
-	// No accessible-name override and nothing taken out of the accessibility tree.
-	assertFalse(h1.includes("aria-label"));
-	assertFalse(h1.includes("aria-hidden"));
-	const words = [...h1.matchAll(/<span\s+class="lp-word" data-lp-w="(\d+)">([^<]*)<\/span>/g)];
-	assertEquals(words.map((m) => Number(m[1])), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-	assertEquals(words.map((m) => m[2]).join(" "), HERO_HEADLINE_TEXT);
-	// Two sentences, four phrases: a line breaks only between phrases.
-	assertEquals(count(h1, 'class="lp-hero__line"'), 2);
-	assertEquals(count(h1, 'class="lp-hero__phrase"'), 4);
-	assertEquals(
-		HERO_COPY.headline.map((sentence) => sentence.join(" ")).join(" "),
-		HERO_HEADLINE_TEXT,
-	);
-});
-
 // #endregion
 
 // #region Search form
-Deno.test("LandingHero: the search is a real GET form to /explore with q and category", () => {
+Deno.test("FinalCta: the search is a real GET form to /explore with q and category", () => {
 	const html = render();
 	const form = tagWith(html, 'role="search"');
 	assertMatch(form, /<form\b/);
@@ -146,7 +89,7 @@ Deno.test("LandingHero: the search is a real GET form to /explore with q and cat
 	assertFalse(html.includes("lp-search__scope-btn"));
 });
 
-Deno.test("LandingHero: the input has a visually hidden label and the combobox wiring", () => {
+Deno.test("FinalCta: the input has a visually hidden label and the combobox wiring", () => {
 	const html = render();
 	const ids = heroSearchIds();
 	assertMatch(
@@ -302,16 +245,7 @@ Deno.test("HeroSearchForm: a second instance keeps its ids apart and takes no sh
 // #endregion
 
 // #region Chips and calls to action
-Deno.test("LandingHero: the chips link into Explore, and an empty list omits the row", () => {
-	const html = render();
-	assertMatch(html, /<nav class="lp-chips" aria-label="Suggested searches">/);
-	assert(html.includes(`href="${explorePath("all", "brand identity").replace("&", "&amp;")}"`));
-	assert(html.includes(">Try:<"));
-	assertFalse(html.includes("Popular"));
-	assertFalse(render(GUEST_VIEWER, []).includes("lp-chips"));
-});
-
-Deno.test("LandingHero: the calls to action follow the viewer", () => {
+Deno.test("FinalCta: the calls to action follow the viewer", () => {
 	const teams = `href="${explorePath("teams")}"`;
 	const guest = render();
 	assert(guest.includes(teams) && guest.includes(">Hire a team<"));
@@ -325,7 +259,7 @@ Deno.test("LandingHero: the calls to action follow the viewer", () => {
 	const minor = render({ authenticated: true, isFreelancer: false, restricted: true });
 	assert(minor.includes(teams));
 	assertFalse(minor.includes("Offer your skills") || minor.includes("Find work"));
-	// The search's submit is the hero's one fill (tier 3); "Hire a team" is outlined (tier 4), and
+	// The search's submit is the region's one fill (tier 3); "Hire a team" is outlined (tier 4), and
 	// nothing amber renders while no money moves here (Decision #288 (E)).
 	assertEquals(count(guest, "lp-btn--brand"), 1);
 	assertMatch(tagWith(guest, "lp-search__submit"), /lp-btn--brand/);

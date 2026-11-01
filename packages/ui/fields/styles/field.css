@@ -392,7 +392,7 @@
 /* #region Label / hint / error helpers (separation via weight + tint, not borders — §B.4) */
 .ui-field-label {
 	display: inline-block;
-	margin-block-end: var(--space-1);
+	margin-block-end: var(--space-2);
 	font-family: var(--font-sans);
 	font-size: var(--fld-label-fs);
 	font-weight: var(--fld-label-fw);

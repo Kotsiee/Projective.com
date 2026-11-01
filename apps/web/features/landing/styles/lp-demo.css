@@ -181,23 +181,6 @@
 	transform: scale(var(--lp-press-scale));
 }
 
-.lp-demo__more {
-	display: inline-flex;
-	flex: none;
-	align-items: center;
-	gap: var(--lp-stack-2xs);
-	color: var(--lp-text);
-	font-family: var(--lp-font-body);
-	font-size: var(--lp-fs-body-sm);
-	font-weight: var(--fw-medium);
-	text-decoration: none;
-	transition: color var(--dur-slow) var(--ease-standard);
-}
-
-.lp-demo__more:hover {
-	color: var(--lp-teal-ink);
-}
-
 .lp-demo__panel {
 	display: flex;
 	flex-direction: column;

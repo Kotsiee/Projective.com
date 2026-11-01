@@ -23,7 +23,7 @@
  *
  * WHERE IT PINS. A small gap beneath the migrated header band (`--pf-tabs-gap`), which in the
  * authenticated frame sits under the top bar (`--shell-topbar-h` + `--shell-midnav-header-h`) and in
- * the guest shell floats under the site header's reserved band (`--site-header-h` +
+ * the guest shell floats one `--space-4` under the docked bar (`--guest-pin-top` +
  * `--shell-midnav-header-h`). Below the phone cusp the guest shell renders no sub-header at all, so
  * the bar pins under the SCROLLED pill's bottom edge (`--site-header-pinned-h`) — not the reserved
  * flow band, which is 1.25rem taller than the pill it reserves room for. The island reads the
@@ -69,7 +69,7 @@
 
 .guest-shell .pf-tabs {
     --pf-tabs-top: calc(
-        var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h, 3rem) + var(--pf-tabs-gap)
+        var(--guest-pin-top) + var(--shell-midnav-header-h, 3rem) + var(--pf-tabs-gap)
     );
 }
 

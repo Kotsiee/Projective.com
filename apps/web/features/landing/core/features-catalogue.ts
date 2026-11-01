@@ -406,9 +406,9 @@ export function featureHelpHref(entry: FeatureEntry): string | null {
 }
 
 /**
- * Where a row's "Try it" goes with no JavaScript: the landing's demo stage with that demo's tab open
- * (`/?demo=board#demo`), which the `/` route renders with no script. Hydrated, the dialog island
- * opens the same demo in place instead.
+ * Where a row's "Try it" goes with no JavaScript: this page's demo stage with that demo's tab open
+ * (`/features?demo=board#demo`), which the `/features` route renders with no script. Hydrated, the
+ * dialog island opens the same demo in place instead.
  */
 export function featureTryHref(demo: DemoId): string {
 	return demoHref(demo);
