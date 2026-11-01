@@ -7,7 +7,7 @@
 
 /* #region Links + rows */
 .auth-link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 	text-decoration: none;
 }

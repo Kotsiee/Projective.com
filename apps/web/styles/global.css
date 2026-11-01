@@ -219,8 +219,7 @@ body {
 	--scrollbar-track: var(--surface-1);
 }
 
-.shv__stage,
-.hero-search__menu {
+.shv__stage {
 	--scrollbar-track: var(--surface-2);
 }
 
@@ -230,7 +229,8 @@ body {
  * in exactly the case the veil exists to avoid. The floating guest aside is scoped the same way in
  * `features/shell/styles/guest-shell.css`, where its own veil is declared.
  */
-.site-header__drawer {
+.site-header__drawer,
+.ex-scope__menu {
 	--scrollbar-track: transparent;
 }
 

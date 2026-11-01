@@ -146,7 +146,7 @@
 	box-shadow: none;
 }
 .apk__act[aria-pressed="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .apk__act--toggle {
@@ -570,7 +570,7 @@
 	line-height: 1.5;
 }
 .apk-state__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 }

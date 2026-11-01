@@ -1,5 +1,4 @@
 import { page } from "fresh";
-import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import { PublicMetricsService } from "@server/services/marketing/PublicMetricsService.ts";
 import { define } from "@web/utils/state.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
@@ -17,8 +16,7 @@ import { siteOrigin } from "@features/marketing/core/site-origin.ts";
  * same address without it (`tkvRedirect`, Decision #286 (A)). Otherwise it puts the page's head facts
  * on request state (the §4.12 title and description, canonical `/features` with no query), reads the
  * platform fee through the public metrics service (the stills and demos print every fee clause from
- * it, and drop them when the read fails) and the final search's trending terms through the discovery
- * service, and hands the page the chapter `?section=` names (an unknown value names none) and the
+ * it, and drop them when the read fails), and hands the page the chapter `?section=` names (an unknown value names none) and the
  * demo stage's tab `?demo=` names (default `board`; Decision #349 moved the stage here). The final
  * call to action reads three viewer facts, never the whole context, exactly as `/` does. A failed read
  * renders the page with that part withheld, never an error document.
@@ -29,10 +27,7 @@ export const handler = define.handlers({
 		if (redirect) return redirect;
 		const origin = siteOrigin(ctx.url);
 		applyPageMeta(ctx.state, featuresPageMeta(origin));
-		const [search, metrics] = await Promise.all([
-			ExploreBackendService.landingHero(),
-			PublicMetricsService.get(),
-		]);
+		const metrics = await PublicMetricsService.get();
 		const context = ctx.state.userContext;
 		const viewer = heroViewerOf(
 			ctx.state.isAuthenticated === true,
@@ -46,11 +41,7 @@ export const handler = define.handlers({
 		return page({
 			origin,
 			feeBp: metrics.ok && metrics.data ? metrics.data.platformFeeBp : null,
-			hero: {
-				terms: search.ok && search.data ? search.data.terms : [],
-				trending: search.ok && search.data ? search.data.trending : [],
-				viewer,
-			},
+			hero: { viewer },
 			section: parseSection(ctx.url.searchParams.get(SECTION_PARAM)),
 			demo: parseDemoId(ctx.url.searchParams.get(DEMO_PARAM)),
 		});

@@ -187,7 +187,7 @@
 	font-family: var(--font-sans);
 	font-size: var(--text-md);
 	font-weight: var(--fw-semibold);
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: transparent;
 	border: var(--fld-bw) solid transparent;
 	border-radius: var(--radius-sm);

@@ -58,7 +58,7 @@
 }
 
 .proj-modifier__btn:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .proj-modifier__caret {
@@ -123,14 +123,14 @@
 }
 
 .proj-modifier__item[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 
 .proj-modifier__check {
 	display: inline-flex;
 	font-size: 0.8rem;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .proj-modifier__item:focus-visible {
@@ -576,7 +576,7 @@
 }
 
 .proj-incoming[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 

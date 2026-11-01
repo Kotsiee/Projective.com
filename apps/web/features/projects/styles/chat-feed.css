@@ -742,7 +742,7 @@ button.msg-quote:focus-visible {
 }
 
 .msg-reaction[data-mine="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }

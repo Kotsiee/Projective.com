@@ -109,7 +109,7 @@
 }
 
 .ui-lane-filter-icons__btn[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: var(--surface-2);
 }
 
@@ -154,7 +154,7 @@
 }
 
 .ui-lane-filter-choices__opt[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 }
 

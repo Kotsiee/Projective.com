@@ -300,7 +300,7 @@ body:has(.auth) {
 }
 
 .auth-heading__subtitle a {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 	text-decoration: none;
 }
@@ -705,7 +705,7 @@ body:has(.auth) {
 .auth-resend__btn {
 	border: 0;
 	background: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font: inherit;
 	font-weight: var(--fw-semibold);
 	cursor: pointer;
@@ -1168,7 +1168,7 @@ body:has(.auth) {
 
 .tagselect__pill.is-on {
 	background: color-mix(in srgb, var(--primary) 16%, var(--surface));
-	color: var(--primary);
+	color: var(--primary-ink);
 	box-shadow: inset 0 0 0 calc(var(--fld-bw) * 1.5) color-mix(in srgb, var(--primary) 45%,
 		var(--surface));
 }
@@ -1290,7 +1290,7 @@ body:has(.auth) {
 
 .tagselect__opt.is-active {
 	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .tagselect__opt-add {
@@ -1300,7 +1300,7 @@ body:has(.auth) {
 	block-size: 1.1rem;
 	border-radius: 50%;
 	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface));
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 	line-height: 1;
 }

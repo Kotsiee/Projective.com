@@ -52,6 +52,7 @@
  */
 .ui-inline-notice__action {
 	--btn-accent: var(--on-surface);
+	--btn-ink: var(--on-surface);
 	--btn-on: var(--surface);
 	min-block-size: 0;
 	padding-block: 0;

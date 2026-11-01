@@ -101,7 +101,7 @@
 .ui-treetable__cell--head[aria-sort="ascending"] .ui-treetable__sort-icon,
 .ui-treetable__cell--head[aria-sort="descending"] .ui-treetable__sort-icon {
 	opacity: 1;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* #endregion */
 

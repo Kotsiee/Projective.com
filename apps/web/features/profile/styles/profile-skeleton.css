@@ -501,7 +501,7 @@
 }
 
 .pf-lane__headbtn[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .pf-lane__headbtn[data-on="true"] svg {

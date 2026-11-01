@@ -62,7 +62,7 @@
 
 .cal-header__iconbtn--on {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cal-header__titles {

@@ -1,6 +1,6 @@
 /* Link + NavItem — nav atoms. Full borders reserved for interactive elements only (§B.4). */
 .ui-link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	border-radius: var(--radius-sm);
 }

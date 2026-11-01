@@ -284,7 +284,7 @@
 }
 
 .ui-lane-iconbtn--accent {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-lane-iconbtn--accent:hover {
@@ -356,7 +356,7 @@
 }
 
 .ui-lane-toggle[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-lane-toggle[data-on="true"] svg {

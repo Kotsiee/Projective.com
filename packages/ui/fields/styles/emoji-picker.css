@@ -68,7 +68,7 @@
 }
 
 .ui-emoji-picker__category[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-emoji-picker__category[aria-pressed="true"] {

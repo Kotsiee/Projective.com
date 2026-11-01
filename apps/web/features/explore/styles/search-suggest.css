@@ -18,7 +18,7 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 }
 
 .ex-suggest__thumb {
@@ -60,12 +60,12 @@
 }
 
 .ex-suggest__meta {
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 	font-size: var(--text-sm);
 }
 
 .ex-suggest__action {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ex-suggest__retry {
@@ -78,5 +78,5 @@
 }
 
 .ex-suggest__retry-text {
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 }

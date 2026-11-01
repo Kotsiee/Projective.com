@@ -583,7 +583,7 @@
 }
 
 .tkc-stage__act--open[aria-expanded="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	transform: rotate(90deg);
 }
 
@@ -663,7 +663,7 @@
 }
 
 .tkc-join[data-parallel="true"] .tkc-join__btn {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 }
 /* #endregion */

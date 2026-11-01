@@ -315,6 +315,7 @@
 
 .ui-button.pf-story__save {
     --btn-accent: var(--on-surface);
+    --btn-ink: var(--on-surface);
     --btn-on: var(--surface);
     --btn-mix-hover: 88%;
     --btn-mix-active: 80%;
@@ -327,6 +328,7 @@
 
 .ui-button.pf-story__cancel {
     --btn-accent: var(--on-surface);
+    --btn-ink: var(--on-surface);
 }
 
 /* #endregion */

@@ -84,7 +84,7 @@
 }
 
 .ui-number-input[data-scrubbing="true"] .ui-number-input__lead--scrub {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* #endregion */
 

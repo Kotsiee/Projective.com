@@ -67,7 +67,7 @@
 .cat-cdrawer__link {
 	align-self: flex-start;
 	border-radius: var(--radius-sm);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	text-underline-offset: 0.15em;
 }

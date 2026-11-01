@@ -42,6 +42,7 @@
 | L4 delivered    | 2026-10-19 — Why it's different, Ways to work and the rails, Payment protection, the numbers, For freelancers and teams, Pricing and its calculator, the questions and the final call to action; listed below the table; the review fixes and their FLAGS are Decision #301 (§7 has the budget reading)                                                                                                                                                                                                                                                                                                                                                      |
 | L5 delivered    | 2026-10-20 — `/features`, the editorial chapter index (#288 supersedes the work order's bento), its "Try it" dialog over L3's demos, and the integration links (header, demo stage, footer, sitemap, `/about`); listed below the table; the review fixes and their FLAGS are Decision #302 (§7 has the budget reading)                                                                                                                                                                                                                                                                                                                                       |
 | L6 delivered    | 2026-10-20 — the launch gate (§10): the audit of the production build, the #303 fix pass, and the final re-run on a fresh build of the fixed tree. Verdict NOT CLEARED: blocked on #303 FLAGS (a) transport compression and (b) head placement (both app-wide and pre-existing, with patches ready), (c) Y4, and the lawyer's review (§9 row 8)                                                                                                                                                                                                                                                                                                              |
+| Search retired  | 2026-11-01 — Decision #358: `/features`' final call to action mounts the shared hero `SearchBar` (the bar of `/`, `/explore` and `/explore?q=`). The `HeroSearch` island, `HeroSearchForm`, `CategorySheet`, `lp-search.css`, the hero motion timeline (`hero-motion.ts`) and `ExploreBackendService.landingHero` are deleted, so §4.1's search, typewriter and "Try:" chips and §2.7's turn-taking describe nothing that ships. `hero-search.ts` keeps only the viewer facts and `heroCtas`. |
 | Next prompt     | None left in the track. Launch waits on the owner (§10's verdict): #303 FLAGS (a), (b) and (c), and the lawyer (§9 row 8); then commit the fix pass, let the shared database take the regenerated help seed, and re-run `landing.spec.ts` and §7's measurement against `deno task start`                                                                                                                                                                                                                                                                                                                                                                     |
 
 **L1 delivered (2026-10-17).**
@@ -3335,12 +3336,12 @@ and joining teams unlock at 18. `[Q2]`
 
 - h2: **Find your team.** · subline: Search for the help you need. Pay safely, one stage at a time.
   `[U1]` `[A2]` `[B1]`
-- Second HeroSearch instance (id suffix `-final`): same hidden label, static placeholder, **no
-  typewriter**, **no `/` hint** (`enabled=false`).
+- The search is the shared hero `SearchBar` (Decision #358; it replaced the second `HeroSearch`
+  instance), the page's only search, so it holds the `/` shortcut.
 - CTAs: **Hire a team** · **Offer your skills** (§4.1 mapping). Footer: PublicFooter, unchanged but
   for its site-wide plain-language copy (#289 (B), §9 row 21).
-- As built (L4): no "Try:" line under the search; its search landmark is named by the h2
-  (`aria-labelledby="get-started-title"`), the hero's "Search Projective" (#301 (F)).
+- As built (L4, before #358): no "Try:" line under the search; its search landmark was named by the
+  h2 (`aria-labelledby="get-started-title"`) (#301 (F)).
 
 ### 4.12 `/features` (L5)
 

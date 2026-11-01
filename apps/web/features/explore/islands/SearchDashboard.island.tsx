@@ -28,6 +28,7 @@ import { filtersHidden, setFiltersHidden, syncFiltersHidden } from "../core/filt
 import {
 	activeFilterCount,
 	type ExploreParams,
+	isIsolatedCategory,
 	parseExploreParams,
 	serializeExploreParams,
 	withFilter,
@@ -202,8 +203,20 @@ function SearchDashboardView(
 	}
 
 	/** Commit a refinement: fetch + push a shareable URL, remembering a new free-text query. */
+	/**
+	 * Signed in, the shell's filter lane exists only while a scope is picked (`exploreFilterLaneFor`),
+	 * and the shell is server-rendered — so a move into or out of "All" is a real navigation.
+	 */
+	function crossesLane(next: ExploreParams): boolean {
+		return authed && isIsolatedCategory(next) !== isIsolatedCategory(params.peek());
+	}
+
 	function commit(next: ExploreParams) {
 		if (next.q && next.q !== params.peek().q) recordSearch(next.q);
+		if (crossesLane(next)) {
+			globalThis.location.assign(serializeExploreParams(next));
+			return;
+		}
 		void runSearch(next, true);
 	}
 
@@ -219,6 +232,10 @@ function SearchDashboardView(
 		const onPop = () => {
 			const next = parseExploreParams(globalThis.location.search);
 			if (serializeExploreParams(next) === serializeExploreParams(params.peek())) return;
+			if (crossesLane(next)) {
+				globalThis.location.reload();
+				return;
+			}
 			void runSearch(next, false);
 		};
 		globalThis.addEventListener("popstate", onPop);
@@ -354,7 +371,12 @@ function SearchDashboardView(
 	// surface. `isMobile` is `false` on the server, so the column SSRs and the sheet does not; the
 	// stylesheet hides the column below the phone cusp for the moment before hydration removes it.
 	const guestSidebar = !authed && !isMobile;
+	// Signed in, the same toggle drives the shell's filter lane, which renders only with a scope picked.
+	const laneToggle = guestSidebar || (authed && !isMobile && isIsolatedCategory(p));
 	const sidebarHidden = filtersHidden.value;
+	const toggleLabel = `${sidebarHidden ? "Show" : "Hide"} filters${
+		activeCount > 0 ? ` (${activeCount})` : ""
+	}`;
 
 	// A fresh element per call — never share one VNode instance across render locations, or Preact skips
 	// the second render (the mobile drawer body would come up empty). Used by the guest column AND
@@ -411,20 +433,23 @@ function SearchDashboardView(
 								</p>
 							)}
 							{
-								/* The guest desktop sidebar toggle sits directly beside the count as a quiet, labelled
-					    ghost control — the label carries the state and the applied count, so it needs neither a
-					    Tooltip nor the Button's corner badge. */
+								/* The desktop filter toggle sits directly beside the count as a quiet ghost control — the
+					    label carries the state and the applied count, so it needs neither a Tooltip nor the
+					    Button's corner badge. A guest sees the label; signed in it is a round icon-only button
+					    (the label becomes its name) over the shell's lane. */
 							}
-							{guestSidebar && (
+							{laneToggle && (
 								<Button
 									class="ex-dash__sidebar-toggle"
 									variant="text"
 									severity="secondary"
 									size="sm"
+									iconOnly={authed}
+									rounded={authed}
 									icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="2xs" />}
-									label={`${sidebarHidden ? "Show" : "Hide"} filters${
-										activeCount > 0 ? ` (${activeCount})` : ""
-									}`}
+									label={toggleLabel}
+									aria-label={authed ? toggleLabel : undefined}
+									title={authed ? toggleLabel : undefined}
 									aria-pressed={!sidebarHidden}
 									aria-controls="explore-filter-lane"
 									onClick={() => setFiltersHidden(!sidebarHidden)}

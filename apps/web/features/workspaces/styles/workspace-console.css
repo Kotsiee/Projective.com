@@ -144,7 +144,7 @@ here and there must never be one. */
     align-items: center;
     gap: var(--space-2);
     font-size: var(--wsp-fs-body);
-    color: var(--primary);
+    color: var(--primary-ink);
     text-decoration: none;
     white-space: nowrap;
 }
@@ -310,7 +310,7 @@ here and there must never be one. */
 .wsp-propose__link {
     flex: none;
     font-size: var(--wsp-fs-body);
-    color: var(--primary);
+    color: var(--primary-ink);
     text-decoration: none;
     white-space: nowrap;
 }

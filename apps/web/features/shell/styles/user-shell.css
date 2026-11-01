@@ -50,21 +50,24 @@
 /* #endregion */
 
 /* #region Integrated search — the guest header's pill search (`site-header__search-field`, Decisions #347, #348) */
-/* At rest: a command-palette pill — a faint tint, one hairline, muted ink, the shortcut docked at its
-   end. Focused or holding a query: it widens and lifts onto the solid surface with a firmer hairline
-   and a soft shadow (the app draws no focus ring, so the lift is the focus). It keeps the 2.5rem
-   height of the header's 40px utility buttons. The form is the field, so the typeahead anchors to
+/* At rest: a command-palette pill — a faint tint, one hairline, muted ink, the ghost scope selector
+   docked at its end. Signed in it is wider and lower than the guest pill (28rem → 36rem in use,
+   2rem tall, `--text-sm` ink) and centred in the space the brand mark leaves. With the FIELD focused
+   or holding a query it widens and lifts onto the solid surface with a firmer hairline and a soft
+   shadow (the app draws no focus ring, so the lift is the focus); the scope selector alone leaves it
+   at rest, and a pick hands focus to the field. The form is the field, so the typeahead anchors to
    its full width. */
 .shell-search {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     flex: 0 1 auto;
-    inline-size: 15rem;
+    inline-size: 28rem;
     max-inline-size: 100%;
     min-inline-size: 0;
-    block-size: 2.5rem;
-    padding-inline: var(--space-3) var(--space-2);
+    block-size: 2rem;
+    margin-inline: auto;
+    padding-inline: var(--space-3) 0;
     box-sizing: border-box;
     border: 1px solid var(--hairline-color);
     border-radius: var(--radius-full);
@@ -83,25 +86,22 @@
     border-color: var(--hairline-strong-color);
 }
 
-.shell-search:focus-within,
+.shell-search:has(.shell-search__search-input:focus),
 .shell-search:has(.shell-search__search-input:not(:placeholder-shown)) {
-    inline-size: 22rem;
-    padding-inline-end: var(--space-3);
+    inline-size: 36rem;
     background: var(--surface);
     border-color: var(--hairline-strong-color);
     box-shadow: var(--elevation-low);
     color: var(--on-surface);
 }
 
-/* The shortcut hint: shown at rest only — in use, the field's width is the query's. */
-.shell-search__hint {
-    display: inline-flex;
-    flex: 0 0 auto;
-}
-
-.shell-search:focus-within .shell-search__hint,
-.shell-search:has(.shell-search__search-input:not(:placeholder-shown)) .shell-search__hint {
-    display: none;
+/* The shared `ScopeSelect` (explore/styles/scope-select.css), fused at the pill's end behind a
+   hairline and rounded into its end cap. */
+.shell-search__scope .ex-scope__btn {
+    padding-inline: var(--space-3);
+    border-inline-start: 1px solid var(--hairline-color);
+    border-start-end-radius: var(--radius-full);
+    border-end-end-radius: var(--radius-full);
 }
 
 .shell-search__icon {
@@ -116,7 +116,7 @@
     background: transparent;
     color: var(--on-surface);
     font: inherit;
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     outline: none;
 }
 
@@ -188,7 +188,7 @@
    Placed AFTER `:hover` (they tie at 0,2,0, so source order decides) so pointing at the current
    destination cannot neutralise its ink; hover keeps the background channel and its feedback. */
 .shell-util__btn--active {
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-util__btn--active::after {
@@ -210,7 +210,7 @@
    currently covering a third of the screen looked exactly like one under the pointer. */
 .shell-util__btn[aria-expanded="true"] {
     background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-util__btn:focus-visible,
@@ -667,14 +667,14 @@
     flex: 0 0 auto;
     font-size: var(--text-sm);
     font-weight: var(--fw-medium);
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-account__acting-chevron {
     flex: 0 0 auto;
     inline-size: var(--icon-sm);
     block-size: var(--icon-sm);
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 /* The chevron points forward — which is the other way in a right-to-left document. */
@@ -748,7 +748,7 @@
     align-self: center;
     inline-size: var(--icon-xs);
     block-size: var(--icon-xs);
-    color: var(--primary);
+    color: var(--primary-ink);
     transform: rotate(90deg);
     transition: transform var(--dur-fast) var(--ease-standard);
 }
@@ -784,7 +784,7 @@
 }
 
 a.shell-setup__step:hover {
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-setup__step[data-done="true"] {
@@ -847,7 +847,7 @@ a.shell-setup__step:hover {
 /* #region Destinations + footer rig */
 /* The seller-conversion destination reads as the one forward step in the list. */
 .shell-menu__item--accent {
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-menu__item--accent .shell-menu__icon {
@@ -954,7 +954,7 @@ a.shell-setup__step:hover {
 .shell-ctx__manage {
     border-radius: var(--radius-xs);
     font-size: var(--text-xs);
-    color: var(--primary);
+    color: var(--primary-ink);
     text-decoration: none;
 }
 
@@ -1029,7 +1029,7 @@ a.shell-setup__step:hover {
     flex: 0 0 auto;
     inline-size: var(--icon-sm);
     block-size: var(--icon-sm);
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .shell-ctx__empty {

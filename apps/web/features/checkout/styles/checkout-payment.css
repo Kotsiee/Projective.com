@@ -156,7 +156,7 @@
 	flex: none;
 	gap: var(--space-1);
 	align-items: center;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
@@ -503,7 +503,7 @@
 	display: inline-flex;
 	gap: var(--space-2);
 	align-items: center;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
@@ -754,7 +754,7 @@
 
 .cko-cardlist__add:hover .cko-cardlist__addplate {
 	border-color: var(--primary);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cko-cardlist__addlabel {
@@ -773,7 +773,7 @@
 	padding: 0;
 	border: 0;
 	background: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font: inherit;
 	text-decoration: underline;
 	cursor: pointer;
@@ -887,7 +887,7 @@
 
 .cko-rail__change {
 	flex: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	text-decoration: none;

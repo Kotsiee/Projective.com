@@ -1,10 +1,21 @@
 import { type ReadonlySignal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { motionAllowed } from "../core/hero-motion.ts";
 
 // #region Hook
 /** `prefers-reduced-motion`, the OS channel (the in-app one is `:root[data-motion]`). */
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * Whether neither reduced-motion channel is on — `prefers-reduced-motion: reduce` and the app's
+ * `:root[data-motion="reduced"]` overlay. `false` on the server, where nothing animates.
+ */
+export function motionAllowed(): boolean {
+	if (typeof globalThis.matchMedia !== "function" || typeof globalThis.document === "undefined") {
+		return false;
+	}
+	return !(globalThis.matchMedia(REDUCED_QUERY).matches ||
+		document.documentElement.dataset.motion === "reduced");
+}
 
 /**
  * Whether either reduced-motion channel is on — the OS setting or the app's

@@ -266,7 +266,7 @@
 	flex: 0 0 auto;
 	display: inline-flex;
 	inline-size: 1rem;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .ui-select__option-label {
 	flex: 1 1 auto;

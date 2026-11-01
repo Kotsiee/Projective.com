@@ -73,7 +73,7 @@
 	box-shadow: none;
 }
 .ui-contextmenu__item--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-contextmenu__item--disabled {

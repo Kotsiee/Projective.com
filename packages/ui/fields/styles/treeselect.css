@@ -124,7 +124,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-treeselect__node--selected {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-treeselect__node--disabled {

@@ -278,7 +278,7 @@
 }
 
 .bnow__next {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	text-decoration: underline;
 }

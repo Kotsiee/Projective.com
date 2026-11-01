@@ -28,7 +28,7 @@
 	inline-size: 2rem;
 	block-size: 2rem;
 	font-size: 1.05rem;
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border: none;
 	border-radius: 50%;

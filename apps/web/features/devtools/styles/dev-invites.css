@@ -112,7 +112,7 @@
 	text-decoration: none;
 }
 .dev-inv__project:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: underline;
 }
 .dev-inv__meta {

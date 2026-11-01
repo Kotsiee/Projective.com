@@ -130,7 +130,7 @@
 }
 
 .cal-rail__item--accent {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /* #endregion */
@@ -580,7 +580,7 @@
 }
 
 .cal-band__iconbtn[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cal-band__controls {
@@ -701,7 +701,7 @@
 }
 
 .ui-button.cal-rig__preset[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-button.cal-rig__icon {
@@ -823,7 +823,7 @@
 
 .cal-sum__link {
 	font-size: var(--text-sm);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cal-panel--drawer {

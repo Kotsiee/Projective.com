@@ -306,7 +306,7 @@
 }
 
 .cko-note__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 }
 
@@ -385,7 +385,7 @@
 }
 
 .cko-block__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-xs);
 	white-space: nowrap;
 }
@@ -804,7 +804,7 @@
 	display: inline-flex;
 	gap: var(--space-1);
 	align-items: center;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-xs);
 	font-weight: var(--fw-normal);
 	text-decoration: none;
@@ -910,7 +910,7 @@
 }
 
 .cko-cards__empty a {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* #endregion */
 
@@ -1006,7 +1006,7 @@
 
 .cko-result__jump {
 	margin-inline-start: var(--space-2);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-xs);
 }
 
@@ -1040,7 +1040,7 @@
 }
 
 .cko-result__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 }
 /* #endregion */
@@ -1071,7 +1071,7 @@
 }
 
 .cko__empty-link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 }
 /* #endregion */

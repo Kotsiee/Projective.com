@@ -473,7 +473,7 @@ current destination rather than a second signal beside it. */
 	font-family: inherit;
 	line-height: inherit;
 	text-align: start;
-	color: var(--primary);
+	color: var(--primary-ink);
 	cursor: pointer;
 	border: 0;
 }

@@ -52,7 +52,7 @@
 }
 
 .cat-secnav__link[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cat-secnav__mark {

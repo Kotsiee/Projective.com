@@ -4,8 +4,7 @@ import { effect, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { DEMO_MODULES } from "../components/demos/demo-modules.ts";
 import type { DemoComponent, DemoId } from "../core/demos/demo-contract.ts";
-import { motionAllowed } from "../core/hero-motion.ts";
-import { useReducedMotion } from "../hooks/useReducedMotion.ts";
+import { motionAllowed, useReducedMotion } from "../hooks/useReducedMotion.ts";
 import {
 	DEMO_IDS,
 	DEMO_SECTION_ID,

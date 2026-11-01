@@ -126,7 +126,7 @@
 	box-shadow: none;
 }
 .ui-sort__option[data-selected="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-sort__option-label {
@@ -134,7 +134,7 @@
 }
 .ui-sort__option-check {
 	display: inline-flex;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

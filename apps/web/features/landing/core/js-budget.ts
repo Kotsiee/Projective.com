@@ -254,8 +254,9 @@ export const LANDING_PAGES: readonly BudgetPage[] = [
 				audience: "everyone",
 			},
 			{
-				// The page's only search (the final call to action's), which takes `/` (#282 (a)).
-				path: "apps/web/features/landing/islands/HeroSearch.island.tsx",
+				// The page's only search (the final call to action's), which takes `/` (#282 (a)): the shared
+				// hero bar of `/` and `/explore` (Decision #358).
+				path: "apps/web/features/marketing/islands/SearchBar.island.tsx",
 				audience: "everyone",
 				ownMax: LANDING_JS_BUDGET.heroIsland,
 			},

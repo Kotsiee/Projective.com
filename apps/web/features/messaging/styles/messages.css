@@ -349,7 +349,7 @@
 }
 
 .msg-rail__btn--accent {
-    color: var(--primary);
+    color: var(--primary-ink);
 }
 
 .msg-rail__btn--avatar {
@@ -403,7 +403,7 @@
     font-family: var(--font-sans);
     font-size: var(--text-sm);
     font-weight: var(--fw-semibold);
-    color: var(--primary);
+    color: var(--primary-ink);
     background: none;
     border: none;
     border-radius: var(--radius-base);

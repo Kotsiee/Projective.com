@@ -254,7 +254,7 @@
 .pjd-block__more {
 	flex: none;
 	font-size: var(--text-sm);
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	border-radius: var(--radius-sm);
 }
@@ -547,7 +547,7 @@ a.pjd-row:focus-visible {
 }
 
 .pjd-money__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	border-radius: var(--radius-sm);
 }
@@ -739,7 +739,7 @@ a.pjd-row:focus-visible {
 }
 
 .pjd-notice__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	border-radius: var(--radius-sm);
 }

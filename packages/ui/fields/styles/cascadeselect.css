@@ -102,7 +102,7 @@
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .ui-cascadeselect__item[aria-selected="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-cascadeselect__item-label {

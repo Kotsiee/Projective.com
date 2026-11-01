@@ -290,11 +290,11 @@ export function buildScheme(
 			"--on-secondary": hx(core.a2.tone(on(98))),
 			"--tertiary": hx(core.a3.tone(fg(40))),
 			"--on-tertiary": hx(core.a3.tone(on(98))),
-			"--bg": hx(core.n1.tone(98)),
+			"--bg": hx(core.n1.tone(99)),
 			"--surface": hx(core.n1.tone(100)),
-			"--surface-1": hx(core.n1.tone(96)),
-			"--surface-2": hx(core.n1.tone(94)),
-			"--surface-3": hx(core.n1.tone(92)),
+			"--surface-1": hx(core.n1.tone(98)),
+			"--surface-2": hx(core.n1.tone(97)),
+			"--surface-3": hx(core.n1.tone(96)),
 			// Mirror of the dark pair, measured the same way: tone 54 clears 3.89:1 on `--surface` down to
 			// 3.17:1 on `--surface-3`, hover 4.88:1, high contrast 4.88:1 / 7.64:1. The tone 88 previously
 			// registered here measured 1.11:1 against `--surface-3`.

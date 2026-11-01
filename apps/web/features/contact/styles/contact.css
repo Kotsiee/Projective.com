@@ -222,7 +222,7 @@
 	color: var(--text-secondary);
 }
 .ctc-note a {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /*
@@ -254,7 +254,7 @@
 	margin: 0;
 }
 .ctc-route__body a:not(.ui-button) {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* A link-variant action lines up with the sentences above it, not the button padding's inset. */
 .ctc-route__body .ui-button--link {
@@ -565,7 +565,7 @@
 .ctc-rail__link {
 	display: grid;
 	gap: var(--space-1);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-base);
 	font-weight: var(--fw-medium);
 	text-decoration: none;

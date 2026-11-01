@@ -125,7 +125,7 @@
 	flex: 0 0 auto;
 	display: inline-flex;
 	inline-size: 1rem;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .ui-listbox__checkbox {
 	flex: 0 0 auto;

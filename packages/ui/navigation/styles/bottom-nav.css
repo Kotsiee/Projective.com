@@ -42,7 +42,7 @@
  * channels the rest of the nav chrome uses for the same job.
  */
 .ui-bottom-nav__item--active {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-bottom-nav__item--active .ui-bottom-nav__label {

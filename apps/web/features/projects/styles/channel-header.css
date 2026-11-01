@@ -168,7 +168,7 @@
  * `.ui-lane-toggle` already use, so it survives greyscale and a CVD overlay.
  */
 .chan-action[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
@@ -193,12 +193,12 @@
 }
 
 .chan-action--star[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: transparent;
 }
 
 .chan-action--star[data-on="true"] :is(svg, path) {
-	fill: var(--primary);
+	fill: var(--primary-ink);
 }
 
 /* #endregion */

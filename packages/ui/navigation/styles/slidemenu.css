@@ -110,7 +110,7 @@
 	box-shadow: none;
 }
 .ui-slidemenu__item--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-slidemenu__item--disabled {

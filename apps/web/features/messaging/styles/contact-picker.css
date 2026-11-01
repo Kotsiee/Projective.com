@@ -298,7 +298,7 @@
 }
 .msg-picker__row-check {
 	display: inline-flex;
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .msg-picker__row-check svg {
 	inline-size: var(--icon-md);

@@ -425,7 +425,7 @@
 }
 
 .mem-th[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .mem-th:focus-visible {

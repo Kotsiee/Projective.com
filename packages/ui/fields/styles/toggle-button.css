@@ -7,6 +7,7 @@
 .ui-toggle-button {
 	--tb-accent: var(--primary);
 	--tb-on: var(--on-primary);
+	--tb-ink: var(--primary-ink);
 	--tb-height: var(--fld-h-md);
 	--tb-px: var(--space-4);
 	--tb-font: var(--fld-fs-md);
@@ -25,7 +26,7 @@
 	font-size: var(--tb-font);
 	font-weight: 600;
 	line-height: 1;
-	color: var(--tb-accent);
+	color: var(--tb-ink);
 	background: transparent;
 	border: var(--fld-bw) solid var(--fld-rest-bd);
 	border-radius: var(--tb-radius);

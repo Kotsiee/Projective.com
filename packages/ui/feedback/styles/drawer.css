@@ -112,6 +112,7 @@
 }
 .ui-drawer__tools .ui-button--text {
 	--btn-accent: var(--on-surface-variant);
+	--btn-ink: var(--on-surface-variant);
 }
 .ui-drawer__tools .ui-button--icon-only {
 	--btn-height: var(--overlay-action-size);

@@ -156,7 +156,7 @@
 
 .gantt-lane__row--link:hover .gantt-lane__label,
 .gantt-lane__row--button:hover .gantt-lane__label {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .gantt-lane__row:focus-visible {
@@ -506,7 +506,7 @@
 }
 
 .gantt-pop__title--open:hover .gantt-pop__titletext {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .gantt-pop__title--open:focus-visible {

@@ -78,7 +78,7 @@
 	box-shadow: none;
 }
 .ui-megamenu__top--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-megamenu__top--disabled {
@@ -166,7 +166,7 @@
 	box-shadow: none;
 }
 .ui-megamenu__leaf--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-megamenu__leaf--disabled {

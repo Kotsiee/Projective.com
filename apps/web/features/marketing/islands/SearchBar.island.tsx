@@ -3,9 +3,8 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
+import { ScopeSelect } from "@features/explore/components/ScopeSelect.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
-import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
-import { BodyPortal } from "@projective/ui/overlay";
 import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
 import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
 import {
@@ -95,7 +94,6 @@ export default function SearchBar({
 	slashFocus = false,
 }: SearchBarProps) {
 	const category = useSignal<SearchScope>(toScope(initialCategory));
-	const menuOpen = useSignal(false);
 	const query = useSignal(initialQuery);
 	const typed = useSignal("");
 	const formRef = useRef<HTMLFormElement>(null);
@@ -137,22 +135,6 @@ export default function SearchBar({
 	}, [category.value]);
 	// #endregion
 
-	// Outside press and Escape through the shared overlay stack, which also sets its z-index.
-	const stack = useOverlayStack({ active: menuOpen.value });
-	// Portalled and anchored, so no sticky or glass ancestor can clip the list or re-base it (§B.10.4).
-	const menu = useEdgeDetection<HTMLButtonElement, HTMLUListElement>({
-		open: menuOpen.value,
-		offset: 8,
-		zIndex: stack.zIndex,
-	});
-	useDismiss({
-		open: menuOpen.value,
-		enabled: stack.isTop,
-		onDismiss: () => (menuOpen.value = false),
-		panelRef: menu.ref,
-		triggerRef: menu.triggerRef,
-	});
-
 	/** Navigate to `/explore` with the active scope + query (omitting the neutral `all` scope + empty query). */
 	function go(q: string) {
 		const params = new URLSearchParams();
@@ -176,52 +158,11 @@ export default function SearchBar({
 					go(query.value.trim());
 				}}
 			>
-				<div class="hero-search__entity">
-					<button
-						ref={menu.triggerRef}
-						type="button"
-						class="hero-search__entity-btn"
-						aria-haspopup="listbox"
-						aria-expanded={menuOpen.value}
-						onClick={() => (menuOpen.value = !menuOpen.value)}
-					>
-						{searchScopeLabel(category.value)}
-						<Icon name="chevron-down" size="2xs" class="hero-search__chevron" />
-					</button>
-					{menuOpen.value && (
-						<BodyPortal>
-							<ul
-								ref={menu.ref}
-								class="ui-anchored hero-search__menu"
-								role="listbox"
-								aria-label="Search category"
-								style={menu.style}
-							>
-								{SEARCH_SCOPES.map((opt) => (
-									<li
-										key={opt.value}
-										role="option"
-										aria-selected={category.value === opt.value}
-										class="hero-search__option"
-										tabIndex={0}
-										onClick={() => {
-											category.value = opt.value;
-											menuOpen.value = false;
-										}}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") {
-												category.value = opt.value;
-												menuOpen.value = false;
-											}
-										}}
-									>
-										{opt.label}
-									</li>
-								))}
-							</ul>
-						</BodyPortal>
-					)}
-				</div>
+				<ScopeSelect
+					class="hero-search__entity"
+					value={category.value}
+					onPick={(next) => (category.value = next)}
+				/>
 
 				<div class="hero-search__field">
 					<SearchSuggest

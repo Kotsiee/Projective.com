@@ -347,6 +347,7 @@ a.cko-rig__cta[aria-disabled="true"] {
 .ui-button.cko-rig__cta--ghost,
 .ui-button--primary.cko-rig__btn {
     --btn-accent: var(--on-surface);
+    --btn-ink: var(--on-surface);
 }
 
 /* #region Container tiers */

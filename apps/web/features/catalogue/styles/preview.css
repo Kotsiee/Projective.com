@@ -42,7 +42,7 @@
 	padding-block: var(--space-1);
 	padding-inline: var(--space-2);
 	border-radius: var(--radius-sm);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	text-decoration: none;

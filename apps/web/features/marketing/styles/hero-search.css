@@ -4,8 +4,8 @@
  * THE BAR IS THE HEADER'S FORMER BAR AT A LARGER SIZE (the headers' bars became scope-less ghosts
  * in Decision #347; this recipe now lives here and in the results bar): one hairline-ringed pill on
  * a 55% `--surface-2` tint, a fused scope selector whose trailing edge IS the divider, a plain field,
- * and a quiet icon-only submit that lives INSIDE the pill rather than beside it. The results-page bar
- * (`ex-results-head__search`) mirrors it, so the two in-page bars read as one control.
+ * and a quiet icon-only submit that lives INSIDE the pill rather than beside it. Its `--hero`
+ * variant (below) is the one search on `/`, `/explore`, `/explore?q=` and `/features` (Decision #358).
  *
  * What it used to be, and why each part changed:
  *  - A 74% glass slab with its own backdrop blur and `--elevation-high`. The header bar has no blur
@@ -65,78 +65,17 @@
 }
 
 /* #region Entity selector */
-.hero-search__entity {
-	position: relative;
-	flex: 0 0 auto;
-	block-size: 100%;
-}
-
-/* The selector's trailing edge is the divider between it and the field — the header's placement. */
-.hero-search__entity-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	block-size: 100%;
-	padding-inline: var(--space-3);
-	border: 0;
+/* The shared `ScopeSelect`, fused to the bar's leading edge: its trailing edge is the one divider
+   between it and the field, and its hover fills the whole leading segment, corner to divider. */
+.hero-search__entity .ex-scope__btn {
 	border-inline-end: 1px solid var(--hairline-color);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-	white-space: nowrap;
-	cursor: pointer;
-	border-start-start-radius: var(--radius-lg);
-	border-end-start-radius: var(--radius-lg);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	border-start-start-radius: inherit;
+	border-end-start-radius: inherit;
 }
 
-.hero-search__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.hero-search__entity-btn:focus-visible {
-	outline: none;
-}
-
-.hero-search__chevron {
-	color: var(--on-surface-variant);
-	transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.hero-search__entity-btn[aria-expanded="true"] .hero-search__chevron {
-	transform: rotate(180deg);
-}
-
-/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
-.hero-search__menu {
-	min-inline-size: 12rem;
-	margin: 0;
-	padding: var(--space-1);
-	list-style: none;
-	background: var(--surface-2);
-	border: 1px solid var(--hairline-color);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
-}
-
-.hero-search__option {
-	padding: 0.65rem 0.9rem;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-/* Subtle highlight — a neutral surface tint, never a heavy primary fill (as in the header). */
-.hero-search__option:hover,
-.hero-search__option:focus-visible,
-.hero-search__option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
-	outline: none;
+.hero-search__entity {
+	border-start-start-radius: inherit;
+	border-end-start-radius: inherit;
 }
 
 /* #endregion */
@@ -222,7 +161,7 @@
 }
 
 .hero-search__submit:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .hero-search__submit:focus-visible {
@@ -270,7 +209,7 @@
 
 .hero-search__tag:hover {
 	border-color: var(--primary);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .hero-search__tag:focus-visible {
@@ -279,10 +218,108 @@
 
 /* #endregion */
 
+/* #region Hero variant — the command pill */
+/*
+ * The hero variant — the ONE discovery bar on the Explore hero (`/`, `/explore`), the results
+ * header (`/explore?q=…`) and `/features` (Decisions #350, #358): a 60px pill on a solid
+ * `--surface-1` step with one `--hairline-strong` contour and a low lift. Focus anywhere inside it rings the PILL in a soft
+ * `--primary` glow (an outer `box-shadow` of a solid mix, so nothing moves — §B.12.3); the controls
+ * inside keep the app's no-ring rule (Decision #350 FLAG (b)).
+ */
+.hero-search--hero {
+	max-inline-size: 46rem;
+}
+
+.hero-search--hero .hero-search__bar {
+	block-size: 3.75rem;
+	padding-inline: 0 var(--space-2);
+	border: 1px solid var(--hairline-strong-color);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	box-shadow: var(--elevation-low);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-medium) var(--ease-standard);
+}
+
+.hero-search--hero .hero-search__bar:focus-within {
+	border-color: color-mix(in srgb, var(--primary) 55%, var(--surface-1));
+	box-shadow:
+		var(--elevation-low),
+		0 0 0 4px color-mix(in srgb, var(--primary) 16%, var(--bg));
+}
+
+/* The one fill in the hero (§B.8): a solid circular submit on the brand pair, compressing on press. */
+.hero-search--hero .hero-search__submit {
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	background: var(--primary);
+	color: var(--on-primary);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.hero-search--hero .hero-search__submit:hover {
+	background: color-mix(in srgb, var(--primary) 88%, var(--scrim));
+	color: var(--on-primary);
+}
+
+/* The "Try" prompts: quiet controls on a solid step — never a translucent teal wash (§B.11.6). */
+.hero-search--hero .hero-search__trending {
+	margin-block-start: var(--space-5);
+}
+
+.hero-search--hero .hero-search__trending-label {
+	color: var(--text-secondary);
+}
+
+.hero-search--hero .hero-search__tag {
+	padding: var(--space-1) var(--space-3);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.hero-search--hero .hero-search__tag:hover {
+	border-color: var(--hairline-color);
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.hero-search--hero .hero-search__submit:active,
+.hero-search--hero .hero-search__tag:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.hero-search--hero .hero-search__submit:active,
+	.hero-search--hero .hero-search__tag:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .hero-search--hero .hero-search__submit:active,
+:root[data-motion="reduced"] .hero-search--hero .hero-search__tag:active {
+	transform: none;
+}
+
+/* #endregion */
+
 /* #region Responsive */
 @media (max-width: 560px) {
-	.hero-search__entity-btn {
-		padding-inline: var(--space-2);
+	.hero-search__entity .ex-scope__btn {
+		padding-inline: var(--space-3);
 	}
 
 	.hero-search__input,

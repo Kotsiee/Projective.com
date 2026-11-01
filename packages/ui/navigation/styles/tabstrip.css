@@ -141,6 +141,7 @@
 
 .ui-button.ui-tabstrip__current {
 	--btn-accent: var(--on-surface);
+	--btn-ink: var(--on-surface);
 	flex: 0 1 auto;
 	color: var(--ui-tabstrip-active-ink);
 	min-inline-size: 0;
@@ -178,6 +179,7 @@
 
 .ui-button.ui-tabstrip__step {
 	--btn-accent: var(--text-secondary);
+	--btn-ink: var(--text-secondary);
 	flex: none;
 	text-decoration: none;
 }

@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import SearchBar from "@features/marketing/islands/SearchBar.island.tsx";
 import HeroPatternGlow from "../islands/HeroPatternGlow.island.tsx";
-import { WEAVE_PATH, WEAVE_STROKE, WEAVE_TILE } from "../core/hero-weave.ts";
+import { HeroWeave } from "./HeroWeave.tsx";
 
 /**
  * ExploreHomeHeader — the discovery hero (Decisions #350, #351, #353).
@@ -44,32 +44,5 @@ export function ExploreHomeHeader({ gateway = false }: { gateway?: boolean }): J
 				</div>
 			</div>
 		</section>
-	);
-}
-
-/** The stencil: the strapwork tile ({@link WEAVE_PATH}) as an SVG pattern, one translucent stroke. */
-function HeroWeave(): JSX.Element {
-	return (
-		<svg class="ex-hero__weave" focusable="false">
-			<defs>
-				<pattern
-					id="ex-weave"
-					width={WEAVE_TILE}
-					height={WEAVE_TILE}
-					patternUnits="userSpaceOnUse"
-				>
-					<g
-						class="ex-hero__weave-line"
-						fill="none"
-						stroke-width={WEAVE_STROKE}
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path d={WEAVE_PATH} />
-					</g>
-				</pattern>
-			</defs>
-			<rect width="100%" height="100%" fill="url(#ex-weave)" />
-		</svg>
 	);
 }

@@ -41,7 +41,7 @@
 
 .brd-rig__icon[aria-pressed="true"] {
     background: var(--surface);
-    color: var(--primary);
+    color: var(--primary-ink);
     box-shadow: var(--elevation-low);
 }
 

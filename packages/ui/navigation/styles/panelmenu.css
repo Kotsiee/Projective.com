@@ -61,7 +61,7 @@
 	cursor: not-allowed;
 }
 .ui-panelmenu__leaf--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-panelmenu__toggle {

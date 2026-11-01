@@ -87,7 +87,7 @@
 	gap: var(--space-2);
 	flex: none;
 	font-size: var(--wsp-fs-body);
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	white-space: nowrap;
 }
@@ -825,7 +825,7 @@ the requester and the amount step down to the secondary register — never throu
 }
 
 .wsp-approvals__ref-link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 }
 
@@ -939,7 +939,7 @@ the requester and the amount step down to the secondary register — never throu
 }
 
 .wsp-lock__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 	white-space: nowrap;
 }

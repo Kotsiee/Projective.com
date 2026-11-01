@@ -190,7 +190,7 @@
 
 .brd-colhead__add:hover {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .brd-colhead__add:focus-visible {

@@ -412,7 +412,7 @@
 }
 
 .site-header__mega-pillar.is-active .site-header__mega-pillar-label {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /* One line at most: a longer pitch ends in an ellipsis (the full text stays in the DOM). */
@@ -491,7 +491,7 @@
 	border-block-start: 1px solid var(--hairline-color);
 	font-size: var(--text-md);
 	font-weight: var(--fw-semibold);
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 }
 
@@ -899,7 +899,7 @@
 	padding-inline-start: var(--space-2);
 	font-size: 0.95rem;
 	font-weight: 600;
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 }
 

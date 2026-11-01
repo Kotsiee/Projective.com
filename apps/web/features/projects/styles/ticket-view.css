@@ -442,7 +442,7 @@
 
 .tkv-tabs__tab[aria-selected="true"] .tkv-tabs__count {
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /* Unread on the History trigger is a DOT, not a count — the count itself is a footer metric the
@@ -886,7 +886,7 @@
 }
 
 .tkv-live__name:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .tkv-live__name:focus-visible {
@@ -1379,7 +1379,7 @@
 }
 
 .tkv-rail__more:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .tkv-rail__more:focus-visible {

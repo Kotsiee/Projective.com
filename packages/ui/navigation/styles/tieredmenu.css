@@ -101,7 +101,7 @@
 	box-shadow: none;
 }
 .ui-tieredmenu__item--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-tieredmenu__item--disabled {

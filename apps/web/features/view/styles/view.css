@@ -530,7 +530,7 @@
     min-block-size: var(--fld-hit);
     border: none;
     background: transparent;
-    color: var(--primary);
+    color: var(--primary-ink);
     font-size: var(--text-sm);
     font-weight: var(--fw-semibold);
     cursor: pointer;

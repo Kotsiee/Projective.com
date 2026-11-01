@@ -310,7 +310,7 @@
 }
 
 .prj-port__inline {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-medium);
 }
 

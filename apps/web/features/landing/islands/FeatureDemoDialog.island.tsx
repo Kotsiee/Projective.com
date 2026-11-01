@@ -6,6 +6,7 @@ import "../styles/lp-theme.css";
 import "../styles/lp-shell.css";
 import "../styles/lp-faq.css";
 import "../styles/lp-final.css";
+import "../styles/lp-hero.css";
 import "../styles/lp-features.css";
 import "../styles/lp-feature-dialog.css";
 import type { JSX } from "preact";

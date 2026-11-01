@@ -323,7 +323,7 @@
 }
 
 .fh-headerband__icon[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .fh-headerband__icon:focus-visible {
@@ -427,11 +427,11 @@
 
 .fh-headerband__menu-item[aria-current="true"] {
 	background: var(--surface-2);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .fh-headerband__menu-item[aria-current="true"] .fh-headerband__menu-glyph {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .fh-headerband__menu-item:focus-visible {
@@ -549,7 +549,7 @@
 .fh-filter__check {
 	display: inline-flex;
 	flex: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	opacity: 0;
 }
 
@@ -576,7 +576,7 @@
 	border: none;
 	border-radius: var(--radius-base);
 	background: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font: inherit;
 	font-size: var(--text-sm);
 	cursor: pointer;

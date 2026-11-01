@@ -326,7 +326,7 @@
 }
 
 .bskd-line__seller:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: underline;
 }
 
@@ -373,7 +373,7 @@
 }
 
 .bskd-line__btn[aria-pressed="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .bskd-line__btn--danger:hover:not(:disabled) {
@@ -505,7 +505,7 @@
 }
 
 .bsk-switch__row--new {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .bsk-switch__row--new .bsk-switch__name {

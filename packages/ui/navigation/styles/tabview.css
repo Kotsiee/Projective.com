@@ -44,7 +44,7 @@
 }
 
 .ui-tabview__tab--active {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 

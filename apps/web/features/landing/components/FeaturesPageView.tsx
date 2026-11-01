@@ -34,7 +34,7 @@ export interface FeaturesIslands {
 	demo: ComponentChildren;
 	/** Pricing with its calculator (`Pricing`). */
 	pricing: ComponentChildren;
-	/** The final call to action's search (`HeroSearch`, `idSuffix` `-final`): the page's only one. */
+	/** The final call to action's search (the shared hero `SearchBar`): the page's only one. */
 	finalSearch: ComponentChildren;
 }
 

@@ -1,10 +1,8 @@
 import type { JSX } from "preact";
-import { DEFAULT_AVATAR_URL } from "@projective/types/user";
-import HeroSearch from "@features/landing/islands/HeroSearch.island.tsx";
+import SearchBar from "@features/marketing/islands/SearchBar.island.tsx";
 import FeatureDemoDialog from "@features/landing/islands/FeatureDemoDialog.island.tsx";
 import DemoStage from "@features/landing/components/DemoStage.tsx";
 import { Pricing } from "@features/landing/components/Pricing.tsx";
-import { FINAL_SEARCH_SUFFIX, FINAL_TITLE_ID } from "@features/landing/components/FinalCta.tsx";
 import {
 	FeaturesPageView,
 	type FeaturesPageViewProps,
@@ -28,12 +26,8 @@ export { featuresPageMeta } from "@features/landing/core/features-seo.ts";
 export interface FeaturesPageProps extends Omit<FeaturesPageViewProps, "islands" | "viewer"> {
 	/** The demo stage's open tab, from `?demo=` (default `board`). */
 	demo: DemoId;
-	/** The final search's data (`ExploreBackendService.landingHero`) and the viewer facts. */
-	hero: {
-		terms: string[];
-		trending: string[];
-		viewer: FeaturesPageViewProps["viewer"];
-	};
+	/** The viewer facts the final call to action reads. */
+	hero: { viewer: FeaturesPageViewProps["viewer"] };
 }
 
 /**
@@ -52,9 +46,9 @@ export interface FeaturesPageProps extends Omit<FeaturesPageViewProps, "islands"
  *     a demo;
  *   - the demo stage ({@link DemoStage}) on the tab `?demo=` names — where a "Try it" lands with no
  *     JavaScript — and Pricing ({@link Pricing}) with its calculator, each handed the server's fee;
- *   - the final call to action's search — the page's only search, so it takes the
- *     `/` shortcut (Decision #282 FLAG (a), §2.6 note 7), with no typewriter, its landmark named by the
- *     section's h2.
+ *   - the final call to action's search — the shared hero `SearchBar`, the same bar as `/`, `/explore`
+ *     and `/explore?q=` (Decision #358); the page's only search, so it takes the `/` shortcut
+ *     (Decision #282 FLAG (a), §2.6 note 7).
  */
 export function FeaturesPage({ hero, demo, ...view }: FeaturesPageProps): JSX.Element {
 	const { feeBp } = view;
@@ -81,17 +75,7 @@ export function FeaturesPage({ hero, demo, ...view }: FeaturesPageProps): JSX.El
 				},
 				demo: <DemoStage demo={demo} feeBp={feeBp} />,
 				pricing: <Pricing feeBp={feeBp} />,
-				finalSearch: (
-					<HeroSearch
-						idSuffix={FINAL_SEARCH_SUFFIX}
-						slashFocus
-						typewriter={false}
-						terms={hero.terms}
-						trending={hero.trending}
-						avatarFallback={DEFAULT_AVATAR_URL}
-						landmarkLabelledBy={FINAL_TITLE_ID}
-					/>
-				),
+				finalSearch: <SearchBar variant="hero" slashFocus />,
 			}}
 		/>
 	);

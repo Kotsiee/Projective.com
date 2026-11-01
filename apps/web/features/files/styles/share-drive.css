@@ -293,7 +293,7 @@
 	color: var(--text-secondary);
 }
 .fsh-choice[data-chosen="true"] .fsh-choice__glyph {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .fsh-choice__note {
 	grid-column: 2;
@@ -727,7 +727,7 @@
 	color: var(--text-secondary);
 }
 .drv-row[aria-pressed="true"] .drv-row__glyph {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .drv-row__body {

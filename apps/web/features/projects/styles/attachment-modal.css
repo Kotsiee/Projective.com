@@ -345,7 +345,7 @@
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 .fx-source__name:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .fx-source__name:focus-visible {
 	outline: none;

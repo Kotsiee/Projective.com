@@ -267,7 +267,7 @@
 }
 
 .ui-dt__sortmark[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	opacity: 1;
 }
 
@@ -353,7 +353,7 @@
 }
 
 .ui-dt__filter[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-dt__grip {

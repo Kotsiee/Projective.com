@@ -30,7 +30,7 @@
 .ins-bar__home {
 	display: inline-flex;
 	flex: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	border-radius: var(--radius-sm);
 	transition: transform var(--dur-press) var(--ease-standard);
 }
@@ -379,7 +379,7 @@
 	text-decoration: none;
 }
 .ins-owner__handle:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: underline;
 }
 .ins-owner__handle:focus-visible {
@@ -520,7 +520,7 @@
 .ins-missing__home {
 	display: inline-flex;
 	margin-block-end: var(--space-4);
-	color: var(--primary);
+	color: var(--primary-ink);
 	border-radius: var(--radius-sm);
 }
 .ins-missing__home:focus-visible {

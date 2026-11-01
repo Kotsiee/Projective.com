@@ -594,7 +594,7 @@ a.bsk-eng__seller:focus-visible {
 }
 
 .bsk-sub__title:hover {
-    color: var(--primary);
+    color: var(--primary-ink);
     text-decoration: underline;
 }
 

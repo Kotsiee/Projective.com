@@ -173,7 +173,7 @@
 
 .stg-note a,
 .stg-facts__note a {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .stg-tabular {
@@ -187,7 +187,7 @@
 	align-self: flex-start;
 	font-size: var(--text-md);
 	font-weight: var(--fw-medium);
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: none;
 }
 

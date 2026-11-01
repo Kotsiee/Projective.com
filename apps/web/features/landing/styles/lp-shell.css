@@ -282,13 +282,13 @@
    only while BOTH channels allow motion. */
 @media (prefers-reduced-motion: reduce) {
 	.lp-reveal,
-	:is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab):active {
+	:is(.lp-btn, .lp-chip, .lp-tab):active {
 		transform: none;
 	}
 }
 
 :root[data-motion="reduced"] .lp-reveal,
-:root[data-motion="reduced"] :is(.lp-btn, .lp-search__submit, .lp-chip, .lp-tab):active {
+:root[data-motion="reduced"] :is(.lp-btn, .lp-chip, .lp-tab):active {
 	transform: none;
 }
 

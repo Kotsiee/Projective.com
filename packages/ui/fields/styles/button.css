@@ -7,6 +7,10 @@
 .ui-button {
 	--btn-accent: var(--primary);
 	--btn-on: var(--on-primary);
+	/* Label/icon ink of the transparent variants (outlined · text · link). Follows the accent, except
+	   the brand, whose `.ui-button--primary` re-points it to `--primary-ink` (white in dark). A rule
+	   that overrides `--btn-accent` on a primary-severity Button sets this too. */
+	--btn-ink: var(--btn-accent);
 	/*
 	 * The tonal press ramp (§B.12.4): the pole hover/active blend TOWARD, and how far.
 	 *
@@ -172,6 +176,7 @@
 .ui-button--primary {
 	--btn-accent: var(--primary);
 	--btn-on: var(--on-primary);
+	--btn-ink: var(--primary-ink);
 	/* Inherits the base's ZERO tonal step. The brand fill has no luminance headroom in either
 	   direction — see the ramp comment on `.ui-button`. */
 }
@@ -275,7 +280,7 @@
 /* #region Variants */
 .ui-button--outlined {
 	background: transparent;
-	color: var(--btn-accent);
+	color: var(--btn-ink);
 	border-color: var(--btn-accent);
 }
 .ui-button--outlined:hover:not(:disabled) {
@@ -283,7 +288,7 @@
 }
 .ui-button--text {
 	background: transparent;
-	color: var(--btn-accent);
+	color: var(--btn-ink);
 	border-color: transparent;
 }
 .ui-button--text:hover:not(:disabled) {
@@ -306,7 +311,7 @@
 }
 .ui-button--link {
 	background: transparent;
-	color: var(--btn-accent);
+	color: var(--btn-ink);
 	border-color: transparent;
 	text-decoration: underline;
 	text-underline-offset: 2px;

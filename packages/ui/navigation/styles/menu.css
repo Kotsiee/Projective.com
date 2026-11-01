@@ -106,7 +106,7 @@
 	background: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 .ui-menu__item--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-menu__item--disabled {

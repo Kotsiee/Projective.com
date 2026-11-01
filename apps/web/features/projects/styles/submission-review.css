@@ -185,7 +185,7 @@
 	border-radius: var(--radius-sm);
 }
 a.subm-ctx__who:hover .subm-ctx__name {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 .subm-ctx__id {
 	display: flex;
@@ -248,7 +248,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	box-shadow: none;
 }
 .subm-ctx__tab[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .subm-ctx__tabicon {
@@ -331,7 +331,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	box-shadow: none;
 }
 .subm-work__tool[aria-pressed="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /* File mode — rail + preview + feedback */

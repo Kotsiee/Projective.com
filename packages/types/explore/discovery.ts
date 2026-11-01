@@ -110,19 +110,6 @@ export interface PlatformStats {
 	paidOutCurrency: string;
 }
 
-/**
- * The landing hero search's server-derived data (`ExploreBackendService.landingHero`,
- * `flows/LANDING.md` §4.1): every list may be empty, and the page withholds that part when it is.
- */
-export interface LandingHero {
-	/** The typewriter's example searches, each confirmed by a typeahead hit. */
-	terms: string[];
-	/** The trending terms for every category: the empty field's Trending rows. */
-	trending: string[];
-	/** The "Try:" chips: the trending terms, else the typewriter's. */
-	chips: string[];
-}
-
 /** The composed Home discovery feed (State A first paint): sections keyed by format + reserved promos. */
 export interface HomeFeed {
 	users: ProfileItem[];

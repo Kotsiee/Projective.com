@@ -213,7 +213,7 @@
 }
 .dev-ctx__seg[data-active="true"] {
 	background: var(--surface);
-	color: var(--primary);
+	color: var(--primary-ink);
 	box-shadow: var(--elevation-low);
 }
 .dev-ctx__seg:disabled {

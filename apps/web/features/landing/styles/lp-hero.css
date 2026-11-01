@@ -1,8 +1,8 @@
 /*
  * lp-hero — the calls to action the hero left behind (`documentation/flows/LANDING.md` §4.1, §4.11):
  * `HeroCtas` in `/features`' final call to action (`FinalCta.tsx`; `lp-final.css` places the row).
- * Decision #349 retired the hero itself. Delivered by the HeroSearch island (a server component's
- * stylesheet reaches no page), which renders wherever these classes do.
+ * Decision #349 retired the hero itself. Delivered by the FeatureDemoDialog island (a server
+ * component's stylesheet reaches no page), which `/features` always renders.
  *
  *   - `.lp-hero__ctas`: an outlined button and a text link; neither is filled (the search's submit is
  *     the region's one fill).

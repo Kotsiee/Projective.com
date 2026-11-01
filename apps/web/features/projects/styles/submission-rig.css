@@ -51,7 +51,7 @@
 }
 
 .subm-rig__tasks[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }

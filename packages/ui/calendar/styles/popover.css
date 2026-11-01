@@ -306,7 +306,7 @@
 }
 
 .cal-pop__title--open:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .cal-pop__title--open:focus-visible {
@@ -550,7 +550,7 @@
 	border: 1px solid color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	border-radius: var(--radius-base);
 	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-family: inherit;
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);

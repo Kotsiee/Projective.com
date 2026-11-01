@@ -47,9 +47,8 @@ export function HeroCtas({ viewer }: HeroCtasProps): JSX.Element {
 /** Props for {@link FinalCta}. */
 export interface FinalCtaProps {
 	/**
-	 * The second `HeroSearch` instance (`idSuffix` {@link FINAL_SEARCH_SUFFIX}): the static
-	 * placeholder, no typewriter, no `/` hint and no shortcut — the hero's instance owns the key
-	 * (Decision #282 (A)) — and no "Try:" line (§2.1 note 24).
+	 * The shared hero `SearchBar` (Decision #358): the same bar as `/`, `/explore` and
+	 * `/explore?q=`, holding the `/` shortcut as the page's only search.
 	 */
 	search: ComponentChildren;
 	/** Who is looking: picks the second call to action ({@link HeroCtas}). */

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import ExploreFilterLane from "../islands/ExploreFilterLane.island.tsx";
-import { isResultsMode, parseExploreParams } from "./explore-state.ts";
+import { isIsolatedCategory, parseExploreParams } from "./explore-state.ts";
 
 /**
  * exploreFilterLaneFor — the SSR-idiomatic route resolver that decides whether the Search filters mount
@@ -9,9 +9,11 @@ import { isResultsMode, parseExploreParams } from "./explore-state.ts";
  * the `(public)` layout, so the correct lane paints on the first byte with no client-context flash.
  *
  * Returns the {@link ExploreFilterLane} island (seeded with the parsed params) only for an
- * AUTHENTICATED viewer on `/explore` in Search Results mode (State B) — the middle-nav lane of the
- * authenticated frame is a full-height column beside the content pane, which is where that frame
- * keeps every laned surface's navigation.
+ * AUTHENTICATED viewer on `/explore` with a scope picked (`?category=` off "All", Decision #359) — the
+ * middle-nav lane of the authenticated frame is a full-height column beside the content pane, which is
+ * where that frame keeps every laned surface's navigation. A free-text search across every scope has
+ * no lane: its facets are scope-specific, so there is nothing to filter until a scope is chosen. The
+ * results bar's ghost filter toggle then hides and shows the lane (`filter-visibility.ts`).
  *
  * A GUEST gets `null`: the guest filter column is rendered by the {@link SearchDashboard} island
  * itself, as the inline-start column of the results BODY, so it starts where the results bar starts
@@ -27,6 +29,6 @@ export function exploreFilterLaneFor(url: URL, authed: boolean): ComponentChildr
 	if (!authed) return null;
 	if (url.pathname !== "/explore") return null;
 	const params = parseExploreParams(url.searchParams);
-	if (!isResultsMode(params)) return null;
+	if (!isIsolatedCategory(params)) return null;
 	return <ExploreFilterLane initialParams={params} />;
 }

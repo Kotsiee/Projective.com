@@ -1005,6 +1005,7 @@
     /* A settled control steps to the success tone for the beat it holds. Border and ink, so the
 	 * button's own geometry never moves under the cursor. */
     --btn-accent: var(--success);
+    --btn-ink: var(--success);
     --btn-on: var(--surface);
 }
 

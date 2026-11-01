@@ -35,4 +35,5 @@
 /* Ghost actions in the footer read in the surface ink, not the brand teal. */
 .av-modal__foot .ui-button--text {
 	--btn-accent: var(--on-surface);
+	--btn-ink: var(--on-surface);
 }

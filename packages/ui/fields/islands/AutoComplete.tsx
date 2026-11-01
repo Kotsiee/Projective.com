@@ -13,7 +13,7 @@ import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
-import { Icon } from "../../icons/mod.ts";
+import { Icon, type IconName } from "../../icons/mod.ts";
 
 // #region Types
 /** A single suggestion — either a bare string or a rich {@link Option}. */
@@ -36,6 +36,12 @@ export interface AutoCompleteSection {
 	 * narrows it to some rows (an action row in the same group stays permanent).
 	 */
 	removable?: boolean | ((item: Option) => boolean);
+	/**
+	 * A section-wide action (e.g. "Clear recent searches"), drawn as an icon-only ghost row on the
+	 * section's label line. It is still an option: chosen like any row, reached last by the arrow keys,
+	 * and named by `item.label`.
+	 */
+	action?: { item: Option; icon: IconName };
 }
 
 export interface AutoCompleteProps extends BaseFieldProps {
@@ -201,7 +207,12 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 	// #endregion
 
 	const rows: Row[] = sections
-		? sections.flatMap((s) => s.items.map((item) => ({ item, opt: toOption(item), section: s })))
+		? sections.flatMap((s) => [
+			...s.items.map((item) => ({ item, opt: toOption(item), section: s })),
+			...(s.action && s.items.length > 0
+				? [{ item: s.action.item, opt: s.action.item, section: s }]
+				: []),
+		])
 		: suggestions.map((item) => ({ item, opt: toOption(item), section: null }));
 	const rowsKey = rows.map((r) => keyOf(r.item)).join("\u0000");
 
@@ -464,12 +475,35 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 		let offset = 0;
 		return sections.filter((s) => s.items.length > 0).map((s) => {
 			const start = rows.findIndex((r) => r.section === s, offset);
-			offset = start + s.items.length;
+			const actionIndex = s.action ? start + s.items.length : -1;
+			offset = start + s.items.length + (s.action ? 1 : 0);
 			const labelId = `${listId}-grp-${s.id}`;
 			return (
 				<div key={s.id} role="group" aria-labelledby={labelId} class="ui-autocomplete__group">
-					<div id={labelId} class="ui-autocomplete__group-label" aria-hidden="true">
-						{s.label}
+					<div class="ui-autocomplete__group-head">
+						<div id={labelId} class="ui-autocomplete__group-label" aria-hidden="true">
+							{s.label}
+						</div>
+						{s.action && (
+							<div
+								id={`${listId}-opt-${actionIndex}`}
+								role="option"
+								aria-selected={actionIndex === activeIndex}
+								aria-label={s.action.item.label}
+								title={s.action.item.label}
+								class={cx(
+									"ui-autocomplete__action",
+									actionIndex === activeIndex && "ui-autocomplete__action--active",
+								)}
+								onPointerDown={(e) => {
+									e.preventDefault();
+									selectSuggestion(rows[actionIndex].item);
+								}}
+								onPointerEnter={() => nav.reset(actionIndex)}
+							>
+								<Icon name={s.action.icon} size="xs" />
+							</div>
+						)}
 					</div>
 					{s.items.map((_, j) => renderRow(rows[start + j], start + j))}
 				</div>
@@ -581,19 +615,21 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 							"--z-portal": String(stack.zIndex),
 						})}
 					>
-						{empty
-							? <div class="ui-autocomplete__empty" role="presentation">{emptyMessage}</div>
-							: renderRows()}
-						{loading &&
-							Array.from(
-								{ length: skeletonRows },
-								(_, i) => (
-									<div key={`sk-${i}`} class="ui-autocomplete__skeleton" aria-hidden="true">
-										<span class="ui-autocomplete__skeleton-mark" />
-										<span class="ui-autocomplete__skeleton-line" />
-									</div>
-								),
-							)}
+						<div class="ui-autocomplete__scroll">
+							{empty
+								? <div class="ui-autocomplete__empty" role="presentation">{emptyMessage}</div>
+								: renderRows()}
+							{loading &&
+								Array.from(
+									{ length: skeletonRows },
+									(_, i) => (
+										<div key={`sk-${i}`} class="ui-autocomplete__skeleton" aria-hidden="true">
+											<span class="ui-autocomplete__skeleton-mark" />
+											<span class="ui-autocomplete__skeleton-line" />
+										</div>
+									),
+								)}
+						</div>
 					</div>
 				</BodyPortal>
 			)}

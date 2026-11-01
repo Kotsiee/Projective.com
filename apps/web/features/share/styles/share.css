@@ -76,7 +76,7 @@
 	color: var(--text-secondary);
 }
 .share__signin {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
 }

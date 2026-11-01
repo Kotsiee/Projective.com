@@ -402,7 +402,7 @@
 }
 
 .msg-mbar__btn[aria-pressed="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .msg-mbar__btn:focus-visible {

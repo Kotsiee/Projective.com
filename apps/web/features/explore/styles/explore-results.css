@@ -26,6 +26,8 @@
  */
 .ex-results-head {
 	position: relative;
+	isolation: isolate;
+	overflow: clip;
 	inline-size: auto;
 	margin-inline: calc(-1 * var(--ex-dash-pad-x));
 	padding-inline: var(--ex-dash-pad-x);
@@ -34,13 +36,12 @@
 	margin-block-end: clamp(1.75rem, 3.5vw, 2.75rem);
 }
 
-.ex-results-head::after {
-	content: "";
+/* The Home hero's stencil, without its glow: the same strapwork under the same two-pool mask
+   (`explore.css`), filling the band behind the query and the search (Decision #357). */
+.ex-results-head__stencil {
 	position: absolute;
-	inset-inline: 0;
-	inset-block-end: 0;
-	block-size: 1px;
-	background-color: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	inset: 0;
+	pointer-events: none;
 }
 
 .ex-results-head__q {
@@ -53,135 +54,15 @@
 }
 
 /*
- * The results search bar mirrors the hero `SearchBar` (hero-search.css) part for part — a fused
- * scope selector → the field → a submit glyph on one hairline-ringed pill — so the two in-page bars
- * read as the same control (the headers' bars are scope-less ghosts since Decision #347). This one
- * adds a clear control once something is typed; the glyphs are the registry's (§B.7).
+ * The results search bar IS the hero bar: the `hero-search--hero` markup and styles (hero-search.css,
+ * Decision #358) — the same pill, scope selector, field and circular submit as on `/`, `/explore` and
+ * `/features`. Only its place in the band and the clear control it adds once something is typed are
+ * styled here.
  */
 .ex-results-head__search {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	inline-size: min(100%, 44rem);
 	margin-block-start: var(--space-5);
 	margin-inline: auto;
-	padding-inline-end: var(--space-1);
-	block-size: 2.75rem;
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid var(--hairline-color);
 	text-align: start;
-}
-
-.ex-results-head__entity {
-	position: relative;
-	flex: 0 0 auto;
-	block-size: 100%;
-}
-
-.ex-results-head__entity-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	block-size: 100%;
-	padding-inline: var(--space-4);
-	border: 0;
-	border-inline-end: 1px solid var(--hairline-color);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-	white-space: nowrap;
-	cursor: pointer;
-	border-start-start-radius: var(--radius-lg);
-	border-end-start-radius: var(--radius-lg);
-}
-
-.ex-results-head__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.ex-results-head__entity-btn:focus-visible {
-	outline: none;
-}
-
-.ex-results-head__entity-caret {
-	color: var(--on-surface-variant);
-	transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.ex-results-head__entity-btn[aria-expanded="true"] .ex-results-head__entity-caret {
-	transform: rotate(180deg);
-}
-
-/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
-.ex-results-head__entity-menu {
-	min-inline-size: 13rem;
-	margin: 0;
-	padding: var(--space-1);
-	list-style: none;
-	background: var(--surface-2);
-	border: 1px solid var(--hairline-color);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
-}
-
-.ex-results-head__entity-option {
-	padding: 0.65rem 0.9rem;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-}
-
-/* Subtle highlight — a neutral surface tint, never a heavy primary fill (as in the header). */
-.ex-results-head__entity-option:hover,
-.ex-results-head__entity-option:focus-visible,
-.ex-results-head__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
-	outline: none;
-}
-
-.ex-results-head__input {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	border: 0;
-	background: transparent;
-	color: inherit;
-	font: inherit;
-	font-size: var(--text-base);
-	outline: none;
-	padding-inline-start: var(--space-3);
-}
-
-.ex-results-head__input::placeholder {
-	color: var(--on-surface-variant);
-}
-
-.ex-results-head__go {
-	flex: 0 0 auto;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--on-surface-variant);
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.ex-results-head__go:hover {
-	color: var(--primary);
-}
-
-.ex-results-head__go:focus-visible {
-	outline: none;
 }
 
 .ex-results-head__clear {
@@ -231,29 +112,25 @@
 .ex-results-head__tags {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-4);
+	gap: var(--space-1);
 }
 
 /* Related searches are clean, minimal, clickable plain words — never pills or tags. */
-.ex-results-head__tag {
-	padding: 0;
-	border: 0;
-	background: none;
+/* A related search: the house `text` Button, kept simple — muted ink, no fill on hover, only the ink
+   steps up: to `--on-surface` (white) in dark mode, to `--primary` (teal) in light. The button's own
+   press scale and focus handling stay. */
+.ex-results-head .ex-results-head__tag {
 	color: var(--on-surface-variant);
-	font: inherit;
-	font-size: var(--text-md);
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
+	font-weight: var(--fw-normal);
 }
 
-.ex-results-head__tag:hover {
+.ex-results-head .ex-results-head__tag:hover:not(:disabled) {
+	background: transparent;
 	color: var(--primary);
-	text-decoration: underline;
-	text-underline-offset: 3px;
 }
 
-.ex-results-head__tag:focus-visible {
-	outline: none;
+:root[data-theme="dark"] .ex-results-head .ex-results-head__tag:hover:not(:disabled) {
+	color: var(--on-surface);
 }
 
 .ex-dash__bar {
@@ -321,6 +198,7 @@
  */
 .ex-dash__lead .ex-dash__sidebar-toggle {
 	--btn-accent: var(--on-surface-variant);
+	--btn-ink: var(--on-surface-variant);
 	--btn-height: 1.75rem;
 	--btn-px: var(--space-2);
 	--btn-font: var(--text-xs);
@@ -445,6 +323,19 @@
 :root[data-motion="reduced"][data-explore-filters="hidden"] .ex-dash__aside {
 	transition: none;
 }
+
+/*
+ * Signed in, the same toggle hides the shell's filter lane (Decision #359). The lane leaves the grid
+ * outright and the frame drops the lane term from its seam accumulator, so it lays out as the
+ * lane-less frame `middle-nav.css` already supports.
+ */
+:root[data-explore-filters="hidden"] .ui-middle-nav:has(> .ui-middle-nav__lane [data-explore-filter-lane]) {
+	--shell-frame-inset-inline: var(--shell-sidebar-cur-w);
+}
+
+:root[data-explore-filters="hidden"] .ui-middle-nav__lane:has([data-explore-filter-lane]) {
+	display: none;
+}
 /* #endregion */
 
 .ex-dash__main {
@@ -498,7 +389,7 @@
 .ex-filters__clear {
 	border: 0;
 	background: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font: inherit;
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
@@ -655,13 +546,13 @@
 
 .ex-filters__opt:hover {
 	border-color: var(--primary);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ex-filters__opt[aria-pressed="true"].ex-filters__opt--chips {
 	background: var(--ex-primary-tint);
 	border-color: var(--primary);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 }
 
@@ -817,6 +708,7 @@
 
 .ex-detail-step .ex-detail-step__btn {
 	--btn-accent: var(--on-surface-variant);
+	--btn-ink: var(--on-surface-variant);
 }
 
 .ex-detail-step .ex-detail-step__btn:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -1145,7 +1037,7 @@
 .ex-sheet__done {
 	border: 0;
 	background: none;
-	color: var(--primary);
+	color: var(--primary-ink);
 	font: inherit;
 	font-weight: var(--fw-semibold);
 	cursor: pointer;

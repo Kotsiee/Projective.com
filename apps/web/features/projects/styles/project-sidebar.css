@@ -146,12 +146,12 @@
 
 /* Collapsed-rail Add-stage — a subtle primary-tinted action, distinct from the ghost nav icons. */
 .proj-railbtn--add {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .proj-railbtn--add:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
@@ -245,11 +245,11 @@
 }
 
 .proj-detail__star[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .proj-detail__star[data-on="true"] :is(svg, path) {
-	fill: var(--primary);
+	fill: var(--primary-ink);
 }
 
 .proj-detail__star:focus-visible,
@@ -391,7 +391,7 @@
 }
 
 .proj-ctx__owner-name:not(.proj-ctx__owner-name--static):hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: underline;
 }
 
@@ -486,7 +486,7 @@
 	font: inherit;
 	font-size: 0.74rem;
 	font-weight: var(--fw-semibold);
-	color: var(--primary);
+	color: var(--primary-ink);
 	cursor: pointer;
 }
 
@@ -591,7 +591,7 @@
 }
 
 .proj-chan-group__plus:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
@@ -902,7 +902,7 @@
 	padding: 0.4rem 0.6rem;
 	font-size: 0.76rem;
 	font-weight: 600;
-	color: var(--primary);
+	color: var(--primary-ink);
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
 	border-radius: var(--radius-sm);

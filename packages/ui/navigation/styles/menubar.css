@@ -57,7 +57,7 @@
 	box-shadow: none;
 }
 .ui-menubar__top--current {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: 600;
 }
 .ui-menubar__top--disabled {

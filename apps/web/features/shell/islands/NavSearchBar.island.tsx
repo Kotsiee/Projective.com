@@ -1,43 +1,39 @@
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useRef } from "preact/hooks";
 import "@web/features/shell/styles/user-shell.css";
 import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
+import { ScopeSelect } from "@features/explore/components/ScopeSelect.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
-import {
-	headerSearchShortcutLabel,
-	isFocusHeaderSearchShortcut,
-} from "@web/features/shell/core/shortcuts.ts";
+import { isFocusHeaderSearchShortcut } from "@web/features/shell/core/shortcuts.ts";
 import { useSearchShortcut } from "@web/features/shell/hooks/useSearchShortcut.ts";
 import { Icon } from "@projective/ui/icons";
-import { Kbd } from "@ui/utils/components/Kbd.tsx";
-import { DEFAULT_SEARCH_SCOPE } from "@features/marketing/core/landing-data.ts";
+import { DEFAULT_SEARCH_SCOPE, type SearchScope } from "@features/marketing/core/landing-data.ts";
 
 /**
  * NavSearchBar — the unified header's integrated discovery search (DESIGN_SYSTEM.md Part D.1, "Left
- * Block"). It is the guest header's pill search in the signed-in shell (Decisions #347 and #348,
- * which carry #47's parity over): a faint tint and one hairline at rest, a decorative glyph, the
- * static "Search Projective…" placeholder and the shortcut hint at its end; focused or holding a
- * query it widens and lifts onto the solid surface. The field is the shared `SearchSuggest`
- * typeahead over every category, focused from anywhere by Ctrl+/ (Cmd+/ on macOS); Enter is a real
- * navigation to `/explore?q=`, so the server renders the results layout. Dumb island — routes only,
- * no data access.
+ * Block"). The guest header's pill (Decisions #347 and #348) set wider, lower and centred in the
+ * signed-in shell: a faint tint and one hairline at rest, a decorative glyph, the static "Search
+ * Projective…" placeholder and the shared ghost `ScopeSelect` at its end; focused or holding a query
+ * it widens and lifts onto the solid surface. The field is the shared `SearchSuggest` typeahead over
+ * the picked scope, focused from anywhere by Ctrl+/ (Cmd+/ on macOS); Enter is a real navigation to
+ * `/explore?q=` (+ `&category=` off "All"), so the server renders the results layout. Dumb island —
+ * routes only, no data access.
  */
 export default function NavSearchBar() {
 	const query = useSignal("");
-	const shortcutLabel = useSignal(headerSearchShortcutLabel(""));
+	const scope = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const formRef = useRef<HTMLFormElement>(null);
 
 	useSearchShortcut({ scopeRef: formRef, matches: isFocusHeaderSearchShortcut, fromFields: true });
 
-	// The server renders "Ctrl /"; the user agent names the platform once hydrated.
-	useEffect(() => {
-		shortcutLabel.value = headerSearchShortcutLabel(globalThis.navigator.userAgent);
-	}, []);
-
-	/** Navigate to `/explore` with the query (an empty one lands on the feed). */
+	/** Navigate to `/explore` with the query and scope (neither lands on the feed). */
 	function go(q: string) {
 		if (q) recordSearch(q);
-		globalThis.location.href = q ? `/explore?q=${encodeURIComponent(q)}` : "/explore";
+		const params = new URLSearchParams();
+		if (q) params.set("q", q);
+		if (scope.value !== DEFAULT_SEARCH_SCOPE) params.set("category", scope.value);
+		const search = params.toString();
+		globalThis.location.href = search ? `/explore?${search}` : "/explore";
 	}
 
 	return (
@@ -53,7 +49,7 @@ export default function NavSearchBar() {
 			<Icon name="search" size="sm" class="shell-search__icon" />
 			<SearchSuggest
 				value={query}
-				scope={DEFAULT_SEARCH_SCOPE}
+				scope={scope.value}
 				name="q"
 				inputClass="shell-search__search-input"
 				anchorRef={formRef}
@@ -61,9 +57,11 @@ export default function NavSearchBar() {
 				aria-label="Search Projective"
 				onSearch={go}
 			/>
-			<span class="shell-search__hint" aria-hidden="true">
-				<Kbd size="sm">{shortcutLabel.value}</Kbd>
-			</span>
+			<ScopeSelect
+				class="shell-search__scope"
+				value={scope.value}
+				onPick={(next) => (scope.value = next)}
+			/>
 		</form>
 	);
 }

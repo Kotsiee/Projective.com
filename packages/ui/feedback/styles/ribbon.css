@@ -78,6 +78,7 @@
 	/* A control on the inverted ground takes the ground's ink: the strip is the one place a
 	   `--btn-accent` of the page's surface colour is the RIGHT reading (the §D.7.7 inversion). */
 	--btn-accent: var(--surface);
+	--btn-ink: var(--surface);
 	--btn-on: var(--on-surface);
 }
 /* #endregion */

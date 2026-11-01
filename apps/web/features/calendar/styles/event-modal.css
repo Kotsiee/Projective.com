@@ -380,7 +380,7 @@ label.evm-meta__k {
 
 .evm-tabs__tab[aria-selected="true"] .evm-tabs__count {
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* #endregion */
 
@@ -586,7 +586,7 @@ label.evm-meta__k {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	color: var(--primary);
+	color: var(--primary-ink);
 	overflow-wrap: anywhere;
 }
 

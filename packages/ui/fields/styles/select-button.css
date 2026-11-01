@@ -24,7 +24,7 @@
 	--sb-px: var(--space-3);
 	--sb-font: var(--fld-fs-sm);
 	--sb-radius: var(--radius-full);
-	--sb-ink-selected: var(--primary);
+	--sb-ink-selected: var(--primary-ink);
 
 	display: inline-flex;
 	align-items: stretch;

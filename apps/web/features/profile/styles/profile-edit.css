@@ -257,11 +257,13 @@
 .ui-button.pf-edit__ghost,
 .ui-button.pf-edit__btn {
     --btn-accent: var(--on-surface);
+    --btn-ink: var(--on-surface);
 }
 
 /* The page's one primary: inverted ink, the profile's own CTA idiom. */
 .ui-button.pf-edit__save {
     --btn-accent: var(--on-surface);
+    --btn-ink: var(--on-surface);
     --btn-on: var(--surface);
     --btn-mix-hover: 88%;
     --btn-mix-active: 80%;

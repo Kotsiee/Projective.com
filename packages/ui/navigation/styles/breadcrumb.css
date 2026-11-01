@@ -43,7 +43,7 @@
 }
 
 a.ui-breadcrumb__crumb:hover {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .ui-breadcrumb__crumb:focus-visible {

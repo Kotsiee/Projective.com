@@ -52,7 +52,7 @@
 	inline-size: fit-content;
 	margin-block-start: var(--space-1);
 	border-radius: var(--radius-xs);
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
 }

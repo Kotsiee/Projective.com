@@ -28,7 +28,7 @@ import type {
  * the library {@link AutoComplete} in `bare` + `freeText` mode, so the host keeps its own pill, scope
  * selector and submit, and the panel aligns to the whole pill (`anchorRef`).
  *
- * Empty field: Recent (removable, with Clear) and Trending. Typing: matching Recent, Top hits,
+ * Empty field: Recent (removable, with a Clear icon on its label line) and Trending. Typing: matching Recent, Top hits,
  * People and Skills & categories from `/api/explore/suggest`, skeleton rows while loading, and an
  * in-panel Retry on failure. Choosing a term runs `onSearch`; a hit or a person navigates. Enter with
  * no active row submits the host form untouched. Dumb island — data through `useSearchSuggest` only.
@@ -102,15 +102,15 @@ export default function SearchSuggest(
 	const sections: AutoCompleteSection[] = [];
 
 	if (recent.length > 0) {
-		const items = recent.map((t) => add(`recent:${t}`, t, { kind: "recent", term: t }));
-		if (!typed) {
-			items.push(add("action:clear-recent", "Clear recent searches", { kind: "clear-recent" }));
-		}
 		sections.push({
 			id: "recent",
 			label: "Recent",
-			items,
+			items: recent.map((t) => add(`recent:${t}`, t, { kind: "recent", term: t })),
 			removable: (opt) => entries.get(String(opt.value))?.kind === "recent",
+			action: typed ? undefined : {
+				item: add("action:clear-recent", "Clear recent searches", { kind: "clear-recent" }),
+				icon: "trash",
+			},
 		});
 	}
 
@@ -245,8 +245,6 @@ export default function SearchSuggest(
 						meta={`${entry.handle.handle} · ${KIND_LABEL[entry.handle.kind]}`}
 					/>
 				);
-			case "clear-recent":
-				return <span class="ex-suggest__action">Clear recent searches</span>;
 			case "retry":
 				return (
 					<span class="ex-suggest__retry">

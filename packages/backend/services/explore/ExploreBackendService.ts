@@ -29,7 +29,6 @@ import {
 } from "./semantic.ts";
 import { similarityCache, similarityCacheKey, similarityDeps } from "./similarity-cache.ts";
 import { suggestFrom } from "./suggest.ts";
-import { landingHeroFrom } from "./landing-hero.ts";
 import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
 import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
 import { helpStripFrom } from "./help-strip.ts";
@@ -48,7 +47,6 @@ import type {
 	ExploreItem,
 	ExploreParams,
 	HomeFeed,
-	LandingHero,
 	PlatformStats,
 	ProductItem,
 	ProfileItem,
@@ -656,34 +654,6 @@ export class ExploreBackendService {
 				paidOutMinor: Number(row.paid_out_minor),
 				paidOutCurrency: row.paid_out_currency,
 			});
-		} catch (error) {
-			return unavailable(error);
-		}
-	}
-
-	/**
-	 * The landing hero search's data from one catalogue load (`flows/LANDING.md` §4.1 `[U2]` `[U3]`):
-	 * the trending terms for every category, the typewriter's example searches — a generic phrase read
-	 * off each recommended service and project title, names and acronyms cut out, kept only when the
-	 * typeahead hits it and topped up from the §4.1 fallbacks the same way (`./landing-hero.ts`) — and
-	 * the "Try:" chips. Every check is the in-memory typeahead over the cached catalogue, so the page
-	 * pays one catalogue read for all of it. The recommended order is the shared Home feed's.
-	 */
-	static async landingHero(): Promise<ServiceResult<LandingHero>> {
-		try {
-			const catalog = await loadCatalog();
-			const now = Date.now();
-			const recommended = {
-				services: rankRecommended(ofType(catalog, "services"), catalog.scoreById),
-				projects: rankRecommended(ofType(catalog, "projects"), catalog.scoreById),
-			};
-			return ok(
-				landingHeroFrom(
-					catalog.items,
-					recommended,
-					(query) => suggestFrom(catalog.items, query, now, catalog.trending),
-				),
-			);
 		} catch (error) {
 			return unavailable(error);
 		}

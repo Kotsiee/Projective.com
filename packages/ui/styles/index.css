@@ -642,6 +642,14 @@
     --chip-on-media: var(--surface);
 
     /*
+	* The brand as INK on a surface — the label and icon of a transparent-ground control (outlined ·
+	* text · link Buttons, toggled icon buttons). `--primary` in light; the brand's own light pole
+	* (`--on-primary`) in dark, re-pointed under `:root[data-theme="dark"]` below. Fills, borders and
+	* tints keep `--primary`, which stays mode-invariant.
+	*/
+    --primary-ink: var(--primary);
+
+    /*
 	* The card hover language. Four card families independently chose a lift (−2 / −4 / −6px) and a
 	* media zoom (1.04 / 1.045 / 1.05); no rule distinguished them, so the same gesture read at three
 	* different intensities depending on which page the user was on.
@@ -927,6 +935,11 @@
  */
 :root[data-theme="dark"] {
     --status-tint-mix: var(--tint-strong);
+}
+
+/* See `--primary-ink`: brand-coloured labels and icons read white on a dark page. */
+:root[data-theme="dark"] {
+    --primary-ink: var(--on-primary);
 }
 
 @media (prefers-contrast: more) {
@@ -1238,7 +1251,6 @@
 .ui-tieredmenu__panel,
 .ui-megamenu__panel,
 .ui-slidemenu,
-.ui-autocomplete__panel,
 .ui-select__panel,
 .ui-multiselect__panel,
 .ui-treeselect__panel,
@@ -1306,7 +1318,8 @@
 
 /* Glass chrome — see the `transparent` note above. */
 .ui-shell-topbar,
-.ui-mobile-menu__drawer {
+.ui-mobile-menu__drawer,
+.ui-autocomplete__panel {
     --scrollbar-track: transparent;
 }
 

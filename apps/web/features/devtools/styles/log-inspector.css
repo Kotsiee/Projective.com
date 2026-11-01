@@ -253,7 +253,7 @@
 	background: var(--surface-3);
 }
 .dev-log__tool[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 .dev-log__tool--danger:hover {

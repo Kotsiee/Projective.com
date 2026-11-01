@@ -94,7 +94,7 @@
 	--lp-hero-pad: calc(
 		var(--lp-header-h) + var(--lp-header-inset) + clamp(1.5rem, 6vw - 0.5rem, 4.5rem)
 	);
-	/* The search field's height: `.lp-search` and the calls to action centred beside it read it. */
+	/* The calls to action's height (`.lp-hero__link`), sized to sit beside a search field. */
 	--lp-field-h: 3.5rem;
 	--lp-gap: clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
 	--lp-heading-gap: clamp(0.75rem, 0.55rem + 0.8vw, 1.25rem);

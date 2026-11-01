@@ -121,7 +121,7 @@
 	--evp-cta-primary-fill: var(--primary);
 	--evp-cta-primary-ink: var(--on-primary);
 	--evp-cta-brand-fill: var(--primary);
-	--evp-cta-brand-ink: var(--primary);
+	--evp-cta-brand-ink: var(--primary-ink);
 	--evp-cta-accent-fill: var(--accent);
 	--evp-cta-accent-ink: var(--on-accent);
 	--evp-cta-mono-fill: var(--on-surface);
@@ -849,7 +849,7 @@
 }
 
 .evp-previewnote__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-medium);
 	text-decoration: none;
 	border-radius: var(--radius-sm);
@@ -1899,13 +1899,13 @@
  * button beside it to the pixel.
  */
 .evp-cta__link--outlined {
-	border: var(--fld-bw) solid var(--evp-cta-brand-ink);
+	border: var(--fld-bw) solid var(--evp-cta-brand-fill);
 	background: transparent;
 	color: var(--evp-cta-brand-ink);
 }
 
 .evp-cta__link--outlined:hover {
-	background: color-mix(in srgb, var(--evp-cta-brand-ink) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--evp-cta-brand-fill) var(--tint-soft), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1953,6 +1953,7 @@ a.evp-cta__btn--inverted {
 .ui-button.evp-cta__btn--accent,
 a.evp-cta__btn--accent {
 	--btn-accent: var(--evp-cta-accent-fill);
+	--btn-ink: var(--evp-cta-accent-fill);
 	--btn-on: var(--evp-cta-accent-ink);
 	--btn-shade: var(--on-scrim);
 	--btn-mix-hover: 92%;
@@ -1962,6 +1963,7 @@ a.evp-cta__btn--accent {
 .ui-button.evp-cta__btn--mono,
 a.evp-cta__btn--mono {
 	--btn-accent: var(--evp-cta-mono-fill);
+	--btn-ink: var(--evp-cta-mono-fill);
 	--btn-on: var(--evp-cta-mono-ink);
 	--btn-shade: var(--surface);
 	--btn-mix-hover: 88%;
@@ -1984,6 +1986,7 @@ a.evp-cta__btn--mono {
 .ui-button.evp-cta__btn--brand {
 	--btn-accent: var(--evp-cta-brand-fill);
 	--btn-on: var(--evp-cta-brand-ink);
+	--btn-ink: var(--evp-cta-brand-ink);
 }
 
 /*

@@ -291,7 +291,7 @@
 
 .pjc__type[aria-checked="true"] .pjc__type-glyph,
 .pjc__type[aria-current="true"] .pjc__type-glyph {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 .pjc__type-label {

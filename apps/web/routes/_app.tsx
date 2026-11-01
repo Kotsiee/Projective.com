@@ -158,7 +158,7 @@ export default define.page(function App({ Component, state }) {
 				/>
 				<script
 					dangerouslySetInnerHTML={{
-						// Set data-explore-filters before first paint so a GUEST who hid the Explore filter
+						// Set data-explore-filters before first paint so a reader who hid the Explore filter
 						// sidebar does not watch it paint and slide away. Literal key MUST match
 						// LocalKeys.EXPLORE_FILTERS_HIDDEN ("pj.local.explore.filtersHidden").
 						__html:

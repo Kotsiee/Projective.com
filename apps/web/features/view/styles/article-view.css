@@ -438,7 +438,7 @@
 	color: var(--on-surface);
 }
 .art-toc__item[data-active="true"] .art-toc__link {
-	color: var(--primary);
+	color: var(--primary-ink);
 	font-weight: var(--fw-semibold);
 }
 
@@ -629,7 +629,7 @@
 	color: var(--on-surface);
 }
 .art-cmt__like[data-on="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 /* #endregion */
 

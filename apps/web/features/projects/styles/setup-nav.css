@@ -103,7 +103,7 @@
 
 /* The ink channel — independent of the mark, and the one that survives a frozen clock. */
 .psu-nav__link[data-active="true"] {
-	color: var(--primary);
+	color: var(--primary-ink);
 }
 
 /*

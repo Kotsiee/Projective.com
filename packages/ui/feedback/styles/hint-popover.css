@@ -58,7 +58,7 @@
 
 /* A link inside the panel is the reason this is a dialog and not a tooltip — it must look like one. */
 .ui-hint__body a {
-	color: var(--primary);
+	color: var(--primary-ink);
 	text-decoration: underline;
 	text-underline-offset: 0.15em;
 }

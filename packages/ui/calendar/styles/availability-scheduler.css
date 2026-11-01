@@ -811,6 +811,7 @@
 .ui-avsched-scope .ui-button--text:not(.ui-button--danger),
 .ui-avsched-scope .ui-button--link {
 	--btn-accent: var(--on-surface);
+	--btn-ink: var(--on-surface);
 }
 
 .ui-avsched-scope .ui-avsched__cal-tools .ui-select-button,

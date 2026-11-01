@@ -11,21 +11,20 @@
  *
  * The page controller (`routes/FeaturesPage.tsx`) mounts islands whose stylesheets cannot load under
  * `deno test`, so this renders `FeaturesPageView` with the parts those islands paint on the server:
- * the final search's own markup (`HeroSearchForm`), the Booking and Work board real stills
- * (`BookingPoster`, `BoardPicture`), and stand-ins for the dialog (it renders nothing until pressed),
- * the Payment protection still (its MoneyView figures carry an island stylesheet), the demo stage and
- * Pricing (each mounts an island).
+ * the Booking and Work board real stills (`BookingPoster`, `BoardPicture`), and stand-ins for the
+ * final search (the shared `SearchBar`, an island with a stylesheet), the dialog (it renders nothing
+ * until pressed), the Payment protection still (its MoneyView figures carry an island stylesheet),
+ * the demo stage and Pricing (each mounts an island).
  */
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { renderToString } from "npm:preact-render-to-string@^6.7.0";
 import { FEATURES_TITLE_ID, FeaturesPageView } from "./FeaturesPageView.tsx";
-import { HeroSearchForm, heroSearchIds } from "./HeroSearchForm.tsx";
-import { FINAL_SEARCH_SUFFIX, FINAL_SECTION_ID } from "./FinalCta.tsx";
+import { FINAL_SECTION_ID } from "./FinalCta.tsx";
 import { BoardPicture } from "./demos/BoardPicture.tsx";
 import { BookingPoster } from "./demos/BookingPicture.tsx";
 import { BOARD_LANES, createBoard, scriptFrames } from "../core/demos/board-model.ts";
 import { DEMO_BOARD } from "../core/demos/board-fixtures.ts";
-import { DEFAULT_HERO_CATEGORY, GUEST_VIEWER } from "../core/hero-search.ts";
+import { GUEST_VIEWER } from "../core/hero-search.ts";
 import {
 	chapterTitleId,
 	FEATURE_CHAPTERS,
@@ -121,29 +120,6 @@ const hasClass = (name: string) => (n: Node) => (n.attrs.class ?? "").split(/\s+
 // #region Fixtures
 const ORIGIN = "https://projective.test";
 
-/** The final search's first paint, exactly as `HeroSearch` renders it on the server. */
-function finalSearch() {
-	return (
-		<HeroSearchForm
-			ids={heroSearchIds(FINAL_SEARCH_SUFFIX)}
-			query=""
-			category={DEFAULT_HERO_CATEGORY}
-			hydrated={false}
-			scopeButton={false}
-			typewriter={null}
-			slashFocus
-			open={false}
-			sections={[]}
-			active={-1}
-			status="idle"
-			announcement=""
-			sheetOpen={false}
-			avatarFallback="/test_images/profile_1.jpg"
-			glyph={(name) => <i data-glyph={name} />}
-		/>
-	);
-}
-
 /** The page as the controller composes it, with `section` asked for. */
 function render(section: FeatureChapterId | null = null): Node {
 	const board = createBoard(DEMO_BOARD, { feeBp: 500 });
@@ -171,7 +147,7 @@ function render(section: FeatureChapterId | null = null): Node {
 				},
 				demo: <section id={DEMO_SECTION_ID} data-standin="demo" />,
 				pricing: <section id={PRICING_SECTION_ID} data-standin="pricing" />,
-				finalSearch: finalSearch(),
+				finalSearch: <form role="search" data-standin="search" />,
 			}}
 		/>,
 	);
