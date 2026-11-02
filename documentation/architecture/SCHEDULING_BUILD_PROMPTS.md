@@ -45,7 +45,7 @@
 
 | Phase                        | Prompts                       | Why this order                                                                                                                                                                                                                                                                                              |
 | :--------------------------- | :---------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — Containment (P0)**     | SCH-WP2                       | Paid calls are bookable with no payment (S-02), so they are turned off. Unanswered requests squat free/busy (S-11), so they expire.                                                                                                                                                                         |
+| **1 — Containment (P0)**     | ✅ SCH-WP2                    | Paid calls are bookable with no payment (S-02), so they are turned off. Unanswered requests squat free/busy (S-11), so they expire.                                                                                                                                                                         |
 | **2 — The call lifecycle**   | SCH-WP3                       | C3's door matrix makes a discovery call usable end to end (S-10, S-27), with its notices and reminders (S-18). SCH-WP6 and SCH-WP9 build on its doors.                                                                                                                                                      |
 | **3 — Runtime and evidence** | SCH-WP4a → SCH-WP4b → SCH-WP5 | C4. First the token vault and the Fresh + pg_cron runtime (4a). Then rooms on the host's account and calendar sync (4b). Then presence matched by each person's own link (5). This is the evidence SCH-WP8 and SCH-WP9 judge (S-03, S-04, S-19). WP4 is two prompts because each half is a session of work. |
 | **4 — Money rules**          | SCH-WP8 → SCH-WP7 → SCH-WP6   | C5's settlement rules come first, on evidence that now exists (8). Then C2's windows, which route money through the cancel and sweep paths 8 corrected and lift SCH-WP1's group-sitting freeze (7). Then C1's paid consultations, which inherit both through the session rail (6; SDG §4 step 5).           |
@@ -142,7 +142,7 @@ Each stop below is open, and this file decides none of them. The prompt named fi
    (`a80ce2f5`, Decision #328 (a), an event write door) and `refs/heads/claude/modest-mendel-ae6318`
    (`d3768133`, the agenda sanitiser; `83cb1720`) were verified on 2026-10-25 and never merged. On
    main, #328 (a) is still open. Whether they merge decides what C7 (a) hides. Recommendation: merge
-   them first.
+   them first. **Merged 2026-11-03**: #328 (a) and #72 (a) are resolved on main.
 
 Also found, already decided, for SCH-Z1 to align:
 

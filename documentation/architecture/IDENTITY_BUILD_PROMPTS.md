@@ -46,7 +46,7 @@
 
 | Phase                         | Prompts                   | Lane                   | Why this order                                                                                                                                                      |
 | :---------------------------- | :------------------------ | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1 — The owner is a person** | ✅ OWN1 → OWN2            | SQL, then app          | Part C and #336: F4 first. It restores enterprise sign-up, and every later rule here (erasure, MFA, minors) assumes every natural person has a profile.             |
+| **1 — The owner is a person** | ✅ OWN1 → ✅ OWN2         | SQL, then app          | Part C and #336: F4 first. It restores enterprise sign-up, and every later rule here (erasure, MFA, minors) assumes every natural person has a profile.             |
 | **2 — Approved hygiene**      | HK1                       | SQL                    | Q0.2 (b) and (c): small, owner-approved, on files the erasure chain does not touch.                                                                                 |
 | **3 — The erasure chain**     | ERA1 → ERA2 → ERA3 → ERA4 | SQL                    | Serial on `00001060`: scope, then windows, then seats, then the vault, which captures the identity set before ERA1's erasure blanks it. ERA3 and ERA4 stop at a 🧑. |
 | **4 — SSO hidden**            | SSO1                      | app                    | No SQL, so it may overlap phase 3.                                                                                                                                  |
