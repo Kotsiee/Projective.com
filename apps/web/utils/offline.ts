@@ -61,7 +61,8 @@ export const BACKGROUND_PATHS: readonly string[] = [
 
 /**
  * A request header a caller sets to mark a write as background work — a heartbeat, a metric, a
- * prefetch — that should fail quietly rather than be refused with a notice.
+ * prefetch — that should fail quietly rather than be refused with a notice. A read may carry it too:
+ * `apiFetch` never navigates to `/login` over a background request's 401 (Decision #374).
  */
 export const BACKGROUND_HEADER = "x-pj-background";
 

@@ -128,13 +128,20 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	 * The outcome is recorded locally as well as folded into the shared store: `checkoutError` is
 	 * shared with `/checkout`'s body, and a drawer that rendered it directly would show — or clear — an
 	 * error that belonged to another region's write.
+	 *
+	 * `background` marks a read the buyer did not ask for (the drawer's own mount, refresh and re-scope
+	 * reads): a dead session then fails it into the error state rather than bouncing the page to
+	 * `/login`. Opening, switching and Try again are the buyer's own acts and keep the redirect.
 	 */
-	const load = useCallback(async (): Promise<void> => {
+	const load = useCallback(async (background = false): Promise<void> => {
 		if (phase.value !== "ready") phase.value = "loading";
 		const ctx = currentCheckoutContext();
 		const [res, ownersRes] = await Promise.all([
-			BasketService.get({ ...ctx, ...devReadScope(ctx.owner, ctx.basketId, ownersSignal.peek()) }),
-			BasketService.owners(ctx),
+			BasketService.get(
+				{ ...ctx, ...devReadScope(ctx.owner, ctx.basketId, ownersSignal.peek()) },
+				{ background },
+			),
+			BasketService.owners(ctx, { background }),
 		]);
 		if (ownersRes.ok && ownersRes.data) ownersSignal.value = ownersRes.data;
 		const listed = devOwners(ownersSignal.value, scenario.value)
@@ -148,7 +155,7 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 			removeStored("local", LocalKeys.BASKET_OWNER);
 			activeOwner.value = shellOwner.current;
 			activeBasketId.value = null;
-			return load();
+			return load(background);
 		}
 		const asked = listed?.baskets.find((b) => b.id === ctx.basketId) ?? null;
 		const landed = applyResponse(res, (data: BasketPayload) =>
@@ -190,7 +197,7 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 			chosenProvider.value = null;
 			chosenCardId.value = null;
 			resetAttempt();
-			void load();
+			void load(true);
 		}
 
 		/*
@@ -200,13 +207,13 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 		 * body's seed and overwrite it (measured: `?basket=bk-wishlist` replaced client-side by the
 		 * default under a header still naming the wishlist).
 		 */
-		if (!rescoped && basketSignal.value === null && !onCheckout) void load();
+		if (!rescoped && basketSignal.value === null && !onCheckout) void load(true);
 
-		const onRefresh = () => void load();
+		const onRefresh = () => void load(true);
 		globalThis.addEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
 		const unsubscribe = subscribeDevSeam((seam) => {
 			scenario.value = seam?.basketScenario;
-			void load();
+			void load(true);
 		});
 		return () => {
 			globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, onRefresh);

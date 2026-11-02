@@ -2193,8 +2193,11 @@ the command palette.
     otherwise. The shared `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it
     triggers a single shared refresh, retries the original request, and routes to
     `/login?redirectTo=<path>` only when the refresh answered `401` (a `503` or a dropped connection
-    hands the original `401` back instead). Feature `api.ts` transports adopt it by swapping
-    `fetch`→`apiFetch` (done for `features/projects/core/api.ts`).
+    hands the original `401` back instead) and the request is not background work: one marked
+    `x-pj-background`, a `keepalive` send or a background path gets the `401` back and its surface
+    degrades, because a read nobody asked for must not navigate the page (Decision #374 — the basket
+    badge's mount-time read). Feature `api.ts` transports adopt it by swapping `fetch`→`apiFetch`
+    (done for `features/projects/core/api.ts`).
   - **Claim-changing mutations re-issue the session themselves.** `POST /api/context/switch`,
     `POST /api/user/freelancer`, `POST /api/user/handle`, a freelancer-profile `POST`/`DELETE
     /api/user/lifecycle`, and a `PATCH /api/user/preferences` touching locale · display currency ·
