@@ -6,8 +6,9 @@ import { bracketFromDob, isTimeZone, UNDER_MINIMUM_REFUSAL } from "./age.ts";
 /**
  * auth/join — the Zod SSOT for the `/join` request body (SYSTEM_ARCHITECTURE.md §Security: every API
  * handler Zod-validates the body before touching a service). The `/api/auth/join` route parses it,
- * `AuthBackendService.provisionAccount` receives the parsed shape, and the islands' instant checks
- * read the same patterns so a value the form accepts is a value the route accepts.
+ * `AuthBackendService.provisionAccount` (or, for a profile-less owner, `completeOwnerProfile`)
+ * receives the parsed shape, and the islands' instant checks read the same patterns so a value the
+ * form accepts is a value the route accepts.
  *
  * Only regex/min/max/enum/literal primitives are used so the schema is stable across Zod majors
  * (matching `@projective/types/org`).
@@ -166,10 +167,35 @@ export const EnterpriseJoinSchema = z.object({
 });
 export type EnterpriseJoin = z.infer<typeof EnterpriseJoinSchema>;
 
-/** Discriminated on `type` so one endpoint validates either onboarding shape. */
+/**
+ * An enterprise owner with no profile finishing step 1.6 (Decision #336, ruling I2): an owner created
+ * before the step asked for a person completes it at their next sign-in, on `/join?complete=owner`.
+ * The account exists and is signed in, so there is no email or password, and the `@handle` is derived
+ * from the name as at sign-up. Only a real date is checked here. The age rule is the service's,
+ * because a refused owner keeps the account (it holds the enterprise) and is flagged for a person to
+ * follow up (`AuthBackendService.completeOwnerProfile`).
+ */
+export const OwnerCompletionSchema = z.object({
+	type: z.literal("owner"),
+	firstName: name,
+	lastName: name,
+	dob,
+	timeZone,
+	locale,
+	displayCurrency,
+	redirectTo,
+}).superRefine((value, ctx) => {
+	if (bracketFromDob(value.dob, value.timeZone) === "unknown") {
+		ctx.addIssue({ code: "custom", path: ["dob"], message: "Enter a real date of birth." });
+	}
+});
+export type OwnerCompletion = z.infer<typeof OwnerCompletionSchema>;
+
+/** Discriminated on `type` so one endpoint validates every onboarding shape. */
 export const JoinSchema = z.discriminatedUnion("type", [
 	IndividualJoinSchema,
 	EnterpriseJoinSchema,
+	OwnerCompletionSchema,
 ]);
 export type Join = z.infer<typeof JoinSchema>;
 // #endregion

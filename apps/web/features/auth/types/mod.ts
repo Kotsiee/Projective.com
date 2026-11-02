@@ -82,6 +82,8 @@ export interface JoinFormProps {
 	/** Initial intent, or `""` when unchosen (Step 1.2 requires an explicit pick). */
 	intent: UserIntent | "";
 	prefill: OAuthPrefill | null;
+	/** `"owner"` on `/join?complete=owner`: a signed-in enterprise owner with no profile yet. */
+	complete?: "owner" | null;
 }
 
 /** Shape returned by the auth API stubs. */

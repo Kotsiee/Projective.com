@@ -1,6 +1,11 @@
 import type { JoinStore, StepId } from "./wizardStore.ts";
 import { preferenceHints } from "@projective/types/org";
-import { AGE_MESSAGES, bracketFromDob, browserTimeZone } from "@projective/types/auth";
+import {
+	AGE_MESSAGES,
+	bracketFromDob,
+	browserTimeZone,
+	ENTERPRISE_OWNER_MINOR_REFUSAL,
+} from "@projective/types/auth";
 import {
 	confirmError,
 	emailError,
@@ -17,13 +22,16 @@ import {
  * and the same six step slots carry either Individual or Enterprise field sets.
  */
 /**
- * Date-of-birth validation shared by the two places it can live: the (email) credentials step for a
- * standard signup, and the identity step for an OAuth signup (where it folds up because there is no
- * separate credentials step).
+ * Date-of-birth validation shared by every place it can live: the (email) credentials step for a
+ * standard signup, the identity step for an OAuth signup (where it folds up because there is no
+ * separate credentials step), and an enterprise owner's step 1.6. Under 13 is refused everywhere; an
+ * `owner` must also be 18 or over, because the owner holds the enterprise's seat (Decision #208).
  */
-function dobError(store: JoinStore): string | null {
+function dobError(store: JoinStore, owner = false): string | null {
 	if (!store.dob.value) return "Date of birth is required.";
-	return bracketFromDob(store.dob.value, browserTimeZone()) === "blocked" ? AGE_MESSAGES.blocked : null;
+	const bracket = bracketFromDob(store.dob.value, browserTimeZone());
+	if (bracket === "blocked") return AGE_MESSAGES.blocked;
+	return owner && bracket === "restricted" ? ENTERPRISE_OWNER_MINOR_REFUSAL : null;
 }
 
 export function validateStep(store: JoinStore, id: StepId): Record<string, string | null> {
@@ -70,8 +78,21 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 					...(store.isOAuth ? { dob: dobError(store) } : {}),
 				};
 		case "credentials":
+			// A profile-less owner gives only the owner half; the keys are the completion body's.
+			if (store.ownerCompletion) {
+				return {
+					firstName: requiredError(store.firstName.value, "First name"),
+					lastName: requiredError(store.lastName.value, "Last name"),
+					dob: dobError(store, true),
+				};
+			}
+			// The owner is a person (Decision #336, ruling I2). Their keys are the payload's, so a field
+			// error the route returns lands on the field that caused it.
 			if (enterprise) {
 				return {
+					ownerFirstName: requiredError(store.firstName.value, "First name"),
+					ownerLastName: requiredError(store.lastName.value, "Last name"),
+					dob: dobError(store, true),
 					corpEmail: emailError(store.corpEmail.value),
 					phone: phoneError(store.phone.value),
 					password: passwordError(store.password.value),
@@ -98,6 +119,17 @@ function browserPreferenceHints() {
 
 /** Assemble the API payload from the completed wizard state. */
 export function buildPayload(store: JoinStore): Record<string, unknown> {
+	if (store.ownerCompletion) {
+		return {
+			type: "owner",
+			firstName: store.firstName.value.trim(),
+			lastName: store.lastName.value.trim(),
+			dob: store.dob.value,
+			timeZone: browserTimeZone(),
+			...browserPreferenceHints(),
+			redirectTo: store.redirectTo,
+		};
+	}
 	if (store.isEnterprise.value) {
 		return {
 			type: "enterprise",
@@ -123,6 +155,10 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			departments: store.departments.value,
 			purpose: store.purpose.value,
 			...browserPreferenceHints(),
+			ownerFirstName: store.firstName.value.trim(),
+			ownerLastName: store.lastName.value.trim(),
+			dob: store.dob.value,
+			timeZone: browserTimeZone(),
 			password: store.password.value,
 			redirectTo: store.redirectTo,
 		};

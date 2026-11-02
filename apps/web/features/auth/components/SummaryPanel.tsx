@@ -99,11 +99,19 @@ function heroCopy(store: JoinStore): HeroCopy {
 					lede: "Your name and @handle — this is how people find you.",
 				};
 		case "credentials":
+			if (store.ownerCompletion) {
+				return {
+					kicker: "One last thing",
+					title: title("The person", "behind it."),
+					lede:
+						"Your enterprise needs its owner on record: your name and date of birth. Your profile stays private.",
+				};
+			}
 			if (enterprise) {
 				return {
 					kicker: "Almost there",
 					title: title("Admin &", "access."),
-					lede: "Corporate contact details and your admin password.",
+					lede: "You as the owner, the company's contact details, and your admin password.",
 				};
 			}
 			return store.isOAuth

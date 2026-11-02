@@ -5,7 +5,11 @@ import { toAuthResponse } from "@features/auth/core/respond.ts";
 import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 import type { EmployeeScale } from "@projective/types/org";
-import { JOIN_AGE_LOCK_COOKIE, UNDER_MINIMUM_REASON, UNDER_MINIMUM_REFUSAL } from "@projective/types/auth";
+import {
+	JOIN_AGE_LOCK_COOKIE,
+	UNDER_MINIMUM_REASON,
+	UNDER_MINIMUM_REFUSAL,
+} from "@projective/types/auth";
 import { fail, type ServiceResult } from "@server/services/ServiceResult.ts";
 import { isSecureRequest, readCookies, sessionClearCookies } from "@web/utils/auth-cookies.ts";
 
@@ -19,7 +23,10 @@ function withAgeLock<T extends object>(req: Request, result: ServiceResult<T>): 
 	const res = toAuthResponse(req, result);
 	if (result.details?.reason !== UNDER_MINIMUM_REASON) return res;
 	const secure = isSecureRequest(req) ? "; Secure" : "";
-	res.headers.append("set-cookie", `${JOIN_AGE_LOCK_COOKIE}=1; Path=/; HttpOnly; SameSite=Lax${secure}`);
+	res.headers.append(
+		"set-cookie",
+		`${JOIN_AGE_LOCK_COOKIE}=1; Path=/; HttpOnly; SameSite=Lax${secure}`,
+	);
 	if (result.details.discarded === true) {
 		for (const cookie of sessionClearCookies(req)) res.headers.append("set-cookie", cookie);
 	}
@@ -38,9 +45,10 @@ function readAccessToken(req: Request): string | undefined {
 }
 
 /**
- * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR enterprise payload,
- * then delegate to the fat {@link AuthBackendService}, which enforces eligibility (age-gate, password
- * rule) and provisions. Islands are dumb: they POST here and act on the result.
+ * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR enterprise payload, or a
+ * profile-less owner's completion (`type: "owner"`, from `/join?complete=owner`), then delegate to the
+ * fat {@link AuthBackendService}, which enforces eligibility (age-gate, password rule) and provisions.
+ * Islands are dumb: they POST here and act on the result.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -76,12 +84,34 @@ export const handler = define.handlers({
 			authSubject(
 				ctx.req,
 				ctx.info.remoteAddr,
-				data.type === "individual" ? data.email : data.corporateEmail,
+				data.type === "individual"
+					? data.email
+					: data.type === "enterprise"
+					? data.corporateEmail
+					: ctx.state.userContext?.userId ?? undefined,
 			),
 		);
 		if (refused) return refused;
 
 		const redirectTo = safeRedirect(data.redirectTo);
+
+		if (data.type === "owner") {
+			// The owner is signed in: only a verified session's token is handed on.
+			return withAgeLock(
+				ctx.req,
+				await AuthBackendService.completeOwnerProfile({
+					accessToken: ctx.state.isAuthenticated ? readAccessToken(ctx.req) : undefined,
+					userId: ctx.state.userContext?.userId ?? undefined,
+					firstName: data.firstName,
+					lastName: data.lastName,
+					dob: data.dob,
+					timeZone: data.timeZone,
+					locale: data.locale,
+					displayCurrency: data.displayCurrency,
+					redirectTo,
+				}),
+			);
+		}
 
 		if (data.type === "individual") {
 			return withAgeLock(

@@ -21,6 +21,7 @@ import {
 	AGE_MESSAGES,
 	bracketFromDob,
 	browserTimeZone,
+	ENTERPRISE_OWNER_MINOR_REFUSAL,
 	UNDER_MINIMUM_REFUSAL,
 } from "@projective/types/auth";
 import { lockJoinAge } from "../core/age-lock.ts";
@@ -37,7 +38,8 @@ import { armResendCooldown } from "../core/resend-cooldown.ts";
  * shared wizard store, so every keystroke is reflected live in the summary on the left. Steps
  * slide/fade on change (keyed remount + `data-dir`), and choice-only steps **auto-advance** the
  * instant a card is picked. Individual and Enterprise render different field sets into the same
- * step slots (enterprises follow a client-only path — no "intent" branch, no skills step).
+ * step slots (enterprises follow a client-only path — no "intent" branch, no skills step). A
+ * profile-less owner on `/join?complete=owner` gets the owner half of step 1.6 as the only step.
  *
  * Keyboard: the steps are not a `<form>`, so Enter is given one rule here (`core/enter-chain.ts`) —
  * on a field it moves to the step's next field, on the last field it does what Continue does, and
@@ -202,57 +204,95 @@ function Row({ children }: { children: ComponentChildren }): JSX.Element {
 }
 
 /**
- * Date-of-birth control + the live age-bracket note. Shared between the identity step (OAuth signups,
- * where DoB folds up because there's no credentials step) and the credentials step (standard signup).
+ * The date-of-birth control. It sits in its own row on the individual paths, and beside the corporate
+ * phone on an enterprise owner's step 1.6, so the live note ({@link AgeNote}) renders apart from it.
  */
-function DobField(
-	{ store, dobDate }: { store: JoinStore; dobDate: Signal<DateValue> },
+function DobControl(
+	{ store, dobDate, label = "Date of birth" }: {
+		store: JoinStore;
+		dobDate: Signal<DateValue>;
+		label?: string;
+	},
 ): JSX.Element {
 	const e = store.errors.value as Err;
+	return (
+		<FormControl
+			label={label}
+			error={e.dob ?? undefined}
+			status={e.dob ? "invalid" : "default"}
+			required
+		>
+			{({ id: fid, describedBy }) => (
+				<DatePicker
+					id={fid}
+					aria-describedby={describedBy}
+					value={dobDate}
+					selectionMode="single"
+					maxDate={new Date()}
+					dateFormat="dd M yy"
+					showIcon
+					status={e.dob ? "invalid" : "default"}
+					fluid
+					onValueChange={(v) => {
+						store.dob.value = v instanceof Date ? toISO(v) : "";
+					}}
+				/>
+			)}
+		</FormControl>
+	);
+}
+
+/**
+ * The live age-bracket note under a date of birth. Under 13 is refused on every path. An individual
+ * aged 13–17 is told what a limited account means. An enterprise `owner` must be 18 or over, because
+ * the owner holds the enterprise's seat (Decision #208), so for them that bracket is a refusal; once
+ * Continue puts the same sentence on the field, the note steps aside.
+ */
+function AgeNote(
+	{ store, owner = false }: { store: JoinStore; owner?: boolean },
+): JSX.Element | null {
+	if (!store.dob.value) return null;
 	const bracket = bracketFromDob(store.dob.value, browserTimeZone());
+	const refused = bracket === "blocked"
+		? AGE_MESSAGES.blocked
+		: owner && bracket === "restricted" && !(store.errors.value as Err).dob
+		? ENTERPRISE_OWNER_MINOR_REFUSAL
+		: null;
+	if (refused) {
+		return (
+			<div class="auth-agenote auth-agenote--blocked" role="alert">
+				<span class="auth-agenote__icon">{WarnIcon()}</span>
+				<span>{refused}</span>
+			</div>
+		);
+	}
+	if (owner || bracket !== "restricted") return null;
+	return (
+		<div class="auth-agenote auth-agenote--restricted" role="status">
+			<span class="auth-agenote__icon">{InfoIcon()}</span>
+			<span>{AGE_MESSAGES.restricted}</span>
+		</div>
+	);
+}
+
+/**
+ * Date-of-birth control + the live age-bracket note, in a row of their own. Shared between the
+ * identity step (OAuth signups, where DoB folds up because there's no credentials step), the
+ * credentials step (standard signup) and a profile-less owner's completion step.
+ */
+function DobField(
+	{ store, dobDate, owner = false }: {
+		store: JoinStore;
+		dobDate: Signal<DateValue>;
+		owner?: boolean;
+	},
+): JSX.Element {
 	return (
 		<>
 			<Row>
-				<FormControl
-					label="Date of birth"
-					error={e.dob ?? undefined}
-					status={e.dob ? "invalid" : "default"}
-					required
-				>
-					{({ id: fid, describedBy }) => (
-						<DatePicker
-							id={fid}
-							aria-describedby={describedBy}
-							value={dobDate}
-							selectionMode="single"
-							maxDate={new Date()}
-							dateFormat="dd M yy"
-							showIcon
-							status={e.dob ? "invalid" : "default"}
-							fluid
-							onValueChange={(v) => {
-								store.dob.value = v instanceof Date ? toISO(v) : "";
-							}}
-						/>
-					)}
-				</FormControl>
+				<DobControl store={store} dobDate={dobDate} />
 			</Row>
-			{store.dob.value && bracket === "restricted"
-				? (
-					<div class="auth-agenote auth-agenote--restricted" role="status">
-						<span class="auth-agenote__icon">{InfoIcon()}</span>
-						<span>{AGE_MESSAGES.restricted}</span>
-					</div>
-				)
-				: null}
-			{store.dob.value && bracket === "blocked"
-				? (
-					<div class="auth-agenote auth-agenote--blocked" role="alert">
-						<span class="auth-agenote__icon">{WarnIcon()}</span>
-						<span>{AGE_MESSAGES.blocked}</span>
-					</div>
-				)
-				: null}
+			<AgeNote store={store} owner={owner} />
 		</>
 	);
 }
@@ -550,9 +590,64 @@ function StepFields(
 	}
 
 	// credentials
-	if (enterprise) {
+	if (store.ownerCompletion) {
+		// A signed-in owner with no profile: the owner half of step 1.6, and nothing else.
 		return (
 			<>
+				<div class="auth-form__grid auth-form__grid--pair">
+					<TextRow
+						label="First name"
+						value={store.firstName}
+						error={e.firstName}
+						autoComplete="given-name"
+						required
+					/>
+					<TextRow
+						label="Last name"
+						value={store.lastName}
+						error={e.lastName}
+						autoComplete="family-name"
+						required
+					/>
+				</div>
+				<DobField store={store} dobDate={dobDate} owner />
+			</>
+		);
+	}
+
+	if (enterprise) {
+		// Seven fields in a tight stack of paired rows, so the step fits the fixed frame without scrolling
+		// at 390 px. The owner is a person (Decision #336, ruling I2): their name and date of birth first.
+		return (
+			<div class="auth-form__stack">
+				<div class="auth-form__grid auth-form__grid--pair">
+					<TextRow
+						label="Your first name"
+						value={store.firstName}
+						error={e.ownerFirstName}
+						autoComplete="given-name"
+						required
+					/>
+					<TextRow
+						label="Your last name"
+						value={store.lastName}
+						error={e.ownerLastName}
+						autoComplete="family-name"
+						required
+					/>
+				</div>
+				<div class="auth-form__grid auth-form__grid--pair">
+					<DobControl store={store} dobDate={dobDate} label="Your date of birth" />
+					<TextRow
+						label="Corporate phone"
+						value={store.phone}
+						error={e.phone}
+						type="tel"
+						autoComplete="tel"
+						required
+					/>
+				</div>
+				<AgeNote store={store} owner />
 				<Row>
 					<TextRow
 						label="Corporate email"
@@ -563,21 +658,11 @@ function StepFields(
 						required
 					/>
 				</Row>
-				<Row>
-					<TextRow
-						label="Corporate phone"
-						value={store.phone}
-						error={e.phone}
-						type="tel"
-						autoComplete="tel"
-						required
-					/>
-				</Row>
-				<div class="auth-form__grid">
+				<div class="auth-form__grid auth-form__grid--pair">
 					<PassRow label="Admin password" value={store.password} error={e.password} feedback />
 					<PassRow label="Confirm password" value={store.confirm} error={e.confirm} />
 				</div>
-			</>
+			</div>
 		);
 	}
 
@@ -736,7 +821,9 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 			globalThis.location.href = dest;
 			return;
 		}
-		const email = store.isEnterprise.value ? store.corpEmail.value.trim() : store.email.value.trim();
+		const email = store.isEnterprise.value
+			? store.corpEmail.value.trim()
+			: store.email.value.trim();
 		if (result.verificationSent === true) armResendCooldown();
 		const failed = result.verificationSent === false ? "&sent=0" : "";
 		globalThis.location.href = withRedirect(
@@ -793,9 +880,13 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		else if (mayAdvance()) goNext();
 	}
 
-	const continueLabel = last
-		? (store.isEnterprise.value ? "Create enterprise" : "Create account")
-		: "Continue";
+	const continueLabel = !last
+		? "Continue"
+		: store.ownerCompletion
+		? "Finish setting up"
+		: store.isEnterprise.value
+		? "Create enterprise"
+		: "Create account";
 
 	// Choice steps auto-advance on first pick, but ALSO carry a visible "Continue" so a user who
 	// stepped Back (their selection stays highlighted) can move forward again without re-picking.
@@ -868,7 +959,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 				/>
 			</div>
 
-			{store.stepIndex.value === 0
+			{store.stepIndex.value === 0 && !store.ownerCompletion
 				? (
 					<p class="auth-alt">
 						Already have an account?{" "}

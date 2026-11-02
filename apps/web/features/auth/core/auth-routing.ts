@@ -25,7 +25,9 @@ export type OAuthMode = "signin" | "signup";
  * **`/join` carrying an OAuth pre-fill returns `null`, and that exemption is load-bearing.** The OAuth
  * callback signs a brand-new Google identity IN and *then* sends them to `/join` to create their
  * Projective profile. Those users are authenticated by design, so bouncing them would make signing up
- * with Google impossible — the same loop, inverted.
+ * with Google impossible — the same loop, inverted. `/join?complete=owner` is exempt for the same
+ * reason: a profile-less enterprise owner is signed in when {@link resolveOnboardingBounce} sends them
+ * there to finish step 1.6.
  *
  * `/verify` and `/forgot-password` are deliberately not guarded: an authenticated user with an
  * unconfirmed email needs the first, and a signed-in user is entitled to reach the second.
@@ -38,10 +40,30 @@ export function resolveAuthScreenBounce(url: URL, isAuthenticated: boolean): str
 	const isSignUp = pathname === "/join";
 	if (!isSignIn && !isSignUp) return null;
 
-	// A Google identity mid-signup is authenticated but has no profile yet — let them finish.
-	if (isSignUp && url.searchParams.has("oauth")) return null;
+	// A Google identity mid-signup, or an owner finishing step 1.6, is authenticated but has no
+	// profile yet — let them finish.
+	if (isSignUp && (url.searchParams.has("oauth") || isOwnerCompletion(url.searchParams))) {
+		return null;
+	}
 
 	return readRedirect(url.searchParams);
+}
+
+/** Whether a `/join` URL asks a signed-in, profile-less enterprise owner to finish step 1.6. */
+export function isOwnerCompletion(params: URLSearchParams): boolean {
+	return params.get("complete") === "owner";
+}
+
+/**
+ * The `/join` URL where a profile-less enterprise owner gives the name and date of birth step 1.6 now
+ * asks for (Decision #336, ruling I2). `complete=owner` is the marker, as `oauth` is for a federated
+ * sign-up: `/join` reads it to render the one completion step, and {@link resolveAuthScreenBounce}
+ * reads it to let the signed-in owner through. The captured path is sanitised here, so the return
+ * trip can never be an auth screen.
+ */
+export function ownerCompletionTarget(redirectTo: string): string {
+	const params = new URLSearchParams({ complete: "owner", redirectTo: safeRedirect(redirectTo) });
+	return `/join?${params.toString()}`;
 }
 
 /**
@@ -126,31 +148,34 @@ export function joinCompletionTarget(
  *
  * ## It bounces only what `/join` can actually finish
  *
- * A pre-fill is required, and that is a real constraint rather than a convenience. `/join` renders
- * the email field READ-ONLY for an already-authenticated account and seeds it from the pre-fill, so
- * sending someone there without one hands them a form they cannot complete — a dead end, which is
- * worse than the page they were refused. It also scopes the bounce to the identities this state is
- * actually produced for: a federated sign-up, which is the one path that reaches GoTrue with no
- * username and no dob.
+ * Two identities reach this state, and `/join` finishes each with its own form:
  *
- * An ENTERPRISE owner lands in the same profile-less state by a different door —
- * `provisionAccount` admin-creates them with only `objective: "enterprise"`, and
- * `create_enterprise` writes the enterprise and the membership without ever calling
- * `provision_user_profile`. That may well be deliberate (`org.enterprises.owner_user_id`
- * references `auth.users`, not `org.users_public`, so the schema does not require the owner to have a
- * personal profile at all), and deciding whether they should be given one is a product question, not
- * a routing one. They are deliberately NOT bounced here; the write path refuses them in words
- * instead.
+ * - **A federated sign-up** needs a pre-fill, and that is a real constraint rather than a
+ *   convenience. `/join` renders the email field READ-ONLY for an already-authenticated account and
+ *   seeds it from the pre-fill, so sending someone there without one hands them a form they cannot
+ *   complete — a dead end, which is worse than the page they were refused. It is the one sign-up
+ *   path that reaches GoTrue with no username and no dob.
+ * - **An enterprise owner created before step 1.6 asked for a person** holds an account and an
+ *   enterprise but no profile (Decision #336, ruling I2). Its `user_metadata` says
+ *   `objective: "enterprise"`, and `/join?complete=owner` asks for the name and date of birth alone:
+ *   GoTrue already holds the email, so no pre-fill is needed. The objective is user-writable, and it
+ *   only picks the form — `complete_onboarding` decides what is written, for any caller.
  *
- * The destination carries the pre-fill so the form is the one the callback would have shown, and the
- * captured path so finishing returns them to what they were trying to do. It is never `/join` itself
- * — {@link safeRedirect} rejects an auth path, so the return trip cannot loop.
+ * A pre-fill wins when both are present, since only a federated identity carries one. Anything else
+ * is left where it is, and the write path refuses it in words.
+ *
+ * The destination carries the pre-fill (when there is one) so the form is the one the callback would
+ * have shown, and the captured path so finishing returns them to what they were trying to do. It is
+ * never `/join` itself — {@link safeRedirect} rejects an auth path, so the return trip cannot loop.
  */
 export function resolveOnboardingBounce(
 	context: { onboarded?: boolean } | null | undefined,
 	prefill: Parameters<typeof joinCompletionTarget>[0],
 	url: URL,
+	objective?: unknown,
 ): string | null {
-	if (context?.onboarded !== false || !prefill) return null;
-	return joinCompletionTarget(prefill, url.pathname + url.search);
+	if (context?.onboarded !== false) return null;
+	const captured = url.pathname + url.search;
+	if (prefill) return joinCompletionTarget(prefill, captured);
+	return objective === "enterprise" ? ownerCompletionTarget(captured) : null;
 }

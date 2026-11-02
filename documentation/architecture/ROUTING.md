@@ -48,7 +48,9 @@ Parenthesized folders group routes **without** adding a URL segment:
   verified access token passes; an invalid or expired one with a refresh cookie renews in place;
   with none it is cleared and sent (`302`) to `/login?redirectTo=`; unobtainable signing keys or an
   unreachable GoTrue answer `503` with the cookies kept. (2) **Onboarding bounce:** a federated
-  sign-up with no `org.users_public` row yet is sent back (`302`) to `/join` to finish
+  sign-up with no `org.users_public` row yet is sent back (`302`) to `/join` to finish, and an
+  enterprise owner with none (an account from before step 1.6 asked for the owner; its
+  `user_metadata.objective` is `enterprise`) to `/join?complete=owner`
   (`resolveOnboardingBounce`, `features/auth/core/auth-routing.ts`). (3) **Who may see the page:** a
   restricted (13–17) account is sent `303` to `/home` from every `isRestrictedPath` surface, and
   `/teams*` is freelancer-only: a client, or an operator-mode account not acting as a team, is sent
@@ -60,7 +62,8 @@ Parenthesized folders group routes **without** adding a URL segment:
   to authenticate again or walked back through onboarding. A tampered or expired cookie is not
   bounced, so no loop forms with the guard above (`safeRedirect` also refuses auth paths).
   `/join?oauth=…` is exempt — the OAuth callback signs a NEW identity in and then sends them there
-  to create their profile.
+  to create their profile — and so is `/join?complete=owner`, where the dashboard guard sends a
+  signed-in, profile-less enterprise owner.
 - `routes/(standalone)/_middleware.ts` — renews the session without redirecting (the
   `[handle]/_middleware.ts` model: `ensureSession`, then `accessToken`, `isAuthenticated` and a
   refreshed `userContext`, and the set/clear cookies appended to the response), so an expired access
@@ -129,7 +132,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | invite link (stage · workspace) | `(dashboard)/invite/[token].tsx`                     | `/invite/:token` (where an invite link lands — the token's SHAPE picks whose: a stage link's bare 24 base64url characters (Decision #145) show the project, the stage, who shared it; a team's or business's `w-` + 24 (Decision #318, `OrgInviteLanding`) show the entity, the role it offers and who shared it. Either offers "Ask to join" only when the link is open to this person, which files a pending request and seats nobody. Inside `(dashboard)`, so a guest signs in first and returns here via `redirectTo`; the token is shape-checked before any read; `noindex` + `no-referrer` + `no-store` because the path is a capability) |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | outbound-link exit      | `(public)/exit.tsx`                                          | `/exit?url=…` (the interstitial an external link from a message passes through unless its scan came back safe — names the host, the verdict and why; asks for an explicit "I understand" before an unchecked or suspicious link and never offers a blocked one; never redirects by itself; `noindex` + `no-referrer` + `no-store`; Decision #128)                                                                                                                                                                                                                                                                            |
-| auth: join              | `(public)/(auth)/join.tsx`                                   | `/join` — account creation, the canonical sign-up route (individual quick form ⇄ enterprise wizard, the age gate); reads the return path, account type, initial intent and any Google OAuth pre-fill off the URL; `/join?oauth=…` finishes a federated sign-up and is exempt from the inverse guard. It supersedes `/register`, which has **no route file**: `/register` and `/reset` exist only in `AUTH_PATHS` (`features/auth/core/redirect.ts`) as never-a-destination prefixes, so both answer `404` (IDG §4.5) |
+| auth: join              | `(public)/(auth)/join.tsx`                                   | `/join` — account creation, the canonical sign-up route (individual quick form ⇄ enterprise wizard, the age gate); reads the return path, account type, initial intent and any Google OAuth pre-fill off the URL; `/join?oauth=…` finishes a federated sign-up and is exempt from the inverse guard. `/join?complete=owner&redirectTo=…` is the completion state: a signed-in enterprise owner with no profile gives the name and date of birth step 1.6 asks for, as a one-step wizard (Decision #336, ruling I2). It is exempt from the inverse guard too, and anyone else who opens it (a guest, an account with a profile) is sent `302` to the captured `redirectTo`. It supersedes `/register`, which has **no route file**: `/register` and `/reset` exist only in `AUTH_PATHS` (`features/auth/core/redirect.ts`) as never-a-destination prefixes, so both answer `404` (IDG §4.5) |
 | auth: login             | `(public)/(auth)/login.tsx`                                  | `/login?redirectTo=` (`?notice=` e.g. after a reset) — Google OAuth, the Enterprise SSO entry and the email-or-`@handle` password sign-in; the return path is refused for any auth path |
 | auth: verify            | `(public)/(auth)/verify.tsx`                                 | `/verify?email=&sent=&redirectTo=` — email confirmation by a 6-digit code, the resend throttle and the confirmation poll (`GET /api/auth/verification-status`, Decision #185) |
 | auth: forgot password   | `(public)/(auth)/forgot-password.tsx`                        | `/forgot-password?email=&step=` — two-step recovery: a code by email, then the code and a new password; returns to `/login` with the captured return path |
@@ -683,7 +686,7 @@ are in `SYSTEM_ARCHITECTURE.md` §Authentication & Identity.
 | Route                           | Method | Purpose                                                                                      |
 | :------------------------------ | :----- | :------------------------------------------------------------------------------------------- |
 | `/api/auth/login`               | `POST` | Email-or-`@handle` password sign-in; one generic refusal for every failure                   |
-| `/api/auth/join`                | `POST` | Individual or enterprise sign-up; an under-13 date of birth locks this browser's `/join`     |
+| `/api/auth/join`                | `POST` | Sign-up, or a signed-in owner's completion; an under-13 DoB locks this browser's `/join`     |
 | `/api/auth/verify`              | `POST` | The 6-digit email code                                                                       |
 | `/api/auth/resend`              | `POST` | Re-send the code; always reports success                                                     |
 | `/api/auth/verification-status` | `GET`  | `/verify`'s confirmation poll, keyed on the `pj_pending_verification` cookie (Decision #185) |

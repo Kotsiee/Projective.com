@@ -26,6 +26,8 @@ export interface JoinInit {
 	accountType: AccountType;
 	intent: UserIntent | "";
 	prefill: OAuthPrefill | null;
+	/** `"owner"` on `/join?complete=owner`: a signed-in enterprise owner with no profile yet. */
+	complete?: "owner" | null;
 }
 
 export interface JoinStore {
@@ -33,6 +35,12 @@ export interface JoinStore {
 	readonly prefill: OAuthPrefill | null;
 	/** True when arriving from an SSO/OAuth identity — password setup is skipped. */
 	readonly isOAuth: boolean;
+	/**
+	 * True on `/join?complete=owner`. An enterprise owner created before step 1.6 asked for a person
+	 * (Decision #336, ruling I2) is signed in with no profile, so the wizard is one step: their name and
+	 * date of birth. The corporate email and password are already theirs.
+	 */
+	readonly ownerCompletion: boolean;
 
 	// selections
 	accountType: Signal<AccountType>;
@@ -46,7 +54,7 @@ export interface JoinStore {
 	purpose: Signal<string[]>;
 	skills: Signal<string[]>;
 
-	// individual identity
+	// the person: an individual's identity, or an enterprise owner's name on step 1.6
 	firstName: Signal<string>;
 	lastName: Signal<string>;
 	username: Signal<string>;
@@ -110,7 +118,10 @@ function buildSteps(
 	accountType: Signal<AccountType>,
 	intent: Signal<UserIntent | "">,
 	isOAuth: boolean,
+	ownerCompletion: boolean,
 ): StepMeta[] {
+	// A profile-less owner completes step 1.6's owner half only; everything else exists already.
+	if (ownerCompletion) return [{ id: "credentials", tag: "1.6", label: "Owner", optional: false }];
 	const enterprise = accountType.value === "enterprise";
 	const steps: StepMeta[] = [];
 	// OAuth arrivals already have a verified provider identity AND are individuals by definition, so
@@ -118,7 +129,12 @@ function buildSteps(
 	if (!isOAuth) steps.push({ id: "account", tag: "1", label: "Account", optional: false });
 	// Individuals choose hire vs. work; enterprises are buyers by definition, so no branch.
 	if (!enterprise) steps.push({ id: "intent", tag: "1.2", label: "You", optional: false });
-	steps.push({ id: "purpose", tag: "1.3", label: enterprise ? "Scale" : "Purpose", optional: !enterprise });
+	steps.push({
+		id: "purpose",
+		tag: "1.3",
+		label: enterprise ? "Scale" : "Purpose",
+		optional: !enterprise,
+	});
 	const showSpecialize = enterprise || intent.value === "freelancer";
 	if (showSpecialize) {
 		steps.push({
@@ -128,7 +144,12 @@ function buildSteps(
 			optional: !enterprise,
 		});
 	}
-	steps.push({ id: "identity", tag: "1.5", label: enterprise ? "Company" : "Profile", optional: false });
+	steps.push({
+		id: "identity",
+		tag: "1.5",
+		label: enterprise ? "Company" : "Profile",
+		optional: false,
+	});
 	// The credentials step (email + password) is redundant for OAuth: the provider already
 	// authenticated them, so the only remaining detail — date of birth — folds up into identity (1.5),
 	// which then carries the "Create account" submission.
@@ -142,16 +163,21 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
 export function createJoinStore(init: JoinInit): JoinStore {
 	const prefill = init.prefill;
 	const isOAuth = !!prefill;
+	// An OAuth pre-fill outranks the owner marker: only a federated identity carries one.
+	const ownerCompletion = !isOAuth && init.complete === "owner";
 	// OAuth sign-up is individual-only (Google onboarding never provisions an enterprise), so pin
-	// the account type to "individual" regardless of any stray `?type=` param on the return URL.
-	const accountType = signal<AccountType>(isOAuth ? "individual" : init.accountType);
-	const intent = signal<UserIntent | "">(init.intent);
+	// the account type to "individual" regardless of any stray `?type=` param on the return URL. An
+	// owner completing step 1.6 is an enterprise's, whatever `?type=` says.
+	const accountType = signal<AccountType>(
+		isOAuth ? "individual" : ownerCompletion ? "enterprise" : init.accountType,
+	);
+	const intent = signal<UserIntent | "">(ownerCompletion ? "client" : init.intent);
 
 	const firstName = signal(prefill?.firstName ?? "");
 	const lastName = signal(prefill?.lastName ?? "");
 	const email = signal(prefill?.email ?? "");
 
-	const steps = computed(() => buildSteps(accountType, intent, isOAuth));
+	const steps = computed(() => buildSteps(accountType, intent, isOAuth, ownerCompletion));
 	const stepIndex = signal(0);
 	const current = computed(() => steps.value[clamp(stepIndex.value, 0, steps.value.length - 1)]);
 	const stepCount = computed(() => steps.value.length);
@@ -189,9 +215,11 @@ export function createJoinStore(init: JoinInit): JoinStore {
 		redirectTo: init.redirectTo,
 		prefill,
 		isOAuth,
+		ownerCompletion,
 		accountType,
-		// OAuth arrivals are always individuals mid-flow, so their choice is already made.
-		accountChosen: signal<boolean>(isOAuth),
+		// OAuth arrivals are always individuals mid-flow, and a completing owner is an enterprise's, so
+		// their choice is already made.
+		accountChosen: signal<boolean>(isOAuth || ownerCompletion),
 		intent,
 		purpose: signal<string[]>([]),
 		skills: signal<string[]>([]),

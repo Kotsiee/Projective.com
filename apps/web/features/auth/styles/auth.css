@@ -356,9 +356,11 @@ body:has(.auth) {
 	animation-name: stepInBack;
 }
 
+/* `minmax(0, 1fr)`: a track of `1fr` cannot shrink below its input's intrinsic width (a password
+ * field's is ~15rem), so a pair in a narrow form column would overflow it and clip. */
 .auth-form__grid {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: var(--space-3) var(--space-4);
 }
 
@@ -366,6 +368,59 @@ body:has(.auth) {
 	.auth-form__grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+/*
+ * A pair that stays a pair on a phone. An enterprise's step 1.6 holds seven fields (the owner's name
+ * and date of birth beside the corporate contact and password), and the frame never scrolls, so its
+ * rows keep two columns down to a 360px-wide screen and stack only below that. A pair spaces like a
+ * field row.
+ */
+.auth-form__grid--pair {
+	margin-bottom: var(--space-4);
+}
+
+.auth-form__grid--pair:last-child {
+	margin-bottom: 0;
+}
+
+@media (max-width: 32.4375rem) {
+	.auth-form__grid--pair {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 22.4375rem) {
+	.auth-form__grid--pair {
+		grid-template-columns: 1fr;
+	}
+}
+
+/*
+ * The enterprise's step 1.6 as one tight stack, so its seven fields fit the 390px frame unscrolled:
+ * the stack's gap separates the rows, and a field's hint row takes room only while it has something
+ * to say. An error opens its row, so a step showing several errors may scroll, as any step might.
+ */
+.auth-form__stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.auth-form__stack > .auth-field-row,
+.auth-form__stack > .auth-form__grid--pair,
+.auth-form__stack > .auth-agenote {
+	margin-block: 0;
+}
+
+/* The hint row is a <p>; its UA bottom margin (1em) is not part of this rhythm. */
+.auth-form__stack .ui-field-hint {
+	margin-block-end: 0;
+}
+
+.auth-form__stack .ui-field-hint:empty {
+	min-block-size: 0;
+	margin-block-start: 0;
 }
 
 .auth-actions--between {
