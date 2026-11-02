@@ -1,13 +1,13 @@
-import { composeMenu, linkActionItems, type MenuItem } from "@projective/ui/navigation";
+import { linkActionItems, linkOpenItem, type MenuItem } from "@projective/ui/navigation";
 import type { ListingAction } from "./console-actions.ts";
 import type { ListingSummary } from "../types/catalogue-types.ts";
 
 /**
- * A listing's actions as menu rows: Open in new tab · Copy link (`href`, the workspace link the card
- * opens; Edit is the plain open), then Edit · Duplicate · View public page
- * (published) · then the lifecycle step (Pause / Publish / Restore to draft) · Archive (not archived)
- * · Delete (only when the server allows it). Archive and Delete go through `onAction`, which is the
- * canvas's `requestAction`, so both confirm before anything runs.
+ * A listing's actions as menu rows: Edit (the split `linkOpenItem` row on `href`, the workspace link
+ * the card opens, so it unfolds Open · Open in new tab · Open in new window) · Copy link · Duplicate
+ * · View public page (published) · then the lifecycle step (Pause / Publish / Restore to draft) ·
+ * Archive (not archived) · Delete (only when the server allows it). Archive and Delete go through
+ * `onAction`, which is the canvas's `requestAction`, so both confirm before anything runs.
  */
 export function listingMenu(
 	listing: ListingSummary,
@@ -16,7 +16,8 @@ export function listingMenu(
 ): MenuItem[] {
 	const run = (action: ListingAction) => () => onAction(action, listing);
 	const rows: MenuItem[] = [
-		{ label: "Edit", icon: "edit", command: run("edit") },
+		linkOpenItem({ href, label: "Edit", icon: "edit", copy: false }),
+		...linkActionItems({ href, title: listing.title, include: ["copy-link"] }),
 		{ label: "Duplicate", icon: "copy", command: run("duplicate") },
 	];
 	if (listing.status === "published") {
@@ -34,10 +35,5 @@ export function listingMenu(
 	if (listing.deletable) {
 		rows.push({ label: "Delete", icon: "trash", danger: true, command: run("delete") });
 	}
-	const links = linkActionItems({
-		href,
-		title: listing.title,
-		include: ["open-new-tab", "copy-link"],
-	});
-	return composeMenu(links, rows);
+	return rows;
 }

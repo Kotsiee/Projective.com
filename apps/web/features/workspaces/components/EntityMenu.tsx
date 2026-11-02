@@ -25,9 +25,9 @@ export interface EntityMenuProps {
 }
 
 /**
- * EntityMenu — the entity's ONE kebab (Decision #306): View public profile · Open in new tab · Copy
- * profile link · Transfer ownership… or Leave… · Archive workspace…, the last confirmed as a danger
- * before anything changes. The lane head draws it; the header band draws the same component only where
+ * EntityMenu — the entity's ONE kebab (Decision #306): View public profile (a split row: Open · Open in
+ * new tab · Open in new window) · Copy profile link · Transfer ownership… or Leave… · Archive
+ * workspace…, the last confirmed as a danger before anything changes. The lane head draws it; the header band draws the same component only where
  * the lane is off screen (collapsed, or hidden below `--bp-md`), and CSS paints exactly one, so the page
  * never offers two menus for one entity.
  *

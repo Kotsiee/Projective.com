@@ -1,6 +1,6 @@
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import type { MenuItem } from "@ui/types/mod.ts";
-import { composeMenu, linkActionItems } from "@ui/navigation/core/link-actions.ts";
+import { composeMenu, linkOpenItem } from "@ui/navigation/core/link-actions.ts";
 import {
 	kindCopy,
 	type WorkspaceCapability,
@@ -237,23 +237,21 @@ export interface HeaderMenuHandlers {
 
 /**
  * The kebab's rows — the same rows a right-click, the ContextMenu key or Shift+F10 on the lane head
- * opens (Decision #222): the public profile (View, Open in new tab), Copy profile link, Transfer
- * ownership… (the owner) or Leave… (anyone else), and Archive workspace… for an `archive_entity`
- * holder, as a danger row. The profile rows are the shared `linkActionItems`, so they open, and open in
- * a new tab, exactly as every other linkable entity's do. Nothing here deletes.
+ * opens (Decision #222): View public profile, Copy profile link, Transfer ownership… (the owner) or
+ * Leave… (anyone else), and Archive workspace… for an `archive_entity` holder, as a danger row. View
+ * public profile is the shared split `linkOpenItem` row (Decision #373), so it opens, and unfolds Open
+ * in new tab · Open in new window, exactly as every other linkable entity's does; Copy link is never
+ * in the submenu, so Copy profile link is the row below it. Nothing here deletes.
  */
 export function headerMenu(menu: HeaderMenuPlan, handlers: HeaderMenuHandlers): MenuItem[] {
-	const profile = linkActionItems({
-		href: menu.profileHref,
-		title: menu.name,
-		include: ["open", "open-new-tab"],
-	}).map((row) =>
-		row.key === "link-open"
-			? { ...row, key: "view-profile", label: "View public profile", icon: "user" }
-			: row
-	);
 	return composeMenu(
-		profile,
+		[linkOpenItem({
+			href: menu.profileHref,
+			key: "view-profile",
+			label: "View public profile",
+			icon: "user",
+			copy: false,
+		})],
 		[{
 			key: "copy-link",
 			label: "Copy profile link",

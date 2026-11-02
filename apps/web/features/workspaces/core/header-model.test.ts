@@ -179,17 +179,15 @@ Deno.test("header: a team with a held escrow or live work is not offered Archive
 
 Deno.test("header: the kebab carries the profile, Copy profile link, Transfer ownership…, Archive", () => {
 	const rows = headerMenu(headerBand(input({ module: "overview" })).menu, NOOP);
-	assertEquals(keys(rows), [
-		"view-profile",
-		"link-open-new-tab",
-		"copy-link",
-		"members",
-		"archive",
-	]);
+	assertEquals(keys(rows), ["view-profile", "copy-link", "members", "archive"]);
 	const byKey = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r]));
 	assertEquals(byKey["view-profile"].url, "/@north-loop");
 	assertEquals(byKey["view-profile"].label, "View public profile");
-	assertEquals(byKey["link-open-new-tab"].target, "_blank");
+	assertEquals(
+		keys(byKey["view-profile"].items ?? []),
+		["link-open", "link-open-new-tab", "link-open-new-window"],
+		"the split row leaves Copy link to its own row",
+	);
 	assertEquals(byKey["copy-link"].label, "Copy profile link");
 	assertEquals(byKey["copy-link"].hint, "@north-loop");
 	assertEquals(byKey["members"].url, "/teams/north-loop/members");

@@ -6,6 +6,7 @@ import {
 	type ActionMenuProps,
 	composeMenu,
 	linkActionItems,
+	linkOpenItem,
 	type MenuItem,
 } from "@projective/ui/navigation";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
@@ -14,9 +15,9 @@ import type { ConversationSummary, InboxFolder } from "../types/messaging-types.
 /**
  * ConversationMenu — the overflow (`…`) trigger and the conversation-state menu it opens, shared by the
  * lane row ({@link ConversationRow}) and the phone inbox row ({@link InboxRow}) so both offer the same
- * actions in the same order: Open · Open in new tab · Copy link (when the row has an href) · Favourite ·
- * Mute · the folder moves the row's folder allows · Delete. Right-clicking the row's `surface` opens
- * the same rows at the pointer.
+ * actions in the same order: the split Open row (it unfolds Open · Open in new tab · Open in new
+ * window) · Copy link (both when the row has an href) · Favourite · Mute · the folder moves the row's
+ * folder allows · Delete. Right-clicking the row's `surface` opens the same rows at the pointer.
  */
 
 // #region Props
@@ -95,12 +96,15 @@ export function ConversationMenu(props: ConversationMenuProps): JSX.Element {
 	const { conversation: c, href } = props;
 	const model = composeMenu(
 		href
-			? linkActionItems({
-				href,
-				title: c.title,
-				include: ["open", "open-new-tab", "copy-link"],
-				onCopied: props.onCopied,
-			})
+			? [
+				linkOpenItem({ href, label: "Open", copy: false }),
+				...linkActionItems({
+					href,
+					title: c.title,
+					include: ["copy-link"],
+					onCopied: props.onCopied,
+				}),
+			]
 			: [],
 		stateRows(props),
 	);
