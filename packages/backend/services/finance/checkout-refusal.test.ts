@@ -5,6 +5,7 @@ import {
 	BLOCKER_FOR_SQLSTATE,
 	businessNotActiveBlocker,
 	orderRefusal,
+	pc409Blocker,
 	refusalBlocker,
 } from "./checkout-refusal.ts";
 
@@ -156,6 +157,61 @@ Deno.test("PM403 (the age gate) keeps its own sentence and no gate", () => {
 	);
 	assertEquals(blocker.gate, undefined);
 	assertEquals(blocker.message, AGE_RESTRICTED.message);
+});
+
+Deno.test("PC409 sub-codes become their own blockers, in the checkout's words", () => {
+	const pc409 = (message: string) =>
+		refusalBlocker({ code: "PC409", message, details: null }, BASKET, "user");
+	const changed = pc409(
+		"price_changed: The total changed while you were paying — review it and try again",
+	);
+	assertEquals(changed?.code, "price_changed");
+	assertEquals(
+		changed?.message,
+		"The total changed while you were paying. Review the new total and try again.",
+	);
+	const exhausted = pc409(
+		"promo_exhausted: Your promo code has been used up — remove it to pay the full price",
+	);
+	assertEquals(exhausted?.code, "promo_exhausted");
+	assertEquals(
+		exhausted?.message,
+		"Your promo code has been used up. Remove it to pay the full price.",
+	);
+	const live = pc409("payment_in_progress: A payment for these items is already in progress");
+	assertEquals(live, pc409Blocker("payment_in_progress"));
+	assertEquals(live?.itemId, null);
+});
+
+Deno.test("any other PC409 stays price_changed with the database's own sentence", () => {
+	const moved = refusalBlocker(
+		{
+			code: "PC409",
+			message: "Your basket changed while you were paying — review it and try again",
+		},
+		BASKET,
+		"user",
+	);
+	assertEquals(moved?.code, "price_changed");
+	assertEquals(
+		moved?.message,
+		"Your basket changed while you were paying — review it and try again",
+	);
+	// A field-named PC409 is not a sub-code a buyer is told about by name.
+	assertEquals(
+		refusalBlocker(
+			{ code: "PC409", message: "refId: a request for this is already waiting" },
+			BASKET,
+			"business",
+		)
+			?.code,
+		"price_changed",
+	);
+	// The prefixes are PC409's alone: another SQLSTATE's message never borrows their copy.
+	assertEquals(
+		refusalBlocker({ code: "PF402", message: "price_changed: odd" }, BASKET, "user")?.code,
+		"insufficient_funds",
+	);
 });
 
 Deno.test("an unmapped SQLSTATE is not a refusal (the caller throws, the route answers 503)", () => {

@@ -1463,8 +1463,12 @@ scheduled run, which `claim_due_deposit_rules` re-sends under its own lease. Ret
 `PaymentBackendService.sweepUnsettledCardPayments` (`POST /api/finance/cron/card-payments`) asks
 Stripe for each one's succeeded intent (by `provider_ref`, else by `metadata.projective_payment_id`)
 and settles it through `settle_card_payment` under the claim `evt_sweep_<intent>`, so the real event
-arriving later replays. Changes no money. Runs as the `finance-sweep-card-payments` job every 15
-minutes (`00005060`).
+arriving later replays. An intent still waiting on its payer (`requires_payment_method` /
+`requires_confirmation` / `requires_action`) 24 hours after Stripe created it is canceled at Stripe
+(FINANCE_AUDIT CO15) — re-read first, and keyed `cancel_stale_intent:<intent>`, so a re-run cancels
+once — and the `payment_intent.canceled` webhook (`record_card_payment_failure`) then closes the
+payment `canceled`; the sweep writes nothing itself. Changes no money. Runs as the
+`finance-sweep-card-payments` job every 15 minutes (`00005060`).
 
 **Always a ledger row, or loud (Decision #200).** The wallet is re-read `FOR UPDATE` and confirmed
 through `finance.fn_ensure_wallet` (owner, payment currency) before the credit; a missing wallet, or a

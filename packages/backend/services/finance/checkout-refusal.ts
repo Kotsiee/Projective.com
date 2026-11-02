@@ -45,6 +45,30 @@ export const BLOCKER_FOR_SQLSTATE: Readonly<Record<string, CheckoutBlocker["code
 const NOT_ACTIVE_SQLSTATE = "55000";
 // #endregion
 
+// #region PC409 sub-codes
+/**
+ * The PC409 refusals whose prefix says what happened, each its own blocker code (FINANCE_AUDIT CO8,
+ * CO11; DB7): `price_changed` — the order's net is not the total the buyer was shown
+ * (`place_wallet_order`'s `p_expected_minor`); `promo_exhausted` — the code reached its redemption cap
+ * while they paid; `payment_in_progress` — another live card payment already pays for these lines
+ * (`attach_checkout_order`). Any other PC409 stays `price_changed` with the database's own sentence.
+ */
+export type Pc409Refusal = "price_changed" | "promo_exhausted" | "payment_in_progress";
+
+/** What a buyer reads for each {@link Pc409Refusal} — the checkout's words, whatever the door said. */
+const PC409_COPY: Readonly<Record<Pc409Refusal, string>> = {
+	price_changed: "The total changed while you were paying. Review the new total and try again.",
+	promo_exhausted: "Your promo code has been used up. Remove it to pay the full price.",
+	payment_in_progress:
+		"A payment for these items is already in progress. Finish it, or wait for it to end, before paying again.",
+};
+
+/** The blocker a PC409 sub-code becomes — also how the card path says `payment_in_progress`. */
+export function pc409Blocker(refusal: Pc409Refusal): CheckoutBlocker {
+	return { code: refusal, message: PC409_COPY[refusal], itemId: null };
+}
+// #endregion
+
 // #region Mapping
 /** The parts of a PostgREST error a checkout refusal reads. */
 export interface CheckoutRefusalError {
@@ -127,7 +151,8 @@ export function orderRefusal(
  * The blocker any refusal from a payment function becomes, or `null` when it is not a refusal a
  * buyer can act on (the caller then throws, and the route answers 503). A draft or archived business's
  * `55000 business_not_active:` is `not_authorised` with the `business_not_active` gate (Decision #236
- * flag (e), #243); any other `55000` stays a fault.
+ * flag (e), #243); any other `55000` stays a fault. A PC409 naming a {@link Pc409Refusal} is that
+ * refusal's own blocker.
  */
 export function refusalBlocker(
 	error: CheckoutRefusalError,
@@ -138,6 +163,10 @@ export function refusalBlocker(
 	if (error.code === NOT_ACTIVE_SQLSTATE) {
 		if (prefixOf(error.message) !== BUSINESS_NOT_ACTIVE_REASON) return null;
 		return businessNotActiveBlocker(sentenceOf(error.message));
+	}
+	const prefix = error.code === "PC409" ? prefixOf(error.message) : null;
+	if (prefix !== null && Object.hasOwn(PC409_COPY, prefix)) {
+		return pc409Blocker(prefix as Pc409Refusal);
 	}
 	const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? fallback;
 	return code ? orderRefusal(code, error, basketId, ownerType) : null;

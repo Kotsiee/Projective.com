@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import { toCheckoutResponse } from "@features/checkout/core/respond.ts";
+import { CheckoutOrderQuerySchema } from "@projective/types/finance";
+import { invalidPayload, toCheckoutResponse } from "@features/checkout/core/respond.ts";
 import { OrderBackendService } from "@server/services/finance/OrderBackendService.ts";
 import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
 import { readActor } from "@web/utils/api-session.ts";
@@ -18,17 +19,20 @@ import { readActor } from "@web/utils/api-session.ts";
  * `/api/checkout/create`, at the moment the payment was made, so re-submitting it from a confirmation
  * page would be a second charge.
  *
- * Thin: resolve the acting context, the session and the query, then delegate to the fat
+ * Thin: resolve the acting context, Zod-validate the named order id ({@link CheckoutOrderQuerySchema} —
+ * a malformed one is a 422, FINANCE_COMPLETENESS_AUDIT N34), then delegate to the fat
  * {@link OrderBackendService}, which reads as the signed-in caller — `finance.orders` RLS is the gate.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
+		const parsed = CheckoutOrderQuerySchema.safeParse({ order: sp.get("order") || undefined });
+		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
 			await OrderBackendService.get({
 				...basketQueryFrom(sp, context),
-				orderId: sp.get("order"),
+				orderId: parsed.data.order ?? null,
 			}, readActor(ctx)),
 		);
 	},

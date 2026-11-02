@@ -1165,13 +1165,40 @@ interface PromoJson {
 	reason: string | null;
 }
 
+/** Why a promo code never applies beside an escrow line — the promo's refusal and Pay's blocker alike. */
+export const PROMO_NOT_APPLICABLE =
+	"Promo codes don't apply to project tickets, revisions, seats or sessions — remove the code to pay for them.";
+
+/**
+ * Whether a line is escrow rather than a sale: a board ticket (Decision #166), a paid revision round
+ * (#167), a cohort seat (#171) or a 1-1 session or block (#211) — the four kinds
+ * `finance.place_wallet_order` holds as escrow instead of crediting a seller.
+ */
+function isEscrowLine(item: BasketItem): boolean {
+	return !!item.ticketId || item.itemType === "paid_revision" ||
+		item.itemType === "course_group_session" || item.itemType === "service_session" ||
+		item.itemType === "set_session";
+}
+
+/**
+ * The first line being paid for that no promo code can discount, or `null`. An escrow line is the
+ * provider's whole price, so a saving on it is one nobody funds: `finance.place_wallet_order` refuses a
+ * code beside one, and PRODUCT_SPEC says a ticket line is never discounted. The one rule behind both the
+ * promo's refusal ({@link resolvePromo}) and Pay's `promo_not_applicable` blocker, so a code is refused
+ * before any card is charged rather than after (FINANCE_AUDIT CO8).
+ */
+export function promoExcludedLine(items: readonly BasketItem[]): BasketItem | null {
+	return items.find((item) => isCheckoutEligible(item) && isEscrowLine(item)) ?? null;
+}
+
 /**
  * Resolve what a code is worth against a set of lines, in the display currency.
  *
  * The raw saving is computed here; the CLAMP is the SSOT's — {@link applyDiscounts} caps a promo at
  * what is left after creator discounts, so a code worth more than the basket reduces it to zero rather
  * than minting a credit. The returned figure is the clamped one: the buyer is shown the saving they
- * actually get.
+ * actually get. Beside an escrow line ({@link promoExcludedLine}) no code applies, whatever it is worth,
+ * so it is refused before it is looked up.
  */
 async function resolvePromo(
 	session: Session,
@@ -1179,6 +1206,16 @@ async function resolvePromo(
 	items: readonly BasketItem[],
 ): Promise<AppliedPromo | null> {
 	if (!code || !code.trim()) return null;
+	if (promoExcludedLine(items)) {
+		const typed = clip(code.trim().toUpperCase(), 40);
+		return {
+			code: typed,
+			label: typed,
+			valid: false,
+			amount: session.money.derived(0),
+			message: PROMO_NOT_APPLICABLE,
+		};
+	}
 	const { data, error } = await session.db.schema("finance").rpc("resolve_promo_code", {
 		p_code: code,
 	});

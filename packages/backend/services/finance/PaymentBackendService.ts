@@ -78,6 +78,7 @@ import {
 	type UnsettledCardPayment,
 } from "./live-payments.ts";
 import {
+	cancelStaleIntent,
 	classifyStripeError,
 	createConnectAccount,
 	createCustomer,
@@ -89,9 +90,10 @@ import {
 	createPaymentIntent,
 	createSetupIntent,
 	createTransfer,
+	findPaymentIntents,
 	findPayoutTransfer,
-	findSucceededIntent,
 	type IntentHandle,
+	planCardSweep,
 	retrieveConfirmedCard,
 	retrievePaymentIntent,
 	retrieveTransfersCapability,
@@ -186,15 +188,29 @@ async function settleStalePayout(
 	}
 }
 
+/** What the card sweep's step calls besides Stripe: the webhook's settle door, and the clock. */
+export interface CardSweepDeps {
+	settle: typeof settleCardPayment;
+	now: () => number;
+}
+
+const LIVE_SWEEP: CardSweepDeps = { settle: settleCardPayment, now: () => Date.now() };
+
 /**
- * Settle one leased card payment Stripe already charged, or leave it: the recovery sweep's step
- * (FINANCE_COMPLETENESS_AUDIT N1). A succeeded intent is applied exactly as its webhook would be,
- * through `finance.settle_card_payment`, under the claim `evt_sweep_<intent>` — so a sweep that runs
- * twice replays, and the real `payment_intent.succeeded` arriving later finds the payment settled.
+ * Settle, cancel or leave one leased card payment: the recovery sweep's step
+ * (FINANCE_COMPLETENESS_AUDIT N1, FINANCE_AUDIT CO15), decided by `planCardSweep`.
+ *
+ * - A succeeded intent is applied exactly as its webhook would be, through
+ *   `finance.settle_card_payment`, under the claim `evt_sweep_<intent>` — so a sweep that runs twice
+ *   replays, and the real `payment_intent.succeeded` arriving later finds the payment settled.
+ * - An intent still waiting on its payer 24 hours after it was created is canceled at Stripe
+ *   (`cancelStaleIntent`: re-read first, keyed on the intent). The sweep only counts it: the handled
+ *   `payment_intent.canceled` webhook stays the one writer of the payment's row.
  */
-async function settleUnsettledCardPayment(
+export async function sweepCardPayment(
 	stripe: Stripe,
 	payment: UnsettledCardPayment,
+	deps: CardSweepDeps = LIVE_SWEEP,
 ): Promise<CardPaymentSweep["results"][number]> {
 	const result = (outcome: CardPaymentSweepOutcome, intent: string | null, detail: string) => ({
 		paymentId: payment.paymentId,
@@ -203,19 +219,27 @@ async function settleUnsettledCardPayment(
 		detail,
 	});
 	try {
-		const intent = await findSucceededIntent(stripe, payment);
-		if (!intent) return result("unpaid", payment.providerRef, "no succeeded PaymentIntent yet");
-		const settled = requireLedgerRow(
-			await settleCardPayment({
-				eventId: `evt_sweep_${intent.id}`,
-				paymentIntent: intent.id,
-				paymentId: payment.paymentId,
-				amountReceived: intent.amountReceived,
-				currency: intent.currency,
-				livemode: intent.livemode,
-			}),
-		);
-		return result("settled", intent.id, settled.detail ?? settled.outcome);
+		const plan = planCardSweep(await findPaymentIntents(stripe, payment), deps.now());
+		if (plan.kind === "settle") {
+			const settled = requireLedgerRow(
+				await deps.settle({
+					eventId: `evt_sweep_${plan.intent.id}`,
+					paymentIntent: plan.intent.id,
+					paymentId: payment.paymentId,
+					amountReceived: plan.intent.amountReceived,
+					currency: plan.intent.currency,
+					livemode: plan.intent.livemode,
+				}),
+			);
+			return result("settled", plan.intent.id, settled.detail ?? settled.outcome);
+		}
+		if (plan.kind === "cancel") {
+			const left = await cancelStaleIntent(stripe, plan.intent.id, deps.now());
+			return left.canceled
+				? result("canceled", plan.intent.id, "unpaid 24 hours after it began; canceled at Stripe")
+				: result("unpaid", plan.intent.id, `left as ${left.status}`);
+		}
+		return result("unpaid", payment.providerRef, "no succeeded PaymentIntent yet");
 	} catch (error) {
 		console.error(
 			"[payments:card-sweep]",
@@ -227,6 +251,16 @@ async function settleUnsettledCardPayment(
 }
 
 const NOT_CONNECTED = "Card payments aren't connected in this environment.";
+
+/**
+ * How a card payment's processor answers are said — the refusals {@link cardPayment} and
+ * {@link stripeFailed} give, which the checkout's `checkoutPayment` simulation repeats word for word.
+ */
+export const PROCESSOR_ANSWERS = {
+	declined: "The card was declined. Nothing was charged — choose another card.",
+	refused: "The payment processor refused this payment. Nothing was charged.",
+	unreachable: "Couldn't reach the payment processor. Try again — nothing was charged twice.",
+} as const;
 
 function signedOut<T>(message = "Sign in to continue."): Result<T> {
 	return fail(401, { message });
@@ -258,9 +292,7 @@ function stripeFailed<T>(label: string, failure: StripeFailure, refusedMessage: 
 		case "misconfigured":
 			return fail(503, { message: "Payments are misconfigured here. Nothing was charged." });
 		default:
-			return fail(503, {
-				message: "Couldn't reach the payment processor. Try again — nothing was charged twice.",
-			});
+			return fail(503, { message: PROCESSOR_ANSWERS.unreachable });
 	}
 }
 
@@ -416,9 +448,7 @@ async function cardPayment(
 		return stripeFailed(
 			"intent",
 			failure,
-			savedCard
-				? "The card was declined. Nothing was charged — choose another card."
-				: "The payment processor refused this payment. Nothing was charged.",
+			savedCard ? PROCESSOR_ANSWERS.declined : PROCESSOR_ANSWERS.refused,
 		);
 	}
 
@@ -1090,25 +1120,29 @@ export class PaymentBackendService {
 
 	// #region Unsettled card payments
 	/**
-	 * Credit every card payment Stripe charged but the ledger never settled — run by the scheduler
-	 * (`POST /api/finance/cron/card-payments`, FINANCE_COMPLETENESS_AUDIT N1). Each payment still
-	 * `requires_payment` / `processing` past its grace period is leased once per window
-	 * (`finance.claim_unsettled_card_payments`), looked up at Stripe by its intent or, when the bind was
-	 * lost, by its `projective_payment_id`, and a succeeded intent is settled through the webhook's own
-	 * door. Read-only at Stripe; a Stripe or database outage leaves the payment for the next sweep.
+	 * Credit every card payment Stripe charged but the ledger never settled, and cancel every intent
+	 * left waiting on its payer for a day — run by the scheduler (`POST /api/finance/cron/card-payments`,
+	 * FINANCE_COMPLETENESS_AUDIT N1, FINANCE_AUDIT CO15). Each payment still `requires_payment` /
+	 * `processing` past its grace period is leased once per window
+	 * (`finance.claim_unsettled_card_payments`) and looked up at Stripe by its intent or, when the bind
+	 * was lost, by its `projective_payment_id`: a succeeded intent is settled through the webhook's own
+	 * door, and one still `requires_*` 24 hours after it was created is canceled ({@link sweepCardPayment}).
+	 * The only write at Stripe is that cancel; a Stripe or database outage leaves the payment for the
+	 * next sweep.
 	 */
 	static async sweepUnsettledCardPayments(limit = 50): Promise<Result<CardPaymentSweep>> {
 		if (!liveSettings()) return notConnected();
 		const claimed = await claimUnsettledCardPayments(limit);
 		const stripe = getStripe();
 		const results: CardPaymentSweep["results"] = [];
-		for (const payment of claimed) results.push(await settleUnsettledCardPayment(stripe, payment));
+		for (const payment of claimed) results.push(await sweepCardPayment(stripe, payment));
 		const count = (outcome: CardPaymentSweepOutcome) =>
 			results.filter((r) => r.outcome === outcome).length;
 		return ok({
 			claimed: claimed.length,
 			settled: count("settled"),
 			unpaid: count("unpaid"),
+			canceled: count("canceled"),
 			retry: count("retry"),
 			results,
 		});

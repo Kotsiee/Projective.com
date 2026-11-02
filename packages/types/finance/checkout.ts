@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { basisPoints, currency, minorUnitsNonNeg, timestamp } from "./common.ts";
+import { basisPoints, currency, minorUnitsNonNeg, timestamp, uuid } from "./common.ts";
 import { PLATFORM_FEE_BP, platformFeeFor } from "./fee.ts";
 import { KycStatus } from "./verification.ts";
 import { FxSnapshotSchema } from "./ledger.ts";
@@ -183,23 +183,30 @@ export interface ProviderContext {
 	 * the charge's own currency, its Available balance and the charge both in that currency's integer
 	 * minor units, never converted or totalled across currencies. `null` when the lines are priced in
 	 * more than one currency, so no single charge, and no single wallet, exists.
+	 *
+	 * Its `chargeMinor` and `currency` are the order's charge, which the invoice route is judged
+	 * against as well: an on-account order credits this same wallet with the charge and is paid from
+	 * it (`finance.place_on_account_order`).
 	 */
 	wallet: { availableMinor: number; chargeMinor: number; currency: string } | null;
-	/** The order total in {@link currency}, integer minor units. */
-	totalMinor: number;
-	/** The checkout's display currency, used to phrase the on-account headroom. */
-	currency: string;
 	savedCards: readonly SavedCard[];
 	/** KYB status of the spending entity; `null` for an individual. */
 	kybStatus: KycStatus | null;
 	/** The entity's verification tier — Level 3 is Business/KYB (`PRODUCT_SPEC` §Identity). */
 	verificationTier: number | null;
 	/**
-	 * A business's standing for paying on account (PRODUCT_SPEC §Escrow, Wallets & Finance #4): on
-	 * monthly invoicing, with an overdue invoice or not, and how much more it may owe in this currency.
-	 * Absent or `null` for anyone who cannot pay on account.
+	 * A business's standing for paying on account (PRODUCT_SPEC §Escrow, Wallets & Finance #4), read
+	 * in the CHARGE currency (`finance.get_on_account_standing`): on monthly invoicing, with an overdue
+	 * invoice or not, its on-account limit in that currency and how much more it may owe under it. A
+	 * limit of `0` — none configured, or one set to nothing — means paying on account is not offered
+	 * in that currency. Absent or `null` for anyone who cannot pay on account.
 	 */
-	onAccount?: { monthly: boolean; overdue: boolean; headroomMinor: number } | null;
+	onAccount?: {
+		monthly: boolean;
+		overdue: boolean;
+		limitMinor: number;
+		headroomMinor: number;
+	} | null;
 }
 
 /** Owner types whose money belongs to an entity rather than to the acting individual. */
@@ -223,7 +230,8 @@ const KYB_TIER = 3;
  *     attribution and refunds. For an individual the route is always offered — whether a given
  *     device can show any of its buttons is the Express Checkout Element's decision, not this one.
  *  3. **Invoicing requires KYB Level 3.** Deferred settlement is credit, and credit is extended to a
- *     verified business, never to an individual.
+ *     verified business, never to an individual. It is judged in the CHARGE currency, the one the
+ *     on-account credit is made in (FINANCE_COMPLETENESS_AUDIT N23).
  *
  * Pure and total — the same inputs always yield the same offer, so the server's decision and the
  * client's rendering of it cannot diverge. Returns every provider in the enum's declared order, which
@@ -231,7 +239,6 @@ const KYB_TIER = 3;
  */
 export function availableProviders(ctx: ProviderContext): ProviderAvailability[] {
 	const entity = isEntityOwner(ctx.ownerType);
-	const money = (minor: number) => formatMoney(minor, ctx.currency);
 
 	if (entity && !ctx.actingIsMember) {
 		const reason =
@@ -277,47 +284,60 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 				break;
 			}
 			case "invoice": {
-				if (!entity) {
-					offer.push({
+				offer.push(
+					entity ? invoiceOffer(ctx, kybVerified) : {
 						provider,
 						available: false,
 						reason: "Invoicing is available to verified business accounts.",
-					});
-				} else if (!kybVerified) {
-					offer.push({
-						provider,
-						available: false,
-						reason: "Complete business verification (KYB) to pay by invoice.",
-					});
-				} else if (!ctx.onAccount?.monthly) {
-					offer.push({
-						provider,
-						available: false,
-						reason: "Switch this business to monthly invoicing in Billing to pay by invoice.",
-					});
-				} else if (ctx.onAccount.overdue) {
-					offer.push({
-						provider,
-						available: false,
-						reason: "Pay the overdue invoice in Billing before buying on account again.",
-					});
-				} else if (ctx.onAccount.headroomMinor < ctx.totalMinor) {
-					offer.push({
-						provider,
-						available: false,
-						reason: `This would pass the business's on-account limit — ${
-							money(Math.max(ctx.onAccount.headroomMinor, 0))
-						} left. Pay from the wallet instead.`,
-					});
-				} else {
-					offer.push({ provider, available: true, reason: null });
-				}
+					},
+				);
 				break;
 			}
 		}
 	}
 
 	return offer;
+}
+
+/**
+ * The invoice route for an entity, judged in the charge's own currency: the on-account credit is made
+ * in it, so the limit, what is left under it and the sentence quoting it are all in that currency.
+ * A currency the platform sets no limit for (or a limit of nothing) is one paying on account is not
+ * offered in — said before anything the buyer could act on, since no setting of theirs opens it.
+ */
+function invoiceOffer(ctx: ProviderContext, kybVerified: boolean): ProviderAvailability {
+	const refused = (reason: string): ProviderAvailability => ({
+		provider: "invoice",
+		available: false,
+		reason,
+	});
+	const charge = ctx.wallet;
+	const standing = ctx.onAccount;
+	if (!kybVerified) return refused("Complete business verification (KYB) to pay by invoice.");
+	if (!charge) {
+		return refused(
+			"This basket mixes currencies, so it can't go on one invoice. Pay for each currency separately.",
+		);
+	}
+	if (standing && standing.limitMinor <= 0) {
+		return refused(
+			`Paying on account isn't offered in ${charge.currency}. Pay from the wallet instead.`,
+		);
+	}
+	if (!standing?.monthly) {
+		return refused("Switch this business to monthly invoicing in Billing to pay by invoice.");
+	}
+	if (standing.overdue) {
+		return refused("Pay the overdue invoice in Billing before buying on account again.");
+	}
+	if (standing.headroomMinor < charge.chargeMinor) {
+		return refused(
+			`This would pass the business's on-account limit — ${
+				formatMoney(Math.max(standing.headroomMinor, 0), charge.currency)
+			} left. Pay from the wallet instead.`,
+		);
+	}
+	return { provider: "invoice", available: true, reason: null };
 }
 
 /**
@@ -705,6 +725,19 @@ export const CheckoutBlockerCode = z.enum([
 	 * rather than as a wall.
 	 */
 	"spend_limit",
+	/**
+	 * A promo code sits on a basket with a ticket, revision, seat or session line. Those lines are
+	 * escrow — the provider's whole price — so no code discounts them (`finance.place_wallet_order`
+	 * refuses one), and Pay is refused before any card is charged rather than after (FINANCE_AUDIT CO8).
+	 */
+	"promo_not_applicable",
+	/** The promo code reached its redemption cap while the buyer was paying (PC409 `promo_exhausted`). */
+	"promo_exhausted",
+	/**
+	 * Another live card payment already pays for these lines (PC409 `payment_in_progress`). The attempt
+	 * keeps its key: a fresh one would start a second charge for lines one is already paying for.
+	 */
+	"payment_in_progress",
 ]);
 export type CheckoutBlockerCode = z.infer<typeof CheckoutBlockerCode>;
 
@@ -939,22 +972,25 @@ export const CreateCheckoutSchema = z.object({
 	/** The saved card to charge; required for `card`, `null` for every other provider. */
 	cardId: reference.nullable(),
 	promoCode: z.string().max(40).nullable(),
+	/** The display currency the buyer read the checkout in — the session's `currency`. */
 	currency,
 	/**
-	 * The total the buyer was shown, in minor units. The server recomputes with
-	 * {@link checkoutTotals} and refuses on mismatch, so a price that moved between render and submit
-	 * is caught rather than silently charged.
-	 */
-	expectedTotalMinor: minorUnitsNonNeg,
-	/**
-	 * The buyer's voluntary gateway contribution, echoed from the offer they accepted.
+	 * The charge the buyer was shown — the session's `charge`, the order total in the listings' OWN
+	 * currency — as a witness statement, not a computation. The server recomputes the charge and
+	 * refuses on any difference in amount or currency (`price_changed`), so a price that moved between
+	 * render and submit is caught rather than silently charged. The display total is never part of
+	 * this check: a rate that moved changes what the buyer reads, not what they are charged
+	 * (FINANCE_AUDIT C8).
 	 *
-	 * **This must travel with the write or every payment fails.** `create()` recomputes the total
-	 * with {@link checkoutTotals} and refuses on any mismatch with {@link expectedTotalMinor}. The
-	 * contribution is part of that total, so a client that added it to what it showed the buyer but
-	 * did not send it here would produce a server total lower by exactly the contribution — and the
-	 * refusal would be `price_changed`, on every single attempt, for a reason nothing on the surface
-	 * could explain.
+	 * Optional only so that a page loaded before this field existed is answered with a refusal the
+	 * buyer can act on ("reload the page"); the server never charges a payload without it. `null`
+	 * when the session had no single charge (lines in more than one currency), which is refused too.
+	 */
+	expectedCharge: z.object({ minor: minorUnitsNonNeg, currency }).nullable().optional(),
+	/**
+	 * The buyer's voluntary gateway contribution, echoed from the offer they accepted. No route
+	 * accepts one yet: the server refuses any amount above zero rather than charge a figure that is
+	 * not part of the {@link expectedCharge} it verifies.
 	 */
 	processingContributionMinor: minorUnitsNonNeg.default(0),
 	/** Which billing identity to invoice — `personal`, or the entity key (`business:{id}`). */
@@ -1019,6 +1055,45 @@ export const CheckoutResultSchema = z.object({
 export type CheckoutResult = z.infer<typeof CheckoutResultSchema>;
 // #endregion
 
+// #region Dev simulation
+/**
+ * The Dev Context Switcher's `checkoutPayment` axis (FINANCE_AUDIT CO29): what a checkout's payment
+ * answers when the buyer presses Pay, substituted by `CheckoutBackendService.create` after every real
+ * check has passed and before any money moves — so each outcome the surface must render is reachable
+ * without Stripe or the database refusing on cue. Development only: the route reads it from
+ * {@link CHECKOUT_PAYMENT_SIM_COOKIE} under `DENO_ENV=development`, never otherwise.
+ *
+ *  - `ok` — no substitution: the processor and the database answer as they really do.
+ *  - `declined` · `authenticate` · `timeout` · `unapplied` — the processor's answers, for a card or
+ *    express payment: the card refused; the bank asking for 3-D Secure (on a payment that does not
+ *    exist, so the page reaches the bank step and Stripe.js refuses it, charging nothing); the
+ *    processor unreachable; the card charged but the order not placed (`settled_unapplied`, the money
+ *    left in the wallet).
+ *  - `price_changed` · `promo_exhausted` — the database's PC409 refusals, on any route.
+ */
+export const CheckoutPaymentSim = z.enum([
+	"ok",
+	"declined",
+	"authenticate",
+	"timeout",
+	"unapplied",
+	"price_changed",
+	"promo_exhausted",
+]);
+export type CheckoutPaymentSim = z.infer<typeof CheckoutPaymentSim>;
+
+/** The cookie that carries {@link CheckoutPaymentSim}; absent means `ok`. */
+export const CHECKOUT_PAYMENT_SIM_COOKIE = "pj.dev.checkout-payment";
+
+/** Read the simulation from a cookie value; anything unrecognised, and `ok`, mean "no simulation". */
+export function parseCheckoutPaymentSim(
+	raw: string | null | undefined,
+): Exclude<CheckoutPaymentSim, "ok"> | null {
+	const parsed = CheckoutPaymentSim.safeParse(raw?.trim());
+	return parsed.success && parsed.data !== "ok" ? parsed.data : null;
+}
+// #endregion
+
 // #region Read query
 /** A resolved checkout/basket read: which basket, in which currency, narrowed to which deep-link. */
 export interface CheckoutQuery {
@@ -1033,4 +1108,16 @@ export interface CheckoutQuery {
 	/** `?service_id=` narrowing. */
 	serviceId?: string | null;
 }
+
+/**
+ * `GET /api/checkout/order?order=` — the order the confirmation hub shows, when one is named; absent
+ * resolves the account's most recent. Validated at the edge, so a malformed id is a 422 rather than a
+ * database round trip (FINANCE_COMPLETENESS_AUDIT N34).
+ */
+export const CheckoutOrderQuerySchema = z.object({ order: uuid.optional() });
+export type CheckoutOrderQuery = z.infer<typeof CheckoutOrderQuerySchema>;
+
+/** `GET /api/checkout/calendar?order=&line=` — one booked line of one order, both row ids (N34). */
+export const CheckoutCalendarQuerySchema = z.object({ order: uuid, line: uuid });
+export type CheckoutCalendarQuery = z.infer<typeof CheckoutCalendarQuerySchema>;
 // #endregion

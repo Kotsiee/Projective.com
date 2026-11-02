@@ -1,11 +1,13 @@
 import { isPaymentsLive } from "../../core/stripe.ts";
-import { PaymentBackendService } from "./PaymentBackendService.ts";
+import { PaymentBackendService, PROCESSOR_ANSWERS } from "./PaymentBackendService.ts";
 import type {
 	BasketItem,
 	BillingContext,
 	BuyerDetails,
+	CardPaymentHandoff,
 	CheckoutApprovalRequest,
 	CheckoutBlocker,
+	CheckoutPaymentSim,
 	CheckoutResult,
 	CheckoutSessionContext,
 	CheckoutTotals,
@@ -37,10 +39,21 @@ import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
-import { authorityBlocker, businessNotActiveBlocker, refusalBlocker } from "./checkout-refusal.ts";
+import {
+	authorityBlocker,
+	businessNotActiveBlocker,
+	pc409Blocker,
+	refusalBlocker,
+} from "./checkout-refusal.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
 import { listOwners, type ResolvedOwner, walletBalances } from "./commerce-owner.ts";
-import { type BasketView, promoMinorFor, readBasket } from "./live-basket.ts";
+import {
+	type BasketView,
+	PROMO_NOT_APPLICABLE,
+	promoExcludedLine,
+	promoMinorFor,
+	readBasket,
+} from "./live-basket.ts";
 import { defaultCardOf, listCards } from "./live-cards.ts";
 import {
 	billingContextsFor,
@@ -128,8 +141,6 @@ interface Resolved {
 	/** Per currency, the Available of the one wallet that pays a charge in it (`walletBalances`). */
 	wallets: Map<string, number>;
 	basketId: string;
-	/** A business's standing for paying on account, in the display currency; `null` for anyone else. */
-	onAccount: ProviderContext["onAccount"];
 }
 
 /** Narrow a basket's lines to what a checkout is paying for: active lines, then the deep link. */
@@ -186,13 +197,19 @@ function toTotals(
 	};
 }
 
-/** The two account-level gates resolved AFTER the total exists. */
+/** The facts resolved AFTER the total exists that bear on whether Pay may proceed. */
 interface CheckoutGate {
 	/** The buyer's saved delivery + billing record for the paying account. */
 	buyer?: BuyerDetails;
 	/** How the acting member's spending limit bears on this basket's total. */
 	spendLimit?: SpendLimitBlock;
+	/** The promo code attached to the basket, as typed — before it is resolved against the lines. */
+	promoCode?: string | null;
 }
+
+/** Why no one payment can cover lines priced in more than one currency. */
+const MIXED_CURRENCIES =
+	"This basket mixes currencies, so no one payment can cover it. Pay for each currency separately.";
 
 /**
  * Everything currently preventing payment, in the order a buyer can act on it. Line-level obstacles
@@ -273,6 +290,18 @@ function blockersFor(
 		}
 	}
 
+	// Every route charges one currency, so lines in two are refused here — before a route is tried or
+	// any processor is called — rather than when the buyer presses Pay.
+	const mixed = eligible.length > 0 && chargeCurrencyOf(eligible) === null;
+	if (mixed) blockers.push({ code: "no_provider", message: MIXED_CURRENCIES, itemId: null });
+
+	// A code beside a ticket, revision, seat or session line discounts nothing (`promoExcludedLine`), and
+	// the database refuses the order it is sent with — after a card top-up has already been charged.
+	// Refused here instead, until the code is removed (FINANCE_AUDIT CO8).
+	if (gate.promoCode?.trim() && promoExcludedLine(eligible)) {
+		blockers.push({ code: "promo_not_applicable", message: PROMO_NOT_APPLICABLE, itemId: null });
+	}
+
 	// The mirror of `canSkipDetails`: a session that may not SKIP the Details step must also refuse
 	// Pay, or a deep link straight to `/checkout/payment` becomes a way around the form.
 	if (eligible.length > 0 && gate.buyer && !buyerDetailsComplete(gate.buyer)) {
@@ -316,7 +345,9 @@ function blockersFor(
 		});
 	}
 
-	if (eligible.length > 0 && owner.actingIsMember && !providers.some((p) => p.available)) {
+	if (
+		eligible.length > 0 && !mixed && owner.actingIsMember && !providers.some((p) => p.available)
+	) {
 		blockers.push({
 			code: "no_provider",
 			message: "No payment method is available for this account right now.",
@@ -341,7 +372,7 @@ function blockersFor(
  * `charge`, beside the total in their own currency — so there is nothing left to switch.
  */
 function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
-	const connected = processorConnected();
+	const connected = io.processorConnected();
 	return offer.map((entry) => {
 		if (PROCESSOR_ROUTES.has(entry.provider) && !connected) {
 			return { ...entry, available: false, reason: PROCESSOR_REASON };
@@ -365,22 +396,23 @@ function chargeCurrencyOf(items: readonly BasketItem[]): string | null {
 	return currency;
 }
 
-/** The provider offer at a given total, the wallet route against the wallet that pays. */
+/**
+ * The provider offer for a charge: the wallet route against the wallet that pays it, the invoice route
+ * against the on-account standing read in the charge's own currency.
+ */
 function offerFor(
 	resolved: Resolved,
-	totalMinor: number,
 	wallet: ProviderContext["wallet"],
+	onAccount: ProviderContext["onAccount"],
 ): ProviderAvailability[] {
 	return settleableHere(availableProviders({
 		ownerType: resolved.owner.ownerType,
 		actingIsMember: resolved.owner.actingIsMember,
 		wallet,
-		totalMinor,
-		currency: resolved.money.display,
 		savedCards: resolved.cards,
 		kybStatus: resolved.owner.kybStatus,
 		verificationTier: resolved.owner.verificationTier,
-		onAccount: resolved.onAccount,
+		onAccount,
 	}));
 }
 
@@ -457,7 +489,10 @@ async function chargeFor(
 	if (currency === null) return null;
 	if (currency === resolved.money.display) return displayTotal();
 
-	const read = await readBasket({ ...query, basketId: resolved.basketId, display: currency }, actor);
+	const read = await io.readBasket(
+		{ ...query, basketId: resolved.basketId, display: currency },
+		actor,
+	);
 	if (!read.ok) return null;
 	const native = read.value;
 	if (native.money.display !== currency) return null;
@@ -470,13 +505,12 @@ async function chargeFor(
 
 /** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
 async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved | null> {
-	const read = await readBasket(query, actor);
+	const read = await io.readBasket(query, actor);
 	if (!read.ok) return null;
 	const view = read.value;
-	const [cards, wallets, onAccount] = await Promise.all([
-		listCards(view.owner, actor),
-		walletBalances(view.owner, actor),
-		onAccountStanding(view.owner, view.money.display, actor),
+	const [cards, wallets] = await Promise.all([
+		io.listCards(view.owner, actor),
+		io.walletBalances(view.owner, actor),
 	]);
 	return {
 		view,
@@ -486,14 +520,17 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 		items: narrow(view.basket.items, query.projectId ?? null, query.serviceId ?? null),
 		cards,
 		wallets,
-		onAccount,
 	};
 }
 
 /**
- * A business's standing for paying on account (`finance.get_on_account_standing`), read as the caller.
- * `null` for a person, a team or an enterprise, and on any failure — the Invoice route then reads as
- * unavailable, and `finance.place_on_account_order` re-checks every gate at payment anyway.
+ * A business's standing for paying on account (`finance.get_on_account_standing`), read as the caller
+ * in the CHARGE's currency: an on-account order is credited and limited in the listings' own currency,
+ * so a standing read in the display one would judge a figure the database never compares
+ * (FINANCE_COMPLETENESS_AUDIT N23). Its `limit_minor` is `0` where no limit is configured — the same,
+ * to a buyer, as a limit of nothing. `null` for a person, a team or an enterprise, and on any failure —
+ * the Invoice route then reads as unavailable, and `finance.place_on_account_order` re-checks every
+ * gate at payment anyway.
  */
 async function onAccountStanding(
 	owner: ResolvedOwner,
@@ -504,12 +541,27 @@ async function onAccountStanding(
 	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
 		.rpc("get_on_account_standing", { p_business_id: owner.ownerId, p_currency: currency });
 	if (error || !data) return null;
-	const s = data as { monthly?: unknown; overdue?: unknown; headroom_minor?: unknown };
+	const s = data as {
+		monthly?: unknown;
+		overdue?: unknown;
+		limit_minor?: unknown;
+		headroom_minor?: unknown;
+	};
 	return {
 		monthly: s.monthly === true,
 		overdue: s.overdue === true,
+		limitMinor: Number(s.limit_minor) || 0,
 		headroomMinor: Number(s.headroom_minor) || 0,
 	};
+}
+
+/** The on-account standing behind a charge, in the charge's currency; `null` with no single charge. */
+function standingFor(
+	owner: ResolvedOwner,
+	charge: MoneyView | null,
+	actor: ReadActor,
+): Promise<ProviderContext["onAccount"]> {
+	return charge ? io.onAccountStanding(owner, charge.currency, actor) : Promise.resolve(null);
 }
 
 /**
@@ -553,6 +605,144 @@ async function guarded<T>(label: string, run: () => Promise<ServiceResult<T>>): 
 }
 // #endregion
 
+// #region I/O
+/** A refusal as an order door raises it — the parts the checkout maps to a blocker. */
+interface DoorError {
+	code?: string;
+	message: string;
+	details?: string | null;
+	hint?: string | null;
+}
+
+/** Call one of the two order doors as the caller. */
+async function placeOrder(
+	door: "place_wallet_order" | "place_on_account_order",
+	args: Record<string, unknown>,
+	accessToken: string,
+): Promise<{ data: unknown; error: DoorError | null }> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(door, args);
+	return { data, error };
+}
+
+/**
+ * Every read and write {@link CheckoutBackendService.session} and {@link CheckoutBackendService.create}
+ * make: the basket, the paying account's cards, wallets and on-account standing, the buyer's details
+ * and spend position, an attempt key's placed order, the processor charge and the two order doors.
+ * Live by default; a test swaps fakes in ({@link setCheckoutIoForTesting}), which is how a refusal is
+ * proven to come before the money call without a database or Stripe.
+ */
+export interface CheckoutIo {
+	readBasket: typeof readBasket;
+	listCards: typeof listCards;
+	walletBalances: typeof walletBalances;
+	onAccountStanding: typeof onAccountStanding;
+	details: typeof detailsFor;
+	spendLimit: typeof spendLimitFor;
+	spendPosition: typeof spendPositionFor;
+	placedOrder: typeof placedOrderFor;
+	chargeCard: typeof PaymentBackendService.createCheckoutCardPayment;
+	placeOrder: typeof placeOrder;
+	processorConnected: () => boolean;
+}
+
+const LIVE_IO: CheckoutIo = {
+	readBasket,
+	listCards,
+	walletBalances,
+	onAccountStanding,
+	details: detailsFor,
+	spendLimit: spendLimitFor,
+	spendPosition: spendPositionFor,
+	placedOrder: placedOrderFor,
+	chargeCard: (input, actor) => PaymentBackendService.createCheckoutCardPayment(input, actor),
+	placeOrder,
+	processorConnected,
+};
+
+let io: CheckoutIo = LIVE_IO;
+
+/** Swap some of the checkout's reads and writes for fakes (tests only); `null` restores the live ones. */
+export function setCheckoutIoForTesting(fake: Partial<CheckoutIo> | null): void {
+	io = fake ? { ...LIVE_IO, ...fake } : LIVE_IO;
+}
+// #endregion
+
+// #region Dev simulation
+/*
+ * The `checkoutPayment` axis answers in place of the money call a route was about to make. The
+ * processor's answers (`declined`, `authenticate`, `timeout`, `unapplied`) replace a card or express
+ * charge only; the order doors' PC409 refusals (`price_changed`, `promo_exhausted`) replace any route's.
+ */
+
+/** The id a simulated payment carries. No row has it, so nothing can be checked or settled against it. */
+const DEV_PAYMENT_ID = "00000000-0000-4000-8000-00000000c0de";
+
+/**
+ * What the processor answers under a `checkoutPayment` simulation, in place of the charge: the card
+ * declined, the processor unreachable, or the bank asking for 3-D Secure on a payment that does not
+ * exist — so the page reaches the bank step and Stripe.js, given no real intent, refuses it, charging
+ * nothing. `null` for every other simulation, and then the real charge is made.
+ */
+function simulatedCharge(
+	sim: CheckoutPaymentSim | null,
+	charge: MoneyView,
+	savedCard: boolean,
+): ServiceResult<CardPaymentHandoff> | null {
+	switch (sim) {
+		case "declined":
+			return fail<CardPaymentHandoff>(422, {
+				message: savedCard ? PROCESSOR_ANSWERS.declined : PROCESSOR_ANSWERS.refused,
+			});
+		case "timeout":
+			return fail<CardPaymentHandoff>(503, { message: PROCESSOR_ANSWERS.unreachable });
+		case "authenticate":
+			return ok({
+				paymentId: DEV_PAYMENT_ID,
+				purpose: "wallet_topup",
+				status: "requires_payment",
+				lockStatus: "not_applicable",
+				amount: charge,
+				providerRef: "pi_dev_simulated",
+				clientSecret: "pi_dev_simulated_secret_dev",
+				publishableKey: null,
+				mode: "test",
+				replayed: false,
+				confirmation: "authenticate",
+			}, { status: 201 });
+		default:
+			return null;
+	}
+}
+
+/**
+ * What an order door answers under a `checkoutPayment` simulation of one of its PC409 refusals, in
+ * place of the call — mapped to its blocker by the same code a real refusal is. `null` otherwise.
+ */
+function simulatedDoor(sim: CheckoutPaymentSim | null): { data: null; error: DoorError } | null {
+	return sim === "price_changed" || sim === "promo_exhausted"
+		? {
+			data: null,
+			error: { code: "PC409", message: `${sim}: simulated by the Dev Context Switcher` },
+		}
+		: null;
+}
+
+/**
+ * A card charged whose order was then refused (`settled_unapplied`, Decision #200): the money is in
+ * the paying wallet, and the buyer is told so with the order's refusal — what the page reaches once
+ * the webhook's placement and its own have both been refused.
+ */
+function unappliedRefusal(charge: MoneyView): CheckoutBlocker {
+	return {
+		code: "price_changed",
+		message:
+			`Your ${charge.display} reached your Projective wallet, but the order wasn't placed: the total changed. Review it and pay from the wallet.`
+				.slice(0, 200),
+		itemId: null,
+	};
+}
+// #endregion
+
 export class CheckoutBackendService {
 	/**
 	 * The checkout page's entire server projection — which account is paying, which lines are being paid
@@ -578,7 +768,8 @@ export class CheckoutBackendService {
 				processingOffer.optedIn ? processingOffer.amount.minor : 0,
 			);
 			// The charge first: it names the wallet the order is paid from, whose balance the wallet route
-			// is offered against, and whose limit, threshold and approvals the spend read answers for.
+			// is offered against, the currency the on-account standing is read in, and whose limit,
+			// threshold and approvals the spend read answers for.
 			const charge = await chargeFor(
 				query,
 				actor,
@@ -587,15 +778,16 @@ export class CheckoutBackendService {
 				() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
 			);
 			const paying = payingWalletOf(resolved.wallets, charge);
-			const providers = offerFor(resolved, totals.total.minor, paying);
 			const requirements = checkoutRequirements(items);
-			const [details, position] = await Promise.all([
-				detailsFor(owner, query, actor),
-				spendPositionFor(owner, totals.total.minor, money, actor, {
+			const [onAccount, details, position] = await Promise.all([
+				standingFor(owner, charge, actor),
+				io.details(owner, query, actor),
+				io.spendPosition(owner, totals.total.minor, money, actor, {
 					basketId: resolved.basketId,
 					charge,
 				}),
 			]);
+			const providers = offerFor(resolved, paying, onAccount);
 			const { spendLimit, businessAccount } = position;
 
 			return ok({
@@ -624,14 +816,18 @@ export class CheckoutBackendService {
 					wallet: walletStandingOf(paying, resolved.wallets, money),
 					savedCards: resolved.cards,
 					defaultCardId: defaultCardOf(resolved.cards, owner),
-					cardsConnected: processorConnected(),
+					cardsConnected: io.processorConnected(),
 					promo,
 					totals,
 					charge,
 					requiresEmail: requirements.requiresEmail,
 					requiresSchedule: requirements.requiresSchedule,
 					requiresStage: requirements.requiresStage,
-					blockers: blockersFor(resolved, providers, { buyer: details.buyer, spendLimit }),
+					blockers: blockersFor(resolved, providers, {
+						buyer: details.buyer,
+						spendLimit,
+						promoCode: view.promoCode,
+					}),
 					buyer: details.buyer,
 					billingContexts: details.billingContexts,
 					invoicing: details.invoicing,
@@ -713,30 +909,38 @@ export class CheckoutBackendService {
 	 * Charge a checkout — from the Projective wallet, the one provider that can settle here.
 	 *
 	 * Every check the checkout page shows is re-run against the SUBMITTED lines (a line left out of
-	 * this payment must not block it), then the display total the buyer was shown is compared with a
-	 * fresh computation — a client-supplied total accepted blindly is a price-tampering hole. The money
-	 * then moves in ONE database transaction (`finance.place_wallet_order`), which re-prices each line
-	 * against the unit price the buyer saw, re-validates the promo code, debits the wallet, credits the
-	 * sellers, writes the order and consumes the lines. It is idempotent on `idempotencyKey`: a retried
-	 * submit answers with the order it already placed.
+	 * this payment must not block it), then the CHARGE the buyer was shown — the total in the listings'
+	 * own currency — is compared with a fresh computation: a client-supplied figure accepted blindly is a
+	 * price-tampering hole. The display total is never part of that check, because a rate that moved
+	 * changes what the buyer reads and not what they pay (FINANCE_AUDIT C8). Every refusal comes before
+	 * any money call (FINANCE_AUDIT CO8). The money then moves in ONE database transaction
+	 * (`finance.place_wallet_order`), which re-prices each line against the unit price the buyer saw,
+	 * re-validates the promo code, debits the wallet, credits the sellers, writes the order and
+	 * consumes the lines. It is idempotent on `idempotencyKey`: a retried submit answers with the order
+	 * it already placed.
 	 *
 	 * A CARD or EXPRESS payment answers `requires_action` with a PaymentIntent for the session's
 	 * `charge` — the total in the listings' own currency: the charge tops up the paying wallet, and once
 	 * the signed webhook has credited it the browser places the wallet order under the SAME attempt key,
 	 * so a retried or repeated placement replays rather than ordering twice.
+	 *
+	 * `dev.payment` is the Dev Context Switcher's `checkoutPayment` simulation, which the route passes
+	 * in development only: it answers in place of the money call, after every real check has passed.
 	 */
 	static create(
 		input: CreateCheckout,
 		query: BasketQuery,
 		actor: ReadActor,
+		dev: { payment?: CheckoutPaymentSim | null } = {},
 	): Promise<ServiceResult<{ result: CheckoutResult }>> {
 		type Out = { result: CheckoutResult };
 		return guarded("create", async () => {
 			if (!canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			const sim = dev.payment && dev.payment !== "ok" ? dev.payment : null;
 			// A retry after a dropped response carries the key of an attempt that may already have been
 			// paid — and by then its lines are consumed, so every check below would refuse it as "your
 			// basket changed" while the money had moved. The key is answered FIRST.
-			const prior = await placedOrderFor(input.idempotencyKey, actor.accessToken);
+			const prior = await io.placedOrder(input.idempotencyKey, actor.accessToken);
 			if (prior) {
 				const result = succeeded(prior);
 				return ok({ result }, { message: result.message });
@@ -774,26 +978,30 @@ export class CheckoutBackendService {
 			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
 			const priced: Resolved = { ...resolved, items: eligible };
 			// What every route pays, in the lines' own currency: the wallet route is offered against it,
-			// and a card, an express wallet or an on-account credit is made for exactly it.
+			// the on-account standing is read in it, and a card, an express wallet or an on-account
+			// credit is made for exactly it.
 			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
-			const providers = offerFor(
-				priced,
-				totals.total.minor,
-				payingWalletOf(resolved.wallets, charge),
-			);
-			const [details, spendLimit] = await Promise.all([
-				detailsFor(owner, query, actor),
-				spendLimitFor(owner, totals.total.minor, money, actor, {
+			const [standing, details, spendLimit] = await Promise.all([
+				standingFor(owner, charge, actor),
+				io.details(owner, query, actor),
+				io.spendLimit(owner, totals.total.minor, money, actor, {
 					basketId: resolved.basketId,
 					// A business's approval is matched against the charge in its own currency, exactly as
 					// the redeemer will match it; nobody else's pre-flight needs the charge.
 					charge: owner.ownerType === "business" ? charge : null,
 				}),
 			]);
-			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
+			const providers = offerFor(priced, payingWalletOf(resolved.wallets, charge), standing);
+			const blocking = blockersFor(priced, providers, {
+				buyer: details.buyer,
+				spendLimit,
+				promoCode: view.promoCode,
+			});
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
 			if (!charge) {
-				const message = "This basket mixes currencies. Pay for each currency separately.";
+				// The lines share one currency (a blocker above says so otherwise), so a missing charge
+				// means they did not read back in it: the basket moved under the payment.
+				const message = "Your basket changed while you were paying — review it and try again.";
 				return refusal(message, [blocker("price_changed", message)]);
 			}
 
@@ -814,7 +1022,7 @@ export class CheckoutBackendService {
 				return refusal(message, [blocker(byProcessor ? "no_provider" : "insufficient_funds", message)]);
 			}
 
-			// The display figures the buyer confirmed, re-verified against a fresh computation.
+			// The request names the display currency it was read in; a page read in another is stale.
 			if (input.currency.toUpperCase() !== money.display) {
 				const message = `This basket is priced in ${money.display}, not ${input.currency.toUpperCase()}. Reload and try again.`;
 				return refusal(message, [blocker("price_changed", message)]);
@@ -823,8 +1031,17 @@ export class CheckoutBackendService {
 				const message = "The optional contribution isn't available for this payment. Review the total and try again.";
 				return refusal(message, [blocker("price_changed", message)]);
 			}
-			if (input.expectedTotalMinor !== totals.total.minor) {
-				const message = `The price changed while you were paying — it's now ${totals.total.display}. Review the total and try again.`;
+			// The charge the buyer confirmed, in the listings' own currency, re-verified against the fresh
+			// one — never the display total, which a moved rate changes while the charge stands (C8). A
+			// page that sent no charge predates the check and is told to reload; it is never charged.
+			const expected = input.expectedCharge;
+			if (!expected) {
+				const message = "This checkout page is out of date. Reload it to see the total, then pay.";
+				return refusal(message, [blocker("price_changed", message)]);
+			}
+			if (expected.currency.toUpperCase() !== charge.currency || expected.minor !== charge.minor) {
+				const message =
+					`The price changed while you were paying — it's now ${charge.display}. Review the total and try again.`;
 				return refusal(message, [blocker("price_changed", message)]);
 			}
 			// The code the buyer saw APPLIED — a refused code on the basket applies nothing and is not sent.
@@ -834,24 +1051,17 @@ export class CheckoutBackendService {
 				return refusal(message, [blocker("price_changed", message)]);
 			}
 
-			// The unit price each line was shown in, in the listing's OWN currency — what the database
-			// compares with the catalogue before any money moves. One currency per charge.
+			// The unit price each line was shown in, in the listing's OWN currency (the charge's) — what
+			// the database compares with the catalogue before any money moves.
 			const units: Record<string, number> = {};
-			let chargeCurrency: string | null = null;
 			for (const item of eligible) {
-				const currency = (item.unitPrice.origin?.currency ?? item.unitPrice.currency).toUpperCase();
-				if (chargeCurrency !== null && chargeCurrency !== currency) {
-					const message = "This basket mixes currencies. Pay for each currency separately.";
-					return refusal(message, [blocker("price_changed", message)]);
-				}
-				chargeCurrency = currency;
 				units[item.id] = item.unitPrice.origin?.minor ?? item.unitPrice.minor;
 			}
 
 			const rpcArgs = {
 				p_basket_id: resolved.basketId,
 				p_item_ids: eligible.map((item) => item.id),
-				p_currency: chargeCurrency,
+				p_currency: charge.currency,
 				p_units: units,
 				p_promo_code: appliedCode,
 				p_idempotency_key: input.idempotencyKey,
@@ -860,10 +1070,12 @@ export class CheckoutBackendService {
 			if (onAccount) {
 				// Credited on account in the lines' OWN currency — exactly what place_wallet_order then
 				// debits, the same charge a card is made for — in one database transaction.
-				const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
-					"place_on_account_order",
-					{ ...rpcArgs, p_amount: charge.minor },
-				);
+				const { data, error } = simulatedDoor(sim) ??
+					await io.placeOrder(
+						"place_on_account_order",
+						{ ...rpcArgs, p_amount: charge.minor },
+						actor.accessToken,
+					);
 				if (error) {
 					// Buying as the business needs `purchase` as well as vault `spend` (BB2).
 					const authority = businessAuthorityRefusal(error);
@@ -914,7 +1126,18 @@ export class CheckoutBackendService {
 					const message = "This account can only pay with a business card. Choose another card.";
 					return refusal(message, [blocker("no_provider", message)]);
 				}
-				const pay = await PaymentBackendService.createCheckoutCardPayment({
+				// Simulated: the order the charge pays for refused afterwards — the money left in the
+				// wallet (`unapplied`), or the door's own PC409 (`price_changed`, `promo_exhausted`).
+				if (sim === "unapplied") {
+					const left = unappliedRefusal(charge);
+					return refusal(left.message, [left]);
+				}
+				const door = simulatedDoor(sim);
+				const doorRefused = door
+					? refusalBlocker(door.error, resolved.basketId, owner.ownerType)
+					: null;
+				if (doorRefused) return refusal(doorRefused.message, [doorRefused]);
+				const pay = simulatedCharge(sim, charge, card !== null) ?? await io.chargeCard({
 					ownerType: owner.ownerType,
 					ownerId: owner.ownerId,
 					amountMinor: charge.minor,
@@ -941,6 +1164,13 @@ export class CheckoutBackendService {
 					if (pay.details?.reason === BUSINESS_NOT_ACTIVE_REASON) {
 						return refusal(message, [businessNotActiveBlocker(message)]);
 					}
+					// Another live card payment pays for these lines and could not be resumed from here (a
+					// readable one is resumed by the payment itself): said as what it is, so the page keeps
+					// this attempt's key rather than start a second charge (FINANCE_AUDIT CO11).
+					if (pay.details?.reason === "payment_in_progress") {
+						const live = pc409Blocker("payment_in_progress");
+						return refusal(live.message, [live]);
+					}
 					return refusal(message, [blocker("no_provider", message)]);
 				}
 				const result: CheckoutResult = {
@@ -962,10 +1192,12 @@ export class CheckoutBackendService {
 			}
 
 			// The total the buyer was shown, in the charge currency: the database refuses any other net.
-			const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
-				"place_wallet_order",
-				{ ...rpcArgs, p_expected_minor: charge.minor },
-			);
+			const { data, error } = simulatedDoor(sim) ??
+				await io.placeOrder(
+					"place_wallet_order",
+					{ ...rpcArgs, p_expected_minor: charge.minor },
+					actor.accessToken,
+				);
 			if (error) {
 				const authority = businessAuthorityRefusal(error);
 				if (authority) {

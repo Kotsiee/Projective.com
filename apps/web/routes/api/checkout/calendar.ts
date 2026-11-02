@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
+import { CheckoutCalendarQuerySchema } from "@projective/types/finance";
 import { OrderBackendService } from "@server/services/finance/OrderBackendService.ts";
 import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
 import { readActor } from "@web/utils/api-session.ts";
@@ -22,22 +23,27 @@ import { readActor } from "@web/utils/api-session.ts";
  * it a browser is free to re-interpret the body as something it was never meant to be. The filename
  * travels in `content-disposition` so the file lands named after the order, not after the route.
  *
- * Thin: resolve the acting context + the two ids, delegate, and map the outcome onto a file or a
- * plain-text `404`. The fat service scopes the order to the acting account — a calendar entry names a
- * seller, a time and a join link, so an id in a URL must not be enough to read one.
+ * Thin: resolve the acting context, Zod-validate the two ids ({@link CheckoutCalendarQuerySchema} — a
+ * missing or malformed one is a plain-text `400`, FINANCE_COMPLETENESS_AUDIT N34), delegate, and map
+ * the outcome onto a file or a plain-text `404`. The fat service scopes the order to the acting
+ * account — a calendar entry names a seller, a time and a join link, so an id in a URL must not be
+ * enough to read one.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
-		const orderId = sp.get("order");
-		const lineId = sp.get("line");
-		if (!orderId || !lineId) {
-			return new Response("Missing order or line.", {
+		const parsed = CheckoutCalendarQuerySchema.safeParse({
+			order: sp.get("order") ?? "",
+			line: sp.get("line") ?? "",
+		});
+		if (!parsed.success) {
+			return new Response("That calendar link names no booking.", {
 				status: 400,
 				headers: { "content-type": "text/plain; charset=utf-8" },
 			});
 		}
+		const { order: orderId, line: lineId } = parsed.data;
 
 		const result = await OrderBackendService.ics(orderId, lineId, {
 			...basketQueryFrom(sp, context),
