@@ -335,7 +335,14 @@ Deno.test("row menu: only the rows the viewer has, terminal act last", () => {
 		(action) => seen.push(action),
 	);
 	const keys = rows.filter((r) => !r.separator).map((r) => r.key);
-	assertEquals(keys, ["link-open-new-tab", "link-copy", "open", "message", "profile", "remove"]);
+	assertEquals(keys, ["open", "message", "profile", "link-copy", "remove"]);
+	const profile = rows.find((r) => r.key === "profile");
+	assertEquals(profile?.url, "/@bo", "View profile is the split link row");
+	assertEquals(profile?.items?.map((r) => r.key), [
+		"link-open",
+		"link-open-new-tab",
+		"link-open-new-window",
+	]);
 	assert(rows.every((r) => r.disabled !== true), "no row is ever disabled");
 	rows.find((r) => r.key === "remove")?.command?.({ item: {}, originalEvent: new Event("click") });
 	assertEquals(seen, ["remove"]);

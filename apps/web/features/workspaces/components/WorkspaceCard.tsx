@@ -8,6 +8,7 @@ import {
 	composeMenu,
 	type ContextSurfaceSource,
 	linkActionItems,
+	linkOpenItem,
 	type MenuItem,
 } from "@projective/ui/navigation";
 import { kindCopy, type WorkspaceSummary } from "@projective/types/workspace";
@@ -222,15 +223,13 @@ export interface WorkspaceKebabProps extends WorkspaceCardProps {
 const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
 
 function linkRows(summary: WorkspaceSummary, href: string, copyLink: () => void): MenuItem[] {
-	return linkActionItems({
-		href,
-		title: summary.name,
-		include: ["open", "open-new-tab", "copy-link"],
-	}).map((row) => {
-		if (row.key === "link-open") return { ...row, label: "Open console" };
-		if (row.key === "link-copy") return { ...row, command: copyLink };
-		return row;
-	});
+	return [
+		linkOpenItem({ href, label: "Open console", copy: false }),
+		...linkActionItems({ href, title: summary.name, include: ["copy-link"] }).map((row) => ({
+			...row,
+			command: copyLink,
+		})),
+	];
 }
 
 function actingRow(

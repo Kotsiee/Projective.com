@@ -3687,6 +3687,15 @@ The application relies on a strict set of environment variables. The canonical s
 > (Google sign-in, Twilio, Apple, S3) from the process environment and the dotenv files it finds in
 > `supabase/` and the repo root, `.env.local` included.
 
+> **Share mode (`deno task share`, `scripts/share.ts`).** Serves the production build on loopback
+> behind a Cloudflare quick tunnel for external testers. The script passes the server an untracked
+> `.env.share` (git-ignored, optional) as process environment, so its keys beat `.env.local` / `.env`
+> for that server only, and then sets `APP_URL` to the app tunnel and `SUPABASE_PUBLIC_URL` to a
+> second tunnel in front of a storage-only proxy. Browsers reach Supabase only through storage URLs
+> (public reads, signed reads, signed uploads); the proxy forwards exactly those routes, strips
+> `authorization` / `apikey`, and never exposes Kong, whose local service-role key is a published
+> default. `SUPABASE_URL` and every secret stay on 127.0.0.1.
+
 > **Outbound email — none configured yet (Decision #57(f), #151).**
 > `packages/backend/services/mail/verification-mailer.ts` is the only seam an email-verification link
 > leaves through. With no transport configured, development logs

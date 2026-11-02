@@ -3,7 +3,13 @@ import { useRef } from "preact/hooks";
 import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
-import { ActionMenu, composeMenu, linkActionItems, type MenuItem } from "@projective/ui/navigation";
+import {
+	ActionMenu,
+	composeMenu,
+	linkActionItems,
+	linkOpenItem,
+	type MenuItem,
+} from "@projective/ui/navigation";
 import { StatusIcon } from "./StatusIcon.tsx";
 import { KebabIcon, OwnerRoleIcon, StarIcon, WorkerRoleIcon } from "./glyphs.tsx";
 import { isOwnerRole } from "../types/projects-types.ts";
@@ -44,8 +50,9 @@ const RESTED = new Set<ProjectStatus>(["completed", "cancelled", "archived"]);
 /**
  * The actions offered by the kebab menu — only actions that DO something (root CLAUDE.md §3.11).
  * Report and Leave are absent rather than inert: neither has a backend or a product rule yet, and a
- * menu row that closes the menu and changes nothing is a control that lies. Open, Open in new tab,
- * Copy link and Share resolve inside the card; Archive is the one action routed to the parent.
+ * menu row that closes the menu and changes nothing is a control that lies. The split Open row (Open ·
+ * Open in new tab · Open in new window), Copy link and Share resolve inside the card; Archive is the
+ * one action routed to the parent.
  */
 export type CardMenuAction = "archive";
 
@@ -113,13 +120,16 @@ export function ProjectCard(
 		}]
 		: [];
 	const menu = composeMenu(
-		linkActionItems({
-			href,
-			title: item.title,
-			include: ["open", "open-new-tab", "copy-link", "share"],
-			onShare: () => requestShare({ href, title: item.title, noun: "project" }),
-			onCopied,
-		}),
+		[
+			linkOpenItem({ href, label: "Open", copy: false }),
+			...linkActionItems({
+				href,
+				title: item.title,
+				include: ["copy-link", "share"],
+				onShare: () => requestShare({ href, title: item.title, noun: "project" }),
+				onCopied,
+			}),
+		],
 		ownerRows,
 	);
 

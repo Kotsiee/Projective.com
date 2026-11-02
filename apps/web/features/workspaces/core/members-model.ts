@@ -1,6 +1,6 @@
 import type { MetaLineEntry } from "@ui/display/core/meta-line.tsx";
 import type { MenuItem } from "@ui/types/mod.ts";
-import { composeMenu, linkActionItems } from "@ui/navigation/core/link-actions.ts";
+import { composeMenu, linkActionItems, linkOpenItem } from "@ui/navigation/core/link-actions.ts";
 import type { ButtonNeutralTone, ButtonSemanticTone } from "@ui/fields/types/button.ts";
 import { readPayoutGateDetails, readPlanGateDetails } from "@projective/types/finance";
 import {
@@ -183,8 +183,9 @@ export interface MemberMenuOptions {
 
 /**
  * A row's menu — the card's kebab, the table's row actions and a right-click on either (Decision
- * #222): Open in new tab · Copy link, then Role and permissions · Message · View profile, then the
- * row's one terminal act when the viewer has it.
+ * #222): Role and permissions · Message · View profile, then the row's one terminal act when the
+ * viewer has it. A member with a handle gets View profile as the split `linkOpenItem` row (Decision
+ * #373), which unfolds Open · Open in new tab · Open in new window, with Copy link right below it.
  */
 export function memberMenu(
 	member: WorkspaceMember,
@@ -214,16 +215,25 @@ export function memberMenu(
 	const keys = memberActionKeys(abilities);
 	const own = keys.filter((k) => k === "open" || k === "message" || k === "profile");
 	const terminal = keys.filter((k) => k === "transfer" || k === "leave" || k === "remove");
-	const bind = (k: MemberAction): MenuItem => ({ ...rows[k], command: () => onAction(k, member) });
-	const links = member.handle
-		? linkActionItems({
-			href: memberProfileHref(member.handle),
-			title: member.name,
-			include: ["open-new-tab", "copy-link"],
-			onCopied: options.onCopied,
-		})
-		: [];
-	return composeMenu(links, own.map(bind), terminal.map(bind));
+	const bind = (k: MemberAction): MenuItem[] => {
+		if (k !== "profile" || !member.handle) {
+			return [{
+				...rows[k],
+				command: () => onAction(k, member),
+			}];
+		}
+		const href = memberProfileHref(member.handle);
+		return [
+			linkOpenItem({ href, key: "profile", label: "View profile", icon: "user", copy: false }),
+			...linkActionItems({
+				href,
+				title: member.name,
+				include: ["copy-link"],
+				onCopied: options.onCopied,
+			}),
+		];
+	};
+	return composeMenu(own.flatMap(bind), terminal.flatMap(bind));
 }
 // #endregion
 
