@@ -16,6 +16,7 @@ import {
 	OwnerAvailabilitySchema,
 	type OwnerBand,
 	type OwnerCallSettings,
+	PAID_CALLS_LIVE,
 } from "@projective/types/scheduling";
 import { DISPLAY_CURRENCIES, toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import "../styles/profile.css";
@@ -48,6 +49,10 @@ import { AvailabilityModal } from "@features/calendar/components/AvailabilityMod
  * kept exactly as they are. The same hours are the default availability template's weekly part, so
  * the templates open from here in the shared availability modal — only while nothing here is unsaved,
  * and a template save re-reads the hours, so this page never writes stale ones back.
+ *
+ * While paid calls are off ({@link PAID_CALLS_LIVE}, Decision #343 ruling C1) the paid switch is
+ * locked at whatever the owner stored and says why, and its fee fields are not drawn: a setting that
+ * nothing reads is not one to offer (gate 11), and a save writes the stored values back unchanged.
  */
 export interface AvailabilityEditorProps {
 	handle: string;
@@ -76,6 +81,7 @@ const NOTICE = [
 	{ label: "1 week", value: "10080" },
 ];
 const ADVANCE = [7, 14, 30, 60, 90, 180, 365].map((d) => ({ label: `${d} days`, value: String(d) }));
+const PAID_NOTE_ID = "pf-avail-paid-note";
 
 export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.Element {
 	const { handle, takesCalls } = props;
@@ -391,10 +397,18 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 									<ToggleSwitch
 										value={call.paidEnabled}
 										label="Offer a paid consultation"
+										disabled={!PAID_CALLS_LIVE}
+										aria-describedby={PAID_CALLS_LIVE ? undefined : PAID_NOTE_ID}
 										onValueChange={(on) =>
 											setCall({ paidEnabled: on, feeCurrency: value.peek().call?.feeCurrency ?? "GBP" })}
 									/>
-									{call.paidEnabled && (
+									{!PAID_CALLS_LIVE && (
+										<p id={PAID_NOTE_ID} class="pf-edit__hint">
+											Paid consultations open once clients can pay for them, so this can't be
+											changed for now.
+										</p>
+									)}
+									{PAID_CALLS_LIVE && call.paidEnabled && (
 										<div class="pf-edit__grid">
 											<FormControl label="Length">
 												{({ id }) => (

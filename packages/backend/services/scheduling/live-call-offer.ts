@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "supabaseClient";
-import { ConferencingProviderSchema, type PublicCallOffer } from "@projective/types/scheduling";
+import {
+	ConferencingProviderSchema,
+	PAID_CALLS_LIVE,
+	type PublicCallOffer,
+} from "@projective/types/scheduling";
 import type { ProfileOwnerType } from "@projective/types/profile";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -25,7 +29,8 @@ import {
  * Returns `null` when the owner takes no calls (no published schedule, calls switched off, or no
  * flavour on offer — a paid call with no fee is no offer), and `undefined` when the database could
  * not answer. The consultation row is ABSENT for `null`, never disabled: the capability does not
- * exist.
+ * exist. While paid calls are off ({@link PAID_CALLS_LIVE}, Decision #343 ruling C1) no paid call is
+ * an offer either, whatever the owner stored, so every surface that reads this draws no paid card.
  *
  * `platforms` is the owner's declared allow-list in their order. It is not yet intersected with the
  * owner's connected conferencing accounts — a visitor cannot read those — so an empty list reads as
@@ -60,8 +65,8 @@ export async function readPublicCallOffer(
 		if (!row || !row.is_published || !row.call_settings) return null;
 		const settings = row.call_settings;
 		const { feeAmountMinor, feeCurrency } = callFee(settings);
-		const priced = settings.paid_enabled && feeAmountMinor !== null && feeAmountMinor > 0 &&
-			feeCurrency !== null;
+		const priced = PAID_CALLS_LIVE && settings.paid_enabled && feeAmountMinor !== null &&
+			feeAmountMinor > 0 && feeCurrency !== null;
 		if (!settings.accepts_calls || (!settings.courtesy_enabled && !priced)) return null;
 		return {
 			acceptsCalls: true,

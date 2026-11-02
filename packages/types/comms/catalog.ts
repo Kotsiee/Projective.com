@@ -157,6 +157,10 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// #region [feedback] Feedback board status changes (P7)
 	"feedback.status_changed",
 	// #endregion
+
+	// #region [scheduling] Discovery-call expiry (S-11)
+	"call.expired",
+	// #endregion
 ] as const;
 
 /** The seeded event keys as a union type. Runtime values are NOT limited to these. */

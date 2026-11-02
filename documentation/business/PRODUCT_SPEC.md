@@ -1967,16 +1967,18 @@ provider's hidden **Consultations** engagement — one per provider, never shown
 moment of the request, so the host decides on a request that is already funded; it is refunded if
 the host declines or the request expires, and otherwise settles exactly as a 1-on-1 Session sitting
 does, creating no project either party manages and counting nothing toward Workload Intensity.
-Switching paid calls on needs the provider to be payout-ready (Decision #337, ruling M4). **Not
-built yet**, including the interim switch-off.
+Switching paid calls on needs the provider to be payout-ready (Decision #337, ruling M4). The
+switch-off is built; the paid path is **Not built yet**.
 
 **Who may move a call, and when** (Decision #343, ruling C3). The host confirms or declines a
 request (a decline refunds a paid one). Either side may propose a new time outside the reschedule
 lockout, or cancel at any time, the lateness of a cancel being derived from the time left. Either
 side may mark a no-show from 15 minutes after the start, backed by presence evidence where the call
-is tracked. A request nobody answered expires, checked every 15 minutes, and a courtesy call past
-its end time is completed by the platform. **Not built yet:** today a host cannot confirm, decline
-or reschedule from the product.
+is tracked. A request nobody answered expires, checked every 15 minutes: once it has waited 72 hours
+(a platform parameter) or its start time has come, it stops holding the time and both people are
+told. A courtesy call past its end time is completed by the platform. The expiry is built. **Not
+built yet:** today a host cannot confirm, decline or reschedule from the product, and the platform
+does not yet complete a call past its end.
 
 The courtesy call is the common case and is deliberately frictionless: no payment surface, no
 verification wall, no negotiation. It must remain bookable even by a provider who has connected no

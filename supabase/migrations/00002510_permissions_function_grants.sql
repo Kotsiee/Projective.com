@@ -1656,6 +1656,13 @@ EXECUTE ON FUNCTION scheduling.request_discovery_call (
 ) TO authenticated,
 service_role;
 
+-- The expiry sweep (00001510 §7) answers for nobody in particular, so no client may run it: pg_cron
+-- runs it as the database owner, and `deno task cron:run` through ops.run_job as the service role.
+REVOKE ALL ON FUNCTION scheduling.fn_expire_discovery_calls (integer) FROM public, anon, authenticated;
+
+GRANT
+EXECUTE ON FUNCTION scheduling.fn_expire_discovery_calls (integer) TO service_role;
+
 -- The seller console's write doors (00001170). INVOKER: the catalogue and marketplace policies are the
 -- gate, so a caller can only ever create, edit or publish their own listing. The sales read is a
 -- definer scoped to the caller's own listings inside its WHERE.

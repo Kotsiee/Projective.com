@@ -1113,6 +1113,80 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+-- #endregion
+
+-- #region 7. Expiring unanswered requests (audit S-11; Decision #343, ruling C3)
+-- A `proposed` call holds its slot: free/busy, the booking gate and both agendas count it until it is
+-- answered. Nothing used to answer for the host who never did, so a request held the time for good,
+-- and one account could hold every slot of a calendar out to its booking horizon. This sweep moves a
+-- request to `expired` once it has waited `discovery_call_proposal_ttl_hours` since `proposed_at`, or
+-- once its proposed start has come, whichever is first, and tells both people.
+--
+-- The transition trigger checks nothing for a writer without `auth.uid()`, and the job has none, so
+-- the WHERE clause is the only guard: still `proposed`, and past one of the two times. The candidate
+-- rows are taken FOR UPDATE SKIP LOCKED, so two overlapping runs never take one call and a call being
+-- answered right now waits for the next run; a row that changed before its lock is re-read and dropped
+-- if it no longer qualifies. A run takes at most `p_limit` calls and returns how many expired. A
+-- second run finds nothing left to expire and tells nobody again.
+--
+-- Registered by name as the `scheduling-expire-discovery-calls` job (00005060), every 15 minutes.
+CREATE OR REPLACE FUNCTION scheduling.fn_expire_discovery_calls(p_limit integer DEFAULT 500)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_ttl integer;
+    v_now timestamptz := pg_catalog.now();
+    r record;
+    v_count integer := 0;
+BEGIN
+    v_ttl := COALESCE((
+        SELECT (pp.value #>> '{}')::integer
+          FROM security.platform_params pp
+         WHERE pp.key = 'discovery_call_proposal_ttl_hours'
+    ), 72);
+
+    FOR r IN
+        SELECT c.id, c.host_user_id, c.requester_user_id, c.proposed_start, c.proposed_end
+          FROM scheduling.discovery_calls c
+         WHERE c.status = 'proposed'::scheduling.call_status
+           AND (c.proposed_at + pg_catalog.make_interval(hours => v_ttl) <= v_now
+                OR c.proposed_start <= v_now)
+         ORDER BY c.proposed_start, c.id
+         LIMIT GREATEST(COALESCE(p_limit, 500), 1)
+           FOR UPDATE SKIP LOCKED
+    LOOP
+        UPDATE scheduling.discovery_calls
+           SET status = 'expired'::scheduling.call_status
+         WHERE id = r.id
+           AND status = 'proposed'::scheduling.call_status;
+        CONTINUE WHEN NOT FOUND;
+
+        PERFORM comms.fn_notify(
+            r.requester_user_id, 'call.expired', 'Your call request expired',
+            'It wasn''t confirmed in time. You can request another time.',
+            'scheduling.discovery_calls', r.id,
+            pg_catalog.jsonb_build_object('starts_at', r.proposed_start, 'ends_at', r.proposed_end, 'party', 'requester')
+        );
+        PERFORM comms.fn_notify(
+            r.host_user_id, 'call.expired', 'A call request expired',
+            'It wasn''t answered in time, so that time is open on your calendar again.',
+            'scheduling.discovery_calls', r.id,
+            pg_catalog.jsonb_build_object('starts_at', r.proposed_start, 'ends_at', r.proposed_end, 'party', 'host')
+        );
+        v_count := v_count + 1;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_expire_discovery_calls(integer) IS
+'The discovery-call expiry sweep (audit S-11): moves each proposed call past discovery_call_proposal_ttl_hours or its proposed start to expired, and tells both parties (call.expired). SKIP LOCKED batches of at most p_limit; idempotent. Service role / pg_cron only.';
+-- #endregion
 
 -- #region 9. scheduling.save_owner_availability — the owner's Availability editor, in one call
 -- The profile owner's Availability surface (`/[handle]/edit/availability`) writes three tables — the

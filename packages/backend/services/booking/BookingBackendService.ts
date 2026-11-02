@@ -16,11 +16,12 @@ import type {
 	SessionBookingInput,
 } from "@projective/types/services";
 import { intakeRefusal, normaliseIntakeAnswers, resolveCta } from "@projective/types/services";
-import type {
-	ConferencingProvider,
-	PublicCallOffer,
-	SlotGrid,
-	SlotQuery,
+import {
+	type ConferencingProvider,
+	PAID_CALLS_LIVE,
+	type PublicCallOffer,
+	type SlotGrid,
+	type SlotQuery,
 } from "@projective/types/scheduling";
 import type { AddBasketItem, PurchasableItemKind } from "@projective/types/finance";
 import type { CreateConversation } from "@projective/types/messaging";
@@ -936,6 +937,7 @@ const CALL_REFUSAL: Record<string, { field: string; message: string }> = {
 	calls_not_offered: { field: "kind", message: "This provider is not taking calls." },
 	courtesy_not_offered: { field: "callType", message: "This provider does not offer free calls." },
 	paid_not_offered: { field: "callType", message: "This provider does not offer paid consultations." },
+	paid_unavailable: { field: "callType", message: "Paid consultations are not available yet." },
 	duration_mismatch: { field: "startsAt", message: "That call length does not match the provider's." },
 	duration_exceeds_platform_max: { field: "startsAt", message: "That call is longer than calls may run." },
 	inside_minimum_notice: { field: "startsAt", message: "That is too soon — this provider needs more notice." },
@@ -971,9 +973,10 @@ function refusalCode(message: string): string | null {
  * Book a discovery call.
  *
  * The slot is re-resolved through the reader that drew the grid (so the refusal names the control
- * the buyer used), then requested through `scheduling.request_discovery_call`, which derives the host,
- * the fee and the status from the schedule — and whose BEFORE INSERT gate re-judges the slot with the
- * same rules. The caller never writes the row directly: there is no client INSERT policy.
+ * the buyer used), then requested through `scheduling.request_discovery_call`, which derives the host
+ * and the status from the schedule — and whose BEFORE INSERT gate re-judges the slot with the same
+ * rules. The caller never writes the row directly: there is no client INSERT policy. A paid call is
+ * refused `paid_unavailable`: here while {@link PAID_CALLS_LIVE} is false, and always by that door.
  */
 async function bookDiscoveryCall(
 	input: DiscoveryCallRequest,
@@ -981,6 +984,9 @@ async function bookDiscoveryCall(
 ): Promise<ServiceResult<{ result: ContactActionResult }>> {
 	const handle = input.handle.replace(/^@+/, "");
 	if (!handle) return fail(422, { message: "That provider could not be resolved." });
+	// Paid calls are off until their money path exists (Decision #343, ruling C1). Refused before any
+	// read, as request_discovery_call refuses it before its lock.
+	if (input.callType === "paid" && !PAID_CALLS_LIVE) return refused("paid_unavailable");
 
 	// The owner: the listing's when the call was booked from one, else the profile's.
 	let owner: ScheduleOwner;
