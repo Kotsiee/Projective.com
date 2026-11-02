@@ -26,6 +26,8 @@ export interface CalendarHeaderZoom {
 	position: ReadonlySignal<number>;
 	onPosition: (u: number) => void;
 	onMode: (mode: CalendarZoomMode) => void;
+	/** Snap the ruler's drag to its mini-stops (`CalendarZoom`'s `snap`). */
+	snap?: boolean;
 }
 
 export interface CalendarHeaderProps {
@@ -122,6 +124,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 					value={props.zoom.position.value}
 					onValueChange={props.zoom.onPosition}
 					onModeChange={props.zoom.onMode}
+					snap={props.zoom.snap}
 				/>
 			</div>
 		</header>

@@ -2437,7 +2437,7 @@ a.evp-cta__btn--mono {
  * overlay keeps the default `--space-4` box, which is why both panels looked over-padded.
  */
 .evp-menu .ui-popover__content {
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 }
 
 .evp-inquiry .ui-draggable-popover__body {
@@ -2449,35 +2449,6 @@ a.evp-cta__btn--mono {
 	flex-direction: column;
 	gap: 2px;
 	min-inline-size: 13rem;
-}
-
-.evp-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font-size: var(--text-sm);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-}
-
-.evp-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-}
-
-.evp-menu__item:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-.evp-menu__item[data-danger="true"] {
-	color: var(--danger);
 }
 
 /* ============================================================================

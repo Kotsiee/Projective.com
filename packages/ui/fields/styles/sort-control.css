@@ -88,11 +88,7 @@
 	min-inline-size: var(--fld-panel-minw);
 	max-block-size: var(--fld-panel-maxh);
 	overflow-y: auto;
-	padding: var(--space-1);
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-high);
+	padding: var(--menu-inset);
 }
 .ui-sort__option {
 	display: flex;
@@ -113,7 +109,7 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .ui-sort__option:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	background: var(--menu-item-tint);
 }
 /*
  * Focus is NOT hover. These two were one rule with `outline: none` and no replacement, so a keyboard
@@ -122,7 +118,7 @@
  */
 .ui-sort__option:focus-visible {
 	outline: none;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--menu-item-tint);
 	box-shadow: none;
 }
 .ui-sort__option[data-selected="true"] {

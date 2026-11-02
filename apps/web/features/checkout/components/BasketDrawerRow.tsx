@@ -195,13 +195,13 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 											<button
 												type="button"
 												role="menuitem"
-												class="bskd-menu__item"
+												class="ui-menu-item bskd-menu__item"
 												onClick={() => {
 													moveOpen.value = false;
 													onMove(line, dest.id);
 												}}
 											>
-												<Icon name="folder" size="sm" />
+												<Icon name="folder" size="sm" class="ui-menu-item__icon" />
 												<span class="bskd-menu__label">{dest.name}</span>
 											</button>
 										</li>

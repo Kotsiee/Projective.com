@@ -342,7 +342,7 @@ function CurrencyTrigger({ current }: { current: string }): JSX.Element {
 									role="radio"
 									aria-checked={selected ? "true" : "false"}
 									aria-label={`${option.code}, ${option.label}, ${option.countryName}`}
-									class="wlt-currency__item"
+									class="ui-menu-item wlt-currency__item"
 									disabled={saving.value !== null}
 									onClick={() => void pick(option.code)}
 								>

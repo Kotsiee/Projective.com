@@ -271,7 +271,7 @@ export function CascadeSelect(props: CascadeSelectProps): JSX.Element {
 						role="tree"
 						tabIndex={0}
 						aria-activedescendant={activeDescId}
-						class="ui-cascadeselect__panel"
+						class="ui-cascadeselect__panel ui-menu-surface"
 						data-placement={float?.placement}
 						style={styleVars({
 							"--cs-top": float ? `${float.top}px` : undefined,

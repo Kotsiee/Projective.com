@@ -122,27 +122,8 @@
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	isolation: isolate;
-	color: var(--on-surface);
-	/* The guest header megamenu's glass (`.site-header__mega-inner`), at the owner's direction — a
-	   scoped §B.4.3 extension. Its veil and blur ride the `::before` underlay below, so the panel
-	   never becomes a containing block; the rows scroll in `__scroll` so the underlay stays put. */
-	background: transparent;
-	border: var(--fld-bw) solid var(--hairline-color);
-	border-radius: calc(var(--radius-xl) * 1.25);
-	box-shadow: var(--elevation-high);
+	/* The `.ui-menu-surface` glass; the rows scroll in `__scroll` so its underlay stays put. */
 	visibility: hidden;
-	animation: ui-autocomplete-in var(--dur-fast) var(--ease-standard);
-}
-.ui-autocomplete__panel::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 .ui-autocomplete__panel[data-placement] {
 	visibility: visible;
@@ -151,40 +132,7 @@
 	flex: 1 1 auto;
 	min-block-size: 0;
 	overflow-y: auto;
-	padding-block: var(--space-1);
-}
-
-/* Solid fallbacks for the glass, the megamenu's set. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.ui-autocomplete__panel::before {
-		background: var(--surface);
-	}
-}
-@media (prefers-reduced-transparency: reduce) {
-	.ui-autocomplete__panel::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: var(--surface);
-	}
-}
-@media (prefers-contrast: more) {
-	:root:not([data-contrast="normal"]) .ui-autocomplete__panel::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: var(--surface);
-	}
-}
-:root[data-contrast="high"] .ui-autocomplete__panel::before {
-	-webkit-backdrop-filter: none;
-	backdrop-filter: none;
-	background: var(--surface);
-}
-@media (forced-colors: active) {
-	.ui-autocomplete__panel::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: Canvas;
-	}
+	padding: var(--menu-inset);
 }
 
 .ui-autocomplete__option {
@@ -341,16 +289,6 @@
 	}
 }
 
-@keyframes ui-autocomplete-in {
-	from {
-		opacity: 0;
-		transform: translateY(-0.25rem);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
 @media (prefers-reduced-motion: reduce) {
 	.ui-autocomplete__panel {
 		animation-duration: 0ms;

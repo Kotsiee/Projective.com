@@ -1,22 +1,14 @@
 import type { JSX, Ref } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { InputText, SortControl } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
 import { FilesFilterPanel } from "../components/FilesFilterPanel.tsx";
-import {
-	breadcrumbsFor,
-	type FolderRouting,
-	locationHref,
-	rootChildren,
-	scopeLabel,
-} from "../core/asset-model.ts";
+import { type FolderRouting, locationHref, rootChildren } from "../core/asset-model.ts";
 import {
 	commitFiles,
-	crumbs,
 	currentPath,
 	facetCount,
 	query,
@@ -31,10 +23,15 @@ import type { FileScope, FileSortKey } from "../types/file-types.ts";
 /**
  * FilesHeaderBand — the sticky strip above the `/files` workspace.
  *
- * It answers **where am I** and **how is this set narrowed**, and nothing else. The location trail,
- * search, the type · sharing · source filter and the sort module live here rather than above the grid
- * because the body's remit on this surface is viewing and selecting data; a filter dropdown on top of
- * a file table makes the table's width negotiable, and the table's width is the whole point.
+ * It answers **how is this set narrowed**, and nothing else. Search leads the row, flush to the
+ * inline-start edge, as a ghost field (no fill or hairline until hover or focus); the type · sharing ·
+ * source filter and the sort module sit at the trailing edge. They live here rather than above the
+ * grid because the body's remit on this surface is viewing and selecting data; a filter dropdown on
+ * top of a file table makes the table's width negotiable, and the table's width is the whole point.
+ *
+ * "Where am I" is the body's `.fh-hub__crumbbar` trail, which renders at every width. The band used
+ * to carry a second copy (scope name + trail) at its leading edge; two trails for one location is one
+ * too many, and the band's leading edge now belongs to search.
  *
  * Every control writes shared intent into `files-state` and then calls {@link commitFiles} — the BODY
  * is the single fetch owner, so there is exactly one request path and this band can never describe a
@@ -132,23 +129,6 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	}
 	// #endregion
 
-	// #region Trail
-	/**
-	 * The server's trail wins when it has one; otherwise the pure model builds the same shape from the
-	 * URL and whatever tree is loaded. Both branches are total — the local one falls back to decoded
-	 * segments where it has no folder name to use, which is exactly what `breadcrumbsFor` documents.
-	 */
-	const trail = useComputed(() =>
-		crumbs.value.length > 0 ? crumbs.value : breadcrumbsFor(props.segments, {
-			base: props.base,
-			rootLabel: props.ownerLabel,
-			tree: rootChildren(tree.value),
-			routing,
-		})
-	);
-	// #endregion
-
-	const scopeName = props.scope === "hub" ? props.ownerLabel : scopeLabel(props.scope);
 	const facets = facetCount.value;
 
 	/**
@@ -234,22 +214,9 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 				</Tooltip>
 			</span>
 
-			<span class="fh-headerband__identity">
-				{trail.value[0]?.label !== scopeName && (
-					<span class="fh-headerband__scope">{scopeName}</span>
-				)}
-				<AssetBreadcrumbs
-					crumbs={trail.value}
-					base={props.base}
-					routing={routing}
-					onNavigate={navigate}
-					aria-label="File path"
-				/>
-			</span>
+			<span class="fh-headerband__search">{searchField()}</span>
 
 			<span class="fh-headerband__controls">
-				<span class="fh-headerband__search">{searchField()}</span>
-
 				<span class="fh-headerband__searchtoggle">
 					<Tooltip content="Search files" placement="bottom">
 						<Popover

@@ -107,7 +107,7 @@ export function ScopeSelect(
 				<BodyPortal>
 					<ul
 						ref={menu.ref}
-						class="ui-anchored ex-scope__menu"
+						class="ui-anchored ui-menu-surface ex-scope__menu"
 						role="listbox"
 						aria-label="Search scope"
 						style={menu.style}
@@ -120,7 +120,7 @@ export function ScopeSelect(
 								}}
 								role="option"
 								aria-selected={value === opt.value}
-								class="ex-scope__option"
+								class="ui-menu-item ex-scope__option"
 								tabIndex={0}
 								onClick={() => pick(opt.value)}
 								onKeyDown={onOptionKey(i, opt.value)}

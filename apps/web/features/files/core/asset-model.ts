@@ -2,8 +2,10 @@ import {
 	type AssetCrumb,
 	type AssetFolder,
 	type AssetItem,
-	type AssetSource,
+	AssetSource,
 	type AssetTreeNode,
+	AssetVisibility,
+	FileCategory,
 	type FileScope,
 	type FileSortDir,
 	type FileSortKey,
@@ -123,6 +125,55 @@ export function segmentsOfHref(href: string, base: string, routing: FolderRoutin
 		.split("/")
 		.filter(Boolean)
 		.map(safeDecode);
+}
+
+/** The three facet filters a `/files` address can carry. */
+export interface FileFacets {
+	categories: FileCategory[];
+	sources: AssetSource[];
+	visibility: AssetVisibility[];
+}
+
+/** Address keys, the same names `/api/files/list` reads (`AssetListQuerySchema`), each a comma list. */
+const FACET_VALUES = {
+	categories: FileCategory.options,
+	sources: AssetSource.options,
+	visibility: AssetVisibility.options,
+} as const;
+
+/**
+ * The facets a query string names. An unrecognised value is DROPPED, as the list API drops it: a stale
+ * bookmark carrying a retired value should show the library, not an error.
+ */
+export function facetsOfSearch(search: string): FileFacets {
+	const params = new URLSearchParams(search);
+	const read = <T extends string>(key: keyof FileFacets, allowed: readonly T[]): T[] => [
+		...new Set(
+			(params.get(key) ?? "").split(",").filter((v): v is T =>
+				(allowed as readonly string[]).includes(v)
+			),
+		),
+	];
+	return {
+		categories: read("categories", FACET_VALUES.categories),
+		sources: read("sources", FACET_VALUES.sources),
+		visibility: read("visibility", FACET_VALUES.visibility),
+	};
+}
+
+/**
+ * `search` with its facet keys replaced by `facets` (an empty facet removes its key); every other
+ * parameter, `?path=` included, is kept as it is. Returns `""` or a leading-`?` string.
+ */
+export function searchWithFacets(search: string, facets: FileFacets): string {
+	const params = new URLSearchParams(search);
+	for (const key of Object.keys(FACET_VALUES) as (keyof FileFacets)[]) {
+		if (facets[key].length > 0) params.set(key, facets[key].join(","));
+		else params.delete(key);
+	}
+	// Commas are legal in a query; leaving them encoded makes a shared link unreadable.
+	const out = params.toString().replaceAll("%2C", ",");
+	return out ? `?${out}` : "";
 }
 
 /** Human label for a space — the breadcrumb root and the picker's source tabs. */

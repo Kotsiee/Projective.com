@@ -450,7 +450,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 				<BodyPortal>
 					<div
 						ref={panelRef}
-						class="ui-multiselect__panel"
+						class="ui-multiselect__panel ui-menu-surface"
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,

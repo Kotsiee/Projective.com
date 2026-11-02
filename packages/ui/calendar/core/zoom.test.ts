@@ -10,10 +10,15 @@ import {
 	MIN_PPH,
 	MONTH_WEEKS_MAX,
 	MONTH_WEEKS_MIN,
+	onCalendarTick,
+	snapPph,
 	stopAt,
 	TIMELINE_EDGES,
 	timelinePxPerDayAt,
 	timelineZoomFor,
+	wheelZoomFactor,
+	ZOOM_STEP,
+	ZOOM_TICKS_PER_STOP,
 	zoomMarks,
 	zoomStep,
 } from "./zoom.ts";
@@ -111,4 +116,46 @@ Deno.test("TIMELINE_EDGES — each mark is a scale at which the Gantt header cha
 			`the header should change tier at ${edge} px/day`,
 		);
 	}
+});
+
+Deno.test("wheelZoomFactor — a pinch's small deltas are proportional, a notch is one step", () => {
+	assertEquals(wheelZoomFactor(0), 1);
+	assertAlmostEquals(wheelZoomFactor(-2), Math.exp(0.02));
+	assertAlmostEquals(wheelZoomFactor(2), Math.exp(-0.02));
+	// A whole pinch is the sum of its events, whatever the browser slices it into.
+	assertAlmostEquals(wheelZoomFactor(-4), wheelZoomFactor(-2) ** 2);
+	assertAlmostEquals(wheelZoomFactor(-100), ZOOM_STEP);
+	assertAlmostEquals(wheelZoomFactor(300), 1 / ZOOM_STEP);
+	assertAlmostEquals(wheelZoomFactor(-1, 1), ZOOM_STEP);
+	assertAlmostEquals(wheelZoomFactor(1, 2), 1 / ZOOM_STEP);
+});
+
+/** The Week / Day scale at mark `k` of `ZOOM_TICKS_PER_STOP`. */
+const markPph = (k: number) => MIN_PPH * (MAX_PPH / MIN_PPH) ** (k / ZOOM_TICKS_PER_STOP);
+
+Deno.test("snapPph — a release settles on the ruler's own ticks, both ends included", () => {
+	for (let k = 0; k <= ZOOM_TICKS_PER_STOP; k++) {
+		const u = calendarZoomFor({ view: "week", pph: markPph(k), weeks: 6 });
+		// Every mark but the deep end sits on a minor tick; the deep end sits on the major one.
+		assertAlmostEquals(u * 12, Math.min(4 + k, 8), 1e-4, `mark ${k}`);
+		assertAlmostEquals(snapPph(markPph(k)), markPph(k));
+		assert(onCalendarTick(u), `mark ${k} reads as a tick`);
+	}
+	assertAlmostEquals(snapPph(MAX_PPH), MAX_PPH);
+	assertAlmostEquals(snapPph(MIN_PPH), MIN_PPH);
+});
+
+Deno.test("snapPph — the nearest mark, never further than half a gap either way", () => {
+	const gap = (MAX_PPH / MIN_PPH) ** (1 / ZOOM_TICKS_PER_STOP);
+	assertAlmostEquals(snapPph(markPph(2) * gap ** 0.4), markPph(2));
+	assertAlmostEquals(snapPph(markPph(2) * gap ** 0.6), markPph(3));
+	// One mouse notch either side of a mark settles back on it.
+	assertAlmostEquals(snapPph(markPph(2) * ZOOM_STEP), markPph(2));
+	assertAlmostEquals(snapPph(markPph(2) / ZOOM_STEP), markPph(2));
+});
+
+Deno.test("onCalendarTick — a hand between ticks is not a destination", () => {
+	assert(onCalendarTick(5 / 12));
+	assert(onCalendarTick(2 / 3 - 1e-6));
+	assert(!onCalendarTick(0.43));
 });

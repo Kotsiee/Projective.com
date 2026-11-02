@@ -263,6 +263,13 @@ export interface CalendarProps {
 	/** The timeline's scale (px per day) as a host-owned signal, on the same terms as {@link zoom}. */
 	timelineZoom?: Signal<number>;
 	/**
+	 * "Snap zoom to intervals". A Ctrl+wheel or pinch zoom is continuous while it is live either way;
+	 * on release it settles on the nearest quarter-stop mark (the ruler's minor ticks) in the direction
+	 * it travelled, and the ruler's drag snaps to the same marks. `false` leaves the scale exactly where
+	 * the reader let go. Default `true`.
+	 */
+	snapZoom?: boolean;
+	/**
 	 * An entry the HOST wants the reader's eye on — a pick in a list beside the grid. While it names an
 	 * entry, the Week grid scrolls it to the middle of the view and the timed grids ring it and step
 	 * the rest back, exactly as an overlap-list row does. The host sets it and clears it; the engine

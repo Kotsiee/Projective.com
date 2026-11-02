@@ -72,9 +72,15 @@ export function zoomMarks(mode: CalendarZoomMode): number[] {
 	return Array.from({ length: n - 1 }, (_, i) => (i + 1) / n);
 }
 
+/**
+ * Mini-stops per stop: the ruler's minor ticks, the levels its keys step between, and the marks a
+ * released Ctrl+wheel settles on ({@link snapPph}).
+ */
+export const ZOOM_TICKS_PER_STOP = 4;
+
 /** One ± step or Arrow press: a quarter of a zone, so every zone takes four steps to cross. */
 export function zoomStep(mode: CalendarZoomMode): number {
-	return 1 / (stopsFor(mode).length * 4);
+	return 1 / (stopsFor(mode).length * ZOOM_TICKS_PER_STOP);
 }
 
 /** The stop a position falls in. */
@@ -173,5 +179,48 @@ export function timelineZoomFor(pxPerDay: number): number {
 export function timelinePxPerDayAt(u: number): number {
 	const { i, t } = zoneOf(u, TIMELINE_STOPS.length);
 	return logLerp(TIMELINE_EDGES[i], TIMELINE_EDGES[i + 1], t);
+}
+// #endregion
+
+// #region Gestures
+/** One mouse-wheel notch's scale factor, and the most a single Ctrl+wheel event may zoom. */
+export const ZOOM_STEP = 1.12;
+
+/**
+ * Scale per wheel pixel for a delta smaller than a notch. Browsers report a trackpad pinch as a
+ * stream of small Ctrl+wheel deltas, about 100px per e-fold of the fingers' spread, so this rate makes
+ * the grid follow the fingers.
+ */
+const PINCH_RATE = 0.01;
+
+/**
+ * The scale one Ctrl+wheel event asks for, as a multiplier (above 1 zooms in).
+ *
+ * Proportional to the delta, capped at one {@link ZOOM_STEP}: a pinch's small deltas track the
+ * fingers continuously, while a mouse notch (≈ 100px, or any `line` / `page` unit) is exactly one
+ * step. A fixed step per EVENT turned each of a pinch's sixty events a second into a whole notch.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+	if (!Number.isFinite(deltaY) || deltaY === 0) return 1;
+	const cap = Math.log(ZOOM_STEP);
+	const k = deltaMode === 0 ? -deltaY * PINCH_RATE : -Math.sign(deltaY) * cap;
+	return Math.exp(Math.max(-cap, Math.min(cap, k)));
+}
+
+/**
+ * The hour scale a released zoom settles on: the NEAREST quarter-stop of the Week / Day ramp (the
+ * ruler's minor ticks, both ends of the view included), so a settle never moves further than half a
+ * gap and never leaves the view. Nearest rather than leaning the way the gesture went: anything that
+ * carries the zoom on past where the reader stopped reads as the calendar taking over.
+ */
+export function snapPph(pph: number): number {
+	const k = Math.round(logFrac(MIN_PPH, MAX_PPH, pph) * ZOOM_TICKS_PER_STOP);
+	return logLerp(MIN_PPH, MAX_PPH, k / ZOOM_TICKS_PER_STOP);
+}
+
+/** Whether a calendar-axis position sits on one of the ruler's ticks (a destination, not a hand). */
+export function onCalendarTick(u: number): boolean {
+	const x = u * CALENDAR_STOPS.length * ZOOM_TICKS_PER_STOP;
+	return Math.abs(x - Math.round(x)) < 1e-4;
 }
 // #endregion

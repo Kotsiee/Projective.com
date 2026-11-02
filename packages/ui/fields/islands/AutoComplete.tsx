@@ -606,7 +606,7 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 						role="listbox"
 						aria-busy={loading || undefined}
 						aria-label={aria["aria-label"]}
-						class="ui-autocomplete__panel"
+						class="ui-autocomplete__panel ui-menu-surface"
 						data-placement={float?.placement}
 						style={styleVars({
 							"--ac-top": float ? `${float.top}px` : undefined,

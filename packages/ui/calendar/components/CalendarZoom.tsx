@@ -8,10 +8,11 @@
  * the calendar has no Quarter or Year grid to show, and drawing one it cannot honour would be a stop
  * that refuses the reader.
  *
- * **The hand is fluid; the calendar is not.** The marker follows the pointer exactly while it is
- * held, but the value handed to the calendar is snapped to the nearest mini-stop, so the grid only
- * ever lays out at a handful of clean densities per view rather than re-solving on every pixel. On
- * release the marker glides onto that stop.
+ * **Free while held, snapped on release.** The calendar tracks the pointer exactly while it is held —
+ * nothing snaps under a moving hand. On release the value settles on the nearest mini-stop inside the
+ * stop the hand let go in, and the engine springs the grid there (it publishes every frame, so the
+ * marker rides the same spring rather than a CSS transition of its own). With `snap={false}` (the
+ * reader's "Snap zoom to intervals" off) the release stays put; the keys step tick to tick either way.
  *
  * It is a `role="slider"` in its own right: arrows move one mini-stop, Page keys a whole stop, Home
  * and End the two ends; the active stop is the spoken value. In a right-to-left page the ruler
@@ -27,10 +28,16 @@ import { Tooltip } from "../../feedback/mod.ts";
 import { Button } from "../../fields/components/Button.tsx";
 import type { FieldSize } from "../../fields/types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
-import { type CalendarZoomMode, stopAt, stopsFor, ZOOM_STOP_LABEL } from "../core/zoom.ts";
+import {
+	type CalendarZoomMode,
+	stopAt,
+	stopsFor,
+	ZOOM_STOP_LABEL,
+	ZOOM_TICKS_PER_STOP,
+} from "../core/zoom.ts";
 
-/** Mini-stops per stop: the ruler's minor ticks, and the only positions the calendar is laid out at. */
-export const RULER_TICKS_PER_STOP = 4;
+/** Mini-stops per stop: the ruler's minor ticks, and the positions a snapped zoom settles on. */
+export const RULER_TICKS_PER_STOP = ZOOM_TICKS_PER_STOP;
 
 /** Props for {@link CalendarZoom}. */
 export interface CalendarZoomProps {
@@ -41,6 +48,8 @@ export interface CalendarZoomProps {
 	onValueChange: (value: number) => void;
 	/** Switch between the calendar and the timeline. Absent, no toggle is drawn. */
 	onModeChange?: (mode: CalendarZoomMode) => void;
+	/** Settle a released drag on a mini-stop. Default `true`; the keys always step tick to tick. */
+	snap?: boolean;
 	size?: FieldSize;
 	class?: string;
 }
@@ -65,9 +74,19 @@ export function CalendarZoom(props: CalendarZoomProps): JSX.Element {
 	const along = 1 - u;
 	const active = stopAt(mode, u);
 	const snap = (v: number) => clamp01(Math.round(v * steps) / steps);
+	/**
+	 * The release's settle: the nearest mini-stop, kept inside the stop the hand let go in, so letting
+	 * go never switches the view. A boundary tick belongs to the deeper stop; from below it is that
+	 * stop's deep end instead (the 1e-6 is `core/zoom.ts`'s own edge offset).
+	 */
+	function settle(v: number): number {
+		const zone = Math.min(n - 1, Math.floor(clamp01(v) * n));
+		return zone === n - 1 ? snap(v) : Math.min(snap(v), (zone + 1) / n - 1e-6);
+	}
 
+	/** The hand moved: the calendar tracks it exactly, with no snapping until it lets go. */
 	function emit(v: number): void {
-		const next = snap(v);
+		const next = clamp01(v);
 		if (next !== props.value) props.onValueChange(next);
 	}
 
@@ -97,7 +116,11 @@ export function CalendarZoom(props: CalendarZoomProps): JSX.Element {
 	}
 
 	function release(): void {
+		const v = held.value;
 		held.value = null;
+		if (v === null || props.snap === false) return;
+		const next = settle(v);
+		if (next !== props.value) props.onValueChange(next);
 	}
 
 	function onKeyDown(e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void {
@@ -163,7 +186,6 @@ export function CalendarZoom(props: CalendarZoomProps): JSX.Element {
 				aria-valuemax={steps}
 				aria-valuenow={Math.round(along * steps)}
 				aria-valuetext={`${ZOOM_STOP_LABEL[active]} view`}
-				data-held={held.value === null ? undefined : "true"}
 				style={styleVars({ "--ruler-stops": n, "--ruler-at": along })}
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}

@@ -140,7 +140,7 @@ function MenubarSub(props: SubProps): VNode {
 	return (
 		<div
 			ref={panelRef}
-			class="ui-menubar__panel"
+			class="ui-menubar__panel ui-menu-surface"
 			style={floating
 				? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
 				: undefined}
@@ -148,7 +148,7 @@ function MenubarSub(props: SubProps): VNode {
 			<ul role="menu" class="ui-menubar__submenu">
 				{rows.map((item, i) => {
 					if (isSeparator(item)) {
-						return <li key={`sep-${i}`} role="separator" class="ui-menubar__separator" />;
+						return <li key={`sep-${i}`} role="separator" class="ui-menu-separator" />;
 					}
 					const sub = hasChildren(item);
 					const isOpen = openIndex.value === i;
@@ -158,9 +158,8 @@ function MenubarSub(props: SubProps): VNode {
 						role: "menuitem" as const,
 						tabIndex: -1,
 						class: cx(
-							"ui-menubar__menuitem",
+							"ui-menu-item ui-menubar__menuitem",
 							sub && "ui-menubar__menuitem--parent",
-							isOpen && "ui-menubar__menuitem--open",
 							item.disabled && "ui-menubar__menuitem--disabled",
 							item.class,
 						),
@@ -336,7 +335,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 	const mobilePanel = (
 		<div
 			ref={mobileRef}
-			class="ui-menubar__mobile"
+			class="ui-menubar__mobile ui-menu-surface"
 			role="menu"
 			aria-label={ariaLabel}
 			style={styleVars({ "--z-portal": String(mobileStack.zIndex) })}
@@ -350,7 +349,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 						{item.url && !sub
 							? (
 								<a
-									class="ui-menubar__mobile-item"
+									class="ui-menu-item ui-menubar__mobile-item"
 									role="menuitem"
 									href={item.url}
 									target={item.target}
@@ -361,7 +360,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 							: (
 								<button
 									type="button"
-									class="ui-menubar__mobile-item"
+									class="ui-menu-item ui-menubar__mobile-item"
 									role="menuitem"
 									aria-haspopup={sub ? "true" : undefined}
 									aria-expanded={sub ? isExp : undefined}
@@ -380,11 +379,11 @@ export function Menubar(props: MenubarProps): JSX.Element {
 							<div class="ui-menubar__mobile-children" role="menu">
 								{visibleItems(item.items).map((child, ci) =>
 									isSeparator(child)
-										? <div key={`s${ci}`} role="separator" class="ui-menubar__separator" />
+										? <div key={`s${ci}`} role="separator" class="ui-menu-separator" />
 										: (
 											<a
 												key={itemKey(child, ci)}
-												class="ui-menubar__mobile-item ui-menubar__mobile-item--child"
+												class="ui-menu-item ui-menubar__mobile-item ui-menubar__mobile-item--child"
 												role="menuitem"
 												href={child.url ?? undefined}
 												target={child.target}

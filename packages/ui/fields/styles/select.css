@@ -122,15 +122,10 @@
 	/* A panel may exceed its trigger. Matching width alone made a 71px Select produce a 71px menu
 	   with every label ellipsised away. */
 	min-inline-size: var(--fld-panel-minw);
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--fld-panel-radius);
-	box-shadow: var(--elevation-high);
 	overflow: hidden;
-	animation: ui-select-pop var(--dur-fast) var(--ease-standard);
 }
 .ui-select__panel--top {
-	transform-origin: bottom center;
+	--menu-enter-y: var(--space-2);
 }
 .ui-select__panel--auto {
 	inline-size: max-content;
@@ -140,16 +135,6 @@
 .ui-select__panel--sized {
 	inline-size: var(--select-panel-w, var(--float-width, auto));
 	max-inline-size: calc(100vw - var(--space-4));
-}
-@keyframes ui-select-pop {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
 }
 @media (prefers-reduced-motion: reduce) {
 	.ui-select__panel {
@@ -194,7 +179,7 @@
 .ui-select__list {
 	flex: 1 1 auto;
 	margin: 0;
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 	list-style: none;
 	overflow-y: auto;
 	overscroll-behavior: contain;
@@ -242,7 +227,7 @@
 }
 .ui-select__option--virtual {
 	position: absolute;
-	inset-inline: var(--space-1);
+	inset-inline: var(--menu-inset);
 	inset-block-start: var(--v-top, 0);
 	block-size: var(--v-size, auto);
 	box-sizing: border-box;

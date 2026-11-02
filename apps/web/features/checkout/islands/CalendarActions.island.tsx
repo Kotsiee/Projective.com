@@ -102,7 +102,7 @@ export default function CalendarActions(props: CalendarActionsProps): JSX.Elemen
 						<li key={row.key} role="none">
 							<a
 								role="menuitem"
-								class="cko-order__menuitem"
+								class="ui-menu-item cko-order__menuitem"
 								href={row.href}
 								// Empty-valued, so the `.ics` route's own `content-disposition`
 								// filename wins rather than being overridden by a guess.
@@ -113,7 +113,11 @@ export default function CalendarActions(props: CalendarActionsProps): JSX.Elemen
 									open.value = false;
 								}}
 							>
-								<Icon name={row.external ? "external-link" : "download"} size="sm" />
+								<Icon
+									name={row.external ? "external-link" : "download"}
+									size="sm"
+									class="ui-menu-item__icon"
+								/>
 								<span>{row.label}</span>
 							</a>
 						</li>

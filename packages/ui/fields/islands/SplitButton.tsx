@@ -281,7 +281,7 @@ export function SplitButton(props: SplitButtonProps): JSX.Element {
 						role="menu"
 						aria-label={menuLabel}
 						class={cx(
-							"ui-split-button__menu",
+							"ui-split-button__menu ui-menu-surface",
 							floating?.placement.startsWith("top") && "ui-split-button__menu--top",
 						)}
 						style={panelStyle}
@@ -289,7 +289,7 @@ export function SplitButton(props: SplitButtonProps): JSX.Element {
 					>
 						{model.map((item, i) => {
 							const cls = cx(
-								"ui-split-button__item",
+								"ui-menu-item ui-split-button__item",
 								item.disabled && "ui-split-button__item--disabled",
 							);
 							const tabIndex = i === activeIndex ? 0 : -1;

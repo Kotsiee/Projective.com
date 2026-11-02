@@ -124,7 +124,11 @@ function CtxLevel(props: LevelProps): VNode {
 	const content = (item: MenuItem): VNode =>
 		itemTemplate ? itemTemplate(item) : (
 			<>
-				{item.icon && <span class="ui-contextmenu__icon" aria-hidden="true">{item.icon}</span>}
+				{item.icon && (
+					<span class="ui-menu-item__icon ui-contextmenu__icon" aria-hidden="true">
+						{item.icon}
+					</span>
+				)}
 				<span class="ui-contextmenu__label">{item.label}</span>
 				{item.shortcut && (
 					<span class="ui-contextmenu__shortcut" aria-hidden="true">{item.shortcut}</span>
@@ -138,7 +142,7 @@ function CtxLevel(props: LevelProps): VNode {
 		<ul role="menu" class="ui-contextmenu__list" aria-label={ariaLabel}>
 			{rows.map((item, i) => {
 				if (isSeparator(item)) {
-					return <li key={`sep-${i}`} role="separator" class="ui-contextmenu__separator" />;
+					return <li key={`sep-${i}`} role="separator" class="ui-menu-separator" />;
 				}
 				const sub = hasChildren(item);
 				const isOpen = openIndex.value === i;
@@ -148,9 +152,8 @@ function CtxLevel(props: LevelProps): VNode {
 					role: "menuitem" as const,
 					tabIndex: -1,
 					class: cx(
-						"ui-contextmenu__item",
+						"ui-menu-item ui-contextmenu__item",
 						sub && "ui-contextmenu__item--parent",
-						isOpen && "ui-contextmenu__item--open",
 						item.disabled && "ui-contextmenu__item--disabled",
 						item.active && "ui-contextmenu__item--current",
 						item.class,
@@ -229,7 +232,7 @@ function CtxFlyout(props: {
 		<div
 			id={props.id}
 			ref={panelRef}
-			class="ui-contextmenu__panel ui-contextmenu__panel--sub"
+			class="ui-contextmenu__panel ui-contextmenu__panel--sub ui-menu-surface"
 			onContextMenu={keepInsideMenu}
 			style={floating
 				? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
@@ -312,7 +315,7 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 					<div
 						id={rootId}
 						ref={panelRef}
-						class={cx("ui-contextmenu__panel", className)}
+						class={cx("ui-contextmenu__panel ui-menu-surface", className)}
 						onContextMenu={keepInsideMenu}
 						style={styleVars({
 							"--float-top": `${pos.value.y}px`,

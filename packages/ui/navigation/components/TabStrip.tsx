@@ -380,7 +380,7 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 										<button
 											type="button"
 											ref={active ? (currentItemRef as RefObject<HTMLButtonElement>) : undefined}
-											class="ui-tabstrip__option"
+											class="ui-menu-item ui-tabstrip__option"
 											aria-current={active ? "true" : undefined}
 											onClick={() => {
 												pickerOpen.value = false;
@@ -393,7 +393,7 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 									: (
 										<a
 											ref={active ? (currentItemRef as RefObject<HTMLAnchorElement>) : undefined}
-											class="ui-tabstrip__option"
+											class="ui-menu-item ui-tabstrip__option"
 											href={item.href}
 											aria-current={active ? "page" : undefined}
 											onClick={() => (pickerOpen.value = false)}

@@ -3,9 +3,9 @@ import { useSignal } from "@preact/signals";
 import "../styles/calendar-chrome.css";
 import { CalendarZoom, timelinePxPerDayAt, timelineZoomFor } from "@projective/ui/calendar";
 import { Popover, Tooltip } from "@projective/ui/feedback";
-import { Button } from "@projective/ui/fields";
+import { Button, ToggleSwitch } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { LaneFilterChoices } from "@projective/ui/navigation";
+import { LaneFilterChoices, LaneFilterFacet } from "@projective/ui/navigation";
 import type { SchedulePage } from "@projective/types/scheduling";
 import { CalendarExportModal } from "../components/CalendarExportModal.tsx";
 import { CalendarImportPopover } from "../components/CalendarImportPopover.tsx";
@@ -13,6 +13,7 @@ import { ConnectCalendarDialog } from "../components/ConnectCalendarDialog.tsx";
 import {
 	calendarPage,
 	calendarPreset,
+	calendarSnapZoom,
 	calendarView,
 	calendarZoom,
 	connectOpen,
@@ -21,6 +22,7 @@ import {
 	PRESET_OPTIONS,
 	requestCreate,
 	setCalendarMode,
+	setCalendarSnapZoom,
 	timelineZoom,
 } from "../core/calendar-state.ts";
 
@@ -33,7 +35,8 @@ import {
  *
  * **The preset** is a ghost circle that opens a one-choice menu over {@link calendarPreset}:
  * everything, availability only, hide availability, or booked holidays only. It is a lens over the
- * same agenda, so it narrows the grid and the lane's list together.
+ * same agenda, so it narrows the grid and the lane's list together. The same menu holds the one zoom
+ * preference, "Snap zoom to intervals" ({@link calendarSnapZoom}) — the calendar's display options.
  *
  * **The view control is one ruler** ({@link CalendarZoom}): Day · Week · Month on the calendar axis
  * and on through Quarter · Year on the timeline, with a ghost toggle between the two axes. It drives
@@ -55,6 +58,27 @@ export interface CalendarFooterRigProps {
 	returnTo: string;
 }
 
+/**
+ * The ruler on its own, so a live zoom — which moves {@link calendarZoom} on every wheel event —
+ * re-renders the ruler and not the whole rig with its popover, tooltips and buttons.
+ */
+function RigZoom(): JSX.Element {
+	const timeline = calendarView.value === "timeline";
+	return (
+		<CalendarZoom
+			class="cal-rig__zoom"
+			snap={calendarSnapZoom.value}
+			mode={timeline ? "timeline" : "calendar"}
+			value={timeline ? timelineZoomFor(timelineZoom.value) : calendarZoom.value}
+			onValueChange={(u) => {
+				if (timeline) timelineZoom.value = timelinePxPerDayAt(u);
+				else calendarZoom.value = u;
+			}}
+			onModeChange={setCalendarMode}
+		/>
+	);
+}
+
 const GHOST_CIRCLE = [
 	"ui-button ui-button--secondary ui-button--text ui-button--size-sm",
 	"ui-button--rounded ui-button--icon-only cal-rig__icon ui-hit",
@@ -63,7 +87,6 @@ const GHOST_CIRCLE = [
 export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.Element {
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
-	const timeline = calendarView.value === "timeline";
 	const presetOpen = useSignal(false);
 	const preset = calendarPreset.value;
 	const presetLabel = PRESET_OPTIONS.find((o) => o.value === preset)?.label ?? "Everything";
@@ -107,19 +130,18 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 							presetOpen.value = false;
 						}}
 					/>
+					<LaneFilterFacet label="Zoom">
+						<ToggleSwitch
+							size="sm"
+							label="Snap zoom to intervals"
+							value={calendarSnapZoom}
+							onValueChange={setCalendarSnapZoom}
+						/>
+					</LaneFilterFacet>
 				</div>
 			</Popover>
 
-			<CalendarZoom
-				class="cal-rig__zoom"
-				mode={timeline ? "timeline" : "calendar"}
-				value={timeline ? timelineZoomFor(timelineZoom.value) : calendarZoom.value}
-				onValueChange={(u) => {
-					if (timeline) timelineZoom.value = timelinePxPerDayAt(u);
-					else calendarZoom.value = u;
-				}}
-				onModeChange={setCalendarMode}
-			/>
+			<RigZoom />
 
 			<div class="cal-rig__actions">
 				<CalendarImportPopover

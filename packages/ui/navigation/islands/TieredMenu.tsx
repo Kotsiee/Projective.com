@@ -129,7 +129,9 @@ function TieredLevel(props: LevelProps): VNode {
 	const renderContent = (item: MenuItem): VNode =>
 		itemTemplate ? itemTemplate(item) : (
 			<>
-				{item.icon && <span class="ui-tieredmenu__icon" aria-hidden="true">{item.icon}</span>}
+				{item.icon && (
+					<span class="ui-menu-item__icon ui-tieredmenu__icon" aria-hidden="true">{item.icon}</span>
+				)}
 				<span class="ui-tieredmenu__label">{item.label}</span>
 				{item.shortcut && (
 					<span class="ui-tieredmenu__shortcut" aria-hidden="true">{item.shortcut}</span>
@@ -143,7 +145,7 @@ function TieredLevel(props: LevelProps): VNode {
 		<ul ref={listRef} role="menu" class="ui-tieredmenu__list" aria-label={ariaLabel}>
 			{rows.map((item, i) => {
 				if (isSeparator(item)) {
-					return <li key={`sep-${i}`} role="separator" class="ui-tieredmenu__separator" />;
+					return <li key={`sep-${i}`} role="separator" class="ui-menu-separator" />;
 				}
 				const sub = hasChildren(item);
 				const isOpen = openIndex.value === i;
@@ -153,9 +155,8 @@ function TieredLevel(props: LevelProps): VNode {
 					role: "menuitem" as const,
 					tabIndex: -1,
 					class: cx(
-						"ui-tieredmenu__item",
+						"ui-menu-item ui-tieredmenu__item",
 						sub && "ui-tieredmenu__item--parent",
-						isOpen && "ui-tieredmenu__item--open",
 						item.disabled && "ui-tieredmenu__item--disabled",
 						item.active && "ui-tieredmenu__item--current",
 						item.class,
@@ -237,7 +238,7 @@ function TieredFlyout(props: {
 		<div
 			id={props.id}
 			ref={panelRef}
-			class="ui-tieredmenu__panel ui-tieredmenu__panel--sub"
+			class="ui-tieredmenu__panel ui-tieredmenu__panel--sub ui-menu-surface"
 			style={floating
 				? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
 				: undefined}
@@ -325,7 +326,7 @@ export function TieredMenu(props: TieredMenuProps): JSX.Element {
 			{open.value && (
 				<div
 					ref={panelRef}
-					class="ui-tieredmenu__panel"
+					class="ui-tieredmenu__panel ui-menu-surface"
 					style={styleVars({
 						"--float-top": floating ? `${floating.top}px` : undefined,
 						"--float-left": floating ? `${floating.left}px` : undefined,

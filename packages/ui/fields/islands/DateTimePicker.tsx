@@ -392,7 +392,7 @@ export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
 					<div
 						id={panelId}
 						ref={panelRef}
-						class="ui-datetime__panel"
+						class="ui-datetime__panel ui-menu-surface"
 						role="dialog"
 						aria-modal="false"
 						aria-label={ariaLabel ?? "Choose date and time"}

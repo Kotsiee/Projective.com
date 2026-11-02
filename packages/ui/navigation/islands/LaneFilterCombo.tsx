@@ -103,7 +103,7 @@ export function LaneFilterCombo(props: LaneFilterComboProps): JSX.Element {
 				</div>
 				<ul
 					id={listId}
-					class="ui-lane-filter-combo__menu"
+					class="ui-lane-filter-combo__menu ui-menu-surface"
 					role="listbox"
 					aria-label={props.label}
 					hidden={!expanded}
@@ -113,7 +113,7 @@ export function LaneFilterCombo(props: LaneFilterComboProps): JSX.Element {
 							<button
 								type="button"
 								tabIndex={-1}
-								class="ui-lane-filter-combo__option"
+								class="ui-menu-item ui-lane-filter-combo__option"
 								onMouseDown={(e) => e.preventDefault()}
 								onClick={() => add(o.id)}
 							>

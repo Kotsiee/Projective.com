@@ -429,7 +429,7 @@ export function TreeSelect(props: TreeSelectProps): JSX.Element {
 					<div
 						ref={panelRef}
 						id={panelId}
-						class="ui-treeselect__panel"
+						class="ui-treeselect__panel ui-menu-surface"
 						data-placement={float?.placement}
 						style={styleVars({
 							"--ts-top": float ? `${float.top}px` : undefined,

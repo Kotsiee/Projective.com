@@ -838,7 +838,7 @@ button.msg-quote:focus-visible {
 
 /* Meatball menu */
 .ui-popover.msg-menu-pop .ui-popover__content {
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 }
 
 .msg-menu {
@@ -847,36 +847,8 @@ button.msg-quote:focus-visible {
 	min-inline-size: 11rem;
 }
 
-.msg-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.45rem 0.55rem;
-	font: inherit;
-	font-size: 0.8rem;
-	color: var(--on-surface);
-	text-align: start;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.msg-menu__item:hover {
-	background: var(--surface-2);
-}
-
-.msg-menu__item:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
 .msg-menu__icon {
-	display: inline-flex;
-	flex: none;
 	font-size: 0.95rem;
-	color: var(--text-secondary);
 }
 
 /* #endregion */

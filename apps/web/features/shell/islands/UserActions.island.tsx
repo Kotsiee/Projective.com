@@ -458,10 +458,10 @@ export default function UserActions(
 
 			{allowance ? <AllowanceMeter snapshot={allowance} onNavigate={onNavigate} /> : null}
 
-			<div class="shell-menu__sep" role="separator" />
+			<div class="ui-menu-separator" role="separator" />
 
-			<a class="shell-menu__item" href={links.viewProfile} onClick={onNavigate}>
-				<span class="shell-menu__icon">
+			<a class="ui-menu-item shell-menu__item" href={links.viewProfile} onClick={onNavigate}>
+				<span class="ui-menu-item__icon shell-menu__icon">
 					<NavIcon name="user" />
 				</span>
 				<span class="shell-menu__label">View profile</span>
@@ -469,11 +469,11 @@ export default function UserActions(
 			{isClient && !restricted
 				? (
 					<a
-						class="shell-menu__item shell-menu__item--accent"
+						class="ui-menu-item shell-menu__item shell-menu__item--accent"
 						href="/become-partner"
 						onClick={onNavigate}
 					>
-						<span class="shell-menu__icon">
+						<span class="ui-menu-item__icon shell-menu__icon">
 							<NavIcon name="services" />
 						</span>
 						<span class="shell-menu__label">Become a Freelancer</span>
@@ -483,40 +483,40 @@ export default function UserActions(
 			{setupHandle && !restricted
 				? (
 					<a
-						class="shell-menu__item"
+						class="ui-menu-item shell-menu__item"
 						href={setupStepHref("working_hours", setupHandle)}
 						onClick={onNavigate}
 					>
-						<span class="shell-menu__icon">
+						<span class="ui-menu-item__icon shell-menu__icon">
 							<NavIcon name="clock" />
 						</span>
 						<span class="shell-menu__label">Availability &amp; hours</span>
 					</a>
 				)
 				: null}
-			<a class="shell-menu__item" href="/saved" onClick={onNavigate}>
-				<span class="shell-menu__icon">
+			<a class="ui-menu-item shell-menu__item" href="/saved" onClick={onNavigate}>
+				<span class="ui-menu-item__icon shell-menu__icon">
 					<NavIcon name="saved" />
 				</span>
 				<span class="shell-menu__label">Saved</span>
 			</a>
 			{restricted ? null : (
-				<a class="shell-menu__item" href="/wallet" onClick={onNavigate}>
-					<span class="shell-menu__icon">
+				<a class="ui-menu-item shell-menu__item" href="/wallet" onClick={onNavigate}>
+					<span class="ui-menu-item__icon shell-menu__icon">
 						<NavIcon name="wallet" />
 					</span>
 					<span class="shell-menu__label">Wallet &amp; payouts</span>
 				</a>
 			)}
-			<a class="shell-menu__item" href={links.settings} onClick={onNavigate}>
-				<span class="shell-menu__icon">
+			<a class="ui-menu-item shell-menu__item" href={links.settings} onClick={onNavigate}>
+				<span class="ui-menu-item__icon shell-menu__icon">
 					<NavIcon name="settings" />
 				</span>
 				<span class="shell-menu__label">Settings</span>
 			</a>
 			{/* The feedback board opens over the page in its drawer; a modified click opens /feedback. */}
 			<a
-				class="shell-menu__item"
+				class="ui-menu-item shell-menu__item"
 				href="/feedback"
 				onClick={(event) => {
 					if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -525,13 +525,13 @@ export default function UserActions(
 					openFeedback();
 				}}
 			>
-				<span class="shell-menu__icon">
+				<span class="ui-menu-item__icon shell-menu__icon">
 					<NavIcon name="feedback" />
 				</span>
 				<span class="shell-menu__label">Feedback &amp; roadmap</span>
 			</a>
 
-			<div class="shell-menu__sep" role="separator" />
+			<div class="ui-menu-separator" role="separator" />
 
 			{/* Footer rig — the theme preference (light → dark → system) and Log out. */}
 			<div class="shell-account__foot">
@@ -575,7 +575,7 @@ export default function UserActions(
 		<li key={key} role="none">
 			<button
 				type="button"
-				class="shell-ctx__item"
+				class="ui-menu-item shell-ctx__item"
 				data-active={active ? "true" : undefined}
 				aria-current={active ? "true" : undefined}
 				disabled={active || contextSwitch.switching.value}
@@ -721,11 +721,15 @@ export default function UserActions(
 				{canCreateTeam || canCreateBusiness
 					? (
 						<>
-							<div class="shell-menu__sep" role="separator" />
+							<div class="ui-menu-separator" role="separator" />
 							{canCreateTeam
 								? (
-									<a class="shell-menu__item" href="/teams/create" onClick={onNavigate}>
-										<span class="shell-menu__icon">
+									<a
+										class="ui-menu-item shell-menu__item"
+										href="/teams/create"
+										onClick={onNavigate}
+									>
+										<span class="ui-menu-item__icon shell-menu__icon">
 											<NavIcon name="create" />
 										</span>
 										<span class="shell-menu__label">Create a team</span>
@@ -735,11 +739,11 @@ export default function UserActions(
 							{canCreateBusiness
 								? (
 									<a
-										class="shell-menu__item"
+										class="ui-menu-item shell-menu__item"
 										href="/businesses/create"
 										onClick={onNavigate}
 									>
-										<span class="shell-menu__icon">
+										<span class="ui-menu-item__icon shell-menu__icon">
 											<NavIcon name="create" />
 										</span>
 										<span class="shell-menu__label">Create a business</span>
@@ -778,11 +782,11 @@ export default function UserActions(
 						<li key={opt.key} role="none">
 							<a
 								role="menuitem"
-								class="shell-menu__item"
+								class="ui-menu-item shell-menu__item"
 								href={opt.href}
 								onClick={() => (createOpen.value = false)}
 							>
-								<span class="shell-menu__icon">
+								<span class="ui-menu-item__icon shell-menu__icon">
 									<NavIcon name={opt.icon} />
 								</span>
 								<span class="shell-menu__label">{opt.label}</span>

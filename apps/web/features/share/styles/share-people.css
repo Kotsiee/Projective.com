@@ -239,13 +239,8 @@
 	flex-direction: column;
 	inline-size: var(--ps-width, auto);
 	max-block-size: min(var(--fld-panel-maxh), var(--ps-maxh, var(--fld-panel-maxh)));
-	padding-block: var(--space-1);
+	padding: var(--menu-inset);
 	overflow-y: auto;
-	color: var(--on-surface);
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--fld-panel-radius);
-	box-shadow: var(--elevation-high);
 	visibility: hidden;
 }
 .people-search__panel[data-placement] {
@@ -255,19 +250,8 @@
 	display: flex;
 	flex-direction: column;
 }
-.people-search__option {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2) var(--space-3);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
 .people-search__option[data-active="true"] {
-	background: var(--surface-2);
-}
-.people-search__option[aria-disabled="true"] {
-	cursor: default;
+	background: var(--menu-item-tint);
 }
 .people-search__mail {
 	display: inline-flex;

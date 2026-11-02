@@ -82,19 +82,23 @@ export function ComposerLeadingAction(
 					<button
 						type="button"
 						role="menuitem"
-						class="chat-composer__menu-item"
+						class="ui-menu-item chat-composer__menu-item"
 						onClick={onUploadFromDevice}
 					>
-						<span class="chat-composer__menu-icon" aria-hidden="true">{UploadIcon}</span>
+						<span class="ui-menu-item__icon chat-composer__menu-icon" aria-hidden="true">
+							{UploadIcon}
+						</span>
 						<span>Upload from Device</span>
 					</button>
 					<button
 						type="button"
 						role="menuitem"
-						class="chat-composer__menu-item"
+						class="ui-menu-item chat-composer__menu-item"
 						onClick={onAttachFromLibrary}
 					>
-						<span class="chat-composer__menu-icon" aria-hidden="true">{LibraryIcon}</span>
+						<span class="ui-menu-item__icon chat-composer__menu-icon" aria-hidden="true">
+							{LibraryIcon}
+						</span>
 						<span>Attach from Library</span>
 					</button>
 				</div>

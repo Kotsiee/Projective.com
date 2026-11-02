@@ -17,7 +17,7 @@
  * below. Chrome only — every destination re-checks capability server-side + under RLS on navigation.
  */
 export interface AccountCapabilities {
-	/** The user is an active member of at least one live team (surfaces Analytics for a plain client). */
+	/** The user is an active member of at least one live team. */
 	belongsToTeam: boolean;
 	/** The user is an active member of at least one live business. */
 	belongsToBusiness: boolean;

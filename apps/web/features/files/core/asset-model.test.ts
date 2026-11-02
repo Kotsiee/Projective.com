@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import type { AssetTreeNode } from "../types/file-types.ts";
 import {
 	breadcrumbsFor,
+	facetsOfSearch,
 	filesHref,
 	folderQueryHref,
 	folderSegmentsOfQuery,
@@ -9,6 +10,7 @@ import {
 	rootChildren,
 	rootFileCount,
 	scopeLabel,
+	searchWithFacets,
 	segmentsOfHref,
 } from "./asset-model.ts";
 
@@ -115,5 +117,27 @@ Deno.test("segmentsOfHref reads each routing mode, and an address outside the ba
 	assertEquals(segmentsOfHref("/teams/x/files", "/teams/x/files", "query"), []);
 	assertEquals(segmentsOfHref("/teams/y/files?path=f-1", "/teams/x/files", "query"), []);
 	assertEquals(folderSegmentsOfQuery("?pathx=1&path=%E0%A4%A"), ["%E0%A4%A"]);
+});
+// #endregion
+
+// #region Filter facets in the address
+Deno.test("facets read from the address keep known values once and drop the rest", () => {
+	assertEquals(facetsOfSearch("?categories=Image,Nope,Image&sources=dropbox&visibility=link,public"), {
+		categories: ["Image"],
+		sources: ["dropbox"],
+		visibility: ["link", "public"],
+	});
+	assertEquals(facetsOfSearch(""), { categories: [], sources: [], visibility: [] });
+});
+
+Deno.test("facets write beside ?path= with readable commas, and empty facets leave the address", () => {
+	const search = searchWithFacets("?path=Brand&sources=s3", {
+		categories: ["Image", "Document"],
+		sources: [],
+		visibility: [],
+	});
+	assertEquals(search, "?path=Brand&categories=Image,Document");
+	assertEquals(facetsOfSearch(search).categories, ["Image", "Document"]);
+	assertEquals(searchWithFacets("?sources=s3", { categories: [], sources: [], visibility: [] }), "");
 });
 // #endregion

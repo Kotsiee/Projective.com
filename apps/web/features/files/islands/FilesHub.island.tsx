@@ -51,7 +51,14 @@ import {
 	inspectable,
 } from "../types/file-types.ts";
 import { FilesService } from "../core/FilesService.ts";
-import { type FolderRouting, locationHref, segmentsOfHref, shapeFolderAsNode } from "../core/asset-model.ts";
+import {
+	facetsOfSearch,
+	type FolderRouting,
+	locationHref,
+	searchWithFacets,
+	segmentsOfHref,
+	shapeFolderAsNode,
+} from "../core/asset-model.ts";
 import {
 	appendPage,
 	applyError,
@@ -450,6 +457,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	 * somewhere else, which is how a person deletes the wrong file.
 	 */
 	async function reload(): Promise<void> {
+		writeFacetsToAddress();
 		const my = ++reqId.current;
 		tailError.value = null;
 		beginLoad();
@@ -488,6 +496,34 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	// #endregion
 
 	// #region Navigation
+	/**
+	 * Mirror the facet filters into the address (`?categories=` · `?sources=` · `?visibility=`, the list
+	 * API's own names) so a filtered view is a shareable link. Replaced, not pushed: a filter is not a
+	 * place, and Back should leave the folder rather than step through every toggle.
+	 */
+	function writeFacetsToAddress(): void {
+		if (typeof history === "undefined") return;
+		const search = searchWithFacets(globalThis.location.search, {
+			categories: categoryFilter.value,
+			sources: sourceFilter.value,
+			visibility: visibilityFilter.value,
+		});
+		if (search === globalThis.location.search) return;
+		history.replaceState(
+			history.state,
+			"",
+			globalThis.location.pathname + search + globalThis.location.hash,
+		);
+	}
+
+	/** Read the facet filters back out of the address (first paint, Back / Forward). */
+	function readFacetsFromAddress(): void {
+		const facets = facetsOfSearch(globalThis.location.search);
+		categoryFilter.value = facets.categories;
+		sourceFilter.value = facets.sources;
+		visibilityFilter.value = facets.visibility;
+	}
+
 	/**
 	 * Move to a path, in place.
 	 *
@@ -666,6 +702,8 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		// library into the next person's first paint.)
 		currentPath.value = path;
 		channelId.value = null;
+		// The server already read the first page with these facets; this only lets the controls show them.
+		readFacetsFromAddress();
 		tree.value = initialTree;
 		applyPage({ ...initial, tree: initialTree });
 		if (props.initialError) applyError(props.initialError);
@@ -680,6 +718,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				routing,
 			);
 			currentPath.value = next;
+			readFacetsFromAddress();
 			clearSelection();
 			inspectId.value = null;
 			void reload();

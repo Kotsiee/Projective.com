@@ -80,7 +80,12 @@ export function LaneCreateMenu(props: LaneCreateMenuProps): JSX.Element {
 					);
 					return item.href !== undefined
 						? (
-							<a key={item.key} role="menuitem" class="ui-lane-createmenu__item" href={item.href}>
+							<a
+								key={item.key}
+								role="menuitem"
+								class="ui-menu-item ui-lane-createmenu__item"
+								href={item.href}
+							>
 								{content}
 							</a>
 						)
@@ -89,7 +94,7 @@ export function LaneCreateMenu(props: LaneCreateMenuProps): JSX.Element {
 								key={item.key}
 								type="button"
 								role="menuitem"
-								class="ui-lane-createmenu__item"
+								class="ui-menu-item ui-lane-createmenu__item"
 								onClick={() => {
 									props.open.value = false;
 									item.onSelect?.();

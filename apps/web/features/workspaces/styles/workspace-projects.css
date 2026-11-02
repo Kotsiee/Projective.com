@@ -321,8 +321,8 @@
 /* #region An empty view */
 /*
  * A view with nothing in it says so in one Meta sentence with its way out under it — unboxed, on the
- * band's own ground (§B.4: static content is never boxed; the ui EmptyState's `--surface-1` tile would
- * be a card inside the band, and its title a heading's weight).
+ * band's own ground (§B.4) — the ui EmptyState's centred glyph and title-register heading are a
+ * page's empty state, too loud for one view inside a band.
  */
 .wsp-projects-empty {
 	display: flex;

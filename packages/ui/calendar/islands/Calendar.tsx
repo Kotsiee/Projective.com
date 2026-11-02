@@ -13,6 +13,8 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar.css";
 import { cx } from "../../core/cx.ts";
 import { clampZoom, PX_PER_DAY_DEFAULT } from "../../gantt/core/time-scale.ts";
+import { SPRING_SNAPPY } from "../../core/motion.ts";
+import type { ZoomToOptions } from "../hooks/useCalendarViewport.ts";
 import {
 	calendarStateAt,
 	calendarZoomFor,
@@ -23,8 +25,12 @@ import {
 	MONTH_WEEKS_DEFAULT,
 	MONTH_WEEKS_MAX,
 	MONTH_WEEKS_MIN,
+	onCalendarTick,
+	snapPph,
 	timelinePxPerDayAt,
 	timelineZoomFor,
+	wheelZoomFactor,
+	ZOOM_STEP,
 } from "../core/zoom.ts";
 import type {
 	CalendarEvent,
@@ -55,8 +61,13 @@ import { TimelineView } from "../components/TimelineView.tsx";
 import { EventPopoverLayer } from "../components/EventPopoverLayer.tsx";
 import type { EventPopoverState } from "../components/EventPopoverLayer.tsx";
 
-/** One wheel notch's scale factor. Small enough that a trackpad reads as continuous. */
-const ZOOM_STEP = 1.12;
+/**
+ * How long the hand must be still — no wheel, no pointer movement, Ctrl / Cmd up — before a zoom
+ * counts as released and settles. Longer than a pause between notches or a pinch's re-grip.
+ */
+const ZOOM_SNAP_DELAY_MS = 400;
+/** Pointer jitter (px) that does not count as the hand moving while a release is awaited. */
+const POINTER_SLOP_PX = 4;
 /**
  * The bounds the interpolating spring and the pinch gesture clamp into.
  *
@@ -280,16 +291,21 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		} catch { /* storage unavailable */ }
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
-	useEffect(() => {
+	// A signal effect, not deps read in the render body: reading `pph.value` there subscribed the whole
+	// island to the zoom, so every live zoom tick re-rendered it and every grid beneath it.
+	useSignalEffect(() => {
+		const v = view.value;
+		const scale = pph.value;
+		const w = weeks.value;
 		if (!props.storageKey || typeof localStorage === "undefined") return;
 		try {
-			if (!hostOwnsView) localStorage.setItem(`${props.storageKey}:view`, view.value);
+			if (!hostOwnsView) localStorage.setItem(`${props.storageKey}:view`, v);
 			if (!hostOwnsZoom) {
-				localStorage.setItem(`${props.storageKey}:zoom`, String(Math.round(pph.value)));
-				localStorage.setItem(`${props.storageKey}:weeks`, String(Math.round(weeks.value)));
+				localStorage.setItem(`${props.storageKey}:zoom`, String(Math.round(scale)));
+				localStorage.setItem(`${props.storageKey}:weeks`, String(Math.round(w)));
 			}
 		} catch { /* no-op */ }
-	}, [view.value, pph.value, weeks.value, props.storageKey, hostOwnsView, hostOwnsZoom]);
+	});
 
 	const timelinePersist = useRef<ReturnType<typeof setTimeout> | null>(null);
 	useSignalEffect(() => {
@@ -335,20 +351,87 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	 * mounted viewport knows where the cursor is anchored and can re-solve the offset from it each
 	 * frame. So the island holds the number and the viewport holds the journey.
 	 */
-	const zoomRef = useRef<
-		((target: number, opts?: { onSettle?: () => void }) => () => void) | null
-	>(null);
+	const zoomRef = useRef<((target: number, opts?: ZoomToOptions) => () => void) | null>(null);
 	const cancelZoom = useRef<(() => void) | null>(null);
-	/** The scale the last notch AIMED at, while the interpolation is still travelling toward it. */
-	const pendingPph = useRef<number | null>(null);
-	useEffect(() => () => cancelZoom.current?.(), []);
+	/**
+	 * Where a run of wheel NOTCHES is heading while the spring carries the grid there, so a flick
+	 * compounds from the last aim rather than from whichever frame the spring has reached.
+	 */
+	const notchTarget = useRef<number | null>(null);
+	/** A Ctrl+wheel gesture has zoomed and has not been released yet. */
+	const snapPending = useRef(false);
+	const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	/** Read at release, which runs on a timer long after the render that armed it. */
+	const snapOn = useRef(true);
+	snapOn.current = props.snapZoom !== false;
+	useEffect(() => () => {
+		cancelZoom.current?.();
+		if (releaseTimer.current !== null) clearTimeout(releaseTimer.current);
+	}, []);
+
+	/*
+	 * RELEASE DETECTION. A wheel has no "up" event, so the release is inferred — conservatively,
+	 * because a snap that lands while the reader is still zooming is the calendar fighting the hand.
+	 * The gesture counts as released only once Ctrl / Cmd is up (a held key is a mouse user still
+	 * zooming) and {@link ZOOM_SNAP_DELAY_MS} pass with no wheel of any kind and no pointer movement
+	 * past {@link POINTER_SLOP_PX}; any of those restarts the wait. The settle then anchors on the
+	 * pointer where it rests.
+	 */
+	const pointer = useRef<{ x: number; y: number } | null>(null);
+	const armedAt = useRef<{ x: number; y: number } | null>(null);
+	const modifierHeld = useRef(false);
+
+	function armRelease(): void {
+		if (releaseTimer.current !== null) clearTimeout(releaseTimer.current);
+		releaseTimer.current = null;
+		armedAt.current = pointer.current;
+		if (!snapPending.current || modifierHeld.current) return;
+		releaseTimer.current = setTimeout(releaseZoom, ZOOM_SNAP_DELAY_MS);
+	}
+
+	useEffect(() => {
+		const onWheel = (e: WheelEvent) => {
+			pointer.current = { x: e.clientX, y: e.clientY };
+			if (snapPending.current) armRelease();
+		};
+		const onMove = (e: PointerEvent) => {
+			const p = { x: e.clientX, y: e.clientY };
+			pointer.current = p;
+			const from = armedAt.current;
+			if (!snapPending.current) return;
+			if (!from || Math.hypot(p.x - from.x, p.y - from.y) > POINTER_SLOP_PX) armRelease();
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Control" && e.key !== "Meta") return;
+			modifierHeld.current = e.type === "keydown";
+			if (snapPending.current) armRelease();
+		};
+		const onBlur = () => {
+			modifierHeld.current = false;
+			if (snapPending.current) armRelease();
+		};
+		// Capture, so a wheel the grid stops still counts as activity.
+		globalThis.addEventListener("wheel", onWheel, { capture: true, passive: true });
+		globalThis.addEventListener("pointermove", onMove, { passive: true });
+		globalThis.addEventListener("keydown", onKey);
+		globalThis.addEventListener("keyup", onKey);
+		globalThis.addEventListener("blur", onBlur);
+		return () => {
+			globalThis.removeEventListener("wheel", onWheel, { capture: true });
+			globalThis.removeEventListener("pointermove", onMove);
+			globalThis.removeEventListener("keydown", onKey);
+			globalThis.removeEventListener("keyup", onKey);
+			globalThis.removeEventListener("blur", onBlur);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 	useEffect(() => {
 		const el = mainRef.current;
 		if (!el) return;
 		const onWheel = (e: WheelEvent) => {
 			if (!(e.ctrlKey || e.metaKey)) return;
 			e.preventDefault();
-			zoom(e.deltaY < 0 ? "in" : "out");
+			zoom(e.deltaY < 0 ? "in" : "out", null, wheelZoomFactor(e.deltaY, e.deltaMode));
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);
@@ -368,7 +451,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	function crossTo(next: CalendarViewMode, scale: number): void {
 		cancelZoom.current?.();
 		cancelZoom.current = null;
-		pendingPph.current = null;
+		notchTarget.current = null;
 		pph.value = scale;
 		if (view.peek() === next) return;
 		view.value = next;
@@ -376,15 +459,21 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	}
 
 	/**
-	 * One zoom notch.
+	 * One step of a Ctrl+wheel gesture — `scale` is the multiplier it asks for (`wheelZoomFactor`),
+	 * one {@link ZOOM_STEP} when absent.
 	 *
-	 * Inside a view the scale INTERPOLATES toward its target (`zoomRef.current` is the live viewport's
-	 * own tween, which re-pins the cursor anchor on every frame — see `TimeGridProps.onZoom`). Across a
-	 * threshold it is written outright, because the two sides of a threshold are different geometries
-	 * and there is no continuous scale to travel along: a week grid at 168px/hour and a day grid at
-	 * 26px/hour are not two points on one ramp.
+	 * While the gesture is LIVE nothing snaps and nothing is quantised. A pinch's sub-notch delta is
+	 * written straight through, so the grid re-solves at it on the same frame and tracks the fingers
+	 * 1:1; a whole notch (a mouse wheel) eases there on `SPRING_SNAPPY` instead of jumping, its run
+	 * compounding through {@link notchTarget}. The canvas is never CSS-stretched instead — a one-axis
+	 * `scaleY` would squash every label and leave unpainted bands on a zoom out. A settle still
+	 * travelling from the last release is taken over where it stands. The release is
+	 * {@link releaseZoom}'s, and only ever after {@link armRelease} has seen the hand let go.
+	 *
+	 * Across a view threshold the scale is written outright, because the two sides are different
+	 * geometries: a week grid at 168px/hour and a day grid at 26px/hour are not two points on one ramp.
 	 */
-	function zoom(dir: "in" | "out", dayMs?: number | null): void {
+	function zoom(dir: "in" | "out", dayMs?: number | null, scale?: number): void {
 		const v = view.value;
 		// The Gantt owns its own scale (and its own Ctrl+wheel, which it stops before it reaches
 		// here); the hour continuum has no meaning on a day-per-pixel axis.
@@ -402,22 +491,18 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 			}
 			return;
 		}
-		/*
-		 * The PENDING scale, not the live one.
-		 *
-		 * A trackpad does not emit one wheel notch, it emits a burst of them inside a single frame —
-		 * and the scale is interpolated, so `pph.value` has not moved yet when the second notch of that
-		 * burst arrives. Reading the live signal therefore made every notch in a burst compute the same
-		 * target from the same starting number, and six notches produced exactly one notch of zoom. The
-		 * reader's flick has to compound, so each notch is measured from where the last one was AIMED.
-		 */
-		const cur = pendingPph.current ?? pph.value;
+		const f = scale ?? (dir === "in" ? ZOOM_STEP : 1 / ZOOM_STEP);
+		if (f === 1) return;
+		snapPending.current = true;
+		armRelease();
+		const run = zoomRef.current;
+		const notch = run !== null && Math.abs(Math.log(f)) >= Math.log(ZOOM_STEP) - 1e-9;
+		const cur = (notch ? notchTarget.current : null) ?? pph.peek();
 		if (dir === "in") {
 			if (v === "week" && cur >= MAX_PPH - 1) {
 				if (dayMs != null) setFocus(dayMs);
 				return crossTo("day", MIN_PPH);
 			}
-			zoomTo(Math.min(MAX_PPH, cur * ZOOM_STEP));
 		} else {
 			if (v === "day" && cur <= MIN_PPH + 1) return crossTo("week", MAX_PPH);
 			if (v === "week" && cur <= MIN_PPH + 1) {
@@ -427,8 +512,38 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 				weeks.value = MONTH_WEEKS_MIN;
 				return crossTo("month", cur);
 			}
-			zoomTo(Math.max(MIN_PPH, cur / ZOOM_STEP));
 		}
+		const next = Math.min(MAX_PPH, Math.max(MIN_PPH, cur * f));
+		if (notch) {
+			notchTarget.current = next;
+			cancelZoom.current = run(next, {
+				config: SPRING_SNAPPY,
+				onSettle: () => {
+					notchTarget.current = null;
+				},
+			});
+			return;
+		}
+		cancelZoom.current?.();
+		cancelZoom.current = null;
+		notchTarget.current = null;
+		pph.value = next;
+	}
+
+	/**
+	 * The gesture has been let go (see {@link armRelease}): settle on the NEAREST mark
+	 * ({@link snapPph}), springing there anchored on the pointer where it now rests. With snapping off
+	 * the scale stays exactly where the reader let go. Month needs neither — its wheel already steps
+	 * whole weeks, which are its marks.
+	 */
+	function releaseZoom(): void {
+		releaseTimer.current = null;
+		snapPending.current = false;
+		const v = view.peek();
+		if (!snapOn.current || (v !== "week" && v !== "day")) return;
+		const cur = notchTarget.current ?? pph.peek();
+		const target = snapPph(cur);
+		if (Math.abs(target - cur) > 1e-3) zoomTo(target, pointer.current?.y ?? null);
 	}
 
 	/**
@@ -442,12 +557,14 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		if (next.view === "month" && prev !== "month") monthCenter.value = focusMs.peek();
 		weeks.value = next.weeks;
 		const sameTimed = next.view === prev && prev !== "month";
-		if (sameTimed && zoomRef.current && Math.abs(Math.log(next.pph / pph.peek())) > 0.2) {
+		// A position ON a tick is a destination (a key step, the ruler's release) and always glides; one
+		// between ticks is the ruler under a moving hand and is tracked exactly, unless it is a jump.
+		const glide = onCalendarTick(u) || Math.abs(Math.log(next.pph / pph.peek())) > 0.2;
+		if (sameTimed && zoomRef.current && glide) {
 			zoomTo(next.pph);
 		} else {
 			cancelZoom.current?.();
 			cancelZoom.current = null;
-			pendingPph.current = null;
 			pph.value = next.pph;
 		}
 		if (prev !== next.view) {
@@ -477,11 +594,22 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		if (v !== "timeline") lastCalendarView.current = v;
 	});
 
+	/**
+	 * The host value the engine last applied or published.
+	 *
+	 * Both effects below run deferred, on the next frame, so while the engine animates, its own publish
+	 * could land AFTER a fresh write from the host's ruler and overwrite it before it was ever applied:
+	 * the drag stopped moving the grid, and a release's settle was lost. A host value that differs from
+	 * this one is an unconsumed write, and it wins.
+	 */
+	const hostSynced = useRef<number | null>(null);
+
 	/** A host's write to its signal — its own slider — moves the engine there. */
 	useSignalEffect(() => {
 		const host = props.zoom;
 		if (!host) return;
 		const u = host.value;
+		hostSynced.current = u;
 		const v = view.peek();
 		if (v === "timeline") return;
 		const cur = calendarZoomFor({ view: v, pph: pph.peek(), weeks: weeks.peek() });
@@ -495,34 +623,31 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		if (!host || v === "timeline") return;
 		const u = calendarZoomFor({ view: v, pph: pph.value, weeks: weeks.value });
 		const was = host.peek();
-		if (calendarStateAt(was).view !== v || Math.abs(was - u) > 1e-5) host.value = u;
+		if (hostSynced.current !== null && was !== hostSynced.current) return;
+		if (calendarStateAt(was).view !== v || Math.abs(was - u) > 1e-5) {
+			host.value = u;
+			hostSynced.current = u;
+		}
 	});
 
 	/**
-	 * Animate the scale toward `target`, through the live view's own viewport so the cursor anchor is
-	 * honoured on every frame.
+	 * Animate the scale toward `target` — a release's settle, or a ruler jump — through the live view's
+	 * own viewport so the cursor anchor is honoured on every frame.
 	 *
 	 * `zoomRef` is filled by whichever timed view is mounted. When nothing has filled it — the Month
-	 * view, or a first notch before the grid has laid out — the scale is written directly, which is
-	 * also exactly what a reduced-motion reader and a hidden tab get.
+	 * view, or a jump before the grid has laid out — the scale is written directly, which is also
+	 * exactly what a reduced-motion reader and a hidden tab get.
 	 */
-	function zoomTo(target: number): void {
+	function zoomTo(target: number, anchorClientY?: number | null): void {
 		const run = zoomRef.current;
-		pendingPph.current = target;
+		cancelZoom.current?.();
+		cancelZoom.current = null;
+		notchTarget.current = null;
 		if (!run) {
 			pph.value = target;
-			pendingPph.current = null;
 			return;
 		}
-		cancelZoom.current?.();
-		cancelZoom.current = run(target, {
-			// Cleared on settle rather than on the next notch, so a burst compounds while it is in
-			// flight and the NEXT gesture starts from wherever the scale actually came to rest —
-			// including a rest the consumer imposed by writing `pxPerHour` itself.
-			onSettle: () => {
-				pendingPph.current = null;
-			},
-		});
+		cancelZoom.current = run(target, { anchorClientY });
 	}
 	// #endregion
 
@@ -652,6 +777,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 							position: zoomPosition,
 							onPosition: setZoomPosition,
 							onMode: setMode,
+							snap: props.snapZoom !== false,
 						}}
 						onPrev={() => step(-1)}
 						onNext={() => step(1)}

@@ -155,7 +155,7 @@ function ActionMenuFlyout(props: FlyoutProps): JSX.Element {
 				role="menu"
 				aria-labelledby={props.anchorId}
 				data-action-menu={props.rootId}
-				class={cx("ui-action-menu", "ui-action-menu--sub", props.class)}
+				class={cx("ui-action-menu ui-menu-surface", "ui-action-menu--sub", props.class)}
 				style={floatVars(floating, props.zIndex)}
 				onPointerMove={props.onPointerMove}
 				onPointerDown={props.onPointerDown}
@@ -671,7 +671,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 						role="menu"
 						aria-label={ariaLabel}
 						data-action-menu={rootId}
-						class={cx("ui-action-menu", className)}
+						class={cx("ui-action-menu ui-menu-surface", className)}
 						style={floatVars(floating, stack.zIndex)}
 						{...panelHandlers(0)}
 					>

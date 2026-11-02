@@ -60,14 +60,8 @@
 	inline-size: var(--ts-width, auto);
 	min-inline-size: var(--fld-panel-minw);
 	z-index: var(--z-portal, var(--z-popover));
-	color: var(--on-surface);
 	/* Same surface + elevation as every other field panel. */
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--fld-panel-radius);
-	box-shadow: var(--elevation-high);
 	visibility: hidden;
-	animation: ui-treeselect-in var(--dur-fast) var(--ease-standard);
 }
 .ui-treeselect__panel[data-placement] {
 	visibility: visible;
@@ -75,7 +69,7 @@
 
 .ui-treeselect__filter {
 	padding: var(--space-2);
-	border-block-end: 1px solid var(--border-subtle);
+	border-block-end: 1px solid var(--hairline-color);
 }
 .ui-treeselect__filter-input {
 	inline-size: 100%;
@@ -97,7 +91,7 @@
 .ui-treeselect__tree {
 	max-block-size: var(--fld-panel-maxh);
 	overflow-y: auto;
-	padding-block: var(--space-1);
+	padding: var(--menu-inset);
 	outline: none;
 }
 /* #endregion */
@@ -210,16 +204,6 @@
 	text-align: center;
 }
 
-@keyframes ui-treeselect-in {
-	from {
-		opacity: 0;
-		transform: translateY(-0.25rem);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
 @media (prefers-reduced-motion: reduce) {
 	.ui-treeselect__panel {
 		animation-duration: 0ms;

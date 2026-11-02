@@ -56,7 +56,7 @@ export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
 
 		const content = (
 			<>
-				{isIconName(item.icon) && <Icon name={item.icon} size="sm" class="ui-action-menu__icon" />}
+				{isIconName(item.icon) && <Icon name={item.icon} size="sm" class="ui-menu-item__icon" />}
 				<span class="ui-action-menu__text">
 					<span class="ui-action-menu__label">{item.label}</span>
 					{item.hint && <span class="ui-action-menu__hint">{item.hint}</span>}
@@ -74,10 +74,9 @@ export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
 			tabIndex: -1,
 			"data-index": index,
 			class: cx(
-				"ui-action-menu__item",
+				"ui-menu-item ui-action-menu__item",
 				parent && "ui-action-menu__item--parent",
-				open && "ui-action-menu__item--open",
-				item.danger && "ui-action-menu__item--danger",
+				item.danger && "ui-menu-item--danger ui-action-menu__item--danger",
 				item.disabled && "ui-action-menu__item--disabled",
 				empty && "ui-action-menu__item--empty",
 				item.class,
@@ -118,7 +117,7 @@ export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
 		<>
 			{items.map((item, index) =>
 				isSeparator(item)
-					? <div key={`sep-${index}`} role="separator" class="ui-action-menu__separator" />
+					? <div key={`sep-${index}`} role="separator" class="ui-menu-separator" />
 					: renderRow(item, index)
 			)}
 		</>

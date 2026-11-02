@@ -1268,28 +1268,14 @@ body:has(.auth) {
 	inset-inline: 0;
 	top: calc(100% + var(--space-1));
 	margin: 0;
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 	list-style: none;
-	border-radius: var(--radius-lg);
-	background: var(--surface);
-	box-shadow: var(--elevation-high);
 	max-height: 14rem;
 	overflow-y: auto;
-	animation: authPop var(--dur-fast) var(--spring-standard);
-}
-
-.tagselect__opt {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-base);
-	font-size: var(--text-md);
-	cursor: pointer;
 }
 
 .tagselect__opt.is-active {
-	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	background: var(--menu-item-tint);
 	color: var(--primary-ink);
 }
 

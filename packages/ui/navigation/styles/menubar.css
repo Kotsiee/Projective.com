@@ -81,15 +81,10 @@
 	   `dir="rtl"`. See `.ui-anchored` in `packages/ui/styles/index.css` for the full reasoning. */
 	left: var(--float-left, -9999px);
 	z-index: var(--z-portal, var(--z-overlay));
-	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-high);
-	animation: ui-menubar-pop var(--dur-fast) var(--ease-standard);
 }
 .ui-menubar__submenu {
 	margin: 0;
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 	list-style: none;
 	min-inline-size: 12rem;
 	max-block-size: min(24rem, 70vh);
@@ -98,39 +93,6 @@
 }
 .ui-menubar__subrow {
 	position: relative;
-}
-@keyframes ui-menubar-pop {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-.ui-menubar__menuitem {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	box-sizing: border-box;
-	padding: var(--space-2) var(--space-3);
-	font-size: 0.9375rem;
-	color: var(--on-surface);
-	text-decoration: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	outline: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-.ui-menubar__menuitem:hover,
-.ui-menubar__menuitem:focus-visible,
-.ui-menubar__menuitem--open {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-.ui-menubar__menuitem:focus-visible {
-	box-shadow: none;
 }
 .ui-menubar__menuitem--disabled {
 	opacity: 0.45;
@@ -175,11 +137,6 @@
 	color: var(--on-surface-variant);
 	font-size: 0.75rem;
 }
-.ui-menubar__separator {
-	block-size: 1px;
-	margin: var(--space-1) var(--space-2);
-	background: var(--border-subtle);
-}
 /* #endregion */
 
 /* #region Mobile */
@@ -207,35 +164,10 @@
 	z-index: var(--z-portal, var(--z-overlay));
 	max-block-size: calc(100vh - 4rem);
 	overflow-y: auto;
-	padding: var(--space-1);
-	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-high);
-}
-.ui-menubar__mobile-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	box-sizing: border-box;
-	padding: var(--space-3);
-	font: inherit;
-	font-size: 0.9375rem;
-	color: var(--on-surface);
-	text-align: start;
-	text-decoration: none;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-}
-.ui-menubar__mobile-item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	padding: var(--menu-inset);
 }
 .ui-menubar__mobile-item--child {
 	padding-inline-start: var(--space-6);
-	font-size: 0.875rem;
 	color: var(--on-surface-variant);
 }
 .ui-menubar__mobile-children {

@@ -70,31 +70,17 @@
 	z-index: var(--z-portal, var(--z-popover));
 	inline-size: 15rem;
 	padding: var(--space-3);
-	background: var(--surface-1);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
-	animation: ui-colorpicker-in var(--dur-fast) var(--ease-standard);
 }
 .ui-colorpicker__panel--inline {
 	position: static;
-	box-shadow: none;
-	animation: none;
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
 }
 /* The popup panel is portalled out of `.ui-colorpicker--disabled`, so it restates that treatment. */
 .ui-colorpicker__panel--disabled {
 	opacity: 0.55;
 	pointer-events: none;
-}
-@keyframes ui-colorpicker-in {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
 }
 @media (prefers-reduced-motion: reduce) {
 	.ui-colorpicker__panel {

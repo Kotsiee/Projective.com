@@ -96,12 +96,6 @@
 }
 /* #endregion */
 
-/* #region Empty state */
-.fh-empty {
-	margin-block-start: var(--space-4);
-}
-/* #endregion */
-
 /* #region Breadcrumb bar */
 .fh-hub__crumbbar {
 	flex: none;
@@ -126,8 +120,11 @@
 /* #endregion */
 
 /* #region Workspace */
+/* A flex column, so an empty location's `EmptyState` fills the remaining height and centres. */
 .fh-hub__workspace {
 	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
 	min-inline-size: 0;
 	min-block-size: 0;
 	padding-block-end: var(--space-6);

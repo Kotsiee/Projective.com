@@ -27,6 +27,7 @@ import {
 	calendarFocus,
 	calendarPage,
 	calendarPreset,
+	calendarSnapZoom,
 	calendarView,
 	calendarZoom,
 	createRequest,
@@ -317,6 +318,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				view={calendarView.value}
 				zoom={calendarZoom}
 				timelineZoom={timelineZoom}
+				snapZoom={calendarSnapZoom.value}
 				focus={focusedAt(p)}
 				hideSidePanel
 				hideHeader

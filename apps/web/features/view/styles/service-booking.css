@@ -805,30 +805,12 @@
 .sbk-contact__list {
     display: flex;
     flex-direction: column;
-    padding: var(--space-1);
+    padding: var(--menu-inset);
 }
 
+/* The glyph sits on the label's line, not centred against the two-line text. */
 .sbk-contact__item {
-    display: flex;
     align-items: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    text-align: start;
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--spring-standard);
-}
-
-.sbk-contact__item:hover {
-    background: var(--surface-2);
-}
-
-.sbk-contact__item:focus-visible {
-    outline: none;
-    box-shadow: none;
 }
 
 .sbk-contact__itemtext {

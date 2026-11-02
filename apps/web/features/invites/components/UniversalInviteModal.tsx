@@ -385,7 +385,7 @@ function InviteBody(props: UniversalInviteModalProps): JSX.Element {
 				{props.suggest && (
 					<ul
 						id={listId}
-						class="inv-suggest"
+						class="ui-menu-surface inv-suggest"
 						role="listbox"
 						aria-label="People you work with"
 						hidden={!listOpen}
@@ -396,7 +396,7 @@ function InviteBody(props: UniversalInviteModalProps): JSX.Element {
 								id={`${listId}-${i}`}
 								role="option"
 								aria-selected={i === active ? "true" : "false"}
-								class="inv-suggest__item"
+								class="ui-menu-item inv-suggest__item"
 								data-active={i === active ? "true" : undefined}
 								// Keep focus in the field, so picking never blurs the combobox.
 								onMouseDown={(e) => e.preventDefault()}

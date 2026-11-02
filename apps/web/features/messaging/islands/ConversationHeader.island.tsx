@@ -256,13 +256,13 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 							type="button"
 							role="menuitemcheckbox"
 							aria-checked={isMuted.value}
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								toggleMute();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								<MessagingIcon name="mute" />
 							</span>
 							<span class="chan-menu__label">
@@ -273,13 +273,13 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 							<button
 								type="button"
 								role="menuitem"
-								class="chan-menu__item"
+								class="ui-menu-item chan-menu__item"
 								onClick={() => {
 									menuOpen.value = false;
 									photoOpen.value = true;
 								}}
 							>
-								<span class="chan-menu__icon" aria-hidden="true">
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 									<Icon name="image" size="sm" />
 								</span>
 								<span class="chan-menu__label">
@@ -291,7 +291,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 							<button
 								type="button"
 								role="menuitem"
-								class="chan-menu__item"
+								class="ui-menu-item chan-menu__item"
 								onClick={() => {
 									menuOpen.value = false;
 									void savePhoto(null).then((message) => {
@@ -301,7 +301,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 									});
 								}}
 							>
-								<span class="chan-menu__icon" aria-hidden="true">
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 									<MessagingIcon name="trash" />
 								</span>
 								<span class="chan-menu__label">Remove group photo</span>
@@ -311,13 +311,13 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 							<button
 								type="button"
 								role="menuitem"
-								class="chan-menu__item"
+								class="ui-menu-item chan-menu__item"
 								onClick={() => {
 									openAddMembers(detail.id, detail.participants.map((p) => p.id));
 									menuOpen.value = false;
 								}}
 							>
-								<span class="chan-menu__icon" aria-hidden="true">
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 									<MessagingIcon name="addMember" />
 								</span>
 								<span class="chan-menu__label">Add members</span>
@@ -326,13 +326,13 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 						<button
 							type="button"
 							role="menuitem"
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								copyLink();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								<MessagingIcon name="chat" />
 							</span>
 							<span class="chan-menu__label">{copied.value ? "Link copied" : "Copy link"}</span>

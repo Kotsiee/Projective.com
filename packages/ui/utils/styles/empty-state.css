@@ -1,21 +1,22 @@
 /*
- * EmptyState — centred placeholder on a tonal surface tint. Separation hierarchy (§B.4): no
- * four-sided border on this non-interactive content; depth comes from a `--surface-1` tint, spacing
- * and type weight. Token-only.
+ * EmptyState — a centred placeholder drawn straight on its parent's ground, the `/messages`
+ * `.msg-empty` anatomy. Separation hierarchy (§B.4): static content is never boxed, so no fill,
+ * border or radius — spacing, the glyph's disc and the title register carry it. It fills a flex or
+ * definite-height parent and centres in the space it was given; in an auto-height block it is its
+ * content plus padding. Token-only.
  */
 
 .ui-empty {
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: var(--space-3);
-	padding-block: var(--space-7);
-	padding-inline: var(--space-5);
+	min-block-size: 100%;
+	padding: var(--space-6);
 	text-align: center;
 	color: var(--on-surface);
-	background: var(--surface-1);
-	border-radius: var(--radius-lg);
 }
 
 .ui-empty--sm {
@@ -28,25 +29,24 @@
 }
 
 /* #region Parts */
+/* The glyph sits on a `--surface-2` disc at `--icon-xl`, whatever size the caller's Icon set. */
 .ui-empty__icon {
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 3rem;
-	block-size: 3rem;
-	font-size: 2rem;
-	line-height: 0;
-	color: var(--on-surface-variant);
+	padding: var(--space-4);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+}
+.ui-empty__icon svg {
+	inline-size: var(--icon-xl);
+	block-size: var(--icon-xl);
 }
 .ui-empty--sm .ui-empty__icon {
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
-	font-size: 1.5rem;
+	padding: var(--space-3);
 }
-.ui-empty--lg .ui-empty__icon {
-	inline-size: 4rem;
-	block-size: 4rem;
-	font-size: 2.75rem;
+.ui-empty--sm .ui-empty__icon svg {
+	inline-size: var(--icon-lg);
+	block-size: var(--icon-lg);
 }
 
 /*
@@ -56,23 +56,23 @@
 .ui-empty__title {
 	margin: 0;
 	font-family: var(--font-sans);
-	font-size: var(--text-lg);
+	font-size: var(--text-xl);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
 .ui-empty__description {
 	margin: 0;
-	max-inline-size: var(--container-sm);
+	max-inline-size: 40ch;
 	font-family: var(--font-sans);
-	font-size: 0.9375rem;
-	line-height: 1.5;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 
 /* The optional body (a first run's short list): body text at the description's measure. */
 .ui-empty__body {
-	max-inline-size: var(--container-sm);
+	max-inline-size: 40ch;
 }
 
 .ui-empty__actions {

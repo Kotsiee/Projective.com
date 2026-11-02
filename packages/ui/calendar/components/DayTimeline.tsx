@@ -62,7 +62,12 @@ import { edgeFor, effectiveAccent, onAccentFor } from "../core/kinds.ts";
 import type { DaySlot } from "../core/layout.ts";
 import { dayWindow, packDayEvents } from "../core/layout.ts";
 import { EVENT_MIN_H, INSTANT_HIT_H, STACK_SHADOW_MAX } from "../core/scene-build.ts";
-import { scrollBehaviorFor, useCalendarViewport } from "../hooks/useCalendarViewport.ts";
+import {
+	scrollBehaviorFor,
+	useCalendarViewport,
+	type ZoomToOptions,
+} from "../hooks/useCalendarViewport.ts";
+import { wheelZoomFactor } from "../core/zoom.ts";
 import { EventBlock } from "./EventBlock.tsx";
 import { GridCanvas } from "./GridCanvas.tsx";
 import { NowIndicator } from "./NowIndicator.tsx";
@@ -495,10 +500,10 @@ export interface DayTimelineProps {
 	 * diverging on the zoom gesture is exactly the class of bug the two viewport hooks are kept as
 	 * twins to prevent.
 	 */
-	onZoom?: (dir: "in" | "out") => void;
+	onZoom?: (dir: "in" | "out", dayMs: null, scale?: number) => void;
 	/** Hand the island this viewport's own zoom interpolator — see the Week grid's twin. */
 	registerZoom?: (
-		run: (target: number, opts?: { onSettle?: () => void }) => () => void,
+		run: (target: number, opts?: ZoomToOptions) => () => void,
 	) => void;
 	/** The zoom bounds the island's continuum expects, so the spring and the pinch clamp where it does. */
 	zoomRange?: readonly [number, number];
@@ -608,7 +613,7 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 			e.preventDefault();
 			e.stopPropagation();
 			viewport.zoomAnchor(e.clientY - el.getBoundingClientRect().top);
-			props.onZoom(e.deltaY < 0 ? "in" : "out");
+			props.onZoom(e.deltaY < 0 ? "in" : "out", null, wheelZoomFactor(e.deltaY, e.deltaMode));
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);

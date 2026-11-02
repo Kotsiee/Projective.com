@@ -514,12 +514,8 @@
 /* #endregion */
 
 /* #region Plus menu (popover) */
-.ui-popover.chat-composer-pop {
-	border-radius: var(--radius-lg);
-}
-
 .ui-popover.chat-composer-pop .ui-popover__content {
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 }
 
 .chat-composer__menu {
@@ -528,36 +524,8 @@
 	min-inline-size: 12.5rem;
 }
 
-.chat-composer__menu-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.5rem 0.55rem;
-	font: inherit;
-	font-size: 0.82rem;
-	color: var(--on-surface);
-	text-align: start;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.chat-composer__menu-item:hover {
-	background: var(--surface-2);
-}
-
-.chat-composer__menu-item:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
 .chat-composer__menu-icon {
-	display: inline-flex;
-	flex: none;
 	font-size: 1.05rem;
-	color: var(--text-secondary);
 }
 
 /* #endregion */

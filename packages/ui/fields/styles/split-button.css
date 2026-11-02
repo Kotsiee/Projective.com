@@ -60,25 +60,10 @@
 	min-inline-size: 12rem;
 	display: flex;
 	flex-direction: column;
-	padding-block: var(--space-1);
-	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-high);
-	animation: ui-split-button-pop var(--dur-fast) var(--ease-standard);
+	padding-block: var(--menu-inset);
 }
 .ui-split-button__menu--top {
-	transform-origin: bottom center;
-}
-@keyframes ui-split-button-pop {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
+	--menu-enter-y: var(--space-2);
 }
 @media (prefers-reduced-motion: reduce) {
 	.ui-split-button__menu {
@@ -88,28 +73,6 @@
 /* #endregion */
 
 /* #region Menu items */
-.ui-split-button__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	min-block-size: var(--fld-opt-h);
-	padding-block: var(--space-2);
-	padding-inline: var(--fld-opt-px);
-	font-family: var(--font-sans);
-	font-size: var(--fld-opt-fs);
-	color: var(--on-surface);
-	text-align: start;
-	text-decoration: none;
-	background: transparent;
-	border: none;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-.ui-split-button__item:hover:not(.ui-split-button__item--disabled),
-.ui-split-button__item:focus-visible {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
 .ui-split-button__item:focus-visible {
 	outline: none;
 	box-shadow: none;

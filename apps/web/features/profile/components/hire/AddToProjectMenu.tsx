@@ -54,11 +54,11 @@ export function AddToProjectMenu(
 			<p class="pf-addmenu__lead">Add {sellerName} to</p>
 			<button
 				type="button"
-				class="pf-addmenu__create"
+				class="ui-menu-item pf-addmenu__create"
 				aria-haspopup="dialog"
 				onClick={onCreate}
 			>
-				<Icon name="plus" size="sm" aria-hidden />
+				<Icon name="plus" size="sm" class="ui-menu-item__icon" aria-hidden />
 				<span class="pf-addmenu__create-text">
 					<span class="pf-addmenu__title">Create new project</span>
 					<span class="pf-addmenu__meta">Start a draft and bring {sellerName} in</span>
@@ -78,7 +78,7 @@ export function AddToProjectMenu(
 							const row = (
 								<button
 									type="button"
-									class="pf-addmenu__item"
+									class="ui-menu-item pf-addmenu__item"
 									aria-haspopup={locked ? undefined : "dialog"}
 									aria-disabled={locked ? "true" : undefined}
 									aria-label={`${project.title}, ${project.scopeLabel}, ${

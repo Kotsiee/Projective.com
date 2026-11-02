@@ -119,12 +119,12 @@ export function LaneIdentity(
 							<button
 								key={action.key}
 								type="button"
-								class="evp-menu__item"
+								class="ui-menu-item evp-menu__item"
 								role="menuitem"
 								data-danger={action.danger ? "true" : undefined}
 								onClick={action.onSelect}
 							>
-								<Icon name={action.icon} size="sm" aria-hidden />
+								<Icon name={action.icon} size="sm" class="ui-menu-item__icon" aria-hidden />
 								<span>{action.label}</span>
 							</button>
 						))}

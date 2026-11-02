@@ -197,14 +197,16 @@ export function Menu(props: MenuProps): JSX.Element {
 		const active = index === activeIdx;
 		const content = itemTemplate ? itemTemplate(item) : (
 			<>
-				{item.icon && <span class="ui-menu__icon" aria-hidden="true">{item.icon}</span>}
+				{item.icon && (
+					<span class="ui-menu-item__icon ui-menu__icon" aria-hidden="true">{item.icon}</span>
+				)}
 				<span class="ui-menu__label">{item.label}</span>
 				{item.shortcut && <span class="ui-menu__shortcut" aria-hidden="true">{item.shortcut}</span>}
 				{item.badge != null && <span class="ui-menu__badge">{item.badge}</span>}
 			</>
 		);
 		const cls = cx(
-			"ui-menu__item",
+			"ui-menu-item ui-menu__item",
 			active && "ui-menu__item--active",
 			item.disabled && "ui-menu__item--disabled",
 			item.active && "ui-menu__item--current",
@@ -254,7 +256,7 @@ export function Menu(props: MenuProps): JSX.Element {
 		>
 			{rows.map((row) => {
 				if (row.kind === "separator") {
-					return <li key={row.key} role="separator" class="ui-menu__separator" />;
+					return <li key={row.key} role="separator" class="ui-menu-separator" />;
 				}
 				if (row.kind === "group") {
 					return (
@@ -300,7 +302,7 @@ export function Menu(props: MenuProps): JSX.Element {
 					<div
 						ref={panelRef}
 						class={cx(
-							"ui-menu__panel",
+							"ui-menu__panel ui-menu-surface",
 							floating?.placement.startsWith("top") && "ui-menu__panel--top",
 						)}
 						style={styleVars({

@@ -3,6 +3,7 @@ import { define } from "@web/utils/state.ts";
 import type { AssetListParams } from "@projective/types/files";
 import { readActor } from "@web/utils/api-session.ts";
 import { resolveFilesBootstrap } from "@web/features/files/core/files-ssr.ts";
+import { facetsOfSearch } from "@web/features/files/core/asset-model.ts";
 import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
 
 /**
@@ -66,6 +67,8 @@ export const handler = define.handlers({
 			path: path.length > 0 ? path : undefined,
 			sort: "date",
 			dir: "desc",
+			// `?categories=` · `?sources=` · `?visibility=`, so a filtered link paints filtered.
+			...facetsOfSearch(ctx.url.search),
 		};
 
 		const { page: listing, tree, error, status } = await resolveFilesBootstrap(params, readActor(ctx));

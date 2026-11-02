@@ -169,13 +169,13 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 						<button
 							type="button"
 							role="menuitem"
-							class="msg-menu__item"
+							class="ui-menu-item msg-menu__item"
 							onClick={() => {
 								onTogglePin();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="msg-menu__icon" aria-hidden="true">{PinIcon}</span>
+							<span class="ui-menu-item__icon msg-menu__icon" aria-hidden="true">{PinIcon}</span>
 							<span class="msg-menu__label">
 								{message.pinned ? "Unpin message" : "Pin message"}
 							</span>
@@ -184,13 +184,13 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 					<button
 						type="button"
 						role="menuitem"
-						class="msg-menu__item"
+						class="ui-menu-item msg-menu__item"
 						onClick={() => {
 							onToggleFavorite();
 							menuOpen.value = false;
 						}}
 					>
-						<span class="msg-menu__icon" aria-hidden="true">{StarIcon}</span>
+						<span class="ui-menu-item__icon msg-menu__icon" aria-hidden="true">{StarIcon}</span>
 						<span class="msg-menu__label">
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>

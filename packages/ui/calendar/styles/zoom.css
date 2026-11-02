@@ -85,21 +85,19 @@
 	inline-size: 2px;
 	border-radius: var(--radius-full);
 	background: var(--primary);
-	transition: inset-inline-start var(--dur-medium) var(--spring-standard);
-}
-
-.cal-zoom__ruler[data-held="true"] .cal-zoom__marker {
-	transition: none;
+	/*
+	 * No transition: the engine publishes every frame of every zoom, release settles included, so the
+	 * marker already rides the grid's own spring. A transition here re-started on each of those frames
+	 * and left the marker trailing a live zoom.
+	 */
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.cal-zoom__marker,
 	.cal-zoom__name {
 		transition: none;
 	}
 }
 
-:root[data-motion="reduced"] .cal-zoom__marker,
 :root[data-motion="reduced"] .cal-zoom__name {
 	transition: none;
 }

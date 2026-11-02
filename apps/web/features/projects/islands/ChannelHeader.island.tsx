@@ -381,13 +381,15 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							type="button"
 							role="menuitemcheckbox"
 							aria-checked={isStarred.value}
-							class="chan-menu__item chan-menu__item--mobile"
+							class="ui-menu-item chan-menu__item chan-menu__item--mobile"
 							onClick={() => {
 								toggleStar();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(StarIcon)}</span>
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
+								{cloneElement(StarIcon)}
+							</span>
 							<span class="chan-menu__label">
 								{isStarred.value ? "Unstar channel" : "Star channel"}
 							</span>
@@ -395,13 +397,13 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 						<button
 							type="button"
 							role="menuitem"
-							class="chan-menu__item chan-menu__item--mobile"
+							class="ui-menu-item chan-menu__item chan-menu__item--mobile"
 							onClick={() => {
 								popOut();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								<Icon name="external-link" />
 							</span>
 							<span class="chan-menu__label">Pop out chat</span>
@@ -410,13 +412,13 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							type="button"
 							role="menuitemcheckbox"
 							aria-checked={isMuted.value}
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								toggleMute();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								{cloneElement(isMuted.value ? BellIcon : BellOffIcon)}
 							</span>
 							<span class="chan-menu__label">
@@ -427,13 +429,15 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							type="button"
 							role="menuitemcheckbox"
 							aria-checked={isPinned.value}
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								togglePin();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(PinIcon)}</span>
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
+								{cloneElement(PinIcon)}
+							</span>
 							<span class="chan-menu__label">
 								{isPinned.value ? "Unpin channel" : "Pin channel"}
 							</span>
@@ -441,7 +445,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 						<button
 							type="button"
 							role="menuitem"
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								menuOpen.value = false;
 								// "Channel info" only ever OPENS — on a docked view it never shuts the panel.
@@ -449,19 +453,23 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 								else if (!contextPanelDocked.value) toggleContextPanel();
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(InfoIcon)}</span>
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
+								{cloneElement(InfoIcon)}
+							</span>
 							<span class="chan-menu__label">Channel info</span>
 						</button>
 						<button
 							type="button"
 							role="menuitem"
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								copyLink();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(LinkIcon)}</span>
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
+								{cloneElement(LinkIcon)}
+							</span>
 							<span class="chan-menu__label">{copied.value ? "Link copied" : "Copy link"}</span>
 						</button>
 					</div>

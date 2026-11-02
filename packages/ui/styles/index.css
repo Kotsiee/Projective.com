@@ -383,6 +383,18 @@
     /* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
 	smallest of which (24px) fails WCAG 2.5.8; 36px clears it with room for a comfortable icon. */
     --overlay-action-size: 2.25rem;
+
+    /*
+	* --- Menu surface (Decision #364) ---
+	* Every dropdown, menu and anchored popover wears the guest megamenu's glass (`.ui-menu-surface`):
+	* these corners, rows `--menu-inset` in from the rim, and row corners concentric with the panel's
+	* (its radius less the inset and the 1px rim), so no row's tint ever meets the curve.
+	*/
+    --menu-radius: calc(var(--radius-xl) * 1.25);
+    --menu-inset: var(--space-2);
+    --menu-item-radius: calc(var(--menu-radius) - var(--menu-inset) - 1px);
+    --menu-item-fs: var(--text-md);
+    --menu-item-tint: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
     /* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
     /*
@@ -1161,6 +1173,193 @@
     z-index: var(--z-portal, var(--z-overlay));
 }
 
+/* #region Menu surface + row (Decision #364, DESIGN_SYSTEM §B.4.3) */
+/*
+ * The ONE dropdown / menu / anchored-popover surface: the guest megamenu's glass
+ * (`.site-header__mega-inner`) — a `--glass-veil-panel` veil of `--surface` with `--glass-blur` and
+ * `--glass-saturate`, a `--hairline-color` rim, `--menu-radius` corners, `--elevation-high`, and its
+ * fade + rise entry. The blur rides a `::before` underlay, so the panel never becomes a containing
+ * block for the overlays it renders; every panel that wears this is already `fixed` or `absolute`,
+ * which the underlay needs. It sets no `position`, so it never fights `.ui-anchored`. The veil is the
+ * panel's own background, because a panel that is its own scroller carries the underlay away with
+ * its content: the veil stays whole and only the blur thins past the first screen of a scroll.
+ *
+ * Inside it `--text-secondary` resolves to `--on-surface-variant` (secondary text does not go on
+ * glass), field option rows take the concentric corner and the menu row's size, and a scroller's
+ * track is `transparent`. A panel wearing it declares no surface of its own.
+ */
+.ui-menu-surface {
+    --scrollbar-track: transparent;
+    --text-secondary: var(--on-surface-variant);
+    --fld-opt-radius: var(--menu-item-radius);
+    --fld-opt-fs: var(--menu-item-fs);
+    isolation: isolate;
+    color: var(--on-surface);
+    background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--menu-radius);
+    box-shadow: var(--elevation-high);
+    animation:
+        ui-menu-fade var(--dur-medium) var(--ease-standard),
+        ui-menu-rise var(--dur-medium) var(--spring-standard);
+}
+
+.ui-menu-surface::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* `translate`, not `transform`, so the rise composes with a panel's own transform. A panel opening
+   upward sets `--menu-enter-y: var(--space-2)`. */
+@keyframes ui-menu-fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes ui-menu-rise {
+    from {
+        translate: 0 var(--menu-enter-y, calc(-1 * var(--space-2)));
+    }
+}
+
+/* The megamenu's solid fallbacks. Plain selector lists: a pseudo-element is not valid in `:is()`. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .ui-menu-surface {
+        background: var(--surface);
+    }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    .ui-menu-surface {
+        background: var(--surface);
+    }
+
+    .ui-menu-surface::before {
+        content: none;
+    }
+}
+
+@media (prefers-contrast: more) {
+    :root:not([data-contrast="normal"]) .ui-menu-surface {
+        background: var(--surface);
+    }
+
+    :root:not([data-contrast="normal"]) .ui-menu-surface::before {
+        content: none;
+    }
+}
+
+:root[data-contrast="high"] .ui-menu-surface {
+    background: var(--surface);
+}
+
+:root[data-contrast="high"] .ui-menu-surface::before {
+    content: none;
+}
+
+@media (forced-colors: active) {
+    .ui-menu-surface {
+        background: Canvas;
+    }
+
+    .ui-menu-surface::before {
+        content: none;
+    }
+}
+
+/*
+ * The ONE menu row: an action, link or option in a `.ui-menu-surface`. Hover and keyboard focus
+ * share the neutral tint — with focus rings suppressed app-wide (`apps/web/styles/global.css`) it is
+ * the only keyboard cue. `--danger` / `[data-danger="true"]` turns it destructive; `__icon` is the
+ * leading glyph slot.
+ */
+.ui-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--fld-opt-h);
+    padding: var(--space-2) var(--space-3);
+    font: inherit;
+    font-size: var(--menu-item-fs);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+    text-align: start;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    border-radius: var(--menu-item-radius);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-press) var(--ease-standard);
+}
+
+.ui-menu-item:hover,
+.ui-menu-item:focus-visible,
+.ui-menu-item[aria-expanded="true"] {
+    background: var(--menu-item-tint);
+    outline: none;
+}
+
+.ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
+    transform: scale(var(--btn-press-scale));
+}
+
+.ui-menu-item:disabled,
+.ui-menu-item[aria-disabled="true"] {
+    color: var(--on-surface-variant);
+    background: transparent;
+    cursor: default;
+}
+
+.ui-menu-item--danger,
+.ui-menu-item[data-danger="true"] {
+    color: var(--danger);
+}
+
+.ui-menu-item--danger:is(:hover, :focus-visible),
+.ui-menu-item[data-danger="true"]:is(:hover, :focus-visible) {
+    background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
+}
+
+.ui-menu-item__icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--on-surface-variant);
+}
+
+.ui-menu-item--danger .ui-menu-item__icon,
+.ui-menu-item[data-danger="true"] .ui-menu-item__icon {
+    color: currentColor;
+}
+
+.ui-menu-separator {
+    block-size: 0;
+    margin: var(--space-1) var(--space-2);
+    border: 0;
+    border-block-start: 1px solid var(--hairline-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
+        transform: none;
+    }
+}
+
+:root[data-motion="reduced"] .ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
+    transform: none;
+}
+/* #endregion */
+
 /*
  * Custom scrollbar — ONE bar, everywhere, always visible.
  *
@@ -1237,35 +1436,18 @@
  * and the thumb still clears 3:1 because the veil is a mix of the same ramp the thumb was measured
  * against.
  */
-.ui-popover,
 .ui-dialog__panel,
 .ui-drawer,
 .ui-toast__item,
-.ui-confirm-popup,
-.ui-hovercard__panel,
-.ui-menu__panel,
 .ui-menubar,
-.ui-menubar__panel,
-.ui-menubar__mobile,
-.ui-contextmenu__panel,
-.ui-tieredmenu__panel,
-.ui-megamenu__panel,
 .ui-slidemenu,
-.ui-select__panel,
-.ui-multiselect__panel,
-.ui-treeselect__panel,
-.ui-datepicker__panel,
 .ui-datepicker--inline,
-.ui-datetime__panel,
-.ui-sort__menu,
-.ui-split-button__menu,
 .ui-listbox,
 .ui-tree,
 .ui-tree__context,
 .ui-treetable,
 .ui-galleria,
 .ui-rte,
-.cal-pop__panel,
 .ui-card--flat {
     --scrollbar-track: var(--surface);
 }

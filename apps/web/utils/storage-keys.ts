@@ -334,6 +334,8 @@ export const LocalKeys = {
 	CALENDAR_ZOOM: "pj.local.calendar.zoom",
 	/** The `/calendar` hub's timeline scale, in px per day. */
 	CALENDAR_TIMELINE_ZOOM: "pj.local.calendar.timelineZoom",
+	/** The `/calendar` hub's "Snap zoom to intervals" preference (`"false"` when switched off). */
+	CALENDAR_SNAP_ZOOM: "pj.local.calendar.snapZoom",
 	/**
 	 * Prefix for the calendar engine's own density persistence — it writes `…:zoom` beneath this.
 	 * Registered rather than left as a literal at the call site so every client key on the platform is

@@ -537,7 +537,7 @@ export function Select(props: SelectProps): JSX.Element {
 					<div
 						ref={panelRef}
 						class={cx(
-							"ui-select__panel",
+							"ui-select__panel ui-menu-surface",
 							floating?.placement.startsWith("top") && "ui-select__panel--top",
 							panelWidth === "auto" && "ui-select__panel--auto",
 							panelWidth !== "auto" && panelWidth !== "trigger" && "ui-select__panel--sized",

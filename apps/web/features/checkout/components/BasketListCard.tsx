@@ -157,7 +157,7 @@ export function BasketListCard(props: BasketListCardProps): JSX.Element {
 						open={menuOpen}
 						placement="bottom-end"
 						label={`Lists for ${item.title}`}
-						class="bsk-menu"
+						class="bsk-menu bsk-menu--list"
 						trigger={(api) => (
 							<button
 								type="button"
@@ -187,14 +187,14 @@ export function BasketListCard(props: BasketListCardProps): JSX.Element {
 							<button
 								key={target.id}
 								type="button"
-								class="bsk-menu__item"
+								class="ui-menu-item bsk-menu__item"
 								disabled={busy}
 								onClick={() => {
 									menuOpen.value = false;
 									props.onMoveToList(item, target.id);
 								}}
 							>
-								<Icon name={target.isDefault ? "basket" : "bookmark"} />
+								<Icon name={target.isDefault ? "basket" : "bookmark"} class="ui-menu-item__icon" />
 								<span>Move to {target.name}</span>
 							</button>
 						))}

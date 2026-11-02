@@ -264,13 +264,13 @@ export default function WorkspaceChannelHeader(props: WorkspaceChannelHeaderProp
 							type="button"
 							role="menuitemcheckbox"
 							aria-checked={muted.value}
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								menuOpen.value = false;
 								void toggleMute();
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								<MessagingIcon name={muted.value ? "bell" : "mute"} />
 							</span>
 							<span class="chan-menu__label">
@@ -281,13 +281,13 @@ export default function WorkspaceChannelHeader(props: WorkspaceChannelHeaderProp
 							<button
 								type="button"
 								role="menuitem"
-								class="chan-menu__item"
+								class="ui-menu-item chan-menu__item"
 								onClick={() => {
 									menuOpen.value = false;
 									editOpen.value = true;
 								}}
 							>
-								<span class="chan-menu__icon" aria-hidden="true">
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 									<Icon name="edit" size="sm" />
 								</span>
 								<span class="chan-menu__label">Edit channel</span>
@@ -296,13 +296,13 @@ export default function WorkspaceChannelHeader(props: WorkspaceChannelHeaderProp
 						<button
 							type="button"
 							role="menuitem"
-							class="chan-menu__item"
+							class="ui-menu-item chan-menu__item"
 							onClick={() => {
 								copyLink();
 								menuOpen.value = false;
 							}}
 						>
-							<span class="chan-menu__icon" aria-hidden="true">
+							<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 								<Icon name="link" size="sm" />
 							</span>
 							<span class="chan-menu__label">{copied.value ? "Link copied" : "Copy link"}</span>
@@ -311,13 +311,13 @@ export default function WorkspaceChannelHeader(props: WorkspaceChannelHeaderProp
 							<button
 								type="button"
 								role="menuitem"
-								class="chan-menu__item"
+								class="ui-menu-item chan-menu__item"
 								onClick={() => {
 									menuOpen.value = false;
 									confirmArchive.value = true;
 								}}
 							>
-								<span class="chan-menu__icon" aria-hidden="true">
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
 									<MessagingIcon name="archive" />
 								</span>
 								<span class="chan-menu__label">Archive channel</span>

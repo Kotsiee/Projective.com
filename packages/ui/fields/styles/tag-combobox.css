@@ -97,12 +97,7 @@
 	max-block-size: var(--fld-panel-maxh);
 	min-inline-size: var(--fld-panel-minw);
 	overflow-y: auto;
-	padding-block: var(--space-1);
-	color: var(--on-surface);
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--fld-panel-radius);
-	box-shadow: var(--elevation-high);
+	padding: var(--menu-inset);
 	visibility: hidden;
 }
 

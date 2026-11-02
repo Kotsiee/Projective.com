@@ -183,7 +183,6 @@ body {
  * are removed rather than kept as harmless duplicates: this list is only checkable as a whole, and a
  * selector matching nothing makes the set look like it covers a surface it no longer describes.
  */
-.tagselect__menu,
 .evm__panel,
 .dev-log__list,
 .apk__panel,
@@ -193,7 +192,6 @@ body {
 .fx-modal__menu,
 .fx-modal__aside,
 .pjc__panel,
-.proj-modifier__menu,
 .ui-lane-filter-combo__menu,
 .subm-review__panel,
 .tkv__panel,
@@ -229,8 +227,7 @@ body {
  * in exactly the case the veil exists to avoid. The floating guest aside is scoped the same way in
  * `features/shell/styles/guest-shell.css`, where its own veil is declared.
  */
-.site-header__drawer,
-.ex-scope__menu {
+.site-header__drawer {
 	--scrollbar-track: transparent;
 }
 
@@ -328,6 +325,13 @@ summary:focus-visible,
 .auth-otp__box:focus-visible,
 .vw-gallery__main:focus-visible {
 	box-shadow: var(--elevation-low) !important;
+}
+
+/* Every menu, dropdown and popover panel (Decision #364): a `tabindex="-1"` panel holding the
+   roving focus matched `[tabindex]:focus-within` above and lost its lift while in use. */
+.ui-menu-surface:focus,
+.ui-menu-surface:focus-within {
+	box-shadow: var(--elevation-high) !important;
 }
 
 .ui-button--raised:hover:not(:disabled):focus-visible {

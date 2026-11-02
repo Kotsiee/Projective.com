@@ -50,7 +50,7 @@ export function HireMenu(
 								<li key={service.id}>
 									<button
 										type="button"
-										class="pf-hiremenu__item"
+										class="ui-menu-item pf-hiremenu__item"
 										aria-haspopup="dialog"
 										onClick={() => onPickService(service)}
 									>
@@ -100,11 +100,11 @@ export function HireMenu(
 			{consultation && consultLabel && (
 				<button
 					type="button"
-					class="pf-hiremenu__consult"
+					class="ui-menu-item pf-hiremenu__consult"
 					aria-haspopup="dialog"
 					onClick={onPickConsultation}
 				>
-					<Icon name="video-camera" size="sm" aria-hidden />
+					<Icon name="video-camera" size="sm" class="ui-menu-item__icon" aria-hidden />
 					<span class="pf-hiremenu__consult-text">
 						<span class="pf-hiremenu__consult-title">Book consultation</span>
 						<span class="pf-hiremenu__consult-meta">

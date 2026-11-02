@@ -386,16 +386,6 @@
 
 /* #endregion */
 
-/* Compact menu popover — actions render DIRECTLY inside `ui-popover__content` (no intermediary
-   wrapper): the Popover already supplies the elevated surface/hairline/radius/shadow, so `.pf-menu`
-   only tightens the content padding into a dense column. Shared by the view lane kebabs. */
-.ui-popover.pf-menu .ui-popover__content {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	padding: var(--space-1);
-}
-
 /* #region Action lane — mirrors ui-app-shell__sidebar; expanded stack + collapsed rail */
 .pf-lane {
 	display: flex;
@@ -506,44 +496,6 @@
 
 .pf-lane__headbtn[data-on="true"] svg {
 	fill: currentColor;
-}
-
-/* Kebab dropdown menu — items render DIRECTLY inside `ui-popover__content` via the shared `.pf-menu`
-   compact-popover style (above); no intermediary `.pf-lane__menu` wrapper. */
-.pf-lane__menu-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.5rem var(--space-2);
-	font: inherit;
-	font-size: 0.85rem;
-	color: var(--on-surface);
-	text-align: start;
-	text-decoration: none;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.pf-lane__menu-item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.pf-lane__menu-item:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-.pf-lane__menu-item[data-danger="true"] {
-	color: var(--danger);
-}
-
-.pf-lane__menu-item svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
 }
 
 /* Action stack (visitor / owner default) — availability toggle · Follow|Message row · full-width CTA. */

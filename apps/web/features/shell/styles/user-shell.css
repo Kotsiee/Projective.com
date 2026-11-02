@@ -268,9 +268,9 @@
 /* #endregion */
 
 /* #region Header Popover menus (Create + Account) */
-/* Tighten the shared Popover padding so full-bleed menu rows own their own hover surface. */
+/* Rows sit `--menu-inset` in from the rim so their corners stay concentric with the panel's. */
 .shell-pop .ui-popover__content {
-    padding: var(--space-1);
+    padding: var(--menu-inset);
 }
 
 .shell-menu {
@@ -280,42 +280,9 @@
     min-inline-size: 12rem;
 }
 
-.shell-menu__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.9rem;
-    text-align: start;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.shell-menu__item:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-menu__item:disabled {
-    opacity: 0.6;
-    cursor: default;
-}
-
-.shell-menu__item:focus-visible {
-    outline: none;
-}
-
 .shell-menu__icon {
-    display: inline-flex;
-    flex: 0 0 auto;
     inline-size: 18px;
     block-size: 18px;
-    color: var(--text-secondary);
 }
 
 .shell-menu__icon svg {
@@ -326,21 +293,6 @@
 .shell-menu__label {
     min-inline-size: 0;
     white-space: nowrap;
-}
-
-.shell-menu__item--danger {
-    color: var(--danger);
-}
-
-.shell-menu__item--danger .shell-menu__icon {
-    color: currentColor;
-}
-
-/* Single hairline divider — never a boxed rule (§B.4). */
-.shell-menu__sep {
-    block-size: 0;
-    margin: var(--space-1) var(--space-2);
-    border-block-start: var(--hairline);
 }
 
 /* Icon-only control (Settings) with a circular hover highlight. */
@@ -379,13 +331,11 @@
 /* #endregion */
 
 /* #region Account popover — identity · acting-as · setup nudge · destinations · footer rig
- * One elevated panel (the shared `ui-popover`: `--overlay-radius-sm`, `--hairline`,
- * `--elevation-high`) and nothing boxed inside it (§B.4): rows separate by spacing, type register and
- * the single `shell-menu__sep` hairline. The Acting-as row is the one tonal fill, because it is a
- * control; static content never gets a container.
+ * One glass panel (the shared `ui-popover`, a `ui-menu-surface`) and nothing boxed inside it (§B.4):
+ * rows separate by spacing, type register and the single `ui-menu-separator` hairline. The Acting-as
+ * row is the one tonal fill, because it is a control; static content never gets a container.
  */
 .shell-pop--account .ui-popover__content {
-    padding: var(--space-2) var(--space-1) var(--space-1);
     /* The account body is taller than a menu once the checklist unfolds; it scrolls inside the panel
        rather than the panel growing past the viewport. */
     max-block-size: min(40rem, calc(100vh - var(--space-8)));
@@ -969,36 +919,11 @@ a.shell-setup__step:hover {
     list-style: none;
 }
 
-.shell-ctx__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-}
-
-.shell-ctx__item:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-ctx__item:disabled {
-    cursor: default;
-}
-
-/* The active context keeps full ink — it is disabled only because switching to itself is a no-op. */
+/* A `.ui-menu-item`. The active context keeps full ink — it is disabled only because switching to
+   itself is a no-op. */
 .shell-ctx__item[data-active="true"] {
+    color: var(--on-surface);
     background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
-
-.shell-ctx__item:focus-visible {
-    outline: none;
 }
 
 .shell-ctx__body {

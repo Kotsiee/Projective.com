@@ -457,13 +457,13 @@ function MenuLink(
 ): JSX.Element {
 	return (
 		<a
-			class="cal-act__item"
+			class="ui-menu-item cal-act__item"
 			role="menuitem"
 			href={href}
 			{...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
 			onClick={onDone}
 		>
-			<Icon name={icon} size="sm" />
+			<Icon name={icon} size="sm" class="ui-menu-item__icon" />
 			<span class="cal-act__itemtext">
 				{label}
 				{hint ? <span class="cal-act__hint">{hint}</span> : null}
@@ -482,8 +482,8 @@ function MenuButton(
 	},
 ): JSX.Element {
 	return (
-		<button type="button" class="cal-act__item" role="menuitem" onClick={onSelect}>
-			<Icon name={icon} size="sm" />
+		<button type="button" class="ui-menu-item cal-act__item" role="menuitem" onClick={onSelect}>
+			<Icon name={icon} size="sm" class="ui-menu-item__icon" />
 			<span class="cal-act__itemtext">
 				{label}
 				{hint ? <span class="cal-act__hint">{hint}</span> : null}

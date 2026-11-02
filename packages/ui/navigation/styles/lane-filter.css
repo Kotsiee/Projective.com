@@ -1,10 +1,3 @@
-.ui-popover.ui-lane-filter-pop {
-	background: var(--surface);
-	border-color: var(--hairline-color);
-	border-radius: var(--radius-container-lg);
-	box-shadow: var(--elevation-high);
-}
-
 .ui-popover.ui-lane-filter-pop .ui-popover__content {
 	padding: var(--space-4) var(--space-4) var(--space-5);
 	max-block-size: min(40rem, calc(100vh - var(--space-8)));
@@ -254,36 +247,13 @@
 	flex-direction: column;
 	max-block-size: 12rem;
 	margin: 0;
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 	overflow-y: auto;
 	list-style: none;
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-medium);
 }
 
 .ui-lane-filter-combo__menu[hidden] {
 	display: none;
-}
-
-.ui-lane-filter-combo__option {
-	display: flex;
-	align-items: center;
-	inline-size: 100%;
-	padding: var(--space-1) var(--space-2);
-	font: inherit;
-	font-size: var(--text-sm);
-	color: var(--on-surface);
-	text-align: start;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-}
-
-.ui-lane-filter-combo__option:hover {
-	background: var(--surface-2);
 }
 
 @media (prefers-reduced-motion: reduce) {

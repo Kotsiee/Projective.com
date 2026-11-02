@@ -254,10 +254,15 @@ export default function ContactPopover(
 										key={action.kind}
 										type="button"
 										role="menuitem"
-										class="sbk-contact__item"
+										class="ui-menu-item sbk-contact__item"
 										onClick={() => act(action.kind)}
 									>
-										<Icon name={glyphFor(action.kind)} size="sm" aria-hidden />
+										<Icon
+											name={glyphFor(action.kind)}
+											size="sm"
+											class="ui-menu-item__icon"
+											aria-hidden
+										/>
 										<span class="sbk-contact__itemtext">
 											<span class="sbk-contact__itemlabel">{action.label}</span>
 											<span class="sbk-contact__itemhint">{action.description}</span>

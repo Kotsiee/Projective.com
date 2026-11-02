@@ -28,6 +28,7 @@ import {
 	prefersJumpToFinal,
 	type Spring,
 	SPRING_STANDARD,
+	type SpringConfig,
 } from "../../core/motion.ts";
 import {
 	MOMENTUM_DECAY,
@@ -131,6 +132,13 @@ export interface ZoomToOptions {
 	 * callback rather than firing it, because that zoom did not settle — something else did.
 	 */
 	onSettle?: () => void;
+	/** The spring for THIS journey only (`SPRING_STANDARD` otherwise) — a wheel notch is snappier. */
+	config?: SpringConfig;
+	/**
+	 * Re-anchor at this pointer `clientY` first — `null` for the centre. A settle that runs after
+	 * the reader has moved the pointer holds the minute under it NOW, not the gesture's stale anchor.
+	 */
+	anchorClientY?: number | null;
 }
 
 /** Content-space y (px) of `minute`, at an EXPLICIT zoom rather than the ambient signal's. */
@@ -592,6 +600,11 @@ export function useCalendarViewport(opts: UseCalendarViewportOptions): CalendarV
 		const [lo, hi] = zoomRangeRef.current;
 		const next = Math.min(hi, Math.max(lo, target));
 		cancelFling();
+		if (o?.anchorClientY !== undefined) {
+			const r = scrollRef.current?.getBoundingClientRect();
+			const y = r && o.anchorClientY !== null ? o.anchorClientY - r.top : -1;
+			zoomAnchor(r && y >= 0 && y <= r.height ? y : null);
+		}
 		// Any zoom INTENT keeps the anchor alive, not just a zoom that moves the axis: a pinch held at
 		// the range's ceiling produces no `pxPerHour` change to refresh it, and letting the anchor
 		// lapse there would snap the grid back to centre-pinning the moment the reader squeezed again.
@@ -626,7 +639,7 @@ export function useCalendarViewport(opts: UseCalendarViewportOptions): CalendarV
 
 		const gen = ++zoomGen.current;
 		zoomSettle.current = o?.onSettle ?? null;
-		spring.set(next);
+		spring.set(next, o?.config);
 		// A jump-to-final `set` finishes a spring that was ALREADY settled, so `settled` never changes
 		// and the subscription above never fires. The synchronous path has to be closed here or a
 		// reduced-motion reader's `onSettle` would simply never run.
@@ -642,7 +655,7 @@ export function useCalendarViewport(opts: UseCalendarViewportOptions): CalendarV
 			owned.stop();
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [cancelFling]);
+	}, [cancelFling, zoomAnchor]);
 
 	useEffect(() => () => {
 		for (const off of zoomUnsubs.current) off();

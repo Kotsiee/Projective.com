@@ -849,17 +849,17 @@ function TicketMenu(
 		<div class="tkv-menu__items">
 			<button
 				type="button"
-				class="tkv-menu__item"
+				class="ui-menu-item tkv-menu__item"
 				onClick={() => {
 					const url = `${globalThis.location?.origin ?? ""}${href}`;
 					void navigator.clipboard?.writeText(url);
 				}}
 			>
-				<Icon name="link" size="xs" />
+				<Icon name="link" size="xs" class="ui-menu-item__icon" />
 				Copy link
 			</button>
-			<a class="tkv-menu__item" href={href} target="_blank" rel="noopener noreferrer">
-				<Icon name="external-link" size="xs" />
+			<a class="ui-menu-item tkv-menu__item" href={href} target="_blank" rel="noopener noreferrer">
+				<Icon name="external-link" size="xs" class="ui-menu-item__icon" />
 				Open in a new tab
 			</a>
 		</div>

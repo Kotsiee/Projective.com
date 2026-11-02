@@ -144,8 +144,9 @@
  * What a business does for the viewer, as a short BODY list inside the first-run `EmptyState`'s body
  * slot — plain text, never a MetaLine and never chips (§B.11). The list is centred as a block but its
  * lines read from the start edge, so a wrapped sentence never centres raggedly. Each line leads with a
- * tick in the kind's ink (`--wsp-kind-ink`, the mark's own text tone, so it clears 4.5:1 on the
- * `EmptyState`'s `--surface-1`), centred on the first line of its sentence.
+ * tick in the kind's ink (`--wsp-kind-ink`, the mark's own text tone, mixed toward `--on-surface`
+ * so it reads as text on the canvas ground the `EmptyState` sits on), centred on the first line of
+ * its sentence.
  */
 .wsp-roster__points {
 	display: grid;

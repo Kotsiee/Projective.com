@@ -829,7 +829,7 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 					})}
 					tabIndex={-1}
 				>
-					<div class="cal-pop__panel">
+					<div class="cal-pop__panel ui-menu-surface">
 						{showHead
 							? (
 								<div class="cal-pop__head">

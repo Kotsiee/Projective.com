@@ -103,11 +103,6 @@
 	left: var(--float-left, -9999px);
 	z-index: var(--z-portal, var(--z-overlay));
 	max-inline-size: min(56rem, 96vw);
-	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-high);
-	animation: ui-megamenu-pop var(--dur-fast) var(--ease-standard);
 }
 .ui-megamenu__columns {
 	display: flex;
@@ -132,39 +127,9 @@
 	padding: 0;
 	list-style: none;
 }
-@keyframes ui-megamenu-pop {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
 /* #endregion */
 
 /* #region Leaves */
-.ui-megamenu__leaf {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2);
-	font-size: 0.9375rem;
-	color: var(--on-surface);
-	text-decoration: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	outline: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-.ui-megamenu__leaf:hover,
-.ui-megamenu__leaf:focus-visible {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-.ui-megamenu__leaf:focus-visible {
-	box-shadow: none;
-}
 .ui-megamenu__leaf--current {
 	color: var(--primary-ink);
 	font-weight: 600;
@@ -205,11 +170,6 @@
 	flex: 0 0 auto;
 	color: var(--on-surface-variant);
 	font-size: 0.75rem;
-}
-.ui-megamenu__separator {
-	block-size: 1px;
-	margin: var(--space-1) var(--space-2);
-	background: var(--border-subtle);
 }
 /* #endregion */
 

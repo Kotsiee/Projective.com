@@ -401,37 +401,12 @@
 }
 
 .wlt-currency__item {
-	inline-size: 100%;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2);
-	border: 0;
-	border-radius: var(--radius-md);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-sm);
-	text-align: start;
-	cursor: pointer;
-	transform: scale(1);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-currency__item:hover:not(:disabled) {
-	background: var(--surface-2);
-}
-
-.wlt-currency__item:active:not(:disabled) {
-	transform: scale(var(--wlt-press-scale-row));
-	transition-duration: var(--dur-press);
 }
 
 .wlt-currency__item[aria-checked="true"] {
-	background: var(--surface-2);
+	background: var(--menu-item-tint);
 }
 
 .wlt-currency__item:disabled {
@@ -451,8 +426,7 @@
 	}
 
 	.wlt-ruler__cell:active,
-	.wlt-tool:active,
-	.wlt-currency__item:active {
+	.wlt-tool:active {
 		transform: none !important;
 	}
 }
@@ -464,7 +438,6 @@
 }
 
 :root[data-motion="reduced"] .wlt-ruler__cell:active,
-:root[data-motion="reduced"] .wlt-tool:active,
-:root[data-motion="reduced"] .wlt-currency__item:active {
+:root[data-motion="reduced"] .wlt-tool:active {
 	transform: none !important;
 }

@@ -189,13 +189,13 @@ export function TagSelect(
 
 				{open.value && suggestions.length > 0 && !atLimit
 					? (
-						<ul id={listId} class="tagselect__menu" role="listbox">
+						<ul id={listId} class="ui-menu-surface tagselect__menu" role="listbox">
 							{suggestions.map((s, i) => (
 								<li
 									key={`${s.create ? "new:" : ""}${s.value}`}
 									role="option"
 									aria-selected={i === active.value}
-									class={`tagselect__opt${i === active.value ? " is-active" : ""}`}
+									class={`ui-menu-item tagselect__opt${i === active.value ? " is-active" : ""}`}
 									onPointerDown={(e) => {
 										e.preventDefault();
 										commit(s.value);

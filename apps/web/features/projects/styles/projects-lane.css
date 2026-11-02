@@ -86,30 +86,7 @@
 	display: flex;
 	flex-direction: column;
 	min-inline-size: 13rem;
-	padding: var(--space-1);
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-medium);
-}
-
-.proj-modifier__item {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	padding: 0.4rem 0.55rem;
-	font: inherit;
-	font-size: 0.78rem;
-	color: var(--on-surface);
-	text-align: start;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-}
-
-.proj-modifier__item:hover {
-	background: var(--surface-2);
+	padding: var(--menu-inset);
 }
 
 .proj-modifier__item-label {
@@ -131,11 +108,6 @@
 	display: inline-flex;
 	font-size: 0.8rem;
 	color: var(--primary-ink);
-}
-
-.proj-modifier__item:focus-visible {
-	outline: none;
-	box-shadow: none;
 }
 /* #endregion */
 

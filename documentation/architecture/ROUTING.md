@@ -508,6 +508,15 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   write affordances on a read-only location rather than offering them and refusing each attempt. Its
   lane, header band and footer rig are resolved by `filesLaneFor` / `filesHeaderFor` /
   `filesFooterFor`.
+- **A filtered file view is a URL (Decision #363).** The facet filters ride in the query under the
+  list API's own names, each a comma list: `?categories=` (`FileCategory`), `?sources=`
+  (`AssetSource`), `?visibility=` (`AssetVisibility`) — e.g. `/files/Brand?categories=Image,Video`,
+  or beside `?path=` on `/teams/:h/files` and `/businesses/:h/files`. The server reads them for the
+  first page (`facetsOfSearch`, `features/files/core/asset-model.ts`), so a shared link paints
+  filtered; the body seeds the controls from them on mount and on Back/Forward, and writes them back
+  with `replaceState` on every change (a filter is not a place, so it adds no history entry). An
+  unrecognised value is dropped, never an error. Folder navigation keeps them; search text (`query`),
+  sort and selection are not in the URL.
 
 - **A share link is a capability URL, and `/share/[slug]` is the ONLY route that resolves one.** It
   lives in `(public)`, not `(dashboard)`: the recipient has no account, and a resolver behind a

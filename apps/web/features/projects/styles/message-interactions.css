@@ -158,11 +158,7 @@
 	display: flex;
 	flex-direction: column;
 	min-inline-size: 13rem;
-	padding: var(--space-1);
-	background: var(--surface-1);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
+	padding: var(--menu-inset);
 }
 
 .msg-cmenu:not([data-placed="true"]) {
@@ -201,43 +197,13 @@
 	transform: scale(1.12);
 }
 
-.msg-cmenu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.45rem 0.55rem;
-	font: inherit;
-	font-size: 0.8rem;
-	color: var(--on-surface);
-	text-align: start;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.msg-cmenu__item:hover:not(:disabled),
-.msg-cmenu__item:focus-visible {
-	background: var(--surface-2);
-}
-
-.msg-cmenu__item:focus-visible,
 .msg-cmenu__emoji:focus-visible {
 	outline: none;
 	box-shadow: none;
 }
 
-.msg-cmenu__item:disabled {
-	color: var(--text-secondary);
-	cursor: not-allowed;
-}
-
 .msg-cmenu__icon {
-	display: inline-flex;
-	flex: none;
 	font-size: 0.95rem;
-	color: var(--text-secondary);
 }
 
 .msg-cmenu__label {
@@ -427,7 +393,6 @@
 	.msg-format__btn,
 	.msg-reactbubble__emoji,
 	.msg-cmenu__emoji,
-	.msg-cmenu__item,
 	.msg-selbar__btn,
 	.msg-mbar__btn {
 		transition-duration: 0ms;
@@ -450,7 +415,6 @@
 :root[data-motion="reduced"] .msg-format__btn,
 :root[data-motion="reduced"] .msg-reactbubble__emoji,
 :root[data-motion="reduced"] .msg-cmenu__emoji,
-:root[data-motion="reduced"] .msg-cmenu__item,
 :root[data-motion="reduced"] .msg-selbar__btn,
 :root[data-motion="reduced"] .msg-mbar__btn {
 	transition-duration: 0ms;

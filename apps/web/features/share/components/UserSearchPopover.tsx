@@ -205,7 +205,7 @@ export function UserSearchPopover(props: UserSearchPopoverProps): JSX.Element {
 				<BodyPortal>
 					<div
 						ref={panelRef}
-						class="people-search__panel"
+						class="ui-menu-surface people-search__panel"
 						data-placement={float?.placement}
 						style={styleVars({
 							"--ps-top": float ? `${float.top}px` : undefined,
@@ -235,7 +235,7 @@ export function UserSearchPopover(props: UserSearchPopoverProps): JSX.Element {
 										aria-label={`${
 											row.kind === "email" ? props.emailAction?.label(row.email) ?? name : name
 										}${meta ? `, ${meta}` : ""} — ${actionText}`}
-										class="people-search__option"
+										class="ui-menu-item people-search__option"
 										data-active={i === active ? "true" : undefined}
 										data-state={row.state}
 										onPointerDown={(e) => {

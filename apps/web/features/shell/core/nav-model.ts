@@ -1,10 +1,9 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icon-names.ts";
-import { consoleHref } from "@projective/types/catalogue";
 import { accountFacts, canCreateBusiness } from "./account-facts.ts";
 import { isExploreSurface } from "./explore-surface.ts";
-import { canUseTeams, hrefPath, isRestrictedHref } from "./restricted-surfaces.ts";
+import { canUseTeams, isRestrictedHref } from "./restricted-surfaces.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -67,10 +66,10 @@ function isActive(path: string, base: string): boolean {
  *  - **Businesses** → a buyer surface (Decision #230 (a)): shown when the person belongs to a business,
  *    may create one ({@link canCreateBusiness}: an adult outside an enterprise context with
  *    `businesses_owned` headroom), or is acting as a business. Independent of seller capability.
- *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
- *    belongs to a team/business.
+ *  - No **Analytics** entry: each analytics view is reached from the surface it measures (the
+ *    catalogue console, a team's or business's page), never from the rail (Decision #360).
  *  - A **restricted** (13–17) account loses every entry {@link isRestrictedHref} names — Wallet,
- *    Businesses, Catalogue, Teams, Analytics — whatever else it holds (Decision #192).
+ *    Businesses, Catalogue, Teams — whatever else it holds (Decision #192).
  *
  * `context` defaults to {@link PERSONAL_MEMBER_CONTEXT} so a caller that hasn't resolved one yet
  * still gets a populated authenticated rail.
@@ -89,14 +88,11 @@ export function globalNav(
 	const isAuthed = role !== "guest";
 	const isTeamCtx = contextType === "team";
 	const isBusinessCtx = contextType === "business";
-	const belongsToOrg = caps.belongsToTeam || caps.belongsToBusiness || isTeamCtx || isBusinessCtx ||
-		contextType === "enterprise";
 	/** Seller-surface actors: individual freelancers or a team context. */
 	const isSeller = isFreelancer || isTeamCtx;
 	const showServices = isSeller;
 	const showTeams = canUseTeams(context);
 	const showBusinesses = caps.belongsToBusiness || canCreateBusiness(context) || isBusinessCtx;
-	const showAnalytics = isFreelancer || isTeamCtx || isBusinessCtx || belongsToOrg;
 	// #endregion
 
 	/**
@@ -114,21 +110,6 @@ export function globalNav(
 			active: isActive(path, href),
 		}];
 	};
-
-	/**
-	 * Where Analytics leads for the acting context — only ever a route that exists: the acting team's
-	 * or business's own Analytics module, or a personal seller's catalogue analytics view. `null` for a
-	 * context with neither (a client who only belongs to an organisation reads that organisation's
-	 * analytics from its console), so the entry is withheld rather than left dead (UI gate 11).
-	 */
-	const analyticsHref = (): string | null => {
-		if ((isTeamCtx || isBusinessCtx) && context.handle) {
-			return `${isTeamCtx ? "/teams" : "/businesses"}/${context.handle}/analytics`;
-		}
-		if (isFreelancer && !isBusinessCtx) return consoleHref({ view: "analytics" });
-		return null;
-	};
-	const analytics = showAnalytics ? analyticsHref() : null;
 
 	const items: Array<NavModelItem | null> = [
 		{ key: "home", label: "Home", href: "/home", icon: "home", active: isActive(path, "/home") },
@@ -229,17 +210,6 @@ export function globalNav(
 				icon: "business",
 				active: isActive(path, "/businesses"),
 				children: actingSublinks("business"),
-			}
-			: null,
-		// Analytics — replaces the generic Dashboard; gated to sellers / entity members, and led to the
-		// acting context's real analytics view (there is no `/analytics` page).
-		analytics
-			? {
-				key: "analytics",
-				label: "Analytics",
-				href: analytics,
-				icon: "analytics",
-				active: isActive(path, hrefPath(analytics)) && hrefPath(analytics) !== "/catalogue",
 			}
 			: null,
 		// NO Basket entry. The basket has exactly ONE control on the chrome and it is the header's,

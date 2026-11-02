@@ -403,7 +403,7 @@ export function GanttPopover(props: GanttPopoverProps): JSX.Element | null {
 					})}
 					tabIndex={-1}
 				>
-					<div class="gantt-pop__panel">
+					<div class="gantt-pop__panel ui-menu-surface">
 						<button type="button" class="gantt-pop__close" aria-label="Close" onClick={close}>
 							<Icon name="close" size="xs" />
 						</button>

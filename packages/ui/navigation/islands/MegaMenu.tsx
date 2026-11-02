@@ -205,7 +205,7 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 							<ul class="ui-megamenu__column-list" role="none">
 								{visibleItems(column.items).map((leaf, ri) => {
 									if (isSeparator(leaf)) {
-										return <li key={`s${ri}`} role="separator" class="ui-megamenu__separator" />;
+										return <li key={`s${ri}`} role="separator" class="ui-menu-separator" />;
 									}
 									const ref = (el: HTMLElement | null) => {
 										if (el) grid.current[ci][ri] = el;
@@ -215,7 +215,7 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 										tabIndex: -1,
 										ref,
 										class: cx(
-											"ui-megamenu__leaf",
+											"ui-menu-item ui-megamenu__leaf",
 											leaf.disabled && "ui-megamenu__leaf--disabled",
 											leaf.active && "ui-megamenu__leaf--current",
 											leaf.class,
@@ -340,7 +340,7 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 			{openTop.value >= 0 && hasChildren(tops[openTop.value]) && (
 				<div
 					ref={panelRef}
-					class="ui-megamenu__panel"
+					class="ui-megamenu__panel ui-menu-surface"
 					style={styleVars({
 						"--float-top": floating ? `${floating.top}px` : undefined,
 						"--float-left": floating ? `${floating.left}px` : undefined,

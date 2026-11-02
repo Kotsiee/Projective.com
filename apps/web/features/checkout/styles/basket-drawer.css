@@ -393,12 +393,12 @@
 
 /* #region Move menu */
 /*
- * The Popover already supplies the elevated surface, hairline, radius and shadow; this only tightens
- * its content padding into a dense column (the `.pf-menu` precedent). Re-declaring the surface here is
- * what produced the box-in-box the profile menus were unpicked from.
+ * The Popover already supplies the glass surface, hairline, radius and shadow; this only sets its
+ * content padding to the menu inset. Re-declaring the surface here is what produced the box-in-box
+ * the profile menus were unpicked from.
  */
 .ui-popover.bskd-menu .ui-popover__content {
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 }
 
 .bskd-menu__list {
@@ -407,32 +407,6 @@
 	gap: var(--space-1);
 	min-inline-size: var(--fld-panel-minw);
 	list-style: none;
-}
-
-.bskd-menu__item {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	inline-size: 100%;
-	min-block-size: var(--fld-hit);
-	padding-inline: var(--space-2);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font-family: var(--font-sans);
-	font-size: var(--text-sm);
-	text-align: start;
-	cursor: pointer;
-}
-
-.bskd-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.bskd-menu__item:focus-visible {
-	outline: none;
-	box-shadow: none;
 }
 
 .bskd-menu__label {

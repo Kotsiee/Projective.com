@@ -112,11 +112,13 @@ export function SidebarHeader(
 								key={mi.action}
 								type="button"
 								role="menuitem"
-								class="proj-cardmenu__item"
+								class="ui-menu-item proj-cardmenu__item"
 								data-danger={mi.danger ? "true" : undefined}
 								onClick={() => handleMenu(mi.action)}
 							>
-								<span class="proj-cardmenu__icon" aria-hidden="true">{mi.icon}</span>
+								<span class="ui-menu-item__icon proj-cardmenu__icon" aria-hidden="true">
+									{mi.icon}
+								</span>
 								<span class="proj-cardmenu__label">{mi.label}</span>
 							</button>
 						))}

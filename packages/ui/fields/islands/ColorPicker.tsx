@@ -348,7 +348,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 				id={inline ? undefined : panelId}
 				class={cx(
 					"ui-colorpicker__panel",
-					inline && "ui-colorpicker__panel--inline",
+					inline ? "ui-colorpicker__panel--inline" : "ui-menu-surface",
 					!inline && disabled && "ui-colorpicker__panel--disabled",
 				)}
 				role={inline ? undefined : "dialog"}

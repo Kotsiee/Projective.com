@@ -114,7 +114,7 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 						id={cardId}
 						data-state={state}
 						class={cx(
-							"ui-hovercard__panel",
+							"ui-hovercard__panel ui-menu-surface",
 							floating?.placement.startsWith("top") && "ui-hovercard__panel--top",
 							className,
 						)}

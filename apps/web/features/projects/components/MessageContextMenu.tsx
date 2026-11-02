@@ -122,7 +122,7 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 		<BodyPortal>
 			<div
 				ref={menuRef}
-				class="msg-cmenu"
+				class="ui-menu-surface msg-cmenu"
 				role="menu"
 				aria-label={single ? "Message actions" : `Actions for ${count} messages`}
 				data-msg-ui="true"
@@ -161,13 +161,13 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 				<button
 					type="button"
 					role="menuitem"
-					class="msg-cmenu__item"
+					class="ui-menu-item msg-cmenu__item"
 					tabIndex={-1}
 					disabled={!single}
 					aria-keyshortcuts="ArrowLeft ArrowRight"
 					onClick={props.onReply}
 				>
-					<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(ReplyIcon)}</span>
+					<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">{cloneElement(ReplyIcon)}</span>
 					<span class="msg-cmenu__label">Reply</span>
 					<span class="msg-cmenu__hint">{single ? <Kbd keys={["←", "→"]} separator="" size="sm" /> : "One at a time"}</span>
 				</button>
@@ -175,12 +175,12 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 				<button
 					type="button"
 					role="menuitem"
-					class="msg-cmenu__item"
+					class="ui-menu-item msg-cmenu__item"
 					tabIndex={-1}
 					aria-keyshortcuts="Control+C"
 					onClick={props.onCopy}
 				>
-					<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(CopyIcon)}</span>
+					<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">{cloneElement(CopyIcon)}</span>
 					<span class="msg-cmenu__label">{single ? "Copy" : `Copy ${count} messages`}</span>
 					<span class="msg-cmenu__hint">Ctrl+C</span>
 				</button>
@@ -189,11 +189,11 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 					<button
 						type="button"
 						role="menuitem"
-						class="msg-cmenu__item"
+						class="ui-menu-item msg-cmenu__item"
 						tabIndex={-1}
 						onClick={props.onTogglePin}
 					>
-						<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(PinIcon)}</span>
+						<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">{cloneElement(PinIcon)}</span>
 						<span class="msg-cmenu__label">{message.pinned ? "Unpin message" : "Pin message"}</span>
 					</button>
 				)}
@@ -202,11 +202,11 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 					<button
 						type="button"
 						role="menuitem"
-						class="msg-cmenu__item"
+						class="ui-menu-item msg-cmenu__item"
 						tabIndex={-1}
 						onClick={props.onToggleFavorite}
 					>
-						<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(StarIcon)}</span>
+						<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">{cloneElement(StarIcon)}</span>
 						<span class="msg-cmenu__label">
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>

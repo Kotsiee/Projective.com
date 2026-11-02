@@ -194,11 +194,6 @@
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: var(--space-3);
-	background: var(--surface);
-	border: var(--fld-bw) solid var(--fld-panel-border);
-	border-radius: var(--fld-panel-radius);
-	box-shadow: var(--elevation-high);
-	animation: ui-datepicker-in var(--dur-fast) var(--ease-standard);
 }
 .ui-datepicker--inline {
 	padding: var(--space-3);
@@ -209,16 +204,6 @@
 .ui-datepicker--disabled {
 	opacity: var(--fld-disabled-alpha);
 	pointer-events: none;
-}
-@keyframes ui-datepicker-in {
-	from {
-		opacity: 0;
-		transform: translateY(calc(-1 * var(--space-1)));
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
 }
 @media (prefers-reduced-motion: reduce) {
 	.ui-datepicker__panel {

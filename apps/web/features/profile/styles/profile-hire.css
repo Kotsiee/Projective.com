@@ -29,7 +29,7 @@
 	display: flex;
 	flex-direction: column;
 	inline-size: min(24rem, calc(100vw - var(--space-8)));
-	padding: var(--space-2);
+	padding: var(--menu-inset);
 	overflow: hidden;
 }
 
@@ -83,51 +83,6 @@
 	padding: var(--space-2);
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
-}
-
-/* One row: a pressable surface, the state on `background` and a press on `transform` (§B.12). */
-.pf-hiremenu__item,
-.pf-hiremenu__consult,
-.pf-addmenu__item,
-.pf-addmenu__create {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	text-align: start;
-	cursor: pointer;
-	transform: scale(1);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-press, 50ms) var(--ease-standard);
-}
-
-.pf-hiremenu__item:hover,
-.pf-hiremenu__consult:hover,
-.pf-addmenu__item:hover,
-.pf-addmenu__create:hover {
-	background: var(--surface-1);
-}
-
-.pf-hiremenu__item:active,
-.pf-hiremenu__consult:active,
-.pf-addmenu__item:active,
-.pf-addmenu__create:active {
-	transform: scale(0.985);
-}
-
-.pf-hiremenu__item:focus-visible,
-.pf-hiremenu__consult:focus-visible,
-.pf-addmenu__item:focus-visible,
-.pf-addmenu__create:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
 }
 
 .pf-hiremenu__thumb {
@@ -207,12 +162,7 @@
 	margin-block-start: var(--space-1);
 	padding-block-start: var(--space-3);
 	border-block-start: var(--hairline);
-	border-radius: 0 0 var(--radius-base) var(--radius-base);
-}
-
-.pf-hiremenu__consult > .ui-icon {
-	flex: none;
-	color: var(--text-secondary);
+	border-radius: 0 0 var(--menu-item-radius) var(--menu-item-radius);
 }
 
 .pf-hiremenu__consult-title {
@@ -238,12 +188,7 @@
 	margin-block-end: var(--space-1);
 	padding-block-end: var(--space-3);
 	border-block-end: var(--hairline);
-	border-radius: var(--radius-base) var(--radius-base) 0 0;
-}
-
-.pf-addmenu__create > .ui-icon {
-	flex: none;
-	color: var(--text-secondary);
+	border-radius: var(--menu-item-radius) var(--menu-item-radius) 0 0;
 }
 
 .pf-addmenu__dot {
@@ -268,14 +213,6 @@
 .pf-addmenu__item[data-locked="true"] {
 	cursor: not-allowed;
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix, 55%), transparent);
-}
-
-.pf-addmenu__item[data-locked="true"]:hover {
-	background: transparent;
-}
-
-.pf-addmenu__item[data-locked="true"]:active {
-	transform: scale(1);
 }
 
 .pf-addmenu__item[data-locked="true"] .pf-addmenu__status,
@@ -996,20 +933,12 @@
 
 /* #region Reduced motion — both channels, `transform: none`, never a zero duration (§B.12) */
 @media (prefers-reduced-motion: reduce) {
-	.pf-hiremenu__item:active,
-	.pf-hiremenu__consult:active,
-	.pf-addmenu__item:active,
-	.pf-addmenu__create:active,
 	.pf-consult__typeopt:active,
 	.pf-wizard__card:active {
 		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .pf-hiremenu__item:active,
-:root[data-motion="reduced"] .pf-hiremenu__consult:active,
-:root[data-motion="reduced"] .pf-addmenu__item:active,
-:root[data-motion="reduced"] .pf-addmenu__create:active,
 :root[data-motion="reduced"] .pf-consult__typeopt:active,
 :root[data-motion="reduced"] .pf-wizard__card:active {
 	transform: none;

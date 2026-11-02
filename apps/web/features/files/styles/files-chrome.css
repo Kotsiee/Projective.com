@@ -34,6 +34,8 @@
 	--fh-rig-row: 2.25rem;
 	--fh-fs-body: var(--text-md);
 	--fh-fs-micro: var(--text-xs);
+	/** The filter panel's icon-only source toggles — one step up from `--fh-row`; each is its only label. */
+	--fh-toggle: 2.5rem;
 	/** The collapsed rail's width, matched to the global sidebar so the two rails read as one column. */
 	--fh-rail-w: var(--shell-sidebar-w);
 }
@@ -223,28 +225,6 @@
 	min-inline-size: 0;
 }
 
-.fh-headerband__identity {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	overflow: hidden;
-}
-
-.fh-headerband__scope {
-	font-size: var(--fh-fs-body);
-	font-weight: var(--fw-semibold);
-	color: var(--on-surface);
-	white-space: nowrap;
-	flex: none;
-}
-
-/* The trail takes whatever the row has left and truncates from its own leading edge. */
-.fh-headerband__identity .fh-crumbs {
-	min-inline-size: 0;
-	overflow: hidden;
-}
-
 .fh-headerband__controls {
 	display: flex;
 	align-items: center;
@@ -255,12 +235,17 @@
 
 .fh-headerband__search {
 	display: block;
-	flex: 0 1 16rem;
+	flex: 0 1 20rem;
 	min-inline-size: 10rem;
 }
 
+/*
+ * The GHOST search: the field's own `bare` variant, untouched at rest — no fill, no hairline — so the
+ * band's leading edge reads as open space with a glyph and a placeholder in it. Hover and focus take
+ * `.ui-field`'s one-step wash (`--field-hover-bg`, `--fld-hover-mix` over a transparent rest); the bare
+ * variant never paints a hairline, focused or not. Only the shape is the band's.
+ */
 .fh-headerband__search .ui-field {
-	--field-rest-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	border-radius: var(--radius-full);
 }
 
@@ -438,27 +423,16 @@
 	outline: none;
 }
 
-/* Below this width the scope NAME yields; the trail still answers "where am I". */
-@media (max-width: 1100px) {
-	.fh-headerband__scope {
-		display: none;
-	}
-}
-
 /*
- * The lane is gone below this width (`middle-nav.css`), so the band picks up tree navigation. The
- * trail is what truncates when the row runs out of room — Browse is the only route left between the
- * library, the mounts and the drives, so it may not be the thing that yields.
+ * The lane is gone below this width (`middle-nav.css`), so the band picks up tree navigation. Search
+ * is what yields when the row runs out of room — Browse is the only route left between the library,
+ * the mounts and the drives, so it may not be the thing that yields.
  */
 @media (max-width: 767px) {
 	.fh-headerband__browse {
 		display: inline-flex;
 		min-inline-size: 0;
 		flex: none;
-	}
-
-	.fh-headerband__identity {
-		min-inline-size: 0;
 	}
 }
 
@@ -485,22 +459,102 @@
 	flex-direction: column;
 	gap: 2px;
 	min-inline-size: 0;
-	margin: 0;
-	padding: 0;
-	border: none;
+}
+
+/*
+ * Title · count · clear on one row. The row holds the clear control's height whether or not it
+ * renders, so the panel never shifts when a group's last option is toggled off.
+ */
+.fh-filter__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	min-block-size: var(--fh-row);
+	padding-inline: var(--space-2) 0;
 }
 
 .fh-filter__heading {
-	padding: 0 var(--space-2) var(--space-1);
 	color: var(--text-secondary);
 	font-size: var(--fh-fs-micro);
 	font-weight: var(--fw-medium);
 }
 
-.fh-filter__grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
-	gap: 2px;
+.fh-filter__count {
+	margin-inline-start: var(--space-1);
+	color: var(--primary-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The Button's own ghost circle, held to the band's row so the heading row never grows under it. */
+.fh-filter__head .ui-button.fh-filter__groupclear {
+	--btn-height: var(--fh-row);
+	flex: none;
+}
+
+/*
+ * The source toggles: icon-only, round, ghost at rest and one step larger than the band's own icon
+ * buttons (`--fh-toggle` vs `--fh-row`), because each is the only thing naming its option.
+ */
+.fh-filter__toggles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	padding-inline: var(--space-1);
+}
+
+.fh-filter__toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fh-toggle);
+	block-size: var(--fh-toggle);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transform: translateZ(0) scale(1);
+	transition:
+		var(--btn-transition-press),
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-filter__toggle:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.fh-filter__toggle[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+	color: var(--primary-ink);
+}
+
+.fh-filter__toggle[aria-pressed="true"]:hover {
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface-3));
+}
+
+/* The shared icon press (§3.12): scale only, the same token every icon-only Button uses. */
+.fh-filter__toggle:active {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.fh-filter__toggle:focus-visible {
+	outline: none;
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.fh-filter__glyph {
+	display: inline-flex;
+}
+
+.fh-filter__logo {
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
 }
 
 .fh-filter__wrap {
@@ -858,14 +912,29 @@
 	.fh-filter__option {
 		min-block-size: 2.5rem;
 	}
+
+	.fh-filter {
+		--fh-toggle: 2.75rem;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.fh-rail__item,
 	.fh-filter__option,
+	.fh-filter__toggle,
 	.fh-rig__provider,
 	.fh-headerband__icon {
 		transition: none;
 	}
+
+	.fh-filter__toggle,
+	.fh-filter__toggle:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .fh-filter__toggle,
+:root[data-motion="reduced"] .fh-filter__toggle:active {
+	transform: none;
 }
 /* #endregion */

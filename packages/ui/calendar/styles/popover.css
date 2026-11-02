@@ -115,10 +115,9 @@
 }
 
 /*
- * The surface. Deliberately OPAQUE `--surface` rather than glass: a dense panel of small type needs
- * a settled ground behind it, and a `backdrop-filter` here would re-base any `position: fixed`
- * descendant onto this box — the trap that put every anchored panel in this package behind
- * `BodyPortal` in the first place.
+ * The surface is the shared `.ui-menu-surface` glass (Decision #364), its blur on the underlay so no
+ * `position: fixed` descendant is re-based onto this box; `.cal-pop` carries the entry, so the
+ * shared keyframes are off.
  *
  * `--cal-pop-w` / `--cal-pop-max-h` are `shell.css`'s, declared on `:root`. The panel is portalled out
  * of that scope, so both carry a fallback that degrades to a usable auto-width panel rather than to
@@ -133,14 +132,11 @@
 	inline-size: var(--cal-pop-w, auto);
 	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-8)));
 	max-block-size: min(var(--cal-pop-max-h, 100vh), var(--float-available-h, 100vh));
-	background: var(--surface);
-	color: var(--on-surface);
-	border: var(--hairline);
-	border-radius: var(--overlay-radius-sm);
-	box-shadow: var(--elevation-high);
+	position: relative;
 	overflow: hidden;
 	font-family: var(--font-sans);
 	transform: scale(var(--cal-pop-scale));
+	animation: none;
 }
 
 /*

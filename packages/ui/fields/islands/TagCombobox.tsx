@@ -209,7 +209,7 @@ export function TagCombobox(props: TagComboboxProps): JSX.Element {
 						id={listId}
 						role="listbox"
 						aria-label="Suggested tags"
-						class="ui-tagbox__panel"
+						class="ui-tagbox__panel ui-menu-surface"
 						data-placement={float?.placement}
 						style={styleVars({
 							"--tagbox-top": float ? `${float.top}px` : undefined,

@@ -44,88 +44,19 @@
 }
 
 /*
- * Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. The same
- * glass and rows as the suggestion panel beneath it (`.ui-autocomplete__panel`, Decision #356): the
- * veil and blur on a `::before` underlay, so the list never becomes a containing block.
+ * Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index, and
+ * `.ui-menu-surface` the suggestion panel's glass (Decisions #356, #364). The options are
+ * `.ui-menu-item` rows; the picked scope keeps the row tint.
  */
 .ex-scope__menu {
-	isolation: isolate;
 	min-inline-size: 13rem;
 	margin: 0;
-	padding: var(--space-1);
+	padding: var(--menu-inset);
 	list-style: none;
-	color: var(--on-surface);
-	background: transparent;
-	border: 1px solid var(--hairline-color);
-	border-radius: calc(var(--radius-xl) * 1.25);
-	box-shadow: var(--elevation-high);
 }
 
-.ex-scope__menu::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-}
-
-.ex-scope__option {
-	display: flex;
-	align-items: center;
-	min-block-size: var(--fld-opt-h);
-	padding-inline: var(--fld-opt-px);
-	border-radius: var(--fld-opt-radius);
-	cursor: pointer;
-	font-size: var(--fld-opt-fs);
-}
-
-/* The suggestion rows' neutral tint, never a heavy primary fill; the picked scope keeps it. */
-.ex-scope__option:hover,
-.ex-scope__option:focus-visible,
 .ex-scope__option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
-	outline: none;
-}
-
-/* Solid fallbacks for the glass, the suggestion panel's set. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.ex-scope__menu::before {
-		background: var(--surface);
-	}
-}
-
-@media (prefers-reduced-transparency: reduce) {
-	.ex-scope__menu::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: var(--surface);
-	}
-}
-
-@media (prefers-contrast: more) {
-	:root:not([data-contrast="normal"]) .ex-scope__menu::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: var(--surface);
-	}
-}
-
-:root[data-contrast="high"] .ex-scope__menu::before {
-	-webkit-backdrop-filter: none;
-	backdrop-filter: none;
-	background: var(--surface);
-}
-
-@media (forced-colors: active) {
-	.ex-scope__menu::before {
-		-webkit-backdrop-filter: none;
-		backdrop-filter: none;
-		background: Canvas;
-	}
+	background: var(--menu-item-tint);
 }
 
 @media (prefers-reduced-motion: reduce) {

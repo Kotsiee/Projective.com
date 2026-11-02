@@ -27,7 +27,6 @@ export function FilesEmptyState(props: FilesEmptyStateProps): JSX.Element {
 	if (props.narrowed) {
 		return (
 			<EmptyState
-				class="fh-empty"
 				icon={<Icon name="search" size="xl" />}
 				title="Nothing matches"
 				description="No files or folders here match your search and filters."
@@ -47,7 +46,6 @@ export function FilesEmptyState(props: FilesEmptyStateProps): JSX.Element {
 	if (props.readOnly || !props.canUpload) {
 		return (
 			<EmptyState
-				class="fh-empty"
 				icon={<Icon name="folder" size="xl" />}
 				title="Nothing here yet"
 				description={props.readOnly
@@ -59,7 +57,6 @@ export function FilesEmptyState(props: FilesEmptyStateProps): JSX.Element {
 
 	return (
 		<EmptyState
-			class="fh-empty"
 			size="lg"
 			icon={<Icon name="folder" size="xl" />}
 			title="This folder is empty"

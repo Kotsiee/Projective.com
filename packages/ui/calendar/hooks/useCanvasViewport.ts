@@ -37,7 +37,14 @@
  * {@link scrollBehaviorFor} says a frame is coming (not under `prefers-reduced-motion`, not in a
  * hidden document) and every other path writes the final offset immediately.
  */
-import { batch, type ReadonlySignal, type Signal, useComputed, useSignal } from "@preact/signals";
+import {
+	batch,
+	effect,
+	type ReadonlySignal,
+	type Signal,
+	useComputed,
+	useSignal,
+} from "@preact/signals";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import type { RefObject } from "preact";
 import type { HourRow, ZoomAnchorState, ZoomToOptions } from "./useCalendarViewport.ts";
@@ -423,22 +430,27 @@ export function useCanvasViewport(opts: UseCanvasViewportOptions): CanvasViewpor
 	 * Re-pin when the zoom ACTUALLY changes, so the grid scales in place. Guarded against the mount
 	 * run, where `centerMinute` is still the pre-centering default.
 	 *
-	 * A LAYOUT effect, matching its native twin: Preact defers `useEffect` behind a frame, so an
-	 * interpolated zoom would re-pin one frame after the zoom it belongs to — and for a spring running
-	 * over a dozen frames, a re-pin that is always one frame stale is a visible slide rather than a
-	 * still anchor.
+	 * A SYNCHRONOUS signal effect, run inside the write to `pxPerHour`, so the offset that belongs to
+	 * the new scale lands before the grid renders and a live zoom costs ONE render per step. The layout
+	 * effect it replaces re-pinned after the commit, and its `scrollTop` write re-rendered the whole
+	 * grid a second time on every tick. Nothing here reads the DOM (the clamp is recomputed from the
+	 * scale), so there is no commit to wait for — the native twin has one and keeps its layout effect.
+	 * Not `useSignalEffect`: that defers to the next frame, which would leave every re-pin one stale.
 	 */
-	const prevPph = useRef(pxPerHour.value);
+	const repinRef = useRef(repinZoom);
+	repinRef.current = repinZoom;
 	useLayoutEffect(() => {
-		if (!didCenter.current || viewportH.peek() <= 0 || prevPph.current === pxPerHour.value) {
-			prevPph.current = pxPerHour.value;
-			return;
-		}
-		prevPph.current = pxPerHour.value;
-		cancelGlide();
-		repinZoom();
+		let prev = pxPerHour.peek();
+		return effect(() => {
+			const p = pxPerHour.value;
+			if (p === prev) return;
+			prev = p;
+			if (!didCenter.current || viewportH.peek() <= 0) return;
+			cancelGlide();
+			repinRef.current();
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [pxPerHour.value]);
+	}, [pxPerHour]);
 	// #endregion
 
 	// #region Return-to-present
@@ -694,6 +706,11 @@ export function useCanvasViewport(opts: UseCanvasViewportOptions): CanvasViewpor
 		const [lo, hi] = zoomRangeRef.current;
 		const next = Math.min(hi, Math.max(lo, target));
 		cancelGlide();
+		if (o?.anchorClientY !== undefined) {
+			const r = hostRef.current?.getBoundingClientRect();
+			const y = r && o.anchorClientY !== null ? o.anchorClientY - r.top : -1;
+			zoomAnchor(r && y >= 0 && y <= r.height ? y : null);
+		}
 		// Any zoom INTENT keeps the anchor alive, not just a zoom that moves the axis: a pinch held at
 		// the range's ceiling produces no `pxPerHour` change to refresh it, and letting the anchor
 		// lapse there would snap the grid back to centre-pinning the moment the reader squeezed again.
@@ -728,7 +745,7 @@ export function useCanvasViewport(opts: UseCanvasViewportOptions): CanvasViewpor
 
 		const gen = ++zoomGen.current;
 		zoomSettle.current = o?.onSettle ?? null;
-		spring.set(next);
+		spring.set(next, o?.config);
 		// A jump-to-final `set` finishes a spring that was ALREADY settled, so `settled` never changes
 		// and the subscription above never fires. The synchronous path has to be closed here or a
 		// reduced-motion reader's `onSettle` would simply never run.
@@ -744,7 +761,7 @@ export function useCanvasViewport(opts: UseCanvasViewportOptions): CanvasViewpor
 			owned.stop();
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [cancelGlide]);
+	}, [cancelGlide, zoomAnchor]);
 
 	useEffect(() => () => {
 		for (const off of zoomUnsubs.current) off();

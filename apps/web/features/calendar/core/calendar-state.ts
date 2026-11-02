@@ -59,6 +59,21 @@ export const calendarZoom = signal<number>(CALENDAR_ZOOM_DEFAULT);
 export const timelineZoom = signal<number>(PX_PER_DAY_DEFAULT);
 
 /**
+ * "Snap zoom to intervals" — on by default. On, a released Ctrl+wheel or pinch settles on the ruler's
+ * nearest mark and the ruler drags tick to tick; off, the zoom stays exactly where the reader let go.
+ */
+export const calendarSnapZoom = signal(true);
+
+/** Set the snap preference and remember it for the next visit. */
+export function setCalendarSnapZoom(on: boolean): void {
+	calendarSnapZoom.value = on;
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.setItem(LocalKeys.CALENDAR_SNAP_ZOOM, String(on));
+	} catch { /* no-op */ }
+}
+
+/**
  * Restore the reader's last view and zoom.
  *
  * The APP owns these, not the engine: `/calendar` drives the engine through its `view` and `zoom`
@@ -87,6 +102,7 @@ export function restoreCalendarView(): void {
 			});
 		}
 		if (timeline > 0) timelineZoom.value = timeline;
+		calendarSnapZoom.value = localStorage.getItem(LocalKeys.CALENDAR_SNAP_ZOOM) !== "false";
 		calendarView.value = stored === "timeline"
 			? "timeline"
 			: calendarStateAt(calendarZoom.value).view;

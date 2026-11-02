@@ -158,7 +158,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 						aria-label={label}
 						aria-describedby={msgId}
 						data-state={state}
-						class={cx("ui-confirm-popup", className)}
+						class={cx("ui-confirm-popup ui-menu-surface", className)}
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,

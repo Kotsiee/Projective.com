@@ -48,17 +48,14 @@
 	inline-size: max-content;
 	max-inline-size: min(20rem, calc(100vw - var(--space-6)));
 	padding: var(--space-4);
-	color: var(--on-surface);
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--overlay-radius-sm);
-	box-shadow: var(--elevation-high);
 	outline: none;
 	opacity: 0;
-	transform: translateY(calc(-1 * var(--space-1)));
+	transform: translateY(calc(-1 * var(--space-2)));
+	/* The `.ui-menu-surface` glass; presence transitions carry the entry and the exit. */
+	animation: none;
 	transition:
-		opacity var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--spring-standard);
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
 }
 .ui-confirm-popup[data-state="open"] {
 	opacity: 1;

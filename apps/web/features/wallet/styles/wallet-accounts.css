@@ -169,15 +169,11 @@ a.wlt-account:active {
 /*
  * #region Anchored popovers — the scope switcher, the More menu and the hero's currency list
  *
- * The package panel's own opaque surface with one hairline and a larger radius; its rows hover as soft
- * pills on a solid tonal step, never a translucent wash.
+ * The package panel's own glass surface (`ui-menu-surface`); its rows are the shared `ui-menu-item`,
+ * `--menu-inset` in from the rim so their corners stay concentric with the panel's.
  */
-.ui-popover.wlt-glass-pop {
-	border-radius: var(--radius-xl);
-}
-
 .ui-popover.wlt-glass-pop .ui-popover__content {
-	padding: var(--space-2);
+	padding: var(--menu-inset);
 }
 /* #endregion */
 
@@ -194,29 +190,10 @@ a.wlt-account:active {
 .wlt-scope-menu__item {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto auto;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2);
-	border-radius: var(--radius-md);
-	color: var(--on-surface);
-	text-decoration: none;
-	transform: scale(1);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-scope-menu__item:hover {
-	background: var(--surface-2);
-}
-
-.wlt-scope-menu__item:active {
-	transform: scale(var(--wlt-press-scale-row));
-	transition-duration: var(--dur-press);
 }
 
 .wlt-scope-menu__item[aria-current="page"] {
-	background: var(--surface-2);
+	background: var(--menu-item-tint);
 }
 
 .wlt-scope-menu__all {
@@ -267,39 +244,7 @@ a.wlt-account:active {
 	min-inline-size: 14rem;
 }
 
-.wlt-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-md);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-md);
-	text-align: start;
-	cursor: pointer;
-	transform: scale(1);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-menu__item:hover {
-	background: var(--surface-2);
-}
-
-.wlt-menu__item:active {
-	transform: scale(var(--btn-press-scale));
-	transition-duration: var(--dur-press);
-}
-
 .wlt-menu__item[data-locked="true"] {
-	color: var(--on-surface-variant);
-}
-
-.wlt-menu__icon {
 	color: var(--on-surface-variant);
 }
 
@@ -310,16 +255,12 @@ a.wlt-account:active {
 
 @media (prefers-reduced-motion: reduce) {
 	a.wlt-account:hover,
-	a.wlt-account:active,
-	.wlt-scope-menu__item:active,
-	.wlt-menu__item:active {
+	a.wlt-account:active {
 		transform: none !important;
 	}
 }
 
 :root[data-motion="reduced"] a.wlt-account:hover,
-:root[data-motion="reduced"] a.wlt-account:active,
-:root[data-motion="reduced"] .wlt-scope-menu__item:active,
-:root[data-motion="reduced"] .wlt-menu__item:active {
+:root[data-motion="reduced"] a.wlt-account:active {
 	transform: none !important;
 }

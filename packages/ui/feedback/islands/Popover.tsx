@@ -206,7 +206,7 @@ export function Popover(props: PopoverProps): JSX.Element {
 						aria-label={label}
 						data-state={state}
 						class={cx(
-							"ui-popover",
+							"ui-popover ui-menu-surface",
 							arrow && "ui-popover--arrow",
 							`ui-popover--${floating?.placement ?? placement}`,
 							className,

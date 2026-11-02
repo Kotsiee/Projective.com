@@ -28,6 +28,7 @@ import { consoleParamsOf, resolveCataloguePage } from "@features/catalogue/core/
 import { entityCalendarProjectIds } from "./calendar-module-model.ts";
 import { laneListingsOf, type LaneListingsRead } from "./lane-model.ts";
 import { once, resolveWorkspaceDetail } from "./workspace-memo.ts";
+import { facetsOfSearch } from "@features/files/core/asset-model.ts";
 
 /**
  * workspace-ssr — the **server-only** bootstraps for the `/teams` and `/businesses` first paint.
@@ -214,6 +215,7 @@ export function resolveEntityDrive(
 				path: path.length > 0 ? path : undefined,
 				sort: "date",
 				dir: "desc",
+				...facetsOfSearch(url.search),
 			}, actor),
 			FilesBackendService.tree(actor, { scope: "workspace", subjectId: workspace.id }),
 		]);

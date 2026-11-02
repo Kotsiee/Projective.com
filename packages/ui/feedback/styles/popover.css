@@ -24,22 +24,20 @@
 	z-index: var(--z-portal, var(--z-overlay));
 	min-inline-size: 12rem;
 	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-6)));
-	color: var(--on-surface);
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--overlay-radius-sm);
-	box-shadow: var(--elevation-high);
 	outline: none;
 	opacity: 0;
-	transform: translateY(calc(-1 * var(--space-1)));
+	transform: translateY(calc(-1 * var(--space-2)));
+	/* The `.ui-menu-surface` glass, with its entry carried by these presence transitions instead of
+	   the shared keyframes, so the exit animates too. */
+	animation: none;
 	transition:
-		opacity var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--spring-standard);
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
 }
 .ui-popover--top,
 .ui-popover--top-start,
 .ui-popover--top-end {
-	transform: translateY(var(--space-1));
+	transform: translateY(var(--space-2));
 }
 .ui-popover[data-state="open"] {
 	opacity: 1;

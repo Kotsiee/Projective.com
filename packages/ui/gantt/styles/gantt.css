@@ -445,11 +445,8 @@
 	max-block-size: min(var(--gantt-pop-max-h), var(--float-available-h, 100vh));
 	overflow: auto;
 	padding: var(--space-4);
-	background: var(--surface);
-	color: var(--on-surface);
-	border: var(--hairline);
-	border-radius: var(--overlay-radius-sm);
-	box-shadow: var(--elevation-high);
+	/* The `.ui-menu-surface` glass; `.gantt-pop` carries the entry. */
+	animation: none;
 }
 
 .gantt-pop__close {

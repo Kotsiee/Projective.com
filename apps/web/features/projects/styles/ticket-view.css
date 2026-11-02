@@ -1543,37 +1543,15 @@
 /* #endregion */
 
 /* #region Kebab menu */
+.ui-popover.tkv-menu .ui-popover__content {
+	padding: var(--menu-inset);
+}
+
 .tkv-menu__items {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
 	min-inline-size: 12rem;
-}
-
-.tkv-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	text-align: start;
-	text-decoration: none;
-	font-size: var(--text-xs);
-	color: var(--on-surface);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.tkv-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.tkv-menu__item:focus-visible {
-	outline: none;
-	box-shadow: none;
 }
 /* #endregion */
 

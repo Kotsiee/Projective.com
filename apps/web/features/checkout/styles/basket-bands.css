@@ -447,50 +447,9 @@ a.cko-rig__cta[aria-disabled="true"] {
 /* #endregion */
 
 /* #region Shared menu (the header's Browse + Find, the rig's overflow, the lane's rail switcher) */
-.bsk-menu {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-inline-size: 12rem;
-    padding: var(--space-1);
-}
-
-.bsk-menu__item {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-    inline-size: 100%;
-    min-block-size: var(--fld-hit);
-    padding-inline: var(--space-3);
-    border: 0;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    text-align: start;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.bsk-menu__item:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.bsk-menu__item:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-.bsk-menu__item[disabled] {
-    color: var(--text-secondary);
-    opacity: var(--fld-disabled-alpha);
-    cursor: default;
-}
-
-.bsk-menu__item[data-danger="true"] {
-    color: var(--danger);
+/* A list of rows sits `--menu-inset` in from the rim so the row corners stay concentric. */
+.bsk-menu--list .ui-popover__content {
+    padding: var(--menu-inset);
 }
 
 .bsk-menu__count {
@@ -498,12 +457,6 @@ a.cko-rig__cta[aria-disabled="true"] {
     color: var(--text-secondary);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-}
-
-.bsk-menu__rule {
-    margin: var(--space-1) 0;
-    border: 0;
-    border-block-start: var(--hairline);
 }
 
 /* #endregion */

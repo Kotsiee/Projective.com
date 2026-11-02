@@ -247,10 +247,10 @@ export function buildScheme(
 			"--tertiary": hx(core.a3.tone(fg(80))),
 			"--on-tertiary": hx(core.a3.tone(on(20))),
 			"--bg": hx(core.n1.tone(2)),
-			"--surface": hx(core.n1.tone(4)),
-			"--surface-1": hx(core.n1.tone(8)),
-			"--surface-2": hx(core.n1.tone(10)),
-			"--surface-3": hx(core.n1.tone(12)),
+			"--surface": hx(core.n1.tone(3)),
+			"--surface-1": hx(core.n1.tone(5)),
+			"--surface-2": hx(core.n1.tone(6)),
+			"--surface-3": hx(core.n1.tone(7)),
 			// Scrollbar thumb. A thumb is a graphical UI control, so WCAG 2.2 SC 1.4.11 asks for 3:1
 			// against what it abuts — and what it abuts is the TRACK, which is not one color: the track is
 			// scoped to whatever surface the scroller sits on (`--scrollbar-track`, `styles/index.css`), so

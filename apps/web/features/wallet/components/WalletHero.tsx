@@ -129,7 +129,7 @@ function ScopePill(
 					return (
 						<li key={param}>
 							<a
-								class="wlt-scope-menu__item"
+								class="ui-menu-item wlt-scope-menu__item"
 								href={walletPageHref(
 									view === "invoices" && ref.scope !== "business" ? "overview" : view,
 									param,
@@ -273,14 +273,14 @@ function MorePill(
 						key={item.action}
 						type="button"
 						role="menuitem"
-						class="wlt-menu__item"
+						class="ui-menu-item wlt-menu__item"
 						data-locked={item.locked ? "true" : undefined}
 						onClick={() => {
 							open.value = false;
 							onAction(item);
 						}}
 					>
-						<ActionIcon action={item.action} size="sm" class="wlt-menu__icon" />
+						<ActionIcon action={item.action} size="sm" class="ui-menu-item__icon wlt-menu__icon" />
 						<span class="wlt-menu__label">{item.label}</span>
 						{item.locked && <Icon name="lock" size="xs" class="wlt-menu__lock" />}
 					</button>

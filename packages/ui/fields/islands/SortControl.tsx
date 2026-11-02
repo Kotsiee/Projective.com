@@ -208,7 +208,7 @@ export function SortControl(props: SortControlProps): JSX.Element {
 				? (
 					<div
 						ref={menuRef}
-						class="ui-sort__menu ui-anchored"
+						class="ui-sort__menu ui-anchored ui-menu-surface"
 						role="listbox"
 						aria-label={`${label} property`}
 						onKeyDown={onMenuKeyDown}

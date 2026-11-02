@@ -382,7 +382,7 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 						open={railSwitchOpen}
 						placement="right-start"
 						label="Switch list"
-						class="bsk-menu"
+						class="bsk-menu bsk-menu--list"
 						trigger={(api) => (
 							<Tooltip content="Switch list" placement="right">
 								<button
@@ -403,11 +403,11 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 						{model.lists.map((entry) => (
 							<a
 								key={entry.id}
-								class="bsk-menu__item"
+								class="ui-menu-item bsk-menu__item"
 								href={entry.href}
 								aria-current={entry.id === active ? "page" : undefined}
 							>
-								<Icon name={entryIcon(entry)} />
+								<Icon name={entryIcon(entry)} class="ui-menu-item__icon" />
 								<span>{entry.label}</span>
 								<span class="bsk-menu__count">{entry.itemCount}</span>
 							</a>

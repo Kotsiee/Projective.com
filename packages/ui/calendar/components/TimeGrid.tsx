@@ -88,8 +88,9 @@ import {
 	zonedDayNum,
 	zonedWeekday,
 } from "../core/time.ts";
-import { scrollBehaviorFor } from "../hooks/useCalendarViewport.ts";
+import { scrollBehaviorFor, type ZoomToOptions } from "../hooks/useCalendarViewport.ts";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.ts";
+import { wheelZoomFactor } from "../core/zoom.ts";
 import type { FrameStats } from "../core/scene-paint.ts";
 import { hoverExpansionFor } from "../core/scene-paint.ts";
 import { handleLength, leverBall, leverScrollDelta } from "../core/chrome.ts";
@@ -301,9 +302,10 @@ export interface TimeGridProps {
 	 * The zoom scale is the island's to own — it is persisted and it drives the view continuum — but
 	 * only this component can map a pointer into its own scene, so the anchoring happens here and the
 	 * scale change is asked for, with the day column under the cursor (`null` over the gutter) so a
-	 * zoom past the deepest Week scale opens THAT day.
+	 * zoom past the deepest Week scale opens THAT day, and the multiplier the wheel's own delta asks for
+	 * (`wheelZoomFactor`), so a pinch is continuous rather than a notch per event.
 	 */
-	onZoom?: (dir: "in" | "out", dayMs: number | null) => void;
+	onZoom?: (dir: "in" | "out", dayMs: number | null, scale?: number) => void;
 	/**
 	 * Hand the island this viewport's own zoom INTERPOLATOR.
 	 *
@@ -313,7 +315,7 @@ export interface TimeGridProps {
 	 * inside this component and cannot be lifted without lifting the viewport with it.
 	 */
 	registerZoom?: (
-		run: (target: number, opts?: { onSettle?: () => void }) => () => void,
+		run: (target: number, opts?: ZoomToOptions) => () => void,
 	) => void;
 	/** The zoom bounds the island's continuum expects, so the spring and the pinch clamp where it does. */
 	zoomRange?: readonly [number, number];
@@ -961,7 +963,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			const at = viewport.pointerAt(e);
 			viewport.zoomAnchor(at.y);
 			const day = at.x >= liveGeo().gutter ? slotAt(at.x, at.y).dayStart : null;
-			props.onZoom(e.deltaY < 0 ? "in" : "out", day);
+			props.onZoom(e.deltaY < 0 ? "in" : "out", day, wheelZoomFactor(e.deltaY, e.deltaMode));
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);

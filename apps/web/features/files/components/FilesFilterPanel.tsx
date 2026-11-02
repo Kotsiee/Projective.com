@@ -1,6 +1,11 @@
 import type { JSX } from "preact";
+import { signal } from "@preact/signals";
+import { useMemo } from "preact/hooks";
+import { Logo } from "@web/components/Logo.tsx";
+import { Tooltip } from "@projective/ui/feedback";
+import { Button, MultiSelect } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { SourceMark } from "./file-hub-glyphs.tsx";
+import { SourceMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 import {
 	categoryFilter,
 	commitFiles,
@@ -37,6 +42,18 @@ const OTHER_CATEGORIES: readonly FileCategory[] = FileCategory.options.filter((c
 	!NAMED_CATEGORIES.includes(c)
 );
 
+/**
+ * The Type menu's one synthetic row. It stands for every category outside {@link NAMED_CATEGORIES}
+ * and never reaches `files-state`: it expands to {@link OTHER_CATEGORIES} on the way in and is shown
+ * as checked only while every one of them is.
+ */
+const OTHER_VALUE = "__other";
+
+const TYPE_OPTIONS = [
+	...NAMED_CATEGORIES.map((c) => ({ value: c as string, label: CATEGORY_META[c].label })),
+	{ value: OTHER_VALUE, label: "Other types" },
+];
+
 const VISIBILITY_ROWS: readonly AssetVisibility[] = ["private", "link", "public"];
 
 const SOURCE_ROWS: readonly AssetSource[] = [
@@ -58,8 +75,15 @@ function toggled<T>(set: readonly T[], members: readonly T[]): T[] {
 		: [...set, ...members.filter((m) => !set.includes(m))];
 }
 
-function toggleCategories(members: readonly FileCategory[]): void {
-	categoryFilter.value = toggled(categoryFilter.value, members);
+/** The Type menu's value: named categories as themselves, plus {@link OTHER_VALUE} when all others are on. */
+function typeValue(categories: readonly FileCategory[]): string[] {
+	const named = NAMED_CATEGORIES.filter((c) => categories.includes(c)) as string[];
+	return OTHER_CATEGORIES.every((c) => categories.includes(c)) ? [...named, OTHER_VALUE] : named;
+}
+
+function setTypes(values: readonly string[]): void {
+	const named = NAMED_CATEGORIES.filter((c) => values.includes(c));
+	categoryFilter.value = values.includes(OTHER_VALUE) ? [...named, ...OTHER_CATEGORIES] : named;
 	commitFiles();
 }
 
@@ -81,6 +105,53 @@ function clearFacets(): void {
 }
 // #endregion
 
+// #region Parts
+interface GroupProps {
+	/** Stable id stem; the heading is `${id}-heading` and names the group. */
+	id: string;
+	title: string;
+	/** How many options in this group are on — the heading's count and the clear control's gate. */
+	active: number;
+	/** Resets this group alone; the other two keep their selections. */
+	onClear: () => void;
+	children: JSX.Element | JSX.Element[];
+}
+
+/**
+ * One filter group: a heading row (title · count · clear) over its control. The clear control renders
+ * only while something in the group is on — a control that renders must do something (§3.11) — and
+ * the row holds its height without it, so toggling the last option never shifts the panel.
+ */
+function Group({ id, title, active, onClear, children }: GroupProps): JSX.Element {
+	const headingId = `${id}-heading`;
+	return (
+		<div class="fh-filter__section" role="group" aria-labelledby={headingId}>
+			<div class="fh-filter__head">
+				<span id={headingId} class="fh-filter__heading">
+					{title}
+					{active > 0 && <span class="fh-filter__count">({active})</span>}
+				</span>
+				{active > 0 && (
+					<Tooltip content={`Clear ${title.toLowerCase()}`} placement="top">
+						<Button
+							rounded
+							iconOnly
+							size="sm"
+							severity="secondary"
+							variant="text"
+							class="fh-filter__groupclear"
+							icon={<Icon name="close" size="xs" />}
+							aria-label={`Clear ${title.toLowerCase()} filter`}
+							onClick={onClear}
+						/>
+					</Tooltip>
+				)}
+			</div>
+			{children}
+		</div>
+	);
+}
+
 interface OptionProps {
 	label: string;
 	pressed: boolean;
@@ -100,6 +171,18 @@ function Option({ label, pressed, onToggle, mark }: OptionProps): JSX.Element {
 	);
 }
 
+/** The storage-source glyph for an icon-only toggle; the library is the Projective mark. */
+function sourceGlyph(source: AssetSource): JSX.Element | null {
+	return source === "supabase"
+		? <Logo class="fh-filter__logo" />
+		: <SourceMark source={source} size={18} />;
+}
+
+function sourceName(source: AssetSource): string {
+	return source === "supabase" ? "This library" : sourceLabel(source);
+}
+// #endregion
+
 /** Props for {@link FilesFilterPanel}. */
 export interface FilesFilterPanelProps {
 	/** Called after "Clear filters" (the facets only; the search is its own control), so the host can close. */
@@ -107,38 +190,57 @@ export interface FilesFilterPanelProps {
 }
 
 /**
- * FilesFilterPanel — the `/files` header band's filter popover body: file type (`FileCategory`),
- * sharing (`AssetVisibility`) and storage source, each a multi-select of pressed rows. Every toggle
- * writes `files-state` and asks the body to refetch through `commitFiles`, so the panel never holds
- * a set of its own.
+ * FilesFilterPanel — the `/files` header band's filter popover body, three groups that combine:
+ *
+ * - **Type** (`FileCategory`) — a `MultiSelect` dropdown; "Other types" is one row for every category
+ *   outside the named twelve.
+ * - **Sharing** (`AssetVisibility`) — pressed rows, each led by the same lock · link · globe mark the
+ *   grid shows on an asset.
+ * - **Where it lives** (`AssetSource`) — an icon-only toggle group of round ghost buttons; each is
+ *   named by `aria-label` and a Tooltip, since no label renders.
+ *
+ * Each group's heading carries its active count and a clear control that resets that group alone.
+ * Every change writes `files-state` and asks the body to refetch through `commitFiles`, so the panel
+ * never holds a set of its own.
  */
 export function FilesFilterPanel({ onCleared }: FilesFilterPanelProps): JSX.Element {
-	const categories = categoryFilter.value;
-	const otherOn = OTHER_CATEGORIES.every((c) => categories.includes(c));
+	const types = typeValue(categoryFilter.value);
+	/**
+	 * The menu is bound to a signal, never a raw array: a raw `value` is read once at mount, so the
+	 * group's own clear would leave the open menu showing a selection `files-state` no longer holds.
+	 * A fresh signal per distinct selection keeps the two one value without a sync effect.
+	 */
+	const typeSelection = useMemo(() => signal(types), [types.join("|")]);
 
 	return (
 		<div class="fh-filter">
-			<fieldset class="fh-filter__section">
-				<legend class="fh-filter__heading">Type</legend>
-				<div class="fh-filter__grid">
-					{NAMED_CATEGORIES.map((category) => (
-						<Option
-							key={category}
-							label={CATEGORY_META[category].label}
-							pressed={categories.includes(category)}
-							onToggle={() => toggleCategories([category])}
-						/>
-					))}
-					<Option
-						label="Other types"
-						pressed={otherOn}
-						onToggle={() => toggleCategories(OTHER_CATEGORIES)}
-					/>
-				</div>
-			</fieldset>
+			<Group
+				id="fh-filter-type"
+				title="Type"
+				active={types.length}
+				onClear={() => setTypes([])}
+			>
+				<MultiSelect
+					options={TYPE_OPTIONS}
+					value={typeSelection}
+					onValueChange={setTypes}
+					placeholder="All types"
+					maxSelectedLabels={2}
+					size="sm"
+					fluid
+					aria-label="File type"
+				/>
+			</Group>
 
-			<fieldset class="fh-filter__section">
-				<legend class="fh-filter__heading">Sharing</legend>
+			<Group
+				id="fh-filter-sharing"
+				title="Sharing"
+				active={visibilityFilter.value.length}
+				onClear={() => {
+					visibilityFilter.value = [];
+					commitFiles();
+				}}
+			>
 				<div class="fh-filter__wrap">
 					{VISIBILITY_ROWS.map((visibility) => (
 						<Option
@@ -146,25 +248,38 @@ export function FilesFilterPanel({ onCleared }: FilesFilterPanelProps): JSX.Elem
 							label={visibilityLabel(visibility)}
 							pressed={visibilityFilter.value.includes(visibility)}
 							onToggle={() => toggleVisibility(visibility)}
+							mark={<VisibilityMark visibility={visibility} />}
 						/>
 					))}
 				</div>
-			</fieldset>
+			</Group>
 
-			<fieldset class="fh-filter__section">
-				<legend class="fh-filter__heading">Where it lives</legend>
-				<div class="fh-filter__wrap">
+			<Group
+				id="fh-filter-source"
+				title="Where it lives"
+				active={sourceFilter.value.length}
+				onClear={() => {
+					sourceFilter.value = [];
+					commitFiles();
+				}}
+			>
+				<div class="fh-filter__toggles">
 					{SOURCE_ROWS.map((source) => (
-						<Option
-							key={source}
-							label={source === "supabase" ? "This library" : sourceLabel(source)}
-							pressed={sourceFilter.value.includes(source)}
-							onToggle={() => toggleSource(source)}
-							mark={<SourceMark source={source} />}
-						/>
+						<Tooltip key={source} content={sourceName(source)} placement="bottom">
+							<button
+								type="button"
+								class="fh-filter__toggle"
+								aria-pressed={sourceFilter.value.includes(source)}
+								aria-label={sourceName(source)}
+								onClick={() =>
+									toggleSource(source)}
+							>
+								<span class="fh-filter__glyph" aria-hidden="true">{sourceGlyph(source)}</span>
+							</button>
+						</Tooltip>
 					))}
 				</div>
-			</fieldset>
+			</Group>
 
 			{facetCount.value > 0 && (
 				<button

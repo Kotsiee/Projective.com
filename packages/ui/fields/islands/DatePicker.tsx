@@ -1162,7 +1162,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					<div
 						id={panelId}
 						ref={panelRef}
-						class="ui-datepicker__panel"
+						class="ui-datepicker__panel ui-menu-surface"
 						role="dialog"
 						aria-modal="false"
 						aria-label={ariaLabel ?? "Choose date"}

@@ -71,14 +71,15 @@ export function ServiceModifier({ services, value, onSelect }: ServiceModifierPr
 			</button>
 
 			{open.value && (
-				<div class="proj-modifier__menu" role="listbox" aria-label="Service queue">
+				<div class="ui-menu-surface proj-modifier__menu" role="listbox" aria-label="Service queue">
 					<button
 						type="button"
 						role="option"
 						aria-selected={value === ALL}
-						class="proj-modifier__item"
+						class="ui-menu-item proj-modifier__item"
 						data-on={value === ALL ? "true" : undefined}
-						onClick={() => pick(ALL)}
+						onClick={() =>
+							pick(ALL)}
 					>
 						<span class="proj-modifier__item-label">All services</span>
 						{value === ALL && (
@@ -91,7 +92,7 @@ export function ServiceModifier({ services, value, onSelect }: ServiceModifierPr
 							type="button"
 							role="option"
 							aria-selected={value === svc.id}
-							class="proj-modifier__item"
+							class="ui-menu-item proj-modifier__item"
 							data-on={value === svc.id ? "true" : undefined}
 							onClick={() => pick(svc.id)}
 						>

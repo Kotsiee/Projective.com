@@ -478,9 +478,8 @@ function ProposalsView(props: ProposalsViewProps): JSX.Element {
 // #region An empty view
 /**
  * A view with nothing in it: one Meta sentence and, under it, the way to find work — the tier-4
- * outlined link. Unboxed on the band's own ground (§B.4): the ui `EmptyState` draws a `--surface-1`
- * tile, which inside a band is a card around static content, and titles its sentence at a heading's
- * weight.
+ * outlined link. Unboxed on the band's own ground (§B.4): the ui `EmptyState` is a page's empty
+ * state — a centred glyph and a title-register heading — too loud for one view inside a band.
  */
 function EmptyView({ text }: { text: string }): JSX.Element {
 	return (
