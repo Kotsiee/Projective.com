@@ -738,9 +738,12 @@ CREATE TABLE finance.standing_commission_tiers (
     note text
 );
 
+-- A buyer's contract (a business or an enterprise) sets the fee its escrows are charged (Decision
+-- #187). An Agency's (a team, and so a payee) sets the commission on its own product sales and its
+-- payer fee when it buys (Decision #252, ruled 2026-10-31); an escrow fee stays the payer's.
 CREATE TABLE finance.negotiated_rates (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    subject_type text NOT NULL CHECK (subject_type IN ('business', 'enterprise')),
+    subject_type text NOT NULL CHECK (subject_type IN ('business', 'enterprise', 'team')),
     subject_id uuid NOT NULL,
     platform_fee_bp integer NOT NULL CHECK (platform_fee_bp BETWEEN 0 AND 10000),
     marketplace_commission_bp integer CHECK (marketplace_commission_bp IS NULL OR marketplace_commission_bp BETWEEN 0 AND 10000),
@@ -1041,11 +1044,16 @@ CREATE TABLE finance.orders (
     -- did. Not a foreign key, for the reason finance.baskets.promo_code gives: a code withdrawn later
     -- must not change what this order says it used.
     promo_code text CHECK (promo_code IS NULL OR length(promo_code) <= 40),
+    -- The fee taken when the order was placed: the sum of its lines' `platform_fee_minor`, which is
+    -- each product line's seller commission (escrow lines take theirs at release).
     platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0),
 
     -- The fee RATE and MODE are stamped on the order, not looked up at read time. A platform that
     -- changes its fee must not retroactively restate what a buyer was charged last quarter, and
-    -- `security.platform_params.platform_fee_bp` is a live value that can move.
+    -- `security.platform_params.platform_fee_bp` is a live value that can move. The rate is the
+    -- PAYER's at placement (finance.fn_effective_platform_fee_bp, Decision #187): the rate an escrow
+    -- line's fee follows, resolved again when that escrow is released. A product line is charged its
+    -- seller's commission instead, recorded on the line (Decision #337, ruling M1).
     platform_fee_bp integer NOT NULL CHECK (platform_fee_bp >= 0),
     platform_fee_mode text NOT NULL DEFAULT 'seller_deducted'
         CHECK (platform_fee_mode IN ('seller_deducted', 'buyer_added')),
@@ -1095,6 +1103,18 @@ CREATE TABLE finance.order_lines (
     quantity integer NOT NULL DEFAULT 1 CHECK (quantity BETWEEN 1 AND 999),
     line_total_minor bigint NOT NULL CHECK (line_total_minor >= 0),
     currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    -- The line's share of the order's basket-wide promo (finance.orders.promo_discount_minor is their
+    -- sum). What the buyer paid for the line is `line_total_minor - promo_discount_minor`, and that is
+    -- the base its fee is charged on.
+    promo_discount_minor bigint NOT NULL DEFAULT 0 CHECK (promo_discount_minor >= 0),
+    -- The fee taken on this line when it was bought, and its rate, stamped like the order's
+    -- (Decision #337, ruling M1). A digital product pays its SELLER's marketplace commission
+    -- (finance.fn_effective_commission_bp for the owning team, else the owning person), truncated,
+    -- deducted from the seller's credit. An escrow line (a ticket, a paid revision, a seat, a
+    -- session) takes nothing here, so it records 0 and no rate: its fee is the payer's rate, charged
+    -- at release (finance.escrows.platform_fee_cents). finance.orders.platform_fee_minor is the sum.
+    platform_fee_bp integer CHECK (platform_fee_bp IS NULL OR platform_fee_bp BETWEEN 0 AND 10000),
+    platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0),
 
     fulfilment finance.fulfilment_kind NOT NULL DEFAULT 'pending',
     -- Download fulfilment.

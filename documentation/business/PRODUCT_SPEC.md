@@ -2694,8 +2694,8 @@ When a project-derived asset is sold, the marketplace logic can be configured to
   seller pays and which tapers with the seller's Standing (`finance-model.md` §16.3). A product sale
   never charges the buyer the 5% service fee: the payer's-rate rule of Decision #187 covers escrow
   fees only, and that stage-completion fee never tapers with Standing (Decision #337, ruling M1).
-  **Not built yet:** today a product sale charges the buyer's 5% and the commission ladder is never
-  applied.
+  Each seller in a basket pays their own rate, and the seller sees in their wallet the rate their
+  next sale pays.
 - **Shared Royalty:** A percentage of every sale is automatically routed to the original Client's
   wallet as a "Founding Partner" incentive for allowing the asset to be sold.
 

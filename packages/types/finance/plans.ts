@@ -183,11 +183,13 @@ export type StandingCommissionTier = z.infer<typeof StandingCommissionTierSchema
 /**
  * A row of `finance.negotiated_rates` — the ONE sanctioned flex of the 5% service fee (owner
  * decision, 2026-07-24: it may flex for Enterprise volume commitments). Every flex is an explicit,
- * admin-approved, time-boxed contract row, never an implicit consequence of holding a plan.
+ * admin-approved, time-boxed contract row, never an implicit consequence of holding a plan. A buyer's
+ * contract sets the fee its escrows are charged; an Agency's (`team`) sets the commission on its own
+ * product sales and its payer fee when it buys (Decision #252, ruled 2026-10-31).
  */
 export const NegotiatedRateSchema = z.object({
 	id: uuid,
-	subjectType: z.enum(["business", "enterprise"]),
+	subjectType: z.enum(["business", "enterprise", "team"]),
 	subjectId: uuid,
 	platformFeeBp: basisPoints,
 	marketplaceCommissionBp: basisPoints.nullable(),

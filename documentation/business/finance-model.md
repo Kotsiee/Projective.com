@@ -35,7 +35,8 @@
 
 - Digital asset sales (templates, codebases, design assets): **8–20%** commission.
 - Base rate (8%) is comparable to Etsy; the 20% tier applies to listings using internal "Search
-  Boosts" or promoted placement.
+  Boosts" or promoted placement. **Planned** (Decision #337, ruling M1): the 20% tier waits for
+  boosts; until then every sale pays its seller's rung rate below.
 - **The base rate tapers with earned Standing, never with the plan** (§16.3):
 
   | Standing rung          | L1 New | L2 Established | L3 Trusted | L4 Expert | L5 Elite |
@@ -47,9 +48,12 @@
 
 - **Who pays it** (Decision #337, ruling M1): the **seller**, on every product sale, at their
   Standing rung's rate. Decision #187's payer-rate rule (§16.4) is scoped to escrow fees, so a
-  product sale is charged this commission, never the 5% service fee. **Not built yet**: today a
-  wallet product sale charges the buying account's 5% service fee, deducted from each seller's
-  credit, and `finance.fn_effective_commission_bp` has no caller.
+  product sale is charged this commission, never the 5% service fee, and the buyer's own rate or
+  contract never changes it. It is taken on what the buyer paid for the line (after any promo),
+  truncated (§16.4), and deducted from the seller's credit; each order line records the rate and the
+  amount. A basket holding two sellers' products charges each their own rate. An Agency may hold a
+  contract commission instead of its rung's rate (§16.4). The seller's wallet shows the rate their
+  next sale is charged and what the last twelve months of sales paid.
 
 ### 1.3 Subscription Tiers (Phase 3+)
 
@@ -775,24 +779,29 @@ one sanctioned exception (owner decision, 2026-07-24; Decision #252, ruling S2) 
 contract** — an Enterprise, Agency or Business commitment — recorded as an explicit, admin-approved,
 time-boxed `finance.negotiated_rates` row with its `minimum_volume_cents` commitment and
 `contract_ref`. It is agreed by contract, never bought with a plan: `/pricing` says "volume terms on
-request", never that a plan lowers the fee.
+request", never that a plan lowers the fee. `finance.fn_effective_platform_fee_bp` resolves it;
+absent a contract it falls through to `security.platform_params.platform_fee_bp`.
 
-> ⚠️ **Flagged for a human** (root `CLAUDE.md` §8): the fee is the **payer's** rate (below), so an
-> Agency — a team, and so a payee — holding a contract has no escrow fee its rate applies to. Which
-> rate applies when the payee, not the payer, holds a contract is not ruled.
-`finance.fn_effective_platform_fee_bp` resolves it; absent a contract it falls through to
-`security.platform_params.platform_fee_bp`.
+**What an Agency's contract covers** (Decision #252, ruled 2026-10-31). An escrow fee is always the
+payer's rate (below), so an Agency — a team, and so a payee — has no escrow fee of its own. Its
+contract sets the marketplace commission on its own product sales instead (§1.2; read by
+`finance.fn_effective_commission_bp` before the Standing taper), and its payer fee when it buys.
+Decision #187 is unchanged, and a buyer's contract never changes what an unrelated seller pays. A
+team funds no escrow today (an escrow's payer is a business or a person), so its payer fee is only
+stamped on the orders it places.
 
 Keeping the flex in a contract table rather than a plan entitlement means the fee can never drift
 downward as a silent side effect of someone upgrading a subscription.
 
 **Whose rate, and how it rounds (Decision #187).** The rate is always the **payer's** for an escrow
 fee: an escrow release charges the escrow's payer's effective rate. A product sale pays the seller's
-commission instead (§1.2; Decision #337, ruling M1 scopes #187 to escrow fees) — **Not built yet**:
-today a wallet product sale charges the buying account's rate, deducted from each seller's credit.
-The fee is computed in integer minor units and **truncated**: `fee = ⌊amount × bp / 10000⌋` (5% of
-1,050 is 52, never 53). Every preview (checkout, team-split projection) uses the same rate and the
-same rule, so a previewed fee is the charged fee.
+commission instead (§1.2; Decision #337, ruling M1 scopes #187 to escrow fees), recorded on its
+order line; the order keeps the payer's rate, which its escrow lines are charged at release. The fee
+is computed in integer minor units and **truncated**: `fee = ⌊amount × bp / 10000⌋` (5% of 1,050 is
+52, never 53; 6.5% of 1,055 is 68, never 69). Every preview uses the same rate and the same rule, so
+a previewed fee is the charged fee: the team-split projection, and the commission the seller's
+wallet shows. **Not built yet**: the checkout's fee disclosure still previews a product line at the
+payer's rate rather than its seller's commission.
 
 ### 16.5 What the platform deliberately does not do
 

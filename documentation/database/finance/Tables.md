@@ -280,7 +280,7 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `finance.subscription_events`        | Billing audit trail: `event_type` (started/upgraded/downgraded/renewed/payment_failed/paused/resumed/cancelled/expired), `from_plan_id`/`to_plan_id`, `amount_cents`, `provider_ref`.                                                                                                                                |
 | `finance.entitlement_grants`         | Manual overrides (comps, trials, negotiation): `entitlement_key`, `limit_value`/`is_unlimited`/`flag_value`, `reason`, `granted_by`, `starts_at`/`expires_at`. A grant may only **raise** an effective limit, never lower it — a misconfigured comp can never suffocate a paying subject.                            |
 | `finance.standing_commission_tiers`  | The **earned** marketplace-commission taper keyed to `org.standing_levels.level`: 8% · 8% · 7.5% · 7% · 6.5%. `platform_fee_bp` is `NULL` at every rung — the 5% service fee does **not** taper with Standing.                                                                                                       |
-| `finance.negotiated_rates`           | The one sanctioned flex of the 5%: `subject_type` (business/enterprise), `platform_fee_bp`, optional `marketplace_commission_bp`, `minimum_volume_cents`, `contract_ref`, `approved_by`, `starts_at`/`ends_at`, `status`. Explicit, admin-approved, time-boxed — never an implicit consequence of holding a plan.  |
+| `finance.negotiated_rates`           | The one sanctioned flex of the 5%: `subject_type` (business/enterprise/team), `platform_fee_bp`, optional `marketplace_commission_bp`, `minimum_volume_cents`, `contract_ref`, `approved_by`, `starts_at`/`ends_at`, `status`. Explicit, admin-approved, time-boxed — never an implicit consequence of holding a plan. A buyer's row sets the fee its escrows are charged; a team's (an Agency's) sets the commission on its own product sales and its payer fee when it buys (Decision #252, ruled 2026-10-31). |
 | `finance.allowance_periods`          | Metered distribution, one live row per `(subject, key, period_start)`: `granted_units`, `consumed_units`, `base_units`, `standing_bonus_units`, `buffer_units`, `buffer_cap`, `buffer_refreshed_at`.                                                                                                                 |
 | `finance.allowance_ledger`           | Append-only consumption record behind "42/50 used this week": `period_id`, `units` (negative = refund), `reason`, `ref_table`/`ref_id`.                                                                                                                                                                              |
 
@@ -569,6 +569,22 @@ takes yet, and the refund / cancel writers wait for ruling M8 (FDD D-12). Never 
 as `finance.promo_codes.code`; `NULL` when no promo saved anything. Not a foreign key, for the reason
 `baskets.promo_code` gives. Mirrored by the Zod `Order.promoCode`. The code's `redemption_count` is
 raised by the same transaction, atomically under `max_redemptions` (DB7).
+
+**The fee on each line (Decision #337, ruling M1).** `finance.order_lines` records what was taken on
+a line when it was bought: `platform_fee_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and its rate
+`platform_fee_bp` (`integer`, NULL, `0..10000`), beside `promo_discount_minor` (`bigint`, NOT NULL
+`DEFAULT 0`, `≥ 0`), the line's share of the order's promo. A `digital_product` line pays its
+**seller's** marketplace commission — `finance.fn_effective_commission_bp` for the product's owning
+team, else its owning person: a negotiated rate, else their Standing rung's tier rate (8% → 6.5%) —
+truncated, on what the buyer paid for it, `line_total_minor − promo_discount_minor`
+(`line_total_minor` stays the price before the promo). An escrow line (a ticket, a paid revision, a
+seat, a session) records `0` and no rate: its fee is the payer's rate, charged at release
+(`finance.escrows.platform_fee_cents`). On the order, `platform_fee_minor` is the lines' sum and
+`platform_fee_bp` the **payer's** rate at placement (`fn_effective_platform_fee_bp`, Decision #187),
+the rate its escrow lines follow. Orders placed before this rule was built, the seed's among them,
+carry an order-level fee and lines with no recorded rate. Projected as `OrderLine.promoDiscount`,
+`platformFee` and `platformFeeBp` (`packages/types/finance/order.ts`); the seller reads their own
+lines' totals through `finance.get_seller_commission` ([Functions.md](Functions.md)).
 
 ### `finance.purchasable_item_kind`
 
