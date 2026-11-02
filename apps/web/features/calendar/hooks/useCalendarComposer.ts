@@ -1,10 +1,24 @@
 import { type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
-import type { CalendarEvent, CalendarEventKind } from "@projective/types/scheduling";
+import type { CalendarEvent, CalendarEventKind, EntryFields } from "@projective/types/scheduling";
 import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, spreadDaily } from "../core/event-series.ts";
+import { ScheduleService } from "../core/ScheduleService.ts";
+
+/** The fields of an entry its host's write carries — what `scheduling.events` stores. */
+function fieldsOf(e: CalendarEvent): EntryFields {
+	return {
+		title: e.title,
+		kind: e.kind,
+		start: e.start,
+		end: e.end,
+		allDay: e.allDay,
+		location: e.location,
+		description: e.description,
+	};
+}
 
 /** Options for {@link useCalendarComposer}. */
 export interface CalendarComposerOptions {
@@ -21,8 +35,14 @@ export interface CalendarComposerOptions {
 	 * ({@link createRefusal}); absent, nothing is gated.
 	 */
 	now?: () => number;
-	/** Told the refusal's own words when a create is refused. */
+	/** Told the refusal's own words when a create is refused, or a persisted write is. */
 	onRefuse?: (message: string) => void;
+	/**
+	 * The entries are the viewer's own and every create, edit, move and delete is written through
+	 * {@link ScheduleService} (`/calendar`): applied at once, then swapped for the server's copy or
+	 * taken back with the server's reason. Absent, every write stays session-local.
+	 */
+	persist?: boolean;
 }
 
 /** One calendar body's entries, draft, composer round trip and modal handlers. */
@@ -56,8 +76,8 @@ export interface CalendarComposer {
  * channel's calendar, and the schedule pages — so a composer commit, a multi-day or daily range from
  * the Month view, a minimise round trip and a submit mean the same thing on each of them.
  *
- * Writes are session-local, as every calendar mutation is until the scheduling write path lands;
- * RSVP and reschedule round trips reach the server through `serverUpdate`.
+ * Writes persist where `persist` says so (`/calendar`, Decision #328 (a)) and are session-local
+ * elsewhere; RSVP and reschedule round trips reach the server through `serverUpdate`.
  */
 export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComposer {
 	const events = useSignal<CalendarEvent[]>([...opts.initial]);
@@ -84,6 +104,39 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		optsRef.current.onClose?.();
 	}
 
+	function refuse(message: string | undefined): void {
+		optsRef.current.onRefuse?.(message ?? "That change could not be saved.");
+	}
+
+	/** Lay new entries on, then swap them for the server's copies — or take them back off. */
+	function create(made: CalendarEvent[]): void {
+		events.value = [...events.value, ...made];
+		if (!optsRef.current.persist) return;
+		const pending = new Set(made.map((e) => e.id));
+		void ScheduleService.create(made.map(fieldsOf)).then((res) => {
+			const rest = events.peek().filter((e) => !pending.has(e.id));
+			events.value = res.ok && res.data ? [...rest, ...res.data.events] : rest;
+			if (!res.ok) refuse(res.message);
+		});
+	}
+
+	/**
+	 * Replace one entry, then keep the server's copy — or put the previous one back.
+	 * shortcut: an edit to an entry whose create is still in flight (a `draft-` id) is refused and
+	 * rolled back; queue it behind the create if that ever shows up in practice.
+	 */
+	function change(next: CalendarEvent): void {
+		const before = events.peek().find((e) => e.id === next.id);
+		if (!before) return;
+		events.value = events.value.map((e) => (e.id === next.id ? next : e));
+		if (!optsRef.current.persist) return;
+		void ScheduleService.update(next.id, fieldsOf(next)).then((res) => {
+			const kept = res.ok && res.data ? res.data.event : before;
+			events.value = events.peek().map((e) => (e.id === next.id ? kept : e));
+			if (!res.ok) refuse(res.message);
+		});
+	}
+
 	return {
 		events,
 		draft,
@@ -98,8 +151,7 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		quickCreate(range, title) {
 			draft.value = null;
 			if (!creatable(range)) return;
-			const made = eventsForRange(range, title, optsRef.current.timezone(), mint);
-			events.value = [...events.value, ...made];
+			create(eventsForRange(range, title, optsRef.current.timezone(), mint));
 		},
 		expandCreate(range, title) {
 			const daily = range.daily ? range : null;
@@ -111,8 +163,7 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 			eventStack.open("event", blank.id, { mode: "create" });
 		},
 		moveEvent(event, range) {
-			const moved = { ...event, start: range.start, end: range.end };
-			events.value = events.value.map((e) => (e.id === moved.id ? moved : e));
+			change({ ...event, start: range.start, end: range.end });
 		},
 		openEvent(event) {
 			draft.value = null;
@@ -128,15 +179,14 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		submit(event) {
 			if (events.value.some((e) => e.id === event.id)) {
-				events.value = events.value.map((e) => (e.id === event.id ? event : e));
+				change(event);
 				draft.value = null;
 				return;
 			}
 			if (!creatable(event)) return;
-			const made = series.current
-				? spreadDaily(event, series.current, optsRef.current.timezone())
-				: [event];
-			events.value = [...events.value, ...made];
+			create(
+				series.current ? spreadDaily(event, series.current, optsRef.current.timezone()) : [event],
+			);
 			close();
 		},
 		serverUpdate(event) {
@@ -144,7 +194,15 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		remove(id) {
 			if (eventStack.top.peek()?.id === id) close();
+			const gone = events.peek().find((e) => e.id === id);
+			if (!gone) return;
 			events.value = events.value.filter((e) => e.id !== id);
+			if (!optsRef.current.persist) return;
+			void ScheduleService.remove(id).then((res) => {
+				if (res.ok) return;
+				events.value = [...events.peek(), gone];
+				refuse(res.message);
+			});
 		},
 	};
 }

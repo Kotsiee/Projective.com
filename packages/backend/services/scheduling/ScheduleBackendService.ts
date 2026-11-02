@@ -6,6 +6,8 @@ import type {
 	CalendarEvent,
 	CalendarPage,
 	CalendarParams,
+	CreateEntriesInput,
+	RemoveEntryInput,
 	RescheduleInput,
 	RsvpInput,
 	SchedulePage,
@@ -13,6 +15,7 @@ import type {
 	SchedulingViewer,
 	SlotGrid,
 	SlotQuery,
+	UpdateEntryInput,
 } from "@projective/types/scheduling";
 import {
 	ANONYMOUS_VIEWER,
@@ -28,6 +31,7 @@ import { readSchedulePage } from "./live-schedule-page.ts";
 import {
 	readCalendarEvent,
 	readEntityCalendar,
+	readEntries,
 	readOpenReschedules,
 	readPersonalCalendar,
 	readProjectCalendar,
@@ -35,6 +39,7 @@ import {
 import type { EntityCalendarParams } from "./entity-calendar.ts";
 import { type PlanRefusal, planReschedule, planRsvp } from "./coordination-plan.ts";
 import { writeReschedule, writeRsvp } from "./live-coordination-writes.ts";
+import { createEntries, type EntryDeps, removeEntry, updateEntry } from "./live-entries.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import type { ExploreItem } from "@projective/types/explore";
@@ -136,6 +141,30 @@ async function asOwner<T>(
 		return fail(503, {
 			message: "Your availability could not be saved just now. Please try again.",
 		});
+	}
+}
+
+/**
+ * Run a write on the caller's OWN entries as the caller (`live-entries.ts`): `401` without a
+ * session, `503` when the database could not answer.
+ */
+async function asHost<T>(
+	label: string,
+	actor: ReadActor,
+	deps: Partial<EntryDeps>,
+	run: (actor: ReadActor & { accessToken: string }, deps: EntryDeps) => Promise<ServiceResult<T>>,
+): Promise<ServiceResult<T>> {
+	if (!canReadLive(actor)) return signInRequired("change your calendar");
+	const now = deps.now ?? Date.now();
+	try {
+		return await run(actor, {
+			db: deps.db ?? getUserClient(actor.accessToken),
+			reread: deps.reread ?? ((ids) => readEntries(actor, ids, now)),
+			now,
+		});
+	} catch (err) {
+		console.error(`[scheduling:${label}]`, err instanceof Error ? err.message : err);
+		return fail(503, { message: "Your calendar could not be saved just now. Please try again." });
 	}
 }
 // #endregion
@@ -350,6 +379,38 @@ export class ScheduleBackendService {
 			return calendarUnavailable(err);
 		}
 	}
+
+	// #region A host's own entries (Decision #328 (a))
+	/**
+	 * Create entries on the caller's own calendar (a daily series in one write) and answer with them
+	 * as the agenda draws them. A new entry may not start in the past (`createRefusal`, `422`).
+	 */
+	static createEntries(
+		input: CreateEntriesInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ events: CalendarEvent[] }>> {
+		return asHost("create-entries", actor, deps, (a, d) => createEntries(input, a, d));
+	}
+
+	/** Edit one of the caller's own entries, past or not. `403` for an entry they do not host. */
+	static updateEntry(
+		input: UpdateEntryInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ event: CalendarEvent }>> {
+		return asHost("update-entry", actor, deps, (a, d) => updateEntry(input, a, d));
+	}
+
+	/** Take one of the caller's own entries off the calendar — archived, never deleted. */
+	static removeEntry(
+		input: RemoveEntryInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ eventId: string }>> {
+		return asHost("remove-entry", actor, deps, (a, d) => removeEntry(input, a, d));
+	}
+	// #endregion
 
 	/**
 	 * The **bookable slot grid** behind a session listing's Book modal and the discovery-call

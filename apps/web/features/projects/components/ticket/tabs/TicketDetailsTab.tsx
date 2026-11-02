@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { RichTextEditor } from "@projective/ui/editor";
 import { Icon } from "@projective/ui/icons";
+import { sanitizeRichText } from "@projective/types/richtext";
 import type { BoardCard, BoardStageRef, TicketTask } from "../../../types/projects-types.ts";
 import { formatTicketMoney, TICKET_INTENSITY_LABEL } from "../../../types/projects-types.ts";
 import { hasContent } from "../../../core/ticket-model.ts";
@@ -51,15 +52,19 @@ export interface TicketDetailsTabProps {
 	onOpenStage: (stageId: string) => void;
 }
 
-/** A rich-text value as prose, or the placeholder when the document is empty. */
+/**
+ * A rich-text value as prose, or the placeholder when the document is empty. One party writes it for
+ * the other to read, so it renders only through the same allow-list the write path applies.
+ */
 function Prose(props: { html: string | null; empty: string; class?: string }): JSX.Element {
-	if (!hasContent(props.html)) {
+	const html = sanitizeRichText(props.html ?? "");
+	if (!hasContent(html)) {
 		return <p class="tkv-empty tkv-empty--inline">{props.empty}</p>;
 	}
 	return (
 		<div
 			class={props.class ? `tkv-rich ${props.class}` : "tkv-rich"}
-			dangerouslySetInnerHTML={{ __html: props.html ?? "" }}
+			dangerouslySetInnerHTML={{ __html: html }}
 		/>
 	);
 }

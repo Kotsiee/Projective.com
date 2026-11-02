@@ -191,6 +191,8 @@ export const SchedulingEventRowSchema = z.object({
 	/** A CSS custom-property NAME (e.g. `--primary`), never a literal colour. */
 	accent: z.string().max(60).nullable(),
 	location: z.string().max(160).nullable(),
+	/** The agenda, as `sanitizeRichText` (`@projective/types/richtext`) left it. */
+	description: z.string().max(8000).nullable(),
 	meta: z.string().max(160).nullable(),
 	attendeeCount: z.number().int().min(0).nullable(),
 	capacity: z.number().int().min(0).nullable(),
@@ -203,6 +205,8 @@ export const SchedulingEventRowSchema = z.object({
 	createdBy: uuid.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
+	/** Taken off the calendar by its host (never deleted); `status` is `cancelled` alongside it. */
+	archivedAt: timestamp.nullable(),
 });
 export type SchedulingEventRow = z.infer<typeof SchedulingEventRowSchema>;
 
@@ -220,6 +224,7 @@ export const CreateSchedulingEventSchema = z.object({
 	isMasked: z.boolean().default(false),
 	accent: z.string().max(60).optional(),
 	location: z.string().max(160).optional(),
+	description: z.string().max(8000).optional(),
 	meta: z.string().max(160).optional(),
 	capacity: z.number().int().min(0).optional(),
 	href: z.string().max(400).optional(),

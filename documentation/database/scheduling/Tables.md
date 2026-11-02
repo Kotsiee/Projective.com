@@ -115,6 +115,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `all_day` · `is_masked`           | boolean                   | `is_masked` → render `status` only, never `title`.                                    |
 | `accent`                          | text                      | A CSS custom-property **name** (`--primary`), never a literal colour.                 |
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
+| `description`                     | text                      | The agenda: rich-text HTML a host writes for attendees. Stored only after `sanitizeRichText` (`@projective/types/richtext`) rebuilds it from the editor's attribute-free tags, and rendered only through it again; `NULL` when it holds no prose. Withheld from a non-party by the privacy allow-list (`PUBLIC_EVENT_FIELDS`). |
 | `meeting_provider` · `meeting_provider_label` · `meeting_pending` | text · text · boolean | The online room's provider (a slug, or `custom`; deliberately no FK), its display label, and "still to be minted". Readable wherever the row is. |
 | `meeting_url` · `meeting_passcode` · `meeting_details` | text      | **The room.** Withheld from every client role at the COLUMN level (`00002520`, since 2026-09-28): a party — the creator, or someone seated — reads them through `scheduling.get_event_rooms`. See [Policies.md](Policies.md). `meeting_url` is https only (`ck_event_meeting_url_https`, since 2026-10-29): a schedule's manager writes the row directly and every party is shown it as a join link, so a `javascript:` URL was stored script. |
 | `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`). On a group sitting's mirror, `capacity` is the cohort's `max_seats` and `attendee_count` its paid seats, kept current by `projects.fn_sync_sitting_mirrors` whenever a seat starts or ends. |
@@ -122,6 +123,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `external_event_id`               | text                      | The provider's own id.                                                                |
 | `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session. Written by `fn_book_session_slot` (a 1-1: host + client on the roster) and `schedule_sitting` (a group sitting: **no roster**, so it blocks free/busy and both booking gates but is never put to a reschedule round, `trg_sitting_round_guard`). Either mirror is also anchored to the engagement (`project_id`), so no client policy writes it. |
 | `created_by`                      | uuid                      | → `auth.users` (SET NULL).                                                            |
+| `archived_at`                     | timestamptz               | Taken off the calendar by its host (Decision #328 (a)); never a delete. The same write sets `status = 'cancelled'`, which releases the time from free/busy and the booking gate. Readers skip archived rows. |
 | CHECK                             | —                         | `schedule_id IS NOT NULL OR project_id IS NOT NULL` (always anchored).                |
 | UNIQUE                            | —                         | `(source_connection_id, external_event_id)` — the re-sync upsert key.                 |
 
@@ -135,6 +137,14 @@ that has any `event_attendees` row, or changing its `starts_at`, `ends_at`, `sta
 `schedule_id` (`55000`) — so a schedule owner cannot step round the 12-hour lockout and the
 majority rule, or cascade a roster, its rounds and its log away (root `CLAUDE.md` §5). The service
 role is not refused. See [Functions.md](Functions.md) §9.
+
+**A host's own entries are written as the host.** `/calendar` creates, edits and removes the
+caller's entries through `POST` · `PATCH` · `DELETE /api/scheduling/events`
+(`packages/backend/services/scheduling/live-entries.ts`), under the caller's JWT and the `Manage
+scheduling events` policy — never the service role. A new entry may not start in the past
+(`createRefusal`, `@projective/types/scheduling`); an edit or a removal may (Decision #328 (A)). A
+removal is `status = 'cancelled'` + `archived_at = now()`; the first create on an account with no
+schedule opens an unpublished one in the profile's zone.
 
 ---
 

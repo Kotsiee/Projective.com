@@ -1,5 +1,6 @@
 /**
- * Rich text — the plain-text projection every formatted body is stored beside.
+ * Rich text — the plain-text projection every formatted body is stored beside, and the sanitiser
+ * every body one person writes for another to read passes through.
  *
  * @module
  */
@@ -11,3 +12,4 @@ export {
 	type RichTextDeltaOp,
 	type RichTextInput,
 } from "./plain-text.ts";
+export { sanitizeRichText } from "./sanitize.ts";

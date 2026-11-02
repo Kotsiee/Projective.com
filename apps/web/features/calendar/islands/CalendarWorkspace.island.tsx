@@ -128,6 +128,8 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		kind: "sync",
 		timezone: () => page.peek()?.timezone ?? "UTC",
 		now: clock,
+		// The personal agenda's entries are the viewer's own, and the only ones with a write route.
+		persist: true,
 		onRefuse: (message) => {
 			notice.value = message;
 			if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
