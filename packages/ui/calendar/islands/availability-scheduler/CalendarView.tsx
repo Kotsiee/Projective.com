@@ -124,7 +124,7 @@ export function CalendarView(): JSX.Element {
 		<div class="ui-avsched__cal">
 			<div class="ui-avsched__cal-bar" role="group" aria-label="Calendar tools">
 				<div class="ui-avsched__cal-nav">
-					<Tooltip content="Today">
+					<Tooltip content="Today" density="compact">
 						<Button
 							variant="text"
 							size="sm"
@@ -134,7 +134,7 @@ export function CalendarView(): JSX.Element {
 							onClick={() => (focus.value = Date.now())}
 						/>
 					</Tooltip>
-					<Tooltip content="Previous">
+					<Tooltip content="Previous" density="compact">
 						<Button
 							variant="text"
 							size="sm"
@@ -144,7 +144,7 @@ export function CalendarView(): JSX.Element {
 							onClick={() => step(-1)}
 						/>
 					</Tooltip>
-					<Tooltip content="Next">
+					<Tooltip content="Next" density="compact">
 						<Button
 							variant="text"
 							size="sm"
@@ -167,7 +167,7 @@ export function CalendarView(): JSX.Element {
 						aria-label="Layer"
 						size="sm"
 					/>
-					<Tooltip content="Undo">
+					<Tooltip content="Undo" density="compact">
 						<Button
 							variant="text"
 							size="sm"
@@ -179,7 +179,7 @@ export function CalendarView(): JSX.Element {
 							onClick={store.undo}
 						/>
 					</Tooltip>
-					<Tooltip content="Redo">
+					<Tooltip content="Redo" density="compact">
 						<Button
 							variant="text"
 							size="sm"

@@ -192,7 +192,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			{/* Collapsed presentation — revealed by CSS at the rail density. */}
 			<div class="cal-rail">
 				<div class="cal-rail__items" role="list">
-					<Tooltip content="Today" placement="right">
+					<Tooltip content="Today" placement="right" density="compact">
 						<button
 							type="button"
 							class="cal-rail__item"
@@ -202,7 +202,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							<Icon name="calendar" />
 						</button>
 					</Tooltip>
-					<Tooltip content="Availability" placement="right">
+					<Tooltip content="Availability" placement="right" density="compact">
 						<button
 							type="button"
 							class="cal-rail__item"
@@ -216,7 +216,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 				</div>
 
 				<div class="cal-rail__bottom">
-					<Tooltip content="New event" placement="right">
+					<Tooltip content="New event" placement="right" density="compact">
 						<button
 							type="button"
 							class="cal-rail__item cal-rail__item--accent"

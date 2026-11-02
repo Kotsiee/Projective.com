@@ -7,7 +7,7 @@ export interface ShellTopBarProps {
 	glass?: boolean;
 	/** Leading slot — brand/wordmark, and the mobile menu button. */
 	brand?: ComponentChildren;
-	/** Centered slot — the mobile micro search bar (Part D.3). */
+	/** Centered slot — the signed-in header search (Part D.1). */
 	center?: ComponentChildren;
 	/** Trailing actions (search, notifications, theme toggle, avatar). */
 	children?: ComponentChildren;

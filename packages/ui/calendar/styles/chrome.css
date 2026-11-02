@@ -89,9 +89,12 @@
  * With no transition at all there is nothing to strand; the spring in `useOverlayScrollbar` already
  * jumps to its final value whenever the clock is frozen or the reader prefers reduced motion.
  *
- * `--cal-bar-throw` is the stick's deflection from the handle's centre, saturating well before the
- * throttle does (`core/chrome.ts` `leverThrowPx`) so the ball never detaches from the handle it grew
- * out of.
+ * `--cal-bar-throw` is where the ball sits relative to the handle's centre: the pointer, clamped by
+ * `useOverlayScrollbar` so the ball never leaves the track (`core/chrome.ts` `leverBall`). It is drawn
+ * MULTIPLIED by the morph, so the ball rides the pointer while grabbed and, as the spring takes the
+ * morph back to 0 on release, slides home into the handle while it shrinks. The ball may therefore
+ * sit well outside the handle's own box, which is the point: the handle keeps reporting depth while
+ * the ball reports the throttle.
  */
 .cal-bar__handle::before {
 	content: "";
@@ -103,7 +106,8 @@
 	border-radius: var(--radius-full);
 	background: var(--cal-bar-fill-strong);
 	opacity: var(--cal-bar-morph);
-	transform: translate(-50%, calc(-50% + var(--cal-bar-throw))) scale(var(--cal-bar-morph));
+	transform: translate(-50%, calc(-50% + var(--cal-bar-throw) * var(--cal-bar-morph)))
+		scale(var(--cal-bar-morph));
 	transform-origin: center;
 	/* The ball is decoration drawn over the handle; the handle keeps the whole target. */
 	pointer-events: none;

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { Signal } from "@preact/signals";
 import "../styles/editor.css";
 import { cx } from "../../core/cx.ts";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 import type { Bindable, FieldStatus, ValueChange } from "../../fields/types/mod.ts";
 import { markdownToHtml, shouldParseMarkdown } from "../core/markdown.ts";
 import { cssLength } from "../core/resize.ts";
@@ -204,16 +205,17 @@ function resolveInitial(value: Bindable<string> | undefined): string {
 /** One toolbar button. Quill's toolbar module binds it by its `ql-*` class + optional `value`. */
 function ToolbarButton({ btn }: { btn: ToolButton }): JSX.Element {
 	return (
-		<button
-			type="button"
-			class={cx("ui-rte__btn", `ql-${btn.format}`)}
-			// `value` is how Quill's toolbar selects a parameterised format (header level, list kind).
-			value={btn.value}
-			aria-label={btn.label}
-			title={btn.label}
-		>
-			{btn.icon}
-		</button>
+		<Tooltip content={btn.label} density="compact">
+			<button
+				type="button"
+				class={cx("ui-rte__btn", `ql-${btn.format}`)}
+				// `value` is how Quill's toolbar selects a parameterised format (header level, list kind).
+				value={btn.value}
+				aria-label={btn.label}
+			>
+				{btn.icon}
+			</button>
+		</Tooltip>
 	);
 }
 

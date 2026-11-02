@@ -137,14 +137,17 @@ export {
 	joystickVelocity,
 	LEVER_DEAD_ZONE_PX,
 	LEVER_DT_CAP_MS,
+	LEVER_FALLBACK_PX_PER_S,
 	LEVER_MAX_PX,
-	LEVER_MAX_THROW_PX,
+	LEVER_MAX_SCROLL_SPEED,
 	LEVER_MAX_V,
 	leverBall,
+	leverDeflection,
 	leverScrollDelta,
-	leverThrowPx,
+	leverSpeed,
+	leverTravel,
 } from "./core/chrome.ts";
-export type { LeverState } from "./core/chrome.ts";
+export type { LeverState, LeverTravel } from "./core/chrome.ts";
 export { columnGeometry, paintGrid, parseCssColor, toCanvasColor } from "./core/grid-paint.ts";
 export type {
 	AccentPaint,

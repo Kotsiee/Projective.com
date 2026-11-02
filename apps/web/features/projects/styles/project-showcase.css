@@ -34,7 +34,6 @@
     column-gap: var(--space-4);
     block-size: var(--shell-midnav-header-h, 3rem);
     padding-inline: var(--space-4);
-    background: var(--surface-1);
     container: pvhead / inline-size;
 }
 
@@ -59,109 +58,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-/*
- * Underlined view-mode tabs — the same treatment as the shared header `TabStrip` (`.ui-tabstrip--header`,
- * §B.4: no pills; the 2px underline lands on the band's bottom hairline), so the two
- * middle-nav headers read as one family. The one deliberate difference is the leading glyph: the
- * channel header keeps its glyph for the compact mobile row, while these tabs show it at every width.
- */
-.proj-pvhead__tabs {
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-4);
-    /*
-     * Centred in the grid's middle track, and the full height of the band so the 2px underline still
-     * lands on the bottom hairline — the grid centres its items vertically, and a tab shorter than the
-     * band gives `inset-block-end: -1px` nothing to sit against.
-     */
-    justify-self: center;
-    align-self: stretch;
-    min-inline-size: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-
-.proj-pvhead__tabs::-webkit-scrollbar {
-    display: none;
-}
-
-.proj-pvtab {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex: none;
-    padding-inline: 0.15rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-decoration: none;
-    background: transparent;
-    transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-pvtab::after {
-    content: "";
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: -1px;
-    block-size: 2px;
-    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-    background: var(--primary);
-    transform: scaleX(0);
-    transform-origin: center;
-    transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.proj-pvtab:hover {
-    color: var(--on-surface);
-}
-
-.proj-pvtab:hover::after {
-    background: color-mix(in srgb, var(--on-surface) 32%, transparent);
-    transform: scaleX(1);
-}
-
-.proj-pvtab[data-active="true"] {
-    color: var(--primary-ink);
-}
-
-:root[data-theme="dark"] .proj-pvtab[data-active="true"] {
-    color: var(--on-surface);
-}
-
-.proj-pvtab[data-active="true"]::after {
-    background: var(--primary);
-    transform: scaleX(1);
-}
-
-.proj-pvtab:focus-visible {
-    outline: none;
-    border-radius: var(--radius-sm);
-    box-shadow: none;
-}
-
-.proj-pvtab__icon {
-    display: inline-flex;
-}
-
-.proj-pvtab__icon svg {
-    inline-size: 1rem;
-    block-size: 1rem;
-}
-
-/* The locked tab's `Tooltip` anchor is the flex item, so it carries the full-height stretch on to it. */
-.proj-pvhead__tabs > .ui-tooltip__anchor {
-    align-items: stretch;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .proj-pvtab,
-    .proj-pvtab::after {
-        transition-duration: 0ms;
-    }
 }
 
 /* #endregion */

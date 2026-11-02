@@ -4,7 +4,8 @@
  * `auth.users` + `org.users_public` records; no DB table of its own, so it lands with no migration.
  * Also the one avatar-resolution rule every person picture follows ({@link avatar}), and the
  * profile-completeness rule behind the popover's completion ring ({@link profile-setup}), and the
- * "Become a Partner" freelancer unlock ({@link freelancer-conversion}).
+ * "Become a Partner" freelancer unlock ({@link freelancer-conversion}), and the rail's right-click
+ * previews ({@link nav-preview}).
  */
 export {
 	type AvatarSources,
@@ -41,3 +42,11 @@ export {
 	StarterSkillOptionSchema,
 } from "./freelancer-conversion.ts";
 export { type AccountSetup, AccountSetupSchema } from "./profile-setup.ts";
+export {
+	NAV_PREVIEW_LIMIT,
+	type NavPreview,
+	type NavPreviewItem,
+	NavPreviewItemSchema,
+	NavPreviewKind,
+	NavPreviewSchema,
+} from "./nav-preview.ts";

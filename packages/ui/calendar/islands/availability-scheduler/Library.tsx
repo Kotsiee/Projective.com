@@ -54,7 +54,7 @@ export function Library(props: LibraryProps): JSX.Element {
 						label="New template"
 						placement="bottom-end"
 						trigger={(api) => (
-							<Tooltip content="New template">
+							<Tooltip content="New template" density="compact">
 								<button
 									ref={api.ref as RefObject<HTMLButtonElement>}
 									type="button"

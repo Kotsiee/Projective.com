@@ -7,6 +7,7 @@ import {
 	isOpenFeedbackShortcut,
 	type ShortcutTarget,
 } from "@features/shell/core/shortcuts.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { onOpenFeedback } from "../core/feedback-bridge.ts";
 import {
 	FEEDBACK_HOME,
@@ -140,7 +141,7 @@ export default function FeedbackHost(props: FeedbackHostProps): JSX.Element | nu
 					taken: pending.current.event.defaultPrevented,
 				}
 				: null;
-			if (isOpenFeedbackShortcut(event, previous, now)) {
+			if (isOpenFeedbackShortcut(event, previous, now) && shortcutOn("open-feedback")) {
 				pending.current = null;
 				if (openFrom("board")) event.preventDefault();
 				return;

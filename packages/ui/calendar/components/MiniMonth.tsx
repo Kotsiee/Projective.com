@@ -11,6 +11,7 @@
  */
 import type { JSX } from "preact";
 import { cx } from "../../core/cx.ts";
+import { Tooltip } from "../../feedback/mod.ts";
 import type { CalendarViewMode } from "../core/types.ts";
 import {
 	fmtMonthYear,
@@ -52,22 +53,26 @@ export function MiniMonth(props: MiniMonthProps): JSX.Element {
 			<div class="cal-mini__head">
 				<span class="cal-mini__title">{fmtMonthYear(props.monthMs, tz)}</span>
 				<div class="cal-mini__nav">
-					<button
-						type="button"
-						class="cal-mini__navbtn"
-						onClick={() => props.onMonthStep(-1)}
-						aria-label="Previous month"
-					>
-						<ChevronLeftIcon size={15} />
-					</button>
-					<button
-						type="button"
-						class="cal-mini__navbtn"
-						onClick={() => props.onMonthStep(1)}
-						aria-label="Next month"
-					>
-						<ChevronRightIcon size={15} />
-					</button>
+					<Tooltip content="Previous month" density="compact">
+						<button
+							type="button"
+							class="cal-mini__navbtn"
+							onClick={() => props.onMonthStep(-1)}
+							aria-label="Previous month"
+						>
+							<ChevronLeftIcon size={15} />
+						</button>
+					</Tooltip>
+					<Tooltip content="Next month" density="compact">
+						<button
+							type="button"
+							class="cal-mini__navbtn"
+							onClick={() => props.onMonthStep(1)}
+							aria-label="Next month"
+						>
+							<ChevronRightIcon size={15} />
+						</button>
+					</Tooltip>
 				</div>
 			</div>
 

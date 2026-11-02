@@ -93,7 +93,14 @@ import { useCanvasViewport } from "../hooks/useCanvasViewport.ts";
 import { wheelZoomFactor } from "../core/zoom.ts";
 import type { FrameStats } from "../core/scene-paint.ts";
 import { hoverExpansionFor } from "../core/scene-paint.ts";
-import { handleLength, leverBall, leverScrollDelta } from "../core/chrome.ts";
+import {
+	handleLength,
+	leverBall,
+	leverScrollDelta,
+	leverSpeed,
+	type LeverTravel,
+	leverTravel,
+} from "../core/chrome.ts";
 import { createSpring, SPRING_EXPRESSIVE_EXIT, SPRING_SNAPPY } from "../../core/motion.ts";
 import type { GridCanvasApi } from "../hooks/useGridCanvas.ts";
 import { useGridCanvas } from "../hooks/useGridCanvas.ts";
@@ -690,6 +697,17 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	const lastLever = useRef<{ grabY: number; pointerY: number } | null>(null);
 
 	/**
+	 * Where the lever's ball may travel, in canvas space: the whole gauge track, less half a ball at
+	 * each end so the ball never leaves it. Read per call because the viewport and the probed ball size
+	 * can both change while the component lives.
+	 */
+	function barTravel(): LeverTravel {
+		const inset = metrics().barInset;
+		const ball = canvasApi.current?.palette()?.barBallSize ?? 0;
+		return leverTravel(inset, viewport.viewportH.peek() - inset, ball);
+	}
+
+	/**
 	 * The scene as it is RIGHT NOW, with every SPRUNG value applied.
 	 *
 	 * The draw and the hit test both read this and nothing else, which is what keeps an expanded card's
@@ -716,7 +734,9 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			const track = Math.max(1, viewport.viewportH.peek() - metrics().barInset * 2);
 			const frozen = bar.frozen ??
 				handleLength(track, viewport.visibleFraction.peek());
-			const lever = grip && morph > 0 ? leverBall(grip.grabY, grip.pointerY, morph) : null;
+			const lever = grip && morph > 0
+				? leverBall(grip.grabY, grip.pointerY, morph, barTravel())
+				: null;
 			next = { ...base, scrollbar: { ...bar, frozen, lever } };
 		}
 		const cards = next.events;
@@ -895,8 +915,10 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	}
 
 	/**
-	 * The lever's THROTTLE loop: while the handle is held, scroll by `joystickVelocity(deflection)`
-	 * every frame, where the deflection is how far the pointer has travelled from where it grabbed.
+	 * The lever's THROTTLE loop: while the handle is held, scroll every frame by the deflection `d` —
+	 * the ball's distance from where it grabbed, normalised against the track on that side — times
+	 * `LEVER_MAX_SCROLL_SPEED` PERIODS (week blocks) per second at full deflection, times the real
+	 * elapsed time.
 	 *
 	 * This is what makes the gesture rate-based rather than positional, and it is what makes it
 	 * infinite: a position mapping runs out of track at the end of a finite bar, while a throttle held
@@ -918,8 +940,11 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		const dt = now - barLeverAt.current;
 		barLeverAt.current = now;
 		// `leverScrollDelta` caps `dt` itself, so a tab resumed after a minute does not integrate the
-		// whole gap in one jump.
-		const delta = leverScrollDelta(cur.pointerY - cur.grabY, dt);
+		// whole gap in one jump. The speed is read per frame because a zoom mid-drag changes how tall
+		// one period is.
+		const { deflection } = leverBall(cur.grabY, cur.pointerY, 1, barTravel());
+		const periodPx = (BLOCK_MIN / 60) * pxPerHour.peek();
+		const delta = leverScrollDelta(deflection, leverSpeed(periodPx), dt);
 		if (delta !== 0) viewport.scrollBy(delta);
 		barLeverRaf.current = globalThis.requestAnimationFrame?.(tickLever) ?? null;
 	}
@@ -1310,8 +1335,8 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			lastLever.current = { grabY: at.y, pointerY: at.y };
 			gesture.value = { kind: "bar", grabY: at.y, pointerY: at.y, frozen: hit.rect.h };
 			// The handle becomes a ball for as long as it is held, and the throttle runs from the moment
-			// of the grab rather than from the first move — a lever held still is a lever at rest, which
-			// `joystickVelocity` already reports as zero.
+			// of the grab rather than from the first move — the grab IS the neutral origin, so a lever
+			// held still is a lever at rest, which `leverDeflection` already reports as zero.
 			morphSpring.set(1);
 			startLever();
 			trackGesture(() => {

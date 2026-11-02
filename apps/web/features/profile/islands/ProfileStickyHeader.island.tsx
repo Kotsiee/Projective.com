@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 // `profile-skeleton.css` is load-bearing, not cosmetic reuse: the GUEST shell keys its sub-header
 // glass underlay, hairline and elevation off the literal selector
@@ -130,7 +131,9 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 					shape="circle"
 					class="pf-band__avatar"
 				/>
-				<span class="pf-band__name" title={profile.name}>{profile.name}</span>
+				<Tooltip content={profile.name} whenTruncated>
+					<span class="pf-band__name">{profile.name}</span>
+				</Tooltip>
 				<VerificationStampBadge
 					stamp={trustOverride.stamp === "auto" ? profile.verificationStamp : trustOverride.stamp}
 					size="xs"

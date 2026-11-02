@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import type { MenuItem } from "../../types/mod.ts";
-import { absoluteHref, composeMenu, linkActionItems } from "./link-actions.ts";
+import { absoluteHref, composeMenu, linkActionItems, linkOpenItem } from "./link-actions.ts";
 
 const keys = (rows: MenuItem[]) => rows.map((row) => row.separator ? "|" : row.key);
 
@@ -57,6 +57,29 @@ Deno.test("composeMenu joins non-empty groups with one separator each", () => {
 	const b: MenuItem[] = [{ key: "b" }];
 	assertEquals(keys(composeMenu(a, [], b)), ["a", "|", "b"]);
 	assertEquals(composeMenu([], []), []);
+});
+
+Deno.test("linkOpenItem is an Open row that unfolds the ways to open and copy it", () => {
+	const row = linkOpenItem({ href: "/messages/t-1", label: "Mara" });
+	assertEquals(row.url, "/messages/t-1");
+	assertEquals(row.label, "Mara");
+	assertEquals(row.icon, "arrow-right");
+	assertEquals(keys(row.items!), [
+		"link-open",
+		"link-open-new-tab",
+		"link-open-new-window",
+		"|",
+		"link-copy",
+	]);
+	const pictured = linkOpenItem({ href: "/x", image: null });
+	assertEquals(pictured.icon, undefined, "a picture replaces the icon");
+	assertEquals(pictured.label, "Open");
+});
+
+Deno.test("linkOpenItem can leave Copy link to its host and open only on right-click", () => {
+	const row = linkOpenItem({ href: "/saved", copy: false, submenuOn: "contextmenu" });
+	assertEquals(keys(row.items!), ["link-open", "link-open-new-tab", "link-open-new-window"]);
+	assertEquals(row.submenuOn, "contextmenu");
 });
 
 Deno.test("absoluteHref leaves an href alone outside a document", () => {

@@ -17,6 +17,7 @@ import "@web/features/projects/styles/attachment-modal.css";
 import "../styles/files-hub.css";
 import "../styles/asset-picker.css";
 import "../styles/media-crop.css";
+import "../styles/quota-ring.css";
 // #endregion
 
 import { Backdrop, BodyPortal } from "@projective/ui/overlay";
@@ -81,7 +82,7 @@ import { type AssetActivation, AssetCard } from "../components/AssetCard.tsx";
 import { AssetFolderCard } from "../components/AssetFolderCard.tsx";
 import { AssetTree, ROOT_KEY } from "../components/AssetTree.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
-import { QuotaMeter } from "../components/QuotaMeter.tsx";
+import { QuotaRing } from "../components/QuotaRing.tsx";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
 import { MediaCropWorkspace } from "../components/media-crop/MediaCropWorkspace.tsx";
 import { SignInPictureSource } from "../components/media-crop/SignInPictureSource.tsx";
@@ -101,7 +102,7 @@ import { offlineOr } from "@web/utils/use-offline-stall.ts";
  * It is the `/files` hub adapted to a modal container, and adapted rather than re-drawn on purpose:
  * the file tile is the same {@link AssetCard}, the folder tile the same {@link AssetFolderCard}, the
  * directory tree the same {@link AssetTree}, the detail pane the same {@link InspectPanel} and the
- * allowance the same {@link QuotaMeter}. A person who has learned to find a file in one place has
+ * allowance the same {@link QuotaRing}. A person who has learned to find a file in one place has
  * learned to find it in the other, and a second card family is how those two places start to drift.
  *
  * ## How a host uses it
@@ -229,7 +230,8 @@ export interface AssetPickerProps {
 /**
  * Where the picker can look. One list, in reading order — and the order is the answer to "where would
  * I have put this?": the engagement I am in, then my own library, then what I touched last, then the
- * accounts I have linked, then the two ways of introducing something that is not here yet.
+ * accounts I have linked. The two ways of introducing something that is not here yet are footer
+ * actions ({@link FOOTER_SOURCES}), beside the allowance they spend.
  */
 type SourceKey = "project" | "library" | "recent" | "drives" | "link" | "upload" | "oauth";
 
@@ -266,7 +268,11 @@ const SOURCES: readonly SourceSpec[] = [
 		icon: "box",
 		note: "Read-only. Files stay where they live; attaching links to them.",
 	},
-	{ key: "link", label: "Paste a link", icon: "link", note: "Store a web address as a file." },
+];
+
+/** The panes the attach footer's Upload and Paste link open; the rail does not list them. */
+const FOOTER_SOURCES: readonly SourceSpec[] = [
+	{ key: "link", label: "Paste link", icon: "link", note: "Store a web address as a file." },
 	{ key: "upload", label: "Upload", icon: "upload", note: "Add something from this device." },
 ];
 
@@ -1494,7 +1500,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			pickerSelection.value.find((a) => a.id === inspectId.value) ?? null
 		: null;
 
-	const spec = activeSources.find((s) => s.key === source.value) ?? SOURCES[1];
+	const spec = [...activeSources, ...FOOTER_SOURCES].find((s) => s.key === source.value) ??
+		SOURCES[1];
 	const navShown = navOpen.value && !cropping;
 	const stageShown = media !== null && (cropping || source.value === "upload");
 	const loc = locationOf(source.value);
@@ -1721,13 +1728,6 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 							? `This picker is accepting ${accept.noun}.`
 							: "They are added to your library, then chosen for you."}
 					</p>
-					<Button
-						severity="neutral"
-						variant="outlined"
-						size="sm"
-						label="Choose from this device"
-						onClick={() => fileInputRef.current?.click()}
-					/>
 				</div>
 
 				{mine.value.length > 0
@@ -1735,7 +1735,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						<ul class="apk-queue" role="list" aria-label="Uploads">
 							{mine.value.map((task) => (
 								<li class="apk-queue__row" key={task.id} data-phase={task.phase}>
-									<span class="apk-queue__name" title={task.name}>{task.name}</span>
+									<Tooltip content={task.name} whenTruncated>
+										<span class="apk-queue__name">{task.name}</span>
+									</Tooltip>
 									<span class="apk-queue__size">{task.sizeLabel}</span>
 									<span class="apk-queue__phase">{uploadPhaseLabel(task)}</span>
 								</li>
@@ -1759,11 +1761,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						? <p class="apk-tray__empty" role="status">{status}</p>
 						: chosen.length === 0
 						? (
-							<span class="apk__why" id="apk-save-why">
+							<p class="apk-tray__empty" id="apk-save-why">
 								{config.max > 1
 									? `Nothing chosen yet — choose up to ${config.max} for your empty slots.`
 									: "Choose or upload a picture to frame it."}
-							</span>
+							</p>
 						)
 						: (
 							<ul class="apk-tray__list" role="list">
@@ -1777,9 +1779,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 													? <img src={thumb} alt="" loading="lazy" />
 													: <FileKindIcon kind={item.candidate.kind} size={16} />}
 											</span>
-											<span class="apk-tray__name" title={item.candidate.name}>
-												{item.candidate.name}
-											</span>
+											<Tooltip content={item.candidate.name} whenTruncated>
+												<span class="apk-tray__name">{item.candidate.name}</span>
+											</Tooltip>
 										</>
 									);
 									return (
@@ -1828,6 +1830,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 							<>
 								<Button
 									variant="text"
+									severity="secondary"
+									class="apk__muted"
 									label="Back"
 									disabled={mediaPick.saving.value}
 									onClick={() => mediaPick.back()}
@@ -1843,7 +1847,13 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						)
 						: (
 							<>
-								<Button variant="text" label="Cancel" onClick={dismiss} />
+								<Button
+									variant="text"
+									severity="secondary"
+									class="apk__muted"
+									label="Cancel"
+									onClick={dismiss}
+								/>
 								{config.max > 1
 									? (
 										<Button
@@ -2154,13 +2164,43 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						</div>
 						{/* #endregion */}
 
-						{/* #region Footer — the tray, the allowance, the action */}
+						{/* #region Footer — the ways in, the allowance, the tray, the action */}
 						{media ? mediaFooter(media) : (
 						<footer class="apk__foot">
+							<div class="apk__tools">
+								{
+									/* Upload opens the drop pane too: that pane is where its progress and any
+									   refusal are shown. */
+								}
+								<Button
+									severity="neutral"
+									variant="outlined"
+									label="Upload"
+									icon={<Icon name="upload" size="sm" />}
+									onClick={() => {
+										pickSource("upload");
+										fileInputRef.current?.click();
+									}}
+								/>
+								<Tooltip content="Paste link" placement="top">
+									<Button
+										iconOnly
+										rounded
+										variant="text"
+										severity="secondary"
+										class="apk__muted ui-hit"
+										icon={<Icon name="link" size="sm" />}
+										aria-label="Paste link"
+										onClick={() => pickSource("link")}
+									/>
+								</Tooltip>
+								<QuotaRing quota={quota.value} upgradeHref="/settings/billing#plan" />
+							</div>
+
 							<div class="apk-tray" role="group" aria-label="Chosen files">
 								{count === 0
 									? (
-										<p class="apk-tray__empty">
+										<p class="apk-tray__empty" id="apk-attach-why">
 											{accept.active
 												? `Nothing chosen yet — pick ${
 													multiple ? accept.noun : `one of your ${accept.noun}`
@@ -2178,7 +2218,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 															? <img src={asset.thumbnailUrl} alt="" loading="lazy" />
 															: <FileKindIcon kind={asset.kind} size={16} />}
 													</span>
-													<span class="apk-tray__name" title={asset.name}>{asset.name}</span>
+													<Tooltip content={asset.name} whenTruncated>
+														<span class="apk-tray__name">{asset.name}</span>
+													</Tooltip>
 													<Tooltip content={`Remove ${asset.name}`}>
 														<button
 															type="button"
@@ -2196,24 +2238,16 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 									)}
 							</div>
 
-							{quota.value
-								? (
-									<div class="apk__quota">
-										<QuotaMeter quota={quota.value} compact />
-									</div>
-								)
-								: null}
-
 							<div class="apk__actions">
 								{notice.value ? <p class="apk__notice" role="status">{notice.value}</p> : null}
-								<Button variant="text" label="Cancel" onClick={dismiss} />
-								{
-									/*
-									 * Disabled with the reason stated beside it, never a silently inert button: at
-									 * zero the control is the only thing on screen that could explain what is
-									 * missing, and a press that does nothing explains nothing.
-									 */
-								}
+								<Button
+									variant="text"
+									severity="secondary"
+									class="apk__muted"
+									label="Cancel"
+									onClick={dismiss}
+								/>
+								{/* Disabled at zero, described by the tray's own "Nothing chosen yet." */}
 								<Button
 									variant="filled"
 									label={count > 0 ? `Attach Selected (${count})` : "Attach Selected"}
@@ -2221,13 +2255,6 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 									aria-describedby={count === 0 ? "apk-attach-why" : undefined}
 									onClick={confirm}
 								/>
-								{count === 0
-									? (
-										<span class="apk__why" id="apk-attach-why">
-											Choose at least one file first.
-										</span>
-									)
-									: null}
 							</div>
 						</footer>
 						)}

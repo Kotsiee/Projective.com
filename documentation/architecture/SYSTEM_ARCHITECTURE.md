@@ -1406,7 +1406,10 @@ project channels; the project star (`projects.user_preferences`); the conversati
 `MessagingBackendService.setStarred` → `comms.set_dm_starred`); message favourites; the file owner's
 star (dispatched to `FilesBackendService.star`) — and every write evicts the tenant's projects and
 messaging read caches so the next read agrees. Follows stay `ProfileBackendService`'s; `/saved`
-lists them read-only. **Live only** (like Profile and Files): there are no fixtures to save into, so
+lists them read-only. `SavedBackendService.pins` answers when each thing of some kinds was saved,
+keyed `type:ref`, for `NavPreviewBackendService` (`services/user/`, Decision #370), which composes the
+inbox, project feed, catalogue console and workspace roster reads into the rail's right-click
+previews and pins saved things first (`nav-preview-rank.ts`). **Live only** (like Profile and Files): there are no fixtures to save into, so
 `dev:mock` answers 503 and the client rolls back; the Dev Context Switcher's `saved` axis substitutes
 the set client-side. The client half is one optimistic discipline (`features/saved/core/optimistic.ts`:
 apply → persist → roll back → announce) and one batched `/api/saved/state` lookup for the cards and
@@ -2118,7 +2121,7 @@ dev `accountLifecycle` axis substitutes the handle policy or the lifecycle answe
 
 **Islands stay dumb.** The modal host and the console islands only `fetch` `/api/*` through
 `SettingsService`; every write is an existing or new thin route over a fat service. The modal's
-eleven sections are a lazily-imported module (also their stylesheet carrier), so a page that only
+twelve sections are a lazily-imported module (also their stylesheet carrier), so a page that only
 renders a gear never ships them. The URL contract (push on open, replace between sections, strip on
 close, `fClientNav: false` on every entry) is in `ROUTING.md` §Settings engine.
 
@@ -2127,7 +2130,10 @@ close, `fClientNav: false` on every entry) is in `ROUTING.md` §Settings engine.
 (`utils/a11y-context.ts`, not HttpOnly — it carries no authority) is its per-device mirror, read by
 `routes/_middleware.ts` into `ctx.state.a11y` and written by `_app.tsx` onto `<html>`
 (`data-contrast` · `data-font` · `data-cvd` · `data-motion`, plus `dir` — the document direction rides
-the same cookie because a mirrored relayout after paint is a full reflow). Only overlays that are ON
+the same cookie because a mirrored relayout after paint is a full reflow — plus the keyboard half of
+`ui_settings`, Decision #371: `data-tooltip-shortcuts="on"`, which `@projective/ui` Tooltip reads before
+drawing a shortcut, and `data-shortcuts-off`, the space-separated ids every shortcut listener checks
+through `shortcutOn()` at keydown). Only overlays that are ON
 become attributes, so the OS `prefers-contrast` / `prefers-reduced-motion` queries still apply under
 `standard`. `hydrateConfigFromDom` reads those attributes back into the design-system store, so
 hydration never repaints the defaults. A change applies in this order: the store (same frame) → the

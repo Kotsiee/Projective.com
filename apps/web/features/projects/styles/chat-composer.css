@@ -110,11 +110,22 @@
 	white-space: nowrap;
 }
 
-.chat-composer__card[data-kind="image"] .chat-composer__card-name,
-.chat-composer__card[data-kind="video"] .chat-composer__card-name {
+/* The caption sits in its name-and-size Tooltip's anchor, which takes the caption's place in the card. */
+.chat-composer__card > .ui-tooltip__anchor {
+	min-inline-size: 0;
+	max-inline-size: 100%;
+}
+
+.chat-composer__card[data-kind="image"] > .ui-tooltip__anchor,
+.chat-composer__card[data-kind="video"] > .ui-tooltip__anchor {
 	position: absolute;
 	inset-block-end: 0;
 	inset-inline: 0;
+}
+
+.chat-composer__card[data-kind="image"] .chat-composer__card-name,
+.chat-composer__card[data-kind="video"] .chat-composer__card-name {
+	flex: 1 1 auto;
 	max-inline-size: none;
 	padding: 0.15rem 0.3rem;
 	/* A caption on the thumbnail itself — the scrim pair, since the ground is the photo, not a role. */
@@ -526,6 +537,15 @@
 
 .chat-composer__menu-icon {
 	font-size: 1.05rem;
+}
+
+/* The row's shortcut, as `.ui-menu__shortcut` draws one: trailing, mono, meta ink. */
+.chat-composer__menu-keys {
+	margin-inline-start: auto;
+	padding-inline-start: var(--space-4);
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
 }
 
 /* #endregion */

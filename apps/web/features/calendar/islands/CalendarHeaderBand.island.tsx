@@ -104,7 +104,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 			</div>
 
 			<div class="cal-band__trail" role="group" aria-label="Change period">
-				<Tooltip content="Today">
+				<Tooltip content="Today" density="compact">
 					<button
 						type="button"
 						class="cal-band__navbtn"
@@ -114,7 +114,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 						<Icon name="calendar" size="xs" />
 					</button>
 				</Tooltip>
-				<Tooltip content="Previous">
+				<Tooltip content="Previous" density="compact">
 					<button
 						type="button"
 						class="cal-band__navbtn"
@@ -125,7 +125,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					</button>
 				</Tooltip>
 				<span class="cal-band__period">{period}</span>
-				<Tooltip content="Next">
+				<Tooltip content="Next" density="compact">
 					<button
 						type="button"
 						class="cal-band__navbtn"
@@ -163,7 +163,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					 * this band's below it, with the same facets — one control that moves, never two.
 					 */
 				}
-				<Tooltip content="Filter what is shown">
+				<Tooltip content="Filter what is shown" density="compact">
 					<button
 						type="button"
 						ref={filterRef}
@@ -204,7 +204,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					 * same destination as the lane's controls.
 					 */
 				}
-				<Tooltip content="Availability">
+				<Tooltip content="Availability" density="compact">
 					<button
 						type="button"
 						class="cal-band__iconbtn cal-band__iconbtn--mobile"
@@ -216,7 +216,10 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					</button>
 				</Tooltip>
 
-				<Tooltip content={panelOpen ? "Hide month navigator" : "Show month navigator"}>
+				<Tooltip
+					content={panelOpen ? "Hide month navigator" : "Show month navigator"}
+					density="compact"
+				>
 					<button
 						type="button"
 						class="cal-band__iconbtn"

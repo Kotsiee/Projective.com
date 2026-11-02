@@ -21,6 +21,7 @@ import { useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 import type { GanttStore } from "../core/gantt-store.ts";
 import type { TimeTick } from "../core/time-scale.ts";
 
@@ -64,6 +65,7 @@ function Row(
 		const w = store.xOf(next.ms) - x;
 		if (w <= 0) continue;
 		const today = nowMs !== null && nowMs >= t.ms && nowMs < next.ms;
+		const label = labelFor(t, w);
 		cells.push(
 			<span
 				key={t.ms}
@@ -73,9 +75,9 @@ function Row(
 					fine && today && "gantt-head__cell--today",
 				)}
 				style={styleVars({ "--gantt-cell-x": `${x}px`, "--gantt-cell-w": `${w}px` })}
-				title={t.label}
 			>
-				{labelFor(t, w)}
+				{/* The full label, only where the cell had to fall back to a shorter form (or none). */}
+				<Tooltip content={label === t.label ? "" : t.label}>{label}</Tooltip>
 			</span>,
 		);
 	}

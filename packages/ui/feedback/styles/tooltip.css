@@ -1,11 +1,24 @@
 /*
- * Tooltip (ui-tooltip) — hover/focus micro-popup. Inverted high-contrast chip positioned by
- * --float-* custom properties. Token-only; short fade off [data-state], collapsed under reduced
- * motion. The anchor is an inline wrapper so it lays out with the element it describes.
+ * Tooltip (ui-tooltip) — hover/focus micro-popup positioned by --float-* custom properties. Anchored
+ * tier (§B.10.1): `--overlay-radius-sm`, `--hairline` seam. `--inverted` (default) is the
+ * high-contrast chip on the --on-surface/--surface pair; `--surface` is a raised --surface-3 panel.
+ * A tone re-fills either: a filled status pair on inverted, an opaque status tint on surface — both
+ * pairs are the contrast-tested ones. `--compact` is the dense-toolbar density. Long text wraps into
+ * balanced lines inside a width that never meets the viewport edge. A shortcut is muted meta text, not
+ * a key chip, and high contrast (both channels) gives the panel a full-ink edge and the shortcut its
+ * full ink. Token-only; a short fade off [data-state], 0ms under both reduced-motion channels. The
+ * anchor is an inline wrapper so it lays out with the element it describes.
  */
 
 .ui-tooltip__anchor {
 	display: inline-flex;
+}
+/* `whenTruncated`: the anchor may shrink below its label and never outgrow its container, so the
+   label inside still clips with its own ellipsis. No `overflow: hidden` here — the label clips itself,
+   and the anchor would cut the focus ring or underline of a control it wraps. */
+.ui-tooltip__anchor--truncate {
+	min-inline-size: 0;
+	max-inline-size: 100%;
 }
 .ui-tooltip {
 	position: fixed;
@@ -14,13 +27,17 @@
 	   already placed direction-aware, and a logical property would mirror it a second time under
 	   `dir="rtl"`. See `.ui-anchored` in `packages/ui/styles/index.css` for the full reasoning. */
 	left: var(--float-left, -9999px);
+	/* A static band by design (§B.10.3): above every class `useOverlayStack` allocates, and a claim
+	   would steal Escape from the dialog the tooltip is shown inside. */
 	z-index: var(--z-tooltip);
-	max-inline-size: var(--container-sm);
-	padding: var(--space-1) var(--space-2);
-	font-size: var(--text-sm);
-	line-height: var(--leading-snug);
-	color: var(--surface);
-	background: var(--on-surface);
+	max-inline-size: min(18rem, calc(100vw - var(--space-4)));
+	padding: var(--space-1) var(--space-3);
+	white-space: normal;
+	text-wrap: balance;
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+	/* A revealed filename or hash has no break opportunity of its own. */
+	overflow-wrap: break-word;
 	border-radius: var(--overlay-radius-sm);
 	box-shadow: var(--elevation-medium);
 	pointer-events: none;
@@ -30,8 +47,77 @@
 .ui-tooltip[data-state="open"] {
 	opacity: 1;
 }
+
+/* #region Variant & tone */
+.ui-tooltip--inverted {
+	color: var(--surface);
+	background: var(--on-surface);
+}
+.ui-tooltip--inverted.ui-tooltip--warning {
+	color: var(--on-warning);
+	background: var(--warning);
+}
+.ui-tooltip--inverted.ui-tooltip--danger {
+	color: var(--on-danger);
+	background: var(--danger);
+}
+.ui-tooltip--surface {
+	color: var(--on-surface);
+	background: var(--surface-3);
+	border: var(--hairline);
+}
+.ui-tooltip--surface.ui-tooltip--warning {
+	background: var(--warning-tint);
+}
+.ui-tooltip--surface.ui-tooltip--danger {
+	background: var(--danger-tint);
+}
+/* #endregion */
+
+.ui-tooltip--compact {
+	padding: var(--space-px) var(--space-2);
+	font-size: var(--text-2xs);
+	line-height: var(--leading-tight);
+}
+.ui-tooltip--interactive {
+	pointer-events: auto;
+}
+
+/* #region Shortcut */
+.ui-tooltip__shortcut {
+	white-space: nowrap;
+}
+/* Muted off whichever variant/tone ink it sits on; the UA's `<kbd>` box is not drawn. */
+.ui-tooltip__kbd {
+	margin-inline-start: var(--space-2);
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	color: color-mix(in srgb, currentColor 65%, transparent);
+}
+/* #endregion */
+
+/* #region High contrast — the OS channel unless the reader chose normal, then the in-app choice */
+@media (prefers-contrast: more) {
+	:root:not([data-contrast="normal"]) .ui-tooltip {
+		outline: 1px solid var(--outline);
+	}
+	:root:not([data-contrast="normal"]) .ui-tooltip__kbd {
+		color: inherit;
+	}
+}
+:root[data-contrast="high"] .ui-tooltip {
+	outline: 1px solid var(--outline);
+}
+:root[data-contrast="high"] .ui-tooltip__kbd {
+	color: inherit;
+}
+/* #endregion */
+
 @media (prefers-reduced-motion: reduce) {
 	.ui-tooltip {
 		transition-duration: 0ms;
 	}
+}
+:root[data-motion="reduced"] .ui-tooltip {
+	transition-duration: 0ms;
 }

@@ -48,8 +48,11 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	padding: 0;
+	padding: 0 0.15rem;
 	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	line-height: 1.4;
 	color: var(--text-secondary);
 	white-space: nowrap;
 	text-decoration: none;
@@ -66,14 +69,22 @@
 	inset-block-end: -1px;
 	block-size: 2px;
 	border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-	background: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 32%, transparent);
 	transform: scaleX(0);
 	transform-origin: center;
-	transition: transform var(--dur-fast) var(--ease-standard);
+	/* The colour eases too, so a tab losing the active state shrinks from teal, never a solid ink flash. */
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
-.ui-tabstrip__tab:hover {
+/* Keyboard focus wears the hover state: the owner's no-ring directive leaves it the only focus cue. */
+.ui-tabstrip__tab:is(:hover, :focus-visible) {
 	color: var(--on-surface);
+}
+
+.ui-tabstrip__tab:is(:hover, :focus-visible)::after {
+	transform: scaleX(1);
 }
 
 .ui-tabstrip__tab[data-active="true"] {
@@ -90,6 +101,16 @@
 	box-shadow: none;
 }
 
+/* A locked tab is a place not reached yet: muted ink, no underline, its glyph shown at every width. */
+.ui-tabstrip__tab[aria-disabled="true"] {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+
+.ui-tabstrip__tab[aria-disabled="true"]::after {
+	content: none;
+}
+
 .ui-tabstrip__icon {
 	display: inline-flex;
 	font-size: var(--icon-sm);
@@ -104,30 +125,17 @@
 	background: var(--primary);
 }
 
-.ui-tabstrip--header .ui-tabstrip__tab {
-	padding-inline: 0.15rem;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-}
-
-.ui-tabstrip--header .ui-tabstrip__tab:hover::after {
-	background: color-mix(in srgb, var(--on-surface) 32%, transparent);
-	transform: scaleX(1);
-}
-
-.ui-tabstrip--header .ui-tabstrip__tab[data-active="true"]::after {
-	background: var(--primary);
-}
-
 .ui-tabstrip--header .ui-tabstrip__icon {
 	display: none;
 }
 
+.ui-tabstrip--header .ui-tabstrip__tab[aria-disabled="true"] .ui-tabstrip__icon {
+	display: inline-flex;
+}
+
+/* A header tab takes the band's height; a lane tab has no band edge, so it spaces its own underline. */
 .ui-tabstrip--lane .ui-tabstrip__tab {
 	padding-block: 0 var(--space-1);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	line-height: 1.4;
 }
 /* #endregion */
 
@@ -208,8 +216,8 @@
 	color: var(--text-secondary);
 }
 
-.ui-tabstrip__option:hover,
-.ui-tabstrip__option:focus-visible {
+/* A locked option keeps the menu's own disabled ink. */
+.ui-tabstrip__option:not([aria-disabled="true"]):is(:hover, :focus-visible) {
 	color: var(--on-surface);
 }
 

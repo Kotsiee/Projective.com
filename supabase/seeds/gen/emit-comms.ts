@@ -134,12 +134,15 @@ export function emitComms(world: World): string {
 				Infinity,
 			);
 			const lastReadDaysAgo = read ? last : Math.min(lastOwn, last + 0.02);
+			const starred = !!dm.starredBy?.includes(key);
 			dmParticipantRows.push([
 				id(uuidFor("dm_participant", `${dm.key}:${key}`)),
 				id(threadId),
 				id(p.userId),
 				ago(Number.isFinite(lastReadDaysAgo) ? lastReadDaysAgo : first + 0.01),
-				String(!!dm.starredBy?.includes(key)),
+				String(starred),
+				// Starred once they had read the thread — never before they joined it.
+				starred ? ago(Math.min(first, lastReadDaysAgo)) : "NULL",
 				ago(first + 0.01),
 			]);
 		}
@@ -163,7 +166,7 @@ export function emitComms(world: World): string {
 	out.push(
 		insert(
 			"comms.dm_participants",
-			["id", "thread_id", "user_id", "last_read_at", "is_starred", "joined_at"],
+			["id", "thread_id", "user_id", "last_read_at", "is_starred", "starred_at", "joined_at"],
 			dmParticipantRows,
 		),
 	);

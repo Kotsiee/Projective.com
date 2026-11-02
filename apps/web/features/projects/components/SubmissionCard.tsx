@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Tooltip } from "@projective/ui/feedback";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { nodeKindLabel, statusLabel, statusTone } from "../core/submission-model.ts";
 import { FolderGlyph, StageGlyph, SubmissionStatusIcon, UnitGlyph } from "./submission-glyphs.tsx";
@@ -55,7 +56,9 @@ export function SubmissionCard({ node, onOpen }: SubmissionCardProps): JSX.Eleme
 					: null}
 			</span>
 			<span class="subm-card__meta">
-				<span class="subm-card__name" title={node.label}>{node.label}</span>
+				<Tooltip content={node.label} whenTruncated>
+					<span class="subm-card__name">{node.label}</span>
+				</Tooltip>
 				<span class="subm-card__sub">{sub}</span>
 				<span class="subm-card__count">{countLabel}</span>
 			</span>

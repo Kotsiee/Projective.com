@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
 	A11Y_COOKIE,
+	type A11yOverlays,
 	a11yRootAttributes,
 	a11ySetCookie,
 	DEFAULT_A11Y,
@@ -10,18 +11,29 @@ import {
 } from "./a11y-context.ts";
 
 Deno.test("a11y cookie — round-trips every overlay", () => {
-	const overlays = {
+	const overlays: A11yOverlays = {
 		contrast: "high",
 		font: "dyslexic",
 		cvd: "deutan",
 		motion: "reduced",
 		dir: "rtl",
-	} as const;
+		tips: true,
+		keysOff: ["save", "emoji-picker"],
+	};
 	assertEquals(
 		serializeA11y(overlays),
-		"contrast-high_font-dyslexic_cvd-deutan_motion-reduced_dir-rtl",
+		"contrast-high_font-dyslexic_cvd-deutan_motion-reduced_dir-rtl_tips-on_keysoff-save.emoji-picker",
 	);
 	assertEquals(parseA11y(serializeA11y(overlays)), overlays);
+});
+
+Deno.test("a11y cookie — the keyboard half drops a protected or unknown shortcut", () => {
+	assertEquals(parseA11y("keysoff-save.toggle-sidebar.save.<x>").keysOff, ["save"]);
+	assertEquals(parseA11y("tips-yes").tips, false);
+	assertEquals(
+		a11yRootAttributes({ ...DEFAULT_A11Y, tips: true, keysOff: ["focus-search", "save"] }),
+		{ "data-tooltip-shortcuts": "on", "data-shortcuts-off": "focus-search save" },
+	);
 });
 
 Deno.test("a11y cookie — missing, junk and tampered values degrade field by field to no overlay", () => {
@@ -45,6 +57,8 @@ Deno.test("a11y cookie — the cookie value needs no quoting", () => {
 		cvd: "none",
 		motion: "standard",
 		dir: "ltr",
+		tips: true,
+		keysOff: ["focus-search", "attach-device"],
 	});
 	assertEquals(/^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+$/.test(value), true);
 	assertEquals(
@@ -57,6 +71,7 @@ Deno.test("root attributes — only overlays that are on are written, so the OS 
 	assertEquals(a11yRootAttributes(DEFAULT_A11Y), {});
 	assertEquals(
 		a11yRootAttributes({
+			...DEFAULT_A11Y,
 			contrast: "high",
 			font: "dyslexic",
 			cvd: "protan",

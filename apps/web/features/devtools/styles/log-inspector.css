@@ -43,6 +43,11 @@
 	border-block-end: var(--hairline);
 }
 
+/* The switch's Tooltip anchor must shrink too, or the label never reaches its ellipsis. */
+.dev-log__persist > .ui-tooltip__anchor:has(> .dev-log__switch) {
+	min-inline-size: 0;
+}
+
 .dev-log__switch {
 	display: inline-flex;
 	align-items: center;

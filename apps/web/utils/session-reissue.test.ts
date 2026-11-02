@@ -258,7 +258,13 @@ Deno.test("dashboard guard: an outage answers 503 in place instead of sending an
 // #endregion
 
 // #region Settings writes that change claims
-const PREFERENCES_SAVED = { preferences: null, appearance: null, appearancePersisted: false };
+const PREFERENCES_SAVED = {
+	preferences: null,
+	appearance: null,
+	appearancePersisted: false,
+	uiSettings: null,
+	uiSettingsPersisted: false,
+};
 
 const HANDLE_CHANGED: HandleChanged = {
 	policy: {

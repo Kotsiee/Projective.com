@@ -7,8 +7,8 @@
  * pill, no box, no teal.
  *
  * STUCK it is a floating pill: the strip lets go of its hairline while the `.pf-tabs__pill` around
- * the tabs takes the header band's own glass — the same `--surface-1` veil at `--glass-veil-chrome`,
- * the same `--glass-blur` and `--glass-saturate`, the same `--hairline` contour — on a `::before`
+ * the tabs takes chrome glass — a `--surface-1` veil at `--glass-veil-chrome`, `--glass-blur` and
+ * `--glass-saturate`, a `--hairline` contour — on a `::before`
  * underlay (§B.4.3), plus `--elevation-medium`, because a pill that genuinely floats over scrolling
  * content is owed the shadow (the guest sub-header's own weight). It is the tabs' own content width,
  * centred.

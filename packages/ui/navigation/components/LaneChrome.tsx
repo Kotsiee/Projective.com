@@ -93,8 +93,8 @@ export interface LaneTabsProps<T extends string = string> {
 
 /**
  * LaneTabs — the plain-language tab strip at the peak of a lane: the {@link TabStrip} `lane` tone in
- * its in-place (`role="tablist"`) form. A quiet monochrome underline marks the active tab; no filled
- * pill, no count (§B.4). A tab may carry an unseen-activity dot, with the count it stands for spoken
+ * its in-place (`role="tablist"`) form, styled exactly as the header strip. An underline marks the
+ * active tab; no filled pill, no count (§B.4). A tab may carry an unseen-activity dot, with the count it stands for spoken
  * in its name. When the lane is too narrow for the strip it collapses to the shared ghost dropdown
  * between step chevrons.
  */

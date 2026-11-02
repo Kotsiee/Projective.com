@@ -3,7 +3,7 @@
  *
  * Like `files-hub.css` this sheet dresses REUSED components rather than replacing them: the asset
  * tile is `.fx-card` (file-card.css), the folder tile is `.subm-card` (submission-card.css), the
- * directory tree is `.ui-treenav`, the detail pane is `.fh-inspect` and the allowance is `.fh-quota`.
+ * directory tree is `.ui-treenav`, the detail pane is `.fh-inspect` and the allowance is `.fh-qring`.
  * What it adds is only what the picker introduces — the modal shell, the source rail, the selection
  * treatment, the bounded grid and the footer tray.
  *
@@ -29,8 +29,8 @@
  * each of them — the `--wlt-*` lesson (Decision #60).
  */
 :root {
-	/* The grid column floor. Deliberately smaller than the hub's: a picker pane is a third of a page. */
-	--apk-col: 9.5rem;
+	/* The grid column floor: tiles land near the hub's default-density card (~156px) in a modal pane. */
+	--apk-col: 8.5rem;
 	--apk-col-tight: 7.5rem;
 	/* The tray's thumbnail square. */
 	--apk-thumb: 1.75rem;
@@ -159,10 +159,13 @@
 	color: var(--text-secondary);
 }
 
-.ui-button.apk-main__back {
+/* The muted ghost: the crop back control and the footer's escape hatches (Cancel, Back, Paste link). */
+.ui-button.apk-main__back,
+.ui-button.apk__muted {
 	color: var(--text-secondary);
 }
-.ui-button.apk-main__back:hover:not(:disabled) {
+.ui-button.apk-main__back:hover:not(:disabled),
+.ui-button.apk__muted:hover:not(:disabled) {
 	color: var(--on-surface);
 }
 /* #endregion */
@@ -213,7 +216,8 @@
 	padding: var(--space-3) var(--space-2);
 	overflow-y: auto;
 	overscroll-behavior: contain;
-	border-right: var(--hairline);
+	/* The `/files` lane's tone: one solid step tells the rail from the workspace, so no hairline. */
+	background: var(--surface-1);
 }
 
 .apk-nav__sources,
@@ -524,8 +528,11 @@
 .apk-queue__row:last-child {
 	border-block-end: none;
 }
-.apk-queue__name {
+/* The name's full-text Tooltip anchor is the row's flex item, so the grow that ends the row rides on it. */
+.apk-queue__row > .ui-tooltip__anchor {
 	flex: 1 1 auto;
+}
+.apk-queue__name {
 	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -715,10 +722,12 @@
 	box-shadow: none;
 }
 
-.apk__quota {
+/* The ways a file gets in — Upload, Paste link — and the allowance they spend, at the footer's start. */
+.apk__tools {
 	flex: none;
-	min-inline-size: 8rem;
-	max-inline-size: 12rem;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 .apk__actions {
@@ -733,16 +742,6 @@
 	max-inline-size: 22rem;
 	color: var(--warning);
 	font-size: var(--text-sm);
-}
-/*
- * The reason a disabled action is disabled, printed beside it. Never a tooltip alone: a disabled
- * control takes no hover in several engines, so the explanation would be unreachable exactly when it
- * is needed.
- */
-.apk__why {
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
-	max-inline-size: 12rem;
 }
 
 /* Below the width at which the tray and the actions can share a row, they stack. */

@@ -237,7 +237,7 @@
 /* Below the pinned banner when the channel has one, rather than over it. */
 .chat-feed[data-has-pinned="true"] .msg-selbar {
 	inset-block-start: calc(
-		var(--shell-topbar-h) + var(--shell-midnav-header-h, 0px) + var(--space-4) + 2.6rem + var(--space-3)
+		var(--shell-topbar-h) + var(--shell-midnav-header-h, 0px) + 2.6rem + var(--space-3)
 	);
 }
 

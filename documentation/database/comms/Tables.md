@@ -305,6 +305,7 @@ star, mute and file it independently.
 | :------------- | :---------- | :---- |
 | `last_read_at` | timestamptz | NULL = never opened (distinct from "opened, read nothing"). Written only by `comms.mark_dm_read` (CAS M10), which the conversation page calls on open. |
 | `is_starred`   | boolean     | |
+| `starred_at`   | timestamptz | When the star was set; NULL while unstarred. `comms.set_dm_starred` keeps it with `is_starred` (a repeat star keeps its time). Orders starred conversations newest-first on `/saved` and in the rail's Messages preview (Decision #370). |
 | `inbox_folder` | text        | `'primary'` (default) · `'requests'` · `'archived'` — `dm_participants_inbox_folder_check`. A hiring request files the recipient's row in `requests` (`comms.send_request_message`); their own reply moves it to `primary` (`comms.fn_promote_thread_on_reply`); the participant's moves go through `comms.set_dm_inbox_folder` (no client `UPDATE` policy). |
 | `is_archived`  | boolean     | **GENERATED** `(inbox_folder = 'archived') STORED` — the folder and the flag cannot disagree. |
 | `is_muted`     | boolean     | |

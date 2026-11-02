@@ -1,5 +1,7 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
+	DEFAULT_UI_SETTINGS,
+	resolveUiSettings,
 	splitPreferencesPatch,
 	UserPreferencesSchema,
 	UserPreferencesUpdateSchema,
@@ -34,5 +36,35 @@ Deno.test("splitPreferencesPatch — the display half is display only", () => {
 	assertEquals(splitPreferencesPatch({ theme: "dark", locale: "fr-FR", dateFormat: null }), {
 		appearance: { theme: "dark" },
 		display: { locale: "fr-FR", dateFormat: null },
+		ui: {},
 	});
+});
+
+Deno.test("splitPreferencesPatch — ui_settings is its own half, never display", () => {
+	const ui = { show_tooltip_shortcuts: true };
+	assertEquals(splitPreferencesPatch({ locale: "fr-FR", uiSettings: ui }), {
+		appearance: {},
+		display: { locale: "fr-FR" },
+		ui,
+	});
+});
+
+Deno.test("ui_settings — a protected or unknown shortcut cannot be switched off", () => {
+	const patch = (ids: string[]) =>
+		UserPreferencesUpdateSchema.safeParse({ uiSettings: { disabled_shortcuts: ids } }).success;
+	assert(patch(["save"]));
+	assertFalse(patch(["toggle-sidebar"]));
+	assertFalse(UserPreferencesUpdateSchema.safeParse({ uiSettings: { theme: "dark" } }).success);
+});
+
+Deno.test("ui_settings — a stored value resolves field by field and never throws", () => {
+	assertEquals(resolveUiSettings({}), DEFAULT_UI_SETTINGS);
+	assertEquals(resolveUiSettings(null), DEFAULT_UI_SETTINGS);
+	assertEquals(
+		resolveUiSettings({
+			show_tooltip_shortcuts: "yes",
+			disabled_shortcuts: ["save", "retired-shortcut", "save", 4],
+		}),
+		{ show_tooltip_shortcuts: false, disabled_shortcuts: ["save"] },
+	);
 });

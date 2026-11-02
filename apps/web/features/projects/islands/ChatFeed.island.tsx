@@ -533,7 +533,12 @@ export default function ChatFeed(
 			data-msg-touch={sel.touch.value ? "true" : undefined}
 			data-has-pinned={pinned.length > 0 ? "true" : undefined}
 		>
-			<PinnedBanner pinned={pinned} onJump={(id) => void jumpTo(id)} />
+			<PinnedBanner
+				pinned={pinned}
+				canPin={canPin}
+				onJump={(id) => void jumpTo(id)}
+				onUnpin={(id) => void togglePin(id)}
+			/>
 
 			<MessageSelectionBar
 				selection={sel}

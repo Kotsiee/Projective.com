@@ -14,7 +14,13 @@ import {
 	type MessageReplyDetail,
 	type MessageSentDetail,
 } from "@web/utils/lane-events.ts";
-import { composerMayTake, isTypingKey, ownsKeys } from "../core/chat-keyboard.ts";
+import {
+	attachShortcut,
+	composerMayTake,
+	isApplePlatform,
+	isTypingKey,
+	ownsKeys,
+} from "../core/chat-keyboard.ts";
 import { FormatBubble } from "../components/FormatBubble.tsx";
 import {
 	isVoiceOversize,
@@ -44,6 +50,7 @@ import {
 	ComposerTrailingAction,
 } from "../components/composer/ComposerActions.tsx";
 import { ComposerEmojiAction } from "../components/composer/ComposerEmojiAction.tsx";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import {
 	ComposerCaptureNotice,
 	ComposerSendNotice,
@@ -79,8 +86,8 @@ import {
  *   - a voice engine ({@link useAudioRecorder}) with click-to-toggle, hold-to-talk, and `Ctrl+Space`,
  *     a live scrolling waveform, a `mm:ss` clock, pause/resume, and static equal-width bars once
  *     stopped (5-minute / 10 MB caps);
- *   - a left Plus popover (Upload from Device · Attach from Library — the library modal is stubbed),
- *     drag-and-drop, and up to 10 attachment preview cards;
+ *   - a left Plus popover (Upload from Device · Attach from Library, also ⌘⇧U / Ctrl+Shift+U and
+ *     ⌘U / Ctrl+U), drag-and-drop, and up to 10 attachment preview cards;
  *   - long pastes (≥1000 chars) collapsed into a document chip instead of stretching the input.
  *
  * Capture failures surface **inline, in the composer itself** rather than as a corner toast: the
@@ -207,6 +214,8 @@ export default function ChatComposer(
 	const pasted = useSignal<PastedBlock[]>([]);
 	const drop = useFileDrop((files) => addFiles(files));
 	const plusOpen = useSignal(false);
+	/** Read after mount, so the server render and the first client render agree. */
+	const apple = useSignal(false);
 
 	const rec = useAudioRecorder();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -483,6 +492,29 @@ export default function ChatComposer(
 		if (files) addFiles(files);
 		event.currentTarget.value = "";
 	}
+
+	/**
+	 * ⌘U / Ctrl+U opens the library picker and ⌘⇧U / Ctrl+Shift+U the device's file dialog, taken where
+	 * the emoji shortcut is: focus in the composer, or anywhere its surface owns the keys. The key is
+	 * claimed even while a memo holds the field or the tray is full, so it never falls through to the
+	 * browser's View Source on a chat page.
+	 */
+	useEffect(() => {
+		apple.value = isApplePlatform();
+		function onKeyDown(event: KeyboardEvent): void {
+			if (event.defaultPrevented) return;
+			const action = attachShortcut(event, apple.value);
+			if (!action || !shortcutOn(action === "library" ? "attach-library" : "attach-device")) return;
+			const active = event.target instanceof Element ? event.target : document.activeElement;
+			if (!rootRef.current?.contains(active) && !ownsKeys(surface, active)) return;
+			event.preventDefault();
+			if (rec.phase.value !== "inactive" || attachments.value.length >= MAX_ATTACHMENTS) return;
+			if (action === "library") openLibrary();
+			else openDevicePicker();
+		}
+		globalThis.addEventListener("keydown", onKeyDown);
+		return () => globalThis.removeEventListener("keydown", onKeyDown);
+	}, [surface]);
 	// #endregion
 
 	// Read for its subscription: the selection's on-screen box moves when the field scrolls or the
@@ -522,6 +554,7 @@ export default function ChatComposer(
 						hasVoice={hasVoice}
 						plusOpen={plusOpen}
 						atCapacity={atCapacity}
+						apple={apple.value}
 						onDiscard={() => rec.discard()}
 						onUploadFromDevice={openDevicePicker}
 						onAttachFromLibrary={openLibrary}

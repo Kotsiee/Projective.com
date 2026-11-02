@@ -9,7 +9,9 @@ import {
 	isAimingAt,
 	isEmptyRow,
 	isReadable,
+	isSplit,
 	isSubmenu,
+	opensOnContextMenu,
 	openSubmenu,
 	pointInTriangle,
 	resolveHover,
@@ -117,6 +119,42 @@ Deno.test("Right/Enter/Space open a submenu; Enter/Space activate a leaf", () =>
 	assertEquals(key(" ", 2), { type: "open", index: 2 });
 	assertEquals(key("Enter", 0), { type: "activate", index: 0 });
 	assertEquals(key("ArrowRight", 0), { type: "none" });
+});
+
+Deno.test("a split row runs on Enter/Space and unfolds on Right", () => {
+	const split: MenuItem[] = [{ label: "Open", url: "/x", items: stages }];
+	const press = (k: string) => resolveMenuKey({ key: k, items: split, index: 0, depth: 0 });
+	assert(isSplit(split[0]));
+	assertFalse(isSplit(model[1]), "a plain parent is not split");
+	assertEquals(press("Enter"), { type: "activate", index: 0 });
+	assertEquals(press(" "), { type: "activate", index: 0 });
+	assertEquals(press("ArrowRight"), { type: "open", index: 0 });
+});
+
+Deno.test("a right-click submenu hovers like a leaf but still opens from the keyboard", () => {
+	const row: MenuItem = {
+		label: "Settings",
+		url: "/settings",
+		items: stages,
+		submenuOn: "contextmenu",
+	};
+	assert(opensOnContextMenu(row));
+	assertFalse(opensOnContextMenu({ ...row, items: [] }), "no rows, nothing to open");
+	assertEquals(resolveHover({ index: 0, item: row, openIndex: -1, submenu: null, trail: [] }), {
+		type: "idle",
+	});
+	assertEquals(resolveHover({ index: 0, item: row, openIndex: 2, submenu: null, trail: [] }), {
+		type: "close",
+		delay: 100,
+	});
+	assertEquals(resolveMenuKey({ key: "ArrowRight", items: [row], index: 0, depth: 0 }), {
+		type: "open",
+		index: 0,
+	});
+	assertEquals(resolveMenuKey({ key: "Enter", items: [row], index: 0, depth: 0 }), {
+		type: "activate",
+		index: 0,
+	});
 });
 
 Deno.test("disabled rows are readable but inert", () => {

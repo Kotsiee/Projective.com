@@ -7,7 +7,13 @@ import { Icon } from "../../icons/mod.ts";
 import { Button } from "../../fields/components/Button.tsx";
 import { Popover } from "../../feedback/islands/Popover.tsx";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
-import { overflowsTrack, shouldCollapseTabs, stepIndex, swipeStep } from "../core/tab-strip.ts";
+import {
+	overflowsTrack,
+	shouldCollapseTabs,
+	stepIndex,
+	stepOpen,
+	swipeStep,
+} from "../core/tab-strip.ts";
 
 // #region Props
 /** One tab in a {@link TabStrip}. */
@@ -20,6 +26,12 @@ export interface TabStripItem<K extends string = string> {
 	dot?: boolean;
 	/** Words added to the tab's accessible name only — the count a dot stands for ("3 unread"). */
 	hint?: string;
+	/**
+	 * Why the tab cannot be chosen yet. Set, the tab stays visible but locked: an `aria-disabled`
+	 * button that never navigates or selects, its reason in a portal `Tooltip`, skipped by the step
+	 * chevrons. A tab the viewer can never reach is left out instead.
+	 */
+	lockedReason?: string;
 }
 
 /** A tab that navigates: the strip renders anchors and the URL owns the active tab. */
@@ -30,7 +42,8 @@ export interface TabStripLinkItem<K extends string = string> extends TabStripIte
 /**
  * `header` — the middle-nav header band's strip: full height, centred between the identity and the
  * action tray, its underline on the band's seam, label folding to the glyph below `--bp-md`.
- * `lane` — the quieter strip at the head of a lane: smaller type, start-aligned, filling its row.
+ * `lane` — the strip at the head of a lane: start-aligned, filling its row. Type, hover, focus and
+ * active states are the same in both tones.
  */
 export type TabStripTone = "header" | "lane";
 
@@ -192,8 +205,12 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 	const found = items.findIndex((t) => t.key === props.activeKey);
 	const index = Math.max(0, found);
 	const current = items[index];
-	const prev = items[stepIndex(index, -1, items.length)];
-	const next = items[stepIndex(index, 1, items.length)];
+	const open = items.map((t) => !t.lockedReason);
+	const nextAt = stepOpen(index, 1, open);
+	const prev = items[stepOpen(index, -1, open)];
+	const next = items[nextAt];
+	// Every other tab locked: the chevrons would step to the tab already showing.
+	const stuck = nextAt === index;
 	const single = items.length < 2;
 	const tabId = (key: K) => (select && props.panelId ? `${props.panelId}-tab-${key}` : undefined);
 
@@ -238,11 +255,29 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 			? tabs.length - 1
 			: stepIndex(at, forward ? 1 : -1, tabs.length);
 		tabs[to].focus();
-		select(items[to].key);
+		if (open[to]) select(items[to].key);
 	}
 
 	const expanded = items.map((item) => {
 		const active = item.key === props.activeKey;
+		if (item.lockedReason) {
+			return (
+				<Tooltip key={item.key} content={item.lockedReason} placement="bottom">
+					<button
+						type="button"
+						role={select ? "tab" : undefined}
+						id={tabId(item.key)}
+						aria-selected={select ? false : undefined}
+						aria-disabled="true"
+						tabIndex={select ? -1 : undefined}
+						class="ui-tabstrip__tab"
+						onClick={(e) => e.preventDefault()}
+					>
+						<TabFace item={item} />
+					</button>
+				</Tooltip>
+			);
+		}
 		if (!select) {
 			return (
 				<a
@@ -314,7 +349,7 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 
 	const collapsed = current && (
 		<>
-			{stepControl(-1)}
+			{!stuck && stepControl(-1)}
 			<Popover
 				open={pickerOpen}
 				placement="bottom"
@@ -366,6 +401,9 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 								<span class="ui-tabstrip__option-label">{item.label}</span>
 								{item.dot && <span class="ui-tabstrip__dot" aria-hidden="true" />}
 								{item.hint && <span class="ui-visually-hidden">{`, ${item.hint}`}</span>}
+								{item.lockedReason && (
+									<span class="ui-visually-hidden">{`, ${item.lockedReason}`}</span>
+								)}
 								{active && (
 									<span class="ui-tabstrip__check" aria-hidden="true">
 										<Icon name="check" />
@@ -375,7 +413,18 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 						);
 						return (
 							<li key={item.key}>
-								{select
+								{item.lockedReason
+									? (
+										<button
+											type="button"
+											class="ui-menu-item ui-tabstrip__option"
+											aria-disabled="true"
+											onClick={(e) => e.preventDefault()}
+										>
+											{face}
+										</button>
+									)
+									: select
 									? (
 										<button
 											type="button"
@@ -406,7 +455,7 @@ export function TabStrip<K extends string = string>(props: TabStripProps<K>): JS
 					})}
 				</ul>
 			</Popover>
-			{stepControl(1)}
+			{!stuck && stepControl(1)}
 		</>
 	);
 	// #endregion

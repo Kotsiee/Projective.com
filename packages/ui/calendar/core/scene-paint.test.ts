@@ -11,7 +11,6 @@
  */
 import { assert, assertEquals } from "@std/assert";
 import type { GridBox, GridScene, SceneEvent, ScenePalette, TextStyle } from "./grid-paint.ts";
-import { leverThrowPx } from "./chrome.ts";
 import type { BuildSceneEventsOptions } from "./scene-build.ts";
 import { badgeRect, buildSceneEvents, draftRect, eventRect, hitTest } from "./scene-build.ts";
 import { hoverExpansionFor, paintScene, sceneCost } from "./scene-paint.ts";
@@ -908,21 +907,30 @@ Deno.test("paintScene — a grabbed handle morphs into the ball, and travels by 
 	const bar = { progress: 0.5, frozen: 60, opacity: 1, active: true };
 	const rest = paint(scene({ scrollbar: { ...bar, lever: null } }));
 	const held = paint(scene({
-		scrollbar: { ...bar, lever: { grabY: 100, displacement: 40, morph: 1 } },
+		scrollbar: { ...bar, lever: { grabY: 250, ballY: 380, deflection: 0.5, morph: 1 } },
 	}));
 	assertEquals(rest.ops.some((o) => o.op === "fill" && o.fill === PALETTE.barBallFill), false);
 	const ball = held.ops.find((o) => o.op === "arc" && o.fill === PALETTE.barBallFill);
 	assert(ball, "a grabbed handle must draw the ball the DOM twin draws");
 	assertEquals(ball.args[2], PALETTE.barBallSize / 2, "the ball's size comes from the palette");
-	// Depth alone puts the handle's centre at 250 on this track. The ball is drawn at the SATURATING
-	// throw of the lever's raw travel, not at the travel itself — a stick that leaves its own socket
-	// stops reading as a stick.
-	assertEquals(ball.args[1], 250 + leverThrowPx(40));
-	assert(leverThrowPx(40) > 0, "the lever must visibly answer the very first pixels of travel");
+	// Depth alone puts the handle's centre at 250 on this track. A fully morphed ball is drawn where
+	// the lever says it is — the ball's position IS the throttle, so it rides the pointer.
+	assertEquals(ball.args[1], 380);
 	assert(
 		rest.ops.some((o) => o.op === "fill" && o.fill === PALETTE.barFillStrong),
 		"the resting handle must still draw",
 	);
+});
+
+Deno.test("paintScene — a releasing ball slides home with the morph rather than jumping", () => {
+	const bar = { progress: 0.5, frozen: 60, opacity: 1, active: false };
+	const half = paint(scene({
+		scrollbar: { ...bar, lever: { grabY: 250, ballY: 380, deflection: 0.5, morph: 0.5 } },
+	}));
+	const ball = half.ops.find((o) => o.op === "arc" && o.fill === PALETTE.barBallFill);
+	assert(ball, "no ball drawn");
+	// Half way through the morph, half way from the ball's spot back to the handle's centre (250).
+	assertEquals(ball.args[1], 315);
 });
 
 Deno.test("paintScene — the lever's travel is clamped inside the viewport", () => {
@@ -932,7 +940,7 @@ Deno.test("paintScene — the lever's travel is clamped inside the viewport", ()
 			frozen: 60,
 			opacity: 1,
 			active: true,
-			lever: { grabY: 100, displacement: 10_000, morph: 1 },
+			lever: { grabY: 100, ballY: 10_000, deflection: 1, morph: 1 },
 		},
 	}));
 	const ball = held.ops.find((o) => o.op === "arc" && o.fill === PALETTE.barBallFill);

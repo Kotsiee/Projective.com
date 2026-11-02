@@ -649,6 +649,9 @@ CREATE TABLE projects.user_preferences (
     user_id uuid NOT NULL,
     project_id uuid NOT NULL,
     is_starred boolean DEFAULT false,
+    -- When the star was set; NULL while unstarred. Orders starred projects newest-first on /saved and
+    -- in the rail's Projects preview (written with is_starred by the saved service).
+    starred_at timestamptz,
     is_archived boolean DEFAULT false,
     last_viewed_at timestamp
     with

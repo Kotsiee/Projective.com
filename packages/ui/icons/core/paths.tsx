@@ -543,6 +543,13 @@ const PEOPLE = {
 
 // #region Objects & work
 const OBJECTS = {
+	/** A keyboard — keyboard shortcuts and typing, not `command`, an action. */
+	"keyboard": () => (
+		<>
+			<rect x="2.5" y="6" width="19" height="12" rx="2.2" />
+			<path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14.5h8" />
+		</>
+	),
 	/** A leaf with its midrib — nature, the outdoors. */
 	"leaf": () => (
 		<>

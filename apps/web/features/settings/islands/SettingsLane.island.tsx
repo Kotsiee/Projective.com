@@ -10,6 +10,7 @@ import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { useEffectiveContext } from "@features/shell/core/effective-context.ts";
 import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { entryByAnchor, settingsHref, visibleSections } from "../core/settings-registry.ts";
 import { requestSettingsFocus } from "../core/settings-bridge.ts";
 import type { AttentionTone } from "../core/attention-model.ts";
@@ -57,7 +58,7 @@ export default function SettingsLane(props: SettingsLaneProps): JSX.Element {
 		globalThis.addEventListener("hashchange", readHash);
 		const onKey = (event: KeyboardEvent) => {
 			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
-			if (document.querySelector(".ui-dialog")) return;
+			if (!shortcutOn("focus-search") || document.querySelector(".ui-dialog")) return;
 			const input = searchRef.current?.querySelector<HTMLInputElement>("input");
 			if (!input || input.offsetParent === null) return;
 			event.preventDefault();

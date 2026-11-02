@@ -126,7 +126,7 @@ export function CalendarImportPopover(props: CalendarImportPopoverProps): JSX.El
 					if (!next) reset();
 				}}
 				trigger={(api) => (
-					<Tooltip content="Import calendar">
+					<Tooltip content="Import calendar" density="compact">
 						<button
 							type="button"
 							ref={api.ref as RefObject<HTMLButtonElement>}

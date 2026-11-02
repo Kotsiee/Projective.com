@@ -985,6 +985,7 @@ RLS — see [Policies.md](Policies.md). Composite PK (`user_id`, `project_id`).
 | `user_id`        | uuid        | NOT NULL, PK. FK → `org.users_public.user_id`. |
 | `project_id`     | uuid        | NOT NULL, PK. FK → `projects.projects.id`.  |
 | `is_starred`     | boolean     | `DEFAULT false` (nullable). **The project's save** (Decision #180): written by `SavedBackendService` (an upsert under the own-row policy), read into every summary's `starred` by `live-queries.ts` `fetchStarredProjectIds`, so the `/projects` Starred filter and `/saved` agree. |
+| `starred_at`     | timestamptz | When the star was set; NULL while unstarred. Written with `is_starred` by the same upsert. Orders starred projects newest-first on `/saved` and in the rail's Projects preview (Decision #370). |
 | `is_archived`    | boolean     | `DEFAULT false` (nullable).                 |
 | `last_viewed_at` | timestamptz | `DEFAULT now()` (nullable).                 |
 

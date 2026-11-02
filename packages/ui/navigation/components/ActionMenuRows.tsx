@@ -3,8 +3,9 @@ import { cx } from "../../core/cx.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { Icon, ICON_PATHS, type IconName } from "../../icons/mod.ts";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
+import { Avatar } from "../../display/components/Avatar.tsx";
 import { isSeparator, itemKey } from "../core/menu.ts";
-import { isEmptyRow, isSubmenu } from "../core/menu-tree.ts";
+import { isEmptyRow, isSubmenu, opensOnContextMenu } from "../core/menu-tree.ts";
 
 // #region Props
 /** Row event handlers, each receiving the row's index within its level. */
@@ -38,7 +39,8 @@ export function actionMenuRowId(levelId: string, index: number): string {
 }
 
 /**
- * The rows of one ActionMenu level: `role="menuitem"` buttons (anchors for `url` rows), hairline
+ * The rows of one ActionMenu level: `role="menuitem"` buttons (anchors for `url` rows, split parents
+ * included), a leading `image` avatar in place of the icon when given, hairline
  * separators, and parent rows advertising `aria-haspopup`/`aria-expanded`/`aria-controls` with a
  * caret. Disabled rows stay focusable (`aria-disabled`) and explain themselves through a Tooltip
  * plus `aria-describedby`. Presentational only — every behaviour arrives through `handlers`.
@@ -56,14 +58,18 @@ export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
 
 		const content = (
 			<>
-				{isIconName(item.icon) && <Icon name={item.icon} size="sm" class="ui-menu-item__icon" />}
+				{item.image !== undefined
+					? <Avatar image={item.image} label={item.label} size="sm" class="ui-action-menu__image" />
+					: isIconName(item.icon) && <Icon name={item.icon} size="sm" class="ui-menu-item__icon" />}
 				<span class="ui-action-menu__text">
 					<span class="ui-action-menu__label">{item.label}</span>
 					{item.hint && <span class="ui-action-menu__hint">{item.hint}</span>}
 				</span>
 				{item.shortcut && <span class="ui-action-menu__shortcut">{item.shortcut}</span>}
 				{item.badge != null && <span class="ui-action-menu__badge">{item.badge}</span>}
-				{parent && <Icon name="chevron-right" size="sm" class="ui-action-menu__caret" />}
+				{parent && !opensOnContextMenu(item) && (
+					<Icon name="chevron-right" size="sm" class="ui-action-menu__caret" />
+				)}
 				{reason && <span id={reasonId} hidden>{reason}</span>}
 			</>
 		);
@@ -91,7 +97,8 @@ export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
 			onClick: (e: JSX.TargetedMouseEvent<HTMLElement>) => handlers.onClick(e, index),
 		};
 
-		const row = item.url && !parent
+		// Every `url` row is an anchor — a split parent included — so a middle-click opens a new tab.
+		const row = item.url
 			? (
 				<a
 					{...shared}

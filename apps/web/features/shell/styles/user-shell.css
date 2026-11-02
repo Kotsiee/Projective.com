@@ -1,6 +1,6 @@
 /*
  * user-shell — app-composition styling for the authenticated L-shell header. Left→right flow
- * (DESIGN_SYSTEM.md Part D.1): a Left block fusing the brand mark to the integrated search, and a
+ * (DESIGN_SYSTEM.md Part D.1): the brand mark, the integrated search on the bar's midline, and a
  * Right block action tray (Create · Notifications · Basket · Profile) with soft circular hovers,
  * plus the header's Popover menus (Create, Account) and the Notifications/Basket drawers. Token-only,
  * BEM. The shell geometry (glass header, opaque sidebar, hairline seams, radii) lives in
@@ -38,21 +38,11 @@
 
 /* #endregion */
 
-/* #region Header left block — brand fused to the integrated search */
-.shell-headlead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex: 1 1 auto;
-    min-inline-size: 0;
-}
-
-/* #endregion */
-
 /* #region Integrated search — the guest header's pill search (`site-header__search-field`, Decisions #347, #348) */
 /* At rest: a command-palette pill — a faint tint, one hairline, muted ink, the ghost scope selector
    docked at its end. Signed in it is wider and lower than the guest pill (28rem → 36rem in use,
-   2rem tall, `--text-sm` ink) and centred in the space the brand mark leaves. With the FIELD focused
+   2rem tall, `--text-sm` ink) and centred on the bar's midline by the top bar's own grid
+   (navigation/styles/top-bar.css), shrinking with its track on a narrow bar. With the FIELD focused
    or holding a query it widens and lifts onto the solid surface with a firmer hairline and a soft
    shadow (the app draws no focus ring, so the lift is the focus); the scope selector alone leaves it
    at rest, and a pick hands focus to the field. The form is the field, so the typeahead anchors to
@@ -247,6 +237,21 @@
     .shell-util__dot {
         animation: none;
     }
+}
+
+/* A rail preview read in flight (Decision #370): the menu's one inert row breathes like the dot. */
+.shell-preview--loading .ui-action-menu__label {
+    animation: shell-dot-pulse var(--dur-ambient) var(--ease-standard) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shell-preview--loading .ui-action-menu__label {
+        animation: none;
+    }
+}
+
+:root[data-motion="reduced"] .shell-preview--loading .ui-action-menu__label {
+    animation: none;
 }
 
 .shell-util__profile {
@@ -983,8 +988,8 @@ a.shell-setup__step:hover {
 @media (max-width: 767px) {
 
     /* The integrated search is desktop-first; the mobile search overlay (Phase 3) supplies its own
-	   trigger. Hide the lead search so the mobile header stays: brand · actions. */
-    .shell-headlead .shell-search {
+	   trigger. Hide the header search so the mobile header stays: brand · actions. */
+    .shell-search {
         display: none;
     }
 

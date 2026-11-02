@@ -10,27 +10,27 @@
  */
 
 :root {
-    /* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
-    --radius-scale: 1;
-    --shadow-intensity: 1;
+	/* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
+	--radius-scale: 1;
+	--shadow-intensity: 1;
 
-    /* --- Radius ramp (§A.3) --- */
-    --radius-xs: calc(4px * var(--radius-scale));
-    --radius-sm: calc(6px * var(--radius-scale));
-    --radius-base: calc(8px * var(--radius-scale));
-    /* `md` is the third step's ALIAS, not a step of its own. The ramp reads xs/sm/base/lg/xl, so an
+	/* --- Radius ramp (§A.3) --- */
+	--radius-xs: calc(4px * var(--radius-scale));
+	--radius-sm: calc(6px * var(--radius-scale));
+	--radius-base: calc(8px * var(--radius-scale));
+	/* `md` is the third step's ALIAS, not a step of its own. The ramp reads xs/sm/base/lg/xl, so an
 	author scanning it reads position three as "md" and writes `var(--radius-md)` — which resolved to
 	nothing and computed `border-radius` back to 0 (square corners) at 11 call sites. The alias closes
 	the naming trap at the contract rather than at each call site. Do NOT give it its own value: it
 	must stay indistinguishable from --radius-base, including under --radius-scale. */
-    --radius-md: var(--radius-base);
-    --radius-lg: calc(12px * var(--radius-scale));
-    --radius-xl: calc(16px * var(--radius-scale));
-    /* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
+	--radius-md: var(--radius-base);
+	--radius-lg: calc(12px * var(--radius-scale));
+	--radius-xl: calc(16px * var(--radius-scale));
+	/* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
 	(page body, nested frames, middle-nav columns). Both still ride --radius-scale. */
-    --radius-2xl: calc(24px * var(--radius-scale));
-    --radius-3xl: calc(32px * var(--radius-scale));
-    /*
+	--radius-2xl: calc(24px * var(--radius-scale));
+	--radius-3xl: calc(32px * var(--radius-scale));
+	/*
 	* The terminal PILL step. One design decision the repo had been spelling three ways: 148 literal
 	* pill declarations, 67 references to a `--radius-full` that was never defined (each carrying its
 	* own literal fallback, which is what kept them working), and 73 `border-radius: 50%`. The first
@@ -44,41 +44,41 @@
 	* half-sharp result nobody asked the knob for. The pill family and the circle family stay
 	* together.
 	*/
-    --radius-full: 999px;
+	--radius-full: 999px;
 
-    /* --- Elevation ramp (§A.3) --- */
-    --elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
-    --elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
-    --elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
-    /* The upward-casting counterpart of --elevation-low, for chrome pinned to the BOTTOM edge (the
+	/* --- Elevation ramp (§A.3) --- */
+	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+	--elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
+	--elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
+	/* The upward-casting counterpart of --elevation-low, for chrome pinned to the BOTTOM edge (the
 	middle-nav footer band, the mobile bottom nav). Same weight, mirrored offset — a light source does
 	not move when a surface does, so a footer that overlays scrolling content has to cast toward it
 	rather than away. Without this the only honest option at the bottom edge is no shadow at all. */
-    --elevation-low-up: 0 -2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+	--elevation-low-up: 0 -2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
 
-    /* --- Motion (§B.5) --- */
-    --dur-fast: 150ms;
-    --dur-medium: 250ms;
-    --dur-slow: 350ms;
-    --dur-highlight: 1800ms;
-    /* The per-item entrance offset: item `i` of a staggered list waits `i × --dur-stagger`. Short
+	/* --- Motion (§B.5) --- */
+	--dur-fast: 150ms;
+	--dur-medium: 250ms;
+	--dur-slow: 350ms;
+	--dur-highlight: 1800ms;
+	/* The per-item entrance offset: item `i` of a staggered list waits `i × --dur-stagger`. Short
 	enough that a ten-row list has fully landed inside one --dur-slow, long enough that the eye reads
 	an order rather than a single block arriving. */
-    --dur-stagger: 40ms;
-    /* One period of an ambient loop — a live dot's pulse, a pending mark's breathe. Slower than any
+	--dur-stagger: 40ms;
+	/* One period of an ambient loop — a live dot's pulse, a pending mark's breathe. Slower than any
 	interaction duration by an order of magnitude, so a loop reads as a state the surface is IN rather
 	than an event that just happened to it. */
-    --dur-ambient: 2400ms;
-    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
-    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-    /* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
+	--dur-ambient: 2400ms;
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	/* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
 	reflow and any physics-flavoured motion; expressed as easing curves for CSS transitions. */
-    --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
-    --spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
-    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+	--spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+	--spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
+	--spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
 
-    /* --- Press feedback (§B.12.1) --- One compression ramp for every pressable control, so a
+	/* --- Press feedback (§B.12.1) --- One compression ramp for every pressable control, so a
 	button, a rig action and a lane icon all answer a press with the same amount of give.
 
 	Two values rather than one because compression is read RELATIVE to the control's own size: 3% off
@@ -89,59 +89,59 @@
 	composited and reserve no space, so nothing around the control reflows; `padding`, `border-width`
 	and `line-height` are not available to a press because each one resizes the box and drags its
 	neighbours with it. */
-    --btn-press-scale: 0.97;
-    --btn-press-scale-icon: 0.92;
-    /* Press-in is faster than release. A press must feel like it lands under the finger, so the
+	--btn-press-scale: 0.97;
+	--btn-press-scale-icon: 0.92;
+	/* Press-in is faster than release. A press must feel like it lands under the finger, so the
 	compression is deliberately shorter than `--dur-fast`; the RETURN runs at the full token so the
 	control settles rather than snapping back. Colour and elevation ride the standard duration in the
 	same declaration, which is what keeps a hover-then-press sequence reading as one gesture. */
-    --dur-press: 50ms;
-    --btn-transition-press:
-        transform var(--dur-fast) var(--ease-standard),
+	--dur-press: 50ms;
+	--btn-transition-press:
+		transform var(--dur-fast) var(--ease-standard),
         background-color var(--dur-fast) var(--ease-standard),
         border-color var(--dur-fast) var(--ease-standard),
         color var(--dur-fast) var(--ease-standard),
         box-shadow var(--dur-fast) var(--ease-standard);
 
-    /* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
+	/* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
 	layered surface stacks predictably.
 
 	The scale encodes a STRICT class hierarchy, lowest to highest:
 
 	page content  <  middle-nav lane  <  sticky bands  <  site header
-	 < backdrop  <  popovers/dropdowns  <  modals/drawers  <  draggable windows
-	 < toasts     <  tooltips
+	< backdrop  <  popovers/dropdowns  <  modals/drawers  <  draggable windows
+	< toasts     <  tooltips
 
 	`useOverlayStack` allocates a live z-index for each mounted overlay from its CLASS BASE
 	(--z-popover / --z-modal / --z-draggable), stepping upward so later overlays of the same class
 	sit above earlier ones — and never below an overlay that is already open, so a dropdown opened
 	INSIDE a modal still renders above it. Raw `z-index: var(--z-*)` is for static layers only. --- */
-    --z-base: 0;
-    --z-raised: 10;
-    --z-sticky: 100;
-    --z-nav: 200;
-    --z-backdrop: 1000;
-    /* Class bases for the managed overlay stack — keep 200 apart so a class has room to step. */
-    --z-overlay: 1100;
-    /* legacy alias for --z-popover; kept so existing consumers stay valid */
-    --z-popover: 1100;
-    --z-modal: 1300;
-    --z-draggable: 1500;
-    --z-toast: 1600;
-    --z-tooltip: 1700;
-    --z-max: 2147483000;
+	--z-base: 0;
+	--z-raised: 10;
+	--z-sticky: 100;
+	--z-nav: 200;
+	--z-backdrop: 1000;
+	/* Class bases for the managed overlay stack — keep 200 apart so a class has room to step. */
+	--z-overlay: 1100;
+	/* legacy alias for --z-popover; kept so existing consumers stay valid */
+	--z-popover: 1100;
+	--z-modal: 1300;
+	--z-draggable: 1500;
+	--z-toast: 1600;
+	--z-tooltip: 1700;
+	--z-max: 2147483000;
 
-    /* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
+	/* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
 	literal px used in `@media`/container queries and are exposed for JS/container-query logic. --- */
-    --bp-sm: 480px;
-    --bp-md: 768px;
-    /* modal → bottom-sheet swap point (Part D.3) */
-    --bp-lg: 1024px;
-    --bp-xl: 1280px;
+	--bp-sm: 480px;
+	--bp-md: 768px;
+	/* modal → bottom-sheet swap point (Part D.3) */
+	--bp-lg: 1024px;
+	--bp-xl: 1280px;
 
-    /* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
-    --space-0: 0;
-    /*
+	/* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
+	--space-0: 0;
+	/*
 	* The sub-ramp step, and the one value here that is deliberately NOT in `rem`.
 	*
 	* The ramp started at 4px, so dense chrome — segmented meters, chip rows, calendar cells, icon
@@ -155,22 +155,22 @@
 	* middle of a bar that is supposed to read as one continuous object. Named `px` for that reason:
 	* it is the pixel-grid step, the place where the ramp stops being typographic.
 	*/
-    --space-px: 2px;
-    --space-1: 0.25rem;
-    --space-2: 0.5rem;
-    --space-3: 0.75rem;
-    --space-4: 1rem;
-    --space-5: 1.5rem;
-    --space-6: 2rem;
-    --space-7: 3rem;
-    --space-8: 4rem;
+	--space-px: 2px;
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+	--space-7: 3rem;
+	--space-8: 4rem;
 
-    /* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
-    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
-    --font-reading: var(--font-sans);
+	/* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
+	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+	--font-reading: var(--font-sans);
 
-    /*
+	/*
 	* Type scale. §A.4 has always declared "scale defined in rem on a modular ramp"; until now this
 	* file shipped three family names and no ramp, so 1,372 font-size declarations across 196
 	* stylesheets settled on 107 distinct values — 45 of them used once or twice, with consecutive
@@ -189,52 +189,52 @@
 	* --text-base is 1rem so the name keeps meaning what `rem` means. The product's dense body is
 	* --text-md; a reading surface uses --text-base.
 	*/
-    --text-2xs: 0.6875rem;
-    /* 11px — micro: timestamps, counts, unit suffixes */
-    --text-xs: 0.75rem;
-    /* 12px — THE label register (see the note on --tracking-wide) */
-    --text-sm: 0.8125rem;
-    /* 13px — dense UI: table cells, lane rows, chips */
-    --text-md: 0.875rem;
-    /* 14px — product body */
-    --text-base: 1rem;
-    /* 16px — reading body, and the document base */
-    --text-lg: 1.125rem;
-    /* 18px — card and panel titles */
-    --text-xl: 1.375rem;
-    /* 22px — section titles */
-    --text-2xl: 1.75rem;
-    /* 28px — page titles */
-    --text-3xl: 2.25rem;
-    /* 36px — display */
+	--text-2xs: 0.6875rem;
+	/* 11px — micro: timestamps, counts, unit suffixes */
+	--text-xs: 0.75rem;
+	/* 12px — THE label register (see the note on --tracking-wide) */
+	--text-sm: 0.8125rem;
+	/* 13px — dense UI: table cells, lane rows, chips */
+	--text-md: 0.875rem;
+	/* 14px — product body */
+	--text-base: 1rem;
+	/* 16px — reading body, and the document base */
+	--text-lg: 1.125rem;
+	/* 18px — card and panel titles */
+	--text-xl: 1.375rem;
+	/* 22px — section titles */
+	--text-2xl: 1.75rem;
+	/* 28px — page titles */
+	--text-3xl: 2.25rem;
+	/* 36px — display */
 
-    /*
+	/*
 	* Line height. Unitless on purpose: a unitless value inherits as a RATIO and re-multiplies
 	* against each descendant's own size, so a 0.75rem label nested in 1rem prose gets its own
 	* leading. A `24px` or `1.5rem` line-height inherits as a fixed distance and crushes any child
 	* that is larger than its parent.
 	*/
-    --leading-tight: 1.2;
-    /* display and headings — set solid, they need no air */
-    --leading-snug: 1.35;
-    /* wrapping UI labels, dense two-line rows */
-    --leading-normal: 1.5;
-    /* body — the document default, set on <body> */
-    --leading-relaxed: 1.7;
-    /* sustained prose at a 68ch measure */
+	--leading-tight: 1.2;
+	/* display and headings — set solid, they need no air */
+	--leading-snug: 1.35;
+	/* wrapping UI labels, dense two-line rows */
+	--leading-normal: 1.5;
+	/* body — the document default, set on <body> */
+	--leading-relaxed: 1.7;
+	/* sustained prose at a 68ch measure */
 
-    /*
+	/*
 	* Tracking. Tighten as size grows (large text needs less), open up as it shrinks — and open up a
 	* lot for the small-caps label register, where 0.08em is the value both feature ramps arrived at
 	* independently. The floor is -0.04em; below that a system sans starts colliding.
 	*/
-    --tracking-tight: -0.02em;
-    /* display, and tabular figures */
-    --tracking-normal: 0em;
-    --tracking-wide: 0.08em;
-    /* uppercase labels — never applied to sentence-case body */
+	--tracking-tight: -0.02em;
+	/* display, and tabular figures */
+	--tracking-normal: 0em;
+	--tracking-wide: 0.08em;
+	/* uppercase labels — never applied to sentence-case body */
 
-    /*
+	/*
 	* Weight. FIVE masters, and no intermediates — this is a decision, not an omission.
 	*
 	* The repo shipped 18 numeric weights, 13 of them between 500 and 800 (520, 550, 560, 580, 620,
@@ -252,33 +252,33 @@
 	* Roboto Light) and marketing/editorial surfaces use it for large display text. 200/350 do not,
 	* and were folded into it.
 	*/
-    --fw-light: 300;
-    /* large display type on marketing surfaces only */
-    --fw-normal: 400;
-    --fw-medium: 500;
-    /* the quiet emphasis step */
-    --fw-semibold: 600;
-    /* the workhorse: labels, values, active states */
-    --fw-bold: 700;
-    /* titles and strong emphasis */
+	--fw-light: 300;
+	/* large display type on marketing surfaces only */
+	--fw-normal: 400;
+	--fw-medium: 500;
+	/* the quiet emphasis step */
+	--fw-semibold: 600;
+	/* the workhorse: labels, values, active states */
+	--fw-bold: 700;
+	/* titles and strong emphasis */
 
-    /*
+	/*
 	* Reading measure, in `ch` so it tracks the reader's own font size instead of freezing at a
 	* pixel width. 68ch sits inside the 45–75 character comfort band; both feature token layers had
 	* already arrived at exactly this value and unit, which is why it is hoisted here rather than
 	* redecided.
 	*/
-    --measure: 68ch;
-    --measure-narrow: 52ch;
-    /* form fields, callouts, single-column notes */
-    --measure-wide: 90ch;
-    /* editorial page columns that hold media alongside the prose */
-    /* A form field's own ceiling, in `rem` rather than `ch` because a field's comfortable width is a
+	--measure: 68ch;
+	--measure-narrow: 52ch;
+	/* form fields, callouts, single-column notes */
+	--measure-wide: 90ch;
+	/* editorial page columns that hold media alongside the prose */
+	/* A form field's own ceiling, in `rem` rather than `ch` because a field's comfortable width is a
 	function of the control, not of the text a user might type into it. Both feature layers had
 	independently landed on 28rem. */
-    --field-max: 28rem;
+	--field-max: 28rem;
 
-    /*
+	/*
 	* The MINOR-UNIT pair — the pence/cents run inside a money figure, de-emphasised by size and
 	* tone but never raised: a superscript breaks tabular alignment and reads as a retail price tag
 	* on a balance.
@@ -292,47 +292,47 @@
 	* rejected as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates
 	* CSS Color 4 — which silently resets the property to `1` and undoes the de-emphasis entirely.
 	*/
-    --minor-size: 0.55em;
-    --minor-fade: 0.62;
+	--minor-size: 0.55em;
+	--minor-fade: 0.62;
 
-    /* --- Container max-widths (§C.3) --- */
-    --container-sm: 40rem;
-    --container-md: 48rem;
-    --container-lg: 64rem;
-    --container-xl: 80rem;
+	/* --- Container max-widths (§C.3) --- */
+	--container-sm: 40rem;
+	--container-md: 48rem;
+	--container-lg: 64rem;
+	--container-xl: 80rem;
 
-    /* --- Navigation shell (Part D) --- */
-    /* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
+	/* --- Navigation shell (Part D) --- */
+	/* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
 	--radius-2xl/-3xl so the corners where the sidebar, middle nav, and body panel cross read soft
 	and premium on wide screens without over-rounding compact ones. Both ride --radius-scale. */
-    --radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
-    --radius-container-xl: clamp(var(--radius-xl),
+	--radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
+	--radius-container-xl: clamp(var(--radius-xl),
             1.2vw + 10px,
             var(--radius-3xl));
-    /* main body panel */
-    --glass-blur: 18px;
-    /* backdrop-filter blur for guest/mobile glass header */
-    /* The ONE blur every modal scrim uses. Lighter than --glass-blur because the scrim also carries a
+	/* main body panel */
+	--glass-blur: 18px;
+	/* backdrop-filter blur for guest/mobile glass header */
+	/* The ONE blur every modal scrim uses. Lighter than --glass-blur because the scrim also carries a
 	real tonal tint, and because it filters the whole viewport rather than a chrome strip. Unifying it
 	here is what stops the same Backdrop component dimming at two different strengths depending on
 	which surface opened it. */
-    --scrim-blur: 8px;
-    /* Pre-hydration defaults for the modal scrim; the theme engine overwrites both per theme (dark
+	--scrim-blur: 8px;
+	/* Pre-hydration defaults for the modal scrim; the theme engine overwrites both per theme (dark
 	carries the heavier tint). Declared here so the first SSR paint of a scrim is never colourless. */
-    --scrim: #000;
-    --scrim-tint: 42%;
-    --on-scrim: #fff;
-    /*
+	--scrim: #000;
+	--scrim-tint: 42%;
+	--on-scrim: #fff;
+	/*
 	* The second — and only other — scrim tier (§B.10.2). Standard is "a modal is open"; heavy is "the
 	* page beneath cannot be used right now" (the offline interstitial). A tier, not a knob: a caller
 	* picks by what the modal MEANS, never by taste, which is what keeps this from re-opening the
 	* per-surface drift the single recipe closed. The tint is overwritten per theme by the engine like
 	* `--scrim-tint`; the blur is a CSS-only constant, deliberately the glass-chrome strength.
 	*/
-    --scrim-blur-heavy: 18px;
-    --scrim-tint-heavy: 64%;
+	--scrim-blur-heavy: 18px;
+	--scrim-tint-heavy: 64%;
 
-    /*
+	/*
 	* --- The glass veil scale ---
 	*
 	* The tint ramp above explicitly excludes veils ("a VEIL is not a tint … it belongs to the surface
@@ -353,51 +353,51 @@
 	* at the full 18px blur. It does NOT rescue --text-secondary (that needs 84%, at which point the
 	* effect is gone) — so the rule is the other half of this fix: secondary text does not go on glass.
 	*/
-    --glass-veil-chrome: 76%;
-    /* header bars, frame bands, bottom nav — text-bearing chrome */
-    --glass-veil-panel: 80%;
-    /* floating asides, megamenus, anchored panels over live content */
-    --glass-veil-sheet: 92%;
-    /* drawers and sheets — near-opaque, they own the viewport */
-    /* Colour bleeding through the blur is the optical signature of glass; without it the surface reads
+	--glass-veil-chrome: 76%;
+	/* header bars, frame bands, bottom nav — text-bearing chrome */
+	--glass-veil-panel: 80%;
+	/* floating asides, megamenus, anchored panels over live content */
+	--glass-veil-sheet: 92%;
+	/* drawers and sheets — near-opaque, they own the viewport */
+	/* Colour bleeding through the blur is the optical signature of glass; without it the surface reads
 	as fog. 1.3 is the value the guest aside already shipped, so this consolidates rather than invents. */
-    --glass-saturate: 1.3;
+	--glass-saturate: 1.3;
 
-    /*
+	/*
 	* --- Overlay geometry ---
 	* Two named scales, so a panel's corner is a decision about its ROLE, not about who authored it.
 	* `sm` is the anchored/system tier (popover, tooltip surface, confirm popup, toast, message); `lg`
 	* is the workspace tier (dialog, drawer sheet, draggable window, full-canvas app modals). Widths
 	* come from the same small set so a confirm and a create-flow never disagree by 1rem.
 	*/
-    --overlay-radius-sm: var(--radius-base);
-    --overlay-radius-lg: var(--radius-xl);
-    --overlay-w-sm: min(26rem, calc(100vw - var(--space-6)));
-    --overlay-w-md: min(34rem, calc(100vw - var(--space-6)));
-    --overlay-w-lg: min(48rem, calc(100vw - var(--space-6)));
-    --overlay-w-xl: min(68rem, 96vw);
-    --overlay-w-full: min(90rem, 96vw);
-    /* Block sizes always carry a viewport term, so a panel can never exceed the window it sits in. */
-    --overlay-h-md: min(48rem, 92vh);
-    --overlay-h-lg: min(60rem, 94vh);
-    /* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
+	--overlay-radius-sm: var(--radius-base);
+	--overlay-radius-lg: var(--radius-xl);
+	--overlay-w-sm: min(26rem, calc(100vw - var(--space-6)));
+	--overlay-w-md: min(34rem, calc(100vw - var(--space-6)));
+	--overlay-w-lg: min(48rem, calc(100vw - var(--space-6)));
+	--overlay-w-xl: min(68rem, 96vw);
+	--overlay-w-full: min(90rem, 96vw);
+	/* Block sizes always carry a viewport term, so a panel can never exceed the window it sits in. */
+	--overlay-h-md: min(48rem, 92vh);
+	--overlay-h-lg: min(60rem, 94vh);
+	/* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
 	smallest of which (24px) fails WCAG 2.5.8; 36px clears it with room for a comfortable icon. */
-    --overlay-action-size: 2.25rem;
+	--overlay-action-size: 2.25rem;
 
-    /*
+	/*
 	* --- Menu surface (Decision #364) ---
 	* Every dropdown, menu and anchored popover wears the guest megamenu's glass (`.ui-menu-surface`):
 	* these corners, rows `--menu-inset` in from the rim, and row corners concentric with the panel's
 	* (its radius less the inset and the 1px rim), so no row's tint ever meets the curve.
 	*/
-    --menu-radius: calc(var(--radius-xl) * 1.25);
-    --menu-inset: var(--space-2);
-    --menu-item-radius: calc(var(--menu-radius) - var(--menu-inset) - 1px);
-    --menu-item-fs: var(--text-md);
-    --menu-item-tint: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-    /* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
+	--menu-radius: calc(var(--radius-xl) * 1.25);
+	--menu-inset: var(--space-2);
+	--menu-item-radius: calc(var(--menu-radius) - var(--menu-inset) - 1px);
+	--menu-item-fs: var(--text-md);
+	--menu-item-tint: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	/* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
-    /*
+	/*
 	* --- The tint ramp ---
 	*
 	* `color-mix()` had quietly become the app's second colour system: 744 calls carrying 32 distinct
@@ -420,20 +420,20 @@
 	* `color-mix(in srgb, red var(--t), blue)` computes byte-identically to the literal. That is NOT
 	* true of a percentage delivered into `opacity`, which is why --minor-fade is unitless.
 	*/
-    --tint-faint: 4%;
-    /* the gentlest step: a form control's hover over its own fill (`--fld-hover-mix`) */
-    --tint-subtle: 6%;
-    /* barely-there wash: hover on a quiet row */
-    --tint-soft: 8%;
-    /* the workhorse: resting tonal separation (§B.4's second tier) */
-    --tint: 12%;
-    /* a state worth noticing: selected, active, current */
-    --tint-strong: 20%;
-    /* a state that must be unmistakable at a glance */
-    --tint-heavy: 40%;
-    /* structural: a filled meter track, a strong edge */
+	--tint-faint: 4%;
+	/* the gentlest step: a form control's hover over its own fill (`--fld-hover-mix`) */
+	--tint-subtle: 6%;
+	/* barely-there wash: hover on a quiet row */
+	--tint-soft: 8%;
+	/* the workhorse: resting tonal separation (§B.4's second tier) */
+	--tint: 12%;
+	/* a state worth noticing: selected, active, current */
+	--tint-strong: 20%;
+	/* a state that must be unmistakable at a glance */
+	--tint-heavy: 40%;
+	/* structural: a filled meter track, a strong edge */
 
-    /*
+	/*
 	* --- Opaque status tints (§A.1, §B.4.2) ---
 	*
 	* The quiet fill a status ramp takes when it marks a region rather than a control: a success
@@ -449,21 +449,21 @@
 	* rather than narrowing it. `--on-surface` on every tint clears 4.5:1 in all four states —
 	* pinned in `system/core/theme-engine.test.ts`, which reads this knob from this file.
 	*/
-    --status-tint-mix: var(--tint);
-    --success-tint: color-mix(in oklab, var(--success) var(--status-tint-mix), var(--surface-1));
-    --warning-tint: color-mix(in oklab, var(--warning) var(--status-tint-mix), var(--surface-1));
-    --danger-tint: color-mix(in oklab, var(--danger) var(--status-tint-mix), var(--surface-1));
-    --primary-tint: color-mix(in oklab, var(--primary) var(--status-tint-mix), var(--surface-1));
+	--status-tint-mix: var(--tint);
+	--success-tint: color-mix(in oklab, var(--success) var(--status-tint-mix), var(--surface-1));
+	--warning-tint: color-mix(in oklab, var(--warning) var(--status-tint-mix), var(--surface-1));
+	--danger-tint: color-mix(in oklab, var(--danger) var(--status-tint-mix), var(--surface-1));
+	--primary-tint: color-mix(in oklab, var(--primary) var(--status-tint-mix), var(--surface-1));
 
-    --hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
-    --hairline: 1px solid var(--hairline-color);
-    /* The visible sibling: a real border on an INTERACTIVE element (§B.4 permits full borders only
+	--hairline-color: color-mix(in srgb, var(--outline) 10%, transparent);
+	--hairline: 1px solid var(--hairline-color);
+	/* The visible sibling: a real border on an INTERACTIVE element (§B.4 permits full borders only
 	there). Two features had independently re-derived exactly this as --lp-hair-strong and
 	--ex-hair-strong, which is what earns it a name here. */
-    --hairline-strong-color: color-mix(in srgb, var(--outline) 40%, transparent);
-    --hairline-strong: 1px solid var(--hairline-strong-color);
+	--hairline-strong-color: color-mix(in srgb, var(--outline) 30%, transparent);
+	--hairline-strong: 1px solid var(--hairline-strong-color);
 
-    /*
+	/*
 	* --- Iconography (§B.7) ---
 	*
 	* An icon's box is `1em` of the text beside it. On the 24-unit authoring grid with the artwork
@@ -479,20 +479,20 @@
 	* The audit that produced this ramp found 47 distinct rendered icon sizes, nine of them landing
 	* on fractional pixels (0.85rem → 13.6px, 1.05rem → 16.8px, 2.1rem → 33.6px …).
 	*/
-    --icon-2xs: 0.75rem;
-    /* 12px — inline status pips, dense table marks (pairs --text-2xs/xs) */
-    --icon-xs: 0.875rem;
-    /* 14px — lane rows, chips, table cells (pairs --text-sm) */
-    --icon-sm: 1rem;
-    /* 16px — THE default: buttons, menu items, toolbars (pairs --text-md/base) */
-    --icon-md: 1.25rem;
-    /* 20px — icon-only controls, tabs, header rigs (pairs --text-lg) */
-    --icon-lg: 1.5rem;
-    /* 24px — nav rail, bottom nav, file-kind glyphs (pairs --text-xl) */
-    --icon-xl: 2rem;
-    /* 32px — section and empty-state marks (pairs --text-2xl) */
+	--icon-2xs: 0.75rem;
+	/* 12px — inline status pips, dense table marks (pairs --text-2xs/xs) */
+	--icon-xs: 0.875rem;
+	/* 14px — lane rows, chips, table cells (pairs --text-sm) */
+	--icon-sm: 1rem;
+	/* 16px — THE default: buttons, menu items, toolbars (pairs --text-md/base) */
+	--icon-md: 1.25rem;
+	/* 20px — icon-only controls, tabs, header rigs (pairs --text-lg) */
+	--icon-lg: 1.5rem;
+	/* 24px — nav rail, bottom nav, file-kind glyphs (pairs --text-xl) */
+	--icon-xl: 2rem;
+	/* 32px — section and empty-state marks (pairs --text-2xl) */
 
-    /*
+	/*
 	* Rendered stroke, in device pixels, CONSTANT at every step above.
 	*
 	* A fixed `stroke-width` on a fixed viewBox cannot hold a weight, because the stroke scales with
@@ -506,33 +506,33 @@
 	* distribution, the value packages/ui/feedback already renders at its native scale, and it lands
 	* on a whole device pixel at 1x and a clean 3 at 2x — so it stays crisp instead of straddling.
 	*/
-    --icon-stroke: 1.5;
+	--icon-stroke: 1.5;
 
-    --shell-gutter: var(--space-2);
-    /* parent-track thickness revealed between nested frames */
-    --chrome-pinned-h: 0px;
-    /* host hook: the bottom edge of the viewport-pinned chrome a host shell draws OUTSIDE this
+	--shell-gutter: var(--space-2);
+	/* parent-track thickness revealed between nested frames */
+	--chrome-pinned-h: 0px;
+	/* host hook: the bottom edge of the viewport-pinned chrome a host shell draws OUTSIDE this
 	package's L-shell (a floating site header). In-page sticky parts (the editorial TOC rail, reading
 	progress, heading scroll margins) clear it. The host sets it on its shell root; inside the
 	L-shell the shell's own frame inset is read instead. */
-    --shell-topbar-h: 48px;
-    --shell-midnav-header-h: 3rem;
-    /* configurable middle-nav content-pane header (PageCanvas header slot) */
-    --shell-midnav-footer-h: 3rem;
-    /* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
+	--shell-topbar-h: 48px;
+	--shell-midnav-header-h: 3rem;
+	/* configurable middle-nav content-pane header (PageCanvas header slot) */
+	--shell-midnav-footer-h: 3rem;
+	/* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
 	surface at the band's top edge; symmetric with the header band height */
-    --shell-sidebar-w: 64px;
-    /* collapsed icon rail */
-    --shell-sidebar-w-expanded: 224px;
-    --shell-nav-block: 48px;
-    /* collapsed-rail square hit-target (icon block) */
-    --shell-lane-w: 280px;
-    /* middle-nav (Blue) lane default width */
-    --shell-panel-w: 320px;
-    /* middle-nav right panel default width — the first-paint value before `MiddleNavPanel` hoists the
-	   viewer's dragged width; must equal that island's `initial` */
-    --shell-lane-rail-w: 56px;
-    /*
+	--shell-sidebar-w: 64px;
+	/* collapsed icon rail */
+	--shell-sidebar-w-expanded: 224px;
+	--shell-nav-block: 48px;
+	/* collapsed-rail square hit-target (icon block) */
+	--shell-lane-w: 280px;
+	/* middle-nav (Blue) lane default width */
+	--shell-panel-w: 320px;
+	/* middle-nav right panel default width — the first-paint value before `MiddleNavPanel` hoists the
+	viewer's dragged width; must equal that island's `initial` */
+	--shell-lane-rail-w: 56px;
+	/*
 	* The middle-nav lane's width once the splitter shuts to its icon rail — the SINGLE statement of
 	* that number, because two independent statements of it is precisely how the lane edge and the
 	* frame seam came apart. `splitter.css` sizes the collapsed lane from it and `middle-nav.css`
@@ -549,10 +549,10 @@
 	* first, so a lane that declares nothing still tracks a drag through the collapsed band and this
 	* value applies only before the width has been hoisted.
 	*/
-    --shell-bottomnav-h: 56px;
-    /* mobile thumb-nav bar height (Part D.3) */
+	--shell-bottomnav-h: 56px;
+	/* mobile thumb-nav bar height (Part D.3) */
 
-    /*
+	/*
 	* --- Viewport-pinned status ribbon (`Ribbon`, @projective/ui/feedback) ---
 	*
 	* `--ribbon-h` is the strip's MINIMUM height; `--ribbon-inset` is the room CURRENTLY reserved for
@@ -564,10 +564,10 @@
 	* `--ribbon-inset` on the root, because a sentence that wraps on a phone draws taller than the
 	* minimum and a reservation that differs from what is drawn is a gap or an overlap.
 	*/
-    --ribbon-h: 2.5rem;
-    --ribbon-inset: 0px;
+	--ribbon-h: 2.5rem;
+	--ribbon-inset: 0px;
 
-    /*
+	/*
 	* --- Surface structure (§A.3) ---
 	*
 	* Promoted from the wallet and workspaces token layers, and promoted for one reason only: those
@@ -582,29 +582,29 @@
 	* consolidation.
 	*/
 
-    /* Recessed track behind a meter or a share bar, and the lighter meter well inside it. */
-    --track-recessed: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
-    --track-meter: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
-    /* Diagonal hatch — the non-colour channel that keeps a state legible when hue collapses. */
-    --hatch-color: color-mix(in srgb, var(--on-surface) 16%, transparent);
-    /*
+	/* Recessed track behind a meter or a share bar, and the lighter meter well inside it. */
+	--track-recessed: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
+	--track-meter: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
+	/* Diagonal hatch — the non-colour channel that keeps a state legible when hue collapses. */
+	--hatch-color: color-mix(in srgb, var(--on-surface) 16%, transparent);
+	/*
 	* Track heights. Settles a drift: 16/22px (wallet) vs 18/24px (workspaces). 18/24 wins because
 	* the workspaces split bar's dividers are real draggable controls with `role="slider"`, and two
 	* extra pixels of pointer target is a functional gain, while the wallet's capital meter is
 	* decorative (`aria-hidden`, every fact carried by its legend) and loses nothing at 18. `-hi` is
 	* the taller hero variant, not the high-contrast one — contrast widens tone, never geometry.
 	*/
-    --track-h: 18px;
-    --track-h-hi: 24px;
-    /* The overhanging dot a sub-sliver segment gets instead of a minimum width that would lie. */
-    --pip-dot: 7px;
+	--track-h: 18px;
+	--track-h-hi: 24px;
+	/* The overhanging dot a sub-sliver segment gets instead of a minimum width that would lie. */
+	--pip-dot: 7px;
 
-    /* Full-bleed band rhythm — the vertical grid a stacked surface is built on. */
-    --band-gap: var(--space-6);
-    --band-pad-block-end: var(--space-6);
-    --band-pad-block-end-lg: var(--space-7);
+	/* Full-bleed band rhythm — the vertical grid a stacked surface is built on. */
+	--band-gap: var(--space-6);
+	--band-pad-block-end: var(--space-6);
+	--band-pad-block-end-lg: var(--space-7);
 
-    /*
+	/*
 	* --- The card contract (§A.3 / §B.4) ---
 	*
 	* Card rhythm lives here rather than in `display/styles/card.css` because component CSS reaches a
@@ -624,17 +624,17 @@
 	* two hand-tuned multipliers of the same token, 1.6px apart, neither reachable from the ramp.
 	* `--radius-2xl` is 24px, so marketing was already on it by accident.
 	*/
-    --card-pad: var(--space-4);
-    --card-pad-media: var(--space-5);
-    --card-pad-tight: var(--space-3);
-    --card-gap: var(--space-3);
-    --card-gap-tight: var(--space-1);
-    --card-radius: var(--radius-lg);
-    --card-radius-media: var(--radius-2xl);
-    --card-media-ratio: 16 / 10;
-    --card-media-ratio-square: 1 / 1;
+	--card-pad: var(--space-4);
+	--card-pad-media: var(--space-5);
+	--card-pad-tight: var(--space-3);
+	--card-gap: var(--space-3);
+	--card-gap-tight: var(--space-1);
+	--card-radius: var(--radius-lg);
+	--card-radius-media: var(--radius-2xl);
+	--card-media-ratio: 16 / 10;
+	--card-media-ratio-square: 1 / 1;
 
-    /*
+	/*
 	* The surface a chip takes when it floats on a card's MEDIA — a status pill on a listing cover, a
 	* price on a product photograph, an engagement type on a service thumbnail.
 	*
@@ -651,17 +651,17 @@
 	* and the marketing landing all read it, and a token scoped to one feature's stylesheet resolves to
 	* nothing on the surfaces that do not load that sheet — silently, since the chip still lays out.
 	*/
-    --chip-on-media: var(--surface);
+	--chip-on-media: var(--surface);
 
-    /*
+	/*
 	* The brand as INK on a surface — the label and icon of a transparent-ground control (outlined ·
 	* text · link Buttons, toggled icon buttons). `--primary` in light; the brand's own light pole
 	* (`--on-primary`) in dark, re-pointed under `:root[data-theme="dark"]` below. Fills, borders and
 	* tints keep `--primary`, which stays mode-invariant.
 	*/
-    --primary-ink: var(--primary);
+	--primary-ink: var(--primary);
 
-    /*
+	/*
 	* The card hover language. Four card families independently chose a lift (−2 / −4 / −6px) and a
 	* media zoom (1.04 / 1.045 / 1.05); no rule distinguished them, so the same gesture read at three
 	* different intensities depending on which page the user was on.
@@ -670,32 +670,32 @@
 	* resting state is the untransformed element, so a card whose animation clock never runs is already
 	* correct. Nothing here animates a property that encodes data or geometry.
 	*/
-    --card-hover-lift: -4px;
-    --card-media-zoom: 1.04;
+	--card-hover-lift: -4px;
+	--card-media-zoom: 1.04;
 
-    /* Row heights: the comfortable default, the dense variant, and the footer rig's control row
+	/* Row heights: the comfortable default, the dense variant, and the footer rig's control row
 	(matched to the shared ZoomSlider's compact height so every rig band lines up). */
-    --row-h: 3rem;
-    --row-h-dense: 2.25rem;
-    --rig-row-h: 1.75rem;
+	--row-h: 3rem;
+	--row-h-dense: 2.25rem;
+	--rig-row-h: 1.75rem;
 
-    /*
+	/*
 	* Chart heights. Settles a drift: 11rem/9rem (wallet) vs a single 10rem (workspaces). The PAIR
 	* wins rather than the midpoint — a lone height has no answer for a narrow viewport, so adopting
 	* it would have meant re-inventing the small step the first time a chart got cramped.
 	*/
-    --chart-h: 11rem;
-    --chart-h-sm: 9rem;
+	--chart-h: 11rem;
+	--chart-h-sm: 9rem;
 
-    /* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
+	/* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
 	on a phone. The Drawer component consumes this directly, so the package default and the
 	feature-layer aliases (--wlt-drawer-w, --wsp-drawer-w) are finally one number. */
-    --drawer-w: min(30rem, 92vw);
-    /* Top/bottom-docked drawer along the block axis — the counterpart the contract was missing, which
+	--drawer-w: min(30rem, 92vw);
+	/* Top/bottom-docked drawer along the block axis — the counterpart the contract was missing, which
 	left drawer.css carrying a literal for the sheet case. */
-    --drawer-h: min(18rem, 80vh);
+	--drawer-h: min(18rem, 80vh);
 
-    /*
+	/*
 	* --- The field contract (§C.1 fields) ---
 	*
 	* One state language and one geometry for every control in `@projective/ui/fields`.
@@ -725,71 +725,71 @@
 	* somewhere a stylesheet could contradict.
 	*/
 
-    /* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */
-    --fld-h-sm: 2rem;
-    --fld-h-md: 2.5rem;
-    --fld-h-lg: 3rem;
-    --fld-px-sm: var(--space-2);
-    --fld-px-md: var(--space-3);
-    --fld-px-lg: var(--space-4);
-    /*
+	/* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */
+	--fld-h-sm: 2rem;
+	--fld-h-md: 2.5rem;
+	--fld-h-lg: 3rem;
+	--fld-px-sm: var(--space-2);
+	--fld-px-md: var(--space-3);
+	--fld-px-lg: var(--space-4);
+	/*
 	* Field type. `sm` is the scale's dense step exactly; `md`/`lg` sit a half-step above their
 	* neighbours and stay that way deliberately — a value the user TYPED is read under different
 	* conditions than a table cell they scan, and the taxonomy has been consistent about it at every
 	* call site. What was drift is now a stated position.
 	*/
-    --fld-fs-sm: var(--text-sm);
-    --fld-fs-md: 0.9375rem;
-    --fld-fs-lg: 1.0625rem;
-    --fld-r-sm: var(--radius-sm);
-    --fld-r-md: var(--radius-base);
-    --fld-r-lg: var(--radius-lg);
-    --fld-bw: 1px;
-    /*
+	--fld-fs-sm: var(--text-sm);
+	--fld-fs-md: 0.9375rem;
+	--fld-fs-lg: 1.0625rem;
+	--fld-r-sm: var(--radius-sm);
+	--fld-r-md: var(--radius-base);
+	--fld-r-lg: var(--radius-lg);
+	--fld-bw: 1px;
+	/*
 	* Minimum pointer target (WCAG 2.2 AA 2.5.8). Controls smaller than this — a 6px slider track, a
 	* 12px zoom handle, a 20px checkbox — grow an invisible `::before` to this size rather than
 	* inflating their artwork, so the visual density survives the accessibility floor.
 	*/
-    --fld-hit: 24px;
+	--fld-hit: 24px;
 
-    /* Label / hint / error. Replaces five parallel app-side label typographies. */
-    --fld-label-fs: 0.875rem;
-    --fld-label-fw: 600;
-    --fld-label-fg: var(--on-surface);
-    --fld-hint-fs: 0.8125rem;
-    --fld-hint-fg: var(--text-secondary);
-    /* Reserved, always: an error that appears must not shove the rest of the form down. */
-    --fld-hint-min-h: 1.25rem;
-    /*
+	/* Label / hint / error. Replaces five parallel app-side label typographies. */
+	--fld-label-fs: 0.875rem;
+	--fld-label-fw: 600;
+	--fld-label-fg: var(--on-surface);
+	--fld-hint-fs: 0.8125rem;
+	--fld-hint-fg: var(--text-secondary);
+	/* Reserved, always: an error that appears must not shove the rest of the form down. */
+	--fld-hint-min-h: 1.25rem;
+	/*
 	* In-field label geometry — ONE two-line control for both patterns that put the label INSIDE the
 	* box (IftaLabel, pinned; FloatLabel `in`, animated to the same resting place). The control grows
 	* to `--fld-h-infield`, reserves `--fld-infield-pt` above the value, and the compact label sits at
 	* `--fld-infield-label-top` in `--fld-infield-label-fs`. Two sheets reading one set is what keeps
 	* a form that mixes the two from showing two field heights.
 	*/
-    --fld-h-infield: 3.25rem;
-    --fld-infield-pt: 1.2rem;
-    --fld-infield-label-top: 0.4rem;
-    --fld-infield-label-fs: var(--text-xs);
+	--fld-h-infield: 3.25rem;
+	--fld-infield-pt: 1.2rem;
+	--fld-infield-label-top: 0.4rem;
+	--fld-infield-label-fs: var(--text-xs);
 
-    /* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
-    --fld-panel-maxh: 18rem;
-    /* The rule the panels were missing: a panel MAY exceed its trigger. Matching a 71px trigger
+	/* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
+	--fld-panel-maxh: 18rem;
+	/* The rule the panels were missing: a panel MAY exceed its trigger. Matching a 71px trigger
 	ellipsised every option label to nothing. */
-    --fld-panel-minw: 12rem;
-    --fld-panel-radius: var(--radius-base);
-    --fld-panel-border: var(--border-subtle);
-    --fld-opt-h: 2.25rem;
-    --fld-opt-px: var(--space-3);
-    --fld-opt-fs: var(--fld-fs-md);
-    --fld-opt-radius: var(--radius-sm);
+	--fld-panel-minw: 12rem;
+	--fld-panel-radius: var(--radius-base);
+	--fld-panel-border: var(--border-subtle);
+	--fld-opt-h: 2.25rem;
+	--fld-opt-px: var(--space-3);
+	--fld-opt-fs: var(--fld-fs-md);
+	--fld-opt-radius: var(--radius-sm);
 
-    /* Rest / hover / focus. */
-    --fld-rest-bd: var(--fld-outline);
-    --fld-rest-bg: var(--surface);
-    --fld-rest-fg: var(--on-surface);
-    --fld-hover-bd: var(--on-surface-variant);
-    /*
+	/* Rest / hover / focus. */
+	--fld-rest-bd: var(--fld-outline);
+	--fld-rest-bg: var(--surface);
+	--fld-rest-fg: var(--on-surface);
+	--fld-hover-bd: var(--on-surface-variant);
+	/*
 	* How much `--on-surface` a hovered or focused control mixes into its OWN rest fill (Decision #334).
 	* Mixed over the fill rather than `transparent`: an alpha wash composites onto the page behind the
 	* control, so a white field on a grey page dropped to the page tone before the tint even landed —
@@ -798,19 +798,19 @@
 	* light, 1.07:1 / ΔL* 3.5 in dark. 6% in dark measured 1.12:1 / ΔL* 5.7 — nearly the jump this
 	* replaced — so dark does not take a larger mix. A per-mode retune belongs on this one token.
 	*/
-    --fld-hover-mix: var(--tint-faint);
-    --fld-focus-bd: var(--primary);
-    /*
+	--fld-hover-mix: var(--tint-faint);
+	--fld-focus-bd: var(--primary);
+	/*
 	* The accent as TEXT beside a focused control — a floated / in-field label. `--primary` is a
 	* border and fill colour, not an ink: as a 12px label it measured 4.59:1 in dark and 4.87:1 in
 	* light against the focused fill — AA, with under half a ratio point to spare. Pulling it toward
 	* `--on-surface`, which sits on the opposite side of the brand in both themes, raises the ratio
 	* in both by construction: 6.25:1 dark, 6.93:1 light, measured on the composited fill.
 	*/
-    --fld-focus-fg: color-mix(in srgb, var(--primary) 70%, var(--on-surface));
-    --fld-placeholder-fg: var(--text-secondary);
+	--fld-focus-fg: color-mix(in srgb, var(--primary) 70%, var(--on-surface));
+	--fld-placeholder-fg: var(--text-secondary);
 
-    /*
+	/*
 	* The keyboard focus glow for FORM CONTROLS — a soft wash, never an outline.
 	*
 	* The product draws no `--focus-ring-shadow` anywhere any more (`apps/web/styles/global.css`
@@ -832,9 +832,9 @@
 	* Zero offset and zero blur, so the indicator hugs the control's radius exactly and cannot read as
 	* the elevation shadow of a panel. Its softness comes from the alpha.
 	*/
-    --fld-focus-glow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+	--fld-focus-glow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
 
-    /*
+	/*
 	* Disabled — ONE alpha, everywhere. The taxonomy had five (0.40/0.45/0.50/0.55 plus a bare
 	* colour swap), which measured 2.30:1 on a disabled calendar day and 3.26:1 on a disabled
 	* placeholder. 0.55 measures 5.04:1 against --surface: legible enough to read, plainly inert.
@@ -847,58 +847,58 @@
 	* 1.13:1, worse than the bug it replaced). So the MIX carries a literal percentage token and the
 	* ALPHA stays unitless for the rare `opacity` consumer. Change them together.
 	*/
-    --fld-disabled-mix: 55%;
-    --fld-disabled-alpha: 0.55;
+	--fld-disabled-mix: 55%;
+	--fld-disabled-alpha: 0.55;
 
-    /* Read-only is not disabled: the value is authoritative and still selectable, so it keeps full
+	/* Read-only is not disabled: the value is authoritative and still selectable, so it keeps full
 	ink and loses only the invitation to edit. */
-    --fld-readonly-bg: var(--surface-1);
-    --fld-readonly-bd: var(--outline);
+	--fld-readonly-bg: var(--surface-1);
+	--fld-readonly-bd: var(--outline);
 
-    /* Validation. `mark` is the icon/shape channel, never a second colour. */
-    --fld-invalid-bd: var(--danger);
-    --fld-invalid-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
-    --fld-invalid-mark: var(--danger);
-    --fld-valid-bd: var(--success);
-    --fld-valid-mark: var(--success);
-    --fld-warning-bd: var(--warning);
-    --fld-warning-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
-    --fld-warning-mark: var(--warning);
+	/* Validation. `mark` is the icon/shape channel, never a second colour. */
+	--fld-invalid-bd: var(--danger);
+	--fld-invalid-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+	--fld-invalid-mark: var(--danger);
+	--fld-valid-bd: var(--success);
+	--fld-valid-mark: var(--success);
+	--fld-warning-bd: var(--warning);
+	--fld-warning-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+	--fld-warning-mark: var(--warning);
 
-    /* The two-tier creation gate (root CLAUDE.md): RED = needed to create, AMBER = needed to
+	/* The two-tier creation gate (root CLAUDE.md): RED = needed to create, AMBER = needed to
 	publish. Promoted out of `.ui-field` so a gated Checkbox or Rating is expressible. */
-    --fld-required-bd: var(--danger);
-    --fld-required-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
-    --fld-gate-bd: var(--warning);
-    --fld-gate-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+	--fld-required-bd: var(--danger);
+	--fld-required-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+	--fld-gate-bd: var(--warning);
+	--fld-gate-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
 
-    /* Loading — the state the taxonomy never had. An AutoComplete fetching suggestions had no way
+	/* Loading — the state the taxonomy never had. An AutoComplete fetching suggestions had no way
 	to say so. Unitless (a percentage through var() into `opacity` is invalid). */
-    --fld-loading-alpha: 0.7;
-    --fld-loading-fg: var(--text-secondary);
+	--fld-loading-alpha: 0.7;
+	--fld-loading-fg: var(--text-secondary);
 
-    /*
-	 * Focus indicator geometry (§A.5). The COLOURS come from the theme engine at runtime
-	 * (`--focus-ring` · `--focus-ring-halo` · `--focus-ring-tint` · `--focus-ring-shadow`); only the
-	 * measurements live here, because they are the half a designer retunes and the half that must not
-	 * be restated per component.
-	 *
-	 * The offset is what makes a single-tone brand ring legal at all. A ring drawn ON the border box
-	 * abuts the control's own fill, and `--secondary` measures 1.00:1 on a `--secondary` fill and
-	 * 1.19:1 on `--primary` — invisible on exactly the controls that matter. Pushed 2px clear it abuts
-	 * the PAGE instead, where it measures 5.23:1 at worst in light and 9.61:1 in dark. So the offset
-	 * is a correctness requirement, not breathing room: never set it to 0 to "tighten" the ring.
-	 */
-    /* Whole pixels only: a browser floors `outline-width` to whole device pixels, so 1.5px renders as
+	/*
+	* Focus indicator geometry (§A.5). The COLOURS come from the theme engine at runtime
+	* (`--focus-ring` · `--focus-ring-halo` · `--focus-ring-tint` · `--focus-ring-shadow`); only the
+	* measurements live here, because they are the half a designer retunes and the half that must not
+	* be restated per component.
+	*
+	* The offset is what makes a single-tone brand ring legal at all. A ring drawn ON the border box
+	* abuts the control's own fill, and `--secondary` measures 1.00:1 on a `--secondary` fill and
+	* 1.19:1 on `--primary` — invisible on exactly the controls that matter. Pushed 2px clear it abuts
+	* the PAGE instead, where it measures 5.23:1 at worst in light and 9.61:1 in dark. So the offset
+	* is a correctness requirement, not breathing room: never set it to 0 to "tighten" the ring.
+	*/
+	/* Whole pixels only: a browser floors `outline-width` to whole device pixels, so 1.5px renders as
 	1px here while the box-shadow form paints it at 1.5px — one indicator, two thicknesses. Kept in
 	step with `focusShadow()` in the theme engine, and pinned by a contract test. */
-    --focus-ring-w: 1px;
-    --focus-ring-offset: 2px;
-    /* Spread is pinned to the ring's outer edge (offset + width). A glow with less spread than that
+	--focus-ring-w: 1px;
+	--focus-ring-offset: 2px;
+	/* Spread is pinned to the ring's outer edge (offset + width). A glow with less spread than that
 	is painted underneath the solid ring and is simply invisible. */
-    --focus-ring-glow: 0 0 5px calc(var(--focus-ring-offset) + var(--focus-ring-w)) var(--focus-ring-tint);
+	--focus-ring-glow: 0 0 5px calc(var(--focus-ring-offset) + var(--focus-ring-w)) var(--focus-ring-tint);
 
-    /*
+	/*
 	* The overlay family's focus indicator (§B.10.6, Decision #163). A separate pair from
 	* `--focus-ring-*` on purpose: the app neutralises those product-wide (152a27a) but keeps a visible
 	* ring inside every portalled overlay, where a keyboard user has no page context to fall back on.
@@ -906,16 +906,16 @@
 	* panel's scroller. `--fld-focus-fg` measures 6.25:1 dark / 6.93:1 light on `--surface`; high
 	* contrast widens it to a 3px `--on-surface` contour below.
 	*/
-    --overlay-focus-ring: 2px solid var(--fld-focus-fg);
-    --overlay-focus-offset: 2px;
+	--overlay-focus-ring: 2px solid var(--fld-focus-fg);
+	--overlay-focus-offset: 2px;
 
-    /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
+	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
 
 /* The open Ribbon reserves its own height for every bottom-pinned surface (see `--ribbon-inset`). */
 :root[data-ribbon="open"] {
-    --ribbon-inset: var(--ribbon-h);
+	--ribbon-inset: var(--ribbon-h);
 }
 
 /*
@@ -925,18 +925,18 @@
  * Geometry is untouched — contrast is a tonal overlay, and a taller track is not more contrast.
  */
 :root[data-contrast="high"] {
-    --track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
-    --hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
-    --minor-fade: 0.82;
-    /* Disabled still has to read as disabled, so this widens rather than disappearing: 0.55 → 0.78
+	--track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
+	--hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
+	--minor-fade: 0.82;
+	/* Disabled still has to read as disabled, so this widens rather than disappearing: 0.55 → 0.78
 	lifts a disabled value from 5.04:1 to ~9:1 while the border and cursor keep carrying "inert". */
-    --fld-disabled-mix: 78%;
-    --fld-disabled-alpha: 0.78;
-    --fld-loading-alpha: 0.85;
-    /* Matches the geometry step `focusShadow()` already makes for the box-shadow composite, so the
+	--fld-disabled-mix: 78%;
+	--fld-disabled-alpha: 0.78;
+	--fld-loading-alpha: 0.85;
+	/* Matches the geometry step `focusShadow()` already makes for the box-shadow composite, so the
 	outline-drawn ring and the shadow-drawn ring stay the same thickness as each other. */
-    --focus-ring-w: 2px;
-    --overlay-focus-ring: 3px solid var(--on-surface);
+	--focus-ring-w: 2px;
+	--overlay-focus-ring: 3px solid var(--on-surface);
 }
 
 /*
@@ -946,30 +946,30 @@
  * `[data-contrast="high"]` last so a deliberate choice beats the media query.
  */
 :root[data-theme="dark"] {
-    --status-tint-mix: var(--tint-strong);
+	--status-tint-mix: var(--tint-strong);
 }
 
 /* See `--primary-ink`: brand-coloured labels and icons read white on a dark page. */
 :root[data-theme="dark"] {
-    --primary-ink: var(--on-primary);
+	--primary-ink: var(--on-primary);
 }
 
 @media (prefers-contrast: more) {
-    :root:not([data-contrast="normal"]) {
-        --status-tint-mix: var(--tint-soft);
-    }
+	:root:not([data-contrast="normal"]) {
+		--status-tint-mix: var(--tint-soft);
+	}
 
-    :root[data-theme="dark"]:not([data-contrast="normal"]) {
-        --status-tint-mix: var(--tint);
-    }
+	:root[data-theme="dark"]:not([data-contrast="normal"]) {
+		--status-tint-mix: var(--tint);
+	}
 }
 
 :root[data-contrast="high"] {
-    --status-tint-mix: var(--tint-soft);
+	--status-tint-mix: var(--tint-soft);
 }
 
 :root[data-theme="dark"][data-contrast="high"] {
-    --status-tint-mix: var(--tint);
+	--status-tint-mix: var(--tint);
 }
 
 /*
@@ -1005,42 +1005,42 @@
  * helps, and it is the one such face installed nearly everywhere.
  */
 :root[data-font="dyslexic"] {
-    --font-sans:
-        "OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
-    --font-reading: var(--font-sans);
-    --font-mono: "OpenDyslexicMono", ui-monospace, "Cascadia Code", monospace;
+	--font-sans:
+		"OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
+	--font-reading: var(--font-sans);
+	--font-mono: "OpenDyslexicMono", ui-monospace, "Cascadia Code", monospace;
 
-    /* Wider tracking at every register; the label register opens furthest. */
-    --tracking-tight: 0em;
-    --tracking-normal: 0.03em;
-    --tracking-wide: 0.11em;
+	/* Wider tracking at every register; the label register opens furthest. */
+	--tracking-tight: 0em;
+	--tracking-normal: 0.03em;
+	--tracking-wide: 0.11em;
 
-    /* More air between lines so the eye can find the next one. */
-    --leading-tight: 1.4;
-    --leading-snug: 1.55;
-    --leading-normal: 1.7;
-    --leading-relaxed: 1.9;
+	/* More air between lines so the eye can find the next one. */
+	--leading-tight: 1.4;
+	--leading-snug: 1.55;
+	--leading-normal: 1.7;
+	--leading-relaxed: 1.9;
 
-    /* OpenDyslexic ships Regular and Bold only. Collapsing the five masters to those two prevents a
+	/* OpenDyslexic ships Regular and Bold only. Collapsing the five masters to those two prevents a
 	synthesised faux-weight, which smears the very stroke asymmetry the face exists to provide. */
-    --fw-light: 400;
-    --fw-normal: 400;
-    --fw-medium: 400;
-    --fw-semibold: 700;
-    --fw-bold: 700;
+	--fw-light: 400;
+	--fw-normal: 400;
+	--fw-medium: 400;
+	--fw-semibold: 700;
+	--fw-bold: 700;
 
-    /* A shorter measure: fewer characters per line means fewer chances to lose your place. */
-    --measure: 55ch;
-    --measure-narrow: 45ch;
+	/* A shorter measure: fewer characters per line means fewer chances to lose your place. */
+	--measure: 55ch;
+	--measure-narrow: 45ch;
 }
 
 :root[data-font="dyslexic"] body,
 :root[data-font="dyslexic"] .ds-scope {
-    letter-spacing: var(--tracking-normal);
-    word-spacing: 0.16em;
-    line-height: var(--leading-normal);
-    font-variant-ligatures: none;
-    text-wrap: pretty;
+	letter-spacing: var(--tracking-normal);
+	word-spacing: 0.16em;
+	line-height: var(--leading-normal);
+	font-variant-ligatures: none;
+	text-wrap: pretty;
 }
 
 /* Emphasis moves from slant to weight — an obliqued weighted-bottom face loses its asymmetry. */
@@ -1048,9 +1048,9 @@
 :root[data-font="dyslexic"] em,
 :root[data-font="dyslexic"] cite,
 :root[data-font="dyslexic"] address {
-    font-style: normal;
-    font-synthesis-style: none;
-    font-weight: var(--fw-bold);
+	font-style: normal;
+	font-synthesis-style: none;
+	font-weight: var(--fw-bold);
 }
 
 /* Universal border-box reset — foundational layout contract (DESIGN_SYSTEM.md Part A). Padding and
@@ -1060,7 +1060,7 @@
 *,
 *::before,
 *::after {
-    box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 /*
@@ -1085,20 +1085,9 @@
  * and it is routinely set on a dialog or a region so focus can be MOVED there. Ringing those would
  * draw an indicator around a whole panel every time an overlay opened.
  */
-:where(
-	a[href],
-	area[href],
-	button,
-	input,
-	select,
-	textarea,
-	summary,
-	iframe,
-	[contenteditable="true"],
-	[tabindex]:not([tabindex="-1"])
-):focus-visible {
-    outline: none;
-    box-shadow: none;
+:where(a[href], area[href], button, input, select, textarea, summary, iframe, [contenteditable="true"], [tabindex]:not([tabindex="-1"])):focus-visible {
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -1120,33 +1109,33 @@
  * one and wins.
  */
 .ui-hit {
-    position: relative;
+	position: relative;
 }
 
 .ui-hit::before {
-    content: "";
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-start: 50%;
-    inline-size: max(100%, var(--fld-hit));
-    block-size: max(100%, var(--fld-hit));
-    transform: translate(-50%, -50%);
-    background: transparent;
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	inline-size: max(100%, var(--fld-hit));
+	block-size: max(100%, var(--fld-hit));
+	transform: translate(-50%, -50%);
+	background: transparent;
 }
 
 /* Visually-hidden utility — removes an element from the visual layout while keeping it in the
    accessibility tree (non-color status channels, dot labels, "Loading…" text). §A.5/§C.6. */
 .ui-visually-hidden {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    margin: -1px;
-    padding: 0;
-    border: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 /* Anchored-overlay primitive — consumes the `--float-*` custom properties written by `useFloating` /
@@ -1154,23 +1143,23 @@
    `overflow: hidden`/`clip`/`auto` clip boundary, and the hook's boundary math keeps it clear of the
    higher-level nav. The `-9999px` fallbacks park it off-screen until the first measure (no flash). */
 .ui-anchored {
-    position: fixed;
-    inset-block-start: var(--float-top, -9999px);
-    /*
-	 * PHYSICAL `left`, deliberately, and not `inset-inline-start`.
-	 *
-	 * `--float-left` is written by `useFloating`/`useEdgeDetection` from `getBoundingClientRect`, which
-	 * is a physical, left-origin measurement — the hook has already done the collision maths in
-	 * viewport coordinates and decided which side of the trigger the panel goes on. Feeding that number
-	 * to a LOGICAL property makes it resolve to `right` under `dir="rtl"`, so a panel the hook placed
-	 * 100px from the left edge is drawn 100px from the RIGHT edge: mirrored to the wrong side of the
-	 * control it belongs to, and off-screen wherever the hook had clamped it against an edge. The
-	 * placement is already direction-aware; the property that applies it must not mirror it a second
-	 * time.
-	 */
-    left: var(--float-left, -9999px);
-    inline-size: var(--float-width, auto);
-    z-index: var(--z-portal, var(--z-overlay));
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	/*
+	* PHYSICAL `left`, deliberately, and not `inset-inline-start`.
+	*
+	* `--float-left` is written by `useFloating`/`useEdgeDetection` from `getBoundingClientRect`, which
+	* is a physical, left-origin measurement — the hook has already done the collision maths in
+	* viewport coordinates and decided which side of the trigger the panel goes on. Feeding that number
+	* to a LOGICAL property makes it resolve to `right` under `dir="rtl"`, so a panel the hook placed
+	* 100px from the left edge is drawn 100px from the RIGHT edge: mirrored to the wrong side of the
+	* control it belongs to, and off-screen wherever the hook had clamped it against an edge. The
+	* placement is already direction-aware; the property that applies it must not mirror it a second
+	* time.
+	*/
+	left: var(--float-left, -9999px);
+	inline-size: var(--float-width, auto);
+	z-index: var(--z-portal, var(--z-overlay));
 }
 
 /* #region Menu surface + row (Decision #364, DESIGN_SYSTEM §B.4.3) */
@@ -1189,88 +1178,88 @@
  * track is `transparent`. A panel wearing it declares no surface of its own.
  */
 .ui-menu-surface {
-    --scrollbar-track: transparent;
-    --text-secondary: var(--on-surface-variant);
-    --fld-opt-radius: var(--menu-item-radius);
-    --fld-opt-fs: var(--menu-item-fs);
-    isolation: isolate;
-    color: var(--on-surface);
-    background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
-    border: 1px solid var(--hairline-color);
-    border-radius: var(--menu-radius);
-    box-shadow: var(--elevation-high);
-    animation:
-        ui-menu-fade var(--dur-medium) var(--ease-standard),
-        ui-menu-rise var(--dur-medium) var(--spring-standard);
+	--scrollbar-track: transparent;
+	--text-secondary: var(--on-surface-variant);
+	--fld-opt-radius: var(--menu-item-radius);
+	--fld-opt-fs: var(--menu-item-fs);
+	isolation: isolate;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--menu-radius);
+	box-shadow: var(--elevation-high);
+	animation:
+		ui-menu-fade var(--dur-medium) var(--ease-standard),
+		ui-menu-rise var(--dur-medium) var(--spring-standard);
 }
 
 .ui-menu-surface::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 /* `translate`, not `transform`, so the rise composes with a panel's own transform. A panel opening
    upward sets `--menu-enter-y: var(--space-2)`. */
 @keyframes ui-menu-fade {
-    from {
-        opacity: 0;
-    }
+	from {
+		opacity: 0;
+	}
 }
 
 @keyframes ui-menu-rise {
-    from {
-        translate: 0 var(--menu-enter-y, calc(-1 * var(--space-2)));
-    }
+	from {
+		translate: 0 var(--menu-enter-y, calc(-1 * var(--space-2)));
+	}
 }
 
 /* The megamenu's solid fallbacks. Plain selector lists: a pseudo-element is not valid in `:is()`. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .ui-menu-surface {
-        background: var(--surface);
-    }
+	.ui-menu-surface {
+		background: var(--surface);
+	}
 }
 
 @media (prefers-reduced-transparency: reduce) {
-    .ui-menu-surface {
-        background: var(--surface);
-    }
+	.ui-menu-surface {
+		background: var(--surface);
+	}
 
-    .ui-menu-surface::before {
-        content: none;
-    }
+	.ui-menu-surface::before {
+		content: none;
+	}
 }
 
 @media (prefers-contrast: more) {
-    :root:not([data-contrast="normal"]) .ui-menu-surface {
-        background: var(--surface);
-    }
+	:root:not([data-contrast="normal"]) .ui-menu-surface {
+		background: var(--surface);
+	}
 
-    :root:not([data-contrast="normal"]) .ui-menu-surface::before {
-        content: none;
-    }
+	:root:not([data-contrast="normal"]) .ui-menu-surface::before {
+		content: none;
+	}
 }
 
 :root[data-contrast="high"] .ui-menu-surface {
-    background: var(--surface);
+	background: var(--surface);
 }
 
 :root[data-contrast="high"] .ui-menu-surface::before {
-    content: none;
+	content: none;
 }
 
 @media (forced-colors: active) {
-    .ui-menu-surface {
-        background: Canvas;
-    }
+	.ui-menu-surface {
+		background: Canvas;
+	}
 
-    .ui-menu-surface::before {
-        content: none;
-    }
+	.ui-menu-surface::before {
+		content: none;
+	}
 }
 
 /*
@@ -1280,83 +1269,83 @@
  * leading glyph slot.
  */
 .ui-menu-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    box-sizing: border-box;
-    inline-size: 100%;
-    min-inline-size: 0;
-    min-block-size: var(--fld-opt-h);
-    padding: var(--space-2) var(--space-3);
-    font: inherit;
-    font-size: var(--menu-item-fs);
-    line-height: var(--leading-snug);
-    color: var(--on-surface);
-    text-align: start;
-    text-decoration: none;
-    background: transparent;
-    border: none;
-    border-radius: var(--menu-item-radius);
-    cursor: pointer;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        transform var(--dur-press) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	box-sizing: border-box;
+	inline-size: 100%;
+	min-inline-size: 0;
+	min-block-size: var(--fld-opt-h);
+	padding: var(--space-2) var(--space-3);
+	font: inherit;
+	font-size: var(--menu-item-fs);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	border-radius: var(--menu-item-radius);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
 }
 
 .ui-menu-item:hover,
 .ui-menu-item:focus-visible,
 .ui-menu-item[aria-expanded="true"] {
-    background: var(--menu-item-tint);
-    outline: none;
+	background: var(--menu-item-tint);
+	outline: none;
 }
 
 .ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
-    transform: scale(var(--btn-press-scale));
+	transform: scale(var(--btn-press-scale));
 }
 
 .ui-menu-item:disabled,
 .ui-menu-item[aria-disabled="true"] {
-    color: var(--on-surface-variant);
-    background: transparent;
-    cursor: default;
+	color: var(--on-surface-variant);
+	background: transparent;
+	cursor: default;
 }
 
 .ui-menu-item--danger,
 .ui-menu-item[data-danger="true"] {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .ui-menu-item--danger:is(:hover, :focus-visible),
 .ui-menu-item[data-danger="true"]:is(:hover, :focus-visible) {
-    background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 
 .ui-menu-item__icon {
-    display: inline-flex;
-    flex: none;
-    color: var(--on-surface-variant);
+	display: inline-flex;
+	flex: none;
+	color: var(--on-surface-variant);
 }
 
 .ui-menu-item--danger .ui-menu-item__icon,
 .ui-menu-item[data-danger="true"] .ui-menu-item__icon {
-    color: currentColor;
+	color: currentColor;
 }
 
 .ui-menu-separator {
-    block-size: 0;
-    margin: var(--space-1) var(--space-2);
-    border: 0;
-    border-block-start: 1px solid var(--hairline-color);
+	block-size: 0;
+	margin: var(--space-1) var(--space-2);
+	border: 0;
+	border-block-start: 1px solid var(--hairline-color);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
-        transform: none;
-    }
+	.ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
+		transform: none;
+	}
 }
 
 :root[data-motion="reduced"] .ui-menu-item:active:not(:disabled, [aria-disabled="true"]) {
-    transform: none;
+	transform: none;
 }
 /* #endregion */
 
@@ -1388,37 +1377,37 @@
  * the whole mechanism, and it is why the scoping list only needs the surface ROOTS.
  */
 :root {
-    --scrollbar-track: var(--bg);
+	--scrollbar-track: var(--bg);
 }
 
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+	width: 6px;
+	height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
+	background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 6px;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	background: var(--scrollbar-thumb);
+	border-radius: 6px;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 ::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {
-    background: var(--scrollbar-thumb-hover);
+	background: var(--scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-button {
-    display: none;
-    width: 0;
-    height: 0;
+	display: none;
+	width: 0;
+	height: 0;
 }
 
 ::-webkit-scrollbar-corner {
-    background: var(--scrollbar-track);
+	background: var(--scrollbar-track);
 }
 
 /*
@@ -1449,7 +1438,7 @@
 .ui-galleria,
 .ui-rte,
 .ui-card--flat {
-    --scrollbar-track: var(--surface);
+	--scrollbar-track: var(--surface);
 }
 
 .ui-card--elevated,
@@ -1465,17 +1454,17 @@
 .ui-cmdk__panel,
 .ui-orgchart__card,
 .ui-captcha__frame {
-    --scrollbar-track: var(--surface-1);
+	--scrollbar-track: var(--surface-1);
 }
 
 .ui-card--filled,
 .ui-cascadeselect__panel,
 .ui-tumbler__viewport {
-    --scrollbar-track: var(--surface-2);
+	--scrollbar-track: var(--surface-2);
 }
 
 .ui-terminal {
-    --scrollbar-track: var(--surface-3);
+	--scrollbar-track: var(--surface-3);
 }
 
 /*
@@ -1487,51 +1476,51 @@
  * re-tones the frame re-tones the track with it.
  */
 .ui-app-shell {
-    --scrollbar-track: var(--surface-2);
+	--scrollbar-track: var(--surface-2);
 }
 
 .ui-app-shell__content {
-    --scrollbar-track: var(--surface-1);
+	--scrollbar-track: var(--surface-1);
 }
 
 .ui-page-canvas {
-    --scrollbar-track: var(--frame-surface, var(--surface));
+	--scrollbar-track: var(--frame-surface, var(--surface));
 }
 
 /* Glass chrome — see the `transparent` note above. */
 .ui-shell-topbar,
 .ui-mobile-menu__drawer,
 .ui-autocomplete__panel {
-    --scrollbar-track: transparent;
+	--scrollbar-track: transparent;
 }
 
 /* Simultaneous, frame-coherent theme crossfade — one clock across the whole tree (§B.5). */
 *,
 *::before,
 *::after {
-    transition:
-        color var(--dur-slow) var(--ease-standard),
-        background-color var(--dur-slow) var(--ease-standard),
-        border-color var(--dur-slow) var(--ease-standard),
-        fill var(--dur-slow) var(--ease-standard);
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    :root {
-        --dur-fast: 0ms;
-        --dur-medium: 0ms;
-        --dur-slow: 0ms;
-        --dur-highlight: 0ms;
-        --dur-stagger: 0ms;
-        --dur-ambient: 0ms;
-    }
+	:root {
+		--dur-fast: 0ms;
+		--dur-medium: 0ms;
+		--dur-slow: 0ms;
+		--dur-highlight: 0ms;
+		--dur-stagger: 0ms;
+		--dur-ambient: 0ms;
+	}
 
-    *,
-    *::before,
-    *::after {
-        transition-duration: 0ms !important;
-        animation: none !important;
-    }
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0ms !important;
+		animation: none !important;
+	}
 }
 
 /* The in-app channel of the same rule (§A.5): Settings → Appearance → Reduce motion writes
@@ -1539,17 +1528,17 @@
    paint). Until this block existed only a handful of components honoured the attribute, and the
    switch moved almost nothing. Identical to the media query on purpose — one behaviour, two triggers. */
 :root[data-motion="reduced"] {
-    --dur-fast: 0ms;
-    --dur-medium: 0ms;
-    --dur-slow: 0ms;
-    --dur-highlight: 0ms;
-    --dur-stagger: 0ms;
-    --dur-ambient: 0ms;
+	--dur-fast: 0ms;
+	--dur-medium: 0ms;
+	--dur-slow: 0ms;
+	--dur-highlight: 0ms;
+	--dur-stagger: 0ms;
+	--dur-ambient: 0ms;
 }
 
 :root[data-motion="reduced"] *,
 :root[data-motion="reduced"] *::before,
 :root[data-motion="reduced"] *::after {
-    transition-duration: 0ms !important;
-    animation: none !important;
+	transition-duration: 0ms !important;
+	animation: none !important;
 }

@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Tooltip } from "@projective/ui/feedback";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -31,7 +32,9 @@ export function FreelancerCard({ node, onOpen }: FreelancerCardProps): JSX.Eleme
 				<UserAvatar image={node.avatar ?? undefined} label={node.label} size={72} alt="" />
 			</span>
 			<span class="subm-card__meta">
-				<span class="subm-card__name" title={node.label}>{node.label}</span>
+				<Tooltip content={node.label} whenTruncated>
+					<span class="subm-card__name">{node.label}</span>
+				</Tooltip>
 				<span class="subm-card__sub">{node.sublabel ?? "Freelancer"}</span>
 				<span class="subm-card__count">{countLabel}</span>
 			</span>

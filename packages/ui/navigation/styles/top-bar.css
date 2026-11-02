@@ -23,11 +23,39 @@
 	gap: var(--space-2);
 }
 
-/* User shell (Part D.1): the lead block fuses brand + integrated search and grows to fill the row so
-   the search stretches, while the trailing action tray stays pinned right. */
+/* User shell (Part D.1): brand · search · action tray. The two outer tracks are equal `1fr`s, so the
+   search's track sits on the bar's exact midline whatever either side holds; each is floored at its
+   own content, so neither is ever drawn under the search. No transform is involved, so the typeahead
+   anchored to the field measures its real box. */
+.ui-app-shell--user .ui-shell-topbar {
+	display: grid;
+	grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+}
+
 .ui-app-shell--user .ui-shell-topbar__lead {
-	flex: 1 1 auto;
-	min-inline-size: 0;
+	grid-column: 1;
+}
+
+.ui-app-shell--user .ui-shell-topbar__center {
+	grid-column: 2;
+	margin-inline: 0;
+}
+
+/* Explicit, so a bar with no search (focus chrome, `showSearch={false}`) keeps the tray at the end. */
+.ui-app-shell--user .ui-shell-topbar__actions {
+	grid-column: 3;
+	justify-content: flex-end;
+}
+
+/* Grid sizing grows the search's track before the `1fr`s, so with unequal floors a narrow bar would
+   keep the search wide and slide it off the midline. One shared floor (just over the signed-in tray)
+   makes the search shrink first; a side that outgrows it floors at its content and the midline gives
+   rather than overlap. Desktop only: the phone bar has no search, and two floors would overflow it. */
+@media (min-width: 768px) {
+	.ui-app-shell--user .ui-shell-topbar__lead,
+	.ui-app-shell--user .ui-shell-topbar__actions {
+		min-inline-size: 11rem;
+	}
 }
 
 .ui-shell-topbar__center {

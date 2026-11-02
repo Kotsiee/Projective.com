@@ -4,6 +4,7 @@ import "../styles/files-hub.css";
 import type { AssetItem, LinkAttachment } from "../types/file-types.ts";
 import { ScanMark } from "./file-hub-glyphs.tsx";
 import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 
 /**
  * LinkCard — the grid cell for a web link stored as a first-class asset (`source === "link"`).
@@ -83,7 +84,9 @@ export function LinkCard({ asset, link, onOpen }: LinkCardProps): JSX.Element {
 			</span>
 
 			<span class="fx-card__meta">
-				<span class="fx-card__name" title={title}>{title}</span>
+				<Tooltip content={title} whenTruncated>
+					<span class="fx-card__name">{title}</span>
+				</Tooltip>
 				<span class="fx-card__by">
 					<span class="fx-card__srcmark" aria-hidden="true">
 						<Icon name="external-link" />

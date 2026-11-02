@@ -11,6 +11,7 @@ import { useDismiss } from "../hooks/useDismiss.ts";
 import { useListNavigation } from "../hooks/useListNavigation.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
 import { Icon, type IconName } from "../../icons/mod.ts";
@@ -451,20 +452,21 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 					{itemTemplate ? itemTemplate(opt) : labelOf(item)}
 				</span>
 				{canRemove && (
-					<button
-						type="button"
-						class="ui-autocomplete__remove"
-						tabIndex={-1}
-						aria-hidden="true"
-						title={removeLabel(opt)}
-						onPointerDown={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							removeRow(row);
-						}}
-					>
-						<Icon name="close" size="2xs" />
-					</button>
+					<Tooltip content={removeLabel(opt)}>
+						<button
+							type="button"
+							class="ui-autocomplete__remove"
+							tabIndex={-1}
+							aria-hidden="true"
+							onPointerDown={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								removeRow(row);
+							}}
+						>
+							<Icon name="close" size="2xs" />
+						</button>
+					</Tooltip>
 				)}
 			</div>
 		);
@@ -485,24 +487,25 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 							{s.label}
 						</div>
 						{s.action && (
-							<div
-								id={`${listId}-opt-${actionIndex}`}
-								role="option"
-								aria-selected={actionIndex === activeIndex}
-								aria-label={s.action.item.label}
-								title={s.action.item.label}
-								class={cx(
-									"ui-autocomplete__action",
-									actionIndex === activeIndex && "ui-autocomplete__action--active",
-								)}
-								onPointerDown={(e) => {
-									e.preventDefault();
-									selectSuggestion(rows[actionIndex].item);
-								}}
-								onPointerEnter={() => nav.reset(actionIndex)}
-							>
-								<Icon name={s.action.icon} size="xs" />
-							</div>
+							<Tooltip content={s.action.item.label}>
+								<div
+									id={`${listId}-opt-${actionIndex}`}
+									role="option"
+									aria-selected={actionIndex === activeIndex}
+									aria-label={s.action.item.label}
+									class={cx(
+										"ui-autocomplete__action",
+										actionIndex === activeIndex && "ui-autocomplete__action--active",
+									)}
+									onPointerDown={(e) => {
+										e.preventDefault();
+										selectSuggestion(rows[actionIndex].item);
+									}}
+									onPointerEnter={() => nav.reset(actionIndex)}
+								>
+									<Icon name={s.action.icon} size="xs" />
+								</div>
+							</Tooltip>
 						)}
 					</div>
 					{s.items.map((_, j) => renderRow(rows[start + j], start + j))}

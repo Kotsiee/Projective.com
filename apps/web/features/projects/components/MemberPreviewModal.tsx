@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { Avatar } from "@projective/ui/display";
-import { Dialog, Skeleton } from "@projective/ui/feedback";
+import { Dialog, Skeleton, Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { ProfileView } from "@projective/types/profile";
@@ -169,14 +169,11 @@ export function MemberPreviewModal(props: MemberPreviewModalProps): JSX.Element 
 				{role && <AuthorityMark role={role} />}
 			</span>
 			{handle && (
-				<a
-					class="mem-preview__full"
-					href={profileHref(handle)}
-					aria-label="View full profile"
-					title="View full profile"
-				>
-					<Icon name="external-link" size="sm" />
-				</a>
+				<Tooltip content="View full profile">
+					<a class="mem-preview__full" href={profileHref(handle)} aria-label="View full profile">
+						<Icon name="external-link" size="sm" />
+					</a>
+				</Tooltip>
 			)}
 		</div>
 	);

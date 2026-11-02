@@ -1,6 +1,7 @@
 import type { JSX, RefObject } from "preact";
 import type { ReadonlySignal, Signal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { PlusIcon, TrashIcon } from "../glyphs.tsx";
 import {
 	LibraryIcon,
@@ -27,6 +28,8 @@ export interface ComposerLeadingActionProps {
 	plusOpen: Signal<boolean>;
 	/** The tray is full — the Plus control is disabled. */
 	atCapacity: boolean;
+	/** Spell the attach shortcuts with ⌘ rather than Ctrl. */
+	apple: boolean;
 	/** Discard the voice memo (or the take in progress). */
 	onDiscard: () => void;
 	/** Open the hidden device file picker. */
@@ -37,9 +40,12 @@ export interface ComposerLeadingActionProps {
 
 /** Left control — the Plus popover (Upload from Device · Attach from Library), or Discard while a voice memo is active. */
 export function ComposerLeadingAction(
-	{ hasVoice, plusOpen, atCapacity, onDiscard, onUploadFromDevice, onAttachFromLibrary }:
+	{ hasVoice, plusOpen, atCapacity, apple, onDiscard, onUploadFromDevice, onAttachFromLibrary }:
 		ComposerLeadingActionProps,
 ): JSX.Element {
+	const mod = apple ? "Meta" : "Control";
+	const library = shortcutOn("attach-library") ? (apple ? "⌘U" : "Ctrl+U") : null;
+	const device = shortcutOn("attach-device") ? (apple ? "⇧⌘U" : "Ctrl+Shift+U") : null;
 	return hasVoice
 		? (
 			<Tooltip content="Discard recording" placement="top">
@@ -61,7 +67,12 @@ export function ComposerLeadingAction(
 				allowOverflow={["top"]}
 				class="chat-composer-pop"
 				trigger={(api) => (
-					<Tooltip content="Add attachment" placement="top">
+					<Tooltip
+						content="Add attachment"
+						shortcut={[library, device].filter((keys): keys is string => keys !== null)}
+						delay="fast"
+						placement="top"
+					>
 						<button
 							type="button"
 							ref={api.ref as RefObject<HTMLButtonElement>}
@@ -83,23 +94,27 @@ export function ComposerLeadingAction(
 						type="button"
 						role="menuitem"
 						class="ui-menu-item chat-composer__menu-item"
+						aria-keyshortcuts={device ? `${mod}+Shift+U` : undefined}
 						onClick={onUploadFromDevice}
 					>
 						<span class="ui-menu-item__icon chat-composer__menu-icon" aria-hidden="true">
 							{UploadIcon}
 						</span>
 						<span>Upload from Device</span>
+						{device && <span class="chat-composer__menu-keys" aria-hidden="true">{device}</span>}
 					</button>
 					<button
 						type="button"
 						role="menuitem"
 						class="ui-menu-item chat-composer__menu-item"
+						aria-keyshortcuts={library ? `${mod}+U` : undefined}
 						onClick={onAttachFromLibrary}
 					>
 						<span class="ui-menu-item__icon chat-composer__menu-icon" aria-hidden="true">
 							{LibraryIcon}
 						</span>
 						<span>Attach from Library</span>
+						{library && <span class="chat-composer__menu-keys" aria-hidden="true">{library}</span>}
 					</button>
 				</div>
 			</Popover>
@@ -202,9 +217,9 @@ export function ComposerTrailingAction(
 		)
 		: (
 			<Tooltip
-				content={micBlocked
-					? "Microphone unavailable"
-					: "Hold to talk · click to record · Ctrl+Space"}
+				content={micBlocked ? "Microphone unavailable" : "Hold to talk · click to record"}
+				shortcut={micBlocked || !shortcutOn("voice-message") ? undefined : "Ctrl+Space"}
+				delay="fast"
 				placement="top"
 			>
 				<button

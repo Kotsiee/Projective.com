@@ -265,6 +265,13 @@
 	overflow: hidden;
 }
 
+/* The full-label Tooltip's anchor fills the cell, so a cell too narrow for any label still answers. */
+.gantt-head__cell > .ui-tooltip__anchor {
+	flex: 1 1 auto;
+	align-self: stretch;
+	align-items: center;
+}
+
 .gantt-head__cell--major {
 	border-inline-start-color: var(--gantt-rule-major);
 	color: var(--on-surface);

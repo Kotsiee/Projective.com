@@ -145,7 +145,9 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 		<header class="cat-band cat-ws-head">
 			<div class="cat-band__start">
 				<div class="cat-band__idblock">
-					<h1 class="cat-band__title" title={title}>{title || "Untitled listing"}</h1>
+					<Tooltip content={title} whenTruncated>
+						<h1 class="cat-band__title">{title || "Untitled listing"}</h1>
+					</Tooltip>
 					<div class="cat-band__meta">
 						<Tag
 							class="cat-ws-head__status"

@@ -7,8 +7,12 @@ import {
 	type AppearancePreferences,
 	AppearancePreferencesSchema,
 	DEFAULT_APPEARANCE,
+	DEFAULT_UI_SETTINGS,
 	type DisplayPreferences,
+	type ResolvedUiSettings,
+	resolveUiSettings,
 	splitPreferencesPatch,
+	type UiSettings,
 	type UserPreferencesUpdate,
 } from "@projective/types/org";
 
@@ -50,6 +54,10 @@ export interface PreferencesSaveResult {
 	appearance: AppearancePreferences | null;
 	/** Whether the appearance half reached the account (`false` = this device only). */
 	appearancePersisted: boolean;
+	/** The `ui_settings` after the save, when the patch touched them. */
+	uiSettings: ResolvedUiSettings | null;
+	/** Whether the `ui_settings` half reached the account (`false` = this device only). */
+	uiSettingsPersisted: boolean;
 }
 
 interface AppearanceRow {
@@ -156,11 +164,24 @@ export class SettingsBackendService {
 	}
 
 	/**
+	 * The caller's `ui_settings` — the account copy when it can be read (`live: true`), else the
+	 * device's own copy (`live: false`), on the same terms as {@link appearance}.
+	 */
+	static async uiSettings(
+		input: { actor: ReadActor; device?: ResolvedUiSettings | null },
+	): Promise<ServiceResult<{ uiSettings: ResolvedUiSettings; live: boolean }>> {
+		const stored = await SettingsBackendService.readUiSettings(input.actor);
+		return stored === null
+			? ok({ uiSettings: input.device ?? DEFAULT_UI_SETTINGS, live: false })
+			: ok({ uiSettings: resolveUiSettings(stored), live: true });
+	}
+
+	/**
 	 * Apply a preferences patch: the display half (currency · locale · direction · date format)
-	 * through {@link UserBackendService.updatePreferences}, the appearance half
-	 * here. Each half reports what actually persisted; the appearance half folds the patch over the
-	 * device copy when the account write fails, and says `appearancePersisted: false` rather than
-	 * claiming a durability it did not get.
+	 * through {@link UserBackendService.updatePreferences}, the appearance and `ui_settings` halves
+	 * here. Each half reports what actually persisted; the appearance and `ui_settings` halves fold the
+	 * patch over the device copy when the account write fails, and say `…Persisted: false` rather than
+	 * claiming a durability they did not get.
 	 */
 	static async updatePreferences(
 		input: {
@@ -168,15 +189,17 @@ export class SettingsBackendService {
 			actor: ReadActor;
 			patch: UserPreferencesUpdate;
 			device?: DeviceAppearance | null;
+			deviceUi?: ResolvedUiSettings | null;
 		},
 	): Promise<ServiceResult<PreferencesSaveResult>> {
 		if (!input.context.userId) {
 			return fail(401, { message: "You need to be signed in to change your preferences." });
 		}
-		const { appearance: appearancePatch, display } = splitPreferencesPatch(input.patch);
+		const { appearance: appearancePatch, display, ui } = splitPreferencesPatch(input.patch);
 		const touchesDisplay = Object.keys(display).length > 0;
 		const touchesAppearance = Object.keys(appearancePatch).length > 0;
-		if (!touchesDisplay && !touchesAppearance) {
+		const touchesUi = Object.keys(ui).length > 0;
+		if (!touchesDisplay && !touchesAppearance && !touchesUi) {
 			return fail(422, { message: "No preference changes were supplied." });
 		}
 
@@ -209,7 +232,17 @@ export class SettingsBackendService {
 			}
 		}
 
-		return ok({ preferences, appearance, appearancePersisted });
+		let uiSettings: ResolvedUiSettings | null = null;
+		let uiSettingsPersisted = false;
+		if (touchesUi) {
+			const stored = await SettingsBackendService.writeUiSettings(input.actor, ui);
+			uiSettingsPersisted = stored !== null;
+			uiSettings = stored
+				? resolveUiSettings(stored)
+				: { ...(input.deviceUi ?? DEFAULT_UI_SETTINGS), ...ui } as ResolvedUiSettings;
+		}
+
+		return ok({ preferences, appearance, appearancePersisted, uiSettings, uiSettingsPersisted });
 	}
 	// #endregion
 
@@ -248,6 +281,50 @@ export class SettingsBackendService {
 				.select(APPEARANCE_COLUMNS)
 				.maybeSingle();
 			return error ? null : (data as AppearanceRow | null);
+		} catch {
+			return null;
+		}
+	}
+
+	/** The caller's raw `ui_settings`, `{}` with no row yet, or `null` on any failure. */
+	private static async readUiSettings(actor: ReadActor): Promise<unknown | null> {
+		if (!isAuthBackendLive() || !canReadLive(actor)) return null;
+		try {
+			const { data, error } = await getUserClient(actor.accessToken)
+				.schema("org")
+				.from("user_preferences")
+				.select("ui_settings")
+				.eq("user_id", actor.userId)
+				.maybeSingle();
+			if (error) return null;
+			return (data as { ui_settings: unknown } | null)?.ui_settings ?? {};
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Merge `patch` over the stored `ui_settings` key by key and upsert the result, returning what was
+	 * stored or `null`. Read-merge-write rather than a whole-object write, so a key this patch does not
+	 * name (one a later feature adds) survives; RLS limits both statements to the caller's own row.
+	 */
+	private static async writeUiSettings(
+		actor: ReadActor,
+		patch: UiSettings,
+	): Promise<unknown | null> {
+		if (!isAuthBackendLive() || !canReadLive(actor)) return null;
+		const current = await SettingsBackendService.readUiSettings(actor);
+		if (current === null) return null;
+		try {
+			const base = current && typeof current === "object" && !Array.isArray(current) ? current : {};
+			const merged = { ...base, ...patch };
+			const { data, error } = await getUserClient(actor.accessToken)
+				.schema("org")
+				.from("user_preferences")
+				.upsert({ user_id: actor.userId, ui_settings: merged }, { onConflict: "user_id" })
+				.select("ui_settings")
+				.maybeSingle();
+			return error ? null : (data as { ui_settings: unknown } | null)?.ui_settings ?? null;
 		} catch {
 			return null;
 		}

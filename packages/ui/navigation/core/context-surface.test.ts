@@ -30,6 +30,11 @@ Deno.test("shouldOpenContextMenu still takes Shift+F10, which carries shiftKey",
 	assert(shouldOpenContextMenu({ ...plain, shiftKey: true, keyboard: true }));
 });
 
+Deno.test("shouldOpenContextMenu leaves a descendant the surface excludes to the browser", () => {
+	assertFalse(shouldOpenContextMenu({ ...plain, excluded: true }));
+	assert(shouldOpenContextMenu({ ...plain, excluded: false }));
+});
+
 Deno.test("shouldOpenContextMenu leaves editable text and live selections alone", () => {
 	assertFalse(shouldOpenContextMenu({ ...plain, editable: true }));
 	assertFalse(shouldOpenContextMenu({ ...plain, selecting: true }));

@@ -276,7 +276,7 @@ function EventActionHeader(
 		<div class="cal-act">
 			{event.href
 				? (
-					<Tooltip content="Open the full entry">
+					<Tooltip content="Open the full entry" density="compact">
 						<a
 							class="ui-button ui-button--secondary ui-button--text ui-button--size-sm ui-button--icon-only"
 							href={event.href}
@@ -295,7 +295,7 @@ function EventActionHeader(
 				placement="bottom-end"
 				class="cal-act__menu"
 				trigger={(api) => (
-					<Tooltip content="Add to a calendar">
+					<Tooltip content="Add to a calendar" density="compact">
 						<Button
 							ref={api.ref as RefObject<HTMLButtonElement>}
 							variant="text"
@@ -344,7 +344,7 @@ function EventActionHeader(
 				</div>
 			</Popover>
 
-			<Tooltip content="Edit this entry">
+			<Tooltip content="Edit this entry" density="compact">
 				<Button
 					variant="text"
 					severity="secondary"
@@ -361,7 +361,7 @@ function EventActionHeader(
 				placement="bottom-end"
 				class="cal-act__menu"
 				trigger={(api) => (
-					<Tooltip content="More actions">
+					<Tooltip content="More actions" density="compact">
 						<Button
 							ref={api.ref as RefObject<HTMLButtonElement>}
 							variant="text"

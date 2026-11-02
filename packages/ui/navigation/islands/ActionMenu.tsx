@@ -24,8 +24,10 @@ import {
 	type HoverDecision,
 	isEmptyRow,
 	isReadable,
+	isSplit,
 	isSubmenu,
 	type MenuPath,
+	opensOnContextMenu,
 	openSubmenu,
 	type Point,
 	resolveHover,
@@ -64,6 +66,11 @@ export interface ActionMenuProps {
 	 * open the same rows at the pointer (or under the focused element), instead of the browser's menu.
 	 */
 	surface?: ContextSurfaceSource;
+	/**
+	 * A selector for descendants of the `surface` that keep the browser's own menu — the header bar
+	 * leaves its links and buttons to the browser, so only its empty space opens this menu.
+	 */
+	surfaceExclude?: string;
 	/** Accessible name of the root `role="menu"`. */
 	"aria-label": string;
 	/** Root panel placement; flips on overflow (default `bottom-end`). */
@@ -182,7 +189,13 @@ function ActionMenuFlyout(props: FlyoutProps): JSX.Element {
  * one level and at the root returns focus to the trigger, Tab closes everything. Escape is taken
  * through the shared escape stack, so only the top overlay ever sees it. Mouse hover opens submenus
  * with aim tolerance; touch taps toggle them. A terminal row runs its `command`, closes the tree and
- * returns focus to the trigger.
+ * returns focus to the trigger. A split row (a parent with its own `url` or `command`) runs on a click,
+ * Enter or Space and unfolds on hover, ArrowRight or a touch tap; with `submenuOn: "contextmenu"` it
+ * draws no caret, ignores hover and a touch tap runs it, and only a right-click on the row (or
+ * ArrowRight / the ContextMenu key) unfolds it. `surfaceExclude` leaves chosen descendants of the
+ * surface (links, buttons) to the browser's own menu. Every `url` row is an anchor, so a
+ * middle-click opens it in a new tab. Rows may change while the menu is open (a list read on demand);
+ * if that drops focus, it returns to the first row.
  *
  * Given a `surface` (the card or list item), the same rows open on right-click at the pointer, and on
  * the ContextMenu key or Shift+F10 under the focused element — one menu per entity, whichever way it
@@ -212,6 +225,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		model,
 		trigger,
 		surface,
+		surfaceExclude,
 		placement = "bottom-end",
 		avoid,
 		open,
@@ -248,8 +262,9 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		typeof document === "undefined"
 			? null
 			: document.getElementById(actionMenuRowId(levelId(depth, path.peek()), index));
-	const directionSource = triggerRef.current ?? resolveSurface(surface);
-	const rtl = isOpen && typeof getComputedStyle === "function" && directionSource
+	// Only while open: a getter surface reads the DOM, which a server render does not have.
+	const directionSource = isOpen ? (triggerRef.current ?? resolveSurface(surface)) : null;
+	const rtl = typeof getComputedStyle === "function" && directionSource
 		? getComputedStyle(directionSource).direction === "rtl"
 		: false;
 
@@ -354,6 +369,14 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 	}, [isOpen]);
 
 	useEffect(() => () => clearHover(), []);
+
+	// Rows may arrive after the menu opens (a list read on demand). When they replace the row that held
+	// focus, the cursor falls to the page; put it back on the first row so the keyboard keeps working.
+	useEffect(() => {
+		if (isOpen && document.activeElement === document.body) {
+			focusLater(0, edgeFocusable(tree.levels[0], "first", isReadable));
+		}
+	});
 	// #endregion
 
 	// #region Context surface
@@ -372,8 +395,8 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		setTimeout(show, 0);
 	};
 
-	const surfaceLive = useRef({ openAt, model });
-	surfaceLive.current = { openAt, model };
+	const surfaceLive = useRef({ openAt, model, surfaceExclude });
+	surfaceLive.current = { openAt, model, surfaceExclude };
 	const boundSurface = useRef<{ el: HTMLElement; unbind: () => void } | null>(null);
 
 	useEffect(() => {
@@ -391,7 +414,10 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 			if (surfaceLive.current.model.length === 0) return;
 			const keyboard = e.timeStamp - keyboardAt < KEYBOARD_CONTEXT_WINDOW_MS;
 			const target = e.target instanceof Element ? e.target : null;
+			const exclude = surfaceLive.current.surfaceExclude;
+			const kept = exclude ? target?.closest(exclude) : null;
 			const open = shouldOpenContextMenu({
+				excluded: !!kept && kept !== el && el.contains(kept),
 				handled: e.defaultPrevented,
 				keyboard,
 				shiftKey: e.shiftKey,
@@ -506,8 +532,15 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 				return;
 			}
 			if (isSubmenu(item)) {
+				// A keyboard press (`detail` 0) or a mouse press runs a split row; touch has no hover to
+				// unfold it, so a tap unfolds it and its first row opens it.
+				const touch = pointerType.current !== "mouse" && e.detail !== 0;
+				if (isSplit(item) && (!touch || opensOnContextMenu(item))) {
+					if (item.url) closeAll(true);
+					else runCommand(item, e);
+					return;
+				}
 				e.preventDefault();
-				const touch = pointerType.current !== "mouse";
 				if (touch && tree.path[depth] === index) {
 					clearHover();
 					setPath(closeFrom(tree.path, depth));
@@ -623,7 +656,18 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 			const pending = hover.current.pending;
 			if (e.pointerType === "mouse" && pending && pending.depth < depth) clearHover();
 		},
-		onContextMenu: keepInsideMenu,
+		// A right-click inside the menu never reaches the browser; on a row whose submenu opens that
+		// way, it opens it.
+		onContextMenu: (e: JSX.TargetedMouseEvent<HTMLDivElement>) => {
+			keepInsideMenu(e);
+			const row = e.target instanceof Element
+				? e.target.closest<HTMLElement>("[data-index]")
+				: null;
+			if (!row || !e.currentTarget.contains(row)) return;
+			const index = Number(row.dataset.index);
+			const item = tree.levels[depth]?.[index];
+			if (item && !item.disabled && opensOnContextMenu(item)) openChild(depth, index, true);
+		},
 	});
 	// #endregion
 

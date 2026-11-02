@@ -81,6 +81,12 @@ export const handler = define.handlers({
 			actor: readActor(ctx),
 			patch: parsed.data,
 			device: ctx.state.a11y,
+			deviceUi: ctx.state.a11y
+				? {
+					show_tooltip_shortcuts: ctx.state.a11y.tips,
+					disabled_shortcuts: ctx.state.a11y.keysOff,
+				}
+				: null,
 		});
 		const response = result.ok && touchesTokenClaims(parsed.data)
 			? await respondWithReissuedSession(ctx.req, bodyOf(result), result.status)
@@ -89,8 +95,9 @@ export const handler = define.handlers({
 		// account write landed, because the overlays (and the direction) are already in force on this
 		// device either way. Fields the save did not touch keep the device's current values.
 		const appearance = result.ok ? result.data?.appearance ?? null : null;
+		const ui = result.ok ? result.data?.uiSettings ?? null : null;
 		const dir = result.ok ? parsed.data.layoutDirection : undefined;
-		if (appearance || dir) {
+		if (appearance || ui || dir) {
 			const device = ctx.state.a11y ?? DEFAULT_A11Y;
 			response.headers.append(
 				"set-cookie",
@@ -100,6 +107,8 @@ export const handler = define.handlers({
 					cvd: appearance?.cvd ?? device.cvd,
 					motion: appearance?.motion ?? device.motion,
 					dir: dir ?? device.dir,
+					tips: ui?.show_tooltip_shortcuts ?? device.tips,
+					keysOff: ui?.disabled_shortcuts ?? device.keysOff,
 				}),
 			);
 		}

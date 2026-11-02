@@ -1,0 +1,211 @@
+/// <reference lib="dom" />
+import type { ToggleableShortcutId } from "@projective/types/org";
+
+/**
+ * shortcut-registry — the authoritative list of the platform's keyboard shortcuts (Decision #371):
+ * what each one is called, what it does, the keys it takes and whether a person may switch it off.
+ * The Settings → Keyboard shortcuts console renders from it and every listener asks it before acting.
+ *
+ * The rule each key MATCHES stays a pure predicate beside its listener (`shell/core/shortcuts.ts`,
+ * `projects/core/chat-keyboard.ts`, Decision #282); this file describes, it never matches. The ids a
+ * person may switch off are owned by `ToggleableShortcutId` (`@projective/types/org`), so the stored
+ * `ui_settings.disabled_shortcuts` and this list cannot drift — the test holds them equal.
+ *
+ * **Protected** means the keyboard's only route to something: Escape out of an overlay, Tab between
+ * controls, the rail toggle, the board's keyboard alternative to dragging. A character-key shortcut is
+ * never protected — WCAG 2.1.4 requires that `/` or `G` `F` can be turned off, since speech input and a
+ * stray keystroke both fire them. `Cmd+K` is reserved and never shown (Decision #282), so it is absent.
+ */
+
+// #region Shapes
+/** The console's groups, in display order. */
+export const SHORTCUT_CATEGORIES = ["Navigation", "Messaging", "Project board", "General"] as const;
+export type ShortcutCategory = (typeof SHORTCUT_CATEGORIES)[number];
+
+/** The shortcuts that can never be switched off. */
+export type ProtectedShortcutId =
+	| "toggle-sidebar"
+	| "focus-next"
+	| "focus-previous"
+	| "board-move-card"
+	| "dismiss";
+
+export type ShortcutId = ToggleableShortcutId | ProtectedShortcutId;
+
+/** One registered shortcut. */
+export interface ShortcutDefinition {
+	id: ShortcutId;
+	category: ShortcutCategory;
+	label: string;
+	description: string;
+	/** Display keys in press order. `Mod` is ⌘ on Apple platforms and Ctrl elsewhere. */
+	keys: string[];
+	/** Pressed one after another (`G` then `F`) rather than together. */
+	sequence?: boolean;
+	isProtected: boolean;
+}
+// #endregion
+
+// #region Registry
+const SHORTCUTS: readonly ShortcutDefinition[] = [
+	{
+		id: "toggle-sidebar",
+		category: "Navigation",
+		label: "Collapse or expand the sidebar",
+		description: "Works anywhere except while you type in a field.",
+		keys: ["Mod", "B"],
+		isProtected: true,
+	},
+	{
+		id: "focus-header-search",
+		category: "Navigation",
+		label: "Search the platform",
+		description: "Jumps to the search in the header, even from inside a field.",
+		keys: ["Mod", "/"],
+		isProtected: false,
+	},
+	{
+		id: "focus-search",
+		category: "Navigation",
+		label: "Search this page",
+		description: "Jumps to the page's own search, on Explore, Settings and Help.",
+		keys: ["/"],
+		isProtected: false,
+	},
+	{
+		id: "open-feedback",
+		category: "Navigation",
+		label: "Send feedback",
+		description: "Opens the feedback board's panel from any page.",
+		keys: ["G", "F"],
+		sequence: true,
+		isProtected: false,
+	},
+	{
+		id: "focus-next",
+		category: "Navigation",
+		label: "Next control",
+		description: "Moves focus to the next button, link or field.",
+		keys: ["Tab"],
+		isProtected: true,
+	},
+	{
+		id: "focus-previous",
+		category: "Navigation",
+		label: "Previous control",
+		description: "Moves focus back to the previous button, link or field.",
+		keys: ["Shift", "Tab"],
+		isProtected: true,
+	},
+	{
+		id: "emoji-picker",
+		category: "Messaging",
+		label: "Emoji",
+		description: "Opens or closes the emoji picker in the message box.",
+		keys: ["Mod", "E"],
+		isProtected: false,
+	},
+	{
+		id: "attach-library",
+		category: "Messaging",
+		label: "Attach from your files",
+		description: "Picks files you've already uploaded.",
+		keys: ["Mod", "U"],
+		isProtected: false,
+	},
+	{
+		id: "attach-device",
+		category: "Messaging",
+		label: "Upload from your device",
+		description: "Opens your device's file dialog.",
+		keys: ["Mod", "Shift", "U"],
+		isProtected: false,
+	},
+	{
+		id: "voice-message",
+		category: "Messaging",
+		label: "Record a voice message",
+		description: "Hold while the message box is empty to record; let go to stop.",
+		keys: ["Ctrl", "Space"],
+		isProtected: false,
+	},
+	{
+		id: "board-move-card",
+		category: "Project board",
+		label: "Move a card",
+		description:
+			"Space picks up the focused card, the arrow keys move it, Enter drops it and Escape puts it back.",
+		keys: ["Space", "Arrows", "Enter"],
+		sequence: true,
+		isProtected: true,
+	},
+	{
+		id: "dismiss",
+		category: "General",
+		label: "Close or cancel",
+		description: "Closes a dialog, menu or tooltip, or cancels a drag.",
+		keys: ["Esc"],
+		isProtected: true,
+	},
+	{
+		id: "save",
+		category: "General",
+		label: "Save",
+		description: "Saves the project or stage you're editing.",
+		keys: ["Mod", "S"],
+		isProtected: false,
+	},
+];
+// #endregion
+
+// #region Lookups
+/** Every registered shortcut, grouped by {@link SHORTCUT_CATEGORIES} order. */
+export function getAllShortcuts(): readonly ShortcutDefinition[] {
+	return SHORTCUTS;
+}
+
+/** Whether `id` is a shortcut that can never be switched off. */
+export function isShortcutProtected(id: string): boolean {
+	return SHORTCUTS.some((s) => s.id === id && s.isProtected);
+}
+
+/** Whether `id` may fire given the `disabled` list. A protected shortcut always may. */
+export function isShortcutEnabled(id: string, disabled: readonly string[]): boolean {
+	return isShortcutProtected(id) || !disabled.includes(id);
+}
+
+/** A shortcut's keys as this platform spells them (`Mod` → ⌘ or Ctrl). */
+export function shortcutKeys(shortcut: ShortcutDefinition, apple: boolean): string[] {
+	return shortcut.keys.map((key) => key === "Mod" ? (apple ? "⌘" : "Ctrl") : key);
+}
+
+/**
+ * The shortcuts whose label, description or keys contain `query` (case-insensitive). `Mod` answers to
+ * both "ctrl" and "cmd", so a search works whichever platform the reader learned the keys on.
+ */
+export function filterShortcuts(query: string): ShortcutDefinition[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return [...SHORTCUTS];
+	return SHORTCUTS.filter((s) => {
+		const spell = (mod: string) => s.keys.map((key) => key === "Mod" ? mod : key).join("+");
+		return [s.label, s.description, spell("ctrl"), spell("cmd"), spell("⌘")]
+			.some((text) => text.toLowerCase().includes(q));
+	});
+}
+// #endregion
+
+// #region Live state
+/**
+ * The shortcuts switched off on this device: `<html data-shortcuts-off>`, painted by the server from
+ * the `pj.a11y` cookie and repainted by Settings the moment a switch moves. Empty on the server.
+ */
+export function disabledShortcuts(): string[] {
+	if (typeof document === "undefined") return [];
+	return document.documentElement.dataset.shortcutsOff?.split(" ").filter(Boolean) ?? [];
+}
+
+/** Whether a listener may act on `id` now. Read at keydown, so a change in Settings applies at once. */
+export function shortcutOn(id: ToggleableShortcutId): boolean {
+	return isShortcutEnabled(id, disabledShortcuts());
+}
+// #endregion

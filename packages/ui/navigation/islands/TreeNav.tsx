@@ -4,6 +4,7 @@ import "../styles/tree-nav.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { Avatar } from "../../display/components/Avatar.tsx";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 
 /**
  * TreeNav — a standard tree-explorer navigation sidebar: a hierarchical list of disclosure nodes with
@@ -185,7 +186,6 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 						disabled={node.disabled}
 						aria-current={selected ? "true" : undefined}
 						tabIndex={node.key === rovingKey ? 0 : -1}
-						title={node.label}
 						onClick={() => selectNode(node)}
 						onFocus={() => (focusedKey.value = node.key)}
 						onKeyDown={onKeyDown(node, hasChildren)}
@@ -223,7 +223,9 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 						</span>
 
 						<span class="ui-treenav__text">
-							<span class="ui-treenav__label">{node.label}</span>
+							<Tooltip content={node.label} whenTruncated>
+								<span class="ui-treenav__label">{node.label}</span>
+							</Tooltip>
 							{node.sublabel ? <span class="ui-treenav__sublabel">{node.sublabel}</span> : null}
 						</span>
 

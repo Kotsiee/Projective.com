@@ -99,7 +99,7 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 				label="Show on the calendar"
 				class="ui-lane-filter-pop"
 				trigger={(api) => (
-					<Tooltip content={`Showing: ${presetLabel}`}>
+					<Tooltip content={`Showing: ${presetLabel}`} density="compact">
 						<Button
 							iconOnly
 							rounded
@@ -150,7 +150,7 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 					placement="top-end"
 					iconSize="sm"
 				/>
-				<Tooltip content="Export calendar">
+				<Tooltip content="Export calendar" density="compact">
 					<Button
 						iconOnly
 						rounded
@@ -164,7 +164,7 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 						onClick={() => (exportOpen.value = true)}
 					/>
 				</Tooltip>
-				<Tooltip content="Connect a calendar">
+				<Tooltip content="Connect a calendar" density="compact">
 					<Button
 						iconOnly
 						rounded

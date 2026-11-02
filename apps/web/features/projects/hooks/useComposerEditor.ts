@@ -188,6 +188,9 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 									return false;
 								},
 							},
+							// Quill's own ⌘/Ctrl+U, narrowed to a SELECTION: with a bare caret the key falls
+							// through to the composer's attach shortcut (the library picker).
+							underline: { collapsed: false },
 							escape: {
 								key: "Escape",
 								handler: () => !live.current.onEscape(),

@@ -926,8 +926,8 @@ a.pjd-track__name:hover {
 /* #region Header band (`.ui-middle-nav__header`)
  *
  * The engagement's name and lifecycle status at the start; the owner's Details and Preview links at
- * the end. Same height, gutter and solid `--surface-1` step as the configuration's header band, so the
- * band does not jump between the engagement's own pages.
+ * the end. Same height and gutter as the configuration's header band, so the band does not jump
+ * between the engagement's own pages; the band itself paints the solid `--surface-1`.
  */
 .pjd-head {
 	display: flex;
@@ -936,7 +936,6 @@ a.pjd-track__name:hover {
 	gap: var(--space-4);
 	block-size: var(--shell-midnav-header-h, 3rem);
 	padding-inline: var(--space-4);
-	background: var(--surface-1);
 	min-inline-size: 0;
 }
 

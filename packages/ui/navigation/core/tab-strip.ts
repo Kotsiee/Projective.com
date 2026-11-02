@@ -55,6 +55,20 @@ export function stepIndex(index: number, delta: number, count: number): number {
 	if (count <= 0) return 0;
 	return (((index + delta) % count) + count) % count;
 }
+
+/**
+ * The nearest index `delta` steps from `index` whose tab is open (not locked), wrapping like
+ * {@link stepIndex}. Returns `index` itself when no other tab is open, so a caller can tell there is
+ * nowhere to step.
+ */
+export function stepOpen(index: number, delta: -1 | 1, open: readonly boolean[]): number {
+	let at = index;
+	for (let n = 1; n < open.length; n++) {
+		at = stepIndex(at, delta, open.length);
+		if (open[at]) return at;
+	}
+	return index;
+}
 // #endregion
 
 // #region Swipe

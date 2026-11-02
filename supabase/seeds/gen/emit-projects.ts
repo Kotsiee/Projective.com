@@ -588,10 +588,12 @@ export function emitProjects(world: World): string {
 		const viewers = new Set<string>([p.ownerUserId]);
 		for (const a of p.assignments) for (const u of assigneeUsers(world, a.assignee)) viewers.add(u);
 		for (const u of viewers) {
+			const starred = p.key === "helia-wallet" || p.key === "atlas-analytics";
 			prefs.push([
 				id(u),
 				id(p.projectId),
-				String(p.key === "helia-wallet" || p.key === "atlas-analytics"),
+				String(starred),
+				starred ? ago(Math.min(lastActivity(p), 1)) : "NULL",
 				"false",
 				ago(Math.min(lastActivity(p), 1)),
 			]);
@@ -600,7 +602,7 @@ export function emitProjects(world: World): string {
 	out.push(
 		insert(
 			"projects.user_preferences",
-			["user_id", "project_id", "is_starred", "is_archived", "last_viewed_at"],
+			["user_id", "project_id", "is_starred", "starred_at", "is_archived", "last_viewed_at"],
 			prefs,
 			"(user_id, project_id)",
 		),

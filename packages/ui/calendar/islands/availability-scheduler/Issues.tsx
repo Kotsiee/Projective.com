@@ -48,7 +48,7 @@ export function Issues(): JSX.Element | null {
 								{meta && <span class="ui-avsched__issue-meta">{meta}</span>}
 							</span>
 							{rule && (
-								<Tooltip content="Edit rule">
+								<Tooltip content="Edit rule" density="compact">
 									<Button
 										variant="text"
 										size="sm"

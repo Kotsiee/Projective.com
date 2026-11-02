@@ -1,6 +1,7 @@
 import { cloneElement, type JSX } from "preact";
 import { type ReadonlySignal, type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
+import { Tooltip } from "@projective/ui/feedback";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import type { MessageReplyDetail } from "@web/utils/lane-events.ts";
 import { CloseIcon } from "../glyphs.tsx";
@@ -235,12 +236,9 @@ export function ComposerAttachments(
 										{att.ext && <span class="chat-composer__card-ext">{att.ext}</span>}
 									</span>
 								)}
-							<span
-								class="chat-composer__card-name"
-								title={`${att.name} · ${formatBytes(att.size)}`}
-							>
-								{att.name}
-							</span>
+							<Tooltip content={`${att.name} · ${formatBytes(att.size)}`}>
+								<span class="chat-composer__card-name">{att.name}</span>
+							</Tooltip>
 							<button
 								type="button"
 								class="chat-composer__card-remove"

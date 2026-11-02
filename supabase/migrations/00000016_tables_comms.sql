@@ -211,6 +211,9 @@ CREATE TABLE comms.dm_participants (
     -- unread count is messages after this watermark, and a zero timestamp would fake a read.
     last_read_at timestamptz,
     is_starred boolean NOT NULL DEFAULT false,
+    -- When the star was set; NULL while unstarred. Orders starred conversations newest-first on
+    -- /saved and in the rail's Messages preview (comms.set_dm_starred keeps it with is_starred).
+    starred_at timestamptz,
     -- Which inbox folder the conversation sits in for THIS participant. A hiring request lands in the
     -- recipient's 'requests' (comms.send_request_message) and a reply of theirs moves it to 'primary'
     -- (comms.fn_promote_thread_on_reply). The participant's own moves go through

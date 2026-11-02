@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 import type { Signal } from "@preact/signals";
+import { Tooltip } from "@projective/ui/feedback";
 import type { FileChannelRef } from "../types/projects-types.ts";
 import { type FileTreeSelection, sameSelection } from "../core/file-tree-route.ts";
 import { ChannelHashIcon, DmBubbleIcon, PaperclipIcon } from "./file-glyphs.tsx";
@@ -40,14 +41,17 @@ export function FileChannelTree(
 	function node(
 		selection: FileTreeSelection,
 		body: ComponentChildren,
-		extra: { class?: string; title?: string; treeitem?: boolean; key?: string },
+		extra: { class?: string; tip?: string; treeitem?: boolean; key?: string },
 	): JSX.Element | null {
 		const on = sameSelection(sel, selection);
 		const className = `fx-tree__node${extra.class ? ` ${extra.class}` : ""}`;
+		// `tip` explains a node, so it opens on every hover; a channel name shows only when clipped.
+		const tipped = (row: JSX.Element) =>
+			extra.tip ? <Tooltip content={extra.tip} delay="slow">{row}</Tooltip> : row;
 		if (hrefOf) {
 			const href = hrefOf(selection);
 			if (!href) return null;
-			return (
+			return tipped(
 				<a
 					key={extra.key}
 					href={href}
@@ -56,13 +60,12 @@ export function FileChannelTree(
 					class={className}
 					data-active={on ? "true" : undefined}
 					aria-current={on ? "page" : undefined}
-					title={extra.title}
 				>
 					{body}
-				</a>
+				</a>,
 			);
 		}
-		return (
+		return tipped(
 			<button
 				key={extra.key}
 				type="button"
@@ -72,10 +75,9 @@ export function FileChannelTree(
 				data-active={on ? "true" : undefined}
 				aria-current={!extra.treeitem && on ? "true" : undefined}
 				onClick={() => onSelect(selection)}
-				title={extra.title}
 			>
 				{body}
-			</button>
+			</button>,
 		);
 	}
 
@@ -102,7 +104,7 @@ export function FileChannelTree(
 					<span class="fx-tree__label">Project files</span>
 					<span class="fx-tree__count">{projectFileCount}</span>
 				</>,
-				{ title: "Files the client attached to the project" },
+				{ tip: "Files the client attached to the project" },
 			)}
 
 			{!task && <div class="fx-tree__group" role="presentation">Channels</div>}
@@ -119,10 +121,12 @@ export function FileChannelTree(
 							<span class="fx-tree__icon" aria-hidden="true">
 								{c.kind === "dm" ? <DmBubbleIcon size={16} /> : <ChannelHashIcon size={16} />}
 							</span>
-							<span class="fx-tree__label">{c.name}</span>
+							<Tooltip content={c.name} whenTruncated>
+								<span class="fx-tree__label">{c.name}</span>
+							</Tooltip>
 							<span class="fx-tree__count">{c.count}</span>
 						</>,
-						{ key: c.id, title: c.name, treeitem: true },
+						{ key: c.id, treeitem: true },
 					)
 				)}
 			</div>

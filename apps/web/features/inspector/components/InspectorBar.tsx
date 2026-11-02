@@ -31,7 +31,9 @@ export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JS
 					<Logo class="ins-bar__mark" />
 				</a>
 				<div class="ins-bar__title">
-					<h1 class="ins-bar__name" title={asset.name}>{asset.name}</h1>
+					<Tooltip content={asset.name} whenTruncated>
+						<h1 class="ins-bar__name">{asset.name}</h1>
+					</Tooltip>
 					<p class="ins-bar__meta">{metaLine(asset)}</p>
 				</div>
 			</div>

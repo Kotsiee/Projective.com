@@ -6,7 +6,11 @@ import { NotificationCenterSchema } from "../comms/preferences.ts";
 import { MessagingSettingsSchema } from "../messaging/settings.ts";
 import { OwnerAvailabilitySchema } from "../scheduling/owner-availability.ts";
 import { ProfileSettingsSchema, ProfileVisibility } from "../profile/profile.ts";
-import { AppearancePreferencesSchema, DisplayPreferencesSchema } from "../org/preferences.ts";
+import {
+	AppearancePreferencesSchema,
+	DisplayPreferencesSchema,
+	ResolvedUiSettingsSchema,
+} from "../org/preferences.ts";
 import { UserEmailSchema } from "../org/user-emails.ts";
 import { AccountLifecycleSchema, HandlePolicySchema } from "../org/account-lifecycle.ts";
 import { SetupActionSchema } from "../org/onboarding.ts";
@@ -31,6 +35,7 @@ export const SettingsSectionKey = z.enum([
 	"workspaces",
 	"language",
 	"appearance",
+	"shortcuts",
 	"notifications",
 	"messaging",
 	"scheduling",
@@ -162,6 +167,14 @@ export const AppearanceSectionSchema = z.object({
 	live: z.boolean(),
 });
 
+/** Keyboard shortcuts — the tooltip hint switch and the shortcuts switched off. */
+export const ShortcutsSectionSchema = z.object({
+	section: z.literal("shortcuts"),
+	uiSettings: ResolvedUiSettingsSchema,
+	/** `false` when the account copy could not be read — the device copy (cookie) is what shows. */
+	live: z.boolean(),
+});
+
 export const NotificationsSectionSchema = z.object({
 	section: z.literal("notifications"),
 	center: NotificationCenterSchema.nullable(),
@@ -204,6 +217,7 @@ export const SettingsSectionDataSchema = z.discriminatedUnion("section", [
 	WorkspacesSectionSchema,
 	LanguageSectionSchema,
 	AppearanceSectionSchema,
+	ShortcutsSectionSchema,
 	NotificationsSectionSchema,
 	MessagingSectionSchema,
 	SchedulingSectionSchema,

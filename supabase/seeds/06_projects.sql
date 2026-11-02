@@ -199,25 +199,25 @@ VALUES
   ('9aa2c09e-cb10-4d4d-a9e1-f1d8d61bf46f', '1489cf83-2c55-4084-afe3-0c95f1f08ab6', 'c40701db-d1bd-4530-a478-fc4dfdd435ca')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO projects.user_preferences (user_id, project_id, is_starred, is_archived, last_viewed_at)
+INSERT INTO projects.user_preferences (user_id, project_id, is_starred, starred_at, is_archived, last_viewed_at)
 VALUES
-  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', true, false, now() - interval '24 hours'),
-  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', true, false, now() - interval '24 hours'),
-  ('292e1827-f189-4f34-ab35-27c9f0320926', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, false, now() - interval '24 hours'),
-  ('c7173d3f-8b15-4876-afbf-499d17513a44', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, false, now() - interval '24 hours'),
-  ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, false, now() - interval '24 hours'),
-  ('2e4274fb-e76b-4640-ad31-c66d7fbea842', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, false, now() - interval '24 hours'),
-  ('de29f2ce-0f36-4db5-a417-4edc88cedf83', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, false, now() - interval '24 hours'),
-  ('9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, false, now() - interval '24 hours'),
-  ('3fc3da04-549b-4239-aca3-fa82f713dbaf', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, false, now() - interval '24 hours'),
-  ('0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, false, now() - interval '24 hours'),
-  ('b30145ef-f693-439c-a2c4-8b3db32a54a2', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', false, false, now() - interval '24 hours'),
-  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, false, now() - interval '24 hours'),
-  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, false, now() - interval '24 hours'),
-  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, false, now() - interval '24 hours'),
-  ('1fee216e-a637-4619-a90a-4ae03bb1ed8b', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', false, false, now() - interval '24 hours'),
-  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', false, false, now() - interval '24 hours'),
-  ('2bdebf14-f7dc-40af-acd8-fe22cb9916fd', '65f5e896-28c7-442b-ab08-2f9404d56901', false, false, now() - interval '24 hours')
+  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('292e1827-f189-4f34-ab35-27c9f0320926', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('c7173d3f-8b15-4876-afbf-499d17513a44', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('2e4274fb-e76b-4640-ad31-c66d7fbea842', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', true, now() - interval '24 hours', false, now() - interval '24 hours'),
+  ('de29f2ce-0f36-4db5-a417-4edc88cedf83', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, NULL, false, now() - interval '24 hours'),
+  ('9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, NULL, false, now() - interval '24 hours'),
+  ('3fc3da04-549b-4239-aca3-fa82f713dbaf', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, NULL, false, now() - interval '24 hours'),
+  ('0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', '8fc13e15-5051-4c3c-af74-82ef238f210e', false, NULL, false, now() - interval '24 hours'),
+  ('b30145ef-f693-439c-a2c4-8b3db32a54a2', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', false, NULL, false, now() - interval '24 hours'),
+  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, NULL, false, now() - interval '24 hours'),
+  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, NULL, false, now() - interval '24 hours'),
+  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', false, NULL, false, now() - interval '24 hours'),
+  ('1fee216e-a637-4619-a90a-4ae03bb1ed8b', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', false, NULL, false, now() - interval '24 hours'),
+  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', false, NULL, false, now() - interval '24 hours'),
+  ('2bdebf14-f7dc-40af-acd8-fe22cb9916fd', '65f5e896-28c7-442b-ab08-2f9404d56901', false, NULL, false, now() - interval '24 hours')
 ON CONFLICT (user_id, project_id) DO NOTHING;
 
 INSERT INTO reviews.entity_reviews (id, target_entity_id, target_entity_type, reviewer_user_id, project_id, rating, title, comment, created_at, updated_at)

@@ -12,10 +12,13 @@ import "@web/features/shell/styles/user-shell.css";
 import { Drawer, Popover, Tooltip } from "@projective/ui/feedback";
 import { Avatar, VerificationStampBadge } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
+import { ActionMenu, composeMenu, linkOpenItem, type MenuItem } from "@projective/ui/navigation";
 import { cycleThemePreference, type ThemePreference, themePreference } from "@projective/ui/system";
 import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
 import { canUseTeams } from "@web/features/shell/core/restricted-surfaces.ts";
+import { accountFacts } from "@web/features/shell/core/account-facts.ts";
+import { copyNote, noteCopied } from "@web/features/shell/core/copy-note.ts";
 import {
 	type ActingEnterprise,
 	roleLabel as workspaceRoleLabel,
@@ -42,6 +45,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { ProfileProgressAvatar } from "@web/features/shell/components/ProfileProgressAvatar.tsx";
 import { AllowanceMeter } from "@features/proposals/components/AllowanceMeter.tsx";
 import { effectiveAllowance, ensureAllowance } from "@features/proposals/core/allowance-state.ts";
+
+/** What in the header bar keeps the browser's own right-click menu: its links, buttons and fields. */
+const HEADER_CONTROLS =
+	"a[href], button, input, select, textarea, label, [role='button'], [role='link'], [role='combobox']";
 
 // #region Popover sub-views + vocabulary
 /** The states the account popover's `ui-popover__content` can render. */
@@ -117,6 +124,10 @@ export interface UserActionsProps {
  * (`me` for identity, `setup` for progress · stamp · hours · Standing), falling back to the SSR
  * {@link UserContext} until each resolves. **Responsive (Part D.3):** below `--bp-md` the avatar opens
  * a right-side account `Drawer` that shares the very same view-driven body.
+ *
+ * A right-click on the header bar's empty space (Decision #370) opens Create (the `+` rows) ·
+ * Notifications · Saved · Basket · Profile (a context switcher when there is one) · Settings ·
+ * Submit feedback · Refresh page; its links and buttons keep the browser's own menu.
  */
 export default function UserActions(
 	{ context = PERSONAL_MEMBER_CONTEXT, protectedRoute = false, path }: UserActionsProps,
@@ -295,6 +306,165 @@ export default function UserActions(
 	].filter(Boolean).join(", ");
 
 	const theme = THEME_CONTROL[themePreference.value];
+
+	// #region Header right-click menu (Decision #370)
+	// Who the viewer may act as besides who they are acting as now. The token says whether they hold a
+	// team or business seat; the lists themselves are read only when the menu opens.
+	const facts = accountFacts(effCtx);
+	const switchTeams = canUseTeams(effCtx) && (facts.belongsToTeam || effCtx.contextType === "team");
+	const switchBusinesses = !restricted &&
+		(facts.belongsToBusiness || effCtx.contextType === "business");
+	const enterpriseList = enterprises.value ?? [];
+	const hasContexts = effCtx.contextType !== "personal" || switchTeams || switchBusinesses ||
+		enterpriseList.length > 0;
+
+	const loadSwitchLists = () => {
+		if (!hasContexts) return;
+		membershipsError.value = null;
+		if (switchTeams) void loadMemberships("team");
+		if (switchBusinesses) void loadMemberships("business");
+		void loadEnterprises();
+	};
+
+	/** The Profile row's submenu: every context the viewer may switch to, the current one inert. */
+	const switchRows = (): MenuItem[] => {
+		const busy = contextSwitch.switching.value;
+		const row = (
+			key: string,
+			label: string,
+			image: string | null,
+			hint: string,
+			current: boolean,
+			run: () => void,
+		): MenuItem => ({
+			key,
+			label,
+			image,
+			hint: current ? `${hint} · Acting now` : hint,
+			disabled: current || busy,
+			disabledReason: current ? "You're acting as this now." : busy ? "Switching…" : undefined,
+			command: run,
+		});
+		const acting = (kind: ContextType, id: string) =>
+			effCtx.contextType === kind && effCtx.contextId === id;
+		const kindRows = (kind: WorkspaceKind): MenuItem[] => {
+			const list = memberships.value[kind];
+			const noun = kind === "team" ? "teams" : "businesses";
+			if (list === null) {
+				return [{
+					key: `${kind}-loading`,
+					label: membershipsError.value ?? `Loading your ${noun}…`,
+					disabled: true,
+				}];
+			}
+			return list.map((m) =>
+				row(
+					m.id,
+					m.name,
+					m.avatar || null,
+					`${kind === "team" ? "Team" : "Business"} · ${workspaceRoleLabel(m.role)}`,
+					acting(kind, m.id),
+					() => switchTo(kind, m.id, m.handle),
+				)
+			);
+		};
+		return composeMenu(
+			effCtx.contextType === "personal" ? [] : [
+				row(
+					"personal",
+					displayName,
+					avatarUrl ?? null,
+					"Personal",
+					false,
+					() => void contextSwitch.exitToPersonal(),
+				),
+			],
+			switchTeams ? kindRows("team") : [],
+			switchBusinesses ? kindRows("business") : [],
+			enterpriseList.map((o) =>
+				row(
+					o.id,
+					o.name,
+					null,
+					`Enterprise · ${o.owner ? "Owner" : "Member"}`,
+					acting("enterprise", o.id),
+					() => switchTo("enterprise", o.id, o.handle),
+				)
+			),
+		);
+	};
+
+	// Grouped by how often they are reached for: make something; what needs looking at (alerts, saved
+	// things, the basket); who you are and how it is set up; then the page itself. Links run on a click
+	// and open a new tab on a middle-click; Create's and Settings' and Saved's own Open · new tab ·
+	// new window · Copy link rows unfold only on a right-click, so moving down the menu never opens
+	// flyouts. Profile opens the person's own profile and, when there is anyone else to be, unfolds
+	// the context switcher on hover.
+	const headerMenu: MenuItem[] = composeMenu(
+		[{
+			key: "create",
+			label: "Create",
+			icon: "plus",
+			items: createOptions.map((opt) =>
+				linkOpenItem({
+					key: opt.key,
+					href: opt.href,
+					label: opt.label,
+					icon: "plus",
+					submenuOn: "contextmenu",
+					onCopied: noteCopied,
+				})
+			),
+		}],
+		[
+			{
+				key: "notifications",
+				label: "Notifications",
+				icon: "bell",
+				command: () => (notifOpen.value = true),
+			},
+			linkOpenItem({
+				key: "saved",
+				href: "/saved",
+				label: "Saved",
+				icon: "bookmark",
+				submenuOn: "contextmenu",
+				onCopied: noteCopied,
+			}),
+			...(restricted ? [] : [{
+				key: "basket",
+				label: "Basket",
+				icon: "basket",
+				command: () => (basketOpen.value = true),
+			}]),
+		],
+		[
+			{
+				key: "profile",
+				label: "Profile",
+				icon: "user",
+				url: personalHandle ? `/${personalHandle}` : links.viewProfile,
+				items: hasContexts ? switchRows() : undefined,
+			},
+			linkOpenItem({
+				key: "settings",
+				href: links.settings,
+				label: "Settings",
+				icon: "settings",
+				submenuOn: "contextmenu",
+				onCopied: noteCopied,
+			}),
+		],
+		[
+			{ key: "feedback", label: "Submit feedback", icon: "message", command: () => openFeedback() },
+			{
+				key: "refresh",
+				label: "Refresh page",
+				icon: "refresh",
+				command: () => globalThis.location.reload(),
+			},
+		],
+	);
 	// #endregion
 
 	/**
@@ -917,6 +1087,18 @@ export default function UserActions(
 			*/
 			}
 			<BasketDrawer open={basketOpen} owner={basketOwner} />
+
+			{/* Right-click on the header bar's empty space; its links, buttons and search keep the browser's menu. */}
+			<ActionMenu
+				aria-label="Header menu"
+				surface={() => createBtn.current?.closest("header") ?? null}
+				surfaceExclude={HEADER_CONTROLS}
+				model={headerMenu}
+				onOpenChange={(open) => open && loadSwitchLists()}
+			/>
+			<span class="ui-visually-hidden" role="status" aria-live="polite">
+				{copyNote.value || (contextSwitch.error.value ?? "")}
+			</span>
 		</div>
 	);
 }

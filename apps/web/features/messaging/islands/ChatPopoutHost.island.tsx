@@ -3,7 +3,7 @@ import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/chat-popout.css";
 import { DraggablePopover } from "@projective/ui/overlay";
-import { Toast } from "@projective/ui/feedback";
+import { Toast, Tooltip } from "@projective/ui/feedback";
 import { useIsMobile } from "@projective/ui/hooks";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { PopoutChat } from "../components/PopoutChat.tsx";
@@ -111,15 +111,16 @@ export default function ChatPopoutHost({ path }: { path: string }): JSX.Element 
 				headerActions={onPage
 					? undefined
 					: (
-						<a
-							class="chat-popout__open"
-							href={state.href}
-							aria-label="Open in input"
-							title="Open in input"
-							onClick={openInInput}
-						>
-							<MessagingIcon name="maximize" />
-						</a>
+						<Tooltip content="Open in input">
+							<a
+								class="chat-popout__open"
+								href={state.href}
+								aria-label="Open in input"
+								onClick={openInInput}
+							>
+								<MessagingIcon name="maximize" />
+							</a>
+						</Tooltip>
 					)}
 			>
 				<PopoutChat state={state} />

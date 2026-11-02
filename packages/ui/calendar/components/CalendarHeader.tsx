@@ -50,7 +50,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 		<header class="cal-header">
 			<div class="cal-header__lead">
 				<div class="cal-header__nav" role="group" aria-label="Navigate">
-					<Tooltip content="Today">
+					<Tooltip content="Today" density="compact">
 						<button
 							type="button"
 							class="cal-header__today"
@@ -60,7 +60,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 							<TodayIcon size={16} />
 						</button>
 					</Tooltip>
-					<Tooltip content="Previous">
+					<Tooltip content="Previous" density="compact">
 						<button
 							type="button"
 							class="cal-header__navbtn"
@@ -70,7 +70,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 							<ChevronLeftIcon size={18} />
 						</button>
 					</Tooltip>
-					<Tooltip content="Next">
+					<Tooltip content="Next" density="compact">
 						<button
 							type="button"
 							class="cal-header__navbtn"
@@ -102,7 +102,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 
 				{props.onToggleFilters
 					? (
-						<Tooltip content="Filter by type">
+						<Tooltip content="Filter by type" density="compact">
 							<button
 								type="button"
 								class={cx("cal-header__iconbtn", props.filtersActive && "cal-header__iconbtn--on")}

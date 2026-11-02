@@ -1070,6 +1070,11 @@
 	color: var(--text-secondary);
 }
 
+/* A row wrapped in its "Next:" Tooltip still spans the lane, like its unwrapped siblings. */
+.ui-tooltip__anchor:has(> .proj-chan--subgroup) {
+	display: block;
+}
+
 .sess-tree {
 	margin-block-start: var(--space-1);
 }

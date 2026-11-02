@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { useDismiss } from "@projective/ui/hooks";
 import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 import type { AssetItem } from "../../types/projects-types.ts";
 import type { PreviewIconName } from "./preview-model.ts";
 import { PreviewAction, PreviewLinkAction } from "./PreviewAction.tsx";
@@ -168,8 +169,10 @@ export function PreviewHeader(props: PreviewHeaderProps): JSX.Element {
 							</button>
 						)
 						: (
-							<span class="fx-modal__name" title={file.name}>
-								<span class="fx-modal__nametext">{file.name}</span>
+							<span class="fx-modal__name">
+								<Tooltip content={file.name} whenTruncated>
+									<span class="fx-modal__nametext">{file.name}</span>
+								</Tooltip>
 							</span>
 						)}
 				</h2>

@@ -1,6 +1,7 @@
 import type { JSX, RefObject } from "preact";
 import type { ReadonlySignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { formatClock, formatDuration } from "../../core/composer-model.ts";
 import type { AudioRecorderApi } from "../../hooks/useAudioRecorder.ts";
 import type { RecorderPhase } from "../../types/composer-types.ts";
@@ -54,6 +55,7 @@ export function useVoiceGestures(
 	useEffect(() => {
 		function onKeyDown(event: KeyboardEvent): void {
 			if (!event.ctrlKey || event.code !== "Space" || event.repeat) return;
+			if (!shortcutOn("voice-message")) return;
 			if (text.value.trim().length > 0 || rec.phase.value !== "inactive") return;
 			event.preventDefault();
 			shortcutRef.current = true;

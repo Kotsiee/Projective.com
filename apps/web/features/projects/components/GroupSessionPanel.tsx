@@ -41,12 +41,11 @@ export interface GroupSessionPanelProps {
 
 /** A cohort row — its name, real seat count and an overlap indicator; it opens the calendar. */
 function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.Element {
-	return (
+	const row = (
 		<a
 			class="proj-chan proj-chan--subgroup"
 			href={`/projects/${slug}/calendar`}
 			data-joined={group.joined ? "true" : "false"}
-			title={group.nextLabel ? `Next: ${group.nextLabel}` : undefined}
 		>
 			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
 			<span class="proj-chan__name">{group.name}</span>
@@ -60,6 +59,10 @@ function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.El
 			)}
 		</a>
 	);
+	// Beside the row, so it never stacks on the overlap mark's own tooltip above it.
+	return group.nextLabel
+		? <Tooltip content={`Next: ${group.nextLabel}`} placement="right" delay="slow">{row}</Tooltip>
+		: row;
 }
 
 export function GroupSessionPanel(

@@ -31,7 +31,7 @@ export function CalendarConnectAction(props: CalendarConnectActionProps): JSX.El
 	const open = useSignal(false);
 	return (
 		<>
-			<Tooltip content="Connect a calendar">
+			<Tooltip content="Connect a calendar" density="compact">
 				<button
 					type="button"
 					class="cal-band__iconbtn"

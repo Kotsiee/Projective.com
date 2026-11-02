@@ -149,7 +149,7 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 	return (
 		<aside class="fh-inspect" aria-label={`Details for ${asset.name}`}>
 			<header class="fh-inspect__head">
-				<h2 class="fh-inspect__title" title={asset.name}>{asset.name}</h2>
+				<h2 class="fh-inspect__title">{asset.name}</h2>
 				<Tooltip content="Open in new tab">
 					<Button
 						iconOnly
@@ -275,10 +275,12 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 				{asset.contentHash
 					? (
 						<Fact label="Content hash">
-							<code class="fh-inspect__hash" title={asset.contentHash}>
-								{shortHash(asset.contentHash)}
-								{asset.hashSampled ? <span class="fh-inspect__hashnote">sampled</span> : null}
-							</code>
+							<Tooltip content={asset.contentHash}>
+								<code class="fh-inspect__hash">
+									{shortHash(asset.contentHash)}
+									{asset.hashSampled ? <span class="fh-inspect__hashnote">sampled</span> : null}
+								</code>
+							</Tooltip>
 						</Fact>
 					)
 					: null}

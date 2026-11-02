@@ -336,7 +336,10 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		e.preventDefault();
 		const next = tabs[(index + delta + tabs.length) % tabs.length];
 		tab.value = next.key;
-		(e.currentTarget.parentElement?.querySelector(`#${tabId(next.key)}`) as HTMLElement | null)
+		// `closest`, not `parentElement`: each tab sits inside its Tooltip's anchor span.
+		(e.currentTarget.closest('[role="tablist"]')?.querySelector(`#${tabId(next.key)}`) as
+			| HTMLElement
+			| null)
 			?.focus();
 	}
 
@@ -497,35 +500,43 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 						/>
 
 						<div class="tkv-tabs" role="tablist" aria-label="Ticket views">
-							{tabs.map((t, i) => (
-								<button
-									key={t.key}
-									type="button"
-									id={tabId(t.key)}
-									role="tab"
-									class="tkv-tabs__tab"
-									data-icononly={t.iconOnly ? "true" : undefined}
-									aria-selected={tab.value === t.key}
-									aria-controls={panelId(t.key)}
-									// Always named, not only when icon-only: below 640px the labels collapse to
-									// their glyphs so every tab fits without a hidden horizontal scroller, and a tab
-									// that loses its visible text must not lose its name with it. The value is
-									// identical to the visible label, so "label in name" (WCAG 2.5.3) holds in
-									// both presentations.
-									aria-label={t.label}
-									tabIndex={tab.value === t.key ? 0 : -1}
-									title={t.label}
-									onKeyDown={(e) => onTabKey(e, i)}
-									onClick={() => (tab.value = t.key)}
-								>
-									<Icon name={t.icon} size="xs" class="tkv-tabs__mark" />
-									{t.iconOnly ? null : <span class="tkv-tabs__label">{t.label}</span>}
-									{!t.iconOnly && t.count ? <span class="tkv-tabs__count">{t.count}</span> : null}
-									{t.key === "history" && card.unreadCount > 0
-										? <span class="tkv-tabs__dot" aria-hidden="true" />
-										: null}
-								</button>
-							))}
+							{tabs.map((t, i) => {
+								const tabButton = (
+									<button
+										key={t.key}
+										type="button"
+										id={tabId(t.key)}
+										role="tab"
+										class="tkv-tabs__tab"
+										data-icononly={t.iconOnly ? "true" : undefined}
+										aria-selected={tab.value === t.key}
+										aria-controls={panelId(t.key)}
+										// Always named, not only when icon-only: below 640px the labels collapse to
+										// their glyphs so every tab fits without a hidden horizontal scroller, and a tab
+										// that loses its visible text must not lose its name with it. The value is
+										// identical to the visible label, so "label in name" (WCAG 2.5.3) holds in
+										// both presentations.
+										aria-label={t.label}
+										tabIndex={tab.value === t.key ? 0 : -1}
+										onKeyDown={(e) => onTabKey(e, i)}
+										onClick={() => (tab.value = t.key)}
+									>
+										<Icon name={t.icon} size="xs" class="tkv-tabs__mark" />
+										{t.iconOnly ? null : <span class="tkv-tabs__label">{t.label}</span>}
+										{!t.iconOnly && t.count ? <span class="tkv-tabs__count">{t.count}</span> : null}
+										{t.key === "history" && card.unreadCount > 0
+											? <span class="tkv-tabs__dot" aria-hidden="true" />
+											: null}
+									</button>
+								);
+								// A labelled tab's name shows only while its label is collapsed to the
+								// visually-hidden box (below 640px); the glyph-only History tab always.
+								return (
+									<Tooltip key={t.key} content={t.label} whenTruncated={!t.iconOnly}>
+										{tabButton}
+									</Tooltip>
+								);
+							})}
 						</div>
 					</div>
 					{/* #endregion */}

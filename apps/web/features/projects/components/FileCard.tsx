@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { ProgressiveImage } from "@projective/ui/display/image";
+import { Tooltip } from "@projective/ui/feedback";
 import {
 	assetMediaSrc,
 	assetMediaSrcset,
@@ -75,7 +76,9 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			</span>
 
 			<span class="fx-card__meta">
-				<span class="fx-card__name" title={file.name}>{file.name}</span>
+				<Tooltip content={file.name} whenTruncated>
+					<span class="fx-card__name">{file.name}</span>
+				</Tooltip>
 				<span class="fx-card__by">
 					{file.sender
 						? (

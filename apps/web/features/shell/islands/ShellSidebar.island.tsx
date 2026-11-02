@@ -3,7 +3,16 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
-import { NavItem, ShellSidebar } from "@projective/ui/navigation";
+import {
+	ActionMenu,
+	composeMenu,
+	linkActionItems,
+	linkOpenItem,
+	type MenuItem,
+	NavItem,
+	ShellSidebar,
+} from "@projective/ui/navigation";
+import type { NavPreviewKind } from "@projective/types/user";
 import { Tooltip } from "@projective/ui/feedback";
 // The shell's header styling lives in a server component (UserShell), whose CSS import is NOT in any
 // island's client-bundle graph and so never ships. Riding it on this always-present island injects it
@@ -19,6 +28,19 @@ import {
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { isEditableTarget, isToggleSidebarShortcut } from "@web/features/shell/core/shortcuts.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { loadNavPreview, navPreviews } from "@web/features/shell/core/nav-preview-state.ts";
+import { PREVIEW_KIND, previewRows } from "@web/features/shell/core/nav-preview-menu.ts";
+import { noteCopied } from "@web/features/shell/core/copy-note.ts";
+
+/** The link a right-click on the rail landed on, and the preview its destination lists. */
+interface RailLink {
+	href: string;
+	label: string;
+	kind?: NavPreviewKind;
+}
+
+/** The rail landmark — the right-click surface. */
+const railEl = (): HTMLElement | null => document.querySelector<HTMLElement>(".ui-shell-sidebar");
 
 export interface ShellSidebarIslandProps {
 	/** Current pathname — drives active state (was resolved server-side; now re-gated live too). */
@@ -43,6 +65,11 @@ export interface ShellSidebarIslandProps {
  *
  * Ctrl+B / Cmd+B toggles the rail from anywhere except while typing (fields, editable regions, the
  * rich-text editor keep the chord).
+ *
+ * Right-click (or the ContextMenu key / Shift+F10) opens one menu (Decision #370): on Messages ·
+ * Projects · Catalogue · Teams · Businesses, first the viewer's top three there, saved and starred
+ * first, read only when that menu opens; then, on any rail link, its Open row (press to open; hover
+ * for a new tab or a new window) and Copy link; on the empty rail, Expand / Collapse navigation.
  *
  * The roster is computed **in the island** via {@link globalNav} off a live {@link useEffectiveContext}
  * so it matches SSR on hydration (same inputs) yet re-gates instantly when the DEV Context Switcher
@@ -92,6 +119,75 @@ export default function ShellSidebarIsland(
 		return () => globalThis.removeEventListener("keydown", onKey);
 	}, []);
 
+	// #region Right-click menu
+	const railLink = useSignal<RailLink | null>(null);
+	// Capture runs before the menu's own listener, so the rows are already for this link when it opens.
+	useEffect(() => {
+		const rail = railEl();
+		if (!rail) return;
+		const onContextMenu = (e: MouseEvent) => {
+			const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null;
+			const href = a?.getAttribute("href");
+			if (!a || !href) {
+				railLink.value = null;
+				return;
+			}
+			const item = items.peek().find((i) => i.href === href);
+			const sub = items.peek().flatMap((i) => i.children ?? []).find((c) => c.href === href);
+			const kind = item ? PREVIEW_KIND[item.key] : undefined;
+			railLink.value = {
+				href,
+				label: item?.label ?? sub?.label ?? a.textContent?.trim() ?? "",
+				kind,
+			};
+			if (kind) void loadNavPreview(kind);
+		};
+		rail.addEventListener("contextmenu", onContextMenu, true);
+		return () => rail.removeEventListener("contextmenu", onContextMenu, true);
+	}, []);
+
+	const railMenu = (): MenuItem[] => {
+		const link = railLink.value;
+		if (!link) {
+			const apple = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+			return [{
+				key: "rail-toggle",
+				label: collapsed.value ? "Expand navigation" : "Collapse navigation",
+				icon: collapsed.value ? "expand" : "collapse",
+				shortcut: apple ? "⌘ B" : "Ctrl B",
+				command: toggleCollapsed,
+			}];
+		}
+		// The destination's own rows first — what a right-click on it is for, as a jump list — then the
+		// link itself: Open (hover for a new tab or window) with Copy link beside it.
+		return composeMenu(
+			link.kind
+				? previewRows(
+					link.kind,
+					navPreviews.value[link.kind],
+					Date.now(),
+					effective.value.context.locale,
+					noteCopied,
+				)
+				: [],
+			[
+				linkOpenItem({
+					key: "rail-open",
+					href: link.href,
+					label: `Open ${link.label}`,
+					copy: false,
+				}),
+				...linkActionItems({
+					href: link.href,
+					title: link.label,
+					include: ["copy-link"],
+					onCopied: noteCopied,
+				}),
+			],
+		);
+	};
+	// #endregion
+
 	const toggleGroup = (key: string) => {
 		const set = new Set(openGroups.value);
 		set.has(key) ? set.delete(key) : set.add(key);
@@ -100,7 +196,7 @@ export default function ShellSidebarIsland(
 
 	// #region Renderers
 	const renderLeaf = (item: NavModelItem): VNode => (
-		<Tooltip content={item.label} placement="right">
+		<Tooltip content={item.label} placement="right" delay="none">
 			<NavItem
 				href={item.href}
 				label={item.label}
@@ -178,21 +274,28 @@ export default function ShellSidebarIsland(
 	// #endregion
 
 	return (
-		<ShellSidebar
-			label="Global navigation"
-			footer={
-				<button
-					type="button"
-					class="ui-shell-sidebar__toggle"
-					aria-expanded={!collapsed.value}
-					aria-label={collapsed.value ? "Expand navigation" : "Collapse navigation"}
-					onClick={toggleCollapsed}
-				>
-					<SidebarToggleIcon />
-				</button>
-			}
-		>
-			{items.value.map((item) => <Fragment key={item.key}>{renderItem(item)}</Fragment>)}
-		</ShellSidebar>
+		<>
+			<ShellSidebar
+				label="Global navigation"
+				footer={
+					<button
+						type="button"
+						class="ui-shell-sidebar__toggle"
+						aria-expanded={!collapsed.value}
+						aria-label={collapsed.value ? "Expand navigation" : "Collapse navigation"}
+						onClick={toggleCollapsed}
+					>
+						<SidebarToggleIcon />
+					</button>
+				}
+			>
+				{items.value.map((item) => <Fragment key={item.key}>{renderItem(item)}</Fragment>)}
+			</ShellSidebar>
+			<ActionMenu
+				aria-label={railLink.value ? `${railLink.value.label} menu` : "Navigation menu"}
+				surface={railEl}
+				model={typeof document === "undefined" ? [] : railMenu()}
+			/>
+		</>
 	);
 }

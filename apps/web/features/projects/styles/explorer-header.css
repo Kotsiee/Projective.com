@@ -1,7 +1,7 @@
 /*
  * explorer-header — the middle-nav header band on a project's own Files and Submissions routes
  * (Decision #317): the folder in view's title, then the explorer's toolbar (search · type · sort) as
- * the band's trailing cluster. The band's glass and pin are the frame's (`.ui-middle-nav__header`);
+ * the band's trailing cluster. The band's surface and pin are the frame's (`.ui-middle-nav__header`);
  * this only lays the row out at the band's height. Token-only, strict BEM.
  */
 .fxh {

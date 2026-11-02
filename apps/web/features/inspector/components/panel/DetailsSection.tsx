@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Tooltip } from "@projective/ui/feedback";
 import type { InspectorShell } from "../../core/inspector-shell.ts";
 import { accessDetails, fileDetails, shortHash } from "../../core/inspector-model.ts";
 import { useInspectorActions } from "../InspectorContext.ts";
@@ -28,9 +29,9 @@ export function DetailsSection({ shell, titleId }: DetailsSectionProps): JSX.Ele
 					? (
 						<Fact label="Content hash">
 							<span class="ins-facts__hash">
-								<code class="ins-facts__code" title={asset.contentHash}>
-									{shortHash(asset.contentHash)}
-								</code>
+								<Tooltip content={asset.contentHash}>
+									<code class="ins-facts__code">{shortHash(asset.contentHash)}</code>
+								</Tooltip>
 								<ToolButton
 									icon="copy"
 									label="Copy content hash"

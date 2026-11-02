@@ -18,7 +18,7 @@ import { AccountLifecycleBackendService } from "@server/services/user/AccountLif
 import { IdentitiesBackendService } from "@server/services/auth/IdentitiesBackendService.ts";
 import { PlanBackendService } from "@server/services/finance/PlanBackendService.ts";
 import { CardsBackendService } from "@server/services/finance/CardsBackendService.ts";
-import { pendingSetupSteps } from "@projective/types/org";
+import { pendingSetupSteps, type ResolvedUiSettings } from "@projective/types/org";
 import { cardExpiryCounts } from "./attention-model.ts";
 import { defaultMessagingRole } from "@features/messaging/core/conversation-model.ts";
 import { DEFAULT_MESSAGING_SETTINGS } from "@features/messaging/core/messaging-defaults.ts";
@@ -123,6 +123,14 @@ async function readSection(
 				error: null,
 			};
 		}
+		case "shortcuts": {
+			const res = await SettingsBackendService.uiSettings({ actor, device: deviceUi(input) });
+			const ui = res.data ?? { uiSettings: deviceUi(input), live: false };
+			return {
+				data: { section: "shortcuts", uiSettings: ui.uiSettings, live: ui.live },
+				error: null,
+			};
+		}
 		case "notifications": {
 			const res = await NotificationCenterBackendService.center(actor);
 			return {
@@ -200,6 +208,8 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 			};
 		case "appearance":
 			return { section: "appearance", appearance: emptyAppearance(input), live: false };
+		case "shortcuts":
+			return { section: "shortcuts", uiSettings: deviceUi(input), live: false };
 		case "notifications":
 			return { section: "notifications", center: null };
 		case "messaging":
@@ -222,6 +232,14 @@ function emptyAppearance(input: SettingsReadInput) {
 		font: input.a11y?.font ?? "sans",
 		cvd: input.a11y?.cvd ?? "none",
 		motion: input.a11y?.motion ?? "standard",
+	};
+}
+
+/** This device's copy of the keyboard half of `ui_settings` — the `pj.a11y` cookie. */
+function deviceUi(input: SettingsReadInput): ResolvedUiSettings {
+	return {
+		show_tooltip_shortcuts: input.a11y?.tips ?? false,
+		disabled_shortcuts: input.a11y?.keysOff ?? [],
 	};
 }
 

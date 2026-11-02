@@ -15,15 +15,16 @@
  *    `handleLength`, given {@link UseOverlayScrollbarOptions.periodPx}). Without a period it falls back
  *    to the older depth-encoded length, so a consumer that has not been told the period keeps exactly
  *    the behaviour it had.
- *  - **Pressed it is a LEVER.** The pill morphs into a joystick ball anchored where the press landed,
- *    and dragging away from that origin opens a directional throttle: `core/chrome.ts`
- *    `leverScrollDelta` turns the deflection into pixels-per-elapsed-time and a rAF loop applies it for
- *    as long as the pointer is down. Because the deflection is measured from the GRAB, the gesture
- *    never runs out of track — this is the "infinite scroll" half of the design, and it is what
- *    replaced the old absolute mapping plus its bolt-on edge-hold mode. Under a rate-based lever there
- *    is no track edge left to overshoot, so "how far past the end are we" stopped describing the
- *    gesture at all; `core/scene-build.ts` `scrollbarRect` had already reached that conclusion for the
- *    canvas twin, and this is the DOM bar catching up to it.
+ *  - **Pressed it is a LEVER.** The pill morphs into a joystick ball where the press landed, and that
+ *    point is the neutral origin. The ball then follows the pointer along the whole track, clamped to
+ *    it, and its normalised distance from the origin is a directional throttle: `core/chrome.ts`
+ *    `leverDeflection` gives `d` ∈ [−1, 1], `leverSpeed` turns full deflection into
+ *    `LEVER_MAX_SCROLL_SPEED` PERIODS per second ({@link UseOverlayScrollbarOptions.periodPx}), and
+ *    `leverScrollDelta` applies it over the real elapsed time in a rAF loop for as long as the pointer
+ *    is down. A ball held at either end
+ *    keeps scrolling, so the gesture never runs out of track — this is the "infinite scroll" half of
+ *    the design, and it is what replaced the old absolute mapping plus its bolt-on edge-hold mode.
+ *    Releasing slides the ball back into the pill on the morph spring.
  *  - **Frozen while grabbed.** The length is frozen on pointer-down and stays frozen until the pointer
  *    has BOTH released and left the handle, so the ball's box does not resize under a stationary cursor
  *    while the handle's offset travels beneath it.
@@ -45,7 +46,14 @@ import { batch, type Signal, useSignal, useSignalEffect } from "@preact/signals"
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import type { RefObject } from "preact";
 import { GAUGE_MIN, gaugeGeometry } from "../core/scene-build.ts";
-import { handleLength, leverScrollDelta, leverThrowPx } from "../core/chrome.ts";
+import {
+	handleLength,
+	leverBall,
+	leverScrollDelta,
+	leverSpeed,
+	type LeverTravel,
+	leverTravel,
+} from "../core/chrome.ts";
 import { createSpring, SPRING_SNAPPY } from "../../core/motion.ts";
 
 // #region Constants
@@ -59,6 +67,17 @@ function pointerIsInside(e: PointerEvent, el: Element | null): boolean {
 	if (!el) return false;
 	const r = el.getBoundingClientRect();
 	return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+}
+
+/**
+ * The joystick ball's diameter (px), read off the handle's `::before` — the stylesheet owns the size
+ * (`--cal-ball-size`), so the clamp that keeps the ball on its track measures it rather than restating
+ * it. Zero when nothing can be measured, which lets the centre reach the track's very ends.
+ */
+function ballSizeOf(handle: HTMLElement | null): number {
+	if (!handle || typeof getComputedStyle !== "function") return 0;
+	const size = parseFloat(getComputedStyle(handle, "::before").blockSize);
+	return Number.isFinite(size) ? size : 0;
 }
 
 /**
@@ -124,9 +143,10 @@ export interface OverlayScrollbarApi {
 	 */
 	morph: Signal<number>;
 	/**
-	 * The ball's drawn offset (px, signed) from the handle's centre — the joystick stick's throw. Purely
-	 * decorative, but resolved on the pointer event rather than animated, so it can never point the
-	 * wrong way.
+	 * Where the ball sits (px, signed) relative to the handle's centre — the pointer, clamped to the
+	 * track. Rewritten on every pointer move AND every lever frame, because the handle travels with the
+	 * depth it reports while the ball must stay under the pointer. Resolved, never animated; the sheet
+	 * multiplies it by {@link morph}, which is what carries the ball home on release.
 	 */
 	throwPx: Signal<number>;
 	/** Re-read the container and rewrite the handle geometry. Safe to call from any event. */
@@ -174,11 +194,14 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 	/** The pointer that owns the live drag, or `-1`. */
 	const grabId = useRef(-1);
 	/**
-	 * The live lever: where the press landed and where the pointer is now. A ref rather than a signal
-	 * because the rAF loop reads it every frame and nothing renders from it — the two values that DO
-	 * render ({@link throwPx} and the scroll geometry) are written from it explicitly.
+	 * The live lever, all in CLIENT space: where the press landed, where the pointer is now, the span
+	 * the ball may travel, and the track's top edge. A ref rather than a signal because the rAF loop
+	 * reads it every frame and nothing renders from it — the two values that DO render
+	 * ({@link throwPx} and the scroll geometry) are written from it explicitly.
 	 */
-	const lever = useRef<{ grabY: number; pointerY: number } | null>(null);
+	const lever = useRef<
+		{ grabY: number; pointerY: number; travel: LeverTravel; trackTop: number } | null
+	>(null);
 	/** The in-flight lever animation frame, or `null` when no drag is running. */
 	const leverRaf = useRef<number | null>(null);
 	/** rAF's own timestamp origin for the current lever run, or `-1` before its first tick. */
@@ -232,6 +255,11 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 	// #endregion
 
 	// #region Lever (rate-based continuous scroll)
+	/**
+	 * `throwPx` is deliberately LEFT where it was: the sheet draws it multiplied by the morph, so as
+	 * the spring takes the morph to 0 the ball slides from the pointer back into the handle's centre
+	 * instead of jumping there first and shrinking in place. The next press rewrites it.
+	 */
 	const stopLever = useCallback(() => {
 		if (leverRaf.current != null) {
 			globalThis.cancelAnimationFrame?.(leverRaf.current);
@@ -239,15 +267,30 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 		}
 		leverLast.current = -1;
 		lever.current = null;
-		if (throwPx.peek() !== 0) throwPx.value = 0;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	/**
-	 * The throttle loop: scroll by `leverScrollDelta(deflection, dt)` every frame for as long as the
+	 * Re-aim the ball at the pointer. Its offset is relative to the handle's centre, and the handle
+	 * moves every frame the lever scrolls, so this runs after every {@link measure} in the loop as well
+	 * as on every pointer move — otherwise the ball would drift with the handle instead of staying under
+	 * the hand.
+	 */
+	const aimBall = useCallback(() => {
+		const state = lever.current;
+		if (!state) return;
+		const { ballY } = leverBall(state.grabY, state.pointerY, 1, state.travel);
+		const next = ballY - (state.trackTop + offset.peek() + length.peek() / 2);
+		if (next !== throwPx.peek()) throwPx.value = next;
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	/**
+	 * The throttle loop: scroll by `leverScrollDelta(d, speed, dt)` every frame for as long as the
 	 * lever is held. `dt` is the real elapsed time (capped inside `leverScrollDelta`), so the rate is
-	 * the same on a 60 Hz and a 120 Hz display and a resumed background tab cannot integrate a stale
-	 * throttle across its whole absence in one jump.
+	 * the same on a 60, 120 or 144 Hz display and a resumed background tab cannot integrate a stale
+	 * throttle across its whole absence in one jump. The speed is re-read per frame because a zoom
+	 * mid-drag changes how tall one period is.
 	 */
 	const tickLever = useCallback((now: number) => {
 		leverRaf.current = null;
@@ -267,14 +310,16 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 		}
 		const dt = now - leverLast.current;
 		leverLast.current = now;
-		const delta = leverScrollDelta(state.pointerY - state.grabY, dt);
+		const { deflection } = leverBall(state.grabY, state.pointerY, 1, state.travel);
+		const delta = leverScrollDelta(deflection, leverSpeed(periodPx.current), dt);
 		if (delta !== 0) el.scrollTop += delta;
 		// Written from the container we just moved rather than waiting for its async `scroll` event — a
 		// frameless document never dispatches one and the handle would stall.
 		measure();
+		aimBall();
 		leverRaf.current = globalThis.requestAnimationFrame?.(tickLever) ?? null;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [measure]);
+	}, [aimBall, measure]);
 
 	/**
 	 * Where a rAF loop is genuinely absent (SSR, a frameless harness) the lever simply does not scroll,
@@ -337,10 +382,17 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 		holdUntilExit.current = false;
 		dragging.value = true;
 		grabId.current = e.pointerId;
-		// The origin the whole gesture is measured from. Every later reading is a deflection from HERE,
-		// which is what lets the drag outlast the track.
-		lever.current = { grabY: e.clientY, pointerY: e.clientY };
-		throwPx.value = 0;
+		// The origin the whole gesture is measured from — the neutral point every later reading is a
+		// deflection from — and the track the ball may roam, both measured ONCE here: the region does
+		// not move under a held pointer, and a layout read per frame would fight the loop's scroll write.
+		const box = track.getBoundingClientRect();
+		lever.current = {
+			grabY: e.clientY,
+			pointerY: e.clientY,
+			travel: leverTravel(box.top, box.bottom, ballSizeOf(handle)),
+			trackTop: box.top,
+		};
+		aimBall();
 		morphSpring.set(1);
 		reveal();
 		startLever();
@@ -353,8 +405,7 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 			// that has carried us. Scrolling here instead would tie the speed to how often the OS
 			// coalesces pointer events.
 			state.pointerY = ev.clientY;
-			const next = leverThrowPx(ev.clientY - state.grabY);
-			if (next !== throwPx.peek()) throwPx.value = next;
+			aimBall();
 			reveal();
 		};
 		const detach = () => {
@@ -388,7 +439,7 @@ export function useOverlayScrollbar(opts: UseOverlayScrollbarOptions): OverlaySc
 		globalThis.addEventListener("pointerup", up);
 		globalThis.addEventListener("pointercancel", up);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [morphSpring, releaseFreeze, reveal, scheduleHide, startLever, stopLever]);
+	}, [aimBall, morphSpring, releaseFreeze, reveal, scheduleHide, startLever, stopLever]);
 
 	const onHandlePointerEnter = useCallback(() => {
 		hovering.current = true;

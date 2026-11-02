@@ -41,6 +41,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { createSpring, prefersJumpToFinal, SPRING_SNAPPY } from "../../core/motion.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
+import { Tooltip } from "../../feedback/mod.ts";
 import { usePresence } from "../../overlay/core/usePresence.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
@@ -835,15 +836,17 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 								<div class="cal-pop__head">
 									{showBack
 										? (
-											<button
-												type="button"
-												class="cal-pop__back"
-												ref={backRef}
-												onClick={backToList}
-												aria-label="Back to the list"
-											>
-												<ChevronLeftIcon size={16} />
-											</button>
+											<Tooltip content="Back to the list" density="compact">
+												<button
+													type="button"
+													class="cal-pop__back"
+													ref={backRef}
+													onClick={backToList}
+													aria-label="Back to the list"
+												>
+													<ChevronLeftIcon size={16} />
+												</button>
+											</Tooltip>
 										)
 										: null}
 									{actions ? <div class="cal-pop__actions">{actions}</div> : null}

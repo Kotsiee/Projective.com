@@ -10,7 +10,7 @@ import {
 	type MessageMenuOpenDetail,
 	type MessageReplyDetail,
 } from "@web/utils/lane-events.ts";
-import { isInteractiveTarget, isTypingKey, ownsKeys } from "../core/chat-keyboard.ts";
+import { isEditable, isInteractiveTarget, isTypingKey, ownsKeys } from "../core/chat-keyboard.ts";
 import {
 	clipboardText,
 	rangeIds,
@@ -31,7 +31,10 @@ import { makeId } from "../core/composer-model.ts";
  *   unfocused, by a Ctrl/Shift-click, or by a long press on touch. While it is on, every message
  *   that is not selected or under the keyboard cursor is blurred (the CSS reads `data-msg-highlight`
  *   on the surface root), and the cursor's message shows its actions as a context menu. Escape, a
- *   plain click, or a press outside the surface leaves it.
+ *   plain click, a press anywhere but a message or the menu, Ctrl+C / Ctrl+V, or focus moving into a
+ *   field (the composer above all) leaves it. A scroll gesture dismisses the menu: a lone message
+ *   leaves highlight mode with it, while a selection of several stays so the reader can scroll on
+ *   and add to it.
  * - **Selection.** Ctrl-click toggles, Shift-click and Shift-arrow extend from the anchor, a plain
  *   arrow moves a single selection. A plain left click never highlights — it only sets the anchor the
  *   next arrow press starts from.
@@ -143,6 +146,8 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 	const touch = useSignal(false);
 	const reactFor = useSignal<string | null>(null);
 	const status = useSignal("");
+	/** A scroll put the menu away while a multi-selection stays; the cursor's next move brings it back. */
+	const menuHidden = useSignal(false);
 	/** Where a Shift-range starts, and where the first arrow press lands after a plain click. */
 	const anchor = useRef<string | null>(null);
 	/** This surface's token on {@link MESSAGE_MENU_OPEN_EVENT}. */
@@ -169,6 +174,7 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 	 * nothing.
 	 */
 	function focusRow(id: string): void {
+		menuHidden.value = false;
 		live.current.reveal(id);
 		setTimeout(() => rowEl(id)?.focus({ preventScroll: true }), 0);
 	}
@@ -209,6 +215,12 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 		announce("Selection cleared.");
 	}
 
+	/** A scroll dismisses the menu: a lone message leaves highlight mode; several stay selected. */
+	function dismissMenu(): void {
+		if (selected.value.length > 1) menuHidden.value = true;
+		else exit();
+	}
+
 	/** The messages a shortcut acts on: the selection, else the message row that holds focus. */
 	function targets(): string[] {
 		if (active.value && selected.value.length > 0) return selected.value;
@@ -240,6 +252,16 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 		} catch {
 			announce("Your browser blocked the copy.");
 		}
+	}
+
+	/** Ctrl+C: copy the targets — unless the reader dragged out a text selection, theirs to copy natively. */
+	function copyShortcut(e: KeyboardEvent): void {
+		const text = globalThis.getSelection?.();
+		if (text && !text.isCollapsed && text.toString().trim().length > 0) return;
+		const ids = targets();
+		if (ids.length === 0) return;
+		e.preventDefault();
+		void copy(ids);
 	}
 
 	function toggle(id: string): void {
@@ -328,6 +350,16 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 			// The element focused when the key was pressed — fixed at dispatch, unlike
 			// `document.activeElement`, which the composer's own listener may already have moved.
 			const activeEl = e.target instanceof Element ? e.target : document.activeElement;
+			const mod = e.ctrlKey || e.metaKey;
+			const key = e.key.toLowerCase();
+			// Copy and paste take the reader's intent off the menu, so both end highlight mode — from
+			// inside the menu too, which otherwise keeps its keys. Copy takes the selection first; the
+			// composer's own listener takes the paste.
+			if (active.value && mod && !e.altKey && (key === "v" || (key === "c" && !e.shiftKey))) {
+				if (key === "c") copyShortcut(e);
+				exit();
+				return;
+			}
 			if (!ownsKeys(surface, activeEl)) return;
 
 			// Typing leaves highlight mode; the composer takes the character on its own listener.
@@ -338,7 +370,6 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 			}
 			if (e.defaultPrevented) return;
 
-			const mod = e.ctrlKey || e.metaKey;
 			if (e.key === "Escape") {
 				if (active.value) {
 					e.preventDefault();
@@ -348,17 +379,12 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 			}
 			if (mod && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
 				e.preventDefault();
+				if (active.value) dismissMenu();
 				live.current.scrollBy(e.key === "ArrowUp" ? -SCROLL_STEP_PX : SCROLL_STEP_PX);
 				return;
 			}
-			if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c") {
-				// A text selection the reader dragged out is theirs to copy natively.
-				const text = globalThis.getSelection?.();
-				if (text && !text.isCollapsed && text.toString().trim().length > 0) return;
-				const ids = targets();
-				if (ids.length === 0) return;
-				e.preventDefault();
-				void copy(ids);
+			if (mod && !e.shiftKey && !e.altKey && key === "c") {
+				copyShortcut(e);
 				return;
 			}
 			if (mod || e.altKey) return;
@@ -380,16 +406,44 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 		}
 
 		/**
-		 * A press outside the surface leaves highlight mode — except on the surface's own floating
-		 * pieces (the header bar, the reaction bubble, the context menu), which are portalled out of the
-		 * root and mark themselves `data-msg-ui`, and on any portalled overlay a menu item opened.
+		 * A press anywhere but the menu leaves highlight mode — the empty feed, the pinned banner, the
+		 * composer, a sidebar, a modal. Two exceptions: the surface's own floating pieces (the header
+		 * bar, the reaction bubble, the context menu), which are portalled out of the root and mark
+		 * themselves `data-msg-ui`; and a message in this feed, whose own click decides (a right-click
+		 * or Ctrl/Shift-click moves the menu there, a plain click leaves). A plain press on a control
+		 * inside a message — a link, a reaction — counts as outside; with Ctrl or Shift held it is still
+		 * a selection gesture. A touch inside the feed may start a scroll, which {@link onScrollIntent}
+		 * judges instead.
 		 */
 		function onOutside(e: PointerEvent): void {
 			if (!active.value) return;
-			const target = e.target as Element | null;
-			if (!target || rootRef.current?.contains(target)) return;
-			if (target.closest("[data-msg-ui], [data-ui-portal], .ui-popover")) return;
+			const target = e.target instanceof Element ? e.target : null;
+			if (!target || target.closest("[data-msg-ui]")) return;
+			if (rootRef.current?.contains(target)) {
+				if (e.pointerType === "touch") return;
+				const selecting = e.ctrlKey || e.metaKey || e.shiftKey;
+				if (target.closest("[data-message-id]") && (selecting || !isInteractiveTarget(target))) {
+					return;
+				}
+			}
 			exit();
+		}
+
+		/**
+		 * A wheel or a touch drag dismisses the menu ({@link dismissMenu}). Gestures rather than `scroll`
+		 * events, which the arrow walk's own reveal and a jump to a message fire too. Touch selection has
+		 * no menu, and scrolling to tap more is the point of it.
+		 */
+		function onScrollIntent(e: Event): void {
+			if (!active.value || touch.value) return;
+			if (e.target instanceof Element && e.target.closest("[data-msg-ui]")) return;
+			dismissMenu();
+		}
+
+		/** Focus moving into a field — the composer by a click, a Tab, typing or a paste — leaves. */
+		function onFocusIn(e: FocusEvent): void {
+			const target = e.target instanceof Element ? e.target : null;
+			if (active.value && isEditable(target) && !target?.closest("[data-msg-ui]")) exit();
 		}
 
 		function onOtherMenu(e: Event): void {
@@ -401,12 +455,19 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 		globalThis.addEventListener("keyup", onKeyUp);
 		globalThis.addEventListener("blur", onBlur);
 		document.addEventListener("pointerdown", onOutside, true);
+		document.addEventListener("focusin", onFocusIn);
+		const gestureOpts: AddEventListenerOptions = { capture: true, passive: true };
+		globalThis.addEventListener("wheel", onScrollIntent, gestureOpts);
+		globalThis.addEventListener("touchmove", onScrollIntent, gestureOpts);
 		globalThis.addEventListener(MESSAGE_MENU_OPEN_EVENT, onOtherMenu);
 		return () => {
 			globalThis.removeEventListener("keydown", onKeyDown);
 			globalThis.removeEventListener("keyup", onKeyUp);
 			globalThis.removeEventListener("blur", onBlur);
 			document.removeEventListener("pointerdown", onOutside, true);
+			document.removeEventListener("focusin", onFocusIn);
+			globalThis.removeEventListener("wheel", onScrollIntent, gestureOpts);
+			globalThis.removeEventListener("touchmove", onScrollIntent, gestureOpts);
 			globalThis.removeEventListener(MESSAGE_MENU_OPEN_EVENT, onOtherMenu);
 		};
 	}, [surface]);
@@ -474,7 +535,7 @@ export function useMessageSelection(options: UseMessageSelectionOptions): Messag
 		return {
 			selected: isSelected,
 			focused: isFocused,
-			menu: authored && isFocused && !touch.value,
+			menu: authored && isFocused && !touch.value && !menuHidden.value,
 			attrs: {
 				tabIndex: -1,
 				"data-message-id": m.id,

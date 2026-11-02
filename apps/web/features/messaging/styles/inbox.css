@@ -539,9 +539,9 @@
 
 /* #region Header band — identity + global controls */
 /*
- * The band itself already paints the shared `--surface-1` tone through its own glass `::before`
- * underlay (`middle-nav.css`), so this strip stays TRANSPARENT — an opaque background here would
- * occlude the blur and break the seam it is supposed to continue. `min-block-size` (not `block-size`)
+ * The band itself already paints the shared solid `--surface-1` tone (`middle-nav.css`), so this
+ * strip stays TRANSPARENT — a plate of its own here would only duplicate the band's surface and let
+ * the two drift apart. `min-block-size` (not `block-size`)
  * because the band's grid row is `auto`: the desktop strip holds the standard height, and the mobile
  * stack is free to grow instead of overflowing a fixed track.
  */
@@ -651,7 +651,7 @@
 /* #endregion */
 
 /* #region Footer band — actions + density */
-/* Transparent for the same reason as `.inbox-head` — the band owns the surface and the blur. */
+/* Transparent for the same reason as `.inbox-head` — the band owns the surface. */
 .inbox-foot {
 	display: flex;
 	align-items: center;

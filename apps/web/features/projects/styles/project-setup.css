@@ -8,9 +8,9 @@
  * a full border appears is on an interactive row — a stage, a role — which is exactly what §B.4
  * reserves it for.
  *
- * The identity + tab half of the header band is `project-showcase.css`'s `.proj-pvhead` / `.proj-pvtab`
- * block, reused verbatim so the owner's two chrome states cannot drift; this file adds only the
- * progress ring in the band's trailing track, the locked variant of a tab, and the jump highlight.
+ * The header band's grid is `project-showcase.css`'s `.proj-pvhead` and its tabs are the shared
+ * `TabStrip` (a locked Preview is its `lockedReason`); this file adds only the progress ring in the
+ * band's trailing track and the jump highlight.
  */
 
 /* #region Header band — the setup progress ring */
@@ -217,41 +217,13 @@
 }
 
 /*
- * Preview, while its required steps are outstanding: RENDERED and locked, never hidden.
+ * A figure-less ring, keyed on the BAND rather than the window.
  *
- * Absence is for a capability the viewer does not have; this is a capability they have not reached
- * yet, and removing it would hide the path to publishing (the `/wallet` two-gate rule). The lock glyph
- * and the tooltip carry the reason, so the state is legible without hover as well as with it.
- */
-.psu-tab--locked {
-	background: transparent;
-	border: none;
-	font: inherit;
-	cursor: not-allowed;
-	color: var(--text-disabled);
-}
-
-.psu-tab--locked:hover {
-	color: var(--text-disabled);
-}
-
-.psu-tab--locked::after {
-	content: none;
-}
-
-/*
- * Icon-only tabs and a figure-less ring, keyed on the BAND rather than the window.
- *
- * Below 26rem the two side tracks are each narrower than the ring cluster needs, and the next pixel of
- * narrowing would come out of the centred tabs. What gives first is the width the tab NAMES spend —
- * §B.6.3's icon-only rule — and then the figure beside the ring, which the ring itself, the button's
- * label and the tooltip all still carry.
- *
- * Labels are visually hidden, never removed: the tab label is still the anchor's accessible name and
- * what "label in name" (WCAG 2.5.3) matches.
+ * Below 26rem the two side tracks are each narrower than the ring cluster needs. The tabs fold to the
+ * `TabStrip` compact stepper on their own measure; the figure beside the ring goes too, since the ring
+ * itself, the button's label and the tooltip all still carry it. Visually hidden, never removed.
  */
 @container pvhead (max-width: 26rem) {
-	.proj-pvhead .proj-pvtab__label,
 	.proj-pvhead .psu-progress__value {
 		position: absolute;
 		inline-size: 1px;

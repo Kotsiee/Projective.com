@@ -130,6 +130,29 @@ export function composerMayTake(event: KeyboardEvent, active: Element | null): b
 	return true;
 }
 
+/** Whether this is an Apple platform, where a shortcut takes ⌘ (Ctrl+E is end of line in macOS fields). */
+export function isApplePlatform(): boolean {
+	const nav = globalThis.navigator;
+	return !!nav && /Mac|iPhone|iPad|iPod/.test(nav.platform || nav.userAgent);
+}
+
+/** What a composer attach shortcut asks for: the library picker, or the device's own file dialog. */
+export type AttachShortcut = "library" | "device";
+
+/**
+ * The attach shortcut a keydown names, if any: ⌘U / Ctrl+U opens the library picker, and with Shift
+ * the device's file dialog. ⌘ on Apple platforms and Ctrl elsewhere, never both, never with Alt.
+ */
+export function attachShortcut(
+	event: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey">,
+	apple: boolean,
+): AttachShortcut | null {
+	if (event.altKey || event.key.toLowerCase() !== "u") return null;
+	const modifier = apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+	if (!modifier) return null;
+	return event.shiftKey ? "device" : "library";
+}
+
 /**
  * Whether a pointer or key event came from a control INSIDE a message — a link, a button, a media
  * player — which must keep doing its own job rather than select the message it sits in.

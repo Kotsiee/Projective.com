@@ -41,7 +41,7 @@ export default function BoardViewControlRig(): JSX.Element {
 	return (
 		<div class="brd-rig">
 			<div class="brd-rig__group" role="group" aria-label="Board view">
-				<Tooltip content="Kanban board">
+				<Tooltip content="Kanban board" density="compact">
 					<button
 						type="button"
 						class="brd-rig__icon"
@@ -52,7 +52,7 @@ export default function BoardViewControlRig(): JSX.Element {
 						<KanbanIcon size={17} />
 					</button>
 				</Tooltip>
-				<Tooltip content="List view">
+				<Tooltip content="List view" density="compact">
 					<button
 						type="button"
 						class="brd-rig__icon"
@@ -68,7 +68,7 @@ export default function BoardViewControlRig(): JSX.Element {
 			{caps.isProjectBoard
 				? (
 					<div class="brd-rig__group" role="group" aria-label="Group columns by">
-						<Tooltip content="Columns by stage">
+						<Tooltip content="Columns by stage" density="compact">
 							<button
 								type="button"
 								class="brd-rig__icon"
@@ -79,7 +79,7 @@ export default function BoardViewControlRig(): JSX.Element {
 								<StagesToggleIcon size={17} />
 							</button>
 						</Tooltip>
-						<Tooltip content="Columns by status">
+						<Tooltip content="Columns by status" density="compact">
 							<button
 								type="button"
 								class="brd-rig__icon"

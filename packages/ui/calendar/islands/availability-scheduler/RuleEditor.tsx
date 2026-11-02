@@ -172,7 +172,7 @@ function TimeRangeField(props: TimeRangeFieldProps): JSX.Element {
 				step={step}
 				onCommit={(end) => onChange({ start: band.start, end })}
 			/>
-			<Tooltip content="Remove">
+			<Tooltip content="Remove" density="compact">
 				<Button
 					variant="text"
 					size="sm"
@@ -507,7 +507,7 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 						</p>
 					)}
 				{rule.bands.length < MAX_BANDS && (
-					<Tooltip content="Add time">
+					<Tooltip content="Add time" density="compact">
 						<Button
 							variant="text"
 							size="sm"
@@ -613,7 +613,7 @@ export function RuleEditor(): JSX.Element {
 			<div class="ui-avsched__section-head">
 				<h3 class="ui-avsched__heading">{rule ? "Edit rule" : "Rule"}</h3>
 				{rule && (
-					<Tooltip content="Close">
+					<Tooltip content="Close" density="compact">
 						<Button
 							variant="text"
 							size="sm"

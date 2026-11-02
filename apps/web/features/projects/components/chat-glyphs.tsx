@@ -76,19 +76,20 @@ export const ChevronRightIcon = (
 	</Svg>
 );
 
-/** Expand a pinned message inline (diagonal arrows out). */
-export const ExpandIcon = (
+/** Go to the pinned message in the feed — a locate crosshair. */
+export const LocateIcon = (
 	<Svg>
-		<path d="M9 4H4v5M20 15v5h-5" />
-		<path d="M4 4l6 6M20 20l-6-6" />
+		<circle cx="12" cy="12" r="6" />
+		<path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
 	</Svg>
 );
 
-/** Collapse an expanded pinned message. */
-export const CollapseIcon = (
+/** Unpin — the channel-glyphs pin, struck through. */
+export const UnpinIcon = (
 	<Svg>
-		<path d="M4 9h5V4M15 20v-5h5" />
-		<path d="M9 9 4 4M15 15l5 5" />
+		<path d="M9 3h6l-1 5 3 3v2H7v-2l3-3-1-5z" />
+		<path d="M12 15v6" />
+		<path d="m3 3 18 18" />
 	</Svg>
 );
 // #endregion

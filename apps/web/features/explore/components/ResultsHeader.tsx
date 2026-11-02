@@ -52,7 +52,11 @@ export function ResultsHeader(
 	const scope = useSignal<SearchScope>(scopeOf(category));
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({ scopeRef: formRef, matches: isFocusSearchShortcut });
+	useSearchShortcut({
+		scopeRef: formRef,
+		matches: isFocusSearchShortcut,
+		shortcut: "focus-search",
+	});
 
 	useEffect(() => {
 		draft.value = query;

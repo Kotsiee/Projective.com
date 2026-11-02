@@ -75,32 +75,38 @@ export function LogInspector(): JSX.Element {
 	return (
 		<div class="dev-log">
 			<div class="dev-log__persist">
-				<button
-					type="button"
-					role="switch"
-					aria-checked={persistOn}
-					class="dev-log__switch"
-					data-on={persistOn}
-					title="Keep captured logs in cache across page reloads; when off, they flush on unload"
-					onClick={() => logger.setLogPersistence(!persistOn)}
+				<Tooltip
+					content="Keep captured logs in cache across page reloads; when off, they flush on unload"
+					density="compact"
+					delay="slow"
 				>
-					<span class="dev-log__switch-track">
-						<span class="dev-log__switch-thumb" />
-					</span>
-					<span class="dev-log__switch-text">Keep logs on refresh</span>
-				</button>
-				<button
-					type="button"
-					class="dev-log__clearcache"
-					aria-label="Clear cached logs"
-					title="Wipe the in-memory and persisted logs"
-					onClick={clear}
-				>
-					<span class="dev-log__clearcache-glyph" aria-hidden="true">
-						<IconClearCache />
-					</span>
-					<span>Clear cache</span>
-				</button>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={persistOn}
+						class="dev-log__switch"
+						data-on={persistOn}
+						onClick={() => logger.setLogPersistence(!persistOn)}
+					>
+						<span class="dev-log__switch-track">
+							<span class="dev-log__switch-thumb" />
+						</span>
+						<span class="dev-log__switch-text">Keep logs on refresh</span>
+					</button>
+				</Tooltip>
+				<Tooltip content="Wipe the in-memory and persisted logs" density="compact" delay="slow">
+					<button
+						type="button"
+						class="dev-log__clearcache"
+						aria-label="Clear cached logs"
+						onClick={clear}
+					>
+						<span class="dev-log__clearcache-glyph" aria-hidden="true">
+							<IconClearCache />
+						</span>
+						<span>Clear cache</span>
+					</button>
+				</Tooltip>
 			</div>
 
 			<div class="dev-log__toolbar">
@@ -141,17 +147,18 @@ export function LogInspector(): JSX.Element {
 						);
 					})}
 					<div class="dev-log__tools">
-						<button
-							type="button"
-							class="dev-log__tool"
-							data-active={order === "asc"}
-							aria-label={`Sort ${order === "desc" ? "newest first" : "oldest first"}`}
-							title={order === "desc" ? "Newest first" : "Oldest first"}
-							onClick={() => setOrder((o) => (o === "desc" ? "asc" : "desc"))}
-						>
-							<IconSort />
-						</button>
-						<Tooltip content="Clear session logs" placement="top">
+						<Tooltip content={order === "desc" ? "Newest first" : "Oldest first"} density="compact">
+							<button
+								type="button"
+								class="dev-log__tool"
+								data-active={order === "asc"}
+								aria-label={`Sort ${order === "desc" ? "newest first" : "oldest first"}`}
+								onClick={() => setOrder((o) => (o === "desc" ? "asc" : "desc"))}
+							>
+								<IconSort />
+							</button>
+						</Tooltip>
+						<Tooltip content="Clear session logs" placement="top" density="compact">
 							<button
 								type="button"
 								class="dev-log__tool dev-log__tool--danger"

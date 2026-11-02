@@ -3724,7 +3724,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
 |               | `/saved`                  | `index`                  | Everything the account saved, starred, favourited or followed (`?tab=` · `?collection=`) — Saved & Favourites |
 |               | `/settings`               | `index`                  | The Settings hub: a search over every setting, what needs your attention, the profile completeness tracker, and every section as a card (§Settings) |
-|               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · notifications · messaging · scheduling & calls · billing |
+|               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · keyboard shortcuts · notifications · messaging · scheduling & calls · billing |
 |               |                           | `verification`           | Verification & payouts — identity check, payout account, business verification                 |
 |               |                           | `integrations`           | Connected cloud-storage drives (Google Drive, Dropbox, Frame.io, custom S3)                    |
 |               | `/teams`                  | `index`                  | Show all teams (freelancer persona only — Decision #228 (A))                                   |

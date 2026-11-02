@@ -498,7 +498,7 @@
 /*
  * The band contract, shared verbatim with `/wallet` and `/files`: exactly `--shell-midnav-header-h`
  * tall, `--space-4` inline padding, and TRANSPARENT — the tonal surface is the shell band's own
- * glass underlay (`.ui-middle-nav__header::before`) and the seam beneath it is the canvas frame's
+ * solid `--surface-1` (`.ui-middle-nav__header`) and the seam beneath it is the canvas frame's
  * single hairline (`.ui-page-canvas::before`, offset by this band's height). Painting a plate or a
  * second hairline here doubles both. The height is load-bearing beyond appearance: the frame's seam
  * accumulator subtracts exactly this token, so a band of any other height misplaces the canvas

@@ -79,6 +79,7 @@ export default function SiteHeader(
 	useSearchShortcut({
 		scopeRef: searchRef,
 		matches: isFocusHeaderSearchShortcut,
+		shortcut: "focus-header-search",
 		fromFields: true,
 	});
 

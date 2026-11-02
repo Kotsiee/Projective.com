@@ -134,8 +134,10 @@ export interface LazyLoadEvent {
 /**
  * A menu command node — the lingua franca for Menu, Menubar, TieredMenu, MegaMenu, ContextMenu,
  * ActionMenu, PanelMenu, SlideMenu, Breadcrumb, TabMenu, Steps, SpeedDial. `items` makes it a
- * submenu; a bare `separator` renders a divider row. `danger`, `hint`, `disabledReason` and
- * `emptyLabel` are read by ActionMenu; other renderers ignore them.
+ * submenu; a bare `separator` renders a divider row. `danger`, `hint`, `disabledReason`,
+ * `emptyLabel` and `image` are read by ActionMenu; other renderers ignore them. In ActionMenu a row
+ * with both `items` and a `url` or `command` is a split row: pressing it runs the row, hovering or
+ * ArrowRight unfolds the submenu.
  */
 export interface MenuItem {
 	label?: string;
@@ -164,6 +166,17 @@ export interface MenuItem {
 	emptyLabel?: string;
 	visible?: boolean;
 	separator?: boolean;
+	/**
+	 * Leading picture (an avatar, logo or cover) drawn in place of `icon`; `null` paints the label's
+	 * initials. Read by ActionMenu.
+	 */
+	image?: string | null;
+	/**
+	 * How an ActionMenu submenu opens: on hover (the default), or only when the row itself is
+	 * right-clicked (or ArrowRight / the ContextMenu key) — such a row draws no caret and a press or a
+	 * touch tap runs it.
+	 */
+	submenuOn?: "hover" | "contextmenu";
 	/** Trailing badge/count. */
 	badge?: string | number;
 	/** Keyboard shortcut hint shown right-aligned. */

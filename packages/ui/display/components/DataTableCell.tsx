@@ -1,5 +1,6 @@
 import type { JSX, VNode } from "preact";
 import { Icon } from "../../icons/mod.ts";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 import { Avatar } from "./Avatar.tsx";
 import { AvatarStack } from "./AvatarStack.tsx";
 import { type MoneyTone, MoneyView } from "./MoneyView.tsx";
@@ -82,9 +83,11 @@ function renderValue<T>(column: DataColumn<T>, row: T, ctx: CellContext, query: 
 			const lead = column.lead?.(row);
 			if (!text && !secondary) return <Empty />;
 			const main = (
-				<span class="ui-dt__text" title={text ?? undefined}>
-					<Highlight text={text ?? ""} query={query} />
-				</span>
+				<Tooltip content={text ?? ""} whenTruncated>
+					<span class="ui-dt__text">
+						<Highlight text={text ?? ""} query={query} />
+					</span>
+				</Tooltip>
 			);
 			return (
 				<>
@@ -132,9 +135,11 @@ function renderValue<T>(column: DataColumn<T>, row: T, ctx: CellContext, query: 
 					{showThumb && file.thumb
 						? <Thumb image={file.thumb} fallback={file.icon} kind="file" />
 						: <span class="ui-dt__thumb ui-dt__thumb--file">{file.icon}</span>}
-					<span class="ui-dt__name" title={file.name}>
-						<Highlight text={file.name} query={query} />
-					</span>
+					<Tooltip content={file.name} whenTruncated>
+						<span class="ui-dt__name">
+							<Highlight text={file.name} query={query} />
+						</span>
+					</Tooltip>
 					{file.meta ? <span class="ui-dt__meta">{file.meta}</span> : null}
 				</>
 			);
@@ -173,14 +178,16 @@ function renderValue<T>(column: DataColumn<T>, row: T, ctx: CellContext, query: 
 			const tags = column.value(row);
 			if (tags.length === 0) return <Empty />;
 			return (
-				<span class="ui-dt__text" title={tags.join(", ")}>
-					{tags.map((tag, i) => (
-						<span key={tag}>
-							{i > 0 ? <span class="ui-dt__dot" aria-hidden="true">·</span> : null}
-							<Highlight text={tag} query={query} />
-						</span>
-					))}
-				</span>
+				<Tooltip content={tags.join(", ")} whenTruncated>
+					<span class="ui-dt__text">
+						{tags.map((tag, i) => (
+							<span key={tag}>
+								{i > 0 ? <span class="ui-dt__dot" aria-hidden="true">·</span> : null}
+								<Highlight text={tag} query={query} />
+							</span>
+						))}
+					</span>
+				</Tooltip>
 			);
 		}
 		case "money": {
@@ -213,9 +220,11 @@ function renderValue<T>(column: DataColumn<T>, row: T, ctx: CellContext, query: 
 						size={20}
 						alt=""
 					/>
-					<span class="ui-dt__text" title={person.name}>
-						<Highlight text={person.name} query={query} />
-					</span>
+					<Tooltip content={person.name} whenTruncated>
+						<span class="ui-dt__text">
+							<Highlight text={person.name} query={query} />
+						</span>
+					</Tooltip>
 				</>
 			);
 		}
@@ -223,15 +232,17 @@ function renderValue<T>(column: DataColumn<T>, row: T, ctx: CellContext, query: 
 			const people = column.value(row);
 			if (people.length === 0) return <Empty />;
 			return (
-				<span class="ui-dt__people" title={people.map((p) => p.name).join(", ")}>
-					<AvatarStack
-						people={people}
-						max={column.max ?? 4}
-						size={24}
-						ringColor="var(--dt-row-bg)"
-						fallbackImage={ctx.avatarFallback}
-					/>
-				</span>
+				<Tooltip content={people.map((p) => p.name).join(", ")}>
+					<span class="ui-dt__people">
+						<AvatarStack
+							people={people}
+							max={column.max ?? 4}
+							size={24}
+							ringColor="var(--dt-row-bg)"
+							fallbackImage={ctx.avatarFallback}
+						/>
+					</span>
+				</Tooltip>
 			);
 		}
 		case "rating": {

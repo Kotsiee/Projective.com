@@ -491,7 +491,8 @@ room, a soft-deleted original accepted, and `body_delta` nulled by both mask tri
 `SECURITY DEFINER`, modelled on `comms.set_dm_inbox_folder`: `comms.dm_participants` has no client
 `UPDATE` policy (a policy wide enough to write `is_starred` would also reach `last_read_at` and
 `deleted_at`), so this door writes exactly the caller's own undeleted participant row and exactly
-that column. Idempotent. `42501` when there is no acting user or the caller is not a participant
+that column and its `starred_at` (stamped on a new star, kept on a repeat, cleared on un-star —
+Decision #370). Idempotent. `42501` when there is no acting user or the caller is not a participant
 (the service answers 404); `22023 starred: required` for a `NULL`. Granted to `authenticated` only.
 Called by `MessagingBackendService.setStarred`, which `SavedBackendService` dispatches the
 conversation kind to; the inbox reads the star back through `is_starred` as before.

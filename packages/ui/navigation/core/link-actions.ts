@@ -107,6 +107,75 @@ export function linkActionItems(input: LinkActionsInput): MenuItem[] {
 	return wanted.map((action) => rows[action]).filter((row): row is MenuItem => row !== null);
 }
 
+/** Input to {@link linkOpenItem}. */
+export interface LinkOpenInput {
+	/** The page the row opens — relative or absolute. */
+	href: string;
+	/** The row's label (default `"Open"`). */
+	label?: string;
+	/** Stable key (default derived from `href`). */
+	key?: string;
+	/** Leading icon (default `arrow-right`); ignored when `image` is given. */
+	icon?: string;
+	/** Leading picture — see {@link MenuItem.image}. */
+	image?: string | null;
+	/** One line of meta text under the label. */
+	hint?: string;
+	/** Told whether Copy link reached the clipboard, so the host can confirm or explain. */
+	onCopied?: (ok: boolean) => void;
+	/** Offer Copy link in the submenu (default `true`); `false` when the host lists it beside the row. */
+	copy?: boolean;
+	/** How the submenu opens — see {@link MenuItem.submenuOn}. */
+	submenuOn?: MenuItem["submenuOn"];
+}
+
+/**
+ * Open `href` in a new browser window. shortcut: the web can only ask for a popup-style window (no
+ * tab strip); a full window needs the browser's own menu.
+ */
+export function openInNewWindow(href: string): void {
+	(globalThis as { open?: (url: string, target: string, features: string) => unknown }).open?.(
+		absoluteHref(href),
+		"_blank",
+		"popup,noopener,noreferrer",
+	);
+}
+
+/**
+ * A link row that is itself the Open action: pressing it opens the page, and hovering it (or
+ * ArrowRight) unfolds Open · Open in new tab · Open in new window · Copy link — or, with
+ * `submenuOn: "contextmenu"`, only a right-click on it does. It renders as an anchor, so a
+ * middle-click opens it in a new tab like any link. A tab group or a private window has no web API,
+ * so neither is offered (UI gate 11).
+ */
+export function linkOpenItem(input: LinkOpenInput): MenuItem {
+	const { href, onCopied } = input;
+	const label = input.label ?? "Open";
+	return {
+		key: input.key ?? `open:${href}`,
+		label,
+		icon: input.image === undefined ? (input.icon ?? "arrow-right") : undefined,
+		image: input.image,
+		hint: input.hint,
+		url: href,
+		submenuOn: input.submenuOn,
+		items: composeMenu(
+			[
+				...linkActionItems({ href, title: label, include: ["open", "open-new-tab"] }),
+				{
+					key: "link-open-new-window",
+					label: "Open in new window",
+					icon: "arrow-up-right",
+					command: () => openInNewWindow(href),
+				},
+			],
+			input.copy === false
+				? []
+				: linkActionItems({ href, title: label, include: ["copy-link"], onCopied }),
+		),
+	};
+}
+
 /** Join non-empty row groups with separators, so a host can stack link rows over its own actions. */
 export function composeMenu(...groups: ReadonlyArray<readonly MenuItem[]>): MenuItem[] {
 	const out: MenuItem[] = [];

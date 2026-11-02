@@ -3,6 +3,7 @@ import type {
 	AppearancePreferences,
 	DisplayPreferences,
 	EmailDeliveryOutcome,
+	ResolvedUiSettings,
 	UserEmail,
 	UserPreferencesUpdate,
 } from "@projective/types/org";
@@ -94,6 +95,8 @@ export interface PreferencesSaved extends ClaimsReissue {
 	preferences: DisplayPreferences | null;
 	appearance: AppearancePreferences | null;
 	appearancePersisted: boolean;
+	uiSettings: ResolvedUiSettings | null;
+	uiSettingsPersisted: boolean;
 }
 
 /** What an email write answers with. */

@@ -3,6 +3,7 @@ import {
 	overflowsTrack,
 	shouldCollapseTabs,
 	stepIndex,
+	stepOpen,
 	SWIPE_THRESHOLD_PX,
 	swipeStep,
 	TRACK_SLACK_PX,
@@ -73,6 +74,20 @@ Deno.test("stepIndex — wraps backward past the first tab to the last", () => {
 
 Deno.test("stepIndex — an empty ring resolves to 0", () => {
 	assertEquals(stepIndex(0, 1, 0), 0);
+});
+// #endregion
+
+// #region stepOpen
+Deno.test("stepOpen — skips locked tabs, wrapping both ways", () => {
+	const open = [true, false, true, false];
+	assertEquals(stepOpen(0, 1, open), 2);
+	assertEquals(stepOpen(2, 1, open), 0);
+	assertEquals(stepOpen(0, -1, open), 2);
+});
+
+Deno.test("stepOpen — with no other open tab it stays put", () => {
+	assertEquals(stepOpen(0, 1, [true, false]), 0);
+	assertEquals(stepOpen(0, -1, [true]), 0);
 });
 // #endregion
 

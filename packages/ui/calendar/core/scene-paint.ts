@@ -39,7 +39,6 @@ import type {
 	TextStyle,
 } from "./grid-paint.ts";
 import { columnGeometry, paintGrid } from "./grid-paint.ts";
-import { leverThrowPx } from "./chrome.ts";
 import { CALENDAR_KIND_VIEWBOX } from "./kinds.ts";
 import { resolveAvatar } from "./avatar-cache.ts";
 import type { Rect } from "./scene-build.ts";
@@ -1616,19 +1615,17 @@ function paintFocus(
  * The overlay depth gauge — the DOM twin of `useOverlayScrollbar`'s bar, §Part 4.
  *
  * THE LEVER. At rest the handle is a pill at its depth offset. Grabbed, it MORPHS into the ball
- * `.cal-bar__handle::before` draws for the same control in the DOM, and deflects from where it was
- * taken hold of rather than tracking depth.
+ * `.cal-bar__handle::before` draws for the same control in the DOM, and the ball follows the pointer
+ * along the whole track rather than tracking depth.
  *
- * `lever.displacement` is the RAW signed travel of the pointer, which is deliberately NOT the drawn
- * offset: the throttle keeps ramping with it while the stick's throw saturates, exactly as a physical
- * joystick's does, so `core/chrome.ts`'s `leverThrowPx` is what converts one into the other. Drawing
- * the raw travel would send the ball off across the viewport, detached from the handle it grew out
- * of, and a stick that leaves its own socket stops reading as a stick at all. The clamp below is a
- * second, independent guard: the saturated throw already keeps the ball on the bar, and this keeps it
- * on the SCREEN whatever a future throw ceiling is set to.
+ * `lever.ballY` is already clamped to the track by `core/chrome.ts`'s `leverBall`, and it is drawn
+ * as-is: the ball's position IS the throttle the reader is holding, so a ball drawn anywhere else
+ * would show a speed they are not getting. The clamp below is a second, independent guard that keeps
+ * the interpolated shape on the SCREEN while it is still pill-length, part way through the morph.
  *
- * `morph` arrives RESOLVED, like every other animated quantity this pass takes. The shape is
- * interpolated from it here — geometry, written directly — while the two FILLS crossfade by alpha,
+ * `morph` arrives RESOLVED, like every other animated quantity this pass takes. The shape AND its
+ * centre are interpolated from it here — geometry, written directly — so a release slides the ball
+ * back to the handle's centre while it stretches back into the pill. The two FILLS crossfade by alpha,
  * because two resolved colour strings cannot be mixed without parsing them and this package does not
  * parse a colour to draw one. At `morph` 1 the interpolated shape IS the ball's circle and the
  * crossfade is complete, so the handle has become the ball rather than acquired one.
@@ -1655,8 +1652,9 @@ function paintScrollbar(
 	const lo = palette.barInset + half;
 	const hi = box.height - palette.barInset - half;
 	const cx = rect.x + rect.w / 2;
-	const throwPx = lever ? leverThrowPx(lever.displacement) : 0;
-	const cy = Math.min(Math.max(rect.y + rect.h / 2 + throwPx, lo), Math.max(lo, hi));
+	const rest = rect.y + rect.h / 2;
+	const target = lever && Number.isFinite(lever.ballY) ? lever.ballY : rest;
+	const cy = Math.min(Math.max(rest + (target - rest) * morph, lo), Math.max(lo, hi));
 
 	ctx.save();
 	ctx.globalAlpha = alpha;

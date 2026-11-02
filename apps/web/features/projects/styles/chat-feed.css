@@ -127,7 +127,8 @@
 /* #region Pinned banner */
 .chat-pinned {
 	position: sticky;
-	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
+	/* Flush under the channel header band, so no message scrolls through a seam above it. */
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 	z-index: var(--z-sticky);
 	display: flex;
 	align-items: center;
@@ -138,102 +139,93 @@
 	max-inline-size: var(--chat-measure);
 	margin-block: var(--space-2);
 	margin-inline: auto;
-	padding: 0.35rem 0.5rem 0.35rem 0.7rem;
-	background: color-mix(in srgb, var(--surface-1) 96%, var(--primary));
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
 	/*
-	 * One hairline, all four sides. This carried a 3px `--primary` leading stripe on top of the tint,
-	 * the hairline, the elevation AND its own pin glyph — four channels for one meaning, and the
-	 * thick coloured edge is the tell the design floor bans outright. The pin icon already says
-	 * "pinned" in the accent; the banner needs nothing louder than its own tint to be found.
+	 * A solid ramp tone and ONE hairline divider along the edge the feed scrolls under — no tint, no
+	 * four-sided box, no elevation. The pin glyph and the title carry "pinned" in the accent; the band
+	 * only has to read as a band, and the tone step from the feed's canvas does that.
 	 */
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-low);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+	border-end-start-radius: var(--radius-md);
+	border-end-end-radius: var(--radius-md);
 }
 
 .chat-pinned__icon {
 	display: inline-flex;
 	flex: none;
-	font-size: 0.9rem;
-	color: var(--primary);
+	font-size: var(--icon-sm);
+	color: var(--primary-ink);
 }
 
+/* The preview is the banner's widest target: it goes to the message, like the Go to message control. */
 .chat-pinned__body {
 	flex: 1 1 auto;
 	min-inline-size: 0;
 	display: flex;
-	align-items: baseline;
-	gap: var(--space-2);
+	flex-direction: column;
+	align-items: flex-start;
 	padding: 0;
 	font: inherit;
+	line-height: var(--leading-snug);
 	text-align: start;
+	color: inherit;
 	background: transparent;
 	border: none;
 	cursor: pointer;
-	color: inherit;
+	transition: transform var(--dur-press) var(--spring-standard);
 }
 
-.chat-pinned__label {
-	flex: none;
-	font-size: 0.68rem;
-	font-weight: 700;
-	color: var(--primary);
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
+.chat-pinned__body:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+.chat-pinned__title {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	color: var(--primary-ink);
+}
+
+.chat-pinned__count {
+	font-weight: var(--fw-normal);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
 }
 
 .chat-pinned__text {
-	min-inline-size: 0;
-	font-size: 0.8rem;
+	max-inline-size: 100%;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.chat-pinned__text[data-expanded="true"] {
-	white-space: normal;
-	overflow: visible;
-}
-
 .chat-pinned__body:hover .chat-pinned__text {
 	text-decoration: underline;
+	text-underline-offset: 0.15em;
 }
 
 .chat-pinned__controls {
 	flex: none;
 	display: flex;
 	align-items: center;
-	gap: 1px;
 }
 
-.chat-pinned__nav {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.6rem;
-	block-size: 1.6rem;
-	font-size: 0.9rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.chat-pinned__nav:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.chat-pinned__nav:focus-visible,
 .chat-pinned__body:focus-visible {
 	outline: none;
 	box-shadow: none;
 	border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.chat-pinned__body:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .chat-pinned__body:active {
+	transform: none;
 }
 
 /* #endregion */
@@ -247,10 +239,13 @@
 	padding-inline: var(--space-1);
 }
 
-/* Reduced separation for grouped continuations (task §2). */
+/*
+ * Same-author runs within the grouping window (`message-model.ts`) sit 4px apart; a new author or a
+ * new time cluster opens with the 12px step above.
+ */
 .msg-row[data-pos="middle"],
 .msg-row[data-pos="last"] {
-	margin-block-start: 2px;
+	margin-block-start: var(--space-1);
 }
 
 .msg-row[data-own="true"] {
@@ -375,13 +370,6 @@
 
 .msg-meta__name:hover {
 	text-decoration: underline;
-}
-
-.msg-meta__pin {
-	display: inline-flex;
-	flex: none;
-	font-size: 0.68rem;
-	color: var(--primary);
 }
 
 .msg-meta__time {
@@ -713,6 +701,31 @@ button.msg-quote:focus-visible {
 	inset-inline-start: auto;
 	inset-inline-end: -0.4rem;
 	transform: rotate(12deg);
+}
+
+/*
+ * The pinned mark — a muted 12px pin on the bubble's INNER top corner (toward the column's middle),
+ * the corner the favourite star does not take. It sits in a canvas-toned notch so it reads the same
+ * over either bubble tone, and outside the content box, so bubble padding and text never move.
+ */
+.msg-bubble__pin {
+	position: absolute;
+	inset-block-start: -0.375rem;
+	inset-inline-end: -0.375rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
+	font-size: var(--icon-2xs);
+	color: var(--text-secondary);
+	background: var(--frame-surface, var(--surface));
+	border-radius: var(--radius-full);
+}
+
+.msg-bubble[data-own="true"] .msg-bubble__pin {
+	inset-inline-end: auto;
+	inset-inline-start: -0.375rem;
 }
 
 /* #endregion */

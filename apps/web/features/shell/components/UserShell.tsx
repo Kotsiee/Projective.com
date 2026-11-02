@@ -156,9 +156,9 @@ export interface UserShellProps {
  * and the authenticated branch of the `(public)` layout so Home & Explore render inside the same
  * shell when signed in — zero layout duplication.
  *
- * Header flow is left→right (Part D.1): a **Left block** fusing the brand mark to the integrated
- * {@link NavSearchBar} (the same modular scope-selector + typewriter search the guest header uses),
- * and a **Right block** — {@link UserActions} — with Create · Notifications · Basket · Profile.
+ * Header flow is left→right (Part D.1): the brand mark, the integrated {@link NavSearchBar} (the
+ * same modular scope-selector + typewriter search the guest header uses) on the bar's midline, and
+ * a **Right block** — {@link UserActions} — with Create · Notifications · Basket · Profile.
  *
  * Mobile viewport isolation (Part D.3): the desktop mechanics — global sidebar, middle-nav lane, and
  * nested-frame chrome — are stripped by CSS at ≤ --bp-md, leaving only the glass mobile header, a
@@ -203,12 +203,8 @@ export function UserShell(
 				chrome={chrome}
 				// The first Tab stop on every signed-in page: past the top bar, the rail and the lane.
 				skipTo={PAGE_CANVAS_MAIN_ID}
-				brand={
-					<div class="shell-headlead">
-						<BrandMark />
-						{showSearch && !focus ? <NavSearchBar /> : null}
-					</div>
-				}
+				brand={<BrandMark />}
+				search={showSearch && !focus ? <NavSearchBar /> : undefined}
 				utilityBar={focus
 					? null
 					: (

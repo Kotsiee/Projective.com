@@ -363,6 +363,10 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* The full-hash Tooltip's anchor is the code's flex item now, so it carries the shrink. */
+.ins-facts__hash > .ui-tooltip__anchor {
+	min-inline-size: 0;
+}
 
 .ins-owner {
 	display: inline-flex;

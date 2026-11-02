@@ -152,7 +152,12 @@ export async function writeSaved(
 		const projectId = await projectIdOf(actor, input.ref);
 		if (!projectId) return fail(404, { message: GONE });
 		const { error } = await db(actor, "projects").from("user_preferences").upsert(
-			{ user_id: actor.userId, project_id: projectId, is_starred: input.saved },
+			{
+				user_id: actor.userId,
+				project_id: projectId,
+				is_starred: input.saved,
+				starred_at: input.saved ? new Date().toISOString() : null,
+			},
 			{ onConflict: "user_id,project_id" },
 		);
 		if (error) throw new Error(`projects.user_preferences write failed: ${error.message}`);
@@ -282,23 +287,28 @@ export async function readSavedRows(
 	if (want.has("project")) {
 		reads.push((async () => {
 			const { data, error } = await db(actor, "projects").from("user_preferences")
-				.select("project_id").eq("user_id", actor.userId).eq("is_starred", true).limit(STORE_CAP);
+				.select("project_id, starred_at").eq("user_id", actor.userId).eq("is_starred", true)
+				.limit(STORE_CAP);
 			if (error) throw new Error(`projects.user_preferences read failed: ${error.message}`);
-			return ((data ?? []) as { project_id: string }[]).map((r) => bare("project", r.project_id));
+			return ((data ?? []) as { project_id: string; starred_at: string | null }[]).map((r) => ({
+				...bare("project", r.project_id),
+				savedAt: r.starred_at,
+			}));
 		})());
 	}
 	if (want.has("conversation")) {
 		reads.push((async () => {
 			const { data, error } = await db(actor, "comms").from("dm_participants")
-				.select("thread_id").eq("user_id", actor.userId).eq("is_starred", true).is(
+				.select("thread_id, starred_at").eq("user_id", actor.userId).eq("is_starred", true).is(
 					"deleted_at",
 					null,
 				)
 				.limit(STORE_CAP);
 			if (error) throw new Error(`comms.dm_participants read failed: ${error.message}`);
-			return ((data ?? []) as { thread_id: string }[]).map((r) =>
-				bare("conversation", r.thread_id)
-			);
+			return ((data ?? []) as { thread_id: string; starred_at: string | null }[]).map((r) => ({
+				...bare("conversation", r.thread_id),
+				savedAt: r.starred_at,
+			}));
 		})());
 	}
 	if (want.has("message")) {
@@ -614,39 +624,57 @@ export const LOOKUP_TYPES: readonly SavedEntityType[] = [
 	"project",
 ];
 
-/** Which of `refs` (per kind) the caller has saved; returns the saved `type:ref` keys as asked. */
+/**
+ * The caller's saves of these kinds keyed `type:ref` — the key a surface already routes by (a slug,
+ * a bare handle, a conversation id) — with when each was saved. Follows are not saves.
+ */
+export async function savedRefs(
+	actor: Actor,
+	types: readonly SavedEntityType[],
+): Promise<Map<string, string | null>> {
+	const rows = (await readSavedRows(actor, types, undefined)).filter((r) => !r.following);
+	const out = new Map<string, string | null>();
+
+	await Promise.all(types.map(async (t) => {
+		const mine = rows.filter((r) => r.type === t);
+		if (mine.length === 0) return;
+		const at = new Map(mine.map((r) => [r.key, r.savedAt]));
+		if (t === "conversation") {
+			for (const r of mine) out.set(`${t}:${r.key}`, r.savedAt);
+			return;
+		}
+		if (t === "profile") {
+			const cards = await fetchProfileCards(
+				getUserClient(actor.accessToken),
+				mine.map((r) => ({ type: r.entity!, id: r.key })),
+			);
+			for (const card of cards.values()) {
+				out.set(`profile:${bareHandle(card.handle)}`, at.get(card.id) ?? null);
+			}
+			return;
+		}
+		if (t !== "project" && !(t in LISTINGS)) return;
+		const k = t === "project"
+			? { schema: "projects", table: "projects" }
+			: LISTINGS[t as ListingType];
+		const { data, error } = await db(actor, k.schema).from(k.table).select("id, slug").in(
+			"id",
+			[...at.keys()],
+		);
+		if (error) throw new Error(`${k.schema}.${k.table} read failed: ${error.message}`);
+		for (const r of (data ?? []) as { id: string; slug: string }[]) {
+			out.set(`${t}:${r.slug}`, at.get(r.id) ?? null);
+		}
+	}));
+	return out;
+}
+
+/** Which of these `type:ref` keys the caller has saved, in the order asked. */
 export async function lookupSaved(
 	actor: Actor,
 	refs: ReadonlyMap<SavedEntityType, readonly string[]>,
 ): Promise<string[]> {
-	const types = [...refs.keys()].filter((t) => LOOKUP_TYPES.includes(t));
-	const rows = await readSavedRows(actor, types, undefined);
-	const saved = new Set<string>();
-	const keysOf = (t: SavedEntityType) =>
-		rows.filter((r) => r.type === t && !r.following).map((r) => r.key);
-
-	await Promise.all(types.map(async (t) => {
-		const keys = keysOf(t);
-		if (keys.length === 0) return;
-		if (t === "profile") {
-			const cards = await fetchProfileCards(
-				getUserClient(actor.accessToken),
-				rows.filter((r) => r.type === "profile" && !r.following).map((r) => ({
-					type: r.entity!,
-					id: r.key,
-				})),
-			);
-			for (const card of cards.values()) saved.add(`profile:${bareHandle(card.handle)}`);
-			return;
-		}
-		const k = t === "project"
-			? { schema: "projects", table: "projects" }
-			: LISTINGS[t as ListingType];
-		const { data, error } = await db(actor, k.schema).from(k.table).select("slug").in("id", keys);
-		if (error) throw new Error(`${k.schema}.${k.table} read failed: ${error.message}`);
-		for (const r of (data ?? []) as { slug: string }[]) saved.add(`${t}:${r.slug}`);
-	}));
-
+	const saved = await savedRefs(actor, [...refs.keys()].filter((t) => LOOKUP_TYPES.includes(t)));
 	const out: string[] = [];
 	for (const [t, list] of refs) {
 		for (const ref of list) {

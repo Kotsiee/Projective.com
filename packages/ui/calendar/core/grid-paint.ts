@@ -402,11 +402,12 @@ export interface SceneScrollbar {
 	 * so "how far past the end are we" no longer describes the gesture at all. What describes it is
 	 * how far the pointer has travelled from where it grabbed.
 	 *
-	 * `morph` is resolved by `core/chrome.ts`'s `leverBall` and is what tells the painter to draw a
-	 * ball instead of a pill — a dedicated flag rather than overloading {@link frozen}, which is a
-	 * LENGTH and was standing in for "a drag is live" only because nothing else was.
+	 * Resolved by `core/chrome.ts`'s `leverBall`, in CANVAS space: `ballY` is the ball's clamped centre,
+	 * which the painter draws as-is. `morph` is what tells the painter to draw a ball instead of a pill
+	 * — a dedicated flag rather than overloading {@link frozen}, which is a LENGTH and was standing in
+	 * for "a drag is live" only because nothing else was.
 	 */
-	lever: { grabY: number; displacement: number; morph: number } | null;
+	lever: { grabY: number; ballY: number; deflection: number; morph: number } | null;
 }
 
 /** The return-to-present pill, in CANVAS space. */

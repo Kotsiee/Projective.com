@@ -422,8 +422,16 @@
 /* History is an archive rather than a working view, so it sits apart at the far end and drops its
    label — the name lives in the tooltip and the accessible name (§B.6). */
 .tkv-tabs__tab[data-icononly="true"] {
-	margin-inline-start: auto;
 	padding-inline: var(--space-2);
+}
+
+/* Each tab's Tooltip anchor is the strip's flex item: it never shrinks (the strip scrolls instead),
+   and the push to the far end rides on it. */
+.tkv-tabs > .ui-tooltip__anchor {
+	flex: none;
+}
+.tkv-tabs > .ui-tooltip__anchor:has(> [data-icononly="true"]) {
+	margin-inline-start: auto;
 }
 
 .tkv-tabs__count {
@@ -1622,7 +1630,7 @@
 		padding-inline: var(--space-2);
 	}
 
-	.tkv-tabs__tab[data-icononly="true"] {
+	.tkv-tabs > .ui-tooltip__anchor:has(> [data-icononly="true"]) {
 		margin-inline-start: 0;
 	}
 

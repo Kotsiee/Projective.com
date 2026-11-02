@@ -1,5 +1,7 @@
 import type { RefObject } from "preact";
 import { useEffect, useRef } from "preact/hooks";
+import type { ToggleableShortcutId } from "@projective/types/org";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { isEditableTarget, type ShortcutKey } from "../core/shortcuts.ts";
 
 export interface SearchShortcutOptions {
@@ -7,6 +9,8 @@ export interface SearchShortcutOptions {
 	scopeRef: RefObject<HTMLElement>;
 	/** The key rule — `isFocusSearchShortcut` for a page's own search, the header rule for the header's. */
 	matches: (event: ShortcutKey) => boolean;
+	/** The registry id the reader can switch off in Settings → Keyboard shortcuts. */
+	shortcut: ToggleableShortcutId;
 	/** Also act on a key pressed inside a field (default false — a key typed into a field is text). */
 	fromFields?: boolean;
 	/** Bind the shortcut at all (default true). */
@@ -19,7 +23,7 @@ export interface SearchShortcutOptions {
  * background), so a dialog keeps its keys. One document listener, removed on unmount.
  */
 export function useSearchShortcut(
-	{ scopeRef, matches, fromFields = false, enabled = true }: SearchShortcutOptions,
+	{ scopeRef, matches, shortcut, fromFields = false, enabled = true }: SearchShortcutOptions,
 ): void {
 	const matchesRef = useRef(matches);
 	matchesRef.current = matches;
@@ -27,7 +31,7 @@ export function useSearchShortcut(
 	useEffect(() => {
 		if (!enabled) return;
 		function onKey(e: KeyboardEvent): void {
-			if (!matchesRef.current(e)) return;
+			if (!matchesRef.current(e) || !shortcutOn(shortcut)) return;
 			if (!fromFields && isEditableTarget(e.target instanceof Element ? e.target : null)) return;
 			const field = scopeRef.current?.querySelector<HTMLInputElement>(
 				"input:not([type='hidden'])",
@@ -39,5 +43,5 @@ export function useSearchShortcut(
 		}
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
-	}, [enabled, fromFields, scopeRef]);
+	}, [enabled, fromFields, scopeRef, shortcut]);
 }

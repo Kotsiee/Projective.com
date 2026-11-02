@@ -8,6 +8,7 @@ import { Icon } from "@projective/ui/icons";
 import type { UserContext } from "@projective/types/auth";
 import type { SettingsSectionKey } from "@projective/types/settings";
 import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { sectionMeta } from "../core/settings-registry.ts";
 import { type SettingsLocation, SettingsNavigator } from "./SettingsNavigator.tsx";
 import { useAttention } from "../hooks/useAttention.ts";
@@ -107,6 +108,7 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
+			if (!shortcutOn("focus-search")) return;
 			const input = props.searchRef.current?.querySelector<HTMLInputElement>("input");
 			if (!input) return;
 			event.preventDefault();

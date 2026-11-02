@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { cloneElement } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
+import { Tooltip } from "@projective/ui/feedback";
 import type { MessageRow } from "../core/message-model.ts";
 import type { RowBinding } from "../hooks/useMessageSelection.ts";
 import { profileHref } from "../core/routing.ts";
@@ -32,8 +33,9 @@ import { MessageLinkPreviews } from "@web/features/links/components/MessageLinks
  *   - **Content** — a reply's {@link MessageReplyQuote}, the body with its inline formatting
  *     ({@link MessageBody} — inline, collapsed to four lines with Show more, or a card that opens a
  *     dialog, by length) and a preview row per link, a {@link MessageMedia} attachment layout,
- *     a {@link MessageAudioPlayer} memo, an emoji reaction row, and — when favourited — the custom
- *     "wonky star" mark on the bubble border. A standalone body of only emoji ({@link emojiOnly})
+ *     a {@link MessageAudioPlayer} memo, an emoji reaction row, the custom "wonky star" mark on the
+ *     bubble's outer top corner when favourited, and a muted pin on its inner top corner when
+ *     pinned. A standalone body of only emoji ({@link emojiOnly})
  *     drops the bubble fill and draws the emoji large, stepping down as the count grows.
  *   - **Selection** — when its surface runs `useMessageSelection`, the row carries that binding's
  *     state (`data-selected` / `data-focused`, which the surface CSS turns into the highlight-mode
@@ -114,9 +116,6 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						{href
 							? <a class="msg-meta__name" href={href}>{sender?.name}</a>
 							: <span class="msg-meta__name">{sender?.name}</span>}
-						{m.pinned && (
-							<span class="msg-meta__pin" aria-hidden="true">{cloneElement(PinIcon)}</span>
-						)}
 						<span class="msg-meta__time">{m.timeLabel}</span>
 					</div>
 				)}
@@ -143,9 +142,15 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 							/>
 						)}
 						{m.audio && <MessageAudioPlayer audio={m.audio} />}
+						{/* The Tooltip sits inside each mark: around it, its anchor would join the bubble's flow. */}
 						{m.favorited && (
-							<span class="msg-bubble__fav" aria-label="Favourited" title="Favourited">
-								{cloneElement(WonkyStarIcon)}
+							<span class="msg-bubble__fav" role="img" aria-label="Favourited">
+								<Tooltip content="Favourited">{cloneElement(WonkyStarIcon)}</Tooltip>
+							</span>
+						)}
+						{m.pinned && (
+							<span class="msg-bubble__pin" role="img" aria-label="Pinned">
+								<Tooltip content="Pinned">{cloneElement(PinIcon)}</Tooltip>
 							</span>
 						)}
 					</div>

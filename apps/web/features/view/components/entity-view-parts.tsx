@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
 import type { EntitySeller, EntityView } from "@projective/types/explore";
 import { ownerVerificationStamp } from "@projective/types/org";
@@ -225,7 +226,7 @@ export function SeatMeter({ capacity }: { capacity: SeatCapacity }): JSX.Element
 /** One earned trust signal — an inline text item with an explanation available on demand. */
 export interface TrustSignal {
 	label: string;
-	/** What earned it. Surfaced as the `title`; the lane island upgrades this to a portal `Tooltip`. */
+	/** What earned it, surfaced as a portal `Tooltip` on the label. */
 	explanation: string;
 }
 
@@ -243,7 +244,9 @@ export function TrustSignals({ signals }: { signals: readonly TrustSignal[] }): 
 			{signals.map((s, i) => (
 				<span class="evp-signals__item" key={`${i}:${s.label}`}>
 					{i > 0 && <span class="evp-signals__sep" aria-hidden="true">·</span>}
-					<span class="evp-signals__text" title={s.explanation}>{s.label}</span>
+					<Tooltip content={s.explanation} delay="slow">
+						<span class="evp-signals__text">{s.label}</span>
+					</Tooltip>
 				</span>
 			))}
 		</p>

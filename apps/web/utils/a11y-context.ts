@@ -7,6 +7,7 @@ import {
 	LayoutDirection,
 	localeDirection,
 	MotionPreference,
+	ToggleableShortcutId,
 } from "@projective/types/org";
 
 /**
@@ -35,10 +36,15 @@ export const A11Y_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 /**
  * What the cookie carries: the overlay half of {@link AppearancePreferences}, plus the document
  * direction (`org.user_preferences.layout_direction`) — the one display preference that also has to be
- * right before first paint, since a page laid out left-to-right and then mirrored is a full reflow.
+ * right before first paint, since a page laid out left-to-right and then mirrored is a full reflow —
+ * plus the keyboard half of `ui_settings` (Decision #371): whether tooltips show shortcuts (`tips`) and
+ * the shortcuts switched off (`keysOff`). Switching a character-key shortcut off is an accessibility
+ * control (WCAG 2.1.4), and every listener and tooltip reads it from the `<html>` attributes painted here.
  */
 export type A11yOverlays = Pick<AppearancePreferences, "contrast" | "font" | "cvd" | "motion"> & {
 	dir: LayoutDirection;
+	tips: boolean;
+	keysOff: ToggleableShortcutId[];
 };
 
 /** No overlay at all — the OS media queries still apply on top of this. */
@@ -48,14 +54,19 @@ export const DEFAULT_A11Y: A11yOverlays = {
 	cvd: DEFAULT_APPEARANCE.cvd,
 	motion: DEFAULT_APPEARANCE.motion,
 	dir: "auto",
+	tips: false,
+	keysOff: [],
 };
 
 /**
- * Serialise overlays as `contrast-high_font-sans_cvd-none_motion-standard` — readable in devtools,
- * and built only from characters RFC 6265 allows unquoted in a cookie value (no `,`, `;` or space).
+ * Serialise overlays as `contrast-high_font-sans_cvd-none_motion-standard_dir-auto`, then
+ * `_tips-on` and `_keysoff-save.emoji-picker` only when set — readable in devtools, and built only
+ * from characters RFC 6265 allows unquoted in a cookie value (no `,`, `;` or space).
  */
 export function serializeA11y(overlays: A11yOverlays): string {
-	return `contrast-${overlays.contrast}_font-${overlays.font}_cvd-${overlays.cvd}_motion-${overlays.motion}_dir-${overlays.dir}`;
+	return `contrast-${overlays.contrast}_font-${overlays.font}_cvd-${overlays.cvd}_motion-${overlays.motion}_dir-${overlays.dir}${
+		overlays.tips ? "_tips-on" : ""
+	}${overlays.keysOff.length ? `_keysoff-${overlays.keysOff.join(".")}` : ""}`;
 }
 
 /**
@@ -86,6 +97,12 @@ export function parseA11y(raw: string | null | undefined): A11yOverlays {
 			out.motion = v as A11yOverlays["motion"];
 		}
 		if (key === "dir" && LayoutDirection.safeParse(v).success) out.dir = v as A11yOverlays["dir"];
+		if (key === "tips") out.tips = v === "on";
+		if (key === "keysoff") {
+			out.keysOff = [
+				...new Set(v.split(".").filter((id) => ToggleableShortcutId.safeParse(id).success)),
+			] as ToggleableShortcutId[];
+		}
 	}
 	return out;
 }
@@ -118,6 +135,9 @@ export function a11yRootAttributes(
 	if (overlays.motion === "reduced") attrs["data-motion"] = "reduced";
 	if (overlays.dir === "ltr" || overlays.dir === "rtl") attrs.dir = overlays.dir;
 	else if (locale && localeDirection(locale) === "rtl") attrs.dir = "rtl";
+	// Read by `@projective/ui` Tooltip and by every shortcut listener (`shortcutOn`).
+	if (overlays.tips) attrs["data-tooltip-shortcuts"] = "on";
+	if (overlays.keysOff.length) attrs["data-shortcuts-off"] = overlays.keysOff.join(" ");
 	return attrs;
 }
 

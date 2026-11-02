@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { Button } from "../../../fields/components/Button.tsx";
 import { SelectButton } from "../../../fields/islands/SelectButton.tsx";
+import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { pickOption, useBound, useScheduler } from "./context.ts";
 import type { Layer, SchedulerView } from "./types.ts";
@@ -65,37 +66,43 @@ export function Toolbar(): JSX.Element {
 			/>
 			<span class="ui-avsched__zone">Times in {timezone}</span>
 			<div class="ui-avsched__history">
-				<Button
-					variant="text"
-					size="sm"
-					iconOnly
-					icon={<Icon name="rotate-ccw" />}
-					aria-label="Undo"
-					aria-keyshortcuts="Control+Z"
-					disabled={!store.canUndo.value}
-					onClick={store.undo}
-				/>
-				<Button
-					variant="text"
-					size="sm"
-					iconOnly
-					icon={<Icon name="rotate-cw" />}
-					aria-label="Redo"
-					aria-keyshortcuts="Control+Shift+Z"
-					disabled={!store.canRedo.value}
-					onClick={store.redo}
-				/>
-				<Button
-					variant="text"
-					size="sm"
-					iconOnly
-					icon={<Icon name="help" />}
-					aria-label="Keyboard shortcuts"
-					aria-keyshortcuts="?"
-					onClick={() => {
-						store.shortcutsOpen.value = true;
-					}}
-				/>
+				<Tooltip content="Undo" density="compact">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						icon={<Icon name="rotate-ccw" />}
+						aria-label="Undo"
+						aria-keyshortcuts="Control+Z"
+						disabled={!store.canUndo.value}
+						onClick={store.undo}
+					/>
+				</Tooltip>
+				<Tooltip content="Redo" density="compact">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						icon={<Icon name="rotate-cw" />}
+						aria-label="Redo"
+						aria-keyshortcuts="Control+Shift+Z"
+						disabled={!store.canRedo.value}
+						onClick={store.redo}
+					/>
+				</Tooltip>
+				<Tooltip content="Keyboard shortcuts" density="compact">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						icon={<Icon name="help" />}
+						aria-label="Keyboard shortcuts"
+						aria-keyshortcuts="?"
+						onClick={() => {
+							store.shortcutsOpen.value = true;
+						}}
+					/>
+				</Tooltip>
 			</div>
 		</div>
 	);

@@ -61,7 +61,7 @@ export function BoardColumnHeader(
 
 			{canCreate && col
 				? (
-					<Tooltip content={`Create a ticket in ${ctx.column.title}`}>
+					<Tooltip content={`Create a ticket in ${ctx.column.title}`} density="compact">
 						<button
 							type="button"
 							class="brd-colhead__add"

@@ -5,6 +5,7 @@ import type { UserContext } from "@projective/types/auth";
 import type { SettingsAttentionFacts, SettingsSectionKey } from "@projective/types/settings";
 import { useEffectiveContext } from "@features/shell/core/effective-context.ts";
 import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import {
 	searchSettings,
 	sectionEntries,
@@ -49,7 +50,7 @@ export default function SettingsHome(props: SettingsHomeProps): JSX.Element {
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
-			if (document.querySelector(".ui-dialog")) return;
+			if (!shortcutOn("focus-search") || document.querySelector(".ui-dialog")) return;
 			const input = searchRef.current?.querySelector<HTMLInputElement>("input");
 			if (!input) return;
 			event.preventDefault();

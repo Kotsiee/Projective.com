@@ -6,7 +6,8 @@ import { EmojiPicker } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { ChatSurface } from "@web/utils/lane-events.ts";
-import { ownsKeys } from "../../core/chat-keyboard.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { isApplePlatform, ownsKeys } from "../../core/chat-keyboard.ts";
 import type { ComposerEditor } from "../../hooks/useComposerEditor.ts";
 
 /** The primary site sidebar the picker must never slide under (edge-detection). */
@@ -20,11 +21,6 @@ export interface ComposerEmojiActionProps {
 	surface: ChatSurface;
 	/** The composer root: the shortcut always works while focus is inside it. */
 	composerRef: RefObject<HTMLElement>;
-}
-
-function isApplePlatform(): boolean {
-	const nav = globalThis.navigator;
-	return !!nav && /Mac|iPhone|iPad|iPod/.test(nav.platform || nav.userAgent);
 }
 
 /**
@@ -55,7 +51,7 @@ export function ComposerEmojiAction(
 			if (event.defaultPrevented || event.altKey || event.shiftKey) return;
 			const mac = appleSignal.value;
 			const modifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-			if (!modifier || event.key.toLowerCase() !== "e") return;
+			if (!modifier || event.key.toLowerCase() !== "e" || !shortcutOn("emoji-picker")) return;
 			const active = event.target instanceof Element ? event.target : document.activeElement;
 			const inside = !!active &&
 				(!!composerRef.current?.contains(active) || !!panelRef.current?.contains(active));
@@ -86,7 +82,12 @@ export function ComposerEmojiAction(
 			onSelect={(entry) => editor.insertAtCaret(entry.emoji)}
 			onReturnFocus={() => editor.focusAtCaret()}
 			trigger={(api) => (
-				<Tooltip content={`Emoji · ${shortcut}`} placement="top">
+				<Tooltip
+					content="Emoji"
+					shortcut={shortcutOn("emoji-picker") ? shortcut : undefined}
+					delay="fast"
+					placement="top"
+				>
 					<button
 						type="button"
 						ref={api.ref as RefObject<HTMLButtonElement>}

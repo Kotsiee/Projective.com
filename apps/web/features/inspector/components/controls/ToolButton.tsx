@@ -20,7 +20,7 @@ export interface ToolButtonProps {
 export function ToolButton(props: ToolButtonProps): JSX.Element {
 	const { icon, label, onClick, pressed, disabled, shortcut } = props;
 	return (
-		<Tooltip content={shortcut ? `${label} (${shortcut})` : label}>
+		<Tooltip content={label} shortcut={shortcut}>
 			<Button
 				iconOnly
 				rounded

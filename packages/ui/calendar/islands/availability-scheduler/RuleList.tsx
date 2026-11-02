@@ -24,7 +24,7 @@ export function RuleList(): JSX.Element {
 						{active}/{draft.rules.length}
 					</span>
 				)}
-				<Tooltip content="Add rule">
+				<Tooltip content="Add rule" density="compact">
 					<Button
 						variant="text"
 						size="sm"
@@ -65,7 +65,7 @@ export function RuleList(): JSX.Element {
 											</span>
 										)}
 									</button>
-									<Tooltip content={verb}>
+									<Tooltip content={verb} density="compact">
 										<Button
 											variant="text"
 											size="sm"
@@ -76,7 +76,7 @@ export function RuleList(): JSX.Element {
 											onClick={() => store.upsertRule({ ...rule, active: !rule.active })}
 										/>
 									</Tooltip>
-									<Tooltip content="Delete">
+									<Tooltip content="Delete" density="compact">
 										<Button
 											variant="text"
 											severity="danger"

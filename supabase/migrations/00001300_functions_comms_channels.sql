@@ -1060,7 +1060,9 @@ BEGIN
     END IF;
 
     UPDATE comms.dm_participants p
-    SET is_starred = p_starred
+    SET is_starred = p_starred,
+        -- A repeat star keeps its original time; un-starring clears it.
+        starred_at = CASE WHEN NOT p_starred THEN NULL WHEN p.is_starred THEN p.starred_at ELSE now() END
     WHERE p.thread_id = p_thread_id
       AND p.user_id = v_me
       AND p.deleted_at IS NULL;

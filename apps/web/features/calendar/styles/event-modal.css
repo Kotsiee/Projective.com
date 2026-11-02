@@ -360,8 +360,16 @@ label.evm-meta__k {
 /* History is an archive rather than a working view, so it sits apart at the far end and drops its
    label — the name lives in the tooltip and the accessible name (§B.6). */
 .evm-tabs__tab[data-icononly="true"] {
-	margin-inline-start: auto;
 	padding-inline: var(--space-2);
+}
+
+/* Each tab's Tooltip anchor is the strip's flex item: it never shrinks (the strip scrolls instead),
+   and the push to the far end rides on it. */
+.evm-tabs > .ui-tooltip__anchor {
+	flex: none;
+}
+.evm-tabs > .ui-tooltip__anchor:has(> [data-icononly="true"]) {
+	margin-inline-start: auto;
 }
 
 .evm-tabs__count {
@@ -1294,7 +1302,7 @@ label.evm-meta__k {
 		padding-inline: var(--space-2);
 	}
 
-	.evm-tabs__tab[data-icononly="true"] {
+	.evm-tabs > .ui-tooltip__anchor:has(> [data-icononly="true"]) {
 		margin-inline-start: 0;
 	}
 

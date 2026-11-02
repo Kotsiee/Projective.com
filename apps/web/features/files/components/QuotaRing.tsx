@@ -24,11 +24,16 @@ export interface QuotaRingProps {
 	quota: StorageQuota | null;
 	/** Whose allowance it is — the popover's title ("Atelier Nova's storage"). */
 	ownerLabel?: string;
+	/**
+	 * Where a bounded allowance is raised, shown under the meter as a quiet "Upgrade plan" link. Only
+	 * the host knows whose plan the allowance resolves through, so it is never guessed here.
+	 */
+	upgradeHref?: string;
 	class?: string;
 }
 
 export function QuotaRing(
-	{ quota, ownerLabel, class: className }: QuotaRingProps,
+	{ quota, ownerLabel, upgradeHref, class: className }: QuotaRingProps,
 ): JSX.Element | null {
 	if (!quota) return null;
 	const view = quotaRingView(quota);
@@ -73,6 +78,13 @@ export function QuotaRing(
 				<div class="fh-qring__panel">
 					<p class="fh-qring__title">{title}</p>
 					<QuotaMeter quota={quota} />
+					{upgradeHref && !view.unlimited
+						? (
+							<p class="fh-qring__upsell">
+								Need more storage? <a class="fh-qring__upgrade" href={upgradeHref}>Upgrade plan</a>
+							</p>
+						)
+						: null}
 				</div>
 			</Popover>
 		</Tooltip>

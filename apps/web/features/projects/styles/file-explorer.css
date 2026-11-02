@@ -73,6 +73,11 @@
 		background-color var(--dur-fast) var(--ease-standard);
 }
 
+/* A node wrapped in a Tooltip keeps the full row width its unwrapped siblings have. */
+.fx-tree > .ui-tooltip__anchor {
+	inline-size: 100%;
+}
+
 .fx-tree__node:hover {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
@@ -96,6 +101,11 @@
 
 .fx-tree__node[data-active="true"] .fx-tree__icon {
 	color: var(--on-surface);
+}
+
+/* A channel name's full-text Tooltip anchor is the row's flex item, so the grow rides on it. */
+.fx-tree__node > .ui-tooltip__anchor {
+	flex: 1 1 auto;
 }
 
 .fx-tree__label {

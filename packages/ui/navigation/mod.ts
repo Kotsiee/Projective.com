@@ -120,6 +120,9 @@ export {
 	type LinkAction,
 	linkActionItems,
 	type LinkActionsInput,
+	type LinkOpenInput,
+	linkOpenItem,
+	openInNewWindow,
 } from "./core/link-actions.ts";
 export type { MenuItem, MenuItemCommandEvent } from "../types/mod.ts";
 // #endregion

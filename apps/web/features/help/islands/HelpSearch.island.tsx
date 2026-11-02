@@ -10,6 +10,7 @@ import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Kbd } from "@projective/ui/utils";
 import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { HelpHit } from "../components/HelpHit.tsx";
 import {
 	groupResults,
@@ -231,7 +232,7 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 	// "/" opens the overlay from anywhere on the page, but never from inside a field or behind a modal.
 	useEffect(() => {
 		function onKey(event: KeyboardEvent): void {
-			if (open.value || !isFocusSearchShortcut(event)) return;
+			if (open.value || !isFocusSearchShortcut(event) || !shortcutOn("focus-search")) return;
 			if (isEditableTarget(event.target instanceof Element ? event.target : null)) return;
 			const form = formRef.current;
 			if (!form || form.closest("[inert]") || form.getClientRects().length === 0) return;

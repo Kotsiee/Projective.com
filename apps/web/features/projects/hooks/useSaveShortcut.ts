@@ -1,4 +1,5 @@
 import { useEffect } from "preact/hooks";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { requestSave } from "../core/setup-state.ts";
 
 /**
@@ -19,7 +20,7 @@ export function useSaveShortcut(): void {
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key.toLowerCase() !== "s") return;
-			if (!(event.ctrlKey || event.metaKey)) return;
+			if (!(event.ctrlKey || event.metaKey) || !shortcutOn("save")) return;
 			// Ctrl+Alt+S and friends belong to the OS and to assistive software.
 			if (event.altKey) return;
 			/*

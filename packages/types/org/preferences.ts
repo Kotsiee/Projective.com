@@ -123,6 +123,66 @@ export const DEFAULT_APPEARANCE: AppearancePreferences = {
 };
 // #endregion
 
+// #region UI settings — the `ui_settings` jsonb
+/**
+ * The keyboard shortcuts a person may switch off: every platform shortcut except the protected ones
+ * (Escape, Tab, Ctrl/Cmd+B and the board's keyboard move), which are the keyboard's only route to
+ * something. Labels, keys and grouping are presentation and live in the app's registry
+ * (`apps/web/features/shortcuts/core/shortcut-registry.ts`); this enum owns only the ids, so the stored
+ * list and the registry cannot disagree about what a shortcut is called.
+ */
+export const ToggleableShortcutId = z.enum([
+	"focus-search",
+	"focus-header-search",
+	"open-feedback",
+	"save",
+	"emoji-picker",
+	"attach-library",
+	"attach-device",
+	"voice-message",
+]);
+export type ToggleableShortcutId = z.infer<typeof ToggleableShortcutId>;
+
+/**
+ * The keys the platform keeps in `org.user_preferences.ui_settings`, spelled as stored. Both optional:
+ * an absent key means its default. Strict, so a patch cannot write a key nothing reads; a protected
+ * or unknown shortcut id is refused here, at the trust boundary.
+ */
+export const UiSettingsSchema = z.object({
+	/** Show each control's keyboard shortcut beside its tooltip label (default off). */
+	show_tooltip_shortcuts: z.boolean().optional(),
+	/** The shortcuts switched off (default none). */
+	disabled_shortcuts: z.array(ToggleableShortcutId).max(ToggleableShortcutId.options.length)
+		.optional(),
+}).strict();
+export type UiSettings = z.infer<typeof UiSettingsSchema>;
+
+/** {@link UiSettings} with every default applied — the shape a reader acts on. */
+export const ResolvedUiSettingsSchema = UiSettingsSchema.required();
+export type ResolvedUiSettings = z.infer<typeof ResolvedUiSettingsSchema>;
+
+/** What an untouched `ui_settings` (`'{}'`) behaves as. */
+export const DEFAULT_UI_SETTINGS: ResolvedUiSettings = {
+	show_tooltip_shortcuts: false,
+	disabled_shortcuts: [],
+};
+
+/**
+ * Resolve a stored `ui_settings` value field by field. Total: an id the enum no longer knows (a retired
+ * shortcut) is dropped and a malformed value falls back to its default, so an old row never fails a read.
+ */
+export function resolveUiSettings(raw: unknown): ResolvedUiSettings {
+	const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+	const ids = Array.isArray(value.disabled_shortcuts) ? value.disabled_shortcuts : [];
+	return {
+		show_tooltip_shortcuts: value.show_tooltip_shortcuts === true,
+		disabled_shortcuts: [
+			...new Set(ids.filter((id) => ToggleableShortcutId.safeParse(id).success)),
+		] as ToggleableShortcutId[],
+	};
+}
+// #endregion
+
 /**
  * The `preferred_display_currency` / `locale` column DEFAULTs, re-exported from the finance FX SSOT
  * rather than restated. The currency vocabulary is a finance concern and there is exactly one of it;
@@ -175,6 +235,8 @@ export const UserPreferencesUpdateSchema = z.object({
 	motion: MotionPreference.optional(),
 	/** `null` returns dates to the locale's own order. */
 	dateFormat: DateFormat.nullable().optional(),
+	/** Merged key by key into the stored `ui_settings`; a key it omits keeps its stored value. */
+	uiSettings: UiSettingsSchema.optional(),
 }).strict();
 export type UserPreferencesUpdate = z.infer<typeof UserPreferencesUpdateSchema>;
 
@@ -193,23 +255,23 @@ export function touchesTokenClaims(patch: UserPreferencesUpdate): boolean {
 }
 
 /**
- * Split a preferences patch into its appearance half and its display half (currency · locale ·
- * direction · date format). Pure; an empty half comes back as `{}`.
+ * Split a preferences patch into its appearance half, its display half (currency · locale ·
+ * direction · date format) and its `ui_settings` half. Pure; an empty half comes back as `{}`.
  */
 export function splitPreferencesPatch(
 	patch: UserPreferencesUpdate,
-): { appearance: Partial<AppearancePreferences>; display: UserPreferencesUpdate } {
+): { appearance: Partial<AppearancePreferences>; display: UserPreferencesUpdate; ui: UiSettings } {
 	const appearance: Partial<AppearancePreferences> = {};
 	const display: UserPreferencesUpdate = {};
 	for (const [key, value] of Object.entries(patch) as [keyof UserPreferencesUpdate, unknown][]) {
-		if (value === undefined) continue;
+		if (value === undefined || key === "uiSettings") continue;
 		if ((APPEARANCE_KEYS as readonly string[]).includes(key)) {
 			(appearance as Record<string, unknown>)[key] = value;
 		} else {
 			(display as Record<string, unknown>)[key] = value;
 		}
 	}
-	return { appearance, display };
+	return { appearance, display, ui: patch.uiSettings ?? {} };
 }
 
 /**

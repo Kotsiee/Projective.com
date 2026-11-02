@@ -118,6 +118,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
 		surface: "modal",
 	},
 	{
+		key: "shortcuts",
+		label: "Keyboard shortcuts",
+		description: "The keys that work everywhere, and which ones are on",
+		icon: "keyboard",
+		keywords: ["keys", "hotkeys", "shortcuts", "navigation", "accessibility", "tooltips"],
+		surface: "modal",
+	},
+	{
 		key: "notifications",
 		label: "Notifications",
 		description: "What reaches you, where, and when it stays quiet",
@@ -437,6 +445,27 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		keywords: ["animation", "motion", "reduced motion", "vestibular", "transitions"],
 		surface: "modal",
 		anchor: "motion",
+	},
+	// Keyboard shortcuts
+	{
+		key: "shortcuts.tooltips",
+		section: "shortcuts",
+		label: "Shortcuts in tooltips",
+		description: "Show a control's keyboard shortcut beside its tooltip",
+		icon: "keyboard",
+		keywords: ["tooltips", "hints", "keys", "kbd"],
+		surface: "modal",
+		anchor: "tooltip-shortcuts",
+	},
+	{
+		key: "shortcuts.list",
+		section: "shortcuts",
+		label: "Turn shortcuts on or off",
+		description: "Every keyboard shortcut, and the ones you can switch off",
+		icon: "keyboard",
+		keywords: ["hotkeys", "keys", "disable shortcut", "slash", "accidental", "speech input"],
+		surface: "modal",
+		anchor: "shortcut-list",
 	},
 	// Notifications
 	{

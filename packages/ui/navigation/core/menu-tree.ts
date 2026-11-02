@@ -28,6 +28,16 @@ export function isSubmenu(item: MenuItem): boolean {
 	return visibleItems(item.items).length > 0 || !!item.emptyLabel;
 }
 
+/** A submenu parent that also does something itself — pressing it runs its `url` or `command`. */
+export function isSplit(item: MenuItem): boolean {
+	return isSubmenu(item) && (!!item.url || !!item.command);
+}
+
+/** A submenu that opens only when its own row is right-clicked (`submenuOn: "contextmenu"`). */
+export function opensOnContextMenu(item: MenuItem): boolean {
+	return item.submenuOn === "contextmenu" && isSubmenu(item);
+}
+
 /** True for the synthetic `emptyLabel` row produced by {@link submenuRows}. */
 export function isEmptyRow(item: MenuItem): boolean {
 	return item.key === EMPTY_ROW_KEY;
@@ -116,7 +126,8 @@ export interface MenuKeyInput {
 
 /**
  * Resolve a keydown to a menu action. Arrows/Home/End rove over readable rows (disabled included),
- * the inline-forward arrow, Enter and Space open a submenu, the inline-back arrow closes a flyout,
+ * the inline-forward arrow, Enter and Space open a submenu (Enter and Space run a split row instead,
+ * {@link isSplit}), the inline-back arrow closes a flyout,
  * Escape closes one level (the whole menu at the root), and Tab leaves the menu.
  */
 export function resolveMenuKey(input: MenuKeyInput): MenuKeyAction {
@@ -135,7 +146,7 @@ export function resolveMenuKey(input: MenuKeyInput): MenuKeyAction {
 	if (key === "End") return focus(edgeFocusable(items, "last", isReadable));
 	if (key === "Enter" || key === " ") {
 		if (!item || item.disabled) return { type: "none" };
-		return opens ? { type: "open", index } : { type: "activate", index };
+		return opens && !isSplit(item) ? { type: "open", index } : { type: "activate", index };
 	}
 	if (key === forward) return opens ? { type: "open", index } : { type: "none" };
 	if (key === back) return depth > 0 ? { type: "close-level" } : { type: "none" };
@@ -250,7 +261,8 @@ export interface HoverInput {
 /**
  * Hover intent for one level. Hovering the open parent keeps it; a pointer travelling toward the
  * open flyout defers any switch (re-decide after `aimDelay` with the pointer at rest); otherwise a
- * parent opens and anything else closes the open flyout, each after a short delay.
+ * parent opens and anything else closes the open flyout, each after a short delay. A parent whose
+ * submenu opens on right-click ({@link opensOnContextMenu}) hovers like a leaf.
  */
 export function resolveHover(input: HoverInput): HoverDecision {
 	const { index, item, openIndex, submenu, trail, openDelay = 100, closeDelay = 100 } = input;
@@ -261,7 +273,9 @@ export function resolveHover(input: HoverInput): HoverDecision {
 	if (openIndex >= 0 && submenu && from && to && isAimingAt(from, to, submenu)) {
 		return { type: "defer", delay: aimDelay };
 	}
-	if (!item.disabled && isSubmenu(item)) return { type: "open", index, delay: openDelay };
+	if (!item.disabled && isSubmenu(item) && !opensOnContextMenu(item)) {
+		return { type: "open", index, delay: openDelay };
+	}
 	if (openIndex >= 0) return { type: "close", delay: closeDelay };
 	return { type: "idle" };
 }

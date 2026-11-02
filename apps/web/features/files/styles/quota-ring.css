@@ -86,6 +86,23 @@
 	text-transform: uppercase;
 }
 
+/* The upgrade route is a quiet meta line, never a second button competing with the meter. */
+.fh-qring__upsell {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.fh-qring__upgrade {
+	color: var(--primary-ink);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.fh-qring__upgrade:hover {
+	text-decoration: underline;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.fh-qring {
 		transition: none;

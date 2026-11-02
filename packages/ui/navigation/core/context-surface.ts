@@ -16,6 +16,8 @@ export interface ContextIntent {
 	editable: boolean;
 	/** The reader has a text selection inside the surface. */
 	selecting: boolean;
+	/** The event landed on a descendant the surface leaves to the browser (its links and buttons). */
+	excluded?: boolean;
 }
 
 /** A viewport point in CSS px. */
@@ -31,12 +33,13 @@ export const KEYBOARD_CONTEXT_WINDOW_MS = 1000;
 /**
  * Whether a surface's custom menu should take a `contextmenu` event. The browser keeps the event when
  * an inner surface already handled it, when Shift is held on a pointer right-click, inside editable
- * text (spell-check and paste live there), and over a live selection (the reader wants Copy).
+ * text (spell-check and paste live there), over a live selection (the reader wants Copy), and on a
+ * descendant the surface excludes.
  */
 export function shouldOpenContextMenu(intent: ContextIntent): boolean {
 	if (intent.handled) return false;
 	if (intent.shiftKey && !intent.keyboard) return false;
-	if (intent.editable || intent.selecting) return false;
+	if (intent.editable || intent.selecting || intent.excluded) return false;
 	return true;
 }
 

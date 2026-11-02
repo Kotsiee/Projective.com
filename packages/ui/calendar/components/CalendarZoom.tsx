@@ -159,7 +159,7 @@ export function CalendarZoom(props: CalendarZoomProps): JSX.Element {
 		>
 			{props.onModeChange
 				? (
-					<Tooltip content="Timeline view">
+					<Tooltip content="Timeline view" density="compact">
 						<Button
 							iconOnly
 							rounded

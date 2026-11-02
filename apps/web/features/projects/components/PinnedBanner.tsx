@@ -1,22 +1,31 @@
 import type { JSX } from "preact";
 import { cloneElement } from "preact";
 import { useSignal } from "@preact/signals";
+import { Button } from "@projective/ui/fields";
+import { Tooltip } from "@projective/ui/feedback";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { PinIcon } from "./channel-glyphs.tsx";
-import { ChevronLeftIcon, ChevronRightIcon, CollapseIcon, ExpandIcon } from "./chat-glyphs.tsx";
+import { CloseIcon } from "./glyphs.tsx";
+import { ChevronLeftIcon, ChevronRightIcon, LocateIcon, UnpinIcon } from "./chat-glyphs.tsx";
 
 /**
- * PinnedBanner — the sticky pinned-messages header (task §5). Up to 3 pins are shown ONE AT A TIME as a
- * collapsed single line, ordered by recency (the backend delivers them most-recent-first). Chevron
- * `‹` / `›` controls loop through them manually; an Expand toggle reveals a pin that exceeds one line;
- * clicking the pin text smoothly scrolls the feed to that message (`onJump`) AND cycles the banner to
- * the next pin. Sticks just beneath the channel header band under the native window scroll.
+ * PinnedBanner — the sticky pinned-messages header (task §5). Up to 3 pins are shown ONE AT A TIME,
+ * ordered by recency (the backend delivers them most-recent-first): a title line ("Pinned message",
+ * with "2 of 3" when there are several) over a one-line preview. Clicking the preview — or the
+ * Go to message control — smoothly scrolls the feed to that message (`onJump`) AND cycles the banner
+ * to the next pin; `‹` / `›` loop through them by hand. Unpin (for members who may pin) and Close sit
+ * at the end. Close hides the banner until the set of pins changes. Sticks just beneath the channel
+ * header band under the native window scroll.
  */
 
 export interface PinnedBannerProps {
 	pinned: ChatMessage[];
+	/** Whether the viewer may pin — gates the Unpin control. */
+	canPin: boolean;
 	/** Smoothly scroll the feed to a pinned message by id. */
 	onJump: (id: string) => void;
+	/** Unpin a message for the whole room. */
+	onUnpin: (id: string) => void;
 }
 
 /** A one-line preview of a pinned message — its text, or a media/audio stand-in, prefixed by author. */
@@ -32,10 +41,33 @@ function previewOf(m: ChatMessage): string {
 	return who ? `${who}: ${body}` : body;
 }
 
-export function PinnedBanner({ pinned, onJump }: PinnedBannerProps): JSX.Element | null {
+/** One of the banner's icon controls — the design-system text Button, with its label as a tooltip. */
+function Control(
+	{ label, icon, onClick }: { label: string; icon: JSX.Element; onClick: () => void },
+): JSX.Element {
+	return (
+		<Tooltip content={label} placement="bottom">
+			<Button
+				variant="text"
+				severity="secondary"
+				size="sm"
+				iconOnly
+				icon={cloneElement(icon)}
+				aria-label={label}
+				onClick={onClick}
+			/>
+		</Tooltip>
+	);
+}
+
+export function PinnedBanner(
+	{ pinned, canPin, onJump, onUnpin }: PinnedBannerProps,
+): JSX.Element | null {
 	const index = useSignal(0);
-	const expanded = useSignal(false);
-	if (pinned.length === 0) return null;
+	/** The pin set the reader closed the banner on; a new or removed pin brings it back. */
+	const closedFor = useSignal<string | null>(null);
+	const pinKey = pinned.map((m) => m.id).join(",");
+	if (pinned.length === 0 || closedFor.value === pinKey) return null;
 
 	const count = pinned.length;
 	const i = index.value % count;
@@ -43,62 +75,49 @@ export function PinnedBanner({ pinned, onJump }: PinnedBannerProps): JSX.Element
 
 	function cycle(delta: number): void {
 		index.value = (index.value + delta + count) % count;
-		expanded.value = false;
 	}
 
 	function jump(): void {
 		onJump(current.id);
-		if (count > 1) cycle(1); // clicking a pin also advances the banner to the next
+		if (count > 1) cycle(1); // going to a pin also advances the banner to the next
 	}
 
 	return (
-		<div class="chat-pinned" data-expanded={expanded.value ? "true" : undefined}>
+		<div class="chat-pinned" role="region" aria-label="Pinned messages">
 			<span class="chat-pinned__icon" aria-hidden="true">{cloneElement(PinIcon)}</span>
 
-			<button
-				type="button"
-				class="chat-pinned__body"
-				onClick={jump}
-				aria-label="Jump to pinned message"
-			>
-				<span class="chat-pinned__label">
-					Pinned{count > 1 ? ` ${i + 1}/${count}` : ""}
+			<button type="button" class="chat-pinned__body" onClick={jump}>
+				<span class="chat-pinned__title">
+					Pinned message
+					{count > 1 && <span class="chat-pinned__count">{` · ${i + 1} of ${count}`}</span>}
 				</span>
-				<span class="chat-pinned__text" data-expanded={expanded.value ? "true" : undefined}>
-					{previewOf(current)}
-				</span>
+				<span class="chat-pinned__text">{previewOf(current)}</span>
 			</button>
 
 			<div class="chat-pinned__controls">
 				{count > 1 && (
 					<>
-						<button
-							type="button"
-							class="chat-pinned__nav"
-							aria-label="Previous pinned message"
+						<Control
+							label="Previous pinned message"
+							icon={ChevronLeftIcon}
 							onClick={() => cycle(-1)}
-						>
-							{cloneElement(ChevronLeftIcon)}
-						</button>
-						<button
-							type="button"
-							class="chat-pinned__nav"
-							aria-label="Next pinned message"
-							onClick={() => cycle(1)}
-						>
-							{cloneElement(ChevronRightIcon)}
-						</button>
+						/>
+						<Control label="Next pinned message" icon={ChevronRightIcon} onClick={() => cycle(1)} />
 					</>
 				)}
-				<button
-					type="button"
-					class="chat-pinned__nav"
-					aria-label={expanded.value ? "Collapse pinned message" : "Expand pinned message"}
-					aria-pressed={expanded.value}
-					onClick={() => (expanded.value = !expanded.value)}
-				>
-					{expanded.value ? cloneElement(CollapseIcon) : cloneElement(ExpandIcon)}
-				</button>
+				<Control label="Go to message" icon={LocateIcon} onClick={jump} />
+				{canPin && (
+					<Control
+						label="Unpin message"
+						icon={UnpinIcon}
+						onClick={() => onUnpin(current.id)}
+					/>
+				)}
+				<Control
+					label="Close pinned messages"
+					icon={CloseIcon}
+					onClick={() => (closedFor.value = pinKey)}
+				/>
 			</div>
 		</div>
 	);

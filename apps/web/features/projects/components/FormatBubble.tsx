@@ -3,6 +3,7 @@ import { useRef } from "preact/hooks";
 import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
+import { Tooltip } from "@projective/ui/feedback";
 import type { MessageMark } from "@projective/types/projects";
 
 /**
@@ -75,28 +76,30 @@ export function FormatBubble({ rect, marks, onToggle, onDismiss }: FormatBubbleP
 				}}
 			>
 				{BUTTONS.map((b) => (
-					<button
-						key={b.mark}
-						type="button"
-						class="msg-format__btn"
-						data-mark={b.mark}
-						aria-label={b.label}
-						aria-pressed={marks[b.mark]}
-						aria-keyshortcuts={b.keys}
-						title={`${b.label} (${b.shortcut})`}
-						tabIndex={-1}
-						onPointerDown={(e) => {
-							e.preventDefault();
-							onToggle(b.mark);
-						}}
-						onClick={(e) => {
-							// A pointer press already toggled on `pointerdown`; a synthetic or
-							// assistive-tech activation arrives as a click with no pointer before it.
-							if (e.detail === 0) onToggle(b.mark);
-						}}
-					>
-						<span class="msg-format__glyph" aria-hidden="true">{b.glyph}</span>
-					</button>
+					<Tooltip key={b.mark} content={b.label} shortcut={b.shortcut} density="compact">
+						<button
+							type="button"
+							class="msg-format__btn"
+							data-mark={b.mark}
+							aria-label={b.label}
+							aria-pressed={marks[b.mark]}
+							aria-keyshortcuts={b.keys}
+							tabIndex={-1}
+							onPointerDown={(e) => {
+								e.preventDefault();
+								onToggle(b.mark);
+							}}
+							onClick={(e) => {
+								// A pointer press already toggled on `pointerdown`; a synthetic or
+								// assistive-tech activation arrives as a click with no pointer before it.
+								if (e.detail === 0) {
+									onToggle(b.mark);
+								}
+							}}
+						>
+							<span class="msg-format__glyph" aria-hidden="true">{b.glyph}</span>
+						</button>
+					</Tooltip>
 				))}
 			</div>
 		</BodyPortal>

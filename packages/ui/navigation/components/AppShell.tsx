@@ -14,7 +14,7 @@ export interface AppShellProps {
 	brand?: ComponentChildren;
 	/** Mobile menu trigger (island) — shown in the top bar's leading edge on small screens. */
 	mobileMenu?: ComponentChildren;
-	/** Centered micro search bar for the top bar (mobile). */
+	/** The top bar's centre slot; the user shell holds it on the bar's midline (top-bar.css). */
 	search?: ComponentChildren;
 	/** Trailing top-bar actions (notifications, theme toggle, avatar). */
 	utilityBar?: ComponentChildren;

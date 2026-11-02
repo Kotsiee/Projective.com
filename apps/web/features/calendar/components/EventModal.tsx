@@ -359,7 +359,10 @@ export function EventModal(props: EventModalProps): JSX.Element {
 		e.preventDefault();
 		const next = tabs[(index + delta + tabs.length) % tabs.length];
 		tab.value = next.key;
-		(e.currentTarget.parentElement?.querySelector(`#${tabId(next.key)}`) as HTMLElement | null)
+		// `closest`, not `parentElement`: each tab sits inside its Tooltip's anchor span.
+		(e.currentTarget.closest('[role="tablist"]')?.querySelector(`#${tabId(next.key)}`) as
+			| HTMLElement
+			| null)
 			?.focus();
 	}
 
@@ -452,7 +455,10 @@ export function EventModal(props: EventModalProps): JSX.Element {
 						<div class="evm__acts">
 							{panelKind === "attendees" && party && event.roster
 								? (
-									<Tooltip content={showPanel.value ? "Hide attendees" : "Show attendees"}>
+									<Tooltip
+										content={showPanel.value ? "Hide attendees" : "Show attendees"}
+										density="compact"
+									>
 										<button
 											type="button"
 											class="evm__act"
@@ -467,7 +473,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 								: null}
 							{creating && onMinimise
 								? (
-									<Tooltip content="Minimise to the quick composer">
+									<Tooltip content="Minimise to the quick composer" density="compact">
 										<button
 											type="button"
 											class="evm__act"
@@ -479,7 +485,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 									</Tooltip>
 								)
 								: null}
-							<Tooltip content="Close">
+							<Tooltip content="Close" density="compact">
 								<button
 									type="button"
 									class="evm__act evm__act--close"
@@ -508,43 +514,39 @@ export function EventModal(props: EventModalProps): JSX.Element {
 							? (
 								<div class="evm-tabs" role="tablist" aria-label="Event views">
 									{tabs.map((t, i) => (
-										<button
-											key={t.key}
-											type="button"
-											id={tabId(t.key)}
-											role="tab"
-											class="evm-tabs__tab"
-											data-icononly={t.iconOnly ? "true" : undefined}
-											aria-selected={activeTab === t.key ? "true" : "false"}
-											// Only the SELECTED tab points at a panel, because only one panel is ever
-											// rendered — the body re-points as the selection moves. Setting it on every
-											// tab left n−1 `aria-controls` referencing element ids that are not in the
-											// document, which is a worse answer than the attribute being absent: the
-											// tabs pattern only requires it on the tab whose panel exists.
-											aria-controls={activeTab === t.key ? panelId(t.key) : undefined}
-											// Always named, not only when icon-only: below 640px the labels collapse to
-											// their glyphs so every tab fits without a hidden horizontal scroller, and a
-											// tab that loses its visible text must not lose its name with it. The value
-											// is identical to the visible label, so "label in name" (WCAG 2.5.3) holds
-											// in both presentations.
-											aria-label={t.label}
-											tabIndex={activeTab === t.key ? 0 : -1}
-											// A native `title`, deliberately, and the one place on this surface that uses
-											// one. The design-system rule is a portal Tooltip — but `Tooltip` renders a
-											// `<span>` wrapper, and a span between `role="tablist"` and `role="tab"` breaks
-											// the ownership the roving-tabindex pattern depends on. An accessible name is
-											// already unconditional above; this is the sighted-mouse channel for the
-											// glyph-only presentation, and the ticket modal's strip resolves it the same way.
-											title={t.label}
-											onKeyDown={(e) => onTabKey(e, i)}
-											onClick={() => (tab.value = t.key)}
-										>
-											<Icon name={t.icon} size="xs" class="evm-tabs__mark" />
-											{t.iconOnly ? null : <span class="evm-tabs__label">{t.label}</span>}
-											{!t.iconOnly && t.count
-												? <span class="evm-tabs__count">{t.count}</span>
-												: null}
-										</button>
+										// A labelled tab's name shows only while its label is collapsed to the
+										// visually-hidden box (below 640px); the glyph-only History tab always.
+										<Tooltip key={t.key} content={t.label} whenTruncated={!t.iconOnly}>
+											<button
+												type="button"
+												id={tabId(t.key)}
+												role="tab"
+												class="evm-tabs__tab"
+												data-icononly={t.iconOnly ? "true" : undefined}
+												aria-selected={activeTab === t.key ? "true" : "false"}
+												// Only the SELECTED tab points at a panel, because only one panel is ever
+												// rendered — the body re-points as the selection moves. Setting it on every
+												// tab left n−1 `aria-controls` referencing element ids that are not in the
+												// document, which is a worse answer than the attribute being absent: the
+												// tabs pattern only requires it on the tab whose panel exists.
+												aria-controls={activeTab === t.key ? panelId(t.key) : undefined}
+												// Always named, not only when icon-only: below 640px the labels collapse to
+												// their glyphs so every tab fits without a hidden horizontal scroller, and a
+												// tab that loses its visible text must not lose its name with it. The value
+												// is identical to the visible label, so "label in name" (WCAG 2.5.3) holds
+												// in both presentations.
+												aria-label={t.label}
+												tabIndex={activeTab === t.key ? 0 : -1}
+												onKeyDown={(e) => onTabKey(e, i)}
+												onClick={() => (tab.value = t.key)}
+											>
+												<Icon name={t.icon} size="xs" class="evm-tabs__mark" />
+												{t.iconOnly ? null : <span class="evm-tabs__label">{t.label}</span>}
+												{!t.iconOnly && t.count
+													? <span class="evm-tabs__count">{t.count}</span>
+													: null}
+											</button>
+										</Tooltip>
 									))}
 								</div>
 							)

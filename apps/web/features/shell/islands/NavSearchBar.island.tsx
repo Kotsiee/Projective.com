@@ -10,9 +10,9 @@ import { Icon } from "@projective/ui/icons";
 import { DEFAULT_SEARCH_SCOPE, type SearchScope } from "@features/marketing/core/landing-data.ts";
 
 /**
- * NavSearchBar — the unified header's integrated discovery search (DESIGN_SYSTEM.md Part D.1, "Left
- * Block"). The guest header's pill (Decisions #347 and #348) set wider, lower and centred in the
- * signed-in shell: a faint tint and one hairline at rest, a decorative glyph, the static "Search
+ * NavSearchBar — the unified header's integrated discovery search (DESIGN_SYSTEM.md Part D.1), in
+ * `AppShell`'s `search` slot. The guest header's pill (Decisions #347 and #348) set wider, lower and
+ * on the bar's midline in the signed-in shell (Decision #369): a faint tint and one hairline at rest, a decorative glyph, the static "Search
  * Projective…" placeholder and the shared ghost `ScopeSelect` at its end; focused or holding a query
  * it widens and lifts onto the solid surface. The field is the shared `SearchSuggest` typeahead over
  * the picked scope, focused from anywhere by Ctrl+/ (Cmd+/ on macOS); Enter is a real navigation to
@@ -24,7 +24,12 @@ export default function NavSearchBar() {
 	const scope = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({ scopeRef: formRef, matches: isFocusHeaderSearchShortcut, fromFields: true });
+	useSearchShortcut({
+		scopeRef: formRef,
+		matches: isFocusHeaderSearchShortcut,
+		shortcut: "focus-header-search",
+		fromFields: true,
+	});
 
 	/** Navigate to `/explore` with the query and scope (neither lands on the feed). */
 	function go(q: string) {

@@ -16,13 +16,15 @@ import {
 	joystickVelocity,
 	LEVER_DEAD_ZONE_PX,
 	LEVER_DT_CAP_MS,
-	LEVER_FRAME_MS,
+	LEVER_FALLBACK_PX_PER_S,
 	LEVER_MAX_PX,
-	LEVER_MAX_THROW_PX,
+	LEVER_MAX_SCROLL_SPEED,
 	LEVER_MAX_V,
 	leverBall,
+	leverDeflection,
 	leverScrollDelta,
-	leverThrowPx,
+	leverSpeed,
+	leverTravel,
 } from "./chrome.ts";
 
 // #region Throttle — the dead zone
@@ -101,66 +103,162 @@ Deno.test("joystickVelocity — a non-finite deflection scrolls nothing", () => 
 });
 // #endregion
 
-// #region Throttle — per-frame integration
-Deno.test("leverScrollDelta — one 60Hz frame moves exactly the per-frame velocity", () => {
-	assertAlmostEquals(leverScrollDelta(LEVER_MAX_PX, LEVER_FRAME_MS), LEVER_MAX_V, 1e-9);
-	assertAlmostEquals(leverScrollDelta(-LEVER_MAX_PX, LEVER_FRAME_MS), -LEVER_MAX_V, 1e-9);
+// #region Lever travel
+const TRACK_TRAVEL = leverTravel(0, 600, 20);
+
+Deno.test("leverTravel — the ball's whole box stays on the track", () => {
+	assertEquals(TRACK_TRAVEL, { min: 10, max: 590 });
+	assertEquals(
+		leverTravel(600, 0, 20),
+		{ min: 10, max: 590 },
+		"the ends may arrive in either order",
+	);
 });
 
-Deno.test("leverScrollDelta — frame-rate independent: two half-frames equal one whole frame", () => {
-	const whole = leverScrollDelta(60, LEVER_FRAME_MS);
-	const half = leverScrollDelta(60, LEVER_FRAME_MS / 2);
-	assertAlmostEquals(half * 2, whole, 1e-9);
+Deno.test("leverTravel — a track shorter than the ball pins the centre to its midpoint", () => {
+	assertEquals(leverTravel(100, 110, 20), { min: 105, max: 105 });
+	assertEquals(leverTravel(0, 600, Number.NaN), { min: 0, max: 600 });
+});
+// #endregion
+
+// #region Lever throttle — the normalised deflection
+Deno.test("leverDeflection — the grab is the neutral origin, with a dead zone either side of it", () => {
+	assertEquals(leverDeflection(300, 300, TRACK_TRAVEL), 0);
+	assertEquals(leverDeflection(300, 300 + LEVER_DEAD_ZONE_PX, TRACK_TRAVEL), 0);
+	assertEquals(leverDeflection(300, 300 - LEVER_DEAD_ZONE_PX, TRACK_TRAVEL), 0);
+	assert(leverDeflection(300, 300 + LEVER_DEAD_ZONE_PX + 1, TRACK_TRAVEL) > 0);
+	assert(leverDeflection(300, 300 - LEVER_DEAD_ZONE_PX - 1, TRACK_TRAVEL) < 0);
+});
+
+Deno.test("leverDeflection — ±1 at the ends of the track, ±0.5 half way, linear between", () => {
+	// Grabbed at 300 on a 10..590 travel: 290px of reach either way.
+	assertEquals(leverDeflection(300, 590, TRACK_TRAVEL), 1);
+	assertEquals(leverDeflection(300, 10, TRACK_TRAVEL), -1);
+	assertAlmostEquals(leverDeflection(300, 445, TRACK_TRAVEL), 0.5, 1e-9);
+	assertAlmostEquals(leverDeflection(300, 155, TRACK_TRAVEL), -0.5, 1e-9);
+	assertAlmostEquals(
+		leverDeflection(300, 300 + 58, TRACK_TRAVEL) * 2,
+		leverDeflection(300, 300 + 116, TRACK_TRAVEL),
+		1e-9,
+	);
+});
+
+Deno.test("leverDeflection — a pointer past the track is the ball pinned at its end, never past ±1", () => {
+	assertEquals(leverDeflection(300, 5_000, TRACK_TRAVEL), 1);
+	assertEquals(leverDeflection(300, -5_000, TRACK_TRAVEL), -1);
+});
+
+Deno.test("leverDeflection — each side is normalised against its own reach", () => {
+	// Grabbed near the top: 90px of reach up, 490px down. Both ends are still full speed.
+	assertAlmostEquals(leverDeflection(100, 55, TRACK_TRAVEL), -0.5, 1e-9);
+	assertAlmostEquals(leverDeflection(100, 345, TRACK_TRAVEL), 0.5, 1e-9);
+	assertEquals(leverDeflection(100, 10, TRACK_TRAVEL), -1);
+	assertEquals(leverDeflection(100, 590, TRACK_TRAVEL), 1);
+});
+
+Deno.test("leverDeflection — a grab outside the travel is measured from the clamped origin", () => {
+	// A press on the handle's very top edge, above where the ball's centre can sit.
+	assertEquals(leverDeflection(2, 10, TRACK_TRAVEL), 0);
+	assertAlmostEquals(leverDeflection(2, 300, TRACK_TRAVEL), 290 / 580, 1e-9);
+});
+
+Deno.test("leverDeflection — a non-finite input scrolls nothing", () => {
+	assertEquals(leverDeflection(Number.NaN, 400, TRACK_TRAVEL), 0);
+	assertEquals(leverDeflection(300, Number.POSITIVE_INFINITY, TRACK_TRAVEL), 0);
+});
+// #endregion
+
+// #region Lever throttle — speed and integration
+Deno.test("leverSpeed — full deflection is LEVER_MAX_SCROLL_SPEED periods per second", () => {
+	assertEquals(leverSpeed(1_440), 1_440 * LEVER_MAX_SCROLL_SPEED);
+	assertEquals(leverSpeed(10_080), 10_080 * LEVER_MAX_SCROLL_SPEED);
+});
+
+Deno.test("leverSpeed — a bar with no known period keeps the fallback pixel rate", () => {
+	assertEquals(leverSpeed(), LEVER_FALLBACK_PX_PER_S);
+	assertEquals(leverSpeed(0), LEVER_FALLBACK_PX_PER_S);
+	assertEquals(leverSpeed(Number.NaN), LEVER_FALLBACK_PX_PER_S);
+});
+
+/** Sum one second of lever ticks at `hz`. */
+function oneSecondAt(hz: number, deflection: number, pxPerSecond: number): number {
+	let total = 0;
+	for (let i = 0; i < hz; i++) total += leverScrollDelta(deflection, pxPerSecond, 1000 / hz);
+	return total;
+}
+
+Deno.test("leverScrollDelta — a second at full deflection travels LEVER_MAX_SCROLL_SPEED periods", () => {
+	const period = 1_440;
+	assertAlmostEquals(
+		oneSecondAt(60, 1, leverSpeed(period)),
+		period * LEVER_MAX_SCROLL_SPEED,
+		1e-6,
+	);
+	assertAlmostEquals(
+		oneSecondAt(60, -1, leverSpeed(period)),
+		-period * LEVER_MAX_SCROLL_SPEED,
+		1e-6,
+	);
+});
+
+Deno.test("leverScrollDelta — half deflection is half the speed, the origin is none", () => {
+	assertAlmostEquals(oneSecondAt(60, 0.5, 1_000), 500, 1e-6);
+	assertEquals(oneSecondAt(60, 0, 1_000), 0);
+});
+
+Deno.test("leverScrollDelta — frame-rate independent across 60, 120 and 144 Hz", () => {
+	const at60 = oneSecondAt(60, 0.5, 1_000);
+	assertAlmostEquals(oneSecondAt(120, 0.5, 1_000), at60, 1e-6);
+	assertAlmostEquals(oneSecondAt(144, 0.5, 1_000), at60, 1e-6);
+});
+
+Deno.test("leverScrollDelta — a deflection past ±1 is clamped, never a faster scroll", () => {
+	assertEquals(leverScrollDelta(3, 1_000, 16), leverScrollDelta(1, 1_000, 16));
+	assertEquals(leverScrollDelta(-3, 1_000, 16), leverScrollDelta(-1, 1_000, 16));
 });
 
 Deno.test("leverScrollDelta — a resumed background tab is capped, never integrated in one jump", () => {
-	const capped = leverScrollDelta(LEVER_MAX_PX, LEVER_DT_CAP_MS);
+	const capped = leverScrollDelta(1, 1_000, LEVER_DT_CAP_MS);
 	assertEquals(
-		leverScrollDelta(LEVER_MAX_PX, 4_000),
+		leverScrollDelta(1, 1_000, 4_000),
 		capped,
 		"a four-second rAF gap must not teleport four seconds of scrolling",
 	);
-	assertEquals(leverScrollDelta(LEVER_MAX_PX, 60_000), capped);
+	assertEquals(leverScrollDelta(1, 1_000, 60_000), capped);
 });
 
 Deno.test("leverScrollDelta — the opening frame of a run, which has no elapsed time, moves nothing", () => {
-	assertEquals(leverScrollDelta(LEVER_MAX_PX, 0), 0);
-	assertEquals(leverScrollDelta(LEVER_MAX_PX, -16), 0);
-	assertEquals(leverScrollDelta(LEVER_MAX_PX, Number.NaN), 0);
+	assertEquals(leverScrollDelta(1, 1_000, 0), 0);
+	assertEquals(leverScrollDelta(1, 1_000, -16), 0);
+	assertEquals(leverScrollDelta(1, 1_000, Number.NaN), 0);
+	assertEquals(leverScrollDelta(Number.NaN, 1_000, 16), 0);
 });
 // #endregion
 
 // #region Lever state
-Deno.test("leverBall — displacement is signed from the grab, positive when the pointer is below it", () => {
-	assertEquals(leverBall(200, 260, 1).displacement, 60);
-	assertEquals(leverBall(200, 140, 1).displacement, -60);
-	assertEquals(leverBall(200, 200, 1).displacement, 0);
+Deno.test("leverBall — the ball follows the pointer, clamped so it never leaves the track", () => {
+	assertEquals(leverBall(300, 420, 1, TRACK_TRAVEL).ballY, 420);
+	assertEquals(leverBall(300, 5_000, 1, TRACK_TRAVEL).ballY, 590);
+	assertEquals(leverBall(300, -5_000, 1, TRACK_TRAVEL).ballY, 10);
 });
 
-Deno.test("leverBall — the grab origin passes through untouched, so the ball stays anchored", () => {
-	assertEquals(leverBall(317.5, 900, 0.4).grabY, 317.5);
+Deno.test("leverBall — carries the clamped origin and the same deflection leverDeflection reports", () => {
+	const lever = leverBall(2, 300, 1, TRACK_TRAVEL);
+	assertEquals(lever.grabY, 10);
+	assertEquals(lever.deflection, leverDeflection(2, 300, TRACK_TRAVEL));
+});
+
+Deno.test("leverBall — a non-finite pointer leaves the ball at the origin", () => {
+	const lever = leverBall(300, Number.NaN, 1, TRACK_TRAVEL);
+	assertEquals(lever.ballY, 300);
+	assertEquals(lever.deflection, 0);
 });
 
 Deno.test("leverBall — morph is clamped, so an overshooting spring cannot paint a scale of 1.02", () => {
-	assertEquals(leverBall(0, 0, 1.02).morph, 1);
-	assertEquals(leverBall(0, 0, -0.3).morph, 0);
-	assertEquals(leverBall(0, 0, 0.5).morph, 0.5);
-	assertEquals(leverBall(0, 0, Number.NaN).morph, 0);
-});
-
-Deno.test("leverThrowPx — answers the first pixel of travel, then saturates well before the throttle", () => {
-	assertEquals(leverThrowPx(0), 0);
-	const first = leverThrowPx(1);
-	assert(first > 0, "the stick must move on the first pixel, even inside the throttle's dead zone");
-	assertEquals(leverThrowPx(LEVER_MAX_PX), LEVER_MAX_THROW_PX);
-	assertEquals(leverThrowPx(LEVER_MAX_PX * 40), LEVER_MAX_THROW_PX);
-	assertEquals(leverThrowPx(-LEVER_MAX_PX * 40), -LEVER_MAX_THROW_PX);
-});
-
-Deno.test("leverThrowPx — LINEAR in the deflection, unlike the velocity ramp", () => {
-	// The stick's offset is a position, and a position that moved non-linearly with the pointer reads
-	// as the control lagging the hand.
-	assertAlmostEquals(leverThrowPx(20) * 2, leverThrowPx(40), 1e-9);
+	assertEquals(leverBall(0, 0, 1.02, TRACK_TRAVEL).morph, 1);
+	assertEquals(leverBall(0, 0, -0.3, TRACK_TRAVEL).morph, 0);
+	assertEquals(leverBall(0, 0, 0.5, TRACK_TRAVEL).morph, 0.5);
+	assertEquals(leverBall(0, 0, Number.NaN, TRACK_TRAVEL).morph, 0);
 });
 // #endregion
 

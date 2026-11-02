@@ -12,8 +12,9 @@
  * rather than a colour, and the star is ink. The crest is the one exception — it wears the shared
  * stamp ink the hero and every explore card wear (Decision #155), with the band's own ground cut out.
  *
- * SECONDARY TEXT ON GLASS IS `--on-surface-variant`, NEVER `--text-secondary`. The band's ground is
- * a 76% veil over whatever scrolls beneath it, and the veil scale's own note records the arithmetic:
+ * SECONDARY TEXT ON GLASS IS `--on-surface-variant`, NEVER `--text-secondary`. The guest band's
+ * ground is a 76% veil over whatever scrolls beneath it (the authenticated band is solid
+ * `--surface-1`, where the variant only gains), and the veil scale's own note records the arithmetic:
  * at that opacity `--on-surface-variant` still clears 4.5:1 over a white tile in dark mode and
  * `--text-secondary` does not (measured here: 4.83:1 against 3.59:1). The variant is the secondary
  * ink this surface can afford.

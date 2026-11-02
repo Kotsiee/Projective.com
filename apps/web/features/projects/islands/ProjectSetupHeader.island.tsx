@@ -3,6 +3,7 @@ import "../styles/project-showcase.css";
 import "../styles/project-setup.css";
 import { ProgressRing, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { TabStrip, type TabStripLinkItem } from "@projective/ui/navigation";
 import { outstandingSteps } from "../types/projects-types.ts";
 import type { ProjectSetup } from "../types/projects-types.ts";
 import { previewAllowed, pricedStages } from "@projective/types/projects";
@@ -71,6 +72,17 @@ export default function ProjectSetupHeader(
 	// Once published, completeness stops being a percentage and becomes the list of what to fix.
 	const published = live.status !== "draft";
 	const fixes = published ? outstandingFixes(live) : [];
+	// A personal project has no listing to preview, so Details stands alone and the strip shows nothing.
+	const tabs: TabStripLinkItem<ProjectSetupHeaderProps["active"]>[] = [
+		{ key: "details", label: "Details", href: detailsHref, icon: <Icon name="square-pen" /> },
+		...(live.personal ? [] : [{
+			key: "preview" as const,
+			label: "Preview",
+			href: `${base}/preview`,
+			icon: <Icon name={locked ? "lock" : "eye"} />,
+			lockedReason: locked ? lockReason : undefined,
+		}]),
+	];
 
 	const remainingText = complete
 		? "All setup steps are complete."
@@ -118,49 +130,7 @@ export default function ProjectSetupHeader(
 				<span class="proj-pvhead__title">{live.title || "Untitled project"}</span>
 			</div>
 
-			<nav class="proj-pvhead__tabs" aria-label="Project view">
-				<a
-					class="proj-pvtab"
-					href={detailsHref}
-					data-active={active === "details" ? "true" : undefined}
-					aria-current={active === "details" ? "page" : undefined}
-				>
-					<span class="proj-pvtab__icon" aria-hidden="true">
-						<Icon name="square-pen" />
-					</span>
-					<span class="proj-pvtab__label">Details</span>
-				</a>
-
-				{live.personal ? null : locked
-					? (
-						<Tooltip content={lockReason} placement="bottom">
-							<button
-								type="button"
-								class="proj-pvtab psu-tab--locked"
-								aria-disabled="true"
-								onClick={(e) => e.preventDefault()}
-							>
-								<span class="proj-pvtab__icon" aria-hidden="true">
-									<Icon name="lock" />
-								</span>
-								<span class="proj-pvtab__label">Preview</span>
-							</button>
-						</Tooltip>
-					)
-					: (
-						<a
-							class="proj-pvtab"
-							href={`${base}/preview`}
-							data-active={active === "preview" ? "true" : undefined}
-							aria-current={active === "preview" ? "page" : undefined}
-						>
-							<span class="proj-pvtab__icon" aria-hidden="true">
-								<Icon name="eye" />
-							</span>
-							<span class="proj-pvtab__label">Preview</span>
-						</a>
-					)}
-			</nav>
+			<TabStrip label="Project view" activeKey={active} items={tabs} />
 
 			{published
 				? (

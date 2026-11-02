@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
 import { ownerVerificationStamp } from "@projective/types/org";
 // `profile-skeleton.css` is load-bearing here, not cosmetic reuse: the GUEST shell keys its sub-header glass
 // underlay, hairline and elevation off the literal selector
@@ -79,11 +80,13 @@ export default function EntityStickyHeader(
 					/*
 				  Native truncation at 24ch. `text-overflow` needs all three of `overflow: hidden`,
 				  `white-space: nowrap` and a bounded box to do anything at all — they live together in
-				  `.evp-stickyhead__title`. `title` carries the untruncated string so the full name is
-				  still reachable.
+				  `.evp-stickyhead__title`. A full-text Tooltip carries the untruncated string so the full
+				  name is still reachable.
 				*/
 				}
-				<span class="evp-stickyhead__title" title={item.title}>{item.title}</span>
+				<Tooltip content={item.title} whenTruncated>
+					<span class="evp-stickyhead__title">{item.title}</span>
+				</Tooltip>
 				<span class="evp-stickyhead__kind">{ARCHETYPE_LABEL[archetype]}</span>
 			</div>
 

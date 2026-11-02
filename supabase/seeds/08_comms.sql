@@ -91,26 +91,26 @@ VALUES
   ('06638739-a2a1-4bae-a5ce-346b81286ce0', 'group', 'Atelier Nova', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', now() - interval '168 hours')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO comms.dm_participants (id, thread_id, user_id, last_read_at, is_starred, joined_at)
+INSERT INTO comms.dm_participants (id, thread_id, user_id, last_read_at, is_starred, starred_at, joined_at)
 VALUES
-  ('41fda573-1f67-444e-abbe-5dbdd7fb7dc8', '1e62d824-5686-4899-a443-8ef26ad85777', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', now() - interval '454 hours', true, now() - interval '480 hours'),
-  ('f1f00173-c941-4000-ac73-ec811a6155c6', '1e62d824-5686-4899-a443-8ef26ad85777', '6ce1906f-caab-4708-a19e-df3d8960666e', now() - interval '454 hours', false, now() - interval '480 hours'),
-  ('107abf83-5ba0-487c-a9f0-6e3d7cd594ee', 'a61d333a-c26e-4ac9-aa3a-44b0d65c041f', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', now() - interval '10 hours', false, now() - interval '29 hours'),
-  ('61b11143-5575-4ff0-aece-7531a28c3a2e', 'a61d333a-c26e-4ac9-aa3a-44b0d65c041f', '45a4c6ae-d818-45fd-a62b-db44f1f69eab', now() - interval '10 hours', false, now() - interval '29 hours'),
-  ('9c0ba318-dee1-4035-aa6f-54fa9c7946a7', 'fd0071ff-2c37-4026-a0a8-8f19d092dc48', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', now() - interval '15 hours', false, now() - interval '24 hours'),
-  ('73831741-6d5d-4c36-a744-8ca3732d0dc0', 'fd0071ff-2c37-4026-a0a8-8f19d092dc48', 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57', now() - interval '14 hours', false, now() - interval '24 hours'),
-  ('e11df584-dd45-4f77-a920-b1b6cdb9deb9', '27607248-db60-46b3-aedf-de42c67781e5', '292e1827-f189-4f34-ab35-27c9f0320926', now() - interval '19 hours', false, now() - interval '1008 hours'),
-  ('a805f2e4-47ad-4eb7-a2a4-5326643d9269', '27607248-db60-46b3-aedf-de42c67781e5', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', now() - interval '19 hours', false, now() - interval '1008 hours'),
-  ('507f9f52-c029-4703-adc7-740435d46b65', '27607248-db60-46b3-aedf-de42c67781e5', 'c7173d3f-8b15-4876-afbf-499d17513a44', now() - interval '20 hours', false, now() - interval '1008 hours'),
-  ('11a6db64-bdad-4aaf-a343-989eab027641', '27607248-db60-46b3-aedf-de42c67781e5', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', now() - interval '19 hours', false, now() - interval '1008 hours'),
-  ('6680b5d9-33f1-4b3a-a192-001b1cf90904', '27607248-db60-46b3-aedf-de42c67781e5', '2e4274fb-e76b-4640-ad31-c66d7fbea842', now() - interval '20 hours', false, now() - interval '1008 hours'),
-  ('9512d813-e752-43a6-a6d8-d7a58a9d3818', '323bdb0f-add3-4e50-a001-0f0122eabf52', '950d68d1-8777-4bbe-ae59-3343e3e7f858', now() - interval '67 hours', false, now() - interval '84 hours'),
-  ('9c191bbc-a4f9-4195-af05-1c66273c1adf', '323bdb0f-add3-4e50-a001-0f0122eabf52', 'c859a726-490c-4f6d-a184-8984de3994d3', now() - interval '67 hours', false, now() - interval '84 hours'),
-  ('180e62a7-5a6d-471a-ab4e-709179c1dadc', '1f185704-a123-4725-afa4-bffaa33c9b43', '35ce4987-15b3-4c38-a438-2bb9c35df15a', now() - interval '17 hours', false, now() - interval '22 hours'),
-  ('658d3c47-c790-49b8-a886-badde98659f6', '1f185704-a123-4725-afa4-bffaa33c9b43', '6ce1906f-caab-4708-a19e-df3d8960666e', now() - interval '17 hours', false, now() - interval '22 hours'),
-  ('06a4b3a3-4d9e-42b4-ae6b-4739fa444852', '06638739-a2a1-4bae-a5ce-346b81286ce0', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', now() - interval '144 hours', false, now() - interval '168 hours'),
-  ('37246ab6-f831-4469-a777-e020bec1013b', '06638739-a2a1-4bae-a5ce-346b81286ce0', '3fc3da04-549b-4239-aca3-fa82f713dbaf', now() - interval '144 hours', false, now() - interval '168 hours'),
-  ('8f3d78f4-2977-4017-abb3-aa623c61a96d', '06638739-a2a1-4bae-a5ce-346b81286ce0', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', now() - interval '144 hours', false, now() - interval '168 hours')
+  ('41fda573-1f67-444e-abbe-5dbdd7fb7dc8', '1e62d824-5686-4899-a443-8ef26ad85777', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', now() - interval '454 hours', true, now() - interval '454 hours', now() - interval '480 hours'),
+  ('f1f00173-c941-4000-ac73-ec811a6155c6', '1e62d824-5686-4899-a443-8ef26ad85777', '6ce1906f-caab-4708-a19e-df3d8960666e', now() - interval '454 hours', false, NULL, now() - interval '480 hours'),
+  ('107abf83-5ba0-487c-a9f0-6e3d7cd594ee', 'a61d333a-c26e-4ac9-aa3a-44b0d65c041f', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', now() - interval '10 hours', false, NULL, now() - interval '29 hours'),
+  ('61b11143-5575-4ff0-aece-7531a28c3a2e', 'a61d333a-c26e-4ac9-aa3a-44b0d65c041f', '45a4c6ae-d818-45fd-a62b-db44f1f69eab', now() - interval '10 hours', false, NULL, now() - interval '29 hours'),
+  ('9c0ba318-dee1-4035-aa6f-54fa9c7946a7', 'fd0071ff-2c37-4026-a0a8-8f19d092dc48', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', now() - interval '15 hours', false, NULL, now() - interval '24 hours'),
+  ('73831741-6d5d-4c36-a744-8ca3732d0dc0', 'fd0071ff-2c37-4026-a0a8-8f19d092dc48', 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57', now() - interval '14 hours', false, NULL, now() - interval '24 hours'),
+  ('e11df584-dd45-4f77-a920-b1b6cdb9deb9', '27607248-db60-46b3-aedf-de42c67781e5', '292e1827-f189-4f34-ab35-27c9f0320926', now() - interval '19 hours', false, NULL, now() - interval '1008 hours'),
+  ('a805f2e4-47ad-4eb7-a2a4-5326643d9269', '27607248-db60-46b3-aedf-de42c67781e5', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', now() - interval '19 hours', false, NULL, now() - interval '1008 hours'),
+  ('507f9f52-c029-4703-adc7-740435d46b65', '27607248-db60-46b3-aedf-de42c67781e5', 'c7173d3f-8b15-4876-afbf-499d17513a44', now() - interval '20 hours', false, NULL, now() - interval '1008 hours'),
+  ('11a6db64-bdad-4aaf-a343-989eab027641', '27607248-db60-46b3-aedf-de42c67781e5', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', now() - interval '19 hours', false, NULL, now() - interval '1008 hours'),
+  ('6680b5d9-33f1-4b3a-a192-001b1cf90904', '27607248-db60-46b3-aedf-de42c67781e5', '2e4274fb-e76b-4640-ad31-c66d7fbea842', now() - interval '20 hours', false, NULL, now() - interval '1008 hours'),
+  ('9512d813-e752-43a6-a6d8-d7a58a9d3818', '323bdb0f-add3-4e50-a001-0f0122eabf52', '950d68d1-8777-4bbe-ae59-3343e3e7f858', now() - interval '67 hours', false, NULL, now() - interval '84 hours'),
+  ('9c191bbc-a4f9-4195-af05-1c66273c1adf', '323bdb0f-add3-4e50-a001-0f0122eabf52', 'c859a726-490c-4f6d-a184-8984de3994d3', now() - interval '67 hours', false, NULL, now() - interval '84 hours'),
+  ('180e62a7-5a6d-471a-ab4e-709179c1dadc', '1f185704-a123-4725-afa4-bffaa33c9b43', '35ce4987-15b3-4c38-a438-2bb9c35df15a', now() - interval '17 hours', false, NULL, now() - interval '22 hours'),
+  ('658d3c47-c790-49b8-a886-badde98659f6', '1f185704-a123-4725-afa4-bffaa33c9b43', '6ce1906f-caab-4708-a19e-df3d8960666e', now() - interval '17 hours', false, NULL, now() - interval '22 hours'),
+  ('06a4b3a3-4d9e-42b4-ae6b-4739fa444852', '06638739-a2a1-4bae-a5ce-346b81286ce0', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', now() - interval '144 hours', false, NULL, now() - interval '168 hours'),
+  ('37246ab6-f831-4469-a777-e020bec1013b', '06638739-a2a1-4bae-a5ce-346b81286ce0', '3fc3da04-549b-4239-aca3-fa82f713dbaf', now() - interval '144 hours', false, NULL, now() - interval '168 hours'),
+  ('8f3d78f4-2977-4017-abb3-aa623c61a96d', '06638739-a2a1-4bae-a5ce-346b81286ce0', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', now() - interval '144 hours', false, NULL, now() - interval '168 hours')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO comms.dm_messages (id, thread_id, sender_user_id, body, created_at)

@@ -91,7 +91,7 @@ export function AvailabilityBlock(props: AvailabilityBlockProps): JSX.Element {
 				<h3 class="cal-avail-block__title">This week</h3>
 				{props.onConfigure
 					? (
-						<Tooltip content="Edit availability">
+						<Tooltip content="Edit availability" density="compact">
 							<button
 								type="button"
 								class="cal-avail-block__configure ui-hit"
@@ -184,7 +184,7 @@ export function AvailabilityTemplates(props: AvailabilityTemplatesProps): JSX.El
 		<div class="cal-avail-block cal-avail-tpl">
 			<div class="cal-avail-block__head">
 				<h3 class="cal-avail-block__title">Templates</h3>
-				<Tooltip content="Manage templates">
+				<Tooltip content="Manage templates" density="compact">
 					<button
 						type="button"
 						class="cal-avail-block__configure ui-hit"

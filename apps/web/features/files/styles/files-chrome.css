@@ -211,7 +211,7 @@
 /*
  * The band contract, shared verbatim with `.chan-header` and `.wlt-headerband` (DESIGN_SYSTEM §D.4):
  * exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT. The tonal
- * surface is the shell band's own flush underlay (`.ui-middle-nav__header::before`) and the seam
+ * surface is the shell band's own solid `--surface-1` (`.ui-middle-nav__header`) and the seam
  * beneath it is the canvas frame's single hairline — painting a plate and a hairline here doubles both.
  */
 .fh-headerband {

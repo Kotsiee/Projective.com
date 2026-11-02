@@ -68,6 +68,8 @@ export function persistOverlaysOnDevice(next: Partial<A11yOverlays>): void {
 		cvd: next.cvd ?? current.cvd,
 		motion: next.motion ?? current.motion,
 		dir: next.dir ?? current.dir,
+		tips: next.tips ?? current.tips,
+		keysOff: next.keysOff ?? current.keysOff,
 	};
 	writeStored("local", LocalKeys.A11Y_PREFERENCES, JSON.stringify(overlays));
 	if (typeof document === "undefined") return;

@@ -3,6 +3,7 @@ import { useRef } from "preact/hooks";
 import { Icon } from "../../icons/mod.ts";
 import { SelectionCheck } from "../../fields/components/SelectionCheck.tsx";
 import { Popover } from "../../feedback/islands/Popover.tsx";
+import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
 import DndContext from "../../dnd/islands/DndContext.tsx";
 import { DragOverlay } from "../../dnd/components/DragOverlay.tsx";
 import { useDraggable } from "../../dnd/hooks/useDraggable.ts";
@@ -223,17 +224,23 @@ function HeaderCell<T>(props: HeaderCellProps<T>): JSX.Element {
 		>
 			{key
 				? (
-					<button
-						type="button"
-						class="ui-dt__sort"
-						onClick={(e) => head.onSort(key, e.shiftKey)}
-						title={head.sorts.length > 0
-							? "Shift+click to sort by more than one column"
-							: undefined}
+					// Always wrapped: toggling the wrapper with the sort state would remount the button and
+					// drop its focus on the very press that sorted. Empty content keeps it closed until a
+					// sort exists.
+					<Tooltip
+						content={head.sorts.length > 0 ? "Shift+click to sort by more than one column" : ""}
+						density="compact"
+						delay="slow"
 					>
-						{label}
-						<SortMark dir={dir} priority={priority} />
-					</button>
+						<button
+							type="button"
+							class="ui-dt__sort"
+							onClick={(e) => head.onSort(key, e.shiftKey)}
+						>
+							{label}
+							<SortMark dir={dir} priority={priority} />
+						</button>
+					</Tooltip>
 				)
 				: <span class="ui-dt__sort ui-dt__sort--static">{label}</span>}
 			<FilterTrigger column={column} head={head} />

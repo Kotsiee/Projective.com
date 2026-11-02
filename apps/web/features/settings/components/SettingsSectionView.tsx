@@ -16,6 +16,7 @@ import { ProfileSection } from "./sections/ProfileSection.tsx";
 import { WorkspacesSection } from "./sections/WorkspacesSection.tsx";
 import { LanguageSection } from "./sections/LanguageSection.tsx";
 import { AppearanceSection } from "./sections/AppearanceSection.tsx";
+import { ShortcutsSection } from "./sections/ShortcutsSection.tsx";
 import { NotificationsSection } from "./sections/NotificationsSection.tsx";
 import { MessagingSection } from "./sections/MessagingSection.tsx";
 import { SchedulingSection } from "./sections/SchedulingSection.tsx";
@@ -157,6 +158,8 @@ function renderSection(
 			return <LanguageSection data={data} />;
 		case "appearance":
 			return <AppearanceSection data={data} />;
+		case "shortcuts":
+			return <ShortcutsSection data={data} />;
 		case "notifications":
 			return <NotificationsSection data={data} />;
 		case "messaging":

@@ -111,6 +111,10 @@
  * the lane header's `--surface-1` tone + single `--hairline` seam (§B.4). `sticky` at the top-bar
  * offset holds it at the viewport top under the native window scroll. Only rendered when a route
  * registers a header, so there is nothing to collapse otherwise (no empty bar).
+ *
+ * Both bands own a SOLID `--surface-1` (§B.4.3 bans glass on a band): the 76% veil they used to carry
+ * let the feed scrolling beneath tint them away from the solid lane head and footer beside them, so
+ * the strip read as two surfaces. Their content is transparent and never paints a plate of its own.
  */
 /*
  * The header band spans the canvas column AND the panel column (`2 / -1`), so its trailing actions sit
@@ -124,17 +128,7 @@
     inset-block-start: var(--shell-topbar-h);
     z-index: var(--z-sticky);
     min-block-size: 0;
-}
-
-.ui-middle-nav__header::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface-1) var(--glass-veil-chrome), transparent);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    pointer-events: none;
+    background: var(--surface-1);
 }
 
 /*
@@ -268,6 +262,7 @@
     min-block-size: var(--shell-midnav-footer-h);
     display: flex;
     align-items: center;
+    background: var(--surface-1);
 }
 
 /* The move is decoration; both reduced-motion channels jump the band to its final offset. */
@@ -293,17 +288,6 @@
 .ui-middle-nav__footer > * {
     flex: 1 1 auto;
     min-inline-size: 0;
-}
-
-.ui-middle-nav__footer::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface-1) var(--glass-veil-chrome), transparent);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    pointer-events: none;
 }
 
 /*

@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useId } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 import type { RankedContact } from "@projective/types/messaging";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { canAct, contactMeta, type PersonActionState } from "../core/people-picker.ts";
@@ -80,8 +81,14 @@ export function QuickAddRail(props: QuickAddRailProps): JSX.Element {
 								size={48}
 								shape="circle"
 							/>
-							<span class="quick-add__name" title={person.name}>{person.name}</span>
-							{meta && <span class="quick-add__meta" title={meta}>{meta}</span>}
+							<Tooltip content={person.name} whenTruncated>
+								<span class="quick-add__name">{person.name}</span>
+							</Tooltip>
+							{meta && (
+								<Tooltip content={meta} whenTruncated>
+									<span class="quick-add__meta">{meta}</span>
+								</Tooltip>
+							)}
 							<Button
 								class="quick-add__act"
 								size="sm"

@@ -27,6 +27,7 @@ import {
 	readCollections,
 	readSavedRows,
 	removeCollection,
+	savedRefs,
 	sortSaved,
 	writeSaved,
 } from "./live-saved.ts";
@@ -146,6 +147,18 @@ export class SavedBackendService {
 			const next = offset + params.limit;
 			return ok({ items, nextCursor: next < sorted.length ? String(next) : null, collections });
 		});
+	}
+
+	/**
+	 * When the caller saved each thing of these kinds, keyed `type:ref` ({@link savedKey}) with no
+	 * display resolution; follows are not saves. Feeds the rail's previews, which pin saved things above
+	 * their own ranking.
+	 */
+	static pins(
+		types: readonly SavedEntityType[],
+		actor: ReadActor,
+	): Promise<ServiceResult<{ pins: Map<string, string | null> }>> {
+		return live("pins", actor, async (a) => ok({ pins: await savedRefs(a, types) }));
 	}
 
 	/** Which of these `type:ref` keys the caller has saved — the cards and lanes' first paint. */

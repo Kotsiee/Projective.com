@@ -1,0 +1,41 @@
+/*
+ * Settings → Keyboard shortcuts (stg-keys). Rows are the section's own `.stg-row`s; this adds the
+ * search above them, the group labels between them, and the control cell — the keys, then the switch
+ * or, for a protected shortcut, its lock. Token-only; the groups are separated by space, not boxes.
+ */
+
+.stg-keys__search {
+	margin-block-end: var(--space-2);
+}
+
+.stg-keys__group {
+	display: flex;
+	flex-direction: column;
+}
+
+.stg-keys__group + .stg-keys__group {
+	margin-block-start: var(--space-4);
+}
+
+/* One step under the block title's section-header register: size, case and ink all change. */
+.stg-keys__group-title {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.stg-keys__control {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+/* As wide as the switch track, so the keys line up whichever control a row ends in. */
+.stg-keys__lock {
+	display: inline-flex;
+	justify-content: center;
+	min-inline-size: calc(var(--space-6) + var(--space-2));
+	color: var(--text-secondary);
+}

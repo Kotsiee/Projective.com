@@ -227,6 +227,11 @@
 	cursor: default;
 }
 
+/* The sort button's Tooltip anchor is the header's flex item; it must shrink for the label to clip. */
+.ui-dt__th > .ui-tooltip__anchor:has(> .ui-dt__sort) {
+	min-inline-size: 0;
+}
+
 /*
  * Press (§B.12): a sortable header is a text control, so it compresses like a Button — a scale on
  * `--dur-press` that lands back on `--dur-fast`. A static header is not pressable. Removed under both

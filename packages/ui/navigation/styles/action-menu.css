@@ -45,6 +45,10 @@
 	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 
+.ui-action-menu__image {
+	flex: none;
+}
+
 .ui-action-menu__text {
 	display: flex;
 	flex: 1 1 auto;

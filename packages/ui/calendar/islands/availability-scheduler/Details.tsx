@@ -51,7 +51,7 @@ export function Details(props: DetailsProps): JSX.Element {
 						placement="bottom-end"
 						onAccept={onArchive}
 						trigger={(api) => (
-							<Tooltip content="Archive template">
+							<Tooltip content="Archive template" density="compact">
 								<button
 									ref={api.ref as RefObject<HTMLButtonElement>}
 									type="button"

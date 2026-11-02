@@ -18,8 +18,8 @@ import type { ProfileTab, ProfileView } from "../types/profile-types.ts";
  * In flow (**unstuck**) the bar is a full-width strip: transparent, sharp-cornered, closed by the
  * one hairline the tabs' underline lands on. Once it has scrolled up to its pinned line — a small
  * gap beneath the migrated header band — it is **stuck**, and the strip lets go of its hairline
- * while the pill around the tabs takes on the band's own glass: the same veil, blur and hairline
- * as `ui-middle-nav__header`, plus the elevation a thing that genuinely floats over scrolling
+ * while the pill around the tabs takes on chrome glass: a `--surface-1` veil, blur and hairline,
+ * plus the elevation a thing that genuinely floats over scrolling
  * content is owed (§B.4.3, on a `::before` underlay). Nothing about the BOX changes between the
  * two — the pill is the tabs' own content width in both states and only its decoration moves — so
  * the transition costs no layout and the page beneath never shifts (CLS 0 by construction; the

@@ -98,7 +98,12 @@ export default function SearchBar({
 	const typed = useSignal("");
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({ scopeRef: formRef, matches: isFocusSearchShortcut, enabled: slashFocus });
+	useSearchShortcut({
+		scopeRef: formRef,
+		matches: isFocusSearchShortcut,
+		shortcut: "focus-search",
+		enabled: slashFocus,
+	});
 
 	// #region Typewriter placeholder
 	// Retype/erase the phrases for the active category; restarts when the category flips.

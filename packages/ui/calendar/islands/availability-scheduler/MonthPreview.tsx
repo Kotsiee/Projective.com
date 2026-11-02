@@ -4,6 +4,7 @@ import { cx } from "../../../core/cx.ts";
 import { styleVars } from "../../../core/style.ts";
 import { Button } from "../../../fields/components/Button.tsx";
 import { Popover } from "../../../feedback/islands/Popover.tsx";
+import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { dateName, monthName, ruleName, weekdayName } from "./announce.ts";
 import { DAY_MINUTES, monthMatrix, monthOf, weekColumns } from "./civil.ts";
@@ -120,25 +121,29 @@ export function MonthPreview(): JSX.Element | null {
 	return (
 		<div class="ui-avsched__month">
 			<div class="ui-avsched__month-head">
-				<Button
-					variant="text"
-					size="sm"
-					iconOnly
-					icon={<Icon name="chevron-left" />}
-					aria-label="Previous month"
-					aria-keyshortcuts="["
-					onClick={() => store.dispatch({ type: "shiftMonth", months: -1 })}
-				/>
+				<Tooltip content="Previous month" density="compact">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						icon={<Icon name="chevron-left" />}
+						aria-label="Previous month"
+						aria-keyshortcuts="["
+						onClick={() => store.dispatch({ type: "shiftMonth", months: -1 })}
+					/>
+				</Tooltip>
 				<h3 class="ui-avsched__month-title" id={headingId}>{monthName(month, locale)}</h3>
-				<Button
-					variant="text"
-					size="sm"
-					iconOnly
-					icon={<Icon name="chevron-right" />}
-					aria-label="Next month"
-					aria-keyshortcuts="]"
-					onClick={() => store.dispatch({ type: "shiftMonth", months: 1 })}
-				/>
+				<Tooltip content="Next month" density="compact">
+					<Button
+						variant="text"
+						size="sm"
+						iconOnly
+						icon={<Icon name="chevron-right" />}
+						aria-label="Next month"
+						aria-keyshortcuts="]"
+						onClick={() => store.dispatch({ type: "shiftMonth", months: 1 })}
+					/>
+				</Tooltip>
 			</div>
 			<div
 				class="ui-avsched__month-grid"
