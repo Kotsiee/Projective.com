@@ -15,6 +15,9 @@
 --     the claims at the next mint (public.custom_access_token_hook).
 --   * IW-L2: a freelancer context slot is re-verified at mint: a given-up profile (`is_freelancer`
 --     off) is dropped from the claims and refused by security.switch_session_context.
+--   * Decision #382: the service role resolves a username and an address to an account, which is all
+--     a sign-in needs before a session exists, and reads no private column. Fetch-faked unit tests
+--     cannot see this: without the grant every username sign-in answers 401 and they stay green.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -245,6 +248,40 @@ BEGIN
     v_claims := pg_temp.mint(pg_temp.id('SELLER'));
     PERFORM pg_temp.check('a freelancer slot naming another profile is dropped at mint',
         jsonb_typeof(v_claims->'active_profile_type') = 'null', v_claims::text);
+END $$;
+-- #endregion
+
+-- #region Decision #382: what the service role reads before a session exists
+DO $$
+DECLARE
+    v_user uuid;
+    v_username text;
+    v_email text;
+    v_by_username uuid;
+    v_by_email uuid;
+    v_private_refused boolean := false;
+BEGIN
+    SELECT p.user_id, p.username, e.email INTO v_user, v_username, v_email
+      FROM org.users_public p
+      JOIN org.user_emails e ON e.user_id = p.user_id
+     LIMIT 1;
+
+    SET LOCAL ROLE service_role;
+    SELECT user_id INTO v_by_username FROM org.users_public WHERE username = v_username;
+    SELECT user_id INTO v_by_email FROM org.user_emails WHERE email = v_email;
+    BEGIN
+        PERFORM dob FROM org.users_public LIMIT 1;
+    EXCEPTION WHEN insufficient_privilege THEN
+        v_private_refused := true;
+    END;
+    RESET ROLE;
+
+    PERFORM pg_temp.check('the service role resolves a username to its account',
+        v_by_username = v_user, v_by_username::text);
+    PERFORM pg_temp.check('the service role resolves an address to its account',
+        v_by_email = v_user, v_by_email::text);
+    PERFORM pg_temp.check('the service role reads no private column',
+        v_private_refused, v_private_refused::text);
 END $$;
 -- #endregion
 

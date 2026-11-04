@@ -45,3 +45,19 @@ export function glowRadius(ageMs: number): number {
 export function glowIntensity(ageMs: number, distance: number): number {
 	return glowLife(ageMs) / (1 + GLOW_FALLOFF * distance * distance);
 }
+
+/** The whole-px box around `discs`, as `[x, y, width, height]`: nothing outside it is lit. */
+export function glowBounds(
+	discs: readonly { x: number; y: number; r: number }[],
+): [number, number, number, number] {
+	let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+	for (const { x, y, r } of discs) {
+		left = Math.min(left, x - r);
+		top = Math.min(top, y - r);
+		right = Math.max(right, x + r);
+		bottom = Math.max(bottom, y + r);
+	}
+	left = Math.floor(left);
+	top = Math.floor(top);
+	return [left, top, Math.ceil(right) - left, Math.ceil(bottom) - top];
+}

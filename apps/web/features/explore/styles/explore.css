@@ -2480,9 +2480,9 @@
  * No band and no card: the hero is the page canvas (it paints nothing of its own), so it runs into
  * the rails below with no edge. Three layers, bottom to top:
  *
- *   1. `.ex-hero__glow-canvas` (the guest's gateway) — the teal underlay light. The canvas paints only
- *      on the weave's ribbons, everywhere in the hero, so it also lights the ribbons the stencil's
- *      mask hides. Its opacity is the light's peak (I_peak 0.28): particles saturate below it.
+ *   1. `.ex-hero__glow` — the teal underlay light: two stacked canvases, the ribbons over their
+ *      bloom, painting only on the weave, everywhere in the hero, so it also lights the ribbons the
+ *      stencil's mask hides. Its opacity is the light's peak (I_peak 0.28): particles saturate below it.
  *   2. `.ex-hero__stencil` — the weave, its ribbons `--on-surface` at 5% over the canvas: lighter
  *      than `--bg` in dark mode, darker in light, and translucent, so the light beneath shows through
  *      them (a stroke, never a region fill — §B.4.2 governs fills). A static two-pool radial mask
@@ -2509,6 +2509,7 @@
 	padding-block: var(--space-8) var(--space-7);
 }
 
+.ex-hero__glow,
 .ex-hero__glow-canvas,
 .ex-hero__stencil {
 	position: absolute;
@@ -2518,7 +2519,7 @@
 	pointer-events: none;
 }
 
-.ex-hero__glow-canvas {
+.ex-hero__glow {
 	z-index: -2;
 	opacity: 0.28;
 	-webkit-mask-image: linear-gradient(to bottom, var(--ex-fade-ink) 80%, transparent);
@@ -2539,14 +2540,13 @@
 }
 
 /* The stencil (`HeroWeave`), shared by both Explore headers: the ribbons are `--on-surface` at 5% —
-   lighter than `--bg` in dark mode, darker in light, translucent so any light beneath shows through. */
+   lighter than `--bg` in dark mode, darker in light, translucent so any light beneath shows through.
+   The canvas reads `stroke` as its ink: it sits outside the global colour crossfade, where `color`
+   would still be mid-transition, and stale, when the canvas repaints for a theme change. */
 .ex-weave {
 	display: block;
 	inline-size: 100%;
 	block-size: 100%;
-}
-
-.ex-weave__line {
 	stroke: color-mix(in srgb, var(--on-surface) 5%, transparent);
 }
 

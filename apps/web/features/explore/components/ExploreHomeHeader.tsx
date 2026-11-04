@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import SearchBar from "@features/marketing/islands/SearchBar.island.tsx";
 import HeroPatternGlow from "../islands/HeroPatternGlow.island.tsx";
-import { HeroWeave } from "./HeroWeave.tsx";
+import HeroWeave from "../islands/HeroWeave.island.tsx";
 
 /**
  * ExploreHomeHeader — the discovery hero (Decisions #350, #351, #353).
@@ -9,7 +9,7 @@ import { HeroWeave } from "./HeroWeave.tsx";
  * No band and no card: the hero is the page canvas itself, so it runs straight into the rails below
  * with no edge between them. It stacks three layers, bottom to top:
  *
- *   1. {@link HeroPatternGlow} — the teal underlay light, a canvas that paints only where the weave's
+ *   1. {@link HeroPatternGlow} — the teal underlay light, canvases that paint only where the weave's
  *      straps run (every audience: the guest's `/` and the signed-in `/explore` alike);
  *   2. the stencil ({@link HeroWeave}) — interlaced eight-point star strapwork (a khatam lattice) in
  *      translucent strokes (lighter than the canvas in dark mode, darker in light), so the light

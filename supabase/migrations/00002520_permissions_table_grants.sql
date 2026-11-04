@@ -94,6 +94,14 @@ GRANT SELECT (user_id, username, first_name, last_name, avatar_file_id, banner_f
     has_business, has_team, is_operator)
     ON org.users_public TO authenticated;
 
+-- Signing in by username happens before there is a session, so the service role resolves it: the
+-- username to its account (AuthBackendService.resolveUsernameEmail, Decision #104), and an unconfirmed
+-- address to its account for the pending-verification cookie (resolveSignInUserId). Per column for
+-- the same reason as above, and more so: this role bypasses RLS, so a grant is its only limit.
+GRANT SELECT (user_id, username) ON org.users_public TO service_role;
+
+GRANT SELECT (user_id, email) ON org.user_emails TO service_role;
+
 -- The Standing tables are granted with the rest of their surface, under
 -- "from 20260724111000_standing_reputation.sql" below (SELECT to authenticated).
 -- #endregion

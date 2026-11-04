@@ -48,6 +48,9 @@ FROM
 -- grants it by name, which the probe rls_exposed_tables.sql holds to RLS plus a policy.
 GRANT USAGE ON SCHEMA org TO anon, authenticated;
 
+-- The service role is held to the same rule: usage here, then only what 00002520 names (Decision #382).
+GRANT USAGE ON SCHEMA org TO service_role;
+
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon,

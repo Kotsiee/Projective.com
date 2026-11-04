@@ -1,8 +1,8 @@
 /**
  * hero-weave — the Explore gateway's background motif (Decisions #350, #351, #353): interlaced
- * eight-point star strapwork (a khatam lattice), as one seamless tile of SVG path data. The server draws it as the
- * hero's stencil (`ExploreHomeHeader`), and `HeroPatternGlow` rasterises the same path as its canvas
- * mask, so the glow beneath lights exactly the straps the stencil shows. Pure: no DOM, no colour.
+ * eight-point star strapwork (a khatam lattice), as one seamless tile of SVG path data. `HeroWeave` and
+ * `HeroPatternGlow` both rasterise this one path (`weave-canvas.ts`), so the glow beneath lights
+ * exactly the straps the stencil shows. Pure: no DOM, no colour.
  *
  * Construction — "polygons in contact" on the 4.8.8 tiling (octagons on the grid points, squares
  * between): from every edge midpoint two lines leave at 67.5° to the edge and run until they meet a
@@ -235,26 +235,4 @@ function weavePath(): string {
 
 /** The tile's strapwork, computed once: path data in tile units (CSS px). */
 export const WEAVE_PATH = weavePath();
-// #endregion
-
-// #region Canvas mask
-/** How the canvas mask strokes the tile: a little wider than the stencil, and part-opaque. */
-export interface WeaveMaskStroke {
-	/** Stroke width in CSS px. */
-	width: number;
-	/** Stroke opacity: below 1, so where two straps cross their alpha adds and the glow is brighter. */
-	opacity: number;
-}
-
-/**
- * The tile as a standalone SVG document `scale` times its CSS size, stroked in `currentColor` (the
- * canvas uses only its alpha, as a mask) at `stroke`'s width and opacity.
- */
-export function weaveTileSvg(
-	scale = 1,
-	stroke: WeaveMaskStroke = { width: WEAVE_STROKE, opacity: 1 },
-): string {
-	const size = WEAVE_TILE * scale;
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${WEAVE_TILE} ${WEAVE_TILE}" fill="none" stroke="currentColor" stroke-width="${stroke.width}" stroke-opacity="${stroke.opacity}" stroke-linecap="round" stroke-linejoin="round"><path d="${WEAVE_PATH}"/></svg>`;
-}
 // #endregion

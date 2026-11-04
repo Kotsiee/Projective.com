@@ -4,6 +4,7 @@ import {
 	GLOW_LIFE_MS,
 	GLOW_RADIUS_END,
 	GLOW_RADIUS_START,
+	glowBounds,
 	glowIntensity,
 	glowRadius,
 } from "./pattern-glow.ts";
@@ -32,4 +33,12 @@ Deno.test("intensity peaks under the cursor and fades with age and distance", ()
 	assert(glowIntensity(0, 150) > 0.6, "the path a sweep leaves stays lit, not just the cursor");
 	assert(glowIntensity(400, 10) < glowIntensity(200, 10));
 	assert(glowIntensity(200, 40) < glowIntensity(200, 10));
+});
+
+Deno.test("the lit box holds every disc whole, on whole pixels, so a clip to it cuts no light", () => {
+	assertEquals(glowBounds([{ x: 10, y: 20, r: 5 }]), [5, 15, 10, 10]);
+	assertEquals(
+		glowBounds([{ x: 10.5, y: 20.5, r: 5.25 }, { x: 100, y: -40, r: 14 }]),
+		[5, -54, 109, 80],
+	);
 });

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { buildWeave, WEAVE_FILLET, WEAVE_PATH, WEAVE_TILE, weaveTileSvg } from "./hero-weave.ts";
+import { buildWeave, WEAVE_FILLET, WEAVE_PATH, WEAVE_TILE } from "./hero-weave.ts";
 
 const key = (p: [number, number]) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
 
@@ -52,13 +52,4 @@ Deno.test("the path is straight strap edges and small filleted turns: no circles
 	assert(WEAVE_PATH.includes("Q"), "turns are rounded");
 	assert(!/[AaCc]/.test(WEAVE_PATH), "no arc or curve beyond the micro-fillets");
 	assert(WEAVE_FILLET >= 2.5 && WEAVE_FILLET <= 3.5);
-});
-
-Deno.test("the canvas mask is the same path, at the device scale asked for", () => {
-	const svg = weaveTileSvg(2, { width: 2.5, opacity: 0.65 });
-	assert(svg.includes(`width="${WEAVE_TILE * 2}"`));
-	assert(svg.includes(`viewBox="0 0 ${WEAVE_TILE} ${WEAVE_TILE}"`));
-	assert(svg.includes(WEAVE_PATH));
-	assert(svg.includes('stroke="currentColor"'), "no colour is baked in: the mask reads alpha only");
-	assert(svg.includes('stroke-width="2.5"') && svg.includes('stroke-opacity="0.65"'));
 });

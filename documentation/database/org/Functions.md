@@ -208,8 +208,7 @@ digits and hyphens, not reserved, not taken by any person, team, business or ent
 same sentence the create forms' availability probe shows. It is checked after the owner's profile is
 written, so an enterprise handle equal to the owner's is taken too. A taken handle raises `23505`,
 any other refusal `22023`. On a `23505`, `AuthBackendService` calls again with the owner's next
-derived handle, because the namespace cannot be probed before sign-in (the service role has no
-`USAGE` on `org`). Any other refusal gets its generic enterprise refusal, with a 422. The `UNIQUE`
+derived handle. Any other refusal gets its generic enterprise refusal, with a 422. The `UNIQUE`
 on `enterprises.handle` only ever saw other enterprises, so before this an enterprise could claim a
 person's `@username` and the two fought over `/{handle}`.
 

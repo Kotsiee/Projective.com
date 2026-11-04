@@ -96,6 +96,12 @@ with the then-blanket `00002500` grant any account could select `dob`, `city`, `
 `profiles_index`, which mask a minor's. The owner reads their own date of birth and zone through
 `org.get_own_private_profile()`. Probe: `supabase/probes/users_public_private_columns.sql`.
 
+**The service role holds `user_id` and `username` here, and `user_id` and `email` on
+`org.user_emails`** (`00002520`, Decision #382). Signing in by username happens before any session
+exists, so `AuthBackendService` resolves the account as this role. It bypasses RLS, so the column
+grant is its only limit, and no private column is in it. Probe:
+`supabase/probes/identity_schema_guards.sql`.
+
 ### `org.freelancer_profiles`
 
 Protects seller-specific data and professional settings. **SELECT only, owner or admin.**

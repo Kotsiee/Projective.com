@@ -3470,8 +3470,10 @@ light (below), the stencil, then the content. The stencil (`.ex-hero__stencil`) 
 eight-point star strapwork, a khatam lattice (`core/hero-weave.ts`, Decision #353: polygons in contact
 on the 4.8.8 tiling at a 67.5° contact angle, one 128px tile — eight-point stars in the octagons, the
 linking crosses in the squares; each line a strap of two edges 9px apart, laced over and under
-alternately at every crossing with a 1.5px gap, every turn filleted 3px; no circles) as an inline SVG
-pattern, stroked 1.5px in `--on-surface` at 5% — lighter than `--bg` in dark
+alternately at every crossing with a 1.5px gap, every turn filleted 3px; no circles) on a canvas
+(the `HeroWeave` island, Decision #382: static, so it paints on mount and again only when its box, the
+device pixel ratio or the theme changes; it needs hydration to appear), stroked 1.5px in
+`--on-surface` at 5%, read from `.ex-weave`'s computed `stroke` — lighter than `--bg` in dark
 mode, darker in light, and translucent so the light beneath shows through (a stroke; §B.4.2 governs
 region fills) — under a static two-pool radial mask (`ellipse 75% 60% at 75% 30%` and `ellipse 55% 45%
 at 20% 68%`, the second gone before the hero's bottom edge) that shows it at the upper right and the
@@ -3488,16 +3490,19 @@ its hover tints the whole segment. The same bar (`hero-search--hero`, `hero-sear
 search on `/explore?q=` (`ResultsHeader`, which adds a clear control) and in `/features`' final call
 to action (Decision #358). For a guest `ex-hero--gateway` makes it the
 fold: the full width, `78svh`, one `--text-secondary` sentence under the h1, and the
-**`HeroPatternGlow`** island (`features/explore/islands/`): an `aria-hidden`, pointer-inert canvas
-BENEATH the stencil. Each fine-pointer move adds a `--primary` particle that lives 2200ms,
+**`HeroPatternGlow`** island (`features/explore/islands/`): an `aria-hidden`, pointer-inert pair of
+canvases BENEATH the stencil. Each fine-pointer move adds a `--primary-mid` particle that lives 2200ms,
 contracting from 90px to 14px on `(1 − t/τ)^1.6` while it fades, dimmed only gently by
 `1 / (1 + 0.000005·d²)` of its distance from the cursor (half at ~447px), so a sweep leaves a long
-tapering trail, not a spotlight (`core/pattern-glow.ts`); the frame is cut to the weave's ribbons (the
-stencil's tile as a canvas mask, 2px and part-opaque, so crossings glow brightest), lighting the same
-ribbons where the stencil's mask hides them, and then the lit ribbons bloom from one copy of
-themselves laid beneath them twice — blurred 1.5px at 0.9 (a bright halo over the first 2–4px) and
-3.5px at 0.3 (a band falling off over the next 3–8px) — so light reaches the empty canvas only close
-to a lit strap. The light is `--primary-mid`, the same teal in both modes. Particles saturate at the canvas's own `opacity: 0.28` (I_peak); it fades out over
+tapering trail, not a spotlight (`core/pattern-glow.ts`). The same light is drawn on both canvases and
+cut to a tile baked once per device ratio (`core/weave-canvas.ts`, Decision #382): the top canvas to the
+weave's ribbons (the stencil's path, 2.5px at 0.8 opacity), lighting them where the stencil's mask hides
+them too; the one beneath, at CSS resolution because a halo is soft, to their bloom — blurred 1.5px at
+0.9 (a bright halo over the first 2–4px) and 3.5px at 0.3 (a band falling off over the next 3–8px) — so
+light reaches the empty canvas only close to a lit strap. The compositor stacks the two: nothing is
+blurred or copied between canvases per frame, each particle is a scaled stamp rather than a new
+gradient, and each cut is clipped to the lit box. The light is `--primary-mid`, the same teal in both
+modes. Particles saturate at the `.ex-hero__glow` wrapper's own `opacity: 0.28` (I_peak); it fades out over
 the hero's last fifth. Never started on touch; under either reduced-motion channel (read every
 frame) or out of view (`IntersectionObserver`) it drops its particles, clears and stops; no frame
 runs while nothing is alive. The signed-in frame (`/explore`) keeps the hero at its content height, with no

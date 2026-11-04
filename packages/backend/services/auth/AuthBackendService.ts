@@ -450,10 +450,9 @@ export class AuthBackendService {
 				}
 				// The owner account and the enterprise are two writes. When the second fails (a taken
 				// handle surfaces as a unique_violation), the first is undone, so a retry with the same
-				// address is not refused as "already registered" (IW-H8). The owner's handle cannot be
-				// probed first (nobody is signed in, and the service role has no USAGE on `org`), so the
-				// RPC's own re-check is the probe: a taken one (23505) unwinds the call whole, and the
-				// next derived handle is tried.
+				// address is not refused as "already registered" (IW-H8). The RPC's own re-check is the
+				// owner's handle probe: a taken one (23505) unwinds the call whole, and the next derived
+				// handle is tried.
 				const usernames = ownerHandleCandidates(input.owner.firstName, input.owner.lastName);
 				let rpcFailed = true;
 				try {
@@ -502,6 +501,9 @@ export class AuthBackendService {
 				const { error } = await user.rpc("complete_onboarding", { p_payload: meta });
 				if (error?.code === AGE_SQLSTATE.underMinimum) {
 					return AuthBackendService.refuseUnderMinimum(input);
+				}
+				if (error?.code === "23505" && ALREADY_ONBOARDED.test(error.message)) {
+					return ok({ requiresVerification: false, redirectTo: input.redirectTo });
 				}
 				if (error) {
 					console.error("[auth:complete-onboarding]", error.code);
@@ -1104,16 +1106,17 @@ export class AuthBackendService {
 		// EXISTING: /join is only for a CONFIRMED brand-new identity, so a transient lookup failure must
 		// never bounce a returning user back through onboarding (root CLAUDE.md — never re-onboard an
 		// existing user; task requirement 2B). A genuine new user is still caught by the successful
-		// `!profile` read below.
+		// `!profile` read below. The read runs as the user, and a refused read comes back in `error`
+		// rather than throwing.
 		let isNewUser = false;
 		try {
-			const { data: profile } = await getServiceClient()
+			const { data: profile, error: readError } = await getUserClient(data.session.access_token)
 				.schema("org")
 				.from("users_public")
 				.select("user_id")
 				.eq("user_id", user.id)
 				.maybeSingle();
-			isNewUser = !profile;
+			isNewUser = !readError && !profile;
 		} catch {
 			// Keep the safe default (existing): we could not CONFIRM new-ness, so we do not force /join.
 		}

@@ -475,3 +475,102 @@ Deno.test("owner completion (stub): success touches nothing, and the age refusal
 	}
 });
 // #endregion
+
+// #region Google, returning and finishing onboarding — live, under the identity's own JWT
+const GOOGLE_TOKEN = "google-access-token";
+
+/** A fake for the PKCE exchange, with `profile` answering the `org.users_public` read after it. */
+function googleRoute(profile: FakeAnswer): (call: FakeCall) => FakeAnswer {
+	return (call) =>
+		call.path === "/auth/v1/token"
+			? {
+				json: {
+					access_token: GOOGLE_TOKEN,
+					refresh_token: "google-refresh-token",
+					expires_in: 3600,
+					token_type: "bearer",
+					user: { id: OWNER_ID, email: "ada@example.com", user_metadata: {}, app_metadata: {} },
+				},
+			}
+			: profile;
+}
+
+/** The exchange, holding the verifier the start leg left in the cookies. */
+function exchange() {
+	return AuthBackendService.exchangeOAuthCode({
+		code: "code",
+		cookies: { "sb-supabase-auth-token-code-verifier": "verifier/" },
+	});
+}
+
+Deno.test("OAuth exchange (live): a returning identity is read as itself, and is not new", async () => {
+	await withFake(googleRoute({ json: [{ user_id: OWNER_ID }] }), async (calls) => {
+		const result = await exchange();
+		assertEquals(result.isNewUser, false);
+		// A session exists by now, so this read runs under the identity's JWT, not the service key.
+		assertEquals(
+			calls.filter((c) => c.path === "/rest/v1/users_public").map((c) => c.authorization),
+			[`Bearer ${GOOGLE_TOKEN}`],
+		);
+	});
+});
+
+Deno.test("OAuth exchange (live): no profile is a new identity", async () => {
+	await withFake(googleRoute({ json: [] }), async () => {
+		assertEquals((await exchange()).isNewUser, true);
+	});
+});
+
+Deno.test("OAuth exchange (live): a refused read never sends a returning user to /join", async () => {
+	const refused = {
+		status: 403,
+		json: { code: "42501", message: "permission denied for schema org" },
+	};
+	await withFake(googleRoute(refused), async () => {
+		assertEquals((await exchange()).isNewUser, false);
+	});
+});
+
+function joinWithGoogle() {
+	return AuthBackendService.provisionAccount({
+		type: "individual",
+		email: "ada@example.com",
+		oauth: true,
+		accessToken: GOOGLE_TOKEN,
+		firstName: "Ada",
+		lastName: "Lovelace",
+		username: "ada-lovelace",
+		dob: OWNER.dob,
+		timeZone: "UTC",
+		intent: "client",
+		redirectTo: "/projects",
+	});
+}
+
+Deno.test("OAuth join (live): a profile that already exists is a success, not a dead end", async () => {
+	const done = {
+		status: 409,
+		json: { code: "23505", message: "User has already completed onboarding" },
+	};
+	await withFake(ownerRoute([], () => done), async () => {
+		const result = await joinWithGoogle();
+		assertEquals(result.ok, true);
+		assertEquals(result.data?.redirectTo, "/projects");
+	});
+});
+
+Deno.test("OAuth join (live): a username someone else holds is still refused", async () => {
+	const taken = {
+		status: 409,
+		json: {
+			code: "23505",
+			message: 'duplicate key value violates unique constraint "users_public_username_key"',
+		},
+	};
+	await withFake(ownerRoute([], () => taken), async () => {
+		const result = await joinWithGoogle();
+		assertEquals(result.status, 422);
+		assertEquals(result.message, ONBOARDING_REFUSED);
+	});
+});
+// #endregion

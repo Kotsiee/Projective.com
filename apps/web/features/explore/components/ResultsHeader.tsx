@@ -11,8 +11,8 @@ import {
 } from "@features/marketing/core/landing-data.ts";
 import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
 import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
+import HeroWeave from "../islands/HeroWeave.island.tsx";
 import SearchSuggest from "../islands/SearchSuggest.island.tsx";
-import { HeroWeave } from "./HeroWeave.tsx";
 import { ScopeSelect } from "./ScopeSelect.tsx";
 import type { ExploreCategory } from "../types/explore-types.ts";
 
