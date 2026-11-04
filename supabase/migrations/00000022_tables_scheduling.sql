@@ -99,6 +99,15 @@ CREATE TABLE scheduling.events (
     source_connection_id uuid REFERENCES integrations.user_connections (id) ON DELETE SET NULL,
     external_event_id text,
     source_session_event_id uuid REFERENCES projects.session_events (id) ON DELETE CASCADE,
+    -- RFC 5545 recurrence. A series is a MASTER row carrying `recurrence_rule` (its own starts_at is
+    -- DTSTART, so it is the first occurrence) plus one ordinary row per later occurrence pointing back
+    -- through `recurrence_parent_id`. Every reader of concrete rows (the conflict gate, free/busy,
+    -- coordination) stays correct with no expansion here: the database never expands an RRULE
+    -- (Decision #217 (d)), the scheduling service materialises occurrences. Only the shape is checked,
+    -- as for recurrence_rules.rrule; ics-recurrence.ts (over rrule.ts) owns the meaning, COUNT
+    -- included. fn_guard_event_recurrence (00001510) keeps a series on one anchor, one level deep.
+    recurrence_rule text CHECK (char_length(recurrence_rule) <= 400 AND recurrence_rule ~ '^FREQ='),
+    recurrence_parent_id uuid REFERENCES scheduling.events (id) ON DELETE CASCADE,
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -136,6 +145,9 @@ CREATE TABLE scheduling.events (
     -- The room is rendered as a join link to every party, and a schedule's manager writes this row
     -- directly: anything but an https address (a `javascript:` URL above all) is refused.
     CONSTRAINT ck_event_meeting_url_https CHECK (meeting_url ~ '^https://[^[:space:]]+$'),
+    -- An occurrence belongs to a series and never heads one, and never names itself.
+    CONSTRAINT ck_event_recurrence_shape CHECK (recurrence_parent_id IS NULL OR recurrence_rule IS NULL),
+    CONSTRAINT ck_event_recurrence_not_self CHECK (recurrence_parent_id <> id),
     CONSTRAINT uq_event_external UNIQUE (source_connection_id, external_event_id)
 );
 
@@ -532,6 +544,10 @@ CREATE TABLE scheduling.availability_presets (
     -- The service a fork belongs to. CASCADE because a fork means nothing without its service, and
     -- SET NULL would break ck_preset_scope_blueprint.
     blueprint_id uuid REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
+    -- The opaque, prefixed, permanent address (`avp-…`, Decision #88), never derived from `name`,
+    -- which the owner renames. Filled by security.fn_slug_guard('avp') on insert and frozen on
+    -- update (00001890). UNIQUE (slug) also makes it unique within a schedule.
+    slug text NOT NULL,
     name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 60),
     description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 200),
     is_default boolean NOT NULL DEFAULT false,
@@ -541,6 +557,8 @@ CREATE TABLE scheduling.availability_presets (
     archived_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_availability_presets_slug_shape CHECK (slug ~ '^avp-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT availability_presets_slug_key UNIQUE (slug),
     CONSTRAINT ck_preset_scope_blueprint CHECK ((scope = 'service') = (blueprint_id IS NOT NULL)),
     CONSTRAINT ck_preset_default_is_library CHECK (NOT is_default OR scope = 'library'),
     CONSTRAINT ck_preset_compiled_window CHECK (

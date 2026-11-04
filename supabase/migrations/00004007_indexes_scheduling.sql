@@ -51,4 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_event_reschedules_open
 CREATE INDEX IF NOT EXISTS idx_events_source_session_event
     ON scheduling.events (source_session_event_id)
     WHERE source_session_event_id IS NOT NULL;
+-- A series' occurrences, looked up from the master (fn_guard_event_recurrence, the delete cascade).
+CREATE INDEX IF NOT EXISTS idx_events_recurrence_parent
+    ON scheduling.events (recurrence_parent_id)
+    WHERE recurrence_parent_id IS NOT NULL;
 -- #endregion

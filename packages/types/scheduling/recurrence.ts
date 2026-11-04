@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slugPattern } from "../slugs/slug.ts";
 import { civilParts, daysInMonth, IsoDate, weekdayOf } from "./civil.ts";
 import { parseRRule, type RRuleParts, serialiseRRule } from "./rrule.ts";
 import { AvailabilityKind, ianaTimezone, PresetScope, RuleEffect } from "./rows.ts";
@@ -31,6 +32,11 @@ const monthDay = z.number().int().min(-31).max(31).refine((d) => d !== 0, "Day 0
 /** The human-shaped pattern the editor authors; normalised to an RRULE for storage. */
 export const RulePatternSchema = z.discriminatedUnion("type", [
 	z.object({
+		type: z.literal("daily"),
+		/** From 2: every day is a weekly rule on all seven days, which the weekly-hours mirror reads. */
+		interval: z.number().int().min(2).max(30),
+	}),
+	z.object({
 		type: z.literal("weekly"),
 		days: z.array(Weekday).min(1).max(7).refine(uniqueNumbers, "A weekday is listed twice."),
 		interval: z.number().int().min(1).max(8),
@@ -50,6 +56,7 @@ export const RulePatternSchema = z.discriminatedUnion("type", [
 		type: z.literal("yearly"),
 		month: z.number().int().min(1).max(12),
 		day: z.number().int().min(1).max(31),
+		interval: z.number().int().min(1).max(10).default(1),
 	}).refine((p) => p.day <= daysInMonth(2000, p.month), "That month has no such day."),
 	z.object({ type: z.literal("once"), date: IsoDate }),
 ]);
@@ -66,6 +73,7 @@ export type RuleCondition = z.infer<typeof RuleConditionSchema>;
 // #region Refusals
 /** Why a pattern + condition cannot compile to an RRULE. */
 export type RecurrenceRefusal =
+	| "condition_on_daily"
 	| "condition_on_weekly"
 	| "condition_on_monthly_weekday"
 	| "condition_on_once"
@@ -75,6 +83,7 @@ export type RecurrenceRefusal =
 
 /** The refusal copy, one sentence each, shown under the rule editor. */
 export const RECURRENCE_REFUSAL_COPY: Record<RecurrenceRefusal, string> = {
+	condition_on_daily: "A rule every few days can't take a weekday exception.",
 	condition_on_weekly:
 		"A weekly rule already picks its days — choose the days instead of an exception.",
 	condition_on_monthly_weekday:
@@ -98,6 +107,7 @@ export function recurrenceRefusal(input: RecurrenceInput): RecurrenceRefusal | n
 	const { pattern, condition, startsOn, endsOn } = input;
 	if (endsOn !== null && endsOn < startsOn) return "ends_before_start";
 	const conditioned = condition.unlessWeekdays.length > 0;
+	if (pattern.type === "daily" && conditioned) return "condition_on_daily";
 	if (pattern.type === "weekly" && conditioned) return "condition_on_weekly";
 	if (pattern.type === "monthly_weekday" && conditioned) return "condition_on_monthly_weekday";
 	if (pattern.type === "once") {
@@ -154,6 +164,8 @@ export type AvailabilityRuleDraft = z.infer<typeof AvailabilityRuleDraftSchema>;
 /** A named rule set under the owner's schedule (Decision #217 (c)). */
 export const AvailabilityPresetSchema = z.object({
 	id: z.string().min(1).max(64),
+	/** The opaque `avp-` address the database mints on insert and never moves (Decision #88). */
+	slug: z.string().regex(slugPattern("preset")),
 	name: z.string().min(1).max(60),
 	description: z.string().max(200),
 	timezone: ianaTimezone,
@@ -200,6 +212,9 @@ export function compileRecurrence(input: RecurrenceInput): RecurrenceCompile {
 	const base = { interval: 1, byDay: [], byMonthDay: [], byMonth: [], bySetPos: [], wkst: 1 };
 	let value: RRuleParts;
 	switch (pattern.type) {
+		case "daily":
+			value = { ...base, freq: "DAILY", interval: pattern.interval };
+			break;
 		case "weekly":
 			value = {
 				...base,
@@ -229,6 +244,7 @@ export function compileRecurrence(input: RecurrenceInput): RecurrenceCompile {
 			value = {
 				...base,
 				freq: "YEARLY",
+				interval: pattern.interval,
 				byMonth: [pattern.month],
 				byMonthDay: [pattern.day],
 				byDay: unless,
@@ -282,8 +298,10 @@ export function rruleToDraft(rrule: string, startsOn: IsoDate): RecurrenceDraft 
 
 	switch (p.freq) {
 		case "DAILY": {
-			if (p.interval !== 1 || p.byMonth.length || p.byMonthDay.length || p.bySetPos.length) {
-				return null;
+			if (p.byMonth.length || p.byMonthDay.length || p.bySetPos.length) return null;
+			if (p.interval > 1) {
+				if (p.interval > 30 || p.byDay.length) return null;
+				return { pattern: { type: "daily", interval: p.interval }, condition: noCondition, endsOn };
 			}
 			if (endsOn === startsOn && !p.byDay.length) {
 				return { pattern: { type: "once", date: startsOn }, condition: noCondition, endsOn: null };
@@ -353,7 +371,7 @@ export function rruleToDraft(rrule: string, startsOn: IsoDate): RecurrenceDraft 
 		}
 		case "YEARLY": {
 			if (
-				p.interval !== 1 || p.bySetPos.length || p.byMonth.length > 1 || p.byMonthDay.length > 1
+				p.interval > 10 || p.bySetPos.length || p.byMonth.length > 1 || p.byMonthDay.length > 1
 			) return null;
 			if (!plainDays) return null;
 			if (!p.byMonth.length && (p.byMonthDay.length || p.byDay.length)) return null;
@@ -361,7 +379,11 @@ export function rruleToDraft(rrule: string, startsOn: IsoDate): RecurrenceDraft 
 			const month = p.byMonth[0] ?? anchor.month;
 			const day = p.byMonthDay[0] ?? anchor.day;
 			if (day < 1 || day > daysInMonth(2000, month)) return null;
-			return { pattern: { type: "yearly", month, day }, condition: conditionOf(), endsOn };
+			return {
+				pattern: { type: "yearly", month, day, interval: p.interval },
+				condition: conditionOf(),
+				endsOn,
+			};
 		}
 	}
 }

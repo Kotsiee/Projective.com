@@ -113,7 +113,10 @@ export type SchedulerAction =
 	}
 	| { type: "duplicateBand"; ruleId: string; bandIndex: number; day: Weekday; toDay: Weekday }
 	| { type: "deleteBand"; ruleId: string; bandIndex: number; day: Weekday }
-	| { type: "addRule" }
+	/** A new weekly rule on `day` (else the cursor's) for an hour from `minute` (else 09:00–17:00). */
+	| { type: "addRule"; day?: Weekday; minute?: number }
+	/** A copy of a rule, placed after it and opened in the editor. */
+	| { type: "duplicateRule"; ruleId: string }
 	| { type: "upsertRule"; rule: RuleDraft }
 	| { type: "deleteRule"; ruleId: string; name?: string }
 	| { type: "setDetails"; name?: string; isDefault?: boolean }
@@ -509,15 +512,33 @@ export function reduce(state: SchedulerState, action: SchedulerAction): Schedule
 		case "addRule": {
 			if (state.draft.rules.length >= MAX_RULES) return say(state, RULE_CAP);
 			const [id, seq] = mintId(state, state.draft.rules);
+			const start = action.minute === undefined
+				? 9 * 60
+				: clamp(action.minute, 0, DAY_MINUTES - state.snap);
+			const end = action.minute === undefined ? 17 * 60 : Math.min(DAY_MINUTES, start + 60);
 			const rule = weeklyRule(
 				id,
 				state.layer,
-				[state.cursor.day],
-				[{ start: 9 * 60, end: 17 * 60 }],
+				[action.day ?? state.cursor.day],
+				[{ start, end }],
 				startOfWeek(state.today, state.weekStartsOn),
 			);
 			const next = withDraft(state, { ...state.draft, rules: [...state.draft.rules, rule] });
 			return say({ ...next, seq, editing: id }, "Added a rule; it is open in the editor.");
+		}
+		case "duplicateRule": {
+			const source = findRule(state, action.ruleId);
+			if (!source) return state;
+			if (state.draft.rules.length >= MAX_RULES) return say(state, RULE_CAP);
+			const [id, seq] = mintId(state, state.draft.rules);
+			const at = state.draft.rules.indexOf(source) + 1;
+			const rules = [...state.draft.rules];
+			rules.splice(at, 0, { ...structuredClone(source), id });
+			const next = withDraft(state, { ...state.draft, rules });
+			return say(
+				{ ...next, seq, editing: id },
+				"Duplicated the rule; the copy is open in the editor.",
+			);
 		}
 		case "upsertRule": {
 			const exists = state.draft.rules.some((r) => r.id === action.rule.id);

@@ -3,18 +3,20 @@ import { useEffect } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Button } from "../../../fields/components/Button.tsx";
-import { InputMask } from "../../../fields/islands/InputMask.tsx";
+import { DatePicker } from "../../../fields/islands/DatePicker.tsx";
 import { InputText } from "../../../fields/islands/InputText.tsx";
+import { NumberInput } from "../../../fields/islands/NumberInput.tsx";
 import { Select } from "../../../fields/islands/Select.tsx";
-import { SelectButton } from "../../../fields/islands/SelectButton.tsx";
+import { WeekdayRail } from "../../../fields/islands/WeekdayRail.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { weekdayName } from "./announce.ts";
 import {
+	civilOf,
 	clamp,
+	dateOfCivil,
 	DAY_MINUTES,
+	daysInMonthOf,
 	fmtMinutes,
-	isIsoDate,
-	parseMinutes,
 	weekColumns,
 	weekdayOf,
 } from "./civil.ts";
@@ -22,47 +24,72 @@ import { pickOption, useScheduler } from "./context.ts";
 import { MAX_BANDS } from "./reducer.ts";
 import type { Band, Layer, RuleDraft, RuleEffect, RulePattern, RulePatternType } from "./types.ts";
 
+/**
+ * RuleEditor — the open rule as a short form, read top to bottom as the sentence above it says it:
+ * how often it repeats (`Every [2] [weeks]`), on which days (a weekday letter rail, a month-day
+ * grid, or a weekday of the month), at what times, with what effect on which layer, and between
+ * which dates. Every control is a `@projective/ui/fields` control on the `bare` surface: no resting
+ * border or fill, a tint on hover and the field halo on keyboard focus.
+ *
+ * The interval runs as far as the recurrence contract does (`RulePatternSchema`): days 1–30, weeks
+ * 1–8, months 1–12, years 1–10. Every single day stays a weekly rule on all seven days; only a wider
+ * gap is a daily one. The raw RRULE and the replace priority sit behind a closed Advanced disclosure.
+ */
+
 // #region Options
-const PATTERNS: { label: string; value: RulePatternType }[] = [
-	{ label: "Weekly", value: "weekly" },
-	{ label: "Monthly by date", value: "monthly_date" },
-	{ label: "Monthly by weekday", value: "monthly_weekday" },
-	{ label: "Yearly", value: "yearly" },
-	{ label: "One date", value: "once" },
+/** How often a rule repeats, as the editor offers it. */
+type Unit = "day" | "week" | "month" | "year" | "once";
+
+/** The widest interval the recurrence contract allows per unit; `1` means it takes none. */
+const MAX_INTERVAL: Record<Unit, number> = { day: 30, week: 8, month: 12, year: 10, once: 1 };
+
+const UNITS: { label: string; value: Unit }[] = [
+	{ label: "Day", value: "day" },
+	{ label: "Week", value: "week" },
+	{ label: "Month", value: "month" },
+	{ label: "Year", value: "year" },
+	{ label: "Doesn't repeat", value: "once" },
 ];
+
+const MONTH_MODES: { label: string; value: RulePatternType }[] = [
+	{ label: "Dates of the month", value: "monthly_date" },
+	{ label: "A weekday of the month", value: "monthly_weekday" },
+];
+
 const EFFECTS: { label: string; value: RuleEffect }[] = [
-	{ label: "Add", value: "add" },
+	{ label: "Add these hours", value: "add" },
 	{ label: "Replace the day", value: "replace" },
-	{ label: "Remove", value: "subtract" },
+	{ label: "Remove these hours", value: "subtract" },
 ];
+
 const LAYERS: { label: string; value: Layer }[] = [
 	{ label: "Working hours", value: "working_hours" },
 	{ label: "Calls", value: "call_window" },
 ];
-const WEEK_INTERVALS = [1, 2, 3, 4].map((n) => ({
-	label: n === 1 ? "Every week" : `Every ${n} weeks`,
-	value: String(n),
-}));
-const MONTH_INTERVALS = [1, 2, 3, 6, 12].map((n) => ({
-	label: n === 1 ? "Every month" : `Every ${n} months`,
-	value: String(n),
-}));
+
 const ORDINALS = [
-	{ label: "1st", value: "1" },
-	{ label: "2nd", value: "2" },
-	{ label: "3rd", value: "3" },
-	{ label: "4th", value: "4" },
+	{ label: "First", value: "1" },
+	{ label: "Second", value: "2" },
+	{ label: "Third", value: "3" },
+	{ label: "Fourth", value: "4" },
 	{ label: "Last", value: "-1" },
 ];
+
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({
 	label: new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(
 		Date.UTC(2000, i, 1),
 	),
 	value: String(i + 1),
 }));
+
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+
+/** The month-day grid: 1–31, then the last day of the month (`-1`). */
+const MONTH_DAYS = [...Array.from({ length: 31 }, (_, i) => i + 1), -1];
 // #endregion
 
 // #region Helpers
+/** A local signal that follows `value` whenever `key` changes — for controls bound to a Signal. */
 function useSynced<T>(value: T, key: string = String(value)): Signal<T> {
 	const sig = useSignal(value);
 	useEffect(() => {
@@ -71,79 +98,89 @@ function useSynced<T>(value: T, key: string = String(value)): Signal<T> {
 	return sig;
 }
 
-function defaultPattern(type: RulePatternType, startsOn: string): RulePattern {
-	const day = Number(startsOn.slice(8));
-	const weekday = weekdayOf(startsOn);
-	switch (type) {
+function isEveryDay(p: RulePattern): boolean {
+	return p.type === "weekly" && p.interval === 1 && p.days.length === 7;
+}
+
+/** The unit a pattern reads as; a weekly rule on every day reads as `day` only while that is asked. */
+function unitOf(p: RulePattern, dayMode: boolean): Unit {
+	switch (p.type) {
+		case "daily":
+			return "day";
 		case "weekly":
-			return { type, days: [weekday], interval: 1 };
+			return dayMode && isEveryDay(p) ? "day" : "week";
 		case "monthly_date":
-			return { type, days: [day], interval: 1 };
 		case "monthly_weekday":
-			return { type, ordinal: Math.min(4, Math.ceil(day / 7)), weekday, interval: 1 };
+			return "month";
 		case "yearly":
-			return { type, month: Number(startsOn.slice(5, 7)), day };
+			return "year";
 		case "once":
-			return { type, date: startsOn };
+			return "once";
 	}
 }
 
-function parseMonthDays(text: string): number[] | null {
-	const parts = text.split(/[\s,]+/).filter(Boolean);
-	if (!parts.length) return null;
-	const days = parts.map(Number);
-	const ok = days.every((d) => Number.isInteger(d) && d !== 0 && d >= -31 && d <= 31);
-	return ok && new Set(days).size === days.length ? days : null;
+function intervalOf(p: RulePattern): number {
+	return "interval" in p ? p.interval : 1;
 }
 
-/** Whether "unless it's …" compiles for a pattern (plan §5.3). */
+/** The unit as it reads after "Every": singular, or plural past one. */
+function unitWord(unit: Unit, interval: number): string {
+	if (unit === "once") return "Doesn't repeat";
+	return interval > 1 ? `${unit}s` : unit;
+}
+
+/** Every day is a weekly rule on all seven days; only a wider gap is a daily one. */
+function dayPattern(interval: number): RulePattern {
+	return interval > 1
+		? { type: "daily", interval }
+		: { type: "weekly", days: [...EVERY_DAY], interval: 1 };
+}
+
+/** The pattern a unit starts from, keeping what carries over (the interval, a weekly rule's days). */
+function patternFor(unit: Unit, from: RulePattern, startsOn: string): RulePattern {
+	const day = Number(startsOn.slice(8));
+	const interval = clamp(intervalOf(from), 1, MAX_INTERVAL[unit]);
+	switch (unit) {
+		case "day":
+			return dayPattern(interval);
+		case "week":
+			return {
+				type: "weekly",
+				days: from.type === "weekly" && !isEveryDay(from) ? from.days : [weekdayOf(startsOn)],
+				interval,
+			};
+		case "month":
+			return { type: "monthly_date", days: [day], interval };
+		case "year":
+			return { type: "yearly", month: Number(startsOn.slice(5, 7)), day, interval };
+		case "once":
+			return { type: "once", date: startsOn };
+	}
+}
+
+/** Whether "skip when it falls on …" compiles for a pattern (plan §5.3). */
 function takesCondition(type: RulePatternType): boolean {
 	return type === "monthly_date" || type === "yearly";
 }
+
+/**
+ * The times a band edge may take, on the grid's snap: `from`…`to` inclusive, plus the current value
+ * when a drag left it off the grid, so the trigger always names what is stored.
+ */
+function timeOptions(from: number, to: number, step: number, current: number) {
+	const values = new Set<number>();
+	for (let m = Math.ceil(from / step) * step; m <= to; m += step) values.add(m);
+	if (current >= from && current <= to) values.add(current);
+	return [...values].sort((a, b) => a - b).map((m) => ({ label: fmtMinutes(m), value: String(m) }));
+}
+
+function monthDayName(day: number): string {
+	return day === -1 ? "Last day" : `Day ${day}`;
+}
 // #endregion
 
-// #region TimeRangeField
-interface TimeFieldProps {
-	minute: number;
-	label: string;
-	min: number;
-	max: number;
-	step: number;
-	onCommit: (minute: number) => void;
-}
-
-function TimeField(props: TimeFieldProps): JSX.Element {
-	const { minute, label, min, max, step, onCommit } = props;
-	const text = useSynced(fmtMinutes(minute));
-	const parsed = parseMinutes(text.value);
-	const complete = /^\d{2}:\d{2}$/.test(text.value);
-	const invalid = complete && (parsed === null || parsed < min || parsed > max);
-
-	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLSpanElement>) => {
-		if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-		e.preventDefault();
-		const next = clamp(minute + (e.key === "ArrowUp" ? step : -step), min, max);
-		if (next !== minute) onCommit(next);
-	};
-
-	return (
-		<span class="ui-avsched__time" onKeyDown={onKeyDown}>
-			<InputMask
-				mask="99:99"
-				size="sm"
-				value={text}
-				aria-label={label}
-				status={invalid ? "invalid" : "default"}
-				onValueChange={(v) => {
-					const m = parseMinutes(v);
-					if (m !== null && m >= min && m <= max && m !== minute) onCommit(m);
-				}}
-			/>
-		</span>
-	);
-}
-
-interface TimeRangeFieldProps {
+// #region Time ranges
+interface TimeRangeRowProps {
 	band: Band;
 	index: number;
 	step: number;
@@ -151,26 +188,35 @@ interface TimeRangeFieldProps {
 	onRemove: () => void;
 }
 
-function TimeRangeField(props: TimeRangeFieldProps): JSX.Element {
+/** One band as two time selects on the snap grid; moving the start past the end carries the end. */
+function TimeRangeRow(props: TimeRangeRowProps): JSX.Element {
 	const { band, index, step, onChange, onRemove } = props;
+	const start = useSynced(String(band.start));
+	const end = useSynced(String(band.end));
+	const n = index + 1;
 	return (
 		<li class="ui-avsched__band-row">
-			<TimeField
-				minute={band.start}
-				label={`Time ${index + 1} starts`}
-				min={0}
-				max={band.end - 5}
-				step={step}
-				onCommit={(start) => onChange({ start, end: band.end })}
+			<Select
+				size="sm"
+				class="ui-field--bare ui-avsched__time"
+				panelWidth="auto"
+				options={timeOptions(0, DAY_MINUTES - step, step, band.start)}
+				value={start}
+				aria-label={`Time ${n} starts`}
+				onValueChange={(v) => {
+					const s = Number(v);
+					onChange({ start: s, end: Math.min(DAY_MINUTES, Math.max(band.end, s + step)) });
+				}}
 			/>
-			<span class="ui-avsched__to" aria-hidden="true">to</span>
-			<TimeField
-				minute={band.end}
-				label={`Time ${index + 1} ends`}
-				min={band.start + 5}
-				max={DAY_MINUTES}
-				step={step}
-				onCommit={(end) => onChange({ start: band.start, end })}
+			<span class="ui-avsched__to" aria-hidden="true">–</span>
+			<Select
+				size="sm"
+				class="ui-field--bare ui-avsched__time"
+				panelWidth="auto"
+				options={timeOptions(band.start + step, DAY_MINUTES, step, band.end)}
+				value={end}
+				aria-label={`Time ${n} ends`}
+				onValueChange={(v) => onChange({ start: band.start, end: Number(v) })}
 			/>
 			<Tooltip content="Remove" density="compact">
 				<Button
@@ -179,9 +225,7 @@ function TimeRangeField(props: TimeRangeFieldProps): JSX.Element {
 					iconOnly
 					class="ui-hit"
 					icon={<Icon name="close" />}
-					aria-label={`Remove time ${index + 1}, ${fmtMinutes(band.start)} to ${
-						fmtMinutes(band.end)
-					}`}
+					aria-label={`Remove time ${n}, ${fmtMinutes(band.start)} to ${fmtMinutes(band.end)}`}
 					onClick={onRemove}
 				/>
 			</Tooltip>
@@ -190,189 +234,326 @@ function TimeRangeField(props: TimeRangeFieldProps): JSX.Element {
 }
 // #endregion
 
-// #region Pattern fields
-interface PatternFieldsProps {
-	rule: RuleDraft;
-	patch: (p: Partial<RuleDraft>) => void;
-}
-
-interface WeekdayPickerProps {
-	label: string;
+// #region Day pickers
+interface MonthDayGridProps {
 	days: number[];
-	max?: number;
-	allowEmpty?: boolean;
+	labelledBy: string;
 	onChange: (days: number[]) => void;
 }
 
-function WeekdayPicker(props: WeekdayPickerProps): JSX.Element {
-	const { locale, weekStartsOn } = useScheduler();
-	const value = useSynced(props.days.map(String), props.days.join(","));
-	const options = weekColumns(weekStartsOn).map((d) => ({
-		label: weekdayName(d, locale, "short"),
-		value: String(d),
-	}));
+/**
+ * The dates of the month as a seven-column grid of the same discs the weekday rail draws, with the
+ * last day of the month after the 31st. A value the grid does not show (a stored `-2`, from a pasted
+ * RRULE) is kept through every toggle. At least one date stays chosen.
+ */
+function MonthDayGrid(props: MonthDayGridProps): JSX.Element {
+	const { days, labelledBy, onChange } = props;
+	const chosen = new Set(days);
+	const roving = useSignal<number | null>(null);
+	const stop = roving.value ?? Math.max(0, MONTH_DAYS.findIndex((d) => chosen.has(d)));
+
+	const toggle = (day: number) => {
+		const next = new Set(chosen);
+		if (next.has(day)) next.delete(day);
+		else next.add(day);
+		if (next.size === 0) return;
+		onChange([...next].sort((a, b) => (a < 0 ? 99 - a : a) - (b < 0 ? 99 - b : b)));
+	};
+
+	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+		const at = buttons.indexOf(e.target as HTMLButtonElement);
+		if (at < 0) return;
+		const rtl = getComputedStyle(e.currentTarget).direction === "rtl";
+		const moves: Record<string, number> = {
+			ArrowRight: rtl ? -1 : 1,
+			ArrowLeft: rtl ? 1 : -1,
+			ArrowDown: 7,
+			ArrowUp: -7,
+		};
+		let next: number | null = e.key in moves ? at + moves[e.key] : null;
+		if (e.key === "Home") next = 0;
+		if (e.key === "End") next = buttons.length - 1;
+		if (next === null) return;
+		e.preventDefault();
+		buttons[clamp(next, 0, buttons.length - 1)]?.focus();
+	};
+
 	return (
-		<SelectButton
-			multiple
-			size="sm"
-			options={options}
-			value={value}
-			aria-label={props.label}
-			onValueChange={(v) => {
-				const days = (Array.isArray(v) ? v : [v]).map(Number).sort((a, b) => a - b);
-				if (!days.length && !props.allowEmpty) return;
-				if (props.max !== undefined && days.length > props.max) return;
-				props.onChange(days);
-			}}
-		/>
+		<div
+			class="ui-avsched__monthdays"
+			role="group"
+			aria-labelledby={labelledBy}
+			onKeyDown={onKeyDown}
+		>
+			{MONTH_DAYS.map((day, i) => (
+				<button
+					key={day}
+					type="button"
+					class={day === -1
+						? "ui-avsched__monthday ui-avsched__monthday--last"
+						: "ui-avsched__monthday"}
+					aria-pressed={chosen.has(day)}
+					aria-label={monthDayName(day)}
+					tabIndex={stop === i ? 0 : -1}
+					onFocus={() => (roving.value = i)}
+					onClick={() => toggle(day)}
+				>
+					<span aria-hidden="true">{day === -1 ? "Last" : day}</span>
+				</button>
+			))}
+		</div>
+	);
+}
+// #endregion
+
+// #region Recurrence
+interface PatternFieldsProps {
+	rule: RuleDraft;
+	patch: (p: Partial<RuleDraft>) => void;
+	ids: (part: string) => string;
+	/** Whether a weekly rule on every day reads as "Every day" (seeded per rule, kept while editing). */
+	dayMode: Signal<boolean>;
+}
+
+/** `Every [n] [unit]`: the interval where the unit takes one, and the unit itself. */
+function RepeatsField({ rule, patch, ids, dayMode }: PatternFieldsProps): JSX.Element {
+	const p = rule.pattern;
+	const unit = unitOf(p, dayMode.value);
+	const interval = intervalOf(p);
+	const unitValue = useSynced<string>(unit);
+	const intervalValue = useSynced<number | null>(interval);
+	const takesInterval = MAX_INTERVAL[unit] > 1;
+
+	const setUnit = (next: Unit) => {
+		dayMode.value = next === "day";
+		if (next === unit) return;
+		const pattern = patternFor(next, p, rule.startsOn);
+		patch({
+			pattern,
+			condition: takesCondition(pattern.type) ? rule.condition : { unlessWeekdays: [] },
+			endsOn: next === "once" ? null : rule.endsOn,
+		});
+	};
+
+	return (
+		<div class="ui-avsched__field" role="group" aria-labelledby={ids("repeats")}>
+			<span class="ui-avsched__label" id={ids("repeats")}>Repeats</span>
+			<div class="ui-avsched__line">
+				{unit !== "once" && <span class="ui-avsched__word" aria-hidden="true">Every</span>}
+				{takesInterval && (
+					<NumberInput
+						size="sm"
+						variant="bare"
+						class="ui-avsched__interval"
+						value={intervalValue}
+						min={1}
+						max={MAX_INTERVAL[unit]}
+						step={1}
+						maxFractionDigits={0}
+						arrowBounds={false}
+						aria-label={`Every how many ${unit}s`}
+						onValueChange={(n) => {
+							if (n === null || !("interval" in p)) return;
+							const next = clamp(Math.round(n), 1, MAX_INTERVAL[unit]);
+							if (next === p.interval) return;
+							patch({ pattern: unit === "day" ? dayPattern(next) : { ...p, interval: next } });
+						}}
+					/>
+				)}
+				<Select
+					size="sm"
+					class="ui-field--bare ui-avsched__unit"
+					panelWidth="auto"
+					options={UNITS}
+					value={unitValue}
+					valueTemplate={(opt) => unitWord(opt.value as Unit, interval)}
+					aria-label="Repeats every"
+					onValueChange={(v) => {
+						const next = pickOption(UNITS, v);
+						if (next) setUnit(next);
+					}}
+				/>
+			</div>
+		</div>
 	);
 }
 
-interface IntervalPickerProps extends PatternFieldsProps {
-	interval: number;
-	months: boolean;
-}
-
-function IntervalPicker(props: IntervalPickerProps): JSX.Element {
-	const value = useSynced(String(props.interval));
-	return (
-		<SelectButton
-			size="sm"
-			options={props.months ? MONTH_INTERVALS : WEEK_INTERVALS}
-			value={value}
-			aria-label="Repeats"
-			onValueChange={(v) => {
-				const p = props.rule.pattern;
-				if (p.type === "weekly" || p.type === "monthly_date" || p.type === "monthly_weekday") {
-					props.patch({ pattern: { ...p, interval: Number(v) } });
-				}
-			}}
-		/>
-	);
-}
-
-function MonthDaysField({ rule, patch }: PatternFieldsProps): JSX.Element | null {
-	const days = rule.pattern.type === "monthly_date" ? rule.pattern.days : [];
-	const text = useSynced(days.join(", "));
-	const parsed = parseMonthDays(text.value);
-	return (
-		<InputText
-			size="sm"
-			value={text}
-			aria-label="Days of the month (negative counts from the end)"
-			placeholder="1, 15, -1"
-			status={parsed ? "default" : "invalid"}
-			onValueChange={(v) => {
-				const next = parseMonthDays(v);
-				if (next && rule.pattern.type === "monthly_date") {
-					patch({ pattern: { ...rule.pattern, days: next } });
-				}
-			}}
-		/>
-	);
-}
-
-function PatternFields({ rule, patch }: PatternFieldsProps): JSX.Element {
+/** Which days the rule falls on, in the shape its unit asks for; nothing for an every-day rule. */
+function OnField({ rule, patch, ids, dayMode }: PatternFieldsProps): JSX.Element | null {
 	const p = rule.pattern;
 	const { locale, weekStartsOn } = useScheduler();
+	const weekDays = useSynced(
+		p.type === "weekly" ? p.days : [],
+		p.type === "weekly" ? p.days.join(",") : "",
+	);
+	const monthMode = useSynced<string>(p.type === "monthly_weekday" ? p.type : "monthly_date");
 	const ordinal = useSynced(p.type === "monthly_weekday" ? String(p.ordinal) : "1");
 	const weekday = useSynced(p.type === "monthly_weekday" ? String(p.weekday) : "1");
 	const month = useSynced(p.type === "yearly" ? String(p.month) : "1");
-	const yearDay = useSynced(p.type === "yearly" ? String(p.day) : "1");
-	const date = useSynced(p.type === "once" ? p.date : "");
+	const yearDay = useSynced<number | null>(p.type === "yearly" ? p.day : 1);
+	const date = useSynced<Date | null>(
+		dateOfCivil(p.type === "once" ? p.date : null),
+		p.type === "once" ? p.date : "",
+	);
 	const weekdayOptions = weekColumns(weekStartsOn).map((d) => ({
-		label: weekdayName(d, locale, "short"),
+		label: weekdayName(d, locale, "long"),
 		value: String(d),
 	}));
+	const label = <span class="ui-avsched__label" id={ids("on")}>On</span>;
 
 	switch (p.type) {
+		case "daily":
+			return null;
 		case "weekly":
+			if (unitOf(p, dayMode.value) === "day") return null;
 			return (
-				<>
-					<WeekdayPicker
-						label="Days"
-						days={p.days}
-						onChange={(days) => patch({ pattern: { ...p, days } })}
+				<div class="ui-avsched__field">
+					{label}
+					<WeekdayRail
+						size="sm"
+						value={weekDays}
+						weekStartsOn={weekStartsOn}
+						locale={locale}
+						min={1}
+						aria-label="Repeats on"
+						onValueChange={(days) => patch({ pattern: { ...p, days } })}
 					/>
-					<IntervalPicker rule={rule} interval={p.interval} months={false} patch={patch} />
-				</>
+				</div>
 			);
 		case "monthly_date":
-			return (
-				<>
-					<MonthDaysField rule={rule} patch={patch} />
-					<IntervalPicker rule={rule} interval={p.interval} months patch={patch} />
-				</>
-			);
 		case "monthly_weekday":
 			return (
-				<>
-					<SelectButton
+				<div class="ui-avsched__field" role="group" aria-labelledby={ids("on")}>
+					{label}
+					<Select
 						size="sm"
-						options={ORDINALS}
-						value={ordinal}
-						aria-label="Which week"
-						onValueChange={(v) => patch({ pattern: { ...p, ordinal: Number(v) } })}
+						class="ui-field--bare ui-avsched__mode"
+						panelWidth="auto"
+						options={MONTH_MODES}
+						value={monthMode}
+						aria-label="Repeats on"
+						onValueChange={(v) => {
+							const next = pickOption(MONTH_MODES, v);
+							if (!next || next === p.type) return;
+							const day = Number(rule.startsOn.slice(8));
+							const interval = intervalOf(p);
+							patch({
+								pattern: next === "monthly_date"
+									? { type: "monthly_date", days: [day], interval }
+									: {
+										type: "monthly_weekday",
+										ordinal: Math.min(4, Math.ceil(day / 7)),
+										weekday: weekdayOf(rule.startsOn),
+										interval,
+									},
+								condition: next === "monthly_date" ? rule.condition : { unlessWeekdays: [] },
+							});
+						}}
 					/>
-					<SelectButton
-						size="sm"
-						options={weekdayOptions}
-						value={weekday}
-						aria-label="Weekday"
-						onValueChange={(v) => patch({ pattern: { ...p, weekday: Number(v) } })}
-					/>
-					<IntervalPicker rule={rule} interval={p.interval} months patch={patch} />
-				</>
+					{p.type === "monthly_date"
+						? (
+							<MonthDayGrid
+								days={p.days}
+								labelledBy={ids("on")}
+								onChange={(days) => patch({ pattern: { ...p, days } })}
+							/>
+						)
+						: (
+							<div class="ui-avsched__line">
+								<span class="ui-avsched__word" aria-hidden="true">The</span>
+								<Select
+									size="sm"
+									class="ui-field--bare"
+									panelWidth="auto"
+									options={ORDINALS}
+									value={ordinal}
+									aria-label="Which week of the month"
+									onValueChange={(v) => patch({ pattern: { ...p, ordinal: Number(v) } })}
+								/>
+								<Select
+									size="sm"
+									class="ui-field--bare"
+									panelWidth="auto"
+									options={weekdayOptions}
+									value={weekday}
+									aria-label="Weekday"
+									onValueChange={(v) => patch({ pattern: { ...p, weekday: Number(v) } })}
+								/>
+							</div>
+						)}
+				</div>
 			);
 		case "yearly":
 			return (
-				<>
-					<Select
-						size="sm"
-						options={MONTHS}
-						value={month}
-						aria-label="Month"
-						onValueChange={(v) => patch({ pattern: { ...p, month: Number(v) } })}
-					/>
-					<InputText
-						size="sm"
-						value={yearDay}
-						aria-label="Day of the month"
-						onValueChange={(v) => {
-							const day = Number(v);
-							if (Number.isInteger(day) && day >= 1 && day <= 31) patch({ pattern: { ...p, day } });
-						}}
-					/>
-				</>
+				<div class="ui-avsched__field" role="group" aria-labelledby={ids("on")}>
+					{label}
+					<div class="ui-avsched__line">
+						<NumberInput
+							size="sm"
+							variant="bare"
+							class="ui-avsched__interval"
+							value={yearDay}
+							min={1}
+							max={daysInMonthOf(p.month)}
+							step={1}
+							maxFractionDigits={0}
+							arrowBounds={false}
+							aria-label="Day of the month"
+							onValueChange={(n) => {
+								if (n === null) return;
+								const day = clamp(Math.round(n), 1, daysInMonthOf(p.month));
+								if (day !== p.day) patch({ pattern: { ...p, day } });
+							}}
+						/>
+						<Select
+							size="sm"
+							class="ui-field--bare"
+							panelWidth="auto"
+							options={MONTHS}
+							value={month}
+							aria-label="Month"
+							onValueChange={(v) => {
+								const m = Number(v);
+								patch({ pattern: { ...p, month: m, day: Math.min(p.day, daysInMonthOf(m)) } });
+							}}
+						/>
+					</div>
+				</div>
 			);
 		case "once":
 			return (
-				<InputMask
-					mask="9999-99-99"
-					size="sm"
-					value={date}
-					aria-label="Date (YYYY-MM-DD)"
-					onValueChange={(v) => {
-						if (isIsoDate(v)) {
-							patch({
-								pattern: { type: "once", date: v },
-								startsOn: v,
-								endsOn: null,
-							});
-						}
-					}}
-				/>
+				<div class="ui-avsched__field">
+					{label}
+					<DatePicker
+						size="sm"
+						variant="bare"
+						value={date}
+						segmented={false}
+						dateFormat="D, d M yyyy"
+						firstDayOfWeek={weekStartsOn === 0 ? 0 : 1}
+						aria-label="Date"
+						onValueChange={(v) => {
+							const picked = Array.isArray(v) ? v[0] : v;
+							if (!picked) return;
+							const iso = civilOf(picked);
+							patch({ pattern: { type: "once", date: iso }, startsOn: iso, endsOn: null });
+						}}
+					/>
+				</div>
 			);
 	}
 }
 // #endregion
 
 // #region Advanced
-function AdvancedRRule({ rule, patch }: PatternFieldsProps): JSX.Element {
+/** The raw RRULE and the replace priority: closed until asked for. */
+function Advanced({ rule, patch }: Pick<PatternFieldsProps, "rule" | "patch">): JSX.Element {
 	const { store } = useScheduler();
 	const written = store.engine.draftToRRule(rule);
 	const compiled = written.ok ? written.rrule : "";
 	const text = useSynced(compiled);
+	const priority = useSynced<number | null>(rule.priority);
 	const error = useSignal<string | null>(null);
 
 	const apply = () => {
@@ -387,28 +568,60 @@ function AdvancedRRule({ rule, patch }: PatternFieldsProps): JSX.Element {
 
 	return (
 		<details class="ui-avsched__advanced">
-			<summary class="ui-avsched__advanced-toggle">Advanced</summary>
+			<summary class="ui-avsched__advanced-toggle">
+				<span>Advanced</span>
+				<Icon name="chevron-down" size="sm" class="ui-avsched__advanced-caret" />
+			</summary>
 			<div class="ui-avsched__advanced-body">
-				<InputText
-					size="sm"
-					value={text}
-					aria-label="RRULE"
-					status={error.value ? "invalid" : "default"}
-					onValueChange={() => {
-						error.value = null;
-					}}
-				/>
-				<Button
-					severity="neutral"
-					variant="outlined"
-					size="sm"
-					label="Apply RRULE"
-					disabled={text.value.trim() === compiled}
-					onClick={apply}
-				/>
-				{error.value && (
-					<p class="ui-avsched__issue ui-avsched__issue--error" role="alert">{error.value}</p>
+				{rule.effect === "replace" && (
+					<div class="ui-avsched__field">
+						<span class="ui-avsched__label" aria-hidden="true">Priority</span>
+						<NumberInput
+							size="sm"
+							variant="bare"
+							class="ui-avsched__interval"
+							value={priority}
+							min={0}
+							max={99}
+							step={1}
+							maxFractionDigits={0}
+							arrowBounds={false}
+							aria-label="Priority, 0 to 99; the higher replace rule wins"
+							onValueChange={(n) => {
+								if (n === null) return;
+								const next = clamp(Math.round(n), 0, 99);
+								if (next !== rule.priority) patch({ priority: next });
+							}}
+						/>
+					</div>
 				)}
+				<div class="ui-avsched__field">
+					<span class="ui-avsched__label" aria-hidden="true">RRULE</span>
+					<InputText
+						size="sm"
+						variant="bare"
+						class="ui-avsched__rrule"
+						value={text}
+						aria-label="RRULE"
+						fluid
+						status={error.value ? "invalid" : "default"}
+						onValueChange={() => {
+							error.value = null;
+						}}
+					/>
+					<Button
+						severity="neutral"
+						variant="outlined"
+						size="sm"
+						label="Apply RRULE"
+						class="ui-avsched__apply"
+						disabled={text.value.trim() === compiled}
+						onClick={apply}
+					/>
+					{error.value && (
+						<p class="ui-avsched__issue ui-avsched__issue--error" role="alert">{error.value}</p>
+					)}
+				</div>
 			</div>
 		</details>
 	);
@@ -421,20 +634,25 @@ interface RuleFormProps {
 }
 
 function RuleForm({ rule }: RuleFormProps): JSX.Element {
-	const { store } = useScheduler();
+	const { store, idBase, locale, weekStartsOn } = useScheduler();
+	const ids = (part: string) => `${idBase}-rule-${part}`;
 	const patch = (p: Partial<RuleDraft>) => {
 		const current = store.draft.peek().rules.find((r) => r.id === rule.id);
 		if (current) store.upsertRule({ ...current, ...p });
 	};
-	const type = useSynced<string>(rule.pattern.type);
 	const effect = useSynced<string>(rule.effect);
 	const layer = useSynced<string>(rule.layer);
 	const label = useSynced(rule.label);
-	const startsOn = useSynced(rule.startsOn);
-	const endsOn = useSynced(rule.endsOn ?? "");
-	const priority = useSynced(String(rule.priority));
+	const startsOn = useSynced<Date | null>(dateOfCivil(rule.startsOn), rule.startsOn);
+	const endsOn = useSynced<Date | null>(dateOfCivil(rule.endsOn), rule.endsOn ?? "");
+	const unlessDays = useSynced(
+		rule.condition.unlessWeekdays,
+		rule.condition.unlessWeekdays.join(","),
+	);
+	const dayMode = useSignal(unitOf(rule.pattern, true) === "day");
 	const written = store.engine.draftToRRule(rule);
 	const step = store.snap.value;
+	const firstDay = weekStartsOn === 0 ? 0 : 1;
 
 	const setBands = (bands: Band[]) => patch({ bands });
 	const addBand = () => {
@@ -450,47 +668,32 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 				<p class="ui-avsched__issue ui-avsched__issue--error" role="alert">{written.message}</p>
 			)}
 
-			<div class="ui-avsched__field" role="group" aria-label="Pattern">
-				<span class="ui-avsched__label" aria-hidden="true">Pattern</span>
-				<SelectButton
-					size="sm"
-					options={PATTERNS}
-					value={type}
-					aria-label="Pattern"
-					onValueChange={(v) => {
-						const next = pickOption(PATTERNS, v);
-						if (!next) return;
-						patch({
-							pattern: defaultPattern(next, rule.startsOn),
-							condition: takesCondition(next) ? rule.condition : { unlessWeekdays: [] },
-							endsOn: next === "once" ? null : rule.endsOn,
-						});
-					}}
-				/>
-				<PatternFields rule={rule} patch={patch} />
-			</div>
+			<RepeatsField rule={rule} patch={patch} ids={ids} dayMode={dayMode} />
+			<OnField rule={rule} patch={patch} ids={ids} dayMode={dayMode} />
 
 			{takesCondition(rule.pattern.type) && (
-				<div class="ui-avsched__field" role="group" aria-label="Unless it's">
-					<span class="ui-avsched__label" aria-hidden="true">Unless it's…</span>
-					<WeekdayPicker
-						label="Unless it's"
-						days={rule.condition.unlessWeekdays}
+				<div class="ui-avsched__field">
+					<span class="ui-avsched__label" id={ids("unless")}>Skip when it falls on</span>
+					<WeekdayRail
+						size="sm"
+						value={unlessDays}
+						weekStartsOn={weekStartsOn}
+						locale={locale}
+						min={0}
 						max={6}
-						allowEmpty
-						onChange={(unlessWeekdays) =>
-							patch({ condition: { unlessWeekdays } })}
+						aria-label="Skip when it falls on"
+						onValueChange={(unlessWeekdays) => patch({ condition: { unlessWeekdays } })}
 					/>
 				</div>
 			)}
 
-			<div class="ui-avsched__field" role="group" aria-label="Times">
-				<span class="ui-avsched__label" aria-hidden="true">Times</span>
+			<div class="ui-avsched__field" role="group" aria-labelledby={ids("times")}>
+				<span class="ui-avsched__label" id={ids("times")}>Times</span>
 				{rule.bands.length
 					? (
 						<ul class="ui-avsched__band-list">
 							{rule.bands.map((band, i) => (
-								<TimeRangeField
+								<TimeRangeRow
 									key={i}
 									band={band}
 									index={i}
@@ -512,7 +715,7 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 							variant="text"
 							size="sm"
 							iconOnly
-							class="ui-hit"
+							class="ui-hit ui-avsched__add-time"
 							aria-label="Add time"
 							icon={<Icon name="plus" />}
 							onClick={addBand}
@@ -521,88 +724,104 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 				)}
 			</div>
 
-			<div class="ui-avsched__field" role="group" aria-label="Effect and layer">
-				<span class="ui-avsched__label" aria-hidden="true">Effect</span>
-				<SelectButton
-					size="sm"
-					options={EFFECTS}
-					value={effect}
-					aria-label="Effect"
-					onValueChange={(v) => {
-						const next = pickOption(EFFECTS, v);
-						if (next) patch({ effect: next });
-					}}
-				/>
-				<SelectButton
-					size="sm"
-					options={LAYERS}
-					value={layer}
-					aria-label="Layer"
-					onValueChange={(v) => {
-						const next = pickOption(LAYERS, v);
-						if (next) patch({ layer: next });
-					}}
-				/>
-				{rule.effect === "replace" && (
-					<InputText
+			<div class="ui-avsched__pair">
+				<div class="ui-avsched__field">
+					<span class="ui-avsched__label" aria-hidden="true">Effect</span>
+					<Select
 						size="sm"
-						value={priority}
-						aria-label="Priority (0–99, higher wins)"
+						class="ui-field--bare"
+						panelWidth="auto"
+						options={EFFECTS}
+						value={effect}
+						aria-label="Effect"
+						fluid
 						onValueChange={(v) => {
-							const n = Number(v);
-							if (Number.isInteger(n) && n >= 0 && n <= 99) patch({ priority: n });
+							const next = pickOption(EFFECTS, v);
+							if (next) patch({ effect: next });
 						}}
 					/>
-				)}
+				</div>
+				<div class="ui-avsched__field">
+					<span class="ui-avsched__label" aria-hidden="true">Layer</span>
+					<Select
+						size="sm"
+						class="ui-field--bare"
+						panelWidth="auto"
+						options={LAYERS}
+						value={layer}
+						aria-label="Layer"
+						fluid
+						onValueChange={(v) => {
+							const next = pickOption(LAYERS, v);
+							if (next) patch({ layer: next });
+						}}
+					/>
+				</div>
 			</div>
 
 			{rule.pattern.type !== "once" && (
-				<div class="ui-avsched__field" role="group" aria-label="Date range">
-					<span class="ui-avsched__label" aria-hidden="true">From · until</span>
-					<InputMask
-						mask="9999-99-99"
-						size="sm"
-						value={startsOn}
-						aria-label="Starts on (YYYY-MM-DD)"
-						onValueChange={(v) => {
-							if (isIsoDate(v)) {
-								patch({ startsOn: v });
-							}
-						}}
-					/>
-					<InputMask
-						mask="9999-99-99"
-						size="sm"
-						value={endsOn}
-						aria-label="Ends on (YYYY-MM-DD, empty for no end)"
-						onValueChange={(v) => {
-							if (v === "") {
-								patch({ endsOn: null });
-							} else if (isIsoDate(v)) {
-								patch({ endsOn: v });
-							}
-						}}
-					/>
+				<div class="ui-avsched__pair">
+					<div class="ui-avsched__field">
+						<span class="ui-avsched__label" aria-hidden="true">Starts</span>
+						<DatePicker
+							size="sm"
+							variant="bare"
+							value={startsOn}
+							segmented={false}
+							dateFormat="d M yyyy"
+							firstDayOfWeek={firstDay}
+							maxDate={dateOfCivil(rule.endsOn) ?? undefined}
+							aria-label="Starts on"
+							fluid
+							onValueChange={(v) => {
+								const picked = Array.isArray(v) ? v[0] : v;
+								if (picked) patch({ startsOn: civilOf(picked) });
+							}}
+						/>
+					</div>
+					<div class="ui-avsched__field">
+						<span class="ui-avsched__label" aria-hidden="true">Ends</span>
+						<DatePicker
+							size="sm"
+							variant="bare"
+							value={endsOn}
+							segmented={false}
+							dateFormat="d M yyyy"
+							placeholder="Never"
+							showButtonBar
+							firstDayOfWeek={firstDay}
+							minDate={dateOfCivil(rule.startsOn) ?? undefined}
+							aria-label="Ends on, empty for never"
+							fluid
+							onValueChange={(v) => {
+								const picked = Array.isArray(v) ? v[0] : v;
+								patch({ endsOn: picked ? civilOf(picked) : null });
+							}}
+						/>
+					</div>
 				</div>
 			)}
 
 			<div class="ui-avsched__field">
+				<span class="ui-avsched__label" aria-hidden="true">Label</span>
 				<InputText
 					size="sm"
+					variant="bare"
 					value={label}
 					maxLength={80}
 					aria-label="Label"
-					placeholder="Label (optional)"
+					placeholder="Optional, e.g. Summer hours"
+					fluid
 					onValueChange={(v) => patch({ label: v })}
 				/>
 			</div>
 
-			<AdvancedRRule rule={rule} patch={patch} />
+			<Advanced rule={rule} patch={patch} />
 		</div>
 	);
 }
 
-/** Pattern · condition · bands · effect · range for the rule being edited, with its sentence and RRULE. */
+/** Repeats · on · times · effect · dates · label for the rule being edited, with its sentence. */
 export function RuleEditor(): JSX.Element {
 	const { store } = useScheduler();
 	const editing = store.editing.value;

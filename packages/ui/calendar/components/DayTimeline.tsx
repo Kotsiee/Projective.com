@@ -45,7 +45,12 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import type { Spring, SpringConfig } from "../../core/motion.ts";
 import { createSpring, SPRING_EXPRESSIVE_EXIT, SPRING_SNAPPY } from "../../core/motion.ts";
-import type { CalendarAvailability, CalendarEvent, CalendarRange } from "../core/types.ts";
+import type {
+	CalendarAvailability,
+	CalendarEvent,
+	CalendarProps,
+	CalendarRange,
+} from "../core/types.ts";
 import type { GridRegion, GridRule, GridScene, SceneRecede } from "../core/grid-paint.ts";
 import type { EventPopoverState } from "./EventPopoverLayer.tsx";
 import {
@@ -488,6 +493,8 @@ export interface DayTimelineProps {
 	renderSource?: (source: string) => VNode | null;
 	onSelectRange?: (range: CalendarRange) => void;
 	onOpenEvent?: (event: CalendarEvent) => void;
+	/** What a right-click landed on (`CalendarProps.onContextTarget`). */
+	onContextTarget?: CalendarProps["onContextTarget"];
 	/** A single card opens straight through `onOpenEvent` (`CalendarProps.directOpen`). */
 	directOpen?: boolean;
 	/** Fired (day-granular) as the scroll centre crosses into a new day, so the header + mini-map track it. */
@@ -721,6 +728,24 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 		globalThis.addEventListener("pointermove", move);
 		globalThis.addEventListener("pointerup", up);
 	}
+
+	/** A right-click: tell the host which entry it landed on, or the empty slot snapped to the step. */
+	function onContextMenu(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		const report = props.onContextTarget;
+		if (!report) return;
+		const target = e.target instanceof Element ? e.target : null;
+		const id = target?.closest<HTMLElement>("[data-event-id]")?.dataset.eventId;
+		if (id) {
+			report({ event: props.events.find((ev) => ev.id === id) ?? null, range: null });
+			return;
+		}
+		if (!target || !colRef.current?.contains(target)) {
+			report({ event: null, range: null });
+			return;
+		}
+		const start = snapMs(msAt(e.clientY));
+		report({ event: null, range: { start, end: start + 30 * MIN } });
+	}
 	// #endregion
 
 	/**
@@ -883,6 +908,7 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 				class={cx("cal-tg__scroll", viewport.panning.value && "cal-tg__scroll--panning")}
 				ref={viewport.scrollRef}
 				onPointerDown={viewport.onPanPointerDown}
+				onContextMenu={onContextMenu}
 				role="region"
 				aria-label="Day timeline"
 				tabIndex={0}

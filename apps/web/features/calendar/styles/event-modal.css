@@ -60,6 +60,12 @@
 	transform: none;
 }
 
+/* Composing is a workspace, not a reading: narrower than an open event, and only as tall as the form. */
+.evm__panel[data-mode="create"] {
+	inline-size: var(--overlay-w-xl);
+	block-size: var(--overlay-h-md);
+}
+
 /* #region Header */
 .evm__top {
 	flex: none;
@@ -67,6 +73,26 @@
 	align-items: center;
 	gap: var(--space-4);
 	padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+/* With no meta bar beneath it while composing, the header carries the chrome's one hairline itself. */
+.evm__panel[data-mode="create"] .evm__top {
+	padding-block: var(--space-5);
+	border-block-end: var(--hairline);
+}
+
+/*
+ * The entry type, on a solid `--surface-2` track (§B.4.2) so it reads as a control on the panel's
+ * own ground. The selected segment keeps the package's `--primary-ink` (the state channel); the rest
+ * read in `--on-surface` rather than the secondary ink, because these are the choices, not metadata.
+ */
+.evm__top .evm__kind {
+	flex: none;
+	background: var(--surface-2);
+}
+
+.evm__top .evm__kind .ui-select-button__option:not([aria-checked="true"]) {
+	color: var(--on-surface);
 }
 
 .evm__ident {
@@ -250,31 +276,26 @@ label.evm-meta__k {
 }
 
 /*
- * The live badge. Its tone reinforces a word it already carries, so the hue is never the channel —
- * "Running now" reads as running with the colour removed.
+ * The live status ("Upcoming in 3 hours"). Plain Meta-register text, never a pill (§B.11): nothing
+ * here can be pressed, so nothing here is contained. The countdown is a changing figure, so it sets in
+ * `tabular-nums`. Under an hour out it gains one 7px pip; the words still carry the meaning without it.
  */
 .evm__badge {
 	display: inline-flex;
 	align-items: center;
-	block-size: 1.5rem;
-	padding-inline: var(--space-2);
-	border-radius: var(--radius-full);
-	font-size: var(--text-2xs);
-	font-weight: var(--fw-semibold);
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 
-.evm__badge[data-tone="progress"] {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	color: var(--primary);
-}
-
-.evm__badge[data-tone="info"] {
-	background: color-mix(in srgb, var(--secondary) var(--tint-soft), transparent);
-	color: var(--secondary);
+.evm__pip {
+	flex: none;
+	inline-size: var(--pip-dot);
+	block-size: var(--pip-dot);
+	border-radius: var(--radius-full);
+	background: var(--warning);
 }
 
 .evm__badge:focus-visible {
@@ -646,6 +667,170 @@ label.evm-meta__k {
 .evm-rich ol {
 	margin-block: var(--space-2);
 	padding-inline-start: var(--space-5);
+}
+/* #endregion */
+
+/* #region Compose — the two-column workspace a new entry is written in */
+/*
+ * The left column is what the entry IS (when, and the agenda); the right is how people reach it (the
+ * room, and whether it repeats). The columns are told apart by spacing alone — the chrome already
+ * spends the panel's hairlines.
+ */
+.evm-compose {
+	display: grid;
+	grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+	gap: var(--space-6);
+	align-items: start;
+}
+
+.evm-compose__main,
+.evm-compose__side {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	min-inline-size: 0;
+}
+
+/* The side column is narrow enough that its fields stack rather than pair up. */
+.evm-compose__side .evm-form {
+	grid-template-columns: minmax(0, 1fr);
+}
+/* #endregion */
+
+/* #region Meeting provider rail */
+/*
+ * A segmented rail of marks. The marks are full-colour brand art, so ink cannot carry the selected
+ * state the way it does on a text SelectButton: the checked segment lifts to `--surface` and draws a
+ * `--primary` contour (a control, so a contour is allowed), and the rest step down to greyscale.
+ */
+.evm-providers {
+	display: inline-flex;
+	align-self: start;
+	gap: var(--space-1);
+	padding: var(--space-1);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+}
+
+.evm-providers__opt {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: calc(var(--fld-h-sm) * 1.5);
+	block-size: var(--fld-h-sm);
+	padding: 0;
+	/* A constant-width contour, transparent until checked, so selecting never moves the box. */
+	border: 1px solid transparent;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.evm-providers__opt:hover:not([aria-checked="true"]) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+
+.evm-providers__opt[aria-checked="true"] {
+	border-color: var(--primary);
+	background: var(--surface);
+	color: var(--on-surface);
+	box-shadow: var(--elevation-low);
+}
+
+.evm-providers__opt:active {
+	transform: scale(var(--btn-press-scale-icon));
+}
+
+/* The product's own reduced-motion switch; the OS channel is in the reduced-motion region below. */
+:root[data-motion="reduced"] .evm-providers__opt:active {
+	transform: none;
+}
+
+.evm-providers__mark {
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+}
+
+.evm-providers__opt:not([aria-checked="true"]) .evm-providers__mark {
+	filter: grayscale(1);
+}
+/* #endregion */
+
+/* #region Recurrence */
+/* `--text-sm` here is what the accordion's `font: inherit` header reads, so its toggle sits in the
+   form's register rather than the page's body size. */
+.evm-repeat {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	font-size: var(--text-sm);
+}
+
+.evm-repeat__custom {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+/* The composer's footer: the countdown, then the occurrence it counts down to, on one meta line. */
+.evm__occurrence-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+	min-inline-size: 0;
+}
+
+.evm-room__note {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+/* The advanced fields fold behind one muted line, never a boxed panel (§B.4). */
+.evm-repeat__summary {
+	inline-size: fit-content;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.evm-repeat__summary:hover {
+	color: var(--on-surface);
+}
+
+.evm-repeat__more[open] > .evm-repeat__summary {
+	margin-block-end: var(--space-3);
+}
+
+.evm-repeat__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+}
+
+/* Each row's word sits above its controls, so the controls keep the column's full width. */
+.evm-repeat__k {
+	flex-basis: 100%;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* The rule read aloud — Meta register, and a live region, so it is never `display: none`. */
+.evm-repeat__sentence {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
 }
 /* #endregion */
 
@@ -1236,6 +1421,11 @@ label.evm-meta__k {
  * The refusal line takes the middle of the row and pushes the actions to the end. When there is
  * nothing to say an empty span holds the same space rather than letting the actions drift inward.
  */
+/* A new entry's footer leads with the occurrence it will create, in the Meta register (MetaLine). */
+.evm__occurrence {
+	min-inline-size: 0;
+}
+
 .evm__gate,
 .evm__refusal {
 	flex: 1 1 auto;
@@ -1269,6 +1459,11 @@ label.evm-meta__k {
 	   header's avatar stack still answers "who is on this". */
 	.evm__side {
 		display: none;
+	}
+
+	/* The compose columns stack in reading order: what it is, then how to reach it. */
+	.evm-compose {
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.evm__footacts {
@@ -1311,6 +1506,22 @@ label.evm-meta__k {
 		padding-inline-end: 0;
 	}
 
+	/* The title keeps its row with the close control; the entry type drops to a full-width row. */
+	.evm__panel[data-mode="create"] .evm__top {
+		flex-wrap: wrap;
+		row-gap: var(--space-3);
+	}
+
+	.evm__panel[data-mode="create"] .evm__ident {
+		flex-basis: 0;
+	}
+
+	.evm__top .evm__kind {
+		order: 1;
+		flex-basis: 100%;
+		display: flex;
+	}
+
 	.evm-facts__row {
 		flex-direction: column;
 		gap: 2px;
@@ -1323,8 +1534,13 @@ label.evm-meta__k {
 	.evm__panel,
 	.evm-tabs__tab::after,
 	.evm__act,
-	.evm-addfile {
+	.evm-addfile,
+	.evm-providers__opt {
 		transition: none;
+	}
+
+	.evm-providers__opt:active {
+		transform: none;
 	}
 
 	.evm__panel {

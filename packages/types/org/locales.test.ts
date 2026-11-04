@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { displayCurrencyForRegion } from "../finance/fx.ts";
-import { preferenceHints, toSupportedLocale } from "./locales.ts";
+import {
+	firstWeekdayOf,
+	preferenceHints,
+	SUPPORTED_LOCALES,
+	toSupportedLocale,
+} from "./locales.ts";
 
 Deno.test("toSupportedLocale: an offered tag is kept in its canonical form", () => {
 	assertEquals(toSupportedLocale("en-US"), "en-US");
@@ -51,4 +56,37 @@ Deno.test("preferenceHints: a bare language never picks a currency", () => {
 	assertEquals(preferenceHints(["en"]), { locale: "en-US" });
 	assertEquals(preferenceHints([]), {});
 	assertEquals(preferenceHints(["???"]), {});
+});
+
+Deno.test("firstWeekdayOf: the region decides, numbered as availability_rules.weekday (0 = Sunday)", () => {
+	assertEquals(firstWeekdayOf("en-GB"), 1);
+	assertEquals(firstWeekdayOf("en-US"), 0);
+	assertEquals(firstWeekdayOf("pt-BR"), 0);
+	assertEquals(firstWeekdayOf("ar-EG"), 6);
+	assertEquals(firstWeekdayOf("dv-MV"), 5);
+	assertEquals(firstWeekdayOf("ar-AE"), 1);
+});
+
+Deno.test("firstWeekdayOf: an explicit -u-fw- keyword wins; a bare language uses its likely region", () => {
+	assertEquals(firstWeekdayOf("en-GB-u-fw-sun"), 0);
+	assertEquals(firstWeekdayOf("en-US-u-ca-gregory-fw-mon"), 1);
+	assertEquals(firstWeekdayOf("ja"), 0);
+	assertEquals(firstWeekdayOf("de"), 1);
+});
+
+Deno.test("firstWeekdayOf: an unreadable or missing locale starts on Monday", () => {
+	assertEquals(firstWeekdayOf("not a locale!"), 1);
+	assertEquals(firstWeekdayOf(""), 1);
+	assertEquals(firstWeekdayOf(null), 1);
+	assertEquals(firstWeekdayOf(undefined), 1);
+});
+
+Deno.test("firstWeekdayOf: agrees with the engine's CLDR week data for every offered locale", () => {
+	for (const tag of SUPPORTED_LOCALES) {
+		const info =
+			(new Intl.Locale(tag) as Intl.Locale & { getWeekInfo?: () => { firstDay: number } })
+				.getWeekInfo?.();
+		if (!info) continue;
+		assertEquals(firstWeekdayOf(tag), info.firstDay % 7, tag);
+	}
 });

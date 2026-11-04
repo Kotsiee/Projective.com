@@ -11,6 +11,7 @@ import {
 	RsvpResponse,
 	SchedulingPartySchema,
 } from "./coordination.ts";
+import { RRuleText } from "./rows.ts";
 
 /**
  * scheduling — the Zod SSOT for the Calendar & Schedule domain shared across every surface: the
@@ -123,6 +124,15 @@ export const CalendarEventSchema = z.object({
 	 * already names it.
 	 */
 	projectId: z.string().max(120).optional(),
+	/**
+	 * The series rule, set on a series MASTER only (it is itself the first occurrence). RFC 5545 form
+	 * without the `RRULE:` prefix; shape-checked here as in the database, `expandIcsSeries`
+	 * (`ics-recurrence.ts`, over `rrule.ts`) owns the meaning, `COUNT` included.
+	 * Party-only: neither recurrence field is in privacy.ts `PUBLIC_EVENT_FIELDS`.
+	 */
+	recurrenceRule: RRuleText.optional(),
+	/** The master a later occurrence of a series belongs to. Never set alongside {@link recurrenceRule}. */
+	recurrenceParentId: z.string().max(120).optional(),
 
 	// #region Discovery-call projection (additive, all optional)
 	/**

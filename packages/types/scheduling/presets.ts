@@ -6,6 +6,7 @@ import {
 	AvailabilityRuleDraftSchema,
 } from "./recurrence.ts";
 import { AvailabilityKind, ianaTimezone, PresetScope } from "./rows.ts";
+import { IsoDate } from "./civil.ts";
 
 /**
  * scheduling.presets — the WRITE payloads around availability presets (plan §5.5–§5.6): saving a
@@ -71,6 +72,8 @@ export interface SavePresetResult {
 export interface PresetUser {
 	kind: "service" | "profile" | "team" | "business";
 	name: string;
+	/** A service's `svc-` listing slug — the `listingId` a bind names. Absent on an owner. */
+	listing?: string;
 }
 
 /** What `GET /api/scheduling/presets` answers: the live presets, and who follows each library one. */
@@ -78,7 +81,48 @@ export interface PresetListResult {
 	presets: AvailabilityPreset[];
 	/** Keyed by library preset id; a preset nothing follows has an empty list. */
 	usage: Record<string, PresetUser[]>;
+	/** The schedule the presets belong to; `null` until the owner has saved one. */
+	schedule: ScheduleSettings | null;
 }
+// #endregion
+
+// #region Schedule settings
+/** One `scheduling.blackout_dates` row as the owner manages it; `end` is exclusive. */
+export interface ScheduleBlackout {
+	id: string;
+	start: number;
+	end: number;
+	label: string;
+	/** `label_is_public`: whether a visitor reads {@link label}; otherwise they see "Unavailable". */
+	labelIsPublic: boolean;
+}
+
+/** The schedule-wide facts every preset shares: its zone, whether it is public, and its leave. */
+export interface ScheduleSettings {
+	timezone: string;
+	published: boolean;
+	/** Blackouts that have not ended yet, soonest first. */
+	blackouts: ScheduleBlackout[];
+}
+
+/**
+ * `POST /api/scheduling/blackouts` — whole days off, inclusive of both dates, in the schedule's zone.
+ * Removed again with `DELETE /api/scheduling/blackouts?id=`. The label stays private unless
+ * `labelIsPublic` says otherwise (the `label_is_public` privacy contract, default `false`).
+ */
+export const BlackoutInputSchema = z.object({
+	startsOn: IsoDate,
+	endsOn: IsoDate,
+	label: z.string().trim().min(1).max(80).default("Unavailable"),
+	labelIsPublic: z.boolean().default(false),
+}).refine((b) => b.endsOn >= b.startsOn, {
+	message: "The last day can't be before the first.",
+	path: ["endsOn"],
+}).refine((b) => Date.parse(b.endsOn) - Date.parse(b.startsOn) <= 366 * 86_400_000, {
+	message: "Book at most a year at a time.",
+	path: ["endsOn"],
+});
+export type BlackoutInput = z.infer<typeof BlackoutInputSchema>;
 // #endregion
 
 // #region Archive

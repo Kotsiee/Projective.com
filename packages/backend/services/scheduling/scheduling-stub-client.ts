@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "supabaseClient";
+import { mintSlug } from "@projective/types/slugs";
 
 /**
  * scheduling-stub-client — a STATEFUL Supabase client for the preset tests that run without a
@@ -59,8 +60,14 @@ export function stubSchedulingClient(
 		const filters: Array<(row: Row) => boolean> = [];
 		let patch: Row | null = null;
 		let inserted: Row[] | null = null;
+		let removing = false;
 		const allowed = (r: Row) => writePolicy[table]?.(r) ?? true;
 		const run = (): { data: Row[] | null; error: StubError | null } => {
+			if (removing) {
+				const gone = (store[table] ?? []).filter((r) => filters.every((f) => f(r)) && allowed(r));
+				store[table] = (store[table] ?? []).filter((r) => !gone.includes(r));
+				return { data: gone, error: null };
+			}
 			if (inserted) {
 				if (!inserted.every(allowed)) {
 					return { data: null, error: { code: "42501", message: "row-level security" } };
@@ -90,6 +97,10 @@ export function stubSchedulingClient(
 			gt: (c: string, v: string) => (filters.push((r) => String(value(r, c)) > v), chain),
 			update: (p: Row) => {
 				patch = p;
+				return chain;
+			},
+			delete: () => {
+				removing = true;
 				return chain;
 			},
 			insert: (rows: Row | Row[]) => {
@@ -147,6 +158,8 @@ export function fakePresetDoors(): Record<string, StubRpc> {
 					schedule_id: args.p_schedule,
 					scope: input.scope,
 					blueprint_id: input.blueprint_id ?? null,
+					// trg_availability_presets_slug mints one; the door never supplies it.
+					slug: mintSlug("preset"),
 					is_default: false,
 					compiled_from: null,
 					compiled_through: null,

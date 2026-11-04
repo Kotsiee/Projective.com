@@ -7,7 +7,7 @@ import { todayIn } from "./civil.ts";
 import { SchedulerContext, type SchedulerContextValue } from "./context.ts";
 import { isTextInput, type KeyCommand, keyToAction } from "./keymap.ts";
 import { ShortcutSheet } from "./ShortcutSheet.tsx";
-import { createSchedulerStore } from "./store.ts";
+import { createSchedulerStore, type SchedulerStore } from "./store.ts";
 import type { Preset, SchedulerBlackout, SchedulerEngine } from "./types.ts";
 
 // #region Props
@@ -35,6 +35,17 @@ export interface AvailabilitySchedulerRootProps {
 	label?: string;
 	/** Mount the built-in shortcut sheet (default `true`). */
 	shortcutSheet?: boolean;
+	/**
+	 * A store to use instead of making one — shared by several Roots on one page whose parts live in
+	 * separate regions (a header, a panel, the body). It was made with its own `onChange`, so this
+	 * Root's `onChange` is not called. Read once, on mount.
+	 */
+	store?: SchedulerStore;
+	/**
+	 * This Root shares `store` with a primary Root elsewhere on the page: it renders no shortcut sheet
+	 * and no live region, so the primary's speak once for both (default `false`).
+	 */
+	satellite?: boolean;
 	class?: string;
 	children?: ComponentChildren;
 }
@@ -58,6 +69,7 @@ export function Root(props: AvailabilitySchedulerRootProps): JSX.Element {
 		viewerOwns = true,
 		label = "Availability scheduler",
 		shortcutSheet = true,
+		satellite = false,
 		class: className,
 		children,
 	} = props;
@@ -69,7 +81,7 @@ export function Root(props: AvailabilitySchedulerRootProps): JSX.Element {
 
 	const store = useMemo(
 		() =>
-			createSchedulerStore(value, engine, {
+			props.store ?? createSchedulerStore(value, engine, {
 				today,
 				weekStartsOn,
 				locale,
@@ -122,11 +134,13 @@ export function Root(props: AvailabilitySchedulerRootProps): JSX.Element {
 			<div class={cx("ui-avsched-scope", className)}>
 				<section class="ui-avsched" aria-label={label} onKeyDown={onKeyDown}>
 					{children}
-					<div class="ui-visually-hidden" role="status" aria-live="polite" aria-atomic="true">
-						<span key={announcement.seq}>{announcement.text}</span>
-					</div>
+					{!satellite && (
+						<div class="ui-visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+							<span key={announcement.seq}>{announcement.text}</span>
+						</div>
+					)}
 				</section>
-				{shortcutSheet && <ShortcutSheet />}
+				{shortcutSheet && !satellite && <ShortcutSheet />}
 			</div>
 		</SchedulerContext.Provider>
 	);

@@ -48,6 +48,12 @@ export interface EventMetaBarProps {
 	 */
 	canEdit: boolean;
 	/**
+	 * The composer's When row: the two instants only. The countdown badge sits in the composer's
+	 * footer beside the occurrence it counts down to (Decision #378), and the room and the organiser
+	 * are edited or absent a column away, so restating any of them here would be noise.
+	 */
+	timesOnly?: boolean;
+	/**
 	 * Stage a change onto the modal's working copy.
 	 *
 	 * Editing here is STAGED exactly like the agenda and the room: the patch lands in the draft held in
@@ -87,7 +93,7 @@ function useInstantBinding(ms: number, tz: string): Signal<Date | null> {
  * gate on the surface re-evaluates with it — rather than because this component keeps a second timer
  * of its own. Two clocks on one modal is exactly how the header came to contradict the body.
  */
-function EventLiveBadge(props: {
+export function EventLiveBadge(props: {
 	startMs: number;
 	endMs: number;
 	whenLabel: string;
@@ -108,7 +114,15 @@ function EventLiveBadge(props: {
 				 * countdown is an approximation of.
 				 */
 			}
+			{
+				/*
+				 * Plain Meta text, never a pill (§B.11): a status nobody can press does not get a control's
+				 * container. Under an hour out it gains a pip, so the one reading that asks for attention
+				 * is the one that stands out; the words carry the meaning with the colour removed.
+				 */
+			}
 			<span class="evm__badge" data-tone={badge.tone} tabIndex={0}>
+				{badge.imminent ? <span class="evm__pip" aria-hidden="true" /> : null}
 				{badge.label}
 			</span>
 		</Tooltip>
@@ -200,6 +214,8 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 	 * built here; it is a separate control, not a flag on this one.
 	 */
 	const editable = canEdit && !event.allDay;
+	// A deadline is one instant (`end === start`): it has a due time and no end to move.
+	const deadline = event.kind === "deadline";
 
 	/**
 	 * Moving the start MOVES THE END WITH IT, keeping the occurrence the same length.
@@ -237,14 +253,16 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 
 	return (
 		<ul class="evm-meta" aria-label="Event properties">
-			<li class="evm-meta__item evm-meta__item--badge">
-				<EventLiveBadge
-					startMs={event.start}
-					endMs={event.end}
-					whenLabel={whenLabel}
-					nowMs={props.nowMs}
-				/>
-			</li>
+			{props.timesOnly ? null : (
+				<li class="evm-meta__item evm-meta__item--badge">
+					<EventLiveBadge
+						startMs={event.start}
+						endMs={event.end}
+						whenLabel={whenLabel}
+						nowMs={props.nowMs}
+					/>
+				</li>
+			)}
 
 			{editable
 				? (
@@ -252,23 +270,25 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 						<MetaTimeField
 							id={`evm-start-${event.id}`}
 							icon="calendar"
-							label="Starts"
+							label={deadline ? "Due" : "Starts"}
 							value={startBinding}
 							hour12={hour12}
 							onChange={moveStart}
 						/>
-						<MetaTimeField
-							id={`evm-end-${event.id}`}
-							icon="clock"
-							label="Ends"
-							value={endBinding}
-							// The invariant, expressed as the control's own bound. It is re-read from the draft
-							// on every render, so a start that has just moved narrows this one immediately.
-							min={toPickerDate(event.start, tz)}
-							hour12={hour12}
-							aside={durationLabel(event.start, event.end) ?? undefined}
-							onChange={moveEnd}
-						/>
+						{deadline ? null : (
+							<MetaTimeField
+								id={`evm-end-${event.id}`}
+								icon="clock"
+								label="Ends"
+								value={endBinding}
+								// The invariant, expressed as the control's own bound. It is re-read from the draft
+								// on every render, so a start that has just moved narrows this one immediately.
+								min={toPickerDate(event.start, tz)}
+								hour12={hour12}
+								aside={durationLabel(event.start, event.end) ?? undefined}
+								onChange={moveEnd}
+							/>
+						)}
 					</>
 				)
 				: (
@@ -289,7 +309,7 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 					</>
 				)}
 
-			{event.meeting
+			{props.timesOnly ? null : event.meeting
 				? (
 					<MetaItem icon="video-camera" label="Room">
 						{event.meeting.providerLabel}
@@ -299,7 +319,7 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 				? <MetaItem icon="pin-location" label="Where">{event.location}</MetaItem>
 				: null}
 
-			{event.organiser
+			{event.organiser && !props.timesOnly
 				? (
 					<li class="evm-meta__item" data-end="true">
 						<Icon name="user" size="2xs" class="evm-meta__mark" />

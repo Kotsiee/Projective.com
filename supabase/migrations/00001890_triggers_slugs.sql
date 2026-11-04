@@ -60,3 +60,9 @@ DROP TRIGGER IF EXISTS trg_articles_slug ON catalogue.articles;
 CREATE TRIGGER trg_articles_slug
     BEFORE INSERT OR UPDATE ON catalogue.articles
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('art');
+
+-- An availability preset's address. save_availability_preset and the seed never supply one.
+DROP TRIGGER IF EXISTS trg_availability_presets_slug ON scheduling.availability_presets;
+CREATE TRIGGER trg_availability_presets_slug
+    BEFORE INSERT OR UPDATE ON scheduling.availability_presets
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('avp');

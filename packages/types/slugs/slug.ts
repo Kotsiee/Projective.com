@@ -86,6 +86,8 @@ export const SLUG_PREFIXES = {
 	article: "art",
 	/** A feedback-board idea (`community.feedback_ideas`, Decision #272). */
 	idea: "fbk",
+	/** An availability preset (`scheduling.availability_presets`, Decision #217). */
+	preset: "avp",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

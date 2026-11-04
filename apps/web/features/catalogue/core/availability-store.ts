@@ -6,7 +6,10 @@ import type {
 import type {
 	AvailabilityPreset,
 	BindListingAvailability,
+	BlackoutInput,
+	PresetListResult,
 	PresetUser,
+	ScheduleSettings,
 } from "@projective/types/scheduling";
 import type { BindListingAvailabilityResult } from "../types/catalogue-types.ts";
 import type { CatalogueResult } from "../types/results.ts";
@@ -20,6 +23,7 @@ import {
 	type SaveInputPatch,
 	schedulerPresetOf,
 	starterPreset,
+	UNSAVED_PRESET_ID,
 } from "./availability-model.ts";
 
 /**
@@ -38,6 +42,8 @@ import {
 export const presets = signal<AvailabilityPreset[] | null>(null);
 /** Who follows each library preset, keyed by preset id. */
 export const usage = signal<Record<string, PresetUser[]>>({});
+/** The schedule the presets share — zone, publishing, time off; `null` until read or never saved. */
+export const schedule = signal<ScheduleSettings | null>(null);
 /** Unsaved edits to templates other than the open one, keyed by preset id; Cancel drops them. */
 export const drafts = signal<Record<string, SchedulerPreset>>({});
 /** Bumped by every preset save or archive, so a page holding the mirrored weekly hours re-reads them. */
@@ -55,6 +61,8 @@ export const working = signal<SchedulerPreset | null>(null);
 export const intent = signal<"linked" | "override">("linked");
 /** A write in flight. */
 export const availabilityBusy = signal(false);
+/** Bumped as every write settles, saved or refused, so a field seeded from stored values re-seeds. */
+export const writesSettled = signal(0);
 /** The last write's outcome, worth saying aloud. */
 export const availabilityNotice = signal<string | null>(null);
 /** The profile-mirror outcome of the last default-preset save. */
@@ -70,12 +78,18 @@ export const boundPreset = computed(() =>
 export async function loadPresets(): Promise<void> {
 	const res = await WorkspaceService.presets();
 	if (res.ok && res.data) {
-		presets.value = res.data.presets;
-		usage.value = res.data.usage ?? {};
-		presetsError.value = null;
+		seedPresets(res.data);
 		return;
 	}
 	presetsError.value = res.message ?? "Your availability couldn't be loaded.";
+}
+
+/** Take a presets read as the store's state — a fetched one, or the page's server-rendered one. */
+export function seedPresets(result: PresetListResult): void {
+	presets.value = result.presets;
+	usage.value = result.usage ?? {};
+	schedule.value = result.schedule ?? null;
+	presetsError.value = null;
 }
 // #endregion
 
@@ -120,6 +134,12 @@ function stash(): void {
 	if (current && isUnsaved(current)) drafts.value = { ...drafts.peek(), [current.id]: current };
 }
 
+/** The template being opened leaves `drafts`: it is the working copy now, so a stale copy can't linger. */
+function take(id: string): void {
+	const { [id]: taken, ...rest } = drafts.peek();
+	if (taken) drafts.value = rest;
+}
+
 /** Open another template, keeping the open one's unsaved edits to come back to. */
 export function selectPreset(id: string): void {
 	if (working.peek()?.id === id) return;
@@ -127,6 +147,7 @@ export function selectPreset(id: string): void {
 	const next = drafts.peek()[id] ?? (stored ? schedulerPresetOf(stored) : null);
 	if (!next) return;
 	stash();
+	take(id);
 	working.value = next;
 	intent.value = "linked";
 	availabilityNotice.value = null;
@@ -190,6 +211,7 @@ async function run(task: () => Promise<string | null>): Promise<boolean> {
 		return problem === null;
 	} finally {
 		availabilityBusy.value = false;
+		writesSettled.value += 1;
 	}
 }
 
@@ -295,10 +317,93 @@ export function chooseLibraryPreset(presetId: string | null): Promise<boolean> {
 	});
 }
 
+// #region Full page
+/*
+ * The `/calendar?view=availability` page edits the same working copy as the modal, with no listing:
+ * the open template is chosen by the address (`?preset=`), and the schedule's time off and which
+ * services follow which template are written here directly.
+ */
+
+/** Open a template on the page by id: its unsaved draft, the stored one, else the default or a first. */
+export function openPreset(id: string | null, timezone: string): void {
+	const list = presets.peek() ?? [];
+	const pending = drafts.peek();
+	const stored = (id ? list.find((p) => p.id === id) : null) ?? defaultPreset(list);
+	const next = (id ? pending[id] : undefined) ?? (stored && pending[stored.id]) ??
+		(stored ? schedulerPresetOf(stored) : starterPreset(schedule.peek()?.timezone ?? timezone));
+	if (working.peek()?.id === next.id) return;
+	stash();
+	take(next.id);
+	working.value = next;
+	intent.value = "linked";
+	availabilityNotice.value = null;
+}
+
+/** Drop the open template's unsaved edits; one never saved is dropped for the default. */
+export function discardWorking(): void {
+	const value = working.peek();
+	if (!value) return;
+	const { [value.id]: _dropped, ...rest } = drafts.peek();
+	drafts.value = rest;
+	const stored = storedOf(value) ?? defaultPreset(presets.peek() ?? []);
+	working.value = stored ? schedulerPresetOf(stored) : null;
+	availabilityNotice.value = null;
+}
+
+/** Start a new, unsaved template as a copy of the open one. */
+export function duplicateWorking(): void {
+	const value = working.peek();
+	if (!value) return;
+	stash();
+	working.value = {
+		...value,
+		id: UNSAVED_PRESET_ID,
+		name: `${value.name.slice(0, 55)} copy`,
+		isDefault: false,
+		// A uuid rule id is kept by the save door, so the copy's rules get ids it will mint afresh.
+		rules: value.rules.map((rule, i) => ({
+			...rule,
+			id: `copy-${i}`,
+			condition: { ...rule.condition },
+		})),
+	};
+	availabilityNotice.value = null;
+}
+
+/** Book whole days off on the schedule. */
+export function addTimeOff(input: BlackoutInput): Promise<boolean> {
+	return run(async () => {
+		const res = await WorkspaceService.addBlackout(input);
+		return res.ok ? null : failure(res, "This time off couldn't be added.");
+	});
+}
+
+/** Remove one booked day range. */
+export function removeTimeOff(id: string): Promise<boolean> {
+	return run(async () => {
+		const res = await WorkspaceService.removeBlackout(id);
+		return res.ok ? null : failure(res, "This time off couldn't be removed.");
+	});
+}
+
+/** Have a session service book against a library template, or against the default with `null`. */
+export function linkService(listing: string, presetId: string | null): Promise<boolean> {
+	return run(async () => {
+		const res = await WorkspaceService.bindAvailability({
+			listingId: listing,
+			mode: presetId ? "preset" : "default",
+			presetId,
+		});
+		return res.ok ? null : failure(res, "That service couldn't be moved.");
+	});
+}
+// #endregion
+
 /** Forget everything (tests, or leaving the workspace). */
 export function resetAvailability(): void {
 	presets.value = null;
 	usage.value = {};
+	schedule.value = null;
 	drafts.value = {};
 	presetsError.value = null;
 	editorOpen.value = false;

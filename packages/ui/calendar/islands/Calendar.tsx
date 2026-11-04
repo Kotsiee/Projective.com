@@ -140,6 +140,13 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	 */
 	const draft = useSignal<CalendarRange | null>(null);
 	/**
+	 * Whether a drag gets the draft block and its composer. Only when the host can act on them
+	 * (`onQuickCreate` or `onExpandCreate`): a composer with neither is a popover whose Create does
+	 * nothing, so such a host is only TOLD about the range through `onSelectRange` — the
+	 * availability scheduler, whose drag has already painted the band by the time it would open.
+	 */
+	const composes = Boolean(props.onQuickCreate || props.onExpandCreate);
+	/**
 	 * Raised while a pointer is held on the draft BLOCK, so the composer beside it survives the press.
 	 *
 	 * The block is painted pixels, not an element, so the overlay-containment model reads a press on it
@@ -847,6 +854,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								renderSource={props.renderSource}
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
+								onContextTarget={props.onContextTarget}
 								onOpenDay={(d) => {
 									setFocus(d);
 									setView("day");
@@ -855,7 +863,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onZoom={zoom}
 								center={monthCenter}
 								popover={popover}
-								draft={draft}
+								draft={composes ? draft : undefined}
 							/>
 						)
 						: v === "day"
@@ -874,6 +882,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								renderSource={props.renderSource}
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
+								onContextTarget={props.onContextTarget}
 								onFocusDayChange={setFocus}
 								unfolded={unfolded.value}
 								onUnfold={toggleUnfold}
@@ -905,14 +914,16 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
 								onMoveEvent={props.onMoveEvent}
+								onContextTarget={props.onContextTarget}
 								onFocusChange={setFocus}
 								unfolded={unfolded.value}
 								onUnfold={toggleUnfold}
 								popover={popover}
 								highlight={highlight}
 								spotlight={props.spotlight}
+								present={props.present}
 								directOpen={props.directOpen}
-								draft={draft}
+								draft={composes ? draft : undefined}
 								pointerGuard={pointerGuard}
 								onZoom={zoom}
 								zoomRange={ZOOM_RANGE}

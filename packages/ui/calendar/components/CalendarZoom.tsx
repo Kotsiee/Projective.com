@@ -167,7 +167,7 @@ export function CalendarZoom(props: CalendarZoomProps): JSX.Element {
 							variant="text"
 							severity="secondary"
 							class="cal-zoom__mode ui-hit"
-							icon={<Icon name="timeline" size="sm" />}
+							icon={<Icon name="timeline-cascade" size="sm" />}
 							aria-label="Timeline view"
 							aria-pressed={timeline ? "true" : "false"}
 							onClick={() => props.onModeChange?.(timeline ? "calendar" : "timeline")}

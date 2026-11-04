@@ -35,6 +35,7 @@ export interface PresetRow {
 	schedule_id: string;
 	scope: PresetScope;
 	blueprint_id: string | null;
+	slug: string;
 	name: string;
 	description: string;
 	is_default: boolean;
@@ -68,7 +69,7 @@ export interface RuleBandRow {
 }
 
 export const PRESET_COLUMNS =
-	"id, schedule_id, scope, blueprint_id, name, description, is_default, compiled_from, compiled_through, archived_at";
+	"id, schedule_id, scope, blueprint_id, slug, name, description, is_default, compiled_from, compiled_through, archived_at";
 export const RULE_COLUMNS =
 	"id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label, is_active, position";
 export const BAND_COLUMNS = "rule_id, position, start_minute, end_minute";
@@ -115,6 +116,7 @@ export function presetFromRows(
 ): AvailabilityPreset {
 	return {
 		id: preset.id,
+		slug: preset.slug,
 		name: preset.name,
 		description: preset.description,
 		timezone,

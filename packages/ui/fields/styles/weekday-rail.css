@@ -1,0 +1,135 @@
+/*
+ * WeekdayRail — seven circular letter toggles in one row. Token-only (DESIGN_SYSTEM.md §A). Each disc
+ * is interactive, so it may carry a fill; it never carries a border, which is what keeps the
+ * selected and resting discs the same size and the row still when one is pressed (§3 gate 12).
+ *
+ * Resting: a solid `--surface-2` disc under `--text-secondary`. Selected: solid `--primary` under
+ * `--on-primary` — the mode-invariant brand pair, which has no luminance headroom in either direction,
+ * so its hover leaves the fill alone rather than lowering the label's contrast; the press is a scale.
+ */
+
+/* #region Block */
+.ui-weekday-rail {
+	--wdr-size: var(--fld-h-md);
+	--wdr-font: var(--fld-fs-md);
+	--wdr-rest-bg: var(--surface-2);
+	--wdr-rest-ink: var(--text-secondary);
+	--wdr-on-bg: var(--primary);
+	--wdr-on-ink: var(--on-primary);
+
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ui-weekday-rail--size-sm {
+	--wdr-size: var(--fld-h-sm);
+	--wdr-font: var(--fld-fs-sm);
+}
+
+.ui-weekday-rail--size-lg {
+	--wdr-size: var(--fld-h-lg);
+	--wdr-font: var(--fld-fs-lg);
+}
+/* #endregion */
+
+/* #region Day */
+.ui-weekday-rail__day {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--wdr-size);
+	block-size: var(--wdr-size);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: var(--wdr-rest-bg);
+	color: var(--wdr-rest-ink);
+	font-family: var(--font-sans);
+	font-size: var(--wdr-font);
+	font-weight: var(--fw-medium);
+	line-height: 1;
+	cursor: pointer;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-snappy);
+}
+
+.ui-weekday-rail__day:hover:not(:disabled):not([aria-pressed="true"]) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), var(--wdr-rest-bg));
+	color: var(--on-surface);
+}
+
+.ui-weekday-rail__day[aria-pressed="true"] {
+	background: var(--wdr-on-bg);
+	color: var(--wdr-on-ink);
+}
+
+.ui-weekday-rail__day:focus-visible {
+	outline: none;
+	box-shadow: var(--fld-focus-glow);
+}
+
+.ui-weekday-rail__day:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ui-weekday-rail__day:disabled {
+	cursor: not-allowed;
+	color: color-mix(in srgb, var(--wdr-rest-ink) var(--fld-disabled-mix), var(--wdr-rest-bg));
+}
+
+.ui-weekday-rail__day[aria-pressed="true"]:disabled {
+	background: color-mix(in srgb, var(--wdr-on-bg) var(--fld-disabled-mix), var(--surface-1));
+}
+
+.ui-weekday-rail__letter {
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region High contrast & forced colours */
+:root[data-contrast="high"] .ui-weekday-rail__day:not([aria-pressed="true"]) {
+	color: var(--on-surface);
+}
+
+@media (forced-colors: active) {
+	.ui-weekday-rail__day {
+		border: var(--fld-bw) solid ButtonText;
+	}
+
+	.ui-weekday-rail__day[aria-pressed="true"] {
+		background: Highlight;
+		color: HighlightText;
+		forced-color-adjust: none;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.ui-weekday-rail__day {
+		transition: none;
+	}
+
+	.ui-weekday-rail__day:active:not(:disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-weekday-rail__day {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .ui-weekday-rail__day:active:not(:disabled) {
+	transform: none;
+}
+/* #endregion */

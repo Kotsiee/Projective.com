@@ -1,14 +1,23 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { calendarTime } from "@projective/ui/calendar";
+import type { CalendarViewMode } from "@projective/ui/calendar";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { useMediaQuery } from "@projective/ui/navigation";
-import type { SchedulePage } from "@projective/types/scheduling";
+import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
+import type { PresetListResult, SchedulePage } from "@projective/types/scheduling";
 import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
-import { openStudio } from "@features/catalogue/core/availability-store.ts";
+import { fallbackZone, pageValueOf } from "../components/AvailabilityPageParts.tsx";
+import { type CalendarMode, calendarModeHref } from "../core/availability-view.ts";
+import {
+	AVAILABILITY_PANEL_ID,
+	availabilityFocus,
+	availabilityPresent,
+	availabilityView,
+	pageViewerOf,
+	usePageScheduler,
+} from "../core/availability-page.ts";
 import {
 	CONTEXT_PANEL_INFLOW_QUERY,
 	contextDrawerOpen,
@@ -20,6 +29,7 @@ import {
 	CALENDAR_PANEL_ID,
 	calendarFocus,
 	calendarPage,
+	calendarPresent,
 	calendarQuery,
 	calendarView,
 	filtersEngaged,
@@ -27,99 +37,108 @@ import {
 	importedEvents,
 	periodLabelFor,
 	resetFilters,
+	setCalendarMode,
+	shiftedFocus,
 } from "../core/calendar-state.ts";
 
 /**
- * CalendarHeaderBand — the middle-nav HEADER band on `/calendar`: whose week this is, which week it
- * is, and how to narrow it.
+ * CalendarHeaderBand — the middle-nav HEADER band on `/calendar`, ONE structure on both of its pages
+ * (Decision #377): the period trail at the start, the page tabs centred, and the actions at the end,
+ * the last two always Go to now and the panel toggle.
  *
  * Exactly `--shell-midnav-header-h` tall and transparent, per the band contract: the tonal surface is
  * the shell's own glass underlay and the seam beneath is the canvas frame's hairline, so painting a
  * plate or a second rule here doubles both.
  *
- * **The identity is the page's one `<h1>`.** `/calendar` is a bottom-nav primary, and the grid below
- * carries no title of its own, so the band's name is the heading a screen reader lands on. It keeps
- * the band's body register (semibold, never bold), and below 767px it is hidden visually rather than
- * removed, so the page keeps its heading where the period takes the band's width.
+ * **Events ⇄ Availability are link tabs** (`TabStrip`, the header tone), centred between two equal
+ * clusters like every middle-nav band: each is an address (`/calendar`, `/calendar?view=availability`),
+ * so the server renders the chosen page's lane, body, panel and footer in the first byte.
  *
- * **The period trail lives here, not in the grid.** The engine's own header is suppressed on this
- * surface (`hideHeader`), because a shell band and an in-body toolbar carrying the same Prev/Today/
- * Next would be two controls for one fact.
+ * **The page's `<h1>` is visually hidden.** The band draws no title — the tabs name the page — but a
+ * screen reader still lands on a heading, as on every bottom-nav primary.
  *
- * **Below 767px the band inherits the lane's duties.** `middle-nav.css` removes the lane at exactly
- * that width, and it is the only place the search and working hours live — `/wallet` proved the
- * duty must TRANSFER (a phone with no route to a section is a surface with no navigation), and
- * `/messages` proved what happens when it does not. The transfer is a viewport media query, not a
- * container query, precisely because it is keyed on the shell removing the lane rather than on this
- * band's own width.
+ * **The period trail lives here, not in the grid** — Previous · the period · Next, for the agenda's
+ * grid or the availability scheduler's. Neither grid draws its own, because a shell band and an
+ * in-body toolbar carrying the same Previous / Next would be two controls for one fact.
  *
- * **The trailing toggle opens the month navigator** — the middle-nav panel from 1280px, a drawer
- * below it — through the shell's shared panel state, the control `/messages` and `/catalogue/[id]`
- * put in the same place. Import, Export and Connect are the footer rig's, at every width.
+ * **The end cluster.** The time zone the grid's times are in, as muted meta (it yields first, below
+ * 1100px); then the page's own actions — the agenda's Timeline view, and below 767px the search and
+ * the filter the lane carries above it (`middle-nav.css` removes the lane at that width, and the duty
+ * must transfer); the scheduler's Undo and Redo; then Go to now, which moves the grid onto today and
+ * centres its now-line; then the panel toggle — the month navigator on the agenda, the template's
+ * settings and rules on Availability — from 1280px docked, a drawer below.
  */
 export interface CalendarHeaderBandProps {
-	/** The SSR page, so the band's identity and filter options paint in the first byte. */
+	/** Which of `/calendar`'s two pages this is. */
+	mode: CalendarMode;
+	/** The agenda's SSR page, so its period and filter options paint in the first byte. */
 	initial: SchedulePage | null;
+	/** The availability page's SSR presets read, for its zone and the template undo acts on. */
+	presets?: PresetListResult | null;
+	/** The template the availability address names. */
+	presetSlug?: string | null;
+	/** The viewer's `org.user_preferences.locale`, so the shared availability store is made alike. */
+	locale?: string;
 }
 
+const MODE_TABS = [
+	{
+		key: "agenda",
+		label: "Events",
+		href: calendarModeHref("agenda"),
+		icon: <Icon name="calendar" />,
+	},
+	{
+		key: "availability",
+		label: "Availability",
+		href: calendarModeHref("availability"),
+		icon: <Icon name="clock" />,
+	},
+] as const;
+
 export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.Element {
-	const filterOpen = useSignal(false);
-	const filterRef = useRef<HTMLButtonElement>(null);
+	return props.mode === "availability"
+		? (
+			<AvailabilityBand
+				presets={props.presets ?? null}
+				presetSlug={props.presetSlug ?? null}
+				locale={props.locale}
+			/>
+		)
+		: <AgendaBand initial={props.initial} />;
+}
+
+// #region Frame
+interface BandFrameProps {
+	mode: CalendarMode;
+	view: CalendarViewMode;
+	focus: number;
+	tz: string;
+	onStep: (delta: number) => void;
+	onNow: () => void;
+	panelId: string;
+	panelName: string;
+	/** The page's own actions, before Go to now. */
+	children?: ComponentChildren;
+}
+
+/** The structure both pages share; only the period's source and the page's own actions differ. */
+function BandFrame(props: BandFrameProps): JSX.Element {
 	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
 	const panelOpen = docked ? contextPanelDocked.value : contextDrawerOpen.value;
-
-	const page = calendarPage.value ?? props.initial;
-	const events = [...(page?.events ?? []), ...importedEvents.value];
-	const tz = page?.timezone ?? "UTC";
-
-	// Derived here, from the engine's own matrix, so the trail is right in the FIRST byte. Reading a
-	// value the grid published left it empty at SSR and flipping to the real week on hydration.
-	const period = periodLabelFor(calendarView.value, focusedAt(page), tz);
-
-	/**
-	 * Move the focused instant by one period.
-	 *
-	 * Through `calendarTime`, the engine's OWN zoned-date matrix, rather than millisecond arithmetic:
-	 * a day is 23 or 25 hours twice a year and a month is not 30 days, so a local `+ 7 * 86_400_000`
-	 * would drift the trail off the week the grid is drawing on exactly the days it matters. The band
-	 * moves the focus and the engine re-derives everything else from it.
-	 */
-	function step(delta: number): void {
-		const view = calendarView.value;
-		const from = focusedAt(page);
-		calendarFocus.value = view === "day"
-			? calendarTime.addZonedDays(from, delta, tz)
-			// A Gantt step is a week: its axis is continuous, and a month jump would leap past the
-			// whole viewport at every zoom but the widest.
-			: view === "week" || view === "timeline"
-			? calendarTime.addZonedDays(from, delta * 7, tz)
-			: calendarTime.addZonedMonths(from, delta, tz);
-	}
+	const period = periodLabelFor(props.view, props.focus, props.tz);
 
 	return (
 		<div class="cal-band">
-			<div class="cal-band__identity">
-				<h1 class="cal-band__name">{page?.title ?? "Calendar"}</h1>
-				<span class="cal-band__tz">{tz.replace(/_/g, " ")}</span>
-			</div>
+			<h1 class="ui-visually-hidden">Calendar</h1>
 
-			<div class="cal-band__trail" role="group" aria-label="Change period">
-				<Tooltip content="Today" density="compact">
-					<button
-						type="button"
-						class="cal-band__navbtn"
-						aria-label="Go to today"
-						onClick={() => (calendarFocus.value = Date.now())}
-					>
-						<Icon name="calendar" size="xs" />
-					</button>
-				</Tooltip>
+			<div class="cal-band__start" role="group" aria-label="Change period">
 				<Tooltip content="Previous" density="compact">
 					<button
 						type="button"
 						class="cal-band__navbtn"
 						aria-label="Previous period"
-						onClick={() => step(-1)}
+						onClick={() => props.onStep(-1)}
 					>
 						<Icon name="chevron-left" size="xs" />
 					</button>
@@ -130,103 +149,45 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 						type="button"
 						class="cal-band__navbtn"
 						aria-label="Next period"
-						onClick={() => step(1)}
+						onClick={() => props.onStep(1)}
 					>
 						<Icon name="chevron-right" size="xs" />
 					</button>
 				</Tooltip>
 			</div>
 
-			<div class="cal-band__controls">
-				{
-					/*
-					 * The search is the LANE's above 767px and this band's below it — one control that moves,
-					 * never two. `middle-nav.css` removes the lane at that width and it was the only place
-					 * find-in-calendar lived.
-					 */
-				}
-				<label class="cal-band__search">
-					<Icon name="search" size="xs" class="cal-band__searchglyph" aria-hidden="true" />
-					<input
-						class="cal-band__searchinput"
-						type="search"
-						value={calendarQuery.value}
-						placeholder="Search"
-						aria-label="Search your calendar"
-						onInput={(e) => (calendarQuery.value = (e.currentTarget as HTMLInputElement).value)}
-					/>
-				</label>
+			<TabStrip
+				tone="header"
+				label="Calendar pages"
+				items={MODE_TABS}
+				activeKey={props.mode}
+				class="cal-band__modes"
+			/>
 
-				{
-					/*
-					 * The filter is the LANE's above 767px (beside its search, the `/projects` anatomy) and
-					 * this band's below it, with the same facets — one control that moves, never two.
-					 */
-				}
-				<Tooltip content="Filter what is shown" density="compact">
+			<div class="cal-band__end">
+				<span class="cal-band__tz">{props.tz.replace(/_/g, " ")}</span>
+				{props.children}
+				<Tooltip content="Go to now" density="compact">
 					<button
 						type="button"
-						ref={filterRef}
-						class="cal-band__iconbtn cal-band__iconbtn--mobile"
-						data-on={filtersEngaged() ? "true" : undefined}
-						aria-label="Filter what is shown"
-						aria-haspopup="dialog"
-						aria-expanded={filterOpen.value ? "true" : "false"}
-						onClick={() => (filterOpen.value = !filterOpen.value)}
+						class="cal-band__iconbtn"
+						aria-label="Go to now"
+						onClick={props.onNow}
 					>
-						<Icon name="filter" size="xs" />
+						<Icon name="pin-clock" size="xs" />
 					</button>
 				</Tooltip>
-				<Popover
-					open={filterOpen}
-					targetRef={filterRef}
-					placement="bottom-end"
-					avoid={[".ui-app-shell__sidebar"]}
-				>
-					<div class="ui-lane-filter">
-						<header class="ui-lane-filter__head">
-							<span class="ui-lane-filter__title">Filters</span>
-							{activeFilterCount() > 0
-								? (
-									<button type="button" class="ui-lane-filter__reset" onClick={resetFilters}>
-										Reset
-									</button>
-								)
-								: null}
-						</header>
-						<CalendarFilterFacets events={events} tz={tz} />
-					</div>
-				</Popover>
-
-				{
-					/*
-					 * Availability, inherited from the lane below 767px: it opens the availability modal, the
-					 * same destination as the lane's controls.
-					 */
-				}
-				<Tooltip content="Availability" density="compact">
-					<button
-						type="button"
-						class="cal-band__iconbtn cal-band__iconbtn--mobile"
-						aria-label="Availability"
-						aria-haspopup="dialog"
-						onClick={() => void openStudio(tz)}
-					>
-						<Icon name="clock" size="xs" />
-					</button>
-				</Tooltip>
-
 				<Tooltip
-					content={panelOpen ? "Hide month navigator" : "Show month navigator"}
+					content={panelOpen ? `Hide ${props.panelName}` : `Show ${props.panelName}`}
 					density="compact"
 				>
 					<button
 						type="button"
 						class="cal-band__iconbtn"
 						data-on={panelOpen ? "true" : undefined}
-						aria-label="Month navigator"
+						aria-label={props.panelName[0].toUpperCase() + props.panelName.slice(1)}
 						aria-expanded={panelOpen}
-						aria-controls={docked ? CALENDAR_PANEL_ID : undefined}
+						aria-controls={docked ? props.panelId : undefined}
 						onClick={toggleContextPanel}
 					>
 						<Icon name="panel-right" size="xs" />
@@ -236,3 +197,147 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 		</div>
 	);
 }
+// #endregion
+
+// #region Events
+function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
+	const filterOpen = useSignal(false);
+	const filterRef = useRef<HTMLButtonElement>(null);
+	const page = calendarPage.value ?? props.initial;
+	const events = [...(page?.events ?? []), ...importedEvents.value];
+	const tz = page?.timezone ?? "UTC";
+	const view = calendarView.value;
+	const timeline = view === "timeline";
+
+	return (
+		<BandFrame
+			mode="agenda"
+			view={view}
+			// From the page's own clock, so the period is right in the FIRST byte rather than flipping on
+			// hydration to a value the grid published.
+			focus={focusedAt(page)}
+			tz={tz}
+			onStep={(delta) => (calendarFocus.value = shiftedFocus(view, focusedAt(page), delta, tz))}
+			onNow={() => {
+				calendarFocus.value = Date.now();
+				calendarPresent.value += 1;
+			}}
+			panelId={CALENDAR_PANEL_ID}
+			panelName="month navigator"
+		>
+			<label class="cal-band__search">
+				<Icon name="search" size="xs" class="cal-band__searchglyph" aria-hidden="true" />
+				<input
+					class="cal-band__searchinput"
+					type="search"
+					value={calendarQuery.value}
+					placeholder="Search"
+					aria-label="Search your calendar"
+					onInput={(e) => (calendarQuery.value = (e.currentTarget as HTMLInputElement).value)}
+				/>
+			</label>
+			<Tooltip content="Filter what is shown" density="compact">
+				<button
+					type="button"
+					ref={filterRef}
+					class="cal-band__iconbtn cal-band__iconbtn--mobile"
+					data-on={filtersEngaged() ? "true" : undefined}
+					aria-label="Filter what is shown"
+					aria-haspopup="dialog"
+					aria-expanded={filterOpen.value ? "true" : "false"}
+					onClick={() => (filterOpen.value = !filterOpen.value)}
+				>
+					<Icon name="filter" size="xs" />
+				</button>
+			</Tooltip>
+			<Popover
+				open={filterOpen}
+				targetRef={filterRef}
+				placement="bottom-end"
+				avoid={[".ui-app-shell__sidebar"]}
+			>
+				<div class="ui-lane-filter">
+					<header class="ui-lane-filter__head">
+						<span class="ui-lane-filter__title">Filters</span>
+						{activeFilterCount() > 0
+							? (
+								<button type="button" class="ui-lane-filter__reset" onClick={resetFilters}>
+									Reset
+								</button>
+							)
+							: null}
+					</header>
+					<CalendarFilterFacets events={events} tz={tz} />
+				</div>
+			</Popover>
+			<Tooltip content="Timeline view" density="compact">
+				<button
+					type="button"
+					class="cal-band__iconbtn"
+					data-on={timeline ? "true" : undefined}
+					aria-label="Timeline view"
+					aria-pressed={timeline ? "true" : "false"}
+					onClick={() => setCalendarMode(timeline ? "calendar" : "timeline")}
+				>
+					<Icon name="timeline-cascade" size="xs" />
+				</button>
+			</Tooltip>
+		</BandFrame>
+	);
+}
+// #endregion
+
+// #region Availability
+function AvailabilityBand(
+	props: { presets: PresetListResult | null; presetSlug: string | null; locale?: string },
+): JSX.Element {
+	const store = usePageScheduler(
+		pageValueOf(props.presets, props.presetSlug),
+		pageViewerOf(props.locale),
+	);
+	const tz = fallbackZone(props.presets?.schedule ?? null);
+	const view = availabilityView.value;
+	const focus = availabilityFocus.value || Date.now();
+
+	return (
+		<BandFrame
+			mode="availability"
+			view={view}
+			focus={focus}
+			tz={tz}
+			onStep={(delta) => (availabilityFocus.value = shiftedFocus(view, focus, delta, tz))}
+			onNow={() => {
+				availabilityFocus.value = Date.now();
+				availabilityPresent.value += 1;
+			}}
+			panelId={AVAILABILITY_PANEL_ID}
+			panelName="settings and rules"
+		>
+			<Tooltip content="Undo" density="compact">
+				<button
+					type="button"
+					class="cal-band__iconbtn"
+					aria-label="Undo"
+					aria-keyshortcuts="Control+Z"
+					disabled={!store.canUndo.value}
+					onClick={store.undo}
+				>
+					<Icon name="rotate-ccw" size="xs" />
+				</button>
+			</Tooltip>
+			<Tooltip content="Redo" density="compact">
+				<button
+					type="button"
+					class="cal-band__iconbtn"
+					aria-label="Redo"
+					aria-keyshortcuts="Control+Shift+Z"
+					disabled={!store.canRedo.value}
+					onClick={store.redo}
+				>
+					<Icon name="rotate-cw" size="xs" />
+				</button>
+			</Tooltip>
+		</BandFrame>
+	);
+}
+// #endregion

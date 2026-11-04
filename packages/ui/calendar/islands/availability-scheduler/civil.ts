@@ -92,6 +92,26 @@ export function monthMatrix(month: string, weekStartsOn: number): string[] {
 	return Array.from({ length: 42 }, (_, i) => addDays(first, i));
 }
 
+/** A civil date as the local-midnight `Date` a date picker binds, or `null` for none or a bad one. */
+export function dateOfCivil(iso: string | null | undefined): Date | null {
+	if (!iso || !isIsoDate(iso)) return null;
+	const [y, m, d] = iso.split("-").map(Number);
+	return new Date(y, m - 1, d);
+}
+
+/** The civil date a picked local `Date` names. */
+export function civilOf(date: Date): string {
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${String(date.getFullYear()).padStart(4, "0")}-${pad(date.getMonth() + 1)}-${
+		pad(date.getDate())
+	}`;
+}
+
+/** The days a month can hold: February counts its leap day, so a yearly 29 February stays offered. */
+export function daysInMonthOf(month: number): number {
+	return month === 2 ? 29 : [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
 /** Today in `timezone`, as `YYYY-MM-DD`. */
 export function todayIn(timezone: string, now = Date.now()): string {
 	const parts = new Intl.DateTimeFormat("en-CA", {

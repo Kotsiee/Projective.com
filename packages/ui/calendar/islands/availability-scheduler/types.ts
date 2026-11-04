@@ -34,10 +34,11 @@ export interface Band {
 // #region Rules
 /** The human-shaped recurrence the editor authors. */
 export type RulePattern =
+	| { type: "daily"; interval: number }
 	| { type: "weekly"; days: number[]; interval: number }
 	| { type: "monthly_date"; days: number[]; interval: number }
 	| { type: "monthly_weekday"; ordinal: number; weekday: number; interval: number }
-	| { type: "yearly"; month: number; day: number }
+	| { type: "yearly"; month: number; day: number; interval: number }
 	| { type: "once"; date: string };
 
 /** The pattern discriminant. */

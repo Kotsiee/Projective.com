@@ -20,8 +20,10 @@ const INTERACTIVE = [
 	"summary",
 	"Button",
 	"SelectButton",
-	"InputMask",
 	"InputText",
+	"NumberInput",
+	"DatePicker",
+	"WeekdayRail",
 	"Select",
 	"Dialog",
 	"Popover",
@@ -105,7 +107,17 @@ const ALL = PARTS.flatMap(elements);
 Deno.test("a11y: the scan finds the scheduler's interactive surface", () => {
 	assert(ALL.length >= 40, `only ${ALL.length} interactive elements found — the scanner is broken`);
 	for (
-		const tag of ["button", "Button", "SelectButton", "InputMask", "summary", "Dialog", "role=grid"]
+		const tag of [
+			"button",
+			"Button",
+			"SelectButton",
+			"NumberInput",
+			"DatePicker",
+			"WeekdayRail",
+			"summary",
+			"Dialog",
+			"role=grid",
+		]
 	) {
 		assert(ALL.some((el) => el.tag === tag), `no <${tag}> found`);
 	}

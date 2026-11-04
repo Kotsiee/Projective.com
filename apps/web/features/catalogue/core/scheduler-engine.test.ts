@@ -67,7 +67,12 @@ Deno.test("a malformed date is a bug, thrown rather than guessed at", () => {
 	assertThrows(() => isoDate("14/10/2026"), RangeError);
 	assertEquals(isoDate("2026-10-14"), "2026-10-14");
 	assertEquals(
-		schedulerPresetOf({ ...SCHEDULE_TEMPLATES[0], id: "p", blueprintId: null }).rules.length,
+		schedulerPresetOf({
+			...SCHEDULE_TEMPLATES[0],
+			id: "p",
+			slug: "avp-2222222222",
+			blueprintId: null,
+		}).rules.length,
 		2,
 	);
 });

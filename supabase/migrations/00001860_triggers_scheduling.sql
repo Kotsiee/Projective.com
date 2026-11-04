@@ -42,6 +42,11 @@ CREATE OR REPLACE TRIGGER trg_guard_rostered_event
     BEFORE UPDATE OR DELETE ON scheduling.events
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_guard_rostered_event ();
 
+-- A recurring series stays on one anchor and one level deep (00001510 §5).
+CREATE OR REPLACE TRIGGER trg_guard_event_recurrence
+    BEFORE INSERT OR UPDATE OF recurrence_rule, recurrence_parent_id, schedule_id, project_id ON scheduling.events
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_guard_event_recurrence ();
+
 -- A schedule's time zone is one Postgres recognises (00001510 §5).
 CREATE OR REPLACE TRIGGER trg_check_schedule_timezone
     BEFORE INSERT OR UPDATE OF timezone ON scheduling.schedules

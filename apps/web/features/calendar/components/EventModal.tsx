@@ -14,7 +14,8 @@ import { Backdrop, BodyPortal, useFrameScroll, useFrameState } from "@projective
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { MoneyView } from "@projective/ui/display/money";
-import { Button, InlineEdit, InputText } from "@projective/ui/fields";
+import { MetaLine } from "@projective/ui/display";
+import { Button, InlineEdit, InputText, SelectButton } from "@projective/ui/fields";
 import { ConfirmPopup, Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { styleVars } from "@ui/core/style.ts";
@@ -29,6 +30,7 @@ import type {
 import { createRefusal, eventLiveStatus } from "@projective/types/scheduling";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import type { EventAccess } from "../core/event-access.ts";
+import { checkJoinLink } from "../core/meeting-link.ts";
 import {
 	durationLabel,
 	eventFingerprint,
@@ -42,7 +44,7 @@ import {
 	rescheduleView,
 	viewerSeat,
 } from "../core/event-view.ts";
-import { EventMetaBar } from "./EventMetaBar.tsx";
+import { EventLiveBadge, EventMetaBar } from "./EventMetaBar.tsx";
 import { EventAttendeePanel } from "./EventAttendeePanel.tsx";
 import { EventDetailsTab } from "./tabs/EventDetailsTab.tsx";
 import { EventRescheduleTab } from "./tabs/EventRescheduleTab.tsx";
@@ -150,6 +152,9 @@ const panelId = (t: EventTab) => `evm-panel-${t}`;
  * minute of granularity can never make it more than half a unit stale.
  */
 const TICK_MS = 30_000;
+
+/** The span a deadline turned back into a timed entry runs for when it was opened as an instant. */
+const FALLBACK_SPAN_MS = 30 * 60_000;
 
 /**
  * The ONE clock this surface reasons with.
@@ -259,6 +264,11 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const view = rescheduleView(event, nowMs);
 	/** A new entry may not start in the past; editing an existing one is never gated by time. */
 	const pastRefusal = creating ? createRefusal(nowMs, event) : null;
+	// The field states why beside itself; here it only holds Create back.
+	const linkCheck = creating && event.meeting?.joinUrl
+		? checkJoinLink(event.meeting.joinUrl)
+		: null;
+	const linkRefused = !!linkCheck && !linkCheck.ok;
 
 	const panelKind = panelFor(activeTab);
 	const sidePanel = panelKind === "attendees" && showPanel.value && party && event.roster
@@ -277,10 +287,26 @@ export function EventModal(props: EventModalProps): JSX.Element {
 		draft.value = { ...draft.value, ...next };
 	}
 
+	/**
+	 * Change what a new entry is. A deadline is the instant work is owed (`end === start`), so choosing
+	 * one collapses the range; leaving it restores the length the entry was opened on.
+	 */
+	function setKind(kind: CalendarEventKind): void {
+		const { start, end } = draft.value;
+		const span = props.event.end - props.event.start || FALLBACK_SPAN_MS;
+		patch(
+			kind === "deadline"
+				? { kind, end: start }
+				: end === start
+				? { kind, end: start + span }
+				: { kind },
+		);
+	}
+
 	function commit(): void {
 		if (!canEdit) return;
 		const title = draft.value.title.trim();
-		if (creating && (!title || pastRefusal)) return;
+		if (creating && (!title || pastRefusal || linkRefused)) return;
 		const committed: CalendarEvent = { ...draft.value, title: title || draft.value.title };
 		draft.value = committed;
 		baseline.value = eventFingerprint(committed);
@@ -428,6 +454,19 @@ export function EventModal(props: EventModalProps): JSX.Element {
 								)}
 						</div>
 
+						{creating && props.createKinds.length > 1
+							? (
+								<SelectButton
+									class="evm__kind"
+									size="sm"
+									value={event.kind}
+									options={props.createKinds}
+									aria-label="Entry type"
+									onValueChange={(v) => setKind(v as CalendarEventKind)}
+								/>
+							)
+							: null}
+
 						<div class="evm__who">
 							{event.roster && event.roster.length > 0
 								? (
@@ -500,58 +539,60 @@ export function EventModal(props: EventModalProps): JSX.Element {
 					{/* #endregion */}
 
 					{/* #region Meta bar + tab strip */}
-					<div class="evm__bar">
-						<EventMetaBar
-							event={event}
-							tz={tz}
-							hour12={hour12}
-							nowMs={nowMs}
-							canEdit={canEdit}
-							onPatch={patch}
-						/>
+					{creating ? null : (
+						<div class="evm__bar">
+							<EventMetaBar
+								event={event}
+								tz={tz}
+								hour12={hour12}
+								nowMs={nowMs}
+								canEdit={canEdit}
+								onPatch={patch}
+							/>
 
-						{tabs.length > 1
-							? (
-								<div class="evm-tabs" role="tablist" aria-label="Event views">
-									{tabs.map((t, i) => (
-										// A labelled tab's name shows only while its label is collapsed to the
-										// visually-hidden box (below 640px); the glyph-only History tab always.
-										<Tooltip key={t.key} content={t.label} whenTruncated={!t.iconOnly}>
-											<button
-												type="button"
-												id={tabId(t.key)}
-												role="tab"
-												class="evm-tabs__tab"
-												data-icononly={t.iconOnly ? "true" : undefined}
-												aria-selected={activeTab === t.key ? "true" : "false"}
-												// Only the SELECTED tab points at a panel, because only one panel is ever
-												// rendered — the body re-points as the selection moves. Setting it on every
-												// tab left n−1 `aria-controls` referencing element ids that are not in the
-												// document, which is a worse answer than the attribute being absent: the
-												// tabs pattern only requires it on the tab whose panel exists.
-												aria-controls={activeTab === t.key ? panelId(t.key) : undefined}
-												// Always named, not only when icon-only: below 640px the labels collapse to
-												// their glyphs so every tab fits without a hidden horizontal scroller, and a
-												// tab that loses its visible text must not lose its name with it. The value
-												// is identical to the visible label, so "label in name" (WCAG 2.5.3) holds
-												// in both presentations.
-												aria-label={t.label}
-												tabIndex={activeTab === t.key ? 0 : -1}
-												onKeyDown={(e) => onTabKey(e, i)}
-												onClick={() => (tab.value = t.key)}
-											>
-												<Icon name={t.icon} size="xs" class="evm-tabs__mark" />
-												{t.iconOnly ? null : <span class="evm-tabs__label">{t.label}</span>}
-												{!t.iconOnly && t.count
-													? <span class="evm-tabs__count">{t.count}</span>
-													: null}
-											</button>
-										</Tooltip>
-									))}
-								</div>
-							)
-							: null}
-					</div>
+							{tabs.length > 1
+								? (
+									<div class="evm-tabs" role="tablist" aria-label="Event views">
+										{tabs.map((t, i) => (
+											// A labelled tab's name shows only while its label is collapsed to the
+											// visually-hidden box (below 640px); the glyph-only History tab always.
+											<Tooltip key={t.key} content={t.label} whenTruncated={!t.iconOnly}>
+												<button
+													type="button"
+													id={tabId(t.key)}
+													role="tab"
+													class="evm-tabs__tab"
+													data-icononly={t.iconOnly ? "true" : undefined}
+													aria-selected={activeTab === t.key ? "true" : "false"}
+													// Only the SELECTED tab points at a panel, because only one panel is ever
+													// rendered — the body re-points as the selection moves. Setting it on every
+													// tab left n−1 `aria-controls` referencing element ids that are not in the
+													// document, which is a worse answer than the attribute being absent: the
+													// tabs pattern only requires it on the tab whose panel exists.
+													aria-controls={activeTab === t.key ? panelId(t.key) : undefined}
+													// Always named, not only when icon-only: below 640px the labels collapse to
+													// their glyphs so every tab fits without a hidden horizontal scroller, and a
+													// tab that loses its visible text must not lose its name with it. The value
+													// is identical to the visible label, so "label in name" (WCAG 2.5.3) holds
+													// in both presentations.
+													aria-label={t.label}
+													tabIndex={activeTab === t.key ? 0 : -1}
+													onKeyDown={(e) => onTabKey(e, i)}
+													onClick={() => (tab.value = t.key)}
+												>
+													<Icon name={t.icon} size="xs" class="evm-tabs__mark" />
+													{t.iconOnly ? null : <span class="evm-tabs__label">{t.label}</span>}
+													{!t.iconOnly && t.count
+														? <span class="evm-tabs__count">{t.count}</span>
+														: null}
+												</button>
+											</Tooltip>
+										))}
+									</div>
+								)
+								: null}
+						</div>
+					)}
 					{/* #endregion */}
 
 					{/* #region Body — the splitter: tabs left, the roster right */}
@@ -587,7 +628,19 @@ export function EventModal(props: EventModalProps): JSX.Element {
 												tz={tz}
 												hour12={hour12}
 												canEdit={canEdit}
-												createKinds={props.createKinds}
+												when={creating
+													? (
+														<EventMetaBar
+															event={event}
+															tz={tz}
+															hour12={hour12}
+															nowMs={nowMs}
+															canEdit={canEdit}
+															timesOnly
+															onPatch={patch}
+														/>
+													)
+													: undefined}
 												onPatch={patch}
 											/>
 										)
@@ -657,28 +710,62 @@ export function EventModal(props: EventModalProps): JSX.Element {
 
 					{/* #region Footer — how long, what it is worth, and what to do about it */}
 					<footer class="evm__foot">
-						<div class="evm-money">
-							<span class="evm-money__fig">
-								<span class="evm-money__k">
-									{event.allDay || durationLabel(event.start, event.end) ? "Runs for" : "Due"}
-								</span>
-								<span class="evm-money__v">
-									{event.allDay ? "All day" : durationLabel(event.start, event.end) ??
-										calendarTime.fmtTime(event.start, tz, hour12)}
-								</span>
-							</span>
-							{money
-								? (
-									<span class="evm-money__fig" data-role="money">
-										<span class="evm-money__k">{money.label}</span>
-										<span class="evm-money__v">
-											<MoneyView value={money.value} size="key" />
+						{creating
+							? (
+								<div class="evm__occurrence-row">
+									<EventLiveBadge
+										startMs={event.start}
+										endMs={event.end}
+										whenLabel={`${calendarTime.fmtFullDate(event.start, tz)} · ${
+											calendarTime.fmtRange(event.start, event.end, tz, hour12)
+										}`}
+										nowMs={nowMs}
+									/>
+									<MetaLine
+										class="evm__occurrence"
+										items={[
+											calendarTime.fmtFullDate(event.start, tz),
+											{
+												text: event.allDay
+													? "All day"
+													: event.end === event.start
+													? `Due ${calendarTime.fmtTime(event.start, tz, hour12)}`
+													: calendarTime.fmtRange(event.start, event.end, tz, hour12),
+												tabular: true,
+											},
+											{
+												text: event.allDay ? "" : durationLabel(event.start, event.end) ?? "",
+												tabular: true,
+											},
+											{ text: tz, title: "Every time here is in the schedule's own zone" },
+										]}
+									/>
+								</div>
+							)
+							: (
+								<div class="evm-money">
+									<span class="evm-money__fig">
+										<span class="evm-money__k">
+											{event.allDay || durationLabel(event.start, event.end) ? "Runs for" : "Due"}
 										</span>
-										{money.note ? <span class="evm-money__note">{money.note}</span> : null}
+										<span class="evm-money__v">
+											{event.allDay ? "All day" : durationLabel(event.start, event.end) ??
+												calendarTime.fmtTime(event.start, tz, hour12)}
+										</span>
 									</span>
-								)
-								: null}
-						</div>
+									{money
+										? (
+											<span class="evm-money__fig" data-role="money">
+												<span class="evm-money__k">{money.label}</span>
+												<span class="evm-money__v">
+													<MoneyView value={money.value} size="key" />
+												</span>
+												{money.note ? <span class="evm-money__note">{money.note}</span> : null}
+											</span>
+										)
+										: null}
+								</div>
+							)}
 
 						{refusal.value || pastRefusal
 							? (
@@ -731,8 +818,9 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										<Button variant="text" size="sm" onClick={onClose}>Cancel</Button>
 										<Button
 											variant="filled"
+											severity="primary"
 											size="sm"
-											disabled={!event.title.trim() || !!pastRefusal}
+											disabled={!event.title.trim() || !!pastRefusal || linkRefused}
 											onClick={commit}
 										>
 											Create

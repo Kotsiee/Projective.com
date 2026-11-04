@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
 import {
@@ -9,6 +9,7 @@ import {
 	InputNumber,
 	Select,
 	ToggleSwitch,
+	weekdayOrder,
 } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import {
@@ -32,8 +33,7 @@ import {
 } from "../core/availability-model.ts";
 import { errorsFromIssues } from "../core/edit-model.ts";
 import { ProfileService } from "../core/ProfileService.ts";
-import { openStudio, presetsSaved } from "@features/catalogue/core/availability-store.ts";
-import { AvailabilityModal } from "@features/calendar/components/AvailabilityModal.tsx";
+import { calendarModeHref } from "@features/calendar/core/availability-view.ts";
 
 /**
  * AvailabilityEditor — the owner's **Availability** page (`/[handle]/edit/availability`): the weekly
@@ -46,9 +46,9 @@ import { AvailabilityModal } from "@features/calendar/components/AvailabilityMod
  * each start, a fee before a paid call) so a refusal is shown where it applies.
  *
  * Only WORKING hours are edited here. Narrower "call window" bands, when a schedule has any, are
- * kept exactly as they are. The same hours are the default availability template's weekly part, so
- * the templates open from here in the shared availability modal — only while nothing here is unsaved,
- * and a template save re-reads the hours, so this page never writes stale ones back.
+ * kept exactly as they are. The same hours are the default availability template's weekly part, and
+ * the templates themselves are managed on one full page, `/calendar?view=availability` (Decision
+ * #376), which this page links to; leaving with unsaved changes here asks first.
  *
  * While paid calls are off ({@link PAID_CALLS_LIVE}, Decision #343 ruling C1) the paid switch is
  * locked at whatever the owner stored and says why, and its fee fields are not drawn: a setting that
@@ -59,6 +59,11 @@ export interface AvailabilityEditorProps {
 	initial: OwnerAvailability;
 	/** Whether this profile takes calls at all (a buyer entity does not). */
 	takesCalls: boolean;
+	/**
+	 * The weekday the owner's week starts on, 0 = Sunday — from their `org.user_preferences.locale`
+	 * (default Monday). Only the order the days are listed in; each day keeps its own number.
+	 */
+	weekStartsOn?: number;
 }
 
 const TIME_ZONES = (() => {
@@ -85,6 +90,9 @@ const PAID_NOTE_ID = "pf-avail-paid-note";
 
 export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.Element {
 	const { handle, takesCalls } = props;
+	const week = weekdayOrder(props.weekStartsOn ?? 1)
+		.map((weekday) => WEEK.find((d) => d.weekday === weekday))
+		.filter((d): d is (typeof WEEK)[number] => d !== undefined);
 	const baseline = useSignal<OwnerAvailability>(props.initial);
 	const value = useSignal<OwnerAvailability>(props.initial);
 	const formKey = useSignal(0);
@@ -138,16 +146,6 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 		formKey.value += 1;
 		status.value = "Changes discarded.";
 	}
-
-	useSignalEffect(() => {
-		if (presetsSaved.value === 0) return;
-		void ProfileService.availability(handle).then((res) => {
-			if (!res.ok || !res.data || dirtyRef.current) return;
-			baseline.value = res.data.availability;
-			value.value = res.data.availability;
-			formKey.value += 1;
-		});
-	});
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -215,22 +213,20 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 							</div>
 						</div>
 
-						<Tooltip content={dirty ? "Save or discard your changes first" : "Reusable hours for your services"}>
-							<Button
-								size="sm"
-								severity="neutral"
-								variant="outlined"
-								icon={<Icon name="calendar" size="sm" />}
-								aria-haspopup="dialog"
-								disabled={dirty}
-								onClick={() => void openStudio(v.timezone)}
+						<Tooltip content="Reusable hours for your services, in your calendar">
+							<a
+								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
+								href={calendarModeHref("availability")}
 							>
-								Availability templates
-							</Button>
+								<span class="ui-button__icon" aria-hidden="true">
+									<Icon name="calendar" size="sm" />
+								</span>
+								<span class="ui-button__label">Availability templates</span>
+							</a>
 						</Tooltip>
 
 						<ol class="pf-week" role="list">
-							{WEEK.map((day) => {
+							{week.map((day) => {
 								const bands = bandsFor(v, day.weekday);
 								const working = bands.length > 0;
 								const overlaps = dayOverlaps(bands);
@@ -263,6 +259,7 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 														<li key={`${band.startMinute}-${i}`} class="pf-week__band">
 															<Select
 																size="sm"
+																class="ui-field--bare pf-week__time"
 																aria-label={`${day.label} band ${i + 1} starts`}
 																options={START_OPTIONS}
 																value={String(band.startMinute)}
@@ -280,6 +277,7 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 															<span class="pf-week__to" aria-hidden="true">–</span>
 															<Select
 																size="sm"
+																class="ui-field--bare pf-week__time"
 																aria-label={`${day.label} band ${i + 1} ends`}
 																options={endOptions(band.startMinute)}
 																value={String(band.endMinute)}
@@ -545,7 +543,6 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 					</Button>
 				</div>
 			</div>
-			<AvailabilityModal />
 		</div>
 	);
 }

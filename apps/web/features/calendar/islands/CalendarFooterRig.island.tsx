@@ -21,7 +21,6 @@ import {
 	importedEvents,
 	PRESET_OPTIONS,
 	requestCreate,
-	setCalendarMode,
 	setCalendarSnapZoom,
 	timelineZoom,
 } from "../core/calendar-state.ts";
@@ -30,7 +29,8 @@ import {
  * CalendarFooterRig — the middle-nav FOOTER band on every `/calendar` route, in three parts: the
  * display preset on the leading edge, the zoom ruler in the centre, and the surface's actions on the
  * trailing edge. The actions keep the anatomy of `/catalogue/[id]`'s rig: the secondaries are
- * icon-only ghost circles with a portal Tooltip each (Import · Export · Connect), and New event is the
+ * icon-only ghost circles with a portal Tooltip each (Import · Export · Connect), and — below 767px
+ * only, where the shell removes the lane whose footer carries it (Decision #378) — New event is the
  * band's one filled commit, last.
  *
  * **The preset** is a ghost circle that opens a one-choice menu over {@link calendarPreset}:
@@ -39,9 +39,9 @@ import {
  * preference, "Snap zoom to intervals" ({@link calendarSnapZoom}) — the calendar's display options.
  *
  * **The view control is one ruler** ({@link CalendarZoom}): Day · Week · Month on the calendar axis
- * and on through Quarter · Year on the timeline, with a ghost toggle between the two axes. It drives
- * {@link calendarZoom} / {@link timelineZoom}, which the body hands to the engine, so the marker and
- * the grid's Ctrl+wheel move one value.
+ * and on through Quarter · Year on the timeline. The toggle between the two axes is the header band's
+ * Timeline view (Decision #377). It drives {@link calendarZoom} / {@link timelineZoom}, which the body
+ * hands to the engine, so the marker and the grid's Ctrl+wheel move one value.
  *
  * **The layer is mounted HERE, not in a route body**, because it belongs to whatever triggers it:
  * the connect modal and the export modal open from this rig at every width.
@@ -74,7 +74,6 @@ function RigZoom(): JSX.Element {
 				if (timeline) timelineZoom.value = timelinePxPerDayAt(u);
 				else calendarZoom.value = u;
 			}}
-			onModeChange={setCalendarMode}
 		/>
 	);
 }

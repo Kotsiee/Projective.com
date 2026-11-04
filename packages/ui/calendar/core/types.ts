@@ -46,6 +46,16 @@ export interface CalendarRange {
 }
 
 /**
+ * What a right-click (or the ContextMenu key) on the grid landed on, as `CalendarProps.onContextTarget`
+ * reports it: an entry, or the empty slot under the pointer snapped to the grid's step (a whole day in
+ * Month). Both `null` where the grid can't tell, such as a folded cluster or a view that doesn't report.
+ */
+export interface CalendarContextTarget {
+	event: CalendarEvent | null;
+	range: CalendarRange | null;
+}
+
+/**
  * A request to (re)open the lightweight composer on a given range.
  *
  * The payload of `CalendarProps.compose`. `title` is what the reader had already typed somewhere else
@@ -277,6 +287,12 @@ export interface CalendarProps {
 	 */
 	spotlight?: Signal<string | null>;
 	/**
+	 * Bumped by the HOST to bring the present into view — a "Go to now" outside the engine. Each new
+	 * value centres the live now-line in the Day and Week grids, smoothly unless motion is reduced. The
+	 * host also moves `focus` to now when the present is in another period; this only scrolls.
+	 */
+	present?: Signal<number>;
+	/**
 	 * A click on a single entry goes straight to {@link onOpenEvent} instead of the engine's summary
 	 * popover — for a host that shows the entry itself, beside the grid, where a popover would say the
 	 * same thing twice. A card standing for a folded cluster still opens its list first: it cannot
@@ -368,6 +384,12 @@ export interface CalendarProps {
 	onUnfoldChange?: (expanded: ReadonlySet<string>) => void;
 	/** Called when an existing event is opened. */
 	onOpenEvent?: (event: CalendarEvent) => void;
+	/**
+	 * Told what a right-click (or the ContextMenu key) on the grid landed on, before the event
+	 * bubbles. The engine draws no menu and never cancels the event for it: the host binds its menu to
+	 * an ancestor (`ActionMenu`'s `surface`) and builds the rows from this. Day, Week and Month report.
+	 */
+	onContextTarget?: (target: CalendarContextTarget) => void;
 	/**
 	 * Called when an event is DRAGGED to a new slot in the Week grid.
 	 *

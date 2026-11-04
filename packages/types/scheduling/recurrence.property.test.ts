@@ -102,7 +102,9 @@ function randomParts(g: Gen): RRuleParts {
 
 function randomPattern(g: Gen, startsOn: IsoDate): { pattern: RulePattern; unless: number[] } {
 	const unless = () => (g.bool() ? [] : g.subset(WEEKDAYS, 1, 6));
-	switch (g.int(0, 4)) {
+	switch (g.int(0, 5)) {
+		case 4:
+			return { pattern: { type: "daily", interval: g.int(2, 30) }, unless: [] };
 		case 0:
 			return {
 				pattern: { type: "weekly", days: g.subset(WEEKDAYS, 1, 7), interval: g.int(1, 8) },
@@ -126,7 +128,12 @@ function randomPattern(g: Gen, startsOn: IsoDate): { pattern: RulePattern; unles
 		case 3: {
 			const month = g.int(1, 12);
 			return {
-				pattern: { type: "yearly", month, day: g.int(1, daysInMonth(2000, month)) },
+				pattern: {
+					type: "yearly",
+					month,
+					day: g.int(1, daysInMonth(2000, month)),
+					interval: g.int(1, 10),
+				},
 				unless: unless(),
 			};
 		}
@@ -169,5 +176,5 @@ Deno.test("rruleToDraft ∘ draftToRRule = id over valid drafts", () => {
 			`run ${i}: ${rrule}`,
 		);
 	}
-	assertEquals(seen.size, 5);
+	assertEquals(seen.size, 6);
 });

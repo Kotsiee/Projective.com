@@ -336,6 +336,15 @@ export const LocalKeys = {
 	CALENDAR_TIMELINE_ZOOM: "pj.local.calendar.timelineZoom",
 	/** The `/calendar` hub's "Snap zoom to intervals" preference (`"false"` when switched off). */
 	CALENDAR_SNAP_ZOOM: "pj.local.calendar.snapZoom",
+	/** The meeting provider a host last picked in the event composer; a new entry's room starts on it. */
+	CALENDAR_MEETING_PROVIDER: "pj.local.calendar.meetingProvider",
+	/**
+	 * Prefix for `/calendar?view=availability`'s local draft, one key per acting owner beneath it
+	 * (`…:<owner>`): `{ openId, presets }` JSON, every template edited and not yet saved. Written on each
+	 * edit, so leaving the page loses nothing and asks nothing; removed once nothing is pending
+	 * (`features/calendar/core/availability-draft.ts`). Weekly hours only — no time-off reasons.
+	 */
+	CALENDAR_AVAILABILITY_DRAFT: "pj.local.calendar.availabilityDraft",
 	/**
 	 * Prefix for the calendar engine's own density persistence — it writes `…:zoom` beneath this.
 	 * Registered rather than left as a literal at the call site so every client key on the platform is

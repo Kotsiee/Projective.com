@@ -38,7 +38,7 @@ import {
 import { DateSegmentedInput } from "../components/DateSegmentedInput.tsx";
 import { CalendarHeader } from "../components/CalendarHeader.tsx";
 import { CalendarMonthTrack } from "../components/CalendarMonthTrack.tsx";
-import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
+import type { BaseFieldProps, Bindable, FieldVariant, Option, ValueChange } from "../types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
 
 // #region Types
@@ -114,6 +114,11 @@ export interface DatePickerProps extends BaseFieldProps {
 	showButtonBar?: boolean;
 	/** Show a calendar icon trigger inside the input (popup mode). */
 	showIcon?: boolean;
+	/**
+	 * Surface treatment of the popup trigger (default `outlined`). Applied to the trigger's own
+	 * `.ui-field`, not the wrapper `class` lands on, so `bare` actually reaches the box it describes.
+	 */
+	variant?: FieldVariant;
 	/** Custom day-cell content. */
 	dateTemplate?: DateTemplate;
 	/** Extra content rendered above the grid. */
@@ -304,6 +309,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		placeholder,
 		showButtonBar = false,
 		showIcon = false,
+		variant = "outlined",
 		dateTemplate,
 		headerTemplate,
 		footerTemplate,
@@ -1060,6 +1066,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					useSegments && "ui-datepicker__trigger--segmented",
 					...fieldModifiers("ui-field", {
 						size,
+						variant,
 						status,
 						fluid,
 						disabled,

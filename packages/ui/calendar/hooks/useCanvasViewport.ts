@@ -210,6 +210,8 @@ export interface CanvasViewport {
 	reveal: (y0: number, y1: number) => void;
 	/** Start a pan if the pointer qualifies (middle button, or Ctrl/Meta + left). Returns whether it did. */
 	beginPan: (e: PointerEvent) => boolean;
+	/** Abandon the pan in flight, without a fling — a held finger that has become a drag-to-create. */
+	cancelPan: () => void;
 	/** Handle a scrolling key. Returns whether it consumed the event. */
 	handleKey: (e: KeyboardEvent) => boolean;
 	/** Pointer coordinates resolved to LOGICAL canvas space (x from the inline start). */
@@ -883,6 +885,7 @@ export function useCanvasViewport(opts: UseCanvasViewportOptions): CanvasViewpor
 		zoomAnchor,
 		zoomTo,
 		beginPan,
+		cancelPan: () => endPan.current?.(),
 		handleKey,
 		pointerAt,
 	};

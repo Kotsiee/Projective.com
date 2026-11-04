@@ -6,14 +6,15 @@ import { CALENDAR_KIND_LABEL, calendarTime, scrollBehaviorFor } from "@projectiv
 import {
 	LaneBar,
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneEmpty,
 	LaneFilterPopover,
 	LaneFooter,
+	LaneFooterActions,
 	LaneHead,
+	LaneIconButton,
 	LaneList,
 	LaneSearch,
-	type LaneTabOption,
-	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
@@ -23,9 +24,9 @@ import type { IconName } from "@projective/ui/icons";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { AvailabilityBlock, AvailabilityTemplates } from "../components/AvailabilityManager.tsx";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
-import { openStudio } from "@features/catalogue/core/availability-store.ts";
+import { calendarModeHref } from "../core/availability-view.ts";
 import { providerMarkFor } from "../components/provider-marks.tsx";
 import {
 	activeFilterCount,
@@ -61,10 +62,9 @@ import {
  * lane renders whatever is in there, so the upcoming list and the grid can never be built from two
  * different responses.
  *
- * **What is coming and when I am available are two subjects, so they are two tabs** rather than one
- * stack in which each got half the lane's height. The strip is the shared {@link LaneTabs}, the same
- * control the `/projects` feed and the `/catalogue` console use, so a reader who has switched tabs
- * once on this product has switched them everywhere.
+ * **When I am available is its own page** (`/calendar?view=availability`, Decision #376), reached
+ * from the header band's Agenda ⇄ Availability switch and the rail's clock, so this lane is the
+ * agenda's alone and its list gets the whole height.
  *
  * **The list scrolls on its own.** It is every entry the filters leave, in order, rather than a window
  * that followed the grid's focus — a list that re-anchored whenever the grid scrolled was the grid
@@ -74,10 +74,10 @@ import {
  * **Filter sits beside the search**, the `/projects` anatomy: the shared {@link LaneFilterPopover} over
  * {@link CalendarFilterFacets}, narrowing the grid and this list together.
  *
- * **The lane offers no New event and no view switch.** Both live in the middle-nav footer band, which
- * renders at every width — including the widths where the shell removes this lane entirely — and two
- * triggers for one action inside one region is the duplication the region contract exists to prevent
- * (root CLAUDE.md §8 Decisions #60/#63).
+ * **New event is the lane footer's one create action**, beside a ghost Scheduling settings gear — the
+ * anatomy of every lane footer (`/messages`, `/projects`; Decision #378). The footer band carries it
+ * only below 767px, where the shell removes this lane, so it moves rather than doubles (Decisions
+ * #60/#63). The view switch stays the footer band's.
  */
 export interface CalendarLaneProps {
 	/** The SSR page, so the lane paints its first frame with the same data the grid has. */
@@ -97,34 +97,8 @@ const KIND_ICON: Record<CalendarEventKind, IconName> = {
 	general: "tag",
 };
 
-/** Which half of the lane the tab strip is showing. */
-type LanePanel = "events" | "availability";
-
-/**
- * The two lane panels.
- *
- * `Availability` is the manager that used to be a permanent block pinned under the upcoming list, so
- * the lane described two subjects at once and each got half the height. As a tab it gets the whole
- * panel, and the events list stops being squeezed by a weekly table it is unrelated to.
- */
-const LANE_TABS: readonly LaneTabOption<LanePanel>[] = [
-	{ value: "events", label: "Events" },
-	{ value: "availability", label: "Availability" },
-];
-
 export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
-	/**
-	 * Which panel the tab strip is showing.
-	 *
-	 * A signal on this island rather than a module one in `calendar-state`: it is one region's own view
-	 * state with no second reader. The header band's availability control does NOT switch it — below
-	 * 767px the shell removes the lane entirely, so selecting a tab nobody can see would be no answer
-	 * at all, and that control opens the dialog instead (which this island keeps mounted for exactly
-	 * that reason). A `useSignal` survives every re-render of this tree — the minute tick, a republished
-	 * page, a filter move — where a plain local would be reset by each of them.
-	 */
-	const panel = useSignal<LanePanel>("events");
 	const filterOpen = useSignal(false);
 	const laneRef = useRef<HTMLDivElement>(null);
 
@@ -167,8 +141,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const flashing = laneSpotlight.value;
 	useEffect(() => {
 		if (!flashing) return;
-		if (panel.peek() !== "events") panel.value = "events";
-		// A task, so a tab switch above has rendered the list before it is measured.
+		// A task, so the row the pick just selected has rendered before it is measured.
 		setTimeout(() => centreRow(flashing, scrollBehaviorFor()), 0);
 	}, [flashing]);
 
@@ -203,15 +176,13 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						</button>
 					</Tooltip>
 					<Tooltip content="Availability" placement="right" density="compact">
-						<button
-							type="button"
+						<a
 							class="cal-rail__item"
+							href={calendarModeHref("availability")}
 							aria-label="Availability"
-							aria-haspopup="dialog"
-							onClick={() => void openStudio(tz)}
 						>
 							<Icon name="clock" />
-						</button>
+						</a>
 					</Tooltip>
 				</div>
 
@@ -266,63 +237,26 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							/>
 						)
 						: null}
-
-					{
-						/*
-						 * The switch sits at the FOOT of the head, not its peak, because everything above it —
-						 * the mini-month, find-in-calendar, the kind row — narrows the GRID as well and so
-						 * belongs to neither panel. Putting the strip last makes it govern exactly the region
-						 * it precedes, and its underline lands on the head's own hairline rather than drawing a
-						 * second rule a few pixels from it (§B.4).
-						 */
-					}
-					<LaneTabs<LanePanel>
-						label="Lane view"
-						value={panel.value}
-						options={LANE_TABS}
-						onSelect={(v) => (panel.value = v)}
-					/>
 				</LaneHead>
 
-				{panel.value === "events"
-					? (
-						<LaneList label="Events" role="tabpanel" class="cal-lane__list">
-							{listed.length === 0
-								? (
-									<LaneEmpty
-										title="No events"
-										note="Nothing matches the search and filters you have set."
-									/>
-								)
-								: listed.map((e) => (
-									<UpcomingRow
-										key={e.id}
-										event={e}
-										tz={tz}
-										selected={e.id === selected}
-										flashing={e.id === flashing}
-									/>
-								))}
-						</LaneList>
-					)
-					: (
-						<div class="cal-lane__panel" role="tabpanel" aria-label="Availability">
-							<AvailabilityTemplates timezone={page?.availability?.timezone ?? tz} />
-							{page?.availability
-								? (
-									<AvailabilityBlock
-										availability={page.availability}
-										onConfigure={() => void openStudio(page.availability?.timezone ?? tz)}
-									/>
-								)
-								: (
-									<LaneEmpty
-										title="No hours set"
-										note="Your working hours, call windows and booked leave will show here."
-									/>
-								)}
-						</div>
-					)}
+				<LaneList label="Events" class="cal-lane__list">
+					{listed.length === 0
+						? (
+							<LaneEmpty
+								title="No events"
+								note="Nothing matches the search and filters you have set."
+							/>
+						)
+						: listed.map((e) => (
+							<UpcomingRow
+								key={e.id}
+								event={e}
+								tz={tz}
+								selected={e.id === selected}
+								flashing={e.id === flashing}
+							/>
+						))}
+				</LaneList>
 
 				<LaneFooter>
 					<LaneCollapseButton
@@ -330,6 +264,19 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						icon={<SidebarToggleIcon />}
 						onToggle={() => setCollapsed(!collapsed.value)}
 					/>
+					<LaneFooterActions>
+						<LaneIconButton
+							icon={<Icon name="settings" />}
+							label="Scheduling settings"
+							tooltipPlacement="top"
+							onClick={() => openSettings("scheduling")}
+						/>
+						<LaneCreateButton
+							label="New event"
+							icon={<Icon name="plus" />}
+							onClick={requestCreate}
+						/>
+					</LaneFooterActions>
 				</LaneFooter>
 			</div>
 		</div>

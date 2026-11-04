@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slugPattern } from "../slugs/slug.ts";
 
 /**
  * `scheduling` schema ROW shapes — the persisted counterpart to the read projections in
@@ -28,6 +29,12 @@ export const uuid = z.string().regex(UUID_RE, "Expected a UUID.");
 export const timestamp = z.string();
 /** An IANA timezone id, e.g. `Europe/London`. */
 export const ianaTimezone = z.string().min(1).max(60);
+/**
+ * An RFC 5545 RRULE value (no `RRULE:` prefix) as the database stores it: the same shape-only CHECK
+ * as `recurrence_rules.rrule` and `events.recurrence_rule`. `rrule.ts` owns the meaning (for an event
+ * series through `ics-recurrence.ts`, which also reads `COUNT`).
+ */
+export const RRuleText = z.string().max(400).regex(/^FREQ=/, "A recurrence starts with FREQ=.");
 // #endregion
 
 // #region Vocabulary
@@ -202,11 +209,18 @@ export const SchedulingEventRowSchema = z.object({
 	externalEventId: z.string().max(200).nullable(),
 	/** Set when this row mirrors a delivered `projects.session_events` row. */
 	sourceSessionEventId: uuid.nullable(),
+	/** Set on a series MASTER, which is itself the first occurrence (its `startsAt` is DTSTART). */
+	recurrenceRule: RRuleText.nullable(),
+	/** Set on every later occurrence: the master it belongs to. Never set alongside a rule. */
+	recurrenceParentId: uuid.nullable(),
 	createdBy: uuid.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 	/** Taken off the calendar by its host (never deleted); `status` is `cancelled` alongside it. */
 	archivedAt: timestamp.nullable(),
+}).refine((e) => e.recurrenceRule === null || e.recurrenceParentId === null, {
+	message: "An occurrence belongs to a series; it never heads one.",
+	path: ["recurrenceRule"],
 });
 export type SchedulingEventRow = z.infer<typeof SchedulingEventRowSchema>;
 
@@ -256,6 +270,8 @@ export const AvailabilityPresetRowSchema = z.object({
 	scope: PresetScope,
 	/** The service a `service` fork belongs to; `null` for a library preset. */
 	blueprintId: uuid.nullable(),
+	/** The opaque `avp-` address, minted on insert and frozen (Decision #88). */
+	slug: z.string().regex(slugPattern("preset")),
 	name: z.string().min(1).max(60),
 	description: z.string().max(200),
 	/** At most one live default per schedule (a partial unique index). */
@@ -280,7 +296,7 @@ export const RecurrenceRuleRowSchema = z.object({
 	presetId: uuid,
 	kind: AvailabilityKind,
 	effect: RuleEffect,
-	rrule: z.string().max(400).regex(/^FREQ=/, "A recurrence starts with FREQ=."),
+	rrule: RRuleText,
 	startsOn: civilDate,
 	/** UNTIL, inclusive; `null` runs open-ended. */
 	endsOn: civilDate.nullable(),

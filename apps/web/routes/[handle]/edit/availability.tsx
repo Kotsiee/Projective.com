@@ -5,6 +5,7 @@ import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import type { OwnerAvailability } from "@projective/types/scheduling";
 import { resolveOwnerAvailability } from "@features/profile/core/profile-ssr.ts";
 import AvailabilityEditor from "@features/profile/islands/AvailabilityEditor.island.tsx";
+import { firstWeekdayOf } from "@projective/types/org";
 
 /**
  * `/[handle]/edit/availability` — the owner's **Availability** page: working hours and the
@@ -62,5 +63,12 @@ export default define.page<typeof handler>(function ProfileAvailabilityEditPage(
 			</p>
 		);
 	}
-	return <AvailabilityEditor handle={profile.handle} initial={availability} takesCalls={takesCalls} />;
+	return (
+		<AvailabilityEditor
+			handle={profile.handle}
+			initial={availability}
+			takesCalls={takesCalls}
+			weekStartsOn={firstWeekdayOf(ctx.state.userContext?.locale)}
+		/>
+	);
 });

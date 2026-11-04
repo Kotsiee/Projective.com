@@ -89,6 +89,13 @@ const SLUGGED_TABLES = [
 		unique: "feedback_ideas_slug_key",
 		file: "supabase/migrations/00000025_tables_community.sql",
 	},
+	{
+		entity: "preset" as const,
+		table: "scheduling.availability_presets",
+		constraint: "ck_availability_presets_slug_shape",
+		unique: "availability_presets_slug_key",
+		file: "supabase/migrations/00000022_tables_scheduling.sql",
+	},
 ];
 
 // #region The minter

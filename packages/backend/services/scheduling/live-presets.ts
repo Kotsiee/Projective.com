@@ -8,6 +8,7 @@ import {
 	type SavePresetInput,
 	SavePresetInputSchema,
 	type SavePresetResult,
+	type ScheduleSettings,
 	validate,
 } from "@projective/types/scheduling";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -156,32 +157,60 @@ export async function presetUsage(
 	if (fallback) usage[fallback].push({ kind: owner, name: "" });
 
 	let query = db.schema("marketplace").from("service_blueprints")
-		.select("title, availability_preset_id").in("delivery_model", ["session", "group_session"]);
+		.select("slug, title, availability_preset_id").in("delivery_model", ["session", "group_session"]);
 	query = owner === "profile"
 		? query.eq("freelancer_profile_id", schedule.owner_id).is("owner_team_id", null)
 		: query.eq("owner_team_id", schedule.owner_id);
 	const { data, error } = await query;
 	if (error) throw new Error(`service_blueprints read failed: ${error.message}`);
 	for (
-		const bp of (data ?? []) as Array<{ title: string; availability_preset_id: string | null }>
+		const bp of (data ?? []) as Array<
+			{ slug: string; title: string; availability_preset_id: string | null }
+		>
 	) {
 		const id = bp.availability_preset_id ?? fallback;
-		if (id && usage[id]) usage[id].push({ kind: "service", name: bp.title });
+		if (id && usage[id]) usage[id].push({ kind: "service", name: bp.title, listing: bp.slug });
 	}
 	return usage;
 }
 
-/** The acting owner's live presets, and who follows each. A schedule never saved has none. */
+/** The schedule's zone, publishing and the blackouts that have not ended yet, soonest first. */
+export async function readScheduleSettings(
+	db: SupabaseClient,
+	schedule: ScheduleRow,
+	now: number,
+): Promise<ScheduleSettings> {
+	const { data, error } = await db.schema("scheduling").from("blackout_dates")
+		.select("id, starts_at, ends_at, label, label_is_public").eq("schedule_id", schedule.id)
+		.gt("ends_at", new Date(now).toISOString()).order("starts_at");
+	if (error) throw new Error(`blackout_dates read failed: ${error.message}`);
+	return {
+		timezone: schedule.timezone,
+		published: schedule.is_published,
+		blackouts: ((data ?? []) as Array<
+			{ id: string; starts_at: string; ends_at: string; label: string; label_is_public?: boolean }
+		>).map((b) => ({
+			id: b.id,
+			start: Date.parse(b.starts_at),
+			end: Date.parse(b.ends_at),
+			label: b.label,
+			labelIsPublic: b.label_is_public === true,
+		})),
+	};
+}
+
+/** The acting owner's live presets, who follows each, and the schedule they share. */
 export async function listPresets(
 	actor: LiveActor,
 	deps: PresetDeps,
 ): Promise<Result<PresetListResult>> {
 	const schedule = await scheduleOf(deps.db, actorScheduleOwner(actor));
-	if (!schedule) return ok({ presets: [], usage: {} });
+	if (!schedule) return ok({ presets: [], usage: {}, schedule: null });
 	const stored = await readPresets(deps.db, schedule);
 	return ok({
 		presets: stored.map((p) => p.preset),
 		usage: await presetUsage(deps.db, schedule, stored),
+		schedule: await readScheduleSettings(deps.db, schedule, deps.now ?? Date.now()),
 	});
 }
 // #endregion

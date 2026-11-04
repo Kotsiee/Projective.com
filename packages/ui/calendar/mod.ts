@@ -108,6 +108,7 @@ export type {
 	CalendarAttendee,
 	CalendarAvailability,
 	CalendarComposeRequest,
+	CalendarContextTarget,
 	CalendarDailyRepeat,
 	CalendarEvent,
 	CalendarEventKind,

@@ -510,7 +510,8 @@ GRANT SELECT (
     id, schedule_id, project_id, channel_id, kind, status, title, starts_at, ends_at, all_day,
     is_masked, accent, location, description, meeting_provider, meeting_provider_label,
     meeting_pending, meta, attendee_count, capacity, href, source_connection_id, external_event_id,
-    source_session_event_id, created_by, created_at, updated_at, archived_at
+    source_session_event_id, recurrence_rule, recurrence_parent_id, created_by, created_at,
+    updated_at, archived_at
 ) ON TABLE scheduling.events TO authenticated;
 
 GRANT

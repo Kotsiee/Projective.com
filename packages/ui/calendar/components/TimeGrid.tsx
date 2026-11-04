@@ -49,6 +49,7 @@ import { styleVars } from "../../core/style.ts";
 import type {
 	CalendarAvailability,
 	CalendarEvent,
+	CalendarProps,
 	CalendarRange,
 	WorkingWindow,
 } from "../core/types.ts";
@@ -131,6 +132,11 @@ const MAX_BLOCKS = 12;
 const BAR_IDLE_MS = 900;
 /** Pointer travel (px) that turns a press into a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
+/**
+ * How long a finger must rest on empty time before it draws instead of scrolling. Long enough that a
+ * scroll which starts slowly is still a scroll, short enough that a deliberate press is answered.
+ */
+const LONG_PRESS_MS = 450;
 
 /** Hit metrics for a scene drawn before the palette resolved — nothing is hit-testable yet. */
 const NO_METRICS: HitMetrics = {
@@ -252,6 +258,8 @@ export interface TimeGridProps {
 	 * not offered at all rather than offered and silently discarded.
 	 */
 	onMoveEvent?: (event: CalendarEvent, range: CalendarRange) => void;
+	/** What a right-click landed on (`CalendarProps.onContextTarget`). */
+	onContextTarget?: CalendarProps["onContextTarget"];
 	/** Fired as the scroll centre crosses into a new block, so the header + mini-map track it. */
 	onFocusChange?: (dayStart: number) => void;
 	/**
@@ -284,6 +292,8 @@ export interface TimeGridProps {
 	highlight?: Signal<string | null>;
 	/** The host's spotlight (`CalendarProps.spotlight`): centred in the view, then ringed. */
 	spotlight?: Signal<string | null>;
+	/** The host's "Go to now" (`CalendarProps.present`): each new value centres the now-line. */
+	present?: Signal<number>;
 	/** A single card opens straight through `onOpenEvent` (`CalendarProps.directOpen`). */
 	directOpen?: boolean;
 	/**
@@ -435,6 +445,8 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	const probeRef = useRef<HTMLDivElement>(null);
 	/** The last block we emitted or navigated to — breaks the focus↔scroll feedback loop. */
 	const lastBlock = useRef(focusBlock);
+	/** The host-reopened composer whose draft has been scrolled into view — once per opening. */
+	const revealedFor = useRef<unknown>(null);
 
 	// #region Centre-block tracking (scroll → header/mini-map)
 	useSignalEffect(() => {
@@ -457,15 +469,19 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	 * onto it, and claiming the block here first makes the jump below a no-op, so the view travels once
 	 * — to the entry's own hour — rather than to the block's noon and then on to the entry.
 	 */
+	/** Scroll a range's middle (its first four hours at most) to the centre of the view, block and all. */
+	function centreRange(start: number, end: number): void {
+		const block = blockIndexOf(start);
+		lastBlock.current = block;
+		const mid = Math.min(end - start, 4 * 3_600_000) / 2;
+		const m = block * BLOCK_MIN + minutesFromDayStart(start + mid, startOfDay(start, tz));
+		viewport.scrollTo(yFor(m) - viewport.viewportH.peek() / 2, scrollBehaviorFor());
+	}
+
 	const spotId = props.spotlight?.value ?? null;
 	useEffect(() => {
 		const ev = spotId ? props.events.find((e) => e.id === spotId) : undefined;
-		if (!ev) return;
-		const block = blockIndexOf(ev.start);
-		lastBlock.current = block;
-		const mid = Math.min(ev.end - ev.start, 4 * 3_600_000) / 2;
-		const m = block * BLOCK_MIN + minutesFromDayStart(ev.start + mid, startOfDay(ev.start, tz));
-		viewport.scrollTo(yFor(m) - viewport.viewportH.peek() / 2, scrollBehaviorFor());
+		if (ev) centreRange(ev.start, ev.end);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [spotId]);
 	// #endregion
@@ -477,6 +493,17 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		viewport.scrollToFocus(scrollBehaviorFor());
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [focusBlock]);
+
+	// After the nav jump, so a "Go to now" that also moved the focus lands on the line itself. Only a
+	// NEW request scrolls: a grid mounted after one (a view switch) keeps its own opening position.
+	const presentAsk = props.present?.value ?? 0;
+	const presentSeen = useRef(presentAsk);
+	useEffect(() => {
+		if (presentAsk === presentSeen.current) return;
+		presentSeen.current = presentAsk;
+		viewport.scrollToNow(scrollBehaviorFor());
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [presentAsk]);
 	// #endregion
 
 	// #region Availability per day
@@ -841,7 +868,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	function viewBox(): { width: number; height: number } {
 		return { width: viewport.viewportW.peek(), height: viewport.viewportH.peek() };
 	}
-	function hitAt(e: PointerEvent) {
+	function hitAt(e: PointerEvent | MouseEvent) {
 		const { x, y } = viewport.pointerAt(e);
 		return { at: { x, y }, hit: hitTest(currentScene(), viewBox(), metrics(), x, y) };
 	}
@@ -1109,10 +1136,17 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		if (gesture.peek() !== null) return;
 		const shown = layer.peek();
 		if (shown?.kind !== "create") return;
+		const a = shown.anchor;
+		// A composer the HOST re-opened arrives with an empty anchor, its draft possibly off screen:
+		// bring the draft into view once, and anchor to it as the scroll lands.
+		const ghost = props.draft?.peek();
+		if (ghost && a.w === 0 && a.h === 0 && revealedFor.current !== shown) {
+			revealedFor.current = shown;
+			centreRange(ghost.start, ghost.end);
+		}
 		const rect = draftRect(currentScene(), viewBox(), metrics());
 		if (!rect) return;
 		const next = anchorFor(rect);
-		const a = shown.anchor;
 		if (a.x === next.x && a.y === next.y && a.w === next.w && a.h === next.h) return;
 		layer.value = { ...shown, anchor: next };
 	});
@@ -1264,20 +1298,43 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	}
 
 	/**
-	 * A touch: the drag SCROLLS and a tap activates.
+	 * A touch: the drag SCROLLS, a tap activates, and a long press on empty time starts drag-to-create.
 	 *
 	 * The viewport has no scroll container, so a finger that fell through to drag-to-create would
-	 * leave the Week grid unscrollable on every phone. Drag-to-create and drag-to-move stay
-	 * pointer-device gestures — a touch surface has no way to distinguish "I meant to draw a range"
-	 * from "I meant to scroll" at the moment the finger lands, and scrolling is the one that must
-	 * never be guessed wrong.
+	 * leave the Week grid unscrollable on every phone. A touch surface has no way to distinguish "I
+	 * meant to draw a range" from "I meant to scroll" at the moment the finger lands, and scrolling is
+	 * the one that must never be guessed wrong — so the finger has to say so by resting first
+	 * ({@link LONG_PRESS_MS}, only where `canCreate`). Drag-to-move stays a pointer-device gesture.
 	 */
 	function beginTouch(ev: PointerEvent): void {
 		viewport.beginPan(ev);
 		const originY = ev.clientY;
 		const originX = ev.clientX;
 		const at = viewport.pointerAt(ev);
+		/*
+		 * A finger that RESTS on empty time draws. Moving first keeps it a scroll, so the long press is
+		 * the one way a touch can say "I meant to draw a range" before the drag begins — and it only
+		 * exists where the host can create at all.
+		 */
+		const press = props.canCreate
+			? setTimeout(() => {
+				const hit = hitTest(currentScene(), viewBox(), metrics(), at.x, at.y);
+				if (hit.kind !== "grid" || popoverWasOpen.current) return;
+				detach();
+				viewport.cancelPan();
+				beginCreate(at);
+			}, LONG_PRESS_MS)
+			: null;
+		const move = (e: PointerEvent) => {
+			if (
+				press !== null && Math.hypot(e.clientX - originX, e.clientY - originY) >= DRAG_THRESHOLD
+			) {
+				clearTimeout(press);
+			}
+		};
 		const detach = () => {
+			if (press !== null) clearTimeout(press);
+			globalThis.removeEventListener("pointermove", move);
 			globalThis.removeEventListener("pointerup", up);
 			globalThis.removeEventListener("pointercancel", cancel);
 			endGesture.current = null;
@@ -1306,6 +1363,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		};
 		const cancel = () => detach();
 		endGesture.current = cancel;
+		globalThis.addEventListener("pointermove", move);
 		globalThis.addEventListener("pointerup", up);
 		globalThis.addEventListener("pointercancel", cancel);
 	}
@@ -1452,43 +1510,51 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 
 		if (hit.kind === "grid" && props.canCreate) {
 			e.preventDefault();
-			const slot = slotAt(at.x, at.y);
-			const from = snapMinutes(Math.max(0, Math.min(BLOCK_MIN, slot.local)), SNAP);
-			gesture.value = {
-				kind: "create",
-				column: slot.column,
-				dayStart: slot.dayStart,
-				blockIndex: slot.blockIndex,
-				from,
-				to: from + 30,
-			};
-			if (props.popover) {
-				props.popover.value = {
-					kind: "create",
-					range: selectionRange(slot.dayStart, from, from + 30, SNAP),
-					anchor: anchorFor({ x: at.x, y: at.y, w: 1, h: 1 }),
-				};
-			}
-			trackGesture((cur) => {
-				if (cur.kind !== "create") return;
-				const range = selectionRange(cur.dayStart, cur.from, cur.to, SNAP);
-				/*
-				 * THE DRAFT SURVIVES THE RELEASE. `scene.selection` is derived from the live gesture, so
-				 * without this the block the reader just drew vanishes the instant they let go and the
-				 * popover ends up pointing at empty grid. Publishing the range keeps the block on the
-				 * grid — now dashed, now grabbable — until the popover commits it or is dismissed.
-				 */
-				if (props.draft) props.draft.value = range;
-				// `onSelectRange` still fires on release exactly as it always did — a host that only wants
-				// to be TOLD about a range keeps working unchanged, and a host that can create one inline
-				// gets the popover's own submit as well.
-				props.onSelectRange?.(range);
-				const layer = props.popover;
-				if (layer && layer.peek()?.kind === "create") {
-					layer.value = { kind: "create", range, anchor: layer.peek()!.anchor };
-				}
-			});
+			beginCreate(at);
 		}
+	}
+
+	/**
+	 * Drag-to-create from the slot under `at`: the selection grows from that minute as the pointer moves
+	 * and is handed to the host on release. The mouse starts it on press; a finger after a long press.
+	 */
+	function beginCreate(at: { x: number; y: number }): void {
+		const slot = slotAt(at.x, at.y);
+		const from = snapMinutes(Math.max(0, Math.min(BLOCK_MIN, slot.local)), SNAP);
+		gesture.value = {
+			kind: "create",
+			column: slot.column,
+			dayStart: slot.dayStart,
+			blockIndex: slot.blockIndex,
+			from,
+			to: from + 30,
+		};
+		if (props.popover && props.draft) {
+			props.popover.value = {
+				kind: "create",
+				range: selectionRange(slot.dayStart, from, from + 30, SNAP),
+				anchor: anchorFor({ x: at.x, y: at.y, w: 1, h: 1 }),
+			};
+		}
+		trackGesture((cur) => {
+			if (cur.kind !== "create") return;
+			const range = selectionRange(cur.dayStart, cur.from, cur.to, SNAP);
+			/*
+			 * THE DRAFT SURVIVES THE RELEASE. `scene.selection` is derived from the live gesture, so
+			 * without this the block the reader just drew vanishes the instant they let go and the
+			 * popover ends up pointing at empty grid. Publishing the range keeps the block on the
+			 * grid — now dashed, now grabbable — until the popover commits it or is dismissed.
+			 */
+			if (props.draft) props.draft.value = range;
+			// `onSelectRange` still fires on release exactly as it always did — a host that only wants
+			// to be TOLD about a range keeps working unchanged, and a host that can create one inline
+			// gets the popover's own submit as well.
+			props.onSelectRange?.(range);
+			const layer = props.popover;
+			if (layer && layer.peek()?.kind === "create") {
+				layer.value = { kind: "create", range, anchor: layer.peek()!.anchor };
+			}
+		});
 	}
 
 	function onPointerMove(e: JSX.TargetedPointerEvent<HTMLDivElement>): void {
@@ -1514,6 +1580,35 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		const overBar = !!gauge && inRect(gauge, at.x, at.y);
 		if (overBar !== barActive.peek()) barActive.value = overBar;
 		if ((hit.kind === "present") !== pillHover.peek()) pillHover.value = hit.kind === "present";
+	}
+
+	/**
+	 * A right-click: tell the host what is under it — a single card, or the empty slot snapped to the
+	 * create step. A live gesture (a touch long-press drag) keeps the event, so no menu opens over it.
+	 */
+	function onContextMenu(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		if (gesture.peek()) {
+			e.preventDefault();
+			return;
+		}
+		const report = props.onContextTarget;
+		if (!report) return;
+		const { at, hit } = hitAt(e as unknown as MouseEvent);
+		if (hit.kind === "event") {
+			// A folded card stands for its whole cluster, so it names no one entry.
+			const single = hit.event.foldedCount > 0 && clusterEvents(hit.event.clusterId).length > 1
+				? null
+				: eventById.get(hit.event.eventId) ?? null;
+			report({ event: single, range: null });
+			return;
+		}
+		if (hit.kind !== "grid") {
+			report({ event: null, range: null });
+			return;
+		}
+		const slot = slotAt(at.x, at.y);
+		const from = snapMinutes(Math.max(0, Math.min(BLOCK_MIN - SNAP, slot.local)), SNAP);
+		report({ event: null, range: selectionRange(slot.dayStart, from, from + 30, SNAP) });
 	}
 
 	function onPointerLeave(): void {
@@ -1692,6 +1787,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerLeave={onPointerLeave}
+				onContextMenu={onContextMenu}
 			>
 				<canvas ref={canvasRef} class="cal-tg__canvas" aria-hidden="true" />
 			</div>
@@ -1765,6 +1861,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 											class="cal-tg__a11yitem"
 											onFocus={() => focusCard(card)}
 											onBlur={blurCard}
+											onContextMenu={() => props.onContextTarget?.({ event: source, range: null })}
 											// The SAME entry point the pointer uses, not a shortcut past it. A keyboard
 											// reader who activates a stacked card must be asked which member they meant
 											// for the same reason a pointer reader is — and if the two paths diverged the

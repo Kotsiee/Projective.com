@@ -430,6 +430,7 @@ Deno.test("templates are valid presets with no issues", () => {
 		const parsed = AvailabilityPresetSchema.safeParse({
 			...template,
 			id: template.key,
+			slug: "avp-2222222222",
 			blueprintId: null,
 		});
 		assertEquals(parsed.success, true, template.key);

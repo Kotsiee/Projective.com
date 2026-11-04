@@ -46,6 +46,7 @@ export function RuleList(): JSX.Element {
 							return (
 								<li
 									key={rule.id}
+									data-rule-id={rule.id}
 									class={cx(
 										"ui-avsched__rule",
 										!rule.active && "ui-avsched__rule--inactive",

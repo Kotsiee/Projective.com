@@ -565,10 +565,11 @@ export const BandSchema = z.object({ start: z.number().int().min(0).max(1439), e
 
 /** The human-shaped pattern the editor authors; normalised to an RRULE for storage. */
 export const RulePatternSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("daily"), interval: z.number().int().min(2).max(30) }), // every day = weekly on all seven (Decision #381)
 	z.object({ type: z.literal("weekly"), days: z.array(Weekday).min(1).max(7), interval: z.number().int().min(1).max(8) }),
 	z.object({ type: z.literal("monthly_date"), days: z.array(z.number().int().min(-31).max(31).refine((d) => d !== 0)).min(1).max(31), interval: z.number().int().min(1).max(12) }),
 	z.object({ type: z.literal("monthly_weekday"), ordinal: z.union([z.literal(-1), z.number().int().min(1).max(4)]), weekday: Weekday, interval: z.number().int().min(1).max(12) }),
-	z.object({ type: z.literal("yearly"), month: z.number().int().min(1).max(12), day: z.number().int().min(1).max(31) }),
+	z.object({ type: z.literal("yearly"), month: z.number().int().min(1).max(12), day: z.number().int().min(1).max(31), interval: z.number().int().min(1).max(10).default(1) }),
 	z.object({ type: z.literal("once"), date: IsoDate }),
 ]);
 /** "unless it is Thursday or Friday" — compiled into BYDAY of the complement. */

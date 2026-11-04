@@ -225,6 +225,8 @@ export interface EventBadge {
 	tone: "progress" | "info" | "muted";
 	/** The spoken form, which always names the exact start rather than a rounded countdown. */
 	title: string;
+	/** Starts within the hour — the one reading that earns a pip beside the words. */
+	imminent?: true;
 }
 
 const MINUTE_MS = 60_000;
@@ -247,7 +249,12 @@ export function eventBadge(status: EventLiveStatus, whenLabel: string): EventBad
 	}
 	const ms = status.msUntilStart;
 	if (ms < MINUTE_MS) {
-		return { label: "Starting now", tone: "progress", title: `Starts at ${whenLabel}` };
+		return {
+			label: "Starting now",
+			tone: "progress",
+			title: `Starts at ${whenLabel}`,
+			imminent: true,
+		};
 	}
 	if (ms < HOUR_MS) {
 		const mins = Math.round(ms / MINUTE_MS);
@@ -255,6 +262,7 @@ export function eventBadge(status: EventLiveStatus, whenLabel: string): EventBad
 			label: `Upcoming in ${mins} ${mins === 1 ? "minute" : "minutes"}`,
 			tone: "info",
 			title: `Starts at ${whenLabel}`,
+			imminent: true,
 		};
 	}
 	if (ms < 48 * HOUR_MS) {

@@ -148,6 +148,13 @@ export function setCalendarMode(mode: CalendarZoomMode): void {
 export const calendarFocus = signal<number>(0);
 
 /**
+ * Bumped by the header band's Go to now. The grid centres its live now-line on each new value
+ * (`CalendarProps.present`); the band moves {@link calendarFocus} to now in the same press, so a reader
+ * on another week travels there first.
+ */
+export const calendarPresent = signal(0);
+
+/**
  * The instant the surface is focused on: the reader's own position once they have moved it, else the
  * page's own `now` — the server's clock at the moment it read the agenda.
  *
@@ -175,6 +182,26 @@ export function periodLabelFor(view: CalendarViewMode, focusMs: number, tz: stri
 	if (view === "month" || view === "timeline") return calendarTime.fmtMonthYear(focusMs, tz);
 	const days = calendarTime.weekDays(focusMs, tz);
 	return `${calendarTime.fmtDayLabel(days[0], tz)} – ${calendarTime.fmtDayLabel(days[6], tz)}`;
+}
+
+/**
+ * The focus one period on from `from` — the header trail's Previous / Next, on either page.
+ *
+ * Through `calendarTime`, the engine's OWN zoned-date matrix, rather than millisecond arithmetic: a
+ * day is 23 or 25 hours twice a year and a month is not 30 days, so a local `+ 7 * 86_400_000` would
+ * drift the trail off the week the grid is drawing on exactly the days it matters. A Gantt step is a
+ * week: its axis is continuous, and a month jump would leap past the viewport at every zoom but the
+ * widest.
+ */
+export function shiftedFocus(
+	view: CalendarViewMode,
+	from: number,
+	delta: number,
+	tz: string,
+): number {
+	if (view === "day") return calendarTime.addZonedDays(from, delta, tz);
+	if (view === "week" || view === "timeline") return calendarTime.addZonedDays(from, delta * 7, tz);
+	return calendarTime.addZonedMonths(from, delta, tz);
 }
 // #endregion
 

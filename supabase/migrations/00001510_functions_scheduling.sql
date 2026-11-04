@@ -1042,6 +1042,43 @@ BEGIN
 END;
 $$;
 
+-- A recurring series (scheduling.events recurrence_rule / recurrence_parent_id) is one level deep and
+-- lives on one anchor: an occurrence names a MASTER (a row with a rule) on the same schedule and
+-- project, and a master that still has occurrences keeps its rule and its anchor. The table's CHECKs
+-- state the rest (an occurrence carries no rule, and never names itself). FOR SHARE holds the master
+-- while an occurrence attaches, so a concurrent edit dropping its rule waits and then sees the child.
+--
+-- SECURITY DEFINER so neither lookup depends on the caller's RLS: a manager editing a master must not
+-- pass the occurrence check because an occurrence is hidden from them. The body is two key lookups on
+-- scheduling.events; nothing a caller supplies reaches dynamic SQL.
+CREATE OR REPLACE FUNCTION scheduling.fn_guard_event_recurrence()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.recurrence_parent_id IS NOT NULL THEN
+        PERFORM 1 FROM scheduling.events m
+         WHERE m.id = NEW.recurrence_parent_id
+           AND m.recurrence_rule IS NOT NULL
+           AND m.schedule_id IS NOT DISTINCT FROM NEW.schedule_id
+           AND m.project_id IS NOT DISTINCT FROM NEW.project_id
+           FOR SHARE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION USING ERRCODE = '23514', MESSAGE = 'recurrence_parent_id: not a recurring event on this calendar';
+        END IF;
+    END IF;
+    IF TG_OP = 'UPDATE' AND OLD.recurrence_rule IS NOT NULL
+       AND (NEW.recurrence_rule IS NULL OR NEW.schedule_id IS DISTINCT FROM OLD.schedule_id
+            OR NEW.project_id IS DISTINCT FROM OLD.project_id)
+       AND EXISTS (SELECT 1 FROM scheduling.events o WHERE o.recurrence_parent_id = OLD.id) THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', MESSAGE = 'recurrence_rule: this series still has occurrences';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- A schedule's time zone must be one Postgres knows. save_owner_availability checked it, but a direct
 -- update did not, and an unknown zone made every booking against the schedule raise instead of refusing
 -- with a reason (while the slot grid silently fell back to UTC and kept offering slots).

@@ -1,4 +1,4 @@
-import { CalendarView } from "./CalendarView.tsx";
+import { CalendarView, LAYERS } from "./CalendarView.tsx";
 import { Details } from "./Details.tsx";
 import { Issues } from "./Issues.tsx";
 import { Library } from "./Library.tsx";
@@ -62,6 +62,11 @@ export const AvailabilityScheduler = Object.assign(Root, {
 });
 
 export type { AvailabilitySchedulerRootProps } from "./Root.tsx";
+export type {
+	CalendarViewProps as SchedulerCalendarProps,
+	SchedulerContextTarget,
+} from "./CalendarView.tsx";
+export { LAYERS as SCHEDULER_LAYERS };
 export type { PresetBarProps } from "./PresetBar.tsx";
 export type { StudioProps } from "./Studio.tsx";
 export type { LibraryItem, LibraryProps } from "./Library.tsx";

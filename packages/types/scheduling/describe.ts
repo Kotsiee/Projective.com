@@ -75,6 +75,12 @@ function everyPhrase(interval: number, unit: "week" | "month"): string {
 	return `Every ${interval} ${unit}s`;
 }
 
+function everyNthPhrase(interval: number, unit: "day" | "year"): string {
+	if (interval === 1) return `Every ${unit}`;
+	if (interval === 2) return `Every other ${unit}`;
+	return `Every ${interval} ${unit}s`;
+}
+
 function exceptionPhrase(unless: readonly number[], locale: string): string {
 	if (!unless.length) return "";
 	const days = [...unless].sort((a, b) => a - b).map((wd) => weekdayName(wd, locale));
@@ -83,6 +89,8 @@ function exceptionPhrase(unless: readonly number[], locale: string): string {
 
 function patternPhrase(pattern: RulePattern, locale: string): string {
 	switch (pattern.type) {
+		case "daily":
+			return everyNthPhrase(pattern.interval, "day");
 		case "weekly": {
 			const days = [...pattern.days].sort((a, b) => a - b);
 			const named = days.length === 7
@@ -109,7 +117,7 @@ function patternPhrase(pattern: RulePattern, locale: string): string {
 		case "yearly": {
 			const date = dateFormat(locale, { day: "numeric", month: "long" })
 				.format(new Date(Date.UTC(2000, pattern.month - 1, pattern.day)));
-			return `Every year on ${date}`;
+			return `${everyNthPhrase(pattern.interval, "year")} on ${date}`;
 		}
 		case "once": {
 			const p = civilParts(pattern.date);

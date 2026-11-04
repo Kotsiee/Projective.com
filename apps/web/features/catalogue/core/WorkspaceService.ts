@@ -1,11 +1,13 @@
 import type {
 	ArchivePresetResult,
 	BindListingAvailability,
+	BlackoutInput,
 	PresetListResult,
 	SavePresetInput,
 	SavePresetResult,
+	ScheduleSettings,
 } from "@projective/types/scheduling";
-import { getCatalogue, postCatalogue, putCatalogue } from "./api.ts";
+import { deleteCatalogue, getCatalogue, postCatalogue, putCatalogue } from "./api.ts";
 import type {
 	ApplyListingMediaInput,
 	BindListingAvailabilityResult,
@@ -56,6 +58,18 @@ export const WorkspaceService = {
 	/** The seller's live availability presets (library first, then service forks) and who follows each. */
 	presets(): Promise<CatalogueResult<PresetListResult>> {
 		return getCatalogue<PresetListResult>("/api/scheduling/presets");
+	},
+
+	/** Book whole days off on the schedule. */
+	addBlackout(input: BlackoutInput): Promise<CatalogueResult<ScheduleSettings>> {
+		return postCatalogue<ScheduleSettings>("/api/scheduling/blackouts", input);
+	},
+
+	/** Remove one booked day range. */
+	removeBlackout(id: string): Promise<CatalogueResult<ScheduleSettings>> {
+		return deleteCatalogue<ScheduleSettings>(
+			`/api/scheduling/blackouts?${new URLSearchParams({ id })}`,
+		);
 	},
 
 	/** Archive a preset; the listings bound to it fall back to the default. */

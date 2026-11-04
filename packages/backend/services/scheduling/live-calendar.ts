@@ -122,6 +122,8 @@ const EVENT_COLUMNS = [
 	"capacity",
 	"href",
 	"source_connection_id",
+	"recurrence_rule",
+	"recurrence_parent_id",
 	"created_by",
 ].join(", ");
 
@@ -156,6 +158,8 @@ interface EventRow {
 	capacity: number | null;
 	href: string | null;
 	source_connection_id: string | null;
+	recurrence_rule: string | null;
+	recurrence_parent_id: string | null;
 	created_by: string | null;
 }
 
@@ -797,6 +801,8 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	if (row.attendee_count !== null) event.attendees = Math.max(0, row.attendee_count);
 	if (row.capacity !== null) event.capacity = Math.max(0, row.capacity);
 	if (row.href) event.href = clamp(row.href, 400);
+	if (row.recurrence_rule) event.recurrenceRule = row.recurrence_rule;
+	if (row.recurrence_parent_id) event.recurrenceParentId = row.recurrence_parent_id;
 	// The platform's own copy; an entry mirrored in from a connected calendar names no provider here,
 	// because which provider a connection is lives behind the definer-only connection store.
 	if (!row.source_connection_id) event.sources = ["projective"];

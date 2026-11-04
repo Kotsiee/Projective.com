@@ -84,11 +84,27 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 		],
 		[
 			{
-				pattern: { type: "yearly", month: 2, day: 29 },
+				pattern: { type: "yearly", month: 2, day: 29, interval: 1 },
 				bands: nine,
 				endsOn: "2036-12-31" as IsoDate,
 			},
 			"Every year on 29 February from 6 Oct until 31 Dec 2036 · 09:00–17:00 · working hours",
+		],
+		[
+			{ pattern: { type: "yearly", month: 3, day: 14, interval: 2 }, bands: nine },
+			"Every other year on 14 March from 6 Oct · 09:00–17:00 · working hours",
+		],
+		[
+			{ pattern: { type: "yearly", month: 3, day: 14, interval: 3 }, bands: nine },
+			"Every 3 years on 14 March from 6 Oct · 09:00–17:00 · working hours",
+		],
+		[
+			{ pattern: { type: "daily", interval: 2 }, bands: nine },
+			"Every other day from 6 Oct · 09:00–17:00 · working hours",
+		],
+		[
+			{ pattern: { type: "daily", interval: 3 }, bands: nine },
+			"Every 3 days from 6 Oct · 09:00–17:00 · working hours",
 		],
 		[
 			{ pattern: { type: "once", date: "2026-10-21" as IsoDate }, bands: nine },

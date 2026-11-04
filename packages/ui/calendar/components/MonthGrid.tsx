@@ -26,7 +26,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { createSpring, SPRING_STANDARD } from "../../core/motion.ts";
-import type { CalendarAvailability, CalendarEvent, CalendarRange } from "../core/types.ts";
+import type {
+	CalendarAvailability,
+	CalendarEvent,
+	CalendarProps,
+	CalendarRange,
+} from "../core/types.ts";
 import {
 	addZonedDays,
 	addZonedMonths,
@@ -270,6 +275,8 @@ export interface MonthGridProps {
 	/** Told about every range a click or a drag selects, before the composer opens on it. */
 	onSelectRange?: (range: CalendarRange) => void;
 	onOpenEvent?: (event: CalendarEvent) => void;
+	/** What a right-click landed on (`CalendarProps.onContextTarget`); an empty cell is its whole day. */
+	onContextTarget?: CalendarProps["onContextTarget"];
 	/** Open a specific day (the Day view) when its number is clicked. */
 	onOpenDay?: (dayStart: number) => void;
 	/** The window scrolled to show another stretch: a day inside the focal month, near the top. */
@@ -467,7 +474,7 @@ export function MonthGrid(props: MonthGridProps): JSX.Element {
 		selection.value = null;
 		props.onSelectRange?.(range);
 		if (props.draft) props.draft.value = range;
-		if (props.popover) {
+		if (props.popover && props.draft) {
 			props.popover.value = { kind: "create", range, anchor: anchorOf(cellOf(hi)) };
 		}
 	}
@@ -846,7 +853,29 @@ export function MonthGrid(props: MonthGridProps): JSX.Element {
 				onKeyDown={onKeyDown}
 				onPointerDown={onPointerDown}
 				onContextMenu={(e) => {
-					if (gesture.current) e.preventDefault();
+					if (gesture.current) {
+						e.preventDefault();
+						return;
+					}
+					const report = props.onContextTarget;
+					if (!report) return;
+					const target = e.target instanceof Element ? e.target : null;
+					const id = target?.closest<HTMLElement>("[data-event-id]")?.dataset.eventId;
+					const day = dayOf(target);
+					report(
+						id
+							? { event: props.events.find((ev) => ev.id === id) ?? null, range: null }
+							: day === null
+							? { event: null, range: null }
+							: {
+								event: null,
+								range: {
+									start: startOfDay(day, tz),
+									end: addZonedDays(startOfDay(day, tz), 1, tz),
+									allDay: true,
+								},
+							},
+					);
 				}}
 				onClickCapture={(e) => {
 					if (swallowClick.current === null) return;

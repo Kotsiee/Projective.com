@@ -49,12 +49,15 @@ import { serverEnv } from "../../core/env.ts";
 import type {
 	ArchivePresetResult,
 	BindListingAvailability,
+	BlackoutInput,
 	PresetListResult,
 	SavePresetInput,
 	SavePresetResult,
+	ScheduleSettings,
 } from "@projective/types/scheduling";
 import type { BindListingAvailabilityResult } from "@projective/types/catalogue";
 import { archivePreset, listPresets, type PresetDeps, savePreset } from "./live-presets.ts";
+import { addBlackout, removeBlackout } from "./live-schedule-settings.ts";
 import { bindListing } from "./live-preset-binding.ts";
 import { compilePreset, extendPresetHorizons, type HorizonOutcome } from "./live-occurrences.ts";
 import { COMPILE_HORIZON_DAYS } from "./preset-model.ts";
@@ -539,6 +542,24 @@ export class ScheduleBackendService {
 		deps: Partial<PresetDeps> = {},
 	): Promise<ServiceResult<BindListingAvailabilityResult>> {
 		return asOwner("bind-listing", actor, deps, (a, d) => bindListing(input, a, d));
+	}
+
+	/** Book whole days off on the acting owner's schedule, then recompile its presets. */
+	static addBlackout(
+		input: BlackoutInput,
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<ScheduleSettings>> {
+		return asOwner("add-blackout", actor, deps, (a, d) => addBlackout(input, a, d));
+	}
+
+	/** Remove one blackout from the acting owner's schedule, then recompile its presets. */
+	static removeBlackout(
+		id: string,
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<ScheduleSettings>> {
+		return asOwner("remove-blackout", actor, deps, (a, d) => removeBlackout(id, a, d));
 	}
 
 	/**

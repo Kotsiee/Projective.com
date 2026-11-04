@@ -273,225 +273,6 @@
 	margin-inline-start: calc(var(--icon-sm) * -0.35);
 }
 
-/*
- * The tab panel below the head — the upcoming list (`.cal-lane__list`, which is the shared
- * `.ui-lane-list`) or the availability manager. Only one is in the DOM at a time, so the panel owns
- * the remaining height and its own scroll rather than sharing it with a second subject.
- */
-.cal-lane__panel {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	overflow-y: auto;
-}
-
-/*
- * Inside the panel the availability block IS the panel, so it drops the separating rule it carried
- * when it sat pinned beneath the upcoming list: the head's own hairline is already the boundary
- * directly above it, and two rules a few pixels apart is the doubling §B.4 forbids.
- */
-.cal-lane__panel .cal-avail-block {
-	border-block-start: none;
-}
-
-/* #endregion */
-
-/* #region Availability block */
-.cal-avail-block {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	padding: var(--space-3);
-	border-block-start: var(--hairline);
-}
-
-.cal-avail-block__head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-2);
-}
-
-.cal-avail-block__title,
-.cal-avail-block__subtitle {
-	margin: 0;
-	font-size: var(--cal-hub-fs-micro);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--cal-hub-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-}
-
-.cal-avail-block__configure {
-	appearance: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: none;
-	border-radius: var(--radius-xs);
-	background: none;
-	font: inherit;
-	color: var(--text-secondary);
-	padding: 0;
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
-		var(--spring-snappy);
-}
-
-.cal-avail-block__configure:hover,
-.cal-avail-block__configure:focus-visible {
-	color: var(--on-surface);
-}
-
-.cal-avail-block__configure:active {
-	transform: scale(var(--btn-press-scale));
-}
-
-/* The lane's template list: a name and one muted meta line per row, a solid tonal step on hover. */
-.cal-avail-tpl__list {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.cal-avail-tpl__row {
-	appearance: none;
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-px);
-	inline-size: 100%;
-	padding: var(--space-1) var(--space-2);
-	margin-inline: calc(-1 * var(--space-2));
-	border: none;
-	border-radius: var(--radius-sm);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	text-align: start;
-	cursor: pointer;
-	transition: background var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
-		var(--spring-snappy);
-}
-
-.cal-avail-tpl__row:hover,
-.cal-avail-tpl__row:focus-visible {
-	background: var(--surface-2);
-}
-
-.cal-avail-tpl__row:active {
-	transform: scale(var(--btn-press-scale));
-}
-
-.cal-avail-tpl__name {
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-}
-
-.cal-avail-tpl__meta {
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--text-secondary);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.cal-avail-block__configure,
-	.cal-avail-tpl__row {
-		transition: none;
-	}
-
-	.cal-avail-block__configure:active,
-	.cal-avail-tpl__row:active {
-		transform: none;
-	}
-}
-
-:root[data-motion="reduced"] .cal-avail-block__configure:active,
-:root[data-motion="reduced"] .cal-avail-tpl__row:active {
-	transform: none;
-}
-
-.cal-avail-block__tz,
-.cal-avail-block__none {
-	margin: 0;
-	font-size: var(--cal-hub-fs-micro);
-	color: var(--text-secondary);
-}
-
-.cal-avail-block__days,
-.cal-avail-block__leavelist {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.cal-avail-block__day {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: var(--cal-hub-fs-micro);
-}
-
-.cal-avail-block__dayname {
-	inline-size: 2.25rem;
-	flex: none;
-	color: var(--text-secondary);
-}
-
-.cal-avail-block__bands {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	min-inline-size: 0;
-}
-
-/*
- * Working hours and call windows are two LAYERS of one answer, so they differ by weight and a single
- * accent rather than by two boxes: "I am at my desk" and "interrupt me" are different statements,
- * and a surface that paints them identically cannot express the second.
- */
-.cal-avail-block__band {
-	color: var(--on-surface);
-	white-space: nowrap;
-}
-
-.cal-avail-block__band[data-kind="call_window"] {
-	color: var(--text-secondary);
-	font-weight: var(--fw-medium);
-}
-
-.cal-avail-block__leave {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	padding-block-start: var(--space-2);
-	border-block-start: var(--hairline);
-}
-
-.cal-avail-block__leaveitem {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-2);
-	font-size: var(--cal-hub-fs-micro);
-}
-
-.cal-avail-block__leavelabel {
-	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.cal-avail-block__leavewhen {
-	color: var(--text-secondary);
-	flex: none;
-}
-
 /* #endregion */
 
 /* #region Header band */
@@ -513,22 +294,25 @@
 	min-inline-size: 0;
 }
 
-.cal-band__identity {
+/*
+ * Two equal clusters either side of the page tabs, so the strip sits on the band's centre line
+ * whatever each side holds — the anatomy of every middle-nav band (`.wsp-headerband`).
+ */
+.cal-band__start,
+.cal-band__end {
 	display: flex;
-	align-items: baseline;
-	gap: var(--space-2);
+	flex: 1 1 0;
+	align-items: center;
 	min-inline-size: 0;
 }
 
-/* The page's one `<h1>`, drawn in the band's body register: the UA heading margin goes, and the size
-   and weight are the band's own, never the UA's 2em bold. */
-.cal-band__name {
-	margin: 0;
-	font-size: var(--cal-hub-fs-body);
-	font-weight: var(--fw-semibold);
-	line-height: inherit;
-	color: var(--on-surface);
-	white-space: nowrap;
+.cal-band__start {
+	gap: var(--space-1);
+}
+
+.cal-band__end {
+	justify-content: flex-end;
+	gap: var(--space-2);
 }
 
 .cal-band__tz {
@@ -537,15 +321,9 @@
 	white-space: nowrap;
 }
 
-.cal-band__trail {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	min-inline-size: 0;
-}
-
 .cal-band__period {
 	font-size: var(--cal-hub-fs-body);
+	font-variant-numeric: tabular-nums;
 	color: var(--on-surface);
 	white-space: nowrap;
 	overflow: hidden;
@@ -556,6 +334,7 @@
 .cal-band__navbtn,
 .cal-band__iconbtn {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
 	justify-content: center;
 	inline-size: var(--cal-hub-hit);
@@ -569,7 +348,7 @@
 }
 
 .cal-band__navbtn:hover,
-.cal-band__iconbtn:hover {
+.cal-band__iconbtn:hover:not(:disabled) {
 	background: var(--surface-3);
 	color: var(--on-surface);
 }
@@ -583,12 +362,9 @@
 	color: var(--primary-ink);
 }
 
-.cal-band__controls {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-inline-start: auto;
-	min-inline-size: 0;
+.cal-band__iconbtn:disabled {
+	cursor: default;
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), transparent);
 }
 
 /*
@@ -638,30 +414,30 @@
 }
 
 /*
- * The lane is removed at exactly this width (middle-nav.css), so the band inherits the two duties
- * that lived ONLY there: find-in-calendar, and the way into working hours and leave. `/wallet` proved
- * the transfer is mandatory; `/messages` proved what a surface looks like when it does not happen.
+ * The lane is removed at exactly this width (middle-nav.css), so the band inherits the duties that
+ * lived ONLY there — find-in-calendar and the filter. `/wallet` proved the transfer is mandatory;
+ * `/messages` proved what a surface looks like when it does not happen. The actions keep their width
+ * and the period is what truncates, so the end cluster sizes to its content here.
  */
 @media (max-width: 767px) {
+	.cal-band {
+		gap: var(--space-2);
+		padding-inline: var(--space-3);
+	}
+
+	.cal-band__end {
+		flex: none;
+		gap: var(--space-1);
+	}
+
 	.cal-band__search,
 	.cal-band__iconbtn--mobile,
 	.ui-tooltip__anchor:has(.cal-band__iconbtn--mobile) {
 		display: inline-flex;
 	}
 
-	/*
-	 * By this width the identity is down to one word, and the period is what may truncate. The name is
-	 * the page's heading, so it is hidden visually and kept for assistive technology, never removed.
-	 */
-	.cal-band__name {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
+	.cal-band__searchinput {
+		inline-size: 4rem;
 	}
 }
 
@@ -711,6 +487,13 @@
 .ui-button.cal-rig__create {
 	flex: none;
 	margin-inline-start: var(--space-1);
+}
+
+/* New event is the lane footer's from 768px; the rig carries it only where the shell removes the lane. */
+@media (min-width: 768px) {
+	.ui-tooltip__anchor:has(> .cal-rig__create) {
+		display: none;
+	}
 }
 
 /* Too narrow for three parts on one row: the ruler takes the second row, full width. */

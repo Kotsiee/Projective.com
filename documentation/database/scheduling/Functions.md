@@ -147,6 +147,7 @@ The boolean face of the same gate (`refusal IS NULL`), for a pre-flight UI check
 | `trg_enforce_call_transition` | BEFORE UPDATE                                    | `fn_enforce_call_transition()` |
 | `trg_log_call_event`          | AFTER INSERT/UPDATE                              | `fn_log_call_event()`          |
 | `trg_guard_rostered_event`    | BEFORE UPDATE OR DELETE on `events`              | `fn_guard_rostered_event()` (§9) |
+| `trg_guard_event_recurrence`  | BEFORE INSERT OR UPDATE OF `recurrence_rule`, `recurrence_parent_id`, `schedule_id`, `project_id` on `events` | `fn_guard_event_recurrence()` (§9) |
 | `trg_check_schedule_timezone` | BEFORE INSERT OR UPDATE OF `timezone` on `schedules` | `fn_check_schedule_timezone()` |
 
 (All in `00001860_triggers_scheduling.sql`, after every functions file; the reschedule-round
@@ -479,6 +480,22 @@ through. The roster lookup it needs is the definer helper `fn_event_has_roster` 
 `search_path = ''`), so the answer does not depend on the caller's RLS. `EXECUTE` on the guard to
 `authenticated`; on the helper to `authenticated` and `service_role` (revoked from `PUBLIC` and
 `anon`) — the guard runs as the caller, so the caller must be able to execute the helper.
+
+### `scheduling.fn_guard_event_recurrence()` → trigger (`trg_guard_event_recurrence`)
+
+Added 2026-11-03 (Decision #375); trigger in `00001860`. Keeps a recurring series one level deep
+and on one anchor, for **every** role. An occurrence's `recurrence_parent_id` must name a master (a
+row with `recurrence_rule`) on the same `schedule_id` and `project_id`. The master is locked
+`FOR SHARE` while the occurrence attaches. A master that still has occurrences may not drop its rule
+or move anchor. Both refusals are `23514` with `<field>: <reason>` messages. The table's CHECKs
+cover the rest: `ck_event_recurrence_shape` (an occurrence carries no rule) and
+`ck_event_recurrence_not_self`.
+
+`SECURITY DEFINER` (`search_path = ''`), so a manager editing a master cannot pass the occurrence
+check because RLS hides an occurrence from them. The body runs two key lookups on
+`scheduling.events` and returns `NEW`; it has no dynamic SQL. `EXECUTE` is revoked from `PUBLIC`,
+`anon` and `authenticated` (`00002510`). A trigger function's privilege is checked only at
+`CREATE TRIGGER`.
 
 ### `scheduling.close_reschedule_round(round, status, resolved_proposal, actor, summary, detail) → uuid`
 

@@ -361,12 +361,14 @@ export function EventBlock(
 	// block's own `aria-label` (assembled above, unchanged) is what a reader gets, and it is complete.
 	const content = asPin ? pinContent : asBare ? null : boxContent;
 
+	// `data-event-id` is how a grid resolves a right-click on this block back to its entry.
 	if (onOpen) {
 		return (
 			<button
 				type="button"
 				class={cls}
 				style={vars}
+				data-event-id={event.id}
 				onClick={() => onOpen(event)}
 				aria-label={label}
 			>
@@ -375,7 +377,7 @@ export function EventBlock(
 		);
 	}
 	return (
-		<div class={cls} style={vars} role="listitem" aria-label={label}>
+		<div class={cls} style={vars} role="listitem" aria-label={label} data-event-id={event.id}>
 			{content}
 		</div>
 	);

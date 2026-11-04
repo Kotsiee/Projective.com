@@ -5,6 +5,7 @@ import type { CalendarEvent, CalendarEventKind, EntryFields } from "@projective/
 import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, spreadDaily } from "../core/event-series.ts";
+import { seriesOf } from "../core/event-recurrence.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 
 /** The fields of an entry its host's write carries — what `scheduling.events` stores. */
@@ -64,7 +65,10 @@ export interface CalendarComposer {
 	close(): void;
 	/** `EventModal.onMinimise` — fold the modal back into the composer, series and all. */
 	minimise(event: CalendarEvent): void;
-	/** `EventModal.onSubmit` — a new daily entry is laid onto every day of its series. */
+	/**
+	 * `EventModal.onSubmit` — a new daily entry is laid onto every day of its series, a repeating one
+	 * onto the occurrences of its rule (`seriesOf`).
+	 */
 	submit(event: CalendarEvent): void;
 	serverUpdate(event: CalendarEvent): void;
 	/** Take an entry off the calendar, closing it if it is the one open. */
@@ -184,8 +188,13 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 				return;
 			}
 			if (!creatable(event)) return;
+			const tz = optsRef.current.timezone();
 			create(
-				series.current ? spreadDaily(event, series.current, optsRef.current.timezone()) : [event],
+				event.recurrenceRule
+					? seriesOf(event, tz).events
+					: series.current
+					? spreadDaily(event, series.current, tz)
+					: [event],
 			);
 			close();
 		},

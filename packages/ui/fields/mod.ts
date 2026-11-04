@@ -169,6 +169,11 @@ export {
 export { InputSwitch, ToggleSwitch, type ToggleSwitchProps } from "./islands/ToggleSwitch.tsx";
 export { ToggleButton, type ToggleButtonProps } from "./islands/ToggleButton.tsx";
 export { SelectButton, type SelectButtonProps } from "./islands/SelectButton.tsx";
+/**
+ * Seven circular weekday letters, ordered from a locale's first day, for "repeats on…" choices; the
+ * value is weekday numbers (0 = Sunday), never positions.
+ */
+export { weekdayOrder, WeekdayRail, type WeekdayRailProps } from "./islands/WeekdayRail.tsx";
 export { Rating, type RatingProps } from "./islands/Rating.tsx";
 // #endregion
 

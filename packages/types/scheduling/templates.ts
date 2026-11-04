@@ -8,7 +8,7 @@ import type { AvailabilityPreset, AvailabilityRuleDraft, Band } from "./recurren
 
 // #region Shape
 /** A template: a preset minus everything that identifies a stored one. */
-export type ScheduleTemplate = Omit<AvailabilityPreset, "id" | "blueprintId"> & {
+export type ScheduleTemplate = Omit<AvailabilityPreset, "id" | "slug" | "blueprintId"> & {
 	/** Stable key the preset bar addresses a template by. */
 	key: "general" | "vip_intensive" | "evening_sprints";
 };

@@ -1868,6 +1868,7 @@ GRANT EXECUTE ON FUNCTION scheduling.get_public_blackouts (uuid, timestamptz, ti
 -- but the body runs as the INVOKING role, so the definer roster helper it calls must be executable by
 -- `authenticated` (the only client role that can reach an UPDATE or DELETE on scheduling.events).
 REVOKE ALL ON FUNCTION scheduling.fn_guard_rostered_event () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guard_event_recurrence () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_event_has_roster (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_roster (uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.fn_check_schedule_timezone () FROM PUBLIC, anon, authenticated;

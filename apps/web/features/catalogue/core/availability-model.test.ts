@@ -23,6 +23,7 @@ function preset(id: string, patch: Partial<AvailabilityPreset> = {}): Availabili
 	const [general] = SCHEDULE_TEMPLATES;
 	return {
 		id,
+		slug: "avp-2222222222",
 		name: id,
 		description: "",
 		timezone: "Europe/London",

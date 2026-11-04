@@ -199,6 +199,7 @@ Deno.test("rows: a saved preset reads back as the drafts that were saved", () =>
 			schedule_id: "s",
 			scope: "library",
 			blueprint_id: null,
+			slug: "avp-2222222222",
 			name: "Split",
 			description: "",
 			is_default: false,
@@ -221,6 +222,7 @@ Deno.test("rows: a stored RRULE no pattern expresses is refused, never approxima
 				schedule_id: "s",
 				scope: "library",
 				blueprint_id: null,
+				slug: "avp-2222222222",
 				name: "x",
 				description: "",
 				is_default: false,
@@ -233,7 +235,7 @@ Deno.test("rows: a stored RRULE no pattern expresses is refused, never approxima
 				preset_id: "p",
 				kind: "working_hours",
 				effect: "add",
-				rrule: "FREQ=DAILY;INTERVAL=3",
+				rrule: "FREQ=DAILY;INTERVAL=31",
 				starts_on: "2026-01-01",
 				ends_on: null,
 				priority: 50,
@@ -253,6 +255,7 @@ Deno.test("rows: a stored RRULE no pattern expresses is refused, never approxima
 Deno.test("fork: the source's rules under fresh client ids, scoped to the service", () => {
 	const source: AvailabilityPreset = {
 		id: "lib",
+		slug: "avp-2222222222",
 		name: "General",
 		description: "Weekdays",
 		timezone: "Europe/London",

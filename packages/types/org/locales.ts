@@ -91,3 +91,46 @@ export function preferenceHints(languages: readonly string[]): PreferenceHints {
 	return hints;
 }
 // #endregion
+
+// #region First day of the week
+/** The `-u-fw-` keyword values (UTS #35), 0 = Sunday … 6 = Saturday. */
+const FW_KEYWORD: Record<string, number> = {
+	sun: 0,
+	mon: 1,
+	tue: 2,
+	wed: 3,
+	thu: 4,
+	fri: 5,
+	sat: 6,
+};
+
+/**
+ * CLDR `weekData/firstDay` by region, for every region whose week does not start on Monday (the
+ * `001` default). Held as data rather than read from `Intl.Locale#getWeekInfo`, which Firefox lacks
+ * and whose answer moves with each engine's ICU: a server render and the browser that hydrates it
+ * must order the same weekdays the same way.
+ */
+const FIRST_DAY_BY_REGION: Record<string, number> = Object.fromEntries([
+	..."AG AS BD BR BS BT BW BZ CA CO DM DO ET GT GU HK HN ID IL IN JM JP KE KH KR LA MH MM MO MT MX MZ NI NP PA PE PH PK PR PT PY SA SG SV TH TT TW UM US VE VI WS YE ZA ZW"
+		.split(" ").map((region) => [region, 0]),
+	..."AF BH DJ DZ EG IQ IR JO KW LY OM QA SD SY".split(" ").map((region) => [region, 6]),
+	["MV", 5],
+]);
+
+/**
+ * The weekday a locale's week starts on, 0 = Sunday … 6 = Saturday — the numbering
+ * `scheduling.availability_rules.weekday` uses. An explicit `-u-fw-` keyword wins; otherwise the
+ * locale's region decides (`en-GB` → Monday, `en-US` → Sunday, `ar-EG` → Saturday), a tag without
+ * one resolving through its likely region. Anything unreadable starts on Monday.
+ */
+export function firstWeekdayOf(locale: string | null | undefined): number {
+	const parsed = locale ? parseLocale(locale.trim().replace(/_/g, "-")) : undefined;
+	if (!parsed) return 1;
+	const keyword = /-u(?:-[a-z0-9]{2,8})*?-fw-([a-z]{3})(?:-|$)/i.exec(parsed.toString())?.[1]
+		?.toLowerCase();
+	if (keyword && keyword in FW_KEYWORD) return FW_KEYWORD[keyword];
+	const region = parsed.region ?? parsed.maximize().region;
+	if (!region) return 1;
+	return FIRST_DAY_BY_REGION[region.toUpperCase()] ?? 1;
+}
+// #endregion

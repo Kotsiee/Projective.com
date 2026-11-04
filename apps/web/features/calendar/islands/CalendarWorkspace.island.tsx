@@ -3,12 +3,11 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
-import { Calendar } from "@projective/ui/calendar";
-import { Message } from "@projective/ui/feedback";
+import { Calendar, type CalendarContextTarget, type CalendarRange } from "@projective/ui/calendar";
+import { ConfirmDialog, Message } from "@projective/ui/feedback";
+import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
-import { AvailabilityModal } from "../components/AvailabilityModal.tsx";
-import { presetsSaved } from "@features/catalogue/core/availability-store.ts";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { type EventMode, eventStack } from "../core/event-view.ts";
@@ -26,6 +25,7 @@ import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import {
 	calendarFocus,
 	calendarPage,
+	calendarPresent,
 	calendarPreset,
 	calendarSnapZoom,
 	calendarView,
@@ -34,6 +34,7 @@ import {
 	focusedAt,
 	gridSpotlight,
 	importedEvents,
+	openEventModal,
 	persistCalendarView,
 	persistCalendarZoom,
 	removeRequest,
@@ -51,6 +52,8 @@ const NOTICE_MS = 5_000;
 
 /** A new entry opens on the next half hour, never at a ragged minute. */
 const SLOT_MS = 30 * 60_000;
+/** A new entry is an hour long until the reader says otherwise. */
+const HOUR_MS = 3_600_000;
 
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
 	{ value: "sync", label: "Meeting" },
@@ -86,6 +89,48 @@ function accessFor(event: CalendarEvent | null, seam: DevSeamState | null): Even
 	return { isClient: false, isFreelancer: false };
 }
 
+/** What the agenda's right-click rows do; the island supplies them. */
+interface AgendaMenuActions {
+	create: (range: CalendarRange) => void;
+	createBlank: () => void;
+	open: (event: CalendarEvent) => void;
+	edit: (event: CalendarEvent) => void;
+	remove: (event: CalendarEvent) => void;
+}
+
+/**
+ * The agenda's right-click rows for what the grid reported. An entry the viewer hosts can be edited
+ * and deleted; anyone else's opens read-only, as its summary does. Empty time offers New event on
+ * that slot, and anywhere the grid can't place (a header, the timeline) a blank one at the focus.
+ */
+function agendaRows(
+	target: CalendarContextTarget | null,
+	tz: string,
+	act: AgendaMenuActions,
+): MenuItem[] {
+	const ev = target?.event as CalendarEvent | null | undefined;
+	if (ev) {
+		if (ev.viewerIsHost !== true) {
+			return [{ key: "open", label: "Open details", command: () => act.open(ev) }];
+		}
+		return [
+			{ key: "edit", label: "Edit event", command: () => act.edit(ev) },
+			{ separator: true },
+			{ key: "delete", label: "Delete event", danger: true, command: () => act.remove(ev) },
+		];
+	}
+	const range = target?.range;
+	if (!range) return [{ key: "new", label: "New event", command: act.createBlank }];
+	const when = new Intl.DateTimeFormat("en-GB", {
+		timeZone: tz,
+		weekday: "short",
+		day: "numeric",
+		month: "short",
+		...(range.allDay ? {} : { hour: "2-digit", minute: "2-digit" }),
+	}).format(range.start);
+	return [{ key: "new", label: "New event", hint: when, command: () => act.create(range) }];
+}
+
 /**
  * CalendarWorkspace — the BODY of the `/calendar` hub, and nothing but the grid.
  *
@@ -99,6 +144,10 @@ function accessFor(event: CalendarEvent | null, seam: DevSeamState | null): Even
  * outside this tree, and read the page through {@link calendarPage} rather than fetching their own:
  * a lane that fetched separately would draw an upcoming list from a different response than the
  * grid beside it, and the two would disagree the moment a write landed.
+ *
+ * A right-click on the grid opens the entry's rows (Edit event · Delete event for one the viewer
+ * hosts, else Open details) or, on empty time, New event on the slot under the pointer (Decision
+ * #380). The menu is an `ActionMenu` surface: portalled, stacked, clamped, keyboard-reachable.
  */
 export interface CalendarWorkspaceProps {
 	initial: SchedulePage | null;
@@ -112,6 +161,12 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/** A refused create, in the refusal's own words. */
 	const notice = useSignal<string | null>(null);
 	const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	/** The grid region the right-click menu binds to, and what the grid said was under the pointer. */
+	const surfaceRef = useRef<HTMLDivElement>(null);
+	const pointed = useSignal<CalendarContextTarget | null>(null);
+	/** The entry a menu Delete is waiting on the reader's confirmation for. */
+	const doomed = useSignal<CalendarEvent | null>(null);
+	const confirmDelete = useSignal(false);
 
 	/**
 	 * The surface's clock: the page's own `now`, advanced at wall rate since it was read — the same
@@ -212,11 +267,6 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		return subscribeDevSeam(apply);
 	}, []);
 
-	// A saved availability template re-mirrors the weekly hours the grid shades and the lane lists.
-	useSignalEffect(() => {
-		if (presetsSaved.value > 0) void load();
-	});
-
 	// The page is a module signal shared with four other trees, so it has to be released when this
 	// one goes: leaving the previous surface's agenda in it would let a later mount of the lane paint
 	// a week the grid is not showing.
@@ -259,7 +309,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		// On the reader's focus, but never behind the clock: a blank entry in the past is one that
 		// could only be refused.
 		const start = Math.max(focusedAt(page.value), Math.ceil(clock() / SLOT_MS) * SLOT_MS);
-		composer.expandCreate({ start, end: start + 3_600_000 }, "");
+		composer.expandCreate({ start, end: start + HOUR_MS }, "");
 	}, [createRequest.value]);
 
 	const p = page.value;
@@ -291,9 +341,28 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	const renderSource = (source: string) =>
 		sourceIsVisible(source) ? renderCalendarSource(source) : null;
 	const access = accessFor(framed, seam.value);
+	const menu = agendaRows(pointed.value, p.timezone, {
+		create: (range) =>
+			composer.expandCreate(
+				range.allDay ? range : { start: range.start, end: range.start + HOUR_MS },
+				"",
+			),
+		createBlank: () => createRequest.value++,
+		open: (ev) => selectEvent(ev, "grid"),
+		edit: (ev) => openEventModal(ev.id),
+		remove: (ev) => {
+			doomed.value = ev;
+			confirmDelete.value = true;
+		},
+	});
 
 	return (
-		<div class="cal-surface cal-surface--full">
+		<div
+			class="cal-surface cal-surface--full"
+			ref={surfaceRef}
+			// Cleared before the grid reports, so a press the grid can't resolve never reuses a stale one.
+			onContextMenuCapture={() => (pointed.value = null)}
+		>
 			{loadError.value
 				? (
 					<Message severity="warning" size="sm" class="cal-surface__notice">
@@ -314,6 +383,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				// "Hide availability" withdraws the working-hours shading with the open slots.
 				availability={calendarPreset.value === "events" ? undefined : p.availability}
 				spotlight={gridSpotlight}
+				present={calendarPresent}
 				// The entry opens beside the grid (panel or modal), so the engine's popover would repeat it.
 				directOpen
 				timezone={p.timezone}
@@ -341,6 +411,26 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				onExpandCreate={composer.expandCreate}
 				onMoveEvent={(ev, range) => composer.moveEvent(ev as CalendarEvent, range)}
 				onOpenEvent={(ev) => selectEvent(ev as CalendarEvent, "grid")}
+				onContextTarget={(t) => (pointed.value = t)}
+			/>
+			<ActionMenu
+				model={menu}
+				surface={surfaceRef}
+				aria-label={pointed.value?.event ? "Event actions" : "Calendar actions"}
+			/>
+			<ConfirmDialog
+				visible={confirmDelete}
+				header="Delete this event?"
+				message="Delete this event from your calendar?"
+				acceptLabel="Delete"
+				rejectLabel="Keep"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const ev = doomed.peek();
+					doomed.value = null;
+					if (ev) remove(ev.id);
+				}}
+				onReject={() => (doomed.value = null)}
 			/>
 
 			{open && framed
@@ -372,9 +462,6 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 					/>
 				)
 				: null}
-
-			{/* One mount for the lane's and the header band's availability controls. */}
-			<AvailabilityModal />
 		</div>
 	);
 }

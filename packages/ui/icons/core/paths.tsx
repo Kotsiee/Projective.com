@@ -94,6 +94,17 @@ const NAVIGATION = {
 			<circle cx="19" cy="12" r="2" />
 		</>
 	),
+	/**
+	 * The Timeline (Gantt) VIEW — three bars stepping right, a cascade of work over time. NOT
+	 * `timeline`, which is a history track of milestone nodes.
+	 */
+	"timeline-cascade": () => (
+		<>
+			<rect x="3" y="4.5" width="10" height="3.5" rx="1.2" />
+			<rect x="7" y="10.25" width="10" height="3.5" rx="1.2" />
+			<rect x="11" y="16" width="10" height="3.5" rx="1.2" />
+		</>
+	),
 	/** Settings — a gear. */
 	"settings": () => (
 		<>
@@ -478,6 +489,14 @@ const STATE = {
 		<>
 			<path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z" />
 			<circle cx="12" cy="10" r="2.5" />
+		</>
+	),
+	/** A marker with a clock face — "you are here" in TIME: go to now. NOT `pin-location`. */
+	"pin-clock": () => (
+		<>
+			<path d="M12 21.5s-7.5-6.7-7.5-11.5a7.5 7.5 0 0 1 15 0c0 4.8-7.5 11.5-7.5 11.5z" />
+			<circle cx="12" cy="10" r="4" />
+			<path d="M12 7.9V10l1.5 1" />
 		</>
 	),
 } as const;

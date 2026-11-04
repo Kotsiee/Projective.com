@@ -8,6 +8,7 @@ import {
 	rruleToDraft,
 	type RulePattern,
 } from "./recurrence.ts";
+import { expandRRule, parseRRule } from "./rrule.ts";
 
 /** The plan §5.3 normalisation table, the authoring refusals, and `rruleToDraft`'s equivalences. */
 
@@ -50,9 +51,14 @@ Deno.test("the plan §5.3 table compiles to its RRULEs", () => {
 
 Deno.test("the other patterns compile, an end date becomes UNTIL", () => {
 	assertEquals(
-		draftToRRule(input({ type: "yearly", month: 2, day: 29 }, [0, 6])),
+		draftToRRule(input({ type: "yearly", month: 2, day: 29, interval: 1 }, [0, 6])),
 		"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29;BYDAY=MO,TU,WE,TH,FR",
 	);
+	assertEquals(
+		draftToRRule(input({ type: "yearly", month: 3, day: 14, interval: 2 })),
+		"FREQ=YEARLY;INTERVAL=2;BYMONTH=3;BYMONTHDAY=14",
+	);
+	assertEquals(draftToRRule(input({ type: "daily", interval: 3 })), "FREQ=DAILY;INTERVAL=3");
 	assertEquals(
 		draftToRRule({ ...input({ type: "once", date: START }) }),
 		"FREQ=DAILY;UNTIL=20261006",
@@ -127,6 +133,48 @@ Deno.test("the draft schema applies its defaults and refuses a midnight-crossing
 	);
 });
 
+Deno.test("a daily rule starts at two, refuses an exception, and a yearly interval defaults to one", () => {
+	const base = {
+		id: "r1",
+		layer: "working_hours",
+		effect: "add",
+		bands: [{ start: 540, end: 1020 }],
+		startsOn: START,
+		endsOn: null,
+	};
+	const parse = (pattern: unknown, unlessWeekdays: number[] = []) =>
+		AvailabilityRuleDraftSchema.safeParse({ ...base, pattern, condition: { unlessWeekdays } });
+	assertEquals(parse({ type: "daily", interval: 1 }).success, false);
+	assertEquals(parse({ type: "daily", interval: 31 }).success, false);
+	assertEquals(parse({ type: "daily", interval: 30 }).success, true);
+	assertEquals(parse({ type: "daily", interval: 2 }, [0]).success, false);
+	const legacy = parse({ type: "yearly", month: 3, day: 14 });
+	assertEquals(legacy.success && legacy.data.pattern, {
+		type: "yearly",
+		month: 3,
+		day: 14,
+		interval: 1,
+	});
+});
+
+Deno.test("the new intervals land on their anchor's dates", () => {
+	const dates = (pattern: RulePattern, to: IsoDate) => {
+		const parsed = parseRRule(draftToRRule(input(pattern)));
+		if (!parsed.ok) throw new Error("unparsable");
+		return expandRRule(parsed.value, START, { from: START, to });
+	};
+	assertEquals(dates({ type: "daily", interval: 3 }, "2026-10-12" as IsoDate), [
+		"2026-10-06",
+		"2026-10-09",
+		"2026-10-12",
+	]);
+	assertEquals(dates({ type: "yearly", month: 10, day: 6, interval: 2 }, "2030-12-31" as IsoDate), [
+		"2026-10-06",
+		"2028-10-06",
+		"2030-10-06",
+	]);
+});
+
 Deno.test("rruleToDraft reads equivalent spellings and refuses what no pattern expresses", () => {
 	const weekly = { condition: { unlessWeekdays: [] }, endsOn: null };
 	assertEquals(rruleToDraft("FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1", START), {
@@ -147,7 +195,15 @@ Deno.test("rruleToDraft reads equivalent spellings and refuses what no pattern e
 	});
 	assertEquals(rruleToDraft("FREQ=YEARLY", START), {
 		...weekly,
-		pattern: { type: "yearly", month: 10, day: 6 },
+		pattern: { type: "yearly", month: 10, day: 6, interval: 1 },
+	});
+	assertEquals(rruleToDraft("FREQ=YEARLY;INTERVAL=2", START), {
+		...weekly,
+		pattern: { type: "yearly", month: 10, day: 6, interval: 2 },
+	});
+	assertEquals(rruleToDraft("FREQ=DAILY;INTERVAL=2", START), {
+		...weekly,
+		pattern: { type: "daily", interval: 2 },
 	});
 	assertEquals(rruleToDraft("FREQ=MONTHLY;BYMONTHDAY=12;BYDAY=TH,FR", START), {
 		pattern: { type: "monthly_date", days: [12], interval: 1 },
@@ -156,13 +212,14 @@ Deno.test("rruleToDraft reads equivalent spellings and refuses what no pattern e
 	});
 	for (
 		const unrepresentable of [
-			"FREQ=DAILY;INTERVAL=2",
+			"FREQ=DAILY;INTERVAL=31",
+			"FREQ=DAILY;INTERVAL=2;BYDAY=MO",
 			"FREQ=WEEKLY;INTERVAL=2;BYDAY=WE;WKST=SU",
 			"FREQ=WEEKLY;BYDAY=MO;BYSETPOS=1",
 			"FREQ=MONTHLY;BYDAY=5FR",
 			"FREQ=MONTHLY;BYDAY=1MO,3MO",
 			"FREQ=MONTHLY;BYMONTH=3;BYMONTHDAY=1",
-			"FREQ=YEARLY;INTERVAL=2",
+			"FREQ=YEARLY;INTERVAL=11",
 			"FREQ=YEARLY;BYMONTHDAY=1",
 			"FREQ=YEARLY;BYMONTH=11;BYDAY=4TH",
 			"FREQ=WEEKLY;BYDAY=MO;UNTIL=20260101",

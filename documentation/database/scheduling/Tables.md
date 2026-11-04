@@ -122,9 +122,12 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `source_connection_id`            | uuid                      | → `integrations.user_connections` (SET NULL) when mirrored in.                        |
 | `external_event_id`               | text                      | The provider's own id.                                                                |
 | `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session. Written by `fn_book_session_slot` (a 1-1: host + client on the roster) and `schedule_sitting` (a group sitting: **no roster**, so it blocks free/busy and both booking gates but is never put to a reschedule round, `trg_sitting_round_guard`). Either mirror is also anchored to the engagement (`project_id`), so no client policy writes it. |
+| `recurrence_rule`                 | text                      | RFC 5545 RRULE, on a series **master** only (since 2026-11-03, Decision #375). The master is itself the first occurrence: its `starts_at` is DTSTART. Shape-only CHECK (≤ 400 characters, starts `FREQ=`), the same as `recurrence_rules.rrule`; a writer stores `serialiseRRule(parseRRule(x))`, never raw input. |
+| `recurrence_parent_id`            | uuid                      | → `scheduling.events` (CASCADE): the master a later occurrence belongs to. Every occurrence is its own row, so the conflict gate, free/busy and coordination read concrete rows and the database never expands an RRULE. Indexed `idx_events_recurrence_parent` (`00004007`). |
 | `created_by`                      | uuid                      | → `auth.users` (SET NULL).                                                            |
 | `archived_at`                     | timestamptz               | Taken off the calendar by its host (Decision #328 (a)); never a delete. The same write sets `status = 'cancelled'`, which releases the time from free/busy and the booking gate. Readers skip archived rows. |
 | CHECK                             | —                         | `schedule_id IS NOT NULL OR project_id IS NOT NULL` (always anchored).                |
+| CHECK                             | —                         | `ck_event_recurrence_shape`: an occurrence (`recurrence_parent_id` set) carries no rule of its own · `ck_event_recurrence_not_self`: it never names itself. |
 | UNIQUE                            | —                         | `(source_connection_id, external_event_id)` — the re-sync upsert key.                 |
 
 > ⚠️ **A discovery call is not a new `kind`.** It is projected as a `booking`. A tenth kind would
@@ -137,6 +140,14 @@ that has any `event_attendees` row, or changing its `starts_at`, `ends_at`, `sta
 `schedule_id` (`55000`) — so a schedule owner cannot step round the 12-hour lockout and the
 majority rule, or cascade a roster, its rounds and its log away (root `CLAUDE.md` §5). The service
 role is not refused. See [Functions.md](Functions.md) §9.
+
+**A recurring series is one level deep and on one anchor.** `trg_guard_event_recurrence` (BEFORE
+INSERT OR UPDATE OF `recurrence_rule`, `recurrence_parent_id`, `schedule_id`, `project_id`, since
+2026-11-03) refuses (`23514`) an occurrence whose parent is not a master on the same `schedule_id`
+and `project_id`, and a master that drops its rule or moves anchor while it still has occurrences.
+It applies to every role. Nothing writes series yet: materialising occurrences over a horizon is the
+scheduling service's job, and `/calendar` import still expands series client-side (Decision #325).
+Both fields are party-only (not in `PUBLIC_EVENT_FIELDS`).
 
 **A host's own entries are written as the host.** `/calendar` creates, edits and removes the
 caller's entries through `POST` · `PATCH` · `DELETE /api/scheduling/events`
@@ -314,7 +325,7 @@ or nothing, as on `events`).
 > populated only when a call attaches to an already-funded stage; a paid call records its own
 > `payment_ref` and has no money path (scheduling (c); FDD X2). The ruled path is to refuse the paid
 > flavour now, then one hidden "Consultations" engagement per host on #211's session rail
-> (Decision #343, ruling C1). The refusal is built: `request_discovery_call` refuses a paid request
+> (Decision #375, ruling C1). The refusal is built: `request_discovery_call` refuses a paid request
 > (`paid_unavailable`), so no new paid row is written. The engagement is **Not built yet**.
 
 > ⚠️ **FLAGGED — cancellation economics.** `finance-model.md` §4 says a late session cancel forfeits
@@ -324,7 +335,7 @@ or nothing, as on `events`).
 > without another migration. The **courtesy** rules are new and deliberate: a free call has no
 > money, so a late cancel or no-show carries **no financial consequence** — it is a reliability
 > signal only. Whether that signal feeds `security.penalties` / discovery rank is also flagged.
-> **Both are now ruled** (Decision #343): a late cancel forfeits 100% (ruling C2 (a)), which is what
+> **Both are now ruled** (Decision #375): a late cancel forfeits 100% (ruling C2 (a)), which is what
 > the code already does (#171), and courtesy-call reliability feeds Standing at low weight, from
 > presence-verified no-shows only, at most one mark per counterparty per 30 days (ruling C6, D7),
 > which is not built yet.
@@ -430,6 +441,7 @@ saved. Retiring the weekly model is a follow-up.
 | `schedule_id`                       | uuid                      | FK → `schedules` (CASCADE). The preset is evaluated in **this schedule's** time zone; it has none of its own.                                                                 |
 | `scope`                             | `scheduling.preset_scope` | `library` (shared; edits flow to every bound service) or `service` (a fork for one service). Default `library`.                                                               |
 | `blueprint_id`                      | uuid                      | FK → `marketplace.service_blueprints` (CASCADE): the service a fork belongs to. `CHECK (scope = 'service') = (blueprint_id IS NOT NULL)`; `trg_preset_guard` requires a service sold from this schedule. |
+| `slug`                              | text                      | The opaque, permanent `avp-` address (Decision #88; since 2026-11-03, Decision #375). `NOT NULL`, no DEFAULT: `trg_availability_presets_slug` (`security.fn_slug_guard('avp')`, `00001890`) mints it on insert and refuses a change. `ck_availability_presets_slug_shape` · `availability_presets_slug_key UNIQUE (slug)`, which also makes it unique within a schedule. Never derived from `name`. |
 | `name` · `description`              | text                      | 1–60 characters (trimmed) · up to 200.                                                                                                                                        |
 | `is_default`                        | boolean                   | `CHECK (NOT is_default OR scope = 'library')`. At most one live default per schedule (`uq_availability_presets_one_default`, `00004007`).                                      |
 | `compiled_from` · `compiled_through` | date                      | The compiled window (both NULL, or both set with `through >= from`). Written only by `replace_preset_occurrences`; a client holds no UPDATE grant on them.                    |

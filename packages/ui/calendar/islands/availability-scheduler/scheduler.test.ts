@@ -342,6 +342,23 @@ Deno.test("reduce: rule actions add, replace and delete with history", () => {
 	assertStrictEquals(reduce(removed, { type: "deleteRule", ruleId: "missing" }), removed);
 });
 
+Deno.test("reduce: a rule added at a slot takes its day and an hour; a duplicate follows its source", () => {
+	const base = start([weekly("w", [3], [[540, 600]]), weekly("x", [4], [[600, 660]])]);
+	const added = reduce(base, { type: "addRule", day: 2, minute: 1410 });
+	const fresh = added.draft.rules[2];
+	assertEquals(fresh.pattern, { type: "weekly", days: [2], interval: 1 });
+	// Clamped to one snap before midnight and ending at midnight, never past it.
+	assertEquals(fresh.bands, [{ start: 1410, end: 1440 }]);
+	const copied = reduce(base, { type: "duplicateRule", ruleId: "w" });
+	assertEquals(copied.draft.rules.map((r) => r.id).slice(0, 1), ["w"]);
+	const copy = copied.draft.rules[1];
+	assertEquals({ ...copy, id: "w" }, base.draft.rules[0]);
+	assertEquals(copied.draft.rules[2].id, "x");
+	assertEquals(copied.editing, copy.id);
+	assertEquals(copied.past.length, 1);
+	assertStrictEquals(reduce(base, { type: "duplicateRule", ruleId: "missing" }), base);
+});
+
 Deno.test("reduce: history is capped at the plan's depth", () => {
 	let s = start();
 	for (let i = 0; i < HISTORY_DEPTH + 10; i++) {

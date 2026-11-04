@@ -226,6 +226,7 @@ Deno.test("listPresets: usage names the timed services on each preset and the ow
 		{
 			...bp,
 			id: "bp-1",
+			slug: "svc-coaching",
 			title: "Coaching",
 			delivery_model: "session",
 			availability_preset_id: null,
@@ -233,6 +234,7 @@ Deno.test("listPresets: usage names the timed services on each preset and the ow
 		{
 			...bp,
 			id: "bp-2",
+			slug: "svc-workshop",
 			title: "Workshop",
 			delivery_model: "group_session",
 			availability_preset_id: evenings,
@@ -251,8 +253,8 @@ Deno.test("listPresets: usage names the timed services on each preset and the ow
 	const result = await listPresets(OWNER, deps);
 	assert(result.ok, result.message);
 	assertEquals(result.data?.usage, {
-		[general]: [{ kind: "profile", name: "" }, { kind: "service", name: "Coaching" }],
-		[evenings]: [{ kind: "service", name: "Workshop" }],
+		[general]: [{ kind: "profile", name: "" }, { kind: "service", name: "Coaching", listing: "svc-coaching" }],
+		[evenings]: [{ kind: "service", name: "Workshop", listing: "svc-workshop" }],
 	});
 });
 // #endregion

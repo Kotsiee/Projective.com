@@ -1,16 +1,20 @@
 import type { JSX } from "preact";
 import "../styles/availability-modal.css";
+import "../styles/availability-page.css";
 import {
 	AvailabilityScheduler,
 	type LibraryItem,
 	type PresetBinding,
 } from "@projective/ui/calendar";
+import { displayLocale } from "@projective/ui/display";
 import { Dialog } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { dateInZone, type PresetUser } from "@projective/types/scheduling";
 import type { ListingDetail } from "@features/catalogue/types/catalogue-types.ts";
 import { SCHEDULER_TEMPLATES } from "@features/catalogue/core/scheduler-engine.ts";
 import { workspaceSchedulerEngine } from "@features/catalogue/core/availability-conflict-store.ts";
+import { pageViewerOf } from "../core/availability-page.ts";
+import { TimeOffManager } from "./AvailabilityPageParts.tsx";
 import {
 	bindingView,
 	libraryPresets,
@@ -32,6 +36,7 @@ import {
 	revertToDefault,
 	saveAsPreset,
 	saveEditor,
+	schedule,
 	selectPreset,
 	storedOf,
 	usage,
@@ -57,15 +62,17 @@ export interface AvailabilityModalProps {
 }
 
 /**
- * AvailabilityModal — the one availability editor, opened from the listing workspace, `/calendar`,
- * Settings → Scheduling & calls and the profile's hours page. A wide dialog over the scheduler's
+ * AvailabilityModal — the availability editor in a dialog, opened from the listing workspace and
+ * Settings → Scheduling & calls; `/calendar` and the profile's hours page use the full-page manager,
+ * `/calendar?view=availability` (Decision #376), over the same store. A wide dialog over the scheduler's
  * three resizable panes: the templates (each with who follows it), the open template's settings and
  * rules on the left; the shared Calendar engine in the middle, Week first and zoomable from a day to
  * months with every rule applied; and the rule editor on the right while a rule is open.
  *
  * It edits copies: nothing is written until Save. Inside a listing the binding line names whose hours
  * these are and Save also binds the listing; without one, Save keeps the modal open on the saved
- * template so the next one can be edited.
+ * template so the next one can be edited. Time off, last in the side pane, is the schedule's rather
+ * than a template's, so — as on the page's lane — booking or removing it writes at once.
  */
 export function AvailabilityModal(props: AvailabilityModalProps): JSX.Element {
 	const { listing } = props;
@@ -109,6 +116,9 @@ export function AvailabilityModal(props: AvailabilityModalProps): JSX.Element {
 		consequence = forked ? "Saves for this service only." : "Saves for every service using it.";
 	}
 	const status = availabilityNotice.value ?? presetsError.value ?? consequence;
+	// The dialog only renders once opened in the browser, where the shell has seeded the viewer's
+	// locale (`org.user_preferences.locale`) into the display store.
+	const viewer = pageViewerOf(displayLocale.value);
 
 	return (
 		<Dialog
@@ -139,6 +149,7 @@ export function AvailabilityModal(props: AvailabilityModalProps): JSX.Element {
 					onChange={(next) => (working.value = next)}
 					engine={workspaceSchedulerEngine}
 					today={dateInZone(Date.now(), value.timezone)}
+					weekStartsOn={viewer.weekStartsOn}
 					label={`Availability · ${value.name}`}
 				>
 					<AvailabilityScheduler.Studio
@@ -159,6 +170,15 @@ export function AvailabilityModal(props: AvailabilityModalProps): JSX.Element {
 								/>
 								<AvailabilityScheduler.RuleList />
 								<AvailabilityScheduler.Issues />
+								<section class="ui-avsched__section" aria-labelledby="av-modal-timeoff">
+									<div class="ui-avsched__section-head">
+										<h3 class="ui-avsched__heading" id="av-modal-timeoff">Time off</h3>
+									</div>
+									<TimeOffManager
+										settings={schedule.value}
+										weekStartsOn={viewer.weekStartsOn}
+									/>
+								</section>
 							</>
 						}
 					>

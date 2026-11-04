@@ -107,6 +107,7 @@ function session(over: Partial<CalendarEvent> = {}): CalendarEvent {
 				targetId: null,
 			},
 		],
+		recurrenceRule: "FREQ=WEEKLY;BYDAY=TU",
 		...over,
 	};
 }
@@ -180,6 +181,8 @@ const PRIVATE_KEYS = [
 	"description",
 	"callId",
 	"meetingUrl",
+	"recurrenceRule",
+	"recurrenceParentId",
 ] as const;
 // #endregion
 
