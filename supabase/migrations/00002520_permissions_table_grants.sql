@@ -630,6 +630,12 @@ GRANT ALL ON TABLE scheduling.room_registrants TO service_role;
 
 GRANT ALL ON TABLE scheduling.presence_events TO service_role;
 
+GRANT ALL ON TABLE scheduling.guest_links TO service_role;
+
+GRANT ALL ON TABLE scheduling.guest_mail TO service_role;
+
+GRANT ALL ON TABLE scheduling.guest_mail_opt_outs TO service_role;
+
 GRANT ALL ON TABLE scheduling.event_mirrors TO service_role;
 GRANT ALL ON TABLE scheduling.connected_event_details TO service_role;
 

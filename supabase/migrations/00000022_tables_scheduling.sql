@@ -240,11 +240,12 @@ CREATE TABLE scheduling.event_attendees (
     response scheduling.rsvp_response NOT NULL DEFAULT 'pending',
     responded_at timestamptz,
     note text CHECK (char_length(note) <= 280),
-    -- The address of a seat held by somebody with no account. "Required when user_id is null" is not a
-    -- CHECK, because ON DELETE SET NULL above empties user_id on a profile teardown and a CHECK would
-    -- refuse the teardown. Withheld from client roles (00002520): every party reads this table.
-    -- shortcut: no door writes this, because nothing can yet reach a person with no account (no sender,
-    -- no page to answer on), so `scheduling.invite_to_event` takes accounts only until one exists.
+    -- The address of a seat held by somebody with no account, always lower case. "Required when user_id
+    -- is null" is not a CHECK, because ON DELETE SET NULL above empties user_id on a profile teardown
+    -- and a CHECK would refuse the teardown; `scheduling.invite_to_event` is where it holds. Withheld
+    -- from client roles (00002520): every party reads this table, and only a host may read this column,
+    -- through `scheduling.get_guest_addresses`. Cleared when the seat is claimed, and 30 days after the
+    -- entry ends (`scheduling.fn_forget_guest_addresses`).
     email text CHECK (char_length(email) <= 320),
     -- The host withdrew this invitation (root CLAUDE.md §5: nothing is hard-deleted). An archived seat
     -- is no seat: it sees nothing and holds nothing, and inviting the person again restores the row.
@@ -267,6 +268,54 @@ CREATE TABLE scheduling.event_attendees (
 -- EventAttendeeSchema.isViewer is deliberately not a column. It is a fact about who is ASKING,
 -- resolved per request at the service boundary; stored on the shared row it could only ever be true
 -- for whoever wrote last.
+
+-- ---------------------------------------------------------------------------------------------
+-- Guests: a seat held by an address rather than an account (Decision #391).
+--
+-- A guest has no session, so they hear by mail and act through a link. Definer-only: RLS on, no
+-- policy, no client grant. A host who could read or write these could answer for their own guests.
+-- ---------------------------------------------------------------------------------------------
+
+-- Every link mailed to a guest, one per email, so a link in use says which message it came from. Only
+-- the SHA-256 is kept, like org.email_verification_tokens: the raw value lives in that email alone.
+-- The code is this link's proof of the inbox for joining a call. It sits here, not on the seat, so
+-- two emails do not share a counter.
+CREATE TABLE scheduling.guest_links (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    attendee_id uuid NOT NULL REFERENCES scheduling.event_attendees (id) ON DELETE CASCADE,
+    token_hash text NOT NULL,
+    -- The host withdrew the seat or its person claimed it. Asked again, a guest gets a new link.
+    revoked_at timestamptz,
+    code_hash text,
+    code_expires_at timestamptz,
+    code_sent_at timestamptz,
+    -- The two brakes on whoever holds a link: one on mailing a guest, one on guessing their code.
+    code_sends smallint NOT NULL DEFAULT 0 CHECK (code_sends >= 0),
+    code_misses smallint NOT NULL DEFAULT 0 CHECK (code_misses >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_guest_link_token UNIQUE (token_hash)
+);
+
+-- What still has to reach a guest's inbox. Written in the transaction of the move it announces, so
+-- a seat cannot exist that nobody was told about. It names a seat rather than copying an address.
+CREATE TABLE scheduling.guest_mail (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    attendee_id uuid NOT NULL REFERENCES scheduling.event_attendees (id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    claimed_at timestamptz,
+    sent_at timestamptz,
+    -- The provider refused it every time. The host is told (scheduling.get_guest_addresses).
+    failed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_guest_mail_kind CHECK (kind IN ('invite', 'moved', 'withdrawn'))
+);
+
+-- People who asked for no more of this. A hash, so an opt-out does not keep the address it refuses.
+CREATE TABLE scheduling.guest_mail_opt_outs (
+    email_hash text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE scheduling.event_reschedules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -661,14 +710,17 @@ CREATE TABLE scheduling.rooms (
 
 -- A person's own join link and the id their provider knows them by (ruling C4 (b)). Registration
 -- needs a licensed host at Zoom and has no twin at Meet or Teams, so a room may have no rows here and
--- its people use the room's own link. Definer-only: a join link is a bearer credential.
+-- its people use the room's own link. Held by somebody with an account or by a guest's seat, one row
+-- each (uq_room_registrant_holder, 00004007). Definer-only: a join link is a bearer credential.
 CREATE TABLE scheduling.room_registrants (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     room_id uuid NOT NULL REFERENCES scheduling.rooms (id) ON DELETE CASCADE,
-    user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    user_id uuid REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    attendee_id uuid REFERENCES scheduling.event_attendees (id) ON DELETE CASCADE,
     registrant_id text NOT NULL,
     join_url text NOT NULL CHECK (join_url ~ '^https://[^[:space:]]+$'),
     created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT room_registrants_pkey PRIMARY KEY (room_id, user_id),
+    CONSTRAINT ck_room_registrant_holder CHECK (num_nonnulls (user_id, attendee_id) = 1),
     CONSTRAINT uq_room_registrant UNIQUE (room_id, registrant_id)
 );
 
@@ -686,6 +738,8 @@ CREATE TABLE scheduling.presence_events (
     source text NOT NULL,
     matched_by text NOT NULL,
     user_id uuid REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    -- Who it was when they have no account: a guest's seat, reached through their link.
+    attendee_id uuid REFERENCES scheduling.event_attendees (id) ON DELETE SET NULL,
     participant_key text NOT NULL CHECK (char_length(participant_key) <= 120),
     recorded_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_presence_event UNIQUE (room_id, idempotency_key),
@@ -693,11 +747,16 @@ CREATE TABLE scheduling.presence_events (
     CONSTRAINT ck_presence_action CHECK (action IN ('joined', 'left', 'waiting', 'join_click')),
     CONSTRAINT ck_presence_source CHECK (source IN ('webhook', 'reconcile', 'platform')),
     -- How the person was known. Only an email is weak evidence (ruling C4 (b)); `sole_attendee` is a
-    -- one-seat room's other participant, by elimination; `session` is a signed-in Projective join.
+    -- one-seat room's other participant, by elimination; `session` is a signed-in Projective join;
+    -- `guest_link` is a guest, by their link and its code or their own provider link.
     CONSTRAINT ck_presence_matched_by CHECK (
-        matched_by IN ('host_account', 'registrant', 'email', 'sole_attendee', 'session', 'unmatched')
+        matched_by IN (
+            'host_account', 'registrant', 'email', 'sole_attendee', 'session', 'guest_link', 'unmatched'
+        )
     ),
-    CONSTRAINT ck_presence_matched_user CHECK ((matched_by = 'unmatched') = (user_id IS NULL))
+    CONSTRAINT ck_presence_matched_user CHECK (
+        (matched_by = 'unmatched') = (user_id IS NULL AND attendee_id IS NULL)
+    )
 );
 
 -- ---------------------------------------------------------------------------------------------

@@ -1788,13 +1788,13 @@ GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_mint (integer) TO service_ro
 
 GRANT EXECUTE ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean) TO service_role;
 
-REVOKE ALL ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text, uuid) FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.claim_rooms_to_reconcile (integer) FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.room_reconciled (uuid, text) FROM public, anon, authenticated;
 
-GRANT EXECUTE ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text, uuid) TO service_role;
 
 GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_reconcile (integer) TO service_role;
 
@@ -2114,14 +2114,51 @@ REVOKE ALL ON FUNCTION scheduling.fn_notify_event_seats (uuid, text, text, text,
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION scheduling.fn_notify_event_seats (uuid, text, text, text, uuid)
 TO service_role;
-REVOKE ALL ON FUNCTION scheduling.invite_to_event (uuid, uuid[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION scheduling.invite_to_event (uuid, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.invite_to_event (uuid, uuid[], text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.invite_to_event (uuid, uuid[], text[]) TO authenticated;
 REVOKE ALL ON FUNCTION scheduling.withdraw_invitation (uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.withdraw_invitation (uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_detect_event_clashes (uuid, timestamptz, timestamptz, uuid)
 FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_detect_event_clashes (uuid, timestamptz, timestamptz, uuid)
 TO authenticated;
+-- #endregion
+
+-- #region Guests (00001510 §5d). Service role only, except a host's read of their own guests'
+-- addresses and a person's own claim, which judge the caller themselves.
+-- Read by fn_guard_rostered_event, which runs as its caller on purpose, so a client role needs it.
+REVOKE ALL ON FUNCTION scheduling.fn_event_has_voters (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_voters (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guest_hash (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guest_safe_text (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guest_link (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guest_room_state (scheduling.event_attendees, scheduling.events)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_retire_guest_seat (uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.trg_guest_moved () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_forget_guest_addresses () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.fn_forget_guest_addresses () TO service_role;
+REVOKE ALL ON FUNCTION scheduling.claim_guest_mail (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.claim_guest_mail (integer) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.finish_guest_mail (uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.finish_guest_mail (uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.guest_invitation (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.guest_invitation (text) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.guest_answer (text, scheduling.rsvp_response)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.guest_answer (text, scheduling.rsvp_response) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.guest_request_code (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.guest_request_code (text) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.guest_room_join (text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.guest_room_join (text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.guest_opt_out (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.guest_opt_out (text) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.get_guest_addresses (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.get_guest_addresses (uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.guest_seat_is_mine (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.guest_seat_is_mine (text) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.claim_guest_seat (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.claim_guest_seat (text) TO authenticated;
 -- #endregion
 
 -- #region Availability presets & recurrence (00001510 §10, Decision #217)

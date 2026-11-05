@@ -38,6 +38,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Settles each HTTP dispatch from pg_net''s response and reports every failed pg_cron run, non-2xx, transport error or lost response as an error.')
 ON CONFLICT (name) DO NOTHING;
 
+-- Mail for guests with no account (Decision #391). Written to a queue in the move it announces, sent
+-- straight after that move, and swept here for what could not go at once.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('scheduling-guest-mail', 'http', '* * * * *',
+        NULL, '/api/scheduling/cron/guest-mail?limit=50', 'SCHEDULING_CRON_SECRET',
+        'Sends what is waiting for a guest with no account: invitations, new times and withdrawals.'),
+    ('scheduling-forget-guest-addresses', 'sql', '25 4 * * *',
+        'SELECT scheduling.fn_forget_guest_addresses();', NULL, NULL,
+        'Blanks a guest''s address 30 days after their entry ends or their seat is withdrawn.')
+ON CONFLICT (name) DO NOTHING;
+
 -- The ledger reconciliation (M3, Decision #186) and the pending-window sweep (M4, Decision #191) are
 -- registered only where their function exists, so this seed is correct whichever order those changes
 -- reach a branch in, and pg_cron is never pointed at a function that is not there.

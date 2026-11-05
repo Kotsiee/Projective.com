@@ -512,6 +512,13 @@ ALTER TABLE scheduling.room_registrants ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.presence_events ENABLE ROW LEVEL SECURITY;
 
+-- Definer-only, like a room: a host who could reach these could answer for their own guests.
+ALTER TABLE scheduling.guest_links ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.guest_mail ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.guest_mail_opt_outs ENABLE ROW LEVEL SECURITY;
+
 -- Definer-only as well: the service-role job is the only reader and writer.
 ALTER TABLE scheduling.event_mirrors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduling.connected_event_details ENABLE ROW LEVEL SECURITY;

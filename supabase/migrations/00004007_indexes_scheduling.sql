@@ -3,6 +3,17 @@
 CREATE INDEX IF NOT EXISTS idx_schedules_owner ON scheduling.schedules (owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_rooms_due ON scheduling.rooms (status, created_at)
     WHERE status IN ('pending', 'minting', 'closing') OR moved_at IS NOT NULL;
+-- One seat for an address on an entry. Partial, because a seat with an account has no address, and
+-- it keeps archived seats so that inviting a withdrawn address restores the row.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_attendee_email ON scheduling.event_attendees (event_id, lower(email))
+    WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_room_registrant_holder ON scheduling.room_registrants (
+    room_id, COALESCE(user_id, attendee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_guest_links_seat ON scheduling.guest_links (attendee_id);
+CREATE INDEX IF NOT EXISTS idx_guest_mail_seat ON scheduling.guest_mail (attendee_id);
+CREATE INDEX IF NOT EXISTS idx_guest_mail_due ON scheduling.guest_mail (created_at)
+    WHERE sent_at IS NULL AND failed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_presence_events_room ON scheduling.presence_events (room_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_presence_events_age ON scheduling.presence_events (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_event_mirrors_due ON scheduling.event_mirrors (dirty_at)

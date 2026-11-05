@@ -1095,6 +1095,22 @@ AS $$
     );
 $$;
 
+-- Does anybody on this entry hold a vote? A guest answers by link and cannot reach a round, so a host
+-- whose only company is guests moves the entry freely, and the guests are told (trg_guest_moved).
+CREATE OR REPLACE FUNCTION scheduling.fn_event_has_voters(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM scheduling.event_attendees a
+        WHERE a.event_id = p_event_id AND a.archived_at IS NULL
+          AND a.user_id IS NOT NULL AND a.role <> 'host'::scheduling.attendee_role
+    );
+$$;
+
 CREATE OR REPLACE FUNCTION scheduling.fn_guard_rostered_event()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1108,8 +1124,10 @@ BEGIN
         IF TG_OP = 'DELETE' THEN
             RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: people are booked on this event — cancel or reschedule it instead';
         END IF;
-        IF NEW.starts_at IS DISTINCT FROM OLD.starts_at OR NEW.ends_at IS DISTINCT FROM OLD.ends_at
-           OR NEW.status IS DISTINCT FROM OLD.status OR NEW.schedule_id IS DISTINCT FROM OLD.schedule_id THEN
+        -- Status still needs a withdrawal first, or an entry could go with its guests never told.
+        IF NEW.status IS DISTINCT FROM OLD.status OR NEW.schedule_id IS DISTINCT FROM OLD.schedule_id
+           OR ((NEW.starts_at IS DISTINCT FROM OLD.starts_at OR NEW.ends_at IS DISTINCT FROM OLD.ends_at)
+               AND scheduling.fn_event_has_voters(OLD.id)) THEN
             RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: people are booked on this event — propose a new time instead';
         END IF;
     END IF;
@@ -1354,10 +1372,19 @@ $$;
 -- invitation was withdrawn is asked afresh. The host takes a seat too, with the first guest, because
 -- a negotiation's mode and majority are counted from the roster.
 --
+-- An address is a seat with no account (a guest), told by email instead of a notice. It is only ever
+-- an address: whether an account holds it is never looked up, so nothing here can tell a host who owns
+-- one. A seat with no user_id needs an address, and this is where that holds.
+--
 -- 50 seats is the one brake on an invitation being a doorbell: it costs nothing to send and each one
--- reaches somebody's phone. EVENT_ROSTER_MAX holds the same figure, pinned by coordination.contract.test.ts.
--- Answers how many people were newly asked.
-CREATE OR REPLACE FUNCTION scheduling.invite_to_event(p_event uuid, p_users uuid[])
+-- reaches somebody's phone. An email reaches a stranger's inbox under Projective's name, so it has one
+-- more: GUEST_INVITES_DAILY_MAX a day per host. Both figures are pinned to their Zod twins by
+-- coordination.contract.test.ts. Answers how many people were newly asked.
+CREATE OR REPLACE FUNCTION scheduling.invite_to_event(
+    p_event uuid,
+    p_users uuid[] DEFAULT '{}',
+    p_emails text[] DEFAULT '{}'
+)
 RETURNS integer
 LANGUAGE plpgsql
 VOLATILE
@@ -1370,6 +1397,9 @@ DECLARE
     v_user uuid;
     v_seats integer;
     v_asked uuid[];
+    v_emails text[];
+    v_guests uuid[];
+    v_total integer;
 BEGIN
     e := scheduling.fn_invitable_event(p_event);
     v_host := COALESCE(e.created_by, auth.uid ());
@@ -1377,15 +1407,41 @@ BEGIN
     SELECT pg_catalog.array_agg(DISTINCT p.user_id) INTO v_asked
       FROM org.users_public p
      WHERE p.user_id = ANY (COALESCE(p_users, '{}')) AND p.user_id <> v_host;
-    IF v_asked IS NULL THEN
+    SELECT pg_catalog.array_agg(DISTINCT pg_catalog.lower(pg_catalog.btrim(x))) INTO v_emails
+      FROM pg_catalog.unnest(COALESCE(p_emails, '{}')) AS x;
+    IF v_asked IS NULL AND v_emails IS NULL THEN
         RETURN 0;
     END IF;
 
+    IF v_emails IS NOT NULL THEN
+        IF org.fn_is_minor(v_host) THEN
+            RAISE EXCEPTION USING ERRCODE = '55000',
+                MESSAGE = 'event: people under 18 can only invite people on Projective';
+        END IF;
+        IF EXISTS (
+            SELECT 1 FROM pg_catalog.unnest(v_emails) AS x
+             WHERE x !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' OR pg_catalog.char_length(x) > 320
+        ) THEN
+            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: that email address doesn''t look right';
+        END IF;
+        IF EXISTS (
+            SELECT 1 FROM scheduling.guest_mail_opt_outs o
+             WHERE o.email_hash IN (
+                 SELECT scheduling.fn_guest_hash(x) FROM pg_catalog.unnest(v_emails) AS x
+             )
+        ) THEN
+            RAISE EXCEPTION USING ERRCODE = '55000',
+                MESSAGE = 'event: this person has asked not to receive invitations';
+        END IF;
+    END IF;
+
     SELECT pg_catalog.count(*) INTO v_seats FROM (
-        SELECT a.user_id FROM scheduling.event_attendees a
+        SELECT COALESCE(a.user_id::text, a.email, a.id::text) FROM scheduling.event_attendees a
          WHERE a.event_id = e.id AND a.archived_at IS NULL
         UNION
-        SELECT pg_catalog.unnest(v_asked || v_host)
+        SELECT pg_catalog.unnest(COALESCE(v_asked, '{}') || v_host)::text
+        UNION
+        SELECT pg_catalog.unnest(COALESCE(v_emails, '{}'))
     ) s;
     IF v_seats > 50 THEN
         RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: an entry takes at most 50 people';
@@ -1410,11 +1466,40 @@ BEGIN
         RETURNING a.user_id
     )
     SELECT pg_catalog.array_agg(s.user_id) INTO v_asked FROM seated s;
-    IF v_asked IS NULL THEN
+
+    WITH seated AS (
+        INSERT INTO scheduling.event_attendees AS a (event_id, email)
+        SELECT e.id, x FROM pg_catalog.unnest(COALESCE(v_emails, '{}')) AS x
+        ON CONFLICT (event_id, pg_catalog.lower(email)) WHERE email IS NOT NULL DO UPDATE
+            SET archived_at = NULL, response = 'pending'::scheduling.rsvp_response,
+                responded_at = NULL, updated_at = pg_catalog.now()
+          WHERE a.archived_at IS NOT NULL
+        RETURNING a.id
+    )
+    SELECT pg_catalog.array_agg(s.id) INTO v_guests FROM seated s;
+
+    IF v_guests IS NOT NULL THEN
+        INSERT INTO scheduling.guest_mail (attendee_id, kind)
+        SELECT pg_catalog.unnest(v_guests), 'invite';
+        IF (
+            SELECT pg_catalog.count(*)
+              FROM scheduling.guest_mail m
+              JOIN scheduling.event_attendees a ON a.id = m.attendee_id
+              JOIN scheduling.events x ON x.id = a.event_id
+             WHERE m.kind = 'invite' AND x.created_by = v_host
+               AND m.created_at > pg_catalog.now() - interval '1 day'
+        ) > 50 THEN
+            RAISE EXCEPTION USING ERRCODE = '55000',
+                MESSAGE = 'event: that''s today''s limit for email invitations, so try again tomorrow';
+        END IF;
+    END IF;
+
+    v_total := COALESCE(pg_catalog.cardinality(v_asked), 0) + COALESCE(pg_catalog.cardinality(v_guests), 0);
+    IF v_total = 0 THEN
         RETURN 0;
     END IF;
 
-    FOREACH v_user IN ARRAY v_asked LOOP
+    FOREACH v_user IN ARRAY COALESCE(v_asked, '{}') LOOP
         PERFORM comms.fn_notify(
             v_user, 'schedule.event_invite',
             pg_catalog.format('You''re invited: %s', COALESCE(NULLIF(e.title, ''), 'an event')),
@@ -1428,12 +1513,12 @@ BEGIN
     INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary)
     VALUES (
         e.id, 'edited', auth.uid (),
-        CASE pg_catalog.cardinality(v_asked)
+        CASE v_total
             WHEN 1 THEN 'Invited someone'
-            ELSE pg_catalog.format('Invited %s people', pg_catalog.cardinality(v_asked))
+            ELSE pg_catalog.format('Invited %s people', v_total)
         END
     );
-    RETURN pg_catalog.cardinality(v_asked);
+    RETURN v_total;
 END;
 $$;
 
@@ -1490,20 +1575,25 @@ AS $$
 DECLARE
     e scheduling.events;
     v_user uuid;
+    v_seat uuid;
     v_count integer := 0;
 BEGIN
     e := scheduling.fn_invitable_event(p_event);
 
-    FOR v_user IN
+    FOR v_user, v_seat IN
         UPDATE scheduling.event_attendees a
            SET archived_at = pg_catalog.now(), updated_at = pg_catalog.now()
          WHERE a.event_id = e.id
            AND a.role <> 'host'::scheduling.attendee_role
            AND a.archived_at IS NULL
            AND (p_attendee IS NULL OR a.id = p_attendee)
-        RETURNING a.user_id
+        RETURNING a.user_id, a.id
     LOOP
         v_count := v_count + 1;
+        IF v_user IS NULL THEN
+            PERFORM scheduling.fn_retire_guest_seat(v_seat, true);
+            CONTINUE;
+        END IF;
         PERFORM comms.fn_notify(
             v_user, 'schedule.event_invite_withdrawn',
             pg_catalog.format('Invitation withdrawn: %s', COALESCE(NULLIF(e.title, ''), 'an event')),
@@ -1540,6 +1630,567 @@ BEGIN
     END IF;
     RETURN v_count;
 END;
+$$;
+-- #endregion
+
+-- #region 5d. Guests
+-- A guest is a seat held by an address (Decision #391). They have no session, so all they do comes
+-- through the link mailed to them and the doors below, each service role only: a host who could reach
+-- these could answer for their own guests. The answer to any dead link is the same, because why a link
+-- is dead is nobody's business but the host's.
+
+-- SHA-256 as hex, for a token, a code and an address. pg_catalog's own, so nothing here needs pgcrypto.
+CREATE OR REPLACE FUNCTION scheduling.fn_guest_hash(p_text text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p_text, 'UTF8')), 'hex');
+$$;
+
+-- Text a host wrote, about to leave the platform under Projective's name to somebody who never asked
+-- for it. comms.mask_pii takes contact details and payment links; this adds every other link, because
+-- a mail client makes a link of anything that looks like one, and an event title is not a place for it.
+CREATE OR REPLACE FUNCTION scheduling.fn_guest_safe_text(p_text text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.regexp_replace(
+        m.masked,
+        '(https?://|www\.)[^[:space:]]+|[[:alnum:]-]+(\.[[:alnum:]-]+)*\.[[:alpha:]]{2,}(/[^[:space:]]*)?',
+        '[link hidden]',
+        'gi'
+    )
+      FROM comms.mask_pii(p_text) m;
+$$;
+
+-- The live link behind a token, or NULL. A link dies with its seat and its entry.
+CREATE OR REPLACE FUNCTION scheduling.fn_guest_link(p_token text)
+RETURNS scheduling.guest_links
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT l.*
+      FROM scheduling.guest_links l
+      JOIN scheduling.event_attendees a ON a.id = l.attendee_id
+      JOIN scheduling.events e ON e.id = a.event_id
+     WHERE l.token_hash = scheduling.fn_guest_hash(p_token)
+       AND l.revoked_at IS NULL
+       AND a.archived_at IS NULL AND a.user_id IS NULL AND a.email IS NOT NULL
+       AND e.archived_at IS NULL
+       AND e.status IS DISTINCT FROM 'cancelled'::scheduling.event_status
+       AND e.ends_at > pg_catalog.now();
+$$;
+
+-- Where a guest stands with an entry's room, in scheduling.room_join's words for an invitee, or NULL
+-- for an entry with no room. A link only reaches this while the entry is live, so `ended` and
+-- `cancelled` never arise, and the code is asked for on top of `open`.
+CREATE OR REPLACE FUNCTION scheduling.fn_guest_room_state(a scheduling.event_attendees, e scheduling.events)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN NOT EXISTS (SELECT 1 FROM scheduling.rooms r WHERE r.event_id = e.id) THEN NULL
+        WHEN a.response = 'pending'::scheduling.rsvp_response THEN 'needs_rsvp'
+        WHEN a.response = 'rejected'::scheduling.rsvp_response THEN 'not_party'
+        WHEN pg_catalog.now() < e.starts_at - pg_catalog.make_interval(
+            mins => projects.fn_session_param('session_join_lead_minutes', 10)) THEN 'upcoming'
+        WHEN e.meeting_url IS NULL THEN 'no_room'
+        ELSE 'open'
+    END;
+$$;
+
+-- A guest's seat coming to an end: its links stop working and whatever had not left is dropped. Told
+-- only if something did reach them, or a withdrawal would be the first they had heard of it.
+CREATE OR REPLACE FUNCTION scheduling.fn_retire_guest_seat(p_seat uuid, p_tell boolean)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE scheduling.guest_links l SET revoked_at = pg_catalog.now()
+     WHERE l.attendee_id = p_seat AND l.revoked_at IS NULL;
+    DELETE FROM scheduling.guest_mail m WHERE m.attendee_id = p_seat AND m.sent_at IS NULL;
+    IF p_tell AND EXISTS (SELECT 1 FROM scheduling.guest_mail m WHERE m.attendee_id = p_seat) THEN
+        INSERT INTO scheduling.guest_mail (attendee_id, kind) VALUES (p_seat, 'withdrawn');
+    END IF;
+END;
+$$;
+
+-- A guest has no ballot, so a new time reaches them as news. Their answer was to the old time, so it
+-- goes back to unanswered and the email asks again. On the table, because a time moves from several
+-- places and a round can close from a page read.
+CREATE OR REPLACE FUNCTION scheduling.trg_guest_moved()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    WITH seats AS (
+        UPDATE scheduling.event_attendees a
+           SET response = 'pending'::scheduling.rsvp_response, responded_at = NULL,
+               updated_at = pg_catalog.now()
+         WHERE a.event_id = NEW.id AND a.email IS NOT NULL AND a.archived_at IS NULL
+        RETURNING a.id
+    )
+    INSERT INTO scheduling.guest_mail (attendee_id, kind)
+    SELECT s.id, 'moved' FROM seats s
+     WHERE NOT EXISTS (
+         SELECT 1 FROM scheduling.guest_mail m
+          WHERE m.attendee_id = s.id AND m.sent_at IS NULL AND m.failed_at IS NULL
+     );
+    RETURN NULL;
+END;
+$$;
+
+-- The email addresses on the caller's own entries, and whether each could not be reached. The roster
+-- is read by every party, so the address comes to a host through here and to nobody else.
+CREATE OR REPLACE FUNCTION scheduling.get_guest_addresses(p_events uuid[])
+RETURNS TABLE (attendee_id uuid, email text, undelivered boolean)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT a.id, a.email, COALESCE((
+        SELECT m.failed_at IS NOT NULL FROM scheduling.guest_mail m
+         WHERE m.attendee_id = a.id ORDER BY m.created_at DESC LIMIT 1
+    ), false)
+      FROM scheduling.event_attendees a
+      JOIN scheduling.events e ON e.id = a.event_id
+     WHERE a.event_id = ANY (p_events) AND a.email IS NOT NULL AND a.archived_at IS NULL
+       AND e.schedule_id IS NOT NULL AND scheduling.fn_can_manage_schedule (e.schedule_id);
+$$;
+
+-- Take what is due to go out, minting a fresh link for each message that needs one and handing back
+-- its raw value, which is stored nowhere. Nothing goes to an address that opted out. A claim a crashed
+-- run left behind, or a send that failed, is taken again after five minutes.
+CREATE OR REPLACE FUNCTION scheduling.claim_guest_mail(p_limit integer DEFAULT 50)
+RETURNS TABLE (
+    mail_id uuid, kind text, email text, token text, title text, starts_at timestamptz,
+    ends_at timestamptz, all_day boolean, timezone text, host_name text
+)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    m scheduling.guest_mail;
+    a scheduling.event_attendees;
+    e scheduling.events;
+    v_token text;
+BEGIN
+    DELETE FROM scheduling.guest_mail x
+     USING scheduling.event_attendees s
+     WHERE s.id = x.attendee_id AND x.sent_at IS NULL
+       AND EXISTS (
+           SELECT 1 FROM scheduling.guest_mail_opt_outs o
+            WHERE o.email_hash = scheduling.fn_guest_hash(s.email)
+       );
+
+    FOR m IN
+        UPDATE scheduling.guest_mail u
+           SET claimed_at = pg_catalog.now(), attempts = u.attempts + 1
+         WHERE u.id IN (
+             SELECT x.id FROM scheduling.guest_mail x
+              WHERE x.sent_at IS NULL AND x.failed_at IS NULL
+                AND (x.claimed_at IS NULL OR x.claimed_at < pg_catalog.now() - interval '5 minutes')
+              ORDER BY x.created_at
+              LIMIT GREATEST(p_limit, 1)
+                FOR UPDATE SKIP LOCKED
+         )
+        RETURNING u.*
+    LOOP
+        SELECT * INTO a FROM scheduling.event_attendees s WHERE s.id = m.attendee_id;
+        SELECT * INTO e FROM scheduling.events x WHERE x.id = a.event_id;
+        IF a.email IS NULL OR e.ends_at <= pg_catalog.now() THEN
+            DELETE FROM scheduling.guest_mail x WHERE x.id = m.id;
+            CONTINUE;
+        END IF;
+
+        v_token := NULL;
+        IF m.kind <> 'withdrawn' THEN
+            v_token := pg_catalog.encode(extensions.gen_random_bytes(32), 'hex');
+            INSERT INTO scheduling.guest_links (attendee_id, token_hash)
+            VALUES (a.id, scheduling.fn_guest_hash(v_token));
+        END IF;
+
+        mail_id := m.id;
+        kind := m.kind;
+        email := a.email;
+        token := v_token;
+        title := scheduling.fn_guest_safe_text(COALESCE(NULLIF(e.title, ''), 'An event'));
+        starts_at := e.starts_at;
+        ends_at := e.ends_at;
+        all_day := e.all_day;
+        SELECT s.timezone INTO timezone FROM scheduling.schedules s WHERE s.id = e.schedule_id;
+        SELECT scheduling.fn_guest_safe_text(COALESCE(
+            NULLIF(pg_catalog.btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+            u.username
+        )) INTO host_name
+          FROM org.users_public u WHERE u.user_id = e.created_by;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$;
+
+-- Record how a claimed message went. Five refusals in a row and it stops, so the host can be told.
+CREATE OR REPLACE FUNCTION scheduling.finish_guest_mail(p_mail uuid, p_sent boolean)
+RETURNS void
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    UPDATE scheduling.guest_mail m
+       SET sent_at = CASE WHEN p_sent THEN pg_catalog.now() END,
+           failed_at = CASE WHEN NOT p_sent AND m.attempts >= 5 THEN pg_catalog.now() END
+     WHERE m.id = p_mail;
+$$;
+
+-- What a link shows. The title, time and host are all a link alone gets. The place waits until they
+-- have said they are coming, like a room, and a dead link learns nothing at all.
+CREATE OR REPLACE FUNCTION scheduling.guest_invitation(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l scheduling.guest_links;
+    a scheduling.event_attendees;
+    e scheduling.events;
+    v_state text;
+    v_host text;
+    v_zone text;
+BEGIN
+    l := scheduling.fn_guest_link(p_token);
+    IF l.id IS NULL THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'dead');
+    END IF;
+    SELECT * INTO a FROM scheduling.event_attendees x WHERE x.id = l.attendee_id;
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = a.event_id;
+    v_state := scheduling.fn_guest_room_state(a, e);
+    SELECT s.timezone INTO v_zone FROM scheduling.schedules s WHERE s.id = e.schedule_id;
+    SELECT scheduling.fn_guest_safe_text(COALESCE(
+        NULLIF(pg_catalog.btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+        u.username
+    )) INTO v_host
+      FROM org.users_public u WHERE u.user_id = e.created_by;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'state', 'live',
+        'title', scheduling.fn_guest_safe_text(COALESCE(NULLIF(e.title, ''), 'An event')),
+        'host', v_host,
+        'starts_at', e.starts_at,
+        'ends_at', e.ends_at,
+        'all_day', e.all_day,
+        'timezone', v_zone,
+        'response', a.response,
+        'location', CASE WHEN a.response IN (
+            'accepted'::scheduling.rsvp_response, 'tentative'::scheduling.rsvp_response
+        ) THEN e.location END,
+        'room_state', v_state,
+        'opens_at', e.starts_at - pg_catalog.make_interval(
+            mins => projects.fn_session_param('session_join_lead_minutes', 10)),
+        'code_sent', l.code_hash IS NOT NULL AND l.code_expires_at > pg_catalog.now(),
+        'address_hint', pg_catalog.left(a.email, 1) || '•••' || pg_catalog.substring(a.email, '@.*$')
+    );
+END;
+$$;
+
+-- A guest's answer. Restating the one already given writes no log line, and the line never names the
+-- address, because every party reads the log. Answers whether the link was live.
+CREATE OR REPLACE FUNCTION scheduling.guest_answer(p_token text, p_response scheduling.rsvp_response)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l scheduling.guest_links;
+    v_event uuid;
+BEGIN
+    IF p_response = 'pending'::scheduling.rsvp_response THEN
+        RAISE EXCEPTION 'guest: pending is not an answer' USING ERRCODE = '22023';
+    END IF;
+    l := scheduling.fn_guest_link(p_token);
+    IF l.id IS NULL THEN
+        RETURN false;
+    END IF;
+    UPDATE scheduling.event_attendees a
+       SET response = p_response, responded_at = pg_catalog.now(), updated_at = pg_catalog.now()
+     WHERE a.id = l.attendee_id AND a.response IS DISTINCT FROM p_response
+    RETURNING a.event_id INTO v_event;
+    IF v_event IS NOT NULL THEN
+        INSERT INTO scheduling.event_history (event_id, kind, summary, target_id)
+        VALUES (
+            v_event, 'rsvp',
+            CASE p_response
+                WHEN 'accepted'::scheduling.rsvp_response THEN 'A guest marked Going'
+                WHEN 'tentative'::scheduling.rsvp_response THEN 'A guest marked Maybe'
+                ELSE 'A guest marked Not going'
+            END,
+            l.attendee_id::text
+        );
+    END IF;
+    RETURN true;
+END;
+$$;
+
+-- Mint the code that proves a guest reads the invited inbox, to be mailed by the caller and stored
+-- only as a hash. It lasts until the room closes, so somebody who drops out can come back with it.
+-- `wait` and `limit` are the brakes on using a link to fill a guest's inbox.
+CREATE OR REPLACE FUNCTION scheduling.guest_request_code(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l scheduling.guest_links;
+    a scheduling.event_attendees;
+    e scheduling.events;
+    v_code text;
+BEGIN
+    l := scheduling.fn_guest_link(p_token);
+    IF l.id IS NULL THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'dead');
+    END IF;
+    SELECT * INTO l FROM scheduling.guest_links x WHERE x.id = l.id FOR UPDATE;
+    SELECT * INTO a FROM scheduling.event_attendees x WHERE x.id = l.attendee_id;
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = a.event_id;
+    IF scheduling.fn_guest_room_state(a, e) IS DISTINCT FROM 'open' THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'closed');
+    END IF;
+    IF l.code_sent_at > pg_catalog.now() - interval '60 seconds' THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'wait');
+    END IF;
+    IF l.code_sends >= 10 THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'limit');
+    END IF;
+
+    v_code := pg_catalog.lpad(
+        (('x' || pg_catalog.encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint % 1000000)::text,
+        6, '0'
+    );
+    UPDATE scheduling.guest_links x
+       SET code_hash = scheduling.fn_guest_hash(x.id::text || ':' || v_code),
+           code_expires_at = e.ends_at,
+           code_sent_at = pg_catalog.now(),
+           code_sends = x.code_sends + 1,
+           code_misses = 0
+     WHERE x.id = l.id;
+    RETURN pg_catalog.jsonb_build_object(
+        'state', 'sent', 'code', v_code, 'email', a.email,
+        'title', scheduling.fn_guest_safe_text(COALESCE(NULLIF(e.title, ''), 'An event'))
+    );
+END;
+$$;
+
+-- Into a room, as a guest: scheduling.room_join's event branch, with the code standing in for a
+-- session. Every press with a good code is recorded against the seat, the link and the device key,
+-- which is the trail an investigation reads. `p_device` is a keyed hash, so no address is kept.
+CREATE OR REPLACE FUNCTION scheduling.guest_room_join(p_token text, p_code text, p_device text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l scheduling.guest_links;
+    a scheduling.event_attendees;
+    e scheduling.events;
+    r scheduling.rooms;
+    v_now timestamptz := pg_catalog.now();
+    v_state text;
+    v_personal text;
+    v_register jsonb;
+BEGIN
+    l := scheduling.fn_guest_link(p_token);
+    IF l.id IS NULL THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'dead');
+    END IF;
+    SELECT * INTO l FROM scheduling.guest_links x WHERE x.id = l.id FOR UPDATE;
+    IF l.code_hash IS NULL OR l.code_expires_at <= v_now THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'no_code');
+    END IF;
+    IF l.code_misses >= 5 THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'locked');
+    END IF;
+    IF scheduling.fn_guest_hash(l.id::text || ':' || COALESCE(p_code, '')) <> l.code_hash THEN
+        UPDATE scheduling.guest_links x SET code_misses = x.code_misses + 1 WHERE x.id = l.id;
+        RETURN pg_catalog.jsonb_build_object('state', 'wrong_code');
+    END IF;
+
+    SELECT * INTO a FROM scheduling.event_attendees x WHERE x.id = l.attendee_id;
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = a.event_id;
+    v_state := scheduling.fn_guest_room_state(a, e);
+    IF v_state IS DISTINCT FROM 'open' THEN
+        RETURN pg_catalog.jsonb_build_object('state', COALESCE(v_state, 'no_room'));
+    END IF;
+
+    SELECT * INTO r FROM scheduling.rooms x WHERE x.event_id = e.id;
+    SELECT g.join_url INTO v_personal
+      FROM scheduling.room_registrants g WHERE g.room_id = r.id AND g.attendee_id = a.id;
+    IF v_personal IS NULL AND r.registration THEN
+        v_register := pg_catalog.jsonb_build_object(
+            'room_id', r.id, 'attendee_id', a.id, 'email', a.email, 'first_name', 'Guest'
+        );
+    END IF;
+
+    INSERT INTO scheduling.presence_events (
+        room_id, idempotency_key, action, occurred_at, source, matched_by, attendee_id, participant_key
+    ) VALUES (
+        r.id, pg_catalog.format('click:%s:%s:%s', l.id, p_device, pg_catalog.date_trunc('minute', v_now)),
+        'join_click', v_now, 'platform', 'guest_link', a.id, p_device
+    )
+    ON CONFLICT (room_id, idempotency_key) DO NOTHING;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'state', 'open',
+        'url', COALESCE(v_personal, e.meeting_url),
+        'provider', r.provider,
+        'register', v_register,
+        'connection_id', CASE WHEN v_register IS NOT NULL THEN r.connection_id END,
+        'provider_meeting_id', CASE WHEN v_register IS NOT NULL THEN r.provider_meeting_id END
+    );
+END;
+$$;
+
+-- A guest asking for no more invitations, from anybody. What had not gone out yet is dropped, and from
+-- here scheduling.invite_to_event refuses the address. Answers whether the link was live.
+CREATE OR REPLACE FUNCTION scheduling.guest_opt_out(p_token text)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l scheduling.guest_links;
+    v_email text;
+BEGIN
+    l := scheduling.fn_guest_link(p_token);
+    IF l.id IS NULL THEN
+        RETURN false;
+    END IF;
+    SELECT a.email INTO v_email FROM scheduling.event_attendees a WHERE a.id = l.attendee_id;
+    INSERT INTO scheduling.guest_mail_opt_outs (email_hash)
+    VALUES (scheduling.fn_guest_hash(v_email))
+    ON CONFLICT (email_hash) DO NOTHING;
+    DELETE FROM scheduling.guest_mail m
+     USING scheduling.event_attendees a
+     WHERE a.id = m.attendee_id AND a.email = v_email AND m.sent_at IS NULL;
+    RETURN true;
+END;
+$$;
+
+-- Does the signed-in reader hold the address this link went to, verified? org.user_emails.verified_at
+-- is what makes this safe: anybody can file an unverified address.
+CREATE OR REPLACE FUNCTION scheduling.guest_seat_is_mine(p_token text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+          FROM scheduling.event_attendees a
+          JOIN org.user_emails u ON pg_catalog.lower(u.email) = a.email
+         WHERE a.id = (scheduling.fn_guest_link(p_token)).attendee_id
+           AND u.user_id = auth.uid () AND u.verified_at IS NOT NULL
+    );
+$$;
+
+-- A person taking their seat onto their account, by their own act. Never automatic, because it shows
+-- their name to the host and the other guests, and org.user_emails keeps who owns an address private.
+-- Somebody already seated keeps their seat with this answer, which restores it if it was withdrawn.
+-- Answers the entry, for the calendar to open on.
+CREATE OR REPLACE FUNCTION scheduling.claim_guest_seat(p_token text)
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    l scheduling.guest_links;
+    a scheduling.event_attendees;
+    v_host uuid;
+    v_own uuid;
+BEGIN
+    IF v_uid IS NULL OR NOT scheduling.guest_seat_is_mine(p_token) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000',
+            MESSAGE = 'event: sign in with a verified account that holds this address';
+    END IF;
+    l := scheduling.fn_guest_link(p_token);
+    SELECT * INTO a FROM scheduling.event_attendees x WHERE x.id = l.attendee_id FOR UPDATE;
+    SELECT e.created_by INTO v_host FROM scheduling.events e WHERE e.id = a.event_id;
+    IF v_host = v_uid THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: this is your own event';
+    END IF;
+
+    SELECT x.id INTO v_own FROM scheduling.event_attendees x
+     WHERE x.event_id = a.event_id AND x.user_id = v_uid;
+    IF v_own IS NULL THEN
+        UPDATE scheduling.event_attendees x
+           SET user_id = v_uid, email = NULL, updated_at = pg_catalog.now()
+         WHERE x.id = a.id;
+    ELSE
+        UPDATE scheduling.event_attendees x
+           SET archived_at = NULL, response = a.response, responded_at = a.responded_at,
+               updated_at = pg_catalog.now()
+         WHERE x.id = v_own AND x.archived_at IS NOT NULL;
+        UPDATE scheduling.event_attendees x
+           SET archived_at = pg_catalog.now(), email = NULL, updated_at = pg_catalog.now()
+         WHERE x.id = a.id;
+    END IF;
+    PERFORM scheduling.fn_retire_guest_seat(a.id, false);
+
+    INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary)
+    VALUES (a.event_id, 'edited', v_uid, 'A guest joined with their Projective account');
+    RETURN a.event_id;
+END;
+$$;
+
+-- An address is somebody who never joined, so it is kept no longer than the event needs it. The seat
+-- stays, as a nameless guest, because who answered what is the host's record.
+CREATE OR REPLACE FUNCTION scheduling.fn_forget_guest_addresses()
+RETURNS integer
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH forgotten AS (
+        UPDATE scheduling.event_attendees a
+           SET email = NULL, updated_at = pg_catalog.now()
+          FROM scheduling.events e
+         WHERE e.id = a.event_id AND a.email IS NOT NULL
+           AND (e.ends_at < pg_catalog.now() - interval '30 days'
+                OR a.archived_at < pg_catalog.now() - interval '30 days')
+        RETURNING a.id
+    )
+    SELECT pg_catalog.count(*)::integer FROM forgotten;
 $$;
 -- #endregion
 
@@ -2871,6 +3522,7 @@ DECLARE
     f record;
     v_attendees uuid[];
     v_user uuid;
+    v_seat uuid;
     v_by text;
     v_id uuid;
     v_key text;
@@ -2898,13 +3550,13 @@ BEGIN
         v_by := 'host_account';
     END IF;
     IF v_user IS NULL AND p_registrant_id IS NOT NULL THEN
-        SELECT g.user_id INTO v_user FROM scheduling.room_registrants g
+        SELECT g.user_id, g.attendee_id INTO v_user, v_seat FROM scheduling.room_registrants g
          WHERE g.room_id = r.id AND g.registrant_id = p_registrant_id;
         IF FOUND THEN
-            v_by := 'registrant';
+            v_by := CASE WHEN v_seat IS NULL THEN 'registrant' ELSE 'guest_link' END;
         END IF;
     END IF;
-    IF v_user IS NULL AND NULLIF(pg_catalog.btrim(COALESCE(p_email, '')), '') IS NOT NULL THEN
+    IF v_by IS NULL AND NULLIF(pg_catalog.btrim(COALESCE(p_email, '')), '') IS NOT NULL THEN
         SELECT u.id INTO v_user FROM auth.users u
          WHERE pg_catalog.lower(u.email) = pg_catalog.lower(pg_catalog.btrim(p_email))
          LIMIT 1;
@@ -2917,15 +3569,20 @@ BEGIN
             v_user := NULL;
         END IF;
     END IF;
-    IF v_user IS NULL AND pg_catalog.cardinality(v_attendees) = 1 THEN
+    -- By elimination only with nobody else it could be: a guest has no place in v_attendees.
+    IF v_by IS NULL AND pg_catalog.cardinality(v_attendees) = 1 AND NOT EXISTS (
+        SELECT 1 FROM scheduling.event_attendees a
+         WHERE a.event_id = r.event_id AND a.user_id IS NULL AND a.archived_at IS NULL
+    ) THEN
         v_user := v_attendees[1];
         v_by := 'sole_attendee';
     END IF;
 
     INSERT INTO scheduling.presence_events (
-        room_id, idempotency_key, action, occurred_at, source, matched_by, user_id, participant_key
+        room_id, idempotency_key, action, occurred_at, source, matched_by, user_id, attendee_id,
+        participant_key
     ) VALUES (
-        r.id, p_event_key, p_action, p_at, p_source, COALESCE(v_by, 'unmatched'), v_user, v_key
+        r.id, p_event_key, p_action, p_at, p_source, COALESCE(v_by, 'unmatched'), v_user, v_seat, v_key
     )
     ON CONFLICT (room_id, idempotency_key) DO NOTHING
     RETURNING id INTO v_id;
@@ -3162,23 +3819,27 @@ BEGIN
 END;
 $$;
 
--- A person's own way into a room, once the provider has given them one (service role only).
+-- A person's own way into a room, once the provider has given them one (service role only). A guest
+-- is named by their seat. plpgsql, because the index this conflicts on comes later in the build.
 CREATE OR REPLACE FUNCTION scheduling.save_room_registrant(
     p_room uuid,
     p_user uuid,
     p_registrant_id text,
-    p_join_url text
+    p_join_url text,
+    p_attendee uuid DEFAULT NULL
 )
 RETURNS void
-LANGUAGE sql
+LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-    INSERT INTO scheduling.room_registrants (room_id, user_id, registrant_id, join_url)
-    VALUES (p_room, p_user, p_registrant_id, p_join_url)
-    ON CONFLICT (room_id, user_id) DO UPDATE
+BEGIN
+    INSERT INTO scheduling.room_registrants (room_id, user_id, attendee_id, registrant_id, join_url)
+    VALUES (p_room, p_user, p_attendee, p_registrant_id, p_join_url)
+    ON CONFLICT (room_id, COALESCE(user_id, attendee_id)) DO UPDATE
        SET registrant_id = EXCLUDED.registrant_id, join_url = EXCLUDED.join_url;
+END;
 $$;
 
 -- The rooms whose provider's own record is due a read: ended a quarter of an hour ago, so the provider
