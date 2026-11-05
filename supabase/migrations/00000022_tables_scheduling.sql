@@ -48,6 +48,40 @@ CREATE TABLE scheduling.blackout_dates (
     CONSTRAINT ck_blackout_span CHECK (ends_at > starts_at)
 );
 
+-- A routine: a named group of a person's recurring entries (the gym, focused work, language study), so
+-- a cadence reads as one thing on their agenda rather than as forty disconnected rows (Decision #389).
+-- A private organising layer and nothing else. Its members are ordinary rows of scheduling.events, so
+-- every reader of concrete rows stays correct with nothing expanded here, and nothing about a routine
+-- leaves Projective: a member goes out to a provider, or into a file, as the plain event it is.
+CREATE TABLE scheduling.routines (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    schedule_id uuid NOT NULL REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
+    name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 60),
+    -- The opaque, prefixed, permanent address (`rtn-…`, Decision #88), never derived from `name`, which
+    -- the owner renames. Filled by security.fn_slug_guard('rtn') on insert and frozen on update
+    -- (00001890). UNIQUE (slug) also makes it unique within a schedule.
+    slug text NOT NULL,
+    -- A CSS custom-property NAME (e.g. '--primary'), never a literal colour (root CLAUDE.md §3).
+    color_token text DEFAULT '--primary' CHECK (color_token ~ '^--[a-z][a-z0-9-]{0,58}$'),
+    -- False is archived: a routine is never deleted (root CLAUDE.md §5). Its entries stay on the
+    -- calendar exactly as they are and simply stop being grouped.
+    is_active boolean NOT NULL DEFAULT true,
+    -- What an entry takes on joining, and follows while it agrees (scheduling.trg_routine_behavior).
+    -- scheduling.events.availability_behavior is the fact every busy reader reads, never this.
+    behavior text NOT NULL DEFAULT 'passive' CHECK (behavior IN ('disruptive', 'passive')),
+    -- The cadence a new entry in this routine repeats on, as RFC 5545 with no `RRULE:` prefix. Only the
+    -- shape is checked, as for events.recurrence_rule, and the database never expands it (Decision #217
+    -- (d)): an entry's occurrences are laid down when it is created, as any series' are.
+    recurrence_rule text DEFAULT NULL CHECK (char_length(recurrence_rule) <= 400 AND recurrence_rule ~ '^FREQ='),
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_routines_slug_shape CHECK (slug ~ '^rtn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT routines_slug_key UNIQUE (slug),
+    -- What the events' composite FK lands on, so an entry can join a routine on its own schedule only.
+    CONSTRAINT uq_routine_in_schedule UNIQUE (id, schedule_id)
+);
+
 CREATE TABLE scheduling.events (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     -- Owner anchor: the schedule this entry belongs to (availability, busy, bookings).
@@ -111,6 +145,15 @@ CREATE TABLE scheduling.events (
     -- included. fn_guard_event_recurrence (00001510) keeps a series on one anchor, one level deep.
     recurrence_rule text CHECK (char_length(recurrence_rule) <= 400 AND recurrence_rule ~ '^FREQ='),
     recurrence_parent_id uuid REFERENCES scheduling.events (id) ON DELETE CASCADE,
+    -- The routine this entry is organised under (fk_event_routine below). A whole series moves together
+    -- (scheduling.organise_event), and an entry read from a connected calendar can join one: nothing
+    -- here reaches its provider, because trg_event_mirrors never watches a row with a connection.
+    routine_id uuid DEFAULT NULL,
+    -- Whether this entry holds its time against bookings. `passive` gives it away: every busy reader
+    -- (fn_has_conflicting_event, get_free_busy) skips the row, and its copy at a provider is written
+    -- transparent. A commitment somebody else relies on is `disruptive` for good
+    -- (fn_guard_event_behavior). NOT NULL because a reader that met a NULL here could only guess.
+    availability_behavior text NOT NULL DEFAULT 'disruptive' CHECK (availability_behavior IN ('disruptive', 'passive')),
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -151,6 +194,16 @@ CREATE TABLE scheduling.events (
     -- An occurrence belongs to a series and never heads one, and never names itself.
     CONSTRAINT ck_event_recurrence_shape CHECK (recurrence_parent_id IS NULL OR recurrence_rule IS NULL),
     CONSTRAINT ck_event_recurrence_not_self CHECK (recurrence_parent_id <> id),
+    -- Composite so a routine on somebody else's schedule cannot be named, and the column list on SET NULL
+    -- keeps schedule_id, which the row still needs. MATCH SIMPLE skips a NULL schedule_id, which is
+    -- half of why ck_event_routine_anchor exists.
+    CONSTRAINT fk_event_routine FOREIGN KEY (routine_id, schedule_id)
+        REFERENCES scheduling.routines (id, schedule_id) ON DELETE SET NULL (routine_id),
+    -- A routine is its owner's own organising, so an engagement's meeting never joins one.
+    CONSTRAINT ck_event_routine_anchor CHECK (
+        routine_id IS NULL
+        OR (schedule_id IS NOT NULL AND project_id IS NULL)
+    ),
     CONSTRAINT uq_event_external UNIQUE (source_connection_id, external_event_id)
 );
 
@@ -187,6 +240,15 @@ CREATE TABLE scheduling.event_attendees (
     response scheduling.rsvp_response NOT NULL DEFAULT 'pending',
     responded_at timestamptz,
     note text CHECK (char_length(note) <= 280),
+    -- The address of a seat held by somebody with no account. "Required when user_id is null" is not a
+    -- CHECK, because ON DELETE SET NULL above empties user_id on a profile teardown and a CHECK would
+    -- refuse the teardown. Withheld from client roles (00002520): every party reads this table.
+    -- shortcut: no door writes this, because nothing can yet reach a person with no account (no sender,
+    -- no page to answer on), so `scheduling.invite_to_event` takes accounts only until one exists.
+    email text CHECK (char_length(email) <= 320),
+    -- The host withdrew this invitation (root CLAUDE.md §5: nothing is hard-deleted). An archived seat
+    -- is no seat: it sees nothing and holds nothing, and inviting the person again restores the row.
+    archived_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     -- SQL's UNIQUE ignores NULLs, which is exactly the behaviour wanted here: several external

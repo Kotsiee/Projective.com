@@ -19,17 +19,19 @@ import type {
 	CalendarInspectMode,
 	EntryClass,
 	EntryReminder,
+	Routine,
 	SchedulePage,
 } from "@projective/types/scheduling";
-import { entryClassOf } from "@projective/types/scheduling";
+import { awaitsAnswer, entryClassOf, isDeclinedInvitation } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import {
 	contextDrawerOpen,
 	contextPanelDocked,
 	contextPanelInflow,
 } from "@web/features/shell/core/context-panel-state.ts";
-import { withEventParam } from "./event-deep-link.ts";
-import { eventStack } from "./event-view.ts";
+import { withEventParam, withInvitationsFilter, withRoutineParam } from "./event-deep-link.ts";
+import { eventStack, type EventTab } from "./event-view.ts";
+import type { EntryOrganisation } from "./routine-view.ts";
 
 /**
  * calendar-state — the cross-island bridge for the `/calendar` hub.
@@ -224,6 +226,32 @@ export function shiftedFocus(
 export const calendarQuery = signal("");
 
 /**
+ * Invitations Only (`?filter=invitations`): the grid and the list narrow to what is waiting on the
+ * reader's answer. Seeded from the address by the body on mount, never at module scope, which every
+ * request shares during SSR.
+ */
+export const invitationsOnly = signal(false);
+
+/** Turn Invitations Only on or off, and say so in the address, so a reload lands on it. */
+export function setInvitationsOnly(on: boolean): void {
+	invitationsOnly.value = on;
+	const loc = globalThis.location;
+	if (!loc) return;
+	history.replaceState(history.state, "", withInvitationsFilter(loc.pathname, loc.search, on));
+}
+
+/** The invitations still waiting on the reader. One that has passed can no longer be answered. */
+export function pendingInvitations(
+	events: readonly CalendarEvent[],
+	now: number,
+): CalendarEvent[] {
+	return events.filter((e) => awaitsAnswer(e) && e.end > now);
+}
+
+/** The entries fading off the calendar while their Decline is written. */
+export const leavingEvents = signal<readonly string[]>([]);
+
+/**
  * Source slugs the reader has switched OFF.
  *
  * A DENY list rather than an allow list, deliberately: a newly connected calendar must appear
@@ -402,8 +430,18 @@ export function resetFilters(): void {
  * model {@link hiddenSources} sets out. An event with no `sources` at all is never hidden by it:
  * absence is "we do not know where this came from", and hiding it would make a legitimate entry
  * vanish for a reason the reader cannot see or undo.
+ *
+ * A declined invitation leaves every view here, and stays on the page: its link still opens it in the
+ * inspector, where the answer can be changed. `invitations` is for the lane's first byte, which has to
+ * be drawn from the address before the signal can have been seeded.
  */
-export function visibleEvents(events: readonly CalendarEvent[]): CalendarEvent[] {
+export function visibleEvents(
+	events: readonly CalendarEvent[],
+	invitations: boolean = invitationsOnly.value,
+): CalendarEvent[] {
+	const asked = invitations
+		? new Set(pendingInvitations(events, calendarPage.peek()?.now ?? Date.now()).map((e) => e.id))
+		: null;
 	const q = calendarQuery.value.trim().toLowerCase();
 	const classes = hiddenClasses.value;
 	const sources = hiddenSources.value;
@@ -411,6 +449,7 @@ export function visibleEvents(events: readonly CalendarEvent[]): CalendarEvent[]
 	const range = dateRange.value;
 	const preset = calendarPreset.value;
 	return events.filter((e) => {
+		if (asked ? !asked.has(e.id) : isDeclinedInvitation(e)) return false;
 		if (classes.includes(entryClassOf(e))) return false;
 		if (preset === "availability" && e.kind !== "availability") return false;
 		if (preset === "events" && e.kind === "availability") return false;
@@ -492,16 +531,22 @@ function writeEventParam(id: string | null): void {
 	if (loc) history.replaceState(history.state, "", withEventParam(loc.pathname, loc.search, id));
 }
 
+/** Show the docked panel, or below 1280px its drawer. */
+function revealPanel(): void {
+	panelTab.value = "event";
+	if (contextPanelInflow()) contextPanelDocked.value = true;
+	else contextDrawerOpen.value = true;
+}
+
 /**
  * Show an entry in the inspector: docked in the right panel from 1280px, and below that in the panel's
  * drawer. A drawer leaves the grid in view, where the event modal it replaces covered all of it.
  */
 export function inspectInPanel(event: CalendarEvent): void {
 	selectedEventId.value = event.id;
-	panelTab.value = "event";
+	selectedRoutineId.value = null;
 	writeEventParam(event.id);
-	if (contextPanelInflow()) contextPanelDocked.value = true;
-	else contextDrawerOpen.value = true;
+	revealPanel();
 }
 
 /**
@@ -518,6 +563,7 @@ export function selectEvent(
 	anchor?: EventPopoverAnchor | null,
 ): void {
 	selectedEventId.value = event.id;
+	selectedRoutineId.value = null;
 	writeEventParam(event.id);
 	if (from === "list") {
 		calendarFocus.value = event.start;
@@ -539,9 +585,9 @@ export function deselectEvent(): void {
 }
 
 /** Open an entry in the event modal (`.evm__panel`), for what the inspector has no room for. */
-export function openEventModal(id: string): void {
+export function openEventModal(id: string, tab?: EventTab): void {
 	contextDrawerOpen.value = false;
-	eventStack.open("event", id, { mode: "view" });
+	eventStack.open("event", id, { mode: "view", tab });
 }
 
 /**
@@ -571,6 +617,93 @@ export const remindersRequest = signal<
 /** Ask the body to save the reader's alerts for an entry. `null` follows their default. */
 export function requestReminders(event: CalendarEvent, reminders: EntryReminder[] | null): void {
 	remindersRequest.value = { event, reminders };
+}
+
+/** An entry a write in the right panel re-read, for the body to adopt: the same handshake. */
+export const eventReread = signal<CalendarEvent | null>(null);
+
+/** Hand the body an entry the server just answered with. */
+export function publishEvent(event: CalendarEvent): void {
+	eventReread.value = event;
+}
+// #endregion
+
+// #region Routines
+/**
+ * The reader's live routines. Published by the body and written by whichever region changed one: unlike
+ * an entry, nothing else derives from the list, so it needs no handshake. `null` until the body has
+ * mounted, when a region reads the SSR page instead ({@link routinesOn}), because this module is shared
+ * by every request during SSR.
+ */
+export const calendarRoutines = signal<readonly Routine[] | null>(null);
+
+/** The routines a region should draw: the live list once there is one, else the page's. */
+export function routinesOn(page: SchedulePage | null | undefined): readonly Routine[] {
+	return calendarRoutines.value ?? page?.routines ?? [];
+}
+
+/** The routine in the inspector. It holds one thing at a time, so this and an entry never coexist. */
+export const selectedRoutineId = signal<string | null>(null);
+
+/** The routines the reader has unfolded in the lane. View state, so it stays out of the address. */
+export const openRoutines = signal<readonly string[]>([]);
+
+/** Unfold or fold one routine in the lane. */
+export function toggleRoutine(id: string): void {
+	openRoutines.value = toggle(openRoutines.value, id);
+}
+
+/** Keep `?routine=` on the routine in the inspector, as `?event=` is kept on an entry. */
+function writeRoutineParam(slug: string | null): void {
+	const loc = globalThis.location;
+	if (!loc) return;
+	history.replaceState(history.state, "", withRoutineParam(loc.pathname, loc.search, slug));
+}
+
+/** Show a routine in the inspector, and say so in the address. */
+export function inspectRoutine(routine: Routine): void {
+	selectedEventId.value = null;
+	selectedRoutineId.value = routine.id;
+	writeRoutineParam(routine.slug);
+	revealPanel();
+}
+
+/** Let go of the routine in the inspector, and take it off the address. */
+export function deselectRoutine(): void {
+	selectedRoutineId.value = null;
+	writeRoutineParam(null);
+}
+
+/** An entry being organised from outside the body: the same handshake as {@link requestUpdate}. */
+export const organiseRequest = signal<
+	{ event: CalendarEvent; change: EntryOrganisation } | null
+>(null);
+
+/** Ask the body to move an entry and its series into or out of a routine, or set its behaviour. */
+export function requestOrganise(event: CalendarEvent, change: EntryOrganisation): void {
+	organiseRequest.value = { event, change };
+}
+
+/** Bumped when a write moved entries the body cannot see, so it reads the agenda again. */
+export const agendaReload = signal(0);
+
+/** The New routine dialog, mounted once by the body so the lane and the event modal share it. */
+export const routineDialogOpen = signal(false);
+
+let afterRoutine: ((routine: Routine) => void) | undefined;
+
+/** Ask for a new routine. `then` hands it back to whoever asked, as the modal's Routine field does. */
+export function requestNewRoutine(then?: (routine: Routine) => void): void {
+	afterRoutine = then;
+	routineDialogOpen.value = true;
+}
+
+/** Publish a routine the dialog made, hand it back, and close. */
+export function finishNewRoutine(routine: Routine): void {
+	calendarRoutines.value = [...(calendarRoutines.peek() ?? []), routine];
+	afterRoutine?.(routine);
+	afterRoutine = undefined;
+	routineDialogOpen.value = false;
 }
 // #endregion
 

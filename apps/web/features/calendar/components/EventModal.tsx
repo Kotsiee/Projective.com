@@ -35,6 +35,7 @@ import { ScheduleService } from "../core/ScheduleService.ts";
 import type { EventAccess } from "../core/event-access.ts";
 import { checkJoinLink } from "../core/meeting-link.ts";
 import {
+	canAnswer,
 	durationLabel,
 	entryEditable,
 	eventFingerprint,
@@ -46,11 +47,13 @@ import {
 	isEventPartyView,
 	panelFor,
 	rescheduleView,
+	RSVP_ACTIONS,
 	timesLabel,
 	viewerSeat,
 } from "../core/event-view.ts";
 import { EventLiveBadge, EventMetaBar } from "./EventMetaBar.tsx";
 import { EventAttendeePanel } from "./EventAttendeePanel.tsx";
+import { EventClashWarning } from "./EventClashNote.tsx";
 import { CallActionBar, CallProposePanel } from "./CallActionBar.tsx";
 import { EventDetailsTab } from "./tabs/EventDetailsTab.tsx";
 import { EventRescheduleTab } from "./tabs/EventRescheduleTab.tsx";
@@ -100,6 +103,8 @@ export interface EventModalProps {
 	uid: number;
 	/** Whether this occurrence exists yet. */
 	mode: EventMode;
+	/** The tab to open on, when the press that opened the modal was asking for one. */
+	initialTab?: EventTab;
 	event: CalendarEvent;
 	/** IANA display zone — every instant on this surface renders in the schedule's own zone. */
 	tz: string;
@@ -241,7 +246,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 		"baseline",
 		eventFingerprint(props.event),
 	);
-	const tab = useFrameState<EventTab>(eventStack, uid, "tab", "details");
+	const tab = useFrameState<EventTab>(eventStack, uid, "tab", props.initialTab ?? "details");
 	const showPanel = useFrameState<boolean>(eventStack, uid, "panel", true);
 	/*
 	 * Bumped by Discard, and by nothing else.
@@ -435,12 +440,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const bookable = props.canBook && !creating && event.kind === "availability" &&
 		event.status !== "cancelled" && live.state !== "passed";
 
-	// A host is going by definition — they are running it — so the answer controls belong to the seats
-	// that were invited. They also disappear once the thing has happened: an RSVP is a statement about
-	// attending, and it cannot be made in the past tense. A discovery call is answered by accepting or
-	// declining the CALL (its own lifecycle, `scheduling.discovery_calls`), never by an RSVP on the
-	// calendar entry that mirrors it, so its seats get no answer controls here.
-	const canRsvp = !!seat && seat.role !== "host" && live.state !== "passed" && !event.callId;
+	const canRsvp = canAnswer(event, nowMs);
 
 	return (
 		<BodyPortal>
@@ -661,15 +661,27 @@ export function EventModal(props: EventModalProps): JSX.Element {
 												canEdit={canEdit}
 												when={canEdit
 													? (
-														<EventMetaBar
-															event={event}
-															tz={tz}
-															hour12={hour12}
-															nowMs={nowMs}
-															canEdit={canEdit}
-															timesOnly
-															onPatch={patch}
-														/>
+														<>
+															<EventMetaBar
+																event={event}
+																tz={tz}
+																hour12={hour12}
+																nowMs={nowMs}
+																canEdit={canEdit}
+																timesOnly
+																onPatch={patch}
+															/>
+															{props.target.scope === "personal"
+																? (
+																	<EventClashWarning
+																		start={event.start}
+																		end={event.end}
+																		id={event.id}
+																		tz={tz}
+																	/>
+																)
+																: null}
+														</>
 													)
 													: undefined}
 												onPatch={patch}
@@ -945,13 +957,3 @@ export function EventModal(props: EventModalProps): JSX.Element {
  */
 /** `Omit` that keeps a union a union, so each move keeps its own fields. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-
-const RSVP_ACTIONS: {
-	value: RsvpResponse;
-	label: string;
-	severity: "success" | "warning" | "danger";
-}[] = [
-	{ value: "accepted", label: "Going", severity: "success" },
-	{ value: "tentative", label: "Maybe", severity: "warning" },
-	{ value: "rejected", label: "Can't make it", severity: "danger" },
-];

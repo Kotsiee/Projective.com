@@ -295,6 +295,9 @@ export function buildSceneEvents(
 					: `${event.attendees}${typeof event.capacity === "number" ? ` / ${event.capacity}` : ""}`,
 				kindLabel: masked ? maskLabel(event.status) : CALENDAR_KIND_SINGULAR[shown],
 				masked,
+				passive: !masked && event.availabilityBehavior === "passive",
+				ghost: !masked && event.ghost === true,
+				leaving: event.leaving === true,
 				cancelled: event.status === "cancelled",
 				// A masked card draws none of them, for the same reason it draws no kind glyph: which
 				// calendars a private appointment lives on is not one of the facts §Part 1.4 allows it,
@@ -355,6 +358,9 @@ export function eventAccessibleName(ev: SceneEvent, dayLabel: string): string {
 	// aloud — and "on 3 calendars" is the fact the reader is after: that this is already synced. The
 	// DOM card says exactly this, from the same threshold.
 	if (ev.sources > 1) parts.push(`on ${ev.sources} calendars`);
+	// The hatch's words: a texture says nothing to a listener.
+	if (ev.passive) parts.push("open to bookings");
+	if (ev.ghost) parts.push("waiting for your answer");
 	if (ev.cancelled) parts.push("cancelled");
 	return parts.join(", ");
 }

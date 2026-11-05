@@ -6,8 +6,14 @@ import type {
 	CalendarEvent,
 	CalendarPage,
 	CalendarParams,
+	ClashQuery,
 	CreateEntriesInput,
+	CreateRoutineInput,
+	EventClashVerdict,
+	InviteInput,
+	OrganiseEntryInput,
 	RemoveEntryInput,
+	Routine,
 	SetEntryRemindersInput,
 	RescheduleInput,
 	RsvpInput,
@@ -17,6 +23,8 @@ import type {
 	SlotGrid,
 	SlotQuery,
 	UpdateEntryInput,
+	UpdateRoutineInput,
+	WithdrawInviteInput,
 } from "@projective/types/scheduling";
 import {
 	ANONYMOUS_VIEWER,
@@ -24,6 +32,7 @@ import {
 	redactEventForViewer,
 	redactEventsForViewer,
 	RESCHEDULE_REFUSAL_COPY,
+	withClashCounts,
 } from "@projective/types/scheduling";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { buildGrid, type GridRequest, judgeCustomStart } from "./slot-grid.ts";
@@ -47,6 +56,8 @@ import {
 	setEntryReminders,
 	updateEntry,
 } from "./live-entries.ts";
+import { createRoutine, organiseEntry, updateRoutine } from "./live-routines.ts";
+import { inviteToEvent, readClashes, withdrawInvitation } from "./live-invitations.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import type { ExploreItem } from "@projective/types/explore";
@@ -259,7 +270,9 @@ export class ScheduleBackendService {
 		if (!canReadLive(actor)) return signInRequired("view your calendar");
 		try {
 			const page = await readPersonalCalendar(actor, now);
-			return ok({ page: projectPage(page, viewerOf(actor)) });
+			// Here alone: this is the one page that IS the reader's time (`CalendarEvent.clashCount`).
+			const stamped = { ...page, events: withClashCounts(page.events) };
+			return ok({ page: projectPage(stamped, viewerOf(actor)) });
 		} catch (err) {
 			return calendarUnavailable(err);
 		}
@@ -408,7 +421,7 @@ export class ScheduleBackendService {
 		input: UpdateEntryInput,
 		actor: ReadActor,
 		deps: Partial<EntryDeps> = {},
-	): Promise<ServiceResult<{ event: CalendarEvent }>> {
+	): Promise<ServiceResult<{ event: CalendarEvent; series: CalendarEvent[] }>> {
 		return asHost("update-entry", actor, deps, (a, d) => updateEntry(input, a, d));
 	}
 
@@ -421,6 +434,33 @@ export class ScheduleBackendService {
 		return asHost("remove-entry", actor, deps, (a, d) => removeEntry(input, a, d));
 	}
 
+	/** Seat people on one of the caller's own entries and tell them. The door judges it. */
+	static invite(
+		input: InviteInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ event: CalendarEvent }>> {
+		return asHost("invite", actor, deps, (_a, d) => inviteToEvent(input, d));
+	}
+
+	/** Withdraw one invitation from one of the caller's own entries, and tell its person. */
+	static withdrawInvitation(
+		input: WithdrawInviteInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ event: CalendarEvent }>> {
+		return asHost("withdraw-invitation", actor, deps, (_a, d) => withdrawInvitation(input, d));
+	}
+
+	/** What already holds the caller's own time across a span. */
+	static clashes(
+		query: ClashQuery,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<EventClashVerdict>> {
+		return asHost("clashes", actor, deps, (a, d) => readClashes(query, a, d));
+	}
+
 	/** Set the caller's own alerts for an entry they hold, in any seat; `null` follows their default. */
 	static setEntryReminders(
 		input: SetEntryRemindersInput,
@@ -428,6 +468,39 @@ export class ScheduleBackendService {
 		deps: Partial<EntryDeps> = {},
 	): Promise<ServiceResult<{ event: CalendarEvent }>> {
 		return asHost("set-entry-reminders", actor, deps, (a, d) => setEntryReminders(input, a, d));
+	}
+	// #endregion
+
+	// #region Routines (Decision #389)
+	/** Create a routine on the caller's own schedule, opening the schedule on first use. */
+	static createRoutine(
+		input: CreateRoutineInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ routine: Routine }>> {
+		return asHost("create-routine", actor, deps, (a, d) => createRoutine(input, a, d));
+	}
+
+	/** Change or archive one of the caller's routines. `404` for one that is not theirs to see. */
+	static updateRoutine(
+		input: UpdateRoutineInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ routine: Routine }>> {
+		return asHost("update-routine", actor, deps, (a, d) => updateRoutine(input, a, d));
+	}
+
+	/**
+	 * Put an entry and its whole series in a routine or take them out, or set whether they hold their
+	 * time, and answer with every row that changed. The one write an entry from a connected calendar
+	 * takes, because nothing in it reaches a provider. `409` for a commitment asked to go passive.
+	 */
+	static organiseEntry(
+		input: OrganiseEntryInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ events: CalendarEvent[] }>> {
+		return asHost("organise-entry", actor, deps, (a, d) => organiseEntry(input, a, d));
 	}
 	// #endregion
 

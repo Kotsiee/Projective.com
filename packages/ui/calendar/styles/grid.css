@@ -449,6 +449,10 @@
 	color: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
 }
 
+.cal-grid__swatch--passive {
+	color: var(--hatch-color);
+}
+
 /*
  * The FULL-viewport swatches, rendered only where the whole grid is drawn (the Week grid) rather
  * than only its lattice (the Day timeline).

@@ -17,6 +17,28 @@ CREATE OR REPLACE TRIGGER trg_events_touch
     BEFORE UPDATE ON scheduling.events
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
 
+CREATE OR REPLACE TRIGGER trg_routines_touch
+    BEFORE UPDATE ON scheduling.routines
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
+
+-- Entries follow their routine's behaviour, and a commitment can never be passive (00001510 §5b).
+CREATE OR REPLACE TRIGGER trg_routine_behavior
+    AFTER UPDATE OF behavior ON scheduling.routines
+    FOR EACH ROW
+    WHEN (NEW.behavior IS DISTINCT FROM OLD.behavior)
+    EXECUTE FUNCTION scheduling.trg_routine_behavior ();
+
+CREATE OR REPLACE TRIGGER trg_guard_event_behavior
+    BEFORE INSERT OR UPDATE OF availability_behavior, kind, project_id, source_session_event_id
+    ON scheduling.events
+    FOR EACH ROW
+    WHEN (NEW.availability_behavior = 'passive')
+    EXECUTE FUNCTION scheduling.fn_guard_event_behavior ();
+
+CREATE OR REPLACE TRIGGER trg_seat_holds_time
+    AFTER INSERT OR UPDATE ON scheduling.event_attendees
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_seat_holds_time ();
+
 CREATE OR REPLACE TRIGGER trg_call_settings_touch
     BEFORE UPDATE ON scheduling.call_settings
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
@@ -60,13 +82,15 @@ CREATE OR REPLACE TRIGGER trg_entry_room
 
 -- #region Outbound mirrors follow their event (00001510 §7g; Decision #383, ruling R3)
 -- A busy row read from a provider queues nothing, and this WHEN is what keeps a full read cheap.
--- attendee_count is here because it is what changes when a group seat starts or ends.
+-- attendee_count is here because it is what changes when a group seat starts or ends, and
+-- availability_behavior because a copy says whether it blocks time. routine_id is not: a routine is
+-- never in a copy, so organising an entry writes nothing to a provider.
 CREATE OR REPLACE TRIGGER trg_event_mirrors_touch
     BEFORE UPDATE ON scheduling.event_mirrors
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
 
 CREATE OR REPLACE TRIGGER trg_event_mirrors
-    AFTER INSERT OR UPDATE OF title, starts_at, ends_at, all_day, status, archived_at, external_sync, attendee_count
+    AFTER INSERT OR UPDATE OF title, starts_at, ends_at, all_day, status, archived_at, external_sync, attendee_count, availability_behavior
     ON scheduling.events
     FOR EACH ROW
     WHEN (NEW.source_connection_id IS NULL AND NEW.kind NOT IN ('availability', 'busy'))
@@ -91,7 +115,7 @@ CREATE OR REPLACE TRIGGER trg_call_mirrors_deleted
     FOR EACH ROW EXECUTE FUNCTION scheduling.trg_call_mirrors ();
 
 CREATE OR REPLACE TRIGGER trg_attendee_mirrors
-    AFTER INSERT OR UPDATE OF response, user_id OR DELETE ON scheduling.event_attendees
+    AFTER INSERT OR UPDATE OF response, user_id, archived_at OR DELETE ON scheduling.event_attendees
     FOR EACH ROW EXECUTE FUNCTION scheduling.trg_attendee_mirrors ();
 
 CREATE OR REPLACE TRIGGER trg_room_mirrors_opened

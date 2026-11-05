@@ -56,6 +56,15 @@ export type ScheduleOwnerType = z.infer<typeof ScheduleOwnerType>;
  */
 export const AvailabilityKind = z.enum(["working_hours", "call_window"]);
 export type AvailabilityKind = z.infer<typeof AvailabilityKind>;
+
+/**
+ * Whether an entry holds its time against bookings (`scheduling.events.availability_behavior`,
+ * `scheduling.routines.behavior`; Decision #389). `disruptive` blocks discovery calls and session
+ * bookings. `passive` leaves the time free to be booked over: every busy reader skips the row, and
+ * its copy at a provider goes out as transparent.
+ */
+export const AvailabilityBehavior = z.enum(["disruptive", "passive"]);
+export type AvailabilityBehavior = z.infer<typeof AvailabilityBehavior>;
 // #endregion
 
 // #region scheduling.schedules
@@ -216,6 +225,10 @@ export const SchedulingEventRowSchema = z.object({
 	recurrenceRule: RRuleText.nullable(),
 	/** Set on every later occurrence: the master it belongs to. Never set alongside a rule. */
 	recurrenceParentId: uuid.nullable(),
+	/** The routine this entry is organised under, on the same schedule. Never an engagement's meeting. */
+	routineId: uuid.nullable(),
+	/** What every busy reader reads. A commitment is `disruptive` for good (`fn_event_holds_time`). */
+	availabilityBehavior: AvailabilityBehavior,
 	createdBy: uuid.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
@@ -245,6 +258,8 @@ export const CreateSchedulingEventSchema = z.object({
 	meta: z.string().max(160).optional(),
 	capacity: z.number().int().min(0).optional(),
 	href: z.string().max(400).optional(),
+	routineId: uuid.optional(),
+	availabilityBehavior: AvailabilityBehavior.default("disruptive"),
 });
 export type CreateSchedulingEvent = z.infer<typeof CreateSchedulingEventSchema>;
 // #endregion

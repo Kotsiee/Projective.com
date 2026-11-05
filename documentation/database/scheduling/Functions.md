@@ -77,8 +77,10 @@ following day, so the old same-weekday test refused a slot ending at 24:00 that 
 
 ### `scheduling.fn_has_conflicting_event(schedule, starts_at, ends_at) → boolean` (`20260724102000`)
 
-Does a non-`cancelled`, non-`availability` event on this schedule overlap the span? (`availability`
-rows describe openness, so they never occupy time.)
+Does a non-`cancelled`, non-`availability`, non-`passive` event on this schedule overlap the span?
+(`availability` rows describe openness, so they never occupy time, and a `passive` entry is time its
+owner left open to be booked over, Decision #389.) `fn_slot_is_free` reaches events only through
+this, so every booking gate, and the `busy` auto-reply, follows it with no change of its own.
 
 ### `scheduling.fn_is_blacked_out(schedule, starts_at, ends_at) → boolean` (`20260724102000`)
 
@@ -235,7 +237,9 @@ the request door below, not something a client needs to call.
 ### `scheduling.get_free_busy(schedule, from, to) → TABLE(starts_at, ends_at)`
 
 The occupied spans on a schedule inside a window: every non-`cancelled` event that is not itself an
-`availability` block, plus every discovery call still `proposed` or `confirmed`. **Spans only** — no
+`availability` block or `passive`, plus every discovery call still `proposed` or `confirmed`. It reads
+the same rows `fn_has_conflicting_event` does and has to agree with it, or the grid refuses a slot the
+gate would take. **Spans only** — no
 title, no id, no kind — so a visitor learns that a time is taken and nothing about by whom or for
 what (`PRODUCT_SPEC.md` §The Proactive Calendar, Part 1.4). Answers for a **public** schedule
 (`fn_schedule_is_public` — published, and the owner's profile visible), or one the caller may
@@ -543,8 +547,10 @@ time, so a burst of edits is one write. The inbound half is `integrations.*`
 | `fail_event_mirror(p_mirror, p_claimed_at, p_error) → void` | A refused write backs off from 5 minutes, doubling, and the eighth stops until the event next changes. Service role. |
 
 Triggers (`00001860`): `trg_event_mirrors` on a change to `title`, `starts_at`, `ends_at`, `all_day`,
-`status`, `archived_at`, `external_sync` or `attendee_count`, which is what moves when a group seat
-starts or ends; `trg_event_mirrors_deleted`; `trg_call_mirrors` on a change to a call's `status`,
+`status`, `archived_at`, `external_sync`, `availability_behavior` (a copy says whether it blocks time:
+`transparent` in the claim, Google's `transparency`, Graph's `showAs`) or `attendee_count`, which is what
+moves when a group seat starts or ends, and never on `routine_id`, because a routine is in no copy;
+`trg_event_mirrors_deleted`; `trg_call_mirrors` on a change to a call's `status`,
 `confirmed_start`, `confirmed_end` or `event_id`, except into `completed` or `no_show`, which change
 nothing a copy says; `trg_call_mirrors_deleted`; `trg_attendee_mirrors` on an RSVP; and
 `trg_room_mirrors_opened` and `trg_room_mirrors_changed`, because a copy carries its room's address.
@@ -589,6 +595,50 @@ a profile that cannot take calls (a buyer). The public side reads the same rows 
 `live-call-offer.ts` (`readPublicCallOffer`), which requires a published schedule.
 
 ---
+
+## 8b. Invitations and clashes (`00001510` §5c, `00001520`; Decision #390)
+
+### `scheduling.fn_invitable_event(event) → events`
+
+The entry behind an invitation, locked `FOR UPDATE`, or the reason there is none to make. `42501` if
+the caller cannot manage its schedule. `55000` for an engagement's meeting, a sitting, an entry from
+a connected calendar, a series, a moment, a `session`, `booking`, `availability`, `busy`, `deadline`
+or `holiday` kind, a mirrored call, an entry that is over, or one with a round open, because a round's
+mode and electorate are counted from the roster. No client role reaches it, only its two doors.
+
+### `scheduling.invite_to_event(event, users uuid[]) → integer`
+
+Seats people on the caller's own entry and tells them (`schedule.event_invite`) in one transaction,
+so no seat exists that nobody was told about. Answers how many were newly asked. Somebody already
+seated keeps their answer and hears nothing; somebody withdrawn is asked afresh on the same row. The
+host takes a seat with the first guest. At most 50 seats, host included (`EVENT_ROSTER_MAX`, pinned
+by `coordination.contract.test.ts`). `trg_seat_holds_time` flips a passive entry to `disruptive`.
+Accounts only: `email` has no writer. `EXECUTE` to `authenticated`.
+
+### `scheduling.withdraw_invitation(event, attendee = NULL) → integer`
+
+Archives one guest's seat, or with no attendee every guest's, and tells each of them
+(`schedule.event_invite_withdrawn`). With the last guest gone the host's seat goes too, so the entry
+has no roster and moves like any other. `removeEntry` calls it when a roster refuses the removal,
+which is how a host cancels an entry people are on. `EXECUTE` to `authenticated`.
+
+### `scheduling.fn_notify_event_seats(event, who, lead, body, actor) → void`
+
+Tells an entry's `host`, its `guests` or `everyone`, the actor apart (`schedule.event_reschedule`).
+The writer calls it for a proposed time and an opened round, and `close_reschedule_round` for a move.
+A DEFINER because those run as the service role, which holds no USAGE on `comms`, and service role
+only, or a client could ping a whole roster.
+
+### `scheduling.fn_detect_event_clashes(user, starts_at, ends_at, exclude_event = NULL) → jsonb`
+
+What already holds a person's own time across a span, as `[{kind, id, title, startsAt, endsAt}]`,
+earliest first. `kind` is `event`, `call` or `blackout`. An event counts when it is on their
+schedule, they created it on an engagement, or they hold an `accepted` or `tentative` seat, and it is
+not `cancelled`, archived, `availability`, a `deadline`, `passive` or a moment. A pending or declined
+seat holds nothing. Both edges are open, so back to back is no clash. A call mirrored into an event
+answers as the call. `detectTimeClash` (`@projective/types/scheduling`) applies the same test to a
+page's entries. **It names what it finds, so it answers for the caller alone** (`42501` otherwise):
+a door that took anybody's id would read out their calendar. `EXECUTE` to `authenticated`.
 
 ## 9. Event coordination (`00001510`)
 
@@ -682,6 +732,16 @@ through. The roster lookup it needs is the definer helper `fn_event_has_roster` 
 `authenticated`; on the helper to `authenticated` and `service_role` (revoked from `PUBLIC` and
 `anon`) — the guard runs as the caller, so the caller must be able to execute the helper.
 
+### Routines and availability behaviour (`00001510` §5b; Decision #389)
+
+| Function | Does |
+| :------- | :--- |
+| `fn_event_holds_time(event row) → boolean` | Does somebody else rely on this entry? True for an engagement's meeting, a sitting's mirror, a `session` or `booking`, or anything with a roster. Those can never be passive. `EXECUTE` to `authenticated` and `service_role`, because the guard below runs as the caller. |
+| `fn_guard_event_behavior()` → trigger (`trg_guard_event_behavior`) | BEFORE INSERT OR UPDATE OF `availability_behavior`, `kind`, `project_id`, `source_session_event_id`, on a passive row only. Refuses a commitment `55000`, for every role. |
+| `trg_seat_holds_time()` → trigger | AFTER INSERT OR UPDATE on `event_attendees`. A seat makes an entry a commitment, so a passive one takes its time back, whichever door the seat came through. Asks `fn_event_has_roster`, so a seat that does not count changes nothing. A definer, because an attendee cannot write the event. |
+| `trg_routine_behavior()` → trigger | AFTER UPDATE OF `behavior` on `routines`. Moves the entries that agreed with the routine; one its host set apart keeps its own, and a commitment stays. A **definer**, because the predicate reads the whole row and the room's columns are withheld from every client role. The routine's own RLS has already passed, and `fk_event_routine` keeps every row it can reach on that routine's schedule. |
+| `organise_event(event, changes jsonb) → uuid[]` | Organises one entry and **its whole series**, a connected calendar's included. `changes` names `routine_id` (null takes it out) and `availability_behavior`; a key left out stays. Joining takes on the routine's behaviour unless the same call names one; leaving changes nothing else. Writes these two columns only, skips a row already saying so (`trg_event_mirrors` fires on the column, changed or not, so this is what keeps a save from queueing a provider write per occurrence), and answers the ids it wrote. `42501` for an entry not on a schedule the caller manages, `55000` for a commitment asked to go passive or a routine that is gone. A definer because a connected series is found through `connected_event_details`. `EXECUTE` to `authenticated` and `service_role`. Proof: `supabase/probes/scheduling_routines.sql`. |
+
 ### `scheduling.fn_guard_event_recurrence()` → trigger (`trg_guard_event_recurrence`)
 
 Added 2026-11-03 (Decision #375); trigger in `00001860`. Keeps a recurring series one level deep
@@ -699,6 +759,10 @@ check because RLS hides an occurrence from them. The body runs two key lookups o
 `CREATE TRIGGER`.
 
 ### `scheduling.close_reschedule_round(round, status, resolved_proposal, actor, summary, detail) → uuid`
+
+A round that carries also tells everyone on the entry but its actor (`schedule.event_reschedule`, by
+`fn_notify_event_seats`): here because every ending comes through this door, a vote settled by
+somebody's page load included. A sitting has its own session notices, so its mirror is left out.
 
 The one transition in the negotiation that moves **two** rows — the round comes to rest and, when it
 carried, the event itself moves to the winning slot — so it is one function rather than two

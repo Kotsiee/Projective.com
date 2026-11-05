@@ -15,6 +15,9 @@
  *   from the calendar-sync chip vocabulary per root CLAUDE.md §8 Decision #56.
  * - {@link ./reminders.ts} — the reader's two classes of entry (Event · Reminder, derived from a
  *   row's shape), the alerts they set on them, and their calendar preferences.
+ * - {@link ./routines.ts} — a person's named groups of recurring entries and the words for whether
+ *   an entry holds its time against bookings.
+ * - {@link ./invitations.ts} — being asked to an entry, and what an entry would collide with.
  * - {@link ./rows.ts} — the `scheduling` schema ROW shapes (ISO timestamps, uuid keys), mirroring
  *   the consolidated `supabase/migrations/00000022_tables_scheduling.sql`.
  * - {@link ./calls.ts} — discovery & courtesy calls: settings, the booking record, the Digital
@@ -36,17 +39,14 @@
  *   absolute spans. {@link ./describe.ts} words a rule, {@link ./templates.ts} holds the starting
  *   presets and {@link ./presets.ts} the save / bind / occurrence payloads.
  *
- * ⚠️ **`coordination.ts` and `meeting.ts` have no tables yet.** They are read+write PROJECTIONS the
- * fat `ScheduleBackendService` derives from fixtures (and mutates in a per-process session store),
- * exactly as `projects/detail`, `projects/messages` and `finance/wallet` did before their live
- * paths landed. The consolidated `scheduling` DDL stores only `attendee_count integer`, a single
- * `proposed_start`/`proposed_end` pair on `discovery_calls`, and no vote or per-event history table
- * at all — so persisting a roster, a multi-slot ballot or an event audit log needs new tables folded
- * into the consolidated migrations (root CLAUDE.md §1), landing with their RLS policies and the
- * matching `documentation/database/scheduling/*` update in the same change.
+ * `coordination.ts` and `meeting.ts` are read+write PROJECTIONS over real tables, in
+ * `00000022_tables_scheduling.sql`: `event_attendees`, `event_reschedules`, `reschedule_proposals`,
+ * `proposal_votes`, `event_history` and the room columns on `events`.
  */
 export * from "./scheduling.ts";
 export * from "./reminders.ts";
+export * from "./routines.ts";
+export * from "./invitations.ts";
 export * from "./coordination.ts";
 export * from "./privacy.ts";
 export * from "./meeting.ts";

@@ -182,6 +182,8 @@ export function EventBlock(
 		EventBlockProps,
 ): JSX.Element {
 	const masked = !!event.masked;
+	const ghost = !masked && event.ghost === true;
+	const passive = ghost || (!masked && event.availabilityBehavior === "passive");
 	const accent = event.accent ?? effectiveAccent(event.kind, event.status, masked, event.allDay);
 	const title = masked ? maskLabel(event.status) : event.title;
 	/*
@@ -321,6 +323,10 @@ export function EventBlock(
 		asPin && "cal-event--pin",
 		asBare && "cal-event--bare",
 		masked && "cal-event--masked",
+		// An instant is a pin, with no box to hatch.
+		passive && !asPin && "cal-event--passive",
+		ghost && !asPin && "cal-event--ghost",
+		event.leaving && "cal-event--leaving",
 		event.status === "cancelled" && "cal-event--cancelled",
 		`cal-event--${event.kind}`,
 	);
@@ -353,7 +359,9 @@ export function EventBlock(
 		: "";
 	const label = `${kindLabel}: ${
 		masked ? maskLabel(event.status) : event.title
-	}, ${timeLabel}${facesLabel}${syncedLabel}${event.status === "cancelled" ? ", cancelled" : ""}`;
+	}, ${timeLabel}${facesLabel}${syncedLabel}${ghost ? ", waiting for your answer" : ""}${
+		event.status === "cancelled" ? ", cancelled" : ""
+	}`;
 
 	// A bare block renders NO children at all — not hidden ones, none. An empty flex column costs
 	// nothing to lay out, and leaving the rows in the tree only to hide them would keep every one of

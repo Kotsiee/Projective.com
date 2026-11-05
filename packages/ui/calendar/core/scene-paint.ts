@@ -584,7 +584,7 @@ function paintEntry(
 	 * Everything downstream COMPOSES (`*=`) rather than assigns, so a cancelled card inside a dimmed
 	 * background is drawn at the product of the two.
 	 */
-	const alpha = recedeAlpha(ev.recede, palette);
+	const alpha = recedeAlpha(ev.recede, palette) * (1 - (ev.exit ?? 0));
 	const faded = alpha < 1;
 	if (faded) {
 		ctx.save();
@@ -633,7 +633,7 @@ function paintHighlightRing(
 	const w = Math.max(1 / box.dpr, palette.highlightRingWidth);
 	if (w <= 0 || rect.w <= w * 2 || rect.h <= w * 2) return;
 	const accent = palette.accents[ev.accent] ?? palette.accentFallback;
-	const ink = ev.masked ? (palette.maskedText.color || palette.titleText.color) : accent.onAccent;
+	const ink = quiet(ev) ? (palette.maskedText.color || palette.titleText.color) : accent.onAccent;
 	if (!ink) return;
 	ctx.save();
 	roundRect(
@@ -702,6 +702,35 @@ function clearShadow(ctx: CanvasRenderingContext2D): void {
 	ctx.shadowOffsetY = 0;
 }
 
+/** The three cards drawn on the quiet wash with the neutral ink, never on the solid accent. */
+function quiet(ev: SceneEvent): boolean {
+	return ev.masked || ev.passive || ev.ghost === true;
+}
+
+/**
+ * A passive card's texture, inside the clip the card has already set. The diagonal step is the one
+ * `hatch` (`grid-paint.ts`) explains, phased to the card so it travels with it, and it matches
+ * `.cal-event--passive`'s gradient, so one entry reads the same on canvas and in the DOM.
+ */
+function paintPassiveHatch(
+	ctx: CanvasRenderingContext2D,
+	rect: Rect,
+	x: number,
+	palette: ScenePalette,
+): void {
+	if (!palette.passiveHatch || palette.passivePitch <= palette.passiveStripe) return;
+	const { y, w, h } = rect;
+	const step = palette.passivePitch * Math.SQRT2;
+	ctx.strokeStyle = palette.passiveHatch;
+	ctx.lineWidth = palette.passiveStripe;
+	ctx.beginPath();
+	for (let d = -h; d <= w; d += step) {
+		ctx.moveTo(x + d, y);
+		ctx.lineTo(x + d + h, y + h);
+	}
+	ctx.stroke();
+}
+
 function paintCard(
 	ctx: CanvasRenderingContext2D,
 	ev: SceneEvent,
@@ -736,7 +765,7 @@ function paintCard(
 	 */
 	if (ev.foldedCount > 0) {
 		const layers = Math.min(STACK_SHADOW_MAX, ev.foldedCount);
-		const fill = ev.masked ? accent.fillMasked : accent.fill;
+		const fill = quiet(ev) ? accent.fillMasked : accent.fill;
 		if (fill) {
 			for (let s = layers; s >= 1; s--) {
 				ctx.save();
@@ -767,9 +796,18 @@ function paintCard(
 	 * than one this file makes; and hover keeps its own channel regardless, since the lift and the
 	 * expansion are what a hovered card actually announces itself with now.
 	 */
-	const fill = ev.masked ? accent.fillMasked : hovered || nested ? accent.fillHover : accent.fill;
+	const fill = quiet(ev) ? accent.fillMasked : hovered || nested ? accent.fillHover : accent.fill;
 	ctx.fillStyle = fill;
 	ctx.fill();
+	// A hovered ghost comes up solid over its wash, so it can be read before it is answered.
+	const solid = ev.ghostSolid ?? 0;
+	const under = ctx.globalAlpha;
+	if (solid > 0) {
+		ctx.globalAlpha = under * solid;
+		ctx.fillStyle = accent.fillHover;
+		ctx.fill();
+		ctx.globalAlpha = under;
+	}
 	clearShadow(ctx);
 
 	// A MASKED card is stepped down on TWO axes, exactly as `.cal-event--masked .cal-event__title` is:
@@ -777,7 +815,9 @@ function paintCard(
 	// particular accent. A REAL card's ink is the accent's own verified "on-" pair — the fill is now
 	// the accent at full strength, so `--on-surface` would not reliably clear contrast against it the
 	// way it did against the old 16% wash.
-	const ink = ev.masked ? (palette.maskedText.color || palette.titleText.color) : accent.onAccent;
+	// Its ink turns over with it, halfway up.
+	const washed = quiet(ev) && solid < 0.5;
+	const ink = washed ? (palette.maskedText.color || palette.titleText.color) : accent.onAccent;
 	/*
 	 * The nested card's second separation device, and the reason it is allowed a second one at all:
 	 * §B.4 reserves full borders for INTERACTIVE things, and a card is a button. It is stroked on the
@@ -806,7 +846,19 @@ function paintCard(
 		ctx.lineWidth = Math.max(1 / box.dpr, accent.edgeWidth);
 		ctx.stroke();
 	}
+	// A passive card is a ghost of the solid one: the wash above, its accent as an outline, the hatch.
+	const hatched = ev.passive || ev.ghost === true;
+	if (hatched && accent.accent) {
+		ctx.strokeStyle = accent.accent;
+		ctx.lineWidth = Math.max(1 / box.dpr, 1);
+		ctx.stroke();
+	}
 	ctx.clip();
+	if (hatched && solid < 1) {
+		ctx.globalAlpha = under * (1 - solid);
+		paintPassiveHatch(ctx, rect, x, palette);
+		ctx.globalAlpha = under;
+	}
 
 	/*
 	 * A BARE CARD STOPS HERE — fill, shape, edge, and nothing else.
@@ -827,7 +879,7 @@ function paintCard(
 	const titleStyle: TextStyle = { ...palette.titleText, color: ink || palette.titleText.color };
 	const metaStyle: TextStyle = {
 		...palette.metaText,
-		color: ev.masked ? palette.metaText.color : (ink || palette.metaText.color),
+		color: washed ? palette.metaText.color : (ink || palette.metaText.color),
 	};
 	const markColour = ink || accent.accent;
 	const titleH = lineHeightOf(titleStyle);
@@ -1380,7 +1432,7 @@ function paintBubble(
 	box: GridBox,
 ): void {
 	const a = palette.accents[ev.accent] ?? palette.accentFallback;
-	const fill = ev.masked ? a.fillMasked : a.fill;
+	const fill = quiet(ev) ? a.fillMasked : a.fill;
 	if (!fill) return;
 	const cy = Math.max(
 		rect.y + BUBBLE.size / 2,
@@ -1396,7 +1448,7 @@ function paintBubble(
 	ctx.arc(px, cy, BUBBLE.size / 2, 0, Math.PI * 2);
 	ctx.fillStyle = fill;
 	ctx.fill();
-	const ink = ev.masked ? "" : a.onAccent;
+	const ink = quiet(ev) ? "" : a.onAccent;
 	const glyphSize = Math.min(palette.glyphSize, BUBBLE.size * 0.6);
 	drawGlyph(
 		ctx,

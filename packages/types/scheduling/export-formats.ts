@@ -123,7 +123,9 @@ function veventFor(event: CalendarEvent, options: CalendarExportOptions): IcsCom
 	if (event.location) properties.push(prop("LOCATION", "text", event.location));
 	const status = event.status ? STATUS_OF[event.status] : undefined;
 	if (status) properties.push(prop("STATUS", "text", status));
-	if (event.status === "available") properties.push(prop("TRANSP", "text", "TRANSPARENT"));
+	// A routine's entry is written flattened, as this plain VEVENT: no routine goes into a file.
+	const free = event.availabilityBehavior === "passive" || event.status === "available";
+	properties.push(prop("TRANSP", "text", free ? "TRANSPARENT" : "OPAQUE"));
 	properties.push(prop("CATEGORIES", "text", CALENDAR_EXPORT_CATEGORY[event.kind]));
 	const url = event.href ? absoluteHref(event.href, options.origin) : null;
 	if (url) properties.push(prop("URL", "uri", url));

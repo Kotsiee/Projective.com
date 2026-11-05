@@ -208,6 +208,7 @@ function readPalette(probe: HTMLElement): ScenePalette | null {
 	const badge = optional("badge");
 	const lift = optional("lift");
 	const pin = optional("pin");
+	const passive = optional("passive");
 
 	return {
 		rule: toCanvasColor(decl(ruleCs, "border-block-start-color", "border-top-color")),
@@ -222,6 +223,9 @@ function readPalette(probe: HTMLElement): ScenePalette | null {
 		blackout: toCanvasColor(blackoutCs.getPropertyValue("color")),
 		hatchStripe: len(blackoutCs.getPropertyValue("--cal-hatch-stripe")),
 		hatchPitch: len(blackoutCs.getPropertyValue("--cal-hatch-pitch")),
+		passiveHatch: colour(passive, "color"),
+		passiveStripe: passive ? len(passive.getPropertyValue("--cal-passive-stripe")) : 0,
+		passivePitch: passive ? len(passive.getPropertyValue("--cal-passive-pitch")) : 0,
 
 		hourText: text("hour"),
 		titleText: text("title"),

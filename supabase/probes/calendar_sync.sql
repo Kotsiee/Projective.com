@@ -1138,7 +1138,7 @@ BEGIN
         'as a held, timed copy');
     PERFORM pg_temp.check(
         (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_claim -> 'event') k)
-            = ARRAY['all_day', 'end_date', 'ends_at', 'room_slug', 'start_date', 'starts_at', 'tentative', 'title'],
+            = ARRAY['all_day', 'end_date', 'ends_at', 'room_slug', 'start_date', 'starts_at', 'tentative', 'title', 'transparent'],
         'and nothing else');
     PERFORM pg_temp.check(
         v_claim::text NOT LIKE '%Secret%' AND v_claim::text NOT LIKE '%zoom.example%',

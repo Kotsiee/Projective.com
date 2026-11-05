@@ -143,11 +143,245 @@
 	padding: var(--space-3);
 }
 
+.cal-lane__count {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+/* An unboxed warning in the Meta register (§B.11): a pip and the words, so never colour alone. */
+.cal-clash {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--warning);
+}
+
+.cal-clash__pip {
+	flex: none;
+	inline-size: var(--pip-dot);
+	block-size: var(--pip-dot);
+	border-radius: var(--radius-full);
+	background: var(--warning);
+}
+
+.cal-clash__text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-clash__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-clash__line {
+	margin: 0;
+	min-block-size: 0;
+}
+
+.cal-clash__line:empty {
+	display: none;
+}
+
 .cal-lane__list {
+	position: relative;
 	flex: 1 1 auto;
 	min-block-size: 0;
 	overflow-y: auto;
 	padding-inline: var(--space-2);
+}
+
+/* The drop target that takes a row out of its routine, so it spans the list however short that is. */
+.cal-lane__loose {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-block-size: var(--space-8);
+}
+
+.cal-lane__loose[data-over="true"] {
+	box-shadow: inset 0 0 0 var(--space-px) var(--primary);
+}
+
+/*
+ * Routines & Cadences. Its own scroll, capped so it never takes the list's place: the list opens
+ * centred on what is next, which would otherwise carry these out of reach of a row dragged to them.
+ */
+.cal-rtn {
+	position: relative;
+	flex: 0 1 auto;
+	max-block-size: 45%;
+	overflow-y: auto;
+	padding-inline: var(--space-2);
+	padding-block-end: var(--space-2);
+	border-block-end: var(--hairline);
+}
+
+.cal-rtn__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-inline-start: var(--space-2);
+}
+
+.cal-rtn__title {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--cal-hub-label-track);
+	color: var(--text-secondary);
+}
+
+.cal-rtn__empty {
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+.cal-rtn__group[data-over="true"] {
+	border-radius: var(--radius-base);
+	box-shadow: inset 0 0 0 var(--space-px) var(--primary);
+}
+
+.cal-rtn__row {
+	display: flex;
+	align-items: center;
+	border-radius: var(--radius-base);
+}
+
+.cal-rtn__row:hover,
+.cal-rtn__row[data-selected="true"] {
+	background: var(--surface-2);
+}
+
+.cal-rtn__toggle {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-xs);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.cal-rtn__group[data-open="true"] .cal-rtn__toggle {
+	transform: rotate(90deg);
+}
+
+.cal-rtn__pick {
+	display: grid;
+	flex: 1 1 auto;
+	grid-template-columns: auto minmax(0, 1fr);
+	column-gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 0;
+	padding-block: var(--space-2);
+	padding-inline-end: var(--space-2);
+	border: none;
+	background: none;
+	font: inherit;
+	text-align: start;
+	color: inherit;
+	cursor: pointer;
+}
+
+/* The grid's two textures at the size of a word: solid for what blocks, hatched for what yields. */
+.cal-rtn__mark {
+	inline-size: var(--space-3);
+	block-size: var(--space-3);
+	border-radius: var(--radius-xs);
+	background: var(--cal-rtn-color);
+}
+
+.cal-rtn__mark[data-behavior="passive"] {
+	border: var(--space-px) solid var(--cal-rtn-color);
+	background: repeating-linear-gradient(
+		45deg,
+		var(--cal-rtn-color) 0 var(--cal-passive-stripe),
+		transparent var(--cal-passive-stripe) calc(var(--cal-passive-pitch) / 2)
+	);
+}
+
+.cal-rtn__name {
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-rtn__meta {
+	grid-column: 2;
+	font-size: var(--cal-hub-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.cal-rtn__body {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.cal-rtn__group[data-open="true"] .cal-rtn__body {
+	grid-template-rows: 1fr;
+}
+
+.cal-rtn__members {
+	min-block-size: 0;
+	overflow: hidden;
+	padding-inline-start: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cal-rtn__body,
+	.cal-rtn__toggle {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .cal-rtn__body,
+:root[data-motion="reduced"] .cal-rtn__toggle {
+	transition: none;
+}
+
+/* The New routine dialog, and the behaviour control it shares with the modal and the inspector. */
+.cal-rtn-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cal-rtn-form__foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.cal-behavior {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cal-behavior__hint {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 /* One upcoming entry. Separated by spacing and a hairline, never boxed (§B.4). */
@@ -166,6 +400,48 @@
 }
 
 .cal-up:hover {
+	background: var(--surface-2);
+}
+
+.cal-up[data-dragging="true"] {
+	opacity: var(--cal-dim-drag);
+}
+
+/* An answered "no" on its way out, with its card on the grid. */
+.cal-up[data-leaving="true"] {
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-exit);
+}
+
+/* Dragging is by the whole row; the grip is what a keyboard takes, and the sign a row can move. */
+.cal-up__grip {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	padding: var(--space-1);
+	border: none;
+	border-radius: var(--radius-xs);
+	background: none;
+	color: var(--text-secondary);
+	cursor: grab;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.cal-up:hover .cal-up__grip,
+.cal-up__grip:focus-visible {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.cal-up__grip {
+		opacity: 1;
+	}
+}
+
+.cal-up-ghost {
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
 	background: var(--surface-2);
 }
 
@@ -677,6 +953,19 @@
 
 .cal-sum__editor .ui-rte .ql-editor > :last-child {
 	margin-block-end: 0;
+}
+
+.cal-sum__answer {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.cal-sum__guests {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
 
 .cal-sum__acts {

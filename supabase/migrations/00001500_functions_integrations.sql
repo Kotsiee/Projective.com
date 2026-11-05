@@ -830,6 +830,23 @@ BEGIN
            series_id = EXCLUDED.series_id, join_url = EXCLUDED.join_url,
            recurrence_rule = COALESCE(EXCLUDED.recurrence_rule, d.recurrence_rule);
 
+    -- A provider rolls a series forward one occurrence at a time, so a new one joins the routine its
+    -- siblings were organised into (scheduling.organise_event moves a series whole). Otherwise each
+    -- week would slip back out of the group, and out of a passive routine holding time it should not.
+    UPDATE scheduling.events e
+       SET routine_id = sibling.routine_id, availability_behavior = sibling.availability_behavior
+      FROM scheduling.connected_event_details d
+     CROSS JOIN LATERAL (
+         SELECT x.routine_id, x.availability_behavior
+           FROM scheduling.connected_event_details xd
+           JOIN scheduling.events x ON x.id = xd.event_id
+          WHERE xd.series_id = d.series_id AND x.source_connection_id = p_connection_id
+            AND x.routine_id IS NOT NULL
+          LIMIT 1
+     ) sibling
+     WHERE d.event_id = e.id AND d.series_id IS NOT NULL
+       AND e.source_connection_id = p_connection_id AND e.routine_id IS NULL;
+
     IF p_full THEN
         SELECT COALESCE(pg_catalog.array_agg(b ->> 'id'), '{}') INTO v_seen
           FROM pg_catalog.jsonb_array_elements(COALESCE(p_busy, '[]'::jsonb)) b;

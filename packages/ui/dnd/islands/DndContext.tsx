@@ -210,6 +210,9 @@ export default function DndContext(props: DndContextProps): JSX.Element {
 		const onKeyboardKey = (e: KeyboardEvent) => {
 			const active = store.active.value;
 			if (!active) return;
+			// A key that ends a drag is spent here. Left to bubble, the Enter that dropped reaches the
+			// handle, which finds no drag in flight and starts another, and an Escape closes the dialog.
+			if (!(e.key in ARROW_DIRS)) e.stopPropagation();
 			if (e.key in ARROW_DIRS) {
 				e.preventDefault();
 				const args: DndCollisionArgs = {

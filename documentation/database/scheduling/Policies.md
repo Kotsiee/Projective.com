@@ -15,7 +15,8 @@ order to book them — so the model is **shape is public, content is not**.
 | **Call party**          | The two people on a `discovery_calls` row (+ admins)                                            | That call, its attendance log, its audit trail                                                                                                                        |
 
 Availability presets, their rules and bands are **managers only**, and compiled occurrences are
-read by the owner side (Decision #217, below). Neither is visitor-readable.
+read by the owner side (Decision #217, below). Neither is visitor-readable, and nor are routines
+(Decision #389, below).
 
 A discovery call is **never** readable by `anon` — there is deliberately no visitor policy on
 `discovery_calls`, `call_attendance`, or `call_audit`. `rooms`, `room_registrants`, `presence_events`,
@@ -177,6 +178,15 @@ are a party to. Nobody else's rule is at stake, only when one person hears about
 any seat may write it where the event row itself is the host's. `SELECT, INSERT, UPDATE, DELETE` to
 `authenticated` (`00002520`).
 
+## 🤝 Invitations
+
+A guest's row grants them nothing to write: `invite_to_event` and `withdraw_invitation` are the
+host's doors, and an answer goes through `/api/scheduling/rsvp`, under the "no client write" rule
+below. `archived_at` ends a seat for every predicate here, so a withdrawn guest stops seeing the
+entry, its roster and its room at once. `event_attendees` is granted to `authenticated` by column,
+every column but `email`, because RLS admits every party to the row and one guest's address is not
+another's to read.
+
 ## 🤝 Event coordination (`00000022`)
 
 `event_attendees`, `event_reschedules`, `reschedule_proposals`, `proposal_votes`, `event_history`
@@ -270,6 +280,28 @@ Both triggers **skip enforcement when `auth.uid()` is NULL** — a service-role 
 sweep, backfill) owns the rules in its own layer. The triggers guard the _client_ path.
 
 See [Functions.md](Functions.md) for the gate itself.
+
+## 🔁 Routines (`00002015`, Decision #389)
+
+```sql
+CREATE POLICY "View routines" ON scheduling.routines FOR SELECT TO authenticated
+USING (scheduling.fn_can_view_schedule (schedule_id));
+
+CREATE POLICY "Manage routines" ON scheduling.routines FOR ALL TO authenticated
+USING (scheduling.fn_can_manage_schedule (schedule_id)) WITH CHECK (scheduling.fn_can_manage_schedule (schedule_id));
+```
+
+- **No visitor reads one, on purpose.** The brief asked for a public read on a published schedule. A
+  routine's name says what a person does with their time ("Therapy", "Job hunt") and its rule says
+  when, and a visitor's whole allowance is that a time is taken (`PRODUCT_SPEC.md` §The Proactive
+  Calendar, Part 1.4). Decision #375 (b) refused presets a public `SELECT` for the same reason, and no
+  public surface reads a routine. The owner ruled it so on 2026-11-06 (Decision #389).
+- **Column grants narrow the write (`00002520`).** `authenticated` may INSERT `schedule_id, name,
+  color_token, behavior, recurrence_rule` and UPDATE `name, color_token, behavior, recurrence_rule,
+  is_active`. Nobody moves a routine to another schedule or writes `metadata`, and there is **no
+  DELETE**: a routine is archived.
+- **`routine_id` and `availability_behavior` are in the column-level `SELECT` on `scheduling.events`.** A
+  column missing from that grant refuses every `/calendar` read.
 
 ## 🧩 Availability presets & recurrence (`00002015`, Decision #217)
 

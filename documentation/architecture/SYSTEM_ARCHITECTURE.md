@@ -3593,7 +3593,8 @@ network call in it that no database transaction can hold open.
   them into a master and its occurrences, the shape Projective's own series has.
   `integrations-outbound-sync` writes `scheduling.event_mirrors`, a `dirty_at`
   queue the triggers fill, to a separate Projective calendar made the first time a connection has
-  something to put there. A copy carries a title, the time and the room's own `/meet` address, and
+  something to put there. A copy carries a title, the time, the room's own `/meet` address and whether
+  it blocks time (RFC 5545 TRANSP: Google's `transparency`, Graph's `showAs`; Decision #389), and
   nothing else: no agenda, location, attendee or provider link. An agreed discovery call goes out on
   the same queue, anchored on the call: an events row would hold its own slot against a move and be
   editable as an entry.

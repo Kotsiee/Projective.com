@@ -26,8 +26,10 @@ import {
 	rememberProvider,
 	ROOMLESS,
 } from "../../core/meeting-link.ts";
+import { organisedPatch } from "../../core/routine-view.ts";
 import { roomAccount } from "../../hooks/room-accounts.ts";
 import { MeetingProviderRail } from "../MeetingProviderRail.tsx";
+import { EventOrganiseFields } from "../EventOrganiseFields.tsx";
 import { EventRecurrenceField } from "../EventRecurrenceField.tsx";
 import { EventRemindersField } from "../EventRemindersField.tsx";
 
@@ -39,7 +41,8 @@ import { EventRemindersField } from "../EventRemindersField.tsx";
  *
  * **Editing is a two-column workspace, the same one a new entry is composed in.** The left column is
  * what the entry IS — when it runs and what it is for; the right column is how people reach it — the
- * room, whether it repeats, and who hears about it. The facts about the occurrence itself move to the
+ * room, whether it can be booked over and what routine it is in, whether it repeats, and who hears
+ * about it. The facts about the occurrence itself move to the
  * modal's footer, so nothing on this side restates a value the reader is editing a column away. An
  * existing entry's repeat reads as a sentence: a series is laid down when it is created, and a rule
  * edited here would reach no write path.
@@ -358,6 +361,22 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 		: null;
 	// #endregion
 
+	// Only the personal agenda has routines, and only it publishes its page to this module.
+	const organise = calendarPage.value
+		? (
+			<EventOrganiseFields
+				event={event}
+				onChange={(change) => props.onPatch(organisedPatch(change))}
+				// A new entry takes its routine's cadence unless it already has one of its own.
+				onJoin={(routine) => {
+					if (creating && routine.recurrenceRule && !event.recurrenceRule) {
+						props.onPatch({ recurrenceRule: routine.recurrenceRule });
+					}
+				}}
+			/>
+		)
+		: null;
+
 	if (canEdit) {
 		return (
 			<div class="evm-compose">
@@ -370,6 +389,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 				</div>
 				<div class="evm-compose__side">
 					{room}
+					{organise}
 					{creating
 						? (
 							<section class="evm-doc__sec">

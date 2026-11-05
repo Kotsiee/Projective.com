@@ -142,6 +142,7 @@ function syncClaim(overrides: Record<string, unknown> = {}) {
 const EVENT: MirrorEvent = {
 	title: "Design review",
 	tentative: false,
+	transparent: false,
 	all_day: false,
 	starts_at: "2026-11-05T09:00:00+00:00",
 	ends_at: "2026-11-05T10:00:00+00:00",
@@ -374,7 +375,10 @@ Deno.test("syncWindow: a read reaches past the longest booking horizon", () => {
 // #region What goes out
 Deno.test("a copy carries a title, the time and the /meet address, and nothing else", () => {
 	const google = googleCopy(EVENT, "https://app.example.test");
-	assertEquals(Object.keys(google).sort(), ["description", "end", "start", "status", "summary"]);
+	assertEquals(
+		Object.keys(google).sort(),
+		["description", "end", "start", "status", "summary", "transparency"],
+	);
 	assertEquals(
 		google.description,
 		"Join on Projective: https://app.example.test/meet/rom-abcdefghjk",
@@ -395,6 +399,19 @@ Deno.test("a copy with no room or title says so plainly, and a tentative one is 
 	assertEquals(google.description, "");
 	assertEquals(google.status, "tentative");
 	assertEquals(graphCopy(event, "https://app.example.test").showAs, "tentative");
+});
+
+Deno.test("whether a copy blocks time is RFC 5545 TRANSP, in each provider's spelling", () => {
+	const url = "https://app.example.test";
+	assertEquals(googleCopy(EVENT, url).transparency, "opaque");
+	assertEquals(graphCopy(EVENT, url).showAs, "busy");
+
+	const passive = { ...EVENT, transparent: true };
+	assertEquals(googleCopy(passive, url).transparency, "transparent");
+	assertEquals(graphCopy(passive, url).showAs, "free");
+	// A tentative passive entry still leaves the time free: Graph has one field for both facts.
+	assertEquals(graphCopy({ ...passive, tentative: true }, url).showAs, "free");
+	assertEquals(googleCopy({ ...passive, tentative: true }, url).status, "tentative");
 });
 
 Deno.test("a whole day goes out as days in the schedule's zone", () => {
@@ -420,6 +437,7 @@ Deno.test("a call's copy is its title, time and /meet address, whatever else a c
 		summary: "A call on Projective",
 		description: address,
 		status: "confirmed",
+		transparency: "opaque",
 		start: { dateTime: CALL.starts_at },
 		end: { dateTime: CALL.ends_at },
 	});

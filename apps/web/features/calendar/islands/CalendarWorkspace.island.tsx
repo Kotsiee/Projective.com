@@ -12,17 +12,24 @@ import {
 import { ConfirmDialog, Message } from "@projective/ui/feedback";
 import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
 import {
+	awaitsAnswer,
 	type CalendarEvent,
 	type CalendarEventKind,
 	DEFAULT_CALENDAR_PREFS,
 	type SchedulePage,
+	withClashCounts,
 } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { renderInspectActions } from "../components/EventPopoverActions.tsx";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
+import { RoutineDialog } from "../components/RoutineDialog.tsx";
 import { type EventMode, eventStack } from "../core/event-view.ts";
-import { deepLinkedEvent } from "../core/event-deep-link.ts";
+import {
+	deepLinkedEvent,
+	deepLinkedRoutine,
+	invitationsFiltered,
+} from "../core/event-deep-link.ts";
 import {
 	type DevSeamState,
 	type EventAccess,
@@ -34,28 +41,37 @@ import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import {
+	agendaReload,
 	calendarFocus,
 	calendarInspectMode,
 	calendarPage,
 	calendarPresent,
 	calendarPreset,
+	calendarRoutines,
 	calendarSnapZoom,
 	calendarView,
 	calendarZoom,
 	createRequest,
 	deselectEvent,
+	eventReread,
 	focusedAt,
 	gridSpotlight,
 	importedEvents,
 	inspectInPanel,
 	inspectPopover,
+	inspectRoutine,
+	invitationsOnly,
+	leavingEvents,
 	openEventModal,
+	organiseRequest,
 	persistCalendarView,
 	persistCalendarZoom,
 	remindersRequest,
 	removeRequest,
 	restoreCalendarView,
+	routineDialogOpen,
 	selectedEventId,
+	selectedRoutineId,
 	selectEvent,
 	sourceIsVisible,
 	timelineZoom,
@@ -235,6 +251,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		page.value = next;
 		events.value = next.events;
 		calendarPage.value = next;
+		calendarRoutines.value = next.routines ?? [];
 	}
 
 	/*
@@ -245,7 +262,15 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	useSignalEffect(() => {
 		const list = events.value;
 		const current = page.peek();
-		if (current) calendarPage.value = { ...current, events: list };
+		if (current) calendarPage.value = { ...current, events: withClashCounts(list) };
+	});
+
+	/** An entry the right panel re-read: an answer given there, or its guest list changed. */
+	useSignalEffect(() => {
+		const next = eventReread.value;
+		if (!next) return;
+		eventReread.value = null;
+		composer.serverUpdate(next);
 	});
 
 	/** A band asked for a delete (the right panel's Delete). */
@@ -272,6 +297,19 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		composer.setReminders(asked.event, asked.reminders);
 	});
 
+	/** An entry organised from outside this tree: the lane's drop, the inspector's fields. */
+	useSignalEffect(() => {
+		const asked = organiseRequest.value;
+		if (!asked) return;
+		organiseRequest.value = null;
+		composer.organise(asked.event, asked.change);
+	});
+
+	/** A routine moved entries this tree cannot see, so the agenda is read again. */
+	useSignalEffect(() => {
+		if (agendaReload.value > 0) void load();
+	});
+
 	function remove(id: string): void {
 		composer.remove(id);
 		importedEvents.value = importedEvents.peek().filter((e) => e.id !== id);
@@ -293,7 +331,11 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	}
 
 	useEffect(() => {
-		if (props.initial) calendarPage.value = props.initial;
+		invitationsOnly.value = invitationsFiltered(globalThis.location?.search ?? "");
+		if (props.initial) {
+			calendarPage.value = props.initial;
+			calendarRoutines.value = props.initial.routines ?? [];
+		}
 		// The view and zoom are the APP's to remember here (the control lives in the footer band, so
 		// the engine is driven rather than deciding) — restored after mount, never at module scope,
 		// because this module is also imported during SSR where storage does not exist.
@@ -309,6 +351,12 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		if (linked) {
 			calendarFocus.value = linked.start;
 			inspectInPanel(linked);
+		} else {
+			const routine = deepLinkedRoutine(
+				globalThis.location?.search ?? "",
+				props.initial?.routines ?? [],
+			);
+			if (routine) inspectRoutine(routine);
 		}
 		return subscribeDevSeam(apply);
 	}, []);
@@ -318,7 +366,10 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	// a week the grid is not showing.
 	useEffect(() => () => {
 		calendarPage.value = null;
+		calendarRoutines.value = null;
 		selectedEventId.value = null;
+		selectedRoutineId.value = null;
+		routineDialogOpen.value = false;
 		inspectPopover.value = null;
 		eventStack.close();
 		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
@@ -381,7 +432,13 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	 * next refetch silently drop entries the reader watched arrive.
 	 */
 	const all = [...events.value, ...importedEvents.value];
-	const shown = visibleEvents(all);
+	const leaving = leavingEvents.value;
+	// The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words.
+	const shown = visibleEvents(all).map((e) =>
+		awaitsAnswer(e) || leaving.includes(e.id)
+			? { ...e, ghost: awaitsAnswer(e), leaving: leaving.includes(e.id) }
+			: e
+	);
 
 	const open = eventStack.top.value;
 	const framed = composer.resolve(open, importedEvents.value);
@@ -501,6 +558,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				}}
 				onReject={() => (doomed.value = null)}
 			/>
+			<RoutineDialog tz={p.timezone} now={p.now} />
 
 			{open && framed
 				? (
@@ -508,6 +566,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 						key={open.uid}
 						uid={open.uid}
 						mode={(open.input?.mode ?? "view") as EventMode}
+						initialTab={open.input?.tab}
 						event={framed}
 						tz={p.timezone}
 						hour12

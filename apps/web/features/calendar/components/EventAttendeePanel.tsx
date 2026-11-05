@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { EventAttendee, RsvpResponse } from "@projective/types/scheduling";
@@ -25,6 +26,8 @@ export interface EventAttendeePanelProps {
 	roster: EventAttendee[];
 	/** Head count of the seats entitled to vote, when the reader is looking at a ballot. */
 	note?: string | null;
+	/** Withdraw one invitation. Given to a host who may still change the list, and only then. */
+	onWithdraw?: (seat: EventAttendee) => void;
 }
 
 /** The tone each answer reinforces its own word with. */
@@ -85,6 +88,21 @@ export function EventAttendeePanel(props: EventAttendeePanelProps): JSX.Element 
 							/>
 							{RSVP_LABEL[a.response]}
 						</span>
+						{props.onWithdraw && a.role !== "host"
+							? (
+								<Tooltip content="Withdraw the invitation" density="compact">
+									<Button
+										variant="text"
+										severity="danger"
+										size="sm"
+										iconOnly
+										icon={<Icon name="close" size="sm" />}
+										aria-label={`Withdraw ${a.name}’s invitation`}
+										onClick={() => props.onWithdraw?.(a)}
+									/>
+								</Tooltip>
+							)
+							: null}
 					</li>
 				))}
 			</ul>

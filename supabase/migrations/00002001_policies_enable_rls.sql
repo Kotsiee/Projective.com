@@ -435,6 +435,9 @@ ALTER TABLE scheduling.recurrence_rule_bands ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.availability_occurrences ENABLE ROW LEVEL SECURITY;
 
+-- Routines (Decision #389): read and written by the schedule's own side, never by a visitor.
+ALTER TABLE scheduling.routines ENABLE ROW LEVEL SECURITY;
+
 
 -- --- integrations: connectors + plugin ecosystem ---
 -- Every integrations table is RLS-on. The operational/secret tables (connection_secrets,

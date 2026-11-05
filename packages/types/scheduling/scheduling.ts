@@ -12,7 +12,8 @@ import {
 	SchedulingPartySchema,
 } from "./coordination.ts";
 import { CalendarPrefsSchema, EntryRemindersSchema } from "./reminders.ts";
-import { RRuleText } from "./rows.ts";
+import { AvailabilityBehavior, RRuleText, uuid } from "./rows.ts";
+import { RoutineSchema } from "./routines.ts";
 
 /**
  * scheduling — the Zod SSOT for the Calendar & Schedule domain shared across every surface: the
@@ -28,11 +29,9 @@ import { RRuleText } from "./rows.ts";
  * consolidated `supabase/migrations/00000022_tables_scheduling.sql` for the DDL — so the live path fills
  * in behind each surface's existing backend gate with zero shape churn.
  *
- * ⚠️ The COORDINATION fields below (`roster` · `meeting` · `pricing` · `reschedule` · `history`) do NOT
- * yet have tables: `scheduling.events` stores only `attendee_count integer`, and there is no attendee,
- * proposal, vote or per-event history table anywhere in the schema. They are derived by the fat service
- * and mutated in a per-process store until that layer lands — see `./mod.ts` for what persisting them
- * would need.
+ * The COORDINATION fields below (`roster` · `meeting` · `pricing` · `reschedule` · `history`) are
+ * read from their own tables (`event_attendees`, `event_reschedules`, `reschedule_proposals`,
+ * `proposal_votes`, `event_history`) by `live-calendar.ts`, and written only through the service.
  *
  * Only enum/array/string/number/boolean primitives are used, so the schema is stable across Zod majors.
  *
@@ -137,6 +136,13 @@ export const CalendarEventSchema = z.object({
 	/** The master a later occurrence of a series belongs to. Never set alongside {@link recurrenceRule}. */
 	recurrenceParentId: z.string().max(120).optional(),
 	/**
+	 * The routine this entry is organised under (`./routines.ts`). Party-only, like the fields above:
+	 * a routine says what a person does with their time, so it is not in `PUBLIC_EVENT_FIELDS`.
+	 */
+	routineId: z.string().max(120).optional(),
+	/** Whether it holds its time against bookings. Absent is `disruptive`. Party-only. */
+	availabilityBehavior: AvailabilityBehavior.optional(),
+	/**
 	 * This is the reader's own entry from a connected calendar, named from what only they can read
 	 * (Decision #387). Server-set, on their own calendar and nowhere else. It stays read-only here.
 	 */
@@ -224,6 +230,18 @@ export const CalendarEventSchema = z.object({
 	 * person's, and not in privacy.ts `PUBLIC_EVENT_FIELDS`.
 	 */
 	reminders: EntryRemindersSchema.nullable().optional(),
+	/**
+	 * The READER's own answer, when they hold a seat and it is not the host's. A surface reads this
+	 * rather than searching {@link roster} for the seat. See `./invitations.ts`. Absent for anyone who
+	 * is not a party, like the roster it is drawn from: it is not in `PUBLIC_EVENT_FIELDS`.
+	 */
+	userAttendeeStatus: RsvpResponse.optional(),
+	/**
+	 * How much of the READER's held time this entry collides with (`withClashCounts`). Absent is none.
+	 * Set on `/calendar` only, where the page is the reader's own: on any other calendar a clash would
+	 * be somebody else's. Stamped again on every agenda change, so it never trails a write.
+	 */
+	clashCount: z.number().int().min(0).optional(),
 	// #endregion
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
@@ -358,6 +376,8 @@ export const SchedulePageSchema = z.object({
 	 * by each region, so the lane, the panel and the grid agree from the first byte.
 	 */
 	prefs: CalendarPrefsSchema.optional(),
+	/** The reader's live routines, on the `personal` page only, and for the same reason. */
+	routines: z.array(RoutineSchema).optional(),
 	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
 	now: PageInstantSchema,
 });
@@ -465,6 +485,15 @@ export const EntryFieldsSchema = z.object({
 	description: z.string().max(8000).optional(),
 	/** `false` keeps the entry off connected calendars (Decision #383, R3); absent leaves it as it is. */
 	externalSync: z.boolean().optional(),
+	/** Whether it holds its time. Absent, a new entry does and an edit leaves it as it is. */
+	availabilityBehavior: AvailabilityBehavior.optional(),
+	/** The routine it belongs to; `null` takes it out, and absent leaves it as it is. */
+	routineId: uuid.nullable().optional(),
+	/**
+	 * The rule of the series a batch lays down, on its FIRST entry, which becomes the master and the
+	 * rest its occurrences. Read on a create only: an edit reaches one occurrence.
+	 */
+	recurrenceRule: RRuleText.optional(),
 });
 export type EntryFields = z.infer<typeof EntryFieldsSchema>;
 

@@ -58,6 +58,7 @@ import {
 } from "../projects/live-board.ts";
 import { ITEM_COLUMNS, type ItemRow, toAssetItem } from "../files/asset-row.ts";
 import { applyOwnDetails, type OwnEventDetails } from "./connected-details.ts";
+import { ROUTINE_COLUMNS, routineOf, type RoutineRow } from "./live-routines.ts";
 import { emptyReschedule } from "./coordination-plan.ts";
 import {
 	ENTITY_CALENDAR_CONCURRENCY,
@@ -137,6 +138,8 @@ const EVENT_COLUMNS = [
 	"external_sync",
 	"recurrence_rule",
 	"recurrence_parent_id",
+	"routine_id",
+	"availability_behavior",
 	"created_by",
 ].join(", ");
 
@@ -175,6 +178,8 @@ interface EventRow {
 	external_sync: boolean;
 	recurrence_rule: string | null;
 	recurrence_parent_id: string | null;
+	routine_id: string | null;
+	availability_behavior: string;
 	created_by: string | null;
 }
 
@@ -653,6 +658,7 @@ async function loadCoordination(
 				sched.from("event_attendees")
 					.select("id, event_id, user_id, role, response, responded_at, note, created_at")
 					.in("event_id", ids)
+					.is("archived_at", null)
 					.order("id"),
 			"scheduling.event_attendees",
 		),
@@ -928,6 +934,8 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 		organiser: partyFor(ctx, hostUserId),
 		viewerIsHost: !!hostUserId && hostUserId === ctx.actorId,
 	};
+	const seat = roster?.find((a) => a.isViewer);
+	if (seat && seat.role !== "host") event.userAttendeeStatus = seat.response;
 	if (row.status) event.status = row.status;
 	if (row.all_day) event.allDay = true;
 	if (row.external_sync === false) event.externalSync = false;
@@ -941,6 +949,8 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	if (row.href) event.href = clamp(row.href, 400);
 	if (row.recurrence_rule) event.recurrenceRule = row.recurrence_rule;
 	if (row.recurrence_parent_id) event.recurrenceParentId = row.recurrence_parent_id;
+	if (row.routine_id) event.routineId = row.routine_id;
+	if (row.availability_behavior === "passive") event.availabilityBehavior = "passive";
 	// The platform's own copy; an entry mirrored in from a connected calendar names no provider here,
 	// because which provider a connection is lives behind the definer-only connection store.
 	if (!row.source_connection_id) event.sources = ["projective"];
@@ -1079,7 +1089,8 @@ export async function readEntries(
 	const tz = await readerZone(actor, await readOwnSchedule(actor));
 	return withOwnReminders(
 		actor,
-		(await assemble(actor, rows, tz, now)).events,
+		// A connected entry can be organised, and without its details would come back as a bare Busy.
+		await withOwnDetails(actor, (await assemble(actor, rows, tz, now)).events),
 		new Map(rows.map((row) => [row.id, row])),
 	);
 }
@@ -1335,7 +1346,18 @@ export async function readPersonalCalendar(
 	const projects = db(actor, "projects");
 
 	const own = await readOwnSchedule(actor);
-	const [tz, prefs, involvement, rules, blackouts, ownEvents, seatRows, createdEvents, calls] =
+	const [
+		tz,
+		prefs,
+		involvement,
+		rules,
+		blackouts,
+		ownEvents,
+		seatRows,
+		createdEvents,
+		calls,
+		routines,
+	] =
 		await Promise.all([
 			readerZone(actor, own),
 			readCalendarPrefs(actor),
@@ -1361,7 +1383,7 @@ export async function readPersonalCalendar(
 						.is("archived_at", null).gte("ends_at", from).lte("starts_at", to).order("starts_at").order("id"), "scheduling.events")
 				: Promise.resolve({ data: [], error: null }),
 			paged(
-				() => sched.from("event_attendees").select("event_id").eq("user_id", actor.userId).order("event_id"),
+				() => sched.from("event_attendees").select("event_id, response").eq("user_id", actor.userId).is("archived_at", null).order("event_id"),
 				"scheduling.event_attendees",
 			),
 			paged(() =>
@@ -1374,6 +1396,10 @@ export async function readPersonalCalendar(
 				.in("status", LIVE_CALL_STATUSES)
 				.gte("proposed_end", from)
 				.lte("proposed_start", to),
+			own
+				? sched.from("routines").select(ROUTINE_COLUMNS).eq("schedule_id", own.id)
+					.eq("is_active", true).order("created_at").order("id")
+				: Promise.resolve({ data: [], error: null }),
 		]);
 	for (
 		const [what, answer] of [
@@ -1383,6 +1409,7 @@ export async function readPersonalCalendar(
 			["scheduling.event_attendees", seatRows],
 			["scheduling.events", createdEvents],
 			["scheduling.discovery_calls", calls],
+			["scheduling.routines", routines],
 		] as const
 	) {
 		if (answer.error) throw new Error(`${what} read failed: ${answer.error.message}`);
@@ -1392,14 +1419,15 @@ export async function readPersonalCalendar(
 	const callRows = (calls.data ?? []) as CallRow[];
 	const mirrored = new Set(callRows.map((c) => c.event_id).filter((id): id is string => !!id));
 
-	// The meetings the reader is seated on, read in the same window.
-	const seatedIds = [
-		...new Set(((seatRows.data ?? []) as { event_id: string }[]).map((r) => r.event_id)),
-	];
+	// The meetings the reader is seated on, read in the same window, and any invitation still waiting
+	// on them however far out it is, because the count and the answer cannot depend on the window.
+	const seats = (seatRows.data ?? []) as { event_id: string; response: string }[];
+	const asked = new Set(seats.filter((s) => s.response === "pending").map((s) => s.event_id));
+	const seatedIds = [...new Set(seats.map((r) => r.event_id))];
 	const seated = (await readEventsByIds(actor, seatedIds)).filter((row) => {
 		const start = ms(row.starts_at) ?? 0;
 		const end = ms(row.ends_at) ?? 0;
-		return end >= Date.parse(from) && start <= Date.parse(to);
+		return (end >= Date.parse(from) && start <= Date.parse(to)) || (asked.has(row.id) && end >= now);
 	});
 
 	const rows = new Map<string, EventRow>();
@@ -1604,6 +1632,7 @@ export async function readPersonalCalendar(
 		},
 		events,
 		prefs,
+		routines: ((routines.data ?? []) as unknown as RoutineRow[]).map(routineOf),
 		now,
 	};
 }
@@ -1779,6 +1808,7 @@ export async function readCalendarEvent(
 				.select("id")
 				.eq("event_id", row.id)
 				.eq("user_id", actor.userId)
+				.is("archived_at", null)
 				.maybeSingle();
 			if (seat.error) {
 				throw new Error(`scheduling.event_attendees read failed: ${seat.error.message}`);

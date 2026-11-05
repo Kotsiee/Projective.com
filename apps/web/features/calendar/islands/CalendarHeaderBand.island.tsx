@@ -245,7 +245,6 @@ function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
 					aria-label="Filter what is shown"
 					aria-haspopup="dialog"
 					aria-expanded={filterOpen.value ? "true" : "false"}
-					onClick={() => (filterOpen.value = !filterOpen.value)}
 				>
 					<Icon name="filter" size="xs" />
 				</button>
@@ -267,7 +266,7 @@ function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
 							)
 							: null}
 					</header>
-					<CalendarFilterFacets events={events} tz={tz} />
+					<CalendarFilterFacets events={events} tz={tz} invitationsAt={page?.now ?? Date.now()} />
 				</div>
 			</Popover>
 			<Tooltip content="Timeline view" density="compact">

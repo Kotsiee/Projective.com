@@ -44,6 +44,8 @@ export interface EventRecurrenceFieldProps {
 	/** IANA display zone — the series is anchored to the start's civil date here. */
 	tz: string;
 	onPatch: (patch: Partial<CalendarEvent>) => void;
+	/** A cadence with no entry behind it (a routine's), so there are no occurrences to speak of. */
+	cadenceOnly?: boolean;
 }
 
 /**
@@ -76,7 +78,7 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 	const rule = event.recurrenceRule;
 	const preset = presetOf(rule, anchor);
 	const draft = (rule ? fromRRule(rule) : null) ?? presetDraft("weekly", anchor);
-	const series = rule ? seriesOf(event, tz) : null;
+	const series = rule && !props.cadenceOnly ? seriesOf(event, tz) : null;
 	const key = rule ?? "";
 
 	// Read once: the disclosure opens on a custom rule and is the reader's to toggle after that.

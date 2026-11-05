@@ -10,6 +10,7 @@ import { Icon, type IconName } from "@projective/ui/icons";
 import {
 	type CalendarEvent,
 	DEFAULT_ENTRY_REMINDERS,
+	detectTimeClash,
 	ENTRY_CLASS_LABEL,
 	entryClassOf,
 } from "@projective/types/scheduling";
@@ -18,14 +19,20 @@ import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
 import {
 	calendarPage,
 	openEventModal,
+	requestOrganise,
 	requestReminders,
 	requestRemove,
 	requestUpdate,
 } from "../core/calendar-state.ts";
 import { repeatSentence, seriesMasterOf } from "../core/event-recurrence.ts";
-import { durationLabel, entryEditable } from "../core/event-view.ts";
+import { canInvite, durationLabel, entryEditable, timesMovable } from "../core/event-view.ts";
 import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
+import { entryOrganisable } from "../core/routine-actions.ts";
 import { EventAttendeePanel } from "./EventAttendeePanel.tsx";
+import { EventClashNote } from "./EventClashNote.tsx";
+import { EventGuestList } from "./EventGuestList.tsx";
+import { EventInvitationActions } from "./EventInvitationActions.tsx";
+import { EventOrganiseFields } from "./EventOrganiseFields.tsx";
 import { EventRemindersField } from "./EventRemindersField.tsx";
 
 /** How long a copy button says what it did. */
@@ -212,12 +219,15 @@ function Agenda(
  * field reads the same words, with no affordance at all.
  *
  * Alerts are the reader's own, so they are offered to any seat that holds the entry
- * (`event.reminders`), and the Join rig to anyone a link was shared with.
+ * (`event.reminders`), and the Join rig to anyone a link was shared with. Its routine and whether it
+ * holds its time are its owner's, an entry from a connected calendar included, because neither reaches
+ * the provider.
  */
 export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 	const canEdit = entryEditable(event);
 	const page = calendarPage.value;
 	const events = page?.events ?? [];
+	const nowMs = page?.now ?? Date.now();
 	const reminder = entryClassOf(event) === "reminder";
 
 	const host = event.viewerIsHost === true
@@ -258,7 +268,7 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 	// A series' later occurrences leave an agenda they share with their master to it.
 	const agenda = event.description ?? seriesMasterOf(event, events)?.description ?? "";
 	// An all-day entry has no time of day to pick, as in the modal's meta bar.
-	const timesEditable = canEdit && !event.allDay;
+	const timesEditable = timesMovable(event) && !event.allDay;
 
 	return (
 		<article class="cal-sum" aria-label="Event details">
@@ -315,6 +325,17 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 					)}
 			</dl>
 			{host ? <p class="cal-sum__meta">{host}</p> : null}
+			{event.clashCount
+				? (
+					<EventClashNote
+						clashes={detectTimeClash({ ...event, excludeId: event.id }, events).clashes}
+						span={event}
+						tz={tz}
+						focusable
+					/>
+				)
+				: null}
+			<EventInvitationActions event={event} nowMs={nowMs} />
 
 			{joinHref
 				? (
@@ -351,7 +372,9 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 				)
 				: null}
 
-			{event.roster && event.roster.length > 0
+			{canInvite(event, nowMs)
+				? <EventGuestList event={event} />
+				: event.roster && event.roster.length > 0
 				? <EventAttendeePanel roster={event.roster} />
 				: null}
 
@@ -362,6 +385,15 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 					onCommit={(description) => requestUpdate({ ...event, description })}
 				/>
 			)}
+
+			{entryOrganisable(event)
+				? (
+					<EventOrganiseFields
+						event={event}
+						onChange={(change) => requestOrganise(event, change)}
+					/>
+				)
+				: null}
 
 			{event.reminders !== undefined
 				? (
@@ -386,7 +418,9 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 					? (
 						<ConfirmPopup
 							label="Delete this event"
-							message="Delete this event from your calendar?"
+							message={event.roster?.length
+								? "Delete this event? Everyone invited is told it is off."
+								: "Delete this event from your calendar?"}
 							acceptLabel="Delete"
 							rejectLabel="Keep"
 							acceptSeverity="danger"
