@@ -361,6 +361,14 @@ export interface ServerEnv {
 	s3AccessKeyId: string | undefined;
 	/** The secret half of {@link ServerEnv.s3AccessKeyId}, from `S3_SECRET_ACCESS_KEY`. */
 	s3SecretAccessKey: string | undefined;
+	/**
+	 * The Resend API key (`re_…`), from `RESEND_API_KEY` (providers spec §8.5). Server-only: it is sent
+	 * only as the `Authorization` header of a send. The `XXXX-XXXX` placeholder counts as absent, and
+	 * absent leaves mail `logged` in development and `unavailable` in production (`services/mail/transport.ts`).
+	 */
+	resendApiKey: string | undefined;
+	/** Who mail is from, `Projective <no-reply@notify.<domain>>`, from `MAIL_FROM`. */
+	mailFrom: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -420,5 +428,7 @@ export function serverEnv(): ServerEnv {
 		frameioClientSecret: firstEnv("FRAMEIO_CLIENT_SECRET"),
 		s3AccessKeyId: firstEnv("S3_ACCESS_KEY_ID"),
 		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
+		resendApiKey: firstEnv("RESEND_API_KEY"),
+		mailFrom: firstEnv("MAIL_FROM"),
 	};
 }

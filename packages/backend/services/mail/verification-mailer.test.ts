@@ -1,9 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
-import {
-	type MailMessage,
-	sendEmailVerification,
-	verificationLink,
-} from "./verification-mailer.ts";
+import type { MailMessage } from "./transport.ts";
+import { sendEmailVerification, verificationLink } from "./verification-mailer.ts";
 
 const TOKEN = "ab".repeat(32);
 
