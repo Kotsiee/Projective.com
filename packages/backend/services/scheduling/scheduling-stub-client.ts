@@ -60,9 +60,19 @@ export function stubSchedulingClient(
 		const filters: Array<(row: Row) => boolean> = [];
 		let patch: Row | null = null;
 		let inserted: Row[] | null = null;
+		let upserted: { rows: Row[]; on: string[] } | null = null;
 		let removing = false;
 		const allowed = (r: Row) => writePolicy[table]?.(r) ?? true;
 		const run = (): { data: Row[] | null; error: StubError | null } => {
+			if (upserted) {
+				const { rows, on } = upserted;
+				if (!rows.every(allowed)) {
+					return { data: null, error: { code: "42501", message: "row-level security" } };
+				}
+				const clash = (a: Row) => rows.some((b) => on.every((k) => a[k] === b[k]));
+				store[table] = [...(store[table] ?? []).filter((r) => !clash(r)), ...rows];
+				return { data: rows, error: null };
+			}
 			if (removing) {
 				const gone = (store[table] ?? []).filter((r) => filters.every((f) => f(r)) && allowed(r));
 				store[table] = (store[table] ?? []).filter((r) => !gone.includes(r));
@@ -108,6 +118,13 @@ export function stubSchedulingClient(
 					id: crypto.randomUUID(),
 					...r,
 				}));
+				return chain;
+			},
+			upsert: (rows: Row | Row[], options: { onConflict: string }) => {
+				upserted = {
+					rows: Array.isArray(rows) ? rows : [rows],
+					on: options.onConflict.split(","),
+				};
 				return chain;
 			},
 			maybeSingle: () => {

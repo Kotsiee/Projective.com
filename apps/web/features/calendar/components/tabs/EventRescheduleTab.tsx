@@ -61,7 +61,7 @@ export interface EventRescheduleTabProps {
 }
 
 /** Half-hour slots across a day, labelled in the surface's own clock convention. */
-function slotOptions(hour12: boolean): { value: string; label: string }[] {
+export function slotOptions(hour12: boolean): { value: string; label: string }[] {
 	const out: { value: string; label: string }[] = [];
 	for (let m = 0; m < 24 * 60; m += 30) {
 		const h = Math.floor(m / 60);

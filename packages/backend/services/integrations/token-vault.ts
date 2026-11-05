@@ -1,3 +1,5 @@
+import type { SealedSecret } from "@projective/types/integrations";
+import { serverEnv } from "../../core/env.ts";
 import { isIntegrationsBackendLive } from "../../core/supabase.ts";
 
 /**
@@ -8,136 +10,224 @@ import { isIntegrationsBackendLive } from "../../core/supabase.ts";
  * client reads connections through `integrations.v_my_connections`, which physically cannot project a
  * token column. Nothing in this module may be reachable from a route that runs under a user's JWT.
  *
- * ### Envelope encryption, and why it is not a single key
+ * The key-encryption key is the `ENCRYPTION_KEY` env, not a KMS (Decision #343, ruling C4 (c), which
+ * resolves Decision #59); the envelope columns are Decision #335 (b).
  *
- * A data-encryption key (DEK) is generated per SECRET, used to encrypt the token, and is itself
- * encrypted by a key-encryption key (KEK) held in a KMS. Only the wrapped DEK and the KEK's `key_id`
- * are stored, so:
+ * ### The envelope
  *
- * * rotating the KEK re-wraps DEKs and never touches ciphertext — with one process-wide key, rotation
- *   means decrypting and re-encrypting every row, which is exactly the migration nobody runs;
- * * the plaintext KEK never exists in application memory, so a heap dump or a log of the process
- *   environment does not yield a key that opens every token on the platform;
- * * `key_id` on each row records WHICH KEK wrapped it, so old and new coexist during a rotation instead
- *   of the rotation being a flag day.
+ * Every write of a row mints a fresh 256-bit data key (DEK), wraps it under the KEK with AES-256-GCM
+ * and its own nonce, and seals each token under the DEK with its own 96-bit nonce and the AAD
+ * `<connection_id>|<kind>|<key_id>`, so a ciphertext moved to another row or another column fails its
+ * tag. `key_id` is `env:` + the first 8 hex of sha256(KEK), and {@link unseal} refuses a row whose
+ * `key_id` is not the current key's rather than decrypt garbage. Web Crypto appends each 16-byte tag
+ * to its ciphertext, so no tag column exists.
  *
- * ### ⚠️ FLAGGED CONTRADICTION — do not resolve here (Decision #59)
- *
- * The documented Environment Variable Contract carries an **`ENCRYPTION_KEY`** — a single, symmetric,
- * process-wide secret. That is a DIFFERENT design from the KMS envelope the `integrations` schema was
- * built for (`connection_secrets.key_id` exists precisely because the wrapping key is external and
- * rotatable). The two cannot both be right:
- *
- * * if `ENCRYPTION_KEY` is authoritative, `key_id` is decoration and rotation is a full-table rewrite;
- * * if the envelope design is authoritative, `ENCRYPTION_KEY` needs to be removed from the contract, or
- *   redefined as a local development KEK that is never used in production.
- *
- * This module implements the ENVELOPE interface, because that is what the schema requires and it is the
- * one that can absorb the other. It does not pick a winner. A human decides, and the env contract is
- * updated in the same change. Any key material below is an `XXXX-XXXX` placeholder per root CLAUDE.md
- * §6 — a real key is never committed.
+ * shortcut: no rewrap, a changed ENCRYPTION_KEY strands every row until each is reconnected; build
+ * rewrap before the first key rotation (`key_id` already finds the rows).
  */
-
-// #region Placeholders
-
-/** The KMS key alias the KEK is resolved through. Placeholder per root CLAUDE.md §6. */
-export const KMS_KEY_ALIAS_PLACEHOLDER = "XXXX-XXXX";
-
-/** The `key_id` a newly wrapped secret records. Placeholder until the KMS is provisioned. */
-export const ACTIVE_KEY_ID_PLACEHOLDER = "XXXX-XXXX";
-
-// #endregion
 
 // #region Shapes
 
-/** An enveloped secret, exactly as `integrations.connection_secrets` stores it. */
-export interface SealedSecret {
-	/** Which KEK wrapped the DEK — the column that makes rotation incremental instead of a flag day. */
-	keyId: string;
-	/** The DEK, encrypted by the KEK. Base64. */
-	wrappedKey: string;
-	/** The token, encrypted by the DEK. Base64. */
-	ciphertext: string;
-	/** The AEAD nonce. Base64. Never reused with the same DEK. */
-	iv: string;
-	/** The AEAD authentication tag. Base64. */
-	tag: string;
+/** Which credential a sealed column holds. Part of each ciphertext's AAD. */
+export type SecretKind = "access_token" | "refresh_token" | "api_secret";
+
+/** The plaintexts one row holds. Only {@link seal} takes these, and it keeps none of them. */
+export type SecretPlaintexts = Partial<Record<SecretKind, string>>;
+
+/** Each kind's cipher and nonce columns. `nonce` is the access token's. */
+const COLUMNS = {
+	access_token: ["access_token_cipher", "nonce"],
+	refresh_token: ["refresh_token_cipher", "refresh_token_nonce"],
+	api_secret: ["api_secret_cipher", "api_secret_nonce"],
+} as const satisfies Record<SecretKind, readonly [keyof SealedSecret, keyof SealedSecret]>;
+
+const KINDS = Object.keys(COLUMNS) as SecretKind[];
+
+// #endregion
+
+// #region Bytes
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+const toHex = (bytes: Uint8Array) =>
+	Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+const fromHex = (hex: string) =>
+	Uint8Array.from(hex.match(/../g) ?? [], (pair) => parseInt(pair, 16));
+
+/** PostgREST's text form of a `bytea`. */
+const toBytea = (bytes: Uint8Array) => `\\x${toHex(bytes)}`;
+const fromBytea = (value: string) => fromHex(value.slice(2));
+
+const randomNonce = () => crypto.getRandomValues(new Uint8Array(12));
+
+const aad = (connectionId: string, kind: SecretKind, keyId: string) =>
+	encoder.encode(`${connectionId}|${kind}|${keyId}`);
+
+async function gcmSeal(
+	key: CryptoKey,
+	iv: Uint8Array<ArrayBuffer>,
+	plaintext: Uint8Array<ArrayBuffer>,
+	additionalData?: Uint8Array<ArrayBuffer>,
+): Promise<string> {
+	const params: AesGcmParams = additionalData
+		? { name: "AES-GCM", iv, additionalData }
+		: { name: "AES-GCM", iv };
+	return toBytea(new Uint8Array(await crypto.subtle.encrypt(params, key, plaintext)));
 }
 
-/** Which credential a sealed row holds. */
-export type SecretKind = "access_token" | "refresh_token" | "api_key" | "aws_secret_access_key";
+// #endregion
+
+// #region The key
+
+/**
+ * The configured KEK as hex, or `undefined` when it is missing, the `XXXX-XXXX` placeholder or not 32
+ * bytes. Read at call time, never captured at import, so a changed key takes effect on the next write.
+ */
+function vaultKey(): string | undefined {
+	const key = serverEnv().encryptionKey?.trim();
+	return key && /^[0-9a-f]{64}$/i.test(key) ? key : undefined;
+}
+
+async function loadKek(): Promise<{ kek: CryptoKey; keyId: string }> {
+	const hex = vaultKey();
+	if (!hex) throw new Error("token-vault: ENCRYPTION_KEY must be 32 bytes of hex.");
+	const raw = fromHex(hex);
+	try {
+		const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", raw));
+		return {
+			kek: await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]),
+			keyId: `env:${toHex(digest).slice(0, 8)}`,
+		};
+	} finally {
+		raw.fill(0);
+	}
+}
+
+/**
+ * Refuse to boot with the integrations gate on and no usable key. Called once by `apps/web/main.ts`
+ * after the env files load, in production too; throws, so the server never starts listening.
+ */
+export function assertVaultKeyAllowed(): void {
+	if (isIntegrationsBackendLive() && !vaultKey()) {
+		throw new Error(
+			"Refusing to start: INTEGRATIONS_BACKEND_LIVE is on, but ENCRYPTION_KEY is missing, a " +
+				"placeholder or not 32 bytes of hex.",
+		);
+	}
+}
+
+/** The `key_id` new rows record: `env:` + the first 8 hex of sha256(the current KEK). */
+export async function activeKeyId(): Promise<string> {
+	return (await loadKek()).keyId;
+}
 
 // #endregion
 
 // #region Operations
 
 /**
- * The active key id new secrets are wrapped under.
+ * Seal one row's credentials under a fresh DEK.
  *
- * Read at call time, never captured at import: a rotation must take effect on the next write without a
- * process restart, and a module-level capture is how a rotated key silently keeps writing the old one.
+ * Refuses while the integrations gate is off rather than returning a reversible encoding: a stub that
+ * base64s a token and calls it sealed writes a row indistinguishable from a real one, which would
+ * survive the gate flip as plaintext in a table nobody looks inside.
  */
-export function activeKeyId(): string {
-	return ACTIVE_KEY_ID_PLACEHOLDER;
+export async function seal(
+	connectionId: string,
+	plaintexts: SecretPlaintexts,
+): Promise<SealedSecret> {
+	if (!isIntegrationsBackendLive()) {
+		throw new Error("token-vault: sealing is disabled while INTEGRATIONS_BACKEND_LIVE is off.");
+	}
+	const { kek, keyId } = await loadKek();
+	const dek = crypto.getRandomValues(new Uint8Array(32));
+	try {
+		const key = await crypto.subtle.importKey("raw", dek, "AES-GCM", false, ["encrypt"]);
+		const wrapNonce = randomNonce();
+		const sealed: SealedSecret = {
+			key_id: keyId,
+			wrapped_dek: await gcmSeal(kek, wrapNonce, dek),
+			wrapped_dek_nonce: toBytea(wrapNonce),
+			access_token_cipher: null,
+			nonce: null,
+			refresh_token_cipher: null,
+			refresh_token_nonce: null,
+			api_secret_cipher: null,
+			api_secret_nonce: null,
+		};
+		for (const kind of KINDS) {
+			const plaintext = plaintexts[kind];
+			if (plaintext === undefined) continue;
+			const nonce = randomNonce();
+			const [cipherColumn, nonceColumn] = COLUMNS[kind];
+			sealed[cipherColumn] = await gcmSeal(
+				key,
+				nonce,
+				encoder.encode(plaintext),
+				aad(connectionId, kind, keyId),
+			);
+			sealed[nonceColumn] = toBytea(nonce);
+		}
+		return sealed;
+	} finally {
+		dek.fill(0);
+	}
 }
 
 /**
- * Wrap a plaintext credential for storage.
+ * Open one credential of a sealed row, or `null` when the row holds none of that kind.
  *
- * Stub-first behind {@link isIntegrationsBackendLive}: with the gate off it **refuses** rather than
- * returning a reversible encoding. That is deliberate. A stub that base64s a token and calls it sealed
- * is worse than one that throws, because the row it writes is indistinguishable from a real one and
- * would survive the gate flip as plaintext in a table nobody looks inside.
+ * The plaintext must never be returned to a route, echoed into a `ServiceResult`, written to a log
+ * line, or attached to an error. A row under another key refuses; a failed tag is a tamper signal and
+ * throws, never a partial read.
  */
-export function seal(_plaintext: string, _kind: SecretKind): Promise<SealedSecret> {
+export async function unseal(
+	connectionId: string,
+	secret: SealedSecret,
+	kind: SecretKind,
+): Promise<string | null> {
 	if (!isIntegrationsBackendLive()) {
-		return Promise.reject(
-			new Error(
-				"token-vault: sealing is disabled while INTEGRATIONS_BACKEND_LIVE is off. " +
-					"No credential may be stored until the KMS envelope is provisioned.",
+		throw new Error("token-vault: unsealing is disabled while INTEGRATIONS_BACKEND_LIVE is off.");
+	}
+	const { kek, keyId } = await loadKek();
+	if (secret.key_id !== keyId) {
+		throw new Error(
+			`token-vault: this row was sealed under ${secret.key_id}, not the current key.`,
+		);
+	}
+	const [cipherColumn, nonceColumn] = COLUMNS[kind];
+	const cipher = secret[cipherColumn];
+	const nonce = secret[nonceColumn];
+	if (!cipher || !nonce) return null;
+
+	let dek: Uint8Array<ArrayBuffer> | null = null;
+	try {
+		dek = new Uint8Array(
+			await crypto.subtle.decrypt(
+				{ name: "AES-GCM", iv: fromBytea(secret.wrapped_dek_nonce) },
+				kek,
+				fromBytea(secret.wrapped_dek),
 			),
 		);
-	}
-	// LIVE: generate a 256-bit DEK → AES-256-GCM the plaintext under it → ask the KMS to wrap the DEK
-	// under the KEK named by KMS_KEY_ALIAS_PLACEHOLDER → return { keyId, wrappedKey, ciphertext, iv,
-	// tag }. The DEK is zeroed immediately after use and is never logged, returned or cached.
-	return Promise.reject(new Error("token-vault: KMS envelope encryption is not yet provisioned."));
-}
-
-/**
- * Unwrap a sealed credential.
- *
- * The plaintext must never be returned to a route, echoed into a `ServiceResult`, written to a log line,
- * or attached to an error. The only legitimate consumer is a {@link StorageAdapter} construction, which
- * takes it as its `credential` (`adapters/StorageAdapter.ts`) and holds it for one request.
- */
-export function unseal(_secret: SealedSecret): Promise<string> {
-	if (!isIntegrationsBackendLive()) {
-		return Promise.reject(
-			new Error("token-vault: unsealing is disabled while INTEGRATIONS_BACKEND_LIVE is off."),
+		const key = await crypto.subtle.importKey("raw", dek, "AES-GCM", false, ["decrypt"]);
+		return decoder.decode(
+			await crypto.subtle.decrypt(
+				{
+					name: "AES-GCM",
+					iv: fromBytea(nonce),
+					additionalData: aad(connectionId, kind, keyId),
+				},
+				key,
+				fromBytea(cipher),
+			),
 		);
+	} catch {
+		throw new Error(`token-vault: the ${kind} failed its tag check; the row was altered.`);
+	} finally {
+		dek?.fill(0);
 	}
-	// LIVE: ask the KMS to unwrap `wrappedKey` under the KEK named by `keyId` (NOT under the active key
-	// — that is the whole point of storing it per row) → AES-256-GCM open `ciphertext` with `iv`/`tag`.
-	// A tag mismatch is a tamper signal and must fail loudly, never fall back to a partial read.
-	return Promise.reject(new Error("token-vault: KMS envelope encryption is not yet provisioned."));
-}
-
-/**
- * Re-wrap a secret under the current KEK without touching its ciphertext.
- *
- * The operation a rotation actually performs: the DEK is unwrapped under the OLD `keyId` and re-wrapped
- * under the new one, so the encrypted token is never decrypted and never rewritten. This is the property
- * a single process-wide `ENCRYPTION_KEY` cannot provide, and the concrete reason the flagged
- * contradiction above matters.
- */
-export function rewrap(_secret: SealedSecret): Promise<SealedSecret> {
-	if (!isIntegrationsBackendLive()) {
-		return Promise.reject(
-			new Error("token-vault: rewrap is disabled while INTEGRATIONS_BACKEND_LIVE is off."),
-		);
-	}
-	return Promise.reject(new Error("token-vault: KMS envelope encryption is not yet provisioned."));
 }
 
 // #endregion

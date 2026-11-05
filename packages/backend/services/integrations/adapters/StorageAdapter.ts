@@ -21,10 +21,9 @@ import type { UserConnection } from "@projective/types/integrations";
  *
  * **Every connector is a real client of its provider's API, never a fixture corpus** (Decision #313):
  * it is handed one connection's unsealed credential for one request and speaks only to that provider's
- * fixed origin. None is reachable yet — no provider is enabled, consents are refused and the vault seals
- * nothing until its KMS envelope exists — so the connections service still refuses browsing and
- * mounting in words. `./mod.ts` is the one door that constructs an adapter, and it refuses while
- * `INTEGRATIONS_BACKEND_LIVE` is off.
+ * fixed origin. None is reachable yet — no storage provider has a seeded `auth_config` or is enabled —
+ * so the connections service still refuses browsing and mounting in words. `./mod.ts` is the one door
+ * that constructs an adapter, and it refuses while `INTEGRATIONS_BACKEND_LIVE` is off.
  */
 
 // #region Contract

@@ -1,12 +1,20 @@
 import { type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
-import type { CalendarEvent, CalendarEventKind, EntryFields } from "@projective/types/scheduling";
+import type {
+	CalendarEvent,
+	CalendarEventKind,
+	EntryFields,
+	EntryReminder,
+	EntryRoom,
+} from "@projective/types/scheduling";
 import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, spreadDaily } from "../core/event-series.ts";
 import { seriesOf } from "../core/event-recurrence.ts";
+import { roomOf } from "../core/meeting-link.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
+import type { CalendarResult } from "../types/results.ts";
 
 /** The fields of an entry its host's write carries — what `scheduling.events` stores. */
 function fieldsOf(e: CalendarEvent): EntryFields {
@@ -18,6 +26,7 @@ function fieldsOf(e: CalendarEvent): EntryFields {
 		allDay: e.allDay,
 		location: e.location,
 		description: e.description,
+		externalSync: e.externalSync,
 	};
 }
 
@@ -29,8 +38,6 @@ export interface CalendarComposerOptions {
 	kind: CalendarEventKind;
 	/** The display timezone, read when a range becomes entries. */
 	timezone: () => string;
-	/** Runs after the modal stack closes (e.g. to strip a deep-link parameter). */
-	onClose?: () => void;
 	/**
 	 * The surface's clock. Present, every create path refuses a range that starts before it
 	 * ({@link createRefusal}); absent, nothing is gated.
@@ -70,7 +77,13 @@ export interface CalendarComposer {
 	 * onto the occurrences of its rule (`seriesOf`).
 	 */
 	submit(event: CalendarEvent): void;
+	/** Save an entry as it stands, leaving its room alone: an in-place edit from the inspector. */
+	update(event: CalendarEvent): void;
+	/** Save the viewer's own alerts for an entry, any seat's. `null` follows their default. */
+	setReminders(event: CalendarEvent, reminders: EntryReminder[] | null): void;
 	serverUpdate(event: CalendarEvent): void;
+	/** A server write took this entry off the calendar: drop it here, writing nothing. */
+	serverRemove(id: string): void;
 	/** Take an entry off the calendar, closing it if it is the one open. */
 	remove(id: string): void;
 }
@@ -105,7 +118,6 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		eventStack.close();
 		draft.value = null;
 		series.current = null;
-		optsRef.current.onClose?.();
 	}
 
 	function refuse(message: string | undefined): void {
@@ -113,11 +125,15 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 	}
 
 	/** Lay new entries on, then swap them for the server's copies — or take them back off. */
-	function create(made: CalendarEvent[]): void {
+	function create(
+		made: CalendarEvent[],
+		room?: EntryRoom | null,
+		reminders?: EntryReminder[] | null,
+	): void {
 		events.value = [...events.value, ...made];
 		if (!optsRef.current.persist) return;
 		const pending = new Set(made.map((e) => e.id));
-		void ScheduleService.create(made.map(fieldsOf)).then((res) => {
+		void ScheduleService.create(made.map(fieldsOf), room, reminders).then((res) => {
 			const rest = events.peek().filter((e) => !pending.has(e.id));
 			events.value = res.ok && res.data ? [...rest, ...res.data.events] : rest;
 			if (!res.ok) refuse(res.message);
@@ -129,16 +145,23 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 	 * shortcut: an edit to an entry whose create is still in flight (a `draft-` id) is refused and
 	 * rolled back; queue it behind the create if that ever shows up in practice.
 	 */
-	function change(next: CalendarEvent): void {
+	function apply(
+		next: CalendarEvent,
+		write: () => Promise<CalendarResult<{ event: CalendarEvent }>>,
+	): void {
 		const before = events.peek().find((e) => e.id === next.id);
 		if (!before) return;
 		events.value = events.value.map((e) => (e.id === next.id ? next : e));
 		if (!optsRef.current.persist) return;
-		void ScheduleService.update(next.id, fieldsOf(next)).then((res) => {
+		void write().then((res) => {
 			const kept = res.ok && res.data ? res.data.event : before;
 			events.value = events.peek().map((e) => (e.id === next.id ? kept : e));
 			if (!res.ok) refuse(res.message);
 		});
+	}
+
+	function change(next: CalendarEvent, room?: EntryRoom | null): void {
+		apply(next, () => ScheduleService.update(next.id, fieldsOf(next), room));
 	}
 
 	return {
@@ -182,8 +205,9 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 			close();
 		},
 		submit(event) {
+			const room = roomOf(event);
 			if (events.value.some((e) => e.id === event.id)) {
-				change(event);
+				change(event, room);
 				draft.value = null;
 				return;
 			}
@@ -195,11 +219,23 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 					: series.current
 					? spreadDaily(event, series.current, tz)
 					: [event],
+				room,
+				event.reminders,
 			);
 			close();
 		},
+		update(event) {
+			change(event);
+		},
+		setReminders(event, reminders) {
+			apply({ ...event, reminders }, () => ScheduleService.setReminders(event.id, reminders));
+		},
 		serverUpdate(event) {
 			events.value = events.value.map((e) => (e.id === event.id ? event : e));
+		},
+		serverRemove(id) {
+			if (eventStack.top.peek()?.id === id) close();
+			events.value = events.value.filter((e) => e.id !== id);
 		},
 		remove(id) {
 			if (eventStack.top.peek()?.id === id) close();

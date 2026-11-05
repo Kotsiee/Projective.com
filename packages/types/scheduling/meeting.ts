@@ -78,6 +78,24 @@ export const MEETING_PROVIDER_LABEL: Record<MeetingProvider, string> = {
 	...CONFERENCING_LABEL,
 	custom: "Custom link",
 };
+
+const TRUSTED_HOSTS: { provider: MeetingProvider; domains: readonly string[] }[] = [
+	{ provider: "google", domains: ["meet.google.com"] },
+	{ provider: "zoom", domains: ["zoom.us", "zoom.com", "zoomgov.com"] },
+	{ provider: "microsoft_teams", domains: ["teams.microsoft.com", "teams.live.com"] },
+];
+
+/**
+ * The provider a join link belongs to, `custom` for any other host. A host is matched only on its exact
+ * registrable domain or a subdomain of it, so `zoom.us.example.com` is a custom link, not a Zoom room.
+ */
+export function meetingProviderOf(url: URL): MeetingProvider {
+	const host = url.hostname.toLowerCase();
+	const match = TRUSTED_HOSTS.find((t) =>
+		t.domains.some((d) => host === d || host.endsWith(`.${d}`))
+	);
+	return match?.provider ?? "custom";
+}
 // #endregion
 
 // #region The room

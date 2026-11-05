@@ -48,6 +48,7 @@ function eventRow(over: Record<string, unknown> = {}): Record<string, unknown> {
 		href: null,
 		sourceConnectionId: null,
 		externalEventId: null,
+		externalSync: true,
 		sourceSessionEventId: null,
 		recurrenceRule: null,
 		recurrenceParentId: null,

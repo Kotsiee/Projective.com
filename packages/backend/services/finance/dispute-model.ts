@@ -6,6 +6,8 @@ import {
 	type DisputeQueueParty,
 	DisputeQueueStatus,
 	DisputeRole,
+	type DisputeRoomEntry,
+	DisputeRoomEntrySchema,
 	type DisputeSettlement,
 	DisputeStatus,
 	formatMoney,
@@ -75,6 +77,15 @@ function pct(value: unknown): number {
 	return Math.min(100, Math.max(0, int(value)));
 }
 
+/** The frozen log, dropping a line this build cannot read rather than guessing at it. */
+function timelineOf(raw: unknown): DisputeRoomEntry[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.flatMap((line: Record<string, unknown>) => {
+		const entry = DisputeRoomEntrySchema.safeParse({ ...line, weak: line?.how === "email" });
+		return entry.success ? [entry.data] : [];
+	});
+}
+
 function auditOf(raw: Record<string, unknown> | null): DisputeAudit | null {
 	if (!raw) return null;
 	const verdict = String(raw.verdict ?? "");
@@ -85,8 +96,12 @@ function auditOf(raw: Record<string, unknown> | null): DisputeAudit | null {
 		tracked: raw.tracked === true,
 		hostPresencePct: pct(raw.host_presence_pct),
 		claimantPresencePct: pct(raw.claimant_presence_pct),
+		hostSeconds: Math.max(0, int(raw.host_seconds)),
+		claimantSeconds: Math.max(0, int(raw.claimant_seconds)),
+		reconnects: Math.max(0, int(raw.reconnects)),
 		thresholdPct: pct(raw.threshold_pct),
 		auditedAt: String(raw.audited_at ?? ""),
+		timeline: timelineOf(raw.timeline),
 	};
 }
 

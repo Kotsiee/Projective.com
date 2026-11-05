@@ -38,6 +38,15 @@ export const SessionService = {
 		return postProjects(`/api/sessions/memberships/${encodeURIComponent(membershipId)}/cancel`, {});
 	},
 
+	/** Say whether a sitting with no attendance record happened (Decision #383, ruling R6). */
+	setRoomLink(eventId: string, link: string): Promise<ProjectsResult<{ saved: boolean }>> {
+		return postProjects(`/api/sessions/sittings/${encodeURIComponent(eventId)}/room`, { link });
+	},
+
+	answerReview(eventId: string, happened: boolean): Promise<ProjectsResult<{ answered: boolean }>> {
+		return postProjects(`/api/sessions/sittings/${encodeURIComponent(eventId)}/review`, { happened });
+	},
+
 	/**
 	 * Claim the provider did not show for a sitting (holds the auto-release; once the sitting has ended
 	 * the room's attendance is audited at once). `status` is where the claim landed (Decision #212).

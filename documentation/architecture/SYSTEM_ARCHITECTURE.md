@@ -1424,7 +1424,7 @@ have different trust models.
 | Half             | Client (thin)         | Routes (thin)             | Service (fat)                             | Gate                        |
 | :--------------- | :-------------------- | :------------------------- | :---------------------------------------- | :-------------------------- |
 | The hub          | `FilesService`        | `/api/files/*` (20)       | `services/files/FilesBackendService.ts`   | **`FILES_BACKEND_LIVE`**    |
-| The connectors   | `IntegrationsService` | `/api/integrations/*` (7) | `services/integrations/IntegrationsBackendService.ts` | **`INTEGRATIONS_BACKEND_LIVE`** |
+| The connectors   | `IntegrationsService` | `/api/integrations/*` (13) | `services/integrations/IntegrationsBackendService.ts` | **`INTEGRATIONS_BACKEND_LIVE`** |
 
 Both default **off** (`isFilesBackendLive()` / `isIntegrationsBackendLive()` in `core/supabase.ts`).
 Neither answers from fixtures any more: the mock corpora went in the 2026-09-23 mock removal, and
@@ -1575,9 +1575,8 @@ connected Drive from becoming a second file model. Every implementation is a **r
 provider's API, never a fixture corpus** (Decision #313, owner ruling 2026-10-21): it receives one
 connection's unsealed credential for one request and speaks only to that provider's fixed origin.
 `adapters/mod.ts` → `createStorageAdapter(ctx)` is the one door that constructs one, and it refuses
-(`unavailable`) while `INTEGRATIONS_BACKEND_LIVE` is off. None is reachable yet: no provider is
-enabled, consents are refused and the vault seals nothing, so `browse` / `importAsset` still refuse in
-words.
+(`unavailable`) while `INTEGRATIONS_BACKEND_LIVE` is off. None is reachable yet: no storage provider
+has a seeded `auth_config` or is enabled, so `browse` / `importAsset` still refuse in words.
 
 | Source         | Client                         | Paging cursor              | Download                       | Thumbnail               |
 | :------------- | :----------------------------- | :------------------------- | :----------------------------- | :---------------------- |
@@ -1735,23 +1734,20 @@ visit.
 #### The token vault
 
 `services/integrations/token-vault.ts` implements **envelope encryption** for
-`integrations.connection_secrets`: a per-secret data key (DEK) encrypts the token, and the DEK is
-itself wrapped by a KMS-held key-encryption key (KEK) recorded on the row as `key_id`. Rotating the
-KEK re-wraps DEKs and never touches ciphertext; the plaintext KEK never exists in application memory;
-and old and new KEKs coexist during a rotation instead of it being a flag day. Service-role only —
-`connection_secrets` has RLS on, **no policy, no view, no `authenticated` grant**, so column safety is
-structural rather than a policy someone could loosen. Clients read
-`integrations.v_my_connections`, which physically cannot project a token column.
+`integrations.connection_secrets`, keyed on the **`ENCRYPTION_KEY`** env, not a KMS (Decision #343,
+ruling C4 (c), which resolves Decision #59; the columns are Decision #335 (b)). Each write of a row
+mints a fresh 256-bit data key (DEK), wraps it under the key-encryption key (KEK) with AES-256-GCM and
+its own nonce, and seals each token under the DEK with its own 96-bit nonce and the AAD
+`<connection_id>|<kind>|<key_id>`, so a ciphertext moved to another row or column fails its tag.
+`key_id` is `env:` + the first 8 hex of sha256(key): `unseal()` refuses a row whose `key_id` is not the
+current key's, and a failed tag fails loudly. The DEK is zeroed after use and never logged. The server
+refuses to boot with a missing, placeholder or short key while `INTEGRATIONS_BACKEND_LIVE` is on, in
+production too. There is no rewrap yet: a changed key strands every row until it is reconnected, and
+`key_id` finds the rows when one is built.
 
-> ⚠️ **Flagged contradiction, not resolved here (§8 Decision #59).** The Environment Variable Contract
-> below carries **`ENCRYPTION_KEY`** — a single, symmetric, process-wide secret. That is a *different*
-> design from the KMS envelope the `integrations` schema was built for (`connection_secrets.key_id`
-> exists precisely because the wrapping key is external and rotatable). They cannot both be right: if
-> `ENCRYPTION_KEY` is authoritative, `key_id` is decoration and rotation is a full-table rewrite; if
-> the envelope is authoritative, `ENCRYPTION_KEY` must be removed from the contract or redefined as a
-> local-development KEK never used in production. The module implements the **envelope** interface,
-> because that is what the schema requires and it is the one that can absorb the other. **A human
-> picks the winner, and updates the contract in the same change.**
+Service-role only — `connection_secrets` has RLS on, **no policy, no view, no `authenticated` grant**,
+so column safety is structural rather than a policy someone could loosen. Clients read
+`integrations.v_my_connections`, which physically cannot project a token column.
 
 #### Database
 
@@ -2431,8 +2427,10 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 - **Environments.** The Supabase Postgres image ships pg_cron, pg_net and Vault, local
   `supabase start` included (measured 2026-10-13: pg_cron 1.6.4, pg_net 0.20.4), so every sql job
   runs locally as it does when hosted. The http jobs skip (and log) until the Vault secrets below
-  exist. Locally `CRON_APP_URL` is `http://host.docker.internal:<PORT>`, because pg_net runs
-  inside the database container.
+  exist, and a skipped run still reads as succeeded in `cron.job_run_details`. Locally `CRON_APP_URL`
+  is `http://host.docker.internal:<PORT>`, because pg_net runs inside the database container, and
+  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET` from `.env.local` (`cron:vault`), because
+  a rebuild empties Vault. The money sweeps stay on `deno task cron:run` locally.
 
 | Job                                 | Cadence (UTC)                     | Runs                                                                     | Owner                                                             | Idempotency                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | :---------------------------------- | :-------------------------------- | :----------------------------------------------------------------------- | :---------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2460,6 +2458,15 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-card-payments`       | :13 / :28 / :43 / :58             | `POST /api/finance/cron/card-payments?limit=50` · `FINANCE_CRON_SECRET`  | Finance — `PaymentBackendService.sweepUnsettledCardPayments` (N1, CO15) | Each payment is leased once per window (`finance.claim_unsettled_card_payments`); every settlement is idempotent on its intent. An intent still `requires_*` 24 h after Stripe created it is re-read and canceled under a key derived from the intent, so a re-run cancels once; the `payment_intent.canceled` webhook closes the payment.                                                                                                                                                                                                                                                                                                                                                                        |
 | `projects-release-expired-claims`   | :03 / :18 / :33 / :48, **paused** | `projects.fn_release_expired_claims()`                                   | Projects — the claim TTL (`00001140`)                             | Registered with `enabled = false` until PM-WP1 adds `SKIP LOCKED` and a `claimed` re-check (#338 (a)).                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `scheduling-expire-discovery-calls` | `1,16,31,46 * * * *`              | `SELECT scheduling.fn_expire_discovery_calls();`                         | Scheduling — discovery-call expiry (`00001510`, audit S-11)       | `FOR UPDATE SKIP LOCKED` batches; only a call still `proposed` past its TTL or its start is taken, so an expired call is never touched or announced twice.                                                                                                                                                                                                                                                                                                                                             |
+| `integrations-mint-rooms`           | every minute                      | `POST /api/integrations/cron/rooms`                                      | Integrations — `RoomBackendService`                               | Mints the rooms the queue is waiting for, then follows moved and cancelled rooms at their providers; repeat-safe. |
+| `integrations-presence-reconcile`   | every 15 min                      | `POST /api/integrations/cron/rooms?task=reconcile`                       | Integrations — `RoomBackendService`                               | Reads each ended meeting's attendance from its provider. A failed read stamps nothing, so a sitting that needed it stays held. |
+| `integrations-refresh-tokens`       | every 10 min                      | `POST /api/integrations/cron/refresh?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.refreshDue` (#343 C4) | Claims each connection due under a 5-minute lease (`SKIP LOCKED`); a commit lands only over the refresh token its run read, so a repeat cannot double-spend one.
+| `integrations-renew-channels`       | hourly :35                        | `POST /api/integrations/cron/channels?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.renewChannels` (#343 C4) | Claims each channel within 24 h of lapsing once (`expiring`, `SKIP LOCKED`); a third failure degrades its connection.
+| `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
+| `integrations-outbound-sync`        | every 5 min, from :02             | `POST /api/integrations/cron/sync?task=outbound&limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.pushDue` (#383 R3) | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`); writes are idempotent at the provider, and a copy changed during a write stays dirty.
+| `integrations-consent-sweep`        | daily 03:25                       | `integrations.fn_sweep_consent_states()`                                 | Integrations — the consent handshake (`00001500`)                 | Deletes consents a day past their window; repeat-safe.
+| `scheduling-reminders`              | every 5 min                       | `scheduling.fn_enqueue_due_reminders()`                                  | Scheduling                                                        | Queues the upcoming sitting, call and calendar-entry reminders (Decision #388); a repeat is a no-op on each reminder's dedupe key. |
+| `scheduling-presence-retention`     | daily 04:41                       | `scheduling.fn_prune_presence()`                                         | Scheduling — `finance-model.md` §17                               | Deletes room attendance records past their period, keeping whatever a dispute or a held payment still needs; repeat-safe. |
 | `ops-prune-job-history`             | daily 04:53                       | `ops.fn_prune_job_history()`                                             | Ops — the registry itself                                         | Deletes pg_cron run history that ended more than 7 days ago; repeat-safe.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 `finance-reconcile-wallets` and `finance-mature-pending-releases` are seeded only where their
@@ -2478,7 +2485,8 @@ themselves at the first reset after their function exists.
 ### Edge Functions & Webhooks
 
 Edge Functions act as the serverless orchestration layer for the platform, handling event-driven
-logic and external integrations.
+logic. The connector runtime is not one of them: consent, token refresh, channel renewal and provider
+webhooks are Fresh routes plus pg_cron `http` jobs (Decision #343, ruling C4 (a); §3.3 below).
 
 #### Core Functions
 
@@ -2491,9 +2499,13 @@ logic and external integrations.
 #### Webhook Standards
 
 - **Authenticity:** All incoming webhooks must verify signatures (e.g., from Stripe or Supabase)
-  before processing.
+  before processing. A provider that signs nothing proves a delivery with its channel's stored secret
+  instead, and Graph's `validationToken` handshake is echoed unsigned (providers spec §3.3).
 - **Idempotency:** Functions must be designed to handle duplicate events without corrupting data or
-  double-sending notifications.
+  double-sending notifications. A delivery is claimed in the same SQL call as its effect, so a replay
+  is a 2xx no-op: `finance.fn_claim_stripe_event` for Stripe, `integrations.webhook_deliveries` for
+  every connector, on the one route `POST /api/integrations/webhooks/[provider]`. A calendar push
+  claims no row: all it does is mark its calendar due, so a replay repeats that and nothing else.
 
 ### The Notification Engine
 
@@ -3468,10 +3480,14 @@ and the live `stripe listen` forwarding — run the manual steps above.
 
 - **Architecture:** Freelancers connect their preferred conferencing tools via **OAuth** (e.g.,
   Google Calendar/Meet API, Zoom API) from their profile settings.
-- **Room Generation:** When a Session time is finalized, the `SessionService` uses the Freelancer's
-  OAuth token to generate a unique meeting link.
+- **Room Generation:** Anything that creates a sitting or confirms a call queues one
+  `scheduling.rooms` row, and `RoomBackendService` mints it on the host's connected account, writing
+  nothing to a calendar (Decision #383, ruling R3). A person joins through `/meet/rom-…`, so a
+  provider's link stays on the server until the moment of joining.
 - **Verification:** The system listens to server-to-server Webhooks (e.g., Zoom's
-  `participant_joined`) to power the "Digital Handshake" attendance logs.
+  `participant_joined`) to power the "Digital Handshake" attendance logs, and reads the provider's
+  own record after the meeting. Every join and leave goes into `scheduling.presence_events`, and
+  `fn_room_presence` derives time in the room from it (Decision #383 (b)).
 
 ### 3. The Integration & Plugin Platform (`integrations` schema)
 
@@ -3518,34 +3534,76 @@ schema.
   token that silently stops syncing is the classic connector-platform support fire.
 - **Multiple accounts per vendor.** The unit is `(user, provider, external_account_id)`, so a user
   can connect a personal and a work Google without a later migration.
-- **The token vault is split and KMS-backed.** Secrets live in `connection_secrets` (a separate
-  table, **no policy, no view, service-role only**) under **envelope encryption** — a per-record
-  data key wrapped by a KMS master key (`key_id`), not a symmetric secret in an env var.
+- **The token vault is split and enveloped.** Secrets live in `connection_secrets` (a separate
+  table, **no policy, no view, service-role only**) under **envelope encryption** — a per-row data
+  key wrapped by the `ENCRYPTION_KEY` env, which `key_id` names (Decision #343, ruling C4 (c)).
   `user_connections` itself is definer-only; clients read `v_my_connections`, which cannot project a
   token. Safety is **structural, not a policy**.
 - **Webhooks are a distributed-systems problem.** Provider push channels are registered rows with a
   first-class `expires_at` a cron re-registers before it lapses; inbound pushes dedupe on
   `webhook_deliveries (provider_slug, external_delivery_id)` and record signature verification. Same
-  idempotency discipline as `comms.delivery_events`.
-- **Integration strategy is recorded per provider (`broker`).** **Calendar → a unified API (Nylas)**
-  — recurrence/timezone/webhook-renewal is a solved-elsewhere nightmare not worth re-owning.
-  **Storage/developer → direct** (a unified file API is too leaky). **CRM long tail → a unified
-  broker (Merge)** where adapter-per-vendor stops paying off. The broker is **always wrapped behind
-  our own adapter interface**, so it stays a replaceable implementation detail.
-- **MVP is read-only inbound.** `sync_direction` defaults `inbound`; `bidirectional` is a per-connector
-  project (echo-suppression + conflict resolution), never the default.
+  idempotency discipline as `comms.delivery_events`. A calendar push only marks its calendar due, so
+  a replay is harmless with no row.
+- **Integration strategy is recorded per provider (`broker`).** **Calendar and conferencing →
+  direct** (Decision #383, ruling R1): Google Calendar and Meet, Microsoft Graph and Zoom, with no
+  third party holding a connected calendar's tokens. **Storage/developer → direct** (a unified file
+  API is too leaky). **CRM long tail → a unified broker (Merge)** where adapter-per-vendor stops
+  paying off. A broker is **always wrapped behind our own adapter interface**, so it stays a
+  replaceable implementation detail.
+- **Sync is two one-way flows (Decision #383, ruling R3).** `sync_direction` defaults `inbound`:
+  busy time read from a person's primary calendar. `bidirectional` adds a separate Projective
+  calendar holding their published events. The calendar read and the calendar written never overlap,
+  so there is no echo to suppress and no conflict to resolve, and an edit made at a provider never
+  moves a Projective event. A time moves only through the reschedule negotiation.
 - **Capability checks never touch credentials.** `fn_has_capability(user, kind)` /
   `fn_conferencing_provider(user)` return a boolean / a slug. A NULL provider is a **normal** answer —
-  a user who connected nothing is still bookable (falls back to a platform room / manual link).
+  a user who connected nothing is still bookable (falls back to a manual link; there is no platform
+  room, Decision #383, ruling R2).
 
-#### 3.3 The Edge-Function moving parts (deferred, deliberately)
+#### 3.3 The connector runtime: Fresh routes plus pg_cron `http` jobs
 
-The schema is the durable half; the runtime is Edge Functions (code, not migrations) and is where
-the real engineering is: the consent handshake (authorize → callback → envelope-encrypt →
-`user_connections` + audit line), a **proactive token-refresh scheduler** (refresh _before_ expiry,
-not lazily on 401 — Google tokens lapse if unused ~6 months, Microsoft rotates every refresh),
-webhook ingestion + channel renewal, canonical-model sync adapters into `scheduling.events`, and
-per-user + global rate limiting. See [`integrations/Functions.md`](../database/integrations/Functions.md).
+The schema is the durable half. The runtime runs in the app, not in Edge Functions (Decision #343,
+ruling C4 (a)): `IntegrationsBackendService` behind Fresh routes, `http` jobs in
+`ops.scheduled_jobs`, and one definer in `00001500` per transaction, because each of these has a
+network call in it that no database transaction can hold open.
+
+- **The consent handshake** (`/api/integrations/start`, `/callback`): authorize → callback → envelope
+  encrypt → one transaction for `user_connections`, `connection_secrets` and the audit line.
+- **A proactive token-refresh scheduler** (`integrations-refresh-tokens`): refresh _before_ expiry,
+  not lazily on 401 — Google tokens lapse if unused ~6 months, Microsoft and Zoom rotate on every
+  refresh. A lease keeps a second run off a refresh token in flight, and the commit lands only over
+  the token that run read, so a rotated token is stored atomically or not at all. `invalid_grant`
+  moves the connection to `expired` and tells its owner.
+- **Channel renewal** (`integrations-renew-channels`): each push channel is renewed a day before it
+  lapses, and a third failure degrades its connection.
+- **One webhook route** (`POST /api/integrations/webhooks/[provider]`): verify, then dispatch, with
+  the delivery claimed in `webhook_deliveries` inside the same SQL call as its effect. Presence goes
+  to `SessionBackendService.handlePresenceWebhook`. A calendar push only marks its calendar due: no
+  webhook ever calls a provider.
+- **Calendar sync** (`CalendarSyncBackendService`; Decision #383, ruling R3). `integrations-calendar-sync`
+  reads busy time from each calendar due: a full read of the window (a day back, 372 ahead), then
+  incremental reads on the provider's cursor, and a full read again weekly, because an old event comes
+  into the window with no change to report. A lapsed cursor (410) starts over from a full read. Busy
+  rows are masked `scheduling.events` of kind `busy` with an empty `title`, which `get_free_busy` and
+  both booking gates already read. What the entry says sits apart in
+  `scheduling.connected_event_details`, which has no client grant: `scheduling.get_own_event_details`
+  answers the schedule's owner alone, the personal calendar folds it in, and a row with a
+  `source_connection_id` refuses every host write (Decision #387). A provider's series stays one row
+  per occurrence, as the provider expands it, so nothing that reads busy time changes; the read groups
+  them into a master and its occurrences, the shape Projective's own series has.
+  `integrations-outbound-sync` writes `scheduling.event_mirrors`, a `dirty_at`
+  queue the triggers fill, to a separate Projective calendar made the first time a connection has
+  something to put there. A copy carries a title, the time and the room's own `/meet` address, and
+  nothing else: no agenda, location, attendee or provider link. An agreed discovery call goes out on
+  the same queue, anchored on the call: an events row would hold its own slot against a move and be
+  editable as an entry.
+- **Revocation** (`integrations.fn_revoke_connection`, which account erasure also calls): the secret
+  row, the channels, the connection's busy rows and their details, its read cursor and its mirror queue in one
+  transaction. The provider is told after it commits, best effort: its channels stop, the Projective
+  calendar goes, and the grant is revoked.
+
+Per-user and global rate limiting are still to come. See
+[`integrations/Functions.md`](../database/integrations/Functions.md).
 
 #### 3.4 The plugin ecosystem — "Projective OS" (post-MVP, schema laid now)
 
@@ -3740,6 +3798,8 @@ GOOGLE_INTEGRATION_CLIENT_ID=XXXX-XXXX
 GOOGLE_INTEGRATION_CLIENT_SECRET=XXXX-XXXX
 MICROSOFT_INTEGRATION_CLIENT_ID=XXXX-XXXX
 MICROSOFT_INTEGRATION_CLIENT_SECRET=XXXX-XXXX
+# The Entra tenant in the Microsoft identity URLs. `common` takes work, school and personal accounts.
+MICROSOFT_INTEGRATION_TENANT=common
 ZOOM_CLIENT_ID=XXXX-XXXX
 ZOOM_CLIENT_SECRET=XXXX-XXXX
 ZOOM_WEBHOOK_SECRET=XXXX-XXXX
@@ -3808,6 +3868,9 @@ SCHEDULING_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/contact/cron/attachments, which
 # deletes /contact attachments nobody sent (Decision #276); 404 otherwise.
 CONTACT_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/integrations/cron/* (refresh,
+# channels, rooms, sync), which act at third parties with stored credentials; 404 otherwise.
+INTEGRATIONS_CRON_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -3818,15 +3881,16 @@ CONTACT_CRON_SECRET=XXXX-XXXX
 #   ACCOUNT_CRON_SECRET  the same value as the env key above
 #   SCHEDULING_CRON_SECRET  the same value as the env key above
 #   CONTACT_CRON_SECRET  the same value as the env key above
+#   INTEGRATIONS_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 
 # Security
-ENCRYPTION_KEY=XXXX-XXXX # 32-byte hex for Edge Function/Vault encryption
-# ⚠️ See §Asset Management → The token vault: ENCRYPTION_KEY (one symmetric process-wide secret) and
-# the KMS envelope the `integrations` schema was built for (connection_secrets.key_id) are two
-# different designs. Unresolved — a human picks one (§8 Decision #59).
-KMS_KEY_ALIAS=XXXX-XXXX          # the KEK the token vault wraps DEKs under
+# The token vault's key-encryption key: 32 bytes as 64 hex characters (§Asset Management → The token
+# vault). The server refuses to boot with a missing, placeholder or short key while
+# INTEGRATIONS_BACKEND_LIVE is on, in production too. Changing it strands every sealed row until each
+# connection is reconnected: there is no rewrap yet.
+ENCRYPTION_KEY=XXXX-XXXX
 
 # Backend live gates — booleans, default false. Each flips ONE fat service from its deterministic
 # fixtures to its live Supabase path. They are separate switches on purpose: a half-wired query, a

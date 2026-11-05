@@ -1,22 +1,35 @@
 import type { ComponentChildren, JSX } from "preact";
+import { useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import { RichTextEditor } from "@projective/ui/editor";
-import { InputText } from "@projective/ui/fields";
+import { Accordion, AccordionTab } from "@projective/ui/display";
+import { InputText, ToggleSwitch } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { calendarTime } from "@projective/ui/calendar";
-import type { CalendarEvent, EventMeeting } from "@projective/types/scheduling";
-import { MEETING_PROVIDER_LABEL } from "@projective/types/scheduling";
+import type { CalendarEvent, EntryReminder, EventMeeting } from "@projective/types/scheduling";
+import {
+	DEFAULT_ENTRY_REMINDERS,
+	entryClassOf,
+	isRoomAddress,
+	MEETING_PROVIDER_LABEL,
+} from "@projective/types/scheduling";
 import { normalizeLink } from "@projective/types/links";
 import { sanitizeRichText } from "@projective/types/richtext";
+import { calendarPage } from "../../core/calendar-state.ts";
+import { repeatSentence, seriesMasterOf } from "../../core/event-recurrence.ts";
 import { durationLabel, type EventMode } from "../../core/event-view.ts";
 import {
 	checkJoinLink,
 	GENERATED_PROVIDERS,
-	rememberedProvider,
+	meetingOf,
 	rememberProvider,
+	ROOMLESS,
 } from "../../core/meeting-link.ts";
+import { roomAccount } from "../../hooks/room-accounts.ts";
 import { MeetingProviderRail } from "../MeetingProviderRail.tsx";
 import { EventRecurrenceField } from "../EventRecurrenceField.tsx";
+import { EventRemindersField } from "../EventRemindersField.tsx";
 
 /**
  * EventDetailsTab — the agenda, where it happens, and how to get in.
@@ -24,14 +37,16 @@ import { EventRecurrenceField } from "../EventRecurrenceField.tsx";
  * Three regions in reading order, because that is the order the questions arrive in: what is this
  * meeting about, where is the room, and what do I need to get through the door.
  *
- * **Composing is a two-column workspace.** The left column is what the entry IS — when it runs and
- * what it is for; the right column is how people reach it — the room and whether it repeats. The
- * facts about the occurrence itself move to the modal's footer, so nothing on this side restates a
- * value the reader is editing a column away.
+ * **Editing is a two-column workspace, the same one a new entry is composed in.** The left column is
+ * what the entry IS — when it runs and what it is for; the right column is how people reach it — the
+ * room, whether it repeats, and who hears about it. The facts about the occurrence itself move to the
+ * modal's footer, so nothing on this side restates a value the reader is editing a column away. An
+ * existing entry's repeat reads as a sentence: a series is laid down when it is created, and a rule
+ * edited here would reach no write path.
  *
  * **Only a meeting has a room.** A Reminder or a Deadline is a moment, not a gathering, so neither
  * shows the room at all (Decision #378). Meet, Zoom and Teams rooms are CREATED for the host through
- * their integration, so those three take no link field; only a custom room is pasted.
+ * their integration, so those three take no link field; a pasted room sits behind Custom / Advanced.
  *
  * **A seat that cannot change something sees the ANSWER, never a disabled control.** The host writes
  * the agenda in a real editor; everybody else reads prose. The join details are the same fact drawn
@@ -47,43 +62,43 @@ export interface EventDetailsTabProps {
 	hour12: boolean;
 	/** Whether the acting viewer arranges this event (the host). */
 	canEdit: boolean;
-	/** While composing: the When row (the modal's meta bar), drawn at the head of the left column. */
+	/** While editing: the When row (the modal's meta bar), drawn at the head of the left column. */
 	when?: ComponentChildren;
 	onPatch: (patch: Partial<CalendarEvent>) => void;
+	/**
+	 * Save the reader's own alerts for an entry that exists, straight away: like an RSVP they are not
+	 * part of the staged working copy. Absent, a surface offers none.
+	 */
+	onReminders?: (reminders: EntryReminder[] | null) => void;
 }
-
-/**
- * The room as it stands, so a patch never has to invent the half it is not changing. A new entry's
- * room starts on the provider its host picked last (Google Meet the first time).
- */
-function meetingOf(event: CalendarEvent): EventMeeting {
-	if (event.meeting) return event.meeting;
-	const provider = rememberedProvider();
-	return {
-		provider,
-		providerLabel: MEETING_PROVIDER_LABEL[provider],
-		joinUrl: null,
-		passcode: null,
-		details: null,
-		pending: true,
-	};
-}
-
-/** The kinds that are a moment rather than a gathering, and so have no room. */
-const ROOMLESS = new Set<CalendarEvent["kind"]>(["general", "deadline"]);
 
 export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 	const { event, tz, hour12, canEdit } = props;
 	const meeting = meetingOf(event);
+	const page = calendarPage.value?.events ?? [];
+	const repeat = repeatSentence(event, page, tz);
+	// A series' later occurrences leave an agenda they share with their master to it.
+	const agendaText = event.description ?? seriesMasterOf(event, page)?.description;
 	// Only an http(s) address becomes a link — a `javascript:` "room" would run in this origin.
 	const joinHref = meeting.joinUrl ? normalizeLink(meeting.joinUrl) : null;
 	const linkCheck = meeting.joinUrl ? checkJoinLink(meeting.joinUrl) : null;
 	const linkError = linkCheck && !linkCheck.ok ? linkCheck.message : null;
 	const creating = props.mode === "create";
-	const roomless = ROOMLESS.has(event.kind);
+	const roomless = ROOMLESS.has(event.kind) && !event.meeting;
 	const generated = GENERATED_PROVIDERS.includes(meeting.provider);
+	const account = canEdit && !roomless && generated ? roomAccount(meeting.provider) : "unknown";
+	const minted = meeting.joinUrl ? isRoomAddress(meeting.joinUrl) : false;
+	// With no account to make it on, a host can still paste a room of their own (ruling R2).
+	const pasteable = !generated || (account === "missing" && !minted);
 	const railLabelId = `evm-provider-${event.id}`;
 	const linkErrorId = `evm-joinlink-${event.id}`;
+	// Open where the fields are the point: a custom room, no account to make one on, or one already set.
+	const roomOpen = meeting.provider === "custom" || account === "missing" ||
+		!!meeting.joinUrl || !!meeting.passcode;
+	const advanced = useSignal<number | number[]>(roomOpen ? 0 : -1);
+	useEffect(() => {
+		if (roomOpen) advanced.value = 0;
+	}, [roomOpen]);
 
 	function patchMeeting(next: Partial<EventMeeting>): void {
 		const merged: EventMeeting = { ...meeting, ...next };
@@ -128,14 +143,14 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 						onValueChange={(description: string) => props.onPatch({ description })}
 					/>
 				)
-				: event.description
+				: agendaText
 				? (
 					<div
 						class="evm-rich"
 						// A host writes this for attendees to read. The write path already sanitised it;
 						// rendering through the same allow-list again means a row written any other way
 						// (a seed, a service-role job, a call's agenda) cannot reach the DOM as markup.
-						dangerouslySetInnerHTML={{ __html: sanitizeRichText(event.description) }}
+						dangerouslySetInnerHTML={{ __html: sanitizeRichText(agendaText) }}
 					/>
 				)
 				: <p class="evm-empty evm-empty--inline">No agenda was written for this one.</p>}
@@ -162,7 +177,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 								/>
 							</div>
 
-							{generated
+							{!pasteable
 								? (
 									<p class="evm-field evm-field--wide evm-room__note">
 										{meeting.joinUrl && joinHref
@@ -177,42 +192,79 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 													<Icon name="external-link" size="2xs" />
 												</a>
 											)
-											: `The ${
+											: account === "connected"
+											? `The ${
 												MEETING_PROVIDER_LABEL[meeting.provider]
-											} link is created from your connected account and shared with everyone invited.`}
+											} link is created from your connected account and shared with everyone invited.`
+											: `A ${MEETING_PROVIDER_LABEL[meeting.provider]} link is created if your account is connected.`}
 									</p>
 								)
 								: (
 									<>
-										<label class="evm-field evm-field--wide">
-											<span class="evm-field__label">Join link</span>
-											<InputText
-												size="sm"
-												value={meeting.joinUrl ?? ""}
-												maxLength={600}
-												placeholder="https://… — the provider is read from the link"
-												aria-label="Join link"
-												status={linkError ? "invalid" : "default"}
-												aria-describedby={linkError ? linkErrorId : undefined}
-												onValueChange={patchJoinLink}
-											/>
-											{linkError ? <p class="evm-refuse" id={linkErrorId}>{linkError}</p> : null}
-										</label>
+										{account === "missing"
+											? (
+												<p class="evm-field evm-field--wide evm-room__note">
+													<span>
+														{MEETING_PROVIDER_LABEL[meeting.provider]} isn't connected.{" "}
+														<a
+															class="evm-link"
+															href="/settings/integrations"
+															target="_blank"
+															rel="noopener"
+														>
+															Connect it in Settings
+														</a>
+														, or paste a link.
+													</span>
+												</p>
+											)
+											: null}
+										<div class="evm-field evm-field--wide">
+											<Accordion variant="flush" activeIndex={advanced}>
+												<AccordionTab header="Custom / Advanced">
+													<div class="evm-form">
+														<label class="evm-field evm-field--wide">
+															<span class="evm-field__label">Join link</span>
+															<InputText
+																size="sm"
+																value={meeting.joinUrl ?? ""}
+																maxLength={600}
+																placeholder="https://… — the provider is read from the link"
+																aria-label="Join link"
+																status={linkError ? "invalid" : "default"}
+																aria-describedby={linkError ? linkErrorId : undefined}
+																onValueChange={patchJoinLink}
+															/>
+															{linkError
+																? <p class="evm-refuse" id={linkErrorId}>{linkError}</p>
+																: null}
+														</label>
 
-										<label class="evm-field">
-											<span class="evm-field__label">Passcode</span>
-											<InputText
-												size="sm"
-												value={meeting.passcode ?? ""}
-												maxLength={120}
-												placeholder="Optional"
-												aria-label="Meeting passcode"
-												onValueChange={(passcode: string) =>
-													patchMeeting({ passcode: passcode.trim() || null })}
-											/>
-										</label>
+														<label class="evm-field">
+															<span class="evm-field__label">Passcode</span>
+															<InputText
+																size="sm"
+																value={meeting.passcode ?? ""}
+																maxLength={120}
+																placeholder="Optional"
+																aria-label="Meeting passcode"
+																onValueChange={(passcode: string) =>
+																	patchMeeting({ passcode: passcode.trim() || null })}
+															/>
+														</label>
+													</div>
+												</AccordionTab>
+											</Accordion>
+										</div>
 									</>
 								)}
+							{meeting.provider === "microsoft_teams"
+								? (
+									<p class="evm-field evm-field--wide evm-room__note">
+										Teams rooms need a work or school Microsoft account.
+									</p>
+								)
+								: null}
 							{/* A physical place (a project room, an internal space) returns here as Location once rooms exist; until then a room is online only. */}
 						</div>
 					</>
@@ -274,7 +326,39 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 	);
 	// #endregion
 
-	if (creating) {
+	// #region Connected calendars
+	// A Reminder has no span, so it never goes out and there is nothing to keep back.
+	const projectiveOnly = canEdit && entryClassOf(event) !== "reminder"
+		? (
+			<section class="evm-doc__sec">
+				<ToggleSwitch
+					size="sm"
+					label="Keep this on Projective only"
+					value={event.externalSync === false}
+					onValueChange={(only: boolean) => props.onPatch({ externalSync: !only })}
+				/>
+			</section>
+		)
+		: null;
+	// #endregion
+
+	// #region Reminders
+	// A new entry stages them with the rest of the working copy. On an entry that exists they are the
+	// reader's own and save at once, and `event.reminders` says whether this entry takes any from here.
+	const { onReminders } = props;
+	const reminders = onReminders && (creating || event.reminders !== undefined)
+		? (
+			<EventRemindersField
+				value={event.reminders ?? null}
+				fallback={calendarPage.value?.prefs?.reminders ?? DEFAULT_ENTRY_REMINDERS}
+				onChange={(next) =>
+					creating ? props.onPatch({ reminders: next ?? undefined }) : onReminders(next)}
+			/>
+		)
+		: null;
+	// #endregion
+
+	if (canEdit) {
 		return (
 			<div class="evm-compose">
 				<div class="evm-compose__main">
@@ -286,10 +370,23 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 				</div>
 				<div class="evm-compose__side">
 					{room}
-					<section class="evm-doc__sec">
-						<h3 class="evm-h">Repeats</h3>
-						<EventRecurrenceField event={event} tz={tz} onPatch={props.onPatch} />
-					</section>
+					{creating
+						? (
+							<section class="evm-doc__sec">
+								<h3 class="evm-h">Repeats</h3>
+								<EventRecurrenceField event={event} tz={tz} onPatch={props.onPatch} />
+							</section>
+						)
+						: repeat
+						? (
+							<section class="evm-doc__sec">
+								<h3 class="evm-h">Repeats</h3>
+								<p class="evm-room__note">{repeat}</p>
+							</section>
+						)
+						: null}
+					{reminders}
+					{projectiveOnly}
 				</div>
 			</div>
 		);
@@ -299,6 +396,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 		<div class="evm-doc">
 			{agenda}
 			{room}
+			{reminders}
 
 			{/* #region The occurrence itself */}
 			<section class="evm-doc__sec">
@@ -318,6 +416,14 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 								calendarTime.fmtTime(event.start, tz, hour12)}
 						</dd>
 					</div>
+					{repeat
+						? (
+							<div class="evm-facts__row">
+								<dt>Repeats</dt>
+								<dd>{repeat}</dd>
+							</div>
+						)
+						: null}
 					{event.organiser
 						? (
 							<div class="evm-facts__row">

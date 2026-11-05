@@ -14,8 +14,8 @@ import { AssetFolderSchema } from "../files/folders.ts";
  * consent trail around it.
  *
  * ⚠️ **No secret ever appears in this file.** The token vault (`integrations.connection_secrets`)
- * and every operational table (sync state, webhooks) are service-role only and have NO Zod shape
- * here — a client never sees them. {@link UserConnectionSchema} mirrors `v_my_connections`, the
+ * and every operational table (sync state, webhooks) are service-role only and have NO client shape
+ * — a client never sees them. {@link UserConnectionSchema} mirrors `v_my_connections`, the
  * definer view that physically cannot project a token column.
  *
  * **Dependency direction (verified, one-way):** {@link DriveBrowsePageSchema} is projected over the
@@ -50,8 +50,9 @@ export const ConnectionStatus = z.enum([
 export type ConnectionStatus = z.infer<typeof ConnectionStatus>;
 
 /**
- * `integrations.sync_direction`. Read-only `inbound` is the MVP default; `outbound`/`bidirectional`
- * are opt-in per connector (bidirectional carries echo-suppression + conflict cost).
+ * `integrations.sync_direction`. `inbound` (busy time read from a primary calendar) is the default.
+ * `bidirectional` adds a separate Projective calendar: two one-way flows, so there is no echo and no
+ * conflict to resolve (Decision #383, ruling R3).
  */
 export const SyncDirection = z.enum(["inbound", "outbound", "bidirectional"]);
 export type SyncDirection = z.infer<typeof SyncDirection>;
@@ -111,8 +112,8 @@ export const UserConnectionSchema = z.object({
 	 * against its OWN schema (see {@link S3ConnectionConfigSchema}) rather than widening this one.
 	 *
 	 * ⚠️ Never a credential. Secrets live only in `integrations.connection_secrets`, which is
-	 * service-role and has no shape in this package at all — a key that appeared here would be
-	 * projected by `v_my_connections` straight to a client.
+	 * service-role and has no client shape — a key that appeared here would be projected by
+	 * `v_my_connections` straight to a client.
 	 */
 	config: z.record(
 		z.string().max(80),
@@ -154,6 +155,13 @@ export type StartConnection = z.infer<typeof StartConnectionSchema>;
 /** Revoke a stored authorization. Terminal — reconnecting requires a fresh consent. */
 export const RevokeConnectionSchema = z.object({ connectionId: uuid });
 export type RevokeConnection = z.infer<typeof RevokeConnectionSchema>;
+
+/** Turn a connection's separate Projective calendar on (`bidirectional`) or off (`inbound`). */
+export const SetSyncDirectionSchema = z.object({
+	connectionId: uuid,
+	syncDirection: SyncDirection.exclude(["outbound"]),
+});
+export type SetSyncDirection = z.infer<typeof SetSyncDirectionSchema>;
 
 /** The connections panel payload (Settings → Integrations). */
 export const ConnectionsViewSchema = z.object({

@@ -563,6 +563,16 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		anchor: "working-hours",
 	},
 	{
+		key: "scheduling.calendar",
+		section: "scheduling",
+		label: "Calendar",
+		description: "How events open and the reminders they get",
+		icon: "calendar",
+		keywords: ["reminder", "alert", "side panel", "popover", "inspector", "event details"],
+		surface: "page-only",
+		anchor: "calendar",
+	},
+	{
 		key: "scheduling.calls",
 		section: "scheduling",
 		label: "Discovery calls",

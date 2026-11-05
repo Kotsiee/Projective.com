@@ -559,6 +559,55 @@ EXECUTE ON FUNCTION integrations.fn_plugin_has_scope (uuid, text) TO authenticat
 GRANT
 EXECUTE ON FUNCTION integrations.fn_is_plugin_publisher (uuid) TO authenticated;
 
+-- --- integrations: the connector runtime's doors (00001500, SCH-WP4a) ---
+-- The app reaches these as the service role, after a provider's proof or the cron bearer. They hand
+-- out sealed rows and rewrite connections for any user, so nobody else may. fn_open_consent alone runs
+-- as the signed-in caller, and binds a consent to auth.uid(). The two internals serve the doors only,
+-- like finance.fn_claim_stripe_event. The sweep is pg_cron's, and the service role's by hand.
+REVOKE ALL ON FUNCTION integrations.fn_open_consent (text, text, text, integrations.provider_kind[], text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION integrations.fn_open_consent (text, text, text, integrations.provider_kind[], text) TO authenticated;
+REVOKE ALL ON FUNCTION integrations.fn_write_secret (uuid, jsonb, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION integrations.fn_claim_webhook_delivery (text, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION integrations.fn_sweep_consent_states () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_sweep_consent_states () TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_store_connection (uuid, uuid, text, text, text, integrations.provider_kind[], text[], timestamptz, timestamptz, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_store_connection (uuid, uuid, text, text, text, integrations.provider_kind[], text[], timestamptz, timestamptz, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_claim_connections_for_refresh (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_claim_connections_for_refresh (integer) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_commit_refresh (uuid, bytea, jsonb, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_commit_refresh (uuid, bytea, jsonb, timestamptz, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_record_refresh_failure (uuid, bytea, boolean, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_record_refresh_failure (uuid, bytea, boolean, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_claim_channels_for_renewal (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_claim_channels_for_renewal (integer) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_record_channel_renewal (uuid, boolean, timestamptz, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_record_channel_renewal (uuid, boolean, timestamptz, text, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_record_presence_delivery (text, text, text, timestamptz, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_record_presence_delivery (text, text, text, timestamptz, text, text, text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_claim_connection_token (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_claim_connection_token (uuid) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_revoke_connection (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_revoke_connection (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_deauthorize_connection (text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_deauthorize_connection (text, text, text) TO service_role;
+-- Calendar sync (00001500): every door is the job's or the webhook's.
+REVOKE ALL ON FUNCTION integrations.fn_claim_calendar_syncs (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_claim_calendar_syncs (integer) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_apply_busy_sync (uuid, text, timestamptz, boolean, jsonb, text[], text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_apply_busy_sync (uuid, text, timestamptz, boolean, jsonb, text[], text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_release_calendar_sync (uuid, text, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_release_calendar_sync (uuid, text, timestamptz, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_register_channel (uuid, text, text, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_register_channel (uuid, text, text, text, text, text, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_mark_calendar_due (text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_mark_calendar_due (text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_set_sync_direction (uuid, integrations.sync_direction) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_set_sync_direction (uuid, integrations.sync_direction) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_set_outbound_calendar (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_set_outbound_calendar (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION integrations.fn_reset_outbound_calendar (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_reset_outbound_calendar (uuid) TO service_role;
+
 -- --- from 20260724102000_scheduling_events.sql ---
 
 GRANT
@@ -629,7 +678,8 @@ GRANT
 EXECUTE ON FUNCTION scheduling.fn_slot_is_free (
     uuid,
     timestamptz,
-    timestamptz
+    timestamptz,
+    uuid
 ) TO anon,
 authenticated;
 
@@ -639,7 +689,8 @@ EXECUTE ON FUNCTION scheduling.fn_call_request_refusal (
     uuid,
     scheduling.call_type,
     timestamptz,
-    timestamptz
+    timestamptz,
+    uuid
 ) TO authenticated;
 
 GRANT
@@ -1669,6 +1720,178 @@ REVOKE ALL ON FUNCTION scheduling.fn_expire_discovery_calls (integer) FROM publi
 GRANT
 EXECUTE ON FUNCTION scheduling.fn_expire_discovery_calls (integer) TO service_role;
 
+-- The discovery-call doors (00001510 §7b). Each names who may make its move, so any signed-in caller
+-- may try one; fn_lock_call and fn_notify_call are their internals and nobody else's.
+REVOKE ALL ON FUNCTION scheduling.fn_lock_call (uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_notify_call (scheduling.discovery_calls, uuid, text, text, text)
+FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.confirm_discovery_call (uuid) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.decline_discovery_call (uuid, text) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.propose_call_time (uuid, timestamptz, timestamptz) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.cancel_discovery_call (uuid, text) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.mark_call_no_show (uuid, scheduling.call_party) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.get_own_call_settings (uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION scheduling.confirm_discovery_call (uuid) TO authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.decline_discovery_call (uuid, text) TO authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.propose_call_time (uuid, timestamptz, timestamptz) TO authenticated,
+service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.cancel_discovery_call (uuid, text) TO authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.mark_call_no_show (uuid, scheduling.call_party) TO authenticated,
+service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.get_own_call_settings (uuid) TO authenticated, service_role;
+
+-- Rooms (00001510 §7d). The triggers and helpers are nobody's to call, and the queue doors are the
+-- minting service's alone.
+REVOKE ALL ON FUNCTION scheduling.fn_sitting_provider () FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_sync_sitting_room () FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_sync_call_room () FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_sync_entry_room () FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_queue_waiting_rooms (uuid, text) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.set_entry_room (uuid[], text, text, text) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION scheduling.set_entry_room (uuid[], text, text, text) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_room_connection (uuid, text) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_room_facts (scheduling.rooms) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.claim_rooms_to_mint (integer) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean) FROM public, anon,
+authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fail_room (uuid, text, boolean) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.claim_rooms_to_sync (integer) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.room_synced (uuid, text) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_mint (integer) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean) TO service_role;
+
+REVOKE ALL ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.claim_rooms_to_reconcile (integer) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.room_reconciled (uuid, text) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_reconcile (integer) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.room_reconciled (uuid, text) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.fail_room (uuid, text, boolean) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_sync (integer) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.room_synced (uuid, text) TO service_role;
+
+-- Whether a seat stands on a sitting is an internal question. Answering a review is the attendee's.
+REVOKE ALL ON FUNCTION projects.fn_seated_on (uuid, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION projects.answer_session_review (uuid, boolean) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION projects.answer_session_review (uuid, boolean) TO authenticated, service_role;
+
+-- Attendance (00001510 §7e). The room read and the join door are a signed-in caller's; the ledger's
+-- writer is the webhook's alone, and its readers are the audit's.
+REVOKE ALL ON FUNCTION scheduling.fn_room_attendees (scheduling.rooms) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_sync_attendance_row (scheduling.rooms, uuid, text) FROM public, anon,
+authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_room_presence (uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.record_presence (
+    text, text, text, timestamptz, text, text, text, text, text, text
+) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.room_join (text) FROM public, anon;
+
+REVOKE ALL ON FUNCTION scheduling.get_call_rooms (uuid[]) FROM public, anon;
+
+-- Outbound mirrors (00001510 §7g): the claim and its two answers are the job's, the rest internal.
+REVOKE ALL ON FUNCTION scheduling.fn_event_goes_out (scheduling.events) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_event_holders (uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_call_goes_out (scheduling.discovery_calls) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_queue_event_mirrors (uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_queue_call_mirrors (uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_open_event_mirrors (uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.trg_event_mirrors () FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.trg_call_mirrors () FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.trg_attendee_mirrors () FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.trg_room_mirrors () FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.claim_event_mirrors (integer) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.finish_event_mirror (uuid, timestamptz, timestamptz, text, text) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fail_event_mirror (uuid, timestamptz, text) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.claim_event_mirrors (integer) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.finish_event_mirror (uuid, timestamptz, timestamptz, text, text) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.fail_event_mirror (uuid, timestamptz, text) TO service_role;
+
+-- Attendance retention (00001510 §7f): run by pg_cron as the owner, by nobody else.
+REVOKE ALL ON FUNCTION scheduling.fn_sitting_evidence_held (uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_prune_presence () FROM public, anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.fn_room_presence (uuid) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.record_presence (
+    text, text, text, timestamptz, text, text, text, text, text, text
+) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.room_join (text) TO authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.get_call_rooms (uuid[]) TO authenticated, service_role;
+
+-- The reminder sweep answers for nobody in particular, like the expiry sweep above.
+REVOKE ALL ON FUNCTION scheduling.fn_enqueue_due_reminders () FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.fn_enqueue_due_reminders () TO service_role;
+
+-- Its helpers are internal: fn_event_alerts reads every person's preferences.
+REVOKE ALL ON FUNCTION scheduling.fn_event_takes_reminders (scheduling.events) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_reminder_rows (jsonb) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_event_alerts (uuid, uuid) FROM public, anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.fn_reminder_words (integer) FROM public, anon, authenticated, service_role;
+
 -- The seller console's write doors (00001170). INVOKER: the catalogue and marketplace policies are the
 -- gate, so a caller can only ever create, edit or publish their own listing. The sales read is a
 -- definer scoped to the caller's own listings inside its WHERE.
@@ -1861,6 +2084,8 @@ REVOKE ALL ON FUNCTION scheduling.fn_is_event_attendee (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_is_event_attendee (uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.get_event_rooms (uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.get_event_rooms (uuid[]) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.get_own_event_details (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.get_own_event_details (uuid[]) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.get_public_blackouts (uuid, timestamptz, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION scheduling.get_public_blackouts (uuid, timestamptz, timestamptz) TO anon, authenticated, service_role;
 -- The guard is INVOKER (it must see the caller's role). EXECUTE on a trigger function is checked
@@ -1970,15 +2195,14 @@ REVOKE ALL ON FUNCTION projects.record_host_attendance (uuid, uuid) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION projects.record_host_attendance (uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.claim_session_no_show (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.claim_session_no_show (uuid, text) TO authenticated;
-REVOKE ALL ON FUNCTION projects.session_join_link (uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION projects.session_join_link (uuid) TO authenticated;
+-- Definers only: a person reaches a sitting's link through scheduling.room_join, which records the join.
+REVOKE ALL ON FUNCTION projects.session_join_link (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION projects.complete_lesson (uuid, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.complete_lesson (uuid, boolean) TO authenticated;
 REVOKE ALL ON FUNCTION projects.get_session_workspace (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.get_session_workspace (uuid) TO authenticated;
--- Presence is the provider's signed webhook, through the app's service-role door — nobody else.
-REVOKE ALL ON FUNCTION projects.record_presence (text, text, text, text, timestamptz, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION projects.record_presence (text, text, text, text, timestamptz, text) TO service_role;
+REVOKE ALL ON FUNCTION projects.set_sitting_link (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.set_sitting_link (uuid, text) TO authenticated;
 -- The sweep pg_cron runs (as its owner); the service role may run it by hand.
 REVOKE ALL ON FUNCTION finance.auto_release_session_escrow (timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.auto_release_session_escrow (timestamptz) TO service_role;

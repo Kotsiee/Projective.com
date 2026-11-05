@@ -6,15 +6,16 @@ adapter code, never a schema change. See
 [`SYSTEM_ARCHITECTURE.md` §Integration & Plugin Platform](../../architecture/SYSTEM_ARCHITECTURE.md)
 for the strategy and roadmap.
 
-> **Zod SSOT:** `packages/types/integrations/*` (`providers.ts`, `connections.ts`, `plugins.ts`)
-> mirrors these rows. The migration, the Zod, and this file land together (root `CLAUDE.md` §1).
+> **Zod SSOT:** `packages/types/integrations/*` (`providers.ts`, `connections.ts`, `secrets.ts`,
+> `plugins.ts`) mirrors these rows. The migration, the Zod, and this file land together (root
+> `CLAUDE.md` §1).
 
 ## Two subsystems, one schema
 
 |         | **A. Connectors**                                                                                                                                 | **B. Plugins**                                                                                                             |
 | :------ | :------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------- |
 | What    | A user's stored authorization to act at a third party                                                                                             | Third-party code injected into governed extension points                                                                   |
-| Tables  | `providers`, `user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`, `webhook_deliveries`, `connection_audit` | `extension_points`, `plugin_scopes`, `plugins`, `plugin_versions`, `plugin_installations`, `plugin_grants`, `plugin_audit` |
+| Tables  | `providers`, `consent_states`, `user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`, `webhook_deliveries`, `connection_audit` | `extension_points`, `plugin_scopes`, `plugins`, `plugin_versions`, `plugin_installations`, `plugin_grants`, `plugin_audit` |
 | Roadmap | MVP → V2                                                                                                                                          | Post-MVP (schema laid now so the later build is not a rewrite)                                                             |
 
 **Not modelled here, by design:** platform **AUTH** (SSO/OAuth login is GoTrue's; no third-party
@@ -51,12 +52,12 @@ connection rows reference.
 | `category`                             | `provider_category` | Coarse UI family (one value): `calendar`/`storage`/`developer`/…                                                   |
 | `capabilities`                         | `provider_kind[]`   | Every capability the vendor can offer (multi-valued). `CHECK` non-empty.                                           |
 | `auth_scheme`                          | `auth_scheme`       | `oauth2` / `oauth1` / `api_key` / `app_password` / `none`.                                                         |
-| `is_enabled`                           | boolean             | Platform kill-switch — a row may exist (so history resolves) while new consents are refused. Default **false**.    |
+| `is_enabled`                           | boolean             | Platform kill-switch — a row may exist (so history resolves) while new consents are refused. Default **false**. On its own it offers nothing: an OAuth provider is offered only with this environment's client behind it (Decision #386). |
 | `is_beta`                              | boolean             | Surfaces a "beta" chip.                                                                                            |
 | `broker`                               | text                | Integration STRATEGY: `direct` / `nylas` / `merge`. Where the adapter routes.                                      |
 | `supports_webhooks`                    | boolean             | Whether the provider pushes change notifications (drives `webhook_subscriptions`).                                 |
 | `default_scopes`                       | text[]              | Scopes requested at consent time. **Config/documentation only** — no credential.                                   |
-| `auth_config`                          | jsonb               | Non-secret endpoint/PKCE config. **The client secret is never here** — it is in the Environment Variable Contract. |
+| `auth_config`                          | jsonb               | Non-secret OAuth config (`ProviderAuthConfigSchema`), below. **The client secret is never here** — it is in the Environment Variable Contract. |
 | `docs_url` · `icon_url` · `sort_order` | text · text · int   | Presentation.                                                                                                      |
 
 ### Category vs. capability — two distinct axes
@@ -69,18 +70,35 @@ capabilities into one chip.
 
 ### `broker` documents the integration strategy
 
-Calendar is brokered through a **unified API** (`nylas`) — recurrence/timezone/webhook-renewal is a
-solved-elsewhere nightmare. Storage/developer go `direct` (a unified file API is too leaky to be
+Calendar and conferencing go `direct` (Decision #383, ruling R1), with no third party holding a
+connected calendar's tokens. Storage/developer go `direct` too (a unified file API is too leaky to be
 worth the per-connection bill). The CRM long tail (`monday`, …) rides a unified broker (`merge`)
-where an adapter-per-vendor stops being worth it. **The broker is always wrapped behind our own
-adapter interface**, so it stays an implementation detail we can replace.
+where an adapter-per-vendor stops being worth it. `apple` keeps its seeded `nylas`, deferred. **The
+broker is always wrapped behind our own adapter interface**, so it stays an implementation detail we
+can replace.
+
+### `auth_config` is what a consent needs
+
+`authorize_url`, `token_url`, `revoke_url` (absent for Microsoft, which has no per-grant revoke),
+`pkce`, `authorize_params` (Google's `access_type=offline`, `prompt=consent`,
+`include_granted_scopes=true`), `token_auth` (`basic` for Zoom, else the form body), `identity_url`
+with `identity_id_field` and `identity_label_fields` (who the linked account is), and `kind_scopes`
+(which scopes each capability takes, so a consent asks only for what its kinds want and a narrowed
+grant records only what it covers). `{tenant}` in Microsoft's URLs is filled from
+`MICROSOFT_INTEGRATION_TENANT`. Only `google`, `outlook` and `zoom` are seeded one, so no other
+provider can start a consent yet.
 
 ### Seeded rows
 
-All ship `is_enabled = false` — enabling one is an operator decision requiring credentials first.
+`google`, `outlook` (labelled Microsoft: one Entra app and one consent for its calendar and Teams) and
+`zoom` ship `is_enabled = true`, and are offered wherever their credentials are set. The rest ship
+`false`.
 Calendars/conferencing (`google`, `outlook`, `apple`, `samsung`, `calendly`, `zoom`,
 `microsoft_teams`, `discord`), storage/docs (`google_drive`, `dropbox`, `onedrive`, `frameio`, `s3`,
-`notion`), developer/CRM (`github`, `slack`, `monday`, `google_contacts`). `onedrive` ("OneDrive &
+`notion`), developer/CRM (`github`, `slack`, `monday`, `google_contacts`). `microsoft_teams` stays as
+meeting vocabulary with no consent of its own: Teams rooms mint through the `outlook` connection.
+Zoom's scopes are its granular names, to confirm against the registered app. `notion` has no
+`calendar` capability (Decision #383, ruling R9). `onedrive` ("OneDrive &
 SharePoint", `Files.Read.All` · `offline_access`) and the `frameio` row's Frame.io V4 / Adobe IMS
 scopes (`openid` · `email` · `profile` · `offline_access` · `additional_info.roles`) are Decision #313.
 Every storage row has a real client in `services/integrations/adapters/` — the five connector
@@ -102,12 +120,14 @@ policy, no `authenticated` grant); clients read
 | `status`                                         | `connection_status`           | The state machine (below).                                                                                                              |
 | `granted_kinds`                                  | `provider_kind[]`             | What the consent actually granted — may be narrower than the provider's capabilities.                                                   |
 | `granted_scopes`                                 | text[]                        | The scopes actually returned.                                                                                                           |
-| `sync_direction`                                 | `sync_direction`              | `inbound` (MVP default), `outbound`, `bidirectional`.                                                                                   |
+| `sync_direction`                                 | `sync_direction`              | `inbound` (the default: busy time read from a primary calendar) or `bidirectional` (a separate Projective calendar as well, Decision #383, ruling R3). `integrations.fn_set_sync_direction` is the writer, and a revoke sets it back. `outbound` has no writer. |
 | `external_account_id` · `external_account_label` | text                          | **Which** account is linked — modelling it lets one user connect two accounts (personal + work) per provider without a later migration. |
 | `broker_account_id`                              | text                          | The Nylas/Merge grant id when a unified broker fronts the provider.                                                                     |
 | `config`                                         | jsonb `NOT NULL DEFAULT '{}'` | **Non-secret, per-connection mount settings**, projected to the client through `v_my_connections`. See below.                           |
 | `token_expires_at`                               | timestamptz                   | **Cached, non-secret** expiry for the "reconnect soon" UI. Authoritative expiry is in `connection_secrets`.                             |
-| `last_synced_at` · `last_error` · `error_count`  | timestamptz · text · int      | Operational state.                                                                                                                      |
+| `last_synced_at` · `last_error` · `error_count`  | timestamptz · text · int      | Operational state. `last_error` reaches the owner, so it holds a provider's status and code and nothing else.                           |
+| `last_used_at`                                   | timestamptz                   | When something last called the provider on this connection (`fn_claim_connection_token`). Keeps the refresh job on it. Not projected by `v_my_connections`. |
+| `refresh_claimed_at`                             | timestamptz                   | The refresh job's lease: keeps a second run off a refresh token in flight. Not projected by `v_my_connections`.                         |
 | `connected_at` · `revoked_at`                    | timestamptz                   | Lifecycle stamps.                                                                                                                       |
 | UNIQUE                                           | —                             | `(user_id, provider_slug, external_account_id)` **NULLS NOT DISTINCT** — two pending rows collapse.                                     |
 
@@ -123,6 +143,7 @@ settings the token does not carry and the provider catalogue cannot hold:
 | `dropbox`      | `rootNamespaceId` — a team space's root, sent as `Dropbox-API-Path-Root`; absent = the member's root — `DropboxConnectionConfigSchema`                       |
 | `onedrive`     | `driveId` — a SharePoint document library; absent = the person's OneDrive — `OneDriveConnectionConfigSchema`                                                 |
 | `frameio`      | `accountId` plus `projectId` (its root folder is the root) or `workspaceId` (its projects are the root) — `FrameIoConnectionConfigSchema`                    |
+| `google` · `outlook` | `outbound_calendar_id` — the separate Projective calendar this connection writes to, set by `fn_set_outbound_calendar` the first time it has something to put there |
 
 `config` is a flat scalar record with no `null` (`v_my_connections` projects scalars only), so an
 optional key is **absent**, never `null` — which is why `S3ConnectionConfigSchema.endpoint` is
@@ -171,35 +192,55 @@ is a deliberately **flat scalar record** (`Record<string, string | number | bool
 nested union of per-provider shapes: it is projected straight out of a `jsonb` column and every
 provider wants different keys, so a provider that needs structure parses this against **its own**
 schema (`S3ConnectionConfigSchema`) rather than widening the shared one. Widening it would force
-every future provider's keys to satisfy every previous provider's schema. There is, and can be, **no
-field for any `connection_secrets` column anywhere in that package.**
+every future provider's keys to satisfy every previous provider's schema. The vault's own shape
+(`secrets.ts`) is ciphertext, server-only, and appears in no shape a client reads.
 
 ### The connection state machine (`connection_status`)
 
-`pending` (consent started, not completed) → `active` → `degraded` (token refresh failing but
-recoverable) → `expired` (recoverable by a refresh) / `revoked` (**terminal** — needs a fresh
-consent) / `disconnected` (user removed) / `error`. The settings UI shows a **reconnect** affordance
-for the recoverable states rather than letting sync silently die — a dead token that stops syncing
-without telling anyone is the classic connector-platform support fire.
+`active` → `degraded` (three failed refreshes or channel renewals; a good refresh heals it) →
+`expired` (the refresh job, on `invalid_grant`; needs a fresh consent, and the owner is told) /
+`revoked` (**terminal** — the owner, or the provider's `app_deauthorized`) / `disconnected` / `error`.
+`pending`, `disconnected` and `error` have no writer today: a consent stores its connection `active`
+in one transaction. One account has one row, so a fresh consent reopens an `expired` or `revoked` row.
+The settings UI shows a **reconnect** affordance for the recoverable states rather than letting sync
+silently die — a dead token that stops syncing without telling anyone is the classic
+connector-platform support fire.
+
+## 2a. `integrations.consent_states`
+
+The in-flight consent: one row per started authorization, spent exactly once when the provider
+redirects back. The `state` is the credential the callback presents, so nothing client-facing reads
+this table; a client writes a row only through `fn_open_consent`, which binds it to `auth.uid()`.
+
+| Column                       | Type                      | Notes                                                                                 |
+| :--------------------------- | :------------------------ | :------------------------------------------------------------------------------------- |
+| `state`                      | text (PK)                 | At least 22 characters (`ck_consent_state_entropy`).                                  |
+| `user_id` · `provider_slug`  | uuid · text               | Who consented, and to whom. CASCADE · RESTRICT.                                       |
+| `code_verifier`              | text                      | The PKCE verifier. NULL where `auth_config.pkce` is false.                            |
+| `requested_kinds`            | `provider_kind[]`         | Compared with what the grant covered, to record a narrowed consent.                   |
+| `return_to`                  | text                      | A same-origin path (`ck_consent_return_to_relative`); the callback lands there.       |
+| `expires_at` · `consumed_at` | timestamptz               | A 10-minute window, and the single-use stamp. The sweep drops a row a day past it.    |
 
 ## 3. `integrations.connection_secrets` — the token vault
 
 Split from the connection so the security story is **structural, not a policy**: RLS on, **no
-policy, no view, no `authenticated` grant** — service-role (Edge Functions) only.
+policy, no view, no `authenticated` grant** — service-role only.
 
-| Column                                                 | Type         | Notes                                                                   |
-| :----------------------------------------------------- | :----------- | :---------------------------------------------------------------------- |
-| `connection_id`                                        | uuid (PK)    | → `user_connections` (CASCADE).                                         |
-| `access_token_cipher` · `refresh_token_cipher`         | bytea        | ⚠️ **Ciphertext only, never plaintext.**                                |
-| `token_type`                                           | text         | Usually `bearer`.                                                       |
-| `access_token_expires_at` · `refresh_token_expires_at` | timestamptz  | Authoritative expiries.                                                 |
-| `key_id`                                               | text         | **Envelope encryption:** identifies the wrapping KMS key, for rotation. |
-| `encryption_alg` · `nonce`                             | text · bytea | The AEAD algorithm (`aes-256-gcm`) and IV.                              |
-| `rotated_at`                                           | timestamptz  | Last key rotation.                                                      |
+| Column                                                             | Type         | Notes                                                                                   |
+| :----------------------------------------------------------------- | :----------- | :--------------------------------------------------------------------------------------- |
+| `connection_id`                                                    | uuid (PK)    | → `user_connections` (CASCADE).                                                         |
+| `access_token_cipher` · `refresh_token_cipher` · `api_secret_cipher` | bytea      | ⚠️ **Ciphertext only, never plaintext.** `api_secret_cipher` is an S3-compatible secret or an API key. |
+| `nonce` · `refresh_token_nonce` · `api_secret_nonce`               | bytea        | One nonce per ciphertext; `nonce` is the access token's. `ck_secret_nonces` refuses a cipher without its nonce. |
+| `wrapped_dek` · `wrapped_dek_nonce`                                | bytea        | The row's data key under `ENCRYPTION_KEY`, and that wrap's own nonce. Both required.    |
+| `key_id`                                                           | text         | `env:` + the first 8 hex of sha256(the key). A row under any other key refuses to open. |
+| `token_type` · `encryption_alg`                                    | text         | Usually `bearer` · `aes-256-gcm`.                                                       |
+| `access_token_expires_at` · `refresh_token_expires_at`             | timestamptz  | Authoritative expiries.                                                                 |
+| `rotated_at`                                                       | timestamptz  | Last key rotation. No writer yet: there is no rewrap.                                   |
 
-> ⚠️ **Envelope encryption, KMS-backed.** A per-record data key encrypts the token; the data key is
-> wrapped by a KMS master key identified by `key_id` (not a symmetric secret in an env var). The Zod
-> SSOT has **no field for any column on this table** — it is unreachable from every client path.
+> ⚠️ **Envelope encryption under `ENCRYPTION_KEY`** (Decision #343, ruling C4 (c)). Each write of a row
+> mints a fresh data key, wrapped by the env key `key_id` names, and each token is sealed under it with
+> the AAD `<connection_id>|<kind>|<key_id>` (`token-vault.ts`; providers spec §9.4). The Zod SSOT holds
+> this row as ciphertext only (`secrets.ts`), server-only — it is unreachable from every client path.
 
 ## 4. `integrations.connection_sync_state`
 
@@ -215,6 +256,8 @@ only.
 | `kind`                                                    | `provider_kind`           | Which capability this resource serves.        |
 | `sync_token`                                              | text                      | The provider delta cursor.                    |
 | `full_sync_completed_at` · `last_delta_at` · `last_error` | timestamptz · text        | Progress.                                     |
+| `due_at`                                                  | timestamptz               | A verified push sets this and nothing else; the read happens in the job. |
+| `claimed_at`                                              | timestamptz               | A run reading this resource, a 10-minute lease. The stamp a read must still hold for its result to land. |
 | UNIQUE                                                    | —                         | `(connection_id, resource)`.                  |
 
 ## 5. `integrations.webhook_subscriptions`
@@ -228,8 +271,8 @@ Service-role only.
 | :------------------------------------------------------- | :------------------------ | :------------------------------------------------------------------------ |
 | `connection_id`                                          | uuid → `user_connections` | CASCADE.                                                                  |
 | `provider_slug` · `resource`                             | text                      | What is watched.                                                          |
-| `external_channel_id` · `external_resource_id`           | text                      | The provider's channel identifiers.                                       |
-| `verification_token`                                     | text                      | Provider-issued, echoed on each push to verify it. Not a user credential. |
+| `external_channel_id` · `external_resource_id`           | text                      | The provider's channel identifiers; a push names its channel by the first. |
+| `verification_token`                                     | text                      | The per-channel secret a push must present (Google's channel token, Graph's `clientState`), compared in constant time. Not a user credential. |
 | `callback_url`                                           | text                      | Where the provider posts.                                                 |
 | `status`                                                 | `webhook_status`          | `active` / `expiring` / `expired` / `failed`.                             |
 | `expires_at`                                             | timestamptz               | **THE renewal driver** (indexed).                                         |
@@ -249,6 +292,10 @@ or forged push can't double-process. Same discipline as `comms.delivery_events`.
 | `signature_verified`                     | boolean                        | Whether the push authenticated.              |
 | `status` · `payload_digest` · `error`    | text                           | `received`/`processed`/`failed`/`duplicate`. |
 | `received_at` · `processed_at`           | timestamptz                    | Timing.                                      |
+
+A row is written only by a delivery that verified, in the same SQL call as its effect
+(`fn_claim_webhook_delivery`), so a forged push leaves none, a replay is a 2xx no-op, and a failed
+effect leaves no claim to swallow the redelivery. Today `status` is always `processed`.
 
 ## 7. `integrations.v_my_connections`
 

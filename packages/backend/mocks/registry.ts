@@ -221,7 +221,7 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		modules: [],
 		schemas: ["integrations"],
 		description:
-			"LIVE. The provider catalogue and the caller's connections (v_my_connections). Connecting, browsing and mounting refuse in words: no provider is enabled and no OAuth client or vault key is configured in this deployment.",
+			"LIVE. The provider catalogue and the caller's connections (v_my_connections), the OAuth consent, token refresh and the provider webhook. No provider ships enabled, so a consent is refused in words until an operator enables one with its OAuth client; browsing and mounting refuse in words.",
 	},
 	scheduling: {
 		domain: "scheduling",

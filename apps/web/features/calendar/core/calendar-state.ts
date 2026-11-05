@@ -7,14 +7,28 @@ import {
 	DEFAULT_PPH,
 	MONTH_WEEKS_DEFAULT,
 } from "@projective/ui/calendar";
-import type { CalendarViewMode, CalendarZoomMode } from "@projective/ui/calendar";
+import type {
+	CalendarViewMode,
+	CalendarZoomMode,
+	EventPopoverAnchor,
+	EventPopoverState,
+} from "@projective/ui/calendar";
 import { PX_PER_DAY_DEFAULT } from "@projective/ui/gantt";
-import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
+import type {
+	CalendarEvent,
+	CalendarInspectMode,
+	EntryClass,
+	EntryReminder,
+	SchedulePage,
+} from "@projective/types/scheduling";
+import { entryClassOf } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import {
+	contextDrawerOpen,
 	contextPanelDocked,
 	contextPanelInflow,
 } from "@web/features/shell/core/context-panel-state.ts";
+import { withEventParam } from "./event-deep-link.ts";
 import { eventStack } from "./event-view.ts";
 
 /**
@@ -233,8 +247,12 @@ export const calendarQuery = signal("");
  */
 export const hiddenSources = signal<readonly string[]>([]);
 
-/** Event kinds the reader has switched off (deadlines, sessions, …). Same deny-list reasoning. */
-export const hiddenKinds = signal<readonly CalendarEventKind[]>([]);
+/**
+ * Which of Event · Reminder the reader has switched off. Same deny-list reasoning. The filter speaks
+ * the two a person thinks in, not the nine a row stores: a `general` entry is either, depending on
+ * whether it has a length, so a kind could not answer "only my reminders" (`entryClassOf`).
+ */
+export const hiddenClasses = signal<readonly EntryClass[]>([]);
 
 /** Toggle one member of a deny list, returning the new list. */
 function toggle<T>(list: readonly T[], key: T): readonly T[] {
@@ -258,58 +276,45 @@ export function sourceIsVisible(slug: string): boolean {
 	return !hiddenSources.value.includes(slug);
 }
 
-/** Show/hide one event kind. */
-export function toggleKind(kind: CalendarEventKind): void {
-	hiddenKinds.value = toggle(hiddenKinds.value, kind);
-}
-
 /**
- * Narrow to ONE kind, or clear when it is already the only one shown.
+ * Narrow to ONE class, or clear when it is already the only one shown.
  *
- * The lane's quick row and the header's checkboxes are two entry points onto ONE axis — the same
- * `hiddenKinds` deny list — rather than two competing filters, which is how `/messages` ended up
+ * The lane's quick row and the filter's Event type facet are two entry points onto ONE axis — the same
+ * `hiddenClasses` deny list — rather than two competing filters, which is how `/messages` ended up
  * with two Starred controls 160px apart that behaved differently. The row is single-select because
  * the shared lane chrome names each toggle "Show {label} only", and a control whose accessible name
  * says `only` must actually mean it.
  */
-export function showOnlyKind(
-	kind: CalendarEventKind,
-	present: readonly CalendarEventKind[],
-): void {
-	const others = present.filter((k) => k !== kind);
-	const hidden = hiddenKinds.value;
-	const alreadySolo = others.length === hidden.length && others.every((k) => hidden.includes(k));
-	hiddenKinds.value = alreadySolo ? [] : others;
+export function showOnlyClass(entry: EntryClass, present: readonly EntryClass[]): void {
+	const others = present.filter((c) => c !== entry);
+	const hidden = hiddenClasses.value;
+	const alreadySolo = others.length === hidden.length && others.every((c) => hidden.includes(c));
+	hiddenClasses.value = alreadySolo ? [] : others;
 }
 
-/** The one kind currently shown alone, or `null` when several are. */
-export function soleVisibleKind(
-	present: readonly CalendarEventKind[],
-): CalendarEventKind | null {
-	const visible = present.filter((k) => !hiddenKinds.value.includes(k));
+/** The one class currently shown alone, or `null` when both are. */
+export function soleVisibleClass(present: readonly EntryClass[]): EntryClass | null {
+	const visible = present.filter((c) => !hiddenClasses.value.includes(c));
 	return visible.length === 1 ? visible[0] : null;
 }
 
 /**
- * Toggle one kind in the lane filter's Event type facet, read the `/projects` way: no chip pressed
- * means every kind is shown, and pressing chips narrows to exactly the pressed set. Written onto the
- * same {@link hiddenKinds} deny list, so the quick row and this facet stay one axis.
+ * Toggle one class in the lane filter's Event type facet, read the `/projects` way: no chip pressed
+ * means both are shown, and pressing a chip narrows to it. Written onto the same {@link hiddenClasses}
+ * deny list, so the quick row and this facet stay one axis.
  */
-export function toggleShownKind(
-	kind: CalendarEventKind,
-	present: readonly CalendarEventKind[],
-): void {
-	const shown = shownKinds(present);
-	const next = shown.includes(kind) ? shown.filter((k) => k !== kind) : [...shown, kind];
-	hiddenKinds.value = next.length === 0 || next.length === present.length
+export function toggleShownClass(entry: EntryClass, present: readonly EntryClass[]): void {
+	const shown = shownClasses(present);
+	const next = shown.includes(entry) ? shown.filter((c) => c !== entry) : [...shown, entry];
+	hiddenClasses.value = next.length === 0 || next.length === present.length
 		? []
-		: present.filter((k) => !next.includes(k));
+		: present.filter((c) => !next.includes(c));
 }
 
-/** The kinds the Event type facet shows as pressed — none while nothing is narrowed. */
-export function shownKinds(present: readonly CalendarEventKind[]): CalendarEventKind[] {
-	const hidden = hiddenKinds.value;
-	return hidden.length === 0 ? [] : present.filter((k) => !hidden.includes(k));
+/** The classes the Event type facet shows as pressed — none while nothing is narrowed. */
+export function shownClasses(present: readonly EntryClass[]): EntryClass[] {
+	const hidden = hiddenClasses.value;
+	return hidden.length === 0 ? [] : present.filter((c) => !hidden.includes(c));
 }
 
 /**
@@ -370,7 +375,7 @@ export const PRESET_OPTIONS: readonly { value: CalendarPreset; label: string }[]
 
 /** How many filter facets are narrowing — the Filter trigger's count. */
 export function activeFilterCount(): number {
-	return Number(hiddenSources.value.length > 0) + Number(hiddenKinds.value.length > 0) +
+	return Number(hiddenSources.value.length > 0) + Number(hiddenClasses.value.length > 0) +
 		Number(shownOwners.value.length > 0) + Number(dateRange.value !== null);
 }
 
@@ -382,7 +387,7 @@ export function filtersEngaged(): boolean {
 /** Clear every filter facet. The search and the display preset are their own controls and stay. */
 export function resetFilters(): void {
 	hiddenSources.value = [];
-	hiddenKinds.value = [];
+	hiddenClasses.value = [];
 	shownOwners.value = [];
 	dateRange.value = null;
 }
@@ -400,13 +405,13 @@ export function resetFilters(): void {
  */
 export function visibleEvents(events: readonly CalendarEvent[]): CalendarEvent[] {
 	const q = calendarQuery.value.trim().toLowerCase();
-	const kinds = hiddenKinds.value;
+	const classes = hiddenClasses.value;
 	const sources = hiddenSources.value;
 	const owners = shownOwners.value;
 	const range = dateRange.value;
 	const preset = calendarPreset.value;
 	return events.filter((e) => {
-		if (kinds.includes(e.kind)) return false;
+		if (classes.includes(entryClassOf(e))) return false;
 		if (preset === "availability" && e.kind !== "availability") return false;
 		if (preset === "events" && e.kind === "availability") return false;
 		if (preset === "holidays" && e.kind !== "holiday") return false;
@@ -434,11 +439,10 @@ export function sourcesOnPage(events: readonly CalendarEvent[]): string[] {
 	return seen;
 }
 
-/** Every event kind present on the page, in first-seen order. */
-export function kindsOnPage(events: readonly CalendarEvent[]): CalendarEventKind[] {
-	const seen: CalendarEventKind[] = [];
-	for (const e of events) if (!seen.includes(e.kind)) seen.push(e.kind);
-	return seen;
+/** Which of Event · Reminder are on the page, Event first — the quick row's and the facet's options. */
+export function classesOnPage(events: readonly CalendarEvent[]): EntryClass[] {
+	const present = new Set(events.map(entryClassOf));
+	return (["event", "reminder"] as const).filter((c) => present.has(c));
 }
 // #endregion
 
@@ -470,31 +474,73 @@ function pulse(target: typeof gridSpotlight, id: string): void {
 export const panelTab = signal<"event" | "month">("month");
 
 /**
+ * How a picked entry opens: the reader's setting, or the Dev Context Switcher's override of it.
+ * Published by the body, which holds the page, for the lane to read.
+ */
+export const calendarInspectMode = signal<CalendarInspectMode>("panel");
+
+/**
+ * The popover a pick opens where the grid's own cannot: a lane row, a Month card. The grid's `directOpen`
+ * covers the views that paint their own (`CalendarProps.directOpen`), and the body mounts one layer for
+ * the rest, so a popover reads the same wherever the pick came from.
+ */
+export const inspectPopover = signal<EventPopoverState | null>(null);
+
+/** Keep `?event=` on the entry in the inspector, so a reload or a pasted address lands on it. */
+function writeEventParam(id: string | null): void {
+	const loc = globalThis.location;
+	if (loc) history.replaceState(history.state, "", withEventParam(loc.pathname, loc.search, id));
+}
+
+/**
+ * Show an entry in the inspector: docked in the right panel from 1280px, and below that in the panel's
+ * drawer. A drawer leaves the grid in view, where the event modal it replaces covered all of it.
+ */
+export function inspectInPanel(event: CalendarEvent): void {
+	selectedEventId.value = event.id;
+	panelTab.value = "event";
+	writeEventParam(event.id);
+	if (contextPanelInflow()) contextPanelDocked.value = true;
+	else contextDrawerOpen.value = true;
+}
+
+/**
  * Pick an entry, from either view, and show it in the OTHER one.
  *
  * A pick in the list moves the grid onto the entry and flashes it there; a pick on the grid scrolls
  * the list to its row and flashes that. Neither view's scroll is otherwise driven by the other. The
- * details then open where there is room for them: the docked right panel from 1280px, the event modal
- * below it, where the panel would only arrive as a drawer over the grid the reader just used.
+ * details then open as the reader asked: in the inspector, or with `popover` on and something to anchor
+ * to, in the compact popover. A pick with no anchor has no popover to point from, so it docks.
  */
-export function selectEvent(event: CalendarEvent, from: "grid" | "list"): void {
+export function selectEvent(
+	event: CalendarEvent,
+	from: "grid" | "list",
+	anchor?: EventPopoverAnchor | null,
+): void {
 	selectedEventId.value = event.id;
+	writeEventParam(event.id);
 	if (from === "list") {
 		calendarFocus.value = event.start;
 		pulse(gridSpotlight, event.id);
 	} else {
 		pulse(laneSpotlight, event.id);
 	}
-	if (contextPanelInflow()) {
-		panelTab.value = "event";
-		contextPanelDocked.value = true;
+	if (anchor && calendarInspectMode.peek() === "popover") {
+		inspectPopover.value = { kind: "event", event, anchor };
 	} else {
-		openEventModal(event.id);
+		inspectInPanel(event);
 	}
 }
 
-/** Open an entry in the event modal (`.evm__panel`), where reading turns into editing. */
+/** Let go of the picked entry, and take it off the address. */
+export function deselectEvent(): void {
+	selectedEventId.value = null;
+	writeEventParam(null);
+}
+
+/** Open an entry in the event modal (`.evm__panel`), for what the inspector has no room for. */
 export function openEventModal(id: string): void {
+	contextDrawerOpen.value = false;
 	eventStack.open("event", id, { mode: "view" });
 }
 
@@ -507,6 +553,24 @@ export const removeRequest = signal<string | null>(null);
 /** Ask the body to take an entry off the calendar. */
 export function requestRemove(id: string): void {
 	removeRequest.value = id;
+}
+
+/** An in-place edit from the right panel, for the body to write: the same handshake. */
+export const updateRequest = signal<CalendarEvent | null>(null);
+
+/** Ask the body to save an entry the inspector changed. */
+export function requestUpdate(next: CalendarEvent): void {
+	updateRequest.value = next;
+}
+
+/** The reader's own alerts changing on an entry in the right panel: the same handshake. */
+export const remindersRequest = signal<
+	{ event: CalendarEvent; reminders: EntryReminder[] | null } | null
+>(null);
+
+/** Ask the body to save the reader's alerts for an entry. `null` follows their default. */
+export function requestReminders(event: CalendarEvent, reminders: EntryReminder[] | null): void {
+	remindersRequest.value = { event, reminders };
 }
 // #endregion
 

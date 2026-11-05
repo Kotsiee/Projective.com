@@ -1,20 +1,20 @@
 import type { JSX } from "preact";
-import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
+import { calendarTime } from "@projective/ui/calendar";
 import { DatePicker, type DateValue } from "@projective/ui/fields";
 import { LaneFilterChoices, LaneFilterFacet, LaneFilterIcons } from "@projective/ui/navigation";
 import type { CalendarEvent } from "@projective/types/scheduling";
-import { integrationLabel } from "@projective/types/scheduling";
+import { ENTRY_CLASS_PLURAL, integrationLabel } from "@projective/types/scheduling";
 import { ProviderMark } from "./provider-marks.tsx";
 import {
+	classesOnPage,
 	dateRange,
 	hiddenSources,
-	kindsOnPage,
 	ownersOnPage,
-	shownKinds,
+	shownClasses,
 	shownOwners,
 	sourcesOnPage,
 	toggleOwner,
-	toggleShownKind,
+	toggleShownClass,
 	toggleSource,
 } from "../core/calendar-state.ts";
 
@@ -45,7 +45,7 @@ function zonedDay(d: Date, tz: string): number {
  */
 export function CalendarFilterFacets(props: CalendarFilterFacetsProps): JSX.Element {
 	const { events, tz } = props;
-	const kinds = kindsOnPage(events);
+	const classes = classesOnPage(events);
 	const owners = ownersOnPage(events);
 	const sources = sourcesOnPage(events);
 	const range = dateRange.value;
@@ -56,13 +56,13 @@ export function CalendarFilterFacets(props: CalendarFilterFacetsProps): JSX.Elem
 
 	return (
 		<>
-			{kinds.length > 1
+			{classes.length > 1
 				? (
 					<LaneFilterChoices
 						label="Event type"
-						options={kinds.map((k) => ({ value: k, label: CALENDAR_KIND_LABEL[k] }))}
-						active={shownKinds(kinds)}
-						onToggle={(k) => toggleShownKind(k, kinds)}
+						options={classes.map((c) => ({ value: c, label: ENTRY_CLASS_PLURAL[c] }))}
+						active={shownClasses(classes)}
+						onToggle={(c) => toggleShownClass(c, classes)}
 					/>
 				)
 				: null}

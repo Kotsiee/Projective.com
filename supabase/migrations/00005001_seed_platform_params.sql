@@ -151,6 +151,26 @@ VALUES (
         'discovery_call_proposal_ttl_hours',
         '72'::jsonb,
         'Hours a proposed (unanswered) discovery call stays live before it is swept to expired.'
+    ),
+    (
+        'session_review_hold_days',
+        '7'::jsonb,
+        'Days after a sitting with no attendance record ends before an unanswered review opens an operator case (Decision #383, ruling R6).'
+    ),
+    (
+        'presence_retention_days',
+        '395'::jsonb,
+        'Days a room''s join and leave records are kept when no dispute touches them (Decision #383, ruling R8, pending counsel).'
+    ),
+    (
+        'presence_unmatched_retention_days',
+        '30'::jsonb,
+        'Days a room record is kept for a participant with no Projective account behind them (finance-model.md §17).'
+    ),
+    (
+        'room_mint_max_attempts',
+        '5'::jsonb,
+        'How many times a meeting room is tried at its provider before the host is told to connect again or add a link.'
     ) ON CONFLICT (key) DO NOTHING;
 
 -- from 20260724111000

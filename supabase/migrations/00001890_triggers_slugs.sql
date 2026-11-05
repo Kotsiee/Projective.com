@@ -61,6 +61,12 @@ CREATE TRIGGER trg_articles_slug
     BEFORE INSERT OR UPDATE ON catalogue.articles
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('art');
 
+-- A room's address: what a join goes through, so a provider's link never leaves the server early.
+DROP TRIGGER IF EXISTS trg_rooms_slug ON scheduling.rooms;
+CREATE TRIGGER trg_rooms_slug
+    BEFORE INSERT OR UPDATE ON scheduling.rooms
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('rom');
+
 -- An availability preset's address. save_availability_preset and the seed never supply one.
 DROP TRIGGER IF EXISTS trg_availability_presets_slug ON scheduling.availability_presets;
 CREATE TRIGGER trg_availability_presets_slug

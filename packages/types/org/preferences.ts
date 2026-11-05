@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_LOCALE, PLATFORM_BASE_CURRENCY } from "../finance/fx.ts";
+import { CalendarInspectMode, EntryRemindersSchema } from "../scheduling/reminders.ts";
 
 /**
  * org.user_preferences — the Zod SSOT for per-user preferences, including the additive i18n /
@@ -144,7 +145,7 @@ export const ToggleableShortcutId = z.enum([
 export type ToggleableShortcutId = z.infer<typeof ToggleableShortcutId>;
 
 /**
- * The keys the platform keeps in `org.user_preferences.ui_settings`, spelled as stored. Both optional:
+ * The keys the platform keeps in `org.user_preferences.ui_settings`, spelled as stored. All optional:
  * an absent key means its default. Strict, so a patch cannot write a key nothing reads; a protected
  * or unknown shortcut id is refused here, at the trust boundary.
  */
@@ -154,11 +155,24 @@ export const UiSettingsSchema = z.object({
 	/** The shortcuts switched off (default none). */
 	disabled_shortcuts: z.array(ToggleableShortcutId).max(ToggleableShortcutId.options.length)
 		.optional(),
+	/** How a picked calendar entry opens (default `panel`). */
+	calendar_inspect_mode: CalendarInspectMode.optional(),
+	/**
+	 * The alerts every calendar entry gets unless overridden. `[]` is none; absent is the default
+	 * (`DEFAULT_ENTRY_REMINDERS`). `scheduling.fn_event_alerts` reads this key.
+	 */
+	calendar_reminders: EntryRemindersSchema.optional(),
 }).strict();
 export type UiSettings = z.infer<typeof UiSettingsSchema>;
 
-/** {@link UiSettings} with every default applied — the shape a reader acts on. */
-export const ResolvedUiSettingsSchema = UiSettingsSchema.required();
+/**
+ * The keyboard half of {@link UiSettings} with every default applied — the half the `pj.a11y` cookie
+ * mirrors. The calendar keys resolve apart (`resolveCalendarPrefs`), on the page that reads them.
+ */
+export const ResolvedUiSettingsSchema = UiSettingsSchema.pick({
+	show_tooltip_shortcuts: true,
+	disabled_shortcuts: true,
+}).required();
 export type ResolvedUiSettings = z.infer<typeof ResolvedUiSettingsSchema>;
 
 /** What an untouched `ui_settings` (`'{}'`) behaves as. */

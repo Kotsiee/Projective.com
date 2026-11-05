@@ -128,6 +128,15 @@ export function previewWorkspace(
 	now: number,
 ): SessionWorkspace {
 	if (!state || state === "auto") return ws;
+	if (state === "no_room") return { ...ws, roomWanted: ws.role === "host" ? ws.next ?? null : null };
+	if (state === "held_for_review") {
+		const sitting = ws.claimable ?? ws.next ?? null;
+		return {
+			...ws,
+			reviewable: ws.role === "attendee" ? sitting : null,
+			funding: ws.funding ? { ...ws.funding, state: "in_review", nextAction: "none" } : ws.funding,
+		};
+	}
 	if (state === "seat_full") {
 		return { ...ws, cohorts: ws.cohorts.map((c) => ({ ...c, seats: seatCount(c.seats.total, c.seats.total) })) };
 	}
@@ -138,7 +147,9 @@ export function previewWorkspace(
 		return {
 			...ws,
 			next: next ? { ...next, startsAt, endsAt, phase: "live" } : next,
-			join: ws.join ? { ...ws.join, state: "open", opensAt: startsAt, closesAt: endsAt } : ws.join,
+			join: ws.join
+				? { ...ws.join, state: "open", opensAt: startsAt, closesAt: endsAt, url: "/meet/rom-preview" }
+				: ws.join,
 			funding: ws.funding ? { ...ws.funding, state: "in_progress", nextAction: "none" } : ws.funding,
 		};
 	}
@@ -177,6 +188,8 @@ export function emptyWorkspace(detail: ProjectDetail, kind: "normal" | "group"):
 		proposal: null,
 		presetEnded: false,
 		claimable: null,
+		reviewable: null,
+		roomWanted: null,
 		disputes: [],
 	};
 }
@@ -257,6 +270,8 @@ export interface NormalSessionData {
 	counter: SessionCounter;
 	/** The other party in the 1-1 (the client for a provider viewer, else the provider). */
 	party: ProjectParty;
+	/** The room's address while it is open. */
+	joinHref: string | null;
 }
 
 /** The 1-1 panel's data, from the workspace (and the dev booking-status override). */
@@ -278,7 +293,7 @@ export function normalSessionView(
 	const counter: SessionCounter = next
 		? { empty: false, index: next.index, total: next.total, label: `Session ${next.index} of ${next.total}` }
 		: { empty: true, index: 0, total: 0, label: ws.presetEnded ? "All sessions done" : "Nothing scheduled yet" };
-	return { upcoming, counter, party: detail.client ?? detail.owner };
+	return { upcoming, counter, party: detail.client ?? detail.owner, joinHref: ws.join?.url ?? null };
 }
 // #endregion
 
@@ -311,6 +326,8 @@ export interface GroupSessionData {
 	vote: SessionVote | null;
 	/** Whether every sitting has ended (unlocks the 1-1 continuation). */
 	presetEnded: boolean;
+	/** The room's address while it is open. */
+	joinHref: string | null;
 }
 
 /**
@@ -330,6 +347,7 @@ export function groupSessionView(ws: SessionWorkspace, seam: DevSeamState | null
 		})),
 		vote: ws.vote,
 		presetEnded: ws.presetEnded,
+		joinHref: ws.join?.url ?? null,
 	};
 }
 // #endregion

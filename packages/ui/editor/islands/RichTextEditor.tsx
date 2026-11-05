@@ -89,6 +89,8 @@ export interface RichTextEditorProps {
 	 * parent's content box, so a drag cannot push the page into horizontal overflow.
 	 */
 	enableHorizontalResize?: boolean;
+	/** Put the caret at the end of the document once the editor is up (an in-place edit's swap). */
+	autoFocus?: boolean;
 	/** Accessible label for the editing region. */
 	"aria-label"?: string;
 	/** Stable id for the editing region (label association). */
@@ -231,6 +233,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		minHeight,
 		maxHeight,
 		enableHorizontalResize = false,
+		autoFocus = false,
 		id,
 		class: className,
 		"aria-label": ariaLabel,
@@ -310,7 +313,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		 * spend it on `focus()` at mount, so the intent survives the wait instead of being dropped.
 		 * Removed as soon as Quill is up, since from then on the real editor handles its own focus.
 		 */
-		let focusWhenReady = false;
+		let focusWhenReady = autoFocus;
 		const onEarlyPointer = () => {
 			if (!quillRef.current) focusWhenReady = true;
 		};
@@ -350,6 +353,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 			toolbarEl.removeAttribute("aria-disabled");
 			// A click that landed while the box was still loading is honoured rather than swallowed.
 			if (focusWhenReady) editor.focus();
+			if (autoFocus) editor.setSelection(editor.getLength(), 0);
 
 			editor.on("text-change", () => {
 				const current = quillRef.current;

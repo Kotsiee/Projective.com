@@ -23,6 +23,26 @@ export function eventsForRange(
 	return dailyOccurrences(range, tz).map((occurrence) => ({ ...mint(occurrence), title }));
 }
 
+/**
+ * The list's rows: a series once, on the occurrence that matters, which is the one picked, else its
+ * next, else its last. Every other entry is its own row. Sorted by start.
+ */
+export function listRows(
+	events: readonly CalendarEvent[],
+	now: number,
+	picked: string | null,
+): CalendarEvent[] {
+	const rows = new Map<string, CalendarEvent>();
+	for (const event of [...events].sort((a, b) => a.start - b.start)) {
+		const key = event.recurrenceParentId ?? event.id;
+		const held = rows.get(key);
+		if (!held || event.id === picked || (held.id !== picked && held.end <= now)) {
+			rows.set(key, event);
+		}
+	}
+	return [...rows.values()].sort((a, b) => a.start - b.start);
+}
+
 /** The range the full modal opens a daily selection on: its first occurrence. */
 export function firstOccurrence(range: CalendarRange, tz: string): CalendarRange {
 	return dailyOccurrences(range, tz)[0];

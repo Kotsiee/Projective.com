@@ -885,13 +885,16 @@ CREATE TABLE projects.session_events (
 	attendee_join_url text,
 
 	-- The conferencing room behind the URLs, as the provider names it — what a presence webhook carries
-	-- to find this sitting (`projects.record_presence`). Same vocabulary as
+	-- to find this sitting (`scheduling.record_presence`). Same vocabulary as
 	-- `scheduling.events.meeting_provider`. NULL for a room nothing reports presence from (a custom
 	-- link), where the 15-minute rule cannot be judged and is not.
 	meeting_provider text,
 	provider_meeting_id text,
 
 	status projects.session_event_status NOT NULL DEFAULT 'scheduled'::projects.session_event_status,
+	-- When the attendees of a sitting with no evidence were asked whether it happened, so they are
+	-- asked once (Decision #383, ruling R6).
+	review_asked_at timestamp with time zone,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 	updated_at timestamp with time zone NOT NULL DEFAULT now(),
 
@@ -919,8 +922,8 @@ CREATE TABLE projects.session_events (
 );
 
 -- Presence evidence, one row per person per sitting: `joined_at` is the FIRST join, `left_at` the
--- latest leave (NULL while they are in the room). Written only by definers — `record_presence` from
--- the provider's signed webhook (`webhook`), `record_host_attendance` when the host vouches for
+-- latest leave (NULL while they are in the room), kept in line with scheduling.presence_events by
+-- fn_sync_attendance_row from the provider's signed webhook (`webhook`), `record_host_attendance` when the host vouches for
 -- someone the room could not report (`host`). A dispute audits these rows, so no client verb writes
 -- them (00002520).
 CREATE TABLE projects.session_attendance (
@@ -938,7 +941,11 @@ CREATE TABLE projects.session_attendance (
     CONSTRAINT session_attendance_event_id_fkey FOREIGN KEY (session_event_id) REFERENCES projects.session_events (id),
     CONSTRAINT session_attendance_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id),
     CONSTRAINT uq_session_attendance_event_user UNIQUE (session_event_id, user_id),
-    CONSTRAINT ck_session_attendance_source CHECK (source IN ('webhook', 'host')),
+    -- `webhook_email`: known only by the email a provider reported, which is weaker evidence.
+    -- `confirmed`: the attendee answered that a sitting with no evidence happened (Decision #383, R6).
+    CONSTRAINT ck_session_attendance_source CHECK (
+        source IN ('webhook', 'webhook_email', 'host', 'confirmed')
+    ),
     CONSTRAINT ck_session_attendance_span CHECK (left_at IS NULL OR left_at >= joined_at)
 );
 

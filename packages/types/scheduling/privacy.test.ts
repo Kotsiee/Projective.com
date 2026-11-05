@@ -203,6 +203,14 @@ Deno.test("isEventParty — the host is a party, and so is anyone the server sea
 	assert(isEventParty(seated, SIGNED_IN));
 });
 
+Deno.test("isEventParty — the owner of a connected calendar's entry keeps what it says", () => {
+	const own = session({ connected: true, description: "Notes", recurrenceRule: "FREQ=DAILY" });
+	assert(isEventParty(own, SIGNED_IN));
+	assertEquals(redactEventForViewer(own, SIGNED_IN).description, "Notes");
+	assertEquals(redactEventForViewer(own, SIGNED_IN).recurrenceRule, "FREQ=DAILY");
+	assertFalse(isEventParty(own, GUEST));
+});
+
 Deno.test("isEventParty — a signed-in stranger is not a party to somebody else's event", () => {
 	// The case the `masked` gate could never express: authenticated, but nobody on this roster.
 	assertFalse(isEventParty(session(), SIGNED_IN));

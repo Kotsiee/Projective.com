@@ -95,7 +95,7 @@ export interface RawWorkspace {
 		state: SessionJoin["state"] | "not_party";
 		opens_at?: string;
 		closes_at?: string;
-		url?: string | null;
+		room_slug?: string | null;
 	} | null;
 	reschedule: {
 		sitting_title: string;
@@ -109,6 +109,10 @@ export interface RawWorkspace {
 	disputes?: RawDisputeSummary[] | null;
 	/** The sitting the attendee may report now. */
 	claimable_sitting_id?: string | null;
+	/** The sitting with no evidence the attendee has been asked about (Decision #383, ruling R6). */
+	reviewable_sitting_id?: string | null;
+	/** The next sitting with no room on the way, for its host. */
+	room_wanted_sitting_id?: string | null;
 }
 
 /** One entry of `get_session_workspace.disputes`. */
@@ -312,7 +316,7 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 			state: j.state,
 			opensAt: isoOf(j.opens_at) ?? j.opens_at,
 			closesAt: isoOf(j.closes_at) ?? j.closes_at,
-			url: j.state === "open" && j.url ? j.url : null,
+			url: j.state === "open" && j.room_slug ? `/meet/${j.room_slug}` : null,
 		}
 		: null;
 
@@ -350,6 +354,12 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 		presetEnded: sittings.length > 0 && sittings.every((s) => s.phase === "ended" || s.phase === "cancelled"),
 		claimable: raw.role === "attendee" && raw.claimable_sitting_id
 			? sittings.find((s) => s.id === raw.claimable_sitting_id) ?? null
+			: null,
+		reviewable: raw.role === "attendee" && raw.reviewable_sitting_id
+			? sittings.find((s) => s.id === raw.reviewable_sitting_id) ?? null
+			: null,
+		roomWanted: raw.role === "host" && raw.room_wanted_sitting_id
+			? sittings.find((s) => s.id === raw.room_wanted_sitting_id) ?? null
 			: null,
 		disputes: disputesOf(raw.disputes),
 	};

@@ -175,9 +175,9 @@ export async function fetchOwnerAvailability(
 				.eq("schedule_id", schedule.id)
 				.order("weekday")
 				.order("start_minute"),
-			client.schema("scheduling").from("call_settings")
+			// The door, not the table: the client grant stops at what a visitor may read (audit S-16).
+			client.schema("scheduling").rpc("get_own_call_settings", { p_schedule: schedule.id })
 				.select(CALL_COLUMNS)
-				.eq("schedule_id", schedule.id)
 				.maybeSingle(),
 		]);
 		if (rules.error || call.error) return undefined;

@@ -441,6 +441,7 @@ ALTER TABLE scheduling.availability_occurrences ENABLE ROW LEVEL SECURITY;
 -- connection_sync_state, webhook_*, plugin_grants) get NO policy — default-deny, service-role only.
 
 ALTER TABLE integrations.providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.consent_states ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integrations.user_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integrations.connection_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integrations.connection_sync_state ENABLE ROW LEVEL SECURITY;
@@ -481,6 +482,8 @@ ALTER TABLE scheduling.proposal_votes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.event_history ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE scheduling.event_reminders ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE scheduling.event_attachments ENABLE ROW LEVEL SECURITY;
 
 
@@ -498,6 +501,17 @@ ALTER TABLE scheduling.discovery_calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduling.call_attendance ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.call_audit ENABLE ROW LEVEL SECURITY;
+
+-- Definer-only: no policy and no client grant. A party reaches a room through its doors.
+ALTER TABLE scheduling.rooms ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.room_registrants ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.presence_events ENABLE ROW LEVEL SECURITY;
+
+-- Definer-only as well: the service-role job is the only reader and writer.
+ALTER TABLE scheduling.event_mirrors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduling.connected_event_details ENABLE ROW LEVEL SECURITY;
 
 
 -- --- from 20260724110000_analytics_event_substrate.sql ---

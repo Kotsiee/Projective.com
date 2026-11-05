@@ -209,6 +209,37 @@ function every(interval: number, unit: string): string {
 	return `Every ${interval} ${unit}s`;
 }
 
+/** The master of the series `event` is an occurrence of, `event` itself if it stands alone. */
+export function seriesMasterOf(
+	event: CalendarEvent,
+	events: readonly CalendarEvent[],
+): CalendarEvent | null {
+	if (!event.recurrenceParentId) return event;
+	return events.find((e) => e.id === event.recurrenceParentId) ?? null;
+}
+
+/**
+ * How an entry repeats, as one sentence, or `null` when it does not. A connected calendar's rule was not
+ * written by the composer: its UNTIL can carry a time, and a "second Tuesday" has no date to name.
+ */
+export function repeatSentence(
+	event: CalendarEvent,
+	events: readonly CalendarEvent[],
+	tz: string,
+): string | null {
+	const rule = seriesMasterOf(event, events)?.recurrenceRule;
+	if (!rule) return null;
+	const draft = /BYDAY=[+-]?\d/i.test(rule)
+		? null
+		: fromRRule(rule.replace(/(UNTIL=\d{8})T\d{6}Z?/i, "$1"));
+	if (draft) return describeRepeat(draft, repeatAnchor(event.start, tz));
+	return /^FREQ=YEARLY/i.test(rule)
+		? "Every year"
+		: /^FREQ=MONTHLY/i.test(rule)
+		? "Every month"
+		: "Repeats";
+}
+
 /** The rule as one sentence: "Every other week on Monday and Thursday, 10 times". */
 export function describeRepeat(d: RepeatDraft, a: RepeatAnchor): string {
 	let head: string;

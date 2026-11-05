@@ -8,6 +8,8 @@ import {
 	presetOf,
 	repeatAnchor,
 	type RepeatDraft,
+	repeatSentence,
+	seriesMasterOf,
 	seriesOf,
 	templateDraft,
 	toRRule,
@@ -26,6 +28,26 @@ const event: CalendarEvent = {
 	start: START,
 	end: START + HOUR / 4,
 };
+
+Deno.test("an entry's repeat reads aloud, from its own rule or its master's", () => {
+	const said = (recurrenceRule: string) => repeatSentence({ ...event, recurrenceRule }, [], TZ);
+	assertEquals(said("FREQ=DAILY"), "Every day");
+	assertEquals(said("FREQ=DAILY;COUNT=10"), "Every day, 10 times");
+	assertEquals(said("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"), "Every weekday");
+	assertEquals(said("FREQ=WEEKLY;WKST=SU;INTERVAL=2;BYDAY=MO"), "Every other week on Monday");
+	assertEquals(said("FREQ=DAILY;UNTIL=20261231T235959Z"), "Every day, until Dec 31, 2026");
+	assertEquals(said("FREQ=MONTHLY;BYMONTHDAY=25"), "Monthly on the 25th");
+	assertEquals(said("FREQ=MONTHLY;BYDAY=2TU"), "Every month", "no date to name");
+	assertEquals(said("FREQ=YEARLY"), "Every year");
+
+	const master = { ...event, id: "master", recurrenceRule: "FREQ=DAILY" };
+	const later = { ...event, id: "later", recurrenceParentId: "master" };
+	assertEquals(repeatSentence(later, [master, later], TZ), "Every day");
+	assertEquals(seriesMasterOf(later, [master, later]), master);
+	assertEquals(seriesMasterOf(later, [later]), null);
+	assertEquals(repeatSentence(later, [later], TZ), null);
+	assertEquals(repeatSentence(event, [event], TZ), null);
+});
 
 Deno.test("the anchor reads DTSTART's civil date in the zone", () => {
 	assertEquals(A, { date: "2026-03-25", isoDay: 3, monthDay: 25 });

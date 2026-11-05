@@ -7,6 +7,9 @@ import type {
 	CalendarEventStatus,
 	CalendarPage,
 	CalendarParams,
+	CalendarPrefs,
+	CallSide,
+	CallStatus,
 	EventAttendee,
 	EventHistoryEntry,
 	EventMeeting,
@@ -18,15 +21,22 @@ import type {
 	SchedulingTarget,
 } from "@projective/types/scheduling";
 import {
+	callMovesFor,
 	eligibleVoterCount,
+	EntryRemindersSchema,
 	MEETING_PROVIDER_LABEL,
+	normalizeReminders,
+	RESCHEDULE_LOCKOUT_MS,
 	RESCHEDULE_PROPOSALS_MAX,
 	rescheduleModeFor,
+	resolveCalendarPrefs,
 	settleVote,
+	takesReminders,
 	voteResolvesAt,
 } from "@projective/types/scheduling";
 import type { AssetItem } from "@projective/types/files";
 import { countsAsOnboarded } from "@projective/types/projects";
+import { serverEnv } from "../../core/env.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
@@ -47,6 +57,7 @@ import {
 	stageWindows,
 } from "../projects/live-board.ts";
 import { ITEM_COLUMNS, type ItemRow, toAssetItem } from "../files/asset-row.ts";
+import { applyOwnDetails, type OwnEventDetails } from "./connected-details.ts";
 import { emptyReschedule } from "./coordination-plan.ts";
 import {
 	ENTITY_CALENDAR_CONCURRENCY,
@@ -122,6 +133,8 @@ const EVENT_COLUMNS = [
 	"capacity",
 	"href",
 	"source_connection_id",
+	"source_session_event_id",
+	"external_sync",
 	"recurrence_rule",
 	"recurrence_parent_id",
 	"created_by",
@@ -158,6 +171,8 @@ interface EventRow {
 	capacity: number | null;
 	href: string | null;
 	source_connection_id: string | null;
+	source_session_event_id: string | null;
+	external_sync: boolean;
 	recurrence_rule: string | null;
 	recurrence_parent_id: string | null;
 	created_by: string | null;
@@ -221,14 +236,14 @@ interface CallRow {
 	host_user_id: string;
 	requester_user_id: string;
 	call_type: "courtesy" | "paid";
-	status: string;
+	status: CallStatus;
 	proposed_start: string;
 	proposed_end: string;
+	proposed_by: CallSide;
 	confirmed_start: string | null;
 	confirmed_end: string | null;
 	agenda: string | null;
 	provider_slug: string | null;
-	meeting_url: string | null;
 	event_id: string | null;
 	fee_amount_minor: number | string | null;
 	fee_currency: string | null;
@@ -274,6 +289,36 @@ const DEADLINE_EXCLUDED_TICKETS = new Set(["cancelled", "reported_hidden"]);
 
 /** Call statuses that no longer occupy anybody's time. */
 const LIVE_CALL_STATUSES = ["proposed", "confirmed", "completed", "no_show"];
+
+/** Where a room is joined from: Projective's own address, never the provider's link. */
+function meetPath(slug: string): string {
+	return `${serverEnv().appUrl}/meet/${slug}`;
+}
+
+/** The addresses of these confirmed calls' rooms, for the caller who is a party to them. */
+async function callRoomSlugs(
+	actor: ReadActor & { accessToken: string },
+	callIds: readonly string[],
+): Promise<Map<string, string>> {
+	if (callIds.length === 0) return new Map();
+	const { data, error } = await db(actor, "scheduling").rpc("get_call_rooms", { p_call_ids: [...callIds] });
+	if (error) throw new Error(`scheduling.get_call_rooms read failed: ${error.message}`);
+	return new Map(
+		((data ?? []) as { call_id: string; room_slug: string }[]).map((r) => [r.call_id, r.room_slug]),
+	);
+}
+
+const CALL_ROW_COLUMNS =
+	"id, host_user_id, requester_user_id, call_type, status, proposed_start, proposed_end, proposed_by, confirmed_start, confirmed_end, agenda, provider_slug, event_id, fee_amount_minor, fee_currency, proposed_at, responded_at, confirmed_at";
+
+/** `session_presence_minutes`, read as the viewer: the window a no-show opens after. */
+async function presenceMs(actor: ReadActor & { accessToken: string }): Promise<number> {
+	const { data, error } = await db(actor, "security").from("platform_params")
+		.select("value").eq("key", "session_presence_minutes").maybeSingle();
+	if (error) throw new Error(`security.platform_params read failed: ${error.message}`);
+	const minutes = Number(data?.value);
+	return (Number.isFinite(minutes) && minutes > 0 ? minutes : 15) * 60_000;
+}
 
 /** The providers a meeting room can be recorded as — `MeetingProvider`'s members. */
 const MEETING_PROVIDERS: ReadonlySet<string> = new Set(Object.keys(MEETING_PROVIDER_LABEL));
@@ -342,17 +387,29 @@ async function mergeRooms(
 			db(actor, "scheduling").rpc("get_event_rooms", { p_event_ids: chunk })
 		),
 	);
-	const rooms = new Map<string, { meeting_url: string | null; meeting_passcode: string | null; meeting_details: string | null }>();
+	const rooms = new Map<string, {
+		meeting_url: string | null;
+		meeting_passcode: string | null;
+		meeting_details: string | null;
+		room_slug: string | null;
+	}>();
 	for (const answer of answers) {
 		if (answer.error) throw new Error(`scheduling.get_event_rooms failed: ${answer.error.message}`);
-		for (const r of (answer.data ?? []) as Array<{ event_id: string; meeting_url: string | null; meeting_passcode: string | null; meeting_details: string | null }>) {
+		for (const r of (answer.data ?? []) as Array<{ event_id: string; meeting_url: string | null; meeting_passcode: string | null; meeting_details: string | null; room_slug: string | null }>) {
 			rooms.set(r.event_id, r);
 		}
 	}
 	return rows.map((row) => {
 		const room = rooms.get(row.id);
 		return room
-			? { ...row, meeting_url: room.meeting_url, meeting_passcode: room.meeting_passcode, meeting_details: room.meeting_details }
+			// A minted room is reached through its address, so the provider's link stays on the server
+			// until the moment of joining. A link a host pasted themselves is shown as they wrote it.
+			? {
+				...row,
+				meeting_url: room.room_slug ? meetPath(room.room_slug) : room.meeting_url,
+				meeting_passcode: room.meeting_passcode,
+				meeting_details: room.meeting_details,
+			}
 			: { ...row, meeting_url: null, meeting_passcode: null, meeting_details: null };
 	});
 }
@@ -455,6 +512,86 @@ async function readOwnSchedule(
 		.maybeSingle();
 	if (error) throw new Error(`scheduling.schedules read failed: ${error.message}`);
 	return (data as OwnSchedule | null) ?? null;
+}
+
+/**
+ * Fold in what the reader's own connected calendars say (Decision #387). Those rows hold no `title`, so
+ * every other reader still sees Busy, and the door answers the schedule's owner alone. Only a mirrored
+ * row is masked with no `sources`. A secondary read: a failure costs the page its details, never the page.
+ */
+async function withOwnDetails(
+	actor: ReadActor & { accessToken: string },
+	events: readonly CalendarEvent[],
+): Promise<CalendarEvent[]> {
+	const ids = events.filter((e) => e.masked && !e.sources).map((e) => e.id);
+	if (ids.length === 0) return [...events];
+	const answers = await Promise.all(
+		chunks(ids, ROOM_CHUNK).map((chunk) =>
+			db(actor, "scheduling").rpc("get_own_event_details", { p_event_ids: chunk })
+		),
+	);
+	const details = new Map<string, OwnEventDetails>();
+	for (const answer of answers) {
+		if (answer.error) console.error("[scheduling:calendar] details not read", answer.error.message);
+		for (const row of (answer.data ?? []) as OwnEventDetails[]) details.set(row.event_id, row);
+	}
+	return applyOwnDetails(events, details);
+}
+
+/** Whether the reader holds this entry, as `scheduling.fn_event_holders` decides it. */
+function holdsEntry(event: CalendarEvent, row: EventRow, actorId: string): boolean {
+	if (!event.roster) return row.created_by === actorId;
+	const seat = event.roster.find((a) => a.isViewer);
+	return seat?.response === "accepted" || seat?.response === "tentative";
+}
+
+/**
+ * Fold in the reader's own alerts (Decision #388). Only an entry that takes them and that they hold
+ * gets the field, because its absence is what withholds the control: an unread override must not read
+ * as "follows your default", so a failed read leaves the field off and costs the page nothing else.
+ */
+async function withOwnReminders(
+	actor: ReadActor & { accessToken: string },
+	events: readonly CalendarEvent[],
+	rows: ReadonlyMap<string, EventRow>,
+): Promise<CalendarEvent[]> {
+	const ids = events.filter((e) => {
+		const row = rows.get(e.id);
+		return !!row && takesReminders(row) && holdsEntry(e, row, actor.userId);
+	}).map((e) => e.id);
+	try {
+		const own = await readIn<{ event_id: string; reminders: unknown }>(
+			ids,
+			(chunk) =>
+				db(actor, "scheduling").from("event_reminders").select("event_id, reminders")
+					.eq("user_id", actor.userId).in("event_id", chunk).order("event_id"),
+			"scheduling.event_reminders",
+		);
+		const lists = new Map(
+			own.map((r) => [r.event_id, EntryRemindersSchema.safeParse(r.reminders)]),
+		);
+		const taken = new Set(ids);
+		return events.map((e) => {
+			if (!taken.has(e.id)) return e;
+			const list = lists.get(e.id);
+			return { ...e, reminders: list?.success ? normalizeReminders(list.data) : null };
+		});
+	} catch (err) {
+		console.error("[scheduling:calendar] reminders not read", err);
+		return [...events];
+	}
+}
+
+/**
+ * The reader's calendar preferences. A secondary read: a failure costs the page their settings, and
+ * the defaults it falls back to are the ones a person who has set nothing gets anyway.
+ */
+async function readCalendarPrefs(
+	actor: ReadActor & { accessToken: string },
+): Promise<CalendarPrefs> {
+	const { data } = await db(actor, "org").from("user_preferences").select("ui_settings")
+		.eq("user_id", actor.userId).maybeSingle();
+	return resolveCalendarPrefs((data as { ui_settings: unknown } | null)?.ui_settings);
 }
 
 /**
@@ -793,6 +930,7 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	};
 	if (row.status) event.status = row.status;
 	if (row.all_day) event.allDay = true;
+	if (row.external_sync === false) event.externalSync = false;
 	if (row.is_masked) event.masked = true;
 	if (row.accent) event.accent = clamp(row.accent, 60);
 	if (row.location) event.location = clamp(row.location, 160);
@@ -939,7 +1077,11 @@ export async function readEntries(
 	const rows = await readEventsByIds(actor, ids);
 	if (rows.length === 0) return [];
 	const tz = await readerZone(actor, await readOwnSchedule(actor));
-	return (await assemble(actor, rows, tz, now)).events;
+	return withOwnReminders(
+		actor,
+		(await assemble(actor, rows, tz, now)).events,
+		new Map(rows.map((row) => [row.id, row])),
+	);
 }
 
 /** Assemble event rows into settled projections — the one path every calendar event takes. */
@@ -1193,9 +1335,10 @@ export async function readPersonalCalendar(
 	const projects = db(actor, "projects");
 
 	const own = await readOwnSchedule(actor);
-	const [tz, involvement, rules, blackouts, ownEvents, seatRows, createdEvents, calls] =
+	const [tz, prefs, involvement, rules, blackouts, ownEvents, seatRows, createdEvents, calls] =
 		await Promise.all([
 			readerZone(actor, own),
+			readCalendarPrefs(actor),
 			readInvolvement(actor),
 			own
 				? sched.from("availability_rules")
@@ -1226,9 +1369,7 @@ export async function readPersonalCalendar(
 					.not("project_id", "is", null).gte("ends_at", from).lte("starts_at", to)
 					.order("starts_at").order("id"), "scheduling.events"),
 			sched.from("discovery_calls")
-				.select(
-					"id, host_user_id, requester_user_id, call_type, status, proposed_start, proposed_end, confirmed_start, confirmed_end, agenda, provider_slug, meeting_url, event_id, fee_amount_minor, fee_currency, proposed_at, responded_at, confirmed_at",
-				)
+				.select(CALL_ROW_COLUMNS)
 				.or(`host_user_id.eq.${actor.userId},requester_user_id.eq.${actor.userId}`)
 				.in("status", LIVE_CALL_STATUSES)
 				.gte("proposed_end", from)
@@ -1341,15 +1482,23 @@ export async function readPersonalCalendar(
 			(await assemble(actor, await readEventsByIds(actor, [...rows.keys()]), tz, now)).events;
 	}
 
-	const events: CalendarEvent[] = settledMeetings.map((event) => {
+	const reminded = await withOwnReminders(
+		actor,
+		await withOwnDetails(actor, settledMeetings),
+		rows,
+	);
+	const events: CalendarEvent[] = reminded.map((event) => {
 		const row = rows.get(event.id);
 		const ref = row?.project_id ? projectRefs.get(row.project_id) : undefined;
 		if (!ref) return event;
 		// The engagement is the answer to "why is this in my week", on the strapline the block renders.
+		// This page is an aggregate like an entity's, so a row says which engagement it belongs to:
+		// that is what tells a surface a host cannot edit it here (`entryEditable`).
 		return {
 			...event,
 			meta: clamp(event.meta ? `${ref.title} · ${event.meta}` : ref.title, 160),
 			href: event.href ?? clamp(`/projects/${ref.slug}/calendar`, 400),
+			projectId: ref.slug,
 		};
 	});
 
@@ -1411,7 +1560,11 @@ export async function readPersonalCalendar(
 		});
 	}
 
-	for (const call of callRows) events.push(callEvent(call, actor.userId, parties));
+	const callPresenceMs = callRows.length > 0 ? await presenceMs(actor) : 0;
+	const callRooms = await callRoomSlugs(actor, callRows.map((c) => c.id));
+	for (const call of callRows) {
+		events.push(callEvent(call, actor.userId, parties, now, callPresenceMs, callRooms.get(call.id)));
+	}
 
 	events.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
 	return {
@@ -1450,6 +1603,7 @@ export async function readPersonalCalendar(
 				})),
 		},
 		events,
+		prefs,
 		now,
 	};
 }
@@ -1462,7 +1616,14 @@ export async function readPersonalCalendar(
  * call is moved and confirmed through its own request/confirm flow, not through event reschedule
  * rounds, so offering those controls here would offer something that reaches nothing.
  */
-function callEvent(call: CallRow, actorId: string, parties: Map<string, PartyRow>): CalendarEvent {
+function callEvent(
+	call: CallRow,
+	actorId: string,
+	parties: Map<string, PartyRow>,
+	now: number,
+	noShowAfterMs: number,
+	roomSlug: string | undefined,
+): CalendarEvent {
 	const start = ms(call.confirmed_start) ?? ms(call.proposed_start) ?? 0;
 	const end = ms(call.confirmed_end) ?? ms(call.proposed_end) ?? start;
 	const iAmHost = call.host_user_id === actorId;
@@ -1501,6 +1662,18 @@ function callEvent(call: CallRow, actorId: string, parties: Map<string, PartyRow
 			160,
 		),
 		callId: clamp(call.id, 120),
+		callStatus: call.status,
+		callSide: iAmHost ? "host" : "requester",
+		callMoves: callMovesFor({
+			status: call.status,
+			side: iAmHost ? "host" : "requester",
+			proposedBy: call.proposed_by,
+			start,
+			end,
+			now,
+			lockoutMs: RESCHEDULE_LOCKOUT_MS,
+			presenceMs: noShowAfterMs,
+		}),
 		callType: call.call_type,
 		organiser: partyOf(parties.get(call.host_user_id)),
 		viewerIsHost: iAmHost,
@@ -1515,14 +1688,14 @@ function callEvent(call: CallRow, actorId: string, parties: Map<string, PartyRow
 			event.meeting = {
 				provider,
 				providerLabel: MEETING_PROVIDER_LABEL[provider],
-				joinUrl: call.meeting_url ? clamp(call.meeting_url, 600) : null,
+				joinUrl: roomSlug ? clamp(meetPath(roomSlug), 600) : null,
 				passcode: null,
 				details: null,
-				pending: !call.meeting_url,
+				pending: !roomSlug,
 			};
 		}
 	}
-	if (call.meeting_url) event.meetingUrl = clamp(call.meeting_url, 600);
+	if (roomSlug) event.meetingUrl = clamp(meetPath(roomSlug), 600);
 	if (call.call_type === "paid" && call.fee_amount_minor !== null && call.fee_currency) {
 		const fee = Number(call.fee_amount_minor);
 		if (Number.isFinite(fee) && fee >= 0) {
@@ -1531,6 +1704,26 @@ function callEvent(call: CallRow, actorId: string, parties: Map<string, PartyRow
 		}
 	}
 	return event;
+}
+// #endregion
+
+/**
+ * One discovery call as its party's calendar draws it, re-read after a move. `null` once it has left
+ * the calendar (declined, cancelled, expired), and for anybody who is not a party: RLS answers that.
+ */
+export async function readCallEvent(
+	actor: ReadActor & { accessToken: string },
+	callId: string,
+	now: number,
+): Promise<CalendarEvent | null> {
+	const { data, error } = await db(actor, "scheduling").from("discovery_calls")
+		.select(CALL_ROW_COLUMNS).eq("id", callId).in("status", LIVE_CALL_STATUSES).maybeSingle();
+	if (error) throw new Error(`scheduling.discovery_calls read failed: ${error.message}`);
+	if (!data) return null;
+	const call = data as unknown as CallRow;
+	const parties = await fetchParties(actor, [call.host_user_id, call.requester_user_id]);
+	const rooms = await callRoomSlugs(actor, [call.id]);
+	return callEvent(call, actor.userId, parties, now, await presenceMs(actor), rooms.get(call.id));
 }
 // #endregion
 

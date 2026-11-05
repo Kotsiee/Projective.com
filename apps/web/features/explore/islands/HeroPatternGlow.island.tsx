@@ -51,7 +51,7 @@ function lightStamp(ink: string): HTMLCanvasElement {
 }
 
 /**
- * HeroPatternGlow — the Explore gateway's underlay light (Decisions #351, #382): an `aria-hidden`,
+ * HeroPatternGlow — the Explore gateway's underlay light (Decisions #351, #384): an `aria-hidden`,
  * pointer-inert pair of canvases BENEATH the hero's stencil. Each fine-pointer move adds a
  * `--primary-mid` particle that lives {@link GLOW_LIFE_MS}, contracting from a wide wash to a point
  * while it fades, and dimmed a little by its distance from where the pointer is now

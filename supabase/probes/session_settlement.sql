@@ -318,6 +318,10 @@ BEGIN
      WHERE id = v_s3;
     INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, source)
     VALUES (v_s3, current_setting('probe.buyer')::uuid, now() - interval '100 hours 44 minutes', 'webhook');
+    -- Evidence for sittings 1 and 2: one with none no longer releases on negative consent (ruling C5 (a)).
+    INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, source)
+    SELECT se.id, current_setting('probe.buyer')::uuid, se.start_time, 'confirmed'
+      FROM projects.session_events se WHERE se.id IN (v_s1, v_s2);
     INSERT INTO finance.disputes (escrow_id, opened_by_profile, reason)
     VALUES (v_e2, current_setting('probe.buyer')::uuid, 'no_show: probe');
 
@@ -472,6 +476,8 @@ BEGIN
     VALUES (v_stage, v_m, v_payer, CASE WHEN v_team IS NULL THEN 'freelancer' ELSE 'team' END::assignment_type,
             COALESCE(v_team, (SELECT owner_user_id FROM projects.projects WHERE id = v_project)), 5000, 'USD', 'held')
     RETURNING id INTO v_e;
+    INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, source)
+    SELECT se.id, v_payer, se.start_time, 'confirmed' FROM projects.session_events se WHERE se.cohort_id = v_cohort;
     PERFORM finance.auto_release_session_escrow(now());
     IF (SELECT status FROM finance.escrows WHERE id = v_e) <> 'released'
        OR (SELECT status FROM projects.cohort_memberships WHERE id = v_m) <> 'completed' THEN

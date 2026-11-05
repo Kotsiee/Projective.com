@@ -185,13 +185,13 @@ const SHARING: LegalClause = {
 				],
 				[
 					"Calendars you connect",
-					"A Google or Microsoft (Outlook) calendar you link: read for your busy times, and written with the bookings you make",
+					"A Google or Microsoft (Outlook) calendar you link: read for your events, of which we keep each one's title, times, repeat pattern, location, notes and meeting link, never its guests. Only you can see those details, and disconnecting removes them. If you turn on publishing, your Projective events are also written to a separate Projective calendar there, with a title, a time and a Projective join address",
 					"Only if you connect one",
 				],
 				[
 					"Meeting providers",
-					"Attendance records for a booked session",
-					"When the session runs through a connected provider such as Zoom",
+					"Attendance records for a meeting. A host's Zoom account also gets your name and email the first time you join their room, so that your link is your own",
+					"When the meeting runs through a connected provider such as Zoom, Google Meet or Microsoft Teams",
 				],
 			],
 		},
@@ -239,6 +239,10 @@ const RETENTION: LegalClause = {
 				[
 					"Dispute evidence and report snapshots",
 					"Kept unchanged for as long as the case and its record are needed",
+				],
+				[
+					"Attendance records for a session or call",
+					"13 months, or as long as a dispute about it needs them",
 				],
 				["A refused under-13 sign-up", "Nothing is kept"],
 			],

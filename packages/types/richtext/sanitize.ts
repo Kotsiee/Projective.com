@@ -62,13 +62,18 @@ const DROPPED_WITH_CONTENT: ReadonlySet<string> = new Set([
  */
 const MARKUP = /<!--[\s\S]*?-->|<[!?][^>]*>|<(\/?)([a-zA-Z][^\s/>]*)(?:[^>"']|"[^"]*"|'[^']*')*>/g;
 
-/** A well-formed character reference, which is already text and is kept so `&nbsp;` stays a space. */
+/** A well-formed character reference, which is already text and is kept. */
 const BARE_AMPERSAND = /&(?!(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});)/gi;
 // #endregion
 
-/** Text as text: no character in it can open a tag or end one. */
+/**
+ * Text as text: no character in it can open a tag or end one. A `&nbsp;` becomes a space, because
+ * Quill's `getSemanticHTML` writes EVERY space as one, and a paragraph with no break opportunity splits
+ * its words wherever the column ends. Here, on the read and the write alike, so a saved row reads right.
+ */
 function escapeText(text: string): string {
-	return text.replace(BARE_AMPERSAND, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	return text.replace(BARE_AMPERSAND, "&amp;").replace(/&nbsp;/gi, " ").replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
 }
 
 /**

@@ -50,6 +50,13 @@ one per surface, generated from the Zod-validated content sources in
 storage object this seed creates. Community activity (helpfulness votes, feedback ideas) IS
 world-shaped demo data and belongs here, in `gen/world.ts`, authored by existing personas.
 
+## What a reset loses
+
+`deno task db:reset` rebuilds everything, so an account you signed up with locally is gone, along with
+its connected accounts, sealed tokens and synced busy time. The provider keeps its grant: connect again.
+A connection that published also keeps its Projective calendar at the provider, and connecting again
+makes a second one, because the rebuilt database no longer knows the first, so delete the old one there.
+
 ## Sign-in
 
 Every account uses the password **`password123`** at `<username>@projective.dev`. The access-token

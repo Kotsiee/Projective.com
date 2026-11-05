@@ -1,6 +1,8 @@
 import {
+	type DisputeAudit,
 	type DisputeCase,
 	type DisputeRole,
+	type DisputeRoomEntry,
 	type DisputeStatus,
 	type DisputeSummary,
 	formatMoney,
@@ -52,6 +54,39 @@ export function disputeStatusSeverity(
 		case "resolved_split":
 			return "secondary";
 	}
+}
+
+const ROOM_PARTY: Record<DisputeRoomEntry["party"], string> = {
+	host: "Provider",
+	claimant: "Attendee",
+	other: "Someone else",
+};
+
+const ROOM_ACTION: Record<DisputeRoomEntry["action"], string> = {
+	joined: "joined",
+	left: "left",
+	waiting: "was waiting to be let in",
+	join_click: "pressed join in Projective",
+};
+
+/** What the room's log shows, in one sentence. The audit's own figures, recomputed by nobody here. */
+export function disputeAuditLine(audit: DisputeAudit): string {
+	if (!audit.tracked) return "The room reported no attendance, so the logs could not settle the claim.";
+	const minutes = (seconds: number) => `${Math.round(seconds / 60)} min`;
+	const reconnects = audit.reconnects === 1
+		? ", 1 reconnect"
+		: audit.reconnects
+		? `, ${audit.reconnects} reconnects`
+		: "";
+	return `Time in the room: provider ${minutes(audit.hostSeconds)} (${audit.hostPresencePct}%), attendee ${
+		minutes(audit.claimantSeconds)
+	} (${audit.claimantPresencePct}%)${reconnects}. A claim is dismissed only when both were in the room for more than ${audit.thresholdPct}% of the session.`;
+}
+
+/** One log line as a reader sees it. */
+export function disputeRoomLine(entry: DisputeRoomEntry): string {
+	const who = `${ROOM_PARTY[entry.party]} ${ROOM_ACTION[entry.action]}`;
+	return entry.weak ? `${who} (known by email only)` : who;
 }
 
 /** A deadline or instant in UTC, zone named — the same string on the server and the hydrated island. */
@@ -230,8 +265,12 @@ export function devDisputeCase(
 			tracked: false,
 			hostPresencePct: 0,
 			claimantPresencePct: 0,
+			hostSeconds: 0,
+			claimantSeconds: 0,
+			reconnects: 0,
 			thresholdPct: 80,
 			auditedAt: summary.openedAt,
+			timeline: [],
 		},
 		amountMinor: amount,
 		currency,

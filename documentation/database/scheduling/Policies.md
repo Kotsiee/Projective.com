@@ -18,7 +18,10 @@ Availability presets, their rules and bands are **managers only**, and compiled 
 read by the owner side (Decision #217, below). Neither is visitor-readable.
 
 A discovery call is **never** readable by `anon` — there is deliberately no visitor policy on
-`discovery_calls`, `call_attendance`, or `call_audit`. Since 2026-09-28 the same holds for
+`discovery_calls`, `call_attendance`, or `call_audit`. `rooms`, `room_registrants`, `presence_events`,
+`event_mirrors` and `connected_event_details` have no client grant at all. `discovery_calls.meeting_url` and
+`meeting_external_id` are withheld at the column level, and a party joins through `/meet`. Since
+2026-09-28 the same holds for
 `scheduling.events` and `blackout_dates` rows: a visitor's whole view of a schedule is two definer
 reads (`get_free_busy`, `get_public_blackouts`) and four visitor-readable configuration tables
 (`schedules`, `availability_rules`, `call_settings`, `call_platforms`).
@@ -165,6 +168,15 @@ cannot be deleted, and cannot have its `starts_at`, `ends_at`, `status` or `sche
 seated on it is unaffected, and the service role — which moves a rostered event through
 `close_reschedule_round` after the negotiation's rules have run — is not refused.
 
+## 🔔 A person's alerts (`00000022`; Decision #388)
+
+`event_reminders` has the one client write path among an event's tables, `Own event reminders`:
+`user_id = auth.uid ()` on both halves, and `WITH CHECK` also requires
+`scheduling.fn_can_see_event_coordination (event_id)`, so a person sets alerts only on an entry they
+are a party to. Nobody else's rule is at stake, only when one person hears about their own meeting, so
+any seat may write it where the event row itself is the host's. `SELECT, INSERT, UPDATE, DELETE` to
+`authenticated` (`00002520`).
+
 ## 🤝 Event coordination (`00000022`)
 
 `event_attendees`, `event_reschedules`, `reschedule_proposals`, `proposal_votes`, `event_history`
@@ -201,9 +213,9 @@ projection (`isEventParty` / `redactEventForViewer` in `packages/types/schedulin
 `call_settings` is visitor-readable on purpose: someone must be able to learn **whether** calls are
 offered, **how long** they run, and **what a paid one costs** before signing in, and the slot grid
 needs the buffers, notice and horizon it is drawn under. The anti-abuse settings do not need to be
-public, and since 2026-10-30 (audit S-16) a visitor cannot read them.
+public, and a visitor or a signed-in stranger cannot read them (audit S-16).
 
-**Column-level grant for `anon` (`00002520`, the `events` technique).** A guest may SELECT
+**Column-level grant for `anon` and `authenticated` (`00002520`, the `events` technique).** A caller may SELECT
 `schedule_id`, `accepts_calls`, `courtesy_enabled`, `courtesy_duration_minutes`, `paid_enabled`,
 `paid_duration_minutes`, `fee_amount_minor`, `fee_currency`, `buffer_before_minutes`,
 `buffer_after_minutes`, `min_notice_minutes`, `max_advance_days` and `agenda_required`, and nothing
@@ -213,12 +225,8 @@ for no more. `readPublicCallOffer` selects `PUBLIC_CALL_COLUMNS` (`live-owner-av
 the slot grid selects its four guards (`live-slots.ts`). The booking gate is a definer and reads the
 whole row.
 
-> ⚠️ **Still open: a signed-in non-party still reads the caps.** `authenticated` keeps table-level
-> SELECT, because the owner's Availability editor reads the whole row as its owner
-> (`live-owner-availability.ts`, `CALL_COLUMNS`), and the `View call settings` row policy admits any
-> signed-in viewer of a published schedule. Closing it needs an owner read door for the editor (a
-> definer that returns the full row to `fn_can_manage_schedule` only), then the same column grant for
-> `authenticated`.
+The owner's Availability editor reads the whole row through `scheduling.get_own_call_settings`, a
+definer behind `fn_can_manage_schedule`.
 
 ### Why there is no insert or update policy, and why the rules are in a trigger
 
@@ -306,10 +314,6 @@ discovery-call UPDATE path (all above), plus the rostered-event guard, the resch
 confirmed slot, the midnight band edge, the provider-local courtesy week and the timezone check
 ([Functions.md](Functions.md)). **Not** closed, and recorded rather than silently accepted:
 
-- **`call_settings` caps and cooldowns are readable by any signed-in user** through PostgREST
-  (above). The `anon` half was closed on 2026-10-30 (S-16).
-- **No discovery-call management RPCs** — confirm / decline / reschedule / cancel / complete /
-  no-show have no client write path (above).
 - **One attendee can fill a round's twelve-slot cap** with unapproved slots and lock the host out
   of proposing ([Functions.md](Functions.md) §9).
 - **A reschedule proposal has no maximum length** ([Functions.md](Functions.md) §9).

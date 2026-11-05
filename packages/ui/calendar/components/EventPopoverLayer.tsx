@@ -57,9 +57,9 @@ import type {
 } from "../core/types.ts";
 import {
 	CALENDAR_KIND_PATH,
-	CALENDAR_KIND_SINGULAR,
 	CALENDAR_KIND_STROKE,
 	CALENDAR_KIND_VIEWBOX,
+	calendarEntryName,
 	effectiveAccent,
 	maskLabel,
 	onAccentFor,
@@ -344,7 +344,7 @@ function EventPane({ event, tz, hour12, onOpenEvent }: EventPaneProps): JSX.Elem
 				: <p class="cal-pop__title">{heading}</p>}
 
 			<p class="cal-pop__kindname">
-				{masked ? maskLabel(event.status) : CALENDAR_KIND_SINGULAR[shownKind]}
+				{masked ? maskLabel(event.status) : calendarEntryName(event)}
 			</p>
 
 			<div class="cal-pop__facts">
@@ -767,7 +767,7 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 		: detailEvent
 		? detailEvent.masked
 			? maskLabel(detailEvent.status)
-			: `${CALENDAR_KIND_SINGULAR[detailEvent.kind]}: ${detailEvent.title}`
+			: `${calendarEntryName(detailEvent)}: ${detailEvent.title}`
 		: "Event";
 
 	/*
@@ -1031,7 +1031,12 @@ export function EventPopoverLayer(props: EventPopoverLayerProps): JSX.Element | 
 										event={detailEvent}
 										tz={tz}
 										hour12={hour12}
-										onOpenEvent={onOpenEvent}
+										onOpenEvent={onOpenEvent
+											? (ev) => {
+												close();
+												onOpenEvent(ev);
+											}
+											: undefined}
 									/>
 								)
 								: null}

@@ -15,7 +15,7 @@ import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks"
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { MoneyView } from "@projective/ui/display/money";
 import { MetaLine } from "@projective/ui/display";
-import { Button, InlineEdit, InputText, SelectButton } from "@projective/ui/fields";
+import { Button, InputText, SelectButton } from "@projective/ui/fields";
 import { ConfirmPopup, Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { styleVars } from "@ui/core/style.ts";
@@ -23,16 +23,20 @@ import { calendarTime } from "@projective/ui/calendar";
 import type {
 	CalendarEvent,
 	CalendarEventKind,
+	EntryReminder,
 	RescheduleAction,
 	RsvpResponse,
 	SchedulingTarget,
 } from "@projective/types/scheduling";
-import { createRefusal, eventLiveStatus } from "@projective/types/scheduling";
+import { type CallActionInput, createRefusal, eventLiveStatus } from "@projective/types/scheduling";
+import { readDevSeam } from "@web/utils/dev-seam.ts";
+import { callViewOf } from "../core/call-view.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import type { EventAccess } from "../core/event-access.ts";
 import { checkJoinLink } from "../core/meeting-link.ts";
 import {
 	durationLabel,
+	entryEditable,
 	eventFingerprint,
 	type EventMode,
 	eventMoney,
@@ -42,10 +46,12 @@ import {
 	isEventPartyView,
 	panelFor,
 	rescheduleView,
+	timesLabel,
 	viewerSeat,
 } from "../core/event-view.ts";
 import { EventLiveBadge, EventMetaBar } from "./EventMetaBar.tsx";
 import { EventAttendeePanel } from "./EventAttendeePanel.tsx";
+import { CallActionBar, CallProposePanel } from "./CallActionBar.tsx";
 import { EventDetailsTab } from "./tabs/EventDetailsTab.tsx";
 import { EventRescheduleTab } from "./tabs/EventRescheduleTab.tsx";
 import { EventAttachmentsTab } from "./tabs/EventAttachmentsTab.tsx";
@@ -61,6 +67,10 @@ import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
  * passed in: a create form with a raw `<select>`, and a five-row fact list. That shape had nowhere to
  * put the things an occurrence actually needs — an agenda, a room, a participant list with answers, a
  * ballot, a ledger, an audit log — so it grew none of them.
+ *
+ * **Editing is composing.** On `/calendar` reading an entry belongs to the inspector, so what opens here
+ * for its host is the composer again: the same title field, the same Event · Reminder switch, the same
+ * two columns and the same occurrence line in the footer, with the entry's other tabs beside Details.
  *
  * Three region rules govern the layout, mirroring the ticket modal it is a sibling of:
  *
@@ -110,8 +120,11 @@ export interface EventModalProps {
 	 * very same reader — never trusting a bare id.
 	 */
 	target: Omit<SchedulingTarget, "eventId">;
-	/** The entry kinds this surface offers while composing. */
-	createKinds: { value: CalendarEventKind; label: string }[];
+	/**
+	 * The entry kinds this surface offers while composing. `instant` marks a kind that is a moment:
+	 * choosing it collapses the range to its start, and leaving it restores the length.
+	 */
+	createKinds: { value: CalendarEventKind; label: string; instant?: boolean }[];
 	/** Whether a bookable slot can be booked from here. */
 	canBook: boolean;
 	onClose: () => void;
@@ -132,11 +145,18 @@ export interface EventModalProps {
 	onBook: (event: CalendarEvent) => void;
 	/** A server write returned a refreshed event — replace it on the grid. */
 	onServerUpdate: (event: CalendarEvent) => void;
+	/** A server write took this event off the calendar (a declined or cancelled call). */
+	onServerRemove?: (id: string) => void;
 	/**
 	 * Take the entry off the calendar. Offered to its host only, past or not — an entry the reader
 	 * created stays theirs to remove after it has happened. Absent -> no Delete is drawn.
 	 */
 	onDelete?: (event: CalendarEvent) => void;
+	/**
+	 * Save the viewer's own alerts for an entry that exists. Not staged: like an RSVP they are the
+	 * person's rather than the entry's, in any seat. Absent -> this surface offers no reminders.
+	 */
+	onReminders?: (event: CalendarEvent, reminders: EntryReminder[] | null) => void;
 }
 
 const tabId = (t: EventTab) => `evm-tab-${t}`;
@@ -256,7 +276,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const nowMs = useEventClock(props.nowMs);
 
 	const dirty = eventFingerprint(event) !== baseline.value;
-	const canEdit = creating || event.viewerIsHost === true;
+	const canEdit = creating || entryEditable(event);
 	const seat = viewerSeat(event);
 	const party = isEventPartyView(event);
 	const live = eventLiveStatus(nowMs, event.start, event.end);
@@ -264,11 +284,14 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const view = rescheduleView(event, nowMs);
 	/** A new entry may not start in the past; editing an existing one is never gated by time. */
 	const pastRefusal = creating ? createRefusal(nowMs, event) : null;
-	// The field states why beside itself; here it only holds Create back.
-	const linkCheck = creating && event.meeting?.joinUrl
-		? checkJoinLink(event.meeting.joinUrl)
-		: null;
+	// The field states why beside itself; here it only holds Create and Save back.
+	const linkCheck = canEdit && event.meeting?.joinUrl ? checkJoinLink(event.meeting.joinUrl) : null;
 	const linkRefused = !!linkCheck && !linkCheck.ok;
+	const unsaveable = !event.title.trim() || linkRefused;
+
+	/** Where a discovery call stands for this viewer, and what they may do about it. */
+	const callView = callViewOf(event, readDevSeam()?.discoveryCall ?? "auto", nowMs);
+	const proposingTime = useSignal(false);
 
 	const panelKind = panelFor(activeTab);
 	const sidePanel = panelKind === "attendees" && showPanel.value && party && event.roster
@@ -288,26 +311,25 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	}
 
 	/**
-	 * Change what a new entry is. A deadline is the instant work is owed (`end === start`), so choosing
-	 * one collapses the range; leaving it restores the length the entry was opened on.
+	 * Change what an entry is. A Reminder or a deadline is a moment (`end === start`), so choosing one
+	 * collapses the range and takes its room with it, here where the reader can see that, rather than
+	 * silently on Save (`roomOf`). Leaving it restores the length and the room it was opened with.
 	 */
 	function setKind(kind: CalendarEventKind): void {
 		const { start, end } = draft.value;
 		const span = props.event.end - props.event.start || FALLBACK_SPAN_MS;
 		patch(
-			kind === "deadline"
-				? { kind, end: start }
+			props.createKinds.find((k) => k.value === kind)?.instant
+				? { kind, end: start, meeting: undefined }
 				: end === start
-				? { kind, end: start + span }
+				? { kind, end: start + span, meeting: props.event.meeting }
 				: { kind },
 		);
 	}
 
 	function commit(): void {
-		if (!canEdit) return;
-		const title = draft.value.title.trim();
-		if (creating && (!title || pastRefusal || linkRefused)) return;
-		const committed: CalendarEvent = { ...draft.value, title: title || draft.value.title };
+		if (!canEdit || unsaveable || pastRefusal) return;
+		const committed: CalendarEvent = { ...draft.value, title: draft.value.title.trim() };
 		draft.value = committed;
 		baseline.value = eventFingerprint(committed);
 		props.onSubmit(committed);
@@ -358,6 +380,22 @@ export function EventModal(props: EventModalProps): JSX.Element {
 		busy.value = false;
 		if (res.ok && res.data) applyServer(res.data.event);
 		else refusal.value = res.message ?? "That response could not be recorded.";
+	}
+
+	/** One move on a discovery call. The door judges it; a refusal comes back in its own words. */
+	async function moveCall(move: DistributiveOmit<CallActionInput, "callId">): Promise<void> {
+		if (busy.value || !event.callId) return;
+		busy.value = true;
+		refusal.value = null;
+		const res = await ScheduleService.callAction({ ...move, callId: event.callId });
+		busy.value = false;
+		if (!res.ok || !res.data) {
+			refusal.value = res.message ?? "That change could not be made.";
+			return;
+		}
+		proposingTime.value = false;
+		if (res.data.event) applyServer(res.data.event);
+		else props.onServerRemove?.(event.id);
 	}
 
 	async function negotiate(
@@ -425,9 +463,11 @@ export function EventModal(props: EventModalProps): JSX.Element {
 					{/* #region Header — identity, who is coming, and the two controls */}
 					<header class="evm__top">
 						<div class="evm__ident">
-							{creating
+							{canEdit
 								? (
 									<InputText
+										// Uncontrolled, so a Discard has to re-seed it as it does the Details form.
+										key={formRev.value}
 										class="evm__titlefield"
 										variant="bare"
 										block
@@ -438,25 +478,14 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										onValueChange={(title: string) => patch({ title })}
 									/>
 								)
-								: (
-									<h2 class="evm__title">
-										<InlineEdit
-											value={event.title}
-											editable={canEdit}
-											as="line"
-											displayAs="span"
-											maxLength={200}
-											label="Edit the event title"
-											placeholder="Untitled event"
-											onCommit={(title) => title && patch({ title })}
-										/>
-									</h2>
-								)}
+								: <h2 class="evm__title">{event.title || "Untitled event"}</h2>}
 						</div>
 
-						{creating && props.createKinds.length > 1
+						{canEdit && props.createKinds.some((k) => k.value === event.kind) &&
+								props.createKinds.length > 1
 							? (
 								<SelectButton
+									key={formRev.value}
 									class="evm__kind"
 									size="sm"
 									value={event.kind}
@@ -538,17 +567,19 @@ export function EventModal(props: EventModalProps): JSX.Element {
 					</header>
 					{/* #endregion */}
 
-					{/* #region Meta bar + tab strip */}
-					{creating ? null : (
+					{/* #region Meta bar + tab strip — a host's times are the Details tab's, as when composing */}
+					{creating || (canEdit && tabs.length < 2) ? null : (
 						<div class="evm__bar">
-							<EventMetaBar
-								event={event}
-								tz={tz}
-								hour12={hour12}
-								nowMs={nowMs}
-								canEdit={canEdit}
-								onPatch={patch}
-							/>
+							{canEdit ? null : (
+								<EventMetaBar
+									event={event}
+									tz={tz}
+									hour12={hour12}
+									nowMs={nowMs}
+									canEdit={false}
+									onPatch={patch}
+								/>
+							)}
 
 							{tabs.length > 1
 								? (
@@ -628,7 +659,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 												tz={tz}
 												hour12={hour12}
 												canEdit={canEdit}
-												when={creating
+												when={canEdit
 													? (
 														<EventMetaBar
 															event={event}
@@ -642,6 +673,12 @@ export function EventModal(props: EventModalProps): JSX.Element {
 													)
 													: undefined}
 												onPatch={patch}
+												onReminders={props.onReminders
+													? (next) => {
+														patch({ reminders: next });
+														props.onReminders?.(event, next);
+													}
+													: undefined}
 											/>
 										)
 										: null}
@@ -709,15 +746,29 @@ export function EventModal(props: EventModalProps): JSX.Element {
 					{/* #endregion */}
 
 					{/* #region Footer — how long, what it is worth, and what to do about it */}
+					{proposingTime.value && callView
+						? (
+							<CallProposePanel
+								event={event}
+								tz={tz}
+								hour12={hour12}
+								nowMs={nowMs}
+								busy={busy.value}
+								onSend={(start, end) => void moveCall({ action: "propose", start, end })}
+								onClose={() => (proposingTime.value = false)}
+							/>
+						)
+						: null}
+
 					<footer class="evm__foot">
-						{creating
+						{canEdit
 							? (
 								<div class="evm__occurrence-row">
 									<EventLiveBadge
 										startMs={event.start}
 										endMs={event.end}
 										whenLabel={`${calendarTime.fmtFullDate(event.start, tz)} · ${
-											calendarTime.fmtRange(event.start, event.end, tz, hour12)
+											timesLabel(event, tz, hour12)
 										}`}
 										nowMs={nowMs}
 									/>
@@ -725,14 +776,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										class="evm__occurrence"
 										items={[
 											calendarTime.fmtFullDate(event.start, tz),
-											{
-												text: event.allDay
-													? "All day"
-													: event.end === event.start
-													? `Due ${calendarTime.fmtTime(event.start, tz, hour12)}`
-													: calendarTime.fmtRange(event.start, event.end, tz, hour12),
-												tabular: true,
-											},
+											{ text: timesLabel(event, tz, hour12), tabular: true },
 											{
 												text: event.allDay ? "" : durationLabel(event.start, event.end) ?? "",
 												tabular: true,
@@ -742,17 +786,21 @@ export function EventModal(props: EventModalProps): JSX.Element {
 									/>
 								</div>
 							)
-							: (
+							: null}
+						{!canEdit || money
+							? (
 								<div class="evm-money">
-									<span class="evm-money__fig">
-										<span class="evm-money__k">
-											{event.allDay || durationLabel(event.start, event.end) ? "Runs for" : "Due"}
+									{canEdit ? null : (
+										<span class="evm-money__fig">
+											<span class="evm-money__k">
+												{event.allDay || durationLabel(event.start, event.end) ? "Runs for" : "Due"}
+											</span>
+											<span class="evm-money__v">
+												{event.allDay ? "All day" : durationLabel(event.start, event.end) ??
+													calendarTime.fmtTime(event.start, tz, hour12)}
+											</span>
 										</span>
-										<span class="evm-money__v">
-											{event.allDay ? "All day" : durationLabel(event.start, event.end) ??
-												calendarTime.fmtTime(event.start, tz, hour12)}
-										</span>
-									</span>
+									)}
 									{money
 										? (
 											<span class="evm-money__fig" data-role="money">
@@ -765,7 +813,8 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										)
 										: null}
 								</div>
-							)}
+							)
+							: null}
 
 						{refusal.value || pastRefusal
 							? (
@@ -773,9 +822,23 @@ export function EventModal(props: EventModalProps): JSX.Element {
 									{refusal.value ?? pastRefusal}
 								</Message>
 							)
+							: callView?.note
+							? <span class="evm__gate evm-callnote">{callView.note}</span>
 							: <span class="evm__gate evm__gate--spacer" />}
 
 						<div class="evm__footacts">
+							{callView
+								? (
+									<CallActionBar
+										view={callView}
+										busy={busy.value}
+										proposing={proposingTime.value}
+										onMove={(move) => void moveCall(move)}
+										onPropose={() => (proposingTime.value = !proposingTime.value)}
+									/>
+								)
+								: null}
+
 							{canRsvp
 								? (
 									<div
@@ -820,7 +883,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 											variant="filled"
 											severity="primary"
 											size="sm"
-											disabled={!event.title.trim() || !!pastRefusal || linkRefused}
+											disabled={unsaveable || !!pastRefusal}
 											onClick={commit}
 										>
 											Create
@@ -831,7 +894,9 @@ export function EventModal(props: EventModalProps): JSX.Element {
 								? (
 									<>
 										<Button variant="text" size="sm" onClick={discard}>Discard changes</Button>
-										<Button variant="filled" size="sm" onClick={commit}>Save changes</Button>
+										<Button variant="filled" size="sm" disabled={unsaveable} onClick={commit}>
+											Save changes
+										</Button>
 									</>
 								)
 								: null}
@@ -878,6 +943,9 @@ export function EventModal(props: EventModalProps): JSX.Element {
  * yet" is a real move the service accepts, but as a CONTROL it reads as a fourth opinion rather than
  * the withdrawal of one, and there is nowhere on a three-way group for it to sit honestly.
  */
+/** `Omit` that keeps a union a union, so each move keeps its own fields. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 const RSVP_ACTIONS: {
 	value: RsvpResponse;
 	label: string;

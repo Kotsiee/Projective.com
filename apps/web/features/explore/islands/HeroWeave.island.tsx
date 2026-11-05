@@ -8,7 +8,7 @@ import { watchFit, weavePattern, weaveTile } from "../core/weave-canvas.ts";
 const THEME_ATTRIBUTES = ["style", "data-theme", "data-contrast", "data-cvd"];
 
 /**
- * HeroWeave — the Explore headers' stencil (Decisions #351, #353, #357, #382): the strapwork tile
+ * HeroWeave — the Explore headers' stencil (Decisions #351, #353, #357, #384): the strapwork tile
  * repeated over its box in one translucent stroke, on a canvas. Static, so there is no animation loop:
  * it paints when it mounts and again only when its box, the device pixel ratio or the theme changes.
  * The ink is the computed `stroke` of `.ex-weave` (`explore.css`), so the token stays in the sheet.

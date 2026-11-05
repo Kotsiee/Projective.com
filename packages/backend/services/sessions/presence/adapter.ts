@@ -1,23 +1,46 @@
 import type { PresenceEvent } from "@projective/types/projects";
 
 /**
- * The seam between a conferencing provider's presence webhook and `projects.record_presence`
+ * The seam between a conferencing provider's presence webhook and `scheduling.record_presence`
  * (Decision #171). Each provider is one adapter: it proves a delivery is the provider's own, answers
  * the provider's endpoint handshake, and reduces the provider's payload to {@link PresenceEvent}s.
  * Nothing past the adapter knows a provider's field names, so a second provider is a second file
  * registered in `presence/mod.ts` — the route, the service and the database door do not change.
  */
 export interface PresenceAdapter {
-	provider: PresenceEvent["provider"];
-	/** The signing secret, or `undefined` while it is unset (every delivery is then refused). */
+	/** The `integrations.providers` slug, which is also the route segment. */
+	provider: string;
+	/**
+	 * The provider's global signing secret, or `undefined` while it is unset (every delivery is then
+	 * refused). A provider with {@link PresenceAdapter.channelOf} has none and answers `undefined`.
+	 */
 	secret(): string | undefined;
-	/** Whether the raw delivery carries this provider's valid signature, inside the replay tolerance. */
+	/**
+	 * Which channel a delivery claims to belong to, for a provider whose credential is per channel
+	 * (Google's `X-Goog-Channel-Token`, Graph's `clientState`): the service reads that channel's
+	 * `verification_token` and hands it to {@link PresenceAdapter.verify} as the secret. An unknown
+	 * channel is refused. Absent on a provider with one global secret.
+	 */
+	channelOf?(raw: string, headers: Headers): string | null;
+	/** A delivery cut into one part per channel, for a provider that batches several into one. */
+	split?(raw: string): string[];
+	/** Whether a verified push says its channel needs renewing now, not at its usual time. */
+	lapsed?(raw: string): boolean;
+	/** Whether the raw delivery proves it is the provider's own, inside any replay tolerance. */
 	verify(raw: string, headers: Headers, secret: string, nowMs: number): Promise<boolean>;
+	/**
+	 * The text an UNSIGNED endpoint handshake is echoed with, or `null` when the request is not one.
+	 * Graph's `validationToken` only: it is answered before any verification, as `text/plain`, and
+	 * signs nothing, so it is no oracle (providers spec §3.3).
+	 */
+	handshake?(url: URL): string | null;
 	/**
 	 * The body a provider handshake must be answered with (Zoom's URL validation), or `null` when the
 	 * delivery is an ordinary event. Only ever called on a VERIFIED delivery.
 	 */
 	challenge(body: unknown, secret: string): Promise<Record<string, string> | null>;
+	/** The account a verified delivery says removed the app (Zoom's `app_deauthorized`), or `null`. */
+	deauthorization?(body: unknown): { externalAccountId: string; deliveryId: string } | null;
 	/** The presence events in a verified delivery; empty for an event this adapter does not handle. */
 	parse(body: unknown): PresenceEvent[];
 }

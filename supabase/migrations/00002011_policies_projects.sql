@@ -487,7 +487,7 @@ SELECT TO public USING (
     );
 
 -- No client INSERT policy: attendance is evidence, written only by a SECURITY DEFINER door
--- (record_presence) that checks cohort membership and the event window.
+-- (scheduling.record_presence) that checks who the room belongs to and the event window.
 
 -- #region Seat holds, curriculum, lesson progress (Decision #171)
 -- A buyer sees their own holds; the provider sees every hold on their cohorts (what is reserved but

@@ -24,7 +24,10 @@ export function weaveTile(scale: number, width: number, ink: string): HTMLCanvas
 }
 
 /** A repeating pattern of `tile`, sized in CSS px and anchored at the canvas's top-left corner. */
-export function weavePattern(ctx: CanvasRenderingContext2D, tile: HTMLCanvasElement): CanvasPattern {
+export function weavePattern(
+	ctx: CanvasRenderingContext2D,
+	tile: HTMLCanvasElement,
+): CanvasPattern {
 	const pattern = ctx.createPattern(tile, "repeat")!;
 	pattern.setTransform(new DOMMatrix().scaleSelf(WEAVE_TILE / tile.width));
 	return pattern;

@@ -18,7 +18,7 @@ import {
 	selectForExport,
 } from "../core/calendar-export.ts";
 import { downloadExportFile } from "../core/calendar-download.ts";
-import { exportOpen, hiddenKinds, hiddenSources } from "../core/calendar-state.ts";
+import { exportOpen, hiddenSources } from "../core/calendar-state.ts";
 import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
 
 /**
@@ -97,7 +97,7 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 		if (!exportOpen.value) return;
 		const today = calendarTime.startOfDay(Date.now(), tz);
 		range.value = "all";
-		kinds.value = facets.kinds.filter((k) => !hiddenKinds.peek().includes(k));
+		kinds.value = [...facets.kinds];
 		statuses.value = [...facets.statuses];
 		sources.value = facets.sources.filter((s) => !hiddenSources.peek().includes(s));
 		organiser.value = ANYONE;

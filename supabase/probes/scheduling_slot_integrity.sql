@@ -261,12 +261,12 @@ SELECT set_config('request.jwt.claims',
 DO $$
 DECLARE n int;
 BEGIN
-    SELECT count(*) INTO n FROM scheduling.call_settings cs
-      JOIN scheduling.schedules s ON s.id = cs.schedule_id
+    SELECT count(*) INTO n FROM scheduling.schedules s
+     CROSS JOIN LATERAL scheduling.get_own_call_settings(s.id) cs
      WHERE s.owner_type = 'user' AND s.owner_id = auth.uid()
        AND cs.courtesy_max_per_week IS NOT NULL AND cs.auto_confirm IS NOT NULL;
     IF n < 1 THEN RAISE EXCEPTION 'FAIL the owner cannot read their own call settings'; END IF;
-    RAISE NOTICE 'PASS the owner still reads their whole call_settings row';
+    RAISE NOTICE 'PASS the owner reads their whole call_settings row through its door (S-16)';
 END $$;
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);

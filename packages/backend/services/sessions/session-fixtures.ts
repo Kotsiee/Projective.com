@@ -115,7 +115,7 @@ export function fixtureWorkspace(
 				state: "upcoming",
 				opens_at: new Date(Date.parse(next.starts_at) - 10 * 60_000).toISOString(),
 				closes_at: next.ends_at,
-				url: null,
+				room_slug: null,
 			}
 			: null,
 		reschedule: null,

@@ -472,6 +472,7 @@ GRANT ALL ON TABLE integrations.user_connections TO service_role;
 
 -- The token VAULT and every operational table are service-role only — no anon/authenticated grant.
 GRANT ALL ON TABLE integrations.connection_secrets TO service_role;
+GRANT ALL ON TABLE integrations.consent_states TO service_role;
 GRANT ALL ON TABLE integrations.connection_sync_state TO service_role;
 GRANT ALL ON TABLE integrations.webhook_subscriptions TO service_role;
 GRANT ALL ON TABLE integrations.webhook_deliveries TO service_role;
@@ -518,8 +519,8 @@ GRANT SELECT (
     id, schedule_id, project_id, channel_id, kind, status, title, starts_at, ends_at, all_day,
     is_masked, accent, location, description, meeting_provider, meeting_provider_label,
     meeting_pending, meta, attendee_count, capacity, href, source_connection_id, external_event_id,
-    source_session_event_id, recurrence_rule, recurrence_parent_id, created_by, created_at,
-    updated_at, archived_at
+    external_sync, source_session_event_id, recurrence_rule, recurrence_parent_id, created_by,
+    created_at, updated_at, archived_at
 ) ON TABLE scheduling.events TO authenticated;
 
 GRANT
@@ -545,6 +546,11 @@ scheduling.proposal_votes,
 scheduling.event_history,
 scheduling.event_attachments TO service_role;
 
+-- A person's own alerts: written by them under RLS (Decision #388).
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE scheduling.event_reminders TO authenticated;
+
+GRANT ALL ON TABLE scheduling.event_reminders TO service_role;
+
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 
@@ -556,12 +562,11 @@ GRANT SELECT (
     schedule_id, accepts_calls, courtesy_enabled, courtesy_duration_minutes, paid_enabled,
     paid_duration_minutes, fee_amount_minor, fee_currency, buffer_before_minutes, buffer_after_minutes,
     min_notice_minutes, max_advance_days, agenda_required
-) ON TABLE scheduling.call_settings TO anon;
+) ON TABLE scheduling.call_settings TO anon, authenticated;
 
--- The owner's Availability editor reads and writes the whole row under the "Manage call settings"
--- policy. A signed-in non-party still reads the caps through "View call settings" (Policies.md, still
--- open): closing that needs an owner read door for the editor.
-GRANT SELECT ON TABLE scheduling.call_settings TO authenticated;
+-- The owner's Availability editor reads the whole row through scheduling.get_own_call_settings
+-- (audit S-16) and writes it under the "Manage call settings" policy, so a signed-in stranger reads
+-- no more of it than a visitor does.
 
 GRANT
 INSERT,
@@ -570,7 +575,15 @@ DELETE ON TABLE scheduling.call_settings TO authenticated;
 
 -- Read-only to the client: a call is requested by scheduling.request_discovery_call; there is no
 -- client INSERT or UPDATE policy (00002015).
-GRANT SELECT ON TABLE scheduling.discovery_calls TO authenticated;
+-- Column-level, like scheduling.events: a call's room is withheld, and a party joins through /meet.
+GRANT SELECT (
+    id, host_schedule_id, host_user_id, requester_user_id, call_type, status, proposed_start,
+    proposed_end, proposed_by, confirmed_start, confirmed_end, requester_timezone, agenda,
+    service_blueprint_id, provider_slug, connection_id, event_id, fee_amount_minor, fee_currency,
+    payment_ref, escrow_id, refund_amount_minor, penalty_amount_minor, proposed_at, responded_at,
+    confirmed_at, cancelled_at, cancelled_by, cancellation_reason, is_late_cancel, completed_at,
+    no_show_party, reschedule_count, created_at, updated_at
+) ON TABLE scheduling.discovery_calls TO authenticated;
 
 GRANT SELECT ON TABLE scheduling.call_attendance TO authenticated;
 
@@ -593,6 +606,15 @@ GRANT ALL ON TABLE scheduling.discovery_calls TO service_role;
 GRANT ALL ON TABLE scheduling.call_attendance TO service_role;
 
 GRANT ALL ON TABLE scheduling.call_audit TO service_role;
+
+GRANT ALL ON TABLE scheduling.rooms TO service_role;
+
+GRANT ALL ON TABLE scheduling.room_registrants TO service_role;
+
+GRANT ALL ON TABLE scheduling.presence_events TO service_role;
+
+GRANT ALL ON TABLE scheduling.event_mirrors TO service_role;
+GRANT ALL ON TABLE scheduling.connected_event_details TO service_role;
 
 
 -- --- from 20260724110000_analytics_event_substrate.sql ---
@@ -882,7 +904,7 @@ projects.project_required_skills TO anon;
 --
 -- Evidence and money-adjacent state is definer-written only: a seat hold is placed by
 -- projects.reserve_seat (under a row lock) and converted by fn_confirm_seat, attendance by
--- record_presence / record_host_attendance, progress by complete_lesson. Cohorts, seats and sittings
+-- scheduling.record_presence / record_host_attendance, progress by complete_lesson. Cohorts, seats and sittings
 -- are written by fn_book_session_slot, fn_confirm_seat, cancel_cohort_membership and the payout sweep:
 -- the sweep releases a held escrow on a sitting's `status` and `end_time`, so an owner able to write a
 -- sitting could mark a future one completed and be paid for it, and one able to write a seat could

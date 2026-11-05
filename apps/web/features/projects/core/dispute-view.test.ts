@@ -1,9 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { DisputeCaseSchema, type DisputeSummary } from "@projective/types/finance";
+import { type DisputeAudit, DisputeCaseSchema, type DisputeSummary } from "@projective/types/finance";
 import type { SessionWorkspace } from "@projective/types/projects";
 import {
 	DEV_DISPUTE_ID,
 	devDisputeCase,
+	disputeAuditLine,
+	disputeRoomLine,
 	disputeSentence,
 	disputeStatusLabel,
 	disputeTimeLabel,
@@ -11,6 +13,43 @@ import {
 	previewDisputes,
 	visibleDisputes,
 } from "./dispute-view.ts";
+
+Deno.test("the audit line reads time in the room and names the strict threshold", () => {
+	const audit: DisputeAudit = {
+		verdict: "ambiguous",
+		presenceOutcome: "successful",
+		tracked: true,
+		hostPresencePct: 80,
+		claimantPresencePct: 96,
+		hostSeconds: 2880,
+		claimantSeconds: 3456,
+		reconnects: 2,
+		thresholdPct: 80,
+		auditedAt: "2026-10-13T11:00:00.000Z",
+		timeline: [],
+	};
+	assertEquals(
+		disputeAuditLine(audit),
+		"Time in the room: provider 48 min (80%), attendee 58 min (96%), 2 reconnects. A claim is dismissed only when both were in the room for more than 80% of the session.",
+	);
+	assertEquals(
+		disputeAuditLine({ ...audit, tracked: false }),
+		"The room reported no attendance, so the logs could not settle the claim.",
+	);
+});
+
+Deno.test("a log line names the party and flags weaker evidence", () => {
+	const at = "2026-10-13T10:00:00.000Z";
+	assertEquals(disputeRoomLine({ party: "host", action: "joined", at, weak: false }), "Provider joined");
+	assertEquals(
+		disputeRoomLine({ party: "claimant", action: "join_click", at, weak: false }),
+		"Attendee pressed join in Projective",
+	);
+	assertEquals(
+		disputeRoomLine({ party: "other", action: "left", at, weak: true }),
+		"Someone else left (known by email only)",
+	);
+});
 
 /*
  * The no-show section's words and its dev preview (Decision #212). The server decides every fact; a
@@ -66,6 +105,8 @@ function workspace(role: SessionWorkspace["role"]): SessionWorkspace {
 		proposal: null,
 		presetEnded: false,
 		claimable: null,
+		reviewable: null,
+		roomWanted: null,
 		disputes: [summary()],
 	};
 }

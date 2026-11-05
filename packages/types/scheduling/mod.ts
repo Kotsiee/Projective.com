@@ -13,6 +13,8 @@
  *   answers "may this person see it".
  * - {@link ./meeting.ts} — the CONFERENCING axis (which tool mints the room), kept physically apart
  *   from the calendar-sync chip vocabulary per root CLAUDE.md §8 Decision #56.
+ * - {@link ./reminders.ts} — the reader's two classes of entry (Event · Reminder, derived from a
+ *   row's shape), the alerts they set on them, and their calendar preferences.
  * - {@link ./rows.ts} — the `scheduling` schema ROW shapes (ISO timestamps, uuid keys), mirroring
  *   the consolidated `supabase/migrations/00000022_tables_scheduling.sql`.
  * - {@link ./calls.ts} — discovery & courtesy calls: settings, the booking record, the Digital
@@ -44,11 +46,13 @@
  * matching `documentation/database/scheduling/*` update in the same change.
  */
 export * from "./scheduling.ts";
+export * from "./reminders.ts";
 export * from "./coordination.ts";
 export * from "./privacy.ts";
 export * from "./meeting.ts";
 export * from "./rows.ts";
 export * from "./calls.ts";
+export * from "./rooms.ts";
 export * from "./booking.ts";
 export * from "./ics.ts";
 export * from "./ics-recurrence.ts";

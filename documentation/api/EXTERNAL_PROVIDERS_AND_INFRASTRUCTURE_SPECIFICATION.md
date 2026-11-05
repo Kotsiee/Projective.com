@@ -72,10 +72,10 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 7  | ClamAV                                                  | Upload hygiene         | MVP                  | **Stub**: magic-byte sniff only                              | **Proposed** `MALWARE_SCAN_LIVE`                                  | `services/files/live-uploads.ts` · `services/contact/live-attachments.ts`                    |
 | 8  | VirusTotal                                              | Upload hygiene         | Growth, optional     | **Stub**: an unused key in a defective Edge Function         | none                                                              | none (see §6.4)                                                                              |
 | 9  | Google Web Risk (§6.5; replaced Safe Browsing v4, T5)   | Link safety            | MVP                  | **Wired · gated off**                                        | `FILES_BACKEND_LIVE`                                              | `services/files/link-reputation.ts`                                                          |
-| 10 | Google Calendar + Meet                                  | Connector              | MVP                  | **Stub**: catalogue row disabled, consent refused            | `INTEGRATIONS_BACKEND_LIVE` + `integrations.providers.is_enabled` | `services/integrations/IntegrationsBackendService.ts`                                        |
+| 10 | Google Calendar + Meet                                  | Connector              | MVP                  | **Wired · gated off**: consent and refresh; no room or sync  | `INTEGRATIONS_BACKEND_LIVE` + `integrations.providers.is_enabled` | `services/integrations/IntegrationsBackendService.ts`                                        |
 | 11 | Google Drive                                            | Connector              | Growth               | **Stub**: adapter built, unreachable                         | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
-| 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Stub**                                                     | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
-| 13 | Zoom (OAuth + presence webhooks)                        | Conferencing           | MVP                  | Presence webhook **Shipped**; OAuth **Stub**                 | `ZOOM_WEBHOOK_SECRET` present                                     | `services/sessions/presence/zoom.ts`                                                         |
+| 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Wired · gated off**: consent and refresh; no room or sync  | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
+| 13 | Zoom (OAuth + presence webhooks)                        | Conferencing           | MVP                  | Presence webhook **Shipped**; OAuth **Wired · gated off**    | `ZOOM_WEBHOOK_SECRET` present                                     | `services/sessions/presence/zoom.ts`                                                         |
 | 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Planned (SSOT)**; `comms.device_tokens` shipped            | `security.feature_flags['comms.dispatch_webhook']`                | dispatch Edge Function (not built)                                                           |
 | 15 | Apple Push Notification service                         | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 16 | Firebase Cloud Messaging (HTTP v1)                      | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
@@ -84,7 +84,7 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 19 | Cloudflare Turnstile                                    | Bot mitigation         | MVP                  | Table + dumb UI mount only                                   | none                                                              | `security.turnstile_verifications` · `@projective/ui` `Captcha`                              |
 | 20 | Supabase Storage (12 buckets)                           | Storage                | MVP                  | **Shipped**                                                  | `FILES_BACKEND_LIVE` for the hub                                  | `core/storage-*.ts` · `services/files/*` · `services/media/*`                                |
 | 21 | Supabase Vault                                          | Secrets                | MVP                  | **Shipped**; secrets provisioned nowhere yet (#203 (b))      | none                                                              | `ops.fn_dispatch_http_job`                                                                   |
-| 22 | AWS KMS / HashiCorp Vault Transit                       | Key management         | Growth               | **Stub**: `token-vault.ts` refuses                           | `INTEGRATIONS_BACKEND_LIVE`                                       | `services/integrations/token-vault.ts`                                                       |
+| 22 | The `ENCRYPTION_KEY` token vault                        | Key management         | Growth               | **Built**: the envelope (§9.4, ruling C4 (c))                | `INTEGRATIONS_BACKEND_LIVE`                                       | `services/integrations/token-vault.ts`                                                       |
 | 23 | AWS STS (S3 platform principal)                         | Connector infra        | Growth               | **Wired · gated off**                                        | `INTEGRATIONS_BACKEND_LIVE`                                       | `adapters/{aws,sigv4,S3Adapter}.ts`                                                          |
 | 24 | Supabase Edge Functions                                 | Compute                | MVP                  | `scan-file` is a legacy mock (**defect**, §9.5)              | per function                                                      | `supabase/functions/`                                                                        |
 
@@ -115,9 +115,9 @@ In order of risk:
 7. **Presidio Tier 3.** This is desirable but can trail the others. Tier 2 (`comms.mask_pii`) is the
    guarantee. Tier 3 supplies evidence for the Consequences ladder. See §6.2.
 
-Connectors (§7) and KMS (§9.4) **do not** block the MVP. No connector is enabled, and a NULL
-`fn_conferencing_provider` is a normal answer: the session falls back to a platform room or a manual
-link (`SYSTEM_ARCHITECTURE.md` §3.2).
+Connectors (§7) and the token vault (§9.4) **do not** block the MVP. No connector is enabled, and a
+NULL `fn_conferencing_provider` is a normal answer: the session falls back to a manual link
+(`SYSTEM_ARCHITECTURE.md` §3.2).
 
 ### 1.3 Cost drivers and controls
 
@@ -132,7 +132,6 @@ change and belong in the finance model, not here.
 | Safety node               | One VM, flat cost                                      | CPU only. The proactive screen is spent only on the public zone (Decision #148)                                       |
 | Web Risk                  | Lookups per month, beyond a free tier                  | A per-URL verdict cache (safe 1 h, flagged 24 h); lookups happen only for posted links, never on page loads           |
 | Email                     | Messages per month                                     | The digest cadence and the collapse rules in `comms.notification_types`                                               |
-| KMS                       | Requests (one `Decrypt` per adapter call) + key-months | One customer-managed key per environment. Plaintext DEKs are never cached (SSOT); revisit only if the bill shows it   |
 | Turnstile                 | Free tier                                              | n/a                                                                                                                   |
 | Push (VAPID / APNs / FCM) | Free at the gateway                                    | Revoke dead devices on 404/410 (`fn_reap_dead_devices`)                                                               |
 
@@ -153,16 +152,16 @@ Browser / PWA ──────►│ Fresh app (Deno)  thin routes → fat ser
                      │   │                                                                            │
                      │   └── Zone E: SaaS ── Stripe · Voyage · Web Risk · Turnstile siteverify ·        │
                      │                      Google / Microsoft / Zoom APIs · email · push gateways ·   │
-                     │                      AWS KMS + STS                                              │
+                     │                      AWS STS                                                    │
                      └────────────────────────────────────────────────────────────────────────────────┘
-Inbound webhooks: Stripe ─► /api/finance/webhooks/* · Zoom ─► /api/sessions/webhooks/zoom ·
-                  (Proposed) Google / Graph ─► /api/integrations/webhooks/* · email ─► /api/comms/webhooks/*
+Inbound webhooks: Stripe ─► /api/finance/webhooks/* · Zoom, Google, Graph ─► /api/integrations/webhooks/* ·
+                  (Proposed) email ─► /api/comms/webhooks/*
 ```
 
 | Zone           | What runs there                                              | Holds credentials for                                                                        | Never holds                                      |
 | :------------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------------------- | :----------------------------------------------- |
 | A: browser     | Islands, Stripe.js, the Turnstile widget, the service worker | Publishable or site keys only, each delivered by a server response                           | Any secret or env value (islands never read env) |
-| B: app (Deno)  | Thin routes, fat services, the media worker pool             | The Stripe secret, Voyage, Web Risk, OAuth clients, cron bearers, STS, the KMS principal     | Plaintext DEKs beyond one request                |
+| B: app (Deno)  | Thin routes, fat services, the media worker pool             | The Stripe secret, Voyage, Web Risk, OAuth clients, cron bearers, STS, the vault key         | Plaintext DEKs beyond one request                |
 | C: Supabase    | Postgres, GoTrue, Storage, Edge Functions, Vault             | Vault cron and dispatch secrets, Edge secrets (VAPID, APNs, FCM, email), GoTrue SMTP/captcha | OAuth tokens in clear (envelope only)            |
 | D: safety node | Presidio, NudeNet/OCR, ClamAV, a gateway                     | One inbound bearer or mTLS identity                                                          | Any payload after scoring (no volumes)           |
 | E: SaaS        | Third parties                                                | n/a                                                                                          | Private-zone content (§3.5)                      |
@@ -176,13 +175,13 @@ Every inbound endpoint follows the webhook standard in §3.3. A new route lands 
 | :--------------------------------------------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- | :---------------------------------------------------------------------- | :------------------------ |
 | `POST /api/finance/webhooks/stripe`                  | Stripe, from the account and Connect destinations | `Stripe-Signature` (HMAC-SHA256 over the raw body, 300 s tolerance, Web Crypto), checked against either secret | `STRIPE_WEBHOOK_SECRET` · `STRIPE_CONNECT_WEBHOOK_SECRET` | `finance.idempotency_keys` `stripe:<evt>`, claimed with the effects     | **Shipped**               |
 | `POST /api/finance/webhooks/stripe-v2`               | Stripe thin events (Accounts v2)                  | same                                                                                                           | `STRIPE_THIN_WEBHOOK_SECRET`                              | Re-reads the account; `sync_payout_account` is idempotent               | **Shipped**               |
-| `POST /api/sessions/webhooks/zoom`                   | Zoom Event Subscription                           | `x-zm-signature` `v0` HMAC, 300 s; the URL-validation challenge is answered only after verification            | `ZOOM_WEBHOOK_SECRET`                                     | `providerEventId` per presence outcome                                  | **Shipped**               |
-| `GET /api/integrations/callback`                     | OAuth providers, via a browser redirect           | `integrations.consent_states.state` (≥ 22 chars, single use, ~10 min) + PKCE verifier                          | per-provider client secret                                | `consent_states.consumed_at`                                            | **Stub** (always refuses) |
-| `POST /api/integrations/webhooks/[provider]`         | Google channels, Graph subscriptions              | `X-Goog-Channel-Token` / Graph `clientState` against `webhook_subscriptions.verification_token`                | per channel                                               | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Proposed**              |
+| `POST /api/integrations/webhooks/zoom`               | Zoom Event Subscription                           | `x-zm-signature` `v0` HMAC, 300 s; the URL-validation challenge is answered only after verification            | `ZOOM_WEBHOOK_SECRET`                                     | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Shipped**; `/api/sessions/webhooks/zoom` re-exports it until the app is re-pointed |
+| `GET /api/integrations/callback`                     | OAuth providers, via a browser redirect           | `integrations.consent_states.state` (≥ 22 chars, single use, ~10 min) + PKCE verifier                          | per-provider client secret                                | `consent_states.consumed_at`                                            | **Shipped**; no provider enabled |
+| `POST /api/integrations/webhooks/[provider]`         | Google channels, Graph subscriptions              | `X-Goog-Channel-Token` / Graph `clientState` against `webhook_subscriptions.verification_token`                | per channel                                               | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Shipped**; pushes are acknowledged until calendar sync lands |
 | `POST /api/comms/webhooks/[provider]`                | The email provider (Svix), Twilio                 | Svix `svix-signature` / `X-Twilio-Signature`                                                                   | `RESEND_WEBHOOK_SECRET` · the Twilio auth token           | `comms.delivery_events (provider, provider_event_id)`                   | **Proposed**              |
 | `POST {SUPABASE_URL}/functions/v1/comms-dispatch`    | pg_net, from `comms.notification_deliveries`      | A bearer read from Vault (**Proposed**; today the trigger sends none, flag (e))                                | `COMMS_DISPATCH_SECRET`                                   | The notification id plus per-delivery status                            | **Planned (SSOT)**        |
 | `POST {SUPABASE_URL}/functions/v1/scan-file`         | Anyone (`verify_jwt = false`)                     | **None**                                                                                                       | none                                                      | none                                                                    | **Defect** (§9.5)         |
-| `POST /api/{finance,user,scheduling,contact}/cron/*` | pg_net (`ops.fn_dispatch_http_job`)               | A bearer of ≥ 32 chars; anything else gets 404                                                                 | `*_CRON_SECRET`                                           | Per job (`SYSTEM_ARCHITECTURE.md` §Scheduled jobs)                      | **Shipped**               |
+| `POST /api/{finance,user,scheduling,contact,integrations}/cron/*` | pg_net (`ops.fn_dispatch_http_job`)               | A bearer of ≥ 32 chars; anything else gets 404                                                                 | `*_CRON_SECRET`                                           | Per job (`SYSTEM_ARCHITECTURE.md` §Scheduled jobs)                      | **Shipped**               |
 
 ### 2.2 Outbound egress
 
@@ -204,10 +203,10 @@ These are the hosts each runtime must reach. The table feeds the production fire
 
 | Store                                                                   | Holds                                                                                                                                                         | Read by                                       | Provisioned by                                                       | Rotation                               |
 | :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------- | :------------------------------------------------------------------- | :------------------------------------- |
-| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, and (**Proposed**) Turnstile, email, the KMS principal and the safety-node bearer | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
+| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, and (**Proposed**) Turnstile, email and the safety-node bearer | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
 | Supabase Vault (`vault.secrets`)                                        | `CRON_APP_URL`, `*_CRON_SECRET`, and (**Proposed**) `COMMS_DISPATCH_SECRET`                                                                                   | pg_net dispatchers inside Postgres            | `SELECT vault.create_secret('<value>', '<NAME>')` per environment    | `vault.update_secret(id, '<value>')`   |
 | Edge Function secrets                                                   | (**Proposed**) VAPID private key, APNs `.p8`, FCM service account, the email API key, `COMMS_DISPATCH_SECRET`                                                 | Edge Functions (`Deno.env.get`)               | `supabase secrets set`                                               | Set again with `supabase secrets set`  |
-| KMS-wrapped rows (`integrations.connection_secrets`)                    | Per-user OAuth access and refresh tokens; S3-compatible key pairs                                                                                             | `token-vault.ts`, service role only           | The consent callback                                                 | Rotate the KEK, then `rewrap()` (§9.4) |
+| Enveloped rows (`integrations.connection_secrets`)                      | Per-user OAuth access and refresh tokens; S3-compatible key pairs                                                                                             | `token-vault.ts`, service role only           | The consent callback                                                 | No rewrap yet: reconnect (§9.4)        |
 | GoTrue configuration                                                    | The Google **sign-in** client, SMTP credentials, the captcha secret, Twilio                                                                                   | GoTrue                                        | `supabase/config.toml` `env(...)` locally; the dashboard when hosted | Dashboard / CLI                        |
 | Browser-visible, served by a route                                      | The Stripe publishable key, the Turnstile site key, the VAPID public key                                                                                      | Islands, through `/api/*` responses           | App env                                                              | With their secret pair                 |
 
@@ -227,7 +226,8 @@ provider section can refer to them:
   example `core/stripe.ts` key-shape validation, `linkSafetyKey()`, `usableSecret()`).
 - Every `*_BACKEND_LIVE` gate is a boolean that defaults to the literal `false`.
 - A provider is **on** only when its gate is true **and** its key is well formed. A connector also
-  needs its `integrations.providers.is_enabled` row. Production never honours a `pj.dev.*` cookie.
+  needs its `integrations.providers.is_enabled` row, which ships on for Google, Microsoft and Zoom
+  (Decision #386), so credentials are what offer one. Production never honours a `pj.dev.*` cookie.
 
 Each provider fails in a fixed direction:
 
@@ -242,7 +242,7 @@ Each provider fails in a fixed direction:
 | Turnstile        | **Proposed**: production refuses the protected write; development with no secret skips it and logs | Fail closed (prod)          |
 | Email            | `logged` in development; `unavailable` in production, and the UI says no mail went out             | Surfaced                    |
 | Push             | Deliveries stay pending: `fn_process_queue` runs (`00005060`), no push transport yet               | Deferred                    |
-| Connectors       | 409 / 503 refusal in words; the platform-room fallback                                             | Fail closed                 |
+| Connectors       | 409 / 503 refusal in words; a manual link is the fallback                                          | Fail closed                 |
 
 ### 3.3 The webhook standard
 
@@ -252,10 +252,16 @@ The Stripe and Zoom handlers set the house pattern. Every new inbound endpoint c
    bytes read). A signature covers bytes, so never parse before verifying.
 2. **Verify the signature with a timing-safe comparison**, with a 300 s tolerance on the signed
    timestamp. Answer any challenge or handshake only **after** verification. An unsigned challenge
-   answer is a signing oracle (`presence/zoom.ts`).
+   answer is a signing oracle (`presence/zoom.ts`). Two providers cannot meet this as written
+   (Decision #383 (e)). Graph's `validationToken` handshake is unsigned by design: it is echoed back
+   as `text/plain` and signs nothing, so it is no oracle. A Google Calendar push has no signature:
+   the credential is the per-channel `X-Goog-Channel-Token`, compared in constant time with the
+   stored row, so the adapter looks its secret up per channel.
 3. **Claim an idempotency key in the same transaction as the effects.** The keys are `stripe:<evt>`
    in `finance.idempotency_keys`, `comms.delivery_events (provider, provider_event_id)` and
-   `integrations.webhook_deliveries (provider_slug, external_delivery_id)`.
+   `integrations.webhook_deliveries (provider_slug, external_delivery_id)`. A calendar push claims
+   none: its one effect is to mark a calendar due, so a replay changes nothing and a ledger row per
+   push would only grow.
 4. **Status codes:** 2xx for handled, replayed **and** ignored events. 400 for a forged or stale
    delivery. 5xx **only** to ask for a redelivery, for example when a settlement has no ledger row
    yet (`requireLedgerRow`, Decision #200).
@@ -275,7 +281,7 @@ The Stripe and Zoom handlers set the house pattern. Every new inbound endpoint c
 | Push gateways (Apple, Google, Mozilla, Microsoft) | Device endpoint or token; payload (end-to-end encrypted for Web Push, readable by the gateway for APNs/FCM)                      | Account          | Contract                             | The payload-minimisation rule (§3.5, rule 4)                                                            |
 | Google / Microsoft / Zoom                         | The connection owner's account id and email; the meeting metadata Projective creates                                             | Private          | Contract (user-initiated)            | The attendee rule (§3.5, rule 5); revoke on disconnect and on erasure                                   |
 | Twilio                                            | Phone number, OTP                                                                                                                | Account          | Contract                             | DPA; SMS-pumping geo permissions                                                                        |
-| AWS KMS / STS                                     | None. KMS sees DEKs only; the KMS encryption context carries a connection id, never a name or email                              | n/a              | n/a                                  | CloudTrail on                                                                                           |
+| AWS STS                                           | None                                                                                                                             | n/a              | n/a                                  | CloudTrail on                                                                                           |
 | Safety node (self-hosted)                         | Message text, images and file bytes, **inside Projective's own infrastructure**                                                  | Private          | Legitimate interest                  | Not a sub-processor. No volumes, no payload logging (§6.1)                                              |
 | VirusTotal (if ever enabled)                      | **SHA-256 hashes only**                                                                                                          | Private metadata | Legitimate interest                  | A Premium licence. Never upload bytes (§6.4)                                                            |
 
@@ -1131,56 +1137,57 @@ four-system boundary, deferred Edge parts), §Asset Management → the connector
 the token vault; Decisions #59, #313 and #314;
 [`database/integrations/`](../database/integrations/Tables.md).
 
-### 7.1 The consent handshake (Proposed implementation)
+### 7.1 The consent handshake
 
-`IntegrationsBackendService.startConnection` / `completeConnection` refuse today. Wired, they work
-like this:
+`IntegrationsBackendService.startConnection` / `completeConnection`, with the provider's half in
+`services/integrations/oauth.ts` and everything a provider differs on in `providers.auth_config`:
 
 ```text
 1. POST /api/integrations/start { providerSlug, kinds[], returnTo }
      → refuse unless INTEGRATIONS_BACKEND_LIVE, providers.is_enabled, and the client id/secret are well formed
+       (the catalogue read applies the same test, so a provider that would refuse is never offered)
      → state = base64url(32 random bytes); verifier = base64url(32 random bytes); challenge = S256(verifier)
-     → INSERT integrations.consent_states (state, user_id, provider_slug, code_verifier, requested_kinds,
-                                           return_to, expires_at = now() + 10 min)
+     → integrations.fn_open_consent(state, provider_slug, code_verifier, requested_kinds, return_to)
+          under the caller's JWT, so the row binds to auth.uid(); it sets expires_at = now() + 10 min
      → 200 { authorizeUrl, state, expiresAt }
 2. The provider's consent screen → GET /api/integrations/callback?code=…&state=…
 3. completeConnection
      a. UPDATE consent_states SET consumed_at = now()
           WHERE state = $1 AND consumed_at IS NULL AND expires_at > now() RETURNING *   -- single use
+        and refuse unless this browser is signed in as consent_states.user_id           -- state binds no browser
      b. exchange the code (+ verifier) at the token endpoint                            -- network, before any DB write
      c. read the account identity (external_account_id, email) and the GRANTED scopes; record a narrowed consent
-     d. token-vault.seal(...) per token                                                  -- §9.4
-     e. one transaction: upsert user_connections (status 'active') + connection_secrets + connection_audit 'connected'
-     f. if (e) fails: revoke the just-issued grant at the provider (best effort) so no orphan grant outlives us
-4. 303 → consent_states.return_to (CHECK-constrained same-origin path)
+     d. token-vault.seal(...) the row's tokens                                          -- §9.4
+     e. integrations.fn_store_connection: one transaction, user_connections (status 'active')
+        + connection_secrets + connection_audit 'connected'
+     f. if (c), (d) or (e) fails: revoke the just-issued grant at the provider (best effort) so no orphan grant outlives us
+4. 302 → consent_states.return_to (CHECK-constrained same-origin path), else /settings, with ?connect=connected|failed
 ```
+
+Each ciphertext's AAD names the connection, so its id must exist before the seal. Step (d) seals under
+a new id, and when the account is already linked `fn_store_connection` writes nothing and answers the
+row's id, for one more pass under it. A fresh consent therefore reopens an `expired` or `revoked` row.
 
 **The redirect URI** registered at every provider is `{APP_URL}/api/integrations/callback`. There is
 one URI for every provider, because the `state` row identifies the provider. Locally that is
 `http://localhost:3000/api/integrations/callback`. Zoom may insist on an HTTPS redirect. If it does,
 use a tunnel (`cloudflared tunnel` or similar) for local Zoom consent.
 
-**`core/env.ts` gap.** `GOOGLE_INTEGRATION_*`, `MICROSOFT_INTEGRATION_*`, `ZOOM_CLIENT_ID`,
-`ZOOM_CLIENT_SECRET`, `DROPBOX_*` and `FRAMEIO_*` are in the env contract but **not read by
-`ServerEnv`** yet. They join it in the change that wires the handshake.
+### 7.2 Calendar strategy: direct (ruled, Decision #383 R1)
 
-### 7.2 Calendar strategy: direct or Nylas (flag (a))
-
-The provider seed (`00005050_seed_reference_data.sql`) sets `broker = 'nylas'` for `google`,
-`outlook` and `apple`. `SYSTEM_ARCHITECTURE.md` §3.2 says "Calendar → a unified API (Nylas)". This
-brief asks for **direct** Google Calendar / Meet, Microsoft Graph and Zoom integrations. That is a
-contradiction, and per §8 it is flagged, not settled here.
+The provider seed (`00005050_seed_reference_data.sql`) set `broker = 'nylas'` for `google`,
+`outlook` and `apple`, and `SYSTEM_ARCHITECTURE.md` §3.2 said "Calendar → a unified API (Nylas)".
+This brief asked for **direct** Google Calendar / Meet, Microsoft Graph and Zoom integrations.
 
 | Option                           | For                                                                                                                                                                                    | Against                                                                                                                                                                                                             |
 | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Direct** (Google, Graph, Zoom) | No extra sub-processor holding every connected calendar. No per-connected-account fee. MVP scope is small: read-only inbound free/busy + create one meeting. Zoom is direct regardless | Google push-channel and Graph subscription renewal, recurrence and timezone edge cases, and app verification at two vendors are owned in-house                                                                      |
 | **Nylas** (seeded today)         | One API for Google, Microsoft, iCloud (the only practical route for Apple CalDAV), with recurrence and renewal solved                                                                  | A per-account cost that scales with sellers. Every connected calendar's tokens are held by a third party, which weakens the "tokens are KMS-enveloped" trust claim. A broker for meeting creation is still optional |
 
-**Recommendation:** go **direct for the MVP** (read-only free/busy + meeting-room creation), and
-revisit Nylas when **bidirectional** sync is scheduled, the point where recurrence and conflict
-resolution start to pay for a broker. That also keeps Apple (`app_password`, CalDAV) deferred, which
-it already is. The switch is per-provider data: edit the `broker` values in the seed in place. No
-schema changes.
+**Ruled: direct (Decision #383, ruling R1).** Sync is two one-way flows (ruling R3), so the
+recurrence and conflict work that would pay for a broker never arises. Apple (`app_password`,
+CalDAV) stays deferred, and keeps its seeded `nylas`. `google` and `outlook` are `direct`; a later
+switch is per-provider data with no schema change.
 
 ### 7.3 Google (Calendar, Meet, Drive)
 
@@ -1189,15 +1196,16 @@ schema changes.
 1. Create a dedicated Google Cloud project, `projective-integrations-<env>`. It is **separate from
    the sign-in client** (`GOOGLE_CLIENT_ID`), because sign-in and integrations never share a client
    or a token store (SSOT §3.1).
-2. Enable the **Google Calendar API**, and the **Google Drive API** and **Google Picker API** in the
-   Growth phase.
+2. Enable the **Google Calendar API** and the **Google Meet REST API**, and the **Google Drive API**
+   and **Google Picker API** in the Growth phase. Without the Meet API a connection works and every
+   Meet room fails.
 3. OAuth consent screen: External; the app name, logo, support email, authorised domains, and
    privacy policy and terms URLs; the scopes below.
 4. Credentials → OAuth client ID → Web application. Add one redirect URI per environment. Store the
    pair in `GOOGLE_INTEGRATION_CLIENT_ID` / `GOOGLE_INTEGRATION_CLIENT_SECRET`.
 5. **Verification:**
-   - `calendar.events` is a **sensitive** scope. It needs brand and scope verification before the
-     consent screen leaves testing.
+   - `calendar.events.owned.readonly` is a **sensitive** scope. It needs brand and scope verification
+     before the consent screen leaves testing.
    - `drive.readonly`, which is seeded today, is a **restricted** scope. It needs an annual
      third-party security assessment (CASA).
    - **Recommendation (flag (i)):** use `drive.file` with the **Google Picker**, so a person grants
@@ -1206,25 +1214,47 @@ schema changes.
 6. **While the consent screen is in Testing**, refresh tokens expire after 7 days and only listed
    test users can consent. Plan development around that.
 
-**Scopes:** `openid` and `email` (to set `external_account_id`), plus the seeded
-`https://www.googleapis.com/auth/calendar.events`. Request `access_type=offline` and
+**Scopes** (Decisions #383, #387): `openid` and `email` (to set `external_account_id`),
+`calendar.events.owned.readonly` to read busy time and each entry's details from the calendars a
+person owns, `calendar.app.created` to write the separate
+Projective calendar, `meetings.space.created` to mint rooms, and `meetings.space.readonly` if
+reading attendance needs it. Request `access_type=offline` and
 `prompt=consent` on the first connection so a refresh token is issued. Add
 `include_granted_scopes=true` so a later Drive consent adds to the grant instead of replacing it.
 
-**Meet rooms.** Call `events.insert` with `conferenceDataVersion=1` and
-`conferenceData.createRequest = { requestId: <scheduling event id>, conferenceSolutionKey: { type:
-"hangoutsMeet" } }`.
-The request id makes a retry idempotent. Store the join link in `scheduling.events.meeting_url`,
+**Meet rooms** (Decision #383, rulings R3 and R5). Call `POST https://meet.googleapis.com/v2/spaces`
+with `config.accessType = OPEN`, so an attendee can enter without the host. This writes nothing to
+the host's calendar, so nothing comes back through inbound sync. No idempotency key is documented:
+store `name` and `meetingUri` as soon as they return, and treat a stray duplicate space as harmless,
+because only the stored one is ever used. Store the join link in `scheduling.events.meeting_url`,
 which the column grants withhold from every client role; parties read it through
-`scheduling.get_event_rooms`.
+`scheduling.get_event_rooms`. How `OPEN` and conference records behave on a personal Gmail account
+is not documented, so test it before promising it.
 
 **Push and sync.**
 
 1. `events.watch` → a `webhook_subscriptions` row: `external_channel_id`, `external_resource_id`,
-   `verification_token` = 32 random bytes, and `expires_at` from the response's `expiration`.
+   `verification_token` = 32 random bytes, and `expires_at` from the response's `expiration`. The
+   sync job opens one for a calendar that has none. A plain http `APP_URL` opens none, and that
+   calendar is read hourly.
 2. An inbound `X-Goog-Channel-Token` must equal the stored token.
-3. Each notification triggers an incremental `events.list` with the `syncToken` kept in
-   `connection_sync_state`. A `410 Gone` resets the sync and runs a full one.
+3. A verified push marks the calendar due, and the job makes an incremental `events.list` with the
+   `syncToken` kept in `connection_sync_state`. A `410 Gone` runs a full read, which replaces
+   everything it does not see. `fields` asks for the title, location, description, meeting link
+   (`hangoutLink`, else the video entry of `conferenceData`, which is where an add-on such as Zoom
+   writes it) and `recurringEventId`, and leaves attendees off the wire. `singleEvents=true` brings recurring series
+   expanded, so an occurrence does not carry its `recurrence`, and `events.get` reads it once per
+   series from the master (at most 100 a read; a miss costs that sentence, never the read).
+4. `timeMin`/`timeMax` cannot go with a `syncToken`, so only a full read has a window: a day back and
+   372 ahead, which passes the longest `max_advance_days`. A full read comes round weekly, because an
+   old event enters the window with no change to report.
+
+**The Projective calendar** (ruling R3). `calendars.insert` makes it under `calendar.app.created`, a
+scope that reaches only calendars the app created, so deleting it on disconnect cannot touch anything
+else. That scope cannot list calendars, so a lost response leaves one stray empty calendar. The event
+id is the mirror row's uuid without its hyphens (hex is inside Google's base32hex alphabet), so a
+retried `events.insert` answers `409` and becomes an update, and a person's deletion answers `404` on
+the next update and becomes an insert.
 
 **Tokens.**
 
@@ -1243,10 +1273,12 @@ which the column grants withhold from every client role; parties read it through
 3. Credentials: prefer a **certificate**. Otherwise create a client secret and put a calendar
    reminder before it expires (24 months at most). Store them in `MICROSOFT_INTEGRATION_CLIENT_ID` /
    `MICROSOFT_INTEGRATION_CLIENT_SECRET`.
-4. Delegated API permissions: `User.Read`, `offline_access`, `Calendars.ReadWrite`,
-   `OnlineMeetings.ReadWrite`, and `Files.Read.All` (OneDrive, Growth). The `outlook` seed row lists
-   only the first two Graph scopes. Add `offline_access` and `User.Read` in place, or no refresh
-   token is issued.
+4. Delegated API permissions: `User.Read`, `offline_access`, `Calendars.ReadBasic` (busy time, titles,
+   locations, `onlineMeeting` and `seriesMasterId`; a body is outside it, and a series states no
+   pattern yet),
+   `Calendars.ReadWrite` (the Projective calendar), `OnlineMeetings.ReadWrite`,
+   `OnlineMeetingArtifact.Read.All` (attendance reports), and `Files.Read.All` (OneDrive, Growth).
+   Without `offline_access` no refresh token is issued.
 5. Complete **Publisher verification** (a Microsoft Partner ID). Many tenants block user consent to
    unverified multi-tenant apps.
 6. Admin consent: if a tenant requires it, surface `consent_required` / `AADSTS65001` as "ask your
@@ -1256,16 +1288,38 @@ which the column grants withhold from every client role; parties read it through
 
 - **Refresh tokens rotate on every refresh.** Persist the new token in the same transaction that
   reads the old one, or a concurrent refresh strands the connection (SSOT §3.3).
-- **Teams rooms.** `POST /me/onlineMeetings` works for work and school accounts only. Personal
-  accounts fall back to the platform room. The portable path is a calendar event with
-  `isOnlineMeeting: true` and `onlineMeetingProvider: "teamsForBusiness"`.
+- **Teams rooms** (Decision #383, rulings R3 and R4). `POST /me/onlineMeetings/createOrGet` with
+  `externalId` set to the room id: a retry returns the same meeting, and the meeting does not appear
+  on the host's calendar. `createOrGet` takes no lobby setting, so a `PATCH` then sets
+  `lobbyBypassSettings` to `everyone` so an attendee can enter without the host (ruling R5). A tenant
+  may forbid that, which leaves the room working and the attendee's join click as their evidence. Work
+  and school accounts only: a personal account gets no Teams room, and the picker says so.
+- **Teams attendance.** After the meeting, read `attendanceReports` as the organizer
+  (`OnlineMeetingArtifact.Read.All`). Personal accounts are not supported and there is no live feed,
+  so Teams evidence arrives only after the meeting (Decision #383 (c)).
 - **Subscriptions.**
-  1. `POST /subscriptions` with `clientState` (32 random bytes, stored as `verification_token`), a
-     `notificationUrl` and a `lifecycleNotificationUrl`.
+  1. `POST /subscriptions` on `/me/events` with `clientState` (32 random bytes, stored as
+     `verification_token`), a `notificationUrl` and a `lifecycleNotificationUrl`. Graph documents no
+     narrower path for events, so a write to the Projective calendar can push too: it only marks a
+     read of the primary calendar due, and that finds nothing. Subscribing wants `Calendars.Read` or
+     better, so a grant of `Calendars.ReadBasic` alone stays on the hourly read.
   2. Answer the `validationToken` handshake by echoing it as `text/plain` within Graph's deadline.
   3. Renew by `PATCH`ing `expirationDateTime` before `expires_at`. Graph caps the lifetime per
-     resource type, so store whatever it returns.
-  4. Handle the `reauthorizationRequired` and `missed` lifecycle events.
+     resource type, so store whatever it returns. A `404` means Graph dropped it, so a new one opens
+     on the same row.
+  4. A delivery may batch several subscriptions, each with its own `clientState`, so it is judged per
+     subscription. `reauthorizationRequired` and `subscriptionRemoved` bring the renewal forward, and
+     `missed` only marks the calendar due, like any push.
+- **Busy time.** `GET /me/calendarView/delta` on the primary calendar, the window fixed by the first
+  call, with `@odata.deltaLink` kept in `connection_sync_state` and followed only to Graph's origin.
+  It takes no `$select`, so a title does arrive here, and goes no further than the adapter's mapping
+  (`graphChange`). `isCancelled`, `@removed` and a `showAs` of `free` or `workingElsewhere` remove the
+  row. A `410` runs a full read.
+- **The Projective calendar** (ruling R3). `POST /me/calendars`. A name already taken makes a
+  `Projective events` calendar instead: a person's own calendar is never adopted, because disconnect
+  deletes the calendar it holds. `transactionId` on the create makes a retry land on the same event,
+  and `changeKey` is stored as the version. A copy deleted at the provider answers `404` on the next
+  `PATCH` and is made again under a new `transactionId`.
 - **OneDrive.** The adapter exists. A cursor is the `@odata.nextLink` **path**, followed only
   against Graph's fixed origin (Decision #313).
 
@@ -1276,14 +1330,18 @@ which the column grants withhold from every client role; parties read it through
 1. Zoom App Marketplace → Develop → Build App → **General app** (OAuth), user-managed.
 2. Add the OAuth redirect URL and the allow list. Store the credentials in `ZOOM_CLIENT_ID` /
    `ZOOM_CLIENT_SECRET`.
-3. **Scopes.** The seed has the classic `meeting:write`. Apps created under Zoom's granular-scope
-   model use `meeting:write:meeting` and `user:read:user`. Check which model the app uses and edit
-   the seed in place (flag (i)).
-4. **Event Subscriptions** (Shipped for presence):
-   - endpoint: `{APP_URL}/api/sessions/webhooks/zoom`;
-   - events: `meeting.participant_joined` and `meeting.participant_left`, plus `app_deauthorized`
-     (**Proposed**: revoke the connection and delete its secrets, which Marketplace review
-     requires);
+3. **Scopes.** Add Zoom's granular `meeting:write:meeting`, `meeting:read:meeting`,
+   `meeting:update:meeting`, `meeting:delete:meeting`, `meeting:write:registrant`,
+   `meeting:read:list_past_participants` and `user:read:user` to the Marketplace app. Zoom takes
+   scopes from the app and answers "Invalid scope" to any in the authorize URL, so the seed sets
+   `send_scopes: false`. Only `meeting:write:meeting` is required to connect: without the others a
+   room still works, with a best-effort sync, the shared link, and sittings held for review.
+4. **Event Subscriptions**:
+   - endpoint: `{APP_URL}/api/integrations/webhooks/zoom`. The old
+     `{APP_URL}/api/sessions/webhooks/zoom` re-exports the same handler until the app is re-pointed;
+   - events: `meeting.participant_joined`, `meeting.participant_left` and
+     `meeting.participant_jbh_waiting` (Pro or above), plus `app_deauthorized`
+     (revokes the connection and deletes its secrets, which Marketplace review requires);
    - copy the Secret Token into `ZOOM_WEBHOOK_SECRET` and run the URL validation. The handler
      answers the challenge only after a verified signature.
 5. **Before external users can install:** submit for Marketplace review (privacy policy, data
@@ -1293,26 +1351,36 @@ which the column grants withhold from every client role; parties read it through
 
 - `POST https://api.zoom.us/v2/users/me/meetings` with
   `{ topic, type: 2, start_time, duration,
-  timezone, settings: { join_before_host: false, waiting_room: true } }`.
+  timezone, settings: { join_before_host: true, waiting_room: false } }`. An attendee must be able
+  to enter without the host: with `join_before_host: false`, a host who never starts leaves no record
+  that the attendee came, and the no-show refund cannot fire (Decision #383, ruling R5).
 - Store the `join_url` and the passcode in `scheduling.events.meeting_url` / `meeting_passcode`.
+  Never store `start_url`: it is a host credential that expires two hours after creation. Read a
+  fresh one when the host clicks join.
 - Presence events are attributed by **meeting id** (`p_meeting_id` in
   `SessionBackendService.handlePresenceWebhook`), so the room record must keep the Zoom meeting id.
 - Zoom refresh tokens are **single-use**. Persist the new one atomically, as with Graph.
 
-### 7.6 Scheduled work for connectors (Proposed rows in `ops.scheduled_jobs`)
+### 7.6 Scheduled work for connectors
 
-These are added to `00005060_seed_scheduled_jobs.sql` in place, with the cadence held only in the
-registry row (Decision #203).
+These rows are in `00005060_seed_scheduled_jobs.sql`, with the cadence held only in the registry row
+(Decision #203).
 
 | Job                           | Cadence (UTC) | Runs                                                                                  | Secret                     | Idempotency                                                                                                                                                                                                                                                                                                                                    |
 | :---------------------------- | :------------ | :------------------------------------------------------------------------------------ | :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `integrations-refresh-tokens` | every 10 min  | `POST /api/integrations/cron/refresh?limit=100`                                       | `INTEGRATIONS_CRON_SECRET` | Claims `active`/`degraded` connections whose access token expires within 15 min **and** that synced or were used in the last 7 days, plus a **keep-alive** for any connection not refreshed in 30 days. That keep-alive defeats Google's ~6-month idle lapse and finds revoked grants early. `SKIP LOCKED`; one refresh per connection per run |
+| `integrations-refresh-tokens` | every 10 min  | `POST /api/integrations/cron/refresh?limit=100`                                       | `INTEGRATIONS_CRON_SECRET` | Claims `active`/`degraded` connections whose access token expires within 15 min **and** that synced or connected in the last 7 days (a use writes `last_synced_at`), plus a **keep-alive** for any connection not refreshed in 30 days. That keep-alive defeats Google's ~6-month idle lapse and finds revoked grants early. `SKIP LOCKED` and a 5-minute lease; one refresh per connection per run |
 | `integrations-renew-channels` | hourly :35    | `POST /api/integrations/cron/channels?limit=100`                                      | `INTEGRATIONS_CRON_SECRET` | Renews `webhook_subscriptions` whose `expires_at < now() + 24 h`. A failed renewal increments `failure_count`; at 3 the connection becomes `degraded`                                                                                                                                                                                          |
-| `integrations-consent-sweep`  | daily 03:25   | `DELETE FROM integrations.consent_states WHERE expires_at < now() - interval '1 day'` | none                       | Deletes only spent or expired CSRF bindings. The DDL comment already says "a spent row is swept"                                                                                                                                                                                                                                               |
+| `integrations-calendar-sync`  | every 5 min   | `POST /api/integrations/cron/sync?limit=50`                                           | `INTEGRATIONS_CRON_SECRET` | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`). A read lands in one SQL call, only while its claim is held. It opens a push channel where there is none. Three failed reads degrade the connection, and a good one heals it |
+| `integrations-outbound-sync`  | every 5 min, :02 | `POST /api/integrations/cron/sync?task=outbound&limit=100`                         | `INTEGRATIONS_CRON_SECRET` | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`), so no copy goes out twice at once, and writes it idempotently (Decision #383, ruling R3). A refusal backs off from 5 minutes, doubling, and the eighth stops until the event next changes |
+| `integrations-consent-sweep`  | daily 03:25   | `integrations.fn_sweep_consent_states()`                                              | none                       | Deletes only spent or expired CSRF bindings. The DDL comment already says "a spent row is swept"                                                                                                                                                                                                                                               |
 
 A refresh that fails with `invalid_grant` sets the connection to `expired` and emits
-`integration.reconnect_required`, a new `comms.notification_types` row (category Account, not
+`integration.reconnect_required`, a `comms.notification_types` row (category Account, not
 mandatory). The settings UI's **reconnect** action follows (SSOT §3.2).
+
+A rotated refresh token cannot be persisted in the transaction that read the old one, because the
+exchange between them is a network call. The claim's lease keeps a second run off the token, and
+`fn_commit_refresh` lands only over the token that run read (`database/integrations/Functions.md`).
 
 ### 7.7 Development and production fallbacks
 
@@ -1320,10 +1388,10 @@ mandatory). The settings UI's **reconnect** action follows (SSOT §3.2).
 | :-------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `INTEGRATIONS_BACKEND_LIVE=false` | The catalogue and the caller's connections are read live (`v_my_connections`). `startConnection` refuses (409 or 503). `seal()`/`unseal()` refuse. **No fixture corpus, ever** (Decision #313) |
 | Gate on, provider row disabled    | 409, "<Provider> isn't available to connect yet."                                                                                                                                              |
-| Gate on, no KMS                   | `seal()` refuses, so no connection can be stored. That is the intended state until §9.4 is provisioned                                                                                         |
+| Gate on, no `ENCRYPTION_KEY`      | The server refuses to boot, in production too. A placeholder or short key counts as none (§9.4)                                                                                                |
 | Local consent                     | Per-developer test OAuth clients: Google in Testing (7-day refresh tokens), a personal Microsoft account, Zoom in development mode (usable by the app owner's account)                         |
-| Local KMS                         | **Proposed** `KMS_PROVIDER=local` with `ENCRYPTION_KEY` as the KEK; refused under production (§9.4)                                                                                            |
-| Zoom presence locally             | Point a tunnel at `/api/sessions/webhooks/zoom` and set `ZOOM_WEBHOOK_SECRET` to the dev app's Secret Token                                                                                    |
+| Local vault key                   | `openssl rand -hex 32` into `.env.local`. Never share one between environments (§9.4)                                                                                                          |
+| Zoom presence locally             | Point a tunnel at `/api/integrations/webhooks/zoom` and set `ZOOM_WEBHOOK_SECRET` to the dev app's Secret Token                                                                                |
 
 ---
 
@@ -1663,7 +1731,7 @@ tokens (those go in `connection_secrets`, §9.4) or for the app's env.
 | `SCHEDULING_CRON_SECRET`   | same                                                                                          | `scheduling-availability-horizon` | same                                            |
 | `CONTACT_CRON_SECRET`      | same                                                                                          | `contact-attachment-sweep`        | same                                            |
 | `COMMS_DISPATCH_SECRET`    | ≥ 32 chars; also an Edge secret                                                               | the comms dispatch trigger        | **Proposed** (flag (e))                         |
-| `INTEGRATIONS_CRON_SECRET` | ≥ 32 chars; also app env                                                                      | the §7.6 jobs                     | **Proposed**                                    |
+| `INTEGRATIONS_CRON_SECRET` | ≥ 32 chars; also app env                                                                      | the §7.6 jobs                     | **Shipped**; provisioned nowhere yet            |
 | `MODERATION_CRON_SECRET`   | ≥ 32 chars; also app env                                                                      | `moderation-drain`                | **Proposed**                                    |
 
 ```sql
@@ -1677,37 +1745,23 @@ SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name = 'FINANCE_C
 Verify the registry with `deno task cron:run --list`. Until the secrets exist, each http job skips
 and writes an `ops.log_entries` row (`secret_missing` / `app_url_missing`).
 
-### 9.4 Envelope encryption: AWS KMS or HashiCorp Vault Transit (`token-vault.ts`)
+### 9.4 Envelope encryption: the `ENCRYPTION_KEY` token vault (`token-vault.ts`)
 
-**The open ruling (Decision #59, still unresolved).** The env contract carries `ENCRYPTION_KEY`, one
-process-wide symmetric key. The `integrations` schema and `token-vault.ts` are built for a **KMS
-envelope**. **Proposed resolution:**
+**The ruling (Decision #343, ruling C4 (c), which resolves Decision #59).** The vault's key is the
+`ENCRYPTION_KEY` env, not a KMS. That overrides Decision #335 (b)'s proposal to make it a
+development-only key that production refuses. #335 (b)'s envelope columns stand.
 
-- the envelope is authoritative;
-- `ENCRYPTION_KEY` is redefined as the KEK of a **development-only** `local` provider
-  (`KMS_PROVIDER=local`);
-- the server **refuses to boot** with `KMS_PROVIDER=local` under `DENO_ENV=production`, the same
-  pattern as `assertStripeKeyAllowed`;
-- a locally sealed row records `key_id = "local:<first 8 hex of sha256(key)>"`, so a production
-  `unseal()` refuses it instead of mistaking it for a KMS row.
-
-**The schema cannot hold the envelope today (flag (b)).** `integrations.connection_secrets` has
-`access_token_cipher`, `refresh_token_cipher`, `key_id`, `encryption_alg` and **one** `nonce`.
-
-- **No column holds the wrapped DEK.** Without it, nothing sealed can ever be unsealed.
-- **One nonce serves two ciphertexts.** Two AES-GCM encryptions under one key with one nonce leak
-  the XOR of the plaintexts and allow forgery. That would be catastrophic, not a theoretical
-  weakness.
-- **No column holds an S3-compatible key pair**, although `SecretKind` names `api_key` and
-  `aws_secret_access_key`, and Decision #314 says those pairs live in the vault.
-
-**Proposed additive, in-place edit of `00000020_tables_integrations.sql`**, landing with
-`@projective/types/integrations` and `database/integrations/Tables.md` in the same change:
+**The schema (`00000020_tables_integrations.sql`, built):**
 
 ```sql
--- integrations.connection_secrets: additional columns (edited in place, not an ALTER patch)
-wrapped_dek          bytea NOT NULL,  -- the DEK, encrypted by the KEK named in key_id
-refresh_token_nonce  bytea,           -- `nonce` is documented as the ACCESS token's nonce
+-- integrations.connection_secrets: the envelope columns
+key_id               text  NOT NULL,  -- env: + the first 8 hex of sha256(the key)
+wrapped_dek          bytea NOT NULL,  -- the DEK under the KEK, GCM tag included
+wrapped_dek_nonce    bytea NOT NULL,
+access_token_cipher  bytea,
+nonce                bytea,           -- the ACCESS token's nonce
+refresh_token_cipher bytea,
+refresh_token_nonce  bytea,
 api_secret_cipher    bytea,           -- S3-compatible secret access key / API key
 api_secret_nonce     bytea,
 CONSTRAINT ck_secret_nonces CHECK (
@@ -1716,71 +1770,30 @@ AND (refresh_token_cipher IS NULL OR refresh_token_nonce IS NOT NULL)
 AND (api_secret_cipher    IS NULL OR api_secret_nonce    IS NOT NULL))
 ```
 
-**The algorithm (normative for `seal` / `unseal` / `rewrap`):**
+**The algorithm (normative for `seal` / `unseal`):**
 
-1. **DEK:** AWS `GenerateDataKey` (`KeySpec=AES_256`,
-   `EncryptionContext = { purpose:
-   "projective-token-vault", connection_id }`), or Vault
-   `transit/datakey/plaintext/<key>`. Keep the plaintext DEK in memory; store the wrapped DEK in
-   `wrapped_dek`.
-2. **Encrypt each secret:** Web Crypto AES-256-GCM with a fresh 96-bit random nonce per ciphertext
-   and AAD = `utf8("<connection_id>|<kind>|<key_id>")`. Web Crypto appends the 16-byte tag to the
-   ciphertext, so no separate tag column is needed. `SealedSecret.tag` becomes the trailing 16
-   bytes, or is dropped from the TypeScript shape.
-3. **Zero the DEK** (`fill(0)`) once the call ends. Never log it, return it or cache it.
-4. **Unseal:** `Decrypt(wrapped_dek, EncryptionContext)` under the row's `key_id`, **not** the
-   active key, then open with the nonce and AAD. A tag failure is a tamper signal and fails loudly.
-5. **Rewrap:** AWS `ReEncrypt` (the plaintext DEK never reaches the app), or Vault `transit/rewrap`.
-   The ciphertext is never touched.
+1. **The key:** 32 bytes as 64 hex characters. `key_id` = `env:` + the first 8 hex of sha256(the raw
+   key).
+2. **DEK:** each write of a row mints a fresh 256-bit DEK, wrapped by the key with AES-256-GCM under
+   its own 96-bit nonce. A refresh rewrites the whole row under a new DEK.
+3. **Encrypt each secret:** Web Crypto AES-256-GCM under the DEK with a fresh 96-bit random nonce per
+   ciphertext and AAD = `utf8("<connection_id>|<kind>|<key_id>")`, where `kind` is `access_token`,
+   `refresh_token` or `api_secret`. A ciphertext moved to another row or column fails its tag. Web
+   Crypto appends the 16-byte tag to the ciphertext, so no tag column exists.
+4. **Zero the DEK** (`fill(0)`) once the call ends. Never log it, return it or cache it.
+5. **Unseal:** refuse a row whose `key_id` is not the current key's, before any decryption. Unwrap the
+   DEK and open with the nonce and AAD. A tag failure is a tamper signal and fails loudly.
 
-**AWS KMS setup (recommended).** Projective already has an AWS footprint (STS for S3, Decision
-#314), and `adapters/sigv4.ts` signs requests without an SDK.
+**Boot.** `assertVaultKeyAllowed()` (called from `apps/web/main.ts`, the same pattern as
+`assertStripeKeyAllowed`) refuses to start with a missing, placeholder or short key whenever
+`INTEGRATIONS_BACKEND_LIVE` is on, in production too.
 
-1. KMS → create a customer-managed **symmetric** key, usage Encrypt/Decrypt, alias
-   `alias/projective-token-vault-<env>` → `KMS_KEY_ALIAS`. Set `KMS_REGION`.
-2. Enable **automatic key rotation**. AWS rotates the backing material under the **same** key id, so
-   old wrapped DEKs keep decrypting. `key_id` changes, and `rewrap` runs, only when you move to a
-   **new** key.
-3. A dedicated IAM principal per environment, **not** the S3 principal: Decision #314 allows that
-   one `sts:AssumeRole` and nothing else. Use workload identity when the app runs on AWS. Otherwise
-   use `TOKEN_VAULT_AWS_ACCESS_KEY_ID` / `TOKEN_VAULT_AWS_SECRET_ACCESS_KEY`.
-4. Turn on CloudTrail. Every `Decrypt` is then an audit record. The encryption context carries the
-   **connection id**, never an email, so the trail is useful and PII-free.
+**Generating and keeping a key.** `openssl rand -hex 32`, once per environment, in the host's secret
+manager and never in a file that is committed. Environments never share a key.
 
-```json
-{
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Sid": "TokenVaultUse",
-			"Effect": "Allow",
-			"Action": ["kms:GenerateDataKey", "kms:Decrypt", "kms:DescribeKey"],
-			"Resource": "arn:aws:kms:XXXX-XXXX:XXXX-XXXX:key/XXXX-XXXX",
-			"Condition": { "StringEquals": { "kms:EncryptionContext:purpose": "projective-token-vault" } }
-		}
-	]
-}
-```
-
-`kms:ReEncryptFrom` and `kms:ReEncryptTo` belong to a **separate rotation principal**, used only by
-the rotation tool, never by the serving app.
-
-**HashiCorp Vault Transit (the alternative).**
-
-```bash
-vault secrets enable transit
-vault write -f transit/keys/projective-token-vault type=aes256-gcm96
-vault write -f transit/keys/projective-token-vault/rotate
-vault write transit/keys/projective-token-vault/config min_decryption_version=1
-```
-
-- Give the app an AppRole policy for `transit/datakey/plaintext/projective-token-vault` and
-  `transit/decrypt/projective-token-vault`. Give `transit/rewrap/projective-token-vault` to the
-  rotation role only.
-- The wrapped key's `vault:vN:` prefix is the `key_id`.
-- Env: `VAULT_ADDR`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, `VAULT_TRANSIT_KEY`.
-- Trade-off: no per-request cloud bill, but you run a highly available Vault cluster, or pay for HCP
-  Vault.
+**Rotation is not built.** There is no rewrap: a changed key strands every sealed row, each refresh
+fails on its row until the connection is `degraded`, and its owner has to reconnect. `key_id` finds
+the rows when a rewrap is built, which it must be before the first rotation.
 
 ### 9.5 Edge Functions
 
@@ -1863,15 +1876,15 @@ removed.
 | `STRIPE_API_BASE`                                                                                              | In contract (dev)                 | `core/stripe.ts`                                              | config                 |
 | `EMBEDDINGS_ENABLED` · `VOYAGE_API_KEY` · `VOYAGE_API_BASE`                                                    | In contract                       | `isEmbeddingsLive`, `voyage-client.ts`                        | gate · secret · config |
 | `LINK_SAFETY_API_KEY`                                                                                          | In contract                       | `link-reputation.ts`                                          | secret                 |
-| `GOOGLE_INTEGRATION_*` · `MICROSOFT_INTEGRATION_*` · `ZOOM_CLIENT_*` · `DROPBOX_*` · `FRAMEIO_*`               | In contract, **not yet read**     | (§7.1)                                                        | secret                 |
+| `GOOGLE_INTEGRATION_*` · `MICROSOFT_INTEGRATION_*` · `ZOOM_CLIENT_*` · `DROPBOX_*` · `FRAMEIO_*`               | In contract                       | `integrations/oauth.ts`                                       | secret                 |
 | `ZOOM_WEBHOOK_SECRET`                                                                                          | In contract                       | `presence/zoom.ts`                                            | secret                 |
 | `S3_ACCESS_KEY_ID` · `S3_SECRET_ACCESS_KEY`                                                                    | In contract                       | `adapters/aws.ts`                                             | secret                 |
-| `ENCRYPTION_KEY` · `KMS_KEY_ALIAS`                                                                             | In contract, **unread**; #59 open | (§9.4)                                                        | secret · config        |
-| `*_CRON_SECRET` (finance, account, scheduling, contact)                                                        | In contract                       | cron routes                                                   | secret                 |
+| `ENCRYPTION_KEY`                                                                                               | In contract                       | `token-vault.ts`                                              | secret                 |
+| `*_CRON_SECRET` (finance, account, scheduling, contact, integrations)                                          | In contract                       | cron routes                                                   | secret                 |
 | `INTEGRATIONS_BACKEND_LIVE` · `FILES_BACKEND_LIVE` · `FINANCE_BACKEND_LIVE` · …                                | In contract                       | `core/supabase.ts`                                            | gate                   |
 | `MODERATION_BACKEND_LIVE` · `MALWARE_SCAN_LIVE`                                                                | **Proposed**                      | the moderation and upload services                            | gate                   |
 | `SAFETY_NODE_URL` · `SAFETY_NODE_TOKEN`                                                                        | **Proposed**                      | `services/moderation/`, upload scan                           | config · secret        |
-| `MODERATION_CRON_SECRET` · `INTEGRATIONS_CRON_SECRET`                                                          | **Proposed**                      | cron routes + Vault                                           | secret                 |
+| `MODERATION_CRON_SECRET`                                                                                       | **Proposed**                      | cron routes + Vault                                           | secret                 |
 | `TURNSTILE_SITE_KEY` · `TURNSTILE_SECRET_KEY`                                                                  | **Proposed**                      | `core/turnstile.ts`; site key served by a route               | public · secret        |
 | `SUPABASE_AUTH_CAPTCHA_SECRET` · `SUPABASE_AUTH_SMTP_PASS`                                                     | **Proposed**                      | `supabase/config.toml` `env(...)`                             | secret                 |
 | `RESEND_API_KEY` · `RESEND_WEBHOOK_SECRET` · `MAIL_FROM`                                                       | **Proposed**                      | `verification-mailer.ts`, `comms-dispatch`, the webhook route | secret · config        |
@@ -1879,9 +1892,7 @@ removed.
 | `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | Edge secret                                                   | secret · config        |
 | `APNS_KEY_ID` · `APNS_TEAM_ID` · `APNS_BUNDLE_ID` · `APNS_PRIVATE_KEY` · `APNS_ENVIRONMENT`                    | **Proposed** (Growth)             | Edge secret                                                   | secret · config        |
 | `FCM_PROJECT_ID` · `FCM_SERVICE_ACCOUNT_JSON`                                                                  | **Proposed** (Growth)             | Edge secret                                                   | config · secret        |
-| `KMS_PROVIDER` · `KMS_REGION` · `TOKEN_VAULT_AWS_ACCESS_KEY_ID` · `TOKEN_VAULT_AWS_SECRET_ACCESS_KEY`          | **Proposed**                      | `token-vault.ts`                                              | config · secret        |
-| `VAULT_ADDR` · `VAULT_ROLE_ID` · `VAULT_SECRET_ID` · `VAULT_TRANSIT_KEY`                                       | **Proposed** (alternative)        | `token-vault.ts`                                              | config · secret        |
-| `MICROSOFT_INTEGRATION_TENANT`                                                                                 | **Proposed**                      | the Graph authority (`common` by default)                     | config                 |
+| `MICROSOFT_INTEGRATION_TENANT`                                                                                 | In contract                       | the Microsoft identity URLs (`common` by default)             | config                 |
 
 ```env
 # PROPOSED additions. Not in .env.example until their code lands (same-change rule, Decision #335).
@@ -1892,16 +1903,6 @@ MALWARE_SCAN_LIVE=false
 SAFETY_NODE_URL=XXXX-XXXX               # e.g. the node's private https origin; http://127.0.0.1:8443 locally
 SAFETY_NODE_TOKEN=XXXX-XXXX             # ≥ 32 chars; the gateway's bearer
 MODERATION_CRON_SECRET=XXXX-XXXX        # ≥ 32 chars; also a Vault secret
-
-# Connectors (§7)
-INTEGRATIONS_CRON_SECRET=XXXX-XXXX      # ≥ 32 chars; also a Vault secret
-MICROSOFT_INTEGRATION_TENANT=common
-
-# Token vault (§9.4). local is development only and refused under DENO_ENV=production.
-KMS_PROVIDER=local                      # local | aws | vault_transit
-KMS_REGION=XXXX-XXXX
-TOKEN_VAULT_AWS_ACCESS_KEY_ID=XXXX-XXXX
-TOKEN_VAULT_AWS_SECRET_ACCESS_KEY=XXXX-XXXX
 
 # Bot mitigation (§9.1)
 TURNSTILE_SITE_KEY=XXXX-XXXX
@@ -1936,7 +1937,7 @@ Switcher control together.
 | **MVP-1: trust**    | 7. Presidio Tier 3: queue, worker, review sink (§6.2)                        | Flag (g) schema ruling               | A seeded obfuscated message produces one automated review row; latency on send unchanged               |
 |                     | 8. Web Push + the dispatch bearer + the comms sweeps registered (§8.1, §8.2) | Flag (e)                             | An unauthenticated POST to `comms-dispatch` → 404; a 410 revokes the device                            |
 |                     | 9. Voyage on (§5)                                                            | DPA + written no-training terms (T5) | `x-discovery-ranking: semantic`; breaker test; backfill idempotent                                     |
-| **Growth**          | 10. KMS envelope + the schema fix (§9.4)                                     | Decision #59 + flag (b)              | `seal → unseal → rewrap` round-trip test; nonce-uniqueness test; production refuses `local`            |
+| **Growth**          | 10. The `ENCRYPTION_KEY` envelope + the schema fix (§9.4): built             | Decision #343, ruling C4 (c)         | `token-vault.test.ts`; `integrations_runtime.sql`; the boot refuses a missing or short key             |
 |                     | 11. Connectors: Google, then Microsoft, then Zoom OAuth (§7)                 | Step 10, flag (a), flag (i)          | Consent → callback → `v_my_connections` active; refresh job; channel renewal; erasure revokes          |
 |                     | 12. APNs / FCM with the native apps (§8.3, §8.4)                             | Native apps                          | Device registration → delivery → revocation on `Unregistered` / `UNREGISTERED`                         |
 |                     | 13. SMS / Level 1 phone verification (§8.6)                                  | Twilio account                       | GoTrue phone OTP; geo-permissions limited                                                              |
@@ -1954,15 +1955,15 @@ These are logged in [`decisions-122-126.md`](../reference/decisions/decisions-12
 
 | Flag | Contradiction or gap                                                                                                                                                                                      | Recommendation                                                                                                                                                  |
 | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| (a)  | Calendar strategy: the seed + SSOT §3.2 say Nylas; this brief says direct Google / Graph / Zoom                                                                                                           | Direct for the MVP (read-only free/busy + room creation); revisit Nylas at bidirectional sync (§7.2)                                                            |
-| (b)  | `connection_secrets` cannot store an envelope: no wrapped-DEK column, one nonce for two ciphertexts, no S3 key-pair column                                                                                | The additive in-place columns + CHECK in §9.4, with Decision #59 resolved as envelope-authoritative and `ENCRYPTION_KEY` dev-only                               |
+| (a)  | Calendar strategy: the seed + SSOT §3.2 say Nylas; this brief says direct Google / Graph / Zoom                                                                                                           | **Ruled: direct** (Decision #383, ruling R1; §7.2)                                                            |
+| (b)  | `connection_secrets` cannot store an envelope: no wrapped-DEK column, one nonce for two ciphertexts, no S3 key-pair column                                                                                | **Built:** the columns + CHECK in §9.4. **Ruled** against a dev-only `ENCRYPTION_KEY`: it is the vault's key everywhere (Decision #343, ruling C4 (c))           |
 | (c)  | Decision #128 names the Safe Browsing Lookup API v4, which Google licenses for non-commercial use                                                                                                         | Move `link-reputation.ts` to Web Risk `uris:search`; keep the env name (§6.5)                                                                                   |
 | (d)  | `scan-file` is public (`verify_jwt = false`), service-role, writes non-existent statuses and a column, and bypasses the in-process pipeline                                                               | Disable and delete it now; ClamAV goes into `completeUpload` (§6.4, §9.5)                                                                                       |
 | (e)  | The comms dispatch trigger calls its Edge Function with no authentication                                                                                                                                 | A Vault-held `COMMS_DISPATCH_SECRET` bearer, read like `ops.fn_dispatch_http_job` (§8.1)                                                                        |
 | (f)  | No email provider is chosen; `config.toml` sketches SendGrid while the documented `comms` gateway vocabulary names Resend                                                                                 | Resend for the MVP; SES as the cost path behind the same transport (§8.5)                                                                                       |
 | (g)  | Safety-node sizing (SSOT: one 2 GB box for Presidio) and the automated-finding sink (`ops.reports.reporter_user_id` is a person)                                                                          | One 4 vCPU / 8 GB node (or two nodes); a `source` column with a nullable reporter for `automated` rows, or a separate findings table (§6.1, §6.2)               |
 | (h)  | Turnstile on `/contact` vs PUBLIC_ROUTES P3 "No CAPTCHA dependency"; `security.turnstile_verifications.ip` has no retention                                                                               | Keep `/contact` CAPTCHA-free; protect GoTrue, the newsletter and community writes; a 30-day purge (§9.1)                                                        |
-| (i)  | Seeded scopes: Google `drive.readonly` is restricted (an annual CASA assessment); Zoom `meeting:write` may be a classic scope; the Outlook row lacks `offline_access` / `User.Read`                       | `drive.file` + Picker; Zoom granular scopes if the app is granular; add the two Graph scopes. Seed edits in place (§7.3–§7.5)                                   |
+| (i)  | Seeded scopes: Google `drive.readonly` is restricted (an annual CASA assessment); Zoom `meeting:write` may be a classic scope; the Outlook row lacks `offline_access` / `User.Read`                       | **Done** for Zoom and Outlook (Decision #383, rulings applied in SCH-WP4a). **Open** for Drive: `drive.file` + Picker (§7.3)                                    |
 | (j)  | PRODUCT_SPEC §AML says users are sanctions-screened "during Level 2 and Level 3"; Stripe Identity does not screen                                                                                         | Record that the screen is Stripe Connect's, reached through the payout-ready gate's account half; a dedicated screening vendor only on enterprise demand (§4.4) |
 | (k)  | SYSTEM_ARCHITECTURE §Runtime says keys "are stored in Supabase Vault and accessed via environment variables in Edge Functions", conflating Vault with Edge secrets; the app reads Stripe from its own env | Reword that sentence to the §3.1 table                                                                                                                          |
 

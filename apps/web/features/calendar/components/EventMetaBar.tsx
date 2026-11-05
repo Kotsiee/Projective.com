@@ -6,7 +6,7 @@ import { DateTimePicker } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { calendarTime } from "@projective/ui/calendar";
 import type { CalendarEvent } from "@projective/types/scheduling";
-import { eventLiveStatus } from "@projective/types/scheduling";
+import { entryClassOf, eventLiveStatus } from "@projective/types/scheduling";
 import { durationLabel, eventBadge } from "../core/event-view.ts";
 import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -214,8 +214,8 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 	 * built here; it is a separate control, not a flag on this one.
 	 */
 	const editable = canEdit && !event.allDay;
-	// A deadline is one instant (`end === start`): it has a due time and no end to move.
-	const deadline = event.kind === "deadline";
+	// A Reminder is one instant (`end === start`): it has a time and no end to move.
+	const reminder = entryClassOf(event) === "reminder";
 
 	/**
 	 * Moving the start MOVES THE END WITH IT, keeping the occurrence the same length.
@@ -270,12 +270,12 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 						<MetaTimeField
 							id={`evm-start-${event.id}`}
 							icon="calendar"
-							label={deadline ? "Due" : "Starts"}
+							label={event.kind === "deadline" ? "Due" : reminder ? "When" : "Starts"}
 							value={startBinding}
 							hour12={hour12}
 							onChange={moveStart}
 						/>
-						{deadline ? null : (
+						{reminder ? null : (
 							<MetaTimeField
 								id={`evm-end-${event.id}`}
 								icon="clock"

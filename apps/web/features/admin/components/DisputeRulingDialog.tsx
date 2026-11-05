@@ -17,6 +17,7 @@ import {
 	disputeStatusSeverity,
 	disputeTimeLabel,
 } from "@features/projects/core/dispute-view.ts";
+import { DisputeRoomLog } from "@features/projects/components/DisputeRoomLog.tsx";
 import { DisputeDeskService } from "../core/DisputeDeskService.ts";
 import {
 	caseTitle,
@@ -243,15 +244,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 									: null}
 							</dl>
 
-							{d.audit
-								? (
-									<p class="ddesk-dlg__meta">
-										{d.audit.tracked
-											? `Room logs: provider present ${d.audit.hostPresencePct}%, attendee ${d.audit.claimantPresencePct}% of the session (a claim is dismissed at ${d.audit.thresholdPct}% each).`
-											: "The room reported no attendance, so the logs could not settle the claim."}
-									</p>
-								)
-								: null}
+							{d.audit ? <DisputeRoomLog audit={d.audit} /> : null}
 
 							<section class="ddesk-dlg__section" aria-label="Statements and evidence">
 								<h3 class="ddesk-dlg__heading">Statements &amp; evidence</h3>

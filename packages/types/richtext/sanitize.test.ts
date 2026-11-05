@@ -3,10 +3,19 @@ import { sanitizeRichText } from "./sanitize.ts";
 
 // #region What the editor writes survives untouched
 Deno.test("sanitizeRichText — the editor's own output is returned exactly as written", () => {
-	const html = "<h2>Agenda</h2><p>Bring&nbsp;the <strong>draft</strong>, <em>notes</em>, " +
+	const html = "<h2>Agenda</h2><p>Bring the <strong>draft</strong>, <em>notes</em>, " +
 		"<u>budget</u> and <s>slides</s>.</p><ol><li>Intro</li><li>Review</li></ol>" +
 		"<ul><li>Q&amp;A</li></ul><p><br></p>";
 	assertEquals(sanitizeRichText(html), html);
+});
+
+Deno.test("sanitizeRichText — Quill's every-space nbsp reads as words that can wrap", () => {
+	assertEquals(
+		sanitizeRichText("<p>Walk&nbsp;through&nbsp;the&nbsp;<strong>plan</strong></p>"),
+		"<p>Walk through the <strong>plan</strong></p>",
+	);
+	// Written out as text, it is not a space: it stays the characters the person typed.
+	assertEquals(sanitizeRichText("<p>&amp;nbsp;</p>"), "<p>&amp;nbsp;</p>");
 });
 
 Deno.test("sanitizeRichText — idempotent, and plain text is escaped rather than lost", () => {

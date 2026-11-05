@@ -424,11 +424,13 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			return ((m - RANGE_START_MIN) / 60) * pxPerHour.value;
 		},
 		// The initial centre: the live time when today is in the focused block, else that block's noon —
-		// symmetric room to scroll up into the morning and down across midnight. `peek()` because this
-		// runs inside an effect and must not subscribe anything to the clock.
+		// symmetric room to scroll up into the morning and down across midnight. The wall clock, because
+		// this first runs in a layout effect, before `mounted` flips, and `todayMs` is still null there.
 		focusY: () => {
-			const anchor = todayBlock === focusBlock && todayMs != null
-				? focusBlock * BLOCK_MIN + minutesFromDayStart(props.now.peek(), todayMs)
+			const nowMs = Date.now();
+			const today = startOfDay(nowMs, tz);
+			const anchor = blockIndexOf(today) === focusBlock
+				? focusBlock * BLOCK_MIN + minutesFromDayStart(nowMs, today)
 				: focusBlock * BLOCK_MIN + 12 * 60;
 			return ((anchor - RANGE_START_MIN) / 60) * pxPerHour.value;
 		},

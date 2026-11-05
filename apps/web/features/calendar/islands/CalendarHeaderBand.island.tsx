@@ -223,7 +223,7 @@ function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
 				calendarPresent.value += 1;
 			}}
 			panelId={CALENDAR_PANEL_ID}
-			panelName="month navigator"
+			panelName="event and month panel"
 		>
 			<label class="cal-band__search">
 				<Icon name="search" size="xs" class="cal-band__searchglyph" aria-hidden="true" />

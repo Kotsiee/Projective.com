@@ -11,6 +11,8 @@
 	--ui-ie-px: var(--space-1);
 	--ui-ie-py: 2px;
 	--ui-ie-radius: var(--radius-sm);
+	/* The input's outline is a border, so the resting box reserves it: unreserved, it is the jump. */
+	--ui-ie-inset: calc(var(--ui-ie-px) + var(--fld-bw));
 }
 
 .ui-inline-edit {
@@ -18,9 +20,9 @@
 	align-items: flex-start;
 	gap: var(--space-1);
 	max-inline-size: 100%;
-	margin-inline-start: calc(var(--ui-ie-px) * -1);
+	margin-inline-start: calc(var(--ui-ie-inset) * -1);
 	padding: var(--ui-ie-py) var(--ui-ie-px);
-	border: none;
+	border: var(--fld-bw) solid transparent;
 	border-radius: var(--ui-ie-radius);
 	background: transparent;
 	font: inherit;
@@ -72,11 +74,41 @@
 	opacity: 1;
 }
 
+/*
+ * Rich content sits beside its button, which stretches over it: the whole block still takes the press,
+ * and the content stays readable by assistive tech (a button's name would replace it).
+ */
+.ui-inline-edit--rich {
+	position: relative;
+}
+
+.ui-inline-edit__hit {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	justify-content: flex-end;
+	padding: var(--ui-ie-py) var(--ui-ie-px);
+	border: none;
+	border-radius: inherit;
+	background: transparent;
+	cursor: text;
+}
+
+.ui-inline-edit__hit:focus-visible {
+	outline: none;
+	box-shadow: none;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.ui-inline-edit__hit:focus-visible .ui-inline-edit__mark {
+	opacity: 1;
+}
+
 .ui-inline-edit__input {
 	display: block;
 	inline-size: 100%;
 	max-inline-size: 100%;
-	margin-inline-start: calc(var(--ui-ie-px) * -1);
+	margin-inline-start: calc(var(--ui-ie-inset) * -1);
 	padding: var(--ui-ie-py) var(--ui-ie-px);
 	border: var(--fld-bw) solid var(--fld-focus-bd);
 	border-radius: var(--ui-ie-radius);

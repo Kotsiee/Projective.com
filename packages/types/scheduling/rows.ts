@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { slugPattern } from "../slugs/slug.ts";
+import { EntryRemindersSchema } from "./reminders.ts";
 
 /**
  * `scheduling` schema ROW shapes — the persisted counterpart to the read projections in
@@ -206,7 +207,9 @@ export const SchedulingEventRowSchema = z.object({
 	href: z.string().max(400).nullable(),
 	/** Set when mirrored in from a connected external calendar. */
 	sourceConnectionId: uuid.nullable(),
-	externalEventId: z.string().max(200).nullable(),
+	externalEventId: z.string().max(1024).nullable(),
+	/** False keeps this event off every person's separate Projective calendar (Decision #383, R3). */
+	externalSync: z.boolean(),
 	/** Set when this row mirrors a delivered `projects.session_events` row. */
 	sourceSessionEventId: uuid.nullable(),
 	/** Set on a series MASTER, which is itself the first occurrence (its `startsAt` is DTSTART). */
@@ -244,6 +247,69 @@ export const CreateSchedulingEventSchema = z.object({
 	href: z.string().max(400).optional(),
 });
 export type CreateSchedulingEvent = z.infer<typeof CreateSchedulingEventSchema>;
+// #endregion
+
+// #region scheduling.event_reminders
+/**
+ * A row of `scheduling.event_reminders` — one person's own alerts for one entry, overriding their
+ * default (Decision #388). Read and written by that person alone, under RLS. `[]` switches the entry's
+ * alerts off for them, which is a different answer from having no row.
+ */
+export const EventReminderRowSchema = z.object({
+	eventId: uuid,
+	userId: uuid,
+	reminders: EntryRemindersSchema,
+});
+export type EventReminderRow = z.infer<typeof EventReminderRowSchema>;
+// #endregion
+
+// #region scheduling.event_mirrors
+/**
+ * A row of `scheduling.event_mirrors` — one copy of an event or a discovery call on a person's separate
+ * Projective calendar at a provider, and the queue that keeps it right (Decision #383, ruling R3).
+ * Definer-only: this shape documents the row, and no client ever receives one.
+ */
+export const EventMirrorRowSchema = z.object({
+	id: uuid,
+	/** A row has at most one anchor. Null once the event is deleted, until its copy has been removed. */
+	eventId: uuid.nullable(),
+	/** The same, for a call. */
+	callId: uuid.nullable(),
+	connectionId: uuid,
+	externalEventId: z.string().max(1024).nullable(),
+	/** Google's etag or Graph's changeKey. Stored, never compared: the next change overwrites. */
+	version: z.string().nullable(),
+	/** Set while the copy is due to be written or removed. */
+	dirtyAt: timestamp.nullable(),
+	claimedAt: timestamp.nullable(),
+	attempts: z.number().int().min(0),
+	lastError: z.string().max(200).nullable(),
+	createdAt: timestamp,
+	updatedAt: timestamp,
+});
+export type EventMirrorRow = z.infer<typeof EventMirrorRowSchema>;
+// #endregion
+
+// #region scheduling.connected_event_details
+/**
+ * A row of `scheduling.connected_event_details` — what an entry mirrored in from a connected calendar
+ * says (Decision #387). Definer-only: its owner reads it through `get_own_event_details`, which folds
+ * it into their {@link CalendarEvent}, and nobody else ever receives one.
+ */
+export const ConnectedEventDetailsRowSchema = z.object({
+	eventId: uuid,
+	title: z.string().max(200).nullable(),
+	location: z.string().max(160).nullable(),
+	/** Can hold HTML, so it reaches the DOM only through `sanitizeRichText`. */
+	description: z.string().max(8000).nullable(),
+	/** The provider's id for the series this is one occurrence of. */
+	seriesId: z.string().max(1024).nullable(),
+	/** The series' repeat. The provider expands it, so nothing here does. */
+	recurrenceRule: RRuleText.nullable(),
+	/** The entry's own meeting at the provider. */
+	joinUrl: z.string().max(600).nullable(),
+});
+export type ConnectedEventDetailsRow = z.infer<typeof ConnectedEventDetailsRowSchema>;
 // #endregion
 
 // #region Availability presets & recurrence (Decision #217)

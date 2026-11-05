@@ -259,6 +259,17 @@ SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_i
 CREATE POLICY "Parties view event attachments" ON scheduling.event_attachments FOR
 SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_id));
 
+-- A person's alerts are theirs alone (Decision #388), so unlike the six above this one has a client
+-- write path: nobody else's rule is at stake, only when one person hears about their own meeting.
+CREATE POLICY "Own event reminders" ON scheduling.event_reminders FOR ALL TO authenticated USING (
+    user_id = auth.uid ()
+)
+WITH
+    CHECK (
+        user_id = auth.uid ()
+        AND scheduling.fn_can_see_event_coordination (event_id)
+    );
+
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 

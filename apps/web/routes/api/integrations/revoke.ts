@@ -9,9 +9,10 @@ import { IntegrationsBackendService } from "@server/services/integrations/Integr
  * fresh consent.
  *
  * Zod-validates the payload ({@link RevokeConnectionSchema}) and delegates to the fat
- * {@link IntegrationsBackendService.revokeConnection}, which also deletes the vault row AND calls the
- * provider's own revocation endpoint on the live path — leaving a token valid at the far end after the
- * user asked us to forget it is the one failure they would never find out about.
+ * {@link IntegrationsBackendService.revokeConnection}, which deletes the vault row, expires the
+ * connection's channels, archives its busy rows AND calls the provider's own revocation endpoint —
+ * leaving a token valid at the far end after the user asked us to forget it is the one failure they
+ * would never find out about.
  *
  * **The owner check is the service's, and it needs the session user.** Passing the acting
  * {@link UserContext}'s id is what lets the service answer 404 for a connection the caller does not

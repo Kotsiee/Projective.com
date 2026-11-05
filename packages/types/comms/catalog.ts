@@ -161,6 +161,29 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// #region [scheduling] Discovery-call expiry (S-11)
 	"call.expired",
 	// #endregion
+
+	// #region [scheduling] Discovery-call doors and reminders (S-10, S-18)
+	"call.confirmed",
+	"call.declined",
+	"call.time_proposed",
+	"call.cancelled",
+	"call.no_show",
+	"call.reminder",
+	// #endregion
+
+	// #region [scheduling] A calendar entry's own alerts, one key per channel (Decision #388)
+	"event.reminder",
+	"event.reminder_email",
+	// #endregion
+
+	// #region [scheduling] Rooms and the evidence hold (Decision #383)
+	"room.failed",
+	"session.review_requested",
+	// #endregion
+
+	// #region [integrations] A connection lost its grant (Decision #343, ruling C4)
+	"integration.reconnect_required",
+	// #endregion
 ] as const;
 
 /** The seeded event keys as a union type. Runtime values are NOT limited to these. */

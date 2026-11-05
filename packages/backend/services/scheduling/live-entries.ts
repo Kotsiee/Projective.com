@@ -3,10 +3,19 @@ import type {
 	CalendarEvent,
 	CreateEntriesInput,
 	EntryFields,
+	EntryReminder,
+	EntryRoom,
+	ReminderEligibilityRow,
 	RemoveEntryInput,
+	SetEntryRemindersInput,
 	UpdateEntryInput,
 } from "@projective/types/scheduling";
-import { createRefusal, uuid } from "@projective/types/scheduling";
+import {
+	createRefusal,
+	normalizeReminders,
+	takesReminders,
+	uuid,
+} from "@projective/types/scheduling";
 import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -46,12 +55,16 @@ export interface EntryRow {
 	id: string;
 	schedule_id: string | null;
 	project_id: string | null;
+	source_connection_id: string | null;
 	archived_at: string | null;
 }
 
 const GONE = "That entry is no longer on your calendar.";
 const NOT_HOST = "Only the entry’s host can change it.";
+const CONNECTED = "This came from your connected calendar, so change it there.";
 const BACKWARDS = "An entry can’t end before it starts.";
+const NO_ALERTS = "This entry’s reminders are set where it comes from.";
+const NOT_ON_IT = "You can set reminders only on entries you’re part of.";
 
 function sched(db: SupabaseClient): SupabaseClient {
 	return db.schema("scheduling") as unknown as SupabaseClient;
@@ -71,6 +84,7 @@ function columns(f: EntryFields): Record<string, unknown> {
 		all_day: f.allDay ?? false,
 		location: f.location?.trim() || null,
 		description: hasRichTextProse(agenda) ? agenda : null,
+		...(f.externalSync === undefined ? {} : { external_sync: f.externalSync }),
 	};
 }
 
@@ -85,6 +99,42 @@ function writeRefusal(error: { code?: string; message?: string }): ServiceResult
 	return fail(503, { message: "Your calendar could not be saved just now. Please try again." });
 }
 
+/**
+ * Set these entries' room (Decision #383 (f)). The entry is already saved, so a refused room is logged
+ * and the re-read tells the truth, rather than the entry being reported as lost.
+ */
+async function setRoom(
+	db: SupabaseClient,
+	ids: readonly string[],
+	room: EntryRoom | null | undefined,
+): Promise<void> {
+	if (room === undefined) return;
+	const { error } = await sched(db).rpc("set_entry_room", {
+		p_events: ids,
+		p_provider: room?.provider ?? null,
+		p_link: room?.link ?? null,
+		p_passcode: room?.passcode ?? null,
+	});
+	if (error) console.error("[scheduling:entries] room not set", error.code, error.message);
+}
+
+/**
+ * Store the caller's own alerts on these entries, as RLS lets them. One row per person per entry, so
+ * another person's alerts are not this write's to touch, and the `[]` that means none is kept.
+ */
+function writeOwnReminders(
+	db: SupabaseClient,
+	userId: string,
+	ids: readonly string[],
+	reminders: readonly EntryReminder[],
+): PromiseLike<{ error: { code?: string; message?: string } | null }> {
+	const list = normalizeReminders(reminders);
+	return sched(db).from("event_reminders").upsert(
+		ids.map((id) => ({ event_id: id, user_id: userId, reminders: list })),
+		{ onConflict: "event_id,user_id" },
+	);
+}
+
 /** The caller's own (user-owned) schedule id, or `null` before their first entry. */
 async function ownSchedule(db: SupabaseClient, userId: string): Promise<string | null> {
 	const { data, error } = await sched(db).from("schedules").select("id")
@@ -95,14 +145,18 @@ async function ownSchedule(db: SupabaseClient, userId: string): Promise<string |
 
 /**
  * The caller's schedule, opened on their first entry: unpublished, and in their profile's zone —
- * the column default would otherwise become the zone their whole agenda is drawn in.
+ * the column default would otherwise become the zone their whole agenda is drawn in. Clients hold no
+ * grant on the zone column, so it comes through the door, and an unread zone refuses rather than
+ * fixing the default on the schedule for good.
  */
 async function openSchedule(db: SupabaseClient, userId: string): Promise<string> {
 	const existing = await ownSchedule(db, userId);
 	if (existing) return existing;
-	const profile = await db.schema("org").from("users_public").select("timezone")
-		.eq("user_id", userId).maybeSingle();
-	const tz = (profile.data as { timezone: string | null } | null)?.timezone?.trim();
+	const profile = await db.schema("org").rpc("get_own_private_profile");
+	if (profile.error) {
+		throw new Error(`org.get_own_private_profile failed: ${profile.error.message}`);
+	}
+	const tz = (profile.data as { timezone: string | null }[] | null)?.[0]?.timezone?.trim();
 	const { data, error } = await sched(db).from("schedules")
 		.insert({ owner_type: "user", owner_id: userId, ...(tz ? { timezone: tz } : {}) })
 		.select("id").single();
@@ -141,6 +195,9 @@ export function hostRefusal(
 	if (row.project_id || !ownScheduleId || row.schedule_id !== ownScheduleId) {
 		return fail(403, { message: NOT_HOST });
 	}
+	// A write here would be overwritten by the next sync, and it would copy what the owner alone reads
+	// into `title`, which is not theirs alone.
+	if (row.source_connection_id) return fail(403, { message: CONNECTED });
 	return null;
 }
 // #endregion
@@ -158,7 +215,9 @@ async function judge(
 ): Promise<ServiceResult<never> | null> {
 	if (!uuid.safeParse(eventId).success) return fail(403, { message: NOT_HOST });
 	const [row, own] = await Promise.all([
-		sched(db).from("events").select("id, schedule_id, project_id, archived_at")
+		sched(db).from("events").select(
+			"id, schedule_id, project_id, source_connection_id, archived_at",
+		)
 			.eq("id", eventId).maybeSingle(),
 		ownSchedule(db, actor.userId),
 	]);
@@ -190,6 +249,15 @@ export async function createEntries(
 	).select("id");
 	if (error) return writeRefusal(error);
 	const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+	await setRoom(deps.db, ids, input.room);
+	// As with the room, the entry is already saved, so a refused list is logged rather than reported as
+	// a lost entry; the re-read says what stands.
+	if (input.reminders) {
+		const { error: refused } = await writeOwnReminders(deps.db, actor.userId, ids, input.reminders);
+		if (refused) {
+			console.error("[scheduling:entries] alerts not set", refused.code, refused.message);
+		}
+	}
 	return ok({ events: await deps.reread(ids) }, { status: 201 });
 }
 
@@ -199,13 +267,14 @@ export async function updateEntry(
 	actor: Caller,
 	deps: EntryDeps,
 ): Promise<ServiceResult<{ event: CalendarEvent }>> {
-	const { eventId, ...fields } = input;
+	const { eventId, room, ...fields } = input;
 	const refused = fieldsRefusal(fields, deps.now, false) ?? await judge(deps.db, actor, eventId);
 	if (refused) return refused;
 	const { data, error } = await sched(deps.db).from("events").update(columns(fields))
 		.eq("id", eventId).is("archived_at", null).select("id");
 	if (error) return writeRefusal(error);
 	if (!data?.length) return fail(403, { message: NOT_HOST });
+	await setRoom(deps.db, [eventId], room);
 	const [event] = await deps.reread([eventId]);
 	return event
 		? ok({ event })
@@ -226,5 +295,37 @@ export async function removeEntry(
 	if (error) return writeRefusal(error);
 	if (!data?.length) return fail(403, { message: NOT_HOST });
 	return ok({ eventId: input.eventId });
+}
+
+/**
+ * Set the caller's OWN alerts for one entry (Decision #388), or with `null` return them to their
+ * default. Not a host's write: any seat may, so it has no {@link judge}, and the gate is that RLS lets
+ * them read the row and `Own event reminders` lets them write their own line against it. A derived
+ * entry's id has no row to hang one on, and an entry whose alerts come from elsewhere takes none.
+ */
+export async function setEntryReminders(
+	input: SetEntryRemindersInput,
+	actor: Caller,
+	deps: EntryDeps,
+): Promise<ServiceResult<{ event: CalendarEvent }>> {
+	const { eventId, reminders } = input;
+	if (!uuid.safeParse(eventId).success) return fail(409, { message: NO_ALERTS });
+	const { data, error } = await sched(deps.db).from("events")
+		.select("kind, status, source_connection_id, source_session_event_id, archived_at")
+		.eq("id", eventId).maybeSingle();
+	if (error) throw new Error(`scheduling.events read failed: ${error.message}`);
+	const row = data as ReminderEligibilityRow | null;
+	if (!row || row.archived_at) return fail(404, { message: GONE });
+	if (!takesReminders(row)) return fail(409, { message: NO_ALERTS });
+	const { error: refused } = reminders === null
+		? await sched(deps.db).from("event_reminders").delete()
+			.eq("event_id", eventId).eq("user_id", actor.userId)
+		: await writeOwnReminders(deps.db, actor.userId, [eventId], reminders);
+	if (refused?.code === "42501") return fail(403, { message: NOT_ON_IT });
+	if (refused) return writeRefusal(refused);
+	const [event] = await deps.reread([eventId]);
+	return event
+		? ok({ event })
+		: fail(500, { message: "The reminders were saved but could not be re-read." });
 }
 // #endregion

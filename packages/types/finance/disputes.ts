@@ -49,6 +49,16 @@ export type DisputeParty = DisputeRole;
 // #endregion
 
 // #region The case read
+/** One line of a room's log, as the audit froze it. A party alone: a case names no third person. */
+export const DisputeRoomEntrySchema = z.object({
+	party: z.enum(["host", "claimant", "other"]),
+	action: z.enum(["joined", "left", "waiting", "join_click"]),
+	at: timestamp,
+	/** Known only by an email a provider reported, which is weaker evidence (Decision #343, C4 (b)). */
+	weak: z.boolean(),
+});
+export type DisputeRoomEntry = z.infer<typeof DisputeRoomEntrySchema>;
+
 /** The attendance audit's frozen snapshot (`finance.fn_dispute_attendance_audit`). */
 export const DisputeAuditSchema = z.object({
 	verdict: z.enum(["pending", "refund", "dismiss", "ambiguous"]),
@@ -56,8 +66,13 @@ export const DisputeAuditSchema = z.object({
 	tracked: z.boolean(),
 	hostPresencePct: z.number().int().min(0).max(100),
 	claimantPresencePct: z.number().int().min(0).max(100),
+	/** Time actually in the room, not first join to last leave (Decision #383 (b)). */
+	hostSeconds: z.number().int().min(0),
+	claimantSeconds: z.number().int().min(0),
+	reconnects: z.number().int().min(0),
 	thresholdPct: z.number().int().min(0).max(100),
 	auditedAt: timestamp,
+	timeline: z.array(DisputeRoomEntrySchema).max(200),
 });
 export type DisputeAudit = z.infer<typeof DisputeAuditSchema>;
 

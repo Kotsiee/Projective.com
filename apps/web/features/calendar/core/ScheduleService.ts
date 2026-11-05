@@ -2,7 +2,10 @@ import { getScheduling, postScheduling } from "./api.ts";
 import type {
 	CalendarEvent,
 	CalendarPage,
+	CallActionInput,
 	EntryFields,
+	EntryReminder,
+	EntryRoom,
 	RescheduleInput,
 	RsvpInput,
 	SchedulePage,
@@ -52,22 +55,50 @@ export const ScheduleService = {
 		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/rsvp", input);
 	},
 
+	/** Make one move on a discovery call; resolves with it, or `null` once it has left the calendar. */
+	callAction(input: CallActionInput): Promise<CalendarResult<{ event: CalendarEvent | null }>> {
+		return postScheduling<{ event: CalendarEvent | null }>("/api/scheduling/calls", input);
+	},
+
 	/** Apply one move to an event's reschedule negotiation; resolves with the refreshed event. */
 	reschedule(input: RescheduleInput): Promise<CalendarResult<{ event: CalendarEvent }>> {
 		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/reschedule", input);
 	},
 
 	/** Create entries on the caller's own calendar; resolves with them as the agenda draws them. */
-	create(entries: EntryFields[]): Promise<CalendarResult<{ events: CalendarEvent[] }>> {
-		return postScheduling<{ events: CalendarEvent[] }>("/api/scheduling/events", { entries });
+	create(
+		entries: EntryFields[],
+		room?: EntryRoom | null,
+		reminders?: EntryReminder[] | null,
+	): Promise<CalendarResult<{ events: CalendarEvent[] }>> {
+		return postScheduling<{ events: CalendarEvent[] }>(
+			"/api/scheduling/events",
+			{ entries, room, reminders },
+		);
 	},
 
 	/** Edit one of the caller's own entries; resolves with it re-read. */
-	update(eventId: string, fields: EntryFields): Promise<CalendarResult<{ event: CalendarEvent }>> {
+	update(
+		eventId: string,
+		fields: EntryFields,
+		room?: EntryRoom | null,
+	): Promise<CalendarResult<{ event: CalendarEvent }>> {
 		return postScheduling<{ event: CalendarEvent }>(
 			"/api/scheduling/events",
-			{ ...fields, eventId },
+			{ ...fields, eventId, room },
 			"PATCH",
+		);
+	},
+
+	/** Set the caller's own alerts for an entry they hold; `null` follows their default. */
+	setReminders(
+		eventId: string,
+		reminders: EntryReminder[] | null,
+	): Promise<CalendarResult<{ event: CalendarEvent }>> {
+		return postScheduling<{ event: CalendarEvent }>(
+			"/api/scheduling/reminders",
+			{ eventId, reminders },
+			"PUT",
 		);
 	},
 

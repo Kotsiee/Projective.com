@@ -98,6 +98,9 @@ CREATE TABLE scheduling.events (
     href text,
     source_connection_id uuid REFERENCES integrations.user_connections (id) ON DELETE SET NULL,
     external_event_id text,
+    -- The host's per-event opt-out from the outbound flow (Decision #383, ruling R3): false keeps this
+    -- entry off every person's Projective calendar at their provider, and takes it off if it is there.
+    external_sync boolean NOT NULL DEFAULT true,
     source_session_event_id uuid REFERENCES projects.session_events (id) ON DELETE CASCADE,
     -- RFC 5545 recurrence. A series is a MASTER row carrying `recurrence_rule` (its own starts_at is
     -- DTSTART, so it is the first occurrence) plus one ordinary row per later occurrence pointing back
@@ -366,6 +369,20 @@ CREATE TABLE scheduling.event_attachments (
     CONSTRAINT uq_event_attachment UNIQUE (event_id, file_id)
 );
 
+-- One person's own alerts for one entry, overriding their default (Decision #388). A table rather
+-- than a list on the event, because an alert is the person's: two people on a meeting want different
+-- leads, an attendee cannot write the event row, and a project's events take no client write at all.
+-- `meta` was never a home for it: it is the `text` strapline every grid card and export prints.
+-- `[]` switches the entry's alerts off for them; no row follows their default. Shaped by Zod
+-- (`EntryRemindersSchema`), and read back through scheduling.fn_reminder_rows, which skips a malformed
+-- element, so a write straight through PostgREST cannot fail the sweep for everyone.
+CREATE TABLE scheduling.event_reminders (
+    event_id uuid NOT NULL REFERENCES scheduling.events (id) ON DELETE CASCADE,
+    user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+    reminders jsonb NOT NULL,
+    PRIMARY KEY (event_id, user_id)
+);
+
 CREATE TABLE scheduling.call_settings (
     schedule_id uuid PRIMARY KEY REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
     accepts_calls boolean NOT NULL DEFAULT false,
@@ -433,6 +450,9 @@ CREATE TABLE scheduling.discovery_calls (
     status scheduling.call_status NOT NULL DEFAULT 'proposed',
     proposed_start timestamptz NOT NULL,
     proposed_end timestamptz NOT NULL,
+    -- Who made the proposal now on the table, which decides who may accept it: its counterparty
+    -- (Decision #383, SCH-WP3). A request is the requester's; a move is whoever moved it.
+    proposed_by scheduling.call_party NOT NULL DEFAULT 'requester',
     confirmed_start timestamptz,
     confirmed_end timestamptz,
     requester_timezone text,
@@ -466,6 +486,7 @@ CREATE TABLE scheduling.discovery_calls (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_call_parties_distinct CHECK (host_user_id <> requester_user_id),
+    CONSTRAINT ck_call_proposed_by CHECK (proposed_by <> 'both'::scheduling.call_party),
     -- Rendered as a join link, like `events.meeting_url` (ck_event_meeting_url_https).
     CONSTRAINT ck_call_meeting_url_https CHECK (meeting_url ~ '^https://[^[:space:]]+$'),
     CONSTRAINT ck_call_proposed_span CHECK (proposed_end > proposed_start),
@@ -504,6 +525,7 @@ CREATE TABLE scheduling.call_attendance (
     source_provider_slug text REFERENCES integrations.providers (slug) ON DELETE SET NULL,
     external_participant_id text,
     created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_call_attendance_user UNIQUE (call_id, user_id),
     CONSTRAINT ck_attendance_span CHECK (
         left_at IS NULL
         OR left_at >= joined_at
@@ -521,6 +543,155 @@ CREATE TABLE scheduling.call_audit (
     slot_end timestamptz,
     detail text,
     created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- Rooms (Decision #343, ruling C4; Decision #383).
+--
+-- One row per meeting at a provider, whatever it belongs to: a sitting, a discovery call or a
+-- calendar entry. It is the mint queue, the record of which provider meeting is whose, and the key
+-- attendance is matched on. It holds no URL: a join link stays in the column its owner already
+-- withholds from clients (session_events, discovery_calls, events), so its doors keep working and a
+-- bearer link has one home. Definer-only: RLS on, no policy, no client grant.
+-- ---------------------------------------------------------------------------------------------
+CREATE TABLE scheduling.rooms (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    -- The opaque address a join goes through (Decision #88), filled by fn_slug_guard('rom').
+    slug text NOT NULL,
+    event_id uuid UNIQUE REFERENCES scheduling.events (id) ON DELETE CASCADE,
+    session_event_id uuid UNIQUE REFERENCES projects.session_events (id) ON DELETE CASCADE,
+    call_id uuid UNIQUE REFERENCES scheduling.discovery_calls (id) ON DELETE CASCADE,
+    -- The meeting vocabulary, as on events.meeting_provider.
+    provider text NOT NULL,
+    connection_id uuid REFERENCES integrations.user_connections (id) ON DELETE SET NULL,
+    -- As the provider names it: a Zoom meeting id, a Meet space name, a Graph onlineMeeting id.
+    provider_meeting_id text,
+    -- The host's own account at the provider, frozen at mint so a later disconnect cannot lose it.
+    -- Attendance matches the host on this: whether the host came is the fact money turns on.
+    provider_host_id text,
+    -- People can hold personal links on this meeting, which Zoom allows on a licensed host only.
+    registration boolean NOT NULL DEFAULT false,
+    status text NOT NULL DEFAULT 'pending',
+    attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error text CHECK (char_length(last_error) <= 200),
+    -- The time changed after minting, so the provider's copy still needs updating.
+    moved_at timestamptz,
+    -- When the provider's attendance record was last read back.
+    reconciled_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT rooms_slug_key UNIQUE (slug),
+    CONSTRAINT ck_room_slug_shape CHECK (slug ~ '^rom-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT ck_room_one_anchor CHECK (num_nonnulls (event_id, session_event_id, call_id) = 1),
+    CONSTRAINT ck_room_provider CHECK (
+        provider IN ('google', 'outlook', 'zoom', 'microsoft_teams', 'discord', 'custom')
+    ),
+    CONSTRAINT ck_room_status CHECK (
+        status IN ('pending', 'minting', 'ready', 'failed', 'closing', 'closed')
+    ),
+    CONSTRAINT ck_room_minted CHECK (
+        status <> 'ready' OR provider = 'custom' OR provider_meeting_id IS NOT NULL
+    ),
+    CONSTRAINT uq_room_provider_meeting UNIQUE (provider, provider_meeting_id),
+    CONSTRAINT ck_rooms_slug_shape CHECK (slug ~ '^rom-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT rooms_slug_key UNIQUE (slug)
+);
+
+-- A person's own join link and the id their provider knows them by (ruling C4 (b)). Registration
+-- needs a licensed host at Zoom and has no twin at Meet or Teams, so a room may have no rows here and
+-- its people use the room's own link. Definer-only: a join link is a bearer credential.
+CREATE TABLE scheduling.room_registrants (
+    room_id uuid NOT NULL REFERENCES scheduling.rooms (id) ON DELETE CASCADE,
+    user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    registrant_id text NOT NULL,
+    join_url text NOT NULL CHECK (join_url ~ '^https://[^[:space:]]+$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT room_registrants_pkey PRIMARY KEY (room_id, user_id),
+    CONSTRAINT uq_room_registrant UNIQUE (room_id, registrant_id)
+);
+
+-- Every join and leave, as reported (Decision #383 (b)). Append-only, and the source of truth for time
+-- in the room: session_attendance and call_attendance keep one row per person, first join to last
+-- leave, which is a span and not attendance. Holds no email, display name or IP: `participant_key`
+-- is a hash, enough to tell one unmatched participant from another. Definer-only.
+CREATE TABLE scheduling.presence_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    room_id uuid NOT NULL REFERENCES scheduling.rooms (id) ON DELETE RESTRICT,
+    -- The provider's event id, a reconcile's own key, or a first-party click's: replays land here.
+    idempotency_key text NOT NULL CHECK (char_length(idempotency_key) <= 240),
+    action text NOT NULL,
+    occurred_at timestamptz NOT NULL,
+    source text NOT NULL,
+    matched_by text NOT NULL,
+    user_id uuid REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    participant_key text NOT NULL CHECK (char_length(participant_key) <= 120),
+    recorded_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_presence_event UNIQUE (room_id, idempotency_key),
+    -- `join_click` is the person pressing join in Projective: evidence they came, never presence.
+    CONSTRAINT ck_presence_action CHECK (action IN ('joined', 'left', 'waiting', 'join_click')),
+    CONSTRAINT ck_presence_source CHECK (source IN ('webhook', 'reconcile', 'platform')),
+    -- How the person was known. Only an email is weak evidence (ruling C4 (b)); `sole_attendee` is a
+    -- one-seat room's other participant, by elimination; `session` is a signed-in Projective join.
+    CONSTRAINT ck_presence_matched_by CHECK (
+        matched_by IN ('host_account', 'registrant', 'email', 'sole_attendee', 'session', 'unmatched')
+    ),
+    CONSTRAINT ck_presence_matched_user CHECK ((matched_by = 'unmatched') = (user_id IS NULL))
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- Outbound mirrors (Decision #383, ruling R3).
+--
+-- One row per event or discovery call per connection holding a copy of it on that person's separate
+-- Projective calendar, and the queue that keeps the copy right: `dirty_at` set means it is due to be
+-- written or removed. A recurring series goes out as its materialised occurrences, so a row is always
+-- one occurrence. The copy is written and never read back: a provider-side edit is overwritten by the
+-- next change. Definer-only: RLS on, no policy, no client grant.
+-- ---------------------------------------------------------------------------------------------
+CREATE TABLE scheduling.event_mirrors (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    -- SET NULL, not CASCADE: an event gone from here still has a copy to remove there.
+    event_id uuid REFERENCES scheduling.events (id) ON DELETE SET NULL,
+    -- A call is its own anchor. An events row for it would hold the call's own slot against any move
+    -- (fn_has_conflicting_event knows no p_exclude_call) and be editable as an entry. SET NULL as above.
+    call_id uuid REFERENCES scheduling.discovery_calls (id) ON DELETE SET NULL,
+    connection_id uuid NOT NULL REFERENCES integrations.user_connections (id) ON DELETE CASCADE,
+    -- The provider's id for its copy; NULL until the first write lands.
+    external_event_id text,
+    -- The provider's version of that copy (Google's etag, Graph's changeKey).
+    version text,
+    -- The queue: when this copy went out of date, or a later instant while a failure backs off. NULL
+    -- is settled, or given up on after too many failures until the event next changes.
+    dirty_at timestamptz,
+    -- A run holding this row, so a second stays off it while the provider call is out.
+    claimed_at timestamptz,
+    attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error text CHECK (char_length(last_error) <= 200),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_event_mirror UNIQUE (event_id, connection_id),
+    CONSTRAINT uq_call_mirror UNIQUE (call_id, connection_id),
+    -- None is a copy whose anchor was deleted, waiting to be removed.
+    CONSTRAINT ck_mirror_one_anchor CHECK (num_nonnulls (event_id, call_id) <= 1)
+);
+
+-- What an entry mirrored in from a connected calendar says (Decision #387). Its owner's alone: an
+-- events row is also read by platform admins and by projections built for other people, so it keeps
+-- only the masked span, and this table has no client grant and no policy.
+-- scheduling.get_own_event_details is the way out, and a row goes when its entry is archived, so
+-- disconnecting leaves nothing here.
+CREATE TABLE scheduling.connected_event_details (
+    event_id uuid PRIMARY KEY REFERENCES scheduling.events (id) ON DELETE CASCADE,
+    title text CHECK (char_length(title) <= 200),
+    location text CHECK (char_length(location) <= 160),
+    -- Can hold HTML, so it reaches the DOM only through sanitizeRichText, as an agenda does.
+    description text CHECK (char_length(description) <= 8000),
+    -- The provider's id for the series this is one occurrence of.
+    series_id text CHECK (char_length(series_id) <= 1024),
+    -- The series' repeat, in the form events.recurrence_rule holds. Nothing expands it here: every
+    -- occurrence is its own row, so what reads busy time never needs this.
+    recurrence_rule text CHECK (char_length(recurrence_rule) <= 400 AND recurrence_rule ~ '^FREQ='),
+    -- The entry's own meeting at the provider, Meet or an add-on's such as Zoom.
+    join_url text CHECK (char_length(join_url) <= 600 AND join_url ~ '^https://')
 );
 
 -- ---------------------------------------------------------------------------------------------

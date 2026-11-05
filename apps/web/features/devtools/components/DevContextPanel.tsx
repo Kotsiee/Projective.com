@@ -44,6 +44,10 @@ import {
 	DEV_SAVED,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_CALENDAR_CONNECTIONS,
+	DEV_CONFERENCING_CONNECTIONS,
+	DEV_CALENDAR_INSPECTS,
+	DEV_DISCOVERY_CALLS,
 	DEV_SESSION_STATES,
 	DEV_SETTINGS_ATTENTIONS,
 	DEV_SPEND_REQUESTS,
@@ -724,6 +728,50 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.sessionState}
 						disabled={!o.enabled}
 						onChange={(sessionState) => patchDevContext({ sessionState })}
+					/>
+				</Field>
+
+				{
+					/* A discovery call on `/calendar` (Decision #343, ruling C3): what its modal offers each
+				    side at each stage. The moves are still judged by the database. */
+				}
+				<Field label="Discovery call" hint="confirm · move · cancel · no-show">
+					<Segment
+						name="Discovery call"
+						options={DEV_DISCOVERY_CALLS}
+						value={o.discoveryCall}
+						disabled={!o.enabled}
+						onChange={(discoveryCall) => patchDevContext({ discoveryCall })}
+					/>
+				</Field>
+
+				<Field label="Calendar pick" hint="inspector panel · compact popover">
+					<Segment
+						name="Calendar pick"
+						options={DEV_CALENDAR_INSPECTS}
+						value={o.calendarInspect}
+						disabled={!o.enabled}
+						onChange={(calendarInspect) => patchDevContext({ calendarInspect })}
+					/>
+				</Field>
+
+				<Field label="Room account" hint="composer room · connect or paste">
+					<Segment
+						name="Room account"
+						options={DEV_CONFERENCING_CONNECTIONS}
+						value={o.conferencingConnection}
+						disabled={!o.enabled}
+						onChange={(conferencingConnection) => patchDevContext({ conferencingConnection })}
+					/>
+				</Field>
+
+				<Field label="Connected calendar" hint="Connect a calendar · busy time, publishing">
+					<Segment
+						name="Connected calendar"
+						options={DEV_CALENDAR_CONNECTIONS}
+						value={o.calendarConnection}
+						disabled={!o.enabled}
+						onChange={(calendarConnection) => patchDevContext({ calendarConnection })}
 					/>
 				</Field>
 

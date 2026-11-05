@@ -84,6 +84,14 @@ Deno.test("the schema parses a full round and refuses one slot more", () => {
 	assert(!EventRescheduleSchema.safeParse(round(RESCHEDULE_PROPOSALS_MAX + 1)).success);
 });
 
+Deno.test("a discovery call's move door uses the TypeScript lockout", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.propose_call_time");
+	const lockout = [...body.matchAll(/v_lockout interval := interval '(\d+) hours'/g)].map((m) =>
+		Number(m[1])
+	);
+	assertEquals(lockout, [RESCHEDULE_LOCKOUT_HOURS]);
+});
+
 Deno.test("the SQL vote deadline is the TypeScript one: lead before the earliest slot, capped at the lockout", () => {
 	const body = functionBody(read(FN_SQL), "scheduling.fn_vote_deadline");
 	const lead = [...body.matchAll(/earliest - interval '(\d+) hours'/g)].map((m) => Number(m[1]));

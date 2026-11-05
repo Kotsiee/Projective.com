@@ -313,8 +313,8 @@ const FAIR_EXIT_V2: LegalClause = {
  * PRODUCT_SPEC.md §Dispute Resolution (the Evidence Vault, the resolution lifecycle, no-show claims) ·
  * Decision #212 · `dispute_response_hours` (48). The no-show item follows the attendance audit the
  * code runs (`finance.fn_dispute_attendance_audit`): a refund when `projects.fn_session_presence` finds
- * a provider no-show inside `session_presence_minutes` (15), a dismissal at `>=`
- * `dispute_dismiss_presence_pct` (80) — not §Dispute Resolution 3's "never joined" / "> 80%".
+ * a provider no-show inside `session_presence_minutes` (15), a dismissal above
+ * `dispute_dismiss_presence_pct` (80) of the time actually in the room.
  */
 const DISPUTES_V2: LegalClause = {
 	id: "disputes",
@@ -335,7 +335,7 @@ const DISPUTES_V2: LegalClause = {
 				"The two sides first try to settle it between them, for example by agreeing a partial refund. If they agree, the split is carried out at once.",
 				"The other side has 48 hours to respond. If they do not, or the two cannot agree, the case goes to a Projective auditor.",
 				"The auditor reviews the snapshot against the stage's requirements and may release the escrow, refund it, or split it.",
-				"For a session, a no-show claim is checked against the attendance records first: if the Client joined within 15 minutes of the start and the Freelancer did not, the sitting is refunded; if both were present for at least 80% of it, the claim is dismissed; anything else goes to an auditor.",
+				"For a session, a no-show claim is checked against the attendance records first: if the Client joined within 15 minutes of the start and the Freelancer did not, the sitting is refunded; if both were in the room for more than 80% of it, the claim is dismissed; anything else goes to an auditor.",
 			],
 		},
 		{

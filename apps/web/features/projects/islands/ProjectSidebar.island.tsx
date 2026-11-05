@@ -9,6 +9,7 @@ import { ChannelTree } from "../components/ChannelTree.tsx";
 import { NormalSessionPanel } from "../components/NormalSessionPanel.tsx";
 import { GroupSessionPanel } from "../components/GroupSessionPanel.tsx";
 import { SessionDisputes } from "../components/SessionDisputes.tsx";
+import { SittingRoomLink } from "../components/SittingRoomLink.tsx";
 import { previewDisputes } from "../core/dispute-view.ts";
 import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
@@ -509,11 +510,18 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 					{(normalData || groupData) && disputeWorkspace
 						? (
-							<SessionDisputes
-								workspace={disputeWorkspace}
-								onNotice={(message, severity) =>
-									notify(severity === "error" ? "danger" : "success", message)}
-							/>
+							<>
+								<SittingRoomLink
+									workspace={disputeWorkspace}
+									onNotice={(message, severity) =>
+										notify(severity === "error" ? "danger" : "success", message)}
+								/>
+								<SessionDisputes
+									workspace={disputeWorkspace}
+									onNotice={(message, severity) =>
+										notify(severity === "error" ? "danger" : "success", message)}
+								/>
+							</>
 						)
 						: null}
 				</div>

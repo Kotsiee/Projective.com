@@ -35,5 +35,5 @@ route + its Zod schema (Zod SSOT rule).
   Exit cancellation.
 - [`EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md):
   the provider register (Stripe, Voyage, the self-hosted safety node, connectors, push and email,
-  Turnstile, Storage, Vault, KMS), each with its wiring, data contract, setup runbook and dev/prod
+  Turnstile, Storage, Vault, the token vault), each with its wiring, data contract, setup runbook and dev/prod
   fallbacks. Binding only where it repeats a source of truth; its proposals wait on Decision #335.

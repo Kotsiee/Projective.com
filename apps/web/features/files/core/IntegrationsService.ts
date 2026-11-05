@@ -8,6 +8,8 @@ import {
 	type IntegrationProvider,
 	type RevokeConnection,
 	RevokeConnectionSchema,
+	type SetSyncDirection,
+	SetSyncDirectionSchema,
 	type StartConnection,
 	StartConnectionSchema,
 } from "@projective/types/integrations";
@@ -26,7 +28,7 @@ import type { FilesResult } from "../types/results.ts";
  * methods, each validating against the Zod SSOT, forwarding to `/api/integrations/*` through
  * {@link apiFetch}, and returning a soft {@link FilesResult}. **One method here corresponds to exactly
  * one route**, so a reader moving between the two halves never has to translate: `providers` ·
- * `connections` · `start` · `completionFrom` · `revoke` · `browse` · `importAsset`.
+ * `connections` · `start` · `completionFrom` · `revoke` · `setSyncDirection` · `browse` · `importAsset`.
  *
  * It shares the files feature's transport envelope rather than declaring its own, because the
  * connector subsystem has no client feature of its own — the drive picker that consumes it lives in
@@ -158,6 +160,15 @@ export const IntegrationsService = {
 			return Promise.resolve(invalid(parsed.error, "That connection could not be revoked."));
 		}
 		return postFiles<{ revoked: boolean }>("/api/integrations/revoke", parsed.data);
+	},
+
+	/** Turn a connection's separate Projective calendar on (`bidirectional`) or off (`inbound`). */
+	setSyncDirection(input: SetSyncDirection): Promise<FilesResult<{ changed: boolean }>> {
+		const parsed = SetSyncDirectionSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "That calendar could not be changed."));
+		}
+		return postFiles<{ changed: boolean }>("/api/integrations/sync-direction", parsed.data);
 	},
 
 	// #endregion

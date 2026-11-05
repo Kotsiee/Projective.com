@@ -869,6 +869,8 @@ export default defineConfig(({ mode }) => {
 			// Fail loudly rather than drift to the next free port: the auth callbacks and email links
 			// are built for the configured origin, so a silent 3001 would sign people in to nowhere.
 			strictPort: true,
+			// pg_cron's http jobs reach the dev server from inside the database container.
+			allowedHosts: ["host.docker.internal"],
 			fs: {
 				allow: [ROOT],
 			},

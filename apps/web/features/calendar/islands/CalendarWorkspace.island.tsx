@@ -3,15 +3,26 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
-import { Calendar, type CalendarContextTarget, type CalendarRange } from "@projective/ui/calendar";
+import {
+	Calendar,
+	type CalendarContextTarget,
+	type CalendarRange,
+	EventPopoverLayer,
+} from "@projective/ui/calendar";
 import { ConfirmDialog, Message } from "@projective/ui/feedback";
 import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
-import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	type CalendarEventKind,
+	DEFAULT_CALENDAR_PREFS,
+	type SchedulePage,
+} from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
+import { renderInspectActions } from "../components/EventPopoverActions.tsx";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { type EventMode, eventStack } from "../core/event-view.ts";
-import { deepLinkedEvent, EVENT_PARAM, withoutEventParam } from "../core/event-deep-link.ts";
+import { deepLinkedEvent } from "../core/event-deep-link.ts";
 import {
 	type DevSeamState,
 	type EventAccess,
@@ -24,6 +35,7 @@ import { frameProbe } from "../core/frame-cost.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import {
 	calendarFocus,
+	calendarInspectMode,
 	calendarPage,
 	calendarPresent,
 	calendarPreset,
@@ -31,22 +43,26 @@ import {
 	calendarView,
 	calendarZoom,
 	createRequest,
+	deselectEvent,
 	focusedAt,
 	gridSpotlight,
 	importedEvents,
+	inspectInPanel,
+	inspectPopover,
 	openEventModal,
 	persistCalendarView,
 	persistCalendarZoom,
+	remindersRequest,
 	removeRequest,
 	restoreCalendarView,
 	selectedEventId,
 	selectEvent,
 	sourceIsVisible,
 	timelineZoom,
+	updateRequest,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 
-/** What the personal agenda can create. */
 /** How long a refused create stays on screen before it clears itself. */
 const NOTICE_MS = 5_000;
 
@@ -55,11 +71,14 @@ const SLOT_MS = 30 * 60_000;
 /** A new entry is an hour long until the reader says otherwise. */
 const HOUR_MS = 3_600_000;
 
-const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
-	{ value: "sync", label: "Meeting" },
-	{ value: "session", label: "Session" },
-	{ value: "deadline", label: "Deadline" },
-	{ value: "general", label: "Reminder" },
+/**
+ * What the personal agenda can create: the two things a person thinks in (`entryClassOf`). An Event is
+ * stored as a `sync` and a Reminder as a `general` entry with no length, so neither asks anything new
+ * of `scheduling.event_kind`.
+ */
+const CREATE_KINDS: { value: CalendarEventKind; label: string; instant?: boolean }[] = [
+	{ value: "sync", label: "Event" },
+	{ value: "general", label: "Reminder", instant: true },
 ];
 
 /**
@@ -132,6 +151,18 @@ function agendaRows(
 }
 
 /**
+ * Where a popover points when the view hands over no rect: the card that took the press, which holds
+ * focus by now. `null` when focus is elsewhere (a browser that does not focus a pressed button), and
+ * the pick then docks in the panel, since a popover pointing at nothing would be worse.
+ */
+function focusedAnchor(surface: HTMLElement | null) {
+	const el = document.activeElement;
+	if (!(el instanceof HTMLElement) || !surface?.contains(el)) return null;
+	const box = el.getBoundingClientRect();
+	return { x: box.left, y: box.top, w: box.width, h: box.height };
+}
+
+/**
  * CalendarWorkspace — the BODY of the `/calendar` hub, and nothing but the grid.
  *
  * Every piece of chrome the engine can draw is suppressed here: the mini-month is the middle-nav
@@ -148,6 +179,11 @@ function agendaRows(
  * A right-click on the grid opens the entry's rows (Edit event · Delete event for one the viewer
  * hosts, else Open details) or, on empty time, New event on the slot under the pointer (Decision
  * #380). The menu is an `ActionMenu` surface: portalled, stacked, clamped, keyboard-reachable.
+ *
+ * A pick opens as its reader set (Decision #388): in the panel, which the grid reaches through
+ * `directOpen`, or in a popover, which is the engine's own in the views that paint one and the layer
+ * mounted here for a lane row or a Month card. The inspector is another hydration root, so its in-place
+ * edits come back here to be written, on the same handshake as its Delete.
  */
 export interface CalendarWorkspaceProps {
 	initial: SchedulePage | null;
@@ -190,12 +226,6 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 			if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
 			noticeTimer.current = setTimeout(() => (notice.value = null), NOTICE_MS);
 		},
-		onClose: () => {
-			const loc = globalThis.location;
-			if (loc && new URLSearchParams(loc.search).has(EVENT_PARAM)) {
-				history.replaceState(history.state, "", withoutEventParam(loc.pathname, loc.search));
-			}
-		},
 	});
 	const { events } = composer;
 
@@ -226,10 +256,26 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		remove(id);
 	});
 
+	/** An in-place edit from the inspector. */
+	useSignalEffect(() => {
+		const next = updateRequest.value;
+		if (!next) return;
+		updateRequest.value = null;
+		composer.update(next);
+	});
+
+	/** The reader's own alerts, from the inspector. */
+	useSignalEffect(() => {
+		const asked = remindersRequest.value;
+		if (!asked) return;
+		remindersRequest.value = null;
+		composer.setReminders(asked.event, asked.reminders);
+	});
+
 	function remove(id: string): void {
 		composer.remove(id);
 		importedEvents.value = importedEvents.peek().filter((e) => e.id !== id);
-		if (selectedEventId.peek() === id) selectedEventId.value = null;
+		if (selectedEventId.peek() === id) deselectEvent();
 	}
 
 	/**
@@ -258,11 +304,11 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		apply();
 		// An agenda the server could not paint gets one retry on mount.
 		if (!props.initial) void load();
-		// `?event=<id>` opens that occurrence, on its week, when it is on the agenda.
+		// `?event=<id>` opens that occurrence in the inspector, on its week, when it is on the agenda.
 		const linked = deepLinkedEvent(globalThis.location?.search ?? "", events.peek());
 		if (linked) {
 			calendarFocus.value = linked.start;
-			eventStack.open("event", linked.id, { mode: "view" });
+			inspectInPanel(linked);
 		}
 		return subscribeDevSeam(apply);
 	}, []);
@@ -273,9 +319,17 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	useEffect(() => () => {
 		calendarPage.value = null;
 		selectedEventId.value = null;
+		inspectPopover.value = null;
 		eventStack.close();
 		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
 	}, []);
+
+	/** The reader's setting, or the Dev Context Switcher's override of it. */
+	const inspectMode = (seam.value?.calendarInspect !== "auto" && seam.value?.calendarInspect) ||
+		page.value?.prefs?.inspectMode || DEFAULT_CALENDAR_PREFS.inspectMode;
+	useEffect(() => {
+		calendarInspectMode.value = inspectMode;
+	}, [inspectMode]);
 
 	/**
 	 * Remember the reader's view choice.
@@ -384,8 +438,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				availability={calendarPreset.value === "events" ? undefined : p.availability}
 				spotlight={gridSpotlight}
 				present={calendarPresent}
-				// The entry opens beside the grid (panel or modal), so the engine's popover would repeat it.
-				directOpen
+				// In the panel the entry opens beside the grid, so the engine's popover would repeat it.
+				directOpen={inspectMode === "panel"}
+				renderEventActions={renderInspectActions}
 				timezone={p.timezone}
 				view={calendarView.value}
 				zoom={calendarZoom}
@@ -410,8 +465,22 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				onQuickCreate={composer.quickCreate}
 				onExpandCreate={composer.expandCreate}
 				onMoveEvent={(ev, range) => composer.moveEvent(ev as CalendarEvent, range)}
-				onOpenEvent={(ev) => selectEvent(ev as CalendarEvent, "grid")}
+				// Month is the one view with no popover of its own, and from the others this is the
+				// popover's title asking for more, which is the panel.
+				onOpenEvent={(ev) =>
+					selectEvent(
+						ev as CalendarEvent,
+						"grid",
+						calendarView.peek() === "month" ? focusedAnchor(surfaceRef.current) : null,
+					)}
 				onContextTarget={(t) => (pointed.value = t)}
+			/>
+			<EventPopoverLayer
+				state={inspectPopover}
+				tz={p.timezone}
+				hour12
+				renderEventActions={renderInspectActions}
+				onOpenEvent={(ev) => inspectInPanel(ev as CalendarEvent)}
 			/>
 			<ActionMenu
 				model={menu}
@@ -458,7 +527,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 							 */
 						}}
 						onServerUpdate={composer.serverUpdate}
+						onServerRemove={composer.serverRemove}
 						onDelete={(ev) => remove(ev.id)}
+						onReminders={composer.setReminders}
 					/>
 				)
 				: null}

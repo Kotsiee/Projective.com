@@ -75,3 +75,42 @@
 .ui-accordion__panel--open .ui-accordion__panel-inner {
 	padding-block: 0 var(--space-4);
 }
+
+/* Flush: a disclosure inside a dialog or panel, told apart by type alone (§B.4.2). */
+.ui-accordion--flush {
+	background: transparent;
+	border-radius: 0;
+	overflow: visible;
+}
+
+.ui-accordion--flush .ui-accordion__tab:not(:last-child) {
+	border-block-end: none;
+}
+
+/* The header reads `font: inherit` through this `<h3>`, so a quiet one has to stop the UA's scale. */
+.ui-accordion--flush .ui-accordion__heading {
+	font: inherit;
+}
+
+.ui-accordion--flush .ui-accordion__header {
+	justify-content: flex-start;
+	gap: var(--space-1);
+	inline-size: fit-content;
+	padding: var(--space-1) 0;
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+.ui-accordion--flush .ui-accordion__header:hover:not(:disabled) {
+	background: transparent;
+	color: var(--on-surface);
+}
+
+.ui-accordion--flush .ui-accordion__panel-inner {
+	padding-inline: 0;
+	color: inherit;
+}
+
+.ui-accordion--flush .ui-accordion__panel--open .ui-accordion__panel-inner {
+	padding-block: var(--space-2) var(--space-1);
+}

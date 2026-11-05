@@ -152,10 +152,13 @@ async function readSection(
 		}
 		case "scheduling": {
 			const handle = await personHandle(actor);
-			const res = handle ? await ProfileBackendService.availability(handle, actor) : null;
+			const [res, calendar] = await Promise.all([
+				handle ? ProfileBackendService.availability(handle, actor) : null,
+				SettingsBackendService.calendarPrefs(actor),
+			]);
 			const availability = res?.ok && res.data ? res.data.availability : null;
 			return {
-				data: { section: "scheduling", handle, availability },
+				data: { section: "scheduling", handle, availability, calendar },
 				error: availability ? null : res?.message ?? "Your schedule couldn't be loaded just now.",
 			};
 		}
@@ -215,7 +218,7 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 		case "messaging":
 			return { section: "messaging", settings: DEFAULT_MESSAGING_SETTINGS };
 		case "scheduling":
-			return { section: "scheduling", handle: null, availability: null };
+			return { section: "scheduling", handle: null, availability: null, calendar: null };
 		case "billing":
 			return { section: "billing", plan: null };
 		case "verification":

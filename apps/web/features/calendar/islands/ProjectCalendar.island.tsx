@@ -19,10 +19,10 @@ import { ScheduleService } from "../core/ScheduleService.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 
 /** What a project calendar can create. A booking is taken, not authored, so it is not offered here. */
-const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
+const CREATE_KINDS: { value: CalendarEventKind; label: string; instant?: boolean }[] = [
 	{ value: "sync", label: "Meeting" },
 	{ value: "milestone", label: "Milestone" },
-	{ value: "deadline", label: "Deadline" },
+	{ value: "deadline", label: "Deadline", instant: true },
 	{ value: "session", label: "Session" },
 	{ value: "general", label: "Event" },
 ];

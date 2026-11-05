@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
+import { type Signal, untracked, useSignal, useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/session-disputes.css";
 import { Dialog, Message } from "@projective/ui/feedback";
@@ -25,6 +25,7 @@ import {
 	disputeStatusSeverity,
 	disputeTimeLabel,
 } from "../core/dispute-view.ts";
+import { DisputeRoomLog } from "./DisputeRoomLog.tsx";
 
 /**
  * DisputeCaseDialog — a no-show claim's status panel and Evidence Vault (Decision #212; DESIGN_SYSTEM
@@ -94,10 +95,13 @@ export function DisputeCaseDialog(props: DisputeCaseDialogProps): JSX.Element {
 
 	useSignalEffect(() => {
 		if (open.value) {
-			statement.value = "";
-			fileIds.value = {};
-			uploadKey.value++;
-			void load();
+			// Untracked: `++` reads as well as writes, and a tracked read would re-run this for ever.
+			untracked(() => {
+				statement.value = "";
+				fileIds.value = {};
+				uploadKey.value++;
+				void load();
+			});
 		} else request.current++;
 	});
 
@@ -270,15 +274,7 @@ export function DisputeCaseDialog(props: DisputeCaseDialogProps): JSX.Element {
 									: null}
 							</dl>
 
-							{audit
-								? (
-									<p class="dispute-dlg__meta">
-										{audit.tracked
-											? `Room logs: provider present ${audit.hostPresencePct}%, attendee ${audit.claimantPresencePct}% of the session (a claim is dismissed at ${audit.thresholdPct}% each).`
-											: "The room reported no attendance, so the logs could not settle the claim."}
-									</p>
-								)
-								: null}
+							{audit ? <DisputeRoomLog audit={audit} /> : null}
 
 							{d.resolutionNotes
 								? (

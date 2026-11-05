@@ -1,10 +1,11 @@
 import type { CalendarEvent } from "@projective/types/scheduling";
 
 /**
- * event-deep-link — `/calendar?event=<event id>`, the address other surfaces hand off to for one
- * occurrence (the catalogue's client pipeline links a call or a sitting this way, Decision #218(a)).
- * Pure: the island reads the address, these answer what it names and what the address becomes once
- * the event is closed.
+ * event-deep-link — `/calendar?event=<event id>`, the address of one occurrence: what other surfaces
+ * hand off to (the catalogue's client pipeline links a call or a sitting this way, Decision #218(a)),
+ * what a reminder links to, and what the address reads while an entry is in the inspector, so a reload
+ * or a pasted link lands on the same entry. Pure: the island reads and writes the address, these answer
+ * what it names and what it becomes.
  */
 
 /** The query parameter that names an event. */
@@ -20,10 +21,11 @@ export function deepLinkedEvent(
 	return events.find((e) => e.id === id) ?? null;
 }
 
-/** The address with the event dropped, so closing it leaves no entry that reopens it on reload. */
-export function withoutEventParam(pathname: string, search: string): string {
+/** The address naming `id`, or with the event dropped for `null`, the rest of the query untouched. */
+export function withEventParam(pathname: string, search: string, id: string | null): string {
 	const q = new URLSearchParams(search);
-	q.delete(EVENT_PARAM);
+	if (id) q.set(EVENT_PARAM, id);
+	else q.delete(EVENT_PARAM);
 	const rest = q.toString();
 	return rest ? `${pathname}?${rest}` : pathname;
 }

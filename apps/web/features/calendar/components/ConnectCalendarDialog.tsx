@@ -2,18 +2,34 @@ import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import { ToggleSwitch } from "@projective/ui/fields";
 import { Dialog } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { ConnectionsView, UserConnection } from "@projective/types/integrations";
-import { connectionIsRecoverable } from "@projective/types/integrations";
+import { connectionIsRecoverable, connectionSupports } from "@projective/types/integrations";
 import { IntegrationsService } from "@web/features/files/core/IntegrationsService.ts";
 import {
 	providerConsent,
 	providerStatusSentence,
 	providerStatusTone,
 } from "@web/features/files/components/ProviderChip.tsx";
+import { type DevCalendarConnection, readDevSeam } from "@web/utils/dev-seam.ts";
 import { ProviderMark } from "./provider-marks.tsx";
 import "../styles/calendar-chrome.css";
+
+/** The row the Dev Context Switcher draws in place of the viewer's own. The switcher is what moves it. */
+function simulatedConnection(state: Exclude<DevCalendarConnection, "auto">): UserConnection {
+	return {
+		id: "dev-calendar",
+		providerSlug: "google",
+		providerLabel: "Google",
+		providerCapabilities: ["calendar", "freebusy"],
+		externalAccountLabel: "you@example.com",
+		status: state === "expired" ? "expired" : "active",
+		grantedKinds: ["calendar", "freebusy"],
+		syncDirection: state === "publishing" ? "bidirectional" : "inbound",
+	} as UserConnection;
+}
 
 /**
  * ConnectCalendarDialog — the ONE place a calendar connection is started, and a deliberate mirror of
@@ -48,6 +64,19 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 	const view = useSignal<ConnectionsView | null>(null);
 	const busy = useSignal(false);
 	const notice = useSignal<string | null>(null);
+
+	// Back from a consent: say how it went, here, where it started. The marker is coarse by design.
+	useEffect(() => {
+		const outcome = IntegrationsService.completionFrom(globalThis.location?.href);
+		if (!outcome) return;
+		notice.value = outcome === "connected"
+			? "Connected. Your events will show here shortly."
+			: "That calendar wasn't connected. Nothing changed, and you can try again.";
+		props.open.value = true;
+		const url = new URL(globalThis.location.href);
+		url.searchParams.delete("connect");
+		history.replaceState(history.state, "", url);
+	}, []);
 
 	// Loaded on OPEN rather than on mount: the dialog is mounted by the footer rig on every
 	// `/calendar` route, and fetching somebody's stored authorizations on every page load to fill a
@@ -85,10 +114,28 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 		else notice.value = res.message ?? "That calendar could not be connected right now.";
 	}
 
+	/** Turn a connection's separate Projective calendar on or off, then show what the server holds. */
+	async function setPublishing(connection: UserConnection, on: boolean): Promise<void> {
+		if (busy.value) return;
+		busy.value = true;
+		notice.value = null;
+		const res = await IntegrationsService.setSyncDirection({
+			connectionId: connection.id,
+			syncDirection: on ? "bidirectional" : "inbound",
+		});
+		const fresh = await IntegrationsService.connections();
+		busy.value = false;
+		if (fresh.ok && fresh.data) view.value = fresh.data;
+		if (!res.ok) notice.value = res.message ?? "That calendar could not be changed right now.";
+	}
+
 	const data = view.value;
-	const connections: UserConnection[] = (data?.connections ?? []).filter((c) =>
-		c.providerCapabilities.includes("calendar") || c.grantedKinds.includes("calendar")
-	);
+	const simulated = readDevSeam()?.calendarConnection ?? "auto";
+	const connections: UserConnection[] = simulated === "auto"
+		? (data?.connections ?? []).filter((c) =>
+			c.providerCapabilities.includes("calendar") || c.grantedKinds.includes("calendar")
+		)
+		: [simulatedConnection(simulated)];
 	const connectedSlugs = new Set(connections.map((c) => c.providerSlug));
 	const available = (data?.providers ?? [])
 		.filter((p) =>
@@ -103,8 +150,12 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 		<Dialog visible={props.open} header="Connect a calendar" width="28rem">
 			<p class="cal-connect__hint">
 				Connecting is a separate permission from signing in — signing in with Google grants no
-				access to your calendar. A connected calendar shows here as Busy or Available only, and what
-				you have on it is never published.
+				access to your calendar. We read your main calendar and keep each event's title, times,
+				repeat pattern, location, notes and meeting link, never its guests. Only you see those
+				details, and they stay read-only here; anyone else who can see your calendar sees Busy. Turn
+				on publishing and your Projective events also go to a separate Projective calendar there,
+				which disconnecting removes, along with those details. Your own calendars are never changed,
+				and an edit made on the Projective calendar is replaced by the next change here.
 			</p>
 
 			{connections.length > 0
@@ -128,6 +179,18 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 													c.externalAccountLabel,
 												)}
 											</span>
+											{connectionSupports(c, "calendar")
+												? (
+													<ToggleSwitch
+														size="sm"
+														class="cal-connect__publish"
+														label="Publish my Projective events to a separate calendar"
+														value={c.syncDirection !== "inbound"}
+														disabled={busy.value || simulated !== "auto"}
+														onValueChange={(on: boolean) => void setPublishing(c, on)}
+													/>
+												)
+												: null}
 										</span>
 										{offer === "none" ? null : (
 											<button

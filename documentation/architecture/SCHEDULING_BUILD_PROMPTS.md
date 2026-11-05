@@ -111,7 +111,8 @@ Shared files that are not on the §B.0 list:
 
 ### 0.3 Open decisions (🧑) and new contradictions
 
-Each stop below is open, and this file decides none of them. The prompt named first asks it.
+Each stop below was open when written, and this file decides none of them. Items 1, 2, 3 and 5 have
+since been ruled on Decision #383 (§0.4); the others stay open. The prompt named first asks it.
 
 1. **SCH-WP3: who accepts a re-proposed call time.** C3 says the host confirms. For a new time the
    host proposes, the literal reading lets the host confirm their own move. Recommendation: the
@@ -159,7 +160,21 @@ From the list of items still open after Wave 1.1, this track touches only two:
 - **Which fee an Agency's contract rate applies to** (#252). SCH-WP6 keeps the session rail's
   `fn_escrow_fee_bp` and decides nothing about it.
 
-No ⚖️ item is in this track.
+No ⚖️ item is in this track, except Decision #383's ruling R8 (§0.4).
+
+### 0.4 Amendments from Decision #383 (2026-11-04)
+
+These override the prompts below wherever they differ. The owner took every recommendation of the
+integrations audit, so the 🧑 stops named here need no further question.
+
+| Prompt   | Amendment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SCH-WP3  | The 🧑 is ruled Option A: the counterparty of the last proposal confirms.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| SCH-WP4a | Seed `providers.auth_config` (nothing does today). Thread the stored `return_to` through the callback. Disconnect also revokes at the provider, stops channels and archives busy rows. The adapter seam gains a per-channel secret lookup, and step 6's signature rule has the two exceptions in providers spec §3.3.                                                                                                                                                                                                                                                                                     |
+| SCH-WP4b | 🧑 1 is ruled direct and 🧑 2 is ruled no platform room. One `scheduling.rooms` row per room, for sittings, calls and `/calendar` entries alike (the event write door merged on 2026-11-03). Meet mints through `spaces.create` and Teams through `createOrGet`, neither writing to a calendar. Minted rooms admit an attendee without the host. Zoom's `start_url` is never stored. "One meeting per sitting across retries" holds only on Teams; elsewhere the stored id wins and a stray room is harmless. Inbound reads `calendar.events.freebusy` and Graph `Calendars.ReadBasic`. Busy rows carry no titles. |
+| SCH-WP5  | One append-only `scheduling.presence_events` ledger replaces per-row attendance as the source of truth, and `fn_room_presence` derives time in the room and reconnects. `room_registrants` keys on `rooms`, not on "a sitting OR a call". The host is matched by provider account id. One `scheduling.record_presence` door replaces `projects.record_presence` and `record_call_presence`. Meet and Teams are in scope through a post-meeting reconcile job.                                                                                                                                                  |
+| SCH-WP8  | The 🧑 is ruled Option A. The audit reads `fn_room_presence`, not the first-join-to-last-leave span. A no-show refund needs provider-confirmed host absence plus attendee evidence, and a failed provider read holds. `apps/web/features/legal/core/content/escrow-terms.ts` joins the files ("at least 80%").                                                                                                                                                                                                                                                                                              |
+| New work | `GET /meet/[roomSlug]` and `scheduling.room_join`; `get_event_rooms` gated on RSVP; `discovery_calls.meeting_url` column-restricted; outbound mirrors (`scheduling.event_mirrors`, `events.external_sync`) to a separate Projective calendar; presence retention at 13 months ⚖️ (R8). No Calendly or Notion connector (R9).                                                                                                                                                                                                                                                                                 |
 
 ---
 
@@ -638,7 +653,7 @@ ACCEPTANCE:
     ck_secret_nonces refusing a cipher without its nonce.
   - With INTEGRATIONS_BACKEND_LIVE=true, a local Google or Zoom test client connects end to end
     (providers spec §7.7, local consent), and the secrets row holds no plaintext.
-  - The webhook route: a bad signature → 401 and no delivery row; the same delivery twice → one
+  - The webhook route: a bad signature → 400 (Decision #385) and no delivery row; the same delivery twice → one
     row and one effect; the Zoom presence fixture still records presence through both paths.
   - The cron routes: a wrong bearer → 404.
   - The storage adapters' tests (adapters.test.ts, sigv4.test.ts) still pass.

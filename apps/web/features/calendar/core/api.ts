@@ -33,7 +33,7 @@ export async function getScheduling<T>(path: string): Promise<CalendarResult<T>>
 export async function postScheduling<T>(
 	path: string,
 	body?: unknown,
-	method: "POST" | "PATCH" | "DELETE" = "POST",
+	method: "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
 ): Promise<CalendarResult<T>> {
 	try {
 		const res = await apiFetch(path, {

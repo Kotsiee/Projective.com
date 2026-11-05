@@ -47,8 +47,9 @@ CREATE TABLE integrations.providers (
     supports_webhooks boolean NOT NULL DEFAULT false,
     -- Scopes requested at consent time. CONFIG/DOCUMENTATION ONLY — never a credential.
     default_scopes text[] NOT NULL DEFAULT '{}',
-    -- Non-secret endpoint/PKCE config: { authorize_url, token_url, revoke_url, pkce, audience }.
-    -- The client SECRET is never stored here — it lives in the Environment Variable Contract.
+    -- Non-secret OAuth config (ProviderAuthConfigSchema): the authorize, token, revoke and identity
+    -- endpoints, pkce, token_auth, extra authorize params and each capability's scopes. The client
+    -- SECRET is never stored here — it lives in the Environment Variable Contract.
     auth_config jsonb NOT NULL DEFAULT '{}'::jsonb,
     docs_url text,
     icon_url text,
@@ -72,7 +73,7 @@ CREATE TABLE integrations.providers (
 --
 -- DEFINER-ONLY, like user_connections: RLS on, no policy, no `authenticated` grant. The `state` IS
 -- the credential the callback presents, so any client able to read this table could complete
--- somebody else's consent. (Grants/policies are category 2 — flagged for the integrator.)
+-- somebody else's consent. integrations.fn_open_consent is the only way in for a client.
 CREATE TABLE integrations.consent_states (
     -- The opaque CSRF binding, minted from crypto.getRandomValues. It is the primary key because it
     -- is the only thing the callback carries: an unauthenticated redirect presenting a state we
@@ -148,10 +149,16 @@ CREATE TABLE integrations.user_connections (
     -- vault. The authoritative expiry is in integrations.connection_secrets.
     token_expires_at timestamptz,
     last_synced_at timestamptz,
+    -- When something last called the provider on this connection, which keeps the refresh job on it.
+    last_used_at timestamptz,
     last_error text,
     error_count integer NOT NULL DEFAULT 0,
     connected_at timestamptz,
     revoked_at timestamptz,
+    -- The refresh job's lease: set when a run claims this connection and cleared by its commit, so a
+    -- second run keeps off a refresh token in flight. The exchange is a network call, so no row lock
+    -- can span it.
+    refresh_claimed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     -- One connection per account. NULLS NOT DISTINCT so two pending rows (account not yet known)
@@ -162,23 +169,38 @@ CREATE TABLE integrations.user_connections (
 
 -- #region integrations.connection_secrets
 -- The TOKEN VAULT, split from the connection so the RLS/grant story is airtight and structural:
--- this table is definer-only AND has no client-facing view at all — service-role (Edge Functions)
--- only. Envelope encryption: `*_cipher` is ciphertext produced with a data key wrapped by the KMS
--- master key identified by `key_id`; `nonce` is the AEAD IV. A plaintext token is NEVER written.
+-- this table is definer-only AND has no client-facing view at all — service-role only. Envelope
+-- encryption (Decision #343, ruling C4 (c); Decision #335 (b)): each write of a row mints a fresh data
+-- key, wrapped by the ENCRYPTION_KEY the `key_id` names, and each `*_cipher` is one credential sealed
+-- under that data key. AES-GCM tags travel inside the ciphers. A plaintext token is NEVER written.
 CREATE TABLE integrations.connection_secrets (
     connection_id uuid PRIMARY KEY REFERENCES integrations.user_connections (id) ON DELETE CASCADE,
     access_token_cipher bytea,
     refresh_token_cipher bytea,
+    -- An S3-compatible secret access key, or an API key (Decision #314).
+    api_secret_cipher bytea,
     token_type text NOT NULL DEFAULT 'bearer',
     access_token_expires_at timestamptz,
     refresh_token_expires_at timestamptz,
-    -- Envelope-encryption metadata. `key_id` identifies the wrapping KMS key for rotation.
+    -- `env:` + the first 8 hex of sha256(ENCRYPTION_KEY). A row under any other key refuses to open.
     key_id text NOT NULL,
     encryption_alg text NOT NULL DEFAULT 'aes-256-gcm',
+    -- The row's data key under ENCRYPTION_KEY, and that wrap's own nonce.
+    wrapped_dek bytea NOT NULL,
+    wrapped_dek_nonce bytea NOT NULL,
+    -- One nonce per ciphertext: two AES-GCM seals under one key and one nonce leak both plaintexts.
+    -- `nonce` is the access token's.
     nonce bytea,
+    refresh_token_nonce bytea,
+    api_secret_nonce bytea,
     rotated_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_secret_nonces CHECK (
+        (access_token_cipher IS NULL OR nonce IS NOT NULL)
+        AND (refresh_token_cipher IS NULL OR refresh_token_nonce IS NOT NULL)
+        AND (api_secret_cipher IS NULL OR api_secret_nonce IS NOT NULL)
+    )
 );
 -- #endregion
 
@@ -197,6 +219,10 @@ CREATE TABLE integrations.connection_sync_state (
     full_sync_completed_at timestamptz,
     last_delta_at timestamptz,
     last_error text,
+    -- A verified push sets this and nothing else: the read happens in the job, never in the webhook.
+    due_at timestamptz,
+    -- A run reading this resource, so a second stays off it while the provider call is out.
+    claimed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_sync_resource UNIQUE (connection_id, resource)

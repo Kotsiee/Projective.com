@@ -36,6 +36,7 @@ export const APP_PATHS: readonly string[] = [
 	"/home",
 	"/invite",
 	"/legal/workspace",
+	"/meet",
 	"/messages",
 	"/notifications",
 	"/projects",

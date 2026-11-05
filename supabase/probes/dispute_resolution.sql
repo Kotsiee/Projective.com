@@ -86,6 +86,16 @@ CREATE FUNCTION pg_temp.presence(p_user uuid, p_join timestamptz, p_left timesta
 LANGUAGE sql AS $$
     INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, left_at, source, provider_event_id)
     VALUES (current_setting('probe.event')::uuid, p_user, p_join, p_left, 'webhook', gen_random_uuid()::text);
+    -- The audit reads the ledger (Decision #383 (b)), so the evidence is written there as well.
+    INSERT INTO scheduling.presence_events (room_id, idempotency_key, action, occurred_at, source,
+                                            matched_by, user_id, participant_key)
+    SELECT r.id, gen_random_uuid()::text, 'joined', p_join, 'webhook', 'host_account', p_user, p_user::text
+      FROM scheduling.rooms r WHERE r.session_event_id = current_setting('probe.event')::uuid;
+    INSERT INTO scheduling.presence_events (room_id, idempotency_key, action, occurred_at, source,
+                                            matched_by, user_id, participant_key)
+    SELECT r.id, gen_random_uuid()::text, 'left', p_left, 'webhook', 'host_account', p_user, p_user::text
+      FROM scheduling.rooms r
+     WHERE r.session_event_id = current_setting('probe.event')::uuid AND p_left IS NOT NULL;
 $$;
 
 -- The caller's claim on the current probe sitting.
@@ -175,7 +185,8 @@ DECLARE
 BEGIN
     PERFORM pg_temp.seat('r2', v_a, now() - interval '3 hours', now() - interval '2 hours', true);
     PERFORM pg_temp.presence(v_a, now() - interval '3 hours', now() - interval '2 hours');
-    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', NULL);
+    -- A real leave: an open join no longer counts to the end of the sitting (ruling C5 (c)).
+    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', now() - interval '2 hours');
     v := pg_temp.claim(v_a);
     SELECT * INTO v_d FROM finance.disputes WHERE id = (v ->> 'dispute_id')::uuid;
     PERFORM pg_temp.check(v_d.status = 'resolved_release' AND v_d.audit ->> 'verdict' = 'dismiss'
@@ -210,8 +221,8 @@ DECLARE
     v jsonb; v_d finance.disputes;
 BEGIN
     PERFORM pg_temp.seat('r3', v_a, now() - interval '3 hours', now() - interval '2 hours', true, true);
-    PERFORM pg_temp.presence(v_a, now() - interval '3 hours', NULL);
-    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', NULL);
+    PERFORM pg_temp.presence(v_a, now() - interval '3 hours', now() - interval '2 hours');
+    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', now() - interval '2 hours');
     v := pg_temp.claim(v_a);
     SELECT * INTO v_d FROM finance.disputes WHERE id = (v ->> 'dispute_id')::uuid;
     PERFORM pg_temp.check(v_d.status = 'resolved_release' AND (v_d.settlement ->> 'deferred')::boolean,
@@ -429,8 +440,8 @@ DECLARE
     v jsonb;
 BEGIN
     PERFORM pg_temp.seat('r9', v_a, now() - interval '3 hours', now() - interval '2 hours', true, true, true);
-    PERFORM pg_temp.presence(v_a, now() - interval '3 hours', NULL);
-    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', NULL);
+    PERFORM pg_temp.presence(v_a, now() - interval '3 hours', now() - interval '2 hours');
+    PERFORM pg_temp.presence(v_host, now() - interval '3 hours', now() - interval '2 hours');
     v := pg_temp.claim(v_a);
     PERFORM pg_temp.check(v ->> 'status' = 'resolved_release'
                           AND (SELECT status FROM finance.escrows WHERE id = current_setting('probe.escrow')::uuid) = 'released',

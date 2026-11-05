@@ -259,8 +259,8 @@ CREATE TYPE integrations.connection_status AS ENUM (
     'pending', 'active', 'degraded', 'expired', 'revoked', 'disconnected', 'error'
 );
 
--- `sync_direction` — read-only inbound is the MVP default; `outbound`/`bidirectional` are V2+ per
--- connector (bidirectional carries echo-suppression + conflict cost, SYSTEM_ARCHITECTURE.md).
+-- `sync_direction` — `inbound` (busy time read from a primary calendar) is the default. `bidirectional`
+-- adds a separate Projective calendar: two one-way flows with no echo to suppress (Decision #383, R3).
 CREATE TYPE integrations.sync_direction AS ENUM ('inbound', 'outbound', 'bidirectional');
 
 -- `webhook_status` — a provider push channel's lifecycle. `expiring` is the renewal trigger

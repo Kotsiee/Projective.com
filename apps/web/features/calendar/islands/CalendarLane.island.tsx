@@ -2,7 +2,7 @@ import type { JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { CALENDAR_KIND_LABEL, calendarTime, scrollBehaviorFor } from "@projective/ui/calendar";
+import { calendarTime, scrollBehaviorFor } from "@projective/ui/calendar";
 import {
 	LaneBar,
 	LaneCollapseButton,
@@ -21,7 +21,12 @@ import {
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { IconName } from "@projective/ui/icons";
-import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	ENTRY_CLASS_PLURAL,
+	type EntryClass,
+	type SchedulePage,
+} from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
@@ -33,18 +38,21 @@ import {
 	calendarFocus,
 	calendarPage,
 	calendarQuery,
+	classesOnPage,
 	importedEvents,
-	kindsOnPage,
 	laneSpotlight,
 	requestCreate,
 	resetFilters,
 	selectedEventId,
 	selectEvent,
-	showOnlyKind,
-	soleVisibleKind,
+	showOnlyClass,
+	soleVisibleClass,
 	sourceIsVisible,
 	visibleEvents,
 } from "../core/calendar-state.ts";
+import { repeatSentence } from "../core/event-recurrence.ts";
+import { listRows } from "../core/event-series.ts";
+import { timesLabel } from "../core/event-view.ts";
 
 /**
  * CalendarLane — the middle-nav lane for `/calendar`: what is coming, and when am I available.
@@ -66,7 +74,8 @@ import {
  * from the header band's Agenda ⇄ Availability switch and the rail's clock, so this lane is the
  * agenda's alone and its list gets the whole height.
  *
- * **The list scrolls on its own.** It is every entry the filters leave, in order, rather than a window
+ * **The list scrolls on its own.** It is every entry the filters leave, in order and with a series
+ * listed once ({@link listRows}), rather than a window
  * that followed the grid's focus — a list that re-anchored whenever the grid scrolled was the grid
  * scrolling it by proxy. The two views meet only on a pick: a row moves the grid onto its entry, and
  * an entry picked on the grid brings its row to the middle of the list ({@link selectEvent}).
@@ -84,18 +93,8 @@ export interface CalendarLaneProps {
 	initial: SchedulePage | null;
 }
 
-/** The registry glyph each kind is drawn with in the quick row. */
-const KIND_ICON: Record<CalendarEventKind, IconName> = {
-	deadline: "flag",
-	milestone: "star",
-	sync: "members",
-	session: "video",
-	booking: "check",
-	availability: "calendar-plus",
-	busy: "lock",
-	holiday: "globe",
-	general: "tag",
-};
+/** The registry glyph each class is drawn with in the quick row. */
+const CLASS_ICON: Record<EntryClass, IconName> = { event: "calendar", reminder: "flag" };
 
 export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
@@ -119,8 +118,8 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
 	const all: CalendarEvent[] = [...(page?.events ?? []), ...importedEvents.value];
-	const listed = visibleEvents(all).sort((a, b) => a.start - b.start);
 	const selected = selectedEventId.value;
+	const listed = listRows(visibleEvents(all), page?.now ?? Date.now(), selected);
 
 	/** Bring one row to the middle of the list — the list's own scroll, never the page's. */
 	function centreRow(id: string, behavior: ScrollBehavior): void {
@@ -146,19 +145,19 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	}, [flashing]);
 
 	/*
-	 * The quick row offers only the kinds actually ON the page, so it never presents a filter that
+	 * The quick row offers only the classes actually ON the page, so it never presents a filter that
 	 * would empty the list — and it is SINGLE-select, because the shared lane chrome names every
 	 * toggle "Show {label} only" and a control has to mean what its accessible name says. It writes
-	 * the same `hiddenKinds` deny list the header's checkboxes read, so the two are one axis with two
+	 * the same `hiddenClasses` deny list the filter's facet reads, so the two are one axis with two
 	 * entry points rather than two filters that can disagree.
 	 */
-	const present = kindsOnPage(all);
-	const kindToggles: readonly LaneToggleOption<CalendarEventKind>[] = present.map((kind) => ({
-		key: kind,
-		label: CALENDAR_KIND_LABEL[kind],
-		icon: <Icon name={KIND_ICON[kind]} />,
+	const present = classesOnPage(all);
+	const classToggles: readonly LaneToggleOption<EntryClass>[] = present.map((entry) => ({
+		key: entry,
+		label: ENTRY_CLASS_PLURAL[entry],
+		icon: <Icon name={CLASS_ICON[entry]} />,
 	}));
-	const solo = soleVisibleKind(present);
+	const solo = soleVisibleClass(present);
 
 	return (
 		<div class="cal-lanewrap">
@@ -227,13 +226,13 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						</LaneFilterPopover>
 					</LaneBar>
 
-					{kindToggles.length > 1
+					{classToggles.length > 1
 						? (
 							<LaneToggleRow
 								label="Event type"
-								options={kindToggles}
+								options={classToggles}
 								active={solo ? [solo] : []}
-								onToggle={(k) => showOnlyKind(k, present)}
+								onToggle={(c) => showOnlyClass(c, present)}
 							/>
 						)
 						: null}
@@ -251,6 +250,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							<UpcomingRow
 								key={e.id}
 								event={e}
+								repeat={repeatSentence(e, all, tz)}
 								tz={tz}
 								selected={e.id === selected}
 								flashing={e.id === flashing}
@@ -291,8 +291,10 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
  * as it does everywhere else — the lane is not a way around the projection.
  */
 function UpcomingRow(
-	{ event, tz, selected, flashing }: {
+	{ event, repeat, tz, selected, flashing }: {
 		event: CalendarEvent;
+		/** How it repeats, for the one row a series gets. */
+		repeat: string | null;
 		tz: string;
 		selected: boolean;
 		flashing: boolean;
@@ -307,9 +309,7 @@ function UpcomingRow(
 		: event.title;
 	const when = event.allDay
 		? calendarTime.fmtDayLabel(event.start, tz)
-		: `${calendarTime.fmtDayLabel(event.start, tz)} · ${
-			calendarTime.fmtRange(event.start, event.end, tz, true)
-		}`;
+		: `${calendarTime.fmtDayLabel(event.start, tz)} · ${timesLabel(event, tz, true)}`;
 	/*
 	 * Paired, and filtered on the RESULT of the dispatcher rather than on a rendered component.
 	 * `<ProviderMark …/>` is a VNode even when it draws nothing, so filtering on it kept the
@@ -332,13 +332,16 @@ function UpcomingRow(
 		<span class="cal-up__body">
 			<span class="cal-up__when">{when}</span>
 			<span class="cal-up__title">{title}</span>
-			{event.meta ? <span class="cal-up__meta">{event.meta}</span> : null}
+			{event.meta || repeat
+				? <span class="cal-up__meta">{[event.meta, repeat].filter(Boolean).join(" · ")}</span>
+				: null}
 		</span>
 	);
 
 	/*
 	 * The row is a PICK, not a link: it opens the entry beside the grid and moves the grid onto it.
 	 * Where the entry lives (its engagement, `href`) is one step further, from the details it opens.
+	 * The row's rect is what a popover points from, when that is how its reader has things open.
 	 */
 	return (
 		<div
@@ -352,7 +355,10 @@ function UpcomingRow(
 				type="button"
 				class="cal-up__link"
 				aria-current={selected ? "true" : undefined}
-				onClick={() => selectEvent(event, "list")}
+				onClick={(e) => {
+					const box = e.currentTarget.getBoundingClientRect();
+					selectEvent(event, "list", { x: box.left, y: box.top, w: box.width, h: box.height });
+				}}
 			>
 				{row}
 			</button>

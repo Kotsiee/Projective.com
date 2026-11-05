@@ -1,12 +1,23 @@
 -- Indexes: scheduling (from 20260724100000, 20260724102000, 20260724103000)
 
 CREATE INDEX IF NOT EXISTS idx_schedules_owner ON scheduling.schedules (owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_due ON scheduling.rooms (status, created_at)
+    WHERE status IN ('pending', 'minting', 'closing') OR moved_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_presence_events_room ON scheduling.presence_events (room_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_presence_events_age ON scheduling.presence_events (occurred_at);
+CREATE INDEX IF NOT EXISTS idx_event_mirrors_due ON scheduling.event_mirrors (dirty_at)
+    WHERE dirty_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_event_mirrors_connection ON scheduling.event_mirrors (connection_id);
 CREATE INDEX IF NOT EXISTS idx_availability_rules_schedule ON scheduling.availability_rules (schedule_id, kind, weekday);
 CREATE INDEX IF NOT EXISTS idx_blackout_dates_schedule ON scheduling.blackout_dates (schedule_id, starts_at, ends_at);
 
 CREATE INDEX IF NOT EXISTS idx_events_schedule_window ON scheduling.events (schedule_id, starts_at, ends_at);
 CREATE INDEX IF NOT EXISTS idx_events_project_window ON scheduling.events (project_id, starts_at, ends_at);
 CREATE INDEX IF NOT EXISTS idx_events_kind ON scheduling.events (kind, starts_at);
+-- The alert sweep's window, across every schedule and project (scheduling.fn_enqueue_due_reminders).
+CREATE INDEX IF NOT EXISTS idx_events_upcoming ON scheduling.events (starts_at) WHERE archived_at IS NULL;
+-- The FK a deleted account cascades through; a read goes by (event_id, user_id), the primary key.
+CREATE INDEX IF NOT EXISTS idx_event_reminders_user ON scheduling.event_reminders (user_id);
 
 CREATE INDEX IF NOT EXISTS idx_discovery_calls_host ON scheduling.discovery_calls (host_user_id, status, confirmed_start);
 CREATE INDEX IF NOT EXISTS idx_discovery_calls_requester ON scheduling.discovery_calls (

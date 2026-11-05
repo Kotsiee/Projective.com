@@ -17,8 +17,11 @@ import type {
 } from "@projective/types/services";
 import { intakeRefusal, normaliseIntakeAnswers, resolveCta } from "@projective/types/services";
 import {
+	type CalendarEvent,
+	type CallActionInput,
 	type ConferencingProvider,
 	PAID_CALLS_LIVE,
+	RESCHEDULE_REFUSAL_COPY,
 	type PublicCallOffer,
 	type SlotGrid,
 	type SlotQuery,
@@ -36,6 +39,7 @@ import {
 } from "../scheduling/ScheduleBackendService.ts";
 import { type ScheduleOwner, scheduleIdOf } from "../scheduling/live-slots.ts";
 import { readPublicCallOffer } from "../scheduling/live-call-offer.ts";
+import { readCallEvent } from "../scheduling/live-calendar.ts";
 import { findDraft } from "../projects/draft-store.ts";
 import { BasketBackendService } from "../finance/BasketBackendService.ts";
 import type { BasketQuery } from "../finance/basket-query.ts";
@@ -925,7 +929,79 @@ export class BookingBackendService {
 				return await requestQuote(input, actor);
 		}
 	}
+
+	/**
+	 * Make one move on a discovery call through its door, as the caller (Decision #343, ruling C3). The
+	 * door is the authority and this only maps its refusal to a sentence. Answers with the call as the
+	 * calendar now draws it, or `null` once it has left the calendar.
+	 */
+	static async callAction(
+		input: CallActionInput,
+		actor: BookingActor = ANONYMOUS_ACTOR,
+	): Promise<ServiceResult<{ event: CalendarEvent | null }>> {
+		if (!actor.userId || !actor.accessToken) {
+			return fail(401, { message: "Sign in to answer this call." });
+		}
+		const { error } = await callDoor(input, actor.accessToken);
+		if (error) {
+			const code = refusalCode(error.message);
+			if (code) return moveRefused(code);
+			console.error("[booking] call move failed", error.message);
+			return fail(503, { message: "That couldn't be done just now. Try again in a moment." });
+		}
+		try {
+			const reader = { ...readerOf(actor), accessToken: actor.accessToken };
+			return ok({ event: await readCallEvent(reader, input.callId, Date.now()) });
+		} catch (failure) {
+			// The move landed. A failed re-read must not tell the person it did not.
+			console.error("[booking] call re-read failed", failure instanceof Error ? failure.message : failure);
+			return ok({ event: null });
+		}
+	}
 }
+
+// #region Call moves
+/** The sentence a door's own refusal reads as. A gate refusal reuses {@link CALL_REFUSAL}'s. */
+const CALL_MOVE_REFUSAL: Record<string, string> = {
+	not_signed_in: "Sign in to answer this call.",
+	call_not_found: "That call is no longer available.",
+	not_open: "That call has already moved on. Refresh to see where it stands.",
+	not_your_move: "That is for the other person to answer.",
+	slot_passed: "That time has already passed.",
+	inside_lockout: RESCHEDULE_REFUSAL_COPY.inside_lockout,
+	too_early: "A no-show can be reported shortly after the start, not before.",
+	attendance_contradicts: "The room shows they joined, so this can't be reported as a no-show.",
+};
+
+/** The door one move goes through, under the caller's own token. */
+function callDoor(input: CallActionInput, accessToken: string) {
+	const doors = getUserClient(accessToken).schema("scheduling");
+	switch (input.action) {
+		case "confirm":
+			return doors.rpc("confirm_discovery_call", { p_call: input.callId });
+		case "decline":
+			return doors.rpc("decline_discovery_call", { p_call: input.callId, p_reason: input.reason ?? null });
+		case "propose":
+			return doors.rpc("propose_call_time", {
+				p_call: input.callId,
+				p_starts_at: new Date(input.start).toISOString(),
+				p_ends_at: new Date(input.end).toISOString(),
+			});
+		case "cancel":
+			return doors.rpc("cancel_discovery_call", { p_call: input.callId, p_reason: input.reason ?? null });
+		case "no_show":
+			return doors.rpc("mark_call_no_show", { p_call: input.callId, p_party: input.party });
+	}
+}
+
+function moveRefused<T>(code: string): ServiceResult<T> {
+	const status = code === "call_not_found" ? 404 : code === "slot_unavailable" ? 409 : 422;
+	return fail(status, {
+		message: CALL_MOVE_REFUSAL[code] ?? CALL_REFUSAL[code]?.message ?? "That change could not be made.",
+		errors: { reason: code },
+	});
+}
+// #endregion
 
 // #region Contact branches
 /**

@@ -275,7 +275,7 @@ GRANT USAGE ON SCHEMA scheduling TO service_role;
 -- token store.
 --
 -- ⚠️ NO PLAINTEXT SECRETS. `access_token_cipher` / `refresh_token_cipher` hold ciphertext produced
--- in an Edge Function with `ENCRYPTION_KEY` (SYSTEM_ARCHITECTURE.md §Environment Variable Contract),
+-- by token-vault.ts under `ENCRYPTION_KEY` (SYSTEM_ARCHITECTURE.md §Environment Variable Contract),
 -- exactly like the PII posture in PRODUCT_SPEC.md §Data Privacy & The "Vault". The base table is
 -- DEFINER-ONLY (RLS on, no policy, no `authenticated` grant) — the hidden-ledger posture the
 -- `finance` schema already uses. Clients read `integrations.v_my_connections`, which cannot project

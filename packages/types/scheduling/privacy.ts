@@ -55,7 +55,8 @@ export const ANONYMOUS_VIEWER: SchedulingViewer = { authenticated: false, handle
 
 // #region The rule
 /**
- * Is this viewer a party to this event — its host, or somebody on its roster?
+ * Is this viewer a party to this event — its host, somebody on its roster, or the owner of the
+ * connected calendar it came from?
  *
  * The test reads the seating the SERVER performed (`viewerIsHost`, and the roster row it marked
  * `isViewer`) rather than comparing handles here, because a handle comparison cannot see a
@@ -67,7 +68,7 @@ export const ANONYMOUS_VIEWER: SchedulingViewer = { authenticated: false, handle
  */
 export function isEventParty(event: CalendarEvent, viewer: SchedulingViewer): boolean {
 	if (!viewer.authenticated) return false;
-	if (event.viewerIsHost === true) return true;
+	if (event.viewerIsHost === true || event.connected === true) return true;
 	return (event.roster ?? []).some((a) => a.isViewer);
 }
 

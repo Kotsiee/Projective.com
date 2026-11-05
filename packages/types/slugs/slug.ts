@@ -88,6 +88,8 @@ export const SLUG_PREFIXES = {
 	idea: "fbk",
 	/** An availability preset (`scheduling.availability_presets`, Decision #217). */
 	preset: "avp",
+	/** A meeting room's join address (`scheduling.rooms`, Decision #383). */
+	room: "rom",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

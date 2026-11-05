@@ -15,7 +15,7 @@
 --                          mirror a vote cannot move (trg_sitting_round_guard)
 --   5. Cancel              cancel_cohort_membership — PRODUCT_SPEC's late-cancel rule (full forfeit <24h),
 --                          per sitting on a 1-1
---   6. Presence            record_presence       — the provider webhook's door (service_role only)
+--   6. Presence            scheduling.record_presence (00001510 §7e), the ledger behind every verdict
 --   7. The 15-minute rule  fn_session_presence
 --   8. Host attestation    record_host_attendance
 --   9. No-show claim       claim_session_no_show — a finance.disputes row that stops auto-release,
@@ -1128,6 +1128,7 @@ BEGIN
             UPDATE scheduling.events
                SET status = 'cancelled'::scheduling.event_status
              WHERE source_session_event_id = e.session_event_id;
+            PERFORM comms.fn_cancel_queued(NULL, 'projects.session_events', e.session_event_id);
         END IF;
     END LOOP;
 
@@ -1146,6 +1147,13 @@ BEGIN
     UPDATE projects.cohort_memberships
        SET status = 'cancelled', cancelled_at = pg_catalog.now()
      WHERE id = v_m.id;
+    -- Their reminders for the rest of the cohort stop with their seat.
+    PERFORM comms.fn_cancel_queued(q.dedupe_key)
+       FROM comms.notification_queue q
+      WHERE q.status = 'scheduled'
+        AND q.user_id = v_m.user_id
+        AND q.entity_table = 'projects.session_events'
+        AND q.entity_id IN (SELECT se.id FROM projects.session_events se WHERE se.cohort_id = v_cohort.id);
     IF v_per_sitting THEN
         UPDATE projects.cohorts SET status = 'cancelled'::projects.cohort_status
          WHERE id = v_cohort.id AND max_seats = 1 AND status IN ('enrolling', 'active');
@@ -1184,95 +1192,31 @@ END;
 $$;
 -- #endregion
 
--- #region 6. Presence — the webhook's door
--- Record one participant joining or leaving a sitting, as the conferencing provider reported it. Only
--- the presence route calls it, as `service_role`, after verifying the provider's signature
--- (00002510 grants nobody else) — attendance is the evidence a no-show dispute is audited against.
---
--- The provider's own vocabulary stops at the adapter: this takes a normalised event (provider slug,
--- the provider's meeting id, the participant's email, joined | left, the instant, the provider's
--- event id). It never refuses with an error — a webhook that 500s is redelivered forever — and instead
--- answers an outcome: recorded · replayed · unmatched (no such room, no such account, not a party) ·
--- outside_window.
-CREATE OR REPLACE FUNCTION projects.record_presence(
-    p_provider text,
-    p_meeting_id text,
-    p_email text,
-    p_action text,
-    p_at timestamptz,
-    p_provider_event_id text
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-VOLATILE
+-- #region 5b. Who a sitting's seat belongs to
+-- Whether a person holds a seat on THIS sitting: an uncancelled membership, or a cancelled block's
+-- sitting that already started and whose escrow is still held for them. Keying on the membership
+-- alone stripped such a sitting of its no-show protection the moment the block was cancelled, and
+-- the money then released (audit S-09).
+CREATE OR REPLACE FUNCTION projects.fn_seated_on(p_event_id uuid, p_user uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-DECLARE
-    v_event projects.session_events;
-    v_project_id uuid;
-    v_user uuid;
-    v_row projects.session_attendance;
-BEGIN
-    IF p_action NOT IN ('joined', 'left') OR p_at IS NULL THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'unmatched', 'detail', 'unknown presence action');
-    END IF;
-    SELECT * INTO v_event FROM projects.session_events
-     WHERE meeting_provider = p_provider AND provider_meeting_id = p_meeting_id;
-    IF NOT FOUND THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'unmatched', 'detail', 'no sitting uses this room');
-    END IF;
-    SELECT c.project_id INTO v_project_id FROM projects.cohorts c WHERE c.id = v_event.cohort_id;
-
-    SELECT u.id INTO v_user FROM auth.users u
-     WHERE pg_catalog.lower(u.email) = pg_catalog.lower(pg_catalog.btrim(COALESCE(p_email, '')))
-     LIMIT 1;
-    IF v_user IS NULL THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'unmatched', 'detail', 'participant is not a Projective account',
-            'event_id', v_event.id);
-    END IF;
-    IF NOT projects.fn_is_session_host(v_project_id, v_user) AND NOT EXISTS (
-        SELECT 1 FROM projects.cohort_memberships cm
-        WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_user AND cm.status <> 'cancelled'
-    ) THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'unmatched', 'detail', 'participant holds no seat on this sitting',
-            'event_id', v_event.id);
-    END IF;
-    -- A room is often opened early and closed late; anything an hour either side is not this sitting.
-    IF p_at < v_event.start_time - interval '60 minutes' OR p_at > v_event.end_time + interval '60 minutes' THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'outside_window', 'event_id', v_event.id);
-    END IF;
-
-    SELECT * INTO v_row FROM projects.session_attendance
-     WHERE session_event_id = v_event.id AND user_id = v_user FOR UPDATE;
-    IF FOUND AND v_row.provider_event_id IS NOT DISTINCT FROM p_provider_event_id THEN
-        RETURN pg_catalog.jsonb_build_object('outcome', 'replayed', 'event_id', v_event.id);
-    END IF;
-
-    IF NOT FOUND THEN
-        -- A leave that arrives before its join still proves presence at that instant; the join, when
-        -- it lands, moves `joined_at` back to the real first instant.
-        INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, left_at, source, provider_event_id)
-        VALUES (v_event.id, v_user, p_at, CASE WHEN p_action = 'left' THEN p_at END, 'webhook', p_provider_event_id);
-    ELSIF p_action = 'joined' THEN
-        UPDATE projects.session_attendance
-           SET joined_at = LEAST(joined_at, p_at),
-               -- Back in the room after leaving: they are present again.
-               left_at = CASE WHEN left_at IS NOT NULL AND p_at > left_at THEN NULL ELSE left_at END,
-               source = 'webhook',
-               provider_event_id = p_provider_event_id
-         WHERE id = v_row.id;
-    ELSE
-        UPDATE projects.session_attendance
-           SET joined_at = LEAST(joined_at, p_at),
-               left_at = GREATEST(COALESCE(left_at, p_at), p_at),
-               source = 'webhook',
-               provider_event_id = p_provider_event_id
-         WHERE id = v_row.id;
-    END IF;
-
-    RETURN pg_catalog.jsonb_build_object('outcome', 'recorded', 'event_id', v_event.id, 'user_id', v_user);
-END;
+    SELECT EXISTS (
+        SELECT 1
+          FROM projects.session_events se
+          JOIN projects.cohort_memberships cm ON cm.cohort_id = se.cohort_id AND cm.user_id = p_user
+         WHERE se.id = p_event_id
+           AND (
+               cm.status <> 'cancelled'
+               OR EXISTS (
+                   SELECT 1 FROM finance.escrows e
+                    WHERE e.cohort_membership_id = cm.id AND e.session_event_id = se.id AND e.status = 'held'
+               )
+           )
+    );
 $$;
 -- #endregion
 
@@ -1282,8 +1226,11 @@ $$;
 --   pending          the window has not closed yet
 --   untracked        the room reports no presence (no provider room, or no webhook row at all — a
 --                    silent webhook is not evidence that nobody came)
---   successful       the host and at least one seated attendee joined in the window
---   provider_no_show seated attendees joined, the host did not
+--   successful       the host and at least one seated attendee joined in the window, or an attendee
+--                    answered that a sitting with no evidence happened (Decision #383, ruling R6)
+--   provider_no_show the host was not there, and an attendee was: seen in the room, even late, or
+--                    pressing join in Projective with the provider's own record read back and
+--                    showing no host (Decision #383, ruling R5)
 --   attendee_no_show the host joined, no seated attendee did
 CREATE OR REPLACE FUNCTION projects.fn_session_presence(p_event_id uuid)
 RETURNS jsonb
@@ -1300,6 +1247,10 @@ DECLARE
     v_host boolean;
     v_present integer;
     v_seated integer;
+    v_came boolean;
+    v_clicked boolean;
+    v_reconciled boolean;
+    v_confirmed boolean;
 BEGIN
     SELECT * INTO v_event FROM projects.session_events WHERE id = p_event_id;
     IF NOT FOUND THEN
@@ -1310,7 +1261,8 @@ BEGIN
         mins => projects.fn_session_param('session_presence_minutes', 15));
 
     v_tracked := v_event.provider_meeting_id IS NOT NULL AND EXISTS (
-        SELECT 1 FROM projects.session_attendance a WHERE a.session_event_id = v_event.id AND a.source = 'webhook'
+        SELECT 1 FROM projects.session_attendance a
+         WHERE a.session_event_id = v_event.id AND a.source IN ('webhook', 'webhook_email')
     );
     SELECT EXISTS (
         SELECT 1 FROM projects.session_attendance a
@@ -1318,11 +1270,34 @@ BEGIN
           AND projects.fn_is_session_host(v_project, a.user_id)
     ) INTO v_host;
     SELECT count(*) INTO v_seated FROM projects.cohort_memberships cm
-     WHERE cm.cohort_id = v_event.cohort_id AND cm.status <> 'cancelled';
+     WHERE cm.cohort_id = v_event.cohort_id AND projects.fn_seated_on(v_event.id, cm.user_id);
     SELECT count(*) INTO v_present
       FROM projects.cohort_memberships cm
       JOIN projects.session_attendance a ON a.session_event_id = v_event.id AND a.user_id = cm.user_id
-     WHERE cm.cohort_id = v_event.cohort_id AND cm.status <> 'cancelled' AND a.joined_at <= v_window_end;
+     WHERE cm.cohort_id = v_event.cohort_id AND projects.fn_seated_on(v_event.id, cm.user_id)
+       AND a.joined_at <= v_window_end;
+    -- Evidence an attendee came even if late, for the host-absent outcome (audit S-08).
+    SELECT EXISTS (
+        SELECT 1 FROM projects.cohort_memberships cm
+          JOIN projects.session_attendance a ON a.session_event_id = v_event.id AND a.user_id = cm.user_id
+         WHERE cm.cohort_id = v_event.cohort_id AND projects.fn_seated_on(v_event.id, cm.user_id)
+    ) INTO v_came;
+    -- An attendee who answered that it happened speaks against their own money (ruling R6).
+    SELECT EXISTS (
+        SELECT 1 FROM projects.session_attendance a
+         WHERE a.session_event_id = v_event.id AND a.source = 'confirmed'
+    ) INTO v_confirmed;
+    -- A first-party join inside the window, and whether the provider's own record has been read. Both
+    -- together are what proves a host never came when the room reported nothing (ruling R5).
+    SELECT EXISTS (
+               SELECT 1 FROM scheduling.presence_events p
+                 JOIN projects.cohort_memberships cm ON cm.user_id = p.user_id AND cm.cohort_id = v_event.cohort_id
+                WHERE p.room_id = r.id AND p.action = 'join_click' AND p.occurred_at <= v_window_end
+           ),
+           r.reconciled_at IS NOT NULL
+      INTO v_clicked, v_reconciled
+      FROM scheduling.rooms r
+     WHERE r.session_event_id = v_event.id;
 
     RETURN pg_catalog.jsonb_build_object(
         'event_id', v_event.id,
@@ -1333,10 +1308,11 @@ BEGIN
         'attendees_seated', v_seated,
         'outcome', CASE
             WHEN pg_catalog.now() < v_window_end THEN 'pending'
-            WHEN NOT v_tracked THEN 'untracked'
+            WHEN v_confirmed THEN 'successful'
+            WHEN NOT v_tracked AND NOT (COALESCE(v_clicked, false) AND COALESCE(v_reconciled, false)) THEN 'untracked'
             WHEN v_host AND v_present > 0 THEN 'successful'
-            WHEN NOT v_host AND v_present > 0 THEN 'provider_no_show'
             WHEN v_host THEN 'attendee_no_show'
+            WHEN v_came OR COALESCE(v_clicked, false) THEN 'provider_no_show'
             ELSE 'untracked'
         END
     );
@@ -1431,8 +1407,8 @@ BEGIN
     SELECT e.id INTO v_escrow
       FROM projects.cohort_memberships cm
       JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status = 'held'
-     WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid AND cm.status = 'active'
-       AND (e.session_event_id = v_event.id OR e.session_event_id IS NULL)
+     WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid
+       AND (e.session_event_id = v_event.id OR (e.session_event_id IS NULL AND cm.status = 'active'))
      ORDER BY (e.session_event_id = v_event.id) DESC NULLS LAST
      LIMIT 1;
     IF v_escrow IS NULL THEN
@@ -1470,6 +1446,54 @@ END;
 $$;
 -- #endregion
 
+-- #region 9b. The attendee's answer on a sitting with no evidence (Decision #383, ruling R6)
+-- A sitting the room reported nothing about does not pay out on negative consent (ruling C5 (a)), so
+-- its attendee is asked. A yes is recorded as evidence and the sweep releases it on its next run: the
+-- sweep stays the only thing that moves this money. A no is an ordinary no-show claim. Only the
+-- attendee answers: a host's own word is not evidence.
+CREATE OR REPLACE FUNCTION projects.answer_session_review(p_event_id uuid, p_happened boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_event projects.session_events;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to answer' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_event FROM projects.session_events WHERE id = p_event_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That sitting no longer exists' USING ERRCODE = 'P0002';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM projects.cohort_memberships cm
+          JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status = 'held'
+         WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid
+           AND (e.session_event_id = v_event.id OR (e.session_event_id IS NULL AND cm.status = 'active'))
+    ) THEN
+        RAISE EXCEPTION 'You have no held payment on this sitting' USING ERRCODE = 'PS409';
+    END IF;
+    IF v_event.status <> 'completed'
+       OR projects.fn_session_presence(v_event.id) ->> 'outcome' <> 'untracked' THEN
+        RAISE EXCEPTION 'This sitting is not waiting for your answer' USING ERRCODE = 'PS409';
+    END IF;
+
+    IF p_happened IS NOT TRUE THEN
+        RETURN projects.claim_session_no_show(p_event_id, 'The attendee says this session did not happen.');
+    END IF;
+    INSERT INTO projects.session_attendance (session_event_id, user_id, joined_at, source)
+    VALUES (v_event.id, v_uid, v_event.start_time, 'confirmed')
+    ON CONFLICT (session_event_id, user_id) DO UPDATE SET source = 'confirmed';
+    RETURN pg_catalog.jsonb_build_object('event_id', v_event.id, 'status', 'confirmed');
+END;
+$$;
+-- #endregion
+
 -- #region 10. Join link
 -- The caller's way into a sitting. The two URL columns are not client-readable (00002520); this is
 -- their only reader, and it hands out a URL only when the caller may use it NOW:
@@ -1499,10 +1523,7 @@ BEGIN
     SELECT c.project_id INTO v_project FROM projects.cohorts c WHERE c.id = v_event.cohort_id;
     IF projects.fn_is_session_host(v_project, v_uid) THEN
         v_role := 'host';
-    ELSIF EXISTS (
-        SELECT 1 FROM projects.cohort_memberships cm
-        WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid AND cm.status = 'active'
-    ) THEN
+    ELSIF projects.fn_seated_on(p_event_id, v_uid) THEN
         v_role := 'attendee';
     ELSE
         RETURN pg_catalog.jsonb_build_object('state', 'not_party');
@@ -1515,7 +1536,8 @@ BEGIN
         WHEN v_role = 'attendee' AND NOT EXISTS (
             SELECT 1 FROM projects.cohort_memberships cm
             JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status IN ('held', 'released')
-            WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid AND cm.status = 'active'
+            WHERE cm.cohort_id = v_event.cohort_id AND cm.user_id = v_uid
+              AND (cm.status = 'active' OR e.session_event_id = p_event_id)
         ) THEN 'unfunded'
         WHEN pg_catalog.now() < v_opens THEN 'upcoming'
         WHEN pg_catalog.now() >= v_event.end_time OR v_event.status = 'completed' THEN 'ended'
@@ -1531,8 +1553,53 @@ BEGIN
         'url', CASE WHEN v_state = 'open' THEN
             CASE WHEN v_role = 'host' THEN COALESCE(v_event.host_join_url, v_event.attendee_join_url)
                  ELSE v_event.attendee_join_url END
-        END
+        END,
+        'room_slug', CASE WHEN v_state = 'open' THEN (
+            SELECT r.slug FROM scheduling.rooms r
+             WHERE r.session_event_id = p_event_id AND r.status = 'ready'
+        ) END
     );
+END;
+$$;
+
+-- A link the host adds themselves (Decision #383, rulings R2 and R7): allowed on a paid sitting, for a
+-- host with no connected account or a room that failed. Nothing reports attendance from it, so the
+-- sitting reads untracked and its payout holds for review, which is what the host is warned of first.
+CREATE OR REPLACE FUNCTION projects.set_sitting_link(p_event_id uuid, p_url text)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_event projects.session_events;
+    v_project uuid;
+BEGIN
+    SELECT * INTO v_event FROM projects.session_events WHERE id = p_event_id FOR UPDATE;
+    IF NOT FOUND OR v_uid IS NULL THEN
+        RAISE EXCEPTION 'That session no longer exists' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT c.project_id INTO v_project FROM projects.cohorts c WHERE c.id = v_event.cohort_id;
+    IF NOT projects.fn_is_session_host(v_project, v_uid) THEN
+        RAISE EXCEPTION 'Only the session''s host can add its link' USING ERRCODE = '42501';
+    END IF;
+    IF v_event.status <> 'scheduled' OR v_event.end_time <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'That session has finished' USING ERRCODE = '55000';
+    END IF;
+    UPDATE projects.session_events
+       SET attendee_join_url = p_url, host_join_url = NULL, meeting_provider = 'custom', provider_meeting_id = NULL
+     WHERE id = p_event_id;
+    INSERT INTO scheduling.rooms (session_event_id, provider, status)
+    VALUES (p_event_id, 'custom', 'ready')
+    ON CONFLICT (session_event_id) DO UPDATE
+       SET provider = 'custom', status = 'ready', connection_id = NULL, provider_meeting_id = NULL,
+           provider_host_id = NULL, registration = false, attempts = 0, last_error = NULL,
+           moved_at = NULL, reconciled_at = NULL;
+    UPDATE scheduling.events
+       SET meeting_provider = 'custom', meeting_pending = false
+     WHERE source_session_event_id = p_event_id;
 END;
 $$;
 -- #endregion
@@ -1703,15 +1770,31 @@ BEGIN
               FROM projects.session_events se
               JOIN projects.cohorts c ON c.id = se.cohort_id
               JOIN projects.cohort_memberships cm ON cm.cohort_id = se.cohort_id
-               AND cm.user_id = v_uid AND cm.status = 'active'
+               AND cm.user_id = v_uid
               JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status = 'held'
-               AND (e.session_event_id = se.id OR e.session_event_id IS NULL)
+               AND (e.session_event_id = se.id OR (e.session_event_id IS NULL AND cm.status = 'active'))
              WHERE c.project_id = v_project.id
                AND se.status IN ('scheduled', 'completed') AND se.start_time <= pg_catalog.now()
                AND NOT finance.fn_escrow_has_open_dispute(e.id)
                AND NOT EXISTS (SELECT 1 FROM finance.disputes d
                                 WHERE d.escrow_id = e.id AND d.session_event_id = se.id)
              ORDER BY se.start_time DESC
+             LIMIT 1
+        ) END,
+        -- The sitting with no evidence this attendee has been asked about (Decision #383, ruling R6):
+        -- what answer_session_review would accept. NULL for a host or anyone else.
+        'reviewable_sitting_id', CASE WHEN v_role = 'attendee' THEN (
+            SELECT se.id
+              FROM projects.session_events se
+              JOIN projects.cohorts c ON c.id = se.cohort_id
+              JOIN projects.cohort_memberships cm ON cm.cohort_id = se.cohort_id AND cm.user_id = v_uid
+              JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status = 'held'
+               AND (e.session_event_id = se.id OR (e.session_event_id IS NULL AND cm.status = 'active'))
+             WHERE c.project_id = v_project.id
+               AND se.status = 'completed' AND se.review_asked_at IS NOT NULL
+               AND NOT finance.fn_escrow_has_open_dispute(e.id)
+               AND (projects.fn_session_presence(se.id) ->> 'outcome') = 'untracked'
+             ORDER BY se.start_time
              LIMIT 1
         ) END,
         'hold', (
@@ -1753,7 +1836,13 @@ BEGIN
              WHERE m.cohort_id = ANY (v_scope)
                 OR m.project_stage_id IN (SELECT c.project_stage_id FROM projects.cohorts c WHERE c.id = ANY (v_scope))
         ), '[]'::jsonb),
-        'join', CASE WHEN v_next IS NOT NULL AND v_role <> 'prospect' THEN projects.session_join_link(v_next) END,
+        -- The room's address, never the provider's link: joining goes through /meet, which records it.
+        'join', CASE WHEN v_next IS NOT NULL AND v_role <> 'prospect' THEN projects.session_join_link(v_next) - 'url' END,
+        -- The next sitting with no room on the way, which only a host can do something about.
+        'room_wanted_sitting_id', CASE WHEN v_role = 'host' AND v_next IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM scheduling.rooms r
+             WHERE r.session_event_id = v_next AND r.status IN ('pending', 'minting', 'ready')
+        ) THEN v_next END,
         'reschedule', (
             SELECT pg_catalog.jsonb_build_object(
                 'sitting_title', se.title, 'mode', r.mode, 'status', r.status,
@@ -1800,9 +1889,14 @@ SET search_path = ''
 AS $$
 DECLARE
     v_hours integer := projects.fn_session_param('session_payout_hours', 24);
+    v_hold_days integer := projects.fn_session_param('session_review_hold_days', 7);
     v_completed integer := 0;
     v_refunded integer := 0;
     v_released integer := 0;
+    v_asked integer := 0;
+    v_opened integer := 0;
+    v_dispute uuid;
+    v_sittings uuid[] := '{}';
     r record;
 BEGIN
     UPDATE projects.session_events SET status = 'completed', updated_at = p_now
@@ -1853,6 +1947,8 @@ BEGIN
            AND se.status = 'completed'
            AND se.end_time <= p_now - pg_catalog.make_interval(hours => v_hours)
            AND NOT finance.fn_escrow_has_open_dispute(e.id)
+           -- No evidence, no automatic release (ruling C5 (a)): step (d) takes these.
+           AND (projects.fn_session_presence(se.id) ->> 'outcome') <> 'untracked'
     LOOP
         IF finance.fn_release_seat_escrow(r.escrow_id, 'escrow_release') > 0 THEN
             v_released := v_released + 1;
@@ -1879,6 +1975,9 @@ BEGIN
                             AND se.status IN ('scheduled', 'completed')
                             AND se.end_time > p_now - pg_catalog.make_interval(hours => v_hours))
            AND NOT finance.fn_escrow_has_open_dispute(e.id)
+           AND NOT EXISTS (SELECT 1 FROM projects.session_events se WHERE se.cohort_id = c.id
+                            AND se.status = 'completed'
+                            AND (projects.fn_session_presence(se.id) ->> 'outcome') = 'untracked')
     LOOP
         IF finance.fn_release_seat_escrow(r.escrow_id, 'escrow_release') > 0 THEN
             v_released := v_released + 1;
@@ -1889,13 +1988,50 @@ BEGIN
         END IF;
     END LOOP;
 
+    -- (d) A sitting with no evidence (Decision #383, ruling R6). Each person holding money on it is
+    -- asked once, when the review window ends. Silence for session_review_hold_days opens a case for
+    -- an operator, with that person as its nominal claimant: the case stands in for the answer they
+    -- did not give, and finance.disputes keeps one kind of opener.
+    FOR r IN
+        SELECT DISTINCT e.id AS escrow_id, se.id AS sitting_id, se.title, se.end_time, se.review_asked_at,
+               cm.user_id, p.id AS project_id, p.slug
+          FROM projects.session_events se
+          JOIN projects.cohorts c ON c.id = se.cohort_id
+          JOIN projects.projects p ON p.id = c.project_id
+          JOIN projects.cohort_memberships cm ON cm.cohort_id = c.id
+          JOIN finance.escrows e ON e.cohort_membership_id = cm.id AND e.status = 'held'
+               AND (e.session_event_id = se.id OR (e.session_event_id IS NULL AND cm.status = 'active'))
+         WHERE se.status = 'completed'
+           AND se.end_time <= p_now - pg_catalog.make_interval(hours => v_hours)
+           AND NOT finance.fn_escrow_has_open_dispute(e.id)
+           AND (projects.fn_session_presence(se.id) ->> 'outcome') = 'untracked'
+    LOOP
+        IF r.review_asked_at IS NULL THEN
+            PERFORM comms.fn_notify(r.user_id, 'session.review_requested', 'Did your session happen?',
+                pg_catalog.format('We have no attendance record for "%s". Tell us whether it happened, so the payment can be settled.', r.title),
+                'projects.session_events', r.sitting_id, '{}'::jsonb, NULL, 'project', r.project_id, NULL,
+                '/projects/' || r.slug);
+            v_sittings := v_sittings || r.sitting_id;
+            v_asked := v_asked + 1;
+        ELSIF r.end_time <= p_now - pg_catalog.make_interval(days => v_hold_days) THEN
+            INSERT INTO finance.disputes (escrow_id, session_event_id, opened_by_profile, reason)
+            VALUES (r.escrow_id, r.sitting_id, r.user_id,
+                    'No attendance record, and the attendee did not say whether this session happened.')
+            RETURNING id INTO v_dispute;
+            PERFORM finance.fn_advance_dispute(v_dispute);
+            v_opened := v_opened + 1;
+        END IF;
+    END LOOP;
+    UPDATE projects.session_events SET review_asked_at = p_now WHERE id = ANY (v_sittings);
+
     UPDATE projects.cohorts c SET status = 'completed'
      WHERE c.status IN ('enrolling', 'active')
        AND EXISTS (SELECT 1 FROM projects.session_events se WHERE se.cohort_id = c.id AND se.status = 'completed')
        AND NOT EXISTS (SELECT 1 FROM projects.session_events se WHERE se.cohort_id = c.id AND se.status = 'scheduled');
 
     RETURN pg_catalog.jsonb_build_object(
-        'completed_sittings', v_completed, 'refunded', v_refunded, 'released', v_released
+        'completed_sittings', v_completed, 'refunded', v_refunded, 'released', v_released,
+        'review_asked', v_asked, 'review_cases', v_opened
     );
 END;
 $$;

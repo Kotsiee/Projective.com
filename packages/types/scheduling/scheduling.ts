@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AssetItemSchema } from "../files/assets.ts";
-import { PublicCallOfferSchema } from "./calls.ts";
-import { EventMeetingSchema } from "./meeting.ts";
+import { CallMove, CallSide, CallStatus, PublicCallOfferSchema } from "./calls.ts";
+import { EventMeetingSchema, MeetingProvider } from "./meeting.ts";
 import {
 	EventAttendeeSchema,
 	EventHistoryEntrySchema,
@@ -11,6 +11,7 @@ import {
 	RsvpResponse,
 	SchedulingPartySchema,
 } from "./coordination.ts";
+import { CalendarPrefsSchema, EntryRemindersSchema } from "./reminders.ts";
 import { RRuleText } from "./rows.ts";
 
 /**
@@ -96,6 +97,8 @@ export const CalendarEventSchema = z.object({
 	 */
 	end: z.number().int(),
 	allDay: z.boolean().optional(),
+	/** `false` when its host keeps it off connected calendars. Absent, it goes out as usual. */
+	externalSync: z.boolean().optional(),
 	/** Only the privacy-safe status label renders — the real title is withheld (§Part 1.4). */
 	masked: z.boolean().optional(),
 	/** A CSS custom-property NAME (e.g. "--primary") accenting the block; defaults per kind. */
@@ -133,6 +136,11 @@ export const CalendarEventSchema = z.object({
 	recurrenceRule: RRuleText.optional(),
 	/** The master a later occurrence of a series belongs to. Never set alongside {@link recurrenceRule}. */
 	recurrenceParentId: z.string().max(120).optional(),
+	/**
+	 * This is the reader's own entry from a connected calendar, named from what only they can read
+	 * (Decision #387). Server-set, on their own calendar and nowhere else. It stays read-only here.
+	 */
+	connected: z.literal(true).optional(),
 
 	// #region Discovery-call projection (additive, all optional)
 	/**
@@ -142,6 +150,12 @@ export const CalendarEventSchema = z.object({
 	 * optional fields carry the call-specific detail instead. See `./calls.ts`.
 	 */
 	callId: z.string().max(120).optional(),
+	/** Where the call stands. Its own lifecycle, never an event status. */
+	callStatus: CallStatus.optional(),
+	/** Which side of the call the viewer is on. */
+	callSide: CallSide.optional(),
+	/** The moves the viewer may make now ({@link callMovesFor}); the doors still judge each one. */
+	callMoves: z.array(CallMove).optional(),
 	/** True on a synthetic block a visitor may CLICK to request a call (a free call-window slot). */
 	bookable: z.boolean().optional(),
 	/** `courtesy` (free) or `paid` — drives whether the booking flow asks for payment. */
@@ -203,6 +217,13 @@ export const CalendarEventSchema = z.object({
 	 * a modal has room for the brief.
 	 */
 	description: z.string().max(8000).optional(),
+	/**
+	 * The READER's own alerts for this entry (`scheduling.event_reminders`), set on `/calendar` for
+	 * someone who holds it. A list overrides their default and `[]` is none; `null` follows the
+	 * default; absent, this entry takes none from here, so no control is drawn. Never another
+	 * person's, and not in privacy.ts `PUBLIC_EVENT_FIELDS`.
+	 */
+	reminders: EntryRemindersSchema.nullable().optional(),
 	// #endregion
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
@@ -332,6 +353,11 @@ export const SchedulePageSchema = z.object({
 	 * takes no calls, which is also the default for every pre-existing payload.
 	 */
 	callOffer: PublicCallOfferSchema.optional(),
+	/**
+	 * The reader's own calendar preferences, on the `personal` page only: on the page rather than read
+	 * by each region, so the lane, the panel and the grid agree from the first byte.
+	 */
+	prefs: CalendarPrefsSchema.optional(),
 	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
 	now: PageInstantSchema,
 });
@@ -437,24 +463,52 @@ export const EntryFieldsSchema = z.object({
 	location: z.string().max(160).optional(),
 	/** The agenda — the editor's rich-text HTML; absent or empty clears it. */
 	description: z.string().max(8000).optional(),
+	/** `false` keeps the entry off connected calendars (Decision #383, R3); absent leaves it as it is. */
+	externalSync: z.boolean().optional(),
 });
 export type EntryFields = z.infer<typeof EntryFieldsSchema>;
+
+/**
+ * An entry's room as its host set it (Decision #383 (f)): a provider to mint on, or a link they
+ * pasted, never the room's own `/meet` address. `null` is no room; left out, the room stays as it is.
+ */
+export const EntryRoomSchema = z.object({
+	provider: MeetingProvider,
+	link: z.string().regex(/^https:\/\/\S+$/).max(600).nullable(),
+	passcode: z.string().trim().max(120).nullable(),
+});
+export type EntryRoom = z.infer<typeof EntryRoomSchema>;
 
 /** Create entries on the caller's own calendar — a daily series is written together or not at all. */
 export const CreateEntriesInputSchema = z.object({
 	entries: z.array(EntryFieldsSchema).min(1).max(ENTRY_BATCH_MAX),
+	/** One room setting: a batch is one entry, or one series. */
+	room: EntryRoomSchema.nullable().optional(),
+	/** The creator's own alerts for the batch. Left out, they follow their default. */
+	reminders: EntryRemindersSchema.nullable().optional(),
 });
 export type CreateEntriesInput = z.infer<typeof CreateEntriesInputSchema>;
 
 /** Edit one of the caller's own entries, past or not. */
 export const UpdateEntryInputSchema = EntryFieldsSchema.extend({
 	eventId: z.string().min(1).max(120),
+	room: EntryRoomSchema.nullable().optional(),
 });
 export type UpdateEntryInput = z.infer<typeof UpdateEntryInputSchema>;
 
 /** Take one of the caller's own entries off the calendar. Soft: the row is archived, never deleted. */
 export const RemoveEntryInputSchema = z.object({ eventId: z.string().min(1).max(120) });
 export type RemoveEntryInput = z.infer<typeof RemoveEntryInputSchema>;
+
+/**
+ * Set the caller's OWN alerts for one entry they hold. Any seat, not only the host's: an alert is the
+ * person's, so this is the one write here an attendee may make. `null` returns them to their default.
+ */
+export const SetEntryRemindersInputSchema = z.object({
+	eventId: z.string().min(1).max(120),
+	reminders: EntryRemindersSchema.nullable(),
+});
+export type SetEntryRemindersInput = z.infer<typeof SetEntryRemindersInputSchema>;
 // #endregion
 
 // #region Shared helpers

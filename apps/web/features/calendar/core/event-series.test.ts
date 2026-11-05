@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import type { CalendarEvent } from "@projective/types/scheduling";
 import { addZonedDays, zonedParts, zonedTimeToMs } from "@ui/calendar/core/time.ts";
 import type { CalendarRange } from "@ui/calendar/core/types.ts";
-import { eventsForRange, firstOccurrence, spreadDaily } from "./event-series.ts";
+import { eventsForRange, firstOccurrence, listRows, spreadDaily } from "./event-series.ts";
 
 const TZ = "Europe/London";
 const midnight = (d: number) => zonedTimeToMs(2026, 10, d, 0, 0, TZ);
@@ -55,6 +55,29 @@ Deno.test("firstOccurrence — the full modal opens on the series' first day", (
 	const first = firstOccurrence(daily, TZ);
 	assertEquals(hhmm(first.start), "5 14:00");
 	assertEquals(hhmm(first.end), "5 15:00");
+});
+
+Deno.test("listRows — a series is one row, on its next occurrence", () => {
+	const day = (d: number) => midnight(d) + 9 * 3_600_000;
+	const at = (id: string, d: number, over: Partial<CalendarEvent> = {}) => ({
+		...mint({ start: day(d), end: day(d) + 3_600_000 }),
+		id,
+		...over,
+	});
+	const events = [
+		at("series-3", 7, { recurrenceParentId: "series-1" }),
+		at("series-1", 5, { recurrenceRule: "FREQ=DAILY" }),
+		at("series-2", 6, { recurrenceParentId: "series-1" }),
+		at("alone", 6),
+		at("other-2", 8, { recurrenceParentId: "other-1" }),
+	];
+	const now = day(6) + 7_200_000;
+	const ids = (picked: string | null, at = now) => listRows(events, at, picked).map((e) => e.id);
+
+	assertEquals(ids(null), ["alone", "series-3", "other-2"]);
+	assertEquals(ids(null, day(1)), ["series-1", "alone", "other-2"]);
+	assertEquals(ids(null, day(9)), ["alone", "series-3", "other-2"]);
+	assertEquals(ids("series-1"), ["series-1", "alone", "other-2"]);
 });
 
 Deno.test("spreadDaily — an edit's time of day and length carry to every day", () => {

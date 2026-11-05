@@ -204,6 +204,7 @@ export {
 	CALENDAR_KIND_LABEL,
 	CALENDAR_KIND_PATH,
 	CALENDAR_KIND_SINGULAR,
+	calendarEntryName,
 	calendarKindLabel,
 	effectiveAccent,
 	maskLabel,

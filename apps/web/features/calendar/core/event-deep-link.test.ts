@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import type { CalendarEvent } from "@projective/types/scheduling";
-import { deepLinkedEvent, withoutEventParam } from "./event-deep-link.ts";
+import { deepLinkedEvent, withEventParam } from "./event-deep-link.ts";
 
 const EVENT: CalendarEvent = {
 	id: "8b0f6a52-2f1e-4f7e-9d55-0c6d1a7e0001",
@@ -17,9 +17,14 @@ Deno.test("?event= opens the occurrence the agenda holds, and nothing it does no
 });
 
 Deno.test("closing the event drops only its parameter", () => {
-	assertEquals(withoutEventParam("/calendar", `?event=${EVENT.id}`), "/calendar");
+	assertEquals(withEventParam("/calendar", `?event=${EVENT.id}`, null), "/calendar");
 	assertEquals(
-		withoutEventParam("/calendar", `?view=week&event=${EVENT.id}`),
+		withEventParam("/calendar", `?view=week&event=${EVENT.id}`, null),
 		"/calendar?view=week",
 	);
+});
+
+Deno.test("picking an entry names it, replacing whichever was named before", () => {
+	assertEquals(withEventParam("/calendar", "", "a"), "/calendar?event=a");
+	assertEquals(withEventParam("/calendar", "?event=a&x=1", "b"), "/calendar?event=b&x=1");
 });

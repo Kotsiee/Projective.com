@@ -183,10 +183,10 @@ export interface ServerEnv {
 	filesBackendLive: boolean;
 	/**
 	 * Master switch for LIVE integrations-backend behaviour. Defaults **off**:
-	 * {@link IntegrationsBackendService} answers the connector catalogue, a user's connections and a
-	 * drive browse from deterministic fixtures until the OAuth consent handshake, the KMS-enveloped
-	 * `integrations.connection_secrets` vault and the per-provider storage adapters are wired, then flip
-	 * per environment.
+	 * {@link IntegrationsBackendService} refuses consents, the vault seals nothing and no provider is
+	 * called. On, the OAuth consent handshake, the `ENCRYPTION_KEY`-enveloped
+	 * `integrations.connection_secrets` vault, token refresh and channel renewal run; the boot then
+	 * refuses a missing or malformed key (`assertVaultKeyAllowed`, `token-vault.ts`).
 	 *
 	 * Separate from {@link filesBackendLive} on purpose: the two surfaces share a screen but not a trust
 	 * model. A live files backend touches only the platform's own storage under the caller's RLS, while
@@ -294,6 +294,13 @@ export interface ServerEnv {
 	 */
 	contactCronSecret: string | undefined;
 	/**
+	 * The bearer token the scheduler presents to `POST /api/integrations/cron/refresh` and
+	 * `POST /api/integrations/cron/channels`, from `INTEGRATIONS_CRON_SECRET`. The routes act at third
+	 * parties with stored credentials, and like the other cron routes answer 404 to anything else —
+	 * including every request while this is unset or shorter than 32 characters.
+	 */
+	integrationsCronSecret: string | undefined;
+	/**
 	 * The Google Web Risk API key a link's reputation is checked against (Decision #340, ruling T5),
 	 * from `LINK_SAFETY_API_KEY`. Server-only, sent only in the `x-goog-api-key` header. The
 	 * `XXXX-XXXX` placeholder counts as absent (`files/link-reputation.ts`), and an absent key skips
@@ -302,11 +309,49 @@ export interface ServerEnv {
 	linkSafetyApiKey: string | undefined;
 	/**
 	 * The Secret Token of the Zoom app's Event Subscription, from `ZOOM_WEBHOOK_SECRET` (Decision #171).
-	 * Server-only. It signs every `POST {APP_URL}/api/sessions/webhooks/zoom` delivery (`x-zm-signature`)
-	 * and answers Zoom's endpoint validation challenge; while it is unset or the `XXXX-XXXX`
-	 * placeholder, the route refuses every delivery rather than trusting an unsigned one.
+	 * Server-only. It signs every `POST {APP_URL}/api/integrations/webhooks/zoom` delivery
+	 * (`x-zm-signature`) and answers Zoom's endpoint validation challenge; while it is unset or the
+	 * `XXXX-XXXX` placeholder, the route refuses every delivery rather than trusting an unsigned one.
 	 */
 	zoomWebhookSecret: string | undefined;
+	/**
+	 * The token vault's key-encryption key, from `ENCRYPTION_KEY`: 32 bytes as 64 hex characters
+	 * (Decision #343, ruling C4 (c)). Server-only, and read at call time so a changed key takes effect
+	 * on the next seal. A row sealed under another key refuses to open (`token-vault.ts`).
+	 */
+	encryptionKey: string | undefined;
+	/**
+	 * The OAuth client of a Google connection, from `GOOGLE_INTEGRATION_CLIENT_ID` /
+	 * `GOOGLE_INTEGRATION_CLIENT_SECRET`. Never the sign-in client: sign-in and connections share
+	 * neither a client nor a token store. `google_drive` consents through the same pair.
+	 */
+	googleIntegrationClientId: string | undefined;
+	/** The secret half of {@link ServerEnv.googleIntegrationClientId}. */
+	googleIntegrationClientSecret: string | undefined;
+	/**
+	 * The Entra app of an Outlook connection, from `MICROSOFT_INTEGRATION_CLIENT_ID` /
+	 * `MICROSOFT_INTEGRATION_CLIENT_SECRET`. Teams rooms and `onedrive` consent through the same pair.
+	 */
+	microsoftIntegrationClientId: string | undefined;
+	/** The secret half of {@link ServerEnv.microsoftIntegrationClientId}. */
+	microsoftIntegrationClientSecret: string | undefined;
+	/**
+	 * The Entra tenant in the Microsoft identity URLs, from `MICROSOFT_INTEGRATION_TENANT`. `common`, the
+	 * default, takes work, school and personal accounts.
+	 */
+	microsoftIntegrationTenant: string;
+	/** The Zoom app's OAuth client, from `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET`. */
+	zoomClientId: string | undefined;
+	/** The secret half of {@link ServerEnv.zoomClientId}. */
+	zoomClientSecret: string | undefined;
+	/** The Dropbox app's OAuth client, from `DROPBOX_CLIENT_ID` / `DROPBOX_CLIENT_SECRET`. */
+	dropboxClientId: string | undefined;
+	/** The secret half of {@link ServerEnv.dropboxClientId}. */
+	dropboxClientSecret: string | undefined;
+	/** The Adobe IMS credential of Frame.io, from `FRAMEIO_CLIENT_ID` / `FRAMEIO_CLIENT_SECRET`. */
+	frameioClientId: string | undefined;
+	/** The secret half of {@link ServerEnv.frameioClientId}. */
+	frameioClientSecret: string | undefined;
 	/**
 	 * The platform's own AWS principal, from `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` (Decision #314).
 	 * Server-only. It reaches no bucket itself: it only calls STS `AssumeRole` on the IAM role an AWS
@@ -358,8 +403,21 @@ export function serverEnv(): ServerEnv {
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
 		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
+		integrationsCronSecret: firstEnv("INTEGRATIONS_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
+		encryptionKey: firstEnv("ENCRYPTION_KEY"),
+		googleIntegrationClientId: firstEnv("GOOGLE_INTEGRATION_CLIENT_ID"),
+		googleIntegrationClientSecret: firstEnv("GOOGLE_INTEGRATION_CLIENT_SECRET"),
+		microsoftIntegrationClientId: firstEnv("MICROSOFT_INTEGRATION_CLIENT_ID"),
+		microsoftIntegrationClientSecret: firstEnv("MICROSOFT_INTEGRATION_CLIENT_SECRET"),
+		microsoftIntegrationTenant: firstEnv("MICROSOFT_INTEGRATION_TENANT") ?? "common",
+		zoomClientId: firstEnv("ZOOM_CLIENT_ID"),
+		zoomClientSecret: firstEnv("ZOOM_CLIENT_SECRET"),
+		dropboxClientId: firstEnv("DROPBOX_CLIENT_ID"),
+		dropboxClientSecret: firstEnv("DROPBOX_CLIENT_SECRET"),
+		frameioClientId: firstEnv("FRAMEIO_CLIENT_ID"),
+		frameioClientSecret: firstEnv("FRAMEIO_CLIENT_SECRET"),
 		s3AccessKeyId: firstEnv("S3_ACCESS_KEY_ID"),
 		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
 	};

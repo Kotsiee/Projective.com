@@ -1,4 +1,5 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 
 /**
@@ -18,18 +19,19 @@ import { IntegrationsBackendService } from "@server/services/integrations/Integr
  * callback is unauthenticated, and distinguishing "expired state" from "unknown state" in a
  * user-visible URL tells a prober which states exist. The service already refuses both identically.
  *
- * **Where it returns to is fixed, not caller-chosen.** `returnTo` is captured at `start` and consumed
- * inside the service alongside the `state`, so it does not reach this handler — which is the safe
- * shape anyway: a redirect target read from this request would be an open redirect wearing the
- * platform's domain. Threading the stored `returnTo` back out is the follow-up (flagged in the report).
+ * **Where it returns to is the stored path, never this request.** `returnTo` is validated at `start`,
+ * kept on the `state` row, and comes back from the service with the outcome: a redirect target read
+ * from this request would be an open redirect wearing the platform's domain. A consent with no stored
+ * path lands on Settings.
  */
 
-/** Where a completed or failed consent lands. Fixed, never read from the request (see the note). */
+/** Where a consent with no stored return path lands. */
 const SETTINGS = "/settings";
 
-/** A 302 to the settings surface, carrying only a coarse outcome marker. */
-function back(url: URL, outcome: "connected" | "failed"): Response {
-	const dest = new URL(SETTINGS, url);
+/** A 302 to the stored path, carrying only a coarse outcome marker. */
+function back(url: URL, returnTo: string | null, outcome: "connected" | "failed"): Response {
+	const stored = new URL(returnTo ?? SETTINGS, url);
+	const dest = stored.origin === url.origin ? stored : new URL(SETTINGS, url);
 	dest.searchParams.set("connect", outcome);
 	return new Response(null, { status: 302, headers: { location: dest.href } });
 }
@@ -40,11 +42,17 @@ export const handler = define.handlers({
 		const state = sp.get("state");
 		const code = sp.get("code");
 
-		// The provider reports a declined or errored consent with `error`, and sends no code. It is a
-		// normal outcome (the person pressed Cancel), not a fault, so it takes the same quiet path.
-		if (sp.get("error") || !state || !code) return back(ctx.url, "failed");
+		if (!state) return back(ctx.url, null, "failed");
 
-		const result = await IntegrationsBackendService.completeConnection({ state, code });
-		return back(ctx.url, result.ok ? "connected" : "failed");
+		// The provider reports a declined or errored consent with `error`, and sends no code. It is a
+		// normal outcome (the person pressed Cancel), not a fault, so it takes the same quiet path, back
+		// to where they started.
+		const result = await IntegrationsBackendService.completeConnection(
+			{ state, code: sp.get("error") ? null : code },
+			readActor(ctx),
+		);
+		if (result.ok) return back(ctx.url, result.data!.returnTo, "connected");
+		const returnTo = result.details?.returnTo;
+		return back(ctx.url, typeof returnTo === "string" ? returnTo : null, "failed");
 	},
 });

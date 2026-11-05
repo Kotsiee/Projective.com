@@ -9,10 +9,17 @@ CREATE INDEX IF NOT EXISTS idx_user_connections_expiry ON integrations.user_conn
 
 CREATE INDEX IF NOT EXISTS idx_connection_sync_state_conn ON integrations.connection_sync_state (connection_id);
 
+-- The calendar-sync claim takes what a push marked first, then what was read longest ago.
+CREATE INDEX IF NOT EXISTS idx_connection_sync_state_read
+    ON integrations.connection_sync_state (due_at NULLS LAST, last_delta_at NULLS FIRST)
+    WHERE kind = 'freebusy'::integrations.provider_kind;
+
 -- The webhook-renewal cron sweeps channels nearing expiry.
 CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_expiry ON integrations.webhook_subscriptions (expires_at)
     WHERE status IN ('active'::integrations.webhook_status, 'expiring'::integrations.webhook_status);
 CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_conn ON integrations.webhook_subscriptions (connection_id);
+-- A push names its channel, and the webhook route finds the channel's token by it.
+CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_channel ON integrations.webhook_subscriptions (provider_slug, external_channel_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_sub ON integrations.webhook_deliveries (subscription_id, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_connection_audit_user ON integrations.connection_audit (user_id, created_at DESC);

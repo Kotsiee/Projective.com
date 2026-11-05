@@ -38,8 +38,16 @@ function raw(over: Partial<RawDispute> = {}): RawDispute {
 			tracked: false,
 			host_presence_pct: 0,
 			claimant_presence_pct: 140,
+			host_seconds: 120,
+			claimant_seconds: -5,
+			reconnects: 1,
 			threshold_pct: 80,
 			audited_at: "2026-10-13T10:30:00.000Z",
+			timeline: [
+				{ party: "host", action: "joined", at: "2026-10-13T10:00:00.000Z", how: "host_account" },
+				{ party: "claimant", action: "left", at: "2026-10-13T10:20:00.000Z", how: "email" },
+				{ party: "host", action: "teleported", at: "2026-10-13T10:21:00.000Z", how: "registrant" },
+			],
 		},
 		amount_minor: 10000,
 		currency: "GBP",
@@ -92,10 +100,21 @@ Deno.test("a ruling maps with its settlement, labels and the reader's side", () 
 	assertEquals(d.projectSlug, "prj-abcdefghjk");
 });
 
+Deno.test("the room's log keeps what it can read and marks an email match as weak", () => {
+	const audit = toDisputeCase(raw())!.audit!;
+	assertEquals(audit.timeline, [
+		{ party: "host", action: "joined", at: "2026-10-13T10:00:00.000Z", weak: false },
+		{ party: "claimant", action: "left", at: "2026-10-13T10:20:00.000Z", weak: true },
+	]);
+});
+
 Deno.test("the audit is clamped and a statement from an unknown party is dropped", () => {
 	const d = toDisputeCase(raw())!;
 	assertEquals(d.audit?.claimantPresencePct, 100);
 	assertEquals(d.audit?.verdict, "ambiguous");
+	assertEquals(d.audit?.hostSeconds, 120);
+	assertEquals(d.audit?.claimantSeconds, 0);
+	assertEquals(d.audit?.reconnects, 1);
 	assertEquals(d.messages.length, 1);
 	assertEquals(d.messages[0].files[0], {
 		id: FILE,

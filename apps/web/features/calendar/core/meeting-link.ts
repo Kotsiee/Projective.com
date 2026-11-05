@@ -1,4 +1,14 @@
-import { MeetingProvider } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	type EntryRoom,
+	type EventMeeting,
+	isRoomAddress,
+	MEETING_PROVIDER_LABEL,
+	MeetingProvider,
+	meetingProviderOf,
+} from "@projective/types/scheduling";
+import type { ConnectionsView } from "@projective/types/integrations";
+import { normalizeLink } from "@projective/types/links";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 
 /**
@@ -6,17 +16,8 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
  *
  * The LINK decides the provider, never the other way round: a host who picked Zoom and then pasted
  * a Meet link has a Meet room, and a rail that kept saying Zoom would send every joiner to the wrong
- * app. A host is matched only on its exact registrable domain or a subdomain of it, so
- * `zoom.us.example.com` is a custom link rather than a Zoom room.
+ * app.
  */
-
-// #region Trusted hosts
-const TRUSTED_HOSTS: { provider: MeetingProvider; domains: readonly string[] }[] = [
-	{ provider: "google", domains: ["meet.google.com"] },
-	{ provider: "zoom", domains: ["zoom.us", "zoom.com", "zoomgov.com"] },
-	{ provider: "microsoft_teams", domains: ["teams.microsoft.com", "teams.live.com"] },
-];
-// #endregion
 
 // #region Generated rooms
 /**
@@ -41,6 +42,52 @@ export function rememberedProvider(): MeetingProvider {
 export function rememberProvider(provider: MeetingProvider): void {
 	writeStored("local", LocalKeys.CALENDAR_MEETING_PROVIDER, provider);
 }
+
+/**
+ * Whether the viewer holds an account a room can be made on, as `scheduling.fn_room_connection` will
+ * judge it. A Teams room is made through the Microsoft connection.
+ */
+export function canMintOn(provider: MeetingProvider, view: ConnectionsView): boolean {
+	const slug = provider === "microsoft_teams" ? "outlook" : provider;
+	return view.connections.some((c) =>
+		c.providerSlug === slug && c.status === "active" && c.grantedKinds.includes("conferencing")
+	);
+}
+
+/** The kinds that are a moment or a held span rather than a gathering, and so have no room. */
+export const ROOMLESS: ReadonlySet<CalendarEvent["kind"]> = new Set([
+	"general",
+	"deadline",
+	"busy",
+]);
+
+/**
+ * The room as it stands, so a patch never has to invent the half it is not changing. A new entry's
+ * room starts on the provider its host picked last (Google Meet the first time).
+ */
+export function meetingOf(event: CalendarEvent): EventMeeting {
+	if (event.meeting) return event.meeting;
+	const provider = rememberedProvider();
+	return {
+		provider,
+		providerLabel: MEETING_PROVIDER_LABEL[provider],
+		joinUrl: null,
+		passcode: null,
+		details: null,
+		pending: true,
+	};
+}
+
+/**
+ * What saving an entry from the modal says about its room: what the modal showed, so the pick its
+ * host saw is the pick that is saved. The server decides whether it can be minted.
+ */
+export function roomOf(event: CalendarEvent): EntryRoom | null {
+	if (ROOMLESS.has(event.kind)) return null;
+	const { provider, joinUrl, passcode } = meetingOf(event);
+	const pasted = joinUrl && !isRoomAddress(joinUrl) ? normalizeLink(joinUrl) : null;
+	return { provider, link: pasted?.startsWith("https://") ? pasted : null, passcode };
+}
 // #endregion
 
 /** The outcome of {@link checkJoinLink}. */
@@ -59,9 +106,5 @@ export function checkJoinLink(raw: string): JoinLinkCheck {
 	if (url.protocol !== "https:") {
 		return { ok: false, message: "Join links must start with https://." };
 	}
-	const host = url.hostname.toLowerCase();
-	const match = TRUSTED_HOSTS.find((t) =>
-		t.domains.some((d) => host === d || host.endsWith(`.${d}`))
-	);
-	return { ok: true, provider: match?.provider ?? "custom" };
+	return { ok: true, provider: meetingProviderOf(url) };
 }

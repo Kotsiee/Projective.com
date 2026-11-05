@@ -34,6 +34,12 @@ are seeded (money · work · messages · schedule · discovery · account · sys
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
 
+**Added 2026-11-04 (SCH-WP4a; Decision #343, ruling C4):** `integration.reconnect_required` (account ·
+high · in_app + email, not mandatory, not digestible; opens `/settings/integrations`) — sent by
+`integrations.fn_record_refresh_failure` when a refresh answers `invalid_grant`, so the connection is
+`expired` and only its owner can consent again. Seeded in its own `[integrations]` region of
+`00005010`.
+
 **Added 2026-10-31 (audit S-11; Decision #343, ruling C3):** `call.expired` (schedule · medium ·
 in_app + email, not mandatory, not digestible; no action URL — an expired call leaves both calendars)
 — sent by `scheduling.fn_expire_discovery_calls` to the requester and the host of a discovery-call

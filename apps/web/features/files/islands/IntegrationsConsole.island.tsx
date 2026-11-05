@@ -119,7 +119,7 @@ function kindLabel(kind: ProviderKind): string {
 		case "conferencing":
 			return "Meetings";
 		case "freebusy":
-			return "Free/busy";
+			return "Event details";
 		case "storage":
 			return "Files";
 		case "docs":
@@ -226,6 +226,9 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 
 	// #region Derived
 	const connections = view.value.connections;
+	const roomProvider = connections.find((c) =>
+		c.providerSlug === view.value.activeConferencingProvider
+	)?.providerLabel;
 	const connectedSlugs = new Set(
 		connections.filter((c) => c.status !== "revoked" && c.status !== "disconnected")
 			.map((c) => c.providerSlug),
@@ -300,8 +303,8 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 					<CapabilityRow
 						label="Meeting links"
 						on={view.value.hasConferencing}
-						onNote={view.value.activeConferencingProvider
-							? `New sessions get a room from ${view.value.activeConferencingProvider}.`
+						onNote={roomProvider
+							? `New sessions get a room from ${roomProvider}.`
 							: "New sessions get a meeting room automatically."}
 						offNote="Connect a conferencing service to have session rooms created for you."
 					/>
@@ -445,7 +448,11 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 					{target
 						? `Projective will stop using ${target.providerLabel}${
 							target.externalAccountLabel ? ` (${target.externalAccountLabel})` : ""
-						}, and the permission is withdrawn at ${target.providerLabel} too. Connecting again later means granting it again.`
+						}, and the permission is withdrawn at ${target.providerLabel} too. ${
+							target.config?.outbound_calendar_id
+								? `The separate Projective calendar there is deleted. `
+								: ""
+						}Connecting again later means granting it again.`
 						: ""}
 				</p>
 			</Dialog>

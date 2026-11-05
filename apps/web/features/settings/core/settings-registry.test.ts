@@ -69,9 +69,9 @@ Deno.test("registry — an entry inherits a page-only section's surface or narro
 // #region Gates
 Deno.test("gates — a buyer sees no call, payout or identity-check entries; a freelancer does", () => {
 	const buyer = sectionEntries("scheduling", person()).map((e) => e.anchor);
-	assertEquals(buyer, ["working-hours"]);
+	assertEquals(buyer, ["working-hours", "calendar"]);
 	const seller = sectionEntries("scheduling", person({ isFreelancer: true })).map((e) => e.anchor);
-	assertEquals(seller, ["working-hours", "calls", "courtesy", "buffers"]);
+	assertEquals(seller, ["working-hours", "calendar", "calls", "courtesy", "buffers"]);
 	assertEquals(sectionEntries("verification", person()).map((e) => e.anchor), [
 		"business-verification",
 	]);

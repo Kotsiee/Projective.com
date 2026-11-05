@@ -76,6 +76,10 @@ import {
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
+	type DevCalendarConnection,
+	type DevConferencingConnection,
+	type DevCalendarInspect,
+	type DevDiscoveryCall,
 	type DevSessionState,
 	type DevSettingsAttention,
 	type DevSpendRequests,
@@ -141,6 +145,10 @@ export type {
 	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
+	DevCalendarConnection,
+	DevConferencingConnection,
+	DevCalendarInspect,
+	DevDiscoveryCall,
 	DevSessionState,
 	DevSettingsAttention,
 	DevSpendRequests,
@@ -352,6 +360,13 @@ export interface DevOverrides {
 	 * the auto-release sweep to reach, so the listing lane and the session sidebar preview them here.
 	 */
 	sessionState: DevSessionState;
+	discoveryCall: DevDiscoveryCall;
+	/** How a picked `/calendar` entry opens, whatever the reader's setting says (Decision #388). */
+	calendarInspect: DevCalendarInspect;
+	/** Whether the viewer has an account a meeting room can be made on (Decision #383, ruling R2). */
+	conferencingConnection: DevConferencingConnection;
+	/** The viewer's connected calendar and whether it publishes (Decision #383, ruling R3). */
+	calendarConnection: DevCalendarConnection;
 	/**
 	 * A session's no-show dispute (Decision #212): nothing reportable, a sitting the attendee may report,
 	 * each live status and each ruling. Each takes a real claim, a room's logs, a counterparty or an
@@ -528,6 +543,10 @@ export const DEV_DEFAULTS: DevOverrides = {
 	businessKyb: "auto",
 	teamSettings: "auto",
 	sessionState: "auto",
+	discoveryCall: "auto",
+	calendarInspect: "auto",
+	conferencingConnection: "auto",
+	calendarConnection: "auto",
 	disputeState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
@@ -887,6 +906,38 @@ export const DEV_SAVED: ReadonlyArray<DevOption<DevSaved>> = [
 	{ value: "many", label: "Every type" },
 ];
 
+/** Discovery call options (Decision #343, ruling C3). */
+export const DEV_DISCOVERY_CALLS: ReadonlyArray<DevOption<DevDiscoveryCall>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "proposed_host", label: "Proposed (host)" },
+	{ value: "proposed_requester", label: "Proposed (requester)" },
+	{ value: "confirmed", label: "Confirmed" },
+	{ value: "no_show_claimable", label: "No-show claimable" },
+	{ value: "expired", label: "Expired" },
+];
+
+/** How a picked entry opens on `/calendar` (Decision #388). */
+export const DEV_CALENDAR_INSPECTS: ReadonlyArray<DevOption<DevCalendarInspect>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "panel", label: "Panel" },
+	{ value: "popover", label: "Popover" },
+];
+
+/** Room account options (Decision #383, ruling R2). */
+export const DEV_CONFERENCING_CONNECTIONS: ReadonlyArray<DevOption<DevConferencingConnection>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "connected", label: "Connected" },
+	{ value: "missing", label: "Not connected" },
+];
+
+/** Connected calendar options (Decision #383, ruling R3). */
+export const DEV_CALENDAR_CONNECTIONS: ReadonlyArray<DevOption<DevCalendarConnection>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "busy_only", label: "Busy only" },
+	{ value: "publishing", label: "Publishing" },
+	{ value: "expired", label: "Expired" },
+];
+
 /** Session state options (Decision #171). */
 export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "auto", label: "Auto" },
@@ -894,6 +945,8 @@ export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "live", label: "Live" },
 	{ value: "ended", label: "Ended" },
 	{ value: "release_pending", label: "Auto-release pending" },
+	{ value: "held_for_review", label: "Held for review" },
+	{ value: "no_room", label: "No room (host)" },
 ];
 
 /** No-show dispute options (Decision #212). */
@@ -1110,6 +1163,16 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devTeamSettings;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
+		if (next.discoveryCall !== "auto") root.dataset.devDiscoveryCall = next.discoveryCall;
+		else delete root.dataset.devDiscoveryCall;
+		if (next.calendarInspect !== "auto") root.dataset.devCalendarInspect = next.calendarInspect;
+		else delete root.dataset.devCalendarInspect;
+		if (next.conferencingConnection !== "auto") {
+			root.dataset.devConferencingConnection = next.conferencingConnection;
+		} else delete root.dataset.devConferencingConnection;
+		if (next.calendarConnection !== "auto") {
+			root.dataset.devCalendarConnection = next.calendarConnection;
+		} else delete root.dataset.devCalendarConnection;
 		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
 		else delete root.dataset.devDisputeState;
 		if (next.notifications !== "auto") root.dataset.devNotifications = next.notifications;
@@ -1198,6 +1261,9 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devBusinessKyb;
 		delete root.dataset.devTeamSettings;
 		delete root.dataset.devSessionState;
+		delete root.dataset.devDiscoveryCall;
+		delete root.dataset.devConferencingConnection;
+		delete root.dataset.devCalendarConnection;
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;

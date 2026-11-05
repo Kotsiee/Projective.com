@@ -116,6 +116,40 @@ export type ProviderSlug = (typeof PROVIDER_SLUGS)[number];
 export const providerSlug = z.string().min(1).max(40);
 // #endregion
 
+// #region Auth config
+/**
+ * `integrations.providers.auth_config` — the non-secret half of a provider's OAuth client, so a new
+ * connector is a seed row: where consent, tokens and the account's identity are reached. Keys are the
+ * stored JSON's own. `{tenant}` in a URL is filled from `MICROSOFT_INTEGRATION_TENANT`. The client
+ * secret is never here: it lives in the Environment Variable Contract.
+ */
+export const ProviderAuthConfigSchema = z.object({
+	authorize_url: z.string().startsWith("https://"),
+	token_url: z.string().startsWith("https://"),
+	/** Absent where the provider has no per-grant revocation (Microsoft). */
+	revoke_url: z.string().startsWith("https://").optional(),
+	pkce: z.boolean(),
+	/** `false` where scopes live on the provider's own app and naming them is refused (Zoom). */
+	send_scopes: z.boolean().optional(),
+	/** Extra authorize query parameters (Google's `access_type=offline`). */
+	authorize_params: z.record(z.string(), z.string()).optional(),
+	/** How the client authenticates at the token endpoint. `basic` is Zoom's; absent is the form body. */
+	token_auth: z.enum(["body", "basic"]).optional(),
+	/** The endpoint that names the linked account, read with the fresh access token. */
+	identity_url: z.string().startsWith("https://"),
+	/** The identity response's field holding the account's stable id. */
+	identity_id_field: z.string().min(1),
+	/** The identity response's fields tried, in order, for the account's display label. */
+	identity_label_fields: z.array(z.string().min(1)),
+	/**
+	 * The scopes each capability needs, so a consent asks for what its `kinds` want and a narrowed
+	 * grant records only the capabilities it covers. A default scope under no kind is always requested.
+	 */
+	kind_scopes: z.record(z.string(), z.array(z.string())).optional(),
+});
+export type ProviderAuthConfig = z.infer<typeof ProviderAuthConfigSchema>;
+// #endregion
+
 // #region Rows
 /** A row of `integrations.providers` — the public, non-sensitive third-party catalogue. */
 export const IntegrationProviderSchema = z.object({
@@ -124,6 +158,7 @@ export const IntegrationProviderSchema = z.object({
 	category: ProviderCategory,
 	capabilities: z.array(ProviderKind),
 	authScheme: AuthScheme,
+	/** Whether a person can connect it here: switched on, and with this environment's client behind it. */
 	isEnabled: z.boolean(),
 	isBeta: z.boolean(),
 	broker: ProviderBroker,

@@ -1,5 +1,5 @@
 import type { JSX, RefObject } from "preact";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { signal, useSignalEffect } from "@preact/signals";
 import "../styles/datetime-picker.css";
 import { cx } from "../../core/cx.ts";
@@ -63,6 +63,13 @@ export interface DateTimePickerProps extends BaseFieldProps, OverlayFieldProps {
 	showIcon?: boolean;
 	/** Add "Now" and "Clear" beside the panel's Done button. */
 	showButtonBar?: boolean;
+	/** Open the panel on mount, for a control an in-place edit has just swapped in. */
+	defaultOpen?: boolean;
+	/**
+	 * The panel closed. `onValueChange` fires on every cell the tumbler crosses, so this is the commit
+	 * point for a caller that saves once rather than on each tick.
+	 */
+	onClose?: () => void;
 	class?: string;
 }
 
@@ -116,6 +123,8 @@ export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
 		placeholder,
 		showIcon = false,
 		showButtonBar = false,
+		defaultOpen = false,
+		onClose,
 		avoid,
 		allowOverflow,
 		id,
@@ -197,6 +206,7 @@ export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
 		const inside = !!active && !!panelRef.current && panelRef.current.contains(active);
 		open.value = false;
 		if (inside) inputRef.current?.focus();
+		onClose?.();
 	};
 
 	/**
@@ -296,6 +306,12 @@ export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
 		open.value = true;
 	};
 	const toggleOpen = () => (open.value ? close() : openPanel());
+
+	useEffect(() => {
+		if (!defaultOpen) return;
+		inputRef.current?.focus();
+		openPanel();
+	}, []);
 
 	const pickNow = () => {
 		const now = clampInstant(new Date(), min, max);

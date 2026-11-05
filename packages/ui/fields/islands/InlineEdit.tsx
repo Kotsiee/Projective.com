@@ -1,6 +1,6 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { useSignal } from "@preact/signals";
+import { type Signal, useSignal } from "@preact/signals";
 import "../styles/field.css";
 import "../styles/inline-edit.css";
 import { cx } from "../../core/cx.ts";
@@ -8,6 +8,14 @@ import { useId } from "../hooks/useId.ts";
 import { Icon } from "../../icons/mod.ts";
 
 // #region Types
+/** What {@link InlineEditProps.renderField} draws with. */
+export interface InlineEditField {
+	/** The working value, seeded from `value` as the edit starts. Nothing is saved until {@link commit}. */
+	draft: Signal<string>;
+	/** Finish: fire `onCommit` if the value changed, and return to rest. */
+	commit: () => void;
+}
+
 /** Props for {@link InlineEdit}. */
 export interface InlineEditProps {
 	/** The committed value. The control is fully controlled — commit writes through `onCommit`. */
@@ -29,6 +37,18 @@ export interface InlineEditProps {
 	maxLength?: number;
 	/** Accessible name for the edit affordance ("Edit ticket title"). */
 	label: string;
+	/**
+	 * Rich resting content in place of the plain `value`: sanitized HTML, a formatted instant. It is
+	 * drawn BESIDE a stretched edit button rather than inside one, because a button's name replaces
+	 * its content for assistive tech, so an agenda inside one could not be read at all.
+	 */
+	display?: ComponentChildren;
+	/**
+	 * Draw the active control yourself, for a value a text input would damage: rich text, an instant.
+	 * The field works on `draft` and calls `commit` when it is finished; Escape still cancels here. It
+	 * takes on this primitive's one duty: the words must not move when the mode does.
+	 */
+	renderField?: (field: InlineEditField) => ComponentChildren;
 	class?: string;
 }
 // #endregion
@@ -47,6 +67,9 @@ export interface InlineEditProps {
  * Escape; a block keeps Enter for paragraphs and commits on blur or ⌘/Ctrl+Enter. Escape always
  * cancels and restores. The control is idle-first — it renders no chrome until hovered or focused,
  * so a page full of editable text does not read as a page full of inputs.
+ *
+ * Leaving the edit puts focus back on the resting control when the field took it away with it, so a
+ * keyboard reader stays where they were rather than landing on the document.
  */
 export function InlineEdit(props: InlineEditProps): JSX.Element {
 	const {
@@ -58,12 +81,16 @@ export function InlineEdit(props: InlineEditProps): JSX.Element {
 		displayAs,
 		maxLength,
 		label,
+		display,
+		renderField,
 		class: className,
 	} = props;
 
 	const editing = useSignal(false);
 	const draft = useSignal(value);
 	const ref = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
+	const restRef = useRef<HTMLButtonElement>(null);
+	const wasEditing = useRef(false);
 	const fieldId = useId(undefined, "inline-edit");
 
 	// Focus and select on entry; a caret parked at index 0 makes the field feel like a different
@@ -75,6 +102,14 @@ export function InlineEdit(props: InlineEditProps): JSX.Element {
 		el.focus();
 		el.setSelectionRange(el.value.length, el.value.length);
 		if (as === "block") el.scrollTop = el.scrollHeight;
+	}, [editing.value]);
+
+	// The field that held focus is gone. A press elsewhere has already put focus where it belongs,
+	// so only a focus that fell to the document is brought back.
+	useEffect(() => {
+		const left = wasEditing.current && !editing.value;
+		wasEditing.current = editing.value;
+		if (left && document.activeElement === document.body) restRef.current?.focus();
 	}, [editing.value]);
 
 	/*
@@ -102,12 +137,13 @@ export function InlineEdit(props: InlineEditProps): JSX.Element {
 		return () => globalThis.removeEventListener("keydown", onKey, true);
 	}, [editing.value, value]);
 
-	const Display = (displayAs ?? (as === "line" ? "span" : "p")) as "span";
+	const Display =
+		(displayAs ?? (display !== undefined ? "div" : as === "line" ? "span" : "p")) as "span";
 
 	if (!editable) {
 		return (
 			<Display class={cx("ui-inline-edit__value", className)}>
-				{value || <span class="ui-inline-edit__empty">{placeholder}</span>}
+				{display ?? (value || <span class="ui-inline-edit__empty">{placeholder}</span>)}
 			</Display>
 		);
 	}
@@ -121,6 +157,8 @@ export function InlineEdit(props: InlineEditProps): JSX.Element {
 		const next = draft.value.trim();
 		if (next !== value.trim()) onCommit(next);
 	};
+
+	if (editing.value && renderField) return <>{renderField({ draft, commit })}</>;
 
 	if (editing.value) {
 		const shared = {
@@ -161,8 +199,26 @@ export function InlineEdit(props: InlineEditProps): JSX.Element {
 		);
 	}
 
+	if (display !== undefined) {
+		return (
+			<div class={cx("ui-inline-edit", "ui-inline-edit--rich", className)} data-block="true">
+				<Display class="ui-inline-edit__value">{display}</Display>
+				<button
+					ref={restRef}
+					type="button"
+					class="ui-inline-edit__hit"
+					aria-label={label}
+					onClick={start}
+				>
+					<Icon name="edit" size="2xs" class="ui-inline-edit__mark" />
+				</button>
+			</div>
+		);
+	}
+
 	return (
 		<button
+			ref={restRef}
 			type="button"
 			class={cx("ui-inline-edit", className)}
 			data-block={as === "block" ? "true" : undefined}

@@ -37,6 +37,74 @@ CREATE OR REPLACE TRIGGER trg_log_call_event
     AFTER INSERT OR UPDATE ON scheduling.discovery_calls
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_log_call_event ();
 
+-- Rooms follow what they belong to (00001510 §7d), so no booking door has to know about them.
+CREATE OR REPLACE TRIGGER trg_rooms_touch
+    BEFORE UPDATE ON scheduling.rooms
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
+
+CREATE OR REPLACE TRIGGER trg_call_room
+    AFTER INSERT OR UPDATE OF status ON scheduling.discovery_calls
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_sync_call_room ();
+
+CREATE OR REPLACE TRIGGER trg_sitting_provider
+    BEFORE INSERT ON projects.session_events
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_sitting_provider ();
+
+CREATE OR REPLACE TRIGGER trg_sitting_room
+    AFTER INSERT OR UPDATE OF status, start_time, end_time ON projects.session_events
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_sync_sitting_room ();
+
+CREATE OR REPLACE TRIGGER trg_entry_room
+    AFTER UPDATE OF status, starts_at, ends_at ON scheduling.events
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_sync_entry_room ();
+
+-- #region Outbound mirrors follow their event (00001510 §7g; Decision #383, ruling R3)
+-- A busy row read from a provider queues nothing, and this WHEN is what keeps a full read cheap.
+-- attendee_count is here because it is what changes when a group seat starts or ends.
+CREATE OR REPLACE TRIGGER trg_event_mirrors_touch
+    BEFORE UPDATE ON scheduling.event_mirrors
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
+
+CREATE OR REPLACE TRIGGER trg_event_mirrors
+    AFTER INSERT OR UPDATE OF title, starts_at, ends_at, all_day, status, archived_at, external_sync, attendee_count
+    ON scheduling.events
+    FOR EACH ROW
+    WHEN (NEW.source_connection_id IS NULL AND NEW.kind NOT IN ('availability', 'busy'))
+    EXECUTE FUNCTION scheduling.trg_event_mirrors ();
+
+-- BEFORE, because the FK nulls event_id on the way out and this has to find the copies first.
+CREATE OR REPLACE TRIGGER trg_event_mirrors_deleted
+    BEFORE DELETE ON scheduling.events
+    FOR EACH ROW
+    WHEN (OLD.source_connection_id IS NULL AND OLD.kind NOT IN ('availability', 'busy'))
+    EXECUTE FUNCTION scheduling.trg_event_mirrors ();
+
+-- A call that took place changes nothing its copy says, so the sweep writes to no provider.
+CREATE OR REPLACE TRIGGER trg_call_mirrors
+    AFTER INSERT OR UPDATE OF status, confirmed_start, confirmed_end, event_id ON scheduling.discovery_calls
+    FOR EACH ROW
+    WHEN (NEW.status NOT IN ('completed', 'no_show'))
+    EXECUTE FUNCTION scheduling.trg_call_mirrors ();
+
+CREATE OR REPLACE TRIGGER trg_call_mirrors_deleted
+    BEFORE DELETE ON scheduling.discovery_calls
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_call_mirrors ();
+
+CREATE OR REPLACE TRIGGER trg_attendee_mirrors
+    AFTER INSERT OR UPDATE OF response, user_id OR DELETE ON scheduling.event_attendees
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_attendee_mirrors ();
+
+CREATE OR REPLACE TRIGGER trg_room_mirrors_opened
+    AFTER INSERT ON scheduling.rooms
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_room_mirrors ();
+
+CREATE OR REPLACE TRIGGER trg_room_mirrors_changed
+    AFTER UPDATE OF status ON scheduling.rooms
+    FOR EACH ROW
+    WHEN ((OLD.status IN ('failed', 'closing', 'closed')) IS DISTINCT FROM (NEW.status IN ('failed', 'closing', 'closed')))
+    EXECUTE FUNCTION scheduling.trg_room_mirrors ();
+-- #endregion
+
 -- A rostered event moves only through its negotiation and is never deleted (00001510 §5).
 CREATE OR REPLACE TRIGGER trg_guard_rostered_event
     BEFORE UPDATE OR DELETE ON scheduling.events

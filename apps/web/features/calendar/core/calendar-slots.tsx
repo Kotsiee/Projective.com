@@ -13,6 +13,7 @@ import AvailabilityFooter from "../islands/AvailabilityFooter.island.tsx";
 import AvailabilityPanel from "../islands/AvailabilityPanel.island.tsx";
 import { calendarModeOf, presetSlugOf } from "./availability-view.ts";
 import { resolvePersonalCalendar } from "./calendar-ssr.ts";
+import { EVENT_PARAM } from "./event-deep-link.ts";
 
 /**
  * calendar-slots — the URL-keyed resolvers that give `/calendar` its lane, its two bands and its
@@ -115,7 +116,12 @@ export async function calendarPanelFor(
 			/>
 		);
 	}
-	return <CalendarPanel initial={await resolveOnce(url, actor)} />;
+	return (
+		<CalendarPanel
+			initial={await resolveOnce(url, actor)}
+			linkedEventId={url.searchParams.get(EVENT_PARAM)}
+		/>
+	);
 }
 
 /** The footer band: the agenda's view control and actions, or the availability Save row. */

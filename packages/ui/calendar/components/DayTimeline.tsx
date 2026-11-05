@@ -528,8 +528,6 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 	const minuteOf = (ms: number) => (ms - refMidnight) / MIN;
 	const dayIndexOf = (ms: number) => Math.round((startOfDay(ms, tz) - refMidnight) / DAY);
 
-	const focusIsToday = todayMs != null && sameZonedDay(props.focusMs, todayMs, tz);
-
 	const viewport = useCalendarViewport({
 		zoomRange: props.zoomRange,
 		pxPerHour,
@@ -542,11 +540,12 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 				? null
 				: ((minuteOf(props.now.value) - RANGE_START_MIN) / 60) * pxPerHour.value,
 		// The initial centre: the live time when the focus IS today, else the focus day's noon, so the
-		// view opens on the same reference the rest of the calendar is built around. `peek()`, not
-		// `.value` — this is called from a plain effect and must not subscribe anything to the tick.
+		// view opens on the same reference the rest of the calendar is built around. The wall clock,
+		// because this first runs before `mounted` flips, and `todayMs` is still null there.
 		focusY: () => {
-			const anchor = focusIsToday
-				? minuteOf(props.now.peek())
+			const nowMs = Date.now();
+			const anchor = sameZonedDay(props.focusMs, nowMs, tz)
+				? minuteOf(nowMs)
 				: minuteOf(startOfDay(props.focusMs, tz)) + 12 * 60;
 			return ((anchor - RANGE_START_MIN) / 60) * pxPerHour.value;
 		},

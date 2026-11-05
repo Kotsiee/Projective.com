@@ -8,6 +8,7 @@ import type {
 	CalendarParams,
 	CreateEntriesInput,
 	RemoveEntryInput,
+	SetEntryRemindersInput,
 	RescheduleInput,
 	RsvpInput,
 	SchedulePage,
@@ -39,7 +40,13 @@ import {
 import type { EntityCalendarParams } from "./entity-calendar.ts";
 import { type PlanRefusal, planReschedule, planRsvp } from "./coordination-plan.ts";
 import { writeReschedule, writeRsvp } from "./live-coordination-writes.ts";
-import { createEntries, type EntryDeps, removeEntry, updateEntry } from "./live-entries.ts";
+import {
+	createEntries,
+	type EntryDeps,
+	removeEntry,
+	setEntryReminders,
+	updateEntry,
+} from "./live-entries.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import type { ExploreItem } from "@projective/types/explore";
@@ -412,6 +419,15 @@ export class ScheduleBackendService {
 		deps: Partial<EntryDeps> = {},
 	): Promise<ServiceResult<{ eventId: string }>> {
 		return asHost("remove-entry", actor, deps, (a, d) => removeEntry(input, a, d));
+	}
+
+	/** Set the caller's own alerts for an entry they hold, in any seat; `null` follows their default. */
+	static setEntryReminders(
+		input: SetEntryRemindersInput,
+		actor: ReadActor,
+		deps: Partial<EntryDeps> = {},
+	): Promise<ServiceResult<{ event: CalendarEvent }>> {
+		return asHost("set-entry-reminders", actor, deps, (a, d) => setEntryReminders(input, a, d));
 	}
 	// #endregion
 

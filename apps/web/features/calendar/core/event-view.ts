@@ -1,3 +1,4 @@
+import { calendarTime } from "@projective/ui/calendar";
 import { createModalStack } from "@projective/ui/overlay";
 import type { IconName } from "@projective/ui/icons";
 import type { MoneyView } from "@projective/types/finance";
@@ -216,7 +217,24 @@ export function isEventPartyView(event: CalendarEvent): boolean {
 export function viewerSeat(event: CalendarEvent) {
 	return viewerAttendee(event.roster ?? []);
 }
+
+/**
+ * Whether the viewer may change this entry from a calendar. The host's alone, and not a discovery call,
+ * which changes only through its own doors, nor an engagement's event on an aggregate page, which moves
+ * only through its negotiation (`hostRefusal`): offering either a Save would offer a certain refusal.
+ */
+export function entryEditable(event: CalendarEvent): boolean {
+	return event.viewerIsHost === true && !event.callId && !event.projectId;
+}
 // #endregion
+
+/** When an entry runs on its day: a range, one time for a Reminder, which has no length, or all day. */
+export function timesLabel(event: CalendarEvent, tz: string, hour12: boolean): string {
+	if (event.allDay) return "All day";
+	return event.end > event.start
+		? calendarTime.fmtRange(event.start, event.end, tz, hour12)
+		: calendarTime.fmtTime(event.start, tz, hour12);
+}
 
 // #region Live status
 /** The dynamic header badge: what it says, and the tone that reinforces it. */

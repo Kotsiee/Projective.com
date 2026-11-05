@@ -54,6 +54,14 @@ export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element 
 					)
 					: <p class="sess-next__note">No session is scheduled yet.</p>}
 				{badge && <p class="sess-next__note">{badge.note}</p>}
+				{data.joinHref
+					? (
+						<a class="sess-next__cta" href={data.joinHref} target="_blank" rel="noopener">
+							<span class="sess-next__cta-icon" aria-hidden="true">{VideoIcon}</span>
+							<span>Join session</span>
+						</a>
+					)
+					: null}
 				<a class="sess-next__cta" href={calendarHref}>
 					<span class="sess-next__cta-icon" aria-hidden="true">{CalendarPlusIcon}</span>
 					<span>Propose time</span>

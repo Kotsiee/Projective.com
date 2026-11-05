@@ -11,6 +11,7 @@ records**.
 | **Public catalogues**                                                    |     |                            |                                                  |
 | `providers` · `extension_points` · `plugin_scopes`                       | on  | `SELECT`                   | `USING (true)` — reference data                  |
 | **Secret / operational — no policy, service-role only**                  |     |                            |                                                  |
+| `consent_states`                                                         | on  | **none**                   | **none — `fn_open_consent` is the client door**  |
 | `user_connections`                                                       | on  | **none**                   | **none — definer-only**                          |
 | `connection_secrets`                                                     | on  | **none**                   | **none — the token vault**                       |
 | `connection_sync_state` · `webhook_subscriptions` · `webhook_deliveries` | on  | **none**                   | **none**                                         |
@@ -35,10 +36,11 @@ service-role only.
 
 ## 🔒 Definer-only, no policy — the connection + vault + operational tables
 
-`user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`,
-`webhook_deliveries` and `plugin_grants` have RLS enabled and **no policy, no `authenticated`
-grant** — the hidden-ledger posture the core `finance` money tables use. There is no client path to
-any of them.
+`consent_states`, `user_connections`, `connection_secrets`, `connection_sync_state`,
+`webhook_subscriptions`, `webhook_deliveries` and `plugin_grants` have RLS enabled and **no policy,
+no `authenticated` grant** — the hidden-ledger posture the core `finance` money tables use. There is
+no client path to any of them, except that `integrations.fn_open_consent` writes a consent for the
+calling user.
 
 This is **not** an oversight to be "fixed" later with a `user_id = auth.uid()` policy. Such a policy
 on `user_connections` would make the connection reachable and re-introduce the very join-to-secrets
@@ -46,16 +48,23 @@ risk the split prevents. **Column security here is structural** — the client-f
 view that cannot name the secret columns — rather than a policy a later edit could weaken. The token
 vault (`connection_secrets`) is a step further: it has no view either.
 
-### Revocation is the one write a person drives today
+### A consent binds to the verified caller
+
+`startConnection` writes `consent_states` through `fn_open_consent` **under the caller's own JWT**,
+because the session the app holds is an unverified decode: a service-role write could bind a consent
+to any user a forged cookie named. The callback then refuses a browser not signed in as that user,
+because a consent link can be sent to someone else, who would attach their account to the sender's.
+
+### Revocation
 
 `IntegrationsBackendService.revokeConnection` proves ownership by reading the connection through
 `v_my_connections` **under the caller's own session** (someone else's connection and a missing one
-both answer `404`), then, as the service role: deletes the `connection_secrets` row, sets the
-connection `revoked` with `revoked_at`, and appends a `connection_audit` line (`action = 'revoked'`).
-The audit line is written after the revocation and never undoes it — the credential is already gone,
-and reporting a failure then would send the person to retry something that succeeded. Verified by
-execution (2026-09-23). Connecting (`start` / `complete`), browsing and mounting refuse in words in
-this deployment: every provider row is `is_enabled = false`, and no OAuth client or KMS key exists.
+both answer `404`). Then, as the service role, `fn_revoke_connection` deletes the
+`connection_secrets` row, sets the connection `revoked` with `revoked_at`, expires its channels,
+archives its busy rows and appends a `connection_audit` line, in one transaction. The provider is told
+after that commits, best effort, and that never undoes it: the credential is already gone, and
+reporting a failure then would send the person to retry something that succeeded. Browsing and
+mounting still refuse in words in this deployment, and every provider row is `is_enabled = false`.
 
 ## 👁 `v_my_connections` — the safe connection projection
 
@@ -90,7 +99,7 @@ Granted `SELECT` to `anon`, `authenticated`.
 ## 📜 `connection_audit` — own history
 
 `USING (user_id = auth.uid () OR security.is_admin ())`, `SELECT` only. **No write policy** — every
-line is appended by the OAuth/sync Edge Function running as service-role, so a consent record can't
+line is appended by a service-role definer, so a consent record can't
 be forged or backdated.
 
 ## Capability checks never leak secrets

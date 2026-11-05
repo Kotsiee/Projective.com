@@ -5,6 +5,7 @@ import { ConnectionStatus, ConnectionsViewSchema } from "../integrations/connect
 import { NotificationCenterSchema } from "../comms/preferences.ts";
 import { MessagingSettingsSchema } from "../messaging/settings.ts";
 import { OwnerAvailabilitySchema } from "../scheduling/owner-availability.ts";
+import { CalendarPrefsSchema } from "../scheduling/reminders.ts";
 import { ProfileSettingsSchema, ProfileVisibility } from "../profile/profile.ts";
 import {
 	AppearancePreferencesSchema,
@@ -189,6 +190,8 @@ export const SchedulingSectionSchema = z.object({
 	section: z.literal("scheduling"),
 	handle: z.string().nullable(),
 	availability: OwnerAvailabilitySchema.nullable(),
+	/** How a calendar entry opens and the alerts every entry gets. `null` when they could not be read. */
+	calendar: CalendarPrefsSchema.nullable(),
 });
 
 /**

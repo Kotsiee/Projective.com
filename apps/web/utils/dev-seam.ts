@@ -170,7 +170,41 @@ export type DevRevisionAllotment = "auto" | "exhausted" | "paid";
  * 24-hour negative-consent window. `auto` shows the server's answer. Client-side only: the database
  * still refuses a full cohort and withholds a join URL outside its window.
  */
-export type DevSessionState = "auto" | "seat_full" | "live" | "ended" | "release_pending";
+export type DevSessionState =
+	| "auto"
+	| "seat_full"
+	| "live"
+	| "ended"
+	| "release_pending"
+	| "held_for_review"
+	| "no_room";
+
+/** How a picked `/calendar` entry opens, whatever the reader's setting says (Decision #388). */
+export type DevCalendarInspect = "auto" | "panel" | "popover";
+
+/**
+ * The simulated state of a discovery call (Decision #343, ruling C3): what its modal offers each side
+ * at each stage. `auto` shows the server's answer. Client-side only: every door still judges the move.
+ */
+export type DevDiscoveryCall =
+	| "auto"
+	| "proposed_host"
+	| "proposed_requester"
+	| "confirmed"
+	| "no_show_claimable"
+	| "expired";
+
+/**
+ * Whether the viewer has an account a meeting room can be made on (Decision #383, ruling R2): what the
+ * composer's room section says and offers. `auto` asks the server. Client-side only.
+ */
+export type DevConferencingConnection = "auto" | "connected" | "missing";
+
+/**
+ * The viewer's connected calendar (Decision #383, ruling R3): what Connect a calendar lists and offers.
+ * `auto` asks the server. Client-side only.
+ */
+export type DevCalendarConnection = "auto" | "busy_only" | "publishing" | "expired";
 
 /**
  * The simulated no-show dispute on a session (Decision #212) — the states its sidebar section branches
@@ -537,6 +571,14 @@ export interface DevSeamState {
 	teamSettings?: DevTeamSettings;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
+	/** The simulated discovery call. Optional like `walletAurora`; absent reads as `auto`. */
+	discoveryCall?: DevDiscoveryCall;
+	/** How a picked calendar entry opens. Optional like `walletAurora`; absent reads as `auto`. */
+	calendarInspect?: DevCalendarInspect;
+	/** The simulated room account. Optional like `walletAurora`; absent reads as `auto`. */
+	conferencingConnection?: DevConferencingConnection;
+	/** The simulated connected calendar. Optional like `walletAurora`; absent reads as `auto`. */
+	calendarConnection?: DevCalendarConnection;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
 	disputeState?: DevDisputeState;
 	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
@@ -707,12 +749,26 @@ const FUNDING_STATES: readonly DevFundingState[] = [
 ];
 
 const REVISION_ALLOTMENTS: readonly DevRevisionAllotment[] = ["auto", "exhausted", "paid"];
+const CONFERENCING_CONNECTIONS: readonly DevConferencingConnection[] = ["auto", "connected", "missing"];
+const CALENDAR_CONNECTIONS: readonly DevCalendarConnection[] = ["auto", "busy_only", "publishing", "expired"];
+const CALENDAR_INSPECTS: readonly DevCalendarInspect[] = ["auto", "panel", "popover"];
+const DISCOVERY_CALLS: readonly DevDiscoveryCall[] = [
+	"auto",
+	"proposed_host",
+	"proposed_requester",
+	"confirmed",
+	"no_show_claimable",
+	"expired",
+];
+
 const SESSION_STATES: readonly DevSessionState[] = [
 	"auto",
 	"seat_full",
 	"live",
 	"ended",
 	"release_pending",
+	"held_for_review",
+	"no_room",
 ];
 const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"auto",
@@ -858,6 +914,10 @@ export function readDevSeam(): DevSeamState | null {
 		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
 		teamSettings: coerce(ds.devTeamSettings, TEAM_SETTINGS_SIMS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
+		discoveryCall: coerce(ds.devDiscoveryCall, DISCOVERY_CALLS, "auto"),
+		calendarInspect: coerce(ds.devCalendarInspect, CALENDAR_INSPECTS, "auto"),
+		conferencingConnection: coerce(ds.devConferencingConnection, CONFERENCING_CONNECTIONS, "auto"),
+		calendarConnection: coerce(ds.devCalendarConnection, CALENDAR_CONNECTIONS, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),

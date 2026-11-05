@@ -188,7 +188,9 @@ through a ticket-level Fair Exit door. Today either act pays the freelancer 100%
   review window** (`session_payout_hours`, in which a no-show can be claimed) and then the standard
   7-day **pending** window (§7) — two steps, named apart (Decision #343, ruling C2 (c); the "review
   window" name in the product is **Not built yet**). A sitting with **no presence data** is held for
-  review, never released on negative consent (ruling C5 (a)) — **Not built yet**.
+  review, never released on negative consent (ruling C5 (a)): the attendee is asked once when the
+  review window ends, and silence for `session_review_hold_days` (7) opens an operator case (Decision
+  #383, ruling R6).
 - **Reschedule lockout** (Decision #343, ruling C2 (b)) — **Not built yet**. A money-bearing event
   (a paid sitting or a paid call) locks at the money window: lockout = vote lead =
   `session_cancel_notice_hours`. Every other event keeps the 12 h lockout. A booking made inside the
@@ -912,6 +914,9 @@ override, never a constant. **Not built yet.**
 | Legal-hold identity set (legal name, DoB, country, Stripe/KYC references)                    | 5 years after the relationship ends, or the ledger period if longer | MLR 2017 reg. 40 (AML-ready)                                                   |
 | Seller tax-reporting data (platform reporting)                                               | 6 years (UK), 10 years (EU sellers, DAC7)                           | Digital-platform reporting rules                                               |
 | Dispute record and its evidence (Evidence Vault, the messages attached to it, presence data) | 6 years after the dispute closes                                    | UK limitation period for contract claims                                       |
+| Presence with no dispute (a room's join and leave records)                                   | 13 months, `presence_retention_days` (Decision #383, ruling R8). Built: `scheduling-presence-retention` | Proof of attendance if a payment is disputed late                              |
+| Unmatched room participants (no Projective account behind them)                              | 30 days, `presence_unmatched_retention_days`. Built, same job       | Minimisation                                                                   |
+| Webhook delivery ledger                                                                      | 90 days                                                             | Replay protection only                                                         |
 | Consent and terms-acceptance records                                                         | Life of the account, plus 6 years                                   | Proof of lawful basis                                                          |
 | Security and auth logs                                                                       | 12 months                                                           | Incident investigation                                                         |
 | Messages, files and profiles not under a hold                                                | Erased with the account                                             | No obligation                                                                  |

@@ -3,7 +3,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { LaneSections } from "@projective/ui/navigation";
 import { AccordionGroup, DmRow } from "./ChannelTree.tsx";
 import { DmIcon, HashIcon } from "./detail-glyphs.tsx";
-import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon } from "./session-glyphs.tsx";
+import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon, VideoIcon } from "./session-glyphs.tsx";
 import type { GroupSessionData, SubGroup } from "../core/session-model.ts";
 import { conditionalChannelGroups } from "@projective/types/projects";
 import type { ProjectDetail } from "../types/projects-types.ts";
@@ -76,6 +76,15 @@ export function GroupSessionPanel(
 
 	return (
 		<div class="proj-sess proj-sess--group">
+			{data.joinHref
+				? (
+					<a class="sess-next__cta" href={data.joinHref} target="_blank" rel="noopener">
+						<span class="sess-next__cta-icon" aria-hidden="true">{VideoIcon}</span>
+						<span>Join session</span>
+					</a>
+				)
+				: null}
+
 			{/* Active sub-group tags (the tracks the viewer belongs to) */}
 			{joined.length > 0 && (
 				<section class="sess-tags" aria-label="Your sub-groups">

@@ -3,6 +3,7 @@ import { getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { UserBackendService } from "./UserBackendService.ts";
 import type { UserContext } from "@projective/types/auth";
+import { type CalendarPrefs, resolveCalendarPrefs } from "@projective/types/scheduling";
 import {
 	type AppearancePreferences,
 	AppearancePreferencesSchema,
@@ -174,6 +175,12 @@ export class SettingsBackendService {
 		return stored === null
 			? ok({ uiSettings: input.device ?? DEFAULT_UI_SETTINGS, live: false })
 			: ok({ uiSettings: resolveUiSettings(stored), live: true });
+	}
+
+	/** The caller's calendar keys of `ui_settings`, or `null` when the account could not be read. */
+	static async calendarPrefs(actor: ReadActor): Promise<CalendarPrefs | null> {
+		const stored = await SettingsBackendService.readUiSettings(actor);
+		return stored === null ? null : resolveCalendarPrefs(stored);
 	}
 
 	/**

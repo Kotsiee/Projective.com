@@ -1,17 +1,27 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
-import { Button, NumberInput, Select, ToggleSwitch } from "@projective/ui/fields";
+import { Button, NumberInput, Select, SelectButton, ToggleSwitch } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import type { OwnerAvailability, OwnerCallSettings } from "@projective/types/scheduling";
+import type {
+	CalendarInspectMode,
+	CalendarPrefs,
+	EntryReminder,
+	OwnerAvailability,
+	OwnerCallSettings,
+} from "@projective/types/scheduling";
+import type { UiSettings } from "@projective/types/org";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { ProfileService } from "@features/profile/core/ProfileService.ts";
 import { openStudio, presetsSaved } from "@features/catalogue/core/availability-store.ts";
 import { AvailabilityModal } from "@features/calendar/components/AvailabilityModal.tsx";
+import { ReminderRows } from "@features/calendar/components/EventRemindersField.tsx";
+import { SettingsService } from "../../core/SettingsService.ts";
 import {
 	FormFooter,
 	IDLE,
 	type SaveState,
+	SaveStatus,
 	SectionHead,
 	SettingsBlock,
 	SettingsRow,
@@ -22,8 +32,9 @@ import { sectionMeta } from "../../core/settings-registry.ts";
 
 /**
  * Settings → Scheduling & calls (Decision #150; PRODUCT_SPEC §Discovery & Courtesy Calls "the
- * configuration … lives under Settings"): whether clients may book a discovery call, the free courtesy
- * call's length, weekly cap and per-person cooldown, and the buffers and notice around every call.
+ * configuration … lives under Settings"): how calendar entries open and the reminders they get
+ * (Decision #388), whether clients may book a discovery call, the free courtesy call's length, weekly
+ * cap and per-person cooldown, and the buffers and notice around every call.
  *
  * A `page-only` section — the contextual modal shows its status and escalates here. The weekly hours
  * come from the default availability template, which this page summarises and opens in the shared
@@ -133,6 +144,73 @@ function CallSelect(
 }
 // #endregion
 
+const INSPECT_MODES: { value: CalendarInspectMode; label: string }[] = [
+	{ value: "panel", label: "Side panel" },
+	{ value: "popover", label: "Popover" },
+];
+
+/**
+ * How entries open, and the alerts every entry gets unless it sets its own. Saved as they change, like
+ * the keyboard shortcuts: `ui_settings` keys with nothing to review, on any account, seller or not.
+ */
+function CalendarPrefsBlock({ prefs }: { prefs: CalendarPrefs | null }): JSX.Element {
+	const mode = useSignal<string>(prefs?.inspectMode ?? "panel");
+	const reminders = useSignal<readonly EntryReminder[]>(prefs?.reminders ?? []);
+	const status = useSignal<SaveState>(IDLE);
+
+	async function save(uiSettings: UiSettings): Promise<void> {
+		status.value = { tone: "busy", text: "Saving…" };
+		const res = await SettingsService.savePreferences({ uiSettings });
+		status.value = res.ok && res.data.uiSettingsPersisted
+			? { tone: "saved", text: "Saved." }
+			: { tone: "error", text: res.message ?? "Your calendar settings couldn't be saved." };
+	}
+
+	return (
+		<SettingsBlock
+			anchor="calendar"
+			title="Calendar"
+			description="How events open on your calendar, and when you hear about them."
+		>
+			{prefs
+				? (
+					<>
+						<SettingsRow
+							label="Open events in"
+							description="The side panel holds everything. A popover shows the essentials over the calendar."
+							control={
+								<SelectButton
+									size="sm"
+									value={mode}
+									options={INSPECT_MODES}
+									aria-label="Open events in"
+									onValueChange={(v) => {
+										if (v) void save({ calendar_inspect_mode: v as CalendarInspectMode });
+									}}
+								/>
+							}
+						/>
+						<SettingsRow
+							label="Default reminders"
+							description="Every event gets these unless you set its own. Sessions and calls keep their own."
+							control={
+								<ReminderRows
+									value={reminders.value}
+									onChange={(next) => {
+										reminders.value = next;
+										void save({ calendar_reminders: next });
+									}}
+								/>
+							}
+						/>
+						<SaveStatus state={status.value} />
+					</>
+				)
+				: <p class="stg-note">Your calendar settings couldn't be loaded just now.</p>}
+		</SettingsBlock>
+	);
+}
+
 export interface SchedulingSectionProps {
 	data: SettingsSectionDataOf<"scheduling">;
 }
@@ -162,6 +240,7 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 		return (
 			<div class="stg-section">
 				<SectionHead title={meta.label} description={meta.description} />
+				<CalendarPrefsBlock prefs={props.data.calendar} />
 				<InlineNotice align="start" text="Your schedule couldn't be loaded just now." />
 			</div>
 		);
@@ -222,6 +301,8 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 				</div>
 				<AvailabilityModal />
 			</SettingsBlock>
+
+			<CalendarPrefsBlock prefs={props.data.calendar} />
 
 			{c === null
 				? (

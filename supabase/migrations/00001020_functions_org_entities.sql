@@ -974,7 +974,7 @@ AS $$
         'departments', 'education', 'experience', 'availability', 'become-partner', 'onboarding',
         'notifications', 'basket', 'cart', 'checkout', 'catalogue', 'orders', 'order', 'pay', 'payment',
         'payments', 'invoice', 'invoices', 'create', 'new', 'search', 'submissions', 'attachments',
-        'board', 'tasks', 'calendar', 'invite', 'saved', 'api', 'assets', 'static', 'public', '_app',
+        'board', 'tasks', 'calendar', 'meet', 'invite', 'saved', 'api', 'assets', 'static', 'public', '_app',
         '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
     ]);
 $$;

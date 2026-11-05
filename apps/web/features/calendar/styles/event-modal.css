@@ -659,7 +659,8 @@ label.evm-meta__k {
 .evm-rich h2,
 .evm-rich h3 {
 	margin-block: var(--space-4) var(--space-2);
-	font-weight: var(--fw-bold);
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 }
 
@@ -794,22 +795,6 @@ label.evm-meta__k {
 	color: var(--text-secondary);
 }
 
-/* The advanced fields fold behind one muted line, never a boxed panel (§B.4). */
-.evm-repeat__summary {
-	inline-size: fit-content;
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-
-.evm-repeat__summary:hover {
-	color: var(--on-surface);
-}
-
-.evm-repeat__more[open] > .evm-repeat__summary {
-	margin-block-end: var(--space-3);
-}
-
 .evm-repeat__row {
 	display: flex;
 	flex-wrap: wrap;
@@ -822,6 +807,33 @@ label.evm-meta__k {
 	flex-basis: 100%;
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
+}
+
+/* A person's alerts: each row fits a narrow column, so the two selects share the width. */
+.evm-remind {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+}
+
+.evm-remind__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.evm-remind__row {
+	display: grid;
+	/* The lead's words run longest; a channel is one short word. */
+	grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 /* The rule read aloud — Meta register, and a live region, so it is never `display: none`. */
@@ -1450,6 +1462,27 @@ label.evm-meta__k {
 	gap: var(--space-1);
 	padding-inline-end: var(--space-2);
 	border-inline-end: var(--hairline);
+}
+
+/* A discovery call's moves take the place of an RSVP, with the one thing to know beside them. */
+.evm-callbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.evm-callnote {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+.evm-callmove {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface-1);
 }
 /* #endregion */
 

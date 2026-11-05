@@ -132,14 +132,17 @@ $$;
 --   pending    the sitting has not ended — the logs are not complete yet
 --   refund     the 15-minute rule says provider_no_show (fn_session_presence): seated attendees were
 --              in the room in time and the host was not — the same verdict the session sweep refunds on
---   dismiss    a tracked room shows BOTH the host and the claimant in it for at least
+--   dismiss    a tracked room shows BOTH the host and the claimant in it for more than
 --              `dispute_dismiss_presence_pct` (80) % of the sitting
 --   ambiguous  anything else, including an untracked room (a silent webhook is not evidence) — the case
 --              goes to the counterparty, then to an auditor
--- Only webhook rows count towards a dismissal: a host-attested row (record_host_attendance) is the
--- respondent's own word, so it cannot dismiss a claim against them. A row keeps the FIRST join and the
--- LAST leave (a rejoin clears left_at), so time in the room is that span, clipped to the sitting.
--- Returns the snapshot stored on the dispute as `audit`; NULL for a dispute with no sitting.
+-- Time in the room is read from the ledger (scheduling.fn_room_presence), every join and leave, not
+-- the span from first join to last leave: somebody who left and came back is not counted for the gap
+-- (Decision #383 (b)). Only a person the room itself identified counts towards a dismissal: a
+-- host-attested row is the respondent's own word, and an email-only match is weaker evidence.
+-- Returns the snapshot stored on the dispute as `audit`; NULL for a dispute with no sitting. Its
+-- `timeline` freezes what the room recorded, labelled by party, so a case names no third person and
+-- outlives the ledger's own retention.
 CREATE OR REPLACE FUNCTION finance.fn_dispute_attendance_audit(p_dispute_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -156,6 +159,10 @@ DECLARE
     v_host_pct integer;
     v_claimant_pct integer;
     v_threshold integer := projects.fn_session_param('dispute_dismiss_presence_pct', 80);
+    v_room uuid;
+    v_host_seconds integer;
+    v_claimant_seconds integer;
+    v_reconnects integer;
 BEGIN
     SELECT * INTO v_d FROM finance.disputes WHERE id = p_dispute_id;
     IF NOT FOUND OR v_d.session_event_id IS NULL THEN
@@ -166,20 +173,15 @@ BEGIN
     v_presence := projects.fn_session_presence(v_event.id);
     v_span := EXTRACT(epoch FROM v_event.end_time - v_event.start_time);
 
-    SELECT COALESCE(max(pg_catalog.floor(100 * GREATEST(EXTRACT(epoch FROM
-               LEAST(COALESCE(a.left_at, v_event.end_time), v_event.end_time)
-               - GREATEST(a.joined_at, v_event.start_time)), 0) / v_span)), 0)::integer
-      INTO v_host_pct
-      FROM projects.session_attendance a
-     WHERE a.session_event_id = v_event.id AND a.source = 'webhook'
-       AND projects.fn_is_session_host(v_project, a.user_id);
-
-    SELECT COALESCE(max(pg_catalog.floor(100 * GREATEST(EXTRACT(epoch FROM
-               LEAST(COALESCE(a.left_at, v_event.end_time), v_event.end_time)
-               - GREATEST(a.joined_at, v_event.start_time)), 0) / v_span)), 0)::integer
-      INTO v_claimant_pct
-      FROM projects.session_attendance a
-     WHERE a.session_event_id = v_event.id AND a.source = 'webhook' AND a.user_id = v_d.opened_by_profile;
+    SELECT r.id INTO v_room FROM scheduling.rooms r WHERE r.session_event_id = v_event.id;
+    SELECT COALESCE(sum(p.total_seconds) FILTER (WHERE projects.fn_is_session_host(v_project, p.user_id)), 0)::integer,
+           COALESCE(sum(p.total_seconds) FILTER (WHERE p.user_id = v_d.opened_by_profile), 0)::integer,
+           COALESCE(sum(p.reconnect_count), 0)::integer
+      INTO v_host_seconds, v_claimant_seconds, v_reconnects
+      FROM scheduling.fn_room_presence(v_room) p
+     WHERE p.matched_by IN ('host_account', 'registrant', 'sole_attendee');
+    v_host_pct := pg_catalog.floor(100 * v_host_seconds / v_span)::integer;
+    v_claimant_pct := pg_catalog.floor(100 * v_claimant_seconds / v_span)::integer;
 
     RETURN pg_catalog.jsonb_build_object(
         'event_id', v_event.id,
@@ -187,13 +189,32 @@ BEGIN
         'tracked', COALESCE((v_presence ->> 'tracked')::boolean, false),
         'host_presence_pct', v_host_pct,
         'claimant_presence_pct', v_claimant_pct,
+        'host_seconds', v_host_seconds,
+        'claimant_seconds', v_claimant_seconds,
+        'reconnects', v_reconnects,
         'threshold_pct', v_threshold,
         'audited_at', pg_catalog.now(),
+        'timeline', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'party', CASE
+                           WHEN l.user_id = v_d.opened_by_profile THEN 'claimant'
+                           WHEN projects.fn_is_session_host(v_project, l.user_id) THEN 'host'
+                           ELSE 'other'
+                       END,
+                       'action', l.action,
+                       'at', l.occurred_at,
+                       'how', l.matched_by
+                   ) ORDER BY l.occurred_at, l.id)
+              FROM (SELECT p.* FROM scheduling.presence_events p
+                     WHERE p.room_id = v_room
+                     ORDER BY p.occurred_at, p.id
+                     LIMIT 200) l
+        ), '[]'::jsonb),
         'verdict', CASE
             WHEN pg_catalog.now() < v_event.end_time THEN 'pending'
             WHEN v_presence ->> 'outcome' = 'provider_no_show' THEN 'refund'
             WHEN COALESCE((v_presence ->> 'tracked')::boolean, false)
-                 AND v_host_pct >= v_threshold AND v_claimant_pct >= v_threshold THEN 'dismiss'
+                 AND v_host_pct > v_threshold AND v_claimant_pct > v_threshold THEN 'dismiss'
             ELSE 'ambiguous'
         END
     );

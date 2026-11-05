@@ -84,9 +84,10 @@ rows describe openness, so they never occupy time.)
 
 Does the span intersect a blackout?
 
-### `scheduling.fn_slot_is_free(schedule, starts_at, ends_at) → boolean`
+### `scheduling.fn_slot_is_free(schedule, starts_at, ends_at, exclude_call = NULL) → boolean`
 
-The composite: rejects on blackout, conflicting event, or an existing `proposed`/`confirmed` call.
+The composite: rejects on blackout, conflicting event, or an existing `proposed`/`confirmed` call,
+leaving out `exclude_call` so a call moving its own time is not refused for overlapping itself.
 Falls back to `security.platform_params.discovery_call_default_buffer_minutes` when no settings row
 exists. It is the one free-time predicate of all three booking gates: the discovery-call gate (§4),
 the 1-1 session gate (`projects.fn_book_session_slot`, audit S-06: before 2026-10-30 that gate tested
@@ -108,7 +109,7 @@ _calls_, not to erode declared time off.
 
 ## 4. The booking gate
 
-### `scheduling.fn_call_request_refusal(schedule, requester, type, starts_at, ends_at) → text`
+### `scheduling.fn_call_request_refusal(schedule, requester, type, starts_at, ends_at, exclude_call = NULL) → text`
 
 Returns **NULL when the request is allowed**, or a machine-readable reason code when it is not.
 Returning a _reason_ rather than a bare boolean lets the UI explain a refusal without re-deriving
@@ -345,7 +346,10 @@ hold every slot of a calendar out to its booking horizon. The sweep moves a call
 it has waited `discovery_call_proposal_ttl_hours` (72) since `proposed_at`, or once its
 `proposed_start` has come, whichever is first. It touches nothing else on the row, and an expiry is
 not a response, so `responded_at` stays empty. It tells the requester and the host (`call.expired`,
-in-app and email, through `comms.fn_notify`), and returns how many calls it expired.
+in-app and email, through `comms.fn_notify`), and returns how many calls it expired or completed.
+
+It is also the writer of `confirmed → completed` for a courtesy call past `confirmed_end` (ruling
+C3). A paid call never completes here: it completes through its sitting.
 
 `fn_enforce_call_transition` checks nothing for a writer with no `auth.uid()`, and the job has none,
 so the WHERE clause is the sweep's only guard: still `proposed`, and past one of the two times.
@@ -360,6 +364,191 @@ line, with no actor.
 and 46 (`00005060`): the seed registers that row by this function's name, so it registers itself on
 the first reset after the function exists. `deno task cron:run scheduling-expire-discovery-calls`
 runs it by hand. Probe: `supabase/probes/discovery_call_expiry.sql`.
+
+## 7c. The discovery-call doors (`00001510` §7b; audit S-10, Decision #343, ruling C3)
+
+There is no client write on `discovery_calls`, so each door is the only way to make its move. Every
+door is `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` and `service_role`, and
+locks the call first through `fn_lock_call`, which refuses a stranger and a missing call alike
+(`call_not_found`), so an id cannot be probed. A refusal is `Discovery call refused: <code>`.
+`fn_enforce_call_transition` stays the legality authority and stamps everything derived, and
+`trg_log_call_event` writes the audit line, now including a move on a call still `proposed`. Each door
+tells the other party (`call.confirmed`, `call.declined`, `call.time_proposed`, `call.cancelled`,
+`call.no_show`) through `fn_notify_call`, and withdraws the call's queued reminders.
+
+| Door                                        | Who                                         | From → to                   | Refusals                                                                      |
+| :------------------------------------------ | :------------------------------------------ | :-------------------------- | :---------------------------------------------------------------------------- |
+| `confirm_discovery_call(call)`              | The counterparty of the last proposal       | `proposed → confirmed`      | `not_open` · `not_your_move` · `slot_passed`                                  |
+| `decline_discovery_call(call, reason?)`     | The host, at any time                       | `proposed → declined`       | `not_open` · `not_your_move`                                                  |
+| `propose_call_time(call, start, end)`       | Either party                                | `proposed` or `confirmed` → `proposed` | `not_open` · `inside_lockout` · `duration_mismatch` · any gate refusal |
+| `cancel_discovery_call(call, reason?)`      | Either party; a requester may also withdraw | `confirmed` or `proposed` → `cancelled` | `not_open` · `slot_passed`                                         |
+| `mark_call_no_show(call, party)`            | Either party, naming the other              | `confirmed → no_show`       | `not_open` · `not_your_move` · `too_early` · `attendance_contradicts`         |
+
+**Who accepts** (Decision #383, SCH-WP3): `discovery_calls.proposed_by` names who made the proposal on
+the table, and its counterparty accepts it, so a host cannot confirm their own new time.
+
+**A move** keeps the call's length, must clear the 12-hour lockout at both the current and the new
+start (the courtesy lockout, pinned to `RESCHEDULE_LOCKOUT_HOURS` by
+`coordination.contract.test.ts`), takes the schedule row lock, and passes `fn_call_request_refusal`
+again with the call itself excluded. A confirmed call returns to `proposed`, which frees its old span.
+
+**A no-show** opens `session_presence_minutes` after `confirmed_start`. Where `call_attendance` shows
+the named party in the room by then, the mark is refused (`attendance_contradicts`).
+
+Paid calls: the decline refund and completion through a sitting are SCH-WP6's. Probe:
+`supabase/probes/discovery_call_doors.sql`.
+
+### `scheduling.fn_enqueue_due_reminders() → integer`
+
+The reminder producer (audit S-18), scheduled as `scheduling-reminders` every 5 minutes. It queues
+`session.reminder_60m/15m/5m` for every scheduled sitting (at each type's `default_lead_time`, for the
+host and every active seat) and `call.reminder` for every confirmed call (at
+`discovery_call_reminder_lead_minutes`, for both parties), through `comms.fn_enqueue`. A reminder
+whose time has passed is skipped. The dedupe key names the person as well as the entity
+(`sitting:<id>:<type>:<user>`, `call:<id>:<user>`), because the queue's unique index is on the key
+alone. It first withdraws any queued reminder its entity no longer keeps. `EXECUTE` to `service_role`
+only.
+
+Calendar entries are its third section (Decision #388): every entry `fn_event_takes_reminders` admits,
+for each of `fn_event_holders`, one row per alert of `fn_event_alerts`, on `event.reminder` or
+`event.reminder_email` so the channel stays on the catalog and the person's preferences still narrow
+it. A row is queued 15 minutes before it is due, so a move has little to withdraw. The key names the
+start as well (`entry:<id>:<user>:<minutes>:<channel>:<epoch>`), so a moved entry alerts again. Unlike
+the two above, an alert past its moment is not skipped: an entry made inside its own lead still alerts,
+once (a `sent` or `failed` row is the proof), with `fn_reminder_words` saying how long is really left,
+until five minutes after the start. An entry a call is drawn from alerts as the call.
+
+### `scheduling.fn_event_takes_reminders(event row) → boolean`
+
+Whether an entry takes a person's alerts at all: not a connected calendar's row, which alerts through
+its provider; not a sitting's mirror, which has its own; not archived or cancelled; not an open slot, a
+busy block or leave. `takesReminders` in `@projective/types/scheduling` is the same rule, held equal by
+`reminders.test.ts`. Internal.
+
+### `scheduling.fn_event_alerts(event, user) → TABLE(minutes, channel)`
+
+One person's alerts for one entry: their `event_reminders` row, else
+`ui_settings -> 'calendar_reminders'`, else the platform's list (`DEFAULT_ENTRY_REMINDERS`, held equal by
+the same test). `SECURITY DEFINER`, because the sweep reads every person's preferences. Internal.
+
+### `scheduling.fn_reminder_rows(reminders jsonb) → TABLE(minutes, channel)`
+
+A stored list as rows, deduplicated, nearest first, capped at 5. Anything malformed is skipped rather
+than raised: clients write both stores through PostgREST, and one bad value must not stop the sweep.
+Internal, with `fn_reminder_words(minutes) → text`, which words a lead for a notification.
+
+### `scheduling.get_own_call_settings(schedule) → SETOF call_settings`
+
+The owner's read of their whole row (audit S-16), behind `fn_can_manage_schedule`. The client grant
+stops at what a visitor may read, so the Availability editor reads through this door.
+
+## 7d. Rooms (`00001510` §7d; Decision #343, ruling C4; Decision #383)
+
+Whatever creates a sitting or confirms a call queues its room, through triggers, so no booking door
+knows about rooms. `trg_sitting_provider` gives a new sitting its listing's provider, else the host's
+connected default. `trg_sitting_room` and `trg_call_room` queue the room, mark it `moved_at` when the
+time changes, and close it when the sitting or call is cancelled.
+
+| Door (service role only)                                      | What it does                                                                                     |
+| :------------------------------------------------------------ | :----------------------------------------------------------------------------------------------- |
+| `claim_rooms_to_mint(limit) → TABLE(...)`                     | Takes due rooms `FOR UPDATE SKIP LOCKED` and counts an attempt. A mint left `minting` for ten minutes is taken again. |
+| `attach_room(room, connection, meeting, host, url, passcode)` | Writes the room and the column its owner withholds. A second attach is a no-op.                  |
+| `fail_room(room, error, final = false)`                       | Back in the queue up to `room_mint_max_attempts`, then `failed`, telling the host (`room.failed`). |
+| `claim_rooms_to_sync(limit)` · `room_synced(room, error?)`    | Moved or closing rooms; best effort, and never blocks a booking.                                 |
+| `claim_rooms_to_reconcile(limit)` · `room_reconciled(room, error?)` | Ended rooms whose provider's record is due a read: from 15 minutes after the end for 3 days, hourly. Only a read that worked is stamped, so a sitting that needed it stays held (ruling R5). |
+| `save_room_registrant(room, user, registrant, url)`           | A person's own link, which the service makes the first time an attendee joins a licensed room.  |
+
+`fn_room_connection(host, provider)` is the active connection a room mints on: a Teams room mints
+through the `outlook` connection, one Entra app and one consent. Probe: `supabase/probes/rooms.sql`.
+
+### `scheduling.fn_queue_waiting_rooms(host, provider_slug) → integer`
+
+A host who connects an account gets the rooms that were waiting for one (Decision #386), called by
+`integrations.fn_store_connection` on a grant with `conferencing`. A room that failed on that provider
+is queued again, and an upcoming sitting with no room at all gets one. A Microsoft connection makes
+Teams rooms. Definers only.
+
+### `scheduling.set_entry_room(events uuid[], provider, link?, passcode?) → void`
+
+A host setting the room on their own `/calendar` entries (Decision #383 (f)), `authenticated`. A
+provider with an account behind it queues a room, a pasted link makes a `custom` room that is `ready`
+at once, and anything else leaves no room, so a pick with nothing behind it is not a failure. The same
+provider again is a no-op. A room that changes keeps its row and its `/meet` address, which its
+attendees already hold. Another person's entry, a sitting's mirror and a project's event are skipped.
+`trg_entry_room` then follows the entry: moved, the room is marked; cancelled, it is closed.
+
+### `scheduling.get_call_rooms(call_ids uuid[]) → TABLE(call_id, room_slug)`
+
+The rooms of the caller's own confirmed calls. A call's `meeting_url` is withheld from clients at the
+column level, and a party joins through `/meet`.
+
+### `scheduling.room_join(slug) → jsonb`
+
+Into a room, as the signed-in person: `state` · `role` · `opens_at` · `closes_at` · `provider` · `url`.
+A sitting asks `projects.session_join_link`; a call must be confirmed; an event's attendee must have
+accepted or be tentative. States: `open`, `upcoming`, `ended`, `cancelled`, `not_party`, `needs_rsvp`,
+`unfunded`, `unconfirmed`, `no_room`. A person's own registrant link wins over the room's. Pressing
+join while the room is open writes a `join_click`, the one piece of evidence that an attendee came
+which does not depend on a provider.
+
+## 7e. Attendance (`00001510` §7e; Decision #383 (b))
+
+### `scheduling.record_presence(provider, meeting, action, at, event_key, participant_key, email?, registrant?, account?, source?) → jsonb`
+
+One participant joining, leaving or waiting, from a verified webhook or a post-meeting read. Service
+role only. It never raises, because a webhook that fails is redelivered forever: it answers `recorded`
+· `replayed` · `unmatched` · `outside_window` (an hour either side of the meeting). Who it was,
+strongest first: the host by their account at the provider, a person by their registrant id, then the
+email a provider reported, which never matches somebody holding a personal link on this room. In a
+room with one attendee, a participant nobody can name who is not the host is that attendee, by
+elimination. It then re-derives the person's one-row summary from everything that has arrived, so
+delivery order cannot change the answer.
+
+### `scheduling.fn_room_presence(room) → TABLE(user_id, participant_key, matched_by, is_host, first_join_at, last_leave_at, total_seconds, reconnect_count, in_presence_window, open_span)`
+
+Time actually in the room. Several devices at once count once, time is clipped to the meeting, and a
+join with no `left` adds nothing after it (ruling C5 (c)), which `open_span` reports. Once a provider's
+own record has been read it is the whole story, so a `left` lost in a webhook costs nothing. The dispute audit
+reads this. Probe: `supabase/probes/presence_ledger.sql`.
+
+### `scheduling.fn_prune_presence() → jsonb`
+
+Retention, finance-model.md §17 (Decision #383, ruling R8), run daily by `scheduling-presence-retention`
+and by nothing else. A person's records go after `presence_retention_days` (395), and a participant with
+no account behind them after `presence_unmatched_retention_days` (30), in the ledger and in its
+one-row summaries. `fn_sitting_evidence_held` outranks both periods: a dispute on the sitting keeps its
+records, open or closed, and so does a seat whose money is still held, because the sweep reads
+attendance and a deleted record must never read as no record.
+
+---
+
+## 7g. Outbound mirrors (`00001510` §7g; Decision #383, ruling R3)
+
+Triggers mark rows of `scheduling.event_mirrors` dirty, and `CalendarSyncBackendService.pushDue` claims
+them, writes or removes the provider's copy and reports back. What a copy should say is read at claim
+time, so a burst of edits is one write. The inbound half is `integrations.*`
+([`integrations/Functions.md`](../integrations/Functions.md)). A proof:
+`supabase/probes/calendar_sync.sql`.
+
+| Function | Does |
+| :------- | :--- |
+| `fn_event_goes_out(event) → boolean` | Whether an event goes out at all. A busy row read from a provider never does, which is why nothing can loop, and neither does an opted-out, cancelled or archived event, an availability block or a point in time. Internal. |
+| `fn_event_holders(event) → SETOF uuid` | Who holds it: everyone seated who answered accepted or tentative, or on an event with no roster its creator and, on a group sitting, its seat-holders. Internal. |
+| `fn_call_goes_out(call) → boolean` | Whether a call goes out at all. Only an agreed time does: `confirmed`, and `completed` and `no_show`, which keep their copy as a past event does. A request, or a move waiting on its counterparty, holds none. A call drawn from an events row goes out as that row, so its `external_sync` is never gone round. Internal. |
+| `fn_queue_event_mirrors(event) → void` | An event changed: marks its copies, and opens one on every connection that should now hold it. A copy that should no longer exist stays marked, and the job removes it. Internal. |
+| `fn_queue_call_mirrors(call) → void` | The same for a call, whose holders are its two parties. Internal. |
+| `fn_open_event_mirrors(connection) → integer` | Queues a connection's owner's upcoming events and calls, for a calendar just turned on or made again. Past ones stay out. Internal. |
+| `claim_event_mirrors(p_limit) → jsonb` | Takes the copies due, `SKIP LOCKED`, under a 10-minute lease. `event` is what the copy should say: title, time, days in the schedule's zone and the room's slug, and never an agenda, location, attendee or provider link. A call's title is `A call on Projective`, the one its room carries at the provider, so neither party is named. `NULL` means it should not exist. Service role. |
+| `finish_event_mirror(p_mirror, p_claimed_at, p_dirty_at, p_external_event_id, p_version) → void` | What the provider answered, for a claim still held. No external id means the copy is gone, and the row with it. A copy that changed during the call stays dirty, because `p_dirty_at` no longer matches. Service role. |
+| `fail_event_mirror(p_mirror, p_claimed_at, p_error) → void` | A refused write backs off from 5 minutes, doubling, and the eighth stops until the event next changes. Service role. |
+
+Triggers (`00001860`): `trg_event_mirrors` on a change to `title`, `starts_at`, `ends_at`, `all_day`,
+`status`, `archived_at`, `external_sync` or `attendee_count`, which is what moves when a group seat
+starts or ends; `trg_event_mirrors_deleted`; `trg_call_mirrors` on a change to a call's `status`,
+`confirmed_start`, `confirmed_end` or `event_id`, except into `completed` or `no_show`, which change
+nothing a copy says; `trg_call_mirrors_deleted`; `trg_attendee_mirrors` on an RSVP; and
+`trg_room_mirrors_opened` and `trg_room_mirrors_changed`, because a copy carries its room's address.
+None fires for a row read from a provider.
 
 ---
 
@@ -429,10 +618,22 @@ from their `/calendar` agenda and every RSVP or vote on it answered 404. `SECURI
 for a caller with no `auth.uid()`. `EXECUTE` to `authenticated` and `service_role` only — `anon`
 reads no event row, so it needs no arm.
 
-### `scheduling.get_event_rooms(event_ids uuid[]) → TABLE(event_id, meeting_url, meeting_passcode, meeting_details)`
+### `scheduling.get_own_event_details(event_ids uuid[]) → TABLE(event_id, title, location, description, series_id, recurrence_rule, join_url)`
 
-The meeting room for the events the caller is a **party** to — seated on, or the creator of — and
-nothing for any other id in the list (added 2026-09-28). `meeting_url`, `meeting_passcode` and
+What the caller's connected calendars say about their own entries (Decision #387): the
+`connected_event_details` row of each listed entry on a `user` schedule the caller owns, unarchived,
+and nothing for any other id. Up to 500 ids; past that it answers nothing. It is that table's only way
+out, and it answers the owner alone, a platform admin included. Definer, `authenticated` and
+`service_role`. `readPersonalCalendar` folds it in after assembly (`connected-details.ts`), where a
+series' first occurrence on the page stands as its master.
+
+### `scheduling.get_event_rooms(event_ids uuid[]) → TABLE(event_id, meeting_url, meeting_passcode, meeting_details, room_slug)`
+
+The meeting room for the events the caller is a **party** to — their creator, or seated on them and
+having `accepted` or answered `tentative` — and nothing for any other id in the list (added
+2026-09-28; the RSVP gate is Decision #383: a link reaches only somebody who is coming). `room_slug`
+is the minted room's address, which the read turns into `/meet/rom-…` in place of the provider's link.
+`meeting_url`, `meeting_passcode` and
 `meeting_details` are withheld from every client role at the column level (`00002520`), because
 RLS is row-level: the rows a project member may see are not the rows whose link they may hold, and a
 meeting link IS the access control for most providers. Before this, any project member — including

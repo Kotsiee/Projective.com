@@ -9,6 +9,7 @@ import {
 } from "../../core/supabase.ts";
 import {
 	type CohortOffer,
+	type PresenceEvent,
 	type PresenceOutcome,
 	type SeatHold,
 	seatCount,
@@ -23,7 +24,6 @@ import {
 	toSessionWorkspace,
 } from "./workspace-model.ts";
 import { fixtureCohortOffer, fixtureWorkspace } from "./session-fixtures.ts";
-import { PRESENCE_ADAPTERS } from "./presence/mod.ts";
 
 /**
  * SessionBackendService — the fat service behind session and group-session engagements (Decision
@@ -33,7 +33,7 @@ import { PRESENCE_ADAPTERS } from "./presence/mod.ts";
  * It computes no money and decides no rule the database decides: every write is one of the definers in
  * `00001155_functions_projects_sessions.sql`, run as the caller (RLS and `auth.uid()` are the real
  * gates), and every read maps through `workspace-model.ts`. The only service-role call is the presence
- * webhook's, after its provider signature verified.
+ * webhook's, after `IntegrationsBackendService.handleWebhook` verified its provider signature.
  *
  * Live behind `PROJECTS_BACKEND_LIVE`; the fixture world (`dev:mock`) is served from
  * `session-fixtures.ts` through the same mapper.
@@ -256,6 +256,48 @@ export class SessionBackendService {
 	}
 
 	/**
+	 * A link the host adds to a sitting with no room (Decision #383, rulings R2 and R7). Its payout then
+	 * holds for review, which the host is told before they add it.
+	 */
+	static async setRoomLink(
+		eventId: string,
+		link: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ saved: boolean }>> {
+		if (!isProjectsBackendLive()) return fail(503, { message: "A link needs the live database." });
+		if (!actor.accessToken) return signedOut();
+		const { error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+			"set_sitting_link",
+			{ p_event_id: eventId, p_url: link },
+		);
+		if (error) return refusal(error);
+		return ok({ saved: true }, { message: "Link added." });
+	}
+
+	/**
+	 * The attendee's answer on a sitting with no attendance record (Decision #383, ruling R6). A yes is
+	 * evidence, which the next sweep releases on; a no is an ordinary no-show claim.
+	 */
+	static async answerReview(
+		eventId: string,
+		happened: boolean,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ answered: boolean }>> {
+		if (!isProjectsBackendLive()) return fail(503, { message: "An answer needs the live database." });
+		if (!actor.accessToken) return signedOut();
+		const { error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+			"answer_session_review",
+			{ p_event_id: eventId, p_happened: happened },
+		);
+		if (error) return refusal(error);
+		return ok({ answered: true }, {
+			message: happened
+				? "Thanks. The payment will be released shortly."
+				: "Thanks. We'll check this before any payment moves.",
+		});
+	}
+
+	/**
 	 * Claim the provider did not show for a sitting: stops the seat's auto-release, and — once the
 	 * sitting has ended — runs the attendance audit at once (Decision #212). `status` is where the claim
 	 * landed: `open` (the sitting is still running), `awaiting_response`, or a ruling the room's logs
@@ -278,52 +320,32 @@ export class SessionBackendService {
 	}
 
 	/**
-	 * A conferencing provider's presence webhook. The raw body and headers go to the provider's adapter
-	 * untouched (its signature is over the exact bytes), and only a verified delivery is acted on: a
-	 * handshake is answered, and each participant join/leave goes to `projects.record_presence` as the
-	 * service role. The status is the provider's contract — 2xx acknowledges (an ignored event too), 400
-	 * refuses a forged or stale delivery, 503 asks for a redelivery.
+	 * Record a VERIFIED delivery's presence events, which `IntegrationsBackendService.handleWebhook` has
+	 * already proved are the provider's own. Each event claims its `integrations.webhook_deliveries` row
+	 * in the same SQL call that records it, as the service role, so a replay is a no-op that still
+	 * acknowledges. A failed write answers 503 and is redelivered; any recorded outcome is final.
 	 */
 	static async handlePresenceWebhook(
-		provider: string,
-		raw: string,
-		headers: Headers,
-		nowMs = Date.now(),
-	): Promise<ServiceResult<{ received: true; challenge?: Record<string, string>; outcomes: PresenceOutcome[] }>> {
-		const adapter = PRESENCE_ADAPTERS[provider];
-		if (!adapter) return fail(404, { message: "Unknown conferencing provider." });
-		const secret = adapter.secret();
-		if (!secret) return fail(503, { message: "Presence for this provider isn't configured." });
-		if (!(await adapter.verify(raw, headers, secret, nowMs))) {
-			return fail(400, { message: "The delivery's signature didn't verify." });
-		}
-		let body: unknown;
-		try {
-			body = JSON.parse(raw);
-		} catch {
-			return fail(400, { message: "The delivery isn't JSON." });
-		}
-		const challenge = await adapter.challenge(body, secret);
-		if (challenge) return ok({ received: true, challenge, outcomes: [] });
-
-		const events = adapter.parse(body);
-		if (events.length === 0) return ok({ received: true, outcomes: [] });
+		events: PresenceEvent[],
+	): Promise<ServiceResult<{ outcomes: PresenceOutcome[] }>> {
 		if (!isSupabaseConfigured()) return fail(503, { message: "Presence can't be recorded right now." });
 		const db = getServiceClient();
 		const outcomes: PresenceOutcome[] = [];
 		for (const e of events) {
-			const { data, error } = await db.schema("projects").rpc("record_presence", {
+			const { data, error } = await db.schema("integrations").rpc("fn_record_presence_delivery", {
 				p_provider: e.provider,
 				p_meeting_id: e.meetingId,
-				p_email: e.email,
 				p_action: e.action,
 				p_at: e.at,
-				p_provider_event_id: e.providerEventId,
+				p_event_key: e.providerEventId,
+				p_participant_key: e.participantKey,
+				p_email: e.email,
+				p_registrant_id: e.registrantId,
+				p_account_id: e.accountId,
 			});
-			// A failed write is redelivered by the provider; a recorded outcome (even "unmatched") is final.
 			if (error) return fail(503, { message: "Presence couldn't be recorded. It will be redelivered." });
 			outcomes.push(((data as { outcome?: PresenceOutcome } | null)?.outcome) ?? "unmatched");
 		}
-		return ok({ received: true, outcomes });
+		return ok({ outcomes });
 	}
 }

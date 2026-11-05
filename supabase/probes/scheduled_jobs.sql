@@ -199,6 +199,8 @@ BEGIN
     PERFORM vault.create_secret('http://host.docker.internal:3000/', 'CRON_APP_URL');
     PERFORM vault.create_secret(v_bearer, 'FINANCE_CRON_SECRET');
     PERFORM vault.create_secret(v_bearer, 'ACCOUNT_CRON_SECRET');
+    -- The local scheduler may have its own requests in flight, and this counts only the two below.
+    DELETE FROM ops.http_job_dispatches WHERE settled_at IS NULL;
 
     v_ok := ops.fn_dispatch_http_job('finance-recurring-deposits');
     v_bad := ops.fn_dispatch_http_job('account-erasures');

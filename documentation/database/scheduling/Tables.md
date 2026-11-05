@@ -121,6 +121,8 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`). On a group sitting's mirror, `capacity` is the cohort's `max_seats` and `attendee_count` its paid seats, kept current by `projects.fn_sync_sitting_mirrors` whenever a seat starts or ends. |
 | `source_connection_id`            | uuid                      | → `integrations.user_connections` (SET NULL) when mirrored in.                        |
 | `external_event_id`               | text                      | The provider's own id.                                                                |
+
+| `external_sync`                   | boolean                   | Default `true`. `false` is the host's Projective-only: it keeps the entry off every person's Projective calendar, and takes it off if it is there (Decision #383, ruling R3). |
 | `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session. Written by `fn_book_session_slot` (a 1-1: host + client on the roster) and `schedule_sitting` (a group sitting: **no roster**, so it blocks free/busy and both booking gates but is never put to a reschedule round, `trg_sitting_round_guard`). Either mirror is also anchored to the engagement (`project_id`), so no client policy writes it. |
 | `recurrence_rule`                 | text                      | RFC 5545 RRULE, on a series **master** only (since 2026-11-03, Decision #375). The master is itself the first occurrence: its `starts_at` is DTSTART. Shape-only CHECK (≤ 400 characters, starts `FREQ=`), the same as `recurrence_rules.rrule`; a writer stores `serialiseRRule(parseRRule(x))`, never raw input. |
 | `recurrence_parent_id`            | uuid                      | → `scheduling.events` (CASCADE): the master a later occurrence belongs to. Every occurrence is its own row, so the conflict gate, free/busy and coordination read concrete rows and the database never expands an RRULE. Indexed `idx_events_recurrence_parent` (`00004007`). |
@@ -251,6 +253,18 @@ the live read reports every line as read until a per-viewer marker exists.
 
 A JOIN onto `files.items` (CASCADE), not a copy — one asset, one owner, many anchors.
 
+### `scheduling.event_reminders`
+
+One person's own alerts for one entry, overriding their default (Decision #388). Primary key
+`(event_id, user_id)`, both CASCADE. `reminders` is `jsonb NOT NULL`, shaped by `EntryRemindersSchema`
+(`@projective/types/scheduling`): at most 5 of `{ minutes, channel }`, `minutes` 0–10080 and `channel`
+`in_app` or `email`. `[]` switches the entry's alerts off for them; no row follows their default
+(`org.user_preferences.ui_settings.calendar_reminders`). A table, not a list on the event: two people
+on one meeting want different leads, an attendee cannot write the event row, and a project's events
+take no client write at all. Only entries `fn_event_takes_reminders` admits are given one. Written by
+the person themselves, and read back through `fn_reminder_rows`, which skips a malformed element, so a
+write straight through PostgREST cannot fail the sweep for everyone.
+
 ---
 
 ## 3. Discovery calls (`20260724103000`)
@@ -305,7 +319,7 @@ The booking record.
 | :----------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Parties      | `host_schedule_id` · `host_user_id` · `requester_user_id` (`CHECK` host ≠ requester)                                                                                                 |
 | Kind/state   | `call_type` (`courtesy`/`paid`) · `status` (see [the lifecycle](#the-discovery-call-lifecycle))                                                                                      |
-| Slots        | `proposed_start`/`_end` (kept after a reschedule) · `confirmed_start`/`_end` (null until confirmed, and cleared again by a reschedule) · `requester_timezone`                        |
+| Slots        | `proposed_start`/`_end` (kept after a reschedule) · `proposed_by` (who made the proposal on the table; its counterparty accepts it) · `confirmed_start`/`_end` (null until confirmed, and cleared again by a reschedule) · `requester_timezone`                        |
 | Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile         |
 | Conferencing | `provider_slug` · `connection_id` · `meeting_url` · `meeting_external_id`                                                                                                            |
 | Calendar     | `event_id` → `scheduling.events` (SET NULL)                                                                                                                                          |
@@ -362,8 +376,8 @@ occupied and left the new one bookable by somebody else. `declined` / `cancelled
 > `request_discovery_call` (`proposed`, or `confirmed` under `auto_confirm`; a courtesy call only,
 > since a paid request is refused `paid_unavailable`). The client `UPDATE` policy and grant were
 > removed on 2026-09-28 because either party could rewrite any column of the row
-> ([Policies.md](Policies.md)), and the definer RPCs that are to replace them — each naming who may
-> make which move — do not exist yet, so every later transition is currently service-role only.
+> ([Policies.md](Policies.md)). Every later move goes through a definer door that names who may make
+> it ([Functions.md](Functions.md) §7c).
 >
 > **`proposed → expired` has its writer** (audit S-11): `scheduling.fn_expire_discovery_calls`, the
 > `scheduling-expire-discovery-calls` job every 15 minutes, expires a request once it has waited
@@ -384,11 +398,111 @@ The **"Digital Handshake"** presence log, fed by server-to-server conferencing w
 | `joined_at` · `left_at`                            | timestamptz | `CHECK left_at >= joined_at`.                                 |
 | `source_provider_slug` · `external_participant_id` | text        | Which webhook asserted this, and its participant id.          |
 
+One row per person per call (`uq_call_attendance_user`), kept in line with
+`scheduling.presence_events` by `fn_sync_attendance_row`.
+
 ### `scheduling.call_audit`
 
 One append-only line per transition, reschedule, or link generation: `action`, `actor_user_id`,
 `from_status` → `to_status`, the slot as of that line, and a free-text `detail`. This is where a
 reschedule lives, since it has no status of its own.
+
+---
+
+## 3b. Rooms and attendance (`00000022`; Decision #343, ruling C4; Decision #383)
+
+All three tables are definer-only: RLS on, no policy, no client grant. A person reaches a room through
+`scheduling.room_join` and the party reads ([Functions.md](Functions.md) §7d, §7e).
+
+### `scheduling.rooms`
+
+One row per meeting at a provider, whatever it belongs to: exactly one of `event_id`,
+`session_event_id` or `call_id` (`ck_room_one_anchor`, each UNIQUE). It is the mint queue, the record
+of whose meeting is whose, and the key attendance is matched on. It holds no URL: a join link stays in
+the column its owner already withholds from clients, so a bearer link has one home.
+
+| Column                | Type        | Notes                                                                                   |
+| :-------------------- | :---------- | :-------------------------------------------------------------------------------------- |
+| `slug`                | text        | `rom-…`, minted by `fn_slug_guard('rom')` (Decision #88). What `/meet/[roomSlug]` takes. |
+| `provider`            | text        | The meeting vocabulary, as on `events.meeting_provider`, `custom` included.             |
+| `connection_id`       | uuid        | The connection it was minted on (SET NULL).                                             |
+| `provider_meeting_id` | text        | Zoom meeting id, Meet space name or Graph onlineMeeting id. UNIQUE with `provider`.     |
+| `provider_host_id`    | text        | The host's account at the provider, frozen at mint. Attendance matches the host on it.  |
+| `registration`        | boolean     | People can hold personal links on this meeting: a licensed Zoom host only.              |
+| `status`              | text        | `pending → minting → ready`; `failed`; `closing → closed`. A manual link is born `ready`. |
+| `attempts` · `last_error` | smallint · text | Mint tries, capped by `room_mint_max_attempts`.                                     |
+| `moved_at`            | timestamptz | The time changed after minting, so the provider's copy needs updating.                  |
+| `reconciled_at`       | timestamptz | The provider's own attendance record was read back. A failed read leaves this empty.    |
+
+### `scheduling.room_registrants`
+
+A person's own join link and the id their provider knows them by (ruling C4 (b)). PK `(room_id,
+user_id)`, UNIQUE `(room_id, registrant_id)`. Registration needs a licensed host at Zoom and has no
+twin at Meet or Teams, so a room may have no rows here.
+
+### `scheduling.presence_events`
+
+Every join and leave, as reported (Decision #383 (b)). Append-only, and the source of truth for time
+in the room: `session_attendance` and `call_attendance` keep one row per person, first join to last
+leave, which is a span and not attendance. Holds no email, display name or IP.
+
+| Column              | Type        | Notes                                                                                                |
+| :------------------ | :---------- | :---------------------------------------------------------------------------------------------------- |
+| `room_id`           | uuid        | FK → `rooms` (RESTRICT): evidence outlives a cancellation.                                           |
+| `idempotency_key`   | text        | UNIQUE with `room_id`. The provider's event id, a reconcile's key or a click's.                      |
+| `action`            | text        | `joined` · `left` · `waiting` · `join_click` (pressing join in Projective: evidence, never presence). |
+| `occurred_at`       | timestamptz | When it happened at the provider. `recorded_at` is when it arrived.                                  |
+| `source`            | text        | `webhook` · `reconcile` · `platform`.                                                                |
+| `matched_by`        | text        | `host_account` · `registrant` · `email` (weaker evidence) · `sole_attendee` · `session` · `unmatched`. |
+| `user_id`           | uuid        | SET NULL. Empty exactly when `unmatched`.                                                            |
+| `participant_key`   | text        | A hash, enough to tell one unmatched participant from another.                                       |
+
+---
+
+## 3c. Outbound mirrors (`00000022`; Decision #383, ruling R3)
+
+Calendar sync is two one-way flows. Busy time comes in as `scheduling.events` of kind `busy`, with no
+title. A person's Projective events go out to a separate Projective calendar at their provider, one
+row here per copy. So does an agreed discovery call, to each party who publishes. A call anchors its
+rows itself and has no `scheduling.events` row, because one would hold the call's own slot against
+its move (`fn_has_conflicting_event` has no `p_exclude_call`) and be editable as an entry. A
+recurring series goes out as its materialised occurrences, so a row is always one occurrence. A copy
+is written and never read back: an edit made at the provider is overwritten by the next change here.
+Definer-only: RLS on, no policy, no client grant. Zod: `EventMirrorRowSchema`.
+
+### `scheduling.connected_event_details`
+
+What an entry mirrored in from a connected calendar says (Decision #387). Its owner's alone: the
+`scheduling.events` row keeps only the masked span, because an events row is also read by platform
+admins and by projections built for other people. RLS on, no policy and no client grant; the owner
+reads it through `get_own_event_details`, and the sync writes it in `fn_apply_busy_sync`. A row goes
+when its entry is archived, so disconnecting leaves nothing here.
+
+| Column            | Type | Notes                                                                                     |
+| :---------------- | :--- | :---------------------------------------------------------------------------------------- |
+| `event_id`        | uuid | PK → `scheduling.events` (CASCADE).                                                       |
+| `title`           | text | `CHECK` ≤ 200.                                                                            |
+| `location`        | text | `CHECK` ≤ 160.                                                                            |
+| `description`     | text | `CHECK` ≤ 8000. Can hold HTML, so it reaches the DOM only through `sanitizeRichText`.     |
+| `series_id`       | text | `CHECK` ≤ 1024. The provider's id for the series this is one occurrence of.               |
+| `recurrence_rule` | text | `CHECK` ≤ 400, `^FREQ=`. The series' repeat. Nothing expands it: each occurrence is a row. |
+| `join_url`        | text | `CHECK` ≤ 600, `^https://`. The entry's own meeting at the provider. A link is its own access control, so it stays here with the rest. |
+
+### `scheduling.event_mirrors`
+
+| Column              | Type        | Notes                                                                                                     |
+| :------------------ | :---------- | :---------------------------------------------------------------------------------------------------------- |
+| `event_id`          | uuid        | FK → `events` (**SET NULL**, not CASCADE: an event gone from here still has a copy to remove there).      |
+| `call_id`           | uuid        | FK → `discovery_calls` (**SET NULL**, for the same reason). `ck_mirror_one_anchor`: at most one of the two, and neither once the anchor is deleted. |
+| `connection_id`     | uuid        | FK → `integrations.user_connections` (CASCADE). UNIQUE with `event_id` (`uq_event_mirror`) and with `call_id` (`uq_call_mirror`). |
+| `external_event_id` | text        | The provider's id for its copy. NULL until the first write lands.                                         |
+| `version`           | text        | Google's etag, Graph's changeKey. Stored, never compared.                                                 |
+| `dirty_at`          | timestamptz | The queue: when the copy went out of date, or a later instant while a failure backs off. NULL is settled, or given up on after eight failures until the event next changes. |
+| `claimed_at`        | timestamptz | A run holding the row, a 10-minute lease, so no copy goes out twice at once.                              |
+| `attempts`          | smallint    | Failures since the last success or change.                                                                |
+| `last_error`        | text        | A provider's status, ≤ 200 characters.                                                                    |
+
+Indexes `idx_event_mirrors_due` (partial, `dirty_at`) and `idx_event_mirrors_connection`.
 
 ---
 

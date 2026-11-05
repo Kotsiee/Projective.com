@@ -96,6 +96,13 @@ const SLUGGED_TABLES = [
 		unique: "availability_presets_slug_key",
 		file: "supabase/migrations/00000022_tables_scheduling.sql",
 	},
+	{
+		entity: "room" as const,
+		table: "scheduling.rooms",
+		constraint: "ck_rooms_slug_shape",
+		unique: "rooms_slug_key",
+		file: "supabase/migrations/00000022_tables_scheduling.sql",
+	},
 ];
 
 // #region The minter

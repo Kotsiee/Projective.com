@@ -42,13 +42,19 @@ export function SessionDisputes(props: SessionDisputesProps): JSX.Element | null
 	const { onNotice } = props;
 	// The server's list until an act here re-reads it; a new workspace prop (a navigation) resets it.
 	const local = useSignal<
-		{ for: SessionWorkspace; claimable: SessionSitting | null; disputes: DisputeSummary[] } | null
+		{
+			for: SessionWorkspace;
+			claimable: SessionSitting | null;
+			reviewable: SessionSitting | null;
+			disputes: DisputeSummary[];
+		} | null
 	>(
 		null,
 	);
 	const ws = props.workspace;
 	const current = local.value && local.value.for === ws ? local.value : null;
 	const claimable = current ? current.claimable : ws.claimable;
+	const reviewable = current ? current.reviewable : ws.reviewable;
 	const disputes = current ? current.disputes : ws.disputes;
 
 	const reportOpen = useSignal(false);
@@ -62,12 +68,28 @@ export function SessionDisputes(props: SessionDisputesProps): JSX.Element | null
 	const viewer: DisputeRole = ws.role === "host" ? "respondent" : "claimant";
 	const listed = visibleDisputes(disputes);
 	const canReport = ws.role === "attendee" && !!claimable;
-	if (!canReport && listed.length === 0) return null;
+	if (!canReport && !reviewable && listed.length === 0) return null;
 
 	async function refresh(): Promise<void> {
 		const res = await SessionService.workspace(ws.slug);
 		const next = res.ok ? res.data?.workspace : null;
-		if (next) local.value = { for: ws, claimable: next.claimable, disputes: next.disputes };
+		if (next) {
+			local.value = {
+				for: ws,
+				claimable: next.claimable,
+				reviewable: next.reviewable,
+				disputes: next.disputes,
+			};
+		}
+	}
+
+	async function answer(happened: boolean): Promise<void> {
+		if (!reviewable || busy.value) return;
+		busy.value = true;
+		const res = await SessionService.answerReview(reviewable.id, happened);
+		busy.value = false;
+		onNotice(res.message ?? (res.ok ? "Thanks." : "That couldn't be saved — try again."), res.ok ? "success" : "error");
+		if (res.ok) await refresh();
 	}
 
 	async function report(): Promise<void> {
@@ -90,7 +112,36 @@ export function SessionDisputes(props: SessionDisputesProps): JSX.Element | null
 		<section class="sess-dispute" aria-label="No-show claims">
 			<span class="sess-dispute__label">No-show claims</span>
 
-			{canReport && claimable
+			{reviewable
+				? (
+					<div class="sess-dispute__report">
+						<p class="sess-dispute__line">Did this session happen?</p>
+						<p class="sess-dispute__meta">
+							{reviewable.title} · {disputeTimeLabel(reviewable.startsAt)}. There is no attendance
+							record, so its payment is waiting for your answer.
+						</p>
+						<Button
+							label="Yes, it happened"
+							severity="secondary"
+							variant="outlined"
+							size="sm"
+							disabled={busy.value}
+							onClick={() => void answer(true)}
+						/>
+						<Button
+							label="No, it didn't"
+							severity="danger"
+							variant="text"
+							size="sm"
+							disabled={busy.value}
+							onClick={() => void answer(false)}
+						/>
+					</div>
+				)
+				: null}
+
+			{/* A sitting they are being asked about has its no already: that answer is the claim. */}
+			{canReport && claimable && claimable.id !== reviewable?.id
 				? (
 					<div class="sess-dispute__report">
 						<p class="sess-dispute__line">Provider didn't show?</p>

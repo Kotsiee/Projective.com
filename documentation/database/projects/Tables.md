@@ -885,6 +885,7 @@ cohort), and the cancel and payout paths. Each sitting has a `scheduling.events`
 | `host_join_url`     | text                          | https only (`ck_session_events_join_urls_https`): it is handed out as a join link. |
 | `attendee_join_url` | text                          | https only (`ck_session_events_join_urls_https`).                    |
 | `status`            | projects.session_event_status | NOT NULL `DEFAULT 'scheduled'`. `scheduled`, `completed`, `cancelled_by_freelancer`, `cancelled_by_client`. |
+| `review_asked_at`   | timestamptz                   | When the sweep asked the attendee about a sitting with no record (Decision #383, ruling R6). Asked once. |
 | `created_at`        | timestamptz                   | NOT NULL `DEFAULT now()`.                                            |
 | `updated_at`        | timestamptz                   | NOT NULL `DEFAULT now()`.                                            |
 
@@ -895,14 +896,21 @@ changes: an address derived from it would break on the event this table exists t
 
 ### `projects.session_attendance`
 
-Who joined a sitting, and when.
+Who joined a sitting, and when: one row per person, first join to last leave, kept in line with
+`scheduling.presence_events`, which is the record of time in the room (Decision #383 (b)). `source` is
+`webhook`, `webhook_email` (known only by a reported email, weaker evidence), `host` (attested, never
+evidence against the attendee) or `confirmed` (an attendee answered that a sitting with no record
+happened, Decision #383, ruling R6).
 
 | Column             | Type        | Notes                                                                            |
 | :----------------- | :---------- | :------------------------------------------------------------------------------- |
 | `id`               | uuid        | PK, `DEFAULT gen_random_uuid()`.                                                 |
 | `session_event_id` | uuid        | NOT NULL. FK → `projects.session_events.id` (`session_attendance_event_id_fkey`). |
 | `user_id`          | uuid        | NOT NULL. FK → `org.users_public.user_id`.                                       |
-| `joined_at`        | timestamptz | NOT NULL `DEFAULT now()`.                                                        |
+| `joined_at`        | timestamptz | NOT NULL `DEFAULT now()`. First join.                                            |
+| `left_at`          | timestamptz | Last leave. Empty while they are in the room, or if no leave ever arrived.       |
+| `source`           | text        | NOT NULL `DEFAULT 'webhook'` (`ck_session_attendance_source`).                   |
+| `provider_event_id` | text       | The provider's id for the event that last wrote the row.                         |
 | `ip_address`       | inet        |                                                                                  |
 
 ### `projects.waitlists`

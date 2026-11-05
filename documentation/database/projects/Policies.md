@@ -355,7 +355,7 @@ none, and a direct `INSERT` is refused.
 | `projects.cohorts`                        | Member (`is_cohort_member(cohorts.id)`), owner, or a project with `visibility = 'public'` (any status). | Definer RPCs only (no client write grant, `00002520`). |
 | `projects.cohort_memberships`             | Self, or the cohort's project owner.                     | Definer RPCs only (no client write grant, `00002520`). |
 | `projects.session_events`                 | Member of **this row's** cohort (`is_cohort_member(session_events.cohort_id)`), or project owner. | Definer RPCs only (no client write grant, `00002520`): the payout sweep releases on a sitting's `status` and `end_time`, so an owner able to write one could be paid for a session that never happened (2026-10-29). A provider adds a group sitting through `projects.schedule_sitting` and renames one through `projects.retitle_sitting` ([Functions.md](Functions.md) § Sessions — group sittings); neither changes a status or a room. |
-| `projects.session_attendance`             | Self, or project owner.                                  | Definer only (`record_presence`); no client `INSERT`. |
+| `projects.session_attendance`             | Self, or project owner.                                  | Definer only (`scheduling.record_presence`); no client `INSERT`. |
 | `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
 | `projects.project_attachments`            | `has_project_access` or `can_review_project`.            | `can_review_project` `INSERT` / `DELETE`; no `UPDATE`. |
@@ -487,7 +487,8 @@ Tables whose only writes are definer functions (no client write policy, by desig
   `projects.is_cohort_member(<table>.cohort id)`, a `SECURITY DEFINER` predicate with a qualified
   argument. That removes the cycle and the misbinding together.
 - _Log own attendance_ was dropped. It let a caller insert attendance for any event. Attendance is
-  written only by the `record_presence` definer door, which checks membership and the event window.
+  written only by the `scheduling.record_presence` definer door, which checks membership and the
+  event window.
 - _Manage own revisions_ (`FOR ALL`) became _Request own revisions_: `INSERT TO authenticated` as
   self, with `can_review_project` on the stage's project. Reads stay with _View revisions_. Updates and
   deletes go through the definer RPCs (`00001150`). **Superseded 2026-10-12** (below).

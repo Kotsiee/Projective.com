@@ -7,7 +7,10 @@ import { Icon } from "@projective/ui/icons";
 import type { IconName } from "@projective/ui/icons";
 import type { CalendarEventInput } from "@projective/types/finance";
 import { buildIcsCalendar, calendarLinksFor } from "@projective/types/finance";
-import { eventStack } from "../core/event-view.ts";
+import { normalizeLink } from "@projective/types/links";
+import type { CalendarEvent as ScheduleEvent } from "@projective/types/scheduling";
+import { inspectInPanel, openEventModal } from "../core/calendar-state.ts";
+import { entryEditable, eventStack } from "../core/event-view.ts";
 
 /**
  * EventPopoverActions — the action header the calendar engine's event popover asks a consumer for.
@@ -221,6 +224,65 @@ export function eventPopoverActions(
  */
 export function renderEventPopoverActions(ctx: EventPopoverActionContext): VNode | null {
 	return <EventActionHeader ctx={ctx} />;
+}
+
+/**
+ * The header of the compact popover `/calendar` opens when its reader chose `popover` (Decision #388),
+ * and of a cluster's detail either way: the engine's own pane draws the facts, and this adds the Join
+ * and the two ways up, to the inspector and to the modal. Editing belongs to those two.
+ */
+export function renderInspectActions(ctx: EventPopoverActionContext): VNode | null {
+	return <InspectActions ctx={ctx} />;
+}
+
+function InspectActions({ ctx }: { ctx: EventPopoverActionContext }): JSX.Element {
+	const event = ctx.event as ScheduleEvent;
+	const joinUrl = event.meeting?.joinUrl ?? event.meetingUrl;
+	const joinHref = joinUrl ? normalizeLink(joinUrl) : null;
+	return (
+		<div class="cal-act">
+			{joinHref
+				? (
+					<Button
+						variant="filled"
+						severity="primary"
+						size="sm"
+						icon={<Icon name="video-camera" size="sm" />}
+						label="Join Meeting"
+						onClick={() => globalThis.open(joinHref, "_blank", "noopener,noreferrer")}
+					/>
+				)
+				: null}
+			<Tooltip content="Open in Panel" density="compact">
+				<Button
+					variant="text"
+					severity="secondary"
+					size="sm"
+					iconOnly
+					icon={<Icon name="panel-right" size="sm" />}
+					aria-label="Open in Panel"
+					onClick={() => {
+						ctx.close();
+						inspectInPanel(event);
+					}}
+				/>
+			</Tooltip>
+			<Tooltip content={entryEditable(event) ? "Edit in Modal" : "Open details"} density="compact">
+				<Button
+					variant="text"
+					severity="secondary"
+					size="sm"
+					iconOnly
+					icon={<Icon name={entryEditable(event) ? "edit" : "arrow-up-right"} size="sm" />}
+					aria-label={entryEditable(event) ? "Edit in Modal" : "Open details"}
+					onClick={() => {
+						ctx.close();
+						openEventModal(event.id);
+					}}
+				/>
+			</Tooltip>
+		</div>
+	);
 }
 
 /**

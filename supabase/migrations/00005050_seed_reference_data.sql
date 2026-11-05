@@ -104,21 +104,15 @@ ON CONFLICT (name) DO NOTHING;
 -- #region integrations.providers — connector catalogue
 -- Reference data: every integrable vendor. ALL ship is_enabled=false — enabling one is an operator
 -- decision that requires credentials in the Environment Variable Contract to exist first. `broker`
--- records the integration strategy (SYSTEM_ARCHITECTURE.md §Integration & Plugin Platform): calendar
--- goes through a unified API (nylas), most storage/dev goes direct, the CRM long tail via merge.
+-- records the integration strategy (SYSTEM_ARCHITECTURE.md §Integration & Plugin Platform): calendar,
+-- conferencing and most storage/dev go direct (Decision #383, ruling R1), the CRM long tail via merge.
 INSERT INTO
     integrations.providers (
         slug, label, category, capabilities, auth_scheme,
         is_enabled, broker, supports_webhooks, default_scopes
     )
 VALUES
-    -- Calendars & conferencing (MVP focus; brokered by a unified calendar API).
-    ('google', 'Google', 'calendar',
-        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
-        false, 'nylas', true, ARRAY['https://www.googleapis.com/auth/calendar.events']),
-    ('outlook', 'Outlook', 'calendar',
-        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
-        false, 'nylas', true, ARRAY['Calendars.ReadWrite', 'OnlineMeetings.ReadWrite']),
+    -- Calendars & conferencing (MVP focus). google, outlook and zoom follow with their auth_config.
     ('apple', 'Apple', 'calendar',
         ARRAY['calendar', 'freebusy']::integrations.provider_kind[], 'app_password',
         false, 'nylas', false, ARRAY[]::text[]),
@@ -128,9 +122,6 @@ VALUES
     ('calendly', 'Calendly', 'calendar',
         ARRAY['calendar', 'freebusy']::integrations.provider_kind[], 'oauth2',
         false, 'direct', true, ARRAY['default']),
-    ('zoom', 'Zoom', 'conferencing',
-        ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
-        false, 'direct', false, ARRAY['meeting:write']),
     ('microsoft_teams', 'Microsoft Teams', 'conferencing',
         ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY['OnlineMeetings.ReadWrite']),
@@ -169,7 +160,7 @@ VALUES
         ARRAY['storage']::integrations.provider_kind[], 'aws_sigv4',
         false, 'direct', false, ARRAY[]::text[]),
     ('notion', 'Notion', 'productivity',
-        ARRAY['docs', 'calendar']::integrations.provider_kind[], 'oauth2',
+        ARRAY['docs']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY[]::text[]),
     -- Developer & CRM long tail (Scale; GitHub direct, the CRM tail via a unified broker).
     ('github', 'GitHub', 'developer',
@@ -184,6 +175,96 @@ VALUES
     ('google_contacts', 'Google Contacts', 'crm',
         ARRAY['contacts']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY['https://www.googleapis.com/auth/contacts.readonly'])
+ON CONFLICT (slug) DO NOTHING;
+
+-- The direct calendar and conferencing providers (Decision #383, ruling R1). `auth_config` is what a
+-- consent needs (ProviderAuthConfigSchema), and `kind_scopes` is which scopes each capability takes.
+-- Microsoft's {tenant} is filled from MICROSOFT_INTEGRATION_TENANT. Each ships disabled like the rest.
+-- Zoom's scopes are its granular names: confirm them against the registered app. microsoft_teams
+-- above has no consent of its own: Teams rooms mint through the outlook connection.
+INSERT INTO
+    integrations.providers (
+        slug, label, category, capabilities, auth_scheme,
+        is_enabled, broker, supports_webhooks, default_scopes, auth_config
+    )
+VALUES
+    ('google', 'Google', 'calendar',
+        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
+        true, 'direct', true,
+        ARRAY[
+            'openid', 'email',
+            'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+            'https://www.googleapis.com/auth/calendar.app.created',
+            'https://www.googleapis.com/auth/meetings.space.created',
+            'https://www.googleapis.com/auth/meetings.space.readonly'
+        ],
+        '{
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "revoke_url": "https://oauth2.googleapis.com/revoke",
+            "pkce": true,
+            "authorize_params": {
+                "access_type": "offline",
+                "prompt": "consent",
+                "include_granted_scopes": "true"
+            },
+            "identity_url": "https://openidconnect.googleapis.com/v1/userinfo",
+            "identity_id_field": "sub",
+            "identity_label_fields": ["email"],
+            "kind_scopes": {
+                "freebusy": ["https://www.googleapis.com/auth/calendar.events.owned.readonly"],
+                "calendar": ["https://www.googleapis.com/auth/calendar.app.created"],
+                "conferencing": [
+                    "https://www.googleapis.com/auth/meetings.space.created",
+                    "https://www.googleapis.com/auth/meetings.space.readonly"
+                ]
+            }
+        }'::jsonb),
+    ('outlook', 'Microsoft', 'calendar',
+        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
+        true, 'direct', true,
+        ARRAY[
+            'offline_access', 'User.Read', 'Calendars.ReadBasic', 'Calendars.ReadWrite',
+            'OnlineMeetings.ReadWrite', 'OnlineMeetingArtifact.Read.All'
+        ],
+        '{
+            "authorize_url": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
+            "token_url": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+            "pkce": true,
+            "identity_url": "https://graph.microsoft.com/v1.0/me",
+            "identity_id_field": "id",
+            "identity_label_fields": ["mail", "userPrincipalName"],
+            "kind_scopes": {
+                "freebusy": ["Calendars.ReadBasic"],
+                "calendar": ["Calendars.ReadWrite"],
+                "conferencing": ["OnlineMeetings.ReadWrite", "OnlineMeetingArtifact.Read.All"]
+            }
+        }'::jsonb),
+    -- Zoom takes scopes from the Marketplace app and answers "Invalid scope" to any in the URL. Only
+    -- creating a meeting is required: the others degrade (a best-effort sync, the shared link, a held
+    -- review), so an app missing one still connects.
+    ('zoom', 'Zoom', 'conferencing',
+        ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
+        true, 'direct', true,
+        ARRAY[
+            'meeting:write:meeting', 'meeting:read:meeting', 'meeting:update:meeting',
+            'meeting:delete:meeting', 'meeting:write:registrant', 'meeting:read:list_past_participants',
+            'user:read:user'
+        ],
+        '{
+            "authorize_url": "https://zoom.us/oauth/authorize",
+            "token_url": "https://zoom.us/oauth/token",
+            "revoke_url": "https://zoom.us/oauth/revoke",
+            "pkce": true,
+            "send_scopes": false,
+            "token_auth": "basic",
+            "identity_url": "https://api.zoom.us/v2/users/me",
+            "identity_id_field": "id",
+            "identity_label_fields": ["email"],
+            "kind_scopes": {
+                "conferencing": ["meeting:write:meeting"]
+            }
+        }'::jsonb)
 ON CONFLICT (slug) DO NOTHING;
 -- #endregion
 

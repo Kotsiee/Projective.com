@@ -112,6 +112,18 @@ export const CALENDAR_KIND_SINGULAR: Record<CalendarEventKind, string> = {
 };
 
 /**
+ * The name of one entry. A kind alone cannot say it for a `general` entry: with a length it is an
+ * Event, and with none it is a Reminder, a moment the reader asked to be told about.
+ */
+export function calendarEntryName(
+	event: { kind: CalendarEventKind; start: number; end: number },
+): string {
+	return event.kind === "general" && event.end <= event.start
+		? "Reminder"
+		: CALENDAR_KIND_SINGULAR[event.kind];
+}
+
+/**
  * Each kind's mark as SVG path data on a 16×16 box, stroked at {@link CALENDAR_KIND_STROKE}.
  *
  * Path DATA rather than a VNode, because the same nine marks are now drawn two ways: `EventBlock`

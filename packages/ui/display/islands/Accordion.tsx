@@ -62,6 +62,11 @@ export interface AccordionProps {
 	 */
 	activeIndex?: Bindable<number | number[]>;
 	onTabChange?: ValueChange<number | number[]>;
+	/**
+	 * `filled` (default) is a tonal region of its own. `flush` is a quiet disclosure with no fill and no
+	 * inset, for one inside a dialog or a panel, where a tonal region would be a card in a card (§B.4.2).
+	 */
+	variant?: "filled" | "flush";
 	id?: string;
 	class?: string;
 }
@@ -77,8 +82,16 @@ export interface AccordionProps {
  * `inert` while collapsed so its content leaves the tab order without being removed from the DOM.
  */
 export function Accordion(props: AccordionProps): JSX.Element {
-	const { children, tabs, multiple = false, activeIndex, onTabChange, id, class: className } =
-		props;
+	const {
+		children,
+		tabs,
+		multiple = false,
+		activeIndex,
+		onTabChange,
+		variant = "filled",
+		id,
+		class: className,
+	} = props;
 
 	const rootId = useId(id, "accordion");
 	const model = useMemo(() => tabs ?? tabsFromChildren(children), [tabs, children]);
@@ -132,7 +145,10 @@ export function Accordion(props: AccordionProps): JSX.Element {
 	// #endregion
 
 	return (
-		<div class={cx("ui-accordion", className)} id={rootId}>
+		<div
+			class={cx("ui-accordion", variant === "flush" && "ui-accordion--flush", className)}
+			id={rootId}
+		>
 			{model.map((tab, i) => {
 				const headerId = `${rootId}-header-${i}`;
 				const panelId = `${rootId}-panel-${i}`;

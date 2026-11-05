@@ -147,14 +147,17 @@ export type SittingPhase = z.infer<typeof SittingPhase>;
 export const JoinState = z.enum(["not_party", "unfunded", "upcoming", "open", "ended", "cancelled"]);
 export type JoinState = z.infer<typeof JoinState>;
 
-/** The viewer's way into a sitting. `url` is present only while `state` is `open`. */
+/**
+ * The viewer's way into a sitting. `url` is the room's own `/meet` address, present only while `state`
+ * is `open`: the provider's link stays on the server, and going through `/meet` records the join.
+ */
 export const SessionJoinSchema = z.object({
 	eventId: uuid,
 	role: z.enum(["host", "attendee"]),
 	state: JoinState,
 	opensAt: iso,
 	closesAt: iso,
-	url: z.string().url().max(2000).nullable(),
+	url: z.string().startsWith("/meet/").max(120).nullable(),
 });
 export type SessionJoin = z.infer<typeof SessionJoinSchema>;
 
@@ -232,10 +235,25 @@ export const SessionWorkspaceSchema = z.object({
 	 * a host, a prospect, or when nothing is reportable.
 	 */
 	claimable: SessionSittingSchema.nullable(),
+	/**
+	 * The sitting with no attendance record this attendee has been asked about (Decision #383, ruling
+	 * R6), whose payment waits on their answer. `get_session_workspace.reviewable_sitting_id`.
+	 */
+	reviewable: SessionSittingSchema.nullable(),
+	/** The next sitting with no room on the way, for its host to fix. `room_wanted_sitting_id`. */
+	roomWanted: SessionSittingSchema.nullable(),
 	/** The no-show claims the viewer is party to: their own, or every claim on the engagement (host). */
 	disputes: z.array(DisputeSummarySchema).max(200),
 });
 export type SessionWorkspace = z.infer<typeof SessionWorkspaceSchema>;
+
+/** `POST /api/sessions/sittings/[eventId]/room` — a link the host adds themselves. */
+export const SittingRoomInputSchema = z.object({ link: z.string().regex(/^https:\/\/\S+$/).max(600) });
+export type SittingRoomInput = z.infer<typeof SittingRoomInputSchema>;
+
+/** `POST /api/sessions/sittings/[eventId]/review` — whether a sitting with no evidence happened. */
+export const SessionReviewInputSchema = z.object({ happened: z.boolean() });
+export type SessionReviewInput = z.infer<typeof SessionReviewInputSchema>;
 
 /** `POST /api/sessions/sittings/[eventId]/no-show` — the attendee's account of the no-show. */
 export const NoShowClaimInputSchema = z.object({
@@ -307,16 +325,22 @@ export type SittingWrite = z.infer<typeof SittingWriteSchema>;
 export const PresenceEventSchema = z.object({
 	provider: z.enum(["zoom"]),
 	meetingId: z.string().min(1).max(120),
-	/** The participant's email, when the provider reports one; without it nobody can be matched. */
+	/** The participant's email, when the provider reports one: the weakest way to know them. */
 	email: z.string().max(320).nullable(),
-	action: z.enum(["joined", "left"]),
+	action: z.enum(["joined", "left", "waiting"]),
 	at: iso,
 	/** The provider's identity for this delivery, so a redelivery is a replay. */
 	providerEventId: z.string().min(1).max(200),
+	/** Tells one participant from another even when nobody can name them. The door hashes it. */
+	participantKey: z.string().min(1).max(320),
+	/** Their own registration at the provider, when they came through a personal link. */
+	registrantId: z.string().max(120).nullable(),
+	/** Their account at the provider, which is how a room knows its host. */
+	accountId: z.string().max(120).nullable(),
 });
 export type PresenceEvent = z.infer<typeof PresenceEventSchema>;
 
-/** `record_presence`'s answer. */
+/** `scheduling.record_presence`'s answer. */
 export const PresenceOutcome = z.enum(["recorded", "replayed", "unmatched", "outside_window"]);
 export type PresenceOutcome = z.infer<typeof PresenceOutcome>;
 // #endregion

@@ -160,6 +160,18 @@ ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
 
+-- #region [integrations] A connection lost its grant (Decision #343, ruling C4)
+-- Sent by integrations.fn_record_refresh_failure when a refresh answers invalid_grant: the connection
+-- is `expired`, and only its owner can consent again. Not mandatory, and not digestible, because a
+-- digest would hold back a reconnect that a booking may be waiting on (providers spec §7.6).
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('integration.reconnect_required', '{}',          'account',   'high',     ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              '/settings/integrations',                    NULL, 'A connected calendar or conferencing account stopped accepting Projective''s access, and needs reconnecting.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
+
 -- #region [scheduling] Discovery-call expiry (S-11)
 -- Sent by scheduling.fn_expire_discovery_calls to the requester and the host of a call request nobody
 -- answered within discovery_call_proposal_ttl_hours or before its start. Shaped like
@@ -169,5 +181,27 @@ INSERT INTO comms.notification_types
     (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
 VALUES
 ('call.expired',             '{}',                'schedule',  'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A discovery call request expired: nobody confirmed it within the proposal window or before its start time.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
+
+-- #region [scheduling] Discovery-call doors and reminders (S-10, S-18; Decision #343, ruling C3)
+-- Sent by the five doors in 00001510 §7b to the other party, and by scheduling.fn_enqueue_due_reminders.
+-- A declined or cancelled call leaves both calendars, so those two carry no action URL.
+-- The two event.reminder keys are one alert on two channels (Decision #388): a person picks how each
+-- alert arrives, the channels live on the type, and their preferences still narrow either one.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('event.reminder',           '{}',                'schedule',  'medium',   ARRAY['in_app','push']::comms.notification_channel[],         false, false, false, false, NULL,              '/calendar?event={entity_id}',               NULL, 'A calendar entry is coming up, at a lead its person chose.'),
+('event.reminder_email',     '{}',                'schedule',  'medium',   ARRAY['email']::comms.notification_channel[],                 false, false, false, false, NULL,              '/calendar?event={entity_id}',               NULL, 'A calendar entry is coming up, by email, at a lead its person chose.'),
+('call.confirmed',           '{}',                'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              '/calendar',                                 NULL, 'A discovery call was confirmed.'),
+('call.declined',            '{}',                'schedule',  'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'The host declined a discovery call request.'),
+('call.time_proposed',       '{}',                'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              '/calendar',                                 NULL, 'The other party proposed a new time for a discovery call.'),
+('call.cancelled',           '{}',                'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A confirmed discovery call was cancelled.'),
+('call.no_show',             '{}',                'schedule',  'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              '/calendar',                                 NULL, 'The other party reported a no-show on a discovery call.'),
+('call.reminder',            '{}',                'schedule',  'high',     ARRAY['in_app','push']::comms.notification_channel[],         false, true,  false, false, NULL,              '/calendar',                                 NULL, 'A confirmed discovery call starts soon.'),
+('room.failed',              '{}',                'schedule',  'high',     ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              '/settings/integrations',                    NULL, 'A meeting room could not be created at its provider.'),
+('session.review_requested', '{}',                'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A session with no attendance record is waiting for the attendee to say whether it happened.')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion

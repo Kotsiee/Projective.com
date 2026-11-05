@@ -157,6 +157,12 @@ SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
   ) AS v (name, schedule, command, function_name, description)
  WHERE pg_catalog.to_regproc(v.function_name) IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
+
+-- The reminder producer (audit S-18). Its worker, comms-process-queue, runs every minute.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+VALUES ('scheduling-reminders', 'sql', '*/5 * * * *', 'SELECT scheduling.fn_enqueue_due_reminders();', NULL, NULL,
+        'Queues the reminders of every scheduled sitting and confirmed call starting soon, one per person, and withdraws any whose time has moved.')
+ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
 -- #region [finance] Card-payment recovery, spend-approval expiry, idempotency keys (Q0.3: #337)
@@ -191,6 +197,42 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
 SELECT 'search-query-log-retention', 'sql', '36 4 * * *', 'SELECT search.fn_prune_query_logs();', NULL, NULL,
        'Deletes search.query_logs rows past their 90-day retention (finance-model.md §17).'
  WHERE pg_catalog.to_regproc('search.fn_prune_query_logs') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [scheduling] Attendance retention (finance-model.md §17; Decision #383, ruling R8)
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('scheduling-presence-retention', 'sql', '41 4 * * *',
+        'SELECT scheduling.fn_prune_presence();', NULL, NULL,
+        'Deletes room attendance records past their retention period, keeping whatever a dispute or a held payment still needs.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [integrations] Token refresh, channel renewal, calendar sync, the consent sweep (providers spec §7.6)
+-- Refresh, renewal and sync call providers with stored credentials, so they run in the app, as http
+-- jobs on their own secret. The consent sweep touches only the database, so it is a sql job.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('integrations-mint-rooms', 'http', '* * * * *',
+        NULL, '/api/integrations/cron/rooms?limit=25', 'INTEGRATIONS_CRON_SECRET',
+        'Mints the meeting rooms the queue is waiting for, then follows moved and cancelled rooms at their providers (RoomBackendService.mintDue, syncDue).'),
+    ('integrations-presence-reconcile', 'http', '*/15 * * * *',
+        NULL, '/api/integrations/cron/rooms?task=reconcile&limit=25', 'INTEGRATIONS_CRON_SECRET',
+        'Reads each ended meeting''s attendance from its provider. A failed read stamps nothing, so a sitting that needed it stays held (RoomBackendService.reconcileDue).'),
+    ('integrations-refresh-tokens', 'http', '*/10 * * * *',
+        NULL, '/api/integrations/cron/refresh?limit=100', 'INTEGRATIONS_CRON_SECRET',
+        'Refreshes each connection in use whose access token ends within 15 minutes, and any not refreshed in 30 days, persisting a rotated refresh token; invalid_grant expires the connection and tells its owner (IntegrationsBackendService.refreshDue).'),
+    ('integrations-renew-channels', 'http', '35 * * * *',
+        NULL, '/api/integrations/cron/channels?limit=100', 'INTEGRATIONS_CRON_SECRET',
+        'Renews each provider push channel within 24 hours of lapsing; a third failure fails the channel and degrades its connection (IntegrationsBackendService.renewChannels).'),
+    ('integrations-calendar-sync', 'http', '*/5 * * * *',
+        NULL, '/api/integrations/cron/sync?limit=50', 'INTEGRATIONS_CRON_SECRET',
+        'Reads busy time from each connected primary calendar that a push marked due or that has gone an hour unread, and opens its push channel if it has none (CalendarSyncBackendService.syncDue).'),
+    ('integrations-outbound-sync', 'http', '2-57/5 * * * *',
+        NULL, '/api/integrations/cron/sync?task=outbound&limit=100', 'INTEGRATIONS_CRON_SECRET',
+        'Writes or removes each dirty copy of a Projective event on its owner''s separate Projective calendar (CalendarSyncBackendService.pushDue).'),
+    ('integrations-consent-sweep', 'sql', '25 3 * * *',
+        'SELECT integrations.fn_sweep_consent_states();', NULL, NULL,
+        'Deletes consent_states rows a day past their window: spent or abandoned CSRF bindings.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

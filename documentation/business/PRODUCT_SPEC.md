@@ -90,8 +90,15 @@ aligned on time and location.
 - **The meeting is made for you.** Choosing a provider location (Zoom, Google Meet, MS Teams)
   creates the meeting on the host's connected account when the event is created, and every attendee
   gets their own join link (one per registrant where the provider supports it); nobody pastes a link
-  by hand. A host with no connected account is offered **Connect** or the platform's own room. **Not
-  built yet** (Decision #343, ruling C4).
+  by hand. A host with no connected account is offered **Connect** or a manual https link; there is
+  no platform-hosted room (Decision #383, ruling R2). A manual link stays allowed on a paid sitting,
+  with a warning that a room which reports no attendance has its payout held for review (ruling R7).
+  Teams rooms need a work or school account, and a personal Microsoft account is told so in the
+  picker (ruling R4). A link reaches only the event's parties, through Projective, inside the join
+  window: the host, a funded seat, the two sides of a confirmed call, or an invitee who has accepted
+  (Decision #343, ruling C4). Everyone joins through one address, `/meet/rom-…`. An attendee's own
+  link is made the first time they join, on a licensed Zoom host; Meet and Teams have one shared link
+  behind the same address. **Not yet run on live provider accounts.**
 - **Today only in-app notices are delivered.** Email, push and SMS have no dispatcher yet; the SMS
   setting shows only once the SMS provider (Twilio) is configured. **Not built yet** (Decision #339,
   rulings P3 and N3).
@@ -105,17 +112,29 @@ To prevent "he-said-she-said" disputes, Projective uses passive API verification
 attendance.
 
 - **Presence Logs:** The `SessionService` listens for Webhooks from the conferencing provider (e.g.,
-  Zoom `participant_joined`).
+  Zoom `participant_joined`), and reads the provider's own records after the meeting, which is the
+  only source for Google Meet and Microsoft Teams (Decision #383 (c)). Once that record has been read
+  it is the whole story for that room.
 - **Proof of Presence:** Both the Freelancer and the Client must be logged in the room within the
   first 15 minutes for the session to be marked as "Successful."
 - **Who joined is matched by their own link.** The platform mints each attendee's join link, and
   presence is matched on it; the email a provider reports is only a fallback, marked as weaker
-  evidence (Decision #343, ruling C4 (b)). A join with no "left" event is not counted as presence
-  for the rest of the sitting (ruling C5 (c)). **Not built yet.**
+  evidence (Decision #343, ruling C4 (b)). The host is matched by their account at the provider,
+  because whether the host came is the fact money turns on (Decision #383). A join with no "left"
+  event is not counted as presence for the rest of the sitting (ruling C5 (c)).
+- **Time in the room is time in the room.** Every join and leave is kept, so a host who leaves and
+  comes back is not counted for the gap, and reconnects are visible (Decision #383 (b)).
 - **Failure to Attend:** If the system detects a Freelancer no-show, the Escrow is flagged for an
-  immediate refund.
+  immediate refund. A no-show is the provider's own record showing no host, plus evidence the
+  attendee came: a record of them in the room, or their join through Projective. A room the platform
+  creates lets an attendee in without the host, so that record can exist. Silence alone is never
+  enough, and a failed read of the provider's records holds the sitting for review (Decision #383,
+  ruling R5).
 - **No evidence, no automatic release.** A sitting with no presence data at all is held for review
-  instead of paying out on negative consent (Decision #343, ruling C5 (a)). **Not built yet.**
+  instead of paying out on negative consent (Decision #343, ruling C5 (a)). When the review window
+  ends the attendee is asked whether the session happened: a yes releases, a no is a no-show claim,
+  and silence opens an operator case. A host's own attestation is not evidence (Decision #383,
+  ruling R6).
 
 ###### C. Financial Integrity & The 24-Hour Rule
 
@@ -338,6 +357,23 @@ MS Teams or Google Calendar, but with integrated financial protection.
 
 ##### The Proactive Calendar
 
+- **Two things, not nine** (Decision #388). A person's calendar holds **Events**, which have a length
+  (meetings, calls, syncs from a connected calendar, a project's sessions), and **Reminders**, which
+  are a moment (deadlines and their own alerts). Creating an entry asks which it is, and the filter
+  narrows by the same two.
+- **Reading an entry is not leaving the calendar.** Picking one opens it in an inspector beside the
+  grid: what, when, where, who and the agenda, with Join and copy buttons for the link and passcode. Its
+  host changes the title, a time or the agenda where they read it, one field at a time, and anything
+  deeper is one press away in the full editor, which is the same dialog an entry is created in.
+  Someone who prefers a lighter touch can set events to open in a small popover instead (Settings →
+  Scheduling & calls), and step up from there. Below a laptop's width the inspector slides in as a
+  drawer. An entry's address names it, so a reload or a shared link lands on it.
+- **Reminders are each person's own.** Everyone on an entry hears about it when they chose to: up to
+  five alerts, up to a week ahead, in the app or by email. Everyone has a default (ten minutes before,
+  in the app, until they change it) and can set any entry differently, whichever seat they hold, and
+  nobody else sees or is bound by it. An entry that moves alerts again at its new time, and one made
+  inside its own lead still alerts once. A session keeps its own T-60, T-15 and T-5, a call its own
+  reminder, and a connected calendar's entry the alerts its provider sends.
 - **Work Windows:** Freelancers set their availability based on their local **Time Zone**, which the
   system automatically converts for the Client.
 - **The Proposal Flow:** 1. Freelancer/Team proposes a Date, Time, and "Location" (Integrated Zoom,
@@ -346,6 +382,19 @@ MS Teams or Google Calendar, but with integrated financial protection.
   **Counter-Propose**. 4. **Majority Decision:** In multi-attendee sessions (Group Sessions), a
   change in time requires a majority consensus to be finalized. (Delivery channels, the meeting link
   and the majority's denominator: §Stage Formats 2A.)
+- **Connected calendars are two one-way flows** (Decision #383, ruling R3). A connected Google or
+  Outlook calendar blocks bookings and shows here with what its entries say (title, repeat pattern,
+  location, notes, meeting link), read-only, to its owner alone; everyone else sees Busy (Decision
+  #387). A series,
+  connected or Projective's own, is one row in the agenda list, on its next occurrence, and states
+  how it repeats in its details; the grid still draws every occurrence. A person who turns
+  on publishing gets a separate Projective calendar at that provider, holding their Projective
+  events with a Projective join link and no attendees. An agreed discovery call goes there too, for
+  each party who publishes, as "A call on Projective" so that neither is named. It comes off when
+  the call is cancelled, and while a new time waits for an answer. An edit made at the provider
+  never moves a Projective event: a time moves only through the reschedule rules here. An entry
+  marked Projective-only is never published. Calendly and Notion Calendar have no connector of their
+  own, because they read and write the same Google and Outlook calendars (ruling R9).
 
 ##### Cancellation & Escrow Protection
 
@@ -1343,9 +1392,9 @@ digest cadence rolls low-urgency mail into a daily or weekly summary delivered a
 hour; an urgent alert left unread falls back to email after a short window; and **dismissing archives
 rather than deletes**, so the record survives.
 
-Reminders (a session at T-60/T-15/T-5, a nudge on an abandoned basket, a chase on a submission left
-unreviewed) are scheduled ahead of time and **cancelled automatically when the reason disappears** —
-cancelling a session cancels its reminders.
+Reminders (a session at T-60/T-15/T-5, a calendar entry at the leads its person chose, a nudge on an
+abandoned basket, a chase on a submission left unreviewed) are scheduled ahead of time and **cancelled
+automatically when the reason disappears** — cancelling a session cancels its reminders.
 
 _Schema, routing precedence and delivery mechanics:
 [`database/comms/`](../database/comms/Tables.md) · `SYSTEM_ARCHITECTURE.md` §The Notification
@@ -1976,9 +2025,8 @@ lockout, or cancel at any time, the lateness of a cancel being derived from the 
 side may mark a no-show from 15 minutes after the start, backed by presence evidence where the call
 is tracked. A request nobody answered expires, checked every 15 minutes: once it has waited 72 hours
 (a platform parameter) or its start time has come, it stops holding the time and both people are
-told. A courtesy call past its end time is completed by the platform. The expiry is built. **Not
-built yet:** today a host cannot confirm, decline or reschedule from the product, and the platform
-does not yet complete a call past its end.
+told. A courtesy call past its end time is completed by the platform. When a new time is proposed,
+the other person is the one who confirms it (Decision #383).
 
 The courtesy call is the common case and is deliberately frictionless: no payment surface, no
 verification wall, no negotiation. It must remain bookable even by a provider who has connected no
@@ -3003,11 +3051,12 @@ Auditor**.
 For Session-Based Services, disputes are largely automated through our conferencing integrations.
 
 - **The Attendance Audit:** If a client claims a "No-Show," the system automatically
-  cross-references the Zoom/Meet/Teams Webhook logs in the Evidence Vault.
+  cross-references the Zoom/Meet/Teams attendance logs in the Evidence Vault.
 - **Deterministic Ruling:**
   - If the logs show the Freelancer never joined: **Instant Refund.**
-  - If the logs show both joined for >80% of the duration: **Claim Dismissed.** Exactly 80% is not
-    enough (Decision #343, ruling C5 (b)); **Not built yet:** today the audit dismisses at 80%.
+  - If the logs show both in the room for >80% of the duration: **Claim Dismissed.** Exactly 80% is
+    not enough (Decision #343, ruling C5 (b)), and the figure is time actually in the room, not the
+    span from first join to last leave (Decision #383 (b)).
   - If the logs are ambiguous: **Escalated to Manual Audit.** A presence matched only by the email a
     provider reported counts as ambiguous (ruling C4 (b)), and a sitting with no logs at all is held
     for review instead of being released (ruling C5 (a)).

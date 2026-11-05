@@ -77,7 +77,7 @@ export {
 export { InputText, type InputTextProps } from "./islands/InputText.tsx";
 export { Textarea, type TextareaProps } from "./islands/Textarea.tsx";
 export { ResizeFrame, type ResizeFrameProps } from "./islands/ResizeFrame.tsx";
-export { InlineEdit, type InlineEditProps } from "./islands/InlineEdit.tsx";
+export { InlineEdit, type InlineEditField, type InlineEditProps } from "./islands/InlineEdit.tsx";
 export {
 	type ButtonLayout,
 	InputNumber,

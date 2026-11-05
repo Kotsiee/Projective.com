@@ -563,19 +563,18 @@
 .cal-sum {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
+	gap: var(--space-2);
+	font-size: var(--text-sm);
 }
 
-.cal-sum__when {
-	margin: 0;
-	font-size: var(--cal-hub-fs-micro);
-	letter-spacing: var(--cal-hub-label-track);
-	color: var(--text-secondary);
-	font-variant-numeric: tabular-nums;
+/* The sections it shares with the modal sit further apart than the facts above them. */
+.cal-sum > .evm-doc__sec,
+.cal-sum > .evm-rail {
+	margin-block-start: var(--space-3);
 }
 
 .cal-sum__title {
-	margin: 0 0 var(--space-1);
+	margin: 0;
 	font-size: var(--text-lg);
 	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
@@ -589,11 +588,95 @@
 	color: var(--text-secondary);
 }
 
-.cal-sum__body {
-	margin: var(--space-2) 0 0;
-	font-size: var(--text-sm);
-	line-height: var(--leading-relaxed);
+/*
+ * The times are a list of one-line facts, each as tall as the picker that replaces it (`--fld-h-sm`),
+ * so pressing one moves nothing around it.
+ */
+.cal-sum__times {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.cal-sum__time {
+	display: grid;
+	grid-template-columns: 3.25rem minmax(0, 1fr);
+	align-items: center;
+	min-block-size: var(--fld-h-sm);
+}
+
+.cal-sum__term {
+	color: var(--text-secondary);
+}
+
+.cal-sum__fact {
+	min-inline-size: 0;
+	margin: 0;
 	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-sum__picker {
+	inline-size: 100%;
+}
+
+.cal-sum__rig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+}
+
+/*
+ * The agenda edits in place. The toolbar floats over the heading above it, the frame sits exactly on
+ * `InlineEdit`'s resting box, and the editor takes the resting text's type (`.evm-rich`), margins
+ * included, with no minimum height of its own: Quill's are what would move the words.
+ */
+.cal-sum__editor .ui-rte {
+	--rte-h-default: 0px;
+
+	overflow: visible;
+	margin-inline: calc(var(--ui-ie-inset) * -1);
+	inline-size: auto;
+	max-inline-size: none;
+}
+
+.cal-sum__editor .ui-rte__toolbar {
+	position: absolute;
+	inset-block-end: 100%;
+	inset-inline: 0;
+	z-index: 1;
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+}
+
+.cal-sum__editor .ui-rte .ql-container,
+.cal-sum__editor .ui-rte__editor {
+	font-size: var(--text-sm);
+}
+
+.cal-sum__editor .ui-rte .ql-editor {
+	padding: var(--ui-ie-py) var(--ui-ie-px);
+	line-height: var(--leading-relaxed);
+}
+
+.cal-sum__editor .ui-rte .ql-editor :is(h1, h2, h3) {
+	margin-block: var(--space-4) var(--space-2);
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+}
+
+.cal-sum__editor .ui-rte .ql-editor :is(p, ol, ul) {
+	margin-block: var(--space-2);
+}
+
+.cal-sum__editor .ui-rte .ql-editor > :first-child {
+	margin-block-start: 0;
+}
+
+.cal-sum__editor .ui-rte .ql-editor > :last-child {
+	margin-block-end: 0;
 }
 
 .cal-sum__acts {
@@ -675,6 +758,10 @@
 .cal-connect__state {
 	font-size: var(--cal-hub-fs-micro);
 	color: var(--text-secondary);
+}
+
+.cal-connect__publish {
+	margin-block-start: var(--space-1);
 }
 
 /* The tone reinforces the words; it never carries the meaning on its own. */

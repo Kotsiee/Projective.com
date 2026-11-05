@@ -117,6 +117,67 @@ export const CallRefusalReason = z.enum([
 export type CallRefusalReason = z.infer<typeof CallRefusalReason>;
 // #endregion
 
+// #region Moves on a call
+/** The moves a party can make on a call: the five doors of `00001510` §7b (Decision #343, ruling C3). */
+export const CallMove = z.enum(["confirm", "decline", "propose", "cancel", "no_show"]);
+export type CallMove = z.infer<typeof CallMove>;
+
+/** A person's side of a call. `both` is an outcome ({@link CallParty}), never a person. */
+export const CallSide = z.enum(["host", "requester"]);
+export type CallSide = z.infer<typeof CallSide>;
+
+const moveReason = z.string().trim().max(280).optional();
+const moveInstant = z.number().int().min(0).max(8_640_000_000_000_000);
+
+/** `POST /api/scheduling/calls`: one move on one call. */
+export const CallActionInputSchema = z.discriminatedUnion("action", [
+	z.object({ action: z.literal("confirm"), callId: uuid }),
+	z.object({ action: z.literal("decline"), callId: uuid, reason: moveReason }),
+	z.object({ action: z.literal("propose"), callId: uuid, start: moveInstant, end: moveInstant }),
+	z.object({ action: z.literal("cancel"), callId: uuid, reason: moveReason }),
+	z.object({ action: z.literal("no_show"), callId: uuid, party: CallSide }),
+]);
+export type CallActionInput = z.infer<typeof CallActionInputSchema>;
+
+/** What {@link callMovesFor} reads. Every window is handed in, because the database owns them. */
+export interface CallMoveFacts {
+	status: CallStatus;
+	side: CallSide;
+	/** Who made the proposal now on the table. */
+	proposedBy: CallSide;
+	start: number;
+	end: number;
+	now: number;
+	/** The reschedule lockout, in milliseconds. */
+	lockoutMs: number;
+	/** How long after the start a no-show may be reported, in milliseconds. */
+	presenceMs: number;
+}
+
+/**
+ * What a party may do to a call right now: the doors' rules read before the press, so a surface offers
+ * only a move that can land (root CLAUDE.md §3.11). The doors stay the authority and re-judge every
+ * move, and this answers the same thing they do. The counterparty of the last proposal accepts it
+ * (Decision #383).
+ */
+export function callMovesFor(f: CallMoveFacts): CallMove[] {
+	const moves: CallMove[] = [];
+	const movable = f.start > f.now + f.lockoutMs;
+	if (f.status === "proposed") {
+		if (f.side !== f.proposedBy && f.now < f.start) moves.push("confirm");
+		if (movable) moves.push("propose");
+		if (f.side === "host") moves.push("decline");
+		else if (f.now < f.end) moves.push("cancel");
+	}
+	if (f.status === "confirmed") {
+		if (movable) moves.push("propose");
+		if (f.now < f.end) moves.push("cancel");
+		if (f.now >= f.start + f.presenceMs) moves.push("no_show");
+	}
+	return moves;
+}
+// #endregion
+
 // #region scheduling.call_settings
 /**
  * A row of `scheduling.call_settings` — the provider's booking configuration, one per schedule.
