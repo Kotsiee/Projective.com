@@ -22,6 +22,7 @@ import { ROOM_ADAPTERS, type RoomFacts, RoomProviderError } from "./rooms/adapte
 const NOT_YOURS: RoomJoinAnswer = { state: "not_party", url: null };
 const NOT_LIVE = "Rooms aren't switched on here.";
 const UNREACHABLE = "Rooms couldn't be reached just now.";
+const NO_WAY_IN = "We couldn't get your link from the meeting provider. Try again in a moment.";
 
 // #region Shapes
 /** What each sweep answers its cron route. */
@@ -41,6 +42,8 @@ interface RoomClaim {
 	title: string;
 	starts_at: string;
 	ends_at: string;
+	paid?: boolean;
+	granted_scopes?: string[] | null;
 }
 
 /** What `room_join` says beyond the answer a person gets. These never leave the service. */
@@ -49,7 +52,15 @@ interface RawJoin {
 	provider?: string;
 	connection_id?: string | null;
 	provider_meeting_id?: string | null;
-	register?: { room_id: string; user_id: string; email: string; first_name: string } | null;
+	register?: {
+		room_id: string;
+		user_id: string;
+		email: string;
+		first_name: string;
+		approve?: boolean;
+	} | null;
+	/** This room's plain link is no way in, so it can never be what a failed link falls back on. */
+	link_required?: boolean;
 }
 // #endregion
 
@@ -62,6 +73,8 @@ const factsOf = (room: RoomClaim): RoomFacts => ({
 	startsAt: room.starts_at,
 	endsAt: room.ends_at,
 	hostAccount: room.host_account ?? null,
+	paid: room.paid === true,
+	grantedScopes: room.granted_scopes ?? [],
 });
 
 const reasonOf = (error: unknown) => error instanceof RoomProviderError ? error.code : "unreachable";
@@ -115,6 +128,7 @@ async function mintOne(room: RoomClaim): Promise<boolean> {
 			p_join_url: minted.joinUrl,
 			p_passcode: minted.passcode,
 			p_registration: minted.registration,
+			p_guarded: minted.guarded,
 		});
 		return true;
 	} catch (error) {
@@ -180,7 +194,9 @@ async function reconcileOne(room: RoomClaim): Promise<boolean> {
  * A better link than the room's, or `null`: a host's fresh one, where a stored one would be an expiring
  * credential, or an attendee's own, made the first time they join so that only people who come are
  * sent to the provider. `register` comes from the door as the signed-in caller, never from an actor's
- * claim. A provider being down never stops anybody joining.
+ * claim, and on a paid room this is the moment Projective approves them (Decision #392). A provider
+ * being down stops nobody on a room whose own link works; {@link RoomBackendService.join} answers for
+ * the rooms where it does not.
  */
 async function betterLink(raw: RawJoin): Promise<string | null> {
 	const adapter = raw.provider ? ROOM_ADAPTERS[raw.provider] : undefined;
@@ -191,9 +207,13 @@ async function betterLink(raw: RawJoin): Promise<string | null> {
 			return await adapter.hostLink(await tokenFor(raw.connection_id), meetingId);
 		}
 		if (raw.register && adapter.register) {
-			const { room_id, user_id, email, first_name } = raw.register;
+			const { room_id, user_id, email, first_name, approve } = raw.register;
 			const token = await tokenFor(raw.connection_id);
-			const added = await adapter.register(token, meetingId, { email, firstName: first_name });
+			const added = await adapter.register(token, meetingId, {
+				email,
+				firstName: first_name,
+				approve: approve === true,
+			});
 			await door("save_room_registrant", {
 				p_room: room_id,
 				p_user: user_id,
@@ -223,7 +243,11 @@ export class RoomBackendService {
 		const parsed = RoomJoinAnswerSchema.safeParse(data);
 		if (!parsed.success) return ok(NOT_YOURS);
 		if (parsed.data.state !== "open" || !isIntegrationsBackendLive()) return ok(parsed.data);
-		return ok({ ...parsed.data, url: await betterLink(data as RawJoin) ?? parsed.data.url });
+		const raw = data as RawJoin;
+		const link = await betterLink(raw);
+		// The door has recorded the press by now, so a failure here leaves their evidence intact.
+		if (!link && raw.link_required) return fail(503, { message: NO_WAY_IN });
+		return ok({ ...parsed.data, url: link ?? parsed.data.url });
 	}
 
 	/** Make every room the queue is waiting for (job `integrations-mint-rooms`). */

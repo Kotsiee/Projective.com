@@ -10,7 +10,8 @@ import { disputeTimeLabel } from "../core/dispute-view.ts";
 /**
  * SittingRoomLink — a host's way out when a paid sitting has no room (Decision #383, rulings R2 and
  * R7): connect an account, or add a link. The warning comes before the choice, because a link they add
- * cannot report attendance, and the payout then waits for the attendee to say the session happened.
+ * keeps nobody out (Decision #392) and cannot report attendance, and the payout then waits for the
+ * attendee to say the session happened.
  */
 export interface SittingRoomLinkProps {
 	workspace: SessionWorkspace;
@@ -47,8 +48,8 @@ export function SittingRoomLink({ workspace, onNotice }: SittingRoomLinkProps): 
 					to have one created, or add your own link.
 				</p>
 				<p class="sess-dispute__meta">
-					A link you add can't record attendance, so this session's payout is held until your attendee
-					confirms it happened.
+					Anyone holding a link you add can join, paid or not. It also can't record attendance, so
+					this session's payout is held until your attendee confirms it happened.
 				</p>
 				<InputText
 					size="sm"

@@ -1775,7 +1775,7 @@ REVOKE ALL ON FUNCTION scheduling.fn_room_facts (scheduling.rooms) FROM public, 
 
 REVOKE ALL ON FUNCTION scheduling.claim_rooms_to_mint (integer) FROM public, anon, authenticated;
 
-REVOKE ALL ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean) FROM public, anon,
+REVOKE ALL ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean, boolean) FROM public, anon,
 authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.fail_room (uuid, text, boolean) FROM public, anon, authenticated;
@@ -1786,7 +1786,7 @@ REVOKE ALL ON FUNCTION scheduling.room_synced (uuid, text) FROM public, anon, au
 
 GRANT EXECUTE ON FUNCTION scheduling.claim_rooms_to_mint (integer) TO service_role;
 
-GRANT EXECUTE ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean) TO service_role;
+GRANT EXECUTE ON FUNCTION scheduling.attach_room (uuid, uuid, text, text, text, text, boolean, boolean) TO service_role;
 
 REVOKE ALL ON FUNCTION scheduling.save_room_registrant (uuid, uuid, text, text) FROM public, anon, authenticated;
 
@@ -1821,6 +1821,8 @@ REVOKE ALL ON FUNCTION scheduling.fn_sync_attendance_row (scheduling.rooms, uuid
 authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.fn_room_presence (uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_room_unmatched (uuid) FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.record_presence (
     text, text, text, timestamptz, text, text, text, text, text, text
@@ -1869,6 +1871,8 @@ REVOKE ALL ON FUNCTION scheduling.fn_sitting_evidence_held (uuid) FROM public, a
 REVOKE ALL ON FUNCTION scheduling.fn_prune_presence () FROM public, anon, authenticated, service_role;
 
 GRANT EXECUTE ON FUNCTION scheduling.fn_room_presence (uuid) TO service_role;
+
+GRANT EXECUTE ON FUNCTION scheduling.fn_room_unmatched (uuid) TO service_role;
 
 GRANT EXECUTE ON FUNCTION scheduling.record_presence (
     text, text, text, timestamptz, text, text, text, text, text, text

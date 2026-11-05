@@ -138,6 +138,16 @@ export const DisputeCaseSchema = z.object({
 	payeeShareBp: basisPoints.nullable(),
 	settlement: DisputeSettlementSchema.nullable(),
 	audit: DisputeAuditSchema.nullable(),
+	/**
+	 * Who could reach the sitting's room, for an operator's eyes only (Decision #392): null to a party
+	 * and on a case with no room. Read live, because a provider's record can land after the audit.
+	 */
+	room: z.object({
+		/** The provider confirmed that holding the link was not enough to get in. */
+		guarded: z.boolean(),
+		/** People in the room who matched no seat (`scheduling.fn_room_unmatched`). */
+		unmatched: z.number().int().min(0),
+	}).nullable(),
 	amountMinor: minorUnitsNonNeg,
 	currency,
 	/** The money at stake, server-formatted. */

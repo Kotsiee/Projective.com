@@ -163,6 +163,19 @@ Deno.test("a live case carries the actions the database offers", () => {
 	assertEquals([d.canRespond, d.canEscalate, d.canResolve], [true, true, false]);
 });
 
+Deno.test("who could reach the room maps for an operator, and a party's read has none", () => {
+	assertEquals(toDisputeCase(raw({ room: { guarded: true, unmatched: 2 } }))!.room, {
+		guarded: true,
+		unmatched: 2,
+	});
+	assertEquals(toDisputeCase(raw({ room: { guarded: false, unmatched: -1 } }))!.room, {
+		guarded: false,
+		unmatched: 0,
+	});
+	assertEquals(toDisputeCase(raw({ room: null }))!.room, null);
+	assertEquals(toDisputeCase(raw())!.room, null);
+});
+
 Deno.test("the review SLA maps when present and reads null on an older row", () => {
 	assertEquals(
 		toDisputeCase(raw({ review_by: "2026-10-16T11:00:00.000Z" }))!.reviewBy,

@@ -1222,14 +1222,17 @@ reading attendance needs it. Request `access_type=offline` and
 `prompt=consent` on the first connection so a refresh token is issued. Add
 `include_granted_scopes=true` so a later Drive consent adds to the grant instead of replacing it.
 
-**Meet rooms** (Decision #383, rulings R3 and R5). Call `POST https://meet.googleapis.com/v2/spaces`
-with `config.accessType = OPEN`, so an attendee can enter without the host. This writes nothing to
+**Meet rooms** (Decision #383, rulings R3 and R5; Decision #392). Call
+`POST https://meet.googleapis.com/v2/spaces` with `config.accessType = OPEN` on a free room, so an
+attendee can enter without the host, and `RESTRICTED` on a paid one: only invitees skip the knock and
+Projective adds none, so everyone knocks and the host admits them. A paid room reads `guarded` only
+if the `config` in Google's answer says `RESTRICTED`. This writes nothing to
 the host's calendar, so nothing comes back through inbound sync. No idempotency key is documented:
 store `name` and `meetingUri` as soon as they return, and treat a stray duplicate space as harmless,
 because only the stored one is ever used. Store the join link in `scheduling.events.meeting_url`,
 which the column grants withhold from every client role; parties read it through
-`scheduling.get_event_rooms`. How `OPEN` and conference records behave on a personal Gmail account
-is not documented, so test it before promising it.
+`scheduling.get_event_rooms`. How `OPEN`, `RESTRICTED` and conference records behave on a personal
+Gmail account is not documented, so test it before promising it.
 
 **Push and sync.**
 
@@ -1288,12 +1291,15 @@ the next update and becomes an insert.
 
 - **Refresh tokens rotate on every refresh.** Persist the new token in the same transaction that
   reads the old one, or a concurrent refresh strands the connection (SSOT §3.3).
-- **Teams rooms** (Decision #383, rulings R3 and R4). `POST /me/onlineMeetings/createOrGet` with
-  `externalId` set to the room id: a retry returns the same meeting, and the meeting does not appear
-  on the host's calendar. `createOrGet` takes no lobby setting, so a `PATCH` then sets
-  `lobbyBypassSettings` to `everyone` so an attendee can enter without the host (ruling R5). A tenant
-  may forbid that, which leaves the room working and the attendee's join click as their evidence. Work
-  and school accounts only: a personal account gets no Teams room, and the picker says so.
+- **Teams rooms** (Decision #383, rulings R3 and R4; Decision #392).
+  `POST /me/onlineMeetings/createOrGet` with `externalId` set to the room id: a retry returns the same
+  meeting, and the meeting does not appear on the host's calendar. `createOrGet` takes no lobby
+  setting, so a `PATCH` then sets `lobbyBypassSettings`. A free room gets `scope: everyone` so an
+  attendee can enter without the host (ruling R5). A paid room gets `scope: organizer` with
+  `isDialInBypassEnabled: false`, because dial-in would otherwise skip the lobby. A tenant may forbid
+  the `PATCH`, which leaves the room working and the attendee's join click as their evidence, and a
+  paid room then does not read `guarded`. Work and school accounts only: a personal account gets no
+  Teams room, and the picker says so.
 - **Teams attendance.** After the meeting, read `attendanceReports` as the organizer
   (`OnlineMeetingArtifact.Read.All`). Personal accounts are not supported and there is no live feed,
   so Teams evidence arrives only after the meeting (Decision #383 (c)).
@@ -1332,15 +1338,19 @@ the next update and becomes an insert.
    `ZOOM_CLIENT_SECRET`.
 3. **Scopes.** Add Zoom's granular `meeting:write:meeting`, `meeting:read:meeting`,
    `meeting:update:meeting`, `meeting:delete:meeting`, `meeting:write:registrant`,
-   `meeting:read:list_past_participants` and `user:read:user` to the Marketplace app. Zoom takes
-   scopes from the app and answers "Invalid scope" to any in the authorize URL, so the seed sets
-   `send_scopes: false`. Only `meeting:write:meeting` is required to connect: without the others a
-   room still works, with a best-effort sync, the shared link, and sittings held for review.
+   `meeting:write:batch_registrants`, `meeting:read:list_past_participants` and `user:read:user` to
+   the Marketplace app. Zoom takes scopes from the app and answers "Invalid scope" to any in the
+   authorize URL, so the seed sets `send_scopes: false`. Only `meeting:write:meeting` is required to
+   connect: without the others a room still works, with a best-effort sync, the shared link, and
+   sittings held for review. Without `meeting:write:batch_registrants`, which also means any connection
+   made before the app gained it until its host reconnects, a paid room on a licensed host gets a
+   waiting room instead of approved registrants.
 4. **Event Subscriptions**:
    - endpoint: `{APP_URL}/api/integrations/webhooks/zoom`. The old
      `{APP_URL}/api/sessions/webhooks/zoom` re-exports the same handler until the app is re-pointed;
-   - events: `meeting.participant_joined`, `meeting.participant_left` and
-     `meeting.participant_jbh_waiting` (Pro or above), plus `app_deauthorized`
+   - events: `meeting.participant_joined`, `meeting.participant_left`,
+     `meeting.participant_jbh_waiting` (Pro or above) and
+     `meeting.participant_joined_waiting_room`, plus `app_deauthorized`
      (revokes the connection and deletes its secrets, which Marketplace review requires);
    - copy the Secret Token into `ZOOM_WEBHOOK_SECRET` and run the URL validation. The handler
      answers the challenge only after a verified signature.
@@ -1350,10 +1360,35 @@ the next update and becomes an insert.
 **Rooms and presence.**
 
 - `POST https://api.zoom.us/v2/users/me/meetings` with
-  `{ topic, type: 2, start_time, duration,
-  timezone, settings: { join_before_host: true, waiting_room: false } }`. An attendee must be able
-  to enter without the host: with `join_before_host: false`, a host who never starts leaves no record
-  that the attendee came, and the no-show refund cannot fire (Decision #383, ruling R5).
+  `{ topic, type: 2, start_time, duration, timezone, settings }`. What `settings` holds depends on
+  whether money turns on the room (`scheduling.fn_room_facts`) and on the host:
+
+  | Room                                                 | `approval_type` | `join_before_host` | `waiting_room` | A copied plain link            |
+  | :--------------------------------------------------- | :-------------- | :----------------- | :------------- | :----------------------------- |
+  | Free, licensed host                                  | `0`             | `true`             | `false`        | Gets in                        |
+  | Free, Basic host                                     | `2`             | `true`             | `false`        | Gets in                        |
+  | Paid, licensed host, batch scope granted             | `1`             | `true`             | `false`        | A form nobody approves         |
+  | Paid, Basic host, or a licensed host without the scope | `2`           | `false`            | `true`         | The waiting room, then the host |
+
+  A free room lets an attendee in without the host (Decision #383, ruling R5). A paid room keeps out
+  whoever merely holds its link (Decision #392). Zoom documents that an enabled waiting room disables
+  `join_before_host`, so nobody enters that room until the host does. An approving room also sets
+  `allow_multiple_devices: false`, so a personal link passed on is in the room on one device at a
+  time. A room reads `guarded` only if the `settings` in Zoom's answer confirm it, because an account's
+  own locks can overrule a request.
+- **Approving a registrant.** At a person's first join, `POST /meetings/{id}/batch_registrants` with
+  `{ auto_approve: true, registrants_confirmation_email: false, registrants: [{ email, first_name }] }`.
+  `POST /meetings/{id}/registrants` takes `auto_approve` too, but its answer leaves out `join_url` on
+  a manual-approval meeting, so the batch endpoint is the one call that approves and gives the link.
+  It needs a licensed host and a scheduled meeting, and its rate-limit label is `HEAVY`. If no personal
+  link can be made, `/meet` answers try again rather than the room's plain link (`link_required`); the
+  press of join is already on record by then.
+- **Reading attendance after a meeting.** `GET /past_meetings/{id}/participants` needs Pro or above.
+  Basic answers `400` with code `200`, a failed read, so a Basic host's room is never stamped as read
+  and a no-show there holds for review (ruling R5; Decision #392). `404` with code `3001` is a meeting
+  that never ran. `GET /past_meetings/{id}/instances` lists no plan limit but is no way round this:
+  Zoom's staff report that it omits one-person meetings, so a host alone would read as absent. The
+  participants call also omits one-person meetings by default (Decision #392, flag (j)).
 - Store the `join_url` and the passcode in `scheduling.events.meeting_url` / `meeting_passcode`.
   Never store `start_url`: it is a host credential that expires two hours after creation. Read a
   fresh one when the host clicks join.

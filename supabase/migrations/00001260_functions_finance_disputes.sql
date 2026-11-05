@@ -616,6 +616,9 @@ $$;
 -- for anyone else. Carries what the status panel renders — the sitting, the money at stake, the audit
 -- snapshot, the deadline, every statement with its evidence files' metadata (the files themselves are
 -- served by the app after this read admits the caller), and which actions are open to the caller.
+-- `room` is an operator's alone (Decision #392), read live rather than frozen in the audit, because the
+-- audit runs as soon as a sitting ends and a Meet or Teams record arrives after it. A dispute keeps
+-- those rows from retention (scheduling.fn_sitting_evidence_held), so the count outlives the sitting.
 CREATE OR REPLACE FUNCTION finance.get_dispute(p_dispute_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -663,6 +666,12 @@ BEGIN
         'payee_share_bp', v_d.payee_share_bp,
         'settlement', v_d.settlement,
         'audit', v_d.audit,
+        'room', CASE WHEN v_role = 'operator' THEN (
+            SELECT pg_catalog.jsonb_build_object(
+                       'guarded', r.guarded, 'unmatched', scheduling.fn_room_unmatched(r.id))
+              FROM scheduling.rooms r
+             WHERE r.session_event_id = v_d.session_event_id
+        ) END,
         'amount_minor', v_e.amount_cents,
         'currency', v_e.currency,
         'project', pg_catalog.jsonb_build_object('id', v_ctx.project_id, 'slug', v_ctx.project_slug),

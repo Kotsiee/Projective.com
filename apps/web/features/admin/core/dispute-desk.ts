@@ -143,6 +143,16 @@ export function operatorSentence(
 
 // #region The ruling form
 /** Each outcome as the operator chooses it. */
+/** Who could reach a sitting's room, in a sentence an operator can weigh (Decision #392). */
+export function roomAccessLine(room: NonNullable<DisputeCase["room"]>): string {
+	const door = room.guarded
+		? "Holding this room's link wasn't enough to get in."
+		: "Anyone holding this room's link could get in.";
+	if (room.unmatched === 0) return `${door} Everyone in the room matched a seat.`;
+	const who = room.unmatched === 1 ? "1 person" : `${room.unmatched} people`;
+	return `${door} ${who} in the room matched no seat, which can also be a seat holder on a second device.`;
+}
+
 export const OUTCOME_LABEL: Record<DisputeOutcome, string> = {
 	release: "Pay the provider",
 	refund: "Refund the attendee",
@@ -309,6 +319,7 @@ export function previewCase(item: DisputeQueueItem): DisputeCase {
 			auditedAt: item.openedAt,
 			timeline: [],
 		},
+		room: { guarded: true, unmatched: 1 },
 		amountMinor: item.amountMinor,
 		currency: item.currency,
 		amountLabel: item.amountLabel,

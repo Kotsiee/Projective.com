@@ -1104,18 +1104,42 @@ Deno.test("webhook: a host is known by their Zoom account, a guest by their regi
 			event_ts,
 			payload: { object: { ...JOINED.payload.object, host_id: "zoom-host", participant } },
 		});
-	await world({ db: { "integrations.rpc.fn_record_presence_delivery": door.route } }, async (calls) => {
-		await zoomCall(await with_({ id: "zoom-host", user_id: 1, join_time: "2026-11-04T11:59:00Z" }));
-		await zoomCall(await with_({ registrant_id: "reg-1", participant_uuid: "p-2", join_time: "2026-11-04T12:00:00Z" }));
-		await zoomCall(await with_({ participant_uuid: "p-3" }, "meeting.participant_jbh_waiting", 1762257600001));
-		const [host, guest, waiting] = named(calls, "integrations.rpc.fn_record_presence_delivery");
-		assertEquals(host.json.p_account_id, "zoom-host");
-		assertEquals(host.json.p_participant_key, "zoom-host");
-		assertEquals(guest.json.p_account_id, null);
-		assertEquals(guest.json.p_registrant_id, "reg-1");
-		assertEquals(guest.json.p_participant_key, "reg-1");
-		assertEquals(waiting.json.p_action, "waiting");
-	});
+	await world(
+		{ db: { "integrations.rpc.fn_record_presence_delivery": door.route } },
+		async (calls) => {
+			await zoomCall(
+				await with_({ id: "zoom-host", user_id: 1, join_time: "2026-11-04T11:59:00Z" }),
+			);
+			await zoomCall(
+				await with_({
+					registrant_id: "reg-1",
+					participant_uuid: "p-2",
+					join_time: "2026-11-04T12:00:00Z",
+				}),
+			);
+			await zoomCall(
+				await with_({ participant_uuid: "p-3" }, "meeting.participant_jbh_waiting", 1762257600001),
+			);
+			await zoomCall(
+				await with_(
+					{ participant_uuid: "p-4" },
+					"meeting.participant_joined_waiting_room",
+					1762257600002,
+				),
+			);
+			const [host, guest, waiting, inWaitingRoom] = named(
+				calls,
+				"integrations.rpc.fn_record_presence_delivery",
+			);
+			assertEquals(host.json.p_account_id, "zoom-host");
+			assertEquals(host.json.p_participant_key, "zoom-host");
+			assertEquals(guest.json.p_account_id, null);
+			assertEquals(guest.json.p_registrant_id, "reg-1");
+			assertEquals(guest.json.p_participant_key, "reg-1");
+			assertEquals(waiting.json.p_action, "waiting");
+			assertEquals(inWaitingRoom.json.p_action, "waiting");
+		},
+	);
 });
 
 Deno.test("accessToken: a live token comes straight back", () =>

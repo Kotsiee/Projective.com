@@ -2439,13 +2439,16 @@ AS $$
      LIMIT 1;
 $$;
 
--- What a provider needs to know about a room, whichever anchor it has.
+-- What a provider needs to know about a room, whichever anchor it has. `o_paid` says money turns on
+-- who gets in (Decision #392): every sitting, and a paid consultation once one can be booked. They
+-- are refused today (Decision #343, ruling C1), so no call reads true yet.
 CREATE OR REPLACE FUNCTION scheduling.fn_room_facts(
     r scheduling.rooms,
     OUT o_host uuid,
     OUT o_title text,
     OUT o_starts_at timestamptz,
-    OUT o_ends_at timestamptz
+    OUT o_ends_at timestamptz,
+    OUT o_paid boolean
 )
 LANGUAGE plpgsql
 STABLE
@@ -2462,10 +2465,12 @@ BEGIN
           JOIN projects.cohorts c ON c.id = e.cohort_id
           JOIN projects.projects p ON p.id = c.project_id
          WHERE e.id = r.session_event_id;
+        o_paid := true;
     ELSIF r.call_id IS NOT NULL THEN
         SELECT c.host_user_id, 'A call on Projective',
-               COALESCE(c.confirmed_start, c.proposed_start), COALESCE(c.confirmed_end, c.proposed_end)
-          INTO o_host, o_title, o_starts_at, o_ends_at
+               COALESCE(c.confirmed_start, c.proposed_start), COALESCE(c.confirmed_end, c.proposed_end),
+               c.call_type = 'paid'::scheduling.call_type
+          INTO o_host, o_title, o_starts_at, o_ends_at, o_paid
           FROM scheduling.discovery_calls c
          WHERE c.id = r.call_id;
     ELSE
@@ -2473,16 +2478,18 @@ BEGIN
           INTO o_host, o_title, o_starts_at, o_ends_at
           FROM scheduling.events e
          WHERE e.id = r.event_id;
+        o_paid := false;
     END IF;
 END;
 $$;
 
 -- Take the rooms due to be minted. A mint a crashed run left behind is taken again after ten minutes;
--- a stray duplicate at the provider is harmless, because only the attached id is ever used.
+-- a stray duplicate at the provider is harmless, because only the attached id is ever used. `paid` and
+-- the connection's scopes decide how a room keeps out whoever merely holds its link (Decision #392).
 CREATE OR REPLACE FUNCTION scheduling.claim_rooms_to_mint(p_limit integer DEFAULT 50)
 RETURNS TABLE (
     room_id uuid, provider text, connection_id uuid, host_user_id uuid, host_account text, title text,
-    starts_at timestamptz, ends_at timestamptz
+    starts_at timestamptz, ends_at timestamptz, paid boolean, granted_scopes text[]
 )
 LANGUAGE plpgsql
 VOLATILE
@@ -2511,11 +2518,12 @@ BEGIN
         provider := r.provider;
         connection_id := scheduling.fn_room_connection(f.o_host, r.provider);
         host_user_id := f.o_host;
-        SELECT c.external_account_id INTO host_account
+        SELECT c.external_account_id, c.granted_scopes INTO host_account, granted_scopes
           FROM integrations.user_connections c WHERE c.id = connection_id;
         title := f.o_title;
         starts_at := f.o_starts_at;
         ends_at := f.o_ends_at;
+        paid := COALESCE(f.o_paid, false);
         RETURN NEXT;
     END LOOP;
 END;
@@ -2530,7 +2538,8 @@ CREATE OR REPLACE FUNCTION scheduling.attach_room(
     p_host_id text,
     p_join_url text,
     p_passcode text DEFAULT NULL,
-    p_registration boolean DEFAULT false
+    p_registration boolean DEFAULT false,
+    p_guarded boolean DEFAULT false
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -2547,6 +2556,7 @@ BEGIN
            provider_meeting_id = p_meeting_id,
            provider_host_id = p_host_id,
            registration = COALESCE(p_registration, false),
+           guarded = COALESCE(p_guarded, false),
            last_error = NULL
      WHERE id = p_room AND status = 'minting'
     RETURNING * INTO r;
@@ -3042,6 +3052,40 @@ BEGIN
 END;
 $$;
 
+-- How many people were in a room with no seat behind them, as far as the room can tell (Decision
+-- #392). Nothing names them: a key is a hash, and this returns a count. It reads what fn_room_presence
+-- reads, so a provider's own record replaces the webhooks once it has been read. record_presence gives
+-- a participant nobody can name in a one-seat room to that seat's attendee, so `unmatched` alone would
+-- read nought on exactly the rooms a copied link is likeliest to reach. Every such key past the first
+-- counts too, and the first as well once somebody on that seat was named another way. This is evidence
+-- for a person to weigh and it moves no money: a seat holder on a second device reads the same.
+CREATE OR REPLACE FUNCTION scheduling.fn_room_unmatched(p_room uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH ledger AS (
+        SELECT p.matched_by, p.participant_key
+          FROM scheduling.presence_events p
+         WHERE p.room_id = p_room AND p.action IN ('joined', 'left')
+           AND (p.source = 'reconcile' OR NOT EXISTS (
+               SELECT 1 FROM scheduling.presence_events x
+                WHERE x.room_id = p_room AND x.source = 'reconcile' AND x.action IN ('joined', 'left')
+           ))
+    )
+    SELECT (
+        count(DISTINCT l.participant_key) FILTER (WHERE l.matched_by = 'unmatched')
+        + GREATEST(
+            count(DISTINCT l.participant_key) FILTER (WHERE l.matched_by = 'sole_attendee')
+                - CASE WHEN COALESCE(bool_or(l.matched_by IN ('registrant', 'email')), false) THEN 0 ELSE 1 END,
+            0
+        )
+    )::integer
+      FROM ledger l;
+$$;
+
 -- Into a room, as a signed-in person. The same answers session_join_link gives (`state` says why there
 -- is no URL), for every kind of room: a sitting asks that door, a call needs to be confirmed, and an
 -- event's attendee must have said they are coming. Pressing join while the room is open is recorded:
@@ -3127,7 +3171,9 @@ BEGIN
         IF v_personal IS NULL AND r.registration AND v_role = 'attendee' THEN
             SELECT pg_catalog.jsonb_build_object(
                        'room_id', r.id, 'user_id', v_uid, 'email', a.email,
-                       'first_name', COALESCE(NULLIF(pg_catalog.btrim(u.first_name), ''), 'Guest')
+                       'first_name', COALESCE(NULLIF(pg_catalog.btrim(u.first_name), ''), 'Guest'),
+                       -- A paid room's people are approved by Projective, at this press.
+                       'approve', COALESCE(f.o_paid, false)
                    )
               INTO v_register
               FROM auth.users a
@@ -3156,6 +3202,9 @@ BEGIN
         'url', CASE WHEN v_state = 'open' THEN v_url END,
         -- The service reads a fresh host link or makes a personal one with these; they never leave it.
         'register', v_register,
+        -- A paid room that registers people approves them itself, so its plain link leads to a form
+        -- nobody answers, and the service never falls back on it (Decision #392).
+        'link_required', v_personal IS NULL AND r.registration AND COALESCE(f.o_paid, false),
         'connection_id', CASE WHEN v_role = 'host' OR v_register IS NOT NULL THEN r.connection_id END,
         'provider_meeting_id', CASE WHEN v_role = 'host' OR v_register IS NOT NULL THEN r.provider_meeting_id END
     );

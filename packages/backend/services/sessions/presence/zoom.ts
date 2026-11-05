@@ -4,9 +4,10 @@ import { hmacSha256Hex, type PresenceAdapter, timingSafeEqual, usableSecret } fr
 
 /**
  * Zoom's presence adapter — `meeting.participant_joined` / `participant_left` /
- * `participant_jbh_waiting` from a Zoom app's Event Subscription (Decision #171). `participant.id` is
- * the account at Zoom, which stays the same for a host and is empty for a guest, so it is how a room
- * knows its host; a guest reaches a person through `registrant_id`, when they used a personal link.
+ * `participant_jbh_waiting` / `participant_joined_waiting_room` from a Zoom app's Event Subscription
+ * (Decision #171). `participant.id` is the account at Zoom, which stays the same for a host and is
+ * empty for a guest, so it is how a room knows its host; a guest reaches a person through
+ * `registrant_id`, when they used a personal link.
  *
  * **Signature.** Every delivery carries `x-zm-request-timestamp` (seconds) and `x-zm-signature`
  * (`v0=` + hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the subscription's Secret Token). A
@@ -26,6 +27,7 @@ const HANDLED: Readonly<Record<string, PresenceEvent["action"]>> = {
 	"meeting.participant_joined": "joined",
 	"meeting.participant_left": "left",
 	"meeting.participant_jbh_waiting": "waiting",
+	"meeting.participant_joined_waiting_room": "waiting",
 };
 
 interface ZoomParticipant {

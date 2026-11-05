@@ -633,6 +633,12 @@ CREATE TABLE scheduling.rooms (
     provider_host_id text,
     -- People can hold personal links on this meeting, which Zoom allows on a licensed host only.
     registration boolean NOT NULL DEFAULT false,
+    -- The provider confirmed that holding this room's link is not enough to get in (Decision #392):
+    -- registration Projective approves, a waiting room, a knock or a lobby. Read from the provider's
+    -- answer, never assumed, so a dispute case can say whether a copied link could have worked. A
+    -- manual link is never guarded. A record and nothing more: no join and no money reads it, so a
+    -- provider's answer can neither lock out somebody who paid nor switch a protection off.
+    guarded boolean NOT NULL DEFAULT false,
     status text NOT NULL DEFAULT 'pending',
     attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     last_error text CHECK (char_length(last_error) <= 200),

@@ -468,6 +468,7 @@ the column its owner already withholds from clients, so a bearer link has one ho
 | `provider_meeting_id` | text        | Zoom meeting id, Meet space name or Graph onlineMeeting id. UNIQUE with `provider`.     |
 | `provider_host_id`    | text        | The host's account at the provider, frozen at mint. Attendance matches the host on it.  |
 | `registration`        | boolean     | People can hold personal links on this meeting: a licensed Zoom host only.              |
+| `guarded`             | boolean     | The provider's own answer confirmed that holding this room's link is not enough to get in: registration Projective approves, a waiting room, a knock or a lobby (Decision #392). Never assumed. A manual link is never guarded. A record for an operator's case: no join and no money reads it. |
 | `status`              | text        | `pending → minting → ready`; `failed`; `closing → closed`. A manual link is born `ready`. |
 | `attempts` · `last_error` | smallint · text | Mint tries, capped by `room_mint_max_attempts`.                                     |
 | `moved_at`            | timestamptz | The time changed after minting, so the provider's copy needs updating.                  |

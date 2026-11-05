@@ -14,6 +14,7 @@ import {
 	partyLabel,
 	previewCase,
 	previewQueue,
+	roomAccessLine,
 	rulingProblem,
 	shareToBp,
 	tabCount,
@@ -92,6 +93,21 @@ Deno.test("the preview queue is a valid queue with every live status and one ove
 		assertEquals([d.role, d.canResolve], ["operator", true]);
 	}
 	assertEquals(isPreviewCase("11111111-1111-4111-8111-111111111111"), false);
+});
+
+Deno.test("the room's line says whether a link was enough, and how many people matched no seat", () => {
+	assertEquals(
+		roomAccessLine({ guarded: true, unmatched: 0 }),
+		"Holding this room's link wasn't enough to get in. Everyone in the room matched a seat.",
+	);
+	assertEquals(
+		roomAccessLine({ guarded: false, unmatched: 1 }),
+		"Anyone holding this room's link could get in. 1 person in the room matched no seat, which can also be a seat holder on a second device.",
+	);
+	assertEquals(
+		roomAccessLine({ guarded: true, unmatched: 3 }),
+		"Holding this room's link wasn't enough to get in. 3 people in the room matched no seat, which can also be a seat holder on a second device.",
+	);
 });
 
 Deno.test("names, deadlines and evidence read as one meta line", () => {
