@@ -152,7 +152,8 @@ $$;
 -- #region 4. Free/busy predicate
 -- Does the owner already have something occupying this window? The booking gate in migration 5/5
 -- composes this with the working-hours / call-window / blackout / buffer checks. `cancelled` rows
--- never occupy time.
+-- never occupy time, and neither does a `passive` one, which its host left open to be booked over
+-- (Decision #389). `<>` rather than `= 'disruptive'`, so a value this does not know yet holds time.
 CREATE OR REPLACE FUNCTION scheduling.fn_has_conflicting_event(
     p_schedule uuid, p_starts_at timestamptz, p_ends_at timestamptz
 )
@@ -168,6 +169,7 @@ AS $$
         WHERE e.schedule_id = p_schedule
           AND COALESCE(e.status, 'confirmed'::scheduling.event_status) <> 'cancelled'::scheduling.event_status
           AND e.kind <> 'availability'::scheduling.event_kind
+          AND e.availability_behavior <> 'passive'
           AND e.starts_at < p_ends_at
           AND e.ends_at > p_starts_at
     );
@@ -243,7 +245,7 @@ AS $$
     SELECT COALESCE((
         SELECT EXISTS (
                 SELECT 1 FROM scheduling.event_attendees a
-                WHERE a.event_id = e.id AND a.user_id = auth.uid ()
+                WHERE a.event_id = e.id AND a.user_id = auth.uid () AND a.archived_at IS NULL
             )
             OR e.created_by = auth.uid ()
             OR (e.schedule_id IS NOT NULL AND scheduling.fn_can_manage_schedule (e.schedule_id))
@@ -265,7 +267,7 @@ SET search_path = ''
 AS $$
     SELECT auth.uid () IS NOT NULL AND EXISTS (
         SELECT 1 FROM scheduling.event_attendees a
-        WHERE a.event_id = p_event_id AND a.user_id = auth.uid ()
+        WHERE a.event_id = p_event_id AND a.user_id = auth.uid () AND a.archived_at IS NULL
     );
 $$;
 
@@ -299,7 +301,7 @@ AS $$
            e.created_by = auth.uid ()
            OR EXISTS (
                SELECT 1 FROM scheduling.event_attendees a
-               WHERE a.event_id = e.id AND a.user_id = auth.uid ()
+               WHERE a.event_id = e.id AND a.user_id = auth.uid () AND a.archived_at IS NULL
                  AND a.response IN (
                      'accepted'::scheduling.rsvp_response, 'tentative'::scheduling.rsvp_response
                  )
@@ -399,6 +401,7 @@ DECLARE
     v_start timestamptz;
     v_end timestamptz;
     v_line uuid;
+    v_sitting uuid;
 BEGIN
     IF p_status NOT IN ('resolved', 'lapsed') THEN
         RAISE EXCEPTION 'close_reschedule_round: % is not an ending', p_status USING ERRCODE = '22023';
@@ -437,7 +440,8 @@ BEGIN
     WHERE id = p_reschedule_id;
 
     IF p_status = 'resolved' THEN
-        UPDATE scheduling.events SET starts_at = v_start, ends_at = v_end WHERE id = v_event;
+        UPDATE scheduling.events SET starts_at = v_start, ends_at = v_end WHERE id = v_event
+        RETURNING source_session_event_id INTO v_sitting;
     END IF;
 
     INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary, detail, target_id)
@@ -450,6 +454,14 @@ BEGIN
         p_resolved_proposal_id::text
     )
     RETURNING id INTO v_line;
+
+    -- A meeting that moved tells everyone on it, here because every ending comes through this door,
+    -- a vote settled by somebody's page load included. A sitting has its own session notices.
+    IF p_status = 'resolved' AND v_sitting IS NULL THEN
+        PERFORM scheduling.fn_notify_event_seats(
+            v_event, 'everyone', 'New time', 'A new time was agreed, and it is on your calendar.', p_actor
+        );
+    END IF;
 
     RETURN v_line;
 END;
@@ -1077,7 +1089,10 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-    SELECT EXISTS (SELECT 1 FROM scheduling.event_attendees a WHERE a.event_id = p_event_id);
+    SELECT EXISTS (
+        SELECT 1 FROM scheduling.event_attendees a
+        WHERE a.event_id = p_event_id AND a.archived_at IS NULL
+    );
 $$;
 
 CREATE OR REPLACE FUNCTION scheduling.fn_guard_rostered_event()
@@ -1138,6 +1153,395 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+-- #region 5b. Routines and availability behaviour (Decision #389)
+-- Does somebody else rely on this entry holding its time? A paid sitting, a booking, an engagement's
+-- meeting or anything with people seated on it: letting a client book over one would double-book a
+-- commitment, so none of them can be passive. Everything else is its host's own time to give away.
+CREATE OR REPLACE FUNCTION scheduling.fn_event_holds_time(e scheduling.events)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT e.project_id IS NOT NULL
+        OR e.source_session_event_id IS NOT NULL
+        OR e.kind IN ('session'::scheduling.event_kind, 'booking'::scheduling.event_kind)
+        OR scheduling.fn_event_has_roster(e.id);
+$$;
+
+-- The table's half of that rule, for every role and every path to the column, so the service-role
+-- doors and a direct PostgREST write are held to the same line. It fires only on a passive row, and
+-- on what could turn one into a commitment.
+CREATE OR REPLACE FUNCTION scheduling.fn_guard_event_behavior()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF scheduling.fn_event_holds_time(NEW) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: this is a commitment, so it has to hold its time';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- Seating somebody makes an entry a commitment, so a passive one takes its time back. Here on the table
+-- rather than in each door that seats people, because the time has to hold whichever way a seat
+-- arrived. Asks the roster helper, so a seat that does not count changes nothing.
+CREATE OR REPLACE FUNCTION scheduling.trg_seat_holds_time()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE scheduling.events e
+       SET availability_behavior = 'disruptive'
+     WHERE e.id = NEW.event_id
+       AND e.availability_behavior = 'passive'
+       AND scheduling.fn_event_has_roster (e.id);
+    RETURN NULL;
+END;
+$$;
+
+-- A routine's behaviour moves the entries that agree with it. One its host set apart keeps its own,
+-- and a commitment stays where it is. A DEFINER, because the predicate reads the whole row and the
+-- room's columns are withheld from every client role (00002520), so as the invoker this refused the
+-- owner their own routine. The routine's RLS has already passed by now, and fk_event_routine puts
+-- every row this can reach on that routine's own schedule.
+CREATE OR REPLACE FUNCTION scheduling.trg_routine_behavior()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE scheduling.events e
+       SET availability_behavior = NEW.behavior
+     WHERE e.routine_id = NEW.id
+       AND e.availability_behavior = OLD.behavior
+       AND NOT scheduling.fn_event_holds_time(e);
+    RETURN NULL;
+END;
+$$;
+
+-- Organise one entry, and with it its whole series, because a series lists once and a half-moved one
+-- would list twice. `p_changes` names what moves: `routine_id` (null takes it out) and
+-- `availability_behavior`. A key left out stays as it is, and joining a routine takes on the routine's
+-- behaviour unless the same call names one. Leaving a routine changes nothing else: the entry keeps
+-- what it was doing, and says so on its row.
+--
+-- A definer for one reason: an entry read from a connected calendar finds its series through
+-- connected_event_details, which no client role may read. Its only two writes are these columns, so a
+-- provider never hears of it, and a row already saying this is not written at all, which keeps a save
+-- from queueing a provider write per occurrence (trg_event_mirrors fires on the column, changed or not).
+-- Answers the rows it wrote, for the agenda's re-read.
+CREATE OR REPLACE FUNCTION scheduling.organise_event(p_event uuid, p_changes jsonb)
+RETURNS uuid[]
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e scheduling.events;
+    v_join uuid := p_changes ->> 'routine_id';
+    v_behavior text := p_changes ->> 'availability_behavior';
+    v_inherited text;
+    v_root uuid;
+    v_series text;
+    v_ids uuid[];
+BEGIN
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = p_event AND x.archived_at IS NULL;
+    IF NOT FOUND OR e.schedule_id IS NULL OR e.project_id IS NOT NULL
+       OR NOT scheduling.fn_can_manage_schedule (e.schedule_id) THEN
+        RAISE EXCEPTION 'event: not yours to organise' USING ERRCODE = '42501';
+    END IF;
+    IF v_behavior = 'passive' AND scheduling.fn_event_holds_time (e) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: this is a commitment, so it has to hold its time';
+    END IF;
+    -- A routine it is already in is no join, or a save would be refused once that routine is archived.
+    IF v_join IS NOT NULL AND v_join IS DISTINCT FROM e.routine_id THEN
+        SELECT r.behavior INTO v_inherited FROM scheduling.routines r
+         WHERE r.id = v_join AND r.schedule_id = e.schedule_id AND r.is_active;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: that routine is no longer on this calendar';
+        END IF;
+    END IF;
+
+    v_root := COALESCE(e.recurrence_parent_id, e.id);
+    SELECT d.series_id INTO v_series
+      FROM scheduling.connected_event_details d WHERE d.event_id = e.id;
+
+    WITH series AS (
+        SELECT x.* FROM scheduling.events x
+         WHERE x.schedule_id = e.schedule_id
+           AND (x.id = v_root OR x.recurrence_parent_id = v_root
+                OR (v_series IS NOT NULL AND x.source_connection_id = e.source_connection_id
+                    AND EXISTS (SELECT 1 FROM scheduling.connected_event_details d
+                                 WHERE d.event_id = x.id AND d.series_id = v_series)))
+    ), target AS (
+        SELECT s.id,
+               CASE WHEN p_changes ? 'routine_id' THEN v_join ELSE s.routine_id END AS routine_id,
+               CASE WHEN scheduling.fn_event_holds_time (s) THEN s.availability_behavior
+                    ELSE COALESCE(v_behavior, v_inherited, s.availability_behavior) END AS availability_behavior
+          FROM series s
+    ), moved AS (
+        UPDATE scheduling.events x
+           SET routine_id = t.routine_id, availability_behavior = t.availability_behavior
+          FROM target t
+         WHERE x.id = t.id
+           AND (x.routine_id, x.availability_behavior) IS DISTINCT FROM (t.routine_id, t.availability_behavior)
+        RETURNING x.id
+    )
+    SELECT COALESCE(pg_catalog.array_agg(moved.id), '{}') INTO v_ids FROM moved;
+    RETURN v_ids;
+END;
+$$;
+-- #endregion
+
+-- #region 5c. Invitations
+-- The entry behind an invitation, locked, or the reason there is none to make. Only a host's own
+-- entry takes one: an engagement's meeting and a paid sitting have rosters their own doors seat, an
+-- entry from a connected calendar is its provider's, and a moment has no time to meet in. Nobody joins
+-- or leaves while a round is open, because the round's mode and electorate are counted from the roster.
+-- shortcut: a series takes no invitees, because a seat is one row and a series lists once; lift this
+-- when a seat can span occurrences.
+CREATE OR REPLACE FUNCTION scheduling.fn_invitable_event(p_event uuid)
+RETURNS scheduling.events
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e scheduling.events;
+BEGIN
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = p_event FOR UPDATE;
+    IF NOT FOUND OR e.schedule_id IS NULL OR NOT scheduling.fn_can_manage_schedule (e.schedule_id) THEN
+        RAISE EXCEPTION 'event: not yours to invite people to' USING ERRCODE = '42501';
+    END IF;
+    IF e.project_id IS NOT NULL OR e.source_session_event_id IS NOT NULL
+       OR e.source_connection_id IS NOT NULL
+       OR e.recurrence_rule IS NOT NULL OR e.recurrence_parent_id IS NOT NULL
+       OR e.ends_at <= e.starts_at
+       OR e.kind IN (
+           'session'::scheduling.event_kind, 'booking'::scheduling.event_kind,
+           'availability'::scheduling.event_kind, 'busy'::scheduling.event_kind,
+           'deadline'::scheduling.event_kind, 'holiday'::scheduling.event_kind
+       )
+       OR EXISTS (SELECT 1 FROM scheduling.discovery_calls c WHERE c.event_id = e.id) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: this entry can''t take invitations';
+    END IF;
+    IF e.archived_at IS NOT NULL OR e.ends_at <= pg_catalog.now()
+       OR e.status IS NOT DISTINCT FROM 'cancelled'::scheduling.event_status THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: this entry is over, so its guest list is too';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM scheduling.event_reschedules r
+         WHERE r.event_id = e.id AND r.status IN ('collecting', 'awaiting_counterparty', 'voting')
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '55000',
+            MESSAGE = 'event: a new time is being agreed, so the guest list can''t change until that closes';
+    END IF;
+    RETURN e;
+END;
+$$;
+
+-- Seat people on the caller's own entry, and tell them. One transaction, so a seat cannot exist that
+-- nobody was told about. Someone already seated keeps their answer and hears nothing, and someone whose
+-- invitation was withdrawn is asked afresh. The host takes a seat too, with the first guest, because
+-- a negotiation's mode and majority are counted from the roster.
+--
+-- 50 seats is the one brake on an invitation being a doorbell: it costs nothing to send and each one
+-- reaches somebody's phone. EVENT_ROSTER_MAX holds the same figure, pinned by coordination.contract.test.ts.
+-- Answers how many people were newly asked.
+CREATE OR REPLACE FUNCTION scheduling.invite_to_event(p_event uuid, p_users uuid[])
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e scheduling.events;
+    v_host uuid;
+    v_user uuid;
+    v_seats integer;
+    v_asked uuid[];
+BEGIN
+    e := scheduling.fn_invitable_event(p_event);
+    v_host := COALESCE(e.created_by, auth.uid ());
+
+    SELECT pg_catalog.array_agg(DISTINCT p.user_id) INTO v_asked
+      FROM org.users_public p
+     WHERE p.user_id = ANY (COALESCE(p_users, '{}')) AND p.user_id <> v_host;
+    IF v_asked IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    SELECT pg_catalog.count(*) INTO v_seats FROM (
+        SELECT a.user_id FROM scheduling.event_attendees a
+         WHERE a.event_id = e.id AND a.archived_at IS NULL
+        UNION
+        SELECT pg_catalog.unnest(v_asked || v_host)
+    ) s;
+    IF v_seats > 50 THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: an entry takes at most 50 people';
+    END IF;
+
+    INSERT INTO scheduling.event_attendees AS a (event_id, user_id, role, response, responded_at)
+    VALUES (
+        e.id, v_host, 'host'::scheduling.attendee_role,
+        'accepted'::scheduling.rsvp_response, pg_catalog.now()
+    )
+    ON CONFLICT (event_id, user_id) DO UPDATE
+        SET archived_at = NULL, updated_at = pg_catalog.now()
+      WHERE a.archived_at IS NOT NULL;
+
+    WITH seated AS (
+        INSERT INTO scheduling.event_attendees AS a (event_id, user_id)
+        SELECT e.id, u FROM pg_catalog.unnest(v_asked) AS u
+        ON CONFLICT (event_id, user_id) DO UPDATE
+            SET archived_at = NULL, response = 'pending'::scheduling.rsvp_response,
+                responded_at = NULL, updated_at = pg_catalog.now()
+          WHERE a.archived_at IS NOT NULL
+        RETURNING a.user_id
+    )
+    SELECT pg_catalog.array_agg(s.user_id) INTO v_asked FROM seated s;
+    IF v_asked IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    FOREACH v_user IN ARRAY v_asked LOOP
+        PERFORM comms.fn_notify(
+            v_user, 'schedule.event_invite',
+            pg_catalog.format('You''re invited: %s', COALESCE(NULLIF(e.title, ''), 'an event')),
+            'Accept, decline or propose another time from your calendar.',
+            'scheduling.events', e.id,
+            pg_catalog.jsonb_build_object('starts_at', e.starts_at, 'ends_at', e.ends_at),
+            auth.uid ()
+        );
+    END LOOP;
+
+    INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary)
+    VALUES (
+        e.id, 'edited', auth.uid (),
+        CASE pg_catalog.cardinality(v_asked)
+            WHEN 1 THEN 'Invited someone'
+            ELSE pg_catalog.format('Invited %s people', pg_catalog.cardinality(v_asked))
+        END
+    );
+    RETURN pg_catalog.cardinality(v_asked);
+END;
+$$;
+
+-- Tell the seats a move on a negotiation concerns: its `host`, its `guests`, or `everyone`, the actor
+-- apart. A DEFINER, like fn_notify_call, because the writers of a round run as the service role, which
+-- holds no USAGE on `comms`: called directly, this refused the round it was announcing. fn_notify never
+-- raises, so a notice cannot cost a move. Service role only, or a client could ping a whole roster.
+CREATE OR REPLACE FUNCTION scheduling.fn_notify_event_seats(
+    p_event uuid,
+    p_who text,
+    p_lead text,
+    p_body text,
+    p_actor uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e scheduling.events;
+BEGIN
+    SELECT * INTO e FROM scheduling.events x WHERE x.id = p_event;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+    PERFORM comms.fn_notify_many(
+        ARRAY(
+            SELECT a.user_id FROM scheduling.event_attendees a
+             WHERE a.event_id = e.id AND a.archived_at IS NULL
+               AND (p_who = 'everyone' OR (a.role = 'host'::scheduling.attendee_role) = (p_who = 'host'))
+        ),
+        'schedule.event_reschedule',
+        pg_catalog.format('%s: %s', p_lead, COALESCE(NULLIF(e.title, ''), 'an event')),
+        p_body,
+        'scheduling.events', e.id,
+        pg_catalog.jsonb_build_object('starts_at', e.starts_at, 'ends_at', e.ends_at),
+        p_actor
+    );
+END;
+$$;
+
+-- Withdraw one invitation, or with no attendee named every guest's, which is how a host cancels an
+-- entry people are on. The seat is archived and its person told. With the last guest gone the host's
+-- seat goes too, so the entry is private again and moves like any other. Answers how many were withdrawn.
+CREATE OR REPLACE FUNCTION scheduling.withdraw_invitation(p_event uuid, p_attendee uuid DEFAULT NULL)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e scheduling.events;
+    v_user uuid;
+    v_count integer := 0;
+BEGIN
+    e := scheduling.fn_invitable_event(p_event);
+
+    FOR v_user IN
+        UPDATE scheduling.event_attendees a
+           SET archived_at = pg_catalog.now(), updated_at = pg_catalog.now()
+         WHERE a.event_id = e.id
+           AND a.role <> 'host'::scheduling.attendee_role
+           AND a.archived_at IS NULL
+           AND (p_attendee IS NULL OR a.id = p_attendee)
+        RETURNING a.user_id
+    LOOP
+        v_count := v_count + 1;
+        PERFORM comms.fn_notify(
+            v_user, 'schedule.event_invite_withdrawn',
+            pg_catalog.format('Invitation withdrawn: %s', COALESCE(NULLIF(e.title, ''), 'an event')),
+            'The host withdrew this invitation, so it has left your calendar.',
+            'scheduling.events', e.id,
+            pg_catalog.jsonb_build_object('starts_at', e.starts_at, 'ends_at', e.ends_at),
+            auth.uid ()
+        );
+    END LOOP;
+    IF v_count = 0 AND p_attendee IS NOT NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: that person is no longer invited';
+    END IF;
+
+    UPDATE scheduling.event_attendees a
+       SET archived_at = pg_catalog.now(), updated_at = pg_catalog.now()
+     WHERE a.event_id = e.id
+       AND a.role = 'host'::scheduling.attendee_role
+       AND a.archived_at IS NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM scheduling.event_attendees g
+            WHERE g.event_id = e.id AND g.role <> 'host'::scheduling.attendee_role
+              AND g.archived_at IS NULL
+       );
+
+    IF v_count > 0 THEN
+        INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary)
+        VALUES (
+            e.id, 'edited', auth.uid (),
+            CASE v_count
+                WHEN 1 THEN 'Withdrew an invitation'
+                ELSE pg_catalog.format('Withdrew %s invitations', v_count)
+            END
+        );
+    END IF;
+    RETURN v_count;
+END;
+$$;
+-- #endregion
 
 -- A schedule's time zone must be one Postgres knows. save_owner_availability checked it, but a direct
 -- update did not, and an unknown zone made every booking against the schedule raise instead of refusing
@@ -2390,6 +2794,7 @@ AS $$
           SELECT ea.user_id
             FROM scheduling.event_attendees ea
            WHERE ea.event_id = r.event_id AND ea.user_id IS NOT NULL AND ea.role <> 'host'
+             AND ea.archived_at IS NULL
       ) a;
 $$;
 
@@ -2694,7 +3099,8 @@ BEGIN
                    e.meeting_url, a.response, e.archived_at
               INTO v_role, v_url, v_response, v_archived
               FROM scheduling.events e
-              LEFT JOIN scheduling.event_attendees a ON a.event_id = e.id AND a.user_id = v_uid
+              LEFT JOIN scheduling.event_attendees a
+                ON a.event_id = e.id AND a.user_id = v_uid AND a.archived_at IS NULL
              WHERE e.id = r.event_id;
             v_state := CASE
                 WHEN v_archived IS NOT NULL THEN 'cancelled'
@@ -2930,20 +3336,20 @@ SET search_path = ''
 AS $$
     SELECT a.user_id
       FROM scheduling.event_attendees a
-     WHERE a.event_id = p_event AND a.user_id IS NOT NULL
+     WHERE a.event_id = p_event AND a.user_id IS NOT NULL AND a.archived_at IS NULL
        AND a.response IN ('accepted'::scheduling.rsvp_response, 'tentative'::scheduling.rsvp_response)
     UNION
     SELECT e.created_by
       FROM scheduling.events e
      WHERE e.id = p_event AND e.created_by IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM scheduling.event_attendees a WHERE a.event_id = e.id)
+       AND NOT scheduling.fn_event_has_roster(e.id)
     UNION
     SELECT cm.user_id
       FROM scheduling.events e
       JOIN projects.session_events se ON se.id = e.source_session_event_id
       JOIN projects.cohort_memberships cm ON cm.cohort_id = se.cohort_id
      WHERE e.id = p_event
-       AND NOT EXISTS (SELECT 1 FROM scheduling.event_attendees a WHERE a.event_id = e.id)
+       AND NOT scheduling.fn_event_has_roster(e.id)
        AND projects.fn_seated_on(se.id, cm.user_id);
 $$;
 
@@ -3038,7 +3444,8 @@ BEGIN
      WHERE e.ends_at > pg_catalog.now()
        AND scheduling.fn_event_goes_out(e)
        AND e.id IN (
-           SELECT a.event_id FROM scheduling.event_attendees a WHERE a.user_id = c.user_id
+           SELECT a.event_id FROM scheduling.event_attendees a
+            WHERE a.user_id = c.user_id AND a.archived_at IS NULL
            UNION
            SELECT x.id FROM scheduling.events x WHERE x.created_by = c.user_id
            UNION
@@ -3179,6 +3586,7 @@ BEGIN
                'event', CASE WHEN e.id IS NOT NULL THEN pg_catalog.jsonb_build_object(
                    'title', CASE WHEN e.is_masked THEN '' ELSE e.title END,
                    'tentative', e.status IS NOT DISTINCT FROM 'tentative'::scheduling.event_status,
+                   'transparent', e.availability_behavior = 'passive',
                    'all_day', e.all_day,
                    'starts_at', e.starts_at,
                    'ends_at', e.ends_at,
@@ -3193,6 +3601,7 @@ BEGIN
                ) WHEN dc.id IS NOT NULL THEN pg_catalog.jsonb_build_object(
                    'title', 'A call on Projective',
                    'tentative', false,
+                   'transparent', false,
                    'all_day', false,
                    'starts_at', dc.confirmed_start,
                    'ends_at', dc.confirmed_end,

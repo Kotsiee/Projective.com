@@ -9,7 +9,10 @@ import {
 	classesOnPage,
 	dateRange,
 	hiddenSources,
+	invitationsOnly,
 	ownersOnPage,
+	pendingInvitations,
+	setInvitationsOnly,
 	shownClasses,
 	shownOwners,
 	sourcesOnPage,
@@ -24,6 +27,8 @@ export interface CalendarFilterFacetsProps {
 	events: readonly CalendarEvent[];
 	/** The agenda's zone: a picked day is that zone's midnight, not the browser's. */
 	tz: string;
+	/** The page's clock, with Invitations here: below 767px, where the lane that holds it is gone. */
+	invitationsAt?: number;
 }
 
 /** A picked calendar day, read as midnight in the agenda's zone. */
@@ -44,7 +49,10 @@ function zonedDay(d: Date, tz: string): number {
  * (`hiddenSources`).
  */
 export function CalendarFilterFacets(props: CalendarFilterFacetsProps): JSX.Element {
-	const { events, tz } = props;
+	const { events, tz, invitationsAt } = props;
+	const invites = invitationsAt === undefined
+		? 0
+		: pendingInvitations(events, invitationsAt).length;
 	const classes = classesOnPage(events);
 	const owners = ownersOnPage(events);
 	const sources = sourcesOnPage(events);
@@ -56,6 +64,17 @@ export function CalendarFilterFacets(props: CalendarFilterFacetsProps): JSX.Elem
 
 	return (
 		<>
+			{invites > 0 || (invitationsAt !== undefined && invitationsOnly.value)
+				? (
+					<LaneFilterChoices
+						label="Waiting on you"
+						options={[{ value: "invitations", label: `Invitations · ${invites}` }]}
+						active={invitationsOnly.value ? ["invitations"] : []}
+						onToggle={() => setInvitationsOnly(!invitationsOnly.value)}
+					/>
+				)
+				: null}
+
 			{classes.length > 1
 				? (
 					<LaneFilterChoices

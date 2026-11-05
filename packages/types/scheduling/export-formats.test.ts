@@ -43,6 +43,29 @@ const EVENTS: CalendarEvent[] = [
 	},
 ];
 
+Deno.test("TRANSP says whether an entry blocks time, and no routine goes into a file", () => {
+	const at = Date.UTC(2026, 6, 17, 9);
+	const entry = (id: string, over: Partial<CalendarEvent>): CalendarEvent => ({
+		id,
+		title: id,
+		kind: "sync",
+		start: at,
+		end: at + 3_600_000,
+		...over,
+	});
+	const ics = document([
+		entry("busy", {}),
+		entry("open", { availabilityBehavior: "passive", routineId: "rtn" }),
+		entry("slot", { status: "available" }),
+	]);
+	const vevents = ics.split("BEGIN:VEVENT").slice(1);
+	assert(vevents[0].includes("TRANSP:OPAQUE"));
+	assert(vevents[1].includes("TRANSP:TRANSPARENT"));
+	assert(vevents[2].includes("TRANSP:TRANSPARENT"));
+	assert(!ics.includes("rtn"));
+	assertEquals(ics.match(/BEGIN:VEVENT/g)?.length, 3);
+});
+
 function document(events: readonly CalendarEvent[] = EVENTS, origin?: string): string {
 	return serialiseIcsComponent(
 		calendarComponentFor(events, { timezone: TZ, stampIso: STAMP, calendarName: "Work", origin }),

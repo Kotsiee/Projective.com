@@ -374,6 +374,34 @@ MS Teams or Google Calendar, but with integrated financial protection.
   nobody else sees or is bound by it. An entry that moves alerts again at its new time, and one made
   inside its own lead still alerts once. A session keeps its own T-60, T-15 and T-5, a call its own
   reminder, and a connected calendar's entry the alerts its provider sends.
+- **A routine keeps a cadence as one thing** (Decision #389). The gym, focused work, language study:
+  a person groups recurring entries under a named Routine, which lists once in the agenda and unfolds
+  when they want the detail, so a daily habit is not forty disconnected rows. Entries drag in and out,
+  an entry from a connected calendar can be organised too, which changes nothing at its provider, and
+  a routine can carry the cadence its new entries repeat on. A routine organises time and never scores
+  it: no check-off, no completion, no streak (§5 keeps attendance streaks out on purpose).
+- **Whether an entry blocks bookings is its owner's call** (Decision #389). A **Disruptive** entry
+  counts as busy for discovery calls and session bookings. A **Passive** one leaves the time free, so
+  a client can book over it, and it shows on the grid as a hatched ghost rather than a solid card. An
+  entry takes its routine's setting on joining and follows it, unless its host set it apart. A
+  commitment somebody else relies on (a booked session, a call, an engagement's meeting, anything with
+  people on it) always holds its time. A passive routine's details point to matching Session Services
+  on the marketplace.
+- **Invitations** (Decision #390). The host of an entry can invite anyone on Projective to it, up to
+  50 people, and each hears in the app, by push and by email. An invitation waits under Invitations
+  beside the search, and as a hatched ghost on the grid, holding none of the reader's time until they
+  answer. Accept or Tentative hold it. Decline takes it off their calendar, and its link still opens
+  it if they change their mind. Anyone invited can propose another time instead, by the Handshake and
+  Majority Decision below: with one guest the other person says yes, and with more, the host puts the
+  times to a vote. The host hears of a proposed time, the guests of a vote, and everyone of a move.
+  The host can withdraw an invitation, and deleting the entry withdraws them all, and each person is
+  told. A series takes no guests yet, and neither can somebody with no account, whom nothing can
+  reach.
+- **A clash is said, never enforced.** An entry or an invitation that overlaps what already holds
+  the reader's time says "Clashes with" what, in the list, the inspector and, as the times change,
+  the event modal, which also sees time off and discovery calls. Nothing is refused for it: two
+  meetings at once is the reader's call. An unanswered invitation counts what it would clash with
+  and takes nothing itself, and time left passive holds nothing.
 - **Work Windows:** Freelancers set their availability based on their local **Time Zone**, which the
   system automatically converts for the Client.
 - **The Proposal Flow:** 1. Freelancer/Team proposes a Date, Time, and "Location" (Integrated Zoom,
@@ -389,7 +417,8 @@ MS Teams or Google Calendar, but with integrated financial protection.
   connected or Projective's own, is one row in the agenda list, on its next occurrence, and states
   how it repeats in its details; the grid still draws every occurrence. A person who turns
   on publishing gets a separate Projective calendar at that provider, holding their Projective
-  events with a Projective join link and no attendees. An agreed discovery call goes there too, for
+  events with a Projective join link and no attendees, each as a plain event that blocks that time
+  or, when passive, leaves it free; a routine is never named there. An agreed discovery call goes there too, for
   each party who publishes, as "A call on Projective" so that neither is named. It comes off when
   the call is cancelled, and while a new time waits for an answer. An edit made at the provider
   never moves a Projective event: a time moves only through the reschedule rules here. An entry

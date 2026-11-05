@@ -46,7 +46,9 @@ $$;
 
 -- #region Free / busy
 -- The occupied spans on a schedule inside a window: every non-cancelled event that is not itself an
--- availability block, and every discovery call that is still requested or confirmed. Spans only —
+-- availability block or `passive`, and every discovery call that is still requested or confirmed.
+-- This reads the same rows fn_has_conflicting_event does and has to agree with it: a grid drawn from
+-- a span the gate ignores refuses a slot the write would take. Spans only —
 -- no title, no id, no kind — so a visitor learns that a time is taken and nothing about by whom or
 -- for what (the masking rule of `PRODUCT_SPEC.md` §The Proactive Calendar, Part 1.4).
 --
@@ -83,6 +85,7 @@ BEGIN
     WHERE e.schedule_id = p_schedule
       AND COALESCE(e.status, 'confirmed'::scheduling.event_status) <> 'cancelled'::scheduling.event_status
       AND e.kind <> 'availability'::scheduling.event_kind
+      AND e.availability_behavior <> 'passive'
       AND e.starts_at < v_to
       AND e.ends_at > p_from
     UNION ALL
@@ -98,6 +101,97 @@ $$;
 
 COMMENT ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestamptz) IS
 'Occupied spans (start, end) on a published or viewable schedule inside a window of at most 120 days. Spans only — never a title, an id or a kind.';
+-- #endregion
+
+-- #region Clashes
+-- What already holds a person's own time across a span: their schedule's entries, the meetings they
+-- said they are coming to, their discovery calls and their time off. The same test as
+-- fn_has_conflicting_event, from the person's side rather than a schedule's, so `detectTimeClash`
+-- (@projective/types/scheduling) has to agree with it: a pending or declined seat holds nothing, and a
+-- moment (a deadline) has no span to clash with. A call mirrored into an event answers as the call.
+--
+-- Unlike get_free_busy this names what it finds, which is why it answers only for the caller: a door
+-- that took anybody's id would read out their calendar.
+CREATE OR REPLACE FUNCTION scheduling.fn_detect_event_clashes(
+    p_user_id uuid,
+    p_starts_at timestamptz,
+    p_ends_at timestamptz,
+    p_exclude_event_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_clashes jsonb;
+BEGIN
+    IF p_user_id IS NULL OR p_user_id IS DISTINCT FROM auth.uid () THEN
+        RAISE EXCEPTION 'clashes: a person reads only their own calendar' USING ERRCODE = '42501';
+    END IF;
+    IF p_starts_at IS NULL OR p_ends_at IS NULL OR p_ends_at <= p_starts_at THEN
+        RETURN '[]'::jsonb;
+    END IF;
+
+    WITH own AS (
+        SELECT s.id FROM scheduling.schedules s
+         WHERE s.owner_type = 'user' AND s.owner_id = p_user_id
+    ), seats AS (
+        SELECT a.event_id FROM scheduling.event_attendees a
+         WHERE a.user_id = p_user_id AND a.archived_at IS NULL
+           AND a.response IN ('accepted'::scheduling.rsvp_response, 'tentative'::scheduling.rsvp_response)
+    ), taken AS (
+        SELECT 'event' AS kind, e.id, e.title, e.starts_at, e.ends_at
+          FROM scheduling.events e
+         WHERE e.starts_at < p_ends_at
+           AND e.ends_at > p_starts_at
+           AND e.ends_at > e.starts_at
+           AND e.archived_at IS NULL
+           AND e.id IS DISTINCT FROM p_exclude_event_id
+           AND COALESCE(e.status, 'confirmed'::scheduling.event_status) <> 'cancelled'::scheduling.event_status
+           AND e.kind NOT IN ('availability'::scheduling.event_kind, 'deadline'::scheduling.event_kind)
+           AND e.availability_behavior <> 'passive'
+           AND (
+               e.schedule_id IN (SELECT o.id FROM own o)
+               OR e.id IN (SELECT s.event_id FROM seats s)
+               OR (e.project_id IS NOT NULL AND e.created_by = p_user_id)
+           )
+           AND NOT EXISTS (SELECT 1 FROM scheduling.discovery_calls c WHERE c.event_id = e.id)
+        UNION ALL
+        SELECT 'call', c.id, 'Discovery call',
+               COALESCE(c.confirmed_start, c.proposed_start), COALESCE(c.confirmed_end, c.proposed_end)
+          FROM scheduling.discovery_calls c
+         WHERE (c.host_user_id = p_user_id OR c.requester_user_id = p_user_id)
+           AND c.status IN ('proposed'::scheduling.call_status, 'confirmed'::scheduling.call_status)
+           AND c.event_id IS DISTINCT FROM p_exclude_event_id
+           AND COALESCE(c.confirmed_start, c.proposed_start) < p_ends_at
+           AND COALESCE(c.confirmed_end, c.proposed_end) > p_starts_at
+        UNION ALL
+        SELECT 'blackout', b.id, COALESCE(NULLIF(b.label, ''), 'Time off'), b.starts_at, b.ends_at
+          FROM scheduling.blackout_dates b
+         WHERE b.schedule_id IN (SELECT o.id FROM own o)
+           AND b.starts_at < p_ends_at
+           AND b.ends_at > p_starts_at
+    )
+    SELECT COALESCE(
+        pg_catalog.jsonb_agg(
+            pg_catalog.jsonb_build_object(
+                'kind', t.kind, 'id', t.id, 'title', t.title,
+                'startsAt', t.starts_at, 'endsAt', t.ends_at
+            )
+            ORDER BY t.starts_at, t.id
+        ),
+        '[]'::jsonb
+    )
+      INTO v_clashes
+      FROM taken t;
+    RETURN v_clashes;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_detect_event_clashes(uuid, timestamptz, timestamptz, uuid) IS
+'What already holds the caller''s own time across a span: events, discovery calls and blackouts, by id, title and span. Answers for the caller alone.';
 -- #endregion
 
 -- #region Requesting a discovery call

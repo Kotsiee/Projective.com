@@ -58,6 +58,7 @@ export function GridProbe(
 						<span class="cal-grid__swatch cal-grid__swatch--title" />
 						<span class="cal-grid__swatch cal-grid__swatch--meta" />
 						<span class="cal-grid__swatch cal-grid__swatch--masked" />
+						<span class="cal-grid__swatch cal-grid__swatch--passive" />
 						<span class="cal-grid__swatch cal-grid__swatch--marker" />
 						<span class="cal-grid__swatch cal-grid__swatch--card" />
 						<span class="cal-grid__swatch cal-grid__swatch--glyph" />

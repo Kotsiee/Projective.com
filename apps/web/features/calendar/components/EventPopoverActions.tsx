@@ -61,6 +61,7 @@ function icsInputFor(event: CalendarEvent): CalendarEventInput {
 		description: event.meta,
 		location: event.location,
 		uid: `${event.id}@projective`,
+		transparent: event.availabilityBehavior === "passive",
 	};
 }
 

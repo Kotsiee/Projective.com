@@ -89,7 +89,9 @@ export function isEventParty(event: CalendarEvent, viewer: SchedulingViewer): bo
  * earnings), `reschedule` (proposed times, and who voted for what), `history` (the whole audit log,
  * actors included), `attachments` (the agenda pack — every one carries a resolvable asset URL),
  * `description` (the agenda itself: a public session advertises WHAT it is via its title, not what
- * will be said in it), `callId` and `meetingUrl`.
+ * will be said in it), `routineId` and `availabilityBehavior` (what somebody does with their time, and
+ * whether it can be booked over, are theirs: a stranger reads a free or a taken span), `callId` and
+ * `meetingUrl`.
  */
 export const PUBLIC_EVENT_FIELDS = [
 	"id",

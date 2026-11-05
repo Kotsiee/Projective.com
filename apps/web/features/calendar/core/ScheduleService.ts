@@ -3,12 +3,18 @@ import type {
 	CalendarEvent,
 	CalendarPage,
 	CallActionInput,
+	ClashQuery,
+	CreateRoutineInput,
 	EntryFields,
 	EntryReminder,
 	EntryRoom,
+	EventClashVerdict,
+	OrganiseEntryInput,
 	RescheduleInput,
+	Routine,
 	RsvpInput,
 	SchedulePage,
+	UpdateRoutineInput,
 } from "@projective/types/scheduling";
 import type { CalendarResult } from "../types/results.ts";
 
@@ -55,6 +61,34 @@ export const ScheduleService = {
 		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/rsvp", input);
 	},
 
+	/** Seat people on one of the caller's own entries; resolves with it re-read. */
+	invite(eventId: string, userIds: string[]): Promise<CalendarResult<{ event: CalendarEvent }>> {
+		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/invites", {
+			eventId,
+			userIds,
+		});
+	},
+
+	/** Withdraw one invitation; resolves with the entry re-read. */
+	withdrawInvite(
+		eventId: string,
+		attendeeId: string,
+	): Promise<CalendarResult<{ event: CalendarEvent }>> {
+		const qs = new URLSearchParams({ eventId, attendeeId });
+		return postScheduling<{ event: CalendarEvent }>(
+			`/api/scheduling/invites?${qs.toString()}`,
+			undefined,
+			"DELETE",
+		);
+	},
+
+	/** What already holds the reader's own time across a span. Answered as the session, never a param. */
+	clashes(query: ClashQuery): Promise<CalendarResult<EventClashVerdict>> {
+		const qs = new URLSearchParams({ start: String(query.start), end: String(query.end) });
+		if (query.excludeEventId) qs.set("excludeEventId", query.excludeEventId);
+		return getScheduling<EventClashVerdict>(`/api/scheduling/clashes?${qs.toString()}`);
+	},
+
 	/** Make one move on a discovery call; resolves with it, or `null` once it has left the calendar. */
 	callAction(input: CallActionInput): Promise<CalendarResult<{ event: CalendarEvent | null }>> {
 		return postScheduling<{ event: CalendarEvent | null }>("/api/scheduling/calls", input);
@@ -77,13 +111,13 @@ export const ScheduleService = {
 		);
 	},
 
-	/** Edit one of the caller's own entries; resolves with it re-read. */
+	/** Edit one of the caller's own entries; resolves with it, and the series it moved, re-read. */
 	update(
 		eventId: string,
 		fields: EntryFields,
 		room?: EntryRoom | null,
-	): Promise<CalendarResult<{ event: CalendarEvent }>> {
-		return postScheduling<{ event: CalendarEvent }>(
+	): Promise<CalendarResult<{ event: CalendarEvent; series?: CalendarEvent[] }>> {
+		return postScheduling<{ event: CalendarEvent; series?: CalendarEvent[] }>(
 			"/api/scheduling/events",
 			{ ...fields, eventId, room },
 			"PATCH",
@@ -100,6 +134,21 @@ export const ScheduleService = {
 			{ eventId, reminders },
 			"PUT",
 		);
+	},
+
+	/** Create a routine on the caller's own schedule. */
+	createRoutine(input: CreateRoutineInput): Promise<CalendarResult<{ routine: Routine }>> {
+		return postScheduling<{ routine: Routine }>("/api/scheduling/routines", input);
+	},
+
+	/** Change or archive one of the caller's routines. */
+	updateRoutine(input: UpdateRoutineInput): Promise<CalendarResult<{ routine: Routine }>> {
+		return postScheduling<{ routine: Routine }>("/api/scheduling/routines", input, "PATCH");
+	},
+
+	/** Organise an entry and its whole series; resolves with every row that changed. */
+	organise(input: OrganiseEntryInput): Promise<CalendarResult<{ events: CalendarEvent[] }>> {
+		return postScheduling<{ events: CalendarEvent[] }>("/api/scheduling/routines", input, "PUT");
 	},
 
 	/** Take one of the caller's own entries off the calendar. */

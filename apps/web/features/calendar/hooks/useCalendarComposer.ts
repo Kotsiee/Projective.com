@@ -10,13 +10,18 @@ import type {
 } from "@projective/types/scheduling";
 import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
-import { eventsForRange, firstOccurrence, spreadDaily } from "../core/event-series.ts";
+import { eventsForRange, firstOccurrence, seriesKey, spreadDaily } from "../core/event-series.ts";
 import { seriesOf } from "../core/event-recurrence.ts";
 import { roomOf } from "../core/meeting-link.ts";
+import { type EntryOrganisation, organisedPatch } from "../core/routine-view.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import type { CalendarResult } from "../types/results.ts";
 
-/** The fields of an entry its host's write carries — what `scheduling.events` stores. */
+/**
+ * The fields of an entry its host's write carries — what `scheduling.events` stores. Its routine and
+ * behaviour always travel, because `null` is how a routine is left, and the door writes nothing for
+ * a row that already says so. A rule travels only on a series' master, and is read on a create only.
+ */
 function fieldsOf(e: CalendarEvent): EntryFields {
 	return {
 		title: e.title,
@@ -27,6 +32,9 @@ function fieldsOf(e: CalendarEvent): EntryFields {
 		location: e.location,
 		description: e.description,
 		externalSync: e.externalSync,
+		availabilityBehavior: e.availabilityBehavior ?? "disruptive",
+		routineId: e.routineId ?? null,
+		recurrenceRule: e.recurrenceRule,
 	};
 }
 
@@ -81,6 +89,8 @@ export interface CalendarComposer {
 	update(event: CalendarEvent): void;
 	/** Save the viewer's own alerts for an entry, any seat's. `null` follows their default. */
 	setReminders(event: CalendarEvent, reminders: EntryReminder[] | null): void;
+	/** Move an entry and its whole series into or out of a routine, or set whether they hold time. */
+	organise(event: CalendarEvent, change: EntryOrganisation): void;
 	serverUpdate(event: CalendarEvent): void;
 	/** A server write took this entry off the calendar: drop it here, writing nothing. */
 	serverRemove(id: string): void;
@@ -147,7 +157,7 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 	 */
 	function apply(
 		next: CalendarEvent,
-		write: () => Promise<CalendarResult<{ event: CalendarEvent }>>,
+		write: () => Promise<CalendarResult<{ event: CalendarEvent; series?: CalendarEvent[] }>>,
 	): void {
 		const before = events.peek().find((e) => e.id === next.id);
 		if (!before) return;
@@ -155,7 +165,8 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		if (!optsRef.current.persist) return;
 		void write().then((res) => {
 			const kept = res.ok && res.data ? res.data.event : before;
-			events.value = events.peek().map((e) => (e.id === next.id ? kept : e));
+			const series = new Map((res.data?.series ?? []).map((e) => [e.id, e]));
+			events.value = events.peek().map((e) => (e.id === next.id ? kept : series.get(e.id) ?? e));
 			if (!res.ok) refuse(res.message);
 		});
 	}
@@ -229,6 +240,25 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		setReminders(event, reminders) {
 			apply({ ...event, reminders }, () => ScheduleService.setReminders(event.id, reminders));
+		},
+		organise(event, change) {
+			const key = seriesKey(event);
+			const before = events.peek();
+			events.value = before.map((e) =>
+				seriesKey(e) === key ? { ...e, ...organisedPatch(change) } : e
+			);
+			void ScheduleService.organise({ eventId: event.id, ...change })
+				.then((res) => {
+					if (res.ok && res.data) {
+						const rows = new Map(res.data.events.map((e) => [e.id, e]));
+						events.value = events.peek().map((e) => rows.get(e.id) ?? e);
+						return;
+					}
+					// Only this write's rows go back, so an edit that landed meanwhile stands.
+					const held = new Map(before.filter((e) => seriesKey(e) === key).map((e) => [e.id, e]));
+					events.value = events.peek().map((e) => held.get(e.id) ?? e);
+					refuse(res.message);
+				});
 		},
 		serverUpdate(event) {
 			events.value = events.value.map((e) => (e.id === event.id ? event : e));

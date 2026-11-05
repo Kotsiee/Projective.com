@@ -23,6 +23,11 @@ export function eventsForRange(
 	return dailyOccurrences(range, tz).map((occurrence) => ({ ...mint(occurrence), title }));
 }
 
+/** What the occurrences of one series share: its master's id, which a one-off is to itself. */
+export function seriesKey(event: CalendarEvent): string {
+	return event.recurrenceParentId ?? event.id;
+}
+
 /**
  * The list's rows: a series once, on the occurrence that matters, which is the one picked, else its
  * next, else its last. Every other entry is its own row. Sorted by start.
@@ -34,7 +39,7 @@ export function listRows(
 ): CalendarEvent[] {
 	const rows = new Map<string, CalendarEvent>();
 	for (const event of [...events].sort((a, b) => a.start - b.start)) {
-		const key = event.recurrenceParentId ?? event.id;
+		const key = seriesKey(event);
 		const held = rows.get(key);
 		if (!held || event.id === picked || (held.id !== picked && held.end <= now)) {
 			rows.set(key, event);

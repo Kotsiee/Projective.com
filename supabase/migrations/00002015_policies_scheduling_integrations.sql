@@ -93,6 +93,27 @@ SELECT TO authenticated USING (
     );
 
 
+-- --- routines (Decision #389) ---
+-- The schedule's own side only, and NOT a visitor of a published schedule, by the owner's ruling
+-- (Decision #389). A routine's name says what a person does with their time
+-- ("Therapy", "Job hunt") and its rule says when, and a visitor's whole allowance is that a time is
+-- taken (PRODUCT_SPEC §The Proactive Calendar, Part 1.4; Decision #375 (b) refused presets a public
+-- SELECT for the same reason). No public surface reads one. There is no DELETE grant (00002520): a
+-- routine is archived with is_active.
+CREATE POLICY "View routines" ON scheduling.routines FOR
+SELECT TO authenticated USING (
+        scheduling.fn_can_view_schedule (schedule_id)
+    );
+
+CREATE POLICY "Manage routines" ON scheduling.routines FOR ALL TO authenticated USING (
+    scheduling.fn_can_manage_schedule (schedule_id)
+)
+WITH
+    CHECK (
+        scheduling.fn_can_manage_schedule (schedule_id)
+    );
+
+
 -- --- integrations: connectors ---
 -- The provider catalogue and the extension-point / scope catalogues are public reference data.
 -- user_connections and every secret/operational table (connection_secrets, connection_sync_state,

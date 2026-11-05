@@ -115,6 +115,10 @@
 	*/
 	--cal-dim-drag: 0.35;
 	--cal-dim-focus: 0.25;
+	/* A passive card's hatch, finer than a blackout's because words sit on it. The DOM card reads these
+	   directly and the canvas reads them off its probe, so the two renderings hold one geometry. */
+	--cal-passive-stripe: 1px;
+	--cal-passive-pitch: 6px;
 	/* The 2px ring a list-hovered card wears so it is findable among plain colour blocks. */
 	--cal-focus-edge-w: 2px;
 	/*

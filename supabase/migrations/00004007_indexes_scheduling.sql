@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS idx_events_kind ON scheduling.events (kind, starts_at
 CREATE INDEX IF NOT EXISTS idx_events_upcoming ON scheduling.events (starts_at) WHERE archived_at IS NULL;
 -- The FK a deleted account cascades through; a read goes by (event_id, user_id), the primary key.
 CREATE INDEX IF NOT EXISTS idx_event_reminders_user ON scheduling.event_reminders (user_id);
+-- A person's own seats: the agenda's read, and the first step of fn_detect_event_clashes.
+CREATE INDEX IF NOT EXISTS idx_event_attendees_user ON scheduling.event_attendees (user_id)
+    WHERE archived_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_discovery_calls_host ON scheduling.discovery_calls (host_user_id, status, confirmed_start);
 CREATE INDEX IF NOT EXISTS idx_discovery_calls_requester ON scheduling.discovery_calls (
@@ -66,4 +69,11 @@ CREATE INDEX IF NOT EXISTS idx_events_source_session_event
 CREATE INDEX IF NOT EXISTS idx_events_recurrence_parent
     ON scheduling.events (recurrence_parent_id)
     WHERE recurrence_parent_id IS NOT NULL;
+-- A routine's entries (trg_routine_behavior, the composite FK's SET NULL) and a schedule's live routines.
+CREATE INDEX IF NOT EXISTS idx_events_routine
+    ON scheduling.events (routine_id)
+    WHERE routine_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_routines_schedule
+    ON scheduling.routines (schedule_id)
+    WHERE is_active;
 -- #endregion

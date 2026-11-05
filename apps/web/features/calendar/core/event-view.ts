@@ -10,6 +10,7 @@ import type {
 	RescheduleProposal,
 	RescheduleRefusalReason,
 	RescheduleStatus,
+	RsvpResponse,
 } from "@projective/types/scheduling";
 import {
 	approvalRefusal,
@@ -70,6 +71,8 @@ export type EventFrameKind = "event";
 export interface EventFrameInput {
 	/** Composing a new entry rather than reading an existing one. */
 	mode?: EventMode;
+	/** The tab to open on, when the press that opened it was asking for one. */
+	tab?: EventTab;
 }
 
 /**
@@ -226,6 +229,57 @@ export function viewerSeat(event: CalendarEvent) {
 export function entryEditable(event: CalendarEvent): boolean {
 	return event.viewerIsHost === true && !event.callId && !event.projectId;
 }
+
+/** Once people are on an entry its time moves only by agreement (`trg_guard_rostered_event`). */
+export function timesMovable(event: CalendarEvent): boolean {
+	return entryEditable(event) && !event.roster?.length;
+}
+
+/**
+ * Whether this seat may answer. A host is going by definition, and an answer is a statement about
+ * attending that cannot be made in the past tense. A discovery call is answered by accepting or
+ * declining the CALL (its own lifecycle, `scheduling.discovery_calls`), never by an RSVP on the
+ * calendar entry that mirrors it.
+ */
+export function canAnswer(event: CalendarEvent, nowMs: number): boolean {
+	const seat = viewerSeat(event);
+	return !!seat && seat.role !== "host" && !event.callId &&
+		eventLiveStatus(nowMs, event.start, event.end).state !== "passed";
+}
+
+/** The kinds `scheduling.fn_invitable_event` refuses a guest. */
+const NEVER_INVITABLE: readonly CalendarEventKind[] = [
+	"session",
+	"booking",
+	"availability",
+	"busy",
+	"deadline",
+	"holiday",
+];
+
+/**
+ * Whether to offer this host the guest list. What `scheduling.fn_invitable_event` would accept, so the
+ * control is drawn only where it can work: their own upcoming entry with a length, not a series and not
+ * one from a connected calendar, and nobody joining while a round's electorate is being counted.
+ */
+export function canInvite(event: CalendarEvent, nowMs: number): boolean {
+	const round = event.reschedule?.status ?? "none";
+	return entryEditable(event) && !event.connected && !NEVER_INVITABLE.includes(event.kind) &&
+		event.end > event.start && event.end > nowMs && event.status !== "cancelled" &&
+		!event.recurrenceRule && !event.recurrenceParentId &&
+		(round === "none" || isRescheduleClosed(round));
+}
+
+/** The three answers a seat can give. One list, so the inspector and the modal word them alike. */
+export const RSVP_ACTIONS: readonly {
+	value: RsvpResponse;
+	label: string;
+	severity: "success" | "warning" | "danger";
+}[] = [
+	{ value: "accepted", label: "Accept", severity: "success" },
+	{ value: "tentative", label: "Tentative", severity: "warning" },
+	{ value: "rejected", label: "Decline", severity: "danger" },
+];
 // #endregion
 
 /** When an entry runs on its day: a range, one time for a Reminder, which has no length, or all day. */
@@ -322,6 +376,8 @@ export function eventFingerprint(event: CalendarEvent): string {
 		event.kind,
 		event.location ?? "",
 		event.description ?? "",
+		event.routineId ?? "",
+		event.availabilityBehavior ?? "disruptive",
 		meeting
 			? [
 				meeting.provider,

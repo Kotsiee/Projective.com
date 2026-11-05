@@ -11,6 +11,7 @@ import {
 	contextDrawerOpen,
 } from "@web/features/shell/core/context-panel-state.ts";
 import { EventSummary } from "../components/EventSummary.tsx";
+import { RoutineSummary } from "../components/RoutineSummary.tsx";
 import {
 	CALENDAR_PANEL_ID,
 	calendarFocus,
@@ -19,7 +20,9 @@ import {
 	focusedAt,
 	importedEvents,
 	panelTab,
+	routinesOn,
 	selectedEventId,
+	selectedRoutineId,
 } from "../core/calendar-state.ts";
 
 const PANEL_TABS: readonly LaneTabOption<"event" | "month">[] = [
@@ -33,6 +36,8 @@ export interface CalendarPanelProps {
 	initial: SchedulePage | null;
 	/** The entry `?event=` names, so a linked entry paints in the first byte too, with no swap. */
 	linkedEventId?: string | null;
+	/** The routine `?routine=` names, by its slug, likewise. */
+	linkedRoutineSlug?: string | null;
 }
 
 /**
@@ -44,9 +49,9 @@ export interface CalendarPanelProps {
  * tabs arrive in a drawer: a pick opens it (`inspectInPanel`), and it leaves more of the grid in view
  * than the event modal it replaces.
  *
- * Event is the entry picked on the grid or in the lane's list, and Month the navigator, so the reader
- * moves between the details and the navigator without losing either. A pick switches to Event; the tab
- * strip switches back.
+ * Event is the entry picked on the grid or in the lane's list, or the routine picked in the lane
+ * ({@link RoutineSummary}), and Month the navigator, so the reader moves between the details and the
+ * navigator without losing either. A pick switches to Event; the tab strip switches back.
  *
  * Browsing months here does not move the grid; picking a day does, through {@link calendarFocus},
  * and a pick, a step or a scroll that lands in another month brings the navigator with it.
@@ -74,18 +79,27 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 	const tz = page?.timezone ?? "UTC";
 	const all = [...(page?.events ?? []), ...importedEvents.value];
 	const linked = props.linkedEventId ? all.find((e) => e.id === props.linkedEventId) ?? null : null;
+	const routines = routinesOn(page);
+	const linkedRoutine = linked || !props.linkedRoutineSlug
+		? null
+		: routines.find((r) => r.slug === props.linkedRoutineSlug) ?? null;
 
 	useEffect(() => {
 		if (linked && !selectedEventId.peek()) {
 			selectedEventId.value = linked.id;
+			panelTab.value = "event";
+		} else if (linkedRoutine && !selectedRoutineId.peek()) {
+			selectedRoutineId.value = linkedRoutine.id;
 			panelTab.value = "event";
 		}
 		settled.value = true;
 	}, []);
 
 	const id = settled.value ? selectedEventId.value : linked?.id ?? null;
-	const tab = settled.value || !linked ? panelTab.value : "event";
+	const routineId = settled.value ? selectedRoutineId.value : linkedRoutine?.id ?? null;
+	const tab = settled.value || !(linked || linkedRoutine) ? panelTab.value : "event";
 	const picked = id ? all.find((e) => e.id === id) ?? null : null;
+	const routine = routineId ? routines.find((r) => r.id === routineId) ?? null : null;
 
 	const month = () => (
 		<div class="cal-panel__mini">
@@ -121,6 +135,8 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 					? month()
 					: picked
 					? <EventSummary key={picked.id} event={picked} tz={tz} />
+					: routine
+					? <RoutineSummary key={routine.id} routine={routine} tz={tz} />
 					: (
 						<LaneEmpty
 							title="No event picked"
@@ -142,8 +158,12 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 					 */
 				}
 				<p class="ui-visually-hidden" role="status">
-					{picked && tab === "event"
+					{tab !== "event"
+						? ""
+						: picked
 						? `Showing ${picked.masked ? maskLabel(picked.status) : picked.title}`
+						: routine
+						? `Showing ${routine.name}`
 						: ""}
 				</p>
 			</aside>

@@ -2097,6 +2097,31 @@ REVOKE ALL ON FUNCTION scheduling.fn_guard_event_recurrence () FROM PUBLIC, anon
 REVOKE ALL ON FUNCTION scheduling.fn_event_has_roster (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_roster (uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.fn_check_schedule_timezone () FROM PUBLIC, anon, authenticated;
+-- Routines (00001510 §5b, Decision #389). fn_guard_event_behavior runs as the invoking role, like the
+-- guard above, so the predicate it asks has to be executable by `authenticated`.
+REVOKE ALL ON FUNCTION scheduling.fn_guard_event_behavior () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.trg_routine_behavior () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.trg_seat_holds_time () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_event_holds_time (scheduling.events) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_event_holds_time (scheduling.events) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.organise_event (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.organise_event (uuid, jsonb) TO authenticated, service_role;
+-- #endregion
+
+-- #region Invitations and clashes (00001510 §5c, 00001520)
+REVOKE ALL ON FUNCTION scheduling.fn_invitable_event (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_notify_event_seats (uuid, text, text, text, uuid)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.fn_notify_event_seats (uuid, text, text, text, uuid)
+TO service_role;
+REVOKE ALL ON FUNCTION scheduling.invite_to_event (uuid, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.invite_to_event (uuid, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.withdraw_invitation (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.withdraw_invitation (uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_detect_event_clashes (uuid, timestamptz, timestamptz, uuid)
+FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_detect_event_clashes (uuid, timestamptz, timestamptz, uuid)
+TO authenticated;
 -- #endregion
 
 -- #region Availability presets & recurrence (00001510 §10, Decision #217)

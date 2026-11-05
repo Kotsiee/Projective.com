@@ -6,8 +6,9 @@ call, and the pre-engagement **discovery call** itself. Added 2026-07-24 by migr
 calls).
 
 > **Zod SSOT:** `packages/types/scheduling/rows.ts` mirrors the availability/event rows (and, since
-> Decision #217, the preset, rule, band and occurrence rows) and
-> `packages/types/scheduling/calls.ts` the call rows; `packages/types/scheduling/scheduling.ts`
+> Decision #217, the preset, rule, band and occurrence rows), `packages/types/scheduling/routines.ts`
+> the routine row and `packages/types/scheduling/calls.ts` the call rows;
+> `packages/types/scheduling/scheduling.ts`
 > remains the READ PROJECTION the calendar engine renders. **Additive Rule:** this schema is new —
 > nothing existing was altered (root `CLAUDE.md` §1). This file documents the **real migrated schema
 > only** (`database/CLAUDE.md`).
@@ -126,10 +127,13 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `source_session_event_id`         | uuid                      | → `projects.session_events` (CASCADE) when mirroring a delivered session. Written by `fn_book_session_slot` (a 1-1: host + client on the roster) and `schedule_sitting` (a group sitting: **no roster**, so it blocks free/busy and both booking gates but is never put to a reschedule round, `trg_sitting_round_guard`). Either mirror is also anchored to the engagement (`project_id`), so no client policy writes it. |
 | `recurrence_rule`                 | text                      | RFC 5545 RRULE, on a series **master** only (since 2026-11-03, Decision #375). The master is itself the first occurrence: its `starts_at` is DTSTART. Shape-only CHECK (≤ 400 characters, starts `FREQ=`), the same as `recurrence_rules.rrule`; a writer stores `serialiseRRule(parseRRule(x))`, never raw input. |
 | `recurrence_parent_id`            | uuid                      | → `scheduling.events` (CASCADE): the master a later occurrence belongs to. Every occurrence is its own row, so the conflict gate, free/busy and coordination read concrete rows and the database never expands an RRULE. Indexed `idx_events_recurrence_parent` (`00004007`). |
+| `routine_id`                      | uuid                      | The routine this entry is organised under (Decision #389). Composite FK `fk_event_routine` `(routine_id, schedule_id)` → `routines (id, schedule_id)`, `ON DELETE SET NULL (routine_id)`, so it can name a routine on its own schedule only. |
+| `availability_behavior`           | text                      | `NOT NULL`, default `disruptive`, `CHECK IN ('disruptive', 'passive')`. What every busy reader reads: `passive` gives the time away. Set per entry, inherited on joining a routine, and held at `disruptive` for a commitment (`fn_guard_event_behavior`). |
 | `created_by`                      | uuid                      | → `auth.users` (SET NULL).                                                            |
 | `archived_at`                     | timestamptz               | Taken off the calendar by its host (Decision #328 (a)); never a delete. The same write sets `status = 'cancelled'`, which releases the time from free/busy and the booking gate. Readers skip archived rows. |
 | CHECK                             | —                         | `schedule_id IS NOT NULL OR project_id IS NOT NULL` (always anchored).                |
 | CHECK                             | —                         | `ck_event_recurrence_shape`: an occurrence (`recurrence_parent_id` set) carries no rule of its own · `ck_event_recurrence_not_self`: it never names itself. |
+| CHECK                             | —                         | `ck_event_routine_anchor`: a routine needs a schedule and no project, so an engagement's meeting never joins one, and MATCH SIMPLE cannot let a NULL `schedule_id` past the FK. |
 | UNIQUE                            | —                         | `(source_connection_id, external_event_id)` — the re-sync upsert key.                 |
 
 > ⚠️ **A discovery call is not a new `kind`.** It is projected as a `booking`. A tenth kind would
@@ -147,9 +151,16 @@ role is not refused. See [Functions.md](Functions.md) §9.
 INSERT OR UPDATE OF `recurrence_rule`, `recurrence_parent_id`, `schedule_id`, `project_id`, since
 2026-11-03) refuses (`23514`) an occurrence whose parent is not a master on the same `schedule_id`
 and `project_id`, and a master that drops its rule or moves anchor while it still has occurrences.
-It applies to every role. Nothing writes series yet: materialising occurrences over a horizon is the
-scheduling service's job, and `/calendar` import still expands series client-side (Decision #325).
-Both fields are party-only (not in `PUBLIC_EVENT_FIELDS`).
+It applies to every role. Since Decision #389 the composer writes one: a batch whose first entry
+carries a rule lands as a master and its occurrences in ONE insert (`createEntries`), at most
+`ENTRY_BATCH_MAX` of them, which is how far a series runs, because nothing yet extends one over a
+horizon. `/calendar` import still expands series client-side (Decision #325). Both fields are
+party-only (not in `PUBLIC_EVENT_FIELDS`).
+
+**An entry can give its time away** (Decision #389). `passive` takes it out of
+`fn_has_conflicting_event` and `get_free_busy`, so it stops blocking discovery calls, session bookings
+and the `busy` auto-reply, and its copy at a provider goes out transparent. A commitment somebody else
+relies on can never be passive: `trg_guard_event_behavior` refuses it (`55000`), for every role.
 
 **A host's own entries are written as the host.** `/calendar` creates, edits and removes the
 caller's entries through `POST` · `PATCH` · `DELETE /api/scheduling/events`
@@ -160,6 +171,32 @@ removal is `status = 'cancelled'` + `archived_at = now()`; the first create on a
 schedule opens an unpublished one in the profile's zone.
 
 ---
+
+### `scheduling.routines`
+
+A person's named group of recurring entries (the gym, focused work, language study), so a cadence
+reads as one thing on their agenda rather than as forty disconnected rows (Decision #389). A private
+organising layer and nothing else: its members are ordinary rows of `scheduling.events`, so every
+reader of concrete rows stays correct, and a routine never leaves Projective. There is no check-off,
+completion or streak here, by rule (`PRODUCT_SPEC.md` §5).
+
+| Column            | Type        | Notes                                                                                                                                                         |
+| :---------------- | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`              | uuid        | PK. `uq_routine_in_schedule (id, schedule_id)` is what the events' composite FK lands on.                                                                     |
+| `schedule_id`     | uuid        | → `schedules` (CASCADE).                                                                                                                                      |
+| `name`            | text        | 1–60 after trimming, `ROUTINE_NAME_MAX` in Zod.                                                                                                               |
+| `slug`            | text        | `rtn-…` (Decision #88), minted by `security.fn_slug_guard('rtn')` and frozen. Global `UNIQUE (slug)`, which makes it unique per schedule too.                 |
+| `color_token`     | text        | Default `--primary`. A CSS custom-property **name**, never a literal colour (CHECK on the shape).                                                              |
+| `is_active`       | boolean     | `false` is archived. A routine is never deleted (root `CLAUDE.md` §5, no `DELETE` grant); its entries stay on the calendar and simply stop being grouped.     |
+| `behavior`        | text        | Default `passive`, `CHECK IN ('disruptive', 'passive')`. What an entry takes on joining, and follows while it agrees (`trg_routine_behavior`). No busy reader reads this column. |
+| `recurrence_rule` | text        | RFC 5545, shape-checked as `events.recurrence_rule` is. The cadence a NEW entry in this routine repeats on. Nothing is laid down from it alone.                 |
+| `metadata`        | jsonb       | Default `{}`. Nothing authors it yet, and no client role may write it.                                                                                         |
+| `created_at` · `updated_at` | timestamptz | `trg_routines_touch`.                                                                                                                              |
+
+**A series moves whole.** A series lists once, so a half-moved one would list twice. `organise_event`
+is the one door that puts an entry in or out of a routine, and it reaches every row of the series,
+including a connected calendar's, through `connected_event_details.series_id`. A new occurrence a
+provider rolls forward joins its siblings in `fn_apply_busy_sync`.
 
 ## 2b. Event coordination (`00000022`, FK in `00000031`)
 
@@ -187,6 +224,8 @@ role after those rules have run (`live-coordination-writes.ts`).
 | `response`     | `scheduling.rsvp_response` | `pending` is a real answer ("has not replied"), not the absence of one.                         |
 | `responded_at` | timestamptz                | `ck_attendee_pending_unanswered`: `pending` ⇒ `NULL`, so clearing an answer clears its instant. |
 | `note`         | text                       | ≤ 280.                                                                                          |
+| `email`        | text                       | ≤ 320. The address of a seat with no account. Withheld from client roles, because every party reads this table. Not a CHECK against `user_id`: `ON DELETE SET NULL` empties that on a profile teardown. **No door writes it yet**: nothing can reach a person with no account (Decision #390). |
+| `archived_at`  | timestamptz                | Set when the host withdraws the invitation, never deleted (root CLAUDE.md §5). An archived seat is no seat: every predicate and read skips it, and inviting the person again restores the row. |
 | UNIQUE         | —                          | `(event_id, user_id)` — a registered user holds one seat, so cannot vote twice.                 |
 
 `isViewer` is deliberately not a column: it is a fact about who is ASKING, resolved per request by

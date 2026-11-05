@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import type {
+	AvailabilityBehavior,
 	CalendarEvent,
 	CreateEntriesInput,
 	EntryFields,
@@ -31,11 +32,17 @@ import type { ReadActor } from "../read-actor.ts";
  * refuses (the actor's id is an unverified decode, `read-actor.ts`) affects no row and is answered
  * the same `403`.
  *
+ * **A series is written as one.** A batch whose first entry carries a rule becomes a master and its
+ * occurrences in ONE insert, so it lands whole or not at all, and the ids are minted here because each
+ * occurrence has to name a master that does not exist yet. An entry's routine and behaviour move with
+ * its whole series through `scheduling.organise_event`, so they are not among {@link columns}.
+ *
  * **Time.** A NEW entry may not start in the past ({@link createRefusal}, the composer's own rule and
  * wording); an edit or a removal may touch an entry whatever its time. **Removal is soft**: the row
  * is `cancelled` (which releases the time from free/busy and the booking gate) and `archived_at`
  * (which takes it off every reader), never deleted. A rostered entry can do neither through a client
- * role — `trg_guard_rostered_event` refuses it `55000`, answered as a `409`.
+ * role — `trg_guard_rostered_event` refuses it `55000`, answered as a `409` — except that removing
+ * a host's own entry first withdraws its invitations (`scheduling.withdraw_invitation`).
  */
 
 // #region Plumbing
@@ -65,8 +72,9 @@ const CONNECTED = "This came from your connected calendar, so change it there.";
 const BACKWARDS = "An entry can’t end before it starts.";
 const NO_ALERTS = "This entry’s reminders are set where it comes from.";
 const NOT_ON_IT = "You can set reminders only on entries you’re part of.";
+const NO_ROUTINE = "That routine is no longer on your calendar.";
 
-function sched(db: SupabaseClient): SupabaseClient {
+export function sched(db: SupabaseClient): SupabaseClient {
 	return db.schema("scheduling") as unknown as SupabaseClient;
 }
 
@@ -89,12 +97,14 @@ function columns(f: EntryFields): Record<string, unknown> {
 }
 
 /** A refused database write, as a result. */
-function writeRefusal(error: { code?: string; message?: string }): ServiceResult<never> {
+export function writeRefusal(error: { code?: string; message?: string }): ServiceResult<never> {
 	if (error.code === "55000") {
 		const said = (error.message ?? "").replace(/^event:\s*/, "");
 		return fail(409, { message: said ? said[0].toUpperCase() + said.slice(1) + "." : GONE });
 	}
 	if (error.code === "42501") return fail(403, { message: NOT_HOST });
+	// fk_event_routine: the one foreign key a request can name, and only by racing an archive.
+	if (error.code === "23503") return fail(409, { message: NO_ROUTINE });
 	console.error("[scheduling:entries] write failed", error.code, error.message);
 	return fail(503, { message: "Your calendar could not be saved just now. Please try again." });
 }
@@ -149,7 +159,7 @@ async function ownSchedule(db: SupabaseClient, userId: string): Promise<string |
  * grant on the zone column, so it comes through the door, and an unread zone refuses rather than
  * fixing the default on the schedule for good.
  */
-async function openSchedule(db: SupabaseClient, userId: string): Promise<string> {
+export async function openSchedule(db: SupabaseClient, userId: string): Promise<string> {
 	const existing = await ownSchedule(db, userId);
 	if (existing) return existing;
 	const profile = await db.schema("org").rpc("get_own_private_profile");
@@ -165,6 +175,32 @@ async function openSchedule(db: SupabaseClient, userId: string): Promise<string>
 	const raced = error.code === "23505" ? await ownSchedule(db, userId) : null;
 	if (raced) return raced;
 	throw new Error(`scheduling.schedules insert failed: ${error.message}`);
+}
+// #endregion
+
+// #region Organising
+/**
+ * What `scheduling.organise_event` is to change, or `null` for nothing: the door reads a key left out
+ * as "leave it", and `routine_id: null` as "take it out".
+ */
+export function organiseChanges(
+	routineId: string | null | undefined,
+	behavior: AvailabilityBehavior | undefined,
+): Record<string, unknown> | null {
+	if (routineId === undefined && behavior === undefined) return null;
+	return {
+		...(routineId === undefined ? {} : { routine_id: routineId }),
+		...(behavior === undefined ? {} : { availability_behavior: behavior }),
+	};
+}
+
+/** Organise an entry and its series, answering the rows that changed. */
+export function organise(
+	db: SupabaseClient,
+	eventId: string,
+	changes: Record<string, unknown>,
+): PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }> {
+	return sched(db).rpc("organise_event", { p_event: eventId, p_changes: changes });
 }
 // #endregion
 
@@ -239,12 +275,20 @@ export async function createEntries(
 		if (refused) return refused;
 	}
 	const scheduleId = await openSchedule(deps.db, actor.userId);
+	const rule = input.entries[0].recurrenceRule ?? null;
+	const masterId = crypto.randomUUID();
+	// Every row carries every key: PostgREST writes NULL for one that only some rows name.
 	const { data, error } = await sched(deps.db).from("events").insert(
-		input.entries.map((f) => ({
+		input.entries.map((f, i) => ({
 			...columns(f),
+			id: i === 0 ? masterId : crypto.randomUUID(),
 			schedule_id: scheduleId,
 			status: "confirmed",
 			created_by: actor.userId,
+			availability_behavior: f.availabilityBehavior ?? "disruptive",
+			routine_id: f.routineId ?? null,
+			recurrence_rule: i === 0 ? rule : null,
+			recurrence_parent_id: i > 0 && rule ? masterId : null,
 		})),
 	).select("id");
 	if (error) return writeRefusal(error);
@@ -261,23 +305,33 @@ export async function createEntries(
 	return ok({ events: await deps.reread(ids) }, { status: 201 });
 }
 
-/** Edit one of the caller's own entries, past or not, and answer with it re-read. */
+/**
+ * Edit one of the caller's own entries, past or not, and answer with it re-read, and with the rest of
+ * its series in `series` when its routine or behaviour moved them. Those are written first, so a
+ * refusal leaves the entry untouched rather than half saved.
+ */
 export async function updateEntry(
 	input: UpdateEntryInput,
 	actor: Caller,
 	deps: EntryDeps,
-): Promise<ServiceResult<{ event: CalendarEvent }>> {
-	const { eventId, room, ...fields } = input;
+): Promise<ServiceResult<{ event: CalendarEvent; series: CalendarEvent[] }>> {
+	const { eventId, room, routineId, availabilityBehavior, recurrenceRule: _once, ...fields } =
+		input;
 	const refused = fieldsRefusal(fields, deps.now, false) ?? await judge(deps.db, actor, eventId);
 	if (refused) return refused;
+	const changes = organiseChanges(routineId, availabilityBehavior);
+	const moved = changes ? await organise(deps.db, eventId, changes) : null;
+	if (moved?.error) return writeRefusal(moved.error);
 	const { data, error } = await sched(deps.db).from("events").update(columns(fields))
 		.eq("id", eventId).is("archived_at", null).select("id");
 	if (error) return writeRefusal(error);
 	if (!data?.length) return fail(403, { message: NOT_HOST });
 	await setRoom(deps.db, [eventId], room);
-	const [event] = await deps.reread([eventId]);
+	const others = ((moved?.data ?? []) as string[]).filter((id) => id !== eventId);
+	const rows = await deps.reread([eventId, ...others]);
+	const event = rows.find((e) => e.id === eventId);
 	return event
-		? ok({ event })
+		? ok({ event, series: rows.filter((e) => e.id !== eventId) })
 		: fail(500, { message: "The entry was saved but could not be re-read." });
 }
 
@@ -289,9 +343,18 @@ export async function removeEntry(
 ): Promise<ServiceResult<{ eventId: string }>> {
 	const refused = await judge(deps.db, actor, input.eventId);
 	if (refused) return refused;
-	const { data, error } = await sched(deps.db).from("events")
-		.update({ status: "cancelled", archived_at: new Date(deps.now).toISOString() })
-		.eq("id", input.eventId).is("archived_at", null).select("id");
+	const archive = () =>
+		sched(deps.db).from("events")
+			.update({ status: "cancelled", archived_at: new Date(deps.now).toISOString() })
+			.eq("id", input.eventId).is("archived_at", null).select("id");
+	let { data, error } = await archive();
+	// A roster refused it. On a host's own entry that is their guests, who are told it is off, and only
+	// then does it go. Anything else stays refused, in the withdrawal's own words.
+	if (error?.code === "55000") {
+		const withdrawn = await sched(deps.db).rpc("withdraw_invitation", { p_event: input.eventId });
+		if (withdrawn.error) return writeRefusal(withdrawn.error);
+		({ data, error } = await archive());
+	}
 	if (error) return writeRefusal(error);
 	if (!data?.length) return fail(403, { message: NOT_HOST });
 	return ok({ eventId: input.eventId });

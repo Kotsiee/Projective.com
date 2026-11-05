@@ -100,6 +100,26 @@ async function logLine(
 	// The move has already been made; a log line that could not be written is logged, not rolled back.
 	if (error) console.error("scheduling: history line not written", eventId, error.message);
 }
+
+/**
+ * Tell the seats a move now waits on: its host, or everyone else on it. Like the log line, a notice
+ * that could not go is logged rather than rolled back, because the move stands either way.
+ */
+async function tellSeats(
+	eventId: string,
+	who: "host" | "guests",
+	actorId: string,
+	lead: string,
+): Promise<void> {
+	const { error } = await getServiceClient().schema("scheduling").rpc("fn_notify_event_seats", {
+		p_event: eventId,
+		p_who: who,
+		p_lead: lead,
+		p_body: "Open your calendar to answer.",
+		p_actor: actorId,
+	});
+	if (error) console.error("scheduling: notice not sent", eventId, error.message);
+}
 // #endregion
 
 // #region RSVP
@@ -341,6 +361,8 @@ export async function writeReschedule(
 				step.note ?? (step.approved ? null : "Waiting on the host to approve this time."),
 				proposalId,
 			);
+			// A host's own slot asks nobody anything until they put it out (`open`).
+			if (!step.approved) await tellSeats(eventId, "host", actor.userId, "New time proposed");
 			return null;
 		}
 
@@ -384,6 +406,12 @@ export async function writeReschedule(
 					? `Voting closes ${slotLabel(next.resolvesAt, tz)}.`
 					: null,
 				null,
+			);
+			await tellSeats(
+				eventId,
+				"guests",
+				actor.userId,
+				next.mode === "vote" ? "Vote on a new time" : "New time proposed",
 			);
 			return null;
 		}

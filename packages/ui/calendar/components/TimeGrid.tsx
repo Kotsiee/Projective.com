@@ -405,10 +405,18 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	);
 	/** The lever's pill-to-ball morph, 0..1. Resolved, never a transition — a frozen clock must not strand it. */
 	const morphSpring = useMemo(() => createSpring(0, { config: SPRING_SNAPPY }), []);
+	/** How far the hovered ghost has come up solid, 0..1, and how far leaving cards have faded. */
+	const ghostSpring = useMemo(() => createSpring(0, { config: SPRING_SNAPPY }), []);
+	const exitSpring = useMemo(() => createSpring(0, { config: SPRING_SNAPPY }), []);
 	useEffect(() => () => {
 		hoverSpring.dispose();
 		morphSpring.dispose();
-	}, [hoverSpring, morphSpring]);
+		ghostSpring.dispose();
+		exitSpring.dispose();
+	}, [hoverSpring, morphSpring, ghostSpring, exitSpring]);
+	useEffect(() => {
+		exitSpring.set(props.events.some((e) => e.leaving) ? 1 : 0);
+	}, [props.events, exitSpring]);
 
 	const viewport = useCanvasViewport({
 		zoomRange: props.zoomRange,
@@ -769,10 +777,21 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			next = { ...base, scrollbar: { ...bar, frozen, lever } };
 		}
 		const cards = next.events;
-		if (!next.hoverId || expand <= 0 || !cards) return next;
+		const solid = ghostSpring.value.peek();
+		const exit = exitSpring.value.peek();
+		if (!cards || (exit <= 0 && (!next.hoverId || (expand <= 0 && solid <= 0)))) return next;
 		return {
 			...next,
-			events: cards.map((c) => (c.id === next.hoverId ? { ...c, hoverExpandPx: expand } : c)),
+			events: cards.map((c) => {
+				const hovered = c.id === next.hoverId;
+				if (!hovered && !c.leaving) return c;
+				return {
+					...c,
+					hoverExpandPx: hovered ? Math.max(0, expand) : c.hoverExpandPx,
+					ghostSolid: hovered && c.ghost ? solid : 0,
+					exit: c.leaving ? exit : 0,
+				};
+			}),
 		};
 	}
 	const nowLineRef = useRef<() => SceneNowLine | null>(() => null);
@@ -818,6 +837,8 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	useSignalEffect(() => {
 		hoverSpring.value.value;
 		morphSpring.value.value;
+		ghostSpring.value.value;
+		exitSpring.value.value;
 		canvasApi.current?.redraw();
 	});
 	// #endregion
@@ -1634,6 +1655,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	 * bouncy spring in the product — see {@link HOVER_EXIT_SPRING}.
 	 */
 	function retargetHover(id: string | null, card: SceneEvent | null): void {
+		ghostSpring.set(card?.ghost ? 1 : 0);
 		if (!id || !card) {
 			hoverSpring.set(0, SPRING_EXPRESSIVE_EXIT);
 			return;

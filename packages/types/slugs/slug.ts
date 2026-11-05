@@ -90,6 +90,8 @@ export const SLUG_PREFIXES = {
 	preset: "avp",
 	/** A meeting room's join address (`scheduling.rooms`, Decision #383). */
 	room: "rom",
+	/** A routine on a person's calendar (`scheduling.routines`, Decision #389). */
+	routine: "rtn",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

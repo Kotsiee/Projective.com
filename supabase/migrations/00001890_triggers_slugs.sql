@@ -72,3 +72,9 @@ DROP TRIGGER IF EXISTS trg_availability_presets_slug ON scheduling.availability_
 CREATE TRIGGER trg_availability_presets_slug
     BEFORE INSERT OR UPDATE ON scheduling.availability_presets
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('avp');
+
+-- A routine's address, read by `/calendar?routine=` (Decision #389).
+DROP TRIGGER IF EXISTS trg_routines_slug ON scheduling.routines;
+CREATE TRIGGER trg_routines_slug
+    BEFORE INSERT OR UPDATE ON scheduling.routines
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('rtn');

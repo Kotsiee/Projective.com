@@ -18,6 +18,7 @@ import {
 	RESCHEDULE_PROPOSALS_MAX,
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "./coordination.ts";
+import { EVENT_ROSTER_MAX } from "./invitations.ts";
 
 const REPO = new URL("../../../", import.meta.url);
 /** File text with line endings normalised, so an assertion never depends on how git checked it out. */
@@ -38,6 +39,12 @@ function functionBody(sql: string, name: string): string {
 	assert(end > start, `${name} has no terminating $$;`);
 	return sql.slice(start, end);
 }
+
+Deno.test("the invitation door caps an entry at the SAME seats the TypeScript rule does", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.invite_to_event");
+	const caps = [...body.matchAll(/v_seats\s*>\s*(\d+)/g)].map((m) => Number(m[1]));
+	assertEquals(caps, [EVENT_ROSTER_MAX]);
+});
 
 Deno.test("the ballot-cap trigger refuses at the SAME count the TypeScript rule does", () => {
 	const body = functionBody(read(FN_SQL), "scheduling.fn_cap_reschedule_proposals");

@@ -331,6 +331,16 @@ export interface SceneEvent {
 	 */
 	kindLabel: string;
 	masked: boolean;
+	/** Open to being booked over (`CalendarEvent.availabilityBehavior`): a hatched ghost, not a solid. */
+	passive: boolean;
+	/** Waiting on the reader's answer (`CalendarEvent.ghost`): drawn as {@link passive} is. */
+	ghost?: boolean;
+	/** How far a hovered ghost has come up solid, 0..1, already RESOLVED by the caller's spring. */
+	ghostSolid?: number;
+	/** On its way off the calendar (`CalendarEvent.leaving`). */
+	leaving?: boolean;
+	/** How far a leaving card has faded, 0..1, already RESOLVED by the caller's spring. */
+	exit?: number;
 	cancelled: boolean;
 	/**
 	 * How many calendars this occurrence is on — the provenance channel, as a COUNT.
@@ -457,6 +467,10 @@ export interface GridPalette {
 	hatchStripe: number;
 	/** Hatch repeat pitch (px), measured perpendicular to the stripe. */
 	hatchPitch: number;
+	/** A passive card's hatch: `--hatch-color`, finer than a blackout's, because words sit on it. */
+	passiveHatch: string;
+	passiveStripe: number;
+	passivePitch: number;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "@projective/types/scheduling";
 import {
+	durationLabel,
 	isSeatRefusal,
 	proposalGate,
 	type RescheduleGate,
@@ -340,7 +341,7 @@ function statusLine(view: RescheduleView, nowMs: number, tz: string, hour12: boo
 				? view.resolvesAt > nowMs
 					? `Closes ${calendarTime.fmtFullDate(view.resolvesAt, tz)} · ${
 						calendarTime.fmtTime(view.resolvesAt, tz, hour12)
-					}`
+					} · ${durationLabel(nowMs, view.resolvesAt) ?? "under a minute"} left`
 					: "Closed"
 				: "Open";
 		case "resolved":

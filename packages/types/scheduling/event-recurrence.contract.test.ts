@@ -52,6 +52,8 @@ function eventRow(over: Record<string, unknown> = {}): Record<string, unknown> {
 		sourceSessionEventId: null,
 		recurrenceRule: null,
 		recurrenceParentId: null,
+		routineId: null,
+		availabilityBehavior: "disruptive",
 		createdBy: null,
 		createdAt: "2026-11-03T08:00:00+00:00",
 		updatedAt: "2026-11-03T08:00:00+00:00",

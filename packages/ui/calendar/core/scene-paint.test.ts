@@ -220,6 +220,9 @@ const PALETTE: ScenePalette = {
 	blackout: "rgba(5, 5, 5, 1)",
 	hatchStripe: 6,
 	hatchPitch: 12,
+	passiveHatch: "rgba(0, 0, 0, 0.16)",
+	passiveStripe: 1,
+	passivePitch: 6,
 	hourText: text("400 11px x", "rgba(10, 10, 10, 1)", 11),
 	titleText: text("600 12px x", "rgba(11, 11, 11, 1)", 12),
 	metaText: text("400 11px x", "rgba(12, 12, 12, 1)", 11),
@@ -585,6 +588,37 @@ Deno.test("paintScene — the open-dyslexic overlay's TRACKING reaches canvas te
 	const hour = ops.find((o) => o.op === "text:00:00");
 	assertEquals(title?.tracking, PALETTE.titleText.letterSpacing);
 	assertEquals(hour?.tracking, PALETTE.hourText.letterSpacing);
+});
+
+Deno.test("paintScene — a PASSIVE card is a ghost: the quiet wash, the neutral ink and the hatch", () => {
+	const passive = cards().map((c) => ({ ...c, passive: true }));
+	const { ops } = paint(scene({ events: passive }));
+	assert(
+		ops.some((o) => o.op === "stroke" && o.stroke === PALETTE.passiveHatch),
+		"no hatch was drawn",
+	);
+	assertEquals(ops.find((o) => o.op === "text:Design sync")?.fill, PALETTE.maskedText.color);
+
+	const solid = paint(scene({ events: cards() })).ops;
+	assert(!solid.some((o) => o.op === "stroke" && o.stroke === PALETTE.passiveHatch));
+});
+
+Deno.test("paintScene — a GHOST is drawn as a passive card, and comes up solid under the pointer", () => {
+	const ghost = cards().map((c) => ({ ...c, ghost: true }));
+	const hatch = (o: { op: string; stroke?: unknown }) =>
+		o.op === "stroke" && o.stroke === PALETTE.passiveHatch;
+
+	const resting = paint(scene({ events: ghost })).ops;
+	assert(resting.some(hatch), "no hatch was drawn");
+	assertEquals(resting.find((o) => o.op === "text:Design sync")?.fill, PALETTE.maskedText.color);
+
+	// Fully up, the hatch has gone and the ink has turned over to the accent's own.
+	const solid = paint(scene({ events: ghost.map((c) => ({ ...c, ghostSolid: 1 })) })).ops;
+	assert(!solid.some(hatch), "a solid ghost still drew its hatch");
+	assert(
+		solid.find((o) => o.op === "text:Design sync")?.fill !== PALETTE.maskedText.color,
+		"a solid ghost kept the quiet ink",
+	);
 });
 
 Deno.test("paintScene — a MASKED card's title is stepped down on the second channel too", () => {

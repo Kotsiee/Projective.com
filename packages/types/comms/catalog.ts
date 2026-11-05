@@ -176,6 +176,12 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"event.reminder_email",
 	// #endregion
 
+	// #region [scheduling] Invitations and moving an invited entry's time
+	"schedule.event_invite",
+	"schedule.event_invite_withdrawn",
+	"schedule.event_reschedule",
+	// #endregion
+
 	// #region [scheduling] Rooms and the evidence hold (Decision #383)
 	"room.failed",
 	"session.review_requested",

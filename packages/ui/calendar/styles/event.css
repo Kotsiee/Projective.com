@@ -629,6 +629,57 @@ button.cal-event:focus-visible {
 	color: var(--on-surface-variant);
 }
 
+/*
+ * A PASSIVE card is time its owner left open to be booked over, so it must not read as taken: the
+ * masked card's quiet wash and neutral ink, its accent as an outline, and `--hatch-color` over it. The
+ * canvas twin is `paintPassiveHatch`. The stripes run the way that routine strokes them.
+ */
+.cal-event--passive {
+	background:
+		repeating-linear-gradient(
+			45deg,
+			var(--hatch-color) 0 var(--cal-passive-stripe),
+			transparent var(--cal-passive-stripe) var(--cal-passive-pitch)
+		),
+		color-mix(in srgb, var(--cal-accent) var(--tint), var(--surface));
+	color: var(--on-surface);
+	border: var(--space-px) solid var(--cal-accent);
+}
+
+.cal-event--passive .cal-event__kind {
+	color: var(--on-surface-variant);
+}
+
+/*
+ * A GHOST is an invitation waiting on its reader: it holds nothing yet, so it wears the passive
+ * treatment. Hovering brings it up solid, so it can be read before it is answered: the hatch is an
+ * image and cannot ease, so the fill carries the movement. The canvas twin is `ghostSolid`.
+ */
+.cal-event--ghost {
+	transition:
+		background-color var(--dur-medium) var(--ease-standard),
+		color var(--dur-medium) var(--ease-standard);
+}
+
+.cal-event--ghost:hover,
+.cal-event--ghost:focus-visible {
+	background-image: none;
+	background-color: var(--cal-accent);
+	color: var(--cal-accent-on);
+}
+
+.cal-event--ghost:hover .cal-event__kind,
+.cal-event--ghost:focus-visible .cal-event__kind {
+	color: var(--cal-accent-on);
+}
+
+/* An answered "no" on its way out. The canvas twin is `exit`. */
+.cal-event--leaving {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--dur-medium) var(--ease-exit);
+}
+
 /* `.cal-event__kind` sets its own `color` rather than inheriting (it needs to independently override
    masked vs. accent-on), so the masked step-down has to be restated here rather than relying on the
    cascade from `.cal-event--masked`'s root-level `color`. */

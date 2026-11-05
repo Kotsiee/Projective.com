@@ -11,9 +11,10 @@ import { providerCall } from "./channels.ts";
  * `calendarView/delta` cannot be narrowed (no `$select`), so they arrive and go no further than
  * {@link graphChange}.
  *
- * **Going out: a title, a time and a `/meet` address.** {@link googleCopy} and {@link graphCopy} take a
- * {@link MirrorEvent}, which has no agenda, location, attendee or provider link to send. A person joins
- * through Projective's own address, so a provider's link stays on the server.
+ * **Going out: a title, a time, a `/meet` address and whether it blocks time.** {@link googleCopy} and
+ * {@link graphCopy} take a {@link MirrorEvent}, which has no agenda, location, attendee or provider link
+ * to send, and no routine: a routine's entries go out flattened, as the plain events they are. A person
+ * joins through Projective's own address, so a provider's link stays on the server.
  *
  * Provider copies are written and never read back: an edit made there is overwritten by the next change
  * here, so no version is compared and nothing is merged. Each write is idempotent, because the response
@@ -67,6 +68,8 @@ export interface BusyRead {
 export interface MirrorEvent {
 	title: string;
 	tentative: boolean;
+	/** A passive entry (Decision #389), which leaves its time free at the provider too. */
+	transparent: boolean;
 	all_day: boolean;
 	starts_at: string;
 	ends_at: string;
@@ -282,19 +285,20 @@ function copyWords(event: MirrorEvent, appUrl: string) {
 	};
 }
 
-/** A Google event body. A PUT replaces the event, so this is all of it. */
+/** A Google event body. A PUT replaces the event, so this is all of it: `transparency` is RFC 5545 TRANSP. */
 export function googleCopy(event: MirrorEvent, appUrl: string) {
 	const { title, description } = copyWords(event, appUrl);
 	return {
 		summary: title,
 		description,
 		status: event.tentative ? "tentative" : "confirmed",
+		transparency: event.transparent ? "transparent" : "opaque",
 		start: event.all_day ? { date: event.start_date } : { dateTime: event.starts_at },
 		end: event.all_day ? { date: event.end_date } : { dateTime: event.ends_at },
 	};
 }
 
-/** A Graph event body. Graph takes a time with no offset beside its zone. */
+/** A Graph event body. Graph takes a time with no offset beside its zone, and spells TRANSP `showAs`. */
 export function graphCopy(event: MirrorEvent, appUrl: string) {
 	const { title, description } = copyWords(event, appUrl);
 	const utc = (at: string) => ({
@@ -304,7 +308,7 @@ export function graphCopy(event: MirrorEvent, appUrl: string) {
 	return {
 		subject: title,
 		body: { contentType: "text", content: description },
-		showAs: event.tentative ? "tentative" : "busy",
+		showAs: event.transparent ? "free" : event.tentative ? "tentative" : "busy",
 		isAllDay: event.all_day,
 		start: utc(event.all_day ? `${event.start_date}T00:00:00Z` : event.starts_at),
 		end: utc(event.all_day ? `${event.end_date}T00:00:00Z` : event.ends_at),

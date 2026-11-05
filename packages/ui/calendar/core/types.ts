@@ -153,6 +153,19 @@ export interface CalendarEvent {
 	attendeeFaces?: CalendarAttendee[];
 	/** Where opening the block navigates (optional — otherwise {@link CalendarProps.onOpenEvent}). */
 	href?: string;
+	/**
+	 * `"passive"` is time its owner left open to be booked over, drawn as a hatched ghost in both
+	 * presentations rather than as a solid card, so it never reads as taken. Absent is `"disruptive"`.
+	 */
+	availabilityBehavior?: "disruptive" | "passive";
+	/**
+	 * Waiting on the reader's answer, so it holds nothing yet: drawn as the hatched ghost above in both
+	 * presentations, until hovering brings it up solid so it can be read. The engine knows nothing of
+	 * RSVPs, so a host turns its own vocabulary into this flag at the boundary.
+	 */
+	ghost?: boolean;
+	/** On its way off the calendar: it fades, and whoever owns the list then takes it away. */
+	leaving?: boolean;
 }
 
 /** One host/participant face on a card's avatar stack. */

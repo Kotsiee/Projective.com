@@ -396,6 +396,8 @@ export interface CalendarEventInput {
 	location?: string;
 	/** A stable id so re-adding the event UPDATES it rather than duplicating it. */
 	uid?: string;
+	/** Whether it leaves its time free (RFC 5545 TRANSP). Left out, no line is written. */
+	transparent?: boolean;
 }
 
 /** `YYYYMMDDTHHMMSSZ` — the only timestamp format Google, Outlook and iCalendar all accept. */
@@ -517,6 +519,9 @@ export function buildIcsCalendar(event: CalendarEventInput, dtStampIso: string):
 		`SUMMARY:${icsEscape(event.title)}`,
 		event.description ? `DESCRIPTION:${icsEscape(event.description)}` : null,
 		event.location ? `LOCATION:${icsEscape(event.location)}` : null,
+		event.transparent === undefined
+			? null
+			: `TRANSP:${event.transparent ? "TRANSPARENT" : "OPAQUE"}`,
 		"END:VEVENT",
 		"END:VCALENDAR",
 	].filter((line): line is string => line !== null);

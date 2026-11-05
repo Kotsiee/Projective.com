@@ -452,6 +452,18 @@ GRANT SELECT ON TABLE scheduling.availability_occurrences TO authenticated;
 
 GRANT ALL ON TABLE scheduling.availability_presets TO service_role;
 
+-- Routines (Decision #389). Column-level: a client names, cadences and archives a routine, but never
+-- moves it to another schedule, nor writes `metadata`, which nothing authors yet. No DELETE: archived.
+GRANT SELECT ON TABLE scheduling.routines TO authenticated;
+
+GRANT INSERT (schedule_id, name, color_token, behavior, recurrence_rule)
+ON TABLE scheduling.routines TO authenticated;
+
+GRANT UPDATE (name, color_token, behavior, recurrence_rule, is_active)
+ON TABLE scheduling.routines TO authenticated;
+
+GRANT ALL ON TABLE scheduling.routines TO service_role;
+
 GRANT ALL ON TABLE scheduling.recurrence_rules TO service_role;
 
 GRANT ALL ON TABLE scheduling.recurrence_rule_bands TO service_role;
@@ -519,8 +531,8 @@ GRANT SELECT (
     id, schedule_id, project_id, channel_id, kind, status, title, starts_at, ends_at, all_day,
     is_masked, accent, location, description, meeting_provider, meeting_provider_label,
     meeting_pending, meta, attendee_count, capacity, href, source_connection_id, external_event_id,
-    external_sync, source_session_event_id, recurrence_rule, recurrence_parent_id, created_by,
-    created_at, updated_at, archived_at
+    external_sync, source_session_event_id, recurrence_rule, recurrence_parent_id, routine_id,
+    availability_behavior, created_by, created_at, updated_at, archived_at
 ) ON TABLE scheduling.events TO authenticated;
 
 GRANT
@@ -532,12 +544,17 @@ GRANT ALL ON TABLE scheduling.events TO service_role;
 
 -- Event coordination: read by the event's parties under RLS, written only by the service role (see
 -- the policies in 00002015 for why there is no client write path).
-GRANT SELECT ON TABLE scheduling.event_attendees,
-scheduling.event_reschedules,
+GRANT SELECT ON TABLE scheduling.event_reschedules,
 scheduling.reschedule_proposals,
 scheduling.proposal_votes,
 scheduling.event_history,
 scheduling.event_attachments TO authenticated;
+
+-- Every column but `email`: RLS admits every party to a seat row, and one guest's address is not
+-- another guest's to read.
+GRANT SELECT (
+    id, event_id, user_id, role, response, responded_at, note, archived_at, created_at, updated_at
+) ON TABLE scheduling.event_attendees TO authenticated;
 
 GRANT ALL ON TABLE scheduling.event_attendees,
 scheduling.event_reschedules,
