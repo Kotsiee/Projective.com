@@ -1225,12 +1225,16 @@ $$;
 -- were in the room within its first `session_presence_minutes` (15). The outcome:
 --   pending          the window has not closed yet
 --   untracked        the room reports no presence (no provider room, or no webhook row at all — a
---                    silent webhook is not evidence that nobody came)
+--                    silent webhook is not evidence that nobody came), or the host was in the room,
+--                    and an attendee who pressed join in time is not in it, in a room that does not
+--                    let them in by themselves: they may have been left outside, and no record says
+--                    which (Decision #392)
 --   successful       the host and at least one seated attendee joined in the window, or an attendee
 --                    answered that a sitting with no evidence happened (Decision #383, ruling R6)
 --   provider_no_show the host was not there, and an attendee was: seen in the room, even late, or
 --                    pressing join in Projective with the provider's own record read back and
---                    showing no host (Decision #383, ruling R5)
+--                    showing no host (Decision #383, ruling R5). A knock or a lobby changes nothing
+--                    here: the press and the read are enough, with no record of them in the room
 --   attendee_no_show the host joined, no seated attendee did
 CREATE OR REPLACE FUNCTION projects.fn_session_presence(p_event_id uuid)
 RETURNS jsonb
@@ -1250,6 +1254,7 @@ DECLARE
     v_came boolean;
     v_clicked boolean;
     v_reconciled boolean;
+    v_registers boolean;
     v_confirmed boolean;
 BEGIN
     SELECT * INTO v_event FROM projects.session_events WHERE id = p_event_id;
@@ -1288,14 +1293,18 @@ BEGIN
          WHERE a.session_event_id = v_event.id AND a.source = 'confirmed'
     ) INTO v_confirmed;
     -- A first-party join inside the window, and whether the provider's own record has been read. Both
-    -- together are what proves a host never came when the room reported nothing (ruling R5).
+    -- together are what proves a host never came when the room reported nothing (ruling R5). A room
+    -- that registers people lets an approved attendee in by themselves; in any other, the host decides
+    -- who comes in (Decision #392). This reads what the room is, never whether a provider confirmed a
+    -- setting, because an answer we have not seen on a live account must not decide money.
     SELECT EXISTS (
                SELECT 1 FROM scheduling.presence_events p
                  JOIN projects.cohort_memberships cm ON cm.user_id = p.user_id AND cm.cohort_id = v_event.cohort_id
                 WHERE p.room_id = r.id AND p.action = 'join_click' AND p.occurred_at <= v_window_end
            ),
-           r.reconciled_at IS NOT NULL
-      INTO v_clicked, v_reconciled
+           r.reconciled_at IS NOT NULL,
+           r.registration
+      INTO v_clicked, v_reconciled, v_registers
       FROM scheduling.rooms r
      WHERE r.session_event_id = v_event.id;
 
@@ -1311,6 +1320,8 @@ BEGIN
             WHEN v_confirmed THEN 'successful'
             WHEN NOT v_tracked AND NOT (COALESCE(v_clicked, false) AND COALESCE(v_reconciled, false)) THEN 'untracked'
             WHEN v_host AND v_present > 0 THEN 'successful'
+            -- Not a no-show either way. A host must not collect on a sitting they kept somebody out of.
+            WHEN v_host AND COALESCE(v_clicked, false) AND NOT COALESCE(v_registers, false) THEN 'untracked'
             WHEN v_host THEN 'attendee_no_show'
             WHEN v_came OR COALESCE(v_clicked, false) THEN 'provider_no_show'
             ELSE 'untracked'
@@ -1564,7 +1575,8 @@ $$;
 
 -- A link the host adds themselves (Decision #383, rulings R2 and R7): allowed on a paid sitting, for a
 -- host with no connected account or a room that failed. Nothing reports attendance from it, so the
--- sitting reads untracked and its payout holds for review, which is what the host is warned of first.
+-- sitting reads untracked and its payout holds for review, and nothing keeps out anybody holding it
+-- (Decision #392). The host is warned of both first.
 CREATE OR REPLACE FUNCTION projects.set_sitting_link(p_event_id uuid, p_url text)
 RETURNS void
 LANGUAGE plpgsql
@@ -1595,7 +1607,7 @@ BEGIN
     VALUES (p_event_id, 'custom', 'ready')
     ON CONFLICT (session_event_id) DO UPDATE
        SET provider = 'custom', status = 'ready', connection_id = NULL, provider_meeting_id = NULL,
-           provider_host_id = NULL, registration = false, attempts = 0, last_error = NULL,
+           provider_host_id = NULL, registration = false, guarded = false, attempts = 0, last_error = NULL,
            moved_at = NULL, reconciled_at = NULL;
     UPDATE scheduling.events
        SET meeting_provider = 'custom', meeting_pending = false

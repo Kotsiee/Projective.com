@@ -56,6 +56,8 @@ export interface RawDispute {
 	payee_share_bp: number | null;
 	settlement: Record<string, unknown> | null;
 	audit: Record<string, unknown> | null;
+	/** An operator's alone; absent from a party's read. */
+	room?: { guarded?: boolean; unmatched?: number } | null;
 	amount_minor: number;
 	currency: string;
 	project: { id: string; slug: string } | null;
@@ -149,6 +151,9 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 		payeeShareBp: raw.payee_share_bp ?? null,
 		settlement: settlementOf(raw.settlement),
 		audit: auditOf(raw.audit),
+		room: raw.room
+			? { guarded: raw.room.guarded === true, unmatched: Math.max(0, int(raw.room.unmatched)) }
+			: null,
 		amountMinor: Math.max(0, int(raw.amount_minor)),
 		currency: raw.currency,
 		amountLabel: formatMoney(Math.max(0, int(raw.amount_minor)), raw.currency),

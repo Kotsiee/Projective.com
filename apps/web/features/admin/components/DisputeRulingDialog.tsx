@@ -28,6 +28,7 @@ import {
 	OUTCOME_LABEL,
 	partyLabel,
 	previewCase,
+	roomAccessLine,
 	rulingProblem,
 	shareToBp,
 } from "../core/dispute-desk.ts";
@@ -245,6 +246,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 							</dl>
 
 							{d.audit ? <DisputeRoomLog audit={d.audit} /> : null}
+							{d.room ? <p class="ddesk-dlg__text">{roomAccessLine(d.room)}</p> : null}
 
 							<section class="ddesk-dlg__section" aria-label="Statements and evidence">
 								<h3 class="ddesk-dlg__heading">Statements &amp; evidence</h3>

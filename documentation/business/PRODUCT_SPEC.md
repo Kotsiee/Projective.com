@@ -92,13 +92,27 @@ aligned on time and location.
   gets their own join link (one per registrant where the provider supports it); nobody pastes a link
   by hand. A host with no connected account is offered **Connect** or a manual https link; there is
   no platform-hosted room (Decision #383, ruling R2). A manual link stays allowed on a paid sitting,
-  with a warning that a room which reports no attendance has its payout held for review (ruling R7).
+  with a warning that anyone holding it can join, and that a room which reports no attendance has its
+  payout held for review (ruling R7; Decision #392).
   Teams rooms need a work or school account, and a personal Microsoft account is told so in the
   picker (ruling R4). A link reaches only the event's parties, through Projective, inside the join
   window: the host, a funded seat, the two sides of a confirmed call, or an invitee who has accepted
   (Decision #343, ruling C4). Everyone joins through one address, `/meet/rom-…`. An attendee's own
   link is made the first time they join, on a licensed Zoom host; Meet and Teams have one shared link
   behind the same address. **Not yet run on live provider accounts.**
+- **A copied link opens no paid sitting, on any provider.** Projective's own address decides who may
+  join a paid room, and the provider's settings stop a link copied out of it from undoing that
+  (Decision #392, which amends ruling R5 for paid sittings; every other room stays open). On a
+  licensed Zoom host the room takes registration that Projective approves at the moment a person
+  joins, so the room's own link leads nowhere and an approved attendee still enters without the host.
+  Where registration is not available, a Zoom Basic host or a connection without the approval scope,
+  a waiting room stands guard instead. On Google Meet everyone knocks, and on Microsoft Teams everyone
+  but the organizer waits in the lobby, dial-in included, so the host admits each person; on a team's
+  sitting only the account that made the room can do that. A person's own Zoom link is still theirs:
+  passed on, it gives up that one seat, on one device at a time, and it names them. A manual link can
+  do none of this, which is why its host is warned. Each room records whether its provider confirmed
+  the setting, and an operator reading a case sees that and how many people in the room matched no
+  seat. **Not yet run on live provider accounts.**
 - **Today only in-app notices are delivered**, apart from the email a guest with no account gets
   (Decision #391). Email to people on Projective, push and SMS have no dispatcher yet; the SMS
   setting shows only once the SMS provider (Twilio) is configured. **Not built yet** (Decision #339,
@@ -127,15 +141,19 @@ attendance.
   comes back is not counted for the gap, and reconnects are visible (Decision #383 (b)).
 - **Failure to Attend:** If the system detects a Freelancer no-show, the Escrow is flagged for an
   immediate refund. A no-show is the provider's own record showing no host, plus evidence the
-  attendee came: a record of them in the room, or their join through Projective. A room the platform
-  creates lets an attendee in without the host, so that record can exist. Silence alone is never
-  enough, and a failed read of the provider's records holds the sitting for review (Decision #383,
-  ruling R5).
+  attendee came: a record of them in the room, or their join through Projective. A free room lets an
+  attendee in without the host, so that record can exist. In a paid room they may never get past a
+  knock, a lobby or a waiting room, and their join through Projective is that evidence (Decision
+  #392). Silence alone is never enough, and a failed read of the provider's records holds the sitting
+  for review (Decision #383, ruling R5). Zoom gives a Basic host no such record to read, so a no-show
+  there holds and asks the attendee rather than refunding on its own (Decision #392).
 - **No evidence, no automatic release.** A sitting with no presence data at all is held for review
-  instead of paying out on negative consent (Decision #343, ruling C5 (a)). When the review window
-  ends the attendee is asked whether the session happened: a yes releases, a no is a no-show claim,
-  and silence opens an operator case. A host's own attestation is not evidence (Decision #383,
-  ruling R6).
+  instead of paying out on negative consent (Decision #343, ruling C5 (a)). So is a room the host lets
+  people into, when the host was in it and an attendee who pressed join in time was not: they may have
+  been left outside, so a host cannot collect on it as an attendee no-show (Decision #392). When the
+  review window ends the attendee is asked whether the session happened: a yes releases, a no is a
+  no-show claim, and silence opens an operator case. A host's own attestation is not evidence
+  (Decision #383, ruling R6).
 
 ###### C. Financial Integrity & The 24-Hour Rule
 

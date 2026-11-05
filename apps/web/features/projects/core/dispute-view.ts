@@ -272,6 +272,7 @@ export function devDisputeCase(
 			auditedAt: summary.openedAt,
 			timeline: [],
 		},
+		room: null,
 		amountMinor: amount,
 		currency,
 		amountLabel: formatMoney(amount, currency),

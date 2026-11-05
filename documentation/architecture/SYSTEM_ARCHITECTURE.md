@@ -3485,7 +3485,9 @@ and the live `stripe listen` forwarding — run the manual steps above.
 - **Room Generation:** Anything that creates a sitting or confirms a call queues one
   `scheduling.rooms` row, and `RoomBackendService` mints it on the host's connected account, writing
   nothing to a calendar (Decision #383, ruling R3). A person joins through `/meet/rom-…`, so a
-  provider's link stays on the server until the moment of joining.
+  provider's link stays on the server until the moment of joining. A paid room's provider settings
+  keep out whoever merely holds that link once it has left the server, and `rooms.guarded` records
+  what the provider confirmed, which nothing but an operator's case reads (Decision #392).
 - **Verification:** The system listens to server-to-server Webhooks (e.g., Zoom's
   `participant_joined`) to power the "Digital Handshake" attendance logs, and reads the provider's
   own record after the meeting. Every join and leave goes into `scheduling.presence_events`, and

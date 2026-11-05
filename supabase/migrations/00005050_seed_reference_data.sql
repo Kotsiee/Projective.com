@@ -242,14 +242,15 @@ VALUES
         }'::jsonb),
     -- Zoom takes scopes from the Marketplace app and answers "Invalid scope" to any in the URL. Only
     -- creating a meeting is required: the others degrade (a best-effort sync, the shared link, a held
-    -- review), so an app missing one still connects.
+    -- review, a paid room's waiting room in place of approved registrants), so an app missing one
+    -- still connects.
     ('zoom', 'Zoom', 'conferencing',
         ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
         true, 'direct', true,
         ARRAY[
             'meeting:write:meeting', 'meeting:read:meeting', 'meeting:update:meeting',
-            'meeting:delete:meeting', 'meeting:write:registrant', 'meeting:read:list_past_participants',
-            'user:read:user'
+            'meeting:delete:meeting', 'meeting:write:registrant', 'meeting:write:batch_registrants',
+            'meeting:read:list_past_participants', 'user:read:user'
         ],
         '{
             "authorize_url": "https://zoom.us/oauth/authorize",

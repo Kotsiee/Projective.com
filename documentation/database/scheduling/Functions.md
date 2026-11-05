@@ -455,8 +455,8 @@ time changes, and close it when the sitting or call is cancelled.
 
 | Door (service role only)                                      | What it does                                                                                     |
 | :------------------------------------------------------------ | :----------------------------------------------------------------------------------------------- |
-| `claim_rooms_to_mint(limit) → TABLE(...)`                     | Takes due rooms `FOR UPDATE SKIP LOCKED` and counts an attempt. A mint left `minting` for ten minutes is taken again. |
-| `attach_room(room, connection, meeting, host, url, passcode)` | Writes the room and the column its owner withholds. A second attach is a no-op.                  |
+| `claim_rooms_to_mint(limit) → TABLE(...)`                     | Takes due rooms `FOR UPDATE SKIP LOCKED` and counts an attempt. A mint left `minting` for ten minutes is taken again. Says whether a room is `paid` (`fn_room_facts`: every sitting, and a paid consultation, though none can be booked yet) and carries the connection's `granted_scopes`, which together decide how the provider keeps out whoever merely holds its link (Decision #392). |
+| `attach_room(room, connection, meeting, host, url, passcode, registration, guarded)` | Writes the room and the column its owner withholds. `guarded` records what the provider's answer confirmed, for an operator's case. A second attach is a no-op. |
 | `fail_room(room, error, final = false)`                       | Back in the queue up to `room_mint_max_attempts`, then `failed`, telling the host (`room.failed`). |
 | `claim_rooms_to_sync(limit)` · `room_synced(room, error?)`    | Moved or closing rooms; best effort, and never blocks a booking.                                 |
 | `claim_rooms_to_reconcile(limit)` · `room_reconciled(room, error?)` | Ended rooms whose provider's record is due a read: from 15 minutes after the end for 3 days, hourly. Only a read that worked is stamped, so a sitting that needed it stays held (ruling R5). |
@@ -493,7 +493,10 @@ A sitting asks `projects.session_join_link`; a call must be confirmed; an event'
 accepted or be tentative. States: `open`, `upcoming`, `ended`, `cancelled`, `not_party`, `needs_rsvp`,
 `unfunded`, `unconfirmed`, `no_room`. A person's own registrant link wins over the room's. Pressing
 join while the room is open writes a `join_click`, the one piece of evidence that an attendee came
-which does not depend on a provider.
+which does not depend on a provider. For the service alone: `register` (with `approve` on a paid
+room, where Projective approves the person at this press) and `link_required`, set on a paid room
+that registers people when this person holds no link yet, because its plain link leads to a form
+nobody answers and must never be the fallback (Decision #392).
 
 ## 7e. Attendance (`00001510` §7e; Decision #383 (b))
 
@@ -514,6 +517,17 @@ Time actually in the room. Several devices at once count once, time is clipped t
 join with no `left` adds nothing after it (ruling C5 (c)), which `open_span` reports. Once a provider's
 own record has been read it is the whole story, so a `left` lost in a webhook costs nothing. The dispute audit
 reads this. Probe: `supabase/probes/presence_ledger.sql`.
+
+### `scheduling.fn_room_unmatched(room) → integer`
+
+How many people were in a room with no seat behind them (Decision #392), read from the same rows
+`fn_room_presence` reads, and returned as a count, because a key is a hash. `record_presence` gives a
+participant nobody can name in a one-seat room to that seat's attendee, so `matched_by = 'unmatched'`
+alone would read nought on the rooms a copied link is likeliest to reach: every such key past the
+first counts too, and the first as well once the seat was named another way. A knock, a press and a
+repeat are not people. It moves no money, and a seat holder on a second device reads the same as a
+stranger, so it is evidence for a person to weigh. `finance.get_dispute` reads it for an operator.
+Probe: `supabase/probes/paid_rooms.sql`.
 
 ### `scheduling.fn_prune_presence() → jsonb`
 

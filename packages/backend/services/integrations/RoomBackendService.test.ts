@@ -4,9 +4,10 @@ import { IntegrationsBackendService } from "./IntegrationsBackendService.ts";
 import { RoomBackendService } from "./RoomBackendService.ts";
 
 /*
- * The three sweeps and the join (Decision #383). What is pinned is what money and access turn on: a
- * read that failed is never stamped as read, a refusal that cannot change stops retrying, and a
- * provider being down never stops anybody joining. Runs on a fake network: no provider was called.
+ * The three sweeps and the join (Decisions #383 and #392). What is pinned is what money and access turn
+ * on: a read that failed is never stamped as read, a refusal that cannot change stops retrying, a
+ * provider being down stops nobody on a room whose own link works, and a room whose link is no way in
+ * never hands that link out. Runs on a fake network: no provider was called.
  */
 
 // #region Fake network
@@ -107,6 +108,42 @@ Deno.test("mint: a made room is attached with its meeting, its host and whether 
 		assertEquals(attach.json.p_host_id, "zhost");
 		assertEquals(attach.json.p_registration, true);
 		assertEquals(named(calls, "fail_room").length, 0);
+	}));
+
+Deno.test("mint: what the queue says about money reaches the provider, and what the provider confirms is kept", () =>
+	world({
+		db: {
+			claim_rooms_to_mint:
+				() => [{ ...ROOM, paid: true, granted_scopes: ["meeting:write:batch_registrants"] }],
+		},
+		provider: (call) =>
+			call.name.endsWith("/users/me") ? json({ type: 2 }) : json({
+				id: 78,
+				join_url: "https://zoom.us/j/78",
+				settings: { approval_type: call.json.settings.approval_type },
+			}, 201),
+	}, async (calls) => {
+		await RoomBackendService.mintDue(5);
+		const [, created] = calls.filter((c) => c.name.startsWith("/v2/"));
+		assertEquals(created.json.settings.approval_type, 1);
+		const [attach] = named(calls, "attach_room");
+		assertEquals([attach.json.p_registration, attach.json.p_guarded], [true, true]);
+	}));
+
+Deno.test("mint: a room the queue does not call paid stays open", () =>
+	world({
+		db: { claim_rooms_to_mint: () => [ROOM] },
+		provider: (call) =>
+			call.name.endsWith("/users/me") ? json({ type: 2 }) : json({
+				id: 79,
+				join_url: "https://zoom.us/j/79",
+				settings: { approval_type: call.json.settings.approval_type },
+			}, 201),
+	}, async (calls) => {
+		await RoomBackendService.mintDue(5);
+		const [, created] = calls.filter((c) => c.name.startsWith("/v2/"));
+		assertEquals(created.json.settings.approval_type, 0);
+		assertEquals(named(calls, "attach_room")[0].json.p_guarded, false);
 	}));
 
 Deno.test("mint: no connected account stops at once and tells the host", () =>
@@ -273,6 +310,77 @@ Deno.test("guest join: a refused code is said in the page's words, and hands ove
 		assertEquals(res.message, "That code isn't right. Check your email and try again.");
 		assertEquals(res.data, undefined);
 		assertEquals(calls.length, 1);
+	}));
+
+Deno.test("join: a guarded room's first join approves them through the batch door", () =>
+	world({
+		db: {
+			room_join: () => ({
+				...OPEN,
+				link_required: true,
+				register: {
+					room_id: ROOM.room_id,
+					user_id: "from-the-door",
+					email: "a@example.test",
+					first_name: "Ada",
+					approve: true,
+				},
+			}),
+		},
+		provider: () =>
+			json(
+				{ registrants: [{ registrant_id: "reg-9", join_url: "https://zoom.us/w/approved" }] },
+				201,
+			),
+	}, async (calls) => {
+		assertEquals(
+			(await RoomBackendService.join(SLUG, ADA)).data?.url,
+			"https://zoom.us/w/approved",
+		);
+		const [approved] = calls.filter((c) => c.name.startsWith("/v2/"));
+		assertEquals(approved.name, "/v2/meetings/77/batch_registrants");
+		assertEquals(approved.json.auto_approve, true);
+		assertEquals(named(calls, "save_room_registrant")[0].json.p_registrant_id, "reg-9");
+	}));
+
+Deno.test("join: a room whose link is no way in says try again, and never hands that link out", async () => {
+	const register = {
+		room_id: ROOM.room_id,
+		user_id: "u",
+		email: "a@example.test",
+		first_name: "Ada",
+		approve: true,
+	};
+	await world({
+		db: { room_join: () => ({ ...OPEN, link_required: true, register }) },
+		provider: () => json({}, 503),
+	}, async () => {
+		const res = await RoomBackendService.join(SLUG, ADA);
+		assertEquals(res.ok, false);
+		assertEquals(res.status, 503);
+		assertEquals(res.data, undefined);
+	});
+	await world({
+		db: { room_join: () => ({ ...OPEN, role: "host", link_required: true }) },
+		provider: () => json({}, 503),
+	}, async () => {
+		assertEquals((await RoomBackendService.join(SLUG, ADA)).ok, false);
+	});
+});
+
+Deno.test("join: somebody who already holds their link on a guarded room needs no provider", () =>
+	world({
+		db: {
+			room_join: () => ({
+				...OPEN,
+				url: "https://zoom.us/w/already",
+				link_required: false,
+				connection_id: null,
+			}),
+		},
+		provider: () => json({}, 503),
+	}, async () => {
+		assertEquals((await RoomBackendService.join(SLUG, ADA)).data?.url, "https://zoom.us/w/already");
 	}));
 
 Deno.test("join: a provider being down leaves the room's own link, and nobody is stopped", () =>

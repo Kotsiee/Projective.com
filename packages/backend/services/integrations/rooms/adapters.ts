@@ -1,7 +1,11 @@
 /**
- * Room adapters — one meeting at each provider (Decision #383, rulings R3 and R5). Nothing here writes
- * to anybody's calendar, and every room lets an attendee in without its host, because a room they
- * cannot enter leaves no evidence that they came.
+ * Room adapters — one meeting at each provider (Decision #383, rulings R3 and R5; Decision #392).
+ * Nothing here writes to anybody's calendar.
+ *
+ * A free room lets an attendee in without its host (ruling R5). A paid room keeps out whoever merely
+ * holds its link, because Projective's own door has already decided who may join and a copied link must
+ * not undo that (Decision #392). Each provider does that differently, and where an attendee waits for
+ * the host, their press of join through Projective is what proves they came.
  *
  * An adapter holds no token: the service passes one in for the call, and nothing an adapter throws or
  * returns contains it. Nothing past this file knows a provider's field names.
@@ -16,6 +20,10 @@ export interface RoomFacts {
 	endsAt: string;
 	/** The host's account at the provider, from the connection. */
 	hostAccount: string | null;
+	/** Money turns on who gets in (`scheduling.fn_room_facts`). */
+	paid: boolean;
+	/** What this host's connection was actually granted, which can lag what the app now asks for. */
+	grantedScopes: readonly string[];
 }
 
 /** A meeting as a provider made it. */
@@ -26,6 +34,11 @@ export interface MintedRoom {
 	passcode: string | null;
 	/** People can hold personal links on this meeting. */
 	registration: boolean;
+	/**
+	 * The provider's own answer says a link alone gets nobody in. A record for a dispute case, which
+	 * nothing else reads: an answer not yet seen on a live account must not decide who gets in.
+	 */
+	guarded: boolean;
 }
 
 /** One stretch of one participant in a room, from the provider's own record. */
@@ -54,10 +67,11 @@ export interface RoomAdapter {
 	attendance(token: string, meetingId: string): Promise<RoomAttendance[]>;
 	/** A fresh link for the host, where a stored one would be a credential that expires. */
 	hostLink?(token: string, meetingId: string): Promise<string | null>;
+	/** A person's own link. `approve` is for a meeting that approves its own people. */
 	register?(
 		token: string,
 		meetingId: string,
-		person: { email: string; firstName: string },
+		person: { email: string; firstName: string; approve: boolean },
 	): Promise<RoomRegistrant>;
 }
 
@@ -129,6 +143,7 @@ interface ZoomMeeting {
 	join_url: string;
 	start_url?: string;
 	password?: string;
+	settings?: { approval_type?: number; waiting_room?: boolean };
 }
 
 interface ZoomParticipants {
@@ -150,21 +165,33 @@ const zoomMeetingBody = (room: RoomFacts) => ({
 	timezone: "UTC",
 });
 
+/** Approving someone in the call that also gives their link is Zoom's batch door, on its own scope. */
+const ZOOM_APPROVAL_SCOPE = "meeting:write:batch_registrants";
+
 const zoom: RoomAdapter = {
 	async create(token, room) {
 		// Registration needs a licensed host; on Basic, Zoom refuses the setting.
 		const me = await call<{ type?: number }>(`${ZOOM}/users/me`, token);
-		const registration = me.type === 2;
+		const licensed = me.type === 2;
+		// A paid room approves its own people, so its plain link leads nowhere and an approved attendee
+		// still enters without the host. Otherwise a waiting room stands guard, which Zoom says turns
+		// join before host off. That includes a connection without the approval scope: a room nobody can
+		// be approved into would lock out the people who paid.
+		const approves = room.paid && licensed && room.grantedScopes.includes(ZOOM_APPROVAL_SCOPE);
+		const waits = room.paid && !approves;
+		const registration = licensed && !waits;
 		const meeting = await call<ZoomMeeting>(`${ZOOM}/users/me/meetings`, token, {
 			method: "POST",
 			body: {
 				...zoomMeetingBody(room),
 				type: 2,
 				settings: {
-					join_before_host: true,
+					join_before_host: !waits,
 					jbh_time: 0,
-					waiting_room: false,
-					approval_type: registration ? 0 : 2,
+					waiting_room: waits,
+					approval_type: approves ? 1 : registration ? 0 : 2,
+					// A personal link passed on can then be in the room on one device at a time.
+					...(approves ? { allow_multiple_devices: false } : {}),
 					registrants_email_notification: false,
 					registrants_confirmation_email: false,
 				},
@@ -176,6 +203,10 @@ const zoom: RoomAdapter = {
 			joinUrl: meeting.join_url,
 			passcode: meeting.password ?? null,
 			registration,
+			// An account's own locks can overrule a request, so this records what Zoom answered.
+			guarded: approves
+				? meeting.settings?.approval_type === 1
+				: waits && meeting.settings?.waiting_room === true,
 		};
 	},
 
@@ -225,8 +256,31 @@ const zoom: RoomAdapter = {
 	},
 
 	async register(token, meetingId, person) {
+		const meeting = `${ZOOM}/meetings/${encodeURIComponent(meetingId)}`;
+		if (person.approve) {
+			// The single-registrant call also takes `auto_approve`, but it leaves `join_url` out of its
+			// answer on a manual-approval meeting. This one returns it.
+			const batch = await call<{ registrants?: { registrant_id?: string; join_url?: string }[] }>(
+				`${meeting}/batch_registrants`,
+				token,
+				{
+					method: "POST",
+					body: {
+						auto_approve: true,
+						registrants_confirmation_email: false,
+						registrants: [{ email: person.email, first_name: person.firstName }],
+					},
+				},
+			);
+			// The id is what attendance matches them on, so a link without one is no use either.
+			const [added] = batch.registrants ?? [];
+			if (!added?.join_url || !added.registrant_id) {
+				throw new RoomProviderError(200, "no_personal_link", false);
+			}
+			return { registrantId: added.registrant_id, joinUrl: added.join_url };
+		}
 		const added = await call<{ registrant_id?: string; id?: string; join_url: string }>(
-			`${ZOOM}/meetings/${encodeURIComponent(meetingId)}/registrants`,
+			`${meeting}/registrants`,
 			token,
 			{ method: "POST", body: { email: person.email, first_name: person.firstName } },
 		);
@@ -265,16 +319,23 @@ interface MeetSession {
 
 const google: RoomAdapter = {
 	async create(token, room) {
-		const space = await call<{ name: string; meetingUri: string }>(`${MEET}/spaces`, token, {
-			method: "POST",
-			body: { config: { accessType: "OPEN", entryPointAccess: "ALL" } },
-		});
+		// RESTRICTED lets only invitees in without knocking, and Projective adds none, so everyone knocks
+		// and the host admits them.
+		const accessType = room.paid ? "RESTRICTED" : "OPEN";
+		const space = await call<
+			{ name: string; meetingUri: string; config?: { accessType?: string } }
+		>(
+			`${MEET}/spaces`,
+			token,
+			{ method: "POST", body: { config: { accessType, entryPointAccess: "ALL" } } },
+		);
 		return {
 			meetingId: space.name,
 			hostId: room.hostAccount ? `users/${room.hostAccount}` : null,
 			joinUrl: space.meetingUri,
 			passcode: null,
 			registration: false,
+			guarded: room.paid && space.config?.accessType === "RESTRICTED",
 		};
 	},
 
@@ -346,13 +407,19 @@ const teams: RoomAdapter = {
 			},
 		});
 		// createOrGet takes no lobby setting. A tenant may forbid it: the room still works, and the
-		// attendee's press of join is evidence that they came.
-		await call(`${GRAPH}/me/onlineMeetings/${encodeURIComponent(meeting.id)}`, token, {
-			method: "PATCH",
-			body: { lobbyBypassSettings: { scope: "everyone", isDialInBypassEnabled: true } },
-		}).catch((error) => {
+		// attendee's press of join is evidence that they came. On a paid room dial-in must not skip the
+		// lobby either, or the phone number would be a way round it.
+		const lobbyBypassSettings = room.paid
+			? { scope: "organizer", isDialInBypassEnabled: false }
+			: { scope: "everyone", isDialInBypassEnabled: true };
+		const lobby = await call<{ lobbyBypassSettings?: { scope?: string } }>(
+			`${GRAPH}/me/onlineMeetings/${encodeURIComponent(meeting.id)}`,
+			token,
+			{ method: "PATCH", body: { lobbyBypassSettings } },
+		).catch((error) => {
 			if (!(error instanceof RoomProviderError) || !error.final) throw error;
 			console.error("[rooms:teams] lobby left as the tenant set it:", error.code);
+			return null;
 		});
 		return {
 			meetingId: meeting.id,
@@ -360,6 +427,7 @@ const teams: RoomAdapter = {
 			joinUrl: meeting.joinWebUrl,
 			passcode: null,
 			registration: false,
+			guarded: room.paid && lobby?.lobbyBypassSettings?.scope === "organizer",
 		};
 	},
 
