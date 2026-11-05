@@ -43,6 +43,7 @@ export async function inviteToEvent(
 	const { error } = await sched(deps.db).rpc("invite_to_event", {
 		p_event: input.eventId,
 		p_users: input.userIds,
+		p_emails: input.emails,
 	});
 	return error ? writeRefusal(error) : await reread(input.eventId, deps);
 }

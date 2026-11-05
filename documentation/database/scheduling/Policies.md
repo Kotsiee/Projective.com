@@ -20,7 +20,8 @@ read by the owner side (Decision #217, below). Neither is visitor-readable, and 
 
 A discovery call is **never** readable by `anon` — there is deliberately no visitor policy on
 `discovery_calls`, `call_attendance`, or `call_audit`. `rooms`, `room_registrants`, `presence_events`,
-`event_mirrors` and `connected_event_details` have no client grant at all. `discovery_calls.meeting_url` and
+`guest_links`, `guest_mail`, `guest_mail_opt_outs`, `event_mirrors` and `connected_event_details` have
+no client grant at all. `discovery_calls.meeting_url` and
 `meeting_external_id` are withheld at the column level, and a party joins through `/meet`. Since
 2026-09-28 the same holds for
 `scheduling.events` and `blackout_dates` rows: a visitor's whole view of a schedule is two definer
@@ -185,7 +186,12 @@ host's doors, and an answer goes through `/api/scheduling/rsvp`, under the "no c
 below. `archived_at` ends a seat for every predicate here, so a withdrawn guest stops seeing the
 entry, its roster and its room at once. `event_attendees` is granted to `authenticated` by column,
 every column but `email`, because RLS admits every party to the row and one guest's address is not
-another's to read.
+another's to read. A host reads it through `get_guest_addresses`, which answers only for entries they
+manage, and everybody else's roster says "Guest" (Decision #391).
+
+A guest has no session, so no policy can admit one. Their link is their authority, the doors that
+take it are service role only, and the service that calls them holds no rule of its own. That is
+also why a host cannot reach them: one who could would be able to answer for their own guests.
 
 ## 🤝 Event coordination (`00000022`)
 

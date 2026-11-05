@@ -47,6 +47,7 @@ export const PresenceMatch = z.enum([
 	"email",
 	"sole_attendee",
 	"session",
+	"guest_link",
 	"unmatched",
 ]);
 export type PresenceMatch = z.infer<typeof PresenceMatch>;

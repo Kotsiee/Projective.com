@@ -57,6 +57,7 @@ import {
 	updateEntry,
 } from "./live-entries.ts";
 import { createRoutine, organiseEntry, updateRoutine } from "./live-routines.ts";
+import { GuestBackendService } from "./GuestBackendService.ts";
 import { inviteToEvent, readClashes, withdrawInvitation } from "./live-invitations.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
@@ -189,6 +190,9 @@ async function asHost<T>(
 	}
 }
 // #endregion
+
+/** How many guest emails a host's own press waits on. The sweep sends the rest within a minute. */
+const SENT_WHILE_WAITING = 3;
 
 export class ScheduleBackendService {
 	/**
@@ -434,22 +438,36 @@ export class ScheduleBackendService {
 		return asHost("remove-entry", actor, deps, (a, d) => removeEntry(input, a, d));
 	}
 
-	/** Seat people on one of the caller's own entries and tell them. The door judges it. */
-	static invite(
+	/**
+	 * Seat people on one of the caller's own entries and tell them. The door judges it. A guest's email
+	 * is sent straight away, so a host hears at once if it could not go.
+	 */
+	static async invite(
 		input: InviteInput,
 		actor: ReadActor,
 		deps: Partial<EntryDeps> = {},
 	): Promise<ServiceResult<{ event: CalendarEvent }>> {
-		return asHost("invite", actor, deps, (_a, d) => inviteToEvent(input, d));
+		const res = await asHost("invite", actor, deps, (_a, d) => inviteToEvent(input, d));
+		if (res.ok && input.emails.length > 0) {
+			await GuestBackendService.sendDue(SENT_WHILE_WAITING);
+		}
+		return res;
 	}
 
 	/** Withdraw one invitation from one of the caller's own entries, and tell its person. */
-	static withdrawInvitation(
+	static async withdrawInvitation(
 		input: WithdrawInviteInput,
 		actor: ReadActor,
 		deps: Partial<EntryDeps> = {},
 	): Promise<ServiceResult<{ event: CalendarEvent }>> {
-		return asHost("withdraw-invitation", actor, deps, (_a, d) => withdrawInvitation(input, d));
+		const res = await asHost(
+			"withdraw-invitation",
+			actor,
+			deps,
+			(_a, d) => withdrawInvitation(input, d),
+		);
+		if (res.ok) await GuestBackendService.sendDue(SENT_WHILE_WAITING);
+		return res;
 	}
 
 	/** What already holds the caller's own time across a span. */

@@ -114,6 +114,8 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	// The stage invite-link landing (`/invite/[token]`, Decision #145) and the saved page (`/saved`,
 	// Decision #180) — real top-level routes, held by the namespace guard (Teams P1).
 	"invite",
+	// A guest's invitation (`/rsvp/[token]`, Decision #391).
+	"rsvp",
 	"saved",
 	// Framework / infra
 	"api",

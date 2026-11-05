@@ -240,7 +240,39 @@ Deno.test("join: an attendee's first join makes their own link, for the person t
 			p_user: "from-the-door",
 			p_registrant_id: "reg-1",
 			p_join_url: "https://zoom.us/w/own",
+			p_attendee: null,
 		});
+	}));
+
+Deno.test("guest join: a guest's first join makes their own link, saved against their seat", () =>
+	world({
+		db: {
+			guest_room_join: () => ({
+				...OPEN,
+				register: { room_id: ROOM.room_id, attendee_id: "seat-1", email: "g@example.test", first_name: "Guest" },
+			}),
+		},
+		provider: () => json({ registrant_id: "reg-2", join_url: "https://zoom.us/w/guest" }, 201),
+	}, async (calls) => {
+		const res = await RoomBackendService.joinAsGuest("a".repeat(64), "123456", "device");
+		assertEquals(res.data?.url, "https://zoom.us/w/guest");
+		assertEquals(named(calls, "save_room_registrant")[0].json, {
+			p_room: ROOM.room_id,
+			p_user: null,
+			p_registrant_id: "reg-2",
+			p_join_url: "https://zoom.us/w/guest",
+			p_attendee: "seat-1",
+		});
+	}));
+
+Deno.test("guest join: a refused code is said in the page's words, and hands over no link", () =>
+	world({ db: { guest_room_join: () => ({ state: "wrong_code" }) } }, async (calls) => {
+		const res = await RoomBackendService.joinAsGuest("a".repeat(64), "000000", "device");
+		assertEquals(res.ok, false);
+		assertEquals(res.status, 409);
+		assertEquals(res.message, "That code isn't right. Check your email and try again.");
+		assertEquals(res.data, undefined);
+		assertEquals(calls.length, 1);
 	}));
 
 Deno.test("join: a provider being down leaves the room's own link, and nobody is stopped", () =>

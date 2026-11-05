@@ -99,7 +99,8 @@ aligned on time and location.
   (Decision #343, ruling C4). Everyone joins through one address, `/meet/rom-…`. An attendee's own
   link is made the first time they join, on a licensed Zoom host; Meet and Teams have one shared link
   behind the same address. **Not yet run on live provider accounts.**
-- **Today only in-app notices are delivered.** Email, push and SMS have no dispatcher yet; the SMS
+- **Today only in-app notices are delivered**, apart from the email a guest with no account gets
+  (Decision #391). Email to people on Projective, push and SMS have no dispatcher yet; the SMS
   setting shows only once the SMS provider (Twilio) is configured. **Not built yet** (Decision #339,
   rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
@@ -395,8 +396,24 @@ MS Teams or Google Calendar, but with integrated financial protection.
   Majority Decision below: with one guest the other person says yes, and with more, the host puts the
   times to a vote. The host hears of a proposed time, the guests of a vote, and everyone of a move.
   The host can withdraw an invitation, and deleting the entry withdraws them all, and each person is
-  told. A series takes no guests yet, and neither can somebody with no account, whom nothing can
-  reach.
+  told. A series takes no guests yet.
+- **Guests** (Decision #391). A host can invite an email address as well as somebody on Projective,
+  and that person needs no account. They get an email with a link of their own, which opens a page
+  with none of Projective's navigation, showing the title, the time and who invited them. The link
+  alone answers Accept, Tentative or Decline, and the host's roster shows it. Joining the call takes
+  more: only somebody who has said they are coming can ask for a code, it goes to the invited
+  address, and a forwarded link gets nobody in without it. Each join is recorded against the guest,
+  the link and the device, for an investigation. Everyone but the host sees "Guest", never the address.
+  An address is only ever an address: nobody can use an invitation to learn who owns one, so somebody
+  with an account is invited the same way. They move the seat onto their account themselves, from
+  that page, once the address is verified on it, because doing so shows their name to the host and
+  the other guests. A guest has no vote. An entry with only guests moves freely, a new time reaches
+  them by email and asks them again, and with people on Projective on it too, the round runs among
+  those people. A withdrawal or a deleted entry reaches a guest by email. A paid sitting, a booking, an
+  engagement's meeting and a discovery call never take a guest. Somebody under 18 can only invite
+  people on Projective. A host can invite 50 addresses a day, every email offers a way to stop them,
+  the wording is fixed, a link in a title is hidden, and an address is forgotten 30 days after the
+  event. The option appears only where email can really go out.
 - **A clash is said, never enforced.** An entry or an invitation that overlaps what already holds
   the reader's time says "Clashes with" what, in the list, the inspector and, as the times change,
   the event modal, which also sees time off and discovery calls. Nothing is refused for it: two
@@ -3873,6 +3890,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
+|               | `/rsvp/[token]`           |                          | A guest's invitation (Decision #391), for somebody with no account. No shell and no sign-in: the emailed link shows the invitation and takes Accept, Tentative or Decline, and joining the call takes a code sent to the invited address. Every dead state reads the same. `noindex`, `no-referrer`, `no-store`, because the path is a capability. |
 |               | `/legal`                  | `index`                  | The legal hub — every legal document, in two groups, with its version in effect, its effective date and a plain-English line (Decision #270) |
 |               | `/legal/[slug]`           | `index`                  | One legal document: `terms` · `privacy` · `cookies` · `acceptable-use` · `escrow-terms` · `ip-transfer-deed`. Numbered clauses, each with a plain-English summary; `?v=` reads an earlier version, `?compare=` shows what changed clause by clause. A draft until a lawyer signs it off: a visible "Draft — pending legal review" disclosure and never indexed (Decision #270) |
 |               |                           | `pdf`                    | The same version as a PDF download                                                             |

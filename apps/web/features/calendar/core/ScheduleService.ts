@@ -62,10 +62,15 @@ export const ScheduleService = {
 	},
 
 	/** Seat people on one of the caller's own entries; resolves with it re-read. */
-	invite(eventId: string, userIds: string[]): Promise<CalendarResult<{ event: CalendarEvent }>> {
+	invite(
+		eventId: string,
+		userIds: string[],
+		emails: string[] = [],
+	): Promise<CalendarResult<{ event: CalendarEvent }>> {
 		return postScheduling<{ event: CalendarEvent }>("/api/scheduling/invites", {
 			eventId,
 			userIds,
+			emails,
 		});
 	},
 

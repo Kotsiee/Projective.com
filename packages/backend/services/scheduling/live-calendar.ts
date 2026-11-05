@@ -22,6 +22,7 @@ import type {
 } from "@projective/types/scheduling";
 import {
 	callMovesFor,
+	electorateSize,
 	eligibleVoterCount,
 	EntryRemindersSchema,
 	MEETING_PROVIDER_LABEL,
@@ -38,6 +39,7 @@ import type { AssetItem } from "@projective/types/files";
 import { countsAsOnboarded } from "@projective/types/projects";
 import { serverEnv } from "../../core/env.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
+import { mailCanLeave } from "../mail/transport.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	clamp,
@@ -192,6 +194,13 @@ interface AttendeeRow {
 	responded_at: string | null;
 	note: string | null;
 	created_at: string;
+}
+
+/** One row of `scheduling.get_guest_addresses`. */
+interface GuestAddressRow {
+	attendee_id: string;
+	email: string;
+	undelivered: boolean;
 }
 
 interface RoundRow {
@@ -619,6 +628,10 @@ async function readerZone(
 /** Everything the six coordination tables hold for a set of events, keyed for assembly. */
 interface Coordination {
 	attendees: Map<string, AttendeeRow[]>;
+	/** Guests' addresses by seat, on the entries this reader manages. Nobody else is sent one. */
+	guests: Map<string, GuestAddressRow>;
+	/** Whether mail can leave this environment, so a host may be offered an address. */
+	canEmailGuests: boolean;
 	/** The LATEST round per event. Earlier rounds are history, and the log already tells their story. */
 	rounds: Map<string, RoundRow>;
 	proposals: Map<string, ProposalRow[]>;
@@ -702,7 +715,7 @@ async function loadCoordination(
 	}
 	const roundIds = [...rounds.values()].map((r) => r.id);
 
-	const [proposalRows, voteRows, attachments] = await Promise.all([
+	const [proposalRows, voteRows, attachments, guests] = await Promise.all([
 		readIn<ProposalRow>(
 			roundIds,
 			(ids) =>
@@ -726,16 +739,37 @@ async function loadCoordination(
 			"scheduling.proposal_votes",
 		),
 		loadAttachments(actor, attachmentLinks, now),
+		loadGuestAddresses(actor, attendeeRows),
 	]);
 
 	return {
 		attendees: group(attendeeRows, (r) => r.event_id),
+		guests,
+		canEmailGuests: mailCanLeave(),
 		rounds,
 		proposals: group(proposalRows, (r) => r.reschedule_id),
 		votes: group(voteRows, (r) => r.reschedule_id),
 		history: group(historyRows, (r) => r.event_id),
 		attachments,
 	};
+}
+
+/**
+ * Guests' addresses, on the entries this reader manages. `email` is withheld from the roster read
+ * because every party makes that read, so it comes through its own door, which answers only a host.
+ * A display detail rather than a fact a rule stands on: a failed read leaves a guest reading "Guest".
+ */
+async function loadGuestAddresses(
+	actor: ReadActor & { accessToken: string },
+	seats: readonly AttendeeRow[],
+): Promise<Map<string, GuestAddressRow>> {
+	const events = [...new Set(seats.filter((s) => !s.user_id).map((s) => s.event_id))];
+	if (events.length === 0) return new Map();
+	const { data, error } = await db(actor, "scheduling").rpc("get_guest_addresses", {
+		p_events: events,
+	});
+	if (error) console.error("scheduling.get_guest_addresses failed", error.message);
+	return new Map(((data ?? []) as GuestAddressRow[]).map((row) => [row.attendee_id, row]));
 }
 
 /**
@@ -815,6 +849,18 @@ function rosterOrder(a: AttendeeRow, b: AttendeeRow): number {
 	return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
 }
 
+/** What only a seat with no account has. Its address, for whoever manages the entry and nobody else. */
+function guestFields(row: AttendeeRow, ctx: AssemblyContext): Partial<EventAttendee> {
+	if (row.user_id) return {};
+	const guest = ctx.coord.guests.get(row.id);
+	return {
+		name: "Guest",
+		isGuest: true,
+		...(guest ? { email: guest.email } : {}),
+		...(guest?.undelivered ? { undelivered: true } : {}),
+	};
+}
+
 function toRoster(rows: readonly AttendeeRow[], ctx: AssemblyContext): EventAttendee[] {
 	return [...rows].sort(rosterOrder).map((row) => ({
 		...partyFor(ctx, row.user_id),
@@ -825,6 +871,7 @@ function toRoster(rows: readonly AttendeeRow[], ctx: AssemblyContext): EventAtte
 		respondedAt: row.response === "pending" ? null : ms(row.responded_at),
 		isViewer: !!row.user_id && row.user_id === ctx.actorId,
 		note: row.note ? clamp(row.note, 280) : null,
+		...guestFields(row, ctx),
 	}));
 }
 
@@ -936,6 +983,7 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	};
 	const seat = roster?.find((a) => a.isViewer);
 	if (seat && seat.role !== "host") event.userAttendeeStatus = seat.response;
+	if (event.viewerIsHost && ctx.coord.canEmailGuests) event.canEmailGuests = true;
 	if (row.status) event.status = row.status;
 	if (row.all_day) event.allDay = true;
 	if (row.external_sync === false) event.externalSync = false;
@@ -964,7 +1012,7 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 		event.roster = roster;
 		event.reschedule = round
 			? toReschedule(round, roster, ctx, event.start)
-			: emptyReschedule(rescheduleModeFor(roster.length));
+			: emptyReschedule(rescheduleModeFor(electorateSize(roster)));
 	}
 	const history = ctx.coord.history.get(row.id);
 	if (history && history.length > 0) event.history = toHistory(history, ctx);

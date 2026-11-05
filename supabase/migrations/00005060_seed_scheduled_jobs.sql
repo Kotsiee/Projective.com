@@ -42,7 +42,7 @@ ON CONFLICT (name) DO NOTHING;
 -- straight after that move, and swept here for what could not go at once.
 INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
     ('scheduling-guest-mail', 'http', '* * * * *',
-        NULL, '/api/scheduling/cron/guest-mail?limit=50', 'SCHEDULING_CRON_SECRET',
+        NULL, '/api/scheduling/cron/guest-mail?limit=25', 'SCHEDULING_CRON_SECRET',
         'Sends what is waiting for a guest with no account: invitations, new times and withdrawals.'),
     ('scheduling-forget-guest-addresses', 'sql', '25 4 * * *',
         'SELECT scheduling.fn_forget_guest_addresses();', NULL, NULL,

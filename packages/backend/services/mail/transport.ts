@@ -22,8 +22,6 @@ export interface MailMessage {
 	to: string;
 	subject: string;
 	text: string;
-	/** Makes a retry of this message a no-op at the provider, where it supports one. */
-	idempotencyKey?: string;
 }
 
 /** Something that can put a message in an inbox. Throws when it could not. */
@@ -47,7 +45,6 @@ export function resendTransport(
 				headers: {
 					authorization: `Bearer ${apiKey}`,
 					"content-type": "application/json",
-					...(message.idempotencyKey ? { "idempotency-key": message.idempotencyKey } : {}),
 				},
 				body: JSON.stringify({
 					from,

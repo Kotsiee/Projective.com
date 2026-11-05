@@ -460,7 +460,7 @@ time changes, and close it when the sitting or call is cancelled.
 | `fail_room(room, error, final = false)`                       | Back in the queue up to `room_mint_max_attempts`, then `failed`, telling the host (`room.failed`). |
 | `claim_rooms_to_sync(limit)` · `room_synced(room, error?)`    | Moved or closing rooms; best effort, and never blocks a booking.                                 |
 | `claim_rooms_to_reconcile(limit)` · `room_reconciled(room, error?)` | Ended rooms whose provider's record is due a read: from 15 minutes after the end for 3 days, hourly. Only a read that worked is stamped, so a sitting that needed it stays held (ruling R5). |
-| `save_room_registrant(room, user, registrant, url)`           | A person's own link, which the service makes the first time an attendee joins a licensed room.  |
+| `save_room_registrant(room, user, registrant, url, attendee?)` | A person's own link, or a guest's by their seat, which the service makes the first time an attendee joins a licensed room.  |
 
 `fn_room_connection(host, provider)` is the active connection a room mints on: a Teams room mints
 through the `outlook` connection, one Entra app and one consent. Probe: `supabase/probes/rooms.sql`.
@@ -606,21 +606,52 @@ a connected calendar, a series, a moment, a `session`, `booking`, `availability`
 or `holiday` kind, a mirrored call, an entry that is over, or one with a round open, because a round's
 mode and electorate are counted from the roster. No client role reaches it, only its two doors.
 
-### `scheduling.invite_to_event(event, users uuid[]) → integer`
+### `scheduling.invite_to_event(event, users uuid[] = '{}', emails text[] = '{}') → integer`
 
 Seats people on the caller's own entry and tells them (`schedule.event_invite`) in one transaction,
 so no seat exists that nobody was told about. Answers how many were newly asked. Somebody already
 seated keeps their answer and hears nothing; somebody withdrawn is asked afresh on the same row. The
 host takes a seat with the first guest. At most 50 seats, host included (`EVENT_ROSTER_MAX`, pinned
 by `coordination.contract.test.ts`). `trg_seat_holds_time` flips a passive entry to `disruptive`.
-Accounts only: `email` has no writer. `EXECUTE` to `authenticated`.
+An address is a guest (Decision #391), told by a queued `guest_mail` row instead of a notice. It is
+only ever an address: whether an account holds it is never looked up, so nothing here tells a host who
+owns one. A seat with no `user_id` needs an address, and this is where that holds. Refuses (`55000`) a
+malformed address, an address that opted out, a host under 18, and past `GUEST_INVITES_DAILY_MAX` (50)
+addresses a day per host, pinned the same way. `EXECUTE` to `authenticated`.
 
 ### `scheduling.withdraw_invitation(event, attendee = NULL) → integer`
 
 Archives one guest's seat, or with no attendee every guest's, and tells each of them
-(`schedule.event_invite_withdrawn`). With the last guest gone the host's seat goes too, so the entry
+(`schedule.event_invite_withdrawn`, or by email for a guest who had heard, whose links die here). With
+the last guest gone the host's seat goes too, so the entry
 has no roster and moves like any other. `removeEntry` calls it when a roster refuses the removal,
 which is how a host cancels an entry people are on. `EXECUTE` to `authenticated`.
+
+## Guests (`00001510` §5d, Decision #391)
+
+A guest is a seat held by an address. They have no session, so their link is their whole authority,
+and every door they use is **service role only**: a host who could reach these could answer for their
+own guests. A dead link answers the same whatever killed it.
+
+| Function                                                 | What it does                                                                                                                                                                 |
+| :------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claim_guest_mail(limit = 50)` → table                   | Takes what is due, minting a link for each message that needs one and handing back its raw value, which is stored nowhere. Skips an opted-out address. A claim is retaken after five minutes. |
+| `finish_guest_mail(mail, sent)` → void                   | Records how a claimed message went. Five refusals in a row stops it, and the host is told.                                                                                   |
+| `guest_invitation(token)` → jsonb                        | What a link shows. The title, time and host are all a link alone gets. The place waits until they have said they are coming.                                                 |
+| `guest_answer(token, response)` → boolean                | A guest's answer. `pending` is refused (`22023`). A log line that never names the address, and none for a restated answer.                                                   |
+| `guest_request_code(token)` → jsonb                      | Mints the 6-digit code, kept only as a hash, for the caller to mail. Only for somebody who has said they are coming, while the room is open: `sent` · `wait` (60s) · `limit` (10) · `closed` · `dead`. |
+| `guest_room_join(token, code, device)` → jsonb           | `room_join`'s event branch, with the code standing in for a session. Records a `join_click` against the seat, with `device` as `participant_key`. Five misses lock the code.  |
+| `guest_opt_out(token)` → boolean                         | Files the address's hash and drops what had not gone out. `invite_to_event` refuses that address from then on.                                                               |
+| `get_guest_addresses(events uuid[])` → table             | `authenticated`. The addresses on the caller's own entries, and whether each could be reached. How a host reads a column no client role holds.                               |
+| `guest_seat_is_mine(token)` → boolean                    | `authenticated`. Does the reader hold this link's address, verified? An unverified address proves nothing, because anybody can file one.                                     |
+| `claim_guest_seat(token)` → uuid                         | `authenticated`. Moves the seat onto the caller's account, clearing `email` and killing its links. Never automatic, because it shows their name to the host and the other guests. Somebody already seated keeps their seat, with this answer. |
+| `fn_forget_guest_addresses()` → integer                  | Job `scheduling-forget-guest-addresses`. Blanks an address 30 days after its entry ends or its seat is withdrawn. The seat stays, nameless.                                   |
+| `fn_event_has_voters(event)` → boolean                   | `authenticated`, because `fn_guard_rostered_event` runs as its caller. Is anybody on this entry who can vote?                                                                |
+| `fn_guest_link(token)`, `fn_guest_hash(text)`, `fn_guest_safe_text(text)`, `fn_guest_room_state(seat, event)`, `fn_retire_guest_seat(seat, tell)` | Internal. `fn_guest_safe_text` takes `comms.mask_pii` and adds every other link, because a mail client makes a link of anything that looks like one. |
+
+`trg_guest_moved` (AFTER UPDATE OF `starts_at`, `ends_at` on `events`) returns a guest's answer to
+`pending` and queues `moved`, on the table because a time moves from several places and a round can
+close from a page read.
 
 ### `scheduling.fn_notify_event_seats(event, who, lead, body, actor) → void`
 
@@ -717,9 +748,11 @@ link. In the same pass (2026-09-28):
 rostered event moves only through its negotiation: for a **client** role (`current_user` is `anon`
 or `authenticated`), an event with any `event_attendees` row is never deleted (`55000`, "people are
 booked on this event — cancel or reschedule it instead" — the delete would cascade the roster, the
-rounds, the votes and the log away, root `CLAUDE.md` §5), and an update that changes its
-`starts_at`, `ends_at`, `status` or `schedule_id` is refused (`55000`, "propose a new time
-instead"). Any other role — the scheduling service, which closes rounds through
+rounds, the votes and the log away, root `CLAUDE.md` §5), and an update that changes its `status` or
+`schedule_id` is refused (`55000`, "propose a new time instead"), as is one that changes its
+`starts_at` or `ends_at` while anybody seated can vote (`fn_event_has_voters`). A guest holds no vote,
+so an entry with only guests moves freely and the guests are told (Decision #391), while its status
+still needs a withdrawal, or it could go with them never told. Any other role — the scheduling service, which closes rounds through
 `close_reschedule_round` after the SSOT's rules have run — passes through, as does any edit of an
 event nobody is seated on. It closes a route round the 12-hour lockout and the majority rule that
 the policies could not: the `events` management policy lets a schedule's manager write their own

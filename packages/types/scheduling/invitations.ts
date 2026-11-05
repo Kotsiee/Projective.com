@@ -37,11 +37,14 @@ export type AttendeeStatus = RsvpResponse;
 export const RespondToInviteInput = RsvpInputSchema;
 export type RespondToInviteInput = RsvpInput;
 
-/** Seat people on one of the caller's own entries. */
+/** Seat people on one of the caller's own entries: accounts by id, anybody else by address. */
 export const InviteInputSchema = z.object({
 	eventId: uuid,
-	userIds: z.array(uuid).min(1).max(EVENT_ROSTER_MAX),
-});
+	userIds: z.array(uuid).max(EVENT_ROSTER_MAX).default([]),
+	emails: z.array(z.string().trim().toLowerCase().email().max(320)).max(EVENT_ROSTER_MAX).default(
+		[],
+	),
+}).refine((input) => input.userIds.length + input.emails.length > 0);
 export type InviteInput = z.infer<typeof InviteInputSchema>;
 
 /** Withdraw one invitation from one of the caller's own entries. */

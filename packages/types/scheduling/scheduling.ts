@@ -242,6 +242,11 @@ export const CalendarEventSchema = z.object({
 	 * be somebody else's. Stamped again on every agenda change, so it never trails a write.
 	 */
 	clashCount: z.number().int().min(0).optional(),
+	/**
+	 * This host may invite by email address, because mail can really leave this environment. Absent
+	 * otherwise, so nothing offers an email that cannot go out (root CLAUDE.md §3.11).
+	 */
+	canEmailGuests: z.boolean().optional(),
 	// #endregion
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;

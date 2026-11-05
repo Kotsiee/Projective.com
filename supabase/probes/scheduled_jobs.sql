@@ -28,6 +28,8 @@ DECLARE
         ARRAY['ops-watch-jobs',                   '*/10 * * * *'],
         ARRAY['analytics-listing-rollups',        '10 2 * * *'],
         ARRAY['scheduling-availability-horizon',  '5 3 * * *'],
+        ARRAY['scheduling-guest-mail',            '* * * * *'],
+        ARRAY['scheduling-forget-guest-addresses', '25 4 * * *'],
         ARRAY['comms-process-queue',              '* * * * *'],
         ARRAY['comms-escalate-unread',            '4-59/5 * * * *'],
         ARRAY['comms-digest-daily',               '2 * * * *'],

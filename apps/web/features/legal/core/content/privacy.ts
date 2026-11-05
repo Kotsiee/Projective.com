@@ -158,6 +158,7 @@ const SHARING: LegalClause = {
 			rowHeaders: true,
 			rows: [
 				["Supabase", "Database, sign-in and file storage", "Always"],
+				["Resend", "Sending our email", "When we email you, or you are invited by email"],
 				[
 					"Stripe",
 					"Card payments, payouts (Connect) and identity checks (Identity)",
@@ -187,6 +188,11 @@ const SHARING: LegalClause = {
 					"Calendars you connect",
 					"A Google or Microsoft (Outlook) calendar you link: read for your events, of which we keep each one's title, times, repeat pattern, location, notes and meeting link, never its guests. Only you can see those details, and disconnecting removes them. If you turn on publishing, your Projective events are also written to a separate Projective calendar there, with a title, a time and a Projective join address",
 					"Only if you connect one",
+				],
+				[
+					"The people you invite by email",
+					"An address you add to an event goes to our email provider, and we write to that person on your behalf. They see your name and the event's title and time. We keep their address until 30 days after the event, and if they join a call on a Zoom host we also give that host their address",
+					"Only if you invite someone by email",
 				],
 				[
 					"Meeting providers",

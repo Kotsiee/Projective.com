@@ -10,7 +10,6 @@ import type {
 	RescheduleProposal,
 	RescheduleRefusalReason,
 	RescheduleStatus,
-	RsvpResponse,
 } from "@projective/types/scheduling";
 import {
 	approvalRefusal,
@@ -19,6 +18,7 @@ import {
 	canOpenVote,
 	canReschedule,
 	counterpartyAcceptRefusal,
+	electorateSize,
 	eligibleVoterCount,
 	eventLiveStatus,
 	isRescheduleClosed,
@@ -230,9 +230,12 @@ export function entryEditable(event: CalendarEvent): boolean {
 	return event.viewerIsHost === true && !event.callId && !event.projectId;
 }
 
-/** Once people are on an entry its time moves only by agreement (`trg_guard_rostered_event`). */
+/**
+ * Once somebody who can vote is on an entry its time moves only by agreement
+ * (`trg_guard_rostered_event`). A guest cannot vote, so a host with only guests moves it, and they are told.
+ */
 export function timesMovable(event: CalendarEvent): boolean {
-	return entryEditable(event) && !event.roster?.length;
+	return entryEditable(event) && eligibleVoterCount(event.roster ?? []) === 0;
 }
 
 /**
@@ -270,16 +273,7 @@ export function canInvite(event: CalendarEvent, nowMs: number): boolean {
 		(round === "none" || isRescheduleClosed(round));
 }
 
-/** The three answers a seat can give. One list, so the inspector and the modal word them alike. */
-export const RSVP_ACTIONS: readonly {
-	value: RsvpResponse;
-	label: string;
-	severity: "success" | "warning" | "danger";
-}[] = [
-	{ value: "accepted", label: "Accept", severity: "success" },
-	{ value: "tentative", label: "Tentative", severity: "warning" },
-	{ value: "rejected", label: "Decline", severity: "danger" },
-];
+export { RSVP_ACTIONS } from "@projective/types/scheduling";
 // #endregion
 
 /** When an entry runs on its day: a range, one time for a Reminder, which has no length, or all day. */
@@ -502,7 +496,7 @@ export function rescheduleView(
 	const negotiation = event.reschedule
 		? settleVote(nowMs, event.reschedule, voters, event.start)
 		: undefined;
-	const mode: RescheduleMode = negotiation?.mode ?? rescheduleModeFor(roster.length);
+	const mode: RescheduleMode = negotiation?.mode ?? rescheduleModeFor(electorateSize(roster));
 	const proposals = negotiation?.proposals ?? [];
 	const ballot = ballotProposals(proposals);
 	const me = viewerAttendee(roster);

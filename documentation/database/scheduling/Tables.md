@@ -142,10 +142,11 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 
 **A rostered event moves only through its negotiation.** `trg_guard_rostered_event` (BEFORE UPDATE
 OR DELETE, since 2026-09-28) refuses a **client** role (`anon` / `authenticated`) deleting an event
-that has any `event_attendees` row, or changing its `starts_at`, `ends_at`, `status` or
-`schedule_id` (`55000`) — so a schedule owner cannot step round the 12-hour lockout and the
-majority rule, or cascade a roster, its rounds and its log away (root `CLAUDE.md` §5). The service
-role is not refused. See [Functions.md](Functions.md) §9.
+that has any `event_attendees` row, or changing its `status` or `schedule_id`, or its `starts_at`
+or `ends_at` while anybody seated can vote (`55000`) — so a schedule owner cannot step round the
+12-hour lockout and the majority rule, or cascade a roster, its rounds and its log away (root
+`CLAUDE.md` §5). A guest holds no vote, so an entry with only guests moves freely (Decision #391). The
+service role is not refused. See [Functions.md](Functions.md) §9.
 
 **A recurring series is one level deep and on one anchor.** `trg_guard_event_recurrence` (BEFORE
 INSERT OR UPDATE OF `recurrence_rule`, `recurrence_parent_id`, `schedule_id`, `project_id`, since
@@ -224,12 +225,37 @@ role after those rules have run (`live-coordination-writes.ts`).
 | `response`     | `scheduling.rsvp_response` | `pending` is a real answer ("has not replied"), not the absence of one.                         |
 | `responded_at` | timestamptz                | `ck_attendee_pending_unanswered`: `pending` ⇒ `NULL`, so clearing an answer clears its instant. |
 | `note`         | text                       | ≤ 280.                                                                                          |
-| `email`        | text                       | ≤ 320. The address of a seat with no account. Withheld from client roles, because every party reads this table. Not a CHECK against `user_id`: `ON DELETE SET NULL` empties that on a profile teardown. **No door writes it yet**: nothing can reach a person with no account (Decision #390). |
+| `email`        | text                       | ≤ 320, always lower case. The address of a seat with no account (a guest, Decision #391). Withheld from client roles, because every party reads this table; a host reads it through `get_guest_addresses`. "Required when `user_id` is NULL" holds at `invite_to_event`, not in a CHECK, because `ON DELETE SET NULL` would then refuse a profile teardown. Cleared on a claim, and 30 days after the entry ends. |
 | `archived_at`  | timestamptz                | Set when the host withdraws the invitation, never deleted (root CLAUDE.md §5). An archived seat is no seat: every predicate and read skips it, and inviting the person again restores the row. |
 | UNIQUE         | —                          | `(event_id, user_id)` — a registered user holds one seat, so cannot vote twice.                 |
 
+`uq_event_attendee_email` (`00004007`) holds one seat per address on an entry, on
+`(event_id, lower(email)) WHERE email IS NOT NULL`. It keeps archived seats, so inviting a withdrawn
+address restores the row.
+
 `isViewer` is deliberately not a column: it is a fact about who is ASKING, resolved per request by
 identity (`live-calendar.ts` seats a reader where `user_id = auth.uid()`).
+
+### Guests (Decision #391)
+
+A guest is a seat held by an address. They have no session, so they hear by mail and act through a
+link. All three tables are definer-only: RLS on, no policy, no client grant, because a host who could
+read or write them could answer for their own guests.
+
+**`scheduling.guest_links`** is every link mailed to a guest, one per email, so a link in use says
+which message it came from. `token_hash` is UNIQUE and holds only the SHA-256, like
+`org.email_verification_tokens`: the raw value lives in that email alone. `revoked_at` is set when
+the seat is withdrawn or claimed, and a guest asked again gets a new link. The code that proves the
+inbox before a call sits here too: `code_hash`, `code_expires_at` (the entry's end), `code_sent_at`,
+and two brakes on whoever holds a link, `code_sends` (10) and `code_misses` (5, reset by a new code).
+
+**`scheduling.guest_mail`** is what still has to reach a guest's inbox, written in the transaction of
+the move it announces. It names a seat rather than copying an address. `kind` is `invite`, `moved` or
+`withdrawn`. `claimed_at` and `attempts` are the sweep's; `sent_at` ends a row, and `failed_at`, after
+five refusals, is what the host sees as "Email not delivered".
+
+**`scheduling.guest_mail_opt_outs`** is the addresses that asked for no more, as `email_hash` alone,
+so an opt-out does not keep the address it refuses.
 
 ### `scheduling.event_reschedules`
 
@@ -475,15 +501,19 @@ the column its owner already withholds from clients, so a bearer link has one ho
 
 ### `scheduling.room_registrants`
 
-A person's own join link and the id their provider knows them by (ruling C4 (b)). PK `(room_id,
-user_id)`, UNIQUE `(room_id, registrant_id)`. Registration needs a licensed host at Zoom and has no
-twin at Meet or Teams, so a room may have no rows here.
+A person's own join link and the id their provider knows them by (ruling C4 (b)). Held by somebody
+with an account (`user_id`) or a guest's seat (`attendee_id`), exactly one (`ck_room_registrant_holder`),
+and one row each per room (`uq_room_registrant_holder`, on `(room_id, COALESCE(user_id, attendee_id))`).
+UNIQUE `(room_id, registrant_id)`. Registration needs a licensed host at Zoom and has no twin at Meet
+or Teams, so a room may have no rows here.
 
 ### `scheduling.presence_events`
 
 Every join and leave, as reported (Decision #383 (b)). Append-only, and the source of truth for time
 in the room: `session_attendance` and `call_attendance` keep one row per person, first join to last
-leave, which is a span and not attendance. Holds no email, display name or IP.
+leave, which is a span and not attendance. Holds no email, display name or IP. `attendee_id` names a
+guest's seat, where the person has no account (`matched_by` `guest_link`), and for a guest's own press
+`participant_key` is a device key: a hash salted by their link, so it means nothing anywhere else.
 
 | Column              | Type        | Notes                                                                                                |
 | :------------------ | :---------- | :---------------------------------------------------------------------------------------------------- |

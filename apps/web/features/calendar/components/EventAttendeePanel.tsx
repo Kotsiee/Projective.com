@@ -56,21 +56,37 @@ export function EventAttendeePanel(props: EventAttendeePanelProps): JSX.Element 
 
 			<ul class="evm-people" aria-label="Participant list">
 				{roster.map((a) => (
-					<li key={a.id} class="evm-people__row" data-viewer={a.isViewer ? "true" : undefined}>
-						<UserAvatar image={a.avatar ?? undefined} label={a.name} size={28} alt="" />
+					<li
+						key={a.id}
+						class="evm-people__row"
+						data-viewer={a.isViewer ? "true" : undefined}
+					>
+						<UserAvatar
+							image={a.avatar ?? undefined}
+							label={a.email ?? a.name}
+							size={28}
+							alt=""
+						/>
 						<span class="evm-people__id">
-							<span class="evm-people__name">
+							<span class="evm-people__name" title={a.email}>
 								{a.handle
 									? (
 										<a class="evm-people__link" href={profileHref(a.handle)}>
 											{a.name}
 										</a>
 									)
-									: a.name}
+									: a.email ?? a.name}
 								{a.isViewer ? <span class="evm-people__you">You</span> : null}
 							</span>
 							<span class="evm-people__role">
-								{a.role === "host" ? "Host" : a.role === "optional" ? "Optional" : "Participant"}
+								{a.role === "host"
+									? "Host"
+									: a.isGuest
+									? "Guest"
+									: a.role === "optional"
+									? "Optional"
+									: "Participant"}
+								{a.undelivered ? " · Email not delivered" : ""}
 								{a.note ? ` · ${a.note}` : ""}
 							</span>
 						</span>

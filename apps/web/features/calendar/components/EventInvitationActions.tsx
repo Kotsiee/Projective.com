@@ -1,7 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
-import type { CalendarEvent, RsvpResponse } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	eligibleVoterCount,
+	type RsvpResponse,
+} from "@projective/types/scheduling";
 import {
 	agendaReload,
 	leavingEvents,
@@ -39,7 +43,7 @@ export function EventInvitationActions(props: EventInvitationActionsProps): JSX.
 
 	const answering = canAnswer(event, nowMs);
 	const hosting = event.viewerIsHost === true;
-	const guests = (event.roster?.length ?? 0) > 1 && !event.callId;
+	const guests = eligibleVoterCount(event.roster ?? []) > 0 && !event.callId;
 	if (!answering && !(hosting && guests)) return null;
 
 	const seat = viewerSeat(event);

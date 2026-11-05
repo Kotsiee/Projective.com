@@ -46,12 +46,12 @@ function harness(answer: Answer = { data: 1 }, found = true) {
 
 Deno.test("an invitation goes to the door, and answers with the entry re-read", async () => {
 	const { calls, deps } = harness();
-	const res = await inviteToEvent({ eventId: EVENT, userIds: [GUEST] }, deps);
+	const res = await inviteToEvent({ eventId: EVENT, userIds: [GUEST], emails: [] }, deps);
 	assertEquals(res.ok, true);
 	assertEquals(res.data?.event, REREAD);
 	assertEquals(calls, [{
 		name: "invite_to_event",
-		args: { p_event: EVENT, p_users: [GUEST] },
+		args: { p_event: EVENT, p_users: [GUEST], p_emails: [] },
 	}]);
 });
 
@@ -65,7 +65,7 @@ Deno.test("a door's refusal reads in its own words, and a stranger's entry answe
 	const refused = harness({
 		error: { code: "55000", message: "event: this entry can't take invitations" },
 	});
-	const res = await inviteToEvent({ eventId: EVENT, userIds: [GUEST] }, refused.deps);
+	const res = await inviteToEvent({ eventId: EVENT, userIds: [GUEST], emails: [] }, refused.deps);
 	assertEquals([res.status, res.message], [409, "This entry can't take invitations."]);
 
 	const stranger = harness({ error: { code: "42501", message: "event: not yours" } });
@@ -74,7 +74,10 @@ Deno.test("a door's refusal reads in its own words, and a stranger's entry answe
 });
 
 Deno.test("an entry the reader can no longer read back says so, rather than claiming success", async () => {
-	const res = await inviteToEvent({ eventId: EVENT, userIds: [GUEST] }, harness({}, false).deps);
+	const res = await inviteToEvent(
+		{ eventId: EVENT, userIds: [GUEST], emails: [] },
+		harness({}, false).deps,
+	);
 	assertEquals(res.ok, false);
 	assertEquals(res.status, 500);
 });

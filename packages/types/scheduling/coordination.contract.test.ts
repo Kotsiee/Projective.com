@@ -18,6 +18,7 @@ import {
 	RESCHEDULE_PROPOSALS_MAX,
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "./coordination.ts";
+import { GUEST_INVITES_DAILY_MAX } from "./guests.ts";
 import { EVENT_ROSTER_MAX } from "./invitations.ts";
 
 const REPO = new URL("../../../", import.meta.url);
@@ -44,6 +45,12 @@ Deno.test("the invitation door caps an entry at the SAME seats the TypeScript ru
 	const body = functionBody(read(FN_SQL), "scheduling.invite_to_event");
 	const caps = [...body.matchAll(/v_seats\s*>\s*(\d+)/g)].map((m) => Number(m[1]));
 	assertEquals(caps, [EVENT_ROSTER_MAX]);
+});
+
+Deno.test("the invitation door limits a host's email invitations at the SAME daily figure", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.invite_to_event");
+	const caps = [...body.matchAll(/interval '1 day'\s*\)\s*>\s*(\d+)/g)].map((m) => Number(m[1]));
+	assertEquals(caps, [GUEST_INVITES_DAILY_MAX]);
 });
 
 Deno.test("the ballot-cap trigger refuses at the SAME count the TypeScript rule does", () => {

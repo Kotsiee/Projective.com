@@ -1,4 +1,8 @@
-import { type RoomJoinAnswer, RoomJoinAnswerSchema } from "@projective/types/scheduling";
+import {
+	GUEST_JOIN_REFUSAL,
+	type RoomJoinAnswer,
+	RoomJoinAnswerSchema,
+} from "@projective/types/scheduling";
 import { isSlug } from "@projective/types/slugs";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getServiceClient, getUserClient, isIntegrationsBackendLive } from "../../core/supabase.ts";
@@ -49,7 +53,14 @@ interface RawJoin {
 	provider?: string;
 	connection_id?: string | null;
 	provider_meeting_id?: string | null;
-	register?: { room_id: string; user_id: string; email: string; first_name: string } | null;
+	register?: {
+		room_id: string;
+		/** Somebody with an account, or a guest's seat: one of the two. */
+		user_id?: string;
+		attendee_id?: string;
+		email: string;
+		first_name: string;
+	} | null;
 }
 // #endregion
 
@@ -191,14 +202,15 @@ async function betterLink(raw: RawJoin): Promise<string | null> {
 			return await adapter.hostLink(await tokenFor(raw.connection_id), meetingId);
 		}
 		if (raw.register && adapter.register) {
-			const { room_id, user_id, email, first_name } = raw.register;
+			const { room_id, user_id, attendee_id, email, first_name } = raw.register;
 			const token = await tokenFor(raw.connection_id);
 			const added = await adapter.register(token, meetingId, { email, firstName: first_name });
 			await door("save_room_registrant", {
 				p_room: room_id,
-				p_user: user_id,
+				p_user: user_id ?? null,
 				p_registrant_id: added.registrantId,
 				p_join_url: added.joinUrl,
+				p_attendee: attendee_id ?? null,
 			});
 			return added.joinUrl;
 		}
@@ -224,6 +236,37 @@ export class RoomBackendService {
 		if (!parsed.success) return ok(NOT_YOURS);
 		if (parsed.data.state !== "open" || !isIntegrationsBackendLive()) return ok(parsed.data);
 		return ok({ ...parsed.data, url: await betterLink(data as RawJoin) ?? parsed.data.url });
+	}
+
+	/**
+	 * Into a room, as a guest. There is no session, so the door judges the link and its code and records
+	 * the press, and a guest's own link is made here the first time, as an attendee's is.
+	 */
+	static async joinAsGuest(
+		token: string,
+		code: string,
+		device: string,
+	): Promise<ServiceResult<{ url: string }>> {
+		let raw: RawJoin & { state?: string; url?: string };
+		try {
+			raw = await door("guest_room_join", {
+				p_token: token,
+				p_code: code,
+				p_device: device,
+			}) as typeof raw;
+		} catch (error) {
+			console.error("[rooms:guest]", error instanceof Error ? error.message : error);
+			return fail(503, {
+				message: "We couldn't reach this meeting just now. Try again in a moment.",
+			});
+		}
+		if (raw.state !== "open" || !raw.url) {
+			return fail(409, {
+				message: GUEST_JOIN_REFUSAL[raw.state ?? ""] ?? "This room isn't open to you yet.",
+			});
+		}
+		const better = isIntegrationsBackendLive() ? await betterLink(raw) : null;
+		return ok({ url: better ?? raw.url });
 	}
 
 	/** Make every room the queue is waiting for (job `integrations-mint-rooms`). */

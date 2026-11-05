@@ -46,6 +46,7 @@
 export * from "./scheduling.ts";
 export * from "./reminders.ts";
 export * from "./routines.ts";
+export * from "./guests.ts";
 export * from "./invitations.ts";
 export * from "./coordination.ts";
 export * from "./privacy.ts";

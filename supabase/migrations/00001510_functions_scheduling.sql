@@ -2051,7 +2051,7 @@ BEGIN
       FROM scheduling.room_registrants g WHERE g.room_id = r.id AND g.attendee_id = a.id;
     IF v_personal IS NULL AND r.registration THEN
         v_register := pg_catalog.jsonb_build_object(
-            'room_id', r.id, 'attendee_id', a.id, 'email', a.email, 'first_name', 'Guest'
+            'room_id', r.id, 'attendee_id', a.id, 'email', a.email, 'first_name', 'Guest', 'approve', false
         );
     END IF;
 

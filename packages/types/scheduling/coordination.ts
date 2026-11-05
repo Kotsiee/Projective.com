@@ -125,6 +125,17 @@ export const RSVP_LABEL: Record<RsvpResponse, string> = {
 	pending: "No answer yet",
 };
 
+/** The three answers a seat can give. One list, so every surface words them alike. */
+export const RSVP_ACTIONS: readonly {
+	value: RsvpResponse;
+	label: string;
+	severity: "success" | "warning" | "danger";
+}[] = [
+	{ value: "accepted", label: "Accept", severity: "success" },
+	{ value: "tentative", label: "Tentative", severity: "warning" },
+	{ value: "rejected", label: "Decline", severity: "danger" },
+];
+
 /** Why someone is on the roster — drives whether their absence blocks the meeting. */
 export const AttendeeRole = z.enum(["host", "participant", "optional"]);
 export type AttendeeRole = z.infer<typeof AttendeeRole>;
@@ -144,6 +155,15 @@ export const EventAttendeeSchema = SchedulingPartySchema.extend({
 	isViewer: z.boolean().default(false),
 	/** A short note the attendee left with their answer ("joining late"). */
 	note: z.string().max(280).nullable(),
+	/**
+	 * A seat with no account behind it: a guest (`./guests.ts`), or somebody whose account has since
+	 * gone. Neither can reach a round, so neither holds a vote.
+	 */
+	isGuest: z.boolean().optional(),
+	/** A guest's address. Only somebody who manages the entry is ever sent this. */
+	email: z.string().max(320).optional(),
+	/** The latest email to this guest could not be delivered. Sent like {@link email}. */
+	undelivered: z.boolean().optional(),
 });
 export type EventAttendee = z.infer<typeof EventAttendeeSchema>;
 // #endregion
@@ -646,12 +666,18 @@ export function viewerAttendee(roster: readonly EventAttendee[]): EventAttendee 
  * The host authored the options, so letting them vote too would be casting a ballot in their own
  * election — and, more importantly, it would inflate the denominator a majority is measured against.
  * `optional` attendees DO count: they were invited, and a time they cannot make is a time that
- * excludes them.
+ * excludes them. A guest does not: they have no way to reach a ballot, so counting them would turn an
+ * abstention nobody can avoid into a vote against moving (`scheduling.fn_event_has_voters`).
  */
 export function eligibleVoterCount(roster: readonly EventAttendee[]): number {
 	let n = 0;
-	for (const a of roster) if (a.role !== "host") n++;
+	for (const a of roster) if (a.role !== "host" && !a.isGuest) n++;
 	return n;
+}
+
+/** The head count a round's mode goes by: the seats that can act on one, the host's included. */
+export function electorateSize(roster: readonly EventAttendee[]): number {
+	return roster.filter((a) => !a.isGuest).length;
 }
 
 /**

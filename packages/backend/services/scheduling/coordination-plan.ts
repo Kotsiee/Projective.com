@@ -16,6 +16,7 @@ import {
 	canOpenVote,
 	canReschedule,
 	counterpartyAcceptRefusal,
+	electorateSize,
 	eligibleVoterCount,
 	eventLiveStatus,
 	isEventParty,
@@ -184,7 +185,7 @@ export function planReschedule(
 	// finished being asked. Idempotent, and the same call the read path makes.
 	const before = settleVote(
 		now,
-		event.reschedule ?? emptyReschedule(rescheduleModeFor(roster.length)),
+		event.reschedule ?? emptyReschedule(rescheduleModeFor(electorateSize(roster))),
 		voters,
 		event.start,
 	);

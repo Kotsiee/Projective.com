@@ -22,19 +22,32 @@ import { EventAttendeePanel } from "./EventAttendeePanel.tsx";
  * Whether the entry can take a guest was asked before this was drawn (`canInvite`), and the door asks
  * again, so a refusal here is a race and reads in the door's words.
  *
- * shortcut: accounts only. `EmailAction` would offer an address, but nothing can reach a person with no
- * account yet, so the row would promise a delivery that does not happen. Add it with that sender.
+ * An address with no account is a guest, offered only where mail can really leave (`canEmailGuests`),
+ * so the row never promises a delivery that does not happen. Whether an account holds that address
+ * is never looked up, so a person with one is asked as an address too, and the list cannot tell a
+ * host who owns it.
  */
 export function EventGuestList({ event }: { event: CalendarEvent }): JSX.Element {
 	const inviting = useSignal<Record<string, PersonActionState>>({});
+	const asking = useSignal<Record<string, PersonActionState>>({});
 	const refusal = useSignal<string | null>(null);
 	const seated = handleSet(event.roster ?? []);
+	const addresses = new Set((event.roster ?? []).flatMap((seat) => seat.email ?? []));
 
 	async function invite(person: RankedContact): Promise<void> {
 		refusal.value = null;
 		inviting.value = { ...inviting.value, [person.id]: "busy" };
 		const res = await ScheduleService.invite(event.id, [person.id]);
 		inviting.value = { ...inviting.value, [person.id]: res.ok ? "done" : "idle" };
+		if (res.ok && res.data) publishEvent(res.data.event);
+		else refusal.value = res.message ?? "That invitation could not be sent.";
+	}
+
+	async function inviteAddress(email: string): Promise<void> {
+		refusal.value = null;
+		asking.value = { ...asking.value, [email]: "busy" };
+		const res = await ScheduleService.invite(event.id, [], [email]);
+		asking.value = { ...asking.value, [email]: res.ok ? "done" : "idle" };
 		if (res.ok && res.data) publishEvent(res.data.event);
 		else refusal.value = res.message ?? "That invitation could not be sent.";
 	}
@@ -54,13 +67,22 @@ export function EventGuestList({ event }: { event: CalendarEvent }): JSX.Element
 			<section class="cal-sum__guests" aria-label="Invite people">
 				<UserSearchPopover
 					label="Invite people to this event"
-					placeholder="Invite by name or @handle"
+					placeholder={event.canEmailGuests
+						? "Invite by name, @handle or email"
+						: "Invite by name or @handle"}
 					actionLabel="Invite"
 					doneLabel="Invited"
 					busyLabel="Inviting…"
 					hidden={(person) => seated.has(normaliseHandle(person.handle) ?? "")}
 					stateOf={(person) => inviting.value[person.id] ?? "idle"}
 					onAct={(person) => void invite(person)}
+					emailAction={event.canEmailGuests
+						? {
+							label: (email) => `Invite ${email} by email`,
+							stateOf: (email) => addresses.has(email) ? "done" : asking.value[email] ?? "idle",
+							onAct: (email) => void inviteAddress(email),
+						}
+						: undefined}
 				/>
 				{refusal.value ? <p class="evm-refuse" role="alert">{refusal.value}</p> : null}
 			</section>
