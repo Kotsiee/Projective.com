@@ -18,7 +18,7 @@ import {
 	RESCHEDULE_PROPOSALS_MAX,
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "./coordination.ts";
-import { GUEST_INVITES_DAILY_MAX } from "./guests.ts";
+import { GUEST_ADDRESS_MAILS_DAILY_MAX, GUEST_INVITES_DAILY_MAX } from "./guests.ts";
 import { EVENT_ROSTER_MAX } from "./invitations.ts";
 
 const REPO = new URL("../../../", import.meta.url);
@@ -47,10 +47,26 @@ Deno.test("the invitation door caps an entry at the SAME seats the TypeScript ru
 	assertEquals(caps, [EVENT_ROSTER_MAX]);
 });
 
-Deno.test("the invitation door limits a host's email invitations at the SAME daily figure", () => {
+Deno.test("the invitation door limits a person's email invitations at the SAME daily figure", () => {
 	const body = functionBody(read(FN_SQL), "scheduling.invite_to_event");
-	const caps = [...body.matchAll(/interval '1 day'\s*\)\s*>\s*(\d+)/g)].map((m) => Number(m[1]));
+	const caps = [...body.matchAll(/fn_spend_guest_quota\(v_caller::text, [^,]+, (\d+)\)/g)]
+		.map((m) => Number(m[1]));
 	assertEquals(caps, [GUEST_INVITES_DAILY_MAX]);
+});
+
+Deno.test("an address has the SAME daily limit at the door and at the sweep", () => {
+	const sql = read(FN_SQL);
+	const door = [
+		...functionBody(sql, "scheduling.invite_to_event")
+			.matchAll(/fn_spend_guest_quota\(v_hash, 1, (\d+)\)/g),
+	].map((m) => Number(m[1]));
+	const sweep = [
+		...functionBody(sql, "scheduling.claim_guest_mail")
+			.matchAll(/fn_spend_guest_quota\(scheduling\.fn_guest_hash\(a\.email\), 1, (\d+)\)/g),
+	]
+		.map((m) => Number(m[1]));
+	assertEquals(door, [GUEST_ADDRESS_MAILS_DAILY_MAX]);
+	assertEquals(sweep, [GUEST_ADDRESS_MAILS_DAILY_MAX]);
 });
 
 Deno.test("the ballot-cap trigger refuses at the SAME count the TypeScript rule does", () => {

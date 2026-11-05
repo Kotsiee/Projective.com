@@ -519,6 +519,8 @@ ALTER TABLE scheduling.guest_mail ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.guest_mail_opt_outs ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE scheduling.guest_mail_quota ENABLE ROW LEVEL SECURITY;
+
 -- Definer-only as well: the service-role job is the only reader and writer.
 ALTER TABLE scheduling.event_mirrors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduling.connected_event_details ENABLE ROW LEVEL SECURITY;

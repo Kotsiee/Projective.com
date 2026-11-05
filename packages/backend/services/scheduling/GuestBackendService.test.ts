@@ -62,10 +62,10 @@ Deno.test("sendDue — what could not go is left to be tried again", async () =>
 	assertEquals(finished, [{ p_mail: "m1", p_sent: false }]);
 });
 
-Deno.test("sendDue — a withdrawal has no link to log", async () => {
-	const { run, lines } = sweep([{ ...ROW, kind: "withdrawn", token: null }], "logged");
-	await run;
-	assertEquals(lines[0].includes("/rsvp/"), false);
+Deno.test("sendDue — a zone Intl does not know cannot stop the sweep", async () => {
+	const { run, finished } = sweep([{ ...ROW, timezone: "posix/Mars/Olympus" }], "sent");
+	assertEquals((await run).data, { sent: 1, failed: 0 });
+	assertEquals(finished, [{ p_mail: "m1", p_sent: true }]);
 });
 
 Deno.test("invitation — a token of the wrong shape is a dead link, before any read", async () => {

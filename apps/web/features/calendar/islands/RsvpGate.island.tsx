@@ -55,6 +55,15 @@ function openingTime(invitation: LiveGuestInvitation): string {
 	}).format(invitation.opensAt);
 }
 
+/** Where a link goes. A host chose it, so the guest is told before following it from our page. */
+function hostOf(url: string): string {
+	try {
+		return new URL(url).hostname;
+	} catch {
+		return url;
+	}
+}
+
 /** The call: a state to explain, or the way to prove the address and go in. */
 function Room(
 	props: { invitation: LiveGuestInvitation; joinUrl?: string | null },
@@ -66,6 +75,7 @@ function Room(
 		return (
 			<section class="rsvp__room" aria-label="Join the call">
 				<p class="rsvp__said">You're confirmed.</p>
+				<p class="rsvp__meta">This opens {hostOf(joinUrl)}, which your host chose.</p>
 				<a
 					class="ui-button ui-button--primary ui-button--filled ui-button--size-md"
 					href={joinUrl}
@@ -129,7 +139,7 @@ function Room(
 }
 
 export default function RsvpGate(props: RsvpGateProps): JSX.Element {
-	const { invitation, refusal, notice, joinUrl, canClaim, signedIn, token } = props;
+	const { invitation, refusal, notice, joinUrl, canClaim, signedIn } = props;
 
 	if (!invitation) {
 		return (
@@ -144,12 +154,19 @@ export default function RsvpGate(props: RsvpGateProps): JSX.Element {
 						? "Try again in a moment."
 						: "It may have been changed or withdrawn, or the event may have ended."}
 				/>
+				{notice ? <p class="rsvp__said" role="status">{notice}</p> : null}
+				{props.failed ? null : (
+					<Press action="stop" class="rsvp__stop">
+						<Button type="submit" variant="text" severity="secondary" size="sm">
+							Stop these emails
+						</Button>
+					</Press>
+				)}
 			</main>
 		);
 	}
 
 	const answered = invitation.response === "pending" ? null : invitation.response as GuestAnswer;
-	const returnTo = encodeURIComponent(`/rsvp/${token}`);
 
 	return (
 		<main class="rsvp">
@@ -203,8 +220,8 @@ export default function RsvpGate(props: RsvpGateProps): JSX.Element {
 
 				<footer class="rsvp__foot">
 					{signedIn ? null : (
-						<a class="rsvp__link" href={`/login?redirectTo=${returnTo}`}>
-							Have a Projective account? Sign in
+						<a class="rsvp__link" href="/login">
+							Have a Projective account? Sign in, then open this link again
 						</a>
 					)}
 					<Press action="stop">

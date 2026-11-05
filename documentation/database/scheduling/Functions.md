@@ -630,8 +630,9 @@ by `coordination.contract.test.ts`). `trg_seat_holds_time` flips a passive entry
 An address is a guest (Decision #391), told by a queued `guest_mail` row instead of a notice. It is
 only ever an address: whether an account holds it is never looked up, so nothing here tells a host who
 owns one. A seat with no `user_id` needs an address, and this is where that holds. Refuses (`55000`) a
-malformed address, an address that opted out, a host under 18, and past `GUEST_INVITES_DAILY_MAX` (50)
-addresses a day per host, pinned the same way. `EXECUTE` to `authenticated`.
+malformed or NULL address, an address that opted out, a caller under 18, past
+`GUEST_INVITES_DAILY_MAX` (50) a day for the caller, and past `GUEST_ADDRESS_MAILS_DAILY_MAX` (10) a day
+for an address, both pinned the same way. `EXECUTE` to `authenticated`.
 
 ### `scheduling.withdraw_invitation(event, attendee = NULL) → integer`
 
@@ -649,17 +650,18 @@ own guests. A dead link answers the same whatever killed it.
 
 | Function                                                 | What it does                                                                                                                                                                 |
 | :------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claim_guest_mail(limit = 50)` → table                   | Takes what is due, minting a link for each message that needs one and handing back its raw value, which is stored nowhere. Skips an opted-out address. A claim is retaken after five minutes. |
+| `claim_guest_mail(limit = 50)` → table                   | Takes what is due, minting a link for each message and handing back its raw value, which is stored nowhere. A withdrawal's link is dead on arrival and exists to stop further email. Skips an opted-out address. A new time over its address's limit waits a day. A claim is retaken after five minutes. |
 | `finish_guest_mail(mail, sent)` → void                   | Records how a claimed message went. Five refusals in a row stops it, and the host is told.                                                                                   |
 | `guest_invitation(token)` → jsonb                        | What a link shows. The title, time and host are all a link alone gets. The place waits until they have said they are coming.                                                 |
 | `guest_answer(token, response)` → boolean                | A guest's answer. `pending` is refused (`22023`). A log line that never names the address, and none for a restated answer.                                                   |
 | `guest_request_code(token)` → jsonb                      | Mints the 6-digit code, kept only as a hash, for the caller to mail. Only for somebody who has said they are coming, while the room is open: `sent` · `wait` (60s) · `limit` (10) · `closed` · `dead`. |
 | `guest_room_join(token, code, device)` → jsonb           | `room_join`'s event branch, with the code standing in for a session. Records a `join_click` against the seat, with `device` as `participant_key`. Five misses lock the code.  |
-| `guest_opt_out(token)` → boolean                         | Files the address's hash and drops what had not gone out. `invite_to_event` refuses that address from then on.                                                               |
+| `guest_opt_out(token)` → void                            | Files the address's hash and drops what had not gone out. Takes any link ever mailed, dead or not, and answers nothing, so a page says the same whatever the token was. `invite_to_event` refuses that address from then on. |
 | `get_guest_addresses(events uuid[])` → table             | `authenticated`. The addresses on the caller's own entries, and whether each could be reached. How a host reads a column no client role holds.                               |
 | `guest_seat_is_mine(token)` → boolean                    | `authenticated`. Does the reader hold this link's address, verified? An unverified address proves nothing, because anybody can file one.                                     |
-| `claim_guest_seat(token)` → uuid                         | `authenticated`. Moves the seat onto the caller's account, clearing `email` and killing its links. Never automatic, because it shows their name to the host and the other guests. Somebody already seated keeps their seat, with this answer. |
-| `fn_forget_guest_addresses()` → integer                  | Job `scheduling-forget-guest-addresses`. Blanks an address 30 days after its entry ends or its seat is withdrawn. The seat stays, nameless.                                   |
+| `claim_guest_seat(token)` → uuid                         | `authenticated`. Moves the seat onto the caller's account, clearing `email`, killing its links and bringing any provider link with it. Never automatic, because it shows their name to the host and the other guests. Somebody already seated keeps their seat, with this answer. Looks again under the row lock, so a second press finds nothing, and refuses while a round is open, because it adds a voter. |
+| `fn_forget_guest_addresses()` → integer                  | Job `scheduling-forget-guest-addresses`. Blanks an address 30 days after its entry ends or its seat is withdrawn, and drops old allowances. The seat stays, nameless.         |
+| `fn_spend_guest_quota(subject, count, max)` → boolean    | Internal. Spends from today's allowance and says whether it was there. The upsert takes the row's lock, so parallel invitations queue here.                                  |
 | `fn_event_has_voters(event)` → boolean                   | `authenticated`, because `fn_guard_rostered_event` runs as its caller. Is anybody on this entry who can vote?                                                                |
 | `fn_guest_link(token)`, `fn_guest_hash(text)`, `fn_guest_safe_text(text)`, `fn_guest_room_state(seat, event)`, `fn_retire_guest_seat(seat, tell)` | Internal. `fn_guest_safe_text` takes `comms.mask_pii` and adds every other link, because a mail client makes a link of anything that looks like one. |
 
@@ -762,11 +764,11 @@ link. In the same pass (2026-09-28):
 rostered event moves only through its negotiation: for a **client** role (`current_user` is `anon`
 or `authenticated`), an event with any `event_attendees` row is never deleted (`55000`, "people are
 booked on this event — cancel or reschedule it instead" — the delete would cascade the roster, the
-rounds, the votes and the log away, root `CLAUDE.md` §5), and an update that changes its `status` or
-`schedule_id` is refused (`55000`, "propose a new time instead"), as is one that changes its
-`starts_at` or `ends_at` while anybody seated can vote (`fn_event_has_voters`). A guest holds no vote,
-so an entry with only guests moves freely and the guests are told (Decision #391), while its status
-still needs a withdrawal, or it could go with them never told. Any other role — the scheduling service, which closes rounds through
+rounds, the votes and the log away, root `CLAUDE.md` §5), and an update that changes its `status`,
+`archived_at` or `schedule_id` is refused (`55000`, "propose a new time instead"), as is one that
+changes its `starts_at` or `ends_at` while anybody seated can vote (`fn_event_has_voters`). A guest
+holds no vote, so an entry with only guests moves freely and the guests are told (Decision #391), while
+ending it still needs a withdrawal, or it could go with them never told. Any other role — the scheduling service, which closes rounds through
 `close_reschedule_round` after the SSOT's rules have run — passes through, as does any edit of an
 event nobody is seated on. It closes a route round the 12-hour lockout and the majority rule that
 the policies could not: the `events` management policy lets a schedule's manager write their own

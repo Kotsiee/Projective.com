@@ -36,9 +36,18 @@ function intOrNull(value: number | undefined): number | null {
 	return value === undefined || !Number.isFinite(value) ? null : Math.round(value);
 }
 
+/**
+ * A guest's link is a capability, so its token stays out of every log row and the console: anybody
+ * reading them could otherwise answer as that guest. Where it runs, on the server, it covers the browser's
+ * batches and the error page alike.
+ */
+export function scrubPath(path: string): string {
+	return path.replace(/^\/rsvp\/[^/?#]*/, "/rsvp/:token");
+}
+
 function envelope(meta: LogBatchMeta | undefined) {
 	return {
-		path: meta?.path ?? null,
+		path: meta?.path ? scrubPath(meta.path) : null,
 		user_agent: meta?.userAgent ?? null,
 		release: meta?.release ?? null,
 	};

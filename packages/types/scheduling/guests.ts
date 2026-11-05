@@ -16,11 +16,18 @@ import { RoomJoinState } from "./rooms.ts";
 
 // #region Limits
 /**
- * The most addresses one host may ask to in a day. An invitation by email reaches a stranger's inbox
+ * The most addresses one person may ask in a day. An invitation by email reaches a stranger's inbox
  * under Projective's name, on the domain that also sends sign-up confirmations.
  * `scheduling.invite_to_event` holds the same figure, and `coordination.contract.test.ts` pins the two.
  */
 export const GUEST_INVITES_DAILY_MAX = 50;
+
+/**
+ * The most invitations and new times one address gets in a day, whoever sends them, so that nobody can
+ * fill an inbox by moving an entry or by using several accounts. Past it a new time waits a day and
+ * says the latest time when it goes. Pinned the same way.
+ */
+export const GUEST_ADDRESS_MAILS_DAILY_MAX = 10;
 // #endregion
 
 // #region What a link says
@@ -87,11 +94,25 @@ export type LiveGuestInvitation = Extract<GuestInvitation, { state: "live" }>;
 // #endregion
 
 // #region Wording
+/**
+ * A zone `Intl` can format in. Postgres knows names ICU does not (`posix/…`), and an email that could not
+ * say when must not stop the sweep, so one of those reads as UTC, which `guestWhen` then states.
+ */
+export function knownZone(zone: string | null): string {
+	if (!zone) return "UTC";
+	try {
+		new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+		return zone;
+	} catch {
+		return "UTC";
+	}
+}
+
 /** When an entry is, in its host's zone: a guest has no zone on file, so the page and the email name it. */
 export function guestWhen(
 	when: { start: number; end: number; allDay: boolean; timezone: string | null },
 ): string {
-	const timeZone = when.timezone ?? "UTC";
+	const timeZone = knownZone(when.timezone);
 	const day = new Intl.DateTimeFormat("en-GB", {
 		weekday: "short",
 		day: "numeric",

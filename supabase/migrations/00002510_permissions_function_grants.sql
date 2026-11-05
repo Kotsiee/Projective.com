@@ -2134,6 +2134,9 @@ TO authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_event_has_voters (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_voters (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_guest_hash (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_spend_guest_quota (text, integer, integer)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_stamp_event_creator () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_guest_safe_text (text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_guest_link (text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_guest_room_state (scheduling.event_attendees, scheduling.events)

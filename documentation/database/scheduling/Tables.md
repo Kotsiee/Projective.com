@@ -148,6 +148,10 @@ or `ends_at` while anybody seated can vote (`55000`) — so a schedule owner can
 `CLAUDE.md` §5). A guest holds no vote, so an entry with only guests moves freely (Decision #391). The
 service role is not refused. See [Functions.md](Functions.md) §9.
 
+**Who made an entry is a fact, not a field.** `trg_event_creator` (BEFORE INSERT OR UPDATE OF
+`created_by`) stamps a client role's insert with `auth.uid()` and holds the value on an update
+(Decision #391). A client could write the column, which put somebody else's name on an invitation.
+
 **A recurring series is one level deep and on one anchor.** `trg_guard_event_recurrence` (BEFORE
 INSERT OR UPDATE OF `recurrence_rule`, `recurrence_parent_id`, `schedule_id`, `project_id`, since
 2026-11-03) refuses (`23514`) an occurrence whose parent is not a master on the same `schedule_id`
@@ -239,7 +243,7 @@ identity (`live-calendar.ts` seats a reader where `user_id = auth.uid()`).
 ### Guests (Decision #391)
 
 A guest is a seat held by an address. They have no session, so they hear by mail and act through a
-link. All three tables are definer-only: RLS on, no policy, no client grant, because a host who could
+link. All four tables are definer-only: RLS on, no policy, no client grant, because a host who could
 read or write them could answer for their own guests.
 
 **`scheduling.guest_links`** is every link mailed to a guest, one per email, so a link in use says
@@ -251,8 +255,15 @@ and two brakes on whoever holds a link, `code_sends` (10) and `code_misses` (5, 
 
 **`scheduling.guest_mail`** is what still has to reach a guest's inbox, written in the transaction of
 the move it announces. It names a seat rather than copying an address. `kind` is `invite`, `moved` or
-`withdrawn`. `claimed_at` and `attempts` are the sweep's; `sent_at` ends a row, and `failed_at`, after
-five refusals, is what the host sees as "Email not delivered".
+`withdrawn`. `due_at` holds back a new time that is over its address's limit. `claimed_at` and
+`attempts` are the sweep's; `sent_at` ends a row, and `failed_at`, after five refusals, is what the
+host sees as "Email not delivered".
+
+**`scheduling.guest_mail_quota`** is what each person and each address has used today, PK
+`(subject, day)`, `subject` being a user's id or an address's hash. A row of its own rather than a
+count of the queue, because a count cannot see another transaction's rows and forgets whatever is
+deleted. `fn_spend_guest_quota`'s upsert serialises on it, and a refused invitation raises, which takes
+its spending back with it.
 
 **`scheduling.guest_mail_opt_outs`** is the addresses that asked for no more, as `email_hash` alone,
 so an opt-out does not keep the address it refuses.

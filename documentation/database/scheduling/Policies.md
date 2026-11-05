@@ -20,8 +20,8 @@ read by the owner side (Decision #217, below). Neither is visitor-readable, and 
 
 A discovery call is **never** readable by `anon` — there is deliberately no visitor policy on
 `discovery_calls`, `call_attendance`, or `call_audit`. `rooms`, `room_registrants`, `presence_events`,
-`guest_links`, `guest_mail`, `guest_mail_opt_outs`, `event_mirrors` and `connected_event_details` have
-no client grant at all. `discovery_calls.meeting_url` and
+`guest_links`, `guest_mail`, `guest_mail_opt_outs`, `guest_mail_quota`, `event_mirrors` and
+`connected_event_details` have no client grant at all. `discovery_calls.meeting_url` and
 `meeting_external_id` are withheld at the column level, and a party joins through `/meet`. Since
 2026-09-28 the same holds for
 `scheduling.events` and `blackout_dates` rows: a visitor's whole view of a schedule is two definer

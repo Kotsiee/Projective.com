@@ -22,6 +22,15 @@
 --  17  limits       the seat cap counts every guest, and a host has a daily limit
 --  18  retention    an address is blanked 30 days after the entry ends
 --  19  presence     a guest's own provider link is matched to their seat, and no account is credited for them
+--  20  creator      nobody can write who made an entry, so nobody can send in somebody else's name
+--  21  no address   a NULL in the list of addresses is refused, not seated with nothing
+--  22  allowances   deleting what was sent gives nothing back, and an address has a limit of its own
+--  23  held         past that limit a new time waits, adds nothing more, and says the latest time when it goes
+--  24  in flight    a move or a withdrawal during a send is not lost
+--  25  archived     archiving is ending an entry too, so it also needs a withdrawal
+--  26  dead links   any link ever mailed can stop further email, and a withdrawal's link does nothing else
+--  27  claim races  a second press finds nothing to claim, and nobody joins an open round
+--  28  own link     a claim brings the guest's provider link with it
 --
 -- Run: docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q < supabase/probes/event_guests.sql
 \set ON_ERROR_STOP on
@@ -92,6 +101,8 @@ DECLARE
     v_answer jsonb;
     v_text text;
     v_addresses text[];
+    v_seat2 uuid;
+    v_round uuid;
 BEGIN
     SELECT (array_agg(p.user_id))[1], (array_agg(p.user_id))[2], (array_agg(p.user_id))[3]
       INTO v_host, v_other, v_third
@@ -521,7 +532,7 @@ BEGIN
     PERFORM scheduling.invite_to_event(v_event, '{}', ARRAY['stopit@example.com']);
     RESET ROLE;
     SET LOCAL ROLE service_role;
-    PERFORM pg_temp.ok(scheduling.guest_opt_out(v_token), 'a guest opts out');
+    PERFORM scheduling.guest_opt_out(v_token);
     RESET ROLE;
     PERFORM pg_temp.ok(
         NOT EXISTS (
@@ -541,6 +552,7 @@ BEGIN
     );
 
     -- 17 limits
+    DELETE FROM scheduling.guest_mail_quota;
     INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
     VALUES (v_schedule, 'sync', 'Probe full', v_from, v_to, v_host)
     RETURNING id INTO v_entry;
@@ -549,8 +561,6 @@ BEGIN
         pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', %L::text[])', v_entry, v_addresses)) = '55000',
         'fifty guests and a host is one over the cap, because every guest counts as somebody'
     );
-    DELETE FROM scheduling.guest_mail m USING scheduling.event_attendees a, scheduling.events e
-     WHERE a.id = m.attendee_id AND e.id = a.event_id AND e.created_by = v_host;
     SELECT array_agg(format('day%s@example.com', g)) INTO v_addresses FROM generate_series(1, 49) g;
     PERFORM pg_temp.ok(
         pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', %L::text[])', v_entry, v_addresses)) IS NULL,
@@ -566,6 +576,184 @@ BEGIN
         pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[''fiftyfirst@example.com''])', v_entry)) = '55000',
         'and a host has a daily limit on strangers'' inboxes'
     );
+
+    -- 22 allowances
+    DELETE FROM scheduling.guest_mail m USING scheduling.event_attendees a, scheduling.events e
+     WHERE a.id = m.attendee_id AND e.id = a.event_id AND e.created_by = v_host;
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[''fiftyfirst@example.com''])', v_entry)) = '55000',
+        'and deleting what was sent gives none of it back'
+    );
+    DELETE FROM scheduling.guest_mail_quota;
+    FOR v_n IN 1..10 LOOP
+        INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+        VALUES (v_schedule, 'sync', 'Probe popular', v_from, v_to, v_host)
+        RETURNING id INTO v_entry;
+        PERFORM pg_temp.ok(
+            pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[''popular@example.com''])', v_entry)) IS NULL,
+            format('invitation %s to one address goes out', v_n)
+        );
+    END LOOP;
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+    VALUES (v_schedule, 'sync', 'Probe popular', v_from, v_to, v_host)
+    RETURNING id INTO v_entry;
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[''popular@example.com''])', v_entry)) = '55000',
+        'and an address has a limit of its own, whoever is asking'
+    );
+    DELETE FROM scheduling.guest_mail_quota;
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE sent_at IS NULL;
+
+    -- 23 held
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+    VALUES (v_schedule, 'sync', 'Probe restless', v_from, v_to, v_host)
+    RETURNING id INTO v_entry;
+    PERFORM pg_temp.as_user(v_host);
+    SET LOCAL ROLE authenticated;
+    PERFORM scheduling.invite_to_event(v_entry, '{}', ARRAY['restless@example.com']);
+    RESET ROLE;
+    v_token := pg_temp.mailed('invite');
+    SELECT id INTO v_seat2 FROM scheduling.event_attendees WHERE event_id = v_entry AND email IS NOT NULL;
+    INSERT INTO scheduling.guest_mail_quota (subject, day, spent)
+    VALUES (scheduling.fn_guest_hash('restless@example.com'), (v_now AT TIME ZONE 'UTC')::date, 10)
+    ON CONFLICT (subject, day) DO UPDATE SET spent = 10;
+    UPDATE scheduling.events SET starts_at = v_from + interval '1 hour', ends_at = v_to + interval '1 hour' WHERE id = v_entry;
+    SET LOCAL ROLE service_role;
+    SELECT count(*) INTO v_n FROM scheduling.claim_guest_mail(50);
+    RESET ROLE;
+    PERFORM pg_temp.ok(v_n = 0, 'over its address''s limit a new time does not go');
+    PERFORM pg_temp.ok(
+        (SELECT due_at > v_now + interval '23 hours' AND claimed_at IS NULL FROM scheduling.guest_mail
+          WHERE attendee_id = v_seat2 AND kind = 'moved'),
+        'it waits a day'
+    );
+    UPDATE scheduling.events SET starts_at = v_from + interval '2 hours', ends_at = v_to + interval '2 hours' WHERE id = v_entry;
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.guest_mail WHERE attendee_id = v_seat2 AND kind = 'moved') = 1,
+        'and a further move adds nothing, because the one waiting will say the latest time'
+    );
+    DELETE FROM scheduling.guest_mail_quota;
+    UPDATE scheduling.guest_mail SET due_at = v_now WHERE attendee_id = v_seat2;
+    SET LOCAL ROLE service_role;
+    SELECT m.starts_at::text INTO v_text FROM scheduling.claim_guest_mail(50) m WHERE m.kind = 'moved';
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        v_text::timestamptz = v_from + interval '2 hours',
+        format('when it goes it says the latest time, not %s', v_text)
+    );
+
+    -- 24 in flight
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE sent_at IS NULL;
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+    VALUES (v_schedule, 'sync', 'Probe in flight', v_from, v_to, v_host)
+    RETURNING id INTO v_entry;
+    SET LOCAL ROLE authenticated;
+    PERFORM scheduling.invite_to_event(v_entry, '{}', ARRAY['inflight@example.com']);
+    RESET ROLE;
+    SELECT id INTO v_seat2 FROM scheduling.event_attendees WHERE event_id = v_entry AND email IS NOT NULL;
+    SET LOCAL ROLE service_role;
+    PERFORM m.mail_id FROM scheduling.claim_guest_mail(50) m;
+    RESET ROLE;
+    SET LOCAL ROLE authenticated;
+    UPDATE scheduling.events SET starts_at = v_from + interval '1 hour', ends_at = v_to + interval '1 hour' WHERE id = v_entry;
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.guest_mail
+          WHERE attendee_id = v_seat2 AND kind = 'moved' AND claimed_at IS NULL) = 1,
+        'a new time during a send is queued, because the invitation may have said the old one'
+    );
+    SET LOCAL ROLE authenticated;
+    PERFORM scheduling.withdraw_invitation(v_entry, v_seat2);
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.guest_mail WHERE attendee_id = v_seat2 AND kind = 'withdrawn') = 1,
+        'a withdrawal during a send tells them, because the invitation is on its way'
+    );
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.guest_mail WHERE attendee_id = v_seat2 AND kind = 'invite') = 1,
+        'and the message being sent is left to finish'
+    );
+
+    -- 25 archived
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE sent_at IS NULL;
+    SET LOCAL ROLE authenticated;
+    PERFORM scheduling.invite_to_event(v_entry, '{}', ARRAY['archived@example.com']);
+    RESET ROLE;
+    BEGIN
+        SET LOCAL ROLE authenticated;
+        UPDATE scheduling.events SET archived_at = v_now WHERE id = v_entry;
+        RAISE EXCEPTION 'PROBE FAIL: an entry was archived with its guests never told';
+    EXCEPTION WHEN object_not_in_prerequisite_state THEN
+        NULL;
+    END;
+    RESET ROLE;
+
+    -- 26 dead links
+    UPDATE scheduling.guest_mail SET sent_at = NULL WHERE attendee_id = v_seat2 AND kind = 'withdrawn';
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE attendee_id <> v_seat2 AND sent_at IS NULL;
+    SET LOCAL ROLE service_role;
+    SELECT m.token INTO v_token FROM scheduling.claim_guest_mail(50) m WHERE m.kind = 'withdrawn';
+    PERFORM pg_temp.ok(v_token IS NOT NULL, 'a withdrawal carries a link');
+    PERFORM pg_temp.ok(scheduling.guest_invitation(v_token) ->> 'state' = 'dead', 'which opens nothing');
+    PERFORM pg_temp.ok(NOT scheduling.guest_answer(v_token, 'accepted'), 'and answers nothing');
+    PERFORM scheduling.guest_opt_out(v_token);
+    PERFORM scheduling.guest_opt_out(repeat('0', 64));
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[''inflight@example.com''])', v_event)) = '55000'
+        OR EXISTS (
+            SELECT 1 FROM scheduling.guest_mail_opt_outs
+             WHERE email_hash = scheduling.fn_guest_hash('inflight@example.com')
+        ),
+        'but it stops further email, so invite-and-withdraw cannot leave somebody without a way out'
+    );
+    PERFORM pg_temp.ok(
+        EXISTS (
+            SELECT 1 FROM scheduling.guest_mail_opt_outs
+             WHERE email_hash = scheduling.fn_guest_hash('inflight@example.com')
+        ),
+        'the address is on the list'
+    );
+
+    -- 27 claim races
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE sent_at IS NULL;
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+    VALUES (v_schedule, 'sync', 'Probe round', v_from, v_to, v_host)
+    RETURNING id INTO v_entry;
+    PERFORM pg_temp.as_user(v_host);
+    SET LOCAL ROLE authenticated;
+    PERFORM scheduling.invite_to_event(v_entry, ARRAY[v_other], ARRAY['roundguest@example.com']);
+    RESET ROLE;
+    v_token := pg_temp.mailed('invite');
+    INSERT INTO org.user_emails (user_id, email, is_primary, verified_at)
+    VALUES (v_other, 'roundguest@example.com', false, v_now);
+    INSERT INTO scheduling.event_reschedules (event_id, round, mode, status, opened_by_user_id, opened_at)
+    VALUES (v_entry, 0, 'counterparty', 'collecting', v_host, v_now)
+    RETURNING id INTO v_round;
+    PERFORM pg_temp.as_user(v_other);
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.claim_guest_seat(%L)', v_token)) = '55000',
+        'nobody joins an electorate while it is being counted'
+    );
+    UPDATE scheduling.event_reschedules SET status = 'withdrawn' WHERE id = v_round;
+    SET LOCAL ROLE authenticated;
+    PERFORM pg_temp.ok(scheduling.claim_guest_seat(v_token) = v_entry, 'once the round has closed, they can');
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.event_attendees
+          WHERE event_id = v_entry AND user_id = v_other AND archived_at IS NULL) = 1,
+        'and somebody already seated keeps their one seat'
+    );
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.claim_guest_seat(%L)', v_token)) = '55000',
+        'a second press finds nothing to claim, and takes nothing away'
+    );
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM scheduling.event_attendees
+          WHERE event_id = v_entry AND user_id = v_other AND archived_at IS NULL) = 1,
+        'they are still seated'
+    );
+
     -- The seed has no minor, so one is made for the length of this transaction.
     v_minor := v_third;
     UPDATE org.users_public SET dob = (v_now - interval '15 years')::date WHERE user_id = v_minor;
@@ -634,6 +822,59 @@ BEGIN
     PERFORM pg_temp.ok(
         v_answer ->> 'matched_by' = 'unmatched',
         format('with a guest seated, a stranger is not put down to the only account: %s', v_answer)
+    );
+
+    -- 28 own link
+    PERFORM pg_temp.as_user(v_host);
+    INSERT INTO org.user_emails (user_id, email, is_primary, verified_at)
+    VALUES (v_host, 'zoomguest@example.com', false, v_now);
+    UPDATE scheduling.guest_mail SET sent_at = v_now WHERE sent_at IS NULL;
+    INSERT INTO scheduling.guest_links (attendee_id, token_hash)
+    VALUES (v_seat, scheduling.fn_guest_hash(repeat('7', 64)));
+    UPDATE scheduling.events SET created_by = v_other WHERE id = v_entry;
+    SELECT event_id INTO v_entry FROM scheduling.event_attendees WHERE id = v_seat;
+    UPDATE scheduling.events SET created_by = v_other WHERE id = v_entry;
+    SET LOCAL ROLE authenticated;
+    PERFORM pg_temp.ok(scheduling.claim_guest_seat(repeat('7', 64)) = v_entry, 'a guest with their own provider link claims');
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT user_id = v_host AND attendee_id IS NULL FROM scheduling.room_registrants
+          WHERE registrant_id = 'probe-registrant'),
+        'and the provider link moves to their account, so their next join is not a clash'
+    );
+
+    -- 20 creator
+    PERFORM pg_temp.as_user(v_host);
+    SELECT id INTO v_schedule FROM scheduling.schedules WHERE owner_type = 'user' AND owner_id = v_host;
+    SET LOCAL ROLE authenticated;
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at, created_by)
+    VALUES (v_schedule, 'sync', 'Probe forged', v_from, v_to, v_other)
+    RETURNING id INTO v_entry;
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT created_by FROM scheduling.events WHERE id = v_entry) = v_host,
+        'an insert naming somebody else is stamped with the caller'
+    );
+    SET LOCAL ROLE authenticated;
+    INSERT INTO scheduling.events (schedule_id, kind, title, starts_at, ends_at)
+    VALUES (v_schedule, 'sync', 'Probe nameless', v_from, v_to)
+    RETURNING id INTO v_event;
+    UPDATE scheduling.events SET created_by = v_other WHERE id = v_entry;
+    UPDATE scheduling.events SET created_by = NULL WHERE id = v_event;
+    RESET ROLE;
+    PERFORM pg_temp.ok(
+        (SELECT created_by FROM scheduling.events WHERE id = v_entry) = v_host,
+        'an update cannot change it'
+    );
+    PERFORM pg_temp.ok(
+        (SELECT created_by FROM scheduling.events WHERE id = v_event) = v_host,
+        'and neither leaving it out nor nulling it leaves it empty'
+    );
+
+    -- 21 no address
+    PERFORM pg_temp.ok(
+        pg_temp.refused(format('SELECT scheduling.invite_to_event(%L, ''{}'', ARRAY[NULL]::text[])', v_entry)) = '55000',
+        'a NULL in the list is refused, so no seat has neither an account nor an address'
     );
 
     RAISE NOTICE 'PASS event_guests';

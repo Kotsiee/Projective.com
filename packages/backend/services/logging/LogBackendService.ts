@@ -2,7 +2,7 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isLoggingBackendLive } from "../../core/supabase.ts";
 import { ANONYMOUS_READER, type ReadActor } from "../read-actor.ts";
 import { writeTelemetry } from "../telemetry-writer.ts";
-import { type LogEntryRow, toLogRows, toVitalRows } from "./log-rows.ts";
+import { type LogEntryRow, scrubPath, toLogRows, toVitalRows } from "./log-rows.ts";
 import {
 	LogBatchSchema,
 	type LogEntry,
@@ -89,7 +89,7 @@ export class LogBackendService {
 		context: { path: string; method: string; status: number },
 		actor: ReadActor = ANONYMOUS_READER,
 	): Promise<ServiceResult<LogIngestResult>> {
-		console.error(`[server:${context.status}] ${context.method} ${context.path}`, error);
+		console.error(`[server:${context.status}] ${context.method} ${scrubPath(context.path)}`, error);
 		if (!isLoggingBackendLive()) return ok({ accepted: 0 });
 
 		const message = error instanceof Error ? error.message : String(error);

@@ -28,7 +28,8 @@ import { writeRefusal } from "./live-entries.ts";
  * signed-in person instead, because a claim is about who they are.
  *
  * The raw link and the code exist only in the message that carries them. Neither is logged in
- * production, and neither reaches a host.
+ * production (`logging/log-rows.ts` `scrubPath` takes the token out of a path), and neither reaches a
+ * host.
  */
 
 const TRY_AGAIN = "We couldn't reach this invitation just now. Try again in a moment.";
@@ -130,15 +131,15 @@ export class GuestBackendService {
 			: ok(null);
 	}
 
-	/** A guest asking for no more invitations, from anybody. */
+	/** A guest asking for no more invitations, from anybody. Says the same whatever the token was. */
 	static async optOut(token: string): Promise<ServiceResult<null>> {
-		if (!GuestTokenSchema.safeParse(token).success) return fail(404, { message: GONE });
-		const { data, error } = await serviceDoor("guest_opt_out", { p_token: token });
+		if (!GuestTokenSchema.safeParse(token).success) return ok(null);
+		const { error } = await serviceDoor("guest_opt_out", { p_token: token });
 		if (error) {
 			console.error("[guests:opt-out]", error.message);
 			return fail(503, { message: TRY_AGAIN });
 		}
-		return data === true ? ok(null) : fail(404, { message: GONE });
+		return ok(null);
 	}
 
 	/** Does the signed-in reader hold this link's address, verified? Offered a claim only if so. */
@@ -186,11 +187,10 @@ export class GuestBackendService {
 		let failed = 0;
 		for (const row of (data ?? []) as GuestMailRow[]) {
 			const message = guestMessage(row, deps.appUrl);
-			const link = row.token ? ` -> ${guestLink(deps.appUrl, row.token)}` : "";
 			const outcome = await deps.deliver(
 				message,
 				"guest email",
-				`[dev mail] ${message.subject} to ${row.email}${link}`,
+				`[dev mail] ${message.subject} to ${row.email} -> ${guestLink(deps.appUrl, row.token)}`,
 			);
 			const delivered = outcome !== "unavailable";
 			const finished = await deps.door("finish_guest_mail", {

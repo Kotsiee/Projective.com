@@ -303,12 +303,24 @@ CREATE TABLE scheduling.guest_mail (
     attendee_id uuid NOT NULL REFERENCES scheduling.event_attendees (id) ON DELETE CASCADE,
     kind text NOT NULL,
     attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    -- Not before this. A new time over its address's limit waits, and says the latest time when it goes.
+    due_at timestamptz NOT NULL DEFAULT now(),
     claimed_at timestamptz,
     sent_at timestamptz,
     -- The provider refused it every time. The host is told (scheduling.get_guest_addresses).
     failed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_guest_mail_kind CHECK (kind IN ('invite', 'moved', 'withdrawn'))
+);
+
+-- What each host and each address has used today. `subject` is a host's id or an address's hash. A
+-- row of its own rather than a count of the queue, because a count cannot see another transaction's
+-- rows and forgets whatever is deleted: the upsert in fn_spend_guest_quota serialises on this row.
+CREATE TABLE scheduling.guest_mail_quota (
+    subject text NOT NULL,
+    day date NOT NULL,
+    spent integer NOT NULL DEFAULT 0 CHECK (spent >= 0),
+    CONSTRAINT guest_mail_quota_pkey PRIMARY KEY (subject, day)
 );
 
 -- People who asked for no more of this. A hash, so an opt-out does not keep the address it refuses.

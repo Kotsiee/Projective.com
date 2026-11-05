@@ -130,6 +130,10 @@ CREATE OR REPLACE TRIGGER trg_room_mirrors_changed
 -- #endregion
 
 -- A rostered event moves only through its negotiation and is never deleted (00001510 §5).
+CREATE OR REPLACE TRIGGER trg_event_creator
+    BEFORE INSERT OR UPDATE OF created_by ON scheduling.events
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_stamp_event_creator ();
+
 -- A new time reaches a guest however it was made: a host's own move, or a round closing.
 CREATE OR REPLACE TRIGGER trg_guest_moved
     AFTER UPDATE OF starts_at, ends_at ON scheduling.events

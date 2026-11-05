@@ -36,10 +36,11 @@ Deno.test("guestMessage — a new time asks again, on its own link", () => {
 	assert(message.text.includes(`/rsvp/${ROW.token}`));
 });
 
-Deno.test("guestMessage — a withdrawal carries no link, because there is nothing left to do", () => {
-	const message = guestMessage({ ...ROW, kind: "withdrawn", token: null }, APP);
+Deno.test("guestMessage — a withdrawal says how to stop these, on a link that does nothing else", () => {
+	const message = guestMessage({ ...ROW, kind: "withdrawn" }, APP);
 	assertEquals(message.subject, "Cancelled: Quarterly review");
-	assertEquals(message.text.includes("/rsvp/"), false);
+	assert(message.text.includes("Stop these emails"));
+	assert(message.text.includes(`/rsvp/${ROW.token}`));
 });
 
 Deno.test("guestMessage — a host with no name still reads as a sentence", () => {

@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { formatVital, toLogRows, toVitalRows } from "./log-rows.ts";
+import { formatVital, scrubPath, toLogRows, toVitalRows } from "./log-rows.ts";
 
 const NOW = Date.UTC(2026, 9, 12);
 
@@ -67,4 +67,18 @@ Deno.test("vitals become metric rows keyed by page view and metric", () => {
 Deno.test("formatVital prints CLS unitless and timings in ms", () => {
 	assertEquals(formatVital({ name: "INP", value: 199.5 }), "INP 200ms");
 	assertEquals(formatVital({ name: "CLS", value: 0 }), "CLS 0.000");
+});
+
+Deno.test("scrubPath — a guest's link never reaches a log, and nothing else changes", () => {
+	const token = "ab".repeat(32);
+	assertEquals(scrubPath(`/rsvp/${token}`), "/rsvp/:token");
+	assertEquals(scrubPath(`/rsvp/${token}/`), "/rsvp/:token/");
+	assertEquals(scrubPath("/calendar"), "/calendar");
+	assertEquals(scrubPath("/alice/rsvp/x"), "/alice/rsvp/x");
+	const [row] = toLogRows(
+		[{ id: "a", level: "error", message: "boom", at: NOW }],
+		{ path: `/rsvp/${token}` },
+		NOW,
+	);
+	assertEquals(row.path, "/rsvp/:token");
 });

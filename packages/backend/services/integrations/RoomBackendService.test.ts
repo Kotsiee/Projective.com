@@ -286,7 +286,12 @@ Deno.test("guest join: a guest's first join makes their own link, saved against 
 		db: {
 			guest_room_join: () => ({
 				...OPEN,
-				register: { room_id: ROOM.room_id, attendee_id: "seat-1", email: "g@example.test", first_name: "Guest" },
+				register: {
+					room_id: ROOM.room_id,
+					attendee_id: "seat-1",
+					email: "g@example.test",
+					first_name: "Guest",
+				},
 			}),
 		},
 		provider: () => json({ registrant_id: "reg-2", join_url: "https://zoom.us/w/guest" }, 201),

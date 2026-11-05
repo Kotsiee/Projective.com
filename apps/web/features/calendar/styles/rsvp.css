@@ -111,6 +111,10 @@
 	margin-block-start: var(--space-8);
 }
 
+.rsvp__stop {
+	align-self: center;
+}
+
 .rsvp__link {
 	font-size: var(--text-xs);
 	color: var(--text-secondary);

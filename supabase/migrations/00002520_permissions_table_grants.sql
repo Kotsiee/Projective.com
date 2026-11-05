@@ -636,6 +636,8 @@ GRANT ALL ON TABLE scheduling.guest_mail TO service_role;
 
 GRANT ALL ON TABLE scheduling.guest_mail_opt_outs TO service_role;
 
+GRANT ALL ON TABLE scheduling.guest_mail_quota TO service_role;
+
 GRANT ALL ON TABLE scheduling.event_mirrors TO service_role;
 GRANT ALL ON TABLE scheduling.connected_event_details TO service_role;
 

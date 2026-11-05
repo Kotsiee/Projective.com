@@ -12,7 +12,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_room_registrant_holder ON scheduling.room_r
 );
 CREATE INDEX IF NOT EXISTS idx_guest_links_seat ON scheduling.guest_links (attendee_id);
 CREATE INDEX IF NOT EXISTS idx_guest_mail_seat ON scheduling.guest_mail (attendee_id);
-CREATE INDEX IF NOT EXISTS idx_guest_mail_due ON scheduling.guest_mail (created_at)
+CREATE INDEX IF NOT EXISTS idx_guest_mail_due ON scheduling.guest_mail (due_at)
     WHERE sent_at IS NULL AND failed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_presence_events_room ON scheduling.presence_events (room_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_presence_events_age ON scheduling.presence_events (occurred_at);

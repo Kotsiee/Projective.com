@@ -429,9 +429,11 @@ MS Teams or Google Calendar, but with integrated financial protection.
   them by email and asks them again, and with people on Projective on it too, the round runs among
   those people. A withdrawal or a deleted entry reaches a guest by email. A paid sitting, a booking, an
   engagement's meeting and a discovery call never take a guest. Somebody under 18 can only invite
-  people on Projective. A host can invite 50 addresses a day, every email offers a way to stop them,
-  the wording is fixed, a link in a title is hidden, and an address is forgotten 30 days after the
-  event. The option appears only where email can really go out.
+  people on Projective. A person can invite 50 addresses a day, and an address gets at most 10
+  invitations and new times a day, whoever sends them; a new time past that waits a day and says the
+  latest time when it goes. Every email a host causes offers a way to stop them, from any link ever
+  sent, the wording is fixed, a link in a title is hidden, and an address is forgotten 30 days after
+  the event. The option appears only where email can really go out.
 - **A clash is said, never enforced.** An entry or an invitation that overlaps what already holds
   the reader's time says "Clashes with" what, in the list, the inspector and, as the times change,
   the event modal, which also sees time off and discovery calls. Nothing is refused for it: two
