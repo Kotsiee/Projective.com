@@ -574,4 +574,9 @@ an island can classify identically for instant UI.
 - **Public vs. signed for branding/catalogue.** `avatars`, `showcase`, `catalogue`, and
   `public_assets` are true **public** buckets (fast CDN, but object URLs are enumerable). Whether
   profile/storefront media should instead be private-with-signed-URLs is a product privacy call
-  flagged for a human, not a technical default.
+  flagged for a human, not a technical default. The brief of 2026-11-06 asks for every bucket to be
+  private; that is ruling A1 of Decision #393, and flipping one safely takes three ordered changes
+  (`ASSET_DELIVERY_ARCHITECTURE.md` §4.2).
+- **Sale originals and buyer delivery are not built.** No bucket, row or route delivers a purchased
+  file today. The proposed design is in `ASSET_DELIVERY_ARCHITECTURE.md`; it is not documented here
+  because none of it is migrated.

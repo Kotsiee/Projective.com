@@ -898,6 +898,41 @@ and `personalise.ts`.
 **What never moves the score:** verification (discovery weight comes from Standing alone, §16.5) and
 any plan or payment. Paid visibility is the labelled sponsored placement (§1.4), never rank.
 
+### 16.8 Asset protection (Decision #393)
+
+**Not built yet, and these are proposed starting dials, not ruled figures** (ruling B2,
+`ANTI_PIRACY_ENGINE.md` §13). The owner's rule is that automated crawling and leak detection belong
+to premium seller plans. No plan carries that name, so this maps it onto the plans sellers already
+hold. A product is owned by a person or a team (`catalogue.products.owner_user_id` /
+`owner_team_id`), so the plan that counts is the team's when a team owns it, otherwise the person's.
+Business Pro and Enterprise are buyer plans and carry none of this.
+
+| Lever                                                | Free · Team Free | Pro      | Pro Team | Agency   |
+| :--------------------------------------------------- | :--------------- | :------- | :------- | :------- |
+| Private originals, proxied delivery, upload scanning | ✅               | ✅       | ✅       | ✅       |
+| Fingerprinting, creator controls, preview and diff   | ✅               | ✅       | ✅       | ✅       |
+| Automated leak monitoring (`leak_monitoring`)        | —                | ✅       | ✅       | ✅       |
+| Monitored files (`leak_monitored_files`)             | —                | 50       | 250      | 1 000    |
+| Scan interval (`leak_scan_interval_hours`)           | —                | 168      | 168      | 24       |
+| Takedown packs from a match                          | —                | Uncapped | Uncapped | Uncapped |
+
+**The baseline is universal.** Protecting a seller's file is the marketplace's trust promise, so it
+is never an upsell, in keeping with the design constraint at the head of §16. Only the crawl is
+gated.
+
+**Why this gate fits §16.** Each scan spends paid external search and compute, so it is a shared,
+genuinely metered resource (§16.6). It is not execution capacity (§1.1), and it buys no reputation
+(§16.5). It is not sold à la carte, for the reason in §16.2.
+
+**Enforced from day one.** The fail-open family in §16.2 exists because those caps refuse work
+people already do. This gate sits over a new paid feature, so like `business_plan_gates_enforced` it
+is seeded on. A refusal is `PK402` naming the entitlement. A downgrade pauses scans above the new
+cap, and past matches and open takedown cases stay readable.
+
+**Costs are not passed to sellers.** Rendering and delivery come out of the marketplace commission
+(§1.2). They are not measured yet, and they must be before launch, because a commission of 6.5% on a
+low-priced product may not cover a large render.
+
 ---
 
 ## 17. Record Retention & Erasure Windows

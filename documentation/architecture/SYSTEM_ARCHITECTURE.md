@@ -2388,6 +2388,12 @@ viruses.
    always lands in a **private** library first, and screening there would scan the private zone the
    Two-Zone model exempts. See §Backend Services → Content moderation.
 
+**Planned: sale originals and buyer delivery (Decision #393).** A proposed design adds a private
+`originals` bucket, entitlement-gated delivery, a sandboxed public plane and the retirement of public
+buckets: [`ASSET_DELIVERY_ARCHITECTURE.md`](ASSET_DELIVERY_ARCHITECTURE.md) and
+[`ANTI_PIRACY_ENGINE.md`](ANTI_PIRACY_ENGINE.md). Nothing is built, and the lifecycle above stands
+until its rulings are made.
+
 ### Scheduled jobs (pg_cron + pg_net, Decision #203)
 
 Every recurring job is one row of **`ops.scheduled_jobs`**, seeded by

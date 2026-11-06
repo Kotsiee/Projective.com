@@ -748,6 +748,30 @@ hard-navigates to `/[handle]/edit`.
 `/become-partner` itself reads the setup facts and the skills taxonomy server-side
 (`UserBackendService.setup` / `starterSkills`) and hands them to `BecomePartnerWizard` as props.
 
+### Proposed: asset delivery and protection (Decision #393)
+
+**None of these exist.** They are here so the design's addresses are reviewed against this file
+before a handler lands, and each row moves to its own section in the same change as its handler.
+Contracts: `ASSET_DELIVERY_ARCHITECTURE.md` §11 and `ANTI_PIRACY_ENGINE.md` §11.
+
+| Address                                                 | Kind       | Purpose                                                                                                                                            |
+| :------------------------------------------------------ | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/files?source=purchases`                               | Page state | What a buyer owns and can download. Needs a new `AssetSource` value; `&asset=` opens one.                                                          |
+| `/catalogue/:slug?tab=edit&section=protection`          | Page state | The seller's protection controls; `file`, `view` and `tile` keep a comparison linkable.                                                            |
+| `/catalogue/protection`                                 | Page       | Leak alerts and takedown cases (`?status=`, `?match=lkm-…`). A static route, so it must be added ahead of the non-slug `303` on `/catalogue/:slug`. |
+| `/teams/:teamHandle/catalogue/protection`               | Page       | The team counterpart.                                                                                                                              |
+| `/api/media/public/[variantId]`                         | API        | CDN origin for the public plane.                                                                                                                   |
+| `/api/assets/link`                                      | API        | Resolves a raw storage link to a viewer or purchase page. Under `/api/` so it cannot collide with `[handle]`.                                      |
+| `/api/downloads/[entitlement]/[fileId]`, `/status`      | API        | Entitled delivery. `:entitlement` is an `ent-…` slug.                                                                                              |
+| `/api/reader/[entitlement]/[fileId]/*`                  | API        | The encrypted in-app reader.                                                                                                                       |
+| `/api/entitlements/[entitlement]/tokens`, `/[id]`       | API        | Registry and licence tokens.                                                                                                                       |
+| `/api/registry/[...path]`, `/api/licences/verify`       | API        | The private package registry and licence gateway.                                                                                                  |
+| `/api/catalogue/files/*`, `/api/catalogue/protection/*` | API        | Sale-original uploads and seller controls. `?team=` as elsewhere.                                                                                  |
+| `/api/protection/*`                                     | API        | Matches, channels, takedowns, and `cron/[job]` on the bearer pattern.                                                                              |
+
+New slug prefixes (Decision #88): `ent-`, `lkm-` and `tkd-`. Two live routes change:
+`/api/media/proxy/[fileId]` refuses the new buckets, and `/api/files/object/[id]` is retired.
+
 ### Settings engine (Decision #151)
 
 **The contextual modal's URL contract — `?settings=<section>` on any signed-in page.** Owned by ONE

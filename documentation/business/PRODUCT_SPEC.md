@@ -2831,6 +2831,33 @@ The commerce rules every order follows (Decision #337, ruling M8):
 These are **Not built yet**, except that an on-account order is already written as invoiced and a
 code is already recorded on its order.
 
+#### 7. Asset Protection (Decision #393)
+
+**Not built yet,** and today no buyer can receive a purchased file at all
+(`ASSET_DELIVERY_ARCHITECTURE.md` §2). These rules come from the owner's brief of 2026-11-06. The
+design is in [`ASSET_DELIVERY_ARCHITECTURE.md`](../architecture/ASSET_DELIVERY_ARCHITECTURE.md) and
+[`ANTI_PIRACY_ENGINE.md`](../architecture/ANTI_PIRACY_ENGINE.md), and the questions they leave open
+are that decision's rulings A1 to A11 and B1 to B10.
+
+- **Protection deters and traces; it never promises prevention.** Anything shown to a person can be
+  copied, so no surface tells a seller that a file cannot be copied.
+- **Originals stay private on every plan.** A stranger sees a lesser preview, and bytes reach a buyer
+  only through the platform, after it confirms the purchase. How this meets automatic elevation
+  (§Assets & Attachments) is ruling A6.
+- **A copy sold can be traced.** A file delivered to a buyer may carry an invisible fingerprint that
+  resolves to the purchase, and buyers are told before they pay.
+- **The creator decides how a file is marked.** Heavy, Subtle or Disabled, with adjustable parameters
+  for edge cases such as gigapixel artwork or scientific scans, and a preview of the effect on their
+  own file before they confirm it. Every seller has these controls.
+- **Sales are non-exclusive.** A creator may sell an independent asset elsewhere at the same time.
+- **Automated leak monitoring belongs to premium seller plans** (`finance-model.md` §16.8).
+- **Monitoring is best-effort.** It reaches as far as public web indices allow. It cannot find every
+  copy, and it cannot see private groups, closed networks or the deep web. Sellers are told this
+  wherever it is offered.
+- **Nothing is taken down without the creator.** A match asks "Is this your listing or an
+  unauthorized seller?", and only the creator's confirmation produces a takedown package, which the
+  creator sends themselves. Projective stays the system of record (§4 above).
+
 ---
 
 ### Saved & Favourites (Decision #180)
