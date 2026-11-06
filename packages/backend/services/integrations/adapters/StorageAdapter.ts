@@ -21,9 +21,9 @@ import type { UserConnection } from "@projective/types/integrations";
  *
  * **Every connector is a real client of its provider's API, never a fixture corpus** (Decision #313):
  * it is handed one connection's unsealed credential for one request and speaks only to that provider's
- * fixed origin. None is reachable yet — no storage provider has a seeded `auth_config` or is enabled —
- * so the connections service still refuses browsing and mounting in words. `./mod.ts` is the one door
- * that constructs an adapter, and it refuses while `INTEGRATIONS_BACKEND_LIVE` is off.
+ * fixed origin. Google Drive is the one reachable today: it alone has a seeded `auth_config` and is
+ * enabled, so a connection to any other provider cannot exist yet. `./mod.ts` is the one door that
+ * constructs an adapter, and it refuses while `INTEGRATIONS_BACKEND_LIVE` is off.
  */
 
 // #region Contract
@@ -64,6 +64,11 @@ export interface StorageAdapter {
 	list(path: DrivePath, cursor: string | null, limit: number): Promise<StorageListing>;
 	/** One object's full row, or `null` when the provider no longer has it. */
 	metadata(id: string): Promise<AssetItem | null>;
+	/**
+	 * One folder's own name, for a location's breadcrumb trail, or `null` when the provider no longer
+	 * has it. Optional: only a provider a connection can reach today needs one.
+	 */
+	folder?(id: string): Promise<{ id: string; name: string } | null>;
 	/** A short-lived download URL, or `null` when the provider will not mint one. */
 	downloadUrl(id: string): Promise<string | null>;
 	/** A short-lived thumbnail URL, or `null` when the object has no visual preview. */
@@ -123,7 +128,8 @@ export type StorageAdapterFactory = (ctx: StorageAdapterContext) => StorageAdapt
  * Why a provider call failed, in the terms a refusal is worded in: `unauthorized` (reconnect) ·
  * `forbidden` (the grant does not reach it) · `not_found` · `rate_limited` · `misconfigured` (the
  * connection's config or credential cannot address the provider) · `unavailable` (the integrations gate
- * is off, or no client exists) · `provider_error` (the provider failed).
+ * is off, no client exists, or the platform's own provider project refuses the API) · `provider_error`
+ * (the provider failed).
  */
 export type StorageAdapterErrorCode =
 	| "unauthorized"

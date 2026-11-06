@@ -689,6 +689,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 				openIndex={openIndex}
 				flyoutId={openIndex >= 0 ? levelId(depth + 1) : null}
 				handlers={handlersFor(depth)}
+				onClose={() => closeAll(true)}
 			/>
 		);
 	};

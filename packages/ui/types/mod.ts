@@ -1,3 +1,5 @@
+import type { VNode } from "preact";
+
 /**
  * @projective/ui shared primitive types — used across sub-packages. Component-specific prop
  * interfaces live with their component; only cross-cutting primitives belong here.
@@ -183,6 +185,13 @@ export interface MenuItem {
 	shortcut?: string;
 	/** Stable key; falls back to `label`. */
 	key?: string;
+	/**
+	 * Custom content drawn in place of the row, with `label` as its group's accessible name (a grid of
+	 * swatches). It sits in the menu's keyboard ring: focus lands on its checked or first button, and a
+	 * key it leaves to bubble moves the menu on. It receives a function that closes the menu. Read by
+	 * ActionMenu.
+	 */
+	content?: (close: () => void) => VNode;
 	/** Router-active state for nav menus. */
 	active?: boolean;
 	class?: string;

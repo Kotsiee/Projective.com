@@ -15,13 +15,66 @@ import type { FolderRow, ItemRow } from "./asset-row.ts";
 /** The deepest folder chain a count walks before giving up. */
 const MAX_DEPTH = 32;
 
+/** The folder fields a subtree write reasons over. */
+type FolderShape = Pick<FolderRow, "id" | "name" | "parent_folder_id" | "path">;
+
+/**
+ * A folder and everything beneath it, parent-first: the order a move has to write in, because the
+ * database checks each row's `path` against its parent's. A corrupt parent cycle ends the walk.
+ */
+export function subtreeOf(folders: readonly FolderShape[], folderId: string): string[] {
+	const seen = new Set([folderId]);
+	const order = [folderId];
+	for (const id of order) {
+		for (const child of folders) {
+			if (child.parent_folder_id !== id || seen.has(child.id)) continue;
+			seen.add(child.id);
+			order.push(child.id);
+		}
+	}
+	return order;
+}
+
+/** One row a folder move rewrites. Only the moved folder itself changes parent. */
+export interface MovedFolder {
+	id: string;
+	patch: { parent_folder_id?: string | null; path: string[] };
+}
+
+/**
+ * What moving `folderId` under `target` (`null` for the library root) writes, parent-first: a folder's
+ * `path` is its ancestors' names, so every folder beneath the moved one changes too.
+ */
+export function movedSubtree(
+	folders: readonly FolderShape[],
+	folderId: string,
+	target: Pick<FolderShape, "id" | "name" | "path"> | null,
+): MovedFolder[] {
+	const byId = new Map(folders.map((f) => [f.id, f]));
+	const paths = new Map<string, string[]>();
+	return subtreeOf(folders, folderId).flatMap((id) => {
+		const folder = byId.get(id);
+		if (!folder) return [];
+		const parent = id === folderId ? null : byId.get(folder.parent_folder_id ?? "");
+		const path = id === folderId
+			? (target ? [...(target.path ?? []), target.name ?? ""] : [])
+			: [...(paths.get(parent?.id ?? "") ?? []), parent?.name ?? ""];
+		paths.set(id, path);
+		return [{
+			id,
+			patch: id === folderId ? { parent_folder_id: target?.id ?? null, path } : { path },
+		}];
+	});
+}
+
 /**
  * One library as a tree. `readOnly` marks every node, for a library that takes nothing new (an
  * archived entity's drive).
  */
 export function libraryTree(
 	lib: {
-		folders: readonly Pick<FolderRow, "id" | "name" | "parent_folder_id">[];
+		folders:
+			readonly (Pick<FolderRow, "id" | "name" | "parent_folder_id"> & { color?: string | null })[];
 		items: readonly Pick<ItemRow, "folder_id">[];
 	},
 	rootLabel: string,
@@ -38,13 +91,14 @@ export function libraryTree(
 			cursor = parent.get(cursor);
 		}
 	}
-	const node = (f: Pick<FolderRow, "id" | "name" | "parent_folder_id">): AssetTreeNode => ({
+	const node = (f: (typeof lib.folders)[number]): AssetTreeNode => ({
 		segment: f.id,
 		kind: "dir",
 		nodeKind: "folder",
 		label: clamp(f.name, 200) || "Folder",
 		sublabel: null,
 		folderId: f.id,
+		color: f.color ?? null,
 		readOnly,
 		fileCount: counts.get(f.id) ?? 0,
 		children: lib.folders.filter((c) => c.parent_folder_id === f.id).map(node),

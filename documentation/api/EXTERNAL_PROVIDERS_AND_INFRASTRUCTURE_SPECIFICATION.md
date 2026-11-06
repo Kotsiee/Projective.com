@@ -73,7 +73,7 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 8  | VirusTotal                                              | Upload hygiene         | Growth, optional     | **Stub**: an unused key in a defective Edge Function         | none                                                              | none (see §6.4)                                                                              |
 | 9  | Google Web Risk (§6.5; replaced Safe Browsing v4, T5)   | Link safety            | MVP                  | **Wired · gated off**                                        | `FILES_BACKEND_LIVE`                                              | `services/files/link-reputation.ts`                                                          |
 | 10 | Google Calendar + Meet                                  | Connector              | MVP                  | **Wired · gated off**: consent and refresh; no room or sync  | `INTEGRATIONS_BACKEND_LIVE` + `integrations.providers.is_enabled` | `services/integrations/IntegrationsBackendService.ts`                                        |
-| 11 | Google Drive                                            | Connector              | Growth               | **Stub**: adapter built, unreachable                         | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
+| 11 | Google Drive                                            | Connector              | Growth               | **Wired · gated off**: consent, listing and the tree (#394)  | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
 | 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Wired · gated off**: consent and refresh; no room or sync  | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
 | 13 | Zoom (OAuth + presence webhooks)                        | Conferencing           | MVP                  | Presence webhook **Shipped**; OAuth **Wired · gated off**    | `ZOOM_WEBHOOK_SECRET` present                                     | `services/sessions/presence/zoom.ts`                                                         |
 | 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Planned (SSOT)**; `comms.device_tokens` shipped            | `security.feature_flags['comms.dispatch_webhook']`                | dispatch Edge Function (not built)                                                           |
@@ -1201,9 +1201,10 @@ switch is per-provider data with no schema change.
 1. Create a dedicated Google Cloud project, `projective-integrations-<env>`. It is **separate from
    the sign-in client** (`GOOGLE_CLIENT_ID`), because sign-in and integrations never share a client
    or a token store (SSOT §3.1).
-2. Enable the **Google Calendar API** and the **Google Meet REST API**, and the **Google Drive API**
-   and **Google Picker API** in the Growth phase. Without the Meet API a connection works and every
-   Meet room fails.
+2. Enable the **Google Calendar API**, the **Google Meet REST API** and the **Google Drive API**, and
+   the **Google Picker API** in the Growth phase. Without the Meet API a connection works and every
+   Meet room fails. Without the Drive API a connection works and every read of it answers 403
+   `accessNotConfigured`, which the hub words as browsing not being available here yet.
 3. OAuth consent screen: External; the app name, logo, support email, authorised domains, and
    privacy policy and terms URLs; the scopes below.
 4. Credentials → OAuth client ID → Web application. Add one redirect URI per environment. Store the
@@ -1215,7 +1216,8 @@ switch is per-provider data with no schema change.
      third-party security assessment (CASA).
    - **Recommendation (flag (i)):** use `drive.file` with the **Google Picker**, so a person grants
      the specific files they pick. That avoids the restricted tier entirely and fits the hub's "find
-     and attach what you already have" purpose (Decision #313).
+     and attach what you already have" purpose (Decision #313). It cannot list a person's folders, so
+     the `/files` tree (Decision #394) ships on `drive.readonly` until the owner rules (flag (b)).
 6. **While the consent screen is in Testing**, refresh tokens expire after 7 days and only listed
    test users can consent. Plan development around that.
 
@@ -1268,7 +1270,9 @@ the next update and becomes an insert.
 
 - Refresh with `grant_type=refresh_token`.
 - `invalid_grant` sets the connection to `expired` and raises a reconnect notification.
-- Revoke with `POST https://oauth2.googleapis.com/revoke?token=…` on disconnect and on erasure.
+- Revoke with `POST https://oauth2.googleapis.com/revoke?token=…` on disconnect and on erasure. A
+  revoke ends the person's whole grant to the client, so disconnecting `google` or `google_drive`
+  skips it while the other stands (`sharesGoogleGrant`, Decision #394).
 
 ### 7.4 Microsoft Graph (Outlook calendar, Teams, OneDrive / SharePoint)
 

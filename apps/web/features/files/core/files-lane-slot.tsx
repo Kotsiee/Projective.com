@@ -45,7 +45,7 @@ export interface FilesLocation {
 	ownerType: AssetOwnerType;
 	/** The owning principal's id. */
 	ownerId: string;
-	/** What to call this library in the chrome ("My files", or the workspace's handle). */
+	/** What to call this library in the chrome ("Library", or the workspace's handle). */
 	ownerLabel: string;
 	/** The route base every deep link in this scope hangs off. */
 	base: string;
@@ -75,12 +75,8 @@ function safeDecode(segment: string): string {
 }
 
 /**
- * Resolve the location a `/files` URL addresses.
- *
- * The `drives/{connectionId}` prefix is recognised here rather than guessed at, because the shared
- * pure model already fixes it: `asset-model.filesHref("drive", …)` builds exactly that URL, so the
- * parser and the builder are two halves of one encoding and must not be written from different
- * assumptions. Everything after the connection id is an ordinary folder path inside that drive.
+ * Resolve the location a `/files` URL addresses: one address space under `/files`. A connected drive is
+ * a location of it (`/files/drives/{connectionId}/{folderId…}`), told apart by `driveAddressOf`.
  *
  * Returns `null` when the URL is not a `/files` route, so each slot has a single early exit.
  */
@@ -90,24 +86,10 @@ export function filesLocationOf(url: URL, context: UserContext): FilesLocation |
 
 	const { ownerType, ownerId } = ownerOf(context);
 	const ownerLabel = context.contextType === "personal"
-		? "My files"
+		? "Library"
 		: context.handle
 		? `@${context.handle.replace(/^@/, "")}`
 		: "Shared library";
-
-	// `/files/drives/{connectionId}[/folder…]` — a mounted connector, read-only by construction.
-	if (segs[1] === "drives" && segs[2]) {
-		const subjectId = safeDecode(segs[2]);
-		return {
-			scope: "drive",
-			subjectId,
-			segments: segs.slice(3).map(safeDecode),
-			ownerType,
-			ownerId,
-			ownerLabel,
-			base: filesHref("drive", { subjectId }),
-		};
-	}
 
 	return {
 		scope: "hub",
@@ -123,8 +105,8 @@ export function filesLocationOf(url: URL, context: UserContext): FilesLocation |
 
 // #region Slot
 /**
- * The `/files` middle-nav lane: the directory tree, the scope map that separates the writable library
- * from the read-only mounts, and the storage allowance pinned at its foot.
+ * The `/files` middle-nav lane: the one tree of the writable library and the read-only mounts, and the
+ * storage allowance pinned at its foot.
  *
  * Composed FIRST in `laneFor`, before the `/projects` fall-through — `/files` is its own top-level
  * surface and must not inherit the projects feed.
@@ -134,14 +116,10 @@ export function filesLaneFor(url: URL, context: UserContext): ComponentChildren 
 	if (!loc) return null;
 	return (
 		<FilesLane
-			path={url.pathname}
-			base={loc.base}
 			scope={loc.scope}
 			subjectId={loc.subjectId}
 			segments={loc.segments}
-			ownerType={loc.ownerType}
 			ownerId={loc.ownerId}
-			ownerLabel={loc.ownerLabel}
 		/>
 	);
 }

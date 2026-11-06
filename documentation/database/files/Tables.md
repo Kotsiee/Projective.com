@@ -98,12 +98,13 @@ Hierarchical grouping of assets. Carries the same ownership / provenance / visib
 | `visibility`           | `files.file_visibility` | Default `'private'`.                                                  |
 | `share_slug`           | text                    | UNIQUE. No writer today (share links live in `share_links`).          |
 | `path`                 | text[]                  | **Materialised** ancestor names, root-first. `NOT NULL DEFAULT '{}'`. |
+| `color`                | text                    | The folder's `#rrggbb` colour; NULL is the default tone (Decision #395). |
 | `created_at`           | timestamptz             |                                                                       |
 | `updated_at`           | timestamptz             | Maintained by `files.fn_touch_updated_at`.                            |
 | `deleted_at`           | timestamptz             | Soft delete — nothing here is hard-deleted.                           |
 
 **Constraints:** `UNIQUE (share_slug)` · `UNIQUE (source_connection_id, external_folder_id)` ·
-`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)`; the connection FK is added in
+`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)` · `CHECK (color ~ '^#[0-9a-f]{6}$')`; the connection FK is added in
 `00000030`. Neither `owner_user_id` nor `parent_folder_id` carries an `ON DELETE` action.
 
 `path` is materialised so the breadcrumb renders without a recursive CTE per row — that is what

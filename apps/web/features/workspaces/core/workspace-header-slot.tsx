@@ -6,7 +6,6 @@ import WorkspaceHeaderBand from "../islands/WorkspaceHeaderBand.island.tsx";
 import WorkspaceChannelHeader from "../islands/WorkspaceChannelHeader.island.tsx";
 import FilesHeaderBand from "@features/files/islands/FilesHeaderBand.island.tsx";
 import { folderSegmentsOfQuery } from "@projective/types/files";
-import { entityDriveView } from "./files-module-model.ts";
 import { channelDetailsInfo } from "../components/ChannelDetails.tsx";
 import { channelHref, channelTabOfPath } from "./channel-model.ts";
 import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
@@ -71,16 +70,7 @@ export async function workspaceHeaderFor(url: URL, actor: ReadActor): Promise<Co
 	// On Files the band is the `/files` hub's own — the trail, search, filter and sort (Decision #315).
 	if (bootstrap.activeModule === "files") {
 		const ws = bootstrap.workspace;
-		return (
-			<FilesHeaderBand
-				base={entityDriveView(ws).base}
-				routing="query"
-				scope="workspace"
-				subjectId={ws.id}
-				segments={folderSegmentsOfQuery(url.search)}
-				ownerLabel={ws.name}
-			/>
-		);
+		return <FilesHeaderBand segments={folderSegmentsOfQuery(url.search)} ownerLabel={ws.name} />;
 	}
 
 	return (

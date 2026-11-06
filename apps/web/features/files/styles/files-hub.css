@@ -4,7 +4,7 @@
  * Everything here dresses a REUSED component rather than replacing one: the asset cell is
  * `.fx-card` (file-card.css), the folder cell is `.subm-card` (submission-card.css), the list is
  * `DataTable` (`@projective/ui/display`) and the preview is `.fx-modal` (attachment-modal.css). This sheet adds
- * only what the hub introduces — the source/privacy overlay marks, the drag grip, the quota meter, the
+ * only what the hub introduces — the source/privacy overlay marks, the item kebab, the quota meter, the
  * breadcrumb bar, the tree's read-only lock, the Inspect pane and the workspace's own states.
  *
  * Token-only, strict BEM, logical properties throughout (the surface mirrors under `dir="rtl"` with no
@@ -103,8 +103,15 @@
 	align-items: center;
 	gap: var(--space-2);
 	min-block-size: 2.25rem;
+	margin-block: calc(var(--space-2) * -1) var(--space-3);
 	padding-block: var(--space-2);
 	padding-inline: var(--space-1);
+}
+.fh-hub__crumbnav {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
 }
 .fh-crumbs {
 	min-inline-size: 0;
@@ -117,6 +124,88 @@
 .fh-crumbs__bar {
 	white-space: nowrap;
 }
+.fh-crumbs__label {
+	border-radius: var(--radius-sm);
+}
+/* #endregion */
+
+/* #region Folder colours */
+.fh-swatches {
+	display: grid;
+	grid-template-columns: repeat(6, 1.625rem);
+	gap: var(--space-2);
+}
+.fh-swatch {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	aspect-ratio: 1;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: var(--fh-swatch);
+	cursor: pointer;
+}
+.fh-swatch:active {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+.fh-swatch:hover,
+.fh-swatch:focus-visible {
+	outline: 1px solid var(--on-surface);
+	outline-offset: 1px;
+}
+/* A ring rather than a mark on the swatch: it reads the same on any colour a person can pick. */
+.fh-swatch[aria-checked="true"] {
+	outline: 2px solid var(--on-surface);
+	outline-offset: 2px;
+}
+.fh-swatch--add {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--text-secondary);
+}
+
+.fh-colordialog {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-3);
+}
+.fh-colordialog__preview {
+	inline-size: 4.5rem;
+}
+.fh-colordialog .ui-colorpicker {
+	inline-size: 100%;
+}
+.fh-colordialog .ui-colorpicker__panel--inline {
+	inline-size: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+}
+/* #endregion */
+
+/* #region Drag surface */
+.fh-dragsurface {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	min-block-size: 0;
+}
+
+/* A drag starts from anywhere on a row, so its text does not select on the way. */
+.fh-dragsurface [data-fh-drag] {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* The target under a drag, in whichever region it lives: a folder, a crumb, a row of the lane's tree. */
+[data-fh-drop][data-drop-over] {
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	outline: 1px solid var(--primary);
+	outline-offset: -1px;
+}
 /* #endregion */
 
 /* #region Workspace */
@@ -128,49 +217,6 @@
 	min-inline-size: 0;
 	min-block-size: 0;
 	padding-block-end: var(--space-6);
-}
-
-/*
- * THE SPLIT MUST NOT BECOME A SCROLL CONTAINER.
- *
- * `.ui-splitter__pane` ships `overflow: auto` and the root ships `block-size: 100%` — correct for a
- * modal's bounded split, wrong here: the workspace window-virtualizes (`VirtualGrid useWindow`, and
- * `FileTable`'s default), so the scroller it measures has to be the one it is actually in. A pane that
- * scrolls internally would leave the grid computing its window against a viewport it does not occupy —
- * the same measurement mistake `virtualize={false}` exists to prevent inside a dialog.
- *
- * So the page keeps the single scroll, the panes flow, and the Inspect pane holds its place with
- * `position: sticky` instead of with its own scrollbar.
- *
- * Each override is written as a COMPOUND selector (`.ui-splitter.fh-hub__split`, 0,2,0) for the reason
- * `splitter.css` documents at length: the nav lane's globally-loaded bare `.ui-splitter` rule is also
- * (0,1,0), so a single-class override here would merely TIE and be decided by stylesheet order.
- */
-.ui-splitter.fh-hub__split {
-	flex: 1 1 auto;
-	block-size: auto;
-	min-block-size: 0;
-	align-items: flex-start;
-}
-.ui-splitter.fh-hub__split > .ui-splitter__pane {
-	overflow: visible;
-}
-
-/*
- * Below the point at which a side-by-side split leaves neither half usable, the pane stacks under the
- * workspace. A container query, not a media query — see the note on `.fh-hub`.
- */
-@container fh-hub (max-width: 720px) {
-	.ui-splitter.fh-hub__split {
-		display: block;
-	}
-	.ui-splitter.fh-hub__split > .ui-splitter__pane {
-		flex-basis: auto;
-		inline-size: 100%;
-	}
-	.ui-splitter.fh-hub__split > .ui-splitter__gutter {
-		display: none;
-	}
 }
 
 .fh-hub__readonly,
@@ -203,8 +249,12 @@
 	min-inline-size: 0;
 }
 
+.fh-cell[data-drop-over] {
+	border-radius: var(--card-radius);
+}
+
 /*
- * The drag grip.
+ * The Asset Picker's drag grip.
  *
  * Present at rest but transparent, and fully opaque on hover or keyboard focus. `display: none` would
  * make it unreachable by keyboard, and `visibility: hidden` removes it from the tab order — an
@@ -227,16 +277,51 @@
 	opacity: 0;
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
-.fh-cell:hover .fh-cell__grip,
-.fh-cell:focus-within .fh-cell__grip {
-	opacity: 1;
-}
 .fh-cell__grip:focus-visible {
 	opacity: 1;
 	outline: none;
 	box-shadow: none;
 }
-.fh-cell[data-dragging] {
+
+/* The kebab, on the same terms as the grip above. Where nothing hovers, it simply stays. */
+.fh-kebab {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-end: var(--space-1);
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--surface) 82%, transparent);
+	color: var(--text-secondary);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.fh-kebab:hover {
+	color: var(--on-surface);
+}
+/* The shared icon press (§3.12): scale only, the same token every icon-only Button uses. */
+.fh-kebab:active {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+.fh-cell:hover .fh-kebab,
+.fh-cell:focus-within .fh-kebab,
+.fh-kebab[aria-expanded="true"] {
+	opacity: 1;
+}
+@media (hover: none) {
+	.fh-kebab {
+		opacity: 1;
+	}
+}
+[data-fh-drag][data-dragging] {
 	opacity: 0.45;
 }
 /* #endregion */
@@ -258,8 +343,9 @@
 /*
  * The overlay flag stack — the storage source and the privacy scope.
  *
- * Pinned to the thumbnail's trailing top corner and `pointer-events: none`, so it can never intercept
- * the click that belongs to the card underneath it. Every fact it carries is also announced in text
+ * Pinned to the thumbnail's trailing top corner (in the hub, the leading one: the kebab holds the
+ * trailing) and `pointer-events: none`, so it can never intercept the click that belongs to the card
+ * underneath it. Every fact it carries is also announced in text
  * (the card's `aria-label` and the visually-hidden line), so the marks are decorative by construction
  * and the state survives a colour-blindness overlay.
  */
@@ -273,6 +359,9 @@
 	align-items: center;
 	gap: var(--space-1);
 	pointer-events: none;
+}
+.fh-cell .fh-asset__flags {
+	inset-inline: var(--space-1) auto;
 }
 .fh-asset__flag {
 	display: inline-flex;
@@ -300,14 +389,46 @@
 	min-inline-size: 0;
 	border-radius: var(--card-radius);
 }
+
+/* The same 1:1 box a file's thumbnail fills, unframed: the folder's own shape is the frame. */
+.fh-folder__art {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 100%;
+	aspect-ratio: var(--card-media-ratio-square);
+	padding: var(--space-2);
+}
+
+/*
+ * A folder's two panels. The front carries the colour and the back shades it toward the surface, so
+ * one value reads as depth in every theme. With no colour chosen it is a quiet neutral.
+ */
+.fh-foldermark {
+	--fh-folder-tone: var(--fh-folder, color-mix(in srgb, var(--on-surface) 42%, var(--surface-1)));
+	display: block;
+	flex: none;
+	max-inline-size: 100%;
+}
+.fh-foldermark__back {
+	fill: color-mix(in srgb, var(--fh-folder-tone) 62%, var(--surface-1));
+}
+.fh-foldermark__front {
+	fill: var(--fh-folder-tone);
+}
+:root[data-contrast="high"] .fh-foldermark__front {
+	stroke: var(--on-surface);
+	stroke-width: 2;
+}
 /*
  * The drop highlight is painted on the card's OWN box rather than as a ring floating around it, so the
  * destination reads as the thing that will receive the files.
  */
 .fh-folder[data-drop-over] {
 	background: color-mix(in srgb, var(--primary) 18%, transparent);
-	outline: var(--hairline) solid var(--primary);
-	outline-offset: calc(var(--space-px) * -1);
+	outline: 1px solid var(--primary);
+	outline-offset: -1px;
 }
 /* #endregion */
 
@@ -441,15 +562,12 @@
 	overflow-y: auto;
 }
 
-/* Stacked under the workspace, "sticky to the top of a very tall column" is meaningless — and a
-   viewport-capped panel would clip. It becomes an ordinary block. */
-@container fh-hub (max-width: 720px) {
-	.fh-inspect {
-		position: static;
-		max-block-size: none;
-		border-inline-start: none;
-		border-block-start: var(--hairline) solid var(--hairline-color);
-	}
+/* In the frame's right panel or its drawer, which scroll and draw their own seam. */
+.fh-inspector .fh-inspect {
+	position: static;
+	max-block-size: none;
+	border-inline-start: none;
+	overflow-y: visible;
 }
 
 .fh-inspect__head {
@@ -714,9 +832,15 @@
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
+	.fh-kebab,
 	.fh-cell__grip,
 	.fh-inspect__close {
 		transition: none;
+	}
+
+	.fh-kebab:active,
+	.fh-swatch:active {
+		transform: none;
 	}
 
 	.fh-drop {
@@ -726,5 +850,10 @@
 
 :root[data-motion="reduced"] .fh-drop {
 	animation: none;
+}
+
+:root[data-motion="reduced"] .fh-kebab:active,
+:root[data-motion="reduced"] .fh-swatch:active {
+	transform: none;
 }
 /* #endregion */

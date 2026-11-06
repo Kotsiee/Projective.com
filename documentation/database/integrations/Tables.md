@@ -85,14 +85,15 @@ can replace.
 with `identity_id_field` and `identity_label_fields` (who the linked account is), and `kind_scopes`
 (which scopes each capability takes, so a consent asks only for what its kinds want and a narrowed
 grant records only what it covers). `{tenant}` in Microsoft's URLs is filled from
-`MICROSOFT_INTEGRATION_TENANT`. Only `google`, `outlook` and `zoom` are seeded one, so no other
-provider can start a consent yet.
+`MICROSOFT_INTEGRATION_TENANT`. Only `google`, `google_drive`, `outlook` and `zoom` are seeded one, so
+no other provider can start a consent yet. `google_drive` omits `include_granted_scopes`, so its token
+reaches files only (Decision #394).
 
 ### Seeded rows
 
-`google`, `outlook` (labelled Microsoft: one Entra app and one consent for its calendar and Teams) and
-`zoom` ship `is_enabled = true`, and are offered wherever their credentials are set. The rest ship
-`false`.
+`google`, `google_drive`, `outlook` (labelled Microsoft: one Entra app and one consent for its calendar
+and Teams) and `zoom` ship `is_enabled = true`, and are offered wherever their credentials are set. The
+rest ship `false`.
 Calendars/conferencing (`google`, `outlook`, `apple`, `samsung`, `calendly`, `zoom`,
 `microsoft_teams`, `discord`), storage/docs (`google_drive`, `dropbox`, `onedrive`, `frameio`, `s3`,
 `notion`), developer/CRM (`github`, `slack`, `monday`, `google_contacts`). `microsoft_teams` stays as

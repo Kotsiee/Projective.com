@@ -1,25 +1,18 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import {
-	ancestorKeys,
-	type FolderRouting,
-	locationHref,
-	rootChildren,
-	rootFileCount,
-} from "../core/asset-model.ts";
+import { ancestorKeys, rootChildren, rootFileCount } from "../core/asset-model.ts";
 import { resolveTreePath, treeIsStale } from "../core/folder-tree.ts";
 import { FilesService } from "../core/FilesService.ts";
 import {
-	clearSelection,
-	commitFiles,
 	currentPath,
 	folders,
-	inspectId,
+	goTo,
 	loading,
 	narrowed,
 	seeded,
 	tree,
+	treeRevision,
 } from "../core/files-state.ts";
 import type { AssetTreeNode } from "../types/file-types.ts";
 import { AssetTree, ROOT_KEY } from "./AssetTree.tsx";
@@ -29,9 +22,8 @@ import { AssetTree, ROOT_KEY } from "./AssetTree.tsx";
  * and every folder beneath it, the folder in view selected and its ancestors open.
  *
  * It sits beside a listing it does not own, so it follows the `files-state` contract like the header
- * band: a selection writes the location (the address bar through `pushState`, then `currentPath`)
- * and asks the BODY to re-read through `commitFiles` — one fetch path, and Back / Forward handled by
- * the body's own `popstate`. Until the body has seeded, it paints the server's tree and path from its
+ * band: a selection asks the BODY to move (`goTo`) — one fetch path, and Back / Forward handled by the
+ * body's own `popstate`. Until the body has seeded, it paints the server's tree and path from its
  * props, because `files-state` is never written on the server.
  *
  * A location's address may spell a folder by id or by name; {@link resolveTreePath} matches either.
@@ -44,9 +36,6 @@ import { AssetTree, ROOT_KEY } from "./AssetTree.tsx";
 export interface FolderTreePanelProps {
 	/** The drive's name — the root row ("Atelier Nova"). */
 	rootLabel: string;
-	/** The route the drive's folder addresses hang off. */
-	base: string;
-	routing: FolderRouting;
 	/** The entity whose drive this is; a stale tree is re-read for it. */
 	subjectId: string;
 	/** The server-read tree and path, painted until the body seeds. */
@@ -60,7 +49,7 @@ export function FolderTreePanel(props: FolderTreePanelProps): JSX.Element {
 	const expanded = useSignal<Set<string>>(new Set([ROOT_KEY]));
 	const treeError = useSignal<string | null>(null);
 	/** The listing a re-read was last asked for, so one stale listing costs at most one read. */
-	const reread = useRef<string | null>(null);
+	const lastListing = useRef<string | null>(null);
 
 	const nodes = seeded.value ? tree.value : props.initialTree;
 	const path = seeded.value ? currentPath.value : props.initialPath;
@@ -84,14 +73,7 @@ export function FolderTreePanel(props: FolderTreePanelProps): JSX.Element {
 	// #endregion
 
 	// #region Staleness
-	useSignalEffect(() => {
-		if (!seeded.value || loading.value || narrowed.value) return;
-		const signature = `${currentPath.value.join("/")}|${
-			folders.value.map((f) => `${f.id}:${f.name}`).join(",")
-		}`;
-		if (!treeIsStale(rootChildren(tree.value), currentPath.value, folders.value)) return;
-		if (reread.current === signature) return;
-		reread.current = signature;
+	function reread(): void {
 		void FilesService.tree({ subjectId: props.subjectId }).then((res) => {
 			if (res.ok && res.data) {
 				tree.value = res.data;
@@ -100,21 +82,25 @@ export function FolderTreePanel(props: FolderTreePanelProps): JSX.Element {
 				treeError.value = res.message ?? "The folder list could not be refreshed.";
 			}
 		});
+	}
+
+	// A write that changes what the tree shows but not this listing: a folder's colour, or a folder
+	// moved or deleted from another branch.
+	useSignalEffect(() => {
+		if (treeRevision.value > 0) reread();
+	});
+
+	useSignalEffect(() => {
+		if (!seeded.value || loading.value || narrowed.value) return;
+		const signature = `${currentPath.value.join("/")}|${
+			folders.value.map((f) => `${f.id}:${f.name}`).join(",")
+		}`;
+		if (!treeIsStale(rootChildren(tree.value), currentPath.value, folders.value)) return;
+		if (lastListing.current === signature) return;
+		lastListing.current = signature;
+		reread();
 	});
 	// #endregion
-
-	function go(next: string[]): void {
-		const search = globalThis.location?.search ?? "";
-		const href = locationHref(props.base, next, props.routing, search);
-		const here = (globalThis.location?.pathname ?? "") + search;
-		if (typeof history !== "undefined" && here !== href) {
-			history.pushState({ filesPath: next }, "", href);
-		}
-		currentPath.value = next;
-		clearSelection();
-		inspectId.value = null;
-		commitFiles();
-	}
 
 	return (
 		<>
@@ -124,7 +110,7 @@ export function FolderTreePanel(props: FolderTreePanelProps): JSX.Element {
 				rootCount={rootFileCount(nodes) ?? 0}
 				currentPath={match.path}
 				expanded={expanded}
-				onNavigate={go}
+				onNavigate={goTo}
 				aria-label={`${props.rootLabel} folders`}
 			/>
 			{treeError.value

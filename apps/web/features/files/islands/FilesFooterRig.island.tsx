@@ -2,27 +2,39 @@ import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
-import { Dialog, Tooltip } from "@projective/ui/feedback";
+import { ConfirmDialog, Dialog, Tooltip } from "@projective/ui/feedback";
 import { Button, InputText } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
+import { FolderColorDialog } from "../components/FolderColorDialog.tsx";
 import { QuotaRing } from "../components/QuotaRing.tsx";
 import { FilesService } from "../core/FilesService.ts";
 import { openUploadDrawer, uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
+	askNewFolder,
+	attachLinkOpen,
 	commitFiles,
+	connectDriveOpen,
+	disconnectOpen,
 	enqueueUploads,
 	folderId,
 	items,
+	newFolderOpen,
+	newFolderParent,
+	pendingDisconnect,
+	pendingRemoval,
 	quota,
 	readOnly,
+	removalOpen,
 	seeded,
+	treeRevision,
 	uploadQueue,
 	uploadsActive,
 } from "../core/files-state.ts";
+import { disconnectDrive, removeRows } from "../core/files-actions.ts";
 import {
 	type AssetOwnerType,
 	type FileScope,
@@ -147,11 +159,8 @@ function RigIcon({ spec, disabled, onClick }: RigIconProps): JSX.Element {
 export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element {
 	const fileInput = useRef<HTMLInputElement>(null);
 
-	const folderOpen = useSignal(false);
 	const folderName = useSignal("");
-	const linkOpen = useSignal(false);
 	const linkUrl = useSignal("");
-	const driveOpen = useSignal(false);
 	/** The last write's outcome, shown inside the dialog that produced it. Never swallowed. */
 	const notice = useSignal<string | null>(null);
 	const busy = useSignal(false);
@@ -204,15 +213,16 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 		busy.value = true;
 		const res = await FilesService.createFolder({
 			name,
-			parentId: folderId.value,
+			parentId: newFolderParent.value === undefined ? folderId.value : newFolderParent.value,
 			ownerType: props.ownerType,
 			ownerId: props.ownerId,
 		});
 		busy.value = false;
 		if (res.ok) {
 			folderName.value = "";
-			folderOpen.value = false;
+			newFolderOpen.value = false;
 			notice.value = null;
+			treeRevision.value += 1;
 			commitFiles();
 		} else {
 			// Closing a dialog on a failure reads as success. It stays open, carrying the reason.
@@ -233,7 +243,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 		busy.value = false;
 		if (res.ok) {
 			linkUrl.value = "";
-			linkOpen.value = false;
+			attachLinkOpen.value = false;
 			notice.value = null;
 			commitFiles();
 		} else {
@@ -272,13 +282,13 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 		notice.value = null;
 		switch (action) {
 			case "new_folder":
-				folderOpen.value = true;
+				askNewFolder();
 				return;
 			case "attach_link":
-				linkOpen.value = true;
+				attachLinkOpen.value = true;
 				return;
 			case "connect_drive":
-				driveOpen.value = true;
+				connectDriveOpen.value = true;
 				return;
 			case "export":
 				exportCsv();
@@ -377,12 +387,12 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 			/>
 
 			<Dialog
-				visible={folderOpen}
+				visible={newFolderOpen}
 				header="New folder"
 				width="26rem"
 				footer={
 					<div class="fh-rig__dialogfoot">
-						<Button variant="text" label="Cancel" onClick={() => (folderOpen.value = false)} />
+						<Button variant="text" label="Cancel" onClick={() => (newFolderOpen.value = false)} />
 						<Button
 							label="Create folder"
 							loading={busy.value}
@@ -410,12 +420,12 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 			</Dialog>
 
 			<Dialog
-				visible={linkOpen}
+				visible={attachLinkOpen}
 				header="Attach a link"
 				width="28rem"
 				footer={
 					<div class="fh-rig__dialogfoot">
-						<Button variant="text" label="Cancel" onClick={() => (linkOpen.value = false)} />
+						<Button variant="text" label="Cancel" onClick={() => (attachLinkOpen.value = false)} />
 						<Button
 							label="Attach link"
 							loading={busy.value}
@@ -441,7 +451,39 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
 			</Dialog>
 
-			{connectDrive && <ConnectDriveDialog visible={driveOpen} returnTo={props.base} />}
+			{connectDrive && <ConnectDriveDialog visible={connectDriveOpen} returnTo={props.base} />}
+
+			<FolderColorDialog />
+
+			<ConfirmDialog
+				visible={removalOpen}
+				header={`Delete ${pendingRemoval.value?.name ?? "this"}?`}
+				message={pendingRemoval.value?.folderIds.length
+					? "Everything inside goes with it, and anyone holding a share link loses access."
+					: "It moves to deleted, and anyone holding a share link loses access."}
+				acceptLabel="Delete"
+				rejectLabel="Keep"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const rows = pendingRemoval.value;
+					if (rows) void removeRows(rows);
+				}}
+			/>
+
+			{connectDrive && (
+				<ConfirmDialog
+					visible={disconnectOpen}
+					header={`Disconnect ${pendingDisconnect.value?.name ?? "this drive"}?`}
+					message="Its files stay where they are, and Projective stops reading them. Connecting it again needs a fresh consent."
+					acceptLabel="Disconnect"
+					rejectLabel="Keep"
+					acceptSeverity="danger"
+					onAccept={() => {
+						const drive = pendingDisconnect.value;
+						if (drive) void disconnectDrive(drive.connectionId);
+					}}
+				/>
+			)}
 
 			<UploadDrawer ownerType={props.ownerType} ownerId={props.ownerId} />
 		</div>

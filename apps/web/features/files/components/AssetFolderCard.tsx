@@ -1,21 +1,16 @@
 import type { JSX } from "preact";
-import { SubmissionCard } from "@web/features/projects/components/SubmissionCard.tsx";
+import { Tooltip } from "@projective/ui/feedback";
 import "@web/features/projects/styles/submission-card.css";
 import "../styles/files-hub.css";
-import { shapeFolderAsNode } from "../core/asset-model.ts";
-import type { AssetFolder } from "../types/file-types.ts";
+import { type AssetFolder, sourceLabel } from "../types/file-types.ts";
+import { FolderMark } from "./FolderMark.tsx";
 import { SourceMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 
 /**
- * AssetFolderCard — one folder cell in the `/files` hub grid.
+ * AssetFolderCard — one folder cell in the `/files` hub grid: the folder's own drawing in its colour
+ * ({@link FolderMark}), where a file has a framed thumbnail, so the two kinds read apart at a glance.
  *
- * Like {@link AssetCard} this is an ADAPTER, not a second card family: the cell is the shared
- * {@link SubmissionCard} rendered verbatim, fed through `shapeFolderAsNode` — the seam in
- * `core/asset-model.ts` that maps an {@link AssetFolder} onto the `SubmissionTreeNode` those
- * components read. `SubmissionCard` is hard-typed to that node and its props are deliberately NOT
- * generalised; shaping the data is what keeps one card family instead of two.
- *
- * The geometry is the reason this matters rather than merely being tidy: `.subm-card__meta` and
+ * Only the art is its own. The card and its caption are `.subm-card`'s, because `.subm-card__meta` and
  * `.fx-card__meta` are both exactly 62px, which is what lets ONE grid whose `rowHeight` is
  * `cellWidth + 62 + gap` hold folders and files in the same rows without the virtualizer's maths
  * drifting from what is painted.
@@ -30,9 +25,8 @@ import { SourceMark, VisibilityMark } from "./file-hub-glyphs.tsx";
  *
  * ## Drop target
  *
- * A folder card is a drop target for a drag of the current asset selection. The wrapper carries the
- * `data-drop-over` hook the enclosing `Droppable` sets, so the highlight is drawn on the card's own
- * box rather than a ring floating around it.
+ * The Asset Picker's folder card is a drop target through `dropOver`, so the highlight is drawn on the
+ * card's own box rather than a ring floating around it. The hub's marks its cell instead (`files-dnd`).
  *
  * Dumb: no data access, no state.
  */
@@ -46,9 +40,10 @@ export interface AssetFolderCardProps {
 
 export function AssetFolderCard(props: AssetFolderCardProps): JSX.Element {
 	const { folder, onOpen, dropOver = false } = props;
-	// Children are not passed: the grid shows the folder's own item count, and a child-folder count
-	// resolved here would disagree with the tree, which counts the whole subtree.
-	const node = shapeFolderAsNode(folder);
+	// The folder's own item count: a child-folder count here would disagree with the tree, which
+	// counts the whole subtree.
+	const count = `${folder.itemCount} file${folder.itemCount === 1 ? "" : "s"}`;
+	const sub = folder.source === "supabase" ? "Folder" : sourceLabel(folder.source);
 
 	return (
 		<div
@@ -57,7 +52,23 @@ export function AssetFolderCard(props: AssetFolderCardProps): JSX.Element {
 			data-source={folder.source}
 			data-readonly={folder.source !== "supabase" || undefined}
 		>
-			<SubmissionCard node={node} onOpen={() => onOpen(folder)} />
+			<button
+				type="button"
+				class="subm-card"
+				onClick={() => onOpen(folder)}
+				aria-label={`${folder.name} — ${sub}, ${count}`}
+			>
+				<span class="fh-folder__art">
+					<FolderMark color={folder.color} />
+				</span>
+				<span class="subm-card__meta">
+					<Tooltip content={folder.name} whenTruncated>
+						<span class="subm-card__name">{folder.name}</span>
+					</Tooltip>
+					<span class="subm-card__sub">{sub}</span>
+					<span class="subm-card__count">{count}</span>
+				</span>
+			</button>
 
 			<span class="fh-asset__flags" aria-hidden="true">
 				{folder.source !== "supabase"

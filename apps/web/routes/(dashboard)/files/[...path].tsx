@@ -73,9 +73,8 @@ export const handler = define.handlers({
 
 		const { page: listing, tree, error, status } = await resolveFilesBootstrap(params, readActor(ctx));
 
-		ctx.state.title = path.length > 0
-			? `${path[path.length - 1]} · Files · Projective`
-			: "Files · Projective";
+		const here = path.length > 0 ? listing.crumbs.at(-1)?.label : null;
+		ctx.state.title = here ? `${here} · Files · Projective` : "Files · Projective";
 
 		return page({ listing, tree, path, error }, error ? { status } : undefined);
 	},

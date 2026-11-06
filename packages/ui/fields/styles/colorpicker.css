@@ -130,6 +130,48 @@
 }
 /* #endregion */
 
+/* #region Hue/saturation wheel */
+.ui-colorpicker__wheel {
+	position: relative;
+	inline-size: 100%;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	background:
+		radial-gradient(closest-side, #ffffff, rgba(255, 255, 255, 0)),
+		conic-gradient(#ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+	cursor: crosshair;
+	touch-action: none;
+}
+.ui-colorpicker__wheel:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+/* The wheel shows the brightness the rail has set, so the thumb sits on the colour it will give. */
+.ui-colorpicker__wheel::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: #000000;
+	opacity: var(--cp-dim, 0);
+	pointer-events: none;
+}
+/* Physical offsets on purpose: the wheel does not mirror, and neither does the pointer maths. */
+.ui-colorpicker__wheel-thumb {
+	position: absolute;
+	z-index: 1;
+	top: var(--cp-y, 50%);
+	left: var(--cp-x, 50%);
+	inline-size: 0.85rem;
+	block-size: 0.85rem;
+	transform: translate(-50%, -50%);
+	border: 2px solid #ffffff;
+	border-radius: 50%;
+	box-shadow: var(--elevation-low);
+	pointer-events: none;
+}
+/* #endregion */
+
 /* #region Hue rail + preview */
 .ui-colorpicker__sliders {
 	display: flex;
@@ -162,6 +204,9 @@
 		#ff00ff 83%,
 		#ff0000 100%
 	);
+}
+.ui-colorpicker__hue--brightness {
+	background: linear-gradient(to right, #000000, var(--cp-hue));
 }
 .ui-colorpicker__hue:focus-visible {
 	outline: none;

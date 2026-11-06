@@ -159,6 +159,11 @@ export const anchorId = signal<string | null>(null);
 /** The asset the Inspect panel is describing; `null` closes the panel. */
 export const inspectId = signal<string | null>(null);
 
+/** The listed asset {@link inspectId} names, or `null`. */
+export const inspected = computed(() =>
+	inspectId.value ? items.value.find((a) => a.id === inspectId.value) ?? null : null
+);
+
 /** Whether anything is selected — the footer rig's action-bar gate. */
 export const hasSelection = computed(() => selection.value.length > 0);
 
@@ -216,6 +221,71 @@ export function rangeSelect(id: string, orderedIds: readonly string[]): void {
 export function clearSelection(): void {
 	selection.value = [];
 	anchorId.value = null;
+}
+// #endregion
+
+// #region Action layer (the footer rig mounts it; any region opens it)
+/** A write over listed rows is in flight, from whichever region raised it. */
+export const busy = signal(false);
+
+/** The New folder dialog. */
+export const newFolderOpen = signal(false);
+
+/** Where a New folder lands when a menu named a place; `undefined` is the folder in view. */
+export const newFolderParent = signal<string | null | undefined>(undefined);
+
+/** The Attach link dialog. */
+export const attachLinkOpen = signal(false);
+
+/** The Connect a drive dialog. */
+export const connectDriveOpen = signal(false);
+
+/** Rows waiting on the delete confirmation. */
+export interface PendingRemoval {
+	assetIds: string[];
+	folderIds: string[];
+	/** What the confirmation calls them. */
+	name: string;
+}
+
+/** The delete awaiting confirmation; `null` when none is. */
+export const pendingRemoval = signal<PendingRemoval | null>(null);
+
+/** Whether the delete confirmation is up. Apart from its rows, which must outlive the closing dialog. */
+export const removalOpen = signal(false);
+
+/** The drive awaiting a disconnect confirmation; `null` when none is. */
+export const pendingDisconnect = signal<{ connectionId: string; name: string } | null>(null);
+
+/** Whether the disconnect confirmation is up. */
+export const disconnectOpen = signal(false);
+
+/** Bumped by a write that changes the folder structure, so the lane re-reads its tree. */
+export const treeRevision = signal(0);
+
+/** The folder a colour menu is about. */
+export interface FolderColorTarget {
+	folderId: string;
+	name: string;
+	color: string | null;
+}
+
+/** The custom colour dialog. */
+export const folderColorOpen = signal(false);
+
+/** The folder the custom colour dialog is for. */
+export const folderColorTarget = signal<FolderColorTarget | null>(null);
+
+/** Open the wheel for a folder. */
+export function askFolderColor(target: FolderColorTarget): void {
+	folderColorTarget.value = target;
+	folderColorOpen.value = true;
+}
+
+/** Open New folder, inside `parentId` when a menu named a place. */
+export function askNewFolder(parentId?: string | null): void {
+	newFolderParent.value = parentId;
+	newFolderOpen.value = true;
 }
 // #endregion
 
@@ -343,6 +413,11 @@ export function appendPage(page: AssetPageLike): void {
 	if (page.hasMore !== undefined) hasMore.value = page.hasMore;
 	if (page.nextCursor !== undefined) nextCursor.value = page.nextCursor;
 	if (page.total !== undefined) total.value = page.total;
+	// A connected drive pages its folders with its files; a library page repeats the same ones.
+	if (page.folders?.length) {
+		const held = new Set(folders.value.map((f) => f.id));
+		folders.value = [...folders.value, ...page.folders.filter((f) => !held.has(f.id))];
+	}
 	seeded.value = true;
 	loading.value = false;
 	error.value = null;
@@ -409,6 +484,17 @@ export function resetFilesState(): void {
 	selection.value = [];
 	anchorId.value = null;
 	inspectId.value = null;
+	busy.value = false;
+	newFolderOpen.value = false;
+	newFolderParent.value = undefined;
+	attachLinkOpen.value = false;
+	connectDriveOpen.value = false;
+	pendingRemoval.value = null;
+	removalOpen.value = false;
+	pendingDisconnect.value = null;
+	disconnectOpen.value = false;
+	folderColorOpen.value = false;
+	folderColorTarget.value = null;
 	uploadQueue.value = [];
 	pickerOpen.value = false;
 	pickerRequest.value = null;
@@ -423,6 +509,21 @@ export const filesCommit = signal<(() => void) | null>(null);
 /** Ask the body to re-run its query. A no-op before the body hydrates (the SSR paint is correct). */
 export function commitFiles(): void {
 	filesCommit.value?.();
+}
+
+/** The body's in-place navigation, registered on mount; {@link goTo} is how any region moves. */
+export const filesNavigate = signal<
+	{ toPath: (path: string[]) => void; toHref: (href: string) => void } | null
+>(null);
+
+/** Move to a location, in place. A no-op before the body hydrates. */
+export function goTo(path: string[]): void {
+	filesNavigate.value?.toPath(path);
+}
+
+/** Move to the location an address names, in place (a crumb's href). */
+export function goToHref(href: string): void {
+	filesNavigate.value?.toHref(href);
 }
 
 /** Reset every narrowing control back to the whole folder, then refetch. */

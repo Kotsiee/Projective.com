@@ -50,6 +50,10 @@ CREATE TABLE files.folders (
     -- Materialised ancestor names, root-first. Empty at the library root.
     path text[] NOT NULL DEFAULT '{}',
 
+    -- The folder's colour, `#rrggbb`. NULL is the default neutral tone. A value rather than a token,
+    -- so a shared folder looks the same to everyone whatever their theme.
+    color text,
+
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     -- Soft delete. Nothing in this schema is hard-deleted by the app (root CLAUDE.md §5); the row
@@ -57,6 +61,7 @@ CREATE TABLE files.folders (
     deleted_at timestamp with time zone,
 
     CONSTRAINT folders_pkey PRIMARY KEY (id),
+    CONSTRAINT folders_color_check CHECK (color ~ '^#[0-9a-f]{6}$'),
     CONSTRAINT folders_owner_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users (id),
     CONSTRAINT folders_parent_fkey FOREIGN KEY (parent_folder_id) REFERENCES files.folders (id),
     CONSTRAINT folders_share_slug_key UNIQUE (share_slug),

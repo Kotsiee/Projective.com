@@ -11,6 +11,7 @@ import type {
 	MoveAssets,
 	RenameAsset,
 	RevokeShare,
+	SetFolderColor,
 	SetVisibility,
 	ShareLink,
 } from "@projective/types/files";
@@ -25,7 +26,8 @@ import {
 	MANAGED_SOURCES,
 	toAssetFolder,
 } from "./asset-row.ts";
-import { canFileInto, type FilesOwner, ownerOfActor, readAsset } from "./live-library.ts";
+import { canFileInto, type FilesOwner, readAsset } from "./live-library.ts";
+import { movedSubtree, subtreeOf } from "./library-tree.ts";
 import { resolveLinkPreview } from "./link-scan.ts";
 
 /**
@@ -54,6 +56,9 @@ type Result<T> = { ok: true; data: T; status?: number; message?: string } | {
 
 /** The one sentence an owner request outside the caller's libraries answers with. */
 const DENIED_OWNER = "You can't add files to that library.";
+const NOTHING_MOVED = "Nothing could be moved there.";
+/** How many ids one share-link close names: a whole folder's files would not fit one request URL. */
+const SHARE_REVOKE_CHUNK = 200;
 
 function filesDb(actor: Actor): SupabaseClient {
 	return getUserClient(actor.accessToken).schema("files") as unknown as SupabaseClient;
@@ -185,37 +190,145 @@ export async function starAsset(actor: Actor, assetId: string, starred: boolean)
  * batch: a mixed selection with one read-only mount should move the rest.
  */
 export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Result<{ moved: number }>> {
-	let owner: FilesOwner = ownerOfActor(actor);
+	const assetIds = input.assetIds ?? [];
+	const folderIds = input.folderIds ?? [];
 	const db = filesDb(actor);
+	let target: FolderRow | null = null;
 	if (input.targetFolderId) {
-		const target = await db.from("folders").select("id, owner_type, owner_user_id, owner_entity_id")
+		const found = await db.from("folders").select(FOLDER_COLUMNS)
 			.eq("id", input.targetFolderId).eq("source", "supabase").is("deleted_at", null).maybeSingle();
-		if (target.error && target.error.code !== "22P02") throw new Error(`files.folders read failed: ${target.error.message}`);
-		const t = target.data as { owner_type: FilesOwner["ownerType"]; owner_user_id: string; owner_entity_id: string | null } | null;
-		const targetOwner: FilesOwner | null = t
-			? { ownerType: t.owner_type, ownerId: t.owner_entity_id ?? t.owner_user_id }
+		if (found.error && found.error.code !== "22P02") {
+			throw new Error(`files.folders read failed: ${found.error.message}`);
+		}
+		target = found.data as unknown as FolderRow | null;
+		const owner: FilesOwner | null = target
+			? {
+				ownerType: target.owner_type as FilesOwner["ownerType"],
+				ownerId: target.owner_entity_id ?? target.owner_user_id,
+			}
 			: null;
-		if (!targetOwner || !(await canFileInto(actor, targetOwner))) {
+		if (!owner || !(await canFileInto(actor, owner))) {
 			return { ok: false, status: 404, message: "That folder isn't in this library." };
 		}
-		owner = targetOwner;
 	}
-	let q = db.from("items").update({ folder_id: input.targetFolderId ?? null })
-		.in("id", input.assetIds)
-		.in("source", MANAGED_SOURCES)
-		.eq("owner_user_id", actor.userId)
-		.eq("owner_type", owner.ownerType)
-		.is("deleted_at", null);
-	q = owner.ownerType === "user" ? q.is("owner_entity_id", null) : q.eq("owner_entity_id", owner.ownerId);
-	const { data, error } = await q.select("id");
-	if (error) {
-		if (error.code === "22P02") return { ok: false, status: 404, message: "Nothing could be moved there." };
-		if (error.code === "42501") return { ok: false, status: 403, message: "Nothing could be moved there." };
-		throw new Error(`files.items update failed: ${error.message}`);
+
+	let moved = 0;
+	if (assetIds.length > 0) {
+		let q = db.from("items").update({ folder_id: target?.id ?? null })
+			.in("id", assetIds)
+			.in("source", MANAGED_SOURCES)
+			.eq("owner_user_id", actor.userId)
+			.is("deleted_at", null);
+		// A named folder keeps the move inside its library; the root is each file's own, in any library.
+		if (target) {
+			q = q.eq("owner_type", target.owner_type ?? "");
+			q = target.owner_entity_id
+				? q.eq("owner_entity_id", target.owner_entity_id)
+				: q.is("owner_entity_id", null);
+		}
+		const { data, error } = await q.select("id");
+		if (error) {
+			if (error.code === "22P02") return { ok: false, status: 404, message: NOTHING_MOVED };
+			if (error.code === "42501") return { ok: false, status: 403, message: NOTHING_MOVED };
+			throw new Error(`files.items update failed: ${error.message}`);
+		}
+		moved += (data ?? []).length;
 	}
-	const moved = (data ?? []).length;
-	if (moved === 0) return { ok: false, status: 403, message: "Nothing could be moved there." };
-	return { ok: true, data: { moved }, message: `Moved ${moved} ${moved === 1 ? "file" : "files"}.` };
+	if (folderIds.length > 0) {
+		const folders = await moveFolders(actor, folderIds, target);
+		if (!folders.ok) return folders;
+		moved += folders.data;
+	}
+	if (moved === 0) return { ok: false, status: 403, message: NOTHING_MOVED };
+	const noun = folderIds.length > 0 ? "item" : "file";
+	return { ok: true, data: { moved }, message: `Moved ${moved} ${noun}${moved === 1 ? "" : "s"}.` };
+}
+
+/** Set or clear a folder's colour. Only its owner may, and a mounted folder mirrors its provider. */
+export async function setFolderColor(
+	actor: Actor,
+	input: SetFolderColor,
+): Promise<Result<{ color: string | null }>> {
+	const { data, error } = await filesDb(actor).from("folders").update({ color: input.color })
+		.eq("id", input.folderId).eq("source", "supabase").eq("owner_user_id", actor.userId)
+		.is("deleted_at", null).select("id");
+	if (error && error.code !== "22P02") {
+		throw new Error(`files.folders update failed: ${error.message}`);
+	}
+	if ((data ?? []).length === 0) {
+		return { ok: false, status: 404, message: "That folder can't be changed." };
+	}
+	return { ok: true, data: { color: input.color } };
+}
+
+/** The chosen live folders and the whole library they sit in, or `null` when they are not one library's. */
+async function foldersOf(
+	actor: Actor,
+	folderIds: readonly string[],
+): Promise<{ chosen: FolderRow[]; library: FolderRow[] } | null> {
+	const db = filesDb(actor);
+	const picked = await db.from("folders").select(FOLDER_COLUMNS)
+		.in("id", [...folderIds]).eq("source", "supabase").is("deleted_at", null);
+	if (picked.error?.code === "22P02") return null;
+	if (picked.error) throw new Error(`files.folders read failed: ${picked.error.message}`);
+	const chosen = (picked.data ?? []) as unknown as FolderRow[];
+	const first = chosen[0];
+	if (!first || chosen.length !== new Set(folderIds).size) return null;
+	const entity = first.owner_entity_id;
+	if (chosen.some((f) => f.owner_type !== first.owner_type || f.owner_entity_id !== entity)) {
+		return null;
+	}
+	const q = db.from("folders").select(FOLDER_COLUMNS).eq("owner_type", first.owner_type ?? "")
+		.eq("source", "supabase").is("deleted_at", null);
+	const all =
+		await (entity ? q.eq("owner_entity_id", entity) : q.eq("owner_user_id", first.owner_user_id));
+	if (all.error) throw new Error(`files.folders read failed: ${all.error.message}`);
+	return { chosen, library: (all.data ?? []) as unknown as FolderRow[] };
+}
+
+/**
+ * Move folders, each with its subtree, under `target` (`null` for the library root). Parent-first, one
+ * row at a time: the guard checks each `path` against its parent's, so one statement cannot do it. A
+ * failure part-way leaves stale `path`s below the moved folder, which repeating the move repairs;
+ * `path` is only a display trail, because a folder is resolved through its parent id.
+ */
+async function moveFolders(
+	actor: Actor,
+	folderIds: readonly string[],
+	target: FolderRow | null,
+): Promise<Result<number>> {
+	const found = await foldersOf(actor, folderIds);
+	if (!found) return { ok: false, status: 404, message: "That folder isn't in this library." };
+	const { chosen, library } = found;
+	if (target && !library.some((f) => f.id === target.id)) {
+		return { ok: false, status: 404, message: "That folder isn't in this library." };
+	}
+	const parentId = target?.id ?? null;
+	const moved = chosen.filter((f) => f.parent_folder_id !== parentId);
+	for (const folder of moved) {
+		const subtree = new Set(subtreeOf(library, folder.id));
+		if (target && subtree.has(target.id)) {
+			return { ok: false, status: 422, message: "A folder can't move inside itself." };
+		}
+		if (library.some((f) => subtree.has(f.id) && f.owner_user_id !== actor.userId)) {
+			return { ok: false, status: 403, message: "Someone else's folder is inside that one." };
+		}
+		const lower = (folder.name ?? "").toLowerCase();
+		if (
+			library.some((f) => f.parent_folder_id === parentId && (f.name ?? "").toLowerCase() === lower)
+		) {
+			return { ok: false, status: 409, message: "There's already a folder with that name there." };
+		}
+	}
+	const db = filesDb(actor);
+	for (const folder of moved) {
+		for (const row of movedSubtree(library, folder.id, target)) {
+			const { error } = await db.from("folders").update(row.patch).eq("id", row.id);
+			if (error?.code === "42501") return { ok: false, status: 403, message: NOTHING_MOVED };
+			if (error) throw new Error(`files.folders update failed: ${error.message}`);
+		}
+	}
+	return { ok: true, data: moved.length };
 }
 
 /**
@@ -225,22 +338,76 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
  */
 export async function removeAssets(actor: Actor, input: DeleteAssets): Promise<Result<{ removed: number }>> {
 	const db = filesDb(actor);
-	const { data, error } = await db.from("items").update({ deleted_at: new Date().toISOString() })
-		.in("id", input.assetIds).in("source", MANAGED_SOURCES).eq("owner_user_id", actor.userId)
-		.is("deleted_at", null).select("id");
-	if (error) {
-		if (error.code === "22P02") return { ok: false, status: 404, message: "Nothing could be deleted." };
-		if (error.code === "42501") return { ok: false, status: 403, message: "Nothing could be deleted." };
-		throw new Error(`files.items update failed: ${error.message}`);
+	const stamp = new Date().toISOString();
+	const assetIds = input.assetIds ?? [];
+	const folderIds = input.folderIds ?? [];
+	let subtree: string[] = [];
+	if (folderIds.length > 0) {
+		const found = await foldersOf(actor, folderIds);
+		if (!found) return { ok: false, status: 404, message: "That folder isn't in this library." };
+		subtree = [...new Set(found.chosen.flatMap((f) => subtreeOf(found.library, f.id)))];
+		const held = await db.from("items").select("owner_user_id").in("folder_id", subtree).is(
+			"deleted_at",
+			null,
+		);
+		if (held.error) throw new Error(`files.items read failed: ${held.error.message}`);
+		const swept = new Set(subtree);
+		const shared = found.library.some((f) => swept.has(f.id) && f.owner_user_id !== actor.userId) ||
+			((held.data ?? []) as Array<{ owner_user_id: string }>).some((i) =>
+				i.owner_user_id !== actor.userId
+			);
+		// Refused whole: a row policy would skip the other person's files and bury them in a deleted folder.
+		if (shared) {
+			return { ok: false, status: 403, message: "Someone else's work is in that folder." };
+		}
 	}
-	const removed = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
-	if (removed.length === 0) return { ok: false, status: 403, message: "Nothing could be deleted." };
-	await db.from("share_links").update({ revoked_at: new Date().toISOString() })
-		.in("item_id", removed).eq("created_by", actor.userId).is("revoked_at", null);
+
+	const sweep = (column: "id" | "folder_id", values: readonly string[]) =>
+		db.from("items").update({ deleted_at: stamp }).in(column, [...values])
+			.in("source", MANAGED_SOURCES).eq("owner_user_id", actor.userId).is("deleted_at", null)
+			.select("id");
+	// The files go first: a failure then leaves a live, emptied folder, never a deleted one hiding them.
+	const sweeps = await Promise.all([
+		...(assetIds.length > 0 ? [sweep("id", assetIds)] : []),
+		...(subtree.length > 0 ? [sweep("folder_id", subtree)] : []),
+	]);
+	const removed: string[] = [];
+	for (const { data, error } of sweeps) {
+		if (error?.code === "22P02") {
+			return { ok: false, status: 404, message: "Nothing could be deleted." };
+		}
+		if (error?.code === "42501") {
+			return { ok: false, status: 403, message: "Nothing could be deleted." };
+		}
+		if (error) throw new Error(`files.items update failed: ${error.message}`);
+		removed.push(...((data ?? []) as Array<{ id: string }>).map((r) => r.id));
+	}
+	if (subtree.length > 0) {
+		const { error } = await db.from("folders").update({ deleted_at: stamp }).in("id", subtree).is(
+			"deleted_at",
+			null,
+		);
+		if (error?.code === "42501") {
+			return { ok: false, status: 403, message: "Nothing could be deleted." };
+		}
+		if (error) throw new Error(`files.folders update failed: ${error.message}`);
+		await db.from("share_links").update({ revoked_at: stamp })
+			.in("folder_id", subtree).eq("created_by", actor.userId).is("revoked_at", null);
+	}
+	if (removed.length + subtree.length === 0) {
+		return { ok: false, status: 403, message: "Nothing could be deleted." };
+	}
+	for (let i = 0; i < removed.length; i += SHARE_REVOKE_CHUNK) {
+		await db.from("share_links").update({ revoked_at: stamp })
+			.in("item_id", removed.slice(i, i + SHARE_REVOKE_CHUNK))
+			.eq("created_by", actor.userId).is("revoked_at", null);
+	}
+	const count = removed.length + folderIds.length;
+	const noun = folderIds.length > 0 ? "item" : "file";
 	return {
 		ok: true,
-		data: { removed: removed.length },
-		message: `Deleted ${removed.length} ${removed.length === 1 ? "file" : "files"}.`,
+		data: { removed: count },
+		message: `Deleted ${count} ${noun}${count === 1 ? "" : "s"}.`,
 	};
 }
 

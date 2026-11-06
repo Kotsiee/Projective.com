@@ -6,6 +6,7 @@ import {
 	connectorAsset,
 	connectorFolder,
 	continuation,
+	type ErrorClassifier,
 	netOf,
 	orNull,
 	pageSize,
@@ -69,6 +70,10 @@ interface DriveFile {
 	thumbnailLink?: string;
 }
 
+/** A project without the Drive API refuses every account with a 403 that no reconnecting cures. */
+const classify: ErrorClassifier = (status, body) =>
+	status === 403 && /accessNotConfigured|SERVICE_DISABLED/.test(body) ? "unavailable" : null;
+
 /** A Drive query string literal: `\` and `'` escaped, per the `q` grammar. */
 function quoted(value: string): string {
 	return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
@@ -83,7 +88,7 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 
 	function get<T>(path: string, params: Record<string, string>): Promise<T> {
 		const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
-		return providerJson<T>(net, PROVIDER, `${API}${path}?${query}`, { headers });
+		return providerJson<T>(net, PROVIDER, `${API}${path}?${query}`, { headers }, classify);
 	}
 
 	function target(file: DriveFile): { id: string; mimeType: string } {
@@ -166,6 +171,13 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 			);
 			if (!file || target(file).mimeType === FOLDER) return null;
 			return toAsset(file, net.now().getTime());
+		},
+
+		async folder(id: string): Promise<{ id: string; name: string } | null> {
+			const file = await orNull(
+				get<DriveFile>(`/files/${encodeURIComponent(id)}`, { fields: "id,name,mimeType" }),
+			);
+			return file?.mimeType === FOLDER ? { id: file.id, name: file.name ?? "" } : null;
 		},
 
 		async downloadUrl(id: string): Promise<string | null> {

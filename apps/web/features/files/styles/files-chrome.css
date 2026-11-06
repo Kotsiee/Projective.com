@@ -94,19 +94,6 @@
 }
 
 /*
- * A section that is present but empty still gets a sentence. Its absence would be indistinguishable
- * from "this library has no drives connected", and the empty state is where the reader learns the
- * section exists at all.
- */
-.fh-lane__sectionempty {
-	margin: 0;
-	padding: var(--space-2) var(--space-3);
-	font-size: var(--fh-fs-micro);
-	line-height: 1.5;
-	color: var(--text-secondary);
-}
-
-/*
  * A transport failure is stated, never swallowed. It sits above the tree it failed to replace — the
  * previous tree is deliberately still standing, so this line is what tells the reader it is stale.
  */

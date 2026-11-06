@@ -1420,6 +1420,186 @@ Deno.test("publishing: turning it off needs no write scope, so a narrowed grant 
 	}));
 // #endregion
 
+// #region Browsing
+const DRIVE_FOLDER = "application/vnd.google-apps.folder";
+
+function driveRow() {
+	return {
+		...connectionRow("google_drive"),
+		provider_label: "Google Drive",
+		provider_category: "storage",
+		provider_capabilities: ["storage", "docs"],
+		granted_kinds: ["storage", "docs"],
+	};
+}
+
+async function driveClaim() {
+	const secret = await secretRow({ access_token: "drive-token", refresh_token: "r" });
+	return { provider_slug: "google_drive", auth_config: {}, secret };
+}
+
+Deno.test("browse: one level arrives through the adapter, carrying the connection's own token", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: () =>
+				json({
+					nextPageToken: "more",
+					files: [
+						{ id: "F1", name: "Briefs", mimeType: DRIVE_FOLDER },
+						{ id: "P1", name: "logo.png", mimeType: "image/png", size: "5" },
+					],
+				}),
+		}, async (calls) => {
+			const res = await Service.browse({ connectionId: CONNECTION, folderId: "F0" }, ADA);
+			assert(res.ok, res.message);
+			assertEquals(res.data?.folders.map((f) => f.externalFolderId), ["F1"]);
+			assertEquals(res.data?.entries.map((e) => e.name), ["logo.png"]);
+			assertEquals(res.data?.nextCursor, "more");
+			const [list] = named(calls, "/drive/v3/files");
+			assertEquals(list.headers.get("authorization"), "Bearer drive-token");
+			assertStringIncludes(list.url.searchParams.get("q") ?? "", "'F0' in parents");
+			assertFalse(JSON.stringify(res).includes("drive-token"));
+		});
+	}));
+
+Deno.test("browse: a grant the provider refuses asks for a reconnect, in words", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: () => json({ error: { code: 401 } }, 401),
+		}, async () => {
+			const res = await Service.browse({ connectionId: CONNECTION }, ADA);
+			assertEquals(res.status, 409);
+			assertEquals(res.message, "Google Drive needs reconnecting.");
+		});
+	}));
+
+Deno.test("browse: a Google project without the Drive API blames neither the account nor the grant", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: () =>
+				json({
+					error: {
+						code: 403,
+						status: "PERMISSION_DENIED",
+						errors: [{ domain: "usageLimits", reason: "accessNotConfigured" }],
+						details: [{ reason: "SERVICE_DISABLED" }],
+					},
+				}, 403),
+		}, async () => {
+			const res = await Service.browse({ connectionId: CONNECTION }, ADA);
+			assertEquals(res.status, 503);
+			assertEquals(res.message, "Browsing Google Drive isn't available in this environment yet.");
+		});
+	}));
+
+Deno.test("browse: with the gate off no token is claimed and no provider is called", () =>
+	world({
+		env: { INTEGRATIONS_BACKEND_LIVE: undefined },
+		db: { "integrations.v_my_connections": () => [driveRow()] },
+	}, async (calls) => {
+		const res = await Service.browse({ connectionId: CONNECTION }, ADA);
+		assertEquals(res.status, 503);
+		assertEquals(named(calls, "integrations.rpc.fn_claim_connection_token").length, 0);
+		assertEquals(named(calls, "/drive/v3/files").length, 0);
+	}));
+
+Deno.test("browse: a connection for calendars only is refused before any token is read", () =>
+	world({
+		db: { "integrations.v_my_connections": () => [connectionRow("google")] },
+	}, async (calls) => {
+		const res = await Service.browse({ connectionId: CONNECTION }, ADA);
+		assertEquals(res.status, 403);
+		assertEquals(named(calls, "integrations.rpc.fn_claim_connection_token").length, 0);
+	}));
+
+Deno.test("browseLocation: the trail names each level on the first page, and only there", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: (call) =>
+				call.url.pathname === "/drive/v3/files" ? json({ files: [] }) : json({
+					id: call.url.pathname.split("/").at(-1),
+					name: "Named",
+					mimeType: DRIVE_FOLDER,
+				}),
+		}, async (calls) => {
+			const input = { connectionId: CONNECTION, folderIds: ["F1", "F2"], limit: 10 };
+			const first = await Service.browseLocation({ ...input, cursor: null }, ADA);
+			assertEquals(first.data?.connection.providerLabel, "Google Drive");
+			assertEquals(first.data?.trail.map((f) => f.id), ["F1", "F2"]);
+			assertStringIncludes(
+				named(calls, "/drive/v3/files")[0].url.searchParams.get("q") ?? "",
+				"'F2'",
+			);
+
+			const before = calls.length;
+			const later = await Service.browseLocation({ ...input, cursor: "tok" }, ADA);
+			assertEquals(later.data?.trail, []);
+			assertEquals(calls.slice(before).filter((c) => c.host !== "postgrest.fake").length, 1);
+		});
+	}));
+// #endregion
+
+// #region Shared Google grant
+Deno.test("revoke: Drive leaves the shared Google grant alone while Calendar still needs it", () =>
+	world({}, async () => {
+		const secret = await secretRow({ access_token: "a", refresh_token: "r" });
+		const calendar = { ...connectionRow("google"), id: "c0a8012e-0000-4000-8000-000000000002" };
+		await world({
+			provider: () => json({}),
+			db: {
+				"integrations.v_my_connections": (call) =>
+					call.url.searchParams.has("id") ? [driveRow()] : [driveRow(), calendar],
+				"integrations.providers":
+					() => [providerRow("google_drive", { auth_config: AUTH_CONFIG.google })],
+				"integrations.connection_secrets": () => [secret],
+				"integrations.rpc.fn_revoke_connection": () => true,
+			},
+		}, async (calls) => {
+			const res = await Service.revokeConnection({ connectionId: CONNECTION }, ADA);
+			assertEquals(res.data, { revoked: true });
+			assertEquals(named(calls, "/revoke").length, 0);
+		});
+	}));
+
+Deno.test("revoke: Drive revokes at Google when nothing else shares the grant", () =>
+	world({}, async () => {
+		const secret = await secretRow({ access_token: "a", refresh_token: "r" });
+		await world({
+			provider: () => json({}),
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.providers":
+					() => [providerRow("google_drive", { auth_config: AUTH_CONFIG.google })],
+				"integrations.connection_secrets": () => [secret],
+				"integrations.rpc.fn_revoke_connection": () => true,
+			},
+		}, async (calls) => {
+			await Service.revokeConnection({ connectionId: CONNECTION }, ADA);
+			assertEquals(named(calls, "/revoke")[0].url.searchParams.get("token"), "r");
+		});
+	}));
+// #endregion
+
 // #region Cron bearer
 Deno.test("cron: only the exact bearer authorises, and an unset or short secret authorises nothing", () =>
 	world({ env: { INTEGRATIONS_CRON_SECRET: "c".repeat(32) } }, async () => {

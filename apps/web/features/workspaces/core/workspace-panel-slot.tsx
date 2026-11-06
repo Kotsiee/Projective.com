@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ContextPanelDockOptions } from "@web/features/shell/core/context-panel-state.ts";
+import FilesInspector from "@features/files/islands/FilesInspector.island.tsx";
 import { channelDetailsInfo, ChannelDetailsPanel } from "../components/ChannelDetails.tsx";
 import MemberInspector from "../islands/MemberInspector.island.tsx";
 import { MEMBER_PARAM } from "./member-inspector-model.ts";
@@ -16,8 +17,8 @@ import {
 /**
  * workspace-panel-slot — the middle-nav frame's right PANEL inside a workspace console (Decision #308):
  * an entity channel's {@link ChannelDetailsPanel} on its Chat view, else `null` — the twin of the
- * project `channelPanelFor`. Only Chat docks it: Files needs the canvas's full width, so there the
- * header's Details control keeps its slide-over drawer. Docks from 1280px (`MiddleNavPanel`); below
+ * project `channelPanelFor`. Only Chat docks that one: the header's Details control keeps its slide-over
+ * drawer on Files, whose own panel is the file inspector. Docks from 1280px (`MiddleNavPanel`); below
  * that the header's drawer presents the same body.
  *
  * The detail comes from `workspace-ssr`'s request memo, so the panel, the lane and the header band are
@@ -38,6 +39,16 @@ export async function workspaceChannelPanelFor(
 	const channel = bootstrap.workspace.channels.find((c) => c.slug === slug);
 	if (!channel) return null;
 	return <ChannelDetailsPanel info={channelDetailsInfo(bootstrap.workspace, channel)} />;
+}
+
+/** The Files module's drive, whose listing is the `/files` hub's body. */
+function onFilesModule(url: URL): boolean {
+	return kindFromPath(url.pathname) !== null && activeModuleOf(url.pathname) === "files";
+}
+
+/** The file inspector beside a team's or business's drive: closed until an item is picked. */
+export function workspaceFilesPanelFor(url: URL): ComponentChildren {
+	return onFilesModule(url) ? <FilesInspector /> : null;
 }
 
 /** The Members module's people section — the only body the member inspector stands beside. */
@@ -75,6 +86,7 @@ export async function workspaceMembersPanelFor(
  * Details choice (`null`).
  */
 export function workspacePanelDockFor(url: URL): ContextPanelDockOptions | null {
+	if (onFilesModule(url)) return { dock: "selection" };
 	if (!onMembersModule(url)) return null;
 	return { dock: "selection", open: (url.searchParams.get(MEMBER_PARAM) ?? "") !== "" };
 }

@@ -51,7 +51,7 @@ export const AssetListPageSchema = z.object({
 	/** The breadcrumb trail to this location, root-first and already scope-correct. */
 	crumbs: z.array(AssetCrumbSchema),
 	hasMore: z.boolean(),
-	nextCursor: z.string().max(120).nullable(),
+	nextCursor: z.string().max(600).nullable(),
 	/** Total matched across all pages — drives the "N files" caption. */
 	total: z.number().int().min(0),
 	/** The acting viewer's id — the client renders identity from this, never from a cookie it read. */

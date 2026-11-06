@@ -27,10 +27,13 @@ import {
 	LinkAttachSchema,
 	type MoveAssets,
 	MoveAssetsSchema,
+	pathKey,
 	type RenameAsset,
 	RenameAssetSchema,
 	type RevokeShare,
 	RevokeShareSchema,
+	type SetFolderColor,
+	SetFolderColorSchema,
 	type SetVisibility,
 	SetVisibilitySchema,
 	type ShareLink,
@@ -139,6 +142,11 @@ export const FilesService = {
 			? `?${new URLSearchParams({ scope: "workspace", subjectId: workspace.subjectId })}`
 			: "";
 		return getFiles<AssetTreeNode[]>(`/api/files/tree${qs}`);
+	},
+
+	/** The nodes beneath a connected drive's folder or a mounted engagement, read when one is opened. */
+	treeChildren(path: readonly string[]): Promise<FilesResult<AssetTreeNode[]>> {
+		return getFiles<AssetTreeNode[]>(`/api/files/tree?path=${pathKey(path)}`);
 	},
 
 	/** One asset's full row (the preview modal's deep link, and a refresh after a mutation). */
@@ -251,7 +259,7 @@ export const FilesService = {
 		return postFiles<AssetItem>("/api/files/rename", parsed.data);
 	},
 
-	/** Move assets into a folder. `targetFolderId: null` moves them to the library root. */
+	/** Move assets and folders into a folder. `targetFolderId: null` moves them to their library's root. */
 	move(input: MoveAssets): Promise<FilesResult<{ moved: number }>> {
 		const parsed = MoveAssetsSchema.safeParse(input);
 		if (!parsed.success) {
@@ -261,8 +269,8 @@ export const FilesService = {
 	},
 
 	/**
-	 * Delete assets. Nothing is hard-deleted (root CLAUDE.md §5) — this stamps `deleted_at`, so the
-	 * deletion is recoverable and a share link that pointed at the asset stops resolving instead of
+	 * Delete assets and folders. Nothing is hard-deleted (root CLAUDE.md §5) — this stamps `deleted_at`,
+	 * so the deletion is recoverable and a share link that pointed at the row stops resolving instead of
 	 * failing loudly.
 	 */
 	remove(input: DeleteAssets): Promise<FilesResult<{ removed: number }>> {
@@ -271,6 +279,15 @@ export const FilesService = {
 			return Promise.resolve(invalid(parsed.error, "Those files could not be deleted."));
 		}
 		return postFiles<{ removed: number }>("/api/files/delete", parsed.data);
+	},
+
+	/** Set a folder's colour, or return it to the default with `null`. */
+	setFolderColor(input: SetFolderColor): Promise<FilesResult<{ color: string | null }>> {
+		const parsed = SetFolderColorSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "That colour is not valid."));
+		}
+		return postFiles<{ color: string | null }>("/api/files/folder-color", parsed.data);
 	},
 
 	/**

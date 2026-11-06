@@ -40,9 +40,16 @@ import {
 	refreshGrant,
 	revokeGrant,
 	scopesFor,
+	sharesGoogleGrant,
 	type TokenSet,
 } from "./oauth.ts";
 import { seal, unseal } from "./token-vault.ts";
+import {
+	createStorageAdapter,
+	type StorageAdapter,
+	StorageAdapterError,
+	type StorageAdapterErrorCode,
+} from "./adapters/mod.ts";
 
 /**
  * IntegrationsBackendService — the FAT half of the connector subsystem: the provider catalogue, a
@@ -57,9 +64,10 @@ import { seal, unseal } from "./token-vault.ts";
  * its OAuth client in the environment; without one, {@link startConnection} refuses in words. The
  * runtime is Fresh routes plus pg_cron http jobs, never Edge Functions (Decision #343, ruling C4 (a)),
  * and each transaction is a service-role definer in `00001500`. What a connected calendar syncs is
- * `CalendarSyncBackendService`; this service only marks one due and closes it. Browsing or mounting —
- * which would carry a stored credential out of the process — still answers that connected drives are
- * not available here. A refusal in words is the honest state; a simulated drive is not.
+ * `CalendarSyncBackendService`; this service only marks one due and closes it. Browsing carries the
+ * connection's stored credential to its provider for one call, through `./adapters`; mounting an
+ * object still answers that it is not available here. A refusal in words is the honest state; a
+ * simulated drive is not.
  *
  * ### Rules this service holds
  *
@@ -82,6 +90,8 @@ const UNREACHABLE = "We couldn't reach your connections just now. Try again in a
 const CONSENT_REFUSED = "That connection request wasn't recognised. Start it again from Settings.";
 const NOT_LIVE = "Connections aren't live in this environment.";
 const FORGED = "The delivery's signature didn't verify.";
+/** The page a browse asks a provider for when the caller names none. */
+const BROWSE_PAGE = 100;
 
 /** One leading `/`, and no backslash or whitespace a browser would normalise into another origin. */
 const RETURN_PATH = /^\/(?!\/)[^\\\s]*$/;
@@ -240,6 +250,63 @@ async function ownConnection(actor: Actor, id: string): Promise<UserConnection |
 		throw new Error(`integrations.v_my_connections read failed: ${error.message}`);
 	}
 	return data ? toConnection(data as unknown as ConnectionRow) : null;
+}
+
+/** How a provider call's failure is worded, by the adapter's refusal code. */
+const STORAGE_REFUSALS: Readonly<
+	Record<StorageAdapterErrorCode, { status: number; words: (label: string) => string }>
+> = {
+	unauthorized: { status: 409, words: (label) => `${label} needs reconnecting.` },
+	forbidden: { status: 403, words: (label) => `${label} won't let this account open that.` },
+	not_found: { status: 404, words: (label) => `That isn't in ${label} any more.` },
+	rate_limited: { status: 429, words: (label) => `${label} is busy. Try again in a moment.` },
+	misconfigured: {
+		status: 502,
+		words: (label) => `${label} couldn't be read. Try reconnecting it.`,
+	},
+	unavailable: {
+		status: 503,
+		words: (label) => `Browsing ${label} isn't available in this environment yet.`,
+	},
+	provider_error: {
+		status: 502,
+		words: (label) => `${label} couldn't be reached. Try again in a moment.`,
+	},
+};
+
+/**
+ * Run one provider call under the caller's own storage connection. The credential is claimed here,
+ * lives for this call and leaves through nothing but the adapter's request; a provider's refusal comes
+ * back in words, and anything else is the caller's 503.
+ *
+ * shortcut: bearer connections only, because no S3 connection can exist until a credential form does;
+ * read its key pair from the vault here then.
+ */
+async function withStorage<T>(
+	actor: Actor,
+	connectionId: string,
+	run: (adapter: StorageAdapter, connection: UserConnection) => Promise<T>,
+): Promise<ServiceResult<T>> {
+	const checked = await storageConnection(actor, connectionId);
+	if (!checked.ok) return checked as unknown as ServiceResult<T>;
+	const connection = checked.data!;
+	const refusal = (code: StorageAdapterErrorCode) => {
+		const { status, words } = STORAGE_REFUSALS[code];
+		return fail(status, { message: words(connection.providerLabel) }) as ServiceResult<T>;
+	};
+	if (!isIntegrationsBackendLive()) return refusal("unavailable");
+	const accessToken = await IntegrationsBackendService.accessToken(connection.id);
+	if (!accessToken) return refusal("unauthorized");
+	try {
+		const credential = { scheme: "bearer", accessToken } as const;
+		return ok(await run(createStorageAdapter({ connection, credential }), connection));
+	} catch (error) {
+		if (error instanceof StorageAdapterError) {
+			console.error("[integrations:storage]", error.message);
+			return refusal(error.code);
+		}
+		throw error;
+	}
 }
 
 /** The storage checks browsing and mounting share: the caller's connection, granted for files, healthy. */
@@ -551,6 +618,29 @@ async function signedIn<T>(label: string, actor: ReadActor, run: (a: Actor) => P
 	}
 }
 
+/** One hub location inside a connected drive. */
+export interface DriveLocation {
+	page: DriveBrowsePage;
+	/** The connection, for the location's root crumb. */
+	connection: Pick<UserConnection, "providerSlug" | "providerLabel">;
+	/** The folders from the drive's root to this location, root-first. */
+	trail: { id: string; name: string }[];
+}
+
+/** One level of a drive, in the browse contract's shape. */
+async function listLevel(
+	adapter: StorageAdapter,
+	params: DriveBrowseParams,
+): Promise<DriveBrowsePage> {
+	const location = { folderId: params.folderId ?? null, path: params.path ?? null };
+	const { entries, folders, hasMore, nextCursor } = await adapter.list(
+		location,
+		params.cursor ?? null,
+		params.limit ?? BROWSE_PAGE,
+	);
+	return { entries, folders, hasMore, nextCursor };
+}
+
 export class IntegrationsBackendService {
 	// #region Catalogue + connections
 
@@ -738,7 +828,12 @@ export class IntegrationsBackendService {
 						.catch((failed) => console.error("[integrations:revoke] calendar left:", failed.message));
 				}
 			}
-			if (grant) await revokeGrant(grant.flow, grant.tokens);
+			const shared = grant &&
+				(await readConnections(a)).some((other) =>
+					other.status !== "revoked" && other.status !== "disconnected" &&
+					sharesGoogleGrant(other.providerSlug, connection.providerSlug)
+				);
+			if (grant && !shared) await revokeGrant(grant.flow, grant.tokens);
 			return ok({ revoked: true }, { message: "Connection revoked." });
 		});
 	}
@@ -903,19 +998,44 @@ export class IntegrationsBackendService {
 
 	// #region Browsing + mounting
 
+	/** Browse one level of a connected drive, under the caller's own storage-granted connection. */
+	static browse(
+		params: DriveBrowseParams,
+		actor: ReadActor,
+	): Promise<ServiceResult<DriveBrowsePage>> {
+		return signedIn(
+			"browse",
+			actor,
+			(a) => withStorage(a, params.connectionId, (adapter) => listLevel(adapter, params)),
+		);
+	}
+
 	/**
-	 * Browse one level of a connected drive. The caller's own storage-granted connection is checked
-	 * first; the provider call itself would carry a stored credential out of the process, and no
-	 * adapter can hold one in this deployment, so it answers that plainly.
+	 * One location of a connected drive for the hub: the level at the end of `folderIds`, the drive's
+	 * own name and the names along the way, read in one claim of the connection's token. The trail is
+	 * first-page only, because a later page extends a location already on screen.
 	 */
-	static browse(params: DriveBrowseParams, actor: ReadActor): Promise<ServiceResult<DriveBrowsePage>> {
-		return signedIn("browse", actor, async (a) => {
-			const checked = await storageConnection(a, params.connectionId);
-			if (!checked.ok) return checked as unknown as ServiceResult<DriveBrowsePage>;
-			return fail(503, {
-				message: `Browsing ${checked.data!.providerLabel} isn't available in this environment yet.`,
-			}) as ServiceResult<DriveBrowsePage>;
-		});
+	static browseLocation(
+		input: { connectionId: string; folderIds: string[]; cursor: string | null; limit: number },
+		actor: ReadActor,
+	): Promise<ServiceResult<DriveLocation>> {
+		const { connectionId, folderIds, cursor, limit } = input;
+		return signedIn(
+			"browse-location",
+			actor,
+			(a) =>
+				withStorage(a, connectionId, async (adapter, connection) => {
+					const [page, trail] = await Promise.all([
+						listLevel(adapter, { connectionId, folderId: folderIds.at(-1) ?? null, cursor, limit }),
+						cursor ? [] : Promise.all(folderIds.map((id) => adapter.folder?.(id) ?? null)),
+					]);
+					return {
+						page,
+						connection,
+						trail: trail.flatMap((folder) => folder ? [folder] : []),
+					};
+				}),
+		);
 	}
 
 	/**

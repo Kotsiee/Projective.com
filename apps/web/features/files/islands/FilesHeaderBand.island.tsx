@@ -6,11 +6,11 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { InputText, SortControl } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { FilesFilterPanel } from "../components/FilesFilterPanel.tsx";
-import { type FolderRouting, locationHref, rootChildren } from "../core/asset-model.ts";
+import { nodePath, rootChildren } from "../core/asset-model.ts";
 import {
 	commitFiles,
-	currentPath,
 	facetCount,
+	goTo,
 	query,
 	seeded,
 	sortDir,
@@ -18,7 +18,7 @@ import {
 	total,
 	tree,
 } from "../core/files-state.ts";
-import type { FileScope, FileSortKey } from "../types/file-types.ts";
+import type { FileSortKey } from "../types/file-types.ts";
 
 /**
  * FilesHeaderBand — the sticky strip above the `/files` workspace.
@@ -55,19 +55,10 @@ import type { FileScope, FileSortKey } from "../types/file-types.ts";
 
 // #region Props
 export interface FilesHeaderBandProps {
-	/** The route base every deep link in this scope hangs off. */
-	base: string;
-	scope: FileScope;
-	subjectId: string | null;
 	/** The folder path within the scope; `[]` is the scope root. */
 	segments: string[];
-	/** What to call this library — "My files", or the acting workspace's handle. */
+	/** What to call this library — "Library", or the acting workspace's handle. */
 	ownerLabel: string;
-	/**
-	 * Where a folder path lives in the address: under {@link base} (the default) or in its `?path=`
-	 * query (a console drive, whose `[module]` route is one segment deep).
-	 */
-	routing?: FolderRouting;
 }
 // #endregion
 
@@ -86,7 +77,6 @@ const SEARCH_LABEL = "Search files in this folder";
 // #endregion
 
 export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Element {
-	const routing = props.routing ?? "path";
 	const browseOpen = useSignal(false);
 	const filterOpen = useSignal(false);
 	const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -118,14 +108,8 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	}, []);
 
 	function navigate(segments: string[]): void {
-		currentPath.value = segments;
-		globalThis.history?.pushState(
-			{},
-			"",
-			locationHref(props.base, segments, routing, globalThis.location?.search ?? ""),
-		);
 		browseOpen.value = false;
-		commitFiles();
+		goTo(segments);
 	}
 	// #endregion
 
@@ -202,8 +186,8 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 									key={node.segment}
 									type="button"
 									class="fh-headerband__menu-item"
-									aria-current={props.segments[0] === node.segment ? "location" : undefined}
-									onClick={() => navigate([node.segment])}
+									aria-current={props.segments.includes(node.segment) ? "location" : undefined}
+									onClick={() => navigate(nodePath(node))}
 								>
 									<Icon name="folder" class="fh-headerband__menu-glyph" />
 									{node.label}

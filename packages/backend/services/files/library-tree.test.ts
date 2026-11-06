@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { AssetTreeNodeSchema } from "@projective/types/files";
-import { libraryTree } from "./library-tree.ts";
+import { libraryTree, movedSubtree, subtreeOf } from "./library-tree.ts";
 
 // #region Fixture
 const FOLDERS = [
@@ -14,7 +14,38 @@ const ITEMS = [
 	{ folder_id: "f-v2" },
 	{ folder_id: "f-v2" },
 ];
+const NESTED = [
+	{ id: "a", name: "A", parent_folder_id: null, path: [] },
+	{ id: "b", name: "B", parent_folder_id: "a", path: ["A"] },
+	{ id: "c", name: "C", parent_folder_id: "b", path: ["A", "B"] },
+	{ id: "x", name: "X", parent_folder_id: null, path: [] },
+];
 // #endregion
+
+Deno.test("subtreeOf walks parent-first and survives a corrupt cycle", () => {
+	assertEquals(subtreeOf(NESTED, "a"), ["a", "b", "c"]);
+	assertEquals(subtreeOf(NESTED, "x"), ["x"]);
+	const looped = [
+		{ id: "p", name: "P", parent_folder_id: "q", path: [] },
+		{ id: "q", name: "Q", parent_folder_id: "p", path: [] },
+	];
+	assertEquals(subtreeOf(looped, "p"), ["p", "q"]);
+});
+
+Deno.test("movedSubtree rewrites every path below the move and one parent", () => {
+	assertEquals(movedSubtree(NESTED, "a", NESTED[3]), [
+		{ id: "a", patch: { parent_folder_id: "x", path: ["X"] } },
+		{ id: "b", patch: { path: ["X", "A"] } },
+		{ id: "c", patch: { path: ["X", "A", "B"] } },
+	]);
+});
+
+Deno.test("movedSubtree to the library root empties the moved folder's path", () => {
+	assertEquals(movedSubtree(NESTED, "b", null), [
+		{ id: "b", patch: { parent_folder_id: null, path: [] } },
+		{ id: "c", patch: { path: ["B"] } },
+	]);
+});
 
 Deno.test("libraryTree roots every top-level folder under one labelled root", () => {
 	const root = libraryTree({ folders: FOLDERS, items: ITEMS }, "Atelier Nova");

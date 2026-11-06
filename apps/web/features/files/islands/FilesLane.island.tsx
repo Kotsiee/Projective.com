@@ -1,40 +1,81 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
+import "../styles/files-hub.css";
 import {
 	LaneBar,
 	LaneCollapseButton,
 	LaneEmpty,
 	LaneFooter,
+	LaneFooterActions,
 	LaneHead,
 	LaneList,
 	LaneSearch,
-	LaneSection,
-	LaneSections,
+	type MenuItem,
 	TreeNav,
 	type TreeNavNode,
 } from "@projective/ui/navigation";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
+import { statusMark, TREE_MARK } from "../components/AssetTree.tsx";
+import { folderColorRow } from "../components/FolderColorGrid.tsx";
+import { FolderMark } from "../components/FolderMark.tsx";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { NodeMark } from "../components/file-hub-glyphs.tsx";
 import { FilesService } from "../core/FilesService.ts";
-import { ancestorKeys, assetHref, pathKey, rootChildren, rootFileCount } from "../core/asset-model.ts";
+import { IntegrationsService } from "../core/IntegrationsService.ts";
+import { pathKey } from "../core/asset-model.ts";
+import { dropAttrs } from "../core/files-dnd.ts";
 import {
-	commitFiles,
+	allRowKeys,
+	DRIVES_KEY,
+	filterRows,
+	type LaneNode,
+	laneTree,
+	lazyPrefixes,
+	LIBRARY_KEY,
+	type LoadedChildren,
+	openChain,
+	PROJECTS_KEY,
+	type RowAction,
+	rowActionsOf,
+	selectedRow,
+	treePath,
+} from "../core/files-tree.ts";
+import {
+	askNewFolder,
+	connectDriveOpen,
 	currentPath,
 	currentScope,
+	disconnectOpen,
+	goTo,
+	pendingDisconnect,
+	pendingRemoval,
 	quota,
+	removalOpen,
+	seeded,
 	subjectId as subjectIdSignal,
 	tree,
+	treeRevision,
 } from "../core/files-state.ts";
-import type { AssetOwnerType, AssetTreeNode, FileScope } from "../types/file-types.ts";
+import type { AssetNodeKind, FileScope } from "../types/file-types.ts";
 
 /**
- * FilesLane — the `/files` middle-nav lane: the directory tree, the scope map, and the allowance.
+ * FilesLane — the `/files` middle-nav lane: one tree, and the allowance.
+ *
+ * ## One tree, three roots
+ *
+ * Library, Projects and Connected Drives are ordinary rows of a single {@link TreeNav}, so a root folds
+ * and reads exactly as a folder inside it does. They still separate populations that behave differently
+ * (`core/files-tree.ts` holds the model): the library is writable, while a project or a drive is
+ * read-only as a LOCATION, never a second write path into someone else's system of record. Their rows
+ * therefore take no drops and offer no New Folder. A project's submissions and a drive's folders are
+ * read when their row is opened, because neither can be bounded in the tree's one payload.
  *
  * ## Two presentations, one DOM
  *
@@ -43,155 +84,95 @@ import type { AssetOwnerType, AssetTreeNode, FileScope } from "../types/file-typ
  * `CatalogueLane`). A client width observer would paint the wrong presentation for a frame on every
  * load, and a navigation tree that flickers between two shapes reads as a broken lane.
  *
- * ## What the lane owns, and what it does not
- *
- * Navigation and scope ONLY (the region contract). The tree separates three populations that behave
- * differently and must not be conflated:
- *
- *  - **My library** — hub-native folders the owner created. Writable.
- *  - **Mounted** — project and channel attachments, surfaced so a person can FIND what they already
- *    have. Read-only as a LOCATION (`AssetListPage.readOnly`), which is why they are a separate,
- *    separately-labelled section rather than folders with a badge.
- *  - **Connected drives** — third-party accounts. Read-only for the same reason, and never a second
- *    write path into someone else's system of record.
- *
  * ## Why it fetches its own tree
  *
- * `laneFor` in `(dashboard)/_layout.tsx` is synchronous and `FilesBackendService` is async, so the slot
- * cannot resolve the tree server-side without making the shared dashboard layout an async component
- * (see the note in `files-lane-slot.tsx`). The lane therefore reads `files-state.tree` — which the
- * server-rendered BODY publishes when it seeds — and issues its own `FilesService.tree` read on mount
- * so the lane is never empty on a route the body has not yet hydrated. Whichever lands first wins;
- * both are the same server projection, so they cannot disagree.
+ * `laneFor` in `(dashboard)/_layout.tsx` hands the lane no data (see `files-lane-slot.tsx`), so it
+ * reads `files-state.tree`, which the server-rendered BODY publishes when it seeds, and issues its own
+ * `FilesService.tree` read on mount and after any structural write ({@link treeRevision}). Both are the
+ * same server projection, so they cannot disagree.
  *
- * Dumb island: it calls `/api/files/*` through the thin service and touches no database.
+ * Every row move goes through the body (`goTo`), the single fetch owner. Dumb island: it calls
+ * `/api/files/*` through the thin service and touches no database.
  */
 
 // #region Props
 export interface FilesLaneProps {
-	/** The current pathname — drives the active row without a client-side router. */
-	path: string;
-	/** The route base every deep link in this scope hangs off (`/files`, `/files/drives/{id}`). */
-	base: string;
 	scope: FileScope;
 	subjectId: string | null;
 	/** The folder path within the scope; `[]` is the scope root. */
 	segments: string[];
-	ownerType: AssetOwnerType;
 	ownerId: string;
-	/** What to call this library — "My files", or the acting workspace's handle. */
-	ownerLabel: string;
-}
-
-/** The three populations the tree is partitioned into. Order is the reading order of the lane. */
-type SectionKey = "library" | "mounted" | "drives";
-
-interface SectionSpec {
-	key: SectionKey;
-	label: string;
-	icon: JSX.Element;
-	/** The empty-state sentence — different per section because the reasons differ. */
-	empty: string;
 }
 // #endregion
 
-// #region Section model
-const SECTIONS: readonly SectionSpec[] = [
-	{
-		key: "library",
-		label: "My library",
-		icon: <Icon name="folder" />,
-		empty: "No folders yet. Upload a file or create a folder to get started.",
-	},
-	{
-		key: "mounted",
-		label: "Mounted",
-		icon: <Icon name="projects" />,
-		empty: "Project and channel attachments appear here once you join an engagement.",
-	},
-	{
-		key: "drives",
-		label: "Connected drives",
-		icon: <Icon name="box" />,
-		empty: "Connect a drive from the action bar to browse it here.",
-	},
-];
-
-/**
- * Which section a root node belongs to.
- *
- * Keyed on `nodeKind` (what the node IS) rather than `kind` (how its card is drawn), because the two
- * deliberately differ: a mounted drive root and a project root both shape to the `stage` CARD, and
- * partitioning on that would file a connected Dropbox under Mounted.
- */
-function sectionOf(node: AssetTreeNode): SectionKey {
-	switch (node.nodeKind) {
-		case "project":
-		case "channel":
-			return "mounted";
-		case "drive":
-		case "mount":
-			return "drives";
-		default:
-			return "library";
+// #region Row rendering
+function rowIcon(row: LaneNode): JSX.Element {
+	if (row.key === PROJECTS_KEY) return <Icon name="projects" />;
+	if (row.key === DRIVES_KEY) return <Icon name="box" />;
+	if (row.nodeKind === "root" || row.nodeKind === "folder") {
+		return <FolderMark color={row.color} size={TREE_MARK} />;
 	}
+	return <NodeMark nodeKind={row.nodeKind as AssetNodeKind} />;
 }
-// #endregion
 
-// #region Tree adaptation
-/** Map one wire node (and its subtree) onto a {@link TreeNavNode}, threading the accumulated path. */
-function toNavNode(node: AssetTreeNode, parentPath: string[]): TreeNavNode {
-	const path = [...parentPath, node.segment];
+/** The library root and a writable folder take drops; a mounted row refuses them by having no target. */
+function rowDrop(row: LaneNode): Record<`data-${string}`, string> | null {
+	if (row.readOnly) return null;
+	if (row.key === LIBRARY_KEY) return dropAttrs(null);
+	return row.folderId ? dropAttrs(row.folderId) : null;
+}
+
+function toNavNode(row: LaneNode): TreeNavNode {
 	return {
-		key: pathKey(path),
-		label: node.label,
-		sublabel: node.sublabel ?? undefined,
-		icon: <NodeMark nodeKind={node.nodeKind} />,
-		avatar: node.avatar ? { image: node.avatar, label: node.label } : null,
-		count: node.fileCount,
-		children: node.children.map((c) => toNavNode(c, path)),
+		key: row.key,
+		label: row.label,
+		sublabel: row.sublabel ?? undefined,
+		icon: rowIcon(row),
+		avatar: row.avatar ? { image: row.avatar, label: row.label } : null,
+		status: row.nodeKind === "project" || row.nodeKind === "drive"
+			? statusMark({ readOnly: row.readOnly })
+			: null,
+		count: row.fileCount,
+		children: row.children.map(toNavNode),
+		expandable: row.lazy,
+		grouping: row.path === null,
+		attrs: rowDrop(row),
 	};
 }
 
-/**
- * Narrow a subtree to nodes matching `q`, keeping any ancestor of a match.
- *
- * A branch whose own label misses but whose child hits must survive, or filtering the tree would hide
- * the only route to the thing being searched for. Returns a new array; never mutates the signal's.
- */
-function filterTree(nodes: readonly AssetTreeNode[], q: string): AssetTreeNode[] {
-	if (!q) return [...nodes];
-	const out: AssetTreeNode[] = [];
-	for (const node of nodes) {
-		const children = filterTree(node.children, q);
-		if (node.label.toLowerCase().includes(q) || children.length > 0) {
-			out.push({ ...node, children });
-		}
-	}
-	return out;
+function flatten(rows: readonly LaneNode[]): LaneNode[] {
+	return rows.flatMap((row) => [row, ...flatten(row.children)]);
 }
 
-/** Every path key in a subtree — what a search result force-opens so the match is actually visible. */
-function allKeys(nodes: readonly AssetTreeNode[], parentPath: string[], into: Set<string>): void {
-	for (const node of nodes) {
-		const path = [...parentPath, node.segment];
-		into.add(pathKey(path));
-		allKeys(node.children, path, into);
-	}
+/** The ghost settings gear: file settings are the connected drives, in Settings. */
+function SettingsGear(props: { placement?: "right" }): JSX.Element {
+	return (
+		<Tooltip content="File settings" placement={props.placement}>
+			<Button
+				iconOnly
+				rounded
+				size="sm"
+				variant="text"
+				severity="secondary"
+				class="ui-hit"
+				icon={<Icon name="settings" size="sm" />}
+				aria-label="File settings"
+				onClick={() => void openSettings("integrations", "storage")}
+			/>
+		</Tooltip>
+	);
 }
 // #endregion
-
-/** The synthetic root row's key — the scope root, addressable like any other node. */
-const ROOT_KEY = "__root__";
 
 export default function FilesLane(props: FilesLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
 	const query = useSignal("");
-	const expanded = useSignal<Set<string>>(new Set([ROOT_KEY]));
-	const openSections = useSignal<Set<SectionKey>>(new Set<SectionKey>(["library", "mounted"]));
+	const expanded = useSignal<Set<string>>(new Set([LIBRARY_KEY, PROJECTS_KEY, DRIVES_KEY]));
+	const loaded = useSignal<LoadedChildren>({});
 	/** A lane-local transport failure. Never blanks the tree it already has (see `load`). */
 	const treeError = useSignal<string | null>(null);
 	const loadingTree = useSignal(false);
+	const loading = useRef(new Set<string>());
 
 	// #region Data
 	/**
@@ -221,26 +202,56 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 		if (q.ok && q.data) quota.value = q.data;
 	}
 
+	/** Read the children under a project or a drive folder, once. A failure can be retried by reopening. */
+	async function loadChildren(path: string[]): Promise<void> {
+		const key = pathKey(path);
+		if (loaded.peek()[key] !== undefined || loading.current.has(key)) return;
+		loading.current.add(key);
+		const res = await FilesService.treeChildren(path);
+		loading.current.delete(key);
+		if (res.ok && res.data) loaded.value = { ...loaded.peek(), [key]: res.data };
+		else treeError.value = res.message ?? "That location could not be opened.";
+	}
+
 	useEffect(() => {
 		// Seed the shared location so the body's first commit reads the URL, not a stale scope.
 		currentScope.value = props.scope;
 		subjectIdSignal.value = props.subjectId;
 		currentPath.value = props.segments;
 
-		// Force-open the ancestor chain of the deep-linked folder, so arriving four levels down does not
-		// require expanding four rows by hand.
-		const next = new Set(expanded.value);
-		next.add(ROOT_KEY);
-		for (const key of ancestorKeys(props.segments)) next.add(key || ROOT_KEY);
-		expanded.value = next;
-
 		try {
 			const el = globalThis.document?.querySelector(".ui-splitter") as HTMLElement | null;
 			collapsed.value = el?.dataset.mode === "collapsed";
 		} catch { /* no DOM — non-fatal */ }
 
-		void load();
+		void load().then(reportConsent);
 	}, []);
+
+	/** The consent round trip's outcome is a coarse marker on the URL it came back to. */
+	function reportConsent(): void {
+		const url = new URL(globalThis.location.href);
+		const outcome = IntegrationsService.completionFrom(url);
+		if (!outcome) return;
+		if (outcome === "failed") treeError.value = "That drive could not be connected. Try again.";
+		url.searchParams.delete("connect");
+		history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+	}
+
+	// A structural write anywhere, from a menu here or from the body, re-reads the tree.
+	useSignalEffect(() => {
+		if (treeRevision.value > 0) void load();
+	});
+
+	// The row in view is always reachable: its ancestors open whenever the location changes, and a deep
+	// link reads each lazy level on its way down. Only ever a widening, so a person's own collapse of an
+	// unrelated branch survives.
+	useSignalEffect(() => {
+		const at = treePath(tree.value, currentPath.value);
+		const open = new Set(expanded.peek());
+		for (const key of openChain(at)) open.add(key);
+		if (open.size !== expanded.peek().size) expanded.value = open;
+		for (const prefix of lazyPrefixes(at)) void loadChildren(prefix);
+	});
 	// #endregion
 
 	// #region Navigation
@@ -252,112 +263,121 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 			);
 		} catch { /* SSR — non-fatal */ }
 	}
-
-	/**
-	 * Scope the workspace to a tree path, in place.
-	 *
-	 * The address bar is kept in step with `pushState` so the location stays deep-linkable, copyable and
-	 * back-navigable, while `commitFiles` asks the BODY — the single fetch owner — to re-read. The lane
-	 * never fetches the listing itself; two regions fetching one query is how they drift.
-	 */
-	function navigate(segments: string[]): void {
-		currentPath.value = segments;
-		try {
-			globalThis.history?.pushState({}, "", assetHref(props.base, segments));
-		} catch { /* SSR / no history — non-fatal */ }
-		commitFiles();
-	}
-
-	/** A TreeNav key is a `pathKey`: percent-encoded segments joined by `/`, so decode after splitting. */
-	function pathOfKey(key: string): string[] {
-		if (key === ROOT_KEY || key === "") return [];
-		return key.split("/").map((s) => {
-			try {
-				return decodeURIComponent(s);
-			} catch {
-				return s;
-			}
-		});
-	}
 	// #endregion
 
 	// #region Derived tree
 	const q = useComputed(() => query.value.trim().toLowerCase());
-
-	const sectioned = useComputed(() => {
-		const filtered = filterTree(tree.value, q.value);
-		const buckets: Record<SectionKey, AssetTreeNode[]> = { library: [], mounted: [], drives: [] };
-		for (const node of filtered) buckets[sectionOf(node)].push(node);
-		return buckets;
-	});
-
-	const matches = useComputed(() =>
-		sectioned.value.library.length + sectioned.value.mounted.length + sectioned.value.drives.length
-	);
-
-	/** The library's top-level nodes, as the root row's children (see {@link rootChildren}). */
-	const library = useComputed(() => rootChildren(sectioned.value.library));
+	const rows = useComputed(() => filterRows(laneTree(tree.value, loaded.value), q.value));
+	const index = useComputed(() => new Map(flatten(rows.value).map((row) => [row.key, row])));
+	const matches = useComputed(() => rows.value.some((row) => row.children.length > 0));
 
 	// A search that matched deep in the tree must SHOW its matches, so a live query force-opens every
-	// surviving branch. Done in an EFFECT rather than while rendering: writing a signal during render
-	// re-enters the same render, and `expanded` is the very signal TreeNav writes back to.
-	useEffect(() => {
+	// surviving branch. In an effect, since writing a signal while rendering re-enters the render.
+	useSignalEffect(() => {
 		if (!q.value) return;
-		const open = new Set(expanded.value);
-		open.add(ROOT_KEY);
-		const b = sectioned.value;
-		allKeys([...library.value, ...b.mounted, ...b.drives], [], open);
+		const open = new Set(expanded.peek());
+		for (const key of allRowKeys(rows.value)) open.add(key);
 		// Only ever a widening, so it cannot fight the person's own collapse mid-search.
-		if (open.size !== expanded.value.size) expanded.value = open;
-	}, [q.value, tree.value]);
+		if (open.size !== expanded.peek().size) expanded.value = open;
+	});
 
-	const selectedKey = props.segments.length === 0 ? ROOT_KEY : pathKey(props.segments);
+	const selectedKey = selectedRow(tree.value, seeded.value ? currentPath.value : props.segments);
+	// #endregion
 
-	/** The library section leads with a synthetic root row, so there is always one click back to the top. */
-	function nodesFor(key: SectionKey): TreeNavNode[] {
-		if (key !== "library") return sectioned.value[key].map((n) => toNavNode(n, []));
-		return [{
-			key: ROOT_KEY,
-			label: props.ownerLabel,
-			icon: <Icon name="folder" />,
-			count: rootFileCount(sectioned.value.library),
-			children: library.value.map((n) => toNavNode(n, [])),
-		}];
+	// #region Row menus
+	function menuRow(action: RowAction, row: LaneNode): MenuItem {
+		switch (action) {
+			case "folder-color":
+				return folderColorRow({
+					folderId: row.folderId ?? "",
+					name: row.label,
+					color: row.color,
+				});
+			case "new-folder":
+				return {
+					key: action,
+					label: "New Folder",
+					icon: "folder",
+					command: () => askNewFolder(row.key === LIBRARY_KEY ? null : row.folderId),
+				};
+			case "delete-folder":
+				return {
+					key: action,
+					label: "Delete Folder",
+					icon: "trash",
+					danger: true,
+					command: () => {
+						pendingRemoval.value = {
+							assetIds: [],
+							folderIds: row.folderId ? [row.folderId] : [],
+							name: row.label,
+						};
+						removalOpen.value = true;
+					},
+				};
+			case "connect-drive":
+				return {
+					key: action,
+					label: "Connect Drive",
+					icon: "link",
+					command: () => (connectDriveOpen.value = true),
+				};
+			case "disconnect-drive":
+				return {
+					key: action,
+					label: "Disconnect Drive",
+					icon: "close",
+					danger: true,
+					command: () => {
+						pendingDisconnect.value = { connectionId: row.connectionId ?? "", name: row.label };
+						disconnectOpen.value = true;
+					},
+				};
+		}
+	}
+
+	function rowActions(node: TreeNavNode): MenuItem[] {
+		const row = index.value.get(node.key);
+		return (row ? rowActionsOf(row) : []).flatMap((action) =>
+			action === "folder-color"
+				? [{ separator: true }, menuRow(action, row!), { separator: true }]
+				: [menuRow(action, row!)]
+		);
 	}
 	// #endregion
 
 	/** The top-level library folders the collapsed rail offers as direct jumps. */
-	const railFolders = useComputed(() => library.value.slice(0, 7));
+	const railFolders = useComputed(() => rows.value[0]?.children.slice(0, 7) ?? []);
 
 	return (
 		<div class="fh-lanewrap">
 			{/* Collapsed presentation — revealed by CSS at the rail density. */}
 			<div class="fh-rail">
-				<Tooltip content={props.ownerLabel} placement="right">
+				<Tooltip content="Library" placement="right">
 					<button
 						type="button"
 						class="fh-rail__item"
 						data-active={props.segments.length === 0 ? "true" : undefined}
-						aria-label={`${props.ownerLabel} — library root`}
-						onClick={() => navigate([])}
+						aria-label="Library root"
+						onClick={() => goTo([])}
 					>
-						<Icon name="folder" size="md" />
+						<FolderMark size={TREE_MARK} />
 					</button>
 				</Tooltip>
 
 				<div class="fh-rail__items" role="list">
-					{railFolders.value.map((node) => (
-						<Tooltip key={node.segment} content={node.label} placement="right">
+					{railFolders.value.map((row) => (
+						<Tooltip key={row.key} content={row.label} placement="right">
 							<button
 								type="button"
 								class="fh-rail__item"
 								role="listitem"
-								data-active={props.segments[0] === node.segment ? "true" : undefined}
-								aria-label={node.label}
+								data-active={selectedKey === row.key ? "true" : undefined}
+								aria-label={row.label}
 								onClick={() =>
-									navigate([node.segment])}
+									goTo(row.path ?? [])}
 							>
-								<NodeMark nodeKind={node.nodeKind} />
+								{rowIcon(row)}
 							</button>
 						</Tooltip>
 					))}
@@ -371,6 +391,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 							</span>
 						</Tooltip>
 					)}
+					<SettingsGear placement="right" />
 					<LaneCollapseButton
 						collapsed
 						icon={<SidebarToggleIcon />}
@@ -397,7 +418,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 				<LaneList label="File locations" class="fh-lane__tree" busy={loadingTree.value}>
 					{treeError.value && <p class="fh-lane__error" role="status">{treeError.value}</p>}
 
-					{matches.value === 0 && q.value
+					{q.value && !matches.value
 						? (
 							<LaneEmpty
 								title="No folder matches"
@@ -406,43 +427,21 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 							/>
 						)
 						: (
-							<LaneSections>
-								{SECTIONS.map((section) => {
-									const nodes = nodesFor(section.key);
-									const populated = sectioned.value[section.key].length > 0;
-									// A section with nothing in it is still shown, closed: its absence would be
-									// indistinguishable from a library that has no drives connected, and the
-									// empty state is where the reader learns the section exists at all.
-									if (!populated && q.value) return null;
-									return (
-										<LaneSection
-											key={section.key}
-											id={`files-${section.key}`}
-											icon={section.icon}
-											label={section.label}
-											open={openSections.value.has(section.key)}
-											onToggle={() => {
-												const next = new Set(openSections.value);
-												if (next.has(section.key)) next.delete(section.key);
-												else next.add(section.key);
-												openSections.value = next;
-											}}
-										>
-											{populated
-												? (
-													<TreeNav
-														nodes={nodes}
-														selectedKey={selectedKey}
-														expanded={expanded}
-														onSelect={(node) => navigate(pathOfKey(node.key))}
-														aria-label={section.label}
-													/>
-												)
-												: <p class="fh-lane__sectionempty">{section.empty}</p>}
-										</LaneSection>
-									);
-								})}
-							</LaneSections>
+							<TreeNav
+								nodes={rows.value.map(toNavNode)}
+								selectedKey={selectedKey}
+								expanded={expanded}
+								onSelect={(node) => {
+									const path = index.value.get(node.key)?.path;
+									if (path) goTo(path);
+								}}
+								onToggle={(node, open) => {
+									const row = index.value.get(node.key);
+									if (open && row?.lazy && row.path) void loadChildren(row.path);
+								}}
+								rowActions={rowActions}
+								aria-label="File locations"
+							/>
 						)}
 				</LaneList>
 
@@ -465,6 +464,9 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 						icon={<SidebarToggleIcon />}
 						onToggle={() => setLaneCollapsed(!collapsed.value)}
 					/>
+					<LaneFooterActions>
+						<SettingsGear />
+					</LaneFooterActions>
 				</LaneFooter>
 			</div>
 		</div>

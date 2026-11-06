@@ -20,6 +20,8 @@ export interface DataTableRowProps<T> {
 	href: string | null;
 	/** A consumer styling token, rendered as `data-state`. */
 	state: string | null;
+	/** A consumer's own `data-*` attributes, derived from `row`, which is what re-renders them. */
+	attrs: Readonly<Record<`data-${string}`, string>> | null;
 	selectable: boolean;
 	selected: boolean;
 	focused: boolean;
@@ -74,6 +76,7 @@ export class DataTableRow<T> extends Component<DataTableRowProps<T>> {
 		const style = p.y === null ? `--dt-i:${p.index}` : `--dt-y:${p.y}px`;
 		return (
 			<div
+				{...p.attrs}
 				ref={p.measure ?? undefined}
 				class="ui-dt__row"
 				role="row"

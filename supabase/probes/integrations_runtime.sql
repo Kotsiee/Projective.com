@@ -139,7 +139,7 @@ BEGIN
     PERFORM pg_temp.check(v_zoom.auth_config ->> 'token_auth' = 'basic', 'zoom authenticates with HTTP Basic');
     PERFORM pg_temp.check(
         (SELECT array_agg(slug ORDER BY slug) FROM integrations.providers WHERE is_enabled)
-            = ARRAY['google', 'outlook', 'zoom'],
+            = ARRAY['google', 'google_drive', 'outlook', 'zoom'],
         'only the providers with a consent flow ship on, and credentials decide the rest');
     PERFORM pg_temp.check((v_zoom.auth_config ->> 'send_scopes')::boolean IS FALSE,
         'zoom''s consent URL names no scopes, which it would refuse');

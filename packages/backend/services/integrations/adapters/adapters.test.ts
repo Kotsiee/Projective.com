@@ -243,6 +243,18 @@ Deno.test("google drive: a shared drive is scoped by corpora, and paging resumes
 	assertEquals(params.get("pageToken"), "tok-2");
 });
 
+Deno.test("google drive: a folder's name is one narrow read, and a file is not a folder", async () => {
+	const { calls, net } = fakeNet((call) =>
+		call.url.pathname.endsWith("/F1")
+			? json({ id: "F1", name: "Briefs", mimeType: "application/vnd.google-apps.folder" })
+			: json({ id: "P1", name: "logo.png", mimeType: "image/png" })
+	);
+	const drive = createGoogleDriveAdapter(ctxOf("google_drive", net));
+	assertEquals(await drive.folder?.("F1"), { id: "F1", name: "Briefs" });
+	assertEquals(await drive.folder?.("P1"), null);
+	assertEquals(calls[0].url.searchParams.get("fields"), "id,name,mimeType");
+});
+
 Deno.test("google drive: a missing file is null, a revoked token is unauthorized, a quote cannot break q", async () => {
 	const { calls, net } = fakeNet((call) => {
 		if (call.url.pathname.endsWith("/gone")) {
@@ -259,6 +271,18 @@ Deno.test("google drive: a missing file is null, a revoked token is unauthorized
 		calls.at(-1)?.url.searchParams.get("q"),
 		"'a\\'b\\\\c' in parents and trashed = false",
 	);
+});
+
+Deno.test("google drive: a 403 names its cause — the project's API, a rate limit, or the file's own access", async () => {
+	const { net } = fakeNet((call) => {
+		const reason = call.url.pathname.split("/").at(-1);
+		return json({ error: { code: 403, errors: [{ reason }] } }, 403);
+	});
+	const drive = createGoogleDriveAdapter(ctxOf("google_drive", net));
+	await refusal(() => drive.metadata("accessNotConfigured"), "unavailable");
+	await refusal(() => drive.metadata("SERVICE_DISABLED"), "unavailable");
+	await refusal(() => drive.metadata("userRateLimitExceeded"), "rate_limited");
+	await refusal(() => drive.metadata("insufficientFilePermissions"), "forbidden");
 });
 
 Deno.test("google drive: a native document downloads as its PDF export, a binary through webContentLink", async () => {

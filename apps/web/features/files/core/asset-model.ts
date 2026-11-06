@@ -5,6 +5,8 @@ import {
 	AssetSource,
 	type AssetTreeNode,
 	AssetVisibility,
+	driveAddressOf,
+	DRIVES_SEGMENT,
 	FileCategory,
 	type FileScope,
 	type FileSortDir,
@@ -125,6 +127,20 @@ export function segmentsOfHref(href: string, base: string, routing: FolderRoutin
 		.split("/")
 		.filter(Boolean)
 		.map(safeDecode);
+}
+
+/**
+ * The location one level up. A drive's root steps out to the library rather than into its `drives`
+ * prefix, which addresses nothing.
+ */
+export function parentPath(path: readonly string[]): string[] {
+	const drive = driveAddressOf(path);
+	return drive && drive.folderIds.length === 0 ? [] : path.slice(0, -1);
+}
+
+/** The hub path a tree node addresses from the root: a connected drive hangs off its own prefix. */
+export function nodePath(node: Pick<AssetTreeNode, "nodeKind" | "segment">): string[] {
+	return node.nodeKind === "drive" ? [DRIVES_SEGMENT, node.segment] : [node.segment];
 }
 
 /** The three facet filters a `/files` address can carry. */

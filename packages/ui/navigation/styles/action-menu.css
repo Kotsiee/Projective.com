@@ -30,6 +30,14 @@
 	animation-name: ui-action-menu-enter-sub;
 }
 
+.ui-action-menu__content {
+	flex: none;
+	padding: var(--space-1) var(--space-2);
+}
+.ui-action-menu__content:focus {
+	outline: none;
+}
+
 .ui-action-menu__slot,
 .ui-action-menu .ui-tooltip__anchor {
 	display: flex;

@@ -17,7 +17,13 @@ import type {
 	ShareResolution,
 	StorageQuota,
 } from "@projective/types/files";
-import { fileObjectHref, folderHref, folderQueryHref, PLAN_STORAGE_MIB } from "@projective/types/files";
+import {
+	fileObjectHref,
+	folderHref,
+	folderQueryHref,
+	MOUNT_PREFIX,
+	PLAN_STORAGE_MIB,
+} from "@projective/types/files";
 import type { PlanCode } from "@projective/types/finance";
 import { workspaceHref } from "@projective/types/workspace";
 import { getAnonClient, getServiceClient, getUserClient } from "../../core/supabase.ts";
@@ -62,8 +68,6 @@ const LIBRARY_WINDOW = 2000;
 /** The page size when a caller does not ask for one, and the largest it may ask for. */
 const DEFAULT_LIMIT = 60;
 const MAX_LIMIT = 200;
-/** The segment prefix a mounted engagement is addressed by inside the hub (`/files/mnt-prj-…`). */
-export const MOUNT_PREFIX = "mnt-";
 
 /**
  * The one `files.items.status` a read may present, match or share: the bytes are stored and
@@ -459,7 +463,7 @@ export async function listHub(actor: Actor, params: AssetListParams, base = "/fi
 	if (path[0]?.startsWith(MOUNT_PREFIX)) return await listMounted(actor, path[0].slice(MOUNT_PREFIX.length), params, base);
 	return await listLibrary(actor, libraryFor(actor, params.subjectId), params, {
 		scope: "hub",
-		rootLabel: "My files",
+		rootLabel: "Library",
 		hrefOf: (ids) => folderHref(base, ids),
 	});
 }
@@ -601,7 +605,7 @@ async function listMounted(
 			items: page.items,
 			folders: [],
 			crumbs: [
-				{ id: null, label: "My files", href: base },
+				{ id: null, label: "Library", href: base },
 				{ id: mount, label: clamp(p.title, 160) || "Project", href: `${base}/${encodeURIComponent(mount)}` },
 			],
 			hasMore: page.hasMore,
@@ -677,6 +681,17 @@ export async function readWorkspaceTree(
 	return { ok: true, data: [libraryTree(lib, seat.name, seat.archived)] };
 }
 
+/** The short name a drive goes by in the hub, where the catalogue's label says more than a row needs. */
+const DRIVE_LABELS: Readonly<Record<string, string>> = {
+	google_drive: "Google",
+	onedrive: "OneDrive",
+};
+
+/** A drive's name in the tree and the trail. */
+export function driveLabel(providerSlug: string, providerLabel: string | null): string {
+	return DRIVE_LABELS[providerSlug] ?? (clamp(providerLabel, 200) || providerSlug);
+}
+
 /** The `/files` navigation tree: the acting library, the mounted engagements, the connected drives. */
 export async function readTree(actor: Actor): Promise<AssetTreeNode[]> {
 	const owner = ownerOfActor(actor);
@@ -687,12 +702,12 @@ export async function readTree(actor: Actor): Promise<AssetTreeNode[]> {
 		client.schema("files").from("items").select("storage_path")
 			.eq("bucket_id", "project").eq("status", SETTLED).is("deleted_at", null).limit(LIBRARY_WINDOW),
 		client.schema("integrations").from("v_my_connections")
-			.select("id, provider_slug, provider_label, external_account_label, status")
+			.select("id, provider_slug, provider_label, external_account_label, status, granted_kinds")
 			.limit(50),
 	]);
 	if (mounts.error) throw new Error(`files.items read failed: ${mounts.error.message}`);
 
-	const root = libraryTree(lib, "My files");
+	const root = libraryTree(lib, "Library");
 
 	const perProject = new Map<string, number>();
 	for (const row of (mounts.data ?? []) as Array<{ storage_path: string }>) {
@@ -727,11 +742,12 @@ export async function readTree(actor: Actor): Promise<AssetTreeNode[]> {
 		provider_label: string | null;
 		external_account_label: string | null;
 		status: string;
-	}>).filter((c) => c.status === "active").map((c) => ({
+		granted_kinds: string[] | null;
+	}>).filter((c) => c.status === "active" && c.granted_kinds?.includes("storage")).map((c) => ({
 		segment: c.id,
 		kind: "stage",
 		nodeKind: "drive",
-		label: clamp(c.provider_label, 200) || c.provider_slug,
+		label: driveLabel(c.provider_slug, c.provider_label),
 		sublabel: clamp(c.external_account_label, 200) || "Connected account",
 		folderId: c.id,
 		readOnly: true,

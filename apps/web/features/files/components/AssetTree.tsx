@@ -7,6 +7,7 @@ import "../styles/files-hub.css";
 import { pathKey, rootChildren } from "../core/asset-model.ts";
 import type { AssetTreeNode } from "../types/file-types.ts";
 import { NodeMark } from "./file-hub-glyphs.tsx";
+import { FolderMark } from "./FolderMark.tsx";
 
 /**
  * AssetTree — the `/files` navigation tree: the library's own folders, the mounted engagements, and
@@ -70,6 +71,9 @@ export interface AssetTreeProps {
 }
 // #endregion
 
+/** A folder's mark in a tree row, in px: its `.ui-treenav__lead` holds 20. */
+export const TREE_MARK = 18;
+
 /** The synthetic root node's key — the scope root, whose real path is `[]`. */
 export const ROOT_KEY = "__files_root__";
 
@@ -90,7 +94,7 @@ function decodeSegment(segment: string): string {
  * explaining it belongs on hover (§B.6). `aria-label` on the wrapper carries the same fact to a
  * screen reader, which cannot hover.
  */
-function statusMark(node: AssetTreeNode): JSX.Element | null {
+export function statusMark(node: Pick<AssetTreeNode, "readOnly">): JSX.Element | null {
 	if (!node.readOnly) return null;
 	return (
 		<Tooltip content="Read-only — you can browse and attach, but not change what is here">
@@ -108,7 +112,9 @@ function toNavNode(node: AssetTreeNode, parentPath: string[]): TreeNavNode {
 		key: pathKey(path),
 		label: node.label,
 		sublabel: node.sublabel ?? undefined,
-		icon: <NodeMark nodeKind={node.nodeKind} />,
+		icon: node.nodeKind === "folder"
+			? <FolderMark color={node.color} size={TREE_MARK} />
+			: <NodeMark nodeKind={node.nodeKind} />,
 		// A person- or entity-scoped node carries its picture; everything else takes the kind glyph.
 		avatar: node.avatar ? { image: node.avatar, label: node.label } : null,
 		status: statusMark(node),

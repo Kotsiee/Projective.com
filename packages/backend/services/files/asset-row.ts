@@ -104,7 +104,7 @@ export interface ItemRow {
 
 /** The `files.folders` columns every folder read selects. */
 export const FOLDER_COLUMNS =
-	"id, name, parent_folder_id, path, owner_type, owner_user_id, owner_entity_id, source, external_folder_id, visibility, created_at, updated_at";
+	"id, name, parent_folder_id, path, owner_type, owner_user_id, owner_entity_id, source, external_folder_id, visibility, color, created_at, updated_at";
 
 /** One `files.folders` row as selected by {@link FOLDER_COLUMNS}. */
 export interface FolderRow {
@@ -118,6 +118,7 @@ export interface FolderRow {
 	source: string | null;
 	external_folder_id: string | null;
 	visibility: string | null;
+	color: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -514,6 +515,7 @@ export function toAssetFolder(
 		source,
 		externalFolderId: row.external_folder_id ? clamp(row.external_folder_id, 1024) : null,
 		visibility: toAssetVisibility(row.visibility),
+		color: row.color,
 		itemCount: rollup.itemCount,
 		sizeBytes: rollup.sizeBytes,
 		sizeLabel: clamp(fmtSize(rollup.sizeBytes), 16),

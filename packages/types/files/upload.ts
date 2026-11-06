@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AssetOwnerType, AssetVisibility } from "./assets.ts";
 import { ContentFingerprintSchema, DedupVerdictSchema } from "./dedup.ts";
+import { FolderColor } from "./folders.ts";
 import { AssetMetadataSchema } from "./metadata.ts";
 import { StorageBucket } from "./storage.ts";
 
@@ -144,23 +145,35 @@ export const RenameAssetSchema = z.object({
 });
 export type RenameAsset = z.infer<typeof RenameAssetSchema>;
 
-/** Move assets into a folder. `targetFolderId: null` moves them to the library root. */
+/**
+ * Move assets and/or folders into a folder. `targetFolderId: null` moves them to the root of their own
+ * library. A folder carries its whole subtree with it.
+ */
 export const MoveAssetsSchema = z.object({
-	assetIds: z.array(assetId).min(1).max(BULK_MAX),
+	assetIds: z.array(assetId).max(BULK_MAX).default([]),
+	folderIds: z.array(z.string().min(1).max(120)).max(BULK_MAX).default([]),
 	targetFolderId: folderId,
-});
-export type MoveAssets = z.infer<typeof MoveAssetsSchema>;
+}).refine(
+	(v) => v.assetIds.length + v.folderIds.length > 0,
+	{ message: "Select at least one file or folder." },
+);
+export type MoveAssets = z.input<typeof MoveAssetsSchema>;
 
 /**
- * Delete assets.
+ * Delete assets and/or folders.
  *
- * Nothing is hard-deleted (root CLAUDE.md §5) — this stamps `files.items.deleted_at`, so a deletion is
- * recoverable and a share link that pointed at the asset stops resolving rather than 500ing.
+ * Nothing is hard-deleted (root CLAUDE.md §5) — this stamps `deleted_at`, so a deletion is recoverable
+ * and a share link that pointed at the row stops resolving rather than 500ing. A folder takes its whole
+ * subtree with it.
  */
 export const DeleteAssetsSchema = z.object({
-	assetIds: z.array(assetId).min(1).max(BULK_MAX),
-});
-export type DeleteAssets = z.infer<typeof DeleteAssetsSchema>;
+	assetIds: z.array(assetId).max(BULK_MAX).default([]),
+	folderIds: z.array(z.string().min(1).max(120)).max(BULK_MAX).default([]),
+}).refine(
+	(v) => v.assetIds.length + v.folderIds.length > 0,
+	{ message: "Select at least one file or folder." },
+);
+export type DeleteAssets = z.input<typeof DeleteAssetsSchema>;
 
 /**
  * Change the privacy scope of assets and/or folders.
@@ -178,6 +191,13 @@ export const SetVisibilitySchema = z.object({
 	{ message: "Select at least one asset or folder." },
 );
 export type SetVisibility = z.infer<typeof SetVisibilitySchema>;
+
+/** Set a folder's colour; `null` returns it to the default. */
+export const SetFolderColorSchema = z.object({
+	folderId: z.string().min(1).max(120),
+	color: FolderColor.nullable(),
+});
+export type SetFolderColor = z.infer<typeof SetFolderColorSchema>;
 
 /** Create a folder. `parentId: null` creates it at the library root. */
 export const CreateFolderSchema = z.object({

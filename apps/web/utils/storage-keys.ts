@@ -257,6 +257,8 @@ export const LocalKeys = {
 	FILES_ZOOM: "pj.local.files.zoom",
 	/** The file tables' column arrangement (DataTable `ColumnLayout`: order, widths, hidden). */
 	FILES_COLUMNS: "pj.local.files.columns",
+	/** The folder colours last picked, newest first (a JSON array of `#rrggbb`). */
+	FILES_FOLDER_COLORS: "pj.local.files.folderColors",
 	/** Whether the file inspector's details panel is open on desktop (`"1"`|`"0"`). */
 	INSPECTOR_PANEL_OPEN: "pj.local.inspector.panelOpen",
 	/** Whether the file preview modal's side panel is open on desktop (`"1"`|`"0"`). */

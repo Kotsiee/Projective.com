@@ -74,8 +74,6 @@ export default function EntityFilesScreen(props: EntityFilesScreenProps): JSX.El
 							aside={
 								<FolderTreePanel
 									rootLabel={props.name}
-									base={view.base}
-									routing="query"
 									subjectId={props.entityId}
 									initialTree={props.drive.tree}
 									initialPath={props.drive.path}

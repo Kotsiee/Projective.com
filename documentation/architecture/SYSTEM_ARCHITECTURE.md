@@ -1575,8 +1575,10 @@ connected Drive from becoming a second file model. Every implementation is a **r
 provider's API, never a fixture corpus** (Decision #313, owner ruling 2026-10-21): it receives one
 connection's unsealed credential for one request and speaks only to that provider's fixed origin.
 `adapters/mod.ts` → `createStorageAdapter(ctx)` is the one door that constructs one, and it refuses
-(`unavailable`) while `INTEGRATIONS_BACKEND_LIVE` is off. None is reachable yet: no storage provider
-has a seeded `auth_config` or is enabled, so `browse` / `importAsset` still refuse in words.
+(`unavailable`) while `INTEGRATIONS_BACKEND_LIVE` is off. Google Drive is the one reachable today
+(Decision #394): it alone has a seeded `auth_config` and is enabled. `browse` and `browseLocation` run
+under the caller's own storage-granted connection with a token claimed for the one call, and a
+provider's refusal comes back in words by its adapter code. `importAsset` still refuses in words.
 
 | Source         | Client                         | Paging cursor              | Download                       | Thumbnail               |
 | :------------- | :----------------------------- | :------------------------- | :----------------------------- | :---------------------- |
@@ -1592,6 +1594,7 @@ interface StorageAdapter {
   readonly source: AssetSource;          // the source a produced row carries
   list(path: DrivePath, cursor: string | null, limit: number): Promise<StorageListing>;
   metadata(id: string): Promise<AssetItem | null>;
+  folder?(id: string): Promise<{ id: string; name: string } | null>; // a breadcrumb's name
   downloadUrl(id: string): Promise<string | null>;
   thumbnailUrl(id: string): Promise<string | null>;
 }
@@ -1688,10 +1691,11 @@ so a mount is written by the connector service as the service role. The hub UI w
 affordance on such a row by absence (Decision #311). The hub shows a connected drive so a person can
 find and attach what they already have, not so it becomes a second write path into someone else's
 system of record, where a rename here would silently rename a file their whole team depends on.
-When browsing is wired, a connector location is addressed by the provider's opaque `folderId` (an S3
-prefix included), never by splitting it into `/files/*` segments: those segments are the hub's own
-folder names, each percent-encoded independently (`ROUTING.md`), and a prefix holding `/` would read
-back as a different tree.
+A connector location is addressed by the provider's opaque `folderId`, one per level
+(`/files/drives/{connectionId}/{folderId…}`, `driveAddressOf`), never by splitting a prefix into
+`/files/*` segments: each segment is percent-encoded independently (`ROUTING.md`), and a prefix holding
+`/` would read back as a different tree. Such a location answers as a read-only `hub` page
+(`services/files/live-locations.ts`), so the body renders it with the components it already has.
 
 #### Link ingest is the most dangerous path, and it is gated shut
 

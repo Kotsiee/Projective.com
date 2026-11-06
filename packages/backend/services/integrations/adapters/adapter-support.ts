@@ -153,7 +153,7 @@ export async function providerJson<T>(
 
 function codeForStatus(status: number, body: string): StorageAdapterErrorCode {
 	if (status === 401) return "unauthorized";
-	if (status === 429 || /rateLimitExceeded/.test(body)) return "rate_limited";
+	if (status === 429 || /rateLimitExceeded/i.test(body)) return "rate_limited";
 	if (status === 403) return "forbidden";
 	if (status === 404 || status === 410) return "not_found";
 	return "provider_error";
@@ -374,6 +374,7 @@ export function connectorFolder(
 		source,
 		externalFolderId: folder.externalId,
 		visibility: "private",
+		color: null,
 		itemCount: nonNegativeInt(folder.itemCount),
 		sizeBytes: 0,
 		sizeLabel: fmtSize(0),

@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { type DataColumn, DataTable } from "@projective/ui/display";
+import { type DataColumn, DataTable, type DataTableProps } from "@projective/ui/display";
 import type { Severity } from "@projective/ui/fields";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { nodeKindLabel, statusLabel, statusTone } from "../core/submission-model.ts";
@@ -17,6 +17,12 @@ export interface SubmissionNodeListProps {
 	onOpen: (node: SubmissionTreeNode) => void;
 	/** `false` drops the header row, for folder rows listed above a file table. */
 	header?: boolean;
+	/** A row's leading mark, when the host draws its own. */
+	lead?: (node: SubmissionTreeNode) => JSX.Element;
+	/** Per-node actions on a trailing kebab and on right-click. */
+	rowActions?: DataTableProps<SubmissionTreeNode>["rowActions"];
+	/** `data-*` attributes for a row, so a host can address it from outside the table. */
+	rowAttrs?: DataTableProps<SubmissionTreeNode>["rowAttrs"];
 	"aria-label"?: string;
 }
 
@@ -91,7 +97,10 @@ const COLUMNS_WITHOUT_STATUS = NODE_COLUMNS.filter((column) => column.id !== "st
 
 export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element {
 	const hasStatus = props.nodes.some((node) => node.kind === "unit" && node.status);
-	const columns = hasStatus ? NODE_COLUMNS : COLUMNS_WITHOUT_STATUS;
+	const base = hasStatus ? NODE_COLUMNS : COLUMNS_WITHOUT_STATUS;
+	const columns = props.lead
+		? base.map((column) => column.id === "name" ? { ...column, lead: props.lead } : column)
+		: base;
 	return (
 		<DataTable
 			rows={props.nodes}
@@ -101,6 +110,8 @@ export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element 
 			aria-label={props["aria-label"] ?? "Submissions"}
 			header={props.header}
 			onRowActivate={(node) => props.onOpen(node)}
+			rowActions={props.rowActions}
+			rowAttrs={props.rowAttrs}
 			rowHeight={56}
 			virtualize={false}
 			columnChooser={false}

@@ -4,6 +4,7 @@ import { signal, useSignalEffect } from "@preact/signals";
 import "../styles/colorpicker.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { hueSaturationToWheel, wheelToHueSaturation } from "../core/color-wheel.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
@@ -37,6 +38,11 @@ export interface ColorPickerProps extends BaseFieldProps {
 	inline?: boolean;
 	/** Emitted string format (default `hex`). */
 	format?: ColorFormat;
+	/**
+	 * `square` (default) is a saturation/brightness area over a hue rail; `wheel` is a hue/saturation
+	 * disc over a brightness rail.
+	 */
+	variant?: "square" | "wheel";
 	class?: string;
 }
 
@@ -135,8 +141,9 @@ function parseColor(input: string): Hsb | null {
 
 /**
  * ColorPicker — a token-driven colour selector adapted from PrimeNG's ColorPicker. Signal-first
- * (pass a `Signal` for controlled use). Presents a saturation/brightness square, a hue slider and a
- * hex input, either inline or behind a swatch trigger that opens a popup. HSB↔RGB↔hex conversion is
+ * (pass a `Signal` for controlled use). Presents a saturation/brightness square and a hue slider, or
+ * a hue/saturation wheel and a brightness slider (`variant`), with a hex input, either inline or
+ * behind a swatch trigger that opens a popup. HSB↔RGB↔hex conversion is
  * implemented in-file. The saturation area and hue slider are ARIA `slider`s with arrow-key control;
  * the trigger advertises `aria-haspopup`/`aria-expanded`. The gradient and swatch backgrounds are
  * genuine colour values (the sanctioned exception to the token-only rule for this component).
@@ -154,6 +161,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 		onValueChange,
 		inline = false,
 		format = "hex",
+		variant = "square",
 		id,
 		name,
 		disabled,
@@ -165,6 +173,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 		"aria-describedby": ariaDescribedby,
 	} = props;
 
+	const wheel = variant === "wheel";
 	const ctrl = useControllable<string>(value, "#ff0000", onValueChange);
 	const rootId = useId(id, "colorpicker");
 	const panelId = `${rootId}-panel`;
@@ -227,6 +236,16 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 		const el = areaRef.current;
 		if (!el) return;
 		const rect = el.getBoundingClientRect();
+		if (wheel) {
+			const radius = rect.width / 2;
+			const at = wheelToHueSaturation(
+				clientX - (rect.left + radius),
+				clientY - (rect.top + radius),
+				radius,
+			);
+			emit({ ...at, b: hsb.peek().b });
+			return;
+		}
 		const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 		const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
 		emit({ h: hsb.peek().h, s: Math.round(x * 100), b: Math.round((1 - y) * 100) });
@@ -252,7 +271,9 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 	const updateHueFromPointer = (clientX: number, target: HTMLElement) => {
 		const rect = target.getBoundingClientRect();
 		const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-		emit({ ...hsb.peek(), h: Math.round(x * 360) });
+		emit(
+			wheel ? { ...hsb.peek(), b: Math.round(x * 100) } : { ...hsb.peek(), h: Math.round(x * 360) },
+		);
 	};
 	const onHuePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
 		if (disabled || readOnly) return;
@@ -277,6 +298,18 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 		if (disabled || readOnly) return;
 		const cur = hsb.peek();
 		let { s, b } = cur;
+		if (wheel) {
+			const hue = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+			const saturation = { ArrowDown: -1, ArrowUp: 1 }[e.key];
+			if (hue === undefined && saturation === undefined) return;
+			e.preventDefault();
+			emit({
+				h: (cur.h + (hue ?? 0) + 360) % 360,
+				s: clampInt(s + (saturation ?? 0), 0, 100),
+				b,
+			});
+			return;
+		}
 		switch (e.key) {
 			case "ArrowLeft":
 				s -= 1;
@@ -305,6 +338,13 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 	const onHueKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
 		if (disabled || readOnly) return;
 		const cur = hsb.peek();
+		if (wheel) {
+			const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+			if (step === undefined) return;
+			e.preventDefault();
+			emit({ ...cur, b: clampInt(cur.b + step, 0, 100) });
+			return;
+		}
 		let h = cur.h;
 		switch (e.key) {
 			case "ArrowLeft":
@@ -359,29 +399,58 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 					"--z-portal": String(stack.zIndex),
 				})}
 			>
-				<div
-					ref={areaRef}
-					class="ui-colorpicker__area"
-					role="slider"
-					tabIndex={disabled ? -1 : 0}
-					aria-label="Saturation and brightness"
-					aria-valuetext={`Saturation ${cur.s}%, brightness ${cur.b}%`}
-					aria-valuenow={cur.b}
-					aria-valuemin={0}
-					aria-valuemax={100}
-					style={styleVars({ "--cp-hue": hueColor })}
-					onPointerDown={onAreaPointerDown}
-					onPointerMove={onAreaPointerMove}
-					onPointerUp={onAreaPointerUp}
-					onKeyDown={onAreaKeyDown}
-				>
-					<div class="ui-colorpicker__area-white" />
-					<div class="ui-colorpicker__area-black" />
-					<div
-						class="ui-colorpicker__area-thumb"
-						style={styleVars({ "--cp-x": `${cur.s}%`, "--cp-y": `${100 - cur.b}%` })}
-					/>
-				</div>
+				{wheel
+					? (
+						<div
+							ref={areaRef}
+							class="ui-colorpicker__wheel"
+							role="slider"
+							tabIndex={disabled ? -1 : 0}
+							aria-label="Hue and saturation"
+							aria-valuetext={`Hue ${cur.h} degrees, saturation ${cur.s}%`}
+							aria-valuenow={cur.h}
+							aria-valuemin={0}
+							aria-valuemax={360}
+							style={styleVars({ "--cp-dim": String(1 - cur.b / 100) })}
+							onPointerDown={onAreaPointerDown}
+							onPointerMove={onAreaPointerMove}
+							onPointerUp={onAreaPointerUp}
+							onKeyDown={onAreaKeyDown}
+						>
+							<div
+								class="ui-colorpicker__wheel-thumb"
+								style={styleVars({
+									"--cp-x": `${hueSaturationToWheel(cur.h, cur.s).x}%`,
+									"--cp-y": `${hueSaturationToWheel(cur.h, cur.s).y}%`,
+								})}
+							/>
+						</div>
+					)
+					: (
+						<div
+							ref={areaRef}
+							class="ui-colorpicker__area"
+							role="slider"
+							tabIndex={disabled ? -1 : 0}
+							aria-label="Saturation and brightness"
+							aria-valuetext={`Saturation ${cur.s}%, brightness ${cur.b}%`}
+							aria-valuenow={cur.b}
+							aria-valuemin={0}
+							aria-valuemax={100}
+							style={styleVars({ "--cp-hue": hueColor })}
+							onPointerDown={onAreaPointerDown}
+							onPointerMove={onAreaPointerMove}
+							onPointerUp={onAreaPointerUp}
+							onKeyDown={onAreaKeyDown}
+						>
+							<div class="ui-colorpicker__area-white" />
+							<div class="ui-colorpicker__area-black" />
+							<div
+								class="ui-colorpicker__area-thumb"
+								style={styleVars({ "--cp-x": `${cur.s}%`, "--cp-y": `${100 - cur.b}%` })}
+							/>
+						</div>
+					)}
 				<div class="ui-colorpicker__sliders">
 					<div
 						class="ui-colorpicker__preview"
@@ -389,13 +458,16 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 						aria-hidden="true"
 					/>
 					<div
-						class="ui-colorpicker__hue"
+						class={cx("ui-colorpicker__hue", wheel && "ui-colorpicker__hue--brightness")}
 						role="slider"
 						tabIndex={disabled ? -1 : 0}
-						aria-label="Hue"
-						aria-valuenow={cur.h}
+						aria-label={wheel ? "Brightness" : "Hue"}
+						aria-valuenow={wheel ? cur.b : cur.h}
 						aria-valuemin={0}
-						aria-valuemax={360}
+						aria-valuemax={wheel ? 100 : 360}
+						style={wheel
+							? styleVars({ "--cp-hue": rgbToHex(hsbToRgb({ ...cur, b: 100 })) })
+							: undefined}
 						onPointerDown={onHuePointerDown}
 						onPointerMove={onHuePointerMove}
 						onPointerUp={onHuePointerUp}
@@ -403,7 +475,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 					>
 						<div
 							class="ui-colorpicker__hue-thumb"
-							style={styleVars({ "--cp-x": `${(cur.h / 360) * 100}%` })}
+							style={styleVars({ "--cp-x": `${wheel ? cur.b : (cur.h / 360) * 100}%` })}
 						/>
 					</div>
 				</div>

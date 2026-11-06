@@ -5,6 +5,9 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { Avatar } from "../../display/components/Avatar.tsx";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
+import { useId } from "../../hooks/useId.ts";
+import type { MenuItem } from "../../types/mod.ts";
+import { ActionMenu } from "./ActionMenu.tsx";
 
 /**
  * TreeNav — a standard tree-explorer navigation sidebar: a hierarchical list of disclosure nodes with
@@ -13,6 +16,11 @@ import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
  * Purpose-built for wayfinding (selecting a node scopes a workspace) rather than data editing — it is
  * lighter than {@link Tree}: no checkboxes, drag-drop, or virtualization, just clean expand/collapse +
  * selection with the enterprise look (borderless rows, tonal hover, a tonal active tint).
+ *
+ * A branch can load on demand: `expandable` draws the chevron before `children` have arrived and the
+ * host fills them from `onToggle`. A `grouping` row is a heading that only folds. `rowActions` puts a
+ * menu on right-click, ContextMenu and Shift+F10, as `DataTable`'s does, and `attrs` lets a host address
+ * a row from outside the tree (a drop target in another hydration root).
  *
  * Signal-first + controllable: `selectedKey` is parent-owned (the host scopes the workspace to it);
  * `expanded` may be a parent `Signal<Set<string>>` (fully controlled — the host can auto-expand the
@@ -43,6 +51,12 @@ export interface TreeNavNode {
 	count?: number | null;
 	children?: TreeNavNode[];
 	disabled?: boolean;
+	/** Draw the chevron before `children` have arrived; the host loads them from `onToggle`. */
+	expandable?: boolean;
+	/** A heading row: activating it folds the branch and selects nothing. */
+	grouping?: boolean;
+	/** `data-*` attributes for the row, so a host can address it from outside the tree. */
+	attrs?: Readonly<Record<`data-${string}`, string>> | null;
 }
 
 export interface TreeNavProps {
@@ -55,6 +69,8 @@ export interface TreeNavProps {
 	/** Initially-expanded keys (used only when `expanded` is omitted). */
 	defaultExpanded?: string[];
 	onToggle?: (node: TreeNavNode, expanded: boolean) => void;
+	/** A row's menu on right-click / ContextMenu / Shift+F10. No rows keeps the browser's own menu. */
+	rowActions?: (node: TreeNavNode) => readonly MenuItem[];
 	"aria-label"?: string;
 	class?: string;
 }
@@ -86,6 +102,7 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 		expanded: controlledExpanded,
 		defaultExpanded,
 		onToggle,
+		rowActions,
 		"aria-label": ariaLabel = "Navigation tree",
 		class: className,
 	} = props;
@@ -99,6 +116,10 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 	const rovingKey = focusedKey.value ?? selectedKey ?? nodes[0]?.key ?? null;
 
 	const isExpanded = (key: string) => expanded.value.has(key);
+	const isBranch = (node: TreeNavNode) =>
+		(node.children?.length ?? 0) > 0 || node.expandable === true;
+	const treeId = useId(undefined, "treenav");
+	const rowId = (node: TreeNavNode) => `${treeId}-${node.key}`;
 
 	const setExpanded = (key: string, open: boolean, node: TreeNavNode) => {
 		const next = new Set(expanded.value);
@@ -111,10 +132,12 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 
 	const selectNode = (node: TreeNavNode) => {
 		if (node.disabled) return;
-		// Selecting a branch also opens it, so the workspace scope + the visible tree agree.
-		if (node.children && node.children.length > 0 && !isExpanded(node.key)) {
-			setExpanded(node.key, true, node);
+		if (node.grouping) {
+			if (isBranch(node)) toggle(node);
+			return;
 		}
+		// Selecting a branch also opens it, so the workspace scope + the visible tree agree.
+		if (isBranch(node) && !isExpanded(node.key)) setExpanded(node.key, true, node);
 		onSelect?.(node);
 	};
 
@@ -161,9 +184,10 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 
 	// #region Row
 	const renderNode = (node: TreeNavNode, level: number): JSX.Element => {
-		const hasChildren = !!node.children && node.children.length > 0;
+		const hasChildren = isBranch(node);
 		const open = hasChildren && isExpanded(node.key);
 		const selected = node.key === selectedKey;
+		const actions = rowActions?.(node) ?? [];
 
 		return (
 			<li
@@ -176,6 +200,8 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 			>
 				<div class="ui-treenav__rowwrap" style={styleVars({ "--treenav-depth": String(level) })}>
 					<button
+						{...node.attrs}
+						id={rowId(node)}
 						type="button"
 						class={cx(
 							"ui-treenav__row",
@@ -234,12 +260,21 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 							? <span class="ui-treenav__count">{node.count}</span>
 							: null}
 					</button>
+					{actions.length > 0
+						? (
+							<ActionMenu
+								model={[...actions]}
+								aria-label={`Actions for ${node.label}`}
+								surface={() => document.getElementById(rowId(node))}
+							/>
+						)
+						: null}
 				</div>
 
-				{hasChildren && open
+				{open && node.children?.length
 					? (
 						<ul class="ui-treenav__group" role="group">
-							{node.children!.map((child) => renderNode(child, level + 1))}
+							{node.children.map((child) => renderNode(child, level + 1))}
 						</ul>
 					)
 					: null}

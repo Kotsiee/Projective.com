@@ -39,6 +39,7 @@ import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-s
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import {
 	workspaceChannelPanelFor,
+	workspaceFilesPanelFor,
 	workspaceMembersPanelFor,
 	workspacePanelDockFor,
 } from "@web/features/workspaces/core/workspace-panel-slot.tsx";
@@ -56,6 +57,7 @@ import {
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
 import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
 import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
+import { filesPanelDockFor, filesPanelFor } from "@web/features/files/core/files-panel-slot.tsx";
 import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
 import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
@@ -182,7 +184,8 @@ async function middleNavHeaderFor(
  * tab, a project channel's details (Task · Stage · Channel) on its Chat view, a catalogue listing's
  * live card and readiness (or its chosen buyer) in the item workspace, or a team's or business's
  * channel details on its Chat view (Decision #308), the member inspector on a team's or business's
- * Members module (Decision #322), or the month navigator on `/calendar` (Decision #326). Exactly one
+ * Members module (Decision #322), the file inspector on `/files` and on a team's or business's drive,
+ * or the month navigator on `/calendar` (Decision #326). Exactly one
  * owns the single panel slot per URL — the resolvers test disjoint path roots — and every other route
  * registers none, so the frame has no panel column.
  */
@@ -196,6 +199,8 @@ async function middleNavPanelFor(
 		(await cataloguePanelFor(url, context, actor)) ??
 		(await workspaceChannelPanelFor(url, actor)) ??
 		(await workspaceMembersPanelFor(url, actor)) ??
+		workspaceFilesPanelFor(url) ??
+		filesPanelFor(url) ??
 		(await calendarPanelFor(url, context, actor));
 }
 
@@ -340,7 +345,7 @@ export default define.page(async function DashboardLayout(ctx) {
 			middleNavHeader={middleNavHeader}
 			middleNavFooter={middleNavFooter}
 			middleNavPanel={middleNavPanel}
-			middleNavPanelDock={workspacePanelDockFor(ctx.url)}
+			middleNavPanelDock={filesPanelDockFor(ctx.url) ?? workspacePanelDockFor(ctx.url)}
 		>
 			{
 				/* The floating hosts are the framing page's, never a `bare` page's: a same-origin frame

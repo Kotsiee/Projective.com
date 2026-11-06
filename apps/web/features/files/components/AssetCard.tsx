@@ -123,7 +123,9 @@ export function AssetCard(props: AssetCardProps): JSX.Element {
 			</span>
 
 			{/* The two facts the marks encode, announced once, in text, to assistive technology. */}
-			<span class="ui-visually-hidden">{`${source}. ${scope}.`}</span>
+			<span class="ui-visually-hidden">
+				{`${source}. ${scope}.${asset.canManage ? " Press M to move it." : ""}`}
+			</span>
 		</div>
 	);
 }

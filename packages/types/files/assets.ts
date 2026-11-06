@@ -371,8 +371,11 @@ export const AssetListParamsSchema = z.object({
 	visibility: z.array(AssetVisibility).max(3).optional(),
 	/** Free-text name match — an asset's display name or the name it was uploaded under. */
 	query: z.string().max(120).optional(),
-	/** Opaque paging cursor (the id of the last item of the previous page). */
-	cursor: z.string().max(120).nullable().optional(),
+	/**
+	 * Opaque paging cursor: the id of the last item of the previous page, or a connected drive's own
+	 * continuation token, which is why it takes the browse contract's 600 characters.
+	 */
+	cursor: z.string().max(600).nullable().optional(),
 	limit: z.number().int().min(1).max(200).optional(),
 });
 export type AssetListParams = z.infer<typeof AssetListParamsSchema>;

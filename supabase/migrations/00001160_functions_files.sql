@@ -787,6 +787,7 @@ BEGIN
            AND (NEW.name IS DISTINCT FROM OLD.name
                 OR NEW.parent_folder_id IS DISTINCT FROM OLD.parent_folder_id
                 OR NEW.path IS DISTINCT FROM OLD.path
+                OR NEW.color IS DISTINCT FROM OLD.color
                 OR NEW.visibility IS DISTINCT FROM OLD.visibility
                 OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
                 OR NEW.owner_entity_id IS DISTINCT FROM OLD.owner_entity_id) THEN

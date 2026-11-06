@@ -26,6 +26,8 @@ export interface ActionMenuRowsProps {
 	/** Id of the open flyout, wired to the open parent's `aria-controls`. */
 	flyoutId: string | null;
 	handlers: ActionMenuRowHandlers;
+	/** Close the whole menu, for a row's custom `content`. */
+	onClose: () => void;
 }
 // #endregion
 
@@ -46,10 +48,31 @@ export function actionMenuRowId(levelId: string, index: number): string {
  * plus `aria-describedby`. Presentational only — every behaviour arrives through `handlers`.
  */
 export function ActionMenuRows(props: ActionMenuRowsProps): JSX.Element {
-	const { items, levelId, openIndex, flyoutId, handlers } = props;
+	const { items, levelId, openIndex, flyoutId, handlers, onClose } = props;
 
 	const renderRow = (item: MenuItem, index: number): VNode => {
 		const id = actionMenuRowId(levelId, index);
+
+		// No `data-index`: the row is not a hover target, or a pointer crossing it would pull focus in.
+		if (item.content) {
+			return (
+				<div
+					key={itemKey(item, index)}
+					id={id}
+					role="group"
+					aria-label={item.label}
+					tabIndex={-1}
+					class="ui-action-menu__content"
+					onKeyDown={(e) => handlers.onKeyDown(e, index)}
+					onFocus={({ currentTarget: group }) =>
+						(group.querySelector<HTMLElement>('[aria-checked="true"]') ??
+							group.querySelector<HTMLElement>("button"))?.focus()}
+				>
+					{item.content(onClose)}
+				</div>
+			);
+		}
+
 		const parent = isSubmenu(item);
 		const open = parent && openIndex === index;
 		const empty = isEmptyRow(item);

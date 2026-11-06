@@ -20,6 +20,7 @@ import type {
 	MoveAssets,
 	RenameAsset,
 	RevokeShare,
+	SetFolderColor,
 	SetVisibility,
 	ShareLink,
 	ShareResolution,
@@ -55,11 +56,13 @@ import {
 	removeAssets,
 	renameAsset,
 	revokeShare,
+	setFolderColor,
 	setVisibility,
 	starAsset,
 } from "./live-library-writes.ts";
 import { completeUpload, initUpload } from "./live-uploads.ts";
 import { objectUrlFor } from "./live-objects.ts";
+import { childNodesOf, listElsewhere } from "./live-locations.ts";
 import { inspectAssetFor } from "./live-inspect.ts";
 
 /**
@@ -144,7 +147,11 @@ export class FilesBackendService {
 				return anyone("list-share", async () => slug ? toResult(await listShare(slug, params)) : fail(404, { message: "Not found." }) as Result<AssetListPage>);
 			}
 			case "hub":
-				return signedIn("list", actor, async (a) => toResult(await listHub(a, params)));
+				return signedIn(
+					"list",
+					actor,
+					async (a) => toResult(await (listElsewhere(a, params) ?? listHub(a, params))),
+				);
 			case "drive":
 				return signedIn("list-drive", actor, async (a) =>
 					params.subjectId
@@ -180,6 +187,11 @@ export class FilesBackendService {
 			);
 		}
 		return signedIn("tree", actor, async (a) => ok(await readTree(a)));
+	}
+
+	/** The nodes beneath a connected drive's folder or a mounted engagement: the tree's lazy children. */
+	static treeChildren(path: string[], actor: ReadActor): Promise<Result<AssetTreeNode[]>> {
+		return signedIn("tree-children", actor, async (a) => toResult(await childNodesOf(a, path)));
 	}
 
 	/** One asset the caller may read. */
@@ -274,14 +286,22 @@ export class FilesBackendService {
 		return signedIn("star", actor, async (a) => toResult(await starAsset(a, assetId, starred)));
 	}
 
-	/** Move assets within the acting library. */
+	/** Move assets and folders inside the library they belong to. */
 	static move(input: MoveAssets, actor: ReadActor): Promise<Result<{ moved: number }>> {
 		return signedIn("move", actor, async (a) => toResult(await moveAssets(a, input)));
 	}
 
-	/** Soft-delete assets, closing their share links. */
+	/** Soft-delete assets and folders (each with its subtree), closing their share links. */
 	static remove(input: DeleteAssets, actor: ReadActor): Promise<Result<{ removed: number }>> {
 		return signedIn("delete", actor, async (a) => toResult(await removeAssets(a, input)));
+	}
+
+	/** Set or clear a folder's colour. */
+	static setFolderColor(
+		input: SetFolderColor,
+		actor: ReadActor,
+	): Promise<Result<{ color: string | null }>> {
+		return signedIn("folder-color", actor, async (a) => toResult(await setFolderColor(a, input)));
 	}
 
 	/** Change the privacy scope of assets and folders in one call. */

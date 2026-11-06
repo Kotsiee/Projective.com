@@ -3,6 +3,7 @@ import { Breadcrumb } from "@projective/ui/navigation";
 import "../styles/files-hub.css";
 import type { AssetCrumb } from "../types/file-types.ts";
 import { type FolderRouting, segmentsOfHref } from "../core/asset-model.ts";
+import { dropAttrs } from "../core/files-dnd.ts";
 
 /**
  * AssetBreadcrumbs — the location trail above the hub workspace.
@@ -25,6 +26,11 @@ import { type FolderRouting, segmentsOfHref } from "../core/asset-model.ts";
  * exists, so the server's trail is SHORTER than the URL that asked for it — and a positional pairing
  * would then navigate to a prefix of a path that is no longer real.
  *
+ * ## Every crumb but the last is a drop target
+ *
+ * A file dragged up the trail lands in that folder. The last crumb is where the file already is. A
+ * crumb on a read-only location takes nothing, and nothing there can be dragged either.
+ *
  * Dumb: no data access, no state.
  */
 export interface AssetBreadcrumbsProps {
@@ -35,6 +41,8 @@ export interface AssetBreadcrumbsProps {
 	onNavigate: (path: string[]) => void;
 	/** Where the crumb hrefs carry the folder path: under `base` (the default) or in its query. */
 	routing?: FolderRouting;
+	/** Whether the crumbs take drops: only where the library's own folders are in the trail. */
+	droppable?: boolean;
 	/** Accessible name for the trail's `nav` landmark. */
 	"aria-label"?: string;
 }
@@ -68,6 +76,15 @@ export function AssetBreadcrumbs(props: AssetBreadcrumbsProps): JSX.Element {
 			<Breadcrumb
 				model={model}
 				separator="chevron"
+				itemTemplate={(item, index) => {
+					const crumb = crumbs[index];
+					const drops = props.droppable && index < crumbs.length - 1;
+					return (
+						<span class="fh-crumbs__label" {...(drops ? dropAttrs(crumb.id) : null)}>
+							{item.label}
+						</span>
+					);
+				}}
 				aria-label={props["aria-label"] ?? "File path"}
 				class="fh-crumbs__bar"
 			/>

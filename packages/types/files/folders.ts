@@ -71,7 +71,40 @@ export type AssetNodeKind = z.infer<typeof AssetNodeKind>;
 
 // #endregion
 
+// #region Mounted addresses
+
+/** The hub segment that opens a connected drive: `/files/drives/{connectionId}/{folderId…}`. */
+export const DRIVES_SEGMENT = "drives";
+
+/** The prefix a mounted engagement's hub segment carries: `/files/mnt-{projectSlug}/…`. */
+export const MOUNT_PREFIX = "mnt-";
+
+const CONNECTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The connected drive a hub path addresses, or `null` for any other location. A connection id is a
+ * uuid, so a library folder that happens to be called `drives` keeps its own address. Past the
+ * connection, each segment is the provider's opaque folder id, one per level, so a prefix holding `/`
+ * can never read back as a different tree.
+ */
+export function driveAddressOf(
+	path: readonly string[] | null | undefined,
+): { connectionId: string; folderIds: string[] } | null {
+	if (path?.[0] !== DRIVES_SEGMENT || !CONNECTION_ID.test(path[1] ?? "")) return null;
+	return { connectionId: path[1], folderIds: path.slice(2) };
+}
+
+/** Whether a hub path sits in a mounted engagement. */
+export function isMountPath(path: readonly string[] | null | undefined): boolean {
+	return path?.[0]?.startsWith(MOUNT_PREFIX) ?? false;
+}
+
+// #endregion
+
 // #region Folder row
+
+/** A folder's colour: `#rrggbb`, lower-case, as `files.folders.color` holds it. */
+export const FolderColor = z.string().regex(/^#[0-9a-f]{6}$/);
 
 /**
  * One folder row — the container projection the hub's grid, tree and breadcrumbs render from.
@@ -95,6 +128,8 @@ export const AssetFolderSchema = z.object({
 	/** The connector's own folder id when `source !== "supabase"`; `null` for a hub-native folder. */
 	externalFolderId: z.string().max(1024).nullable(),
 	visibility: AssetVisibility,
+	/** The owner's chosen colour; `null` is the default neutral tone. A mounted folder has none. */
+	color: FolderColor.nullable().default(null),
 	/** Assets directly inside this folder (not the whole subtree) — the muted card count. */
 	itemCount: z.number().int().min(0),
 	/** Total bytes of the whole subtree — the sortable "size" key. Always 0 for a mounted folder. */
@@ -141,6 +176,8 @@ export interface AssetTreeNode {
 	handle?: string | null;
 	/** The folder this node resolves to, or `null` for a synthetic grouping node. */
 	folderId?: string | null;
+	/** The folder's colour, for its mark in the tree. */
+	color?: string | null;
 	/** Whether this node is a read-only mount (a channel, a project, a connected drive). */
 	readOnly?: boolean;
 	/** Total assets under this node (a muted count, not an in-row status — §B.6). */
@@ -159,6 +196,7 @@ export const AssetTreeNodeSchema: z.ZodType<AssetTreeNode> = z.lazy(() =>
 		avatar: z.string().max(600).nullable().optional(),
 		handle: z.string().max(40).nullable().optional(),
 		folderId: z.string().max(120).nullable().optional(),
+		color: FolderColor.nullable().optional(),
 		readOnly: z.boolean().optional(),
 		fileCount: z.number().int().min(0),
 		children: z.array(AssetTreeNodeSchema),

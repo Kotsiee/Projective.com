@@ -128,10 +128,8 @@ VALUES
     ('discord', 'Discord', 'communication',
         ARRAY['conferencing', 'messaging']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY[]::text[]),
-    -- Storage & docs (V2 focus; direct integrations — a unified file API is too leaky).
-    ('google_drive', 'Google Drive', 'storage',
-        ARRAY['storage', 'docs']::integrations.provider_kind[], 'oauth2',
-        false, 'direct', true, ARRAY['https://www.googleapis.com/auth/drive.readonly']),
+    -- Storage & docs (V2 focus; direct integrations — a unified file API is too leaky). google_drive
+    -- follows with its auth_config.
     ('dropbox', 'Dropbox', 'storage',
         ARRAY['storage']::integrations.provider_kind[], 'oauth2',
         false, 'direct', true, ARRAY['files.content.read']),
@@ -177,7 +175,8 @@ VALUES
         false, 'direct', false, ARRAY['https://www.googleapis.com/auth/contacts.readonly'])
 ON CONFLICT (slug) DO NOTHING;
 
--- The direct calendar and conferencing providers (Decision #383, ruling R1). `auth_config` is what a
+-- The direct calendar and conferencing providers (Decision #383, ruling R1), and Google Drive, the one
+-- storage connector a person can reach. `auth_config` is what a
 -- consent needs (ProviderAuthConfigSchema), and `kind_scopes` is which scopes each capability takes.
 -- Microsoft's {tenant} is filled from MICROSOFT_INTEGRATION_TENANT. Each ships disabled like the rest.
 -- Zoom's scopes are its granular names: confirm them against the registered app. microsoft_teams
@@ -218,6 +217,29 @@ VALUES
                     "https://www.googleapis.com/auth/meetings.space.created",
                     "https://www.googleapis.com/auth/meetings.space.readonly"
                 ]
+            }
+        }'::jsonb),
+    -- Drive has its own consent, without include_granted_scopes: a token for files should reach files.
+    -- drive.readonly lists a person's folders, which drive.file cannot; it is a restricted scope.
+    ('google_drive', 'Google Drive', 'storage',
+        ARRAY['storage', 'docs']::integrations.provider_kind[], 'oauth2',
+        true, 'direct', true,
+        ARRAY['openid', 'email', 'https://www.googleapis.com/auth/drive.readonly'],
+        '{
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "revoke_url": "https://oauth2.googleapis.com/revoke",
+            "pkce": true,
+            "authorize_params": {
+                "access_type": "offline",
+                "prompt": "consent"
+            },
+            "identity_url": "https://openidconnect.googleapis.com/v1/userinfo",
+            "identity_id_field": "sub",
+            "identity_label_fields": ["email"],
+            "kind_scopes": {
+                "storage": ["https://www.googleapis.com/auth/drive.readonly"],
+                "docs": ["https://www.googleapis.com/auth/drive.readonly"]
             }
         }'::jsonb),
     ('outlook', 'Microsoft', 'calendar',

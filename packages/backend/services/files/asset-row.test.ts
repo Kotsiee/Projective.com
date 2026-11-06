@@ -152,7 +152,7 @@ Deno.test("toAssetItem: a mounted connector row is read-only even to its owner; 
 });
 
 Deno.test("toAssetFolder: a mounted folder is read-only even to its owner", () => {
-	const folder = (source: string) =>
+	const folder = (source: string, color: string | null = null) =>
 		toAssetFolder(
 			{
 				id: "a5f0c0de-0000-4000-8000-000000000001",
@@ -165,6 +165,7 @@ Deno.test("toAssetFolder: a mounted folder is read-only even to its owner", () =
 				source,
 				external_folder_id: source === "supabase" ? null : "0AbcFolder",
 				visibility: "private",
+				color,
 				created_at: "2026-10-09T12:00:00.000Z",
 				updated_at: "2026-10-09T12:00:00.000Z",
 			},
@@ -172,6 +173,7 @@ Deno.test("toAssetFolder: a mounted folder is read-only even to its owner", () =
 			{ viewerId: CTX.viewerId, shareSlug: null },
 		);
 	assertEquals([folder("google_drive").canManage, folder("supabase").canManage], [false, true]);
+	assertEquals([folder("supabase").color, folder("supabase", "#3b82f6").color], [null, "#3b82f6"]);
 });
 
 Deno.test("withMediaFacts keeps a FileItem a FileItem and overlays the envelope", () => {

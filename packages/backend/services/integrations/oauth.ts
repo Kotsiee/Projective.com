@@ -54,7 +54,7 @@ function oauthClient(slug: string): OAuthClient | null {
 
 /**
  * The flow for a provider, or `null` while this environment cannot run it: no well-formed client, or
- * no `auth_config` (only `google`, `outlook` and `zoom` are seeded one).
+ * no `auth_config` (only `google`, `google_drive`, `outlook` and `zoom` are seeded one).
  */
 export function oauthFlow(slug: string, authConfig: unknown): OAuthFlow | null {
 	const client = oauthClient(slug);
@@ -254,6 +254,16 @@ export async function readIdentity(
 // #endregion
 
 // #region Revocation
+
+/**
+ * Whether two catalogue rows consent through one Google OAuth client. Google ends a person's whole
+ * grant to a client when any of its tokens is revoked, so disconnecting one must not revoke while the
+ * other is still connected: Disconnect Drive would silently take Calendar with it.
+ */
+export function sharesGoogleGrant(a: string, b: string): boolean {
+	const family = ["google", "google_drive"];
+	return a !== b && family.includes(a) && family.includes(b);
+}
 
 /**
  * Revoke a grant at the provider, best effort: it never throws, because the callers have already

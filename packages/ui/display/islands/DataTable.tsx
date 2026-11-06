@@ -110,6 +110,8 @@ export interface DataTableProps<T> {
 	rowActionsTrigger?: "kebab" | "meatball";
 	/** A styling token for the row (`data-state`), e.g. the entity the viewer is acting as. */
 	rowState?: (row: T) => string | null;
+	/** `data-*` attributes for the row, so a host can address it from outside the table. */
+	rowAttrs?: (row: T) => Readonly<Record<`data-${string}`, string>> | null;
 
 	/** Fixed px (a signal for zoom), or an estimate refined by measuring (default 48). */
 	rowHeight?: number | ReadonlySignal<number> | { estimate: number };
@@ -546,6 +548,7 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 				label={label}
 				href={props.rowHref?.(row) ?? null}
 				state={props.rowState?.(row) ?? null}
+				attrs={props.rowAttrs?.(row) ?? null}
 				actions={actionsFor ? actionsFor(row, label) : null}
 				actionsSource={props.rowActions}
 				measure={fixed === null ? vp.measureRow : null}

@@ -52,6 +52,7 @@ const FOLDER: FolderRow = {
 	source: "supabase",
 	external_folder_id: null,
 	visibility: "private",
+	color: null,
 	created_at: "2026-10-20T09:00:00.000Z",
 	updated_at: "2026-10-20T09:00:00.000Z",
 };
