@@ -1,9 +1,5 @@
-import {
-	fingerprintFile,
-	type HashRequest,
-	type HashResponse,
-	isHashAborted,
-} from "./fingerprint.ts";
+import { digestFile, isHashAborted } from "./digest.ts";
+import type { HashRequest, HashResponse } from "./fingerprint.ts";
 
 /**
  * hash-worker — the Web Worker body that digests upload candidates off the main thread.
@@ -15,9 +11,11 @@ import {
  * broken island and the worker would never run as one. Verified against the walker rather than
  * assumed.
  *
- * It computes nothing of its own: it calls the same {@link fingerprintFile} the main-thread path
- * calls, so a digest cannot differ depending on which thread produced it. All this module adds is the
- * message plumbing and per-request cancellation.
+ * It computes nothing of its own: it calls the same {@link digestFile} the main-thread path calls,
+ * so a digest cannot differ depending on which thread produced it. All this module adds is the
+ * message plumbing and per-request cancellation. The sample window comes in the message, and
+ * `fingerprint.ts` is a type import only, because a production worker bundle has no import map and
+ * that module reaches `@projective/*`.
  *
  * `self` is typed through a minimal structural cast rather than `DedicatedWorkerGlobalScope`, which
  * only exists under an explicitly-referenced `deno.worker` lib — the cast keeps a plain `deno check`
@@ -49,11 +47,11 @@ scope.addEventListener("message", (event: MessageEvent) => {
 	}
 	if (msg.kind !== "hash") return;
 
-	const { id, file } = msg;
+	const { id, file, sampleWindowBytes } = msg;
 	const controller = new AbortController();
 	inFlight.set(id, controller);
 
-	fingerprintFile(file, {
+	digestFile(file, sampleWindowBytes, {
 		signal: controller.signal,
 		// Progress is forwarded rather than accumulated: the host owns what a phase's 0–1 means, and a
 		// worker that re-scaled it would have to know how many files are in the drop.

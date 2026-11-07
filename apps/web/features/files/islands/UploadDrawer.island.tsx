@@ -64,9 +64,9 @@ import {
  *     already had this" once the person has already waited for it, which is not an answer, it is a
  *     receipt. Full SHA-256 under 256 MiB, a head/tail/length SAMPLE above it, and nothing at all in
  *     an insecure context — `crypto.subtle` requires a secure context and is simply absent
- *     otherwise. Hashing runs in `hash-worker.ts` where a Worker can be constructed, and falls back
- *     to this thread where one cannot; the digest is identical either way because both paths call
- *     the same `fingerprintFile`.
+ *     otherwise. Hashing runs in `hash-worker.ts` where a Worker can run, and falls back to this
+ *     thread where one cannot; the digest is identical either way because both paths call the same
+ *     `digestFile`.
  *  2. **Check the batch.** One round trip for the whole drop, per destination folder.
  *  3. **Ask, when there is something to ask about.** A prompt appears only when the server both found
  *     a match AND named it — see `needsAnswer` in `core/upload-progress.ts`.
