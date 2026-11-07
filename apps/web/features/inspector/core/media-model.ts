@@ -251,8 +251,75 @@ export function mediaCommand(stroke: MediaKeyStroke, kind: MediaKind): MediaComm
 	}
 }
 
+// #region Space
+/** What Space asks of a media canvas (Decision #400). */
+export type SpaceIntent = "toggle-play" | "fullscreen" | "boost" | "unboost";
+
+/** A press held at least this long is a hold, which plays at {@link BOOST_RATE} until let go, in ms. */
+export const SPACE_HOLD_MS = 300;
+
+/** A second tap released within this of the first is a double tap, which toggles fullscreen, in ms. */
+export const SPACE_DOUBLE_MS = 300;
+
+/** The speed a held Space plays at. */
+export const BOOST_RATE = 2;
+
+/** Space's gestures, fed every Space keydown (repeats included), keyup, and a lost focus. */
+export interface SpaceGesture {
+	down(at: number): SpaceIntent | null;
+	up(at: number): SpaceIntent | null;
+	/** Focus left mid-press: undo a hold, forget the press. */
+	cancel(): SpaceIntent | null;
+}
+
+/**
+ * Space on a media canvas acts on release, so a hold can be told from a tap: a tap plays or pauses; a
+ * second tap within {@link SPACE_DOUBLE_MS} of the first asks for fullscreen (the host undoes the
+ * first tap's toggle, so the playing state stays where it was); a press held past
+ * {@link SPACE_HOLD_MS} boosts the speed until it is released. Times are event timestamps, in ms.
+ */
+export function createSpaceGesture(): SpaceGesture {
+	let downAt: number | null = null;
+	let boosting = false;
+	let lastTap = Number.NEGATIVE_INFINITY;
+	return {
+		down(at) {
+			if (downAt === null) {
+				downAt = at;
+				return null;
+			}
+			if (boosting || at - downAt < SPACE_HOLD_MS) return null;
+			boosting = true;
+			return "boost";
+		},
+		up(at) {
+			if (downAt === null) return null;
+			downAt = null;
+			if (boosting) {
+				boosting = false;
+				return "unboost";
+			}
+			if (at - lastTap <= SPACE_DOUBLE_MS) {
+				lastTap = Number.NEGATIVE_INFINITY;
+				return "fullscreen";
+			}
+			lastTap = at;
+			return "toggle-play";
+		},
+		cancel() {
+			downAt = null;
+			if (!boosting) return null;
+			boosting = false;
+			return "unboost";
+		},
+	};
+}
+// #endregion
+
 const PLAYBACK_SHORTCUTS: readonly { keys: string[]; label: string }[] = [
 	{ keys: ["Space"], label: "Play or pause" },
+	{ keys: ["Space"], label: "Twice: fullscreen" },
+	{ keys: ["Space"], label: `Hold: play at ${BOOST_RATE}×` },
 	{ keys: ["K"], label: "Play or pause" },
 	{ keys: ["←"], label: `Back ${NUDGE_SECONDS} seconds` },
 	{ keys: ["→"], label: `Forward ${NUDGE_SECONDS} seconds` },

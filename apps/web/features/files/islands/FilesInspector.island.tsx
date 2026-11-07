@@ -19,7 +19,22 @@ import {
 	restoreDetailsPanel,
 	setDetailsDocked,
 } from "../core/details-panel.ts";
-import { busy, folders, inspected, previewId, selection } from "../core/files-state.ts";
+import {
+	busy,
+	folders,
+	inspected,
+	previewId,
+	selection,
+	subjectId,
+	viewerId,
+} from "../core/files-state.ts";
+import {
+	pickSource,
+	resolvePreviewContext,
+	sourceFromFile,
+	sourceLookup,
+} from "@web/features/projects/components/preview/preview-model.ts";
+import { useAttachmentSources } from "@web/features/projects/components/preview/use-preview-data.ts";
 
 /**
  * FilesInspector — the selected item's preview and facts, in the middle-nav frame's right panel. The
@@ -58,12 +73,33 @@ export default function FilesInspector(): JSX.Element {
 		if (before && !open && detailsDocked.peek() && contextPanelInflow()) setDetailsDocked(false);
 	});
 
+	// Where the file was sent: the preview modal's own reverse lookup, so the two always agree.
+	const context = asset ? resolvePreviewContext(undefined, asset, subjectId.value ?? "") : null;
+	const fetched = useAttachmentSources(
+		asset && context ? sourceLookup(asset, context) : null,
+		viewerId.value !== "",
+	);
+	const source = asset && context
+		? pickSource(fetched, sourceFromFile(asset, context), asset.messageId)
+		: null;
+	const provenance = source?.href
+		? {
+			label: source.kind === "dm"
+				? "Direct message"
+				: source.channelLabel
+				? `#${source.channelLabel}`
+				: "Project chat",
+			href: source.href,
+		}
+		: null;
+
 	function body(): JSX.Element {
 		if (!asset) return <DetailsEmpty onClose={closeDetailsPanel} />;
 		return (
 			<InspectPanel
 				asset={asset}
 				busy={busy.value}
+				provenance={provenance}
 				onClose={closeDetailsPanel}
 				onDownload={(target) => void download(target)}
 				onOpenRaw={openInNewTab}

@@ -7,6 +7,8 @@ import {
 	keyAction,
 	pasteTarget,
 	stepIndex,
+	typeaheadIndex,
+	typedChar,
 	zoneOf,
 } from "./files-keyboard.ts";
 
@@ -118,4 +120,35 @@ Deno.test("zoneOf: a modal and a field take every keystroke; the tree and the ca
 	assertEquals(zoneOf(on("BUTTON"), hub, false), "canvas");
 	assertEquals(zoneOf(null, hub, false), "canvas");
 	assertEquals(zoneOf(on("A"), hub, false), "outside");
+});
+
+Deno.test("typeahead lands on the next name that starts with what was typed", () => {
+	const names = ["Alpha", "beta", "Apple", "Banana"];
+	assertEquals(typeaheadIndex(names, -1, "a"), 0);
+	assertEquals(typeaheadIndex(names, 0, "a"), 2);
+	assertEquals(typeaheadIndex(names, 2, "a"), 0);
+	assertEquals(typeaheadIndex(names, -1, "B"), 1);
+	assertEquals(typeaheadIndex(names, 0, "ap"), 2);
+	assertEquals(typeaheadIndex(names, 0, "al"), 0);
+	assertEquals(typeaheadIndex(names, 0, "aa"), 2);
+	assertEquals(typeaheadIndex(names, 0, "z"), null);
+	assertEquals(typeaheadIndex([], -1, "a"), null);
+});
+
+Deno.test("only an unmodified printable key types into the typeahead", () => {
+	const key = (k: string, over: Partial<FilesKey> = {}): FilesKey => ({
+		key: k,
+		code: "",
+		shiftKey: false,
+		ctrlKey: false,
+		metaKey: false,
+		altKey: false,
+		...over,
+	});
+	assertEquals(typedChar(key("a")), "a");
+	assertEquals(typedChar(key("A", { shiftKey: true })), "A");
+	assertEquals(typedChar(key("é")), "é");
+	assertEquals(typedChar(key(" ")), null);
+	assertEquals(typedChar(key("Enter")), null);
+	assertEquals(typedChar(key("a", { ctrlKey: true })), null);
 });

@@ -309,6 +309,13 @@
 	gap: var(--space-5);
 	padding: var(--space-4);
 }
+/* The tab's contents keep the aside's rhythm (Decision #400). */
+.fx-aside__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
 .fx-aside__section {
 	display: flex;
 	flex-direction: column;

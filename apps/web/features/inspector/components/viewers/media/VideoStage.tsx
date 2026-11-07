@@ -17,7 +17,7 @@ const RATES = [...PLAYER_RATES];
 export function VideoStage({ shell, tools }: ViewerProps<VideoTools>): JSX.Element {
 	const { asset } = shell;
 	const root = useRef<HTMLDivElement>(null);
-	useStageKeys(root, tools, "video");
+	useStageKeys(root, tools, "video", shell);
 
 	const register = (el: HTMLVideoElement | null): void => {
 		if (!el) return;

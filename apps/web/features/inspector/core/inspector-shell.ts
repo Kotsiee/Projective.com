@@ -52,8 +52,11 @@ export interface InspectorShell {
 	 * an embedding host binds it to its own aside or sheet.
 	 */
 	readonly panelOpen: Signal<boolean>;
+	/**
+	 * Whether the canvas fills the viewport in place (the theater, Decision #400): headers, panels and
+	 * the host's chrome are covered, on the standalone page and inside a host alike.
+	 */
 	readonly fullscreen: Signal<boolean>;
-	readonly fullscreenSupported: Signal<boolean>;
 	readonly status: Signal<StageStatus>;
 	readonly error: Signal<string | null>;
 	/** Facts only the canvas can learn (page count, triangle count, natural size, codec…), shown in Details. */
@@ -74,11 +77,9 @@ export interface Announcement {
 	message: string;
 }
 
-/** The workspace's side of the shell: the live-region feed and the fullscreen binding. */
+/** The workspace's side of the shell: the live-region feed. */
 export interface InspectorShellHost extends InspectorShell {
 	readonly announcement: ReadonlySignal<Announcement | null>;
-	/** Route {@link InspectorShell.toggleFullscreen} to the workspace's Fullscreen API binding. */
-	setFullscreenHandler(handler: (() => void) | null): void;
 }
 
 /**
@@ -94,15 +95,14 @@ export function createInspectorShell(
 	const status = signal<StageStatus>("loading");
 	const error = signal<string | null>(null);
 	const panelOpen = signal(!resolved.embedded);
-	let fullscreenHandler: (() => void) | null = null;
+	const fullscreen = signal(false);
 	let sequence = 0;
 
 	return {
 		asset,
 		options: resolved,
 		panelOpen,
-		fullscreen: signal(false),
-		fullscreenSupported: signal(false),
+		fullscreen,
 		status,
 		error,
 		facts: signal<readonly StageFact[]>([]),
@@ -118,13 +118,10 @@ export function createInspectorShell(
 			status.value = "error";
 		},
 		toggleFullscreen(): void {
-			fullscreenHandler?.();
+			fullscreen.value = !fullscreen.value;
 		},
 		togglePanel(): void {
 			panelOpen.value = !panelOpen.value;
-		},
-		setFullscreenHandler(handler: (() => void) | null): void {
-			fullscreenHandler = handler;
 		},
 	};
 }

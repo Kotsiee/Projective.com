@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { AssetFolderSchema, driveAddressOf, FolderColor, isMountPath } from "./folders.ts";
-import { SetFolderColorSchema } from "./upload.ts";
+import { CreateFolderSchema, SetFolderColorSchema } from "./upload.ts";
 
 const CONNECTION = "c0a8012e-0000-4000-8000-000000000001";
 
@@ -31,6 +31,13 @@ Deno.test("a colour is set or cleared, and a folder with none reads as null", ()
 	assertEquals(SetFolderColorSchema.safeParse({ folderId: "f", color: "#123456" }).success, true);
 	assertEquals(SetFolderColorSchema.safeParse({ folderId: "f" }).success, false);
 	assertEquals(AssetFolderSchema.shape.color.parse(undefined), null);
+});
+
+Deno.test("a new folder may carry a colour from birth, and only a real one", () => {
+	const folder = { name: "Brand", parentId: null, ownerType: "user", ownerId: "u-1" };
+	assertEquals(CreateFolderSchema.safeParse(folder).success, true);
+	assertEquals(CreateFolderSchema.safeParse({ ...folder, color: "#22a06b" }).success, true);
+	assertEquals(CreateFolderSchema.safeParse({ ...folder, color: "green" }).success, false);
 });
 
 Deno.test("isMountPath recognises a mounted engagement only by its leading segment", () => {

@@ -314,8 +314,9 @@
 	--on-file-video: var(--file-ink-light);
 	--file-audio: #fa7b17;
 	--on-file-audio: var(--file-ink-dark);
-	--file-code: #00acc1;
-	--on-file-code: var(--file-ink-dark);
+	/* Decision #400: white ink, so the fill sits one step darker on the same teal (4.52:1). */
+	--file-code: #00838f;
+	--on-file-code: var(--file-ink-light);
 	--file-model: #c2185b;
 	--on-file-model: var(--file-ink-light);
 	--file-archive: #5f6368;

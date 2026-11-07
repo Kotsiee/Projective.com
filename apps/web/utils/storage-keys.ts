@@ -268,6 +268,11 @@ export const LocalKeys = {
 	FILES_DETAILS_OPEN: "pj.local.files.detailsOpen",
 	/** Whether the file inspector's details panel is open on desktop (`"1"`|`"0"`). */
 	INSPECTOR_PANEL_OPEN: "pj.local.inspector.panelOpen",
+	/**
+	 * The inspector side panel's tab (`"view"` | `"details"`), shared by `/inspect` and the preview
+	 * modal so the next file opens on the tab last chosen (Decision #400).
+	 */
+	INSPECTOR_PANEL_TAB: "pj.local.inspector.panelTab",
 	/** Whether the file preview modal's side panel is open on desktop (`"1"`|`"0"`). */
 	PREVIEW_ASIDE_OPEN: "pj.local.preview.asideOpen",
 	/**

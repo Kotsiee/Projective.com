@@ -10,11 +10,14 @@ import "../styles/viewer-pdf.css";
 import "../styles/inspector-print.css";
 import "../styles/viewer-model.css";
 import "../styles/viewer-document.css";
-import type { InspectAsset } from "@projective/types/files";
+import { fileInspectHref, type InspectAsset } from "@projective/types/files";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { useIsMobile } from "@projective/ui/hooks";
+import { Toast } from "@projective/ui/feedback";
+import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { initialPanelOpen, workspaceCommand } from "../core/inspector-model.ts";
+import { choosePanelTab } from "../core/panel-tab.ts";
 import { useInspectorHost } from "../hooks/use-inspector-host.ts";
 import { InspectorActionsContext } from "../components/InspectorContext.ts";
 import { InspectorBar } from "../components/InspectorBar.tsx";
@@ -41,7 +44,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /**
  * The shell-free inspector: a bar, the canvas for this file, and a resizable details panel (a
  * bottom sheet below `--bp-md`). Hosts the inspector through {@link useInspectorHost} and adds the
- * page's own parts: the Fullscreen API binding, the workspace shortcuts and the panel preference.
+ * page's own parts: the workspace shortcuts, the panel preference, and the share modal.
  */
 export default function InspectorWorkspace(
 	{ asset, signedIn }: InspectorWorkspaceProps,
@@ -50,6 +53,8 @@ export default function InspectorWorkspace(
 	const mobile = useIsMobile();
 	const shortcutsOpen = useSignal(false);
 	const shortcutsRef = useRef<HTMLElement>(null);
+	const hydrated = useSignal(false);
+	useEffect(() => void (hydrated.value = true), []);
 
 	// #region Panel state
 	useEffect(() => {
@@ -64,30 +69,11 @@ export default function InspectorWorkspace(
 	}, [shell, mobile]);
 	// #endregion
 
-	// #region Fullscreen
-	useEffect(() => {
-		const doc = document;
-		const target = doc.documentElement;
-		shell.fullscreenSupported.value = doc.fullscreenEnabled === true &&
-			typeof target.requestFullscreen === "function";
-		const sync = () => (shell.fullscreen.value = doc.fullscreenElement !== null);
-		sync();
-		doc.addEventListener("fullscreenchange", sync);
-		shell.setFullscreenHandler(() => {
-			const change = doc.fullscreenElement ? doc.exitFullscreen() : target.requestFullscreen();
-			change.catch(() => shell.announce("Fullscreen isn't available right now."));
-		});
-		return () => {
-			doc.removeEventListener("fullscreenchange", sync);
-			shell.setFullscreenHandler(null);
-		};
-	}, [shell]);
-	// #endregion
-
 	// #region Workspace shortcuts
 	useEffect(() => {
 		const revealShortcuts = () => {
 			shell.panelOpen.value = true;
+			choosePanelTab("view");
 			shortcutsOpen.value = true;
 			setTimeout(() => {
 				const summary = shortcutsRef.current;
@@ -97,7 +83,7 @@ export default function InspectorWorkspace(
 		const onKey = (e: KeyboardEvent) => {
 			if (e.defaultPrevented || e.repeat || isTypingTarget(e.target)) return;
 			const command = workspaceCommand(e);
-			if (command === "fullscreen" && shell.fullscreenSupported.peek()) {
+			if (command === "fullscreen") {
 				e.preventDefault();
 				shell.toggleFullscreen();
 			} else if (command === "panel") {
@@ -151,6 +137,12 @@ export default function InspectorWorkspace(
 						: null}
 				</main>
 				<InspectorLiveRegion shell={shell} />
+				{
+					/* The page has no shell, so it mounts the share modal and the toast stack a Share row's
+					   quick send reports on (Decision #400). */
+				}
+				<ShareHost authed={signedIn} returnTo={fileInspectHref(asset.id, { share: asset.share })} />
+				{hydrated.value ? <Toast position="bottom-center" /> : null}
 			</div>
 		</InspectorActionsContext.Provider>
 	);

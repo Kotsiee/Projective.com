@@ -1,13 +1,14 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { InputText } from "@projective/ui/fields";
 import { styleVars } from "@ui/core/style.ts";
 import type { ExplorerCell } from "../core/files-keyboard.ts";
 import { cellName } from "../core/files-keyboard.ts";
 
 /**
- * RenameField — F2's inline field, laid over the item's own name.
+ * RenameField — the inline rename field (F2, the item menu's Rename, or a slow second click on the
+ * name, Decision #400), laid over the item's own name.
  *
  * Over it rather than in it: the name belongs to `FileCard`, `.subm-card` or a `DataTable` cell, all
  * shared, and windowed rows remount. It sits in the hub in the hub's own coordinates, so it scrolls
@@ -35,6 +36,14 @@ export function RenameField(props: RenameFieldProps): JSX.Element {
 	const name = cellName(cell);
 	const value = useSignal(name);
 	const closed = useRef(false);
+	const box = useRef<HTMLDivElement>(null);
+
+	// Focused here, not by `autoFocus`: a browser honours that attribute only on the page's first load.
+	useEffect(() => {
+		const input = box.current?.querySelector("input");
+		input?.focus();
+		input?.setSelectionRange(0, stemLength(cell));
+	}, []);
 
 	function close(save: boolean, byKey: boolean): void {
 		if (closed.current) return;
@@ -50,6 +59,7 @@ export function RenameField(props: RenameFieldProps): JSX.Element {
 	return (
 		<div
 			class="fh-rename"
+			ref={box}
 			style={styleVars({
 				"--fh-rename-x": `${at.left - base.left}px`,
 				"--fh-rename-y": `${at.top - base.top}px`,
@@ -61,7 +71,6 @@ export function RenameField(props: RenameFieldProps): JSX.Element {
 				value={value}
 				size="sm"
 				block
-				autoFocus
 				autoComplete="off"
 				spellcheck={false}
 				aria-label={`Rename ${name}`}

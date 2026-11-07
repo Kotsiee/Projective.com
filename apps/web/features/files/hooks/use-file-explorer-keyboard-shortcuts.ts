@@ -6,10 +6,12 @@ import { isApplePlatform } from "@features/projects/core/chat-keyboard.ts";
 import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { NO_DRAG } from "../components/FilesDragSurface.tsx";
 import { pasteRows } from "../core/files-actions.ts";
+import { DRAG_ATTR } from "../core/files-dnd.ts";
 import { canGoBack } from "../core/files-history.ts";
 import { toggleDetailsPanel } from "../core/details-panel.ts";
 import {
 	cellId,
+	cellName,
 	cellsOf,
 	type ExplorerCell,
 	type FilesKeyAction,
@@ -21,6 +23,9 @@ import {
 	rowsOf,
 	stepIndex,
 	SWITCHABLE_ACTIONS,
+	TYPEAHEAD_MS,
+	typeaheadIndex,
+	typedChar,
 	zoneOf,
 } from "../core/files-keyboard.ts";
 import {
@@ -71,6 +76,13 @@ import { viewMode } from "@web/features/projects/core/view-state.ts";
  * mounts.
  *
  * A drag on the keyboard (`M`) owns the arrows, Enter and Escape while it runs.
+ *
+ * ## Typeahead, one tab stop, and a slow second click (Decision #400)
+ *
+ * A printable key moves focus to the next item whose name starts with what was typed in the last
+ * {@link TYPEAHEAD_MS}. The grid keeps one tab stop, the active cell's, so Tab leaves the canvas
+ * rather than walking every card; the table's rows already rove. A plain click on the name of the
+ * item that is already the lone selection opens the rename field once a double click is ruled out.
  */
 
 // #region Options
@@ -105,6 +117,16 @@ const INTERACTIVE = "a, button, [role='button'], [role='checkbox'], [role='menui
 /** How long a scrolled-to row gets to mount: a window scroll settles within a few frames. */
 const MOUNT_TRIES = 12;
 const MOUNT_WAIT_MS = 32;
+
+/** An item's name, on a card or in either table: a click on it may rename. */
+const NAME =
+	".fx-card__name, .subm-card__name, .ui-dt__name, .ui-dt__lead + .ui-dt__cell .ui-dt__text";
+
+/**
+ * How long a click on an already-selected item's name waits before it renames: longer than a double
+ * click takes, so a double click still opens (the slow second click of a desktop file manager).
+ */
+const RENAME_DELAY_MS = 600;
 
 function itemEl(hub: HTMLElement | null, id: string): HTMLElement | null {
 	const key = CSS.escape(id);
@@ -179,13 +201,36 @@ export function useFileExplorerKeyboardShortcuts(
 	const note = useSignal("");
 	/** A Space this hook took: some browsers still click a button on its keyup. */
 	const spaceTaken = useRef(false);
+	/** The typeahead's run so far, and when its last key landed. */
+	const typed = useRef({ buffer: "", at: Number.NEGATIVE_INFINITY });
+	/** A rename waiting out a possible double click. */
+	const renameTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	const api = useMemo(() => {
 		const hub = () => latest.current.containerRef.current;
 		const cells = () => cellsOf(folders.peek(), items.peek());
 
+		/**
+		 * One tab stop in the grid (the WAI-ARIA roving tabindex): the active cell's controls, else the
+		 * first mounted cell's. The table's rows rove on their own.
+		 */
+		function rove(): void {
+			const root = hub();
+			if (!root || viewMode.peek() !== "grid") return;
+			const active = cells()[activeFocusedIndex.current];
+			const activeId = active ? cellId(active) : null;
+			const mounted = [...root.querySelectorAll<HTMLElement>(".fh-cell[data-key]")];
+			const stop = mounted.find((el) => el.dataset.key === activeId) ?? mounted[0];
+			for (const el of mounted) {
+				for (const control of el.querySelectorAll<HTMLElement>("button, a[href]")) {
+					control.tabIndex = el === stop ? 0 : -1;
+				}
+			}
+		}
+
 		function focusIndex(index: number, all: readonly ExplorerCell[], columns: number): void {
 			activeFocusedIndex.current = index;
+			rove();
 			const id = cellId(all[index]);
 			const el = itemEl(hub(), id);
 			if (el) {
@@ -327,11 +372,33 @@ export function useFileExplorerKeyboardShortcuts(
 			}
 		}
 
+		/** Find-as-you-type: a printable key moves focus to the next item whose name starts with the run. */
+		function typeahead(e: KeyboardEvent): void {
+			const char = typedChar(e);
+			const target = e.target instanceof Element ? e.target : null;
+			if (!char || e.repeat || !ownsKeys(target, hub())) return;
+			if (zoneOf(target, hub(), document.querySelector(MODAL) !== null) !== "canvas") return;
+			const held = typed.current;
+			const run = e.timeStamp - held.at < TYPEAHEAD_MS ? held.buffer + char : char;
+			// `M` alone on a movable item is `FilesDragSurface`'s keyboard move, not a name.
+			if (run.toLowerCase() === "m" && target?.closest(`[${DRAG_ATTR}]`)) return;
+			typed.current = { buffer: run, at: e.timeStamp };
+			const all = cells();
+			const next = typeaheadIndex(all.map(cellName), activeFocusedIndex.current, run);
+			if (next === null) return;
+			take(e);
+			focusIndex(next, all, columnsOf(hub()));
+		}
+
 		function onKeyDown(e: KeyboardEvent): void {
 			// `M`'s keyboard drag answers the arrows, Enter and Escape for as long as it runs.
 			if (e.defaultPrevented || document.querySelector("[data-dragging]")) return;
 			const action = keyAction(e, isApplePlatform());
-			if (!action || (e.repeat && action !== "move")) return;
+			if (!action) {
+				typeahead(e);
+				return;
+			}
+			if (e.repeat && action !== "move") return;
 			const switchable = SWITCHABLE_ACTIONS[action];
 			if (switchable && !shortcutOn(switchable)) return;
 
@@ -362,21 +429,32 @@ export function useFileExplorerKeyboardShortcuts(
 
 		/** A modified click selects rather than opens, on any item in either view. */
 		function onClick(e: MouseEvent): void {
+			clearTimeout(renameTimer.current);
 			const target = e.target as Element;
 			const own = target.closest<HTMLElement>(ITEM);
 			if (!own || target.closest(NO_DRAG)) return;
-			const ids = cells().map(cellId);
+			const all = cells();
+			const ids = all.map(cellId);
 			const id = own.dataset.key ?? "";
 			activeFocusedIndex.current = ids.indexOf(id);
+			rove();
 			const toggle = isActionKey(e, isApplePlatform());
-			if (!toggle && !e.shiftKey) return;
+			if (!toggle && !e.shiftKey) {
+				// Capture runs before the item's own click selects, so `selection` is still the old one.
+				const cell = all[activeFocusedIndex.current];
+				const lone = selection.peek().length === 1 && selection.peek()[0] === id;
+				if (e.detail === 1 && lone && cell && managesCell(cell) && target.closest(NAME)) {
+					renameTimer.current = setTimeout(() => (renaming.value = cell), RENAME_DELAY_MS);
+				}
+				return;
+			}
 			take(e);
 			if (e.shiftKey) rangeSelect(id, ids);
 			else toggleSelect(id);
 			inspectSelection();
 		}
 
-		return { focusCanvas, onKeyDown, onKeyUp, onClick };
+		return { focusCanvas, onKeyDown, onKeyUp, onClick, rove };
 	}, []);
 
 	useEffect(() => {
@@ -384,13 +462,19 @@ export function useFileExplorerKeyboardShortcuts(
 		document.addEventListener("keydown", api.onKeyDown, true);
 		document.addEventListener("keyup", api.onKeyUp, true);
 		root?.addEventListener("click", api.onClick, true);
+		// A windowed cell mounts with its controls in the tab order; the grid keeps one stop.
+		const cellsMounted = new MutationObserver(api.rove);
+		if (root) cellsMounted.observe(root, { childList: true, subtree: true });
 		// A new location is a new list: an index into the old one means nothing there.
 		const stop = effect(() => {
 			void currentPath.value;
 			activeFocusedIndex.current = -1;
+			clearTimeout(renameTimer.current);
 		});
 		return () => {
 			stop();
+			cellsMounted.disconnect();
+			clearTimeout(renameTimer.current);
 			document.removeEventListener("keydown", api.onKeyDown, true);
 			document.removeEventListener("keyup", api.onKeyUp, true);
 			root?.removeEventListener("click", api.onClick, true);

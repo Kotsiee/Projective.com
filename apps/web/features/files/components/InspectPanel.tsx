@@ -78,6 +78,11 @@ export interface InspectPanelProps {
 	onDelete: (asset: AssetItem) => void;
 	/** A mutation is in flight — the controls stay visible and report it rather than vanishing. */
 	busy?: boolean;
+	/**
+	 * The message the file was sent in, when the host found one (Decision #400): `label` names the
+	 * room ("#general") or the DM, `href` opens the message.
+	 */
+	provenance?: { label: string; href: string } | null;
 }
 // #endregion
 
@@ -153,7 +158,7 @@ function PanelPreview({ asset }: { asset: AssetItem }): JSX.Element {
 
 export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 	const { asset, onClose, onDownload, onOpenRaw, onPreview, onSetVisibility, onDelete } = props;
-	const { busy = false } = props;
+	const { busy = false, provenance = null } = props;
 
 	// Local to the panel and reset by its own actions: a pending confirmation is a state of this pane,
 	// not of the library, so it has no business in `files-state`.
@@ -266,6 +271,14 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 				</Fact>
 
 				<Fact label="Where">{where}</Fact>
+
+				{provenance
+					? (
+						<Fact label="Shared in" mark={<Icon name="message" size="2xs" />}>
+							<a class="fh-inspect__personlink" href={provenance.href}>{provenance.label}</a>
+						</Fact>
+					)
+					: null}
 
 				<Fact
 					label="Privacy"

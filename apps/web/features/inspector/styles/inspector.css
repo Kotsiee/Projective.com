@@ -176,6 +176,13 @@
 	overscroll-behavior: contain;
 	background: var(--surface-1);
 }
+/* The tab's contents keep the panel's rhythm (Decision #400). */
+.ins-panel__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
 .ins-panel__section {
 	display: flex;
 	flex-direction: column;
@@ -679,7 +686,55 @@
 	}
 }
 
+/* #region Theater (Decision #400) — the canvas over the whole viewport, in place */
+.ins-stage-frame[data-theater] {
+	position: fixed;
+	inset: 0;
+	z-index: var(--ins-theater-z);
+	inline-size: auto;
+	block-size: auto;
+	background: var(--bg);
+}
+/* The theater's toolbar carries the canvas's chips, so the page's own image bar stands down. */
+.ins-stage-frame[data-theater] .ins-image__bar {
+	display: none;
+}
+/* A host that isolates its stacking must let the theater rise above its own chrome. */
+.ins-embed:has(> .ins-stage-frame[data-theater]) {
+	isolation: auto;
+}
+.ins-theater {
+	position: absolute;
+	inset-block-end: var(--space-4);
+	inset-inline: 0;
+	z-index: 1;
+	display: flex;
+	justify-content: center;
+	gap: var(--space-2);
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-exit);
+}
+.ins-theater[data-awake],
+.ins-theater:hover,
+.ins-theater:focus-within {
+	opacity: 1;
+}
+.ins-theater > .ins-chips {
+	position: relative;
+	inset: auto;
+	margin: 0;
+	pointer-events: auto;
+}
+.ins-theater:not([data-awake]):not(:hover):not(:focus-within) > .ins-chips {
+	pointer-events: none;
+}
+/* #endregion */
+
 @media (prefers-reduced-motion: reduce) {
+	.ins-theater {
+		transition: none;
+	}
 	.ins-bar__home,
 	.ins-missing__link,
 	.ins-handoff__link,
@@ -708,4 +763,7 @@
 :root[data-motion="reduced"] .ins-missing__link:active,
 :root[data-motion="reduced"] .ins-handoff__link:active {
 	transform: none;
+}
+:root[data-motion="reduced"] .ins-theater {
+	transition: none;
 }

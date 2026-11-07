@@ -1,6 +1,13 @@
 import type { JSX, Ref } from "preact";
 import type { Signal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
+import { TabStrip } from "@projective/ui/navigation";
+import {
+	choosePanelTab,
+	PANEL_TABS,
+	panelTab,
+	restorePanelTab,
+} from "@features/inspector/core/panel-tab.ts";
 import { Button, ResizeFrame } from "@projective/ui/fields";
 import { useId } from "@projective/ui/hooks";
 import {
@@ -107,8 +114,9 @@ function Notes({ notes }: { notes: PreviewNotesState }): JSX.Element {
 }
 
 /**
- * The preview's side panel (a bottom sheet on mobile): the file's facts, the canvas's own controls,
- * the message it was shared in, review notes on Submissions, and the keyboard shortcuts.
+ * The preview's side panel (a bottom sheet on mobile), two tabs (Decision #400): View (the canvas's
+ * own controls and the keyboard shortcuts) and Details (the file's facts, the message it was shared
+ * in, and review notes on Submissions). The tab is the inspector's remembered one (`panel-tab.ts`).
  */
 export function PreviewAside(props: PreviewAsideProps): JSX.Element {
 	const { file, host, source, onGoToMessage, notes, shortcuts, shortcutsOpen } = props;
@@ -117,35 +125,51 @@ export function PreviewAside(props: PreviewAsideProps): JSX.Element {
 	const controls = host && host.viewer.Controls && host.shell.status.value !== "error"
 		? <InspectorEmbedControls key={host.shell.asset.id} host={host} />
 		: null;
+	const panel = `${ids}-panel`;
+	const tab = panelTab.value;
+	useEffect(() => restorePanelTab(), []);
 	return (
 		<div class="fx-aside">
-			<section class="fx-aside__section" aria-labelledby={`${ids}-details`}>
-				<h3 id={`${ids}-details`} class="fx-aside__title">Details</h3>
-				{host ? <InspectorEmbedFacts host={host} /> : <RowFacts file={file} />}
-			</section>
-			{controls
-				? (
-					<section class="fx-aside__section" aria-labelledby={`${ids}-view`}>
-						<h3 id={`${ids}-view`} class="fx-aside__title">View</h3>
-						{controls}
-					</section>
-				)
-				: null}
-			{source
-				? <SourceMessage source={source} titleId={`${ids}-source`} onGo={onGoToMessage} />
-				: null}
-			{notes ? <Notes notes={notes} /> : null}
-			{shortcuts.length > 0
-				? (
-					<div class="fx-aside__section">
-						<ShortcutsDisclosure
-							shortcuts={shortcuts}
-							open={shortcutsOpen}
-							summaryRef={shortcutsRef}
-						/>
-					</div>
-				)
-				: null}
+			<TabStrip
+				label="File panel"
+				tone="lane"
+				items={PANEL_TABS}
+				activeKey={tab}
+				onSelect={choosePanelTab}
+				panelId={panel}
+			/>
+			<div
+				id={panel}
+				class="fx-aside__body"
+				role="tabpanel"
+				aria-labelledby={`${panel}-tab-${tab}`}
+			>
+				{tab === "view"
+					? (
+						<>
+							{controls ? <section class="fx-aside__section">{controls}</section> : null}
+							<div class="fx-aside__section">
+								<ShortcutsDisclosure
+									shortcuts={shortcuts}
+									open={shortcutsOpen}
+									summaryRef={shortcutsRef}
+								/>
+							</div>
+						</>
+					)
+					: (
+						<>
+							<section class="fx-aside__section" aria-labelledby={`${ids}-details`}>
+								<h3 id={`${ids}-details`} class="fx-aside__title">Details</h3>
+								{host ? <InspectorEmbedFacts host={host} /> : <RowFacts file={file} />}
+							</section>
+							{source
+								? <SourceMessage source={source} titleId={`${ids}-source`} onGo={onGoToMessage} />
+								: null}
+							{notes ? <Notes notes={notes} /> : null}
+						</>
+					)}
+			</div>
 		</div>
 	);
 }

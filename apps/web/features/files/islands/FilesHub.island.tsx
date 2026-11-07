@@ -66,7 +66,14 @@ import {
 	managesFolder,
 	rowsOf,
 } from "../core/files-keyboard.ts";
-import { download, moveRows, openInNewTab, renameFolder } from "../core/files-actions.ts";
+import {
+	download,
+	moveRows,
+	openInNewTab,
+	renameFolder,
+	shareHrefOf,
+} from "../core/files-actions.ts";
+import { shareRow } from "@features/share/core/share-menu.ts";
 import {
 	canGoBack,
 	canGoForward,
@@ -755,14 +762,24 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 			command: () => openInNewTab(asset),
 		},
 		{ key: "download", label: "Download", icon: "download", command: () => void download(asset) },
+		shareRow({ title: asset.name, href: shareHrefOf(asset) }, viewerId.peek() !== ""),
 		...(asset.canManage
-			? [{
-				key: "delete",
-				label: "Archive / Delete",
-				icon: "trash",
-				danger: true,
-				command: () => askRemoval(asset.name, [asset.id], []),
-			}]
+			? [
+				{
+					key: "rename",
+					label: "Rename",
+					icon: "edit",
+					shortcut: "F2",
+					command: () => (renaming.value = { kind: "asset", asset }),
+				},
+				{
+					key: "delete",
+					label: "Archive / Delete",
+					icon: "trash",
+					danger: true,
+					command: () => askRemoval(asset.name, [asset.id], []),
+				},
+			]
 			: []),
 	]).current;
 
@@ -784,11 +801,18 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 					"noopener,noreferrer",
 				),
 		},
-		...(folder.source === "supabase" && folder.canManage
+		...(managesFolder(folder)
 			? [
 				{ separator: true },
 				folderColorRow({ folderId: folder.id, name: folder.name, color: folder.color }),
 				{ separator: true },
+				{
+					key: "rename",
+					label: "Rename",
+					icon: "edit",
+					shortcut: "F2",
+					command: () => (renaming.value = { kind: "folder", folder }),
+				},
 				{
 					key: "delete",
 					label: "Archive / Delete",
@@ -1164,6 +1188,14 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				/>
 			)}
 			<div class="fh-hub__crumbbar">
+				<AssetBreadcrumbs
+					crumbs={crumbs.value}
+					base={base}
+					routing={routing}
+					onNavigate={navigate}
+					droppable={!readOnly.value}
+					aria-label="Folder path"
+				/>
 				<span class="fh-hub__crumbnav" role="group" aria-label="Folder history">
 					<CrumbNav
 						icon="arrow-left"
@@ -1184,14 +1216,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 						onClick={goUp}
 					/>
 				</span>
-				<AssetBreadcrumbs
-					crumbs={crumbs.value}
-					base={base}
-					routing={routing}
-					onNavigate={navigate}
-					droppable={!readOnly.value}
-					aria-label="Folder path"
-				/>
 			</div>
 
 			<DndContext

@@ -1,11 +1,20 @@
 import { type FunctionComponent, h } from "preact";
+import type { MenuItem } from "@projective/ui/navigation";
 import type { InspectorShell } from "../../core/inspector-shell.ts";
+import type { InspectorActions } from "../InspectorContext.ts";
 
 // #region Contract
 /** Props every viewer component receives: the shell and the viewer's own tool state. */
 export interface ViewerProps<T> {
 	shell: InspectorShell;
 	tools: T;
+}
+
+/** What a canvas's menu rows may reach when the menu opens. */
+export interface StageMenuContext {
+	/** The canvas region the menu opened on. */
+	stage: HTMLElement | null;
+	actions: InspectorActions;
 }
 
 /** One keyboard shortcut a canvas honours, listed in the panel. */
@@ -29,6 +38,11 @@ export interface ViewerDefinition<T> {
 	Chips?: FunctionComponent<ViewerProps<T>> | null;
 	/** Keyboard shortcuts this canvas honours, listed in the panel; a function may drop gated ones. */
 	shortcuts: readonly ViewerShortcut[] | ((shell: InspectorShell) => readonly ViewerShortcut[]);
+	/**
+	 * The canvas's own rows of its right-click menu, built when the menu opens, so a label may name
+	 * the state it changes (Decision #400). The rows every file has are `StageMenu`'s.
+	 */
+	menu?: (props: ViewerProps<T> & StageMenuContext) => MenuItem[];
 }
 
 /** A viewer bound to one shell: prop-less components the workspace renders as-is. */
@@ -37,6 +51,7 @@ export interface MountedViewer {
 	Controls: FunctionComponent | null;
 	Chips: FunctionComponent | null;
 	shortcuts: readonly ViewerShortcut[];
+	menu: ((context: StageMenuContext) => MenuItem[]) | null;
 }
 // #endregion
 
@@ -57,7 +72,9 @@ export function defineViewer<T>(
 		const DefChips = def.Chips ?? null;
 		const Chips: FunctionComponent | null = DefChips ? () => h(DefChips, { shell, tools }) : null;
 		const shortcuts = typeof def.shortcuts === "function" ? def.shortcuts(shell) : def.shortcuts;
-		return { Stage, Controls, Chips, shortcuts };
+		const rows = def.menu;
+		const menu = rows ? (context: StageMenuContext) => rows({ shell, tools, ...context }) : null;
+		return { Stage, Controls, Chips, shortcuts, menu };
 	};
 }
 

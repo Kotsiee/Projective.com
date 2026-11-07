@@ -411,6 +411,17 @@
 			"autoPort": false
 		},
 		{
+			"name": "web-files-ux",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13495'; deno task dev --port 13495 --strictPort"
+			],
+			"port": 13495,
+			"autoPort": false
+		},
+		{
 			"name": "web-gateway-mock",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [

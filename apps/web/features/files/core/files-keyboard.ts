@@ -190,6 +190,39 @@ export function stepIndex(key: string, from: number, count: number, columns: num
 }
 // #endregion
 
+// #region Typeahead
+/** How long a typed run holds before the next key starts a new one, in ms. */
+export const TYPEAHEAD_MS = 700;
+
+/** The character a keystroke types into the canvas's find-as-you-type, if it types one. */
+export function typedChar(e: FilesKey): string | null {
+	if (e.ctrlKey || e.metaKey || e.altKey || e.key === " ") return null;
+	return [...e.key].length === 1 ? e.key : null;
+}
+
+/**
+ * Where a typed run lands from `from` (`-1` when nothing has focus): the first name, wrapping, that
+ * starts with the run. One letter moves past the item in focus, so pressing it again cycles through
+ * the names that start with it (the WAI-ARIA listbox pattern); a longer run may stay where it is, and
+ * a run of one repeated letter that no name starts with cycles on that letter.
+ */
+export function typeaheadIndex(names: readonly string[], from: number, run: string): number | null {
+	const typed = [...run.toLocaleLowerCase()];
+	if (names.length === 0 || typed.length === 0) return null;
+	const find = (prefix: string, start: number): number | null => {
+		for (let i = 0; i < names.length; i++) {
+			const at = (start + i) % names.length;
+			if (names[at].toLocaleLowerCase().startsWith(prefix)) return at;
+		}
+		return null;
+	};
+	const next = (from + 1) % names.length;
+	if (typed.length === 1) return find(typed[0], Math.max(next, 0));
+	const whole = find(typed.join(""), Math.max(from, 0));
+	return whole ?? (typed.every((c) => c === typed[0]) ? find(typed[0], Math.max(next, 0)) : null);
+}
+// #endregion
+
 // #region Paste
 /** Where a paste lands: a lone selected folder that takes writes, otherwise the folder in view. */
 export function pasteTarget(

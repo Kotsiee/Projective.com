@@ -71,6 +71,11 @@ export interface ActionMenuProps {
 	 * leaves its links and buttons to the browser, so only its empty space opens this menu.
 	 */
 	surfaceExclude?: string;
+	/**
+	 * Open the `surface`'s menu over a live text selection too, rather than leaving that right-click to
+	 * the browser. For a surface whose own menu carries Copy (a document canvas). Default `false`.
+	 */
+	surfaceSelection?: boolean;
 	/** Accessible name of the root `role="menu"`. */
 	"aria-label": string;
 	/** Root panel placement; flips on overflow (default `bottom-end`). */
@@ -226,6 +231,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		trigger,
 		surface,
 		surfaceExclude,
+		surfaceSelection = false,
 		placement = "bottom-end",
 		avoid,
 		open,
@@ -395,8 +401,8 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		setTimeout(show, 0);
 	};
 
-	const surfaceLive = useRef({ openAt, model, surfaceExclude });
-	surfaceLive.current = { openAt, model, surfaceExclude };
+	const surfaceLive = useRef({ openAt, model, surfaceExclude, surfaceSelection });
+	surfaceLive.current = { openAt, model, surfaceExclude, surfaceSelection };
 	const boundSurface = useRef<{ el: HTMLElement; unbind: () => void } | null>(null);
 
 	useEffect(() => {
@@ -422,7 +428,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 				keyboard,
 				shiftKey: e.shiftKey,
 				editable: !!target?.closest(EDITABLE),
-				selecting: !keyboard && selectingWithin(el),
+				selecting: !keyboard && !surfaceLive.current.surfaceSelection && selectingWithin(el),
 			});
 			if (!open) return;
 			e.preventDefault();

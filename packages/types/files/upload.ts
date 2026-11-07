@@ -214,6 +214,8 @@ export const CreateFolderSchema = z.object({
 	ownerId: z.string().min(1).max(80),
 	/** Omitted inherits the parent's scope, which is the only non-surprising default. */
 	visibility: AssetVisibility.optional(),
+	/** The folder's colour from birth (Decision #400); omitted is none, the default drawing. */
+	color: FolderColor.optional(),
 });
 export type CreateFolder = z.infer<typeof CreateFolderSchema>;
 

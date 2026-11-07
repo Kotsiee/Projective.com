@@ -50,16 +50,12 @@ export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JS
 							onClick={actions.download}
 						/>
 					)}
-				{shell.fullscreenSupported.value
-					? (
-						<ToolButton
-							icon={fullscreen ? "collapse" : "expand"}
-							label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-							shortcut="F"
-							onClick={() => shell.toggleFullscreen()}
-						/>
-					)
-					: null}
+				<ToolButton
+					icon={fullscreen ? "collapse" : "expand"}
+					label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+					shortcut="F"
+					onClick={() => shell.toggleFullscreen()}
+				/>
 				<Tooltip content={panelOpen ? "Hide details (I)" : "Show details (I)"}>
 					<Button
 						iconOnly

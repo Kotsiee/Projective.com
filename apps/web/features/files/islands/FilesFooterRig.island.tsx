@@ -11,6 +11,8 @@ import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
 import { FolderColorDialog } from "../components/FolderColorDialog.tsx";
+import { FolderColorField } from "../components/FolderColorField.tsx";
+import { rememberFolderColor } from "../core/folder-colors.ts";
 import { QuotaRing } from "../components/QuotaRing.tsx";
 import { UploadProgress } from "../components/UploadProgress.tsx";
 import { FilesService } from "../core/FilesService.ts";
@@ -164,6 +166,8 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const folderName = useSignal("");
+	/** The new folder's colour; `null` is none. */
+	const folderColor = useSignal<string | null>(null);
 	const linkUrl = useSignal("");
 	/** The last write's outcome, shown inside the dialog that produced it. Never swallowed. */
 	const notice = useSignal<string | null>(null);
@@ -195,15 +199,19 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 		const name = folderName.value.trim();
 		if (!name || busy.value) return;
 		busy.value = true;
+		const color = folderColor.value;
 		const res = await FilesService.createFolder({
 			name,
 			parentId: newFolderParent.value === undefined ? folderId.value : newFolderParent.value,
 			ownerType: props.ownerType,
 			ownerId: props.ownerId,
+			...(color ? { color } : {}),
 		});
 		busy.value = false;
 		if (res.ok) {
+			if (color) rememberFolderColor(color);
 			folderName.value = "";
+			folderColor.value = null;
 			newFolderOpen.value = false;
 			notice.value = null;
 			treeRevision.value += 1;
@@ -378,6 +386,8 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 					block
 					onValueChange={(v) => (folderName.value = v)}
 				/>
+				<p class="fh-rig__fieldlabel" id="fh-folder-color">Colour (optional)</p>
+				<FolderColorField value={folderColor} labelledBy="fh-folder-color" />
 				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
 			</Dialog>
 

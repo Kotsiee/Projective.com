@@ -6,6 +6,7 @@ import { createImageTools, type ImageTools } from "./image-tools.ts";
 import { ImageStage } from "./ImageStage.tsx";
 import { ImageControls } from "./ImageControls.tsx";
 import { ImageChips } from "./ImageZoomBar.tsx";
+import { copyImage } from "./copy-image.ts";
 
 const IMAGE_SHORTCUTS: readonly ViewerShortcut[] = [
 	{ keys: ["+"], label: "Zoom in" },
@@ -45,6 +46,29 @@ export const imageViewer = defineViewer<ImageTools>({
 	Controls: ImageControls,
 	Chips: (props) => (props.tools.panorama.value ? null : h(ImageChips, props)),
 	shortcuts: IMAGE_SHORTCUTS,
+	menu: ({ shell, tools, stage }) =>
+		tools.panorama.peek() ? [] : [
+			{
+				key: "fit",
+				label: "Zoom to fit",
+				icon: "zoom-fit",
+				shortcut: "0",
+				command: () => tools.fitToStage(),
+			},
+			{
+				key: "actual",
+				label: "Actual size (100%)",
+				icon: "zoom-in",
+				shortcut: "1",
+				command: () => tools.actualSize(),
+			},
+			{
+				key: "copy-image",
+				label: "Copy image",
+				icon: "copy",
+				command: () => void copyImage(stage, shell),
+			},
+		],
 });
 
 export { createImageTools, type ImageBackground, type ImageTools } from "./image-tools.ts";

@@ -101,7 +101,7 @@ same green in both themes and under every seed.
 | Image, texture | `--file-image` · white                                  | `#EA4335` | `.png` `.jpg` `.webp` `.svg` `.hdr` `.exr`            |
 | Video          | `--file-video` · white                                  | `#A142F4` | `.mp4` `.webm` `.mov`                                 |
 | Audio          | `--file-audio` · `#202124`                              | `#FA7B17` | `.mp3` `.wav` `.ogg`                                  |
-| Code           | `--file-code` · `#202124`                               | `#00ACC1` | `.js` `.ts` `.py` `.json` `.html` `.css`, …         |
+| Code           | `--file-code` · white (Decision #400)                   | `#00838F` | `.js` `.ts` `.py` `.json` `.html` `.css`, …         |
 | 3D model       | `--file-model` · white                                  | `#C2185B` | `.obj` `.stl` `.gltf` `.glb`                          |
 | Archive        | `--file-archive` · white                                | `#5F6368` | `.zip` `.tar` `.gz`                                   |
 | Web link       | `--file-link` · `#202124`                               | `#03A9F4` | a stored link                                         |
@@ -3252,8 +3252,8 @@ where nothing hovers) and the same rows on right-click; a table row gets them fr
 from `ItemMenu`, and the canvas has its own `ActionMenu` over `.fh-hub`. `FilesDragSurface` is the one
 drag source: `data-fh-drag` marks a row or card as its own handle past `DRAG_DISTANCE` (6px), a touch
 press never arms, `M` picks up from the keyboard, and `data-fh-drop` marks a target in any region, which
-`data-drop-over` tints. `DataTable` passes marks through `rowAttrs`. `.fh-hub__crumbbar` leads with
-ghost Back · Forward · Up (`Button rounded iconOnly variant="text"`), and `FilesInspector` is the
+`data-drop-over` tints. `DataTable` passes marks through `rowAttrs`. `.fh-hub__crumbbar` ends with
+ghost Back · Forward · Up (`Button rounded iconOnly variant="text"`) after the trail (Decision #400), and `FilesInspector` is the
 frame's `selection` panel, a `Drawer` below 1280px. The Asset Picker keeps its grip.
 
 **Folders and their colour (Decision #395).** `FolderMark` (`color?`, `size?`; `.fh-foldermark`) is the one drawing of a folder: unframed on `AssetFolderCard`, in `SubmissionNodeList`'s `lead` slot and in tree rows. The front panel takes the colour and the back mixes it toward `--surface-1`, so one value reads as depth in every theme, and a folder with none is a neutral `--on-surface` mix. `FolderColorGrid` (`folderColorRow(target)` for a menu) is two rows of six `.fh-swatch` rounded squares, the last cell a `+`, as `menuitemradio`s with spoken names; a ring marks the selected one, because a mark on the swatch cannot hold on every colour. `FolderColorDialog` is the `+`: `ColorPicker inline variant="wheel"` with the folder previewed. A folder's colour reaches the page as `--fh-folder` through `styleVars`, the one colour here that is data and not a token.

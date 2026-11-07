@@ -37,6 +37,7 @@ export type ProtectedShortcutId =
 	| "files-move-focus"
 	| "files-open"
 	| "files-select"
+	| "files-type-to-find"
 	| "dismiss";
 
 export type ShortcutId = ToggleableShortcutId | ProtectedShortcutId;
@@ -171,6 +172,15 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		label: "Select the focused item",
 		description: "Adds the focused file or folder to the selection, or takes it out.",
 		keys: ["Space"],
+		isProtected: true,
+	},
+	{
+		id: "files-type-to-find",
+		category: "Files",
+		label: "Jump to a name",
+		description:
+			"Typing the start of a name moves to the next file or folder that begins with it. Type the same letter again to step through them.",
+		keys: ["A–Z"],
 		isProtected: true,
 	},
 	{

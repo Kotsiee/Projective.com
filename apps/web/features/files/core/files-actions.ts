@@ -5,6 +5,7 @@ import {
 	type AssetVisibility,
 	fileInspectHref,
 	inspectable,
+	shareHref,
 } from "../types/file-types.ts";
 import { FilesService } from "./FilesService.ts";
 import { rememberFolderColor } from "./folder-colors.ts";
@@ -37,6 +38,15 @@ export function openInNewTab(asset: AssetItem): void {
 	const target = inspectable(asset) ? fileInspectHref(asset.id) : linkHref(asset) ?? asset.url;
 	if (!target || target === "#") return;
 	globalThis.open(target, "_blank", "noopener,noreferrer");
+}
+
+/**
+ * Where a Share row points: the file's live share link, else its inspector page (which opens for
+ * whoever may already read it), else a link's or drive file's own address.
+ */
+export function shareHrefOf(asset: AssetItem): string {
+	if (asset.shareSlug) return shareHref(asset.shareSlug);
+	return inspectable(asset) ? fileInspectHref(asset.id) : linkHref(asset) ?? asset.url;
 }
 
 /** Download: record the copy, then hand the bytes over. A drive file has no row for the ledger to hold. */

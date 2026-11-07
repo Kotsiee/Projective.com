@@ -4,6 +4,7 @@ import {
 	channelLabel,
 	clampRate,
 	clockOf,
+	createSpaceGesture,
 	formatRate,
 	frameFileName,
 	isSideways,
@@ -146,4 +147,30 @@ Deno.test("mediaCommand: picture keys are video-only; modified presses are ignor
 Deno.test("VIDEO_SHORTCUTS: never claims a workspace key", () => {
 	const claimed = VIDEO_SHORTCUTS.flatMap((s) => s.keys).map((k) => k.toLowerCase());
 	for (const key of ["f", "i", "?"]) assertEquals(claimed.includes(key), false);
+});
+
+Deno.test("Space: a tap toggles play on release, a quick second tap asks for fullscreen", () => {
+	const space = createSpaceGesture();
+	assertEquals(space.down(0), null);
+	assertEquals(space.up(80), "toggle-play");
+	assertEquals(space.down(200), null);
+	assertEquals(space.up(260), "fullscreen");
+	assertEquals(space.down(1000), null);
+	assertEquals(space.up(1060), "toggle-play");
+	assertEquals(space.down(2000), null);
+	assertEquals(space.up(2060), "toggle-play");
+});
+
+Deno.test("Space: a hold boosts once past the threshold and lets go on release or lost focus", () => {
+	const space = createSpaceGesture();
+	assertEquals(space.down(0), null);
+	assertEquals(space.down(100), null);
+	assertEquals(space.down(320), "boost");
+	assertEquals(space.down(400), null);
+	assertEquals(space.up(900), "unboost");
+	assertEquals(space.down(1000), null);
+	assertEquals(space.down(1400), "boost");
+	assertEquals(space.cancel(), "unboost");
+	assertEquals(space.up(1500), null);
+	assertEquals(space.cancel(), null);
 });

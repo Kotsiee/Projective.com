@@ -125,6 +125,7 @@ export async function createFolder(actor: Actor, input: CreateFolder): Promise<R
 		parent_folder_id: parent?.id ?? null,
 		name,
 		visibility: input.visibility ?? parent?.visibility ?? "private",
+		color: input.color ?? null,
 		path: parent ? [...(parent.path ?? []), parent.name ?? ""] : [],
 	}).select(FOLDER_COLUMNS).single();
 	if (error) {

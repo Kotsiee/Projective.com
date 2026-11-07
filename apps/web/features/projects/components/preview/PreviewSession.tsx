@@ -292,7 +292,7 @@ export function PreviewSession(props: PreviewSessionProps): JSX.Element {
 		}
 		: null;
 	const canvasShortcuts = liveHost && liveHost.shell.status.value !== "error"
-		? liveHost.viewer.shortcuts
+		? [...liveHost.viewer.shortcuts, { keys: ["F"], label: "Fullscreen" }]
 		: [];
 	// #endregion
 

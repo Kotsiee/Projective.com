@@ -166,11 +166,11 @@ Deno.test("shell: fail moves to error, announce re-fires identical messages, pan
 	shell.togglePanel();
 	assertEquals(shell.panelOpen.value, false);
 
-	let toggled = 0;
+	assertEquals(shell.fullscreen.value, false);
 	shell.toggleFullscreen();
-	shell.setFullscreenHandler(() => toggled++);
+	assertEquals(shell.fullscreen.value, true);
 	shell.toggleFullscreen();
-	assertEquals(toggled, 1);
+	assertEquals(shell.fullscreen.value, false);
 });
 
 Deno.test("fileOpenHref sends stored files to the inspector and everything else to its URL", () => {

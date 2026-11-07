@@ -108,8 +108,10 @@
 	padding-block: var(--space-2);
 	padding-inline: var(--space-1);
 }
+/* The folder history ends the bar, after the trail (Decision #400). */
 .fh-hub__crumbnav {
 	flex: none;
+	margin-inline-start: auto;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
@@ -161,7 +163,8 @@
 	outline: 2px solid var(--on-surface);
 	outline-offset: 2px;
 }
-.fh-swatch--add {
+.fh-swatch--add,
+.fh-swatch--none {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--text-secondary);
 }

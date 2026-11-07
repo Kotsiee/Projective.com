@@ -41,7 +41,7 @@ function repaintWave(root: HTMLElement, peaks: number[], audio: HTMLMediaElement
 export function AudioStage({ shell, tools }: ViewerProps<AudioTools>): JSX.Element {
 	const { asset } = shell;
 	const root = useRef<HTMLDivElement>(null);
-	useStageKeys(root, tools, "audio");
+	useStageKeys(root, tools, "audio", shell);
 
 	const plan = peakPlan({
 		peaks: asset.peaks,

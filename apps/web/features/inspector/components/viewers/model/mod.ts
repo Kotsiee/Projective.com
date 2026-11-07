@@ -25,6 +25,22 @@ export const modelViewer = defineViewer<ModelTools>({
 		{ keys: ["G"], label: "Grid floor" },
 		{ keys: ["Space"], label: "Play or pause the animation" },
 	],
+	menu: ({ tools }) => [
+		{
+			key: "reset",
+			label: "Reset camera",
+			icon: "camera-scene",
+			shortcut: "R",
+			command: () => tools.reset(),
+		},
+		{
+			key: "wireframe",
+			label: tools.wireframe.peek() ? "Hide wireframe" : "Show wireframe",
+			icon: "wireframe",
+			shortcut: "W",
+			command: () => (tools.wireframe.value = !tools.wireframe.peek()),
+		},
+	],
 });
 
 export { createModelTools, FREE_ORBIT, type ModelTools } from "./model-tools.ts";
