@@ -160,6 +160,13 @@ export const MoveAssetsSchema = z.object({
 export type MoveAssets = z.input<typeof MoveAssetsSchema>;
 
 /**
+ * Copy assets and/or folders into a folder, on a move's terms: `null` is the root of their own library,
+ * a folder carries its subtree, and the copy stays inside one library.
+ */
+export const CopyAssetsSchema = MoveAssetsSchema;
+export type CopyAssets = MoveAssets;
+
+/**
  * Delete assets and/or folders.
  *
  * Nothing is hard-deleted (root CLAUDE.md §5) — this stamps `deleted_at`, so a deletion is recoverable
@@ -209,5 +216,12 @@ export const CreateFolderSchema = z.object({
 	visibility: AssetVisibility.optional(),
 });
 export type CreateFolder = z.infer<typeof CreateFolderSchema>;
+
+/** Rename a folder. Its address changes with it, because the hub addresses a folder by its name. */
+export const RenameFolderSchema = z.object({
+	folderId: z.string().min(1).max(120),
+	name: z.string().min(1).max(200),
+});
+export type RenameFolder = z.infer<typeof RenameFolderSchema>;
 
 // #endregion

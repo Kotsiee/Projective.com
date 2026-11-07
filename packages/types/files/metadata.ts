@@ -211,6 +211,21 @@ export const AssetMetadataSchema = z.object({
 });
 export type AssetMetadata = z.infer<typeof AssetMetadataSchema>;
 
+const SANITISED_NOTE = "Removed to keep this file safe: ";
+const MAX_NOTE_LENGTH = 200;
+
+/** The note left on a file the upload pipeline rewrote, so the change stays on the record. */
+export function sanitisedNote(removed: readonly string[]): string {
+	return `${SANITISED_NOTE}${removed.join(", ")}.`.slice(0, MAX_NOTE_LENGTH);
+}
+
+/** That note, if this file carries one. */
+export function sanitisedNoteOf(
+	metadata: { notes?: readonly string[] } | null | undefined,
+): string | null {
+	return metadata?.notes?.find((note) => note.startsWith(SANITISED_NOTE)) ?? null;
+}
+
 /** The version every producer stamps today — one constant, so a bump is a single edit. */
 export const ASSET_METADATA_VERSION = 1;
 // #endregion

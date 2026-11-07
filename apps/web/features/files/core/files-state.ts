@@ -15,6 +15,7 @@ import type {
 	StorageQuota,
 	UploadTask,
 } from "../types/file-types.ts";
+import type { ExplorerCell } from "./files-keyboard.ts";
 
 /**
  * files-state — the cross-island signal bridge for the `/files` asset hub, where the surface is
@@ -145,7 +146,8 @@ export const narrowed = computed(() => query.value.trim().length > 0 || facetCou
 
 // #region Selection
 /**
- * Selected asset ids, in CLICK order.
+ * Selected asset AND folder ids, in CLICK order: one list, because a range and Select all run across
+ * both kinds. A consumer that needs one kind reads it through {@link items} or {@link folders}.
  *
  * Order is preserved rather than normalised to display order because a bulk action reports on what
  * was chosen ("Move 3 files"), and a person who picked the last row first expects it named first.
@@ -158,6 +160,9 @@ export const anchorId = signal<string | null>(null);
 
 /** The asset the Inspect panel is describing; `null` closes the panel. */
 export const inspectId = signal<string | null>(null);
+
+/** The asset the preview modal is open on; `null` closes it. */
+export const previewId = signal<string | null>(null);
 
 /** The listed asset {@link inspectId} names, or `null`. */
 export const inspected = computed(() =>
@@ -222,6 +227,23 @@ export function clearSelection(): void {
 	selection.value = [];
 	anchorId.value = null;
 }
+
+/** Select every id listed. An anchor still listed survives, so a later range starts where it did. */
+export function selectAll(ids: readonly string[]): void {
+	selection.value = [...ids];
+	if (anchorId.value === null || !ids.includes(anchorId.value)) anchorId.value = ids[0] ?? null;
+}
+
+/**
+ * Inspect follows a selection: one asset is described, and a pane describing something no longer
+ * selected closes. A lone folder has no pane, so it closes too.
+ */
+export function inspectSelection(): void {
+	const ids = selection.value;
+	const lone = ids.length === 1 ? items.value.find((a) => a.id === ids[0])?.id : undefined;
+	const held = inspectId.value;
+	inspectId.value = lone ?? (ids.length > 1 && held && ids.includes(held) ? held : null);
+}
 // #endregion
 
 // #region Action layer (the footer rig mounts it; any region opens it)
@@ -259,6 +281,30 @@ export const pendingDisconnect = signal<{ connectionId: string; name: string } |
 
 /** Whether the disconnect confirmation is up. */
 export const disconnectOpen = signal(false);
+
+/**
+ * What a copy or a cut holds. Internal to the hub: its rows are this library's, which the system
+ * clipboard has no words for, so it outlives a move between folders and not the page.
+ */
+export interface FilesClipboard {
+	mode: "copy" | "cut";
+	assetIds: string[];
+	folderIds: string[];
+	/** The folder they were taken from: a cut pasted back there changes nothing. */
+	from: string | null;
+}
+
+/** The clipboard; `null` when nothing is held. */
+export const clipboard = signal<FilesClipboard | null>(null);
+
+/** Whether a row is held by a cut: the canvas dims it. */
+export function isCut(id: string): boolean {
+	const held = clipboard.value;
+	return held?.mode === "cut" && (held.assetIds.includes(id) || held.folderIds.includes(id));
+}
+
+/** The item an inline rename is open on; `null` when none is. */
+export const renaming = signal<ExplorerCell | null>(null);
 
 /** Bumped by a write that changes the folder structure, so the lane re-reads its tree. */
 export const treeRevision = signal(0);
@@ -438,7 +484,7 @@ export function applyError(message: string): void {
 /** Drop selected ids that are no longer listed, and re-point the anchor if it went with them. */
 function pruneSelection(): void {
 	if (selection.value.length === 0 && anchorId.value === null) return;
-	const live = new Set(items.value.map((i) => i.id));
+	const live = new Set([...items.value, ...folders.value].map((row) => row.id));
 	const next = selection.value.filter((id) => live.has(id));
 	if (next.length !== selection.value.length) selection.value = next;
 	if (anchorId.value !== null && !live.has(anchorId.value)) {
@@ -484,6 +530,8 @@ export function resetFilesState(): void {
 	selection.value = [];
 	anchorId.value = null;
 	inspectId.value = null;
+	clipboard.value = null;
+	renaming.value = null;
 	busy.value = false;
 	newFolderOpen.value = false;
 	newFolderParent.value = undefined;
@@ -525,6 +573,12 @@ export function goTo(path: string[]): void {
 export function goToHref(href: string): void {
 	filesNavigate.value?.toHref(href);
 }
+
+/** The header's way to its search field, registered on mount; a host with no band has none. */
+export const filesSearchFocus = signal<(() => void) | null>(null);
+
+/** The body's way back to its canvas, registered on mount: where Esc in the search field goes. */
+export const filesCanvasFocus = signal<(() => void) | null>(null);
 
 /** Reset every narrowing control back to the whole folder, then refetch. */
 export function clearFilesFilters(): void {

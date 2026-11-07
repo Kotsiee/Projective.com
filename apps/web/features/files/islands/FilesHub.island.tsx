@@ -58,7 +58,15 @@ import {
 	isIdleDrop,
 	payloadOf,
 } from "../core/files-dnd.ts";
-import { download, moveRows, openInNewTab } from "../core/files-actions.ts";
+import {
+	cellId,
+	cellName,
+	cellsOf,
+	type ExplorerCell,
+	managesFolder,
+	rowsOf,
+} from "../core/files-keyboard.ts";
+import { download, moveRows, openInNewTab, renameFolder } from "../core/files-actions.ts";
 import {
 	canGoBack,
 	canGoForward,
@@ -85,21 +93,25 @@ import {
 	DEFAULT_SORT,
 	enqueueUploads,
 	error,
+	filesCanvasFocus,
 	filesCommit,
 	filesNavigate,
 	folderId,
 	folders,
 	hasMore,
 	inspectId,
+	inspectSelection,
+	isCut,
 	items,
 	loading,
 	narrowed,
 	nextCursor,
 	pendingRemoval,
+	previewId,
 	query,
-	rangeSelect,
 	readOnly,
 	removalOpen,
+	renaming,
 	resetFilesState,
 	seeded,
 	selection,
@@ -108,15 +120,15 @@ import {
 	sortKey,
 	sourceFilter,
 	subjectId,
-	toggleSelect,
 	tree,
 	viewerId,
 	visibilityFilter,
 } from "../core/files-state.ts";
 import { uploadTasksOf } from "../core/upload-tasks.ts";
 import { useFileDrop } from "../hooks/use-file-drop.ts";
+import { useFileExplorerKeyboardShortcuts } from "../hooks/use-file-explorer-keyboard-shortcuts.ts";
 import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
-import { type AssetActivation, AssetCard } from "../components/AssetCard.tsx";
+import { AssetCard } from "../components/AssetCard.tsx";
 import { AssetFolderCard } from "../components/AssetFolderCard.tsx";
 import { FileDropOverlay } from "../components/FileDropOverlay.tsx";
 import { FilesEmptyState } from "../components/FilesEmptyState.tsx";
@@ -124,6 +136,7 @@ import { DRAG_DISTANCE, FilesDragSurface, underPointer } from "../components/Fil
 import { folderColorRow } from "../components/FolderColorGrid.tsx";
 import { FolderMark } from "../components/FolderMark.tsx";
 import { ItemMenu } from "../components/ItemMenu.tsx";
+import { RenameField } from "../components/RenameField.tsx";
 import { starFile } from "@features/files/core/star-file.ts";
 
 /**
@@ -143,6 +156,12 @@ import { starFile } from "@features/files/core/star-file.ts";
  * operating system — the highlight is drawn inside the hub, so it can never spill over the sidebar or
  * the lane. Both feed the same upload queue the footer does. A narrowed empty state offers "Clear
  * filters" instead: the way out of a state the body is currently rendering.
+ *
+ * ## The keyboard
+ *
+ * {@link useFileExplorerKeyboardShortcuts} is the canvas's desktop keyboard and its modified clicks, and
+ * says how it scopes itself. It finds an item by `data-key`, which `.fh-cell` and a `DataTable` row both
+ * carry, so the two views and the two kinds of row answer the same keys.
  *
  * ## Density is borrowed, never re-instantiated
  *
@@ -219,11 +238,6 @@ const LIST_MARK = 22;
  */
 const CARD_META = 62;
 
-/** One workspace cell: a child folder or an asset. Folders lead, so containers are never buried. */
-type Cell =
-	| { kind: "folder"; folder: AssetFolder }
-	| { kind: "asset"; asset: AssetItem };
-
 /** The address segment of a folder in view: its name in the library, its own id in a drive. */
 function segmentOf(folder: AssetFolder): string {
 	return folder.externalFolderId ?? folder.name;
@@ -231,7 +245,7 @@ function segmentOf(folder: AssetFolder): string {
 
 /** A folder's drag and drop marks: a mounted folder is browsable, and takes neither. */
 function folderMarks(folder: AssetFolder): Record<`data-${string}`, string> | null {
-	return folder.source === "supabase" && folder.canManage
+	return managesFolder(folder)
 		? { ...dragAttrs("folder", folder.id), ...dropAttrs(folder.id) }
 		: null;
 }
@@ -240,13 +254,23 @@ function folderMarks(folder: AssetFolder): Record<`data-${string}`, string> | nu
 function assetMarks(asset: AssetItem): Record<`data-${string}`, string> | null {
 	return asset.canManage ? dragAttrs("asset", asset.id) : null;
 }
+
+/** What marks a cell held by a cut. */
+function cellClass(id: string): string {
+	return isCut(id) ? "fh-cell is-cut" : "fh-cell";
+}
+
+/** A `DataTable` row's token for the same. */
+function rowStateOf(row: { id: string }): string | null {
+	return isCut(row.id) ? "cut" : null;
+}
 // #endregion
 
 // #region Cells
 interface AssetCellProps {
 	asset: AssetItem;
 	selected: boolean;
-	onSelect: (asset: AssetItem, activation: AssetActivation) => void;
+	onSelect: (asset: AssetItem) => void;
 	onPreview: (asset: AssetItem) => void;
 	onOpenRaw: (asset: AssetItem) => void;
 	/** The item's kebab and right-click rows. */
@@ -255,14 +279,14 @@ interface AssetCellProps {
 
 /**
  * AssetCell — an {@link AssetCard}, its kebab, and the marks {@link FilesDragSurface} reads: the whole
- * cell is the handle, so there is no grip to reach for, and the card keeps Enter and Space as SELECT.
+ * cell is the handle, so there is no grip to reach for.
  */
 function AssetCell(props: AssetCellProps): JSX.Element {
 	const { asset, selected, onSelect, onPreview, onOpenRaw, rows } = props;
 	const cell = useRef<HTMLDivElement>(null);
 
 	return (
-		<div class="fh-cell" ref={cell} {...assetMarks(asset)}>
+		<div class={cellClass(asset.id)} ref={cell} data-key={asset.id} {...assetMarks(asset)}>
 			<AssetCard
 				asset={asset}
 				selected={selected}
@@ -277,6 +301,7 @@ function AssetCell(props: AssetCellProps): JSX.Element {
 
 interface FolderCellProps {
 	folder: AssetFolder;
+	selected: boolean;
 	onOpen: (folder: AssetFolder) => void;
 	rows: (folder: AssetFolder) => MenuItem[];
 }
@@ -288,12 +313,12 @@ interface FolderCellProps {
  * what they already have, not so it can become a second write path into someone else's system of
  * record. It stays in the grid unmarked: still browsable, it simply refuses a drop.
  */
-function FolderCell({ folder, onOpen, rows }: FolderCellProps): JSX.Element {
+function FolderCell({ folder, selected, onOpen, rows }: FolderCellProps): JSX.Element {
 	const cell = useRef<HTMLDivElement>(null);
 
 	return (
-		<div class="fh-cell" ref={cell} {...folderMarks(folder)}>
-			<AssetFolderCard folder={folder} onOpen={onOpen} />
+		<div class={cellClass(folder.id)} ref={cell} data-key={folder.id} {...folderMarks(folder)}>
+			<AssetFolderCard folder={folder} selected={selected} onOpen={onOpen} />
 			<ItemMenu model={rows(folder)} label={folder.name} surface={cell} />
 		</div>
 	);
@@ -329,10 +354,10 @@ function DragGhost({ selected }: { selected: number }): JSX.Element {
 	const { store } = useDnd();
 	const source = store.active.value ? dragOf(String(store.active.value.id)) : null;
 	const many = selected > 1 && selection.value.includes(source?.id ?? "");
-	const label = source?.kind === "folder"
+	const label = many
+		? `${selected} items`
+		: source?.kind === "folder"
 		? "Move folder"
-		: many
-		? `${selected} files`
 		: "Move file";
 	return (
 		<DragOverlay class="fh-ghost">
@@ -344,7 +369,7 @@ function DragGhost({ selected }: { selected: number }): JSX.Element {
 
 // #region Workspace
 interface WorkspaceProps {
-	cells: Cell[];
+	cells: ExplorerCell[];
 	assets: AssetItem[];
 	folderList: AssetFolder[];
 	sortKey: ReadonlySignal<string>;
@@ -352,7 +377,7 @@ interface WorkspaceProps {
 	onSort: (key: FileSortKey) => void;
 	selection: readonly string[];
 	onSelectionChange: (ids: string[]) => void;
-	onSelect: (asset: AssetItem, activation: AssetActivation) => void;
+	onSelect: (asset: AssetItem) => void;
 	onPreview: (asset: AssetItem) => void;
 	onOpenRaw: (asset: AssetItem) => void;
 	onOpenFolder: (folder: AssetFolder) => void;
@@ -386,7 +411,14 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 				aria-label="Files and folders"
 				itemTemplate={(cell) =>
 					cell.kind === "folder"
-						? <FolderCell folder={cell.folder} onOpen={p.onOpenFolder} rows={p.folderRows} />
+						? (
+							<FolderCell
+								folder={cell.folder}
+								selected={selection.value.includes(cell.folder.id)}
+								onOpen={p.onOpenFolder}
+								rows={p.folderRows}
+							/>
+						)
 						: (
 							<AssetCell
 								asset={cell.asset}
@@ -411,6 +443,13 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 						nodes={p.folderList.map((folder) => shapeFolderAsNode(folder))}
 						header={false}
 						aria-label="Folders"
+						rowKey={(node) => folderOf(node)?.id ?? node.segment}
+						selection={p.selection}
+						onSelectionChange={p.onSelectionChange}
+						rowState={(node) => {
+							const folder = folderOf(node);
+							return folder ? rowStateOf(folder) : null;
+						}}
 						lead={(node) => <FolderMark color={folderOf(node)?.color} size={LIST_MARK} />}
 						onOpen={(node) => {
 							const folder = folderOf(node);
@@ -440,6 +479,7 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 				loading={p.busy}
 				rowActions={p.assetRows}
 				rowAttrs={assetMarks}
+				rowState={rowStateOf}
 			/>
 		</div>
 	);
@@ -451,8 +491,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		props;
 
 	// #region Local (view) state — never in `files-state`, because no other region reads it
-	/** The asset the preview modal is open on; `null` closes it. */
-	const previewId = useSignal<string | null>(null);
 	/** A tail page is loading — distinct from `loading`, which replaces the contents. */
 	const loadingMore = useSignal(false);
 
@@ -591,26 +629,16 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	// #endregion
 
 	// #region Selection
-	/** The ids of the assets in the order they are painted — the run a shift-range is measured over. */
-	function orderedAssetIds(): string[] {
-		return items.value.map((asset) => asset.id);
+	/** A plain click. A modified one never gets here: the keyboard hook answers it, in either view. */
+	function onSelect(asset: AssetItem): void {
+		selectOnly(asset.id);
+		inspectSelection();
 	}
 
-	function onSelect(asset: AssetItem, activation: AssetActivation): void {
-		if (activation.range) rangeSelect(asset.id, orderedAssetIds());
-		else if (activation.toggle) toggleSelect(asset.id);
-		else selectOnly(asset.id);
-
-		// Inspect follows the selection: a ctrl-click that REMOVED this asset must not leave the pane
-		// describing something the person just deselected.
-		inspectId.value = selection.value.includes(asset.id) ? asset.id : null;
-	}
-
-	/** List-view selection: the table applies the gestures; Inspect follows a single selected asset. */
+	/** List-view selection: a row's check; Inspect follows a single selected asset. */
 	function onTableSelection(ids: string[]): void {
 		selection.value = ids;
-		const inspected = inspectId.value;
-		inspectId.value = ids.length === 1 ? ids[0] : inspected && ids.includes(inspected) ? inspected : null;
+		inspectSelection();
 	}
 
 	// #endregion
@@ -619,6 +647,14 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	function askRemoval(name: string, assetIds: string[], folderIds: string[]): void {
 		pendingRemoval.value = { assetIds, folderIds, name };
 		removalOpen.value = true;
+	}
+
+	/** The keyboard's delete: the same confirmation, over what of these the viewer may remove. */
+	function removeCells(chosen: ExplorerCell[]): void {
+		const { assetIds, folderIds } = rowsOf(chosen);
+		const count = assetIds.length + folderIds.length;
+		const only = chosen.find((c) => assetIds.includes(cellId(c)) || folderIds.includes(cellId(c)));
+		askRemoval(count === 1 && only ? cellName(only) : `${count} items`, assetIds, folderIds);
 	}
 
 	/**
@@ -755,10 +791,20 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	function onDragEnd(e: DragEndEvent): void {
 		if (e.canceled || e.over === null) return;
 		const target = folderOfDrop(String(e.over));
-		const manageable = new Set(items.value.filter((a) => a.canManage).map((a) => a.id));
+		const manageable = rowsOf(cellsOf(folders.value, items.value));
 		const payload = payloadOf(dragOf(String(e.active.id)), selection.value, manageable);
 		if (!isIdleDrop(payload, target, folderId.value)) void moveRows(payload, target);
 	}
+	// #endregion
+
+	// #region Keyboard
+	const keyboard = useFileExplorerKeyboardShortcuts({
+		containerRef: hubRef,
+		takesPaste: takesFiles,
+		onOpenFolder: openFolder,
+		onUp: goUp,
+		onRemove: removeCells,
+	});
 	// #endregion
 
 	// #region Mount
@@ -779,6 +825,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		// Every other region asks for a read through here, so there is one fetch path, and moves
 		// through here, so there is one history.
 		filesCommit.value = () => void reload();
+		filesCanvasFocus.value = keyboard.focusCanvas;
 		filesNavigate.value = {
 			toPath: navigate,
 			toHref: (href) => navigate(segmentsOfHref(href, base, routing)),
@@ -803,6 +850,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		return () => {
 			globalThis.removeEventListener("popstate", onPop);
 			filesCommit.value = null;
+			filesCanvasFocus.value = null;
 			filesNavigate.value = null;
 			// Module-level signals outlive this island, so a later navigation into another scope would
 			// otherwise paint the previous library for a frame.
@@ -833,13 +881,11 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		? Math.max(0, previewGroup.findIndex((a) => a.id === previewAsset.id))
 		: 0;
 
-	const cells: Cell[] = [
-		...folders.value.map((folder): Cell => ({ kind: "folder", folder })),
-		...items.value.map((asset): Cell => ({ kind: "asset", asset })),
-	];
+	const cells = cellsOf(folders.value, items.value);
 
 	const isEmpty = seeded.value && cells.length === 0;
-	const dragCount = items.value.filter((a) => a.canManage && selection.value.includes(a.id)).length;
+	const dragRows = rowsOf(cells.filter((c) => selection.value.includes(cellId(c))));
+	const dragCount = dragRows.assetIds.length + dragRows.folderIds.length;
 
 	/** The canvas's own menu. What writes is withheld by absence, as the footer withholds it. */
 	const canvasRows: MenuItem[] = [
@@ -996,16 +1042,29 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		? crumbs.value.at(-1)?.label ?? currentPath.value.at(-1)
 		: null;
 
+	/** The name an open rename covers: a grid card's, or a list row's first cell after its check. */
+	function renameAnchor(cell: ExplorerCell): Element | null {
+		const item = hubRef.current?.querySelector(
+			`.fh-cell[data-key="${CSS.escape(cellId(cell))}"], .ui-dt__row[data-key="${CSS.escape(cellId(cell))}"]`,
+		);
+		return item?.querySelector(".fx-card__name, .subm-card__name, .ui-dt__lead + .ui-dt__cell") ?? null;
+	}
+
+	const renamingCell = renaming.value;
+	const renamingAnchor = renamingCell ? renameAnchor(renamingCell) : null;
+
 	return (
 		<div
 			ref={hubRef}
 			class="fh-hub"
+			tabIndex={-1}
 			data-scope={currentScope.value}
 			data-busy={busy.value || undefined}
 			data-drop={drop.active.value || undefined}
 			{...drop.handlers}
 		>
 			{drop.active.value && <FileDropOverlay destination={here ?? "this library"} />}
+			<span class="ui-visually-hidden" role="status">{keyboard.note.value}</span>
 			{canUpload && (
 				<input
 					ref={fileInput}
@@ -1068,13 +1127,33 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				surfaceExclude="[data-fh-drag], a, button, input"
 			/>
 
+			{renamingCell && renamingAnchor && hubRef.current && (
+				<RenameField
+					key={cellId(renamingCell)}
+					cell={renamingCell}
+					anchor={renamingAnchor}
+					hub={hubRef.current}
+					onRename={(name) =>
+						void (renamingCell.kind === "folder"
+							? renameFolder(renamingCell.folder.id, name)
+							: rename(renamingCell.asset.id, name))}
+					onClose={(byKey) => {
+						renaming.value = null;
+						if (byKey) keyboard.focusCanvas();
+					}}
+				/>
+			)}
+
 			<AttachmentPreviewModal
 				open={previewAsset !== null}
 				files={previewGroup}
 				startIndex={previewIndex}
 				viewerId={viewerId.value}
 				projectId={subjectId.value ?? ""}
-				onClose={() => (previewId.value = null)}
+				onClose={() => {
+					previewId.value = null;
+					keyboard.focusCanvas();
+				}}
 				onRename={(assetId, name) => void rename(assetId, name)}
 				onToggleStar={toggleStar}
 				context={{ kind: "files" }}

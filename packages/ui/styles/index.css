@@ -295,6 +295,76 @@
 	--minor-size: 0.55em;
 	--minor-fade: 0.62;
 
+	/* --- File-type families (Decision #396, §A.1a) — a fixed identity palette, mode-invariant like a
+	brand mark: a green spreadsheet is the same green in both themes, so it is not engine-derived. Each
+	fill carries its ink, chosen so the glyph clears the 3:1 graphics floor (WCAG 1.4.11) on the tile. --- */
+	--file-ink-light: #ffffff;
+	--file-ink-dark: #202124;
+	--file-spreadsheet: #0f9d58;
+	--on-file-spreadsheet: var(--file-ink-light);
+	--file-document: #4285f4;
+	--on-file-document: var(--file-ink-light);
+	--file-presentation: #f4b400;
+	--on-file-presentation: var(--file-ink-dark);
+	--file-pdf: #db4437;
+	--on-file-pdf: var(--file-ink-light);
+	--file-image: #ea4335;
+	--on-file-image: var(--file-ink-light);
+	--file-video: #a142f4;
+	--on-file-video: var(--file-ink-light);
+	--file-audio: #fa7b17;
+	--on-file-audio: var(--file-ink-dark);
+	--file-code: #00acc1;
+	--on-file-code: var(--file-ink-dark);
+	--file-model: #c2185b;
+	--on-file-model: var(--file-ink-light);
+	--file-archive: #5f6368;
+	--on-file-archive: var(--file-ink-light);
+	--file-link: #03a9f4;
+	--on-file-link: var(--file-ink-dark);
+
+	/* --- Software tiles (Decision #397, §A.1b) — an application's own fill, static for the reason the
+	families are. These tiles carry letters, so each pair clears the 4.5:1 text floor. Figma, Blender and
+	Resolve sit on a neutral because their marks are full colour and would vanish on their own hue. --- */
+	--file-photoshop: #31a8ff;
+	--on-file-photoshop: var(--file-ink-dark);
+	--file-illustrator: #ff9a00;
+	--on-file-illustrator: var(--file-ink-dark);
+	--file-premiere: #9999ff;
+	--on-file-premiere: var(--file-ink-dark);
+	--file-aftereffects: #9999ff;
+	--on-file-aftereffects: var(--file-ink-dark);
+	--file-indesign: #ff3366;
+	--on-file-indesign: var(--file-ink-dark);
+	--file-lightroom: #31a8ff;
+	--on-file-lightroom: var(--file-ink-dark);
+	--file-figma: #2c2c2c;
+	--on-file-figma: var(--file-ink-light);
+	--file-sketch: #f7b500;
+	--on-file-sketch: var(--file-ink-dark);
+	--file-blender: #2c2c2c;
+	--on-file-blender: var(--file-ink-light);
+	--file-maya: #0696d7;
+	--on-file-maya: var(--file-ink-dark);
+	--file-max: #0696d7;
+	--on-file-max: var(--file-ink-dark);
+	--file-autocad: #e51937;
+	--on-file-autocad: var(--file-ink-light);
+	--file-cinema4d: #002d62;
+	--on-file-cinema4d: var(--file-ink-light);
+	--file-zbrush: #000000;
+	--on-file-zbrush: var(--file-ink-light);
+	--file-unity: #222c37;
+	--on-file-unity: var(--file-ink-light);
+	--file-unreal: #0e1128;
+	--on-file-unreal: var(--file-ink-light);
+	--file-resolve: #383838;
+	--on-file-resolve: var(--file-ink-light);
+	--file-ableton: #000000;
+	--on-file-ableton: var(--file-ink-light);
+	--file-protools: #702a8c;
+	--on-file-protools: var(--file-ink-light);
+
 	/* --- Container max-widths (§C.3) --- */
 	--container-sm: 40rem;
 	--container-md: 48rem;

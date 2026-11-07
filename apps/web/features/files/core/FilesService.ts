@@ -9,6 +9,8 @@ import {
 	AssetListParamsSchema,
 	type AssetOwnerType,
 	type AssetTreeNode,
+	type CopyAssets,
+	CopyAssetsSchema,
 	type CreateFolder,
 	CreateFolderSchema,
 	type CreateShare,
@@ -30,6 +32,8 @@ import {
 	pathKey,
 	type RenameAsset,
 	RenameAssetSchema,
+	type RenameFolder,
+	RenameFolderSchema,
 	type RevokeShare,
 	RevokeShareSchema,
 	type SetFolderColor,
@@ -57,8 +61,8 @@ import type { FilesResult } from "../types/results.ts";
  *
  * **One method here corresponds to exactly one method there, under the same name**, so a reader
  * moving between the two halves never has to translate: `list` · `tree` · `item` · `inspect` · `quota` ·
- * `dedupCheck` · `uploadInit` · `uploadComplete` · `attachLink` · `createFolder` · `rename` · `move`
- * · `remove` · `setVisibility` · `createShare` · `revokeShare` · `resolveShare` · `downloadGuard` ·
+ * `dedupCheck` · `uploadInit` · `uploadComplete` · `attachLink` · `createFolder` · `rename` ·
+ * `renameFolder` · `move` · `copy` · `remove` · `setVisibility` · `createShare` · `revokeShare` · `resolveShare` · `downloadGuard` ·
  * `recordDownload` · `history`. The payload type is the fat method's payload verbatim — the routes
  * put it in `data` unwrapped, so there is no per-endpoint envelope to remember.
  *
@@ -257,6 +261,24 @@ export const FilesService = {
 			return Promise.resolve(invalid(parsed.error, "That name is not valid."));
 		}
 		return postFiles<AssetItem>("/api/files/rename", parsed.data);
+	},
+
+	/** Rename a folder. A sibling of the same name is refused: a folder is addressed by its name. */
+	renameFolder(input: RenameFolder): Promise<FilesResult<{ name: string }>> {
+		const parsed = RenameFolderSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "That name is not valid."));
+		}
+		return postFiles<{ name: string }>("/api/files/folder-rename", parsed.data);
+	},
+
+	/** Copy assets and folders into a folder of their own library; `null` is its root. */
+	copy(input: CopyAssets): Promise<FilesResult<{ copied: number }>> {
+		const parsed = CopyAssetsSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "Those files could not be copied."));
+		}
+		return postFiles<{ copied: number }>("/api/files/copy", parsed.data);
 	},
 
 	/** Move assets and folders into a folder. `targetFolderId: null` moves them to their library's root. */

@@ -1,10 +1,9 @@
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { ProgressiveImage } from "@projective/ui/display/image";
-import { Icon } from "@projective/ui/icons";
 import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
 import type { AssetItem } from "../../types/projects-types.ts";
-import { previewIconName } from "./preview-model.ts";
+import { FileTypeIcon } from "../FileTypeIcon.tsx";
 import { PreviewAction } from "./PreviewAction.tsx";
 
 /** Props for {@link PreviewTray}. */
@@ -19,7 +18,7 @@ export interface PreviewTrayProps {
 function Thumb({ file }: { file: AssetItem }): JSX.Element {
 	const glyph = (
 		<span class="fx-tray__glyph" aria-hidden="true">
-			<Icon name={previewIconName(file.kind)} size="sm" />
+			<FileTypeIcon file={file} size={24} />
 		</span>
 	);
 	const visual = file.kind === "image" || file.kind === "video";

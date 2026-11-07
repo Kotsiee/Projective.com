@@ -104,6 +104,30 @@ Deno.test("proxyContentType keeps inline-safe media and never answers text/html"
 
 // #region Headers
 
+Deno.test("a stored script or page can never reach a browser as one", () => {
+	for (
+		const mime of [
+			"text/html",
+			"application/xhtml+xml",
+			"text/javascript",
+			"application/javascript",
+			"application/x-javascript",
+			"application/ecmascript",
+			"text/css",
+			"application/xml",
+			"text/xml",
+			"image/svg+xml;charset=utf-8",
+		]
+	) {
+		const h = proxyHeaders({ mime, name: "x" }, { download: false, share: false });
+		const type = h.get("content-type") ?? "";
+		assert(!/html|javascript|ecmascript|css/.test(type), `${mime} served as ${type}`);
+		assertEquals(h.get("x-content-type-options"), "nosniff", mime);
+		assertEquals(h.get("content-security-policy"), "default-src 'none'; sandbox", mime);
+		assert(h.get("content-disposition")?.startsWith("attachment;"), mime);
+	}
+});
+
 Deno.test("proxyHeaders serves inline-safe media inline with no sandbox and a private cache", () => {
 	const h = proxyHeaders({ mime: "image/png", name: "quadrants.png" }, {
 		download: false,

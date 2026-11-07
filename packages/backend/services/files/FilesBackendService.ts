@@ -17,8 +17,10 @@ import type {
 	FileObjectTier,
 	InspectAsset,
 	LinkAttach,
+	CopyAssets,
 	MoveAssets,
 	RenameAsset,
+	RenameFolder,
 	RevokeShare,
 	SetFolderColor,
 	SetVisibility,
@@ -51,10 +53,12 @@ import {
 	attachLink,
 	createFolder,
 	createShare,
+	copyAssets,
 	moveAssets,
 	recordDownload,
 	removeAssets,
 	renameAsset,
+	renameFolder,
 	revokeShare,
 	setFolderColor,
 	setVisibility,
@@ -281,6 +285,11 @@ export class FilesBackendService {
 		return signedIn("rename", actor, async (a) => toResult(await renameAsset(a, input)));
 	}
 
+	/** Rename a folder, rewriting the `path` of everything beneath it. */
+	static renameFolder(input: RenameFolder, actor: ReadActor): Promise<Result<{ name: string }>> {
+		return signedIn("folder-rename", actor, async (a) => toResult(await renameFolder(a, input)));
+	}
+
 	/** Star or unstar an asset the caller owns (`files.items.starred`, the owner's shelf mark). */
 	static star(assetId: string, starred: boolean, actor: ReadActor): Promise<Result<{ starred: boolean }>> {
 		return signedIn("star", actor, async (a) => toResult(await starAsset(a, assetId, starred)));
@@ -289,6 +298,11 @@ export class FilesBackendService {
 	/** Move assets and folders inside the library they belong to. */
 	static move(input: MoveAssets, actor: ReadActor): Promise<Result<{ moved: number }>> {
 		return signedIn("move", actor, async (a) => toResult(await moveAssets(a, input)));
+	}
+
+	/** Copy assets and folders (each with its subtree) inside the library they belong to. */
+	static copy(input: CopyAssets, actor: ReadActor): Promise<Result<{ copied: number }>> {
+		return signedIn("copy", actor, async (a) => toResult(await copyAssets(a, input)));
 	}
 
 	/** Soft-delete assets and folders (each with its subtree), closing their share links. */

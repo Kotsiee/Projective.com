@@ -23,7 +23,7 @@ import {
 	type UserConnection,
 } from "@projective/types/integrations";
 
-import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
+import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
 import {
@@ -644,7 +644,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 									<span class="drv-row__glyph" aria-hidden="true">
 										{chosen
 											? <Icon name="check" size="sm" />
-											: <FileKindIcon kind={asset.kind} size={20} />}
+											: <FileTypeIcon file={asset} size={24} />}
 									</span>
 									<span class="drv-row__body">
 										<span class="drv-row__name">{asset.name}</span>

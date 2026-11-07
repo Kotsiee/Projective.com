@@ -10,6 +10,7 @@ import {
 	getDocument,
 	GlobalWorkerOptions,
 	PasswordResponses,
+	PDFWorker,
 	TextLayer,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -40,6 +41,30 @@ export function openPdf(src: string, onPassword: PasswordHandler): PDFDocumentLo
 	task.onPassword = (update: (password: string) => void, code: number) => {
 		onPassword(code === PasswordResponses.INCORRECT_PASSWORD ? "incorrect" : "required", update);
 	};
+	return task;
+}
+
+let thumbnailWorker: PDFWorker | null = null;
+
+/**
+ * Open a PDF to draw its first page and no more: one shared worker for every thumbnail, reading only
+ * the ranges that page needs. A password request ends the load, since a card cannot ask for one.
+ */
+export function openPdfForThumbnail(src: string): PDFDocumentLoadingTask {
+	thumbnailWorker ??= new PDFWorker();
+	const task = getDocument({
+		url: src,
+		worker: thumbnailWorker,
+		wasmUrl: PDFJS_WASM,
+		cMapUrl: PDFJS_CMAPS,
+		cMapPacked: true,
+		standardFontDataUrl: PDFJS_STANDARD_FONTS,
+		iccUrl: PDFJS_ICCS,
+		enableXfa: false,
+		disableAutoFetch: true,
+		disableStream: true,
+	});
+	task.onPassword = () => void task.destroy();
 	return task;
 }
 

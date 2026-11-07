@@ -15,8 +15,12 @@ import { guardedFetch, type LinkTransport } from "./link-fetch.ts";
 /** Maximum bytes accepted for a favicon. */
 export const MAX_FAVICON_BYTES = 64 * 1024;
 
+/** Maximum bytes accepted for a page's share image; a bigger one is treated as if it had none. */
+export const MAX_LINK_IMAGE_BYTES = 2 * 1024 * 1024;
+
 const BUCKET = "public_assets";
 const FOLDER = "platform/link-favicons";
+const IMAGE_FOLDER = "platform/link-images";
 
 /** A raster image's type, identified from its first bytes. */
 export interface SniffedImage {
@@ -64,24 +68,22 @@ export function sniffFavicon(bytes: Uint8Array): SniffedImage | null {
 	return png ? sniffFavicon(png) : null;
 }
 
-/** The content address of a favicon's bytes. */
-export async function faviconPath(image: SniffedImage): Promise<string> {
+/** The content address of a re-hosted image's bytes. */
+export async function faviconPath(image: SniffedImage, folder: string = FOLDER): Promise<string> {
 	const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(image.bytes)));
 	const hex = [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
-	return `${FOLDER}/${hex}.${image.ext}`;
+	return `${folder}/${hex}.${image.ext}`;
 }
 
-/**
- * Fetch a page's icon under the SAME guards as the page and re-host it. Null when there is no usable
- * raster icon or storage refuses — the card then draws the generic link glyph.
- */
-export async function rehostFavicon(
-	iconUrl: string,
+async function rehost(
+	url: string,
 	deadline: number,
+	maxBytes: number,
+	folder: string,
 	transport?: LinkTransport,
 ): Promise<string | null> {
-	const fetched = await guardedFetch(iconUrl, {
-		maxBytes: MAX_FAVICON_BYTES,
+	const fetched = await guardedFetch(url, {
+		maxBytes,
 		deadline,
 		accept: "image/avif,image/webp,image/png,image/*;q=0.8",
 		transport,
@@ -89,10 +91,31 @@ export async function rehostFavicon(
 	if (!fetched.ok || fetched.page.status !== 200 || fetched.page.truncated) return null;
 	const image = sniffFavicon(fetched.page.body);
 	if (!image) return null;
-	const path = await faviconPath(image);
+	const path = await faviconPath(image, folder);
 	const stored = await uploadObject(BUCKET, path, image.bytes, image.mime, {
 		upsert: true,
 		immutable: true,
 	});
 	return stored ? publicObjectUrl(BUCKET, path) : null;
+}
+
+/**
+ * Fetch a page's icon under the SAME guards as the page and re-host it. Null when there is no usable
+ * raster icon or storage refuses — the card then draws the generic link glyph.
+ */
+export function rehostFavicon(
+	iconUrl: string,
+	deadline: number,
+	transport?: LinkTransport,
+): Promise<string | null> {
+	return rehost(iconUrl, deadline, MAX_FAVICON_BYTES, FOLDER, transport);
+}
+
+/** A page's share image, re-hosted on the same terms as its icon and for the same reason. */
+export function rehostLinkImage(
+	imageUrl: string,
+	deadline: number,
+	transport?: LinkTransport,
+): Promise<string | null> {
+	return rehost(imageUrl, deadline, MAX_LINK_IMAGE_BYTES, IMAGE_FOLDER, transport);
 }

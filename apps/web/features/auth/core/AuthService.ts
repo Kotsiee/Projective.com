@@ -1,3 +1,4 @@
+import { purgeThumbs } from "@features/files/core/thumbs/thumb-cache.ts";
 import { getAuth, postAuth } from "./api.ts";
 import type { AuthResult } from "../types/mod.ts";
 
@@ -57,9 +58,11 @@ export const AuthService = {
 	 * End the session. Delegates to `POST /api/auth/logout`, which revokes the session server-side
 	 * (best-effort) and clears the HttpOnly `sb-*` cookies. Resolves even on a network hiccup (a soft
 	 * `ok: false`), so the caller can proceed with its route-aware redirect regardless — the cookies are
-	 * cleared server-side, so the local session is gone either way.
+	 * cleared server-side, so the local session is gone either way. Thumbnails of the viewer's files go
+	 * first: they are copies of private content on this device.
 	 */
-	logout(): Promise<AuthResult> {
-		return postAuth("/api/auth/logout", {});
+	async logout(): Promise<AuthResult> {
+		await purgeThumbs();
+		return await postAuth("/api/auth/logout", {});
 	},
 };

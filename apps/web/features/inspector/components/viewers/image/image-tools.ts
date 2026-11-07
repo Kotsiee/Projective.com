@@ -1,5 +1,6 @@
 import { computed, type ReadonlySignal, type Signal, signal } from "@preact/signals";
 import type { InspectorShell, StageFact } from "../../../core/inspector-shell.ts";
+import { createPanoramaView, type PanoramaView } from "../panorama/panorama-engine.ts";
 import {
 	aspectRatioLabel,
 	clampPan,
@@ -52,6 +53,9 @@ export interface ImageTools {
 	readonly grid: Signal<boolean>;
 	/** Logarithmic zoom slider position, kept in step with {@link view}. */
 	readonly zoomSlider: Signal<number>;
+	/** Draw the picture on a sphere to look around, instead of flat. */
+	readonly panorama: Signal<boolean>;
+	readonly panoramaView: PanoramaView;
 	/** Whether the picture follows the stage's size (it was fitted and not moved since). */
 	readonly following: Signal<boolean>;
 	readonly ready: ReadonlySignal<boolean>;
@@ -91,6 +95,28 @@ const BITMAP_FIT = { upscale: false } as const;
 
 function sameSize(a: Size, b: Size): boolean {
 	return a.width === b.width && a.height === b.height;
+}
+
+const EQUIRECTANGULAR_RATIO = 2;
+const RATIO_TOLERANCE = 0.02;
+const EQUIRECTANGULAR_MIN_WIDTH = 1024;
+const PANORAMA_NAME = /pano|360|equirect|skybox|hdri/i;
+
+/** Whether a picture has the 2:1 shape of a full sphere unrolled. */
+export function looksEquirectangular(width: number, height: number): boolean {
+	return width >= EQUIRECTANGULAR_MIN_WIDTH &&
+		Math.abs(width / height - EQUIRECTANGULAR_RATIO) <= RATIO_TOLERANCE;
+}
+
+/**
+ * Whether a picture opens on the sphere by itself. Shape alone isn't enough: plenty of 2:1 banners
+ * are flat, so it also has to be named like a panorama. Any other 2:1 picture gets the toggle only.
+ */
+export function opensAsPanorama(
+	asset: { name: string; width: number | null; height: number | null },
+): boolean {
+	return asset.width !== null && asset.height !== null &&
+		looksEquirectangular(asset.width, asset.height) && PANORAMA_NAME.test(asset.name);
 }
 
 function canHaveAlpha(ext: string, vector: boolean): boolean {
@@ -182,6 +208,8 @@ export function createImageTools(shell: InspectorShell): ImageTools {
 
 	return {
 		vector,
+		panorama: signal(opensAsPanorama(asset)),
+		panoramaView: createPanoramaView(),
 		source,
 		fallbackUsed,
 		natural,

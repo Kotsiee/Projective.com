@@ -310,8 +310,11 @@ const VIEWER_ICONS: Readonly<Partial<Record<InspectViewer, PreviewIconName>>> = 
 	docx: "document",
 	code: "code-brackets",
 	table: "table-grid",
+	sheet: "table-grid",
 	model: "cube-3d",
 	font: "font-type",
+	panorama: "image",
+	archive: "archive-box",
 };
 
 /** The category glyph: by the canvas that draws the file when known, else by its kind. */

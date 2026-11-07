@@ -205,6 +205,11 @@ export const LinkAttachmentSchema = z.object({
 	description: z.string().max(600).nullable(),
 	/** Re-hosted favicon in `public_assets`; null → the generic link glyph. */
 	faviconUrl: z.string().max(600).nullable(),
+	/**
+	 * The page's `og:image`, re-hosted in `public_assets` for the same reason as the favicon. Absent on
+	 * a row scanned before it existed, null when the page offered no usable image.
+	 */
+	imageUrl: z.string().max(600).nullable().optional(),
 	scanStatus: LinkScanStatus,
 	/** ISO timestamp of the last scan; null while `pending`. */
 	scannedAt: z.string().nullable(),

@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "npm:vite@7.2.2";
+import { defineConfig, normalizePath, type Plugin } from "npm:vite@7.2.2";
 import { fresh } from "@fresh/plugin-vite";
 import { walkSync } from "jsr:@std/fs@^1/walk";
 import { loadSync } from "jsr:@std/dotenv@^0.225.6";
@@ -779,6 +779,29 @@ function devClientAddress(): Plugin {
 }
 // #endregion
 
+// #region Dev worker entries
+/**
+ * Serve a module worker's entry in dev. Vite addresses one as `…/x.ts?worker_file&type=module`, but
+ * Fresh's dev middleware sends anything not yet in Vite's module graph to the app, which is every
+ * worker on its first request, so the worker gets the app's 404 page. `/@fs/` is the prefix Fresh
+ * leaves to Vite, so the entry is re-addressed under it. Build is unaffected: Rollup bundles workers.
+ */
+function devWorkerEntries(): Plugin {
+	return {
+		name: "projective:dev-worker-entries",
+		apply: "serve",
+		configureServer(server) {
+			server.middlewares.use((req, _res, next) => {
+				if (req.url?.includes("worker_file") && !req.url.startsWith("/@")) {
+					req.url = `/@fs/${encodeURI(normalizePath(server.config.root))}${req.url}`;
+				}
+				next();
+			});
+		},
+	};
+}
+// #endregion
+
 // #region Dev SSR recovery
 /**
  * Lets `vite dev` recover from a failed server-entry load on the next request, instead of serving
@@ -858,6 +881,7 @@ export default defineConfig(({ mode }) => {
 			flattenManifestCss(),
 			vendorAssets(),
 			devClientAddress(),
+			devWorkerEntries(),
 			recoverFailedSsrLoad(),
 			fresh({
 				islandSpecifiers,

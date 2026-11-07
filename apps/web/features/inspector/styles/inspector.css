@@ -129,11 +129,6 @@
 	overflow: auto;
 	text-align: center;
 }
-.ins-fallback__glyph {
-	display: inline-flex;
-	margin-block-end: var(--space-2);
-	color: var(--text-secondary);
-}
 .ins-fallback__name {
 	max-inline-size: var(--measure-narrow);
 	margin: 0;

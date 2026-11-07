@@ -62,6 +62,7 @@ export const ITEM_COLUMNS = [
 	"link_title",
 	"link_description",
 	"link_favicon_url",
+	"link_image_url",
 	"link_scan_status",
 	"link_scanned_at",
 	"created_at",
@@ -97,6 +98,7 @@ export interface ItemRow {
 	link_title: string | null;
 	link_description: string | null;
 	link_favicon_url: string | null;
+	link_image_url?: string | null;
 	link_scan_status: string | null;
 	link_scanned_at: string | null;
 	created_at: string;
@@ -328,6 +330,7 @@ export function toLinkAttachment(row: ItemRow): LinkAttachment | null {
 		title: clamp(row.link_title, 300),
 		description: row.link_description ? clamp(row.link_description, 600) : null,
 		faviconUrl: row.link_favicon_url ? clamp(row.link_favicon_url, 600) : null,
+		imageUrl: row.link_image_url ? clamp(row.link_image_url, 600) : null,
 		scanStatus: toLinkScanStatus(row.link_scan_status),
 		scannedAt: row.link_scanned_at,
 	};

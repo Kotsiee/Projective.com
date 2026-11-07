@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { ProgressiveImage } from "@projective/ui/display/image";
 import { Tooltip } from "@projective/ui/feedback";
 import {
@@ -8,11 +8,12 @@ import {
 } from "@features/files/core/asset-media.ts";
 import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
+import { FileTypeIcon } from "./FileTypeIcon.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * FileCard — one grid cell. A forced rounded-SQUARE thumbnail frame (1:1, never the media's native
- * ratio) holding either the image/video preview or a centered category glyph, with the filename, a
+ * ratio) with the image/video preview fitted inside it, uncropped, or a centered type tile, with the filename, a
  * small sender avatar + name beneath, and the date/time revealed ONLY on hover (its space is always
  * reserved so the reveal can never clip or overlap adjacent cards). Transparent border + background at
  * rest; hover paints a subtle surface highlight (full border allowed — the card is interactive, §B.4).
@@ -25,12 +26,14 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 export interface FileCardProps {
 	file: AssetItem;
 	onOpen: (file: AssetItem) => void;
+	/** Fills the thumbnail frame instead of the picture or tile (the `/files` hub's lazy previews). */
+	preview?: ComponentChildren;
 }
 
 const CARD_SIZES = "auto, 18rem";
 
-export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
-	const thumbSrc = file.kind === "image" || file.kind === "video"
+export function FileCard({ file, onOpen, preview }: FileCardProps): JSX.Element {
+	const thumbSrc = !preview && (file.kind === "image" || file.kind === "video")
 		? assetMediaSrc(file, "sm")
 		: null;
 	const thumbSrcset = thumbSrc ? assetMediaSrcset(file) : null;
@@ -45,24 +48,28 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			}`}
 		>
 			<span class="fx-card__thumb" data-kind={file.kind}>
-				{thumbSrc
+				{preview ?? (thumbSrc
 					? (
-						<ProgressiveImage
-							imgClass="fx-card__img"
-							src={thumbSrc}
-							srcset={thumbSrcset ?? undefined}
-							sizes={CARD_SIZES}
-							placeholder={assetPlaceholder(file)}
-							loading="lazy"
-							draggable={false}
-							fallback={<FileKindIcon kind={file.kind} size={30} />}
-						/>
+						<>
+							<ProgressiveImage
+								imgClass="fx-card__img"
+								src={thumbSrc}
+								srcset={thumbSrcset ?? undefined}
+								sizes={CARD_SIZES}
+								fit="contain"
+								placeholder={assetPlaceholder(file)}
+								loading="lazy"
+								draggable={false}
+								fallback={<FileTypeIcon file={file} />}
+							/>
+							<FileTypeIcon file={file} size={22} class="fx-card__family" />
+						</>
 					)
 					: (
-						<span class="fx-card__glyph" aria-hidden="true">
-							<FileKindIcon kind={file.kind} size={30} />
+						<span class="fx-card__glyph">
+							<FileTypeIcon file={file} />
 						</span>
-					)}
+					))}
 				{file.kind === "video"
 					? (
 						<span class="fx-card__play" aria-hidden="true">

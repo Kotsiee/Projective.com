@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useMemo } from "preact/hooks";
 import { type DataColumn, DataTable, type DataTableProps } from "@projective/ui/display";
 import type { Severity } from "@projective/ui/fields";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
@@ -23,6 +24,13 @@ export interface SubmissionNodeListProps {
 	rowActions?: DataTableProps<SubmissionTreeNode>["rowActions"];
 	/** `data-*` attributes for a row, so a host can address it from outside the table. */
 	rowAttrs?: DataTableProps<SubmissionTreeNode>["rowAttrs"];
+	/** A host's styling token for a row, as `data-state`: unlike `rowAttrs`, a change re-renders it. */
+	rowState?: DataTableProps<SubmissionTreeNode>["rowState"];
+	/** A row's key, when the host selects rows by something other than their segment. */
+	rowKey?: (node: SubmissionTreeNode) => string;
+	/** Selected row keys; with `onSelectionChange`, rows select (a plain click still drills in). */
+	selection?: readonly string[];
+	onSelectionChange?: (keys: string[]) => void;
 	"aria-label"?: string;
 }
 
@@ -101,10 +109,12 @@ export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element 
 	const columns = props.lead
 		? base.map((column) => column.id === "name" ? { ...column, lead: props.lead } : column)
 		: base;
+	const selection = useMemo(() => new Set(props.selection ?? []), [props.selection]);
+	const selectable = Boolean(props.onSelectionChange);
 	return (
 		<DataTable
 			rows={props.nodes}
-			rowKey={(node) => node.segment}
+			rowKey={props.rowKey ?? ((node) => node.segment)}
 			rowLabel={(node) => node.label}
 			columns={columns}
 			aria-label={props["aria-label"] ?? "Submissions"}
@@ -112,6 +122,12 @@ export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element 
 			onRowActivate={(node) => props.onOpen(node)}
 			rowActions={props.rowActions}
 			rowAttrs={props.rowAttrs}
+			rowState={props.rowState}
+			selectionMode={selectable ? "multiple" : "none"}
+			selection={selectable ? selection : undefined}
+			onSelectionChange={props.onSelectionChange
+				? (next) => props.onSelectionChange?.([...next])
+				: undefined}
 			rowHeight={56}
 			virtualize={false}
 			columnChooser={false}

@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { AssetTreeNodeSchema } from "@projective/types/files";
-import { libraryTree, movedSubtree, subtreeOf } from "./library-tree.ts";
+import { copyName, libraryTree, movedSubtree, subtreeOf } from "./library-tree.ts";
 
 // #region Fixture
 const FOLDERS = [
@@ -86,4 +86,17 @@ Deno.test("libraryTree survives a parent cycle and an unnamed folder", () => {
 Deno.test("libraryTree answers the wire schema", () => {
 	const root = libraryTree({ folders: FOLDERS, items: ITEMS }, "Atelier Nova");
 	assertEquals(AssetTreeNodeSchema.safeParse(root).success, true);
+});
+
+Deno.test("copyName leaves a free name alone and numbers a taken one before the extension", () => {
+	assertEquals(copyName("Brief.pdf", new Set(), true), "Brief.pdf");
+	assertEquals(copyName("Brief.pdf", new Set(["brief.pdf"]), true), "Brief (copy).pdf");
+	assertEquals(
+		copyName("Brief.pdf", new Set(["brief.pdf", "brief (copy).pdf"]), true),
+		"Brief (copy 2).pdf",
+	);
+});
+
+Deno.test("copyName treats a folder's dot as part of its name", () => {
+	assertEquals(copyName("v1.2", new Set(["v1.2"]), false), "v1.2 (copy)");
 });

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { pageAllowsEngines } from "@features/inspector/core/page-engines.ts";
 import { Button, SelectButton } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -8,11 +9,15 @@ import {
 	type AssetItem,
 	type AssetVisibility,
 	CATEGORY_META,
+	sanitisedNoteOf,
 	sourceLabel,
 	visibilityLabel,
 } from "../types/file-types.ts";
 import { profileHref } from "@web/features/projects/core/routing.ts";
-import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
+import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
+import { assetMediaSrc } from "../core/asset-media.ts";
+import { thumbPlan } from "../core/thumbs/thumb-plan.ts";
+import { AssetThumb } from "./AssetThumb.tsx";
 import { ScanMark, SourceMark, StatusMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -63,6 +68,8 @@ export interface InspectPanelProps {
 	onDownload: (asset: AssetItem) => void;
 	/** Open the raw asset in a new tab. */
 	onOpenRaw: (asset: AssetItem) => void;
+	/** Open the full, interactive preview. A host without one shows no button. */
+	onPreview?: (asset: AssetItem) => void;
 	/** Change the privacy scope. Only reachable when `asset.canManage`. */
 	onSetVisibility: (asset: AssetItem, visibility: AssetVisibility) => void;
 	/** Soft-delete the asset. Only reachable when `asset.canManage`. */
@@ -129,8 +136,22 @@ function Fact({ label, children, mark }: FactProps): JSX.Element | null {
 }
 // #endregion
 
+/** The panel's picture: the card's preview, larger, or a link's share image. */
+function PanelPreview({ asset }: { asset: AssetItem }): JSX.Element {
+	const linkImage = asset.link?.imageUrl ?? null;
+	const picture = linkImage ?? (asset.kind === "image" ? assetMediaSrc(asset, "md") : null) ??
+		(asset.kind === "video" ? asset.thumbnailUrl : null);
+	if (picture) {
+		return <img class="fh-inspect__thumb" src={picture} alt="" loading="lazy" draggable={false} />;
+	}
+	const plan = thumbPlan(asset, pageAllowsEngines());
+	if (plan.kind !== "none") return <AssetThumb key={asset.id} asset={asset} plan={plan} />;
+	return <FileTypeIcon file={asset} />;
+}
+
 export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
-	const { asset, onClose, onDownload, onOpenRaw, onSetVisibility, onDelete, busy = false } = props;
+	const { asset, onClose, onDownload, onOpenRaw, onPreview, onSetVisibility, onDelete } = props;
+	const { busy = false } = props;
 
 	// Local to the panel and reset by its own actions: a pending confirmation is a state of this pane,
 	// not of the library, so it has no business in `files-state`.
@@ -139,12 +160,12 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 	if (!asset) return null;
 
 	const meta = CATEGORY_META[asset.category];
-	const typeLabel = asset.ext ? `${meta.label} · ${asset.ext.toUpperCase()}` : meta.label;
 	const stored = asset.source === "supabase";
 	const isLink = asset.source === "link";
+	const fileType = asset.ext ? `${meta.label} · ${asset.ext.toUpperCase()}` : meta.label;
+	const typeLabel = isLink ? "Web link" : fileType;
 	const where = asset.folderPath.length > 0 ? asset.folderPath.join(" / ") : "Library root";
-	const hasThumb = asset.thumbnailUrl !== null &&
-		(asset.kind === "image" || asset.kind === "video");
+	const sanitised = sanitisedNoteOf(asset.metadata);
 
 	return (
 		<aside class="fh-inspect" aria-label={`Details for ${asset.name}`}>
@@ -190,21 +211,24 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 						onClick={() => onDownload(asset)}
 					/>
 				</Tooltip>
-				{hasThumb
+				{onPreview
 					? (
-						<img
-							class="fh-inspect__thumb"
-							src={asset.thumbnailUrl ?? asset.url}
-							alt=""
-							loading="lazy"
-							draggable={false}
-						/>
+						<Tooltip content="Open preview">
+							<Button
+								iconOnly
+								rounded
+								size="sm"
+								variant="text"
+								severity="secondary"
+								class="fh-inspect__iconbtn fh-inspect__open ui-hit"
+								icon={<Icon name="eye" size="sm" />}
+								aria-label={`Open preview of ${asset.name}`}
+								onClick={() => onPreview(asset)}
+							/>
+						</Tooltip>
 					)
-					: (
-						<span class="fh-inspect__glyph" aria-hidden="true">
-							<FileKindIcon kind={asset.kind} size={34} />
-						</span>
-					)}
+					: null}
+				<PanelPreview asset={asset} />
 			</div>
 
 			<dl class="fh-inspect__facts">
@@ -285,6 +309,8 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 					)
 					: null}
 			</dl>
+
+			{sanitised ? <p class="fh-inspect__note">{sanitised}</p> : null}
 
 			{!stored
 				? (

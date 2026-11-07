@@ -307,114 +307,176 @@
 	text-decoration: underline;
 }
 
-.ins-table {
+.ins-grid {
 	position: absolute;
 	inset: 0;
-	overflow: auto;
-	overscroll-behavior: contain;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
 	background: var(--bg);
 	color: var(--on-surface);
 }
-.ins-table__notice {
-	position: sticky;
-	inset-inline-start: 0;
+.ins-grid__notice,
+.ins-grid__empty {
 	margin: 0;
 	padding: var(--space-2) var(--space-4);
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
-.ins-table__grid {
-	min-inline-size: 100%;
-	border-collapse: separate;
-	border-spacing: 0;
+.ins-grid__empty {
+	padding-block: var(--space-6);
+}
+.ins-grid-bar {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	border-block-end: var(--hairline);
+	font-size: var(--text-sm);
+}
+.ins-grid-bar__ref {
+	flex: none;
+	min-inline-size: 3.5rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+.ins-grid-bar__mark {
+	flex: none;
+	color: var(--text-secondary);
+	font-family: var(--font-reading);
+	font-style: italic;
+}
+.ins-grid-bar__mark[data-on] {
+	color: var(--primary);
+}
+.ins-grid-bar__value {
+	flex: 1;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+.ins-grid__grid {
+	flex: 1;
+	min-block-size: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
 	font-size: var(--text-sm);
 	font-variant-numeric: tabular-nums;
-	line-height: var(--leading-normal);
 }
-.ins-table__grid :where(th, td) {
-	padding: var(--space-1) var(--space-3);
-	text-align: start;
-	vertical-align: top;
-	border-block-end: var(--hairline);
+.ins-grid__grid:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
 }
-.ins-table__cell {
-	min-inline-size: calc(var(--measure-narrow) / 3);
-	max-inline-size: var(--measure-narrow);
-	white-space: pre-wrap;
-	overflow-wrap: break-word;
+.ins-grid__head,
+.ins-grid__row {
+	display: grid;
+	grid-template-columns: var(--sheet-cols);
+	grid-auto-rows: var(--sheet-row);
+	inline-size: var(--sheet-width);
+	block-size: var(--sheet-row);
 }
-.ins-table__cell--num {
-	min-inline-size: 0;
-	text-align: end;
-	white-space: nowrap;
-}
-.ins-table__grid thead th {
+.ins-grid__head {
 	position: sticky;
 	inset-block-start: 0;
-	z-index: var(--z-raised);
-	background: var(--surface-2);
-	border-block-end: var(--hairline-strong);
-	white-space: nowrap;
+	z-index: 2;
+	background: var(--surface-1);
 }
-.ins-table__grid thead .ins-table__corner {
-	inset-inline-start: 0;
-	z-index: calc(var(--z-raised) + 1);
+.ins-grid__body {
+	box-sizing: border-box;
+	inline-size: var(--sheet-width);
+	block-size: var(--sheet-height);
+	padding-block-start: var(--sheet-offset);
 }
-.ins-table__num {
+.ins-grid__corner,
+.ins-grid__rownum {
 	position: sticky;
 	inset-inline-start: 0;
-	z-index: var(--z-base);
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	padding-inline: var(--space-2);
+	border-block-end: var(--hairline);
 	background: var(--surface-1);
 	color: var(--text-secondary);
-	font-weight: var(--fw-normal);
-	text-align: end;
-	user-select: none;
+	font-size: var(--text-xs);
 }
-.ins-table__head {
-	padding: 0;
+/* The second track is the spacer that stands in for every column scrolled past on the left. */
+.ins-grid__colhead:nth-child(2),
+.ins-grid__cell:nth-child(2) {
+	grid-column-start: 3;
 }
-.ins-table__sort {
-	display: inline-flex;
+.ins-grid__colhead {
+	min-inline-size: 0;
+	border-block-end: var(--hairline);
+}
+.ins-grid__sort {
+	display: flex;
 	align-items: center;
 	gap: var(--space-1);
 	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	background: none;
-	border: 0;
+	block-size: 100%;
+	padding-inline: var(--space-2);
+	border: none;
+	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
 	font-weight: var(--fw-semibold);
 	text-align: start;
 	cursor: pointer;
-	transition: transform var(--dur-press) var(--ease-standard);
 }
-.ins-table__sort:hover .ins-table__sort-mark,
-.ins-table__head[aria-sort] .ins-table__sort-mark {
-	color: var(--on-surface);
-}
-.ins-table__sort:active {
+.ins-grid__sort:active {
 	transform: scale(var(--btn-press-scale));
 }
-.ins-table__sort:focus-visible {
-	box-shadow: none;
-	text-decoration: underline;
+.ins-grid__sort:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
 }
-.ins-table__label {
+.ins-grid__label {
 	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.ins-table__sort-mark {
+.ins-grid__sort-mark {
 	display: inline-flex;
 	flex: none;
 	color: var(--text-secondary);
-	transition: color var(--dur-fast) var(--ease-standard);
+	opacity: 0;
 }
-.ins-table__empty {
-	position: sticky;
-	inset-inline-start: 0;
-	margin: 0;
-	padding: var(--space-6) var(--space-4);
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
+.ins-grid__sort:hover .ins-grid__sort-mark,
+.ins-grid__colhead[aria-sort] .ins-grid__sort-mark {
+	opacity: 1;
+}
+.ins-grid__cell {
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+	border-block-end: var(--hairline);
+	border-inline-end: var(--hairline);
+	line-height: var(--sheet-row);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: cell;
+	user-select: none;
+}
+.ins-grid__cell[data-numeric] {
+	text-align: end;
+}
+.ins-grid__cell[data-selected] {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+.ins-grid__cell[data-active] {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+}
+.ins-grid__tabs {
+	flex: none;
+	padding-inline: var(--space-2);
 }
 
 @media (max-width: 767.98px) {
@@ -425,23 +487,19 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.ins-code__ln,
-	.ins-toc__link,
-	.ins-table__sort,
-	.ins-table__sort-mark {
+	.ins-toc__link {
 		transition: none;
 	}
 	.ins-toc__link:active,
-	.ins-table__sort:active {
+	.ins-grid__sort:active {
 		transform: none;
 	}
 }
 :root[data-motion="reduced"] .ins-code__ln,
-:root[data-motion="reduced"] .ins-toc__link,
-:root[data-motion="reduced"] .ins-table__sort,
-:root[data-motion="reduced"] .ins-table__sort-mark {
+:root[data-motion="reduced"] .ins-toc__link {
 	transition: none;
 }
 :root[data-motion="reduced"] .ins-toc__link:active,
-:root[data-motion="reduced"] .ins-table__sort:active {
+:root[data-motion="reduced"] .ins-grid__sort:active {
 	transform: none;
 }

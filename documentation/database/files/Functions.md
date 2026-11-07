@@ -342,7 +342,8 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
   client never inserts a **mounted** row — a connector `source`, or any row carrying
   `source_connection_id` / `external_file_id`, is refused (`42501` "a mounted asset is written by
   the connector service only", Decision #313). A **link** starts `link_scan_status = 'pending'` with
-  no `link_scanned_at`, `link_favicon_url`, `link_title` or `link_description` — what the scan
+  no `link_scanned_at`, `link_favicon_url`, `link_image_url`, `link_title` or `link_description` —
+  what the scan
   concluded and read from the page is the scan's to write (`42501` "a link starts pending",
   Decision #314); its synthetic address is fixed at `bucket_id = 'link'`, `storage_path = id::text`
   (`linkStorageAddress`, `@projective/types/files`; `42501` "a link is stored at bucket link under its
@@ -354,7 +355,8 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
   `derived_from_id` (`42501`; the middle three since Decision #314 — what the pipeline derived from
   the bytes is fixed once written).
 - **UPDATE — what the server attests** (Decisions #313, #314): nor `link_url`, `link_domain`,
-  `link_title`, `link_description`, `link_favicon_url`, `link_scan_status`, `link_scanned_at`
+  `link_title`, `link_description`, `link_favicon_url`, `link_image_url`, `link_scan_status`,
+  `link_scanned_at`
   (re-pointing a scanned link, calling one `safe`, or rewriting what its page said would launder a
   URL past the scan), `share_slug`, `download_count`, or a mount's `source_connection_id` /
   `external_file_id` / `external_parent_id` / `external_web_url` / `external_etag` — the ids a

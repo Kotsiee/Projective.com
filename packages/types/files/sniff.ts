@@ -35,9 +35,10 @@ export const SNIFF_BYTES = 64;
 /**
  * Recognise a file from its leading bytes; `null` when the format is not one the platform knows.
  *
- * `executable` and `markup` are recognised so they can be REFUSED by name (a Windows PE, an ELF, a
- * Mach-O binary; an HTML or SVG document, which a browser will execute script from when served from
- * our origin) rather than merely falling through as "unknown".
+ * `executable` is recognised so it can be REFUSED by name (a Windows PE, an ELF, a Mach-O binary)
+ * rather than merely falling through as "unknown". `markup` is recognised because a browser executes
+ * script from an HTML or SVG document served from our origin: the `/files` hub admits it only as inert
+ * text or through its sanitiser (`upload-acceptance.ts`), and every other pipeline refuses it.
  */
 export function sniffBytes(head: Uint8Array): Sniffed | null {
 	const b = head;

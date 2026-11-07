@@ -1,9 +1,12 @@
 import type { JSX } from "preact";
-import { useRef } from "preact/hooks";
+import { useMemo, useRef } from "preact/hooks";
+import { pageAllowsEngines } from "@features/inspector/core/page-engines.ts";
 import { FileCard } from "@web/features/projects/components/FileCard.tsx";
 import "@web/features/projects/styles/file-card.css";
 import "../styles/files-hub.css";
+import { thumbPlan } from "../core/thumbs/thumb-plan.ts";
 import { type AssetItem, sourceLabel, visibilityLabel } from "../types/file-types.ts";
+import { AssetThumb } from "./AssetThumb.tsx";
 import { SourceMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 import { LinkCard } from "./LinkCard.tsx";
 
@@ -85,6 +88,10 @@ export function AssetCard(props: AssetCardProps): JSX.Element {
 
 	const scope = visibilityLabel(asset.visibility);
 	const source = sourceLabel(asset.source);
+	const plan = useMemo(
+		() => thumbPlan(asset, pageAllowsEngines()),
+		[asset.id, asset.status, asset.contentHash, asset.sizeBytes, asset.thumbnailUrl],
+	);
 
 	return (
 		<div
@@ -103,7 +110,13 @@ export function AssetCard(props: AssetCardProps): JSX.Element {
 						onOpen={() => onSelect(asset, modifiers.current)}
 					/>
 				)
-				: <FileCard file={asset} onOpen={() => onSelect(asset, modifiers.current)} />}
+				: (
+					<FileCard
+						file={asset}
+						onOpen={() => onSelect(asset, modifiers.current)}
+						preview={plan.kind === "none" ? undefined : <AssetThumb asset={asset} plan={plan} />}
+					/>
+				)}
 
 			{
 				/* The overlay marks are decorative: every fact they carry is already in the card button's

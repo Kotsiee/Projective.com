@@ -10,6 +10,8 @@ export interface PageFacts {
 	description: string | null;
 	/** Absolute URL of the page's declared icon, or `/favicon.ico` on its origin. */
 	iconUrl: string | null;
+	/** Absolute URL of the image the page chose for a share card, when it chose one. */
+	imageUrl: string | null;
 }
 
 const TITLE_MAX = 300;
@@ -130,7 +132,11 @@ export function extractPageFacts(html: string, pageUrl: string): PageFacts {
 		fallbackIcon = null;
 	}
 
+	const image = meta["og:image:secure_url"] ?? meta["og:image"] ?? meta["og:image:url"] ??
+		meta["twitter:image"] ?? meta["twitter:image:src"];
+
 	return {
+		imageUrl: image ? absolute(image, pageUrl) : null,
 		title: clean(meta["og:title"] ?? meta["twitter:title"] ?? titleTag, TITLE_MAX),
 		description: clean(
 			meta["og:description"] ?? meta["twitter:description"] ?? meta.description,

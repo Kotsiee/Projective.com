@@ -71,6 +71,10 @@ export const InspectViewer = z.enum([
 	"model",
 	"docx",
 	"font",
+	"sheet",
+	"presentation",
+	"panorama",
+	"archive",
 	"unsupported",
 ]);
 export type InspectViewer = z.infer<typeof InspectViewer>;
@@ -98,6 +102,10 @@ const AUDIO = new Set(["mp3", "wav", "wave", "ogg", "oga", "opus", "m4a", "aac",
 const MARKDOWN = new Set(["md", "markdown", "mdown", "mkd", "mdx"]);
 const TEXT = new Set(["txt", "text", "log", "srt", "vtt", "rst", "adoc", "asciidoc", "nfo", "me"]);
 const FONTS = new Set(["ttf", "otf", "woff", "woff2"]);
+const WORKBOOKS = new Set(["xlsx", "xlsm", "xltx", "xlsb", "xls", "ods"]);
+const DECKS = new Set(["pptx", "pptm", "ppsx", "potx"]);
+const PANORAMAS = new Set(["hdr", "exr"]);
+const ARCHIVES = new Set(["zip", "tar", "tgz"]);
 const MODELS: ReadonlySet<string> = new Set(ModelFormat.options);
 
 /** File extension → highlight.js language id. */
@@ -260,6 +268,10 @@ export function resolveViewer(name: string, mimeType?: string | null): ViewerCho
 		if (MODELS.has(ext)) return choice("model", { modelFormat: ext as ModelFormat });
 		if (ext === "docx") return choice("docx");
 		if (FONTS.has(ext)) return choice("font");
+		if (WORKBOOKS.has(ext)) return choice("sheet");
+		if (DECKS.has(ext)) return choice("presentation");
+		if (PANORAMAS.has(ext)) return choice("panorama");
+		if (ARCHIVES.has(ext) || lower.endsWith(".tar.gz")) return choice("archive");
 		if (TEXT.has(ext)) return choice("text");
 		const language = CODE_LANGUAGES[ext];
 		if (language) return choice("code", { language });
@@ -277,6 +289,10 @@ export function resolveViewer(name: string, mimeType?: string | null): ViewerCho
 	if (mime === "text/tab-separated-values") return choice("table", { delimiter: "\t" });
 	if (MIME_MODELS[mime]) return choice("model", { modelFormat: MIME_MODELS[mime] });
 	if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return choice("docx");
+	if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mime === "application/vnd.ms-excel") return choice("sheet");
+	if (mime === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return choice("presentation");
+	if (mime === "image/vnd.radiance" || mime === "image/x-exr") return choice("panorama");
+	if (mime === "application/zip" || mime === "application/x-zip-compressed" || mime === "application/x-tar") return choice("archive");
 	if (mime.startsWith("font/")) return choice("font");
 	if (mime === "application/json" || mime === "application/ld+json") return choice("code", { language: "json" });
 	if (mime === "application/xml" || mime === "text/xml") return choice("code", { language: "xml" });
@@ -293,9 +309,22 @@ export const INSPECT_TEXT_LIMITS = Object.freeze({
 	highlightBytes: 1_000_000,
 	/** Above this, a text-like file is not read into the page at all. */
 	textBytes: 10_000_000,
-	/** Rows a table canvas renders before truncating. */
-	tableRows: 5_000,
+	/** Rows a table canvas holds before truncating; the grid only ever draws the ones in view. */
+	tableRows: 200_000,
 });
+
+/** Ceilings for a workbook, which is parsed whole before anything can be drawn. */
+export const INSPECT_SHEET_LIMITS = Object.freeze({
+	/** Above this the file is not fetched: parsing it would take longer than downloading it. */
+	bytes: 60_000_000,
+	/** Rows a sheet canvas holds before truncating. */
+	rows: 200_000,
+	/** Columns kept per sheet, so one stray cell in `XFD1` cannot size a sheet at 16,384 columns. */
+	columns: 1_024,
+});
+
+/** Ceilings for a texture canvas, which decodes the whole file into float pixels. */
+export const INSPECT_TEXTURE_BYTES = 150_000_000;
 
 // #endregion
 

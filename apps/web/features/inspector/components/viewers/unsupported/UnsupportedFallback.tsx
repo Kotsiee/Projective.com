@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { FileKindIcon } from "@features/projects/components/file-glyphs.tsx";
+import { FileTypeIcon } from "@features/projects/components/FileTypeIcon.tsx";
 import type { InspectorShell } from "../../../core/inspector-shell.ts";
 import { useInspectorActions } from "../../InspectorContext.ts";
 
@@ -20,7 +20,7 @@ export function UnsupportedFallback({ shell }: UnsupportedFallbackProps): JSX.El
 	const actions = useInspectorActions();
 	const showPreview = useSignal(false);
 	const reason = shell.error.value ??
-		`Preview isn't available for ${asset.categoryLabel.toLowerCase()} files.`;
+		`No preview available for ${asset.categoryLabel.toLowerCase()} files.`;
 
 	if (showPreview.value && asset.previewSrc) {
 		return (
@@ -46,9 +46,7 @@ export function UnsupportedFallback({ shell }: UnsupportedFallbackProps): JSX.El
 
 	return (
 		<div class="ins-fallback">
-			<span class="ins-fallback__glyph" aria-hidden="true">
-				<FileKindIcon kind={asset.kind} size={48} />
-			</span>
+			<FileTypeIcon file={asset} size={80} />
 			<p class="ins-fallback__name">{asset.name}</p>
 			<p class="ins-fallback__reason">{reason}</p>
 			<div class="ins-fallback__actions">

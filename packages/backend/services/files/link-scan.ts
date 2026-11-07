@@ -3,7 +3,7 @@ import { isFilesBackendLive } from "../../core/supabase.ts";
 import { domainOf, isFetchableUrl, urlSuspicion } from "./link-guards.ts";
 import { FETCH_TIMEOUT_MS, guardedFetch, type LinkTransport } from "./link-fetch.ts";
 import { extractPageFacts } from "./link-html.ts";
-import { rehostFavicon } from "./link-favicon.ts";
+import { rehostFavicon, rehostLinkImage } from "./link-favicon.ts";
 import { checkReputation, type Reputation } from "./link-reputation.ts";
 
 export { domainOf, isFetchableUrl, isForbiddenAddress } from "./link-guards.ts";
@@ -25,7 +25,10 @@ export { MAX_FAVICON_BYTES } from "./link-favicon.ts";
  * 3. **The page** (`link-fetch.ts`, every SSRF rule on every hop): a hop the guards refuse is
  *    `suspicious` — the link leads somewhere the platform will not go; a network that fails is
  *    `unscannable` — "we could not reach it" is not "we found something"; a page that answers is
- *    `safe`, with its title, description and a RE-HOSTED icon (`link-favicon.ts`).
+ *    `safe`, with its title, description and a RE-HOSTED icon and share image (`link-favicon.ts`).
+ *    The icon is asked of Google's favicon service first, for its 128px answer, and of the page's
+ *    own declared icon after. That request leaves from OUR egress and names only the domain: a
+ *    reader's browser never contacts Google or the site for either picture (Decision #396).
  *
  * Plain `http:` is never fetched (anyone on the path chooses what would be stored), so it is
  * `unscannable` unless its reputation already blocked it.
@@ -54,6 +57,8 @@ export interface LinkScan {
 	description: string | null;
 	/** Re-hosted in `public_assets`; null when there was no usable icon or the link was not safe. */
 	faviconUrl: string | null;
+	/** The page's `og:image`, re-hosted on the same terms as the icon. */
+	imageUrl: string | null;
 	/** Why the verdict is what it is, in one sentence; null for a plain safe link. */
 	reason: string | null;
 	scannedAt: string;
@@ -65,6 +70,7 @@ export interface ScanDeps {
 	transport?: LinkTransport;
 	reputation?: (url: string) => Promise<Reputation>;
 	rehost?: (iconUrl: string, deadline: number) => Promise<string | null>;
+	rehostImage?: (imageUrl: string, deadline: number) => Promise<string | null>;
 	now?: () => number;
 }
 // #endregion
@@ -130,7 +136,8 @@ function result(
 	url: string,
 	verdict: LinkScan["verdict"],
 	now: number,
-	extra: Partial<Pick<LinkScan, "title" | "description" | "faviconUrl" | "reason">> = {},
+	extra: Partial<Pick<LinkScan, "title" | "description" | "faviconUrl" | "imageUrl" | "reason">> =
+		{},
 ): LinkScan {
 	return {
 		url,
@@ -139,9 +146,30 @@ function result(
 		title: extra.title ?? null,
 		description: extra.description ?? null,
 		faviconUrl: extra.faviconUrl ?? null,
+		imageUrl: extra.imageUrl ?? null,
 		reason: extra.reason ?? null,
 		scannedAt: new Date(now).toISOString(),
 	};
+}
+
+/** Google's 128px favicon for a domain, asked for by the server (see the module note). */
+export function highResFaviconUrl(domain: string): string {
+	return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+}
+
+/** The first candidate that re-hosts, within the deadline. */
+async function rehostFirst(
+	candidates: readonly (string | null)[],
+	deadline: number,
+	now: () => number,
+	rehost: (url: string, deadline: number) => Promise<string | null>,
+): Promise<string | null> {
+	for (const url of candidates) {
+		if (!url || deadline - now() <= 250) continue;
+		const stored = await rehost(url, deadline).catch(() => null);
+		if (stored) return stored;
+	}
+	return null;
 }
 
 async function runScan(url: string, deps: ScanDeps): Promise<Scanned> {
@@ -214,23 +242,28 @@ async function runScan(url: string, deps: ScanDeps): Promise<Scanned> {
 			title: titleFromUrl(page.url, domain),
 			description: null,
 			iconUrl: new URL("/favicon.ico", page.url).href,
+			imageUrl: null,
 		};
 
-	let faviconUrl: string | null = null;
-	if (facts.iconUrl && deadline - now() > 250) {
-		try {
-			faviconUrl = await (deps.rehost ?? ((icon, d) => rehostFavicon(icon, d, deps.transport)))(
-				facts.iconUrl,
-				deadline,
-			);
-		} catch {
-			faviconUrl = null;
-		}
-	}
+	const [faviconUrl, imageUrl] = await Promise.all([
+		rehostFirst(
+			[highResFaviconUrl(domain), facts.iconUrl],
+			deadline,
+			now,
+			deps.rehost ?? ((icon, d) => rehostFavicon(icon, d, deps.transport)),
+		),
+		rehostFirst(
+			[facts.imageUrl],
+			deadline,
+			now,
+			deps.rehostImage ?? ((image, d) => rehostLinkImage(image, d, deps.transport)),
+		),
+	]);
 	return result(url, "safe", now(), {
 		title: facts.title ?? titleFromUrl(url, domain),
 		description: facts.description,
 		faviconUrl,
+		imageUrl,
 	});
 }
 
@@ -277,6 +310,7 @@ export async function resolveLinkPreview(raw: string): Promise<LinkPreview | nul
 		title: scan.title ?? titleFromUrl(raw, domain),
 		description: scan.verdict === "safe" ? scan.description : null,
 		faviconUrl: scan.verdict === "safe" ? scan.faviconUrl : null,
+		imageUrl: scan.verdict === "safe" ? scan.imageUrl : null,
 		scanStatus: scan.verdict,
 		scannedAt: scan.scannedAt,
 		reason: scan.reason,

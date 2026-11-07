@@ -3781,15 +3781,28 @@ pages, upload date, owner, visibility, download count for the person who manages
 and its links (copy this inspector link, copy the share link for a manager, download the original).
 Web links and files mounted from a connected drive keep opening where they live today.
 
+The same canvases open in place from `/files`, in the preview a double click or the details panel's
+**Open preview** brings up, 3D models included. Every card there shows a small preview of the file
+itself: page 1 of a PDF or Word file, slide 1 of a deck, the top of a sheet, the first lines of code, a
+waveform, a video's poster, a model rendered once. A card shows its coloured type tile at once and
+its preview when ready, starting only as it nears the viewport, and a preview is drawn once and kept on
+the device until sign-out. A stored web link shows the page's own share image and icon, both copied
+to the platform when the link is saved, so looking at a link contacts neither the site nor anyone
+else (Decision #396).
+
 | File | What the inspector does |
 | :--- | :--- |
 | **Images** (JPG, PNG, GIF, WebP, AVIF, BMP, ICO; SVG) | Zoom at the cursor and pinch on touch, pan, fit / 100%, rotate, flip, a checker, dark or light backdrop. HEIC, TIFF and PSD show their stored preview rendition instead of the original. |
 | **Video and audio** | The platform's own video player and waveform player: speed, loop, frame stepping, picture-in-picture, a still of the current frame, and a waveform drawn in the browser when none was stored. |
 | **PDF** | Continuous pages with selectable text, page jump, zoom and fit, rotation, thumbnails, find, the outline, document properties, and a **Print** dialog (page range, quality, fit). |
-| **Code, text, Markdown, tables** | Highlighted source with line numbers, wrap, find, go to line and linkable lines; Markdown rendered (sanitised) or as source with a table of contents; CSV / TSV as a sortable, filterable table. Very large text is not read into the page. |
+| **Code, text, Markdown, tables** | Highlighted source with line numbers, wrap, find, go to line and linkable lines; Markdown rendered (sanitised) or as source with a table of contents; Very large text is not read into the page. |
+| **Spreadsheets** (XLSX, XLS, ODS; CSV, TSV) | A grid that draws only what is in view, so a sheet of 200,000 rows scrolls as lightly as one of twenty: sheet tabs, cell selection with the mouse or keyboard, copying the selection, a bar showing the selected cell's address and its formula or value, sortable columns, a row filter and the file's own column widths. |
+| **Presentations** (PPTX) | One slide at a time with next and previous, at full sharpness at any window size: backgrounds, shapes, text, pictures, groups and tables. A chart or a picture format a browser cannot draw shows as a labelled box, so a slide never silently loses something. Animations are not played. |
+| **Textures and panoramas** (HDR, EXR, and any 2:1 image) | A 360° view from inside the picture: drag, arrows or pinch to look around, zoom by field of view, exposure for HDR files. A 2:1 image opens flat with a 360° switch, and on the sphere by itself when its name says it is a panorama. |
+| **Archives** (ZIP, TAR, TAR.GZ) | A folder tree of what is inside, with sizes and dates, without unpacking or downloading the archive. A ZIP of any size lists from its last few kilobytes. |
 | **3D models** (GLB / glTF, OBJ, STL, PLY, FBX, 3MF, DAE, USDZ) | Orbit, pan and zoom; perspective or orthographic cameras, view presets and the model's own cameras; studio and built-in lights, environments, wireframe, grid, axes, bounds; animation playback; mesh and size facts. A model that references files it does not carry says which are missing. |
 | **Word documents and fonts** | DOCX rendered as pages with zoom and print; a font as an editable specimen with a size control and a glyph grid. |
-| **Everything else** | An honest fallback: the file's kind, name, "Preview isn't available for … files", Download, and the preview image when one exists. A canvas that fails (no WebGL, a damaged file) falls back the same way with the reason. |
+| **Everything else** | An honest fallback: the file's coloured type tile, name, "No preview available for … files", Download, and the preview image when one exists. A canvas that fails (no WebGL, a damaged file) falls back the same way with the reason. |
 
 **Who can open it is exactly who can read the file** — the owner, a member of the owning team or
 business, a participant of the project it sits in, anyone at all for a public file, and a holder of a

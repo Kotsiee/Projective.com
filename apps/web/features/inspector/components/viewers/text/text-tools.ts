@@ -1,6 +1,7 @@
 import { computed, type ReadonlySignal, type Signal, signal } from "@preact/signals";
-import { INSPECT_TEXT_LIMITS } from "@projective/types/files";
+import { INSPECT_SHEET_LIMITS, INSPECT_TEXT_LIMITS } from "@projective/types/files";
 import type { InspectorShell, StageFact } from "../../../core/inspector-shell.ts";
+import type { SheetCursor } from "../../../core/sheet-window.ts";
 import {
 	clampLine,
 	FIND_LIMIT,
@@ -192,10 +193,11 @@ export interface MarkdownTools {
 	readonly view: CodeView;
 }
 
-/** Tools of the table canvas. */
+/** Tools of the table canvas, which draws a CSV or one sheet of a workbook the same way. */
 export interface TableTools {
 	readonly text: Signal<string | null>;
-	readonly delimiter: "," | "\t";
+	/** The cell separator; `null` for a workbook, whose rows come from the sheet worker. */
+	readonly delimiter: "," | "\t" | null;
 	readonly table: Signal<CsvTable | null>;
 	readonly header: Signal<boolean>;
 	readonly filter: Signal<string>;
@@ -203,6 +205,15 @@ export interface TableTools {
 	/** Indexes into `table.rows` of the body rows to show, filtered and ordered. */
 	readonly order: ReadonlySignal<readonly number[]>;
 	readonly focus: Signal<boolean>;
+	/** The selected cells, by their place in {@link order}. */
+	readonly cursor: Signal<SheetCursor | null>;
+	/** The workbook's visible sheets; empty for a CSV. */
+	readonly sheets: Signal<readonly string[]>;
+	readonly sheetIndex: Signal<number>;
+	/** The active sheet's formulas, keyed `row:column`. */
+	readonly formulas: Signal<Readonly<Record<string, string>>>;
+	/** Column widths the file declared; empty when it left them to the grid. */
+	readonly widths: Signal<readonly (number | null)[]>;
 }
 
 /** Tools for `code` (highlighted) or `text` (plain) files. */
@@ -234,16 +245,14 @@ export function createMarkdownTools(shell: InspectorShell): MarkdownTools {
 	};
 }
 
-/** Tools for CSV/TSV files. */
-export function createTableTools(shell: InspectorShell): TableTools {
-	guardTextSize(shell);
+function tableTools(delimiter: TableTools["delimiter"], firstRowIsHeader: boolean): TableTools {
 	const table = signal<CsvTable | null>(null);
-	const header = signal(true);
+	const header = signal(firstRowIsHeader);
 	const filter = signal("");
 	const sort = signal<TableSort | null>(null);
 	return {
 		text: signal<string | null>(null),
-		delimiter: shell.asset.delimiter ?? ",",
+		delimiter,
 		table,
 		header,
 		filter,
@@ -258,7 +267,26 @@ export function createTableTools(shell: InspectorShell): TableTools {
 			});
 		}),
 		focus: signal(false),
+		cursor: signal<SheetCursor | null>(null),
+		sheets: signal<readonly string[]>([]),
+		sheetIndex: signal(0),
+		formulas: signal<Readonly<Record<string, string>>>({}),
+		widths: signal<readonly (number | null)[]>([]),
 	};
+}
+
+/** Tools for CSV/TSV files. */
+export function createTableTools(shell: InspectorShell): TableTools {
+	guardTextSize(shell);
+	return tableTools(shell.asset.delimiter ?? ",", true);
+}
+
+/** Tools for workbooks. A sheet has no header row until someone says it does. */
+export function createWorkbookTools(shell: InspectorShell): TableTools {
+	if (shell.asset.sizeBytes > INSPECT_SHEET_LIMITS.bytes && shell.status.peek() !== "error") {
+		shell.fail("This workbook is too large to preview. Download it to open it on your device.");
+	}
+	return tableTools(null, false);
 }
 // #endregion
 
@@ -295,13 +323,16 @@ export function tableFacts(
 	table: CsvTable,
 	header: boolean,
 	delimiter: TableTools["delimiter"],
+	sheets = 0,
 ): StageFact[] {
 	const rows = Math.max(0, table.totalRows - (header && table.totalRows > 0 ? 1 : 0));
-	return [
+	const shape = [
 		{ label: "Rows", value: formatCount(rows) },
 		{ label: "Columns", value: formatCount(table.columns) },
-		{ label: "Separator", value: delimiter === "\t" ? "Tab" : "Comma" },
 	];
+	return delimiter === null
+		? [{ label: "Sheets", value: formatCount(sheets) }, ...shape]
+		: [...shape, { label: "Separator", value: delimiter === "\t" ? "Tab" : "Comma" }];
 }
 
 /** The truncation notice, or `null` when every row is shown. */

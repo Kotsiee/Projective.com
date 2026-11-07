@@ -315,6 +315,27 @@ BEGIN
     VALUES (v_id, v_me, 'user', 'link', v_id::text, 'Brief', 'https://example.com',
         'text/uri-list', 0, 'uploaded', 'private', 'link', 'library', 'https://example.com', 'example.com', 'pending');
     RAISE NOTICE 'PASS G9 an honest link row is still accepted';
+
+    -- Every reader of a library loads a link's share image, so its owner must not be the one to name it.
+    BEGIN
+        UPDATE files.items SET link_image_url = 'https://tracker.example/pixel.png' WHERE id = v_id;
+        RAISE EXCEPTION 'FAIL a link owner chose their own share image';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS a link share image is the scan''s alone to write [%]', SQLERRM;
+    END;
+
+    v_id := gen_random_uuid();
+    BEGIN
+        INSERT INTO files.items (id, owner_user_id, owner_type, bucket_id, storage_path, display_name, original_name,
+            mime_type, size_bytes, status, visibility, source, purpose, link_url, link_domain, link_scan_status,
+            link_image_url)
+        VALUES (v_id, v_me, 'user', 'link', v_id::text, 'Brief', 'https://example.com',
+            'text/uri-list', 0, 'uploaded', 'private', 'link', 'library', 'https://example.com', 'example.com', 'pending',
+            'https://tracker.example/pixel.png');
+        RAISE EXCEPTION 'FAIL a new link arrived already carrying a share image';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS a new link carries no share image [%]', SQLERRM;
+    END;
 END $$;
 
 RESET ROLE;

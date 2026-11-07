@@ -46,6 +46,7 @@ import {
 	DEDUP_BATCH_MAX,
 	type DedupVerdict,
 	type DuplicateResolution,
+	sanitisedNoteOf,
 	type StorageQuota,
 	type UploadPhase,
 	type UploadTask,
@@ -628,7 +629,11 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 			return;
 		}
 
-		patchUpload(id, { phase: "done", progress: 1, error: null });
+		patchUpload(id, {
+			phase: "done",
+			progress: 1,
+			error: sanitisedNoteOf(finalised.data?.metadata),
+		});
 		await settleReplacement(id);
 		await refreshQuota();
 		// The library the body is showing has changed — it is the single fetch owner, so it re-reads.

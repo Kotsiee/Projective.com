@@ -3,6 +3,8 @@ import "@web/features/projects/styles/file-card.css";
 import "../styles/files-hub.css";
 import type { AssetItem, LinkAttachment } from "../types/file-types.ts";
 import { ScanMark } from "./file-hub-glyphs.tsx";
+import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
+import { ProgressiveImage } from "@projective/ui/display/image";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 
@@ -18,14 +20,15 @@ import { Tooltip } from "@projective/ui/feedback";
  *     height would desynchronise the virtualizer's row maths from what is actually painted, which is
  *     how a grid ends up overlapping its own rows.
  *
- * What differs is only what fills the thumb frame: not a file preview but the origin's identity — its
- * re-hosted favicon over the registrable domain — plus the link-safety verdict, which is the one fact
- * about a link a reader cannot get by looking at it.
+ * What differs is only what fills the thumb frame: the page's own share image when it has one, else
+ * the origin's identity — its re-hosted favicon over the registrable domain — plus the link-safety
+ * verdict, which is the one fact about a link a reader cannot get by looking at it.
  *
- * **The favicon is always the platform's re-hosted copy** (`LinkAttachment.faviconUrl` points into our
- * own public bucket). Hotlinking `https://origin/favicon.ico` would leak every viewer's IP address to
- * a host the link's author chose, which turns pasting a link into an IP-harvesting primitive. When the
- * re-hosted copy is missing the card falls back to the generic link glyph and never to the origin.
+ * **Both pictures are always the platform's re-hosted copies** (`LinkAttachment.imageUrl` and
+ * `faviconUrl` point into our own public bucket). Hotlinking `https://origin/favicon.ico` would leak
+ * every viewer's IP address to a host the link's author chose, which turns pasting a link into an
+ * IP-harvesting primitive. When the re-hosted copy is missing the card falls back to the link tile
+ * and never to the origin.
  *
  * A `blocked` or `suspicious` verdict is shown as a mark plus a caption, and never as the ONLY
  * difference in tone: the state has to survive a colour-blindness overlay.
@@ -56,7 +59,17 @@ function scanNote(status: LinkAttachment["scanStatus"]): string | null {
 
 export function LinkCard({ asset, link, onOpen }: LinkCardProps): JSX.Element {
 	const note = scanNote(link.scanStatus);
-	const title = link.title || link.domain;
+	const title = asset.name || link.title || link.domain;
+	const identity = (
+		<>
+			<span class="fh-linkcard__favicon">
+				{link.faviconUrl
+					? <img src={link.faviconUrl} alt="" loading="lazy" draggable={false} />
+					: <FileTypeIcon file={asset} />}
+			</span>
+			<span class="fh-linkcard__domain">{link.domain}</span>
+		</>
+	);
 
 	return (
 		<button
@@ -67,12 +80,22 @@ export function LinkCard({ asset, link, onOpen }: LinkCardProps): JSX.Element {
 			aria-label={`${title} — web link on ${link.domain}${note ? `. ${note}` : ""}`}
 		>
 			<span class="fx-card__thumb fh-linkcard__thumb" data-kind="link">
-				<span class="fh-linkcard__favicon">
-					{link.faviconUrl
-						? <img src={link.faviconUrl} alt="" loading="lazy" draggable={false} />
-						: <Icon name="link" size="lg" aria-hidden="true" />}
-				</span>
-				<span class="fh-linkcard__domain">{link.domain}</span>
+				{link.imageUrl
+					? (
+						<>
+							<ProgressiveImage
+								imgClass="fx-card__img"
+								src={link.imageUrl}
+								fit="contain"
+								alt=""
+								loading="lazy"
+								draggable={false}
+								fallback={identity}
+							/>
+							<FileTypeIcon file={asset} size={22} class="fx-card__family" />
+						</>
+					)
+					: identity}
 				{link.scanStatus !== "safe"
 					? (
 						<span class="fh-linkcard__scan" data-scan={link.scanStatus}>

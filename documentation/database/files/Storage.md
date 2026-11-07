@@ -283,6 +283,24 @@ quarantine/
     └── [upload_session_id]/original_file.xyz
 ```
 
+#### Markup in the `/files` hub (Decision #396)
+
+`completeUpload` (`live-uploads.ts`) admits what a person delivers, and `upload-acceptance.ts` decides
+how. Every other pipeline (the media library, showcase, `/contact`, an OAuth avatar) still refuses
+markup outright.
+
+| Upload | Stored as | Why it is safe |
+| :---------------- | :--------------------------- | :-------------------------------------------------------------------------- |
+| **SVG** (`.svg`) | `image/svg+xml`, sanitised | `svg-sanitize.ts` on the server: exact bytes if nothing is active, else rebuilt from an allowlist, else refused. Drawn only through `<img>`. |
+| **HTML, XML** | Byte-exact, `text/plain` to storage | Never rendered: the proxy answers `text/plain`, an attachment and a sandbox CSP; the inspector shows escaped source. |
+| **JavaScript** | Byte-exact, `application/octet-stream` | No magic number, so it always passed the sniff. `nosniff` and a non-script type stop `<script src>`, a worker and a service worker from loading it. |
+| Markup under a binary format's name | Refused | A polyglot (`photo.png` holding HTML). |
+
+A file the sanitiser rewrote carries a `metadata.notes` entry naming what was removed, shown in the
+upload drawer and the details panel, and its `content_hash` is the stored bytes'. HTML, XML and JS are
+**deliberately not sanitised**: rewriting them would corrupt a delivered site, and nothing on the
+platform executes them. A person who downloads one and opens it runs it on their own machine.
+
 #### The upload pipeline
 
 The media library (the File Picker's media mode → `/api/media/*`) is the first surface wired end to

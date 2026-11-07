@@ -13,7 +13,7 @@ import {
 	sourceLabel,
 } from "../types/projects-types.ts";
 import { displayZoom, listRowHeight, listShowsThumbnails } from "../core/view-state.ts";
-import { FileKindIcon } from "./file-glyphs.tsx";
+import { FileTypeIcon } from "./FileTypeIcon.tsx";
 
 /**
  * FileTable — the file list as a `DataTable` preset: Name (kind glyph, or a thumbnail once zoomed in) ·
@@ -46,6 +46,8 @@ export interface FileTableProps {
 	rowActions?: (file: AssetItem) => readonly MenuItem[];
 	/** `data-*` attributes for a row, so a host can address it from outside the table. */
 	rowAttrs?: (file: AssetItem) => Readonly<Record<`data-${string}`, string>> | null;
+	/** A host's styling token for a row, as `data-state`: unlike `rowAttrs`, a change re-renders it. */
+	rowState?: (file: AssetItem) => string | null;
 }
 
 const MEDIA_KINDS: ReadonlySet<string> = new Set(["image", "video"]);
@@ -63,7 +65,7 @@ const FILE_COLUMNS: readonly DataColumn<AssetItem>[] = [
 			const src = MEDIA_KINDS.has(file.kind) ? assetMediaSrc(file, "sm") : null;
 			return {
 				name: file.name,
-				icon: <FileKindIcon kind={file.kind} size={18} />,
+				icon: <FileTypeIcon file={file} size={24} />,
 				thumb: src ? { src, placeholder: assetPlaceholder(file) } : null,
 			};
 		},
@@ -131,6 +133,7 @@ export function FileTable(props: FileTableProps): JSX.Element {
 			onRowActivate={(file) => props.onOpen(file)}
 			rowActions={props.rowActions}
 			rowAttrs={props.rowAttrs}
+			rowState={props.rowState}
 			rowHeight={ROW_HEIGHT}
 			thumbnailMinRowHeight={listShowsThumbnails(displayZoom.value) ? 0 : Number.POSITIVE_INFINITY}
 			onReachEnd={props.onReachEnd}

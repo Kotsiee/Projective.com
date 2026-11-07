@@ -2,6 +2,7 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import type { AssetListParams } from "@projective/types/files";
 import { readActor } from "@web/utils/api-session.ts";
+import { cspHeaderFor } from "@web/utils/csp.ts";
 import { resolveFilesBootstrap } from "@web/features/files/core/files-ssr.ts";
 import { facetsOfSearch } from "@web/features/files/core/asset-model.ts";
 import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
@@ -33,6 +34,9 @@ import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
  * No redirect lives in the page component: a `Response` returned from a Fresh `define.page` is DEAD
  * CODE — the exact bug that left every gated workspace module rendering a blank body (Decision #61).
  * Anything conditional belongs in `define.handlers`, which is where this route's whole resolution is.
+ *
+ * **The page answers with the `inspector` CSP profile** (Decision #396): its previews and thumbnails
+ * draw 3D models here, and those decoders need WebAssembly and `blob:` reads.
  */
 
 // #region Path
@@ -76,7 +80,10 @@ export const handler = define.handlers({
 		const here = path.length > 0 ? listing.crumbs.at(-1)?.label : null;
 		ctx.state.title = here ? `${here} · Files · Projective` : "Files · Projective";
 
-		return page({ listing, tree, path, error }, error ? { status } : undefined);
+		return page({ listing, tree, path, error }, {
+			status: error ? status : 200,
+			headers: { "content-security-policy": cspHeaderFor("inspector") },
+		});
 	},
 });
 

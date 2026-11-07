@@ -1,4 +1,7 @@
-import { defineViewer, type ViewerShortcut } from "../viewer.ts";
+import { h, type JSX } from "preact";
+import type { ThreeRuntime } from "../../../core/three-loader.ts";
+import { PanoramaCanvas } from "../panorama/PanoramaCanvas.tsx";
+import { defineViewer, type ViewerProps, type ViewerShortcut } from "../viewer.ts";
 import { createImageTools, type ImageTools } from "./image-tools.ts";
 import { ImageStage } from "./ImageStage.tsx";
 import { ImageControls } from "./ImageControls.tsx";
@@ -17,12 +20,30 @@ const IMAGE_SHORTCUTS: readonly ViewerShortcut[] = [
 	{ keys: ["G"], label: "Rule of thirds" },
 ];
 
+async function loadPicture(rt: ThreeRuntime, src: string) {
+	const texture = await new rt.THREE.TextureLoader().loadAsync(src);
+	texture.colorSpace = rt.THREE.SRGBColorSpace;
+	return texture;
+}
+
+/** The picture flat, or on a sphere when the reader asked for its 360° view. */
+function ImageCanvas(props: ViewerProps<ImageTools>): JSX.Element {
+	const { shell, tools } = props;
+	if (!tools.panorama.value) return h(ImageStage, props);
+	return h(PanoramaCanvas, {
+		shell,
+		view: tools.panoramaView,
+		hdr: false,
+		load: (rt) => loadPicture(rt, tools.source.peek()),
+	});
+}
+
 /** The image and SVG canvas: zoom, pan, pinch, rotate, flip, a choice of background and a thirds guide. */
 export const imageViewer = defineViewer<ImageTools>({
 	createTools: createImageTools,
-	Stage: ImageStage,
+	Stage: ImageCanvas,
 	Controls: ImageControls,
-	Chips: ImageChips,
+	Chips: (props) => (props.tools.panorama.value ? null : h(ImageChips, props)),
 	shortcuts: IMAGE_SHORTCUTS,
 });
 

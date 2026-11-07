@@ -1,4 +1,5 @@
 import {
+	ASSET_METADATA_VERSION,
 	type AssetItem,
 	type AssetMetadata,
 	bucketMeta,
@@ -6,6 +7,7 @@ import {
 	type DedupVerdict,
 	libraryLocation,
 	quarantineLocation,
+	sanitisedNote,
 	sniffBytes,
 	SNIFF_BYTES,
 	type StorageLocation,
@@ -20,6 +22,7 @@ import type { ReadActor } from "../read-actor.ts";
 import { imageEnvelope, objectName, writeTiers } from "../media/library.ts";
 import { MediaPipeline, MediaRejectedError } from "../media/pipeline.ts";
 import { canFileInto, dedupVerdicts, type FilesOwner, readAsset, readQuota } from "./live-library.ts";
+import { sanitizeSvg } from "./svg-sanitize.ts";
 import { acceptUpload, UNDECODABLE } from "./upload-acceptance.ts";
 
 /**
@@ -32,7 +35,8 @@ import { acceptUpload, UNDECODABLE } from "./upload-acceptance.ts";
  *  2. The browser PUTs the file straight to storage.
  *  3. {@link completeUpload} claims the row (`pending_upload → scanning`, so two completes cannot both
  *     process one upload), reads the stored bytes, sniffs what they really are (a filename's type is a
- *     guess), refuses a program, a markup document or a picture that will not decode, re-digests the
+ *     guess), refuses a program or a picture that will not decode, sanitises an SVG and files other
+ *     markup as inert text (`upload-acceptance.ts`), re-digests the
  *     content in full (a client's hash is a hint, never
  *     evidence), processes a picture into WebP tiers and a BlurHash through the media pipeline, and
  *     promotes the original out of quarantine into the owner's private `personal` bucket (or the
@@ -57,7 +61,7 @@ const UNAVAILABLE = "Uploads are unavailable right now. Try again in a moment.";
 const DENIED_OWNER = "You can't add files to that library.";
 
 /** Where an owner's library original lives once it has left quarantine. */
-function destinationFor(owner: FilesOwner, userId: string, assetId: string, filename: string): StorageLocation {
+export function destinationFor(owner: FilesOwner, userId: string, assetId: string, filename: string): StorageLocation {
 	return owner.ownerType === "user"
 		? libraryLocation(userId, assetId, filename)
 		: workspaceLocation(owner.ownerId, "library", assetId, filename);
@@ -216,6 +220,21 @@ async function markRow(id: string, status: "error" | "quarantined" | "pending_up
 }
 
 /** A file refused at inspection leaves quarantine (its bytes are never kept) and says why. */
+/** `AssetMetadataSchema` caps its notes here. */
+const MAX_METADATA_NOTES = 8;
+
+/** An envelope carrying one more note, created for a file the browser had nothing to say about. */
+function noted(metadata: AssetMetadata | undefined, note: string): AssetMetadata {
+	const base: AssetMetadata = metadata ?? {
+		version: ASSET_METADATA_VERSION,
+		source: "server",
+		extractedAt: new Date().toISOString(),
+		media: { kind: "generic" },
+		notes: [],
+	};
+	return { ...base, notes: [note, ...base.notes].slice(0, MAX_METADATA_NOTES) };
+}
+
 async function refuse(row: PendingRow, hostile: boolean, message: string): Promise<Result<never>> {
 	await removeObjects("quarantine", [row.storage_path]);
 	await markRow(row.id, hostile ? "quarantined" : "error");
@@ -272,7 +291,7 @@ export async function completeUpload(actor: Actor, input: UploadComplete): Promi
 		}
 
 		const sniffed = sniffBytes(bytes.subarray(0, SNIFF_BYTES));
-		const verdict = acceptUpload(sniffed, input.metadata);
+		const verdict = acceptUpload(sniffed, input.metadata, row.display_name);
 		if (!verdict.ok) return await refuse(row, verdict.hostile, verdict.message);
 		const mime = verdict.mime;
 		const ext = sniffed?.ext ?? ((/\.([a-z0-9]{1,8})$/i.exec(row.display_name)?.[1] ?? "bin").toLowerCase());
@@ -296,7 +315,18 @@ export async function completeUpload(actor: Actor, input: UploadComplete): Promi
 			metadata = imageEnvelope(result);
 		}
 
-		if (!await uploadObject(destination.bucket, destination.path, bytes, mime)) {
+		// What is stored and digested from here on: a cleaned SVG replaces what was uploaded.
+		let stored = bytes;
+		if (verdict.sanitize) {
+			const checked = sanitizeSvg(bytes);
+			if (!checked.ok) return await refuse(row, false, checked.reason);
+			stored = checked.bytes;
+			if (checked.changed) metadata = noted(metadata, sanitisedNote(checked.removed));
+		}
+
+		if (
+			!await uploadObject(destination.bucket, destination.path, stored, verdict.inert ? "text/plain" : mime)
+		) {
 			throw new Error("storage refused the original");
 		}
 		written.push({ bucket: destination.bucket, path: destination.path });
@@ -305,11 +335,11 @@ export async function completeUpload(actor: Actor, input: UploadComplete): Promi
 			bucket_id: destination.bucket,
 			storage_path: destination.path,
 			mime_type: mime,
-			size_bytes: bytes.byteLength,
+			size_bytes: stored.byteLength,
 			category: describeFile(row.display_name, mime).category,
 			// The server's own digest of the WHOLE file replaces the client's hint — it is what a later
 			// duplicate check can actually rely on.
-			content_hash: await sha256Hex(bytes),
+			content_hash: await sha256Hex(stored),
 			hash_algo: "sha-256",
 			hash_sampled: false,
 			status: "uploaded",

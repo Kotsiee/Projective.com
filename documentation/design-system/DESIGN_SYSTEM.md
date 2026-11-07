@@ -84,6 +84,80 @@ from the generated ramp, §A.2) rather than used flat, so contrast is preserved 
 a second hex. Every semantic color ships as a **tonal ramp** (0–100), and light/dark simply select
 different tones from the _same_ ramp — one source, two selections.
 
+#### A.1a File-type families (Decision #396)
+
+The type a person recognises a file by. Eleven fills, one per family, decided by
+`fileFamily()` (`@projective/types/files`) and drawn by `FileTypeIcon` as a filled tile on cards,
+list rows and the inspector. They are a fixed identity palette, mode-invariant like a brand mark, so
+they are static tokens in `packages/ui/styles/index.css` and not engine-derived: a spreadsheet is the
+same green in both themes and under every seed.
+
+| Family         | Token / ink                                             | Fill      | Extensions (the extended lists live in `families.ts`) |
+| :------------- | :------------------------------------------------------ | :-------- | :---------------------------------------------------- |
+| Spreadsheet    | `--file-spreadsheet` · white                            | `#0F9D58` | `.xlsx` `.xls` `.csv`                                 |
+| Document       | `--file-document` · white                               | `#4285F4` | `.docx` `.doc` `.txt` `.rtf` `.md`                    |
+| Presentation   | `--file-presentation` · `#202124`                       | `#F4B400` | `.pptx` `.ppt` `.key`                                 |
+| PDF            | `--file-pdf` · white                                    | `#DB4437` | `.pdf`                                                |
+| Image, texture | `--file-image` · white                                  | `#EA4335` | `.png` `.jpg` `.webp` `.svg` `.hdr` `.exr`            |
+| Video          | `--file-video` · white                                  | `#A142F4` | `.mp4` `.webm` `.mov`                                 |
+| Audio          | `--file-audio` · `#202124`                              | `#FA7B17` | `.mp3` `.wav` `.ogg`                                  |
+| Code           | `--file-code` · `#202124`                               | `#00ACC1` | `.js` `.ts` `.py` `.json` `.html` `.css`, …         |
+| 3D model       | `--file-model` · white                                  | `#C2185B` | `.obj` `.stl` `.gltf` `.glb`                          |
+| Archive        | `--file-archive` · white                                | `#5F6368` | `.zip` `.tar` `.gz`                                   |
+| Web link       | `--file-link` · `#202124`                               | `#03A9F4` | a stored link                                         |
+
+Each fill names its ink as `--on-file-*`: white where it clears the 3:1 graphics floor (WCAG 1.4.11),
+`#202124` on the four fills it does not. This is a graphics floor, not §B.8's 4.5:1 text floor, because
+a tile holds a glyph and never a label. The type is never carried by colour alone: each family has its
+own silhouette and the name and extension are always beside it. A tile is an icon, so it is not a
+"tag" under §B.11; it says nothing that clicking it would change.
+
+#### A.1b Software tiles (Decision #397)
+
+A file an application owns shows that application. `fileSoftware()` (`@projective/types/files`)
+decides from the extension alone, because these formats arrive as `application/octet-stream`, and
+`FileTypeIcon` draws the application's fill and mark over the family's. The family does not change:
+a `.psd` is still an `image` to thumbnails and viewers. A link stays a link, whatever its address
+ends in.
+
+| Software        | Fill · ink            | Extensions                  | Mark                        |
+| :-------------- | :-------------------- | :-------------------------- | :-------------------------- |
+| Photoshop       | `#31A8FF` · `#202124` | `.psd` `.psb`               | `Ps`                        |
+| Illustrator     | `#FF9A00` · `#202124` | `.ai` `.ait`                | `Ai`                        |
+| Premiere Pro    | `#9999FF` · `#202124` | `.prproj`                   | `Pr`                        |
+| After Effects   | `#9999FF` · `#202124` | `.aep` `.aet`               | `Ae`                        |
+| InDesign        | `#FF3366` · `#202124` | `.indd` `.indt`             | `Id`                        |
+| Lightroom       | `#31A8FF` · `#202124` | `.lrcat`                    | `Lr`                        |
+| Figma           | `#2C2C2C` · white     | `.fig` `.jam`               | Five-part mark, full colour |
+| Sketch          | `#F7B500` · `#202124` | `.sketch`                   | Diamond                     |
+| Blender         | `#2C2C2C` · white     | `.blend` `.blend1`          | Emblem, full colour         |
+| Maya            | `#0696D7` · `#202124` | `.mb` `.ma`                 | The icon's M                |
+| 3ds Max         | `#0696D7` · `#202124` | `.max`                      | `Mx`                        |
+| AutoCAD         | `#E51937` · white     | `.dwg` `.dxf`               | The icon's A                |
+| Cinema 4D       | `#002D62` · white     | `.c4d`                      | Roundel                     |
+| ZBrush          | `#000000` · white     | `.zpr` `.ztl`               | `Zb`                        |
+| Unity           | `#222C37` · white     | `.unity` `.prefab` `.asset` | Cube                        |
+| Unreal Engine   | `#0E1128` · white     | `.uproject` `.uasset`       | U badge                     |
+| DaVinci Resolve | `#383838` · white     | `.drp`                      | Three petals, full colour   |
+| Ableton Live    | `#000000` · white     | `.als`                      | Four bars, drawn here       |
+| Pro Tools       | `#702A8C` · white     | `.ptx`                      | Wave roundel                |
+
+- **Tokens.** Each row is a `--file-<software>` / `--on-file-<software>` pair in
+  `packages/ui/styles/index.css`, static for the reason the families are. `FileTypeIcon` maps the
+  pair in through `styleVars`.
+- **Contrast.** §A.1a's 3:1 rests on a tile never holding a label, and these tiles hold letters, so
+  every pair clears §B.8's 4.5:1 text floor. The tightest is InDesign at 4.54:1.
+- **Full-colour marks sit on a neutral.** Figma's, Blender's and Resolve's colours are the mark, and
+  would vanish on a fill of their own hue. Everything else is one colour, in the ink.
+- **Banner.** From 44px, or on the card's and inspector's fluid tile, the extension prints in bold
+  monospace on a band that inverts the tile's own pair. A tonal band moved the fill toward the ink
+  and left four brands under 4.5:1. A card's extension chip steps aside while the banner is showing.
+- **Dark rim.** Under the dark theme a software tile takes a `--hairline-strong-color` inset rim,
+  because the near-black fills would otherwise melt into the surface.
+- **Artwork.** The marks are drawn in `software-marks.tsx` (§B.7), and nothing is hotlinked. Letters
+  stand in where no drawing may ship: Adobe's trademark terms refuse its marks without permission,
+  and 3ds Max and ZBrush publish no path.
+
 ### A.2 Dynamic Material You integration
 
 > **Approved library exception.** `@material/material-color-utilities` is the **only** third-party
@@ -1320,6 +1394,9 @@ calendar providers — is drawn ONCE in `apps/web/features/shell/components/bran
 feature modules (`auth/components/icons.tsx`, `settings/…/provider-glyphs.tsx`,
 `calendar/components/provider-marks.tsx`, `share/components/share-brand-icons.tsx`,
 `marketing/components/footer-icons.tsx`) import or re-export from it.
+The file tile's applications are the one exception to the module (§A.1b): the same quarantine in the
+sibling `software-marks.tsx`, because `brand-marks.tsx` ships as a shared chunk the sign-in pages
+load, and that artwork would nearly double it for a guest who will never open a file.
 
 **B.7.2 One grid, one weight.** `viewBox="0 0 24 24"`, artwork inset ≥2 units per side,
 `fill="none"`, `stroke="currentColor"`, round cap and join. `stroke-width` is **not** authored on
@@ -3178,6 +3255,10 @@ ghost Back · Forward · Up (`Button rounded iconOnly variant="text"`), and `Fil
 frame's `selection` panel, a `Drawer` below 1280px. The Asset Picker keeps its grip.
 
 **Folders and their colour (Decision #395).** `FolderMark` (`color?`, `size?`; `.fh-foldermark`) is the one drawing of a folder: unframed on `AssetFolderCard`, in `SubmissionNodeList`'s `lead` slot and in tree rows. The front panel takes the colour and the back mixes it toward `--surface-1`, so one value reads as depth in every theme, and a folder with none is a neutral `--on-surface` mix. `FolderColorGrid` (`folderColorRow(target)` for a menu) is two rows of six `.fh-swatch` rounded squares, the last cell a `+`, as `menuitemradio`s with spoken names; a ring marks the selected one, because a mark on the swatch cannot hold on every colour. `FolderColorDialog` is the `+`: `ColorPicker inline variant="wheel"` with the folder previewed. A folder's colour reaches the page as `--fh-folder` through `styleVars`, the one colour here that is data and not a token.
+
+**File previews (Decision #396).** A card's picture is `contain`, never `cover`: it shows whole on the frame's own tone, so a tall scan and a wide panorama stay recognisable. `AssetThumb` (`.fx-thumb`, `features/files/components/`) holds the family tile until a picture is ready, then draws the picture, a line-numbered snippet or a waveform, with the tile moved to a corner badge (`.fx-card__family`); a file with no preview keeps the tile. `InspectPanel`'s preview carries Download and Open preview in opposite corners. `FilePreview`'s `LinkPreview` stacks share image, favicon and host, title, description and "Open external link", and `Placeholder` is the large tile, "No preview available." and Download. The tile itself is §A.1a.
+
+**The explorer's keyboard (Decision #398).** `useFileExplorerKeyboardShortcuts` (`features/files/hooks/`) is the `/files` canvas's desktop keyboard and its modified clicks; `core/files-keyboard.ts` holds its pure rules. One capture-phase `document` listener, scoped by `zoneOf`: a field or a modal keeps every key, the side tree keeps `TreeNav`'s, and `<body>` counts as the canvas, because focus falls there when a focused row unmounts. An item is found by `data-key`, on `.fh-cell` and on a `DataTable` row alike, so both views and both kinds answer the same keys. `activeFocusedIndex` and `selection` are separate questions: arrows walk, Space chooses. `selection` holds folder ids beside asset ids; a plain click on a folder still opens it, `Ctrl`/`Cmd`+click and `Shift`+click select it, and `AssetFolderCard` takes `selected`. `SubmissionNodeList` gains `rowKey`, `rowState`, `selection` and `onSelectionChange`, and `FileTable` gains `rowState`. A cut dims `.fh-cell.is-cut` and `.ui-dt__row[data-state="cut"]` to 50%. `RenameField` (`.fh-rename`) is F2's `InputText`, laid over the item's name in the hub's coordinates, because the name belongs to shared cards and windowed rows. Every shortcut is in the registry (#371, category Files): arrows, Enter and Space are protected, the rest switchable.
 
 **The console drive wears the same chrome (Decision #315).** On `/teams/:h/files` and
 `/businesses/:h/files` the console's header and footer slots mount `FilesHeaderBand` and

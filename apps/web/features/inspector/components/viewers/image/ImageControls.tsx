@@ -19,8 +19,9 @@ import {
 	ZOOM_SLIDER_STEPS,
 	zoomPercent,
 } from "../../../core/viewport.ts";
+import { PanoramaTools } from "../panorama/PanoramaCanvas.tsx";
 import type { ViewerProps } from "../viewer.ts";
-import type { ImageBackground, ImageTools } from "./image-tools.ts";
+import { type ImageBackground, type ImageTools, looksEquirectangular } from "./image-tools.ts";
 
 const BACKGROUNDS: readonly ToolChoiceOption<ImageBackground>[] = [
 	{ value: "checker", label: "Checker" },
@@ -30,6 +31,24 @@ const BACKGROUNDS: readonly ToolChoiceOption<ImageBackground>[] = [
 
 /** The image canvas's panel controls: zoom, orientation, background and the rule-of-thirds guide. */
 export function ImageControls({ tools }: ViewerProps<ImageTools>): JSX.Element {
+	const natural = tools.natural.value;
+	const onSphere = tools.panorama.value;
+	const sphereToggle = onSphere || (natural && looksEquirectangular(natural.width, natural.height))
+		? (
+			<ToolGroup title="View">
+				<ToolToggle label="360° view" value={tools.panorama} />
+			</ToolGroup>
+		)
+		: null;
+	if (onSphere) {
+		return (
+			<>
+				{sphereToggle}
+				<PanoramaTools view={tools.panoramaView} hdr={false} />
+			</>
+		);
+	}
+
 	const ready = tools.ready.value;
 	const view = tools.view.value;
 	const limits = tools.limits.value;
@@ -42,6 +61,7 @@ export function ImageControls({ tools }: ViewerProps<ImageTools>): JSX.Element {
 
 	return (
 		<>
+			{sphereToggle}
 			<ToolGroup title="Zoom">
 				<div class="ins-image-tools__zoom">
 					<ZoomSlider

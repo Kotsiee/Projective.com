@@ -2,6 +2,7 @@ import type { SupabaseClient } from "supabaseClient";
 import type {
 	AssetFolder,
 	AssetItem,
+	CopyAssets,
 	CreateFolder,
 	CreateShare,
 	DeleteAssets,
@@ -10,12 +11,14 @@ import type {
 	LinkAttach,
 	MoveAssets,
 	RenameAsset,
+	RenameFolder,
 	RevokeShare,
 	SetFolderColor,
 	SetVisibility,
 	ShareLink,
 } from "@projective/types/files";
 import { linkStorageAddress } from "@projective/types/files";
+import { copyObject, removeObjects } from "../../core/storage-signed.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { clamp } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -23,12 +26,15 @@ import {
 	FOLDER_COLUMNS,
 	type FolderRow,
 	fmtDateTime,
+	ITEM_COLUMNS,
+	type ItemRow,
 	MANAGED_SOURCES,
 	toAssetFolder,
 } from "./asset-row.ts";
 import { canFileInto, type FilesOwner, readAsset } from "./live-library.ts";
-import { movedSubtree, subtreeOf } from "./library-tree.ts";
+import { copyName, movedSubtree, subtreeOf } from "./library-tree.ts";
 import { resolveLinkPreview } from "./link-scan.ts";
+import { destinationFor } from "./live-uploads.ts";
 
 /**
  * live-library-writes — every mutation over what the `/files` hub already holds, live, under the
@@ -39,7 +45,8 @@ import { resolveLinkPreview } from "./link-scan.ts";
  * is the RULES a row policy cannot state — a new folder inherits its parent's privacy, a rename keeps
  * the extension, a move stays inside one library, a delete is a soft delete that also closes the
  * asset's share links, a mounted row is never moved, deleted or re-shared here (it mirrors its
- * provider, so `canManage` is false on it everywhere) — and the refusals in words.
+ * provider, so `canManage` is false on it everywhere) — and the refusals in words. A copy is the one
+ * write that leaves the caller's session for its files: see {@link copyAssets}.
  *
  * `files.items` INSERT never uses `RETURNING`: its SELECT policy is `files.fn_can_read(id)`, a stable
  * lookup that cannot see a row inserted by the same statement, so a returning insert would be refused
@@ -135,6 +142,43 @@ export async function createFolder(actor: Actor, input: CreateFolder): Promise<R
 	};
 }
 
+/**
+ * Rename a folder. Parent-first, one row at a time, for the reason a move is: every folder beneath it
+ * carries this name in its `path`, and the guard checks each `path` against its parent's. A sibling of
+ * the same name is refused, because the hub addresses a folder by its name.
+ */
+export async function renameFolder(actor: Actor, input: RenameFolder): Promise<Result<{ name: string }>> {
+	const name = input.name.trim().replace(/[\\/]+/g, "-");
+	if (!name) return { ok: false, status: 422, message: "Name the folder.", errors: { name: "required" } };
+	const found = await foldersOf(actor, [input.folderId]);
+	if (!found) return { ok: false, status: 404, message: "That folder can't be renamed." };
+	const { chosen: [folder], library } = found;
+	const subtree = new Set(subtreeOf(library, folder.id));
+	if (library.some((f) => subtree.has(f.id) && f.owner_user_id !== actor.userId)) {
+		return { ok: false, status: 403, message: "Someone else's folder is inside that one." };
+	}
+	const lower = name.toLowerCase();
+	if (
+		library.some((f) =>
+			f.id !== folder.id && f.parent_folder_id === folder.parent_folder_id &&
+			(f.name ?? "").toLowerCase() === lower
+		)
+	) {
+		return { ok: false, status: 409, message: "There's already a folder with that name here.", errors: { name: "taken" } };
+	}
+
+	const renamed = library.map((f) => (f.id === folder.id ? { ...f, name } : f));
+	const parent = renamed.find((f) => f.id === folder.parent_folder_id) ?? null;
+	const [, ...below] = movedSubtree(renamed, folder.id, parent);
+	const db = filesDb(actor);
+	for (const row of [{ id: folder.id, patch: { name } as Record<string, unknown> }, ...below]) {
+		const { error } = await db.from("folders").update(row.patch).eq("id", row.id);
+		if (error?.code === "42501") return { ok: false, status: 403, message: "You can't rename this folder." };
+		if (error) throw new Error(`files.folders update failed: ${error.message}`);
+	}
+	return { ok: true, data: { name }, message: "Renamed." };
+}
+
 // #endregion
 
 // #region Assets
@@ -184,6 +228,26 @@ export async function starAsset(actor: Actor, assetId: string, starred: boolean)
 }
 
 /**
+ * The live native folder a write lands in, in a library the caller holds. `null` is the root;
+ * `undefined` is a folder they cannot file into.
+ */
+async function targetFolder(actor: Actor, id: string | null): Promise<FolderRow | null | undefined> {
+	if (!id) return null;
+	const found = await filesDb(actor).from("folders").select(FOLDER_COLUMNS)
+		.eq("id", id).eq("source", "supabase").is("deleted_at", null).maybeSingle();
+	if (found.error && found.error.code !== "22P02") {
+		throw new Error(`files.folders read failed: ${found.error.message}`);
+	}
+	const target = found.data as unknown as FolderRow | null;
+	if (!target) return undefined;
+	const owner = {
+		ownerType: target.owner_type as FilesOwner["ownerType"],
+		ownerId: target.owner_entity_id ?? target.owner_user_id,
+	};
+	return (await canFileInto(actor, owner)) ? target : undefined;
+}
+
+/**
  * Move assets into a folder of the SAME library (`null` = the acting library's root). The library is
  * the target folder's own, so a console drive moves within itself whatever context the caller acts in;
  * it must still be one the caller holds. Reports the count that actually moved rather than failing the
@@ -193,24 +257,8 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 	const assetIds = input.assetIds ?? [];
 	const folderIds = input.folderIds ?? [];
 	const db = filesDb(actor);
-	let target: FolderRow | null = null;
-	if (input.targetFolderId) {
-		const found = await db.from("folders").select(FOLDER_COLUMNS)
-			.eq("id", input.targetFolderId).eq("source", "supabase").is("deleted_at", null).maybeSingle();
-		if (found.error && found.error.code !== "22P02") {
-			throw new Error(`files.folders read failed: ${found.error.message}`);
-		}
-		target = found.data as unknown as FolderRow | null;
-		const owner: FilesOwner | null = target
-			? {
-				ownerType: target.owner_type as FilesOwner["ownerType"],
-				ownerId: target.owner_entity_id ?? target.owner_user_id,
-			}
-			: null;
-		if (!owner || !(await canFileInto(actor, owner))) {
-			return { ok: false, status: 404, message: "That folder isn't in this library." };
-		}
-	}
+	const target = await targetFolder(actor, input.targetFolderId);
+	if (target === undefined) return { ok: false, status: 404, message: "That folder isn't in this library." };
 
 	let moved = 0;
 	if (assetIds.length > 0) {
@@ -242,6 +290,207 @@ export async function moveAssets(actor: Actor, input: MoveAssets): Promise<Resul
 	if (moved === 0) return { ok: false, status: 403, message: NOTHING_MOVED };
 	const noun = folderIds.length > 0 ? "item" : "file";
 	return { ok: true, data: { moved }, message: `Moved ${moved} ${noun}${moved === 1 ? "" : "s"}.` };
+}
+
+/** How many files one paste copies: each is a storage round trip inside one request. */
+const COPY_MAX = 200;
+
+const NOTHING_COPIED = "Those could not be copied.";
+
+/** A stored file's row, as a copy reads it: the caller's own, finished, in the library. */
+function copyable(db: SupabaseClient, actor: Actor) {
+	return db.from("items").select(ITEM_COLUMNS)
+		.in("source", MANAGED_SOURCES)
+		.eq("owner_user_id", actor.userId)
+		.eq("status", "uploaded")
+		.eq("purpose", "library")
+		.is("deleted_at", null);
+}
+
+/**
+ * One file's copy: its bytes first, then its row, so a failed row leaves no row without an object and
+ * its bytes can be taken back. Returns whether it landed, or `"quota"` when the allowance refused it.
+ *
+ * The row is the service role's write, as a finished upload's is: only the server may say `uploaded`,
+ * and the bytes it says it about were already scanned. Its caller has read the source under their own
+ * session. What the source was shared as is not copied: a copy starts private with no share link.
+ */
+async function copyItem(
+	actor: Actor,
+	row: ItemRow,
+	folderId: string | null,
+	name: string,
+): Promise<boolean | "quota"> {
+	const id = crypto.randomUUID();
+	const owner: FilesOwner = {
+		ownerType: row.owner_type as FilesOwner["ownerType"],
+		ownerId: row.owner_entity_id ?? row.owner_user_id,
+	};
+	const isLink = row.source === "link";
+	const place = isLink ? null : destinationFor(owner, actor.userId, id, row.storage_path.split("/").at(-1) ?? id);
+	if (place && !(await copyObject(row.bucket_id, row.storage_path, place.bucket, place.path))) return false;
+	const { error } = await getServiceClient().schema("files").from("items").insert({
+		id,
+		owner_user_id: actor.userId,
+		owner_type: row.owner_type,
+		owner_entity_id: row.owner_entity_id,
+		folder_id: folderId,
+		...(place ? { bucket_id: place.bucket, storage_path: place.path } : linkStorageAddress(id)),
+		display_name: clamp(name, 200),
+		original_name: row.original_name,
+		mime_type: row.mime_type,
+		size_bytes: row.size_bytes,
+		category: row.category,
+		metadata: row.metadata,
+		source: row.source,
+		status: "uploaded",
+		visibility: "private",
+		content_hash: row.content_hash,
+		hash_algo: row.content_hash ? (row.hash_sampled ? "sampled-sha-256" : "sha-256") : null,
+		hash_sampled: row.hash_sampled,
+		link_url: row.link_url,
+		link_domain: row.link_domain,
+		link_title: row.link_title,
+		link_description: row.link_description,
+		link_favicon_url: row.link_favicon_url,
+		link_image_url: row.link_image_url,
+		link_scan_status: row.link_scan_status,
+		link_scanned_at: row.link_scanned_at,
+	});
+	if (!error) return true;
+	if (place) await removeObjects(place.bucket, [place.path]);
+	if (error.code === "23514") return "quota";
+	throw new Error(`files.items insert failed: ${error.message}`);
+}
+
+/**
+ * Copy assets and folders into a folder of the same library (`null` = each one's own library root),
+ * a folder with its subtree. What the viewer owns is copied, as a move takes what they own; a folder's
+ * other members' files stay behind. A name already taken at the destination becomes "name (copy)".
+ *
+ * The storage quota is the database's: the insert's trigger refuses what will not fit, and the copies
+ * made so far stand, because each is a complete file. An archived library's guard does not run for the
+ * service role, so it is asked here.
+ */
+export async function copyAssets(actor: Actor, input: CopyAssets): Promise<Result<{ copied: number }>> {
+	const assetIds = input.assetIds ?? [];
+	const folderIds = input.folderIds ?? [];
+	const db = filesDb(actor);
+	const target = await targetFolder(actor, input.targetFolderId);
+	if (target === undefined) return { ok: false, status: 404, message: "That folder isn't in this library." };
+	const inLibrary = (row: Pick<ItemRow, "owner_type" | "owner_entity_id">) =>
+		!target || (row.owner_type === target.owner_type && row.owner_entity_id === target.owner_entity_id);
+
+	// #region Folders, parent-first, each one's new id held for its children and files
+	const newIds = new Map<string, string>();
+	const folderRows: Array<Record<string, unknown>> = [];
+	if (folderIds.length > 0) {
+		const found = await foldersOf(actor, folderIds);
+		if (!found) return { ok: false, status: 404, message: "That folder isn't in this library." };
+		const { chosen, library } = found;
+		if (target && !library.some((f) => f.id === target.id)) {
+			return { ok: false, status: 404, message: "That folder isn't in this library." };
+		}
+		const parentId = target?.id ?? null;
+		const taken = new Set(
+			library.filter((f) => f.parent_folder_id === parentId).map((f) => (f.name ?? "").toLowerCase()),
+		);
+		for (const folder of chosen) {
+			if (target && subtreeOf(library, folder.id).includes(target.id)) {
+				return { ok: false, status: 422, message: "A folder can't be copied inside itself." };
+			}
+			const name = copyName(folder.name ?? "", taken, false);
+			taken.add(name.toLowerCase());
+			const renamed = library.map((f) => (f.id === folder.id ? { ...f, name } : f));
+			for (const row of movedSubtree(renamed, folder.id, target)) {
+				const source = renamed.find((f) => f.id === row.id);
+				if (!source) continue;
+				const id = crypto.randomUUID();
+				newIds.set(row.id, id);
+				folderRows.push({
+					id,
+					...ownerColumns(actor, {
+						ownerType: source.owner_type as FilesOwner["ownerType"],
+						ownerId: source.owner_entity_id ?? actor.userId,
+					}),
+					parent_folder_id: row.id === folder.id ? parentId : newIds.get(source.parent_folder_id ?? ""),
+					name: source.name,
+					color: source.color,
+					visibility: target?.visibility ?? "private",
+					path: row.patch.path,
+				});
+			}
+		}
+	}
+	// #endregion
+
+	// #region Files: the ones named land in the target, a subtree's in its copied folder
+	const named = assetIds.length > 0 ? await copyable(db, actor).in("id", assetIds) : { data: [], error: null };
+	const nested = newIds.size > 0
+		? await copyable(db, actor).in("folder_id", [...newIds.keys()])
+		: { data: [], error: null };
+	if (named.error?.code === "22P02") return { ok: false, status: 404, message: NOTHING_COPIED };
+	if (named.error || nested.error) {
+		throw new Error(`files.items read failed: ${(named.error ?? nested.error)?.message}`);
+	}
+	const direct = ((named.data ?? []) as unknown as ItemRow[]).filter(inLibrary);
+	const within = (nested.data ?? []) as unknown as ItemRow[];
+	if (direct.length + within.length + folderRows.length === 0) {
+		return { ok: false, status: 403, message: NOTHING_COPIED };
+	}
+	if (direct.length + within.length > COPY_MAX || folderRows.length > COPY_MAX) {
+		return { ok: false, status: 422, message: `A paste can copy up to ${COPY_MAX} files at a time.` };
+	}
+	// #endregion
+
+	const entities = new Map(
+		[...direct, ...within].filter((r) => r.owner_entity_id).map((r) => [r.owner_entity_id, r.owner_type]),
+	);
+	for (const [entity, ownerType] of entities) {
+		const archived = await db.rpc("fn_library_archived", { p_owner_type: ownerType, p_owner_entity_id: entity });
+		if (archived.error) throw new Error(`files.fn_library_archived failed: ${archived.error.message}`);
+		if (archived.data === true) return { ok: false, status: 403, message: "An archived library is read-only." };
+	}
+
+	for (const row of folderRows) {
+		const { error } = await db.from("folders").insert(row);
+		if (error?.code === "42501") return { ok: false, status: 403, message: NOTHING_COPIED };
+		if (error) throw new Error(`files.folders insert failed: ${error.message}`);
+	}
+
+	const first = direct[0];
+	const held = first
+		? await (target
+			? db.from("items").select("display_name").eq("folder_id", target.id)
+			: db.from("items").select("display_name").is("folder_id", null).match({
+				owner_user_id: first.owner_user_id,
+				owner_type: first.owner_type ?? "",
+			})).is("deleted_at", null)
+		: { data: [], error: null };
+	if (held.error) throw new Error(`files.items read failed: ${held.error.message}`);
+	const taken = new Set(
+		((held.data ?? []) as Array<{ display_name: string | null }>).map((r) => (r.display_name ?? "").toLowerCase()),
+	);
+
+	let copied = folderIds.length;
+	for (const [row, folder] of [
+		...direct.map((r) => [r, target?.id ?? null] as const),
+		...within.map((r) => [r, newIds.get(r.folder_id ?? "") ?? null] as const),
+	]) {
+		const inPlace = folder === (target?.id ?? null);
+		const shown = row.display_name ?? "";
+		const name = inPlace ? copyName(shown, taken, row.source !== "link") : shown;
+		if (inPlace) taken.add(name.toLowerCase());
+		const landed = await copyItem(actor, row, folder, name);
+		if (landed === "quota") {
+			return copied > 0
+				? { ok: true, data: { copied }, message: `Copied ${copied}, then ran out of storage.` }
+				: { ok: false, status: 403, message: "There isn't enough storage left for that." };
+		}
+		if (landed) copied += 1;
+	}
+	if (copied === 0) return { ok: false, status: 502, message: NOTHING_COPIED };
+	return { ok: true, data: { copied }, message: `Copied ${copied} item${copied === 1 ? "" : "s"}.` };
 }
 
 /** Set or clear a folder's colour. Only its owner may, and a mounted folder mirrors its provider. */
@@ -502,6 +751,7 @@ export async function attachLink(actor: Actor, input: LinkAttach): Promise<Resul
 		link_title: preview.title,
 		link_description: preview.description,
 		link_favicon_url: preview.faviconUrl,
+		link_image_url: preview.imageUrl ?? null,
 		link_scan_status: preview.scanStatus,
 		link_scanned_at: preview.scannedAt,
 	}).eq("id", id).eq("source", "link").eq("owner_user_id", actor.userId)

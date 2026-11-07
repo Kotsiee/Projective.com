@@ -127,8 +127,8 @@ export const DEFAULT_APPEARANCE: AppearancePreferences = {
 // #region UI settings — the `ui_settings` jsonb
 /**
  * The keyboard shortcuts a person may switch off: every platform shortcut except the protected ones
- * (Escape, Tab, Ctrl/Cmd+B and the board's keyboard move), which are the keyboard's only route to
- * something. Labels, keys and grouping are presentation and live in the app's registry
+ * (Escape, Tab, Ctrl/Cmd+B, the board's keyboard move and the file explorer's arrows, Enter and Space),
+ * which are the keyboard's only route to something. Labels, keys and grouping are presentation and live in the app's registry
  * (`apps/web/features/shortcuts/core/shortcut-registry.ts`); this enum owns only the ids, so the stored
  * list and the registry cannot disagree about what a shortcut is called.
  */
@@ -141,6 +141,14 @@ export const ToggleableShortcutId = z.enum([
 	"attach-library",
 	"attach-device",
 	"voice-message",
+	"files-find",
+	"files-select-all",
+	"files-copy",
+	"files-cut",
+	"files-paste",
+	"files-delete",
+	"files-rename",
+	"files-up",
 ]);
 export type ToggleableShortcutId = z.infer<typeof ToggleableShortcutId>;
 

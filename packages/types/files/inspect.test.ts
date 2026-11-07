@@ -67,10 +67,45 @@ Deno.test("resolveViewer falls back to MIME, then to unsupported", () => {
 	assertEquals(resolveViewer("blob", "model/gltf-binary").modelFormat, "glb");
 	assertEquals(resolveViewer("blob", "application/json").language, "json");
 	assertEquals(resolveViewer("blob", "text/x-whatever").viewer, "text");
-	assertEquals(resolveViewer("archive.zip", "application/zip").viewer, "unsupported");
 	assertEquals(resolveViewer("blob", "application/octet-stream").viewer, "unsupported");
 	assertEquals(resolveViewer("legacy.doc", "application/msword").viewer, "unsupported");
 	assertEquals(resolveViewer("", null).viewer, "unsupported");
+});
+
+Deno.test("resolveViewer sends workbooks, decks, textures and archives to their canvases", () => {
+	for (const name of ["a.xlsx", "a.xlsm", "a.xls", "a.ods"]) {
+		assertEquals(resolveViewer(name).viewer, "sheet", name);
+	}
+	assertEquals(resolveViewer("deck.pptx").viewer, "presentation");
+	assertEquals(resolveViewer("sky.hdr").viewer, "panorama");
+	assertEquals(resolveViewer("sky.EXR").viewer, "panorama");
+	for (const name of ["a.zip", "a.tar", "a.tgz", "a.tar.gz"]) {
+		assertEquals(resolveViewer(name).viewer, "archive", name);
+	}
+});
+
+Deno.test("those canvases also answer to their MIME types, for a file with no extension", () => {
+	assertEquals(
+		resolveViewer("blob", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+			.viewer,
+		"sheet",
+	);
+	assertEquals(resolveViewer("blob", "application/vnd.ms-excel").viewer, "sheet");
+	assertEquals(
+		resolveViewer("blob", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+			.viewer,
+		"presentation",
+	);
+	assertEquals(resolveViewer("blob", "image/x-exr").viewer, "panorama");
+	assertEquals(resolveViewer("archive", "application/zip").viewer, "archive");
+});
+
+Deno.test("what no browser can draw stays with the fallback", () => {
+	assertEquals(resolveViewer("old.ppt").viewer, "unsupported");
+	assertEquals(resolveViewer("talk.key").viewer, "unsupported");
+	assertEquals(resolveViewer("notes.rtf").viewer, "unsupported");
+	assertEquals(resolveViewer("logs.gz").viewer, "unsupported");
+	assertEquals(resolveViewer("bundle.7z").viewer, "unsupported");
 });
 
 Deno.test("InspectAssetSchema accepts a fully resolved asset", () => {

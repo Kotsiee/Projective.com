@@ -369,6 +369,102 @@ Deno.test("a reachable page is safe, with its facts and a re-hosted icon", async
 	assertEquals(scan.faviconUrl, "https://cdn/x.png");
 });
 
+Deno.test("the icon is asked of Google for the domain first, then of the page", async () => {
+	clearScanCache();
+	const asked: string[] = [];
+	await scanLink("https://studio.example/work", {
+		live: true,
+		transport: fakeTransport({ "studio.example": ["93.184.216.34"] }, {
+			"https://studio.example/work": html(PAGE),
+		}),
+		reputation: () => Promise.resolve({ status: "clean" }),
+		rehost: (icon) => {
+			asked.push(icon);
+			return Promise.resolve(null);
+		},
+	});
+	assertEquals(asked, [
+		"https://www.google.com/s2/favicons?domain=studio.example&sz=128",
+		"https://studio.example/static/icon.png",
+	]);
+});
+
+Deno.test("Google's answer wins, and the page's own icon is then left alone", async () => {
+	clearScanCache();
+	const asked: string[] = [];
+	const scan = await scanLink("https://studio.example/work", {
+		live: true,
+		transport: fakeTransport({ "studio.example": ["93.184.216.34"] }, {
+			"https://studio.example/work": html(PAGE),
+		}),
+		reputation: () => Promise.resolve({ status: "clean" }),
+		rehost: (icon) => {
+			asked.push(icon);
+			return Promise.resolve("https://cdn/google.png");
+		},
+	});
+	assertEquals(scan.faviconUrl, "https://cdn/google.png");
+	assertEquals(asked.length, 1);
+});
+
+const SHARE_PAGE = `<!doctype html><html><head>
+<meta property="og:image" content="/media/card.jpg">
+</head><body></body></html>`;
+
+Deno.test("a safe page's share image is re-hosted, resolved against the page", async () => {
+	clearScanCache();
+	const asked: string[] = [];
+	const scan = await scanLink("https://studio.example/work", {
+		live: true,
+		transport: fakeTransport({ "studio.example": ["93.184.216.34"] }, {
+			"https://studio.example/work": html(SHARE_PAGE),
+		}),
+		reputation: () => Promise.resolve({ status: "clean" }),
+		rehost: () => Promise.resolve(null),
+		rehostImage: (image) => {
+			asked.push(image);
+			return Promise.resolve("https://cdn/card.webp");
+		},
+	});
+	assertEquals(asked, ["https://studio.example/media/card.jpg"]);
+	assertEquals(scan.imageUrl, "https://cdn/card.webp");
+});
+
+Deno.test("a share image that fails to re-host costs the link nothing", async () => {
+	clearScanCache();
+	const scan = await scanLink("https://studio.example/work", {
+		live: true,
+		transport: fakeTransport({ "studio.example": ["93.184.216.34"] }, {
+			"https://studio.example/work": html(SHARE_PAGE),
+		}),
+		reputation: () => Promise.resolve({ status: "clean" }),
+		rehost: () => Promise.resolve(null),
+		rehostImage: () => Promise.reject(new Error("storage refused")),
+	});
+	assertEquals(scan.verdict, "safe");
+	assertEquals(scan.imageUrl, null);
+});
+
+Deno.test("a flagged link's pictures are never fetched", async () => {
+	clearScanCache();
+	const asked: string[] = [];
+	const remember = (url: string) => {
+		asked.push(url);
+		return Promise.resolve(null);
+	};
+	const scan = await scanLink("https://bad.example/", {
+		live: true,
+		transport: fakeTransport({ "bad.example": ["93.184.216.34"] }, {
+			"https://bad.example/": html(SHARE_PAGE),
+		}),
+		reputation: () => Promise.resolve({ status: "listed", threat: "phishing" }),
+		rehost: remember,
+		rehostImage: remember,
+	});
+	assertEquals(scan.imageUrl, null);
+	assertEquals(asked, []);
+});
+
 Deno.test("a listed site is blocked, whatever the page says", async () => {
 	clearScanCache();
 	const scan = await scanLink("https://bad.example/", {
@@ -503,7 +599,30 @@ Deno.test("OpenGraph wins, entities decode, the real icon beats the touch icon",
 		title: "Brand Identity & Strategy",
 		description: "A six-week sprint.",
 		iconUrl: "https://studio.example/static/icon.png",
+		imageUrl: null,
 	});
+});
+
+Deno.test("the share image is read from OpenGraph, then Twitter, and made absolute", () => {
+	const imageOf = (tags: string) =>
+		extractPageFacts(`<html><head>${tags}</head>`, "https://a.example/p/q").imageUrl;
+	assertEquals(
+		imageOf('<meta property="og:image" content="/card.png">'),
+		"https://a.example/card.png",
+	);
+	assertEquals(
+		imageOf('<meta name="twitter:image" content="https://cdn.example/t.jpg">'),
+		"https://cdn.example/t.jpg",
+	);
+	assertEquals(
+		imageOf(
+			'<meta property="og:image" content="https://a.example/plain.png">' +
+				'<meta property="og:image:secure_url" content="https://a.example/secure.png">',
+		),
+		"https://a.example/secure.png",
+	);
+	assertEquals(imageOf('<meta property="og:image" content="javascript:alert(1)">'), null);
+	assertEquals(imageOf("<title>none</title>"), null);
 });
 
 Deno.test("a page with no icon falls back to the origin's /favicon.ico; the body is not the summary", () => {
@@ -515,6 +634,7 @@ Deno.test("a page with no icon falls back to the origin's /favicon.ico; the body
 		title: "A — B",
 		description: null,
 		iconUrl: "https://a.example/favicon.ico",
+		imageUrl: null,
 	});
 });
 

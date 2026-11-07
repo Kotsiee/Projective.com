@@ -24,6 +24,8 @@ export function kindLabel(kind: FileKind): string {
 			return "Code";
 		case "archive":
 			return "Archive";
+		case "link":
+			return "Web link";
 		default:
 			return "File";
 	}

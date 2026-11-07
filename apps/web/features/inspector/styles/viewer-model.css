@@ -162,3 +162,20 @@
 		max-inline-size: calc(100% - var(--space-4));
 	}
 }
+
+/* Panorama: the canvas is the whole stage, and a drag on it is a look around. */
+.ins-pano {
+	position: absolute;
+	inset: 0;
+	background: var(--surface-2);
+}
+.ins-pano__canvas {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	touch-action: none;
+	cursor: grab;
+}
+.ins-pano__canvas:active {
+	cursor: grabbing;
+}

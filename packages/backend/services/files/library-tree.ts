@@ -35,6 +35,21 @@ export function subtreeOf(folders: readonly FolderShape[], folderId: string): st
 	return order;
 }
 
+/**
+ * `name`, or the first free "name (copy)" among `taken` (lower-cased), so a paste beside the original
+ * can be told from it. A file keeps its extension last; a folder's name has none, and two siblings may
+ * not share one because a folder is addressed by its name.
+ */
+export function copyName(name: string, taken: ReadonlySet<string>, isFile: boolean): string {
+	if (!taken.has(name.toLowerCase())) return name;
+	const ext = isFile ? /\.[a-z0-9]{1,12}$/i.exec(name)?.[0] ?? "" : "";
+	const stem = ext ? name.slice(0, -ext.length) : name;
+	for (let n = 1;; n++) {
+		const next = `${stem} (copy${n > 1 ? ` ${n}` : ""})${ext}`;
+		if (!taken.has(next.toLowerCase())) return next;
+	}
+}
+
 /** One row a folder move rewrites. Only the moved folder itself changes parent. */
 export interface MovedFolder {
 	id: string;

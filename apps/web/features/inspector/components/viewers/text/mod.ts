@@ -3,12 +3,13 @@ import { CodeStage, CodeStageControls } from "./CodeStage.tsx";
 import { MarkdownControls } from "./MarkdownControls.tsx";
 import { MarkdownStage } from "./MarkdownStage.tsx";
 import { TableControls } from "./TableControls.tsx";
-import { TableStage } from "./TableStage.tsx";
+import { TableStage, WorkbookStage } from "./TableStage.tsx";
 import {
 	type CodeTools,
 	createCodeTools,
 	createMarkdownTools,
 	createTableTools,
+	createWorkbookTools,
 	type MarkdownTools,
 	type TableTools,
 } from "./text-tools.ts";
@@ -52,10 +53,25 @@ export const markdownViewer = defineViewer<MarkdownTools>({
 	],
 });
 
-/** CSV and TSV as a sortable, filterable table. */
+const SHEET_SHORTCUTS: readonly ViewerShortcut[] = [
+	{ keys: ["Ctrl", "F"], label: "Filter rows" },
+	{ keys: ["↑", "↓", "←", "→"], label: "Move between cells (when the grid has focus)" },
+	{ keys: ["Shift", "↑", "↓", "←", "→"], label: "Extend the selection" },
+	{ keys: ["Ctrl", "C"], label: "Copy the selected cells" },
+];
+
+/** CSV and TSV as a sortable, filterable grid. */
 export const tableViewer = defineViewer<TableTools>({
 	createTools: createTableTools,
 	Stage: TableStage,
 	Controls: TableControls,
-	shortcuts: [{ keys: ["Ctrl", "F"], label: "Filter rows" }],
+	shortcuts: SHEET_SHORTCUTS,
+});
+
+/** A workbook in the same grid, with a tab for each sheet. */
+export const sheetViewer = defineViewer<TableTools>({
+	createTools: createWorkbookTools,
+	Stage: WorkbookStage,
+	Controls: TableControls,
+	shortcuts: SHEET_SHORTCUTS,
 });

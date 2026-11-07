@@ -19,7 +19,13 @@ import type { ToggleableShortcutId } from "@projective/types/org";
 
 // #region Shapes
 /** The console's groups, in display order. */
-export const SHORTCUT_CATEGORIES = ["Navigation", "Messaging", "Project board", "General"] as const;
+export const SHORTCUT_CATEGORIES = [
+	"Navigation",
+	"Messaging",
+	"Project board",
+	"Files",
+	"General",
+] as const;
 export type ShortcutCategory = (typeof SHORTCUT_CATEGORIES)[number];
 
 /** The shortcuts that can never be switched off. */
@@ -28,6 +34,9 @@ export type ProtectedShortcutId =
 	| "focus-next"
 	| "focus-previous"
 	| "board-move-card"
+	| "files-move-focus"
+	| "files-open"
+	| "files-select"
 	| "dismiss";
 
 export type ShortcutId = ToggleableShortcutId | ProtectedShortcutId;
@@ -138,6 +147,95 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		keys: ["Space", "Arrows", "Enter"],
 		sequence: true,
 		isProtected: true,
+	},
+	{
+		id: "files-move-focus",
+		category: "Files",
+		label: "Move between files",
+		description:
+			"The arrow keys, Home and End walk the files in view without changing what's selected. Hold Shift to select as you go.",
+		keys: ["Arrows"],
+		isProtected: true,
+	},
+	{
+		id: "files-open",
+		category: "Files",
+		label: "Open",
+		description: "Opens the focused folder, or previews the focused file.",
+		keys: ["Enter"],
+		isProtected: true,
+	},
+	{
+		id: "files-select",
+		category: "Files",
+		label: "Select the focused item",
+		description: "Adds the focused file or folder to the selection, or takes it out.",
+		keys: ["Space"],
+		isProtected: true,
+	},
+	{
+		id: "files-find",
+		category: "Files",
+		label: "Search files",
+		description: "Jumps to the file search in place of the browser's own find.",
+		keys: ["Mod", "F"],
+		isProtected: false,
+	},
+	{
+		id: "files-select-all",
+		category: "Files",
+		label: "Select everything in view",
+		description: "Selects every file and folder loaded in this folder.",
+		keys: ["Mod", "A"],
+		isProtected: false,
+	},
+	{
+		id: "files-copy",
+		category: "Files",
+		label: "Copy",
+		description: "Holds the selected files and folders to paste a copy elsewhere.",
+		keys: ["Mod", "C"],
+		isProtected: false,
+	},
+	{
+		id: "files-cut",
+		category: "Files",
+		label: "Cut",
+		description: "Holds the selected files and folders to move them. Escape lets go.",
+		keys: ["Mod", "X"],
+		isProtected: false,
+	},
+	{
+		id: "files-paste",
+		category: "Files",
+		label: "Paste",
+		description: "Pastes into the selected folder, or else into the folder in view.",
+		keys: ["Mod", "V"],
+		isProtected: false,
+	},
+	{
+		id: "files-delete",
+		category: "Files",
+		label: "Delete",
+		description: "Asks before deleting what's selected. Cmd or Ctrl with Backspace does the same.",
+		keys: ["Delete"],
+		isProtected: false,
+	},
+	{
+		id: "files-rename",
+		category: "Files",
+		label: "Rename",
+		description: "Edits the selected item's name in place.",
+		keys: ["F2"],
+		isProtected: false,
+	},
+	{
+		id: "files-up",
+		category: "Files",
+		label: "Up a folder",
+		description: "Goes to the parent folder. Alt with the left arrow goes back.",
+		keys: ["Backspace"],
+		isProtected: false,
 	},
 	{
 		id: "dismiss",

@@ -39,6 +39,8 @@ export * from "./variants.ts";
 export * from "./crop.ts";
 export * from "./sniff.ts";
 export * from "./inspect.ts";
+export * from "./families.ts";
+export * from "./software.ts";
 export * from "./blurhash.ts";
 export * from "./colors.ts";
 export * from "./library.ts";

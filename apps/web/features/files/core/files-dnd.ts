@@ -51,18 +51,20 @@ export interface DragPayload {
 }
 
 /**
- * What a drag from `source` moves. A drag from a selected file carries the selection, and one from
+ * What a drag from `source` moves. A drag from a selected item carries the selection, and one from
  * anything else carries only itself, which is what somebody who selected nothing means by it. Only
- * what the viewer manages travels.
+ * what the viewer manages travels: `manageable` is the rows that may, by kind.
  */
 export function payloadOf(
 	source: { kind: DragKind; id: string },
 	selection: readonly string[],
-	manageable: ReadonlySet<string>,
+	manageable: DragPayload,
 ): DragPayload {
-	if (source.kind === "folder") return { assetIds: [], folderIds: [source.id] };
 	const carried = selection.includes(source.id) ? selection : [source.id];
-	return { assetIds: carried.filter((id) => manageable.has(id)), folderIds: [] };
+	return {
+		assetIds: manageable.assetIds.filter((id) => carried.includes(id)),
+		folderIds: manageable.folderIds.filter((id) => carried.includes(id)),
+	};
 }
 
 /** Whether a drop would change nothing: the place the rows already are, or a folder onto itself. */

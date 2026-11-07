@@ -21,20 +21,28 @@ Deno.test("the library root is a destination, not a missing folder", () => {
 });
 
 Deno.test("a drag from a selected file carries the selection, minus what the viewer cannot move", () => {
-	const manageable = new Set(["a", "b"]);
+	const manageable = { assetIds: ["a", "b"], folderIds: [] };
 	assertEquals(payloadOf({ kind: "asset", id: "a" }, ["a", "b", "locked"], manageable), {
 		assetIds: ["a", "b"],
 		folderIds: [],
 	});
 });
 
+Deno.test("a drag from a selected item carries the selected folders with the files", () => {
+	const manageable = { assetIds: ["a"], folderIds: ["f"] };
+	const carried = { assetIds: ["a"], folderIds: ["f"] };
+	assertEquals(payloadOf({ kind: "asset", id: "a" }, ["f", "a"], manageable), carried);
+	assertEquals(payloadOf({ kind: "folder", id: "f" }, ["f", "a"], manageable), carried);
+});
+
 Deno.test("a drag from an unselected file carries only itself", () => {
-	const manageable = new Set(["a", "b"]);
+	const manageable = { assetIds: ["a", "b"], folderIds: [] };
 	assertEquals(payloadOf({ kind: "asset", id: "b" }, ["a"], manageable).assetIds, ["b"]);
 });
 
-Deno.test("a folder travels alone, whatever is selected", () => {
-	assertEquals(payloadOf({ kind: "folder", id: "f" }, ["a"], new Set(["a"])), {
+Deno.test("an unselected folder travels alone, whatever is selected", () => {
+	const manageable = { assetIds: ["a"], folderIds: ["f"] };
+	assertEquals(payloadOf({ kind: "folder", id: "f" }, ["a"], manageable), {
 		assetIds: [],
 		folderIds: ["f"],
 	});

@@ -10,8 +10,10 @@ import {
 	assetMediaSrcset,
 	assetPlaceholder,
 } from "@features/files/core/asset-media.ts";
+import type { LinkAttachment } from "@projective/types/files";
 import type { AssetItem } from "../types/projects-types.ts";
-import { linkHref, previewDownloadHref, previewIconName } from "./preview/preview-model.ts";
+import { FileTypeIcon } from "./FileTypeIcon.tsx";
+import { linkHref, previewDownloadHref } from "./preview/preview-model.ts";
 import { LEGACY_TEXT_LINES, useLegacyText } from "./preview/use-legacy-text.ts";
 
 /** Props for {@link FilePreview}. */
@@ -71,38 +73,59 @@ function highlight(line: string): JSX.Element[] {
 // #endregion
 
 // #region Renderers
-function Placeholder(
-	{ file, reason }: { file: AssetItem; reason?: string },
-): JSX.Element {
-	const isLink = file.source === "link" && file.link !== null;
-	const openHref = isLink ? linkHref(file) : null;
-	const download = previewDownloadHref(file);
+/**
+ * A stored link: the page's share image, or its icon, then what it says about itself and the way out.
+ * Both pictures are the platform's re-hosted copies, and the address goes through `/exit` until its
+ * scan comes back safe, so opening this preview contacts neither the site nor anyone else.
+ */
+function LinkPreview({ file, link }: { file: AssetItem; link: LinkAttachment }): JSX.Element {
+	const href = linkHref(file);
 	return (
-		<div class="fx-preview fx-preview--doc">
-			<span class="fx-preview__glyph" aria-hidden="true">
-				<Icon name={previewIconName(file.kind)} size="xl" />
-			</span>
-			<p class="fx-preview__name">{isLink ? file.link?.title || file.name : file.name}</p>
-			<p class="fx-preview__meta">
-				{isLink ? file.link?.domain : [file.ext.toUpperCase(), file.sizeLabel].filter(Boolean)
-					.join(" · ")}
-			</p>
-			{reason ? <p class="fx-preview__note">{reason}</p> : null}
-			{openHref
+		<div class="fx-preview fx-preview--link">
+			{link.imageUrl
+				? <img class="fx-preview__cover" src={link.imageUrl} alt="" draggable={false} />
+				: null}
+			<div class="fx-preview__host">
+				{link.faviconUrl
+					? <img class="fx-preview__favicon" src={link.faviconUrl} alt="" draggable={false} />
+					: <FileTypeIcon file={file} size={28} />}
+				<span class="fx-preview__meta">{link.domain}</span>
+			</div>
+			<p class="fx-preview__name">{link.title || file.name}</p>
+			{link.description ? <p class="fx-preview__note">{link.description}</p> : null}
+			{href
 				? (
 					<a
 						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fx-preview__action"
-						href={openHref}
+						href={href}
 						target="_blank"
-						rel="noopener noreferrer"
+						rel="noopener noreferrer nofollow ugc"
+						referrerpolicy="no-referrer"
 					>
 						<span class="ui-button__icon">
 							<Icon name="external-link" size="sm" />
 						</span>
-						<span class="ui-button__label">Open link</span>
+						<span class="ui-button__label">Open external link</span>
 					</a>
 				)
-				: download
+				: null}
+		</div>
+	);
+}
+
+function Placeholder(
+	{ file, reason }: { file: AssetItem; reason?: string },
+): JSX.Element {
+	const download = previewDownloadHref(file);
+	return (
+		<div class="fx-preview fx-preview--doc">
+			<FileTypeIcon file={file} size={80} />
+			<p class="fx-preview__name">{file.name}</p>
+			<p class="fx-preview__meta">
+				{[file.ext.toUpperCase(), file.sizeLabel].filter(Boolean).join(" · ")}
+			</p>
+			<p class="fx-preview__note">{reason ?? "No preview available."}</p>
+			{download
 				? (
 					<a
 						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fx-preview__action"
@@ -244,6 +267,7 @@ function CodePreview({ file }: { file: AssetItem }): JSX.Element {
  * code; anything else names itself and offers its download.
  */
 export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
+	if (file.source === "link" && file.link) return <LinkPreview file={file} link={file.link} />;
 	switch (file.kind) {
 		case "image":
 			return <ImagePreview file={file} active={active} />;

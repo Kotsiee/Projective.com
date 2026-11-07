@@ -9,10 +9,11 @@ import {
 import { FilesService } from "./FilesService.ts";
 import { rememberFolderColor } from "./folder-colors.ts";
 import { IntegrationsService } from "./IntegrationsService.ts";
-import type { DragPayload } from "./files-dnd.ts";
+import { type DragPayload, isIdleDrop } from "./files-dnd.ts";
 import {
 	applyError,
 	busy,
+	clipboard,
 	commitFiles,
 	crumbs,
 	currentPath,
@@ -62,14 +63,47 @@ async function write(
 	return true;
 }
 
-/** Move rows into a folder; `null` is their library's root. */
-export async function moveRows(payload: DragPayload, targetFolderId: string | null): Promise<void> {
-	if (payload.assetIds.length + payload.folderIds.length === 0) return;
+/** Move rows into a folder; `null` is their library's root. Says whether they moved. */
+export async function moveRows(payload: DragPayload, targetFolderId: string | null): Promise<boolean> {
+	if (payload.assetIds.length + payload.folderIds.length === 0) return false;
 	const moved = await write(
 		() => FilesService.move({ ...payload, targetFolderId }),
 		"Those could not be moved.",
 	);
 	if (moved) commitFiles();
+	return moved;
+}
+
+/**
+ * Paste what the clipboard holds into a folder. A cut moves and empties the clipboard, or keeps it so
+ * a refused paste can be tried elsewhere; a copy leaves it, so it can land again. A cut pasted where
+ * it came from changes nothing, and that still ends the cut.
+ */
+export async function pasteRows(targetFolderId: string | null): Promise<void> {
+	const held = clipboard.value;
+	if (!held) return;
+	const rows = { assetIds: held.assetIds, folderIds: held.folderIds };
+	if (held.mode === "cut") {
+		if (isIdleDrop(rows, targetFolderId, held.from) || await moveRows(rows, targetFolderId)) {
+			clipboard.value = null;
+		}
+		return;
+	}
+	const copied = await write(
+		() => FilesService.copy({ ...rows, targetFolderId }),
+		"Those could not be copied.",
+	);
+	if (copied) commitFiles();
+}
+
+/** Rename a folder. The card changes at once; a refusal re-reads, so the server's name stays. */
+export async function renameFolder(folderId: string, name: string): Promise<void> {
+	folders.value = folders.value.map((f) => (f.id === folderId ? { ...f, name } : f));
+	const renamed = await write(
+		() => FilesService.renameFolder({ folderId, name }),
+		"That folder could not be renamed.",
+	);
+	if (!renamed) commitFiles();
 }
 
 /**

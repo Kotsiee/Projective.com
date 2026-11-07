@@ -11,7 +11,7 @@ import {
 } from "@web/features/shell/core/context-panel-state.ts";
 import { InspectPanel } from "../components/InspectPanel.tsx";
 import { download, openInNewTab, removeRows, setVisibility } from "../core/files-actions.ts";
-import { busy, inspected, inspectId } from "../core/files-state.ts";
+import { busy, inspected, inspectId, previewId } from "../core/files-state.ts";
 
 /**
  * FilesInspector — the selected item's preview and facts, in the middle-nav frame's right panel. The
@@ -54,6 +54,7 @@ export default function FilesInspector(): JSX.Element {
 				onClose={() => (inspectId.value = null)}
 				onDownload={(target) => void download(target)}
 				onOpenRaw={openInNewTab}
+				onPreview={(target) => (previewId.value = target.id)}
 				onSetVisibility={(target, visibility) => void setVisibility(target, visibility)}
 				onDelete={(target) =>
 					void removeRows({ assetIds: [target.id], folderIds: [], name: target.name })}

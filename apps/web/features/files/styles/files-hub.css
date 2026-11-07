@@ -16,6 +16,7 @@
 /* #region Root */
 .fh-hub {
 	position: relative;
+	outline: none;
 	display: flex;
 	flex: 1 1 auto;
 	flex-direction: column;
@@ -242,6 +243,19 @@
 }
 /* #endregion */
 
+/* #region Inline rename (F2): laid over the item's own name, in the hub's coordinates */
+.fh-rename {
+	position: absolute;
+	inset-block-start: var(--fh-rename-y);
+	inset-inline-start: var(--fh-rename-x);
+	z-index: 2;
+	inline-size: max(var(--fh-rename-w), 10rem);
+	block-size: var(--fh-rename-h);
+	display: flex;
+	align-items: center;
+}
+/* #endregion */
+
 /* #region Cell (the drag/drop wrapper around a reused card) */
 .fh-cell {
 	position: relative;
@@ -251,6 +265,18 @@
 
 .fh-cell[data-drop-over] {
 	border-radius: var(--card-radius);
+}
+
+/* An item the keyboard reaches stops clear of the sticky chrome above it and the rig below. */
+.fh-cell,
+.fh-hub .ui-dt__row {
+	scroll-margin-block: calc(var(--fx-chrome, var(--shell-topbar-h, 0px)) + var(--fx-toolbar-h, 0px) + var(--space-3)) var(--space-8);
+}
+
+/* Held by a cut, until it is pasted: still here, on its way out. */
+.fh-cell.is-cut,
+.fh-hub .ui-dt__row[data-state="cut"] {
+	opacity: 0.5;
 }
 
 /*
@@ -333,7 +359,8 @@
 	min-inline-size: 0;
 	border-radius: var(--card-radius);
 }
-.fh-asset[data-selected] {
+.fh-asset[data-selected],
+.fh-folder[data-selected] {
 	background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 .fh-asset[data-selected] .fx-card:hover {
@@ -436,27 +463,25 @@
 .fh-linkcard__thumb {
 	flex-direction: column;
 	gap: var(--space-2);
-	padding: var(--space-3);
 	text-align: center;
 }
 .fh-linkcard__favicon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2.5rem;
-	block-size: 2.5rem;
+	inline-size: clamp(2.75rem, 34cqi, 5rem);
+	block-size: clamp(2.75rem, 34cqi, 5rem);
 	border-radius: var(--radius-md);
-	background: color-mix(in srgb, var(--surface) 70%, transparent);
-	color: var(--text-secondary);
 	overflow: hidden;
 }
 .fh-linkcard__favicon img {
-	inline-size: 1.5rem;
-	block-size: 1.5rem;
+	inline-size: 100%;
+	block-size: 100%;
 	object-fit: contain;
 }
 .fh-linkcard__domain {
 	max-inline-size: 100%;
+	padding-inline: var(--space-3);
 	overflow: hidden;
 	color: var(--text-secondary);
 	font-size: var(--text-xs);
@@ -618,14 +643,15 @@
 	border-radius: var(--card-radius);
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	overflow: hidden;
+	container-type: inline-size;
+}
+.fh-inspect__preview .fx-type {
+	--fx-type-size: clamp(3rem, 30cqi, 5.5rem);
 }
 .fh-inspect__thumb {
 	inline-size: 100%;
 	block-size: 100%;
-	object-fit: cover;
-}
-.fh-inspect__glyph {
-	color: var(--text-secondary);
+	object-fit: contain;
 }
 
 .fh-inspect__facts {
@@ -711,13 +737,19 @@
  * A control laid over the preview picture: a solid surface disc, because a transparent ghost on a
  * photograph has no contrast to promise.
  */
-.ui-button.fh-inspect__download {
+.ui-button.fh-inspect__download,
+.ui-button.fh-inspect__open {
 	position: absolute;
 	inset-block-start: var(--space-2);
-	inset-inline-start: var(--space-2);
 	z-index: 1;
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
+}
+.ui-button.fh-inspect__download {
+	inset-inline-start: var(--space-2);
+}
+.ui-button.fh-inspect__open {
+	inset-inline-end: var(--space-2);
 }
 .fh-inspect__manage {
 	display: flex;

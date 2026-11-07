@@ -1550,9 +1550,10 @@ and the `components/embed/` components. `createInspectorShell(asset, options)` t
 `InspectorShellOptions { urlSync, print, embedded }` (all defaulted for `/inspect`, so that page is
 unchanged); embedded means no `#L` hash reads or writes, no print dialog or print listeners, and
 key listeners scoped to the `data-ins-key-scope` element rather than `document`. The registry maps
-`model` to a handoff card in embedded mode (`embedModelHandoff`), because the app CSP keeps
-`'wasm-unsafe-eval'` and `blob:` connect page-scoped to `/inspect` (#161(D)). A row with no stored
-bytes renders the legacy `FilePreview`.
+`model` to a handoff card in embedded mode (`embedModelHandoff`) on a page whose CSP has no
+`'wasm-unsafe-eval'` or `blob:` connect (#161(D)). `/files` sends the `inspector` profile, so 3D
+renders in place there (#396); `pageAllowsEngines()` asks the page's own policy rather than taking a
+prop that could disagree with the header. A row with no stored bytes renders the legacy `FilePreview`.
 
 **Where a file came from.**
 `MessagingBackendService.attachmentSource(assetId, actor, { conversationId })` →
@@ -1717,7 +1718,9 @@ attacker-supplied and a chunked response has none); `link-reputation.ts` asks Go
 (`uris:search`, with `LINK_SAFETY_API_KEY` in the `x-goog-api-key` header, never in the URL);
 `link-favicon.ts` **re-hosts the favicon** into `public_assets` (the same guarded fetch, an image
 sniff, 64 KiB) rather than hotlinking it, because a hotlinked favicon sends every viewer's IP to a
-host the link's author chose. Verdicts are cached per URL (safe 1 h, flagged 24 h but never past
+host the link's author chose. The icon is asked of Google's favicon service first, for its 128px
+answer, by our server and naming only the domain, and of the page's own icon after; the page's
+`og:image` is re-hosted the same way (2 MiB, `link_image_url`, Decision #396). Verdicts are cached per URL (safe 1 h, flagged 24 h but never past
 the listing's `expireTime`, unscannable 10 min) and concurrent scans of one URL share one promise.
 The verdict axis keeps `unscannable` distinct from `suspicious`: *"we could not reach it"* is not
 *"we found something"*.
@@ -2382,6 +2385,9 @@ viruses.
    Function mock that never scanned is deleted. The scan is **ClamAV on the self-hosted safety
    node** (not a third-party provider), called from `live-uploads.ts` `completeUpload` between the
    sniff and the promote (EPI §6.4; #335 (d)). **Not built yet** (Decision #340, ruling T5).
+   In the `/files` hub markup is admitted rather than refused (Decision #396): an SVG is sanitised
+   on the server (`svg-sanitize.ts`), HTML, XML and JS are stored byte-exact and only ever served as
+   inert text, and markup under a binary format's name is refused. See `database/files/Storage.md`.
 3. **Promotion:** A file that passes is admitted to its destination (a person's private library in
    `personal`, with its WebP tiers) and the database record is updated; a public copy only ever
    reaches `avatars` / `showcase` as a pipeline-cut rendition. A file that fails is deleted from
@@ -2737,7 +2743,8 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   policy above, set by the middleware; **`inspector`** is the same policy plus `'wasm-unsafe-eval'` in
   `script-src` (WebAssembly compilation only — pdf.js image decoders, Draco / Basis / meshopt — never
   JS `eval`) and `blob:` in `connect-src` (a GLB's embedded textures), and nothing else. Only the
-  `/inspect/[fileId]` page sends it, on its own response, which the middleware then leaves alone.
+  `/inspect/[fileId]` page and the `/files/*` hub (Decision #396: its previews and thumbnails draw
+  3D models) send it, on their own responses, which the middleware then leaves alone.
   It is the one sanctioned LOOSENING of the platform policy — every other route may only tighten —
   and is flagged against #126 in Decision #161(D). `x-frame-options: DENY`, `object-src 'none'` and
   `frame-ancestors 'none'` still hold there, which is why a PDF is drawn on a canvas, never framed.

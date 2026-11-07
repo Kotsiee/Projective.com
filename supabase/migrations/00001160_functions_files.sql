@@ -620,7 +620,8 @@ BEGIN
         IF NEW.source = 'link'::files.file_source
            AND (NEW.link_scan_status IS DISTINCT FROM 'pending'::files.link_scan_status
                 OR num_nonnulls (
-                    NEW.link_scanned_at, NEW.link_favicon_url, NEW.link_title, NEW.link_description
+                    NEW.link_scanned_at, NEW.link_favicon_url, NEW.link_image_url, NEW.link_title,
+                    NEW.link_description
                 ) > 0) THEN
             RAISE EXCEPTION USING
                 ERRCODE = '42501',
@@ -629,7 +630,7 @@ BEGIN
         IF NEW.source <> 'link'::files.file_source
            AND num_nonnulls (
                NEW.link_url, NEW.link_domain, NEW.link_title, NEW.link_description,
-               NEW.link_favicon_url, NEW.link_scan_status, NEW.link_scanned_at
+               NEW.link_favicon_url, NEW.link_image_url, NEW.link_scan_status, NEW.link_scanned_at
            ) > 0 THEN
             RAISE EXCEPTION USING
                 ERRCODE = '42501',
@@ -664,6 +665,7 @@ BEGIN
        OR NEW.link_title IS DISTINCT FROM OLD.link_title
        OR NEW.link_description IS DISTINCT FROM OLD.link_description
        OR NEW.link_favicon_url IS DISTINCT FROM OLD.link_favicon_url
+       OR NEW.link_image_url IS DISTINCT FROM OLD.link_image_url
        OR NEW.link_scan_status IS DISTINCT FROM OLD.link_scan_status
        OR NEW.link_scanned_at IS DISTINCT FROM OLD.link_scanned_at
        OR NEW.share_slug IS DISTINCT FROM OLD.share_slug

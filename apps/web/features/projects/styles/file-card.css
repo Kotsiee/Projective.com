@@ -42,15 +42,90 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	container-type: inline-size;
 }
+/* A preview is shown whole: the frame is square, and the picture fits inside it, uncropped. */
 .fx-card__img {
 	inline-size: 100%;
 	block-size: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
-.fx-card__glyph {
+/* The tile tracks the card, so a type is as recognisable at the densest zoom as at the loosest. */
+.fx-card__thumb .fx-type {
+	--fx-type-size: clamp(2.75rem, 38cqi, 6rem);
+}
+/* Over a rendered preview the tile becomes a corner badge: the picture is the content now. */
+.fx-type.fx-card__family {
+	position: absolute;
+	inset-block-end: var(--space-1);
+	inset-inline-start: var(--space-1);
+	box-shadow: var(--elevation-low);
+}
+/* A lazy preview takes the frame, with the tile beneath it until it arrives. */
+.fx-thumb {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+}
+/* Out of flow, so the frame sizes the picture: in the grid its height would follow its own ratio. */
+.fx-thumb__img {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: contain;
+	animation: fx-thumb-in var(--dur-fast) var(--ease-standard);
+}
+.fx-thumb__code {
+	align-self: start;
+	justify-self: stretch;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1em;
+	/* The top clears the marks the frame's corner carries. */
+	padding: calc(var(--space-2) + 1.25rem) 6cqi 6cqi;
+	color: var(--on-surface);
+	font-family: var(--font-mono);
+	font-size: clamp(0.5rem, 4.6cqi, 0.75rem);
+	line-height: 1.4;
+	overflow: hidden;
+	animation: fx-thumb-in var(--dur-fast) var(--ease-standard);
+}
+.fx-thumb__line {
+	display: flex;
+	gap: 1ch;
+	min-inline-size: 0;
+}
+.fx-thumb__ln {
+	flex: none;
+	min-inline-size: 2ch;
 	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+}
+.fx-thumb__src {
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: pre;
+}
+.fx-thumb__wave {
+	inline-size: 76%;
+	block-size: 42%;
+	overflow: visible;
+}
+.fx-thumb__wave path {
+	fill: none;
+	stroke: var(--file-audio);
+	stroke-width: clamp(1.5px, 1.1cqi, 3px);
+	stroke-linecap: round;
+}
+@keyframes fx-thumb-in {
+	from {
+		opacity: 0;
+	}
 }
 .fx-card__play {
 	position: absolute;
@@ -66,6 +141,10 @@
 	align-items: center;
 	justify-content: center;
 }
+/* A play mark belongs on a picture of the video, not on the tile that stands in for one. */
+.fx-card__thumb:has(.fx-card__glyph) .fx-card__play {
+	display: none;
+}
 .fx-card__badge {
 	position: absolute;
 	inset-block-end: var(--space-1);
@@ -77,6 +156,20 @@
 	font-size: 0.625rem;
 	font-weight: 600;
 	letter-spacing: 0.02em;
+}
+/*
+ * A dead picture raises the large tile, so the corner tile would only repeat it, and wherever a
+ * software tile is large its banner already prints what the extension chip would.
+ */
+.fx-card__thumb:has(.ui-pimg[data-state="error"]:not([data-hash])) .fx-card__family {
+	display: none;
+}
+.fx-card__thumb:has(
+		.fx-card__glyph .fx-type--banner,
+		.ui-pimg[data-state="error"]:not([data-hash]) .fx-type--banner
+	)
+	.fx-card__badge--ext {
+	display: none;
 }
 
 .fx-card__meta {
@@ -145,4 +238,12 @@
 	.fx-card__date {
 		transition: none;
 	}
+	.fx-thumb__img,
+	.fx-thumb__code {
+		animation: none;
+	}
+}
+:root[data-motion="reduced"] .fx-thumb__img,
+:root[data-motion="reduced"] .fx-thumb__code {
+	animation: none;
 }

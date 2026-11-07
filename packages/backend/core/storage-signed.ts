@@ -11,7 +11,8 @@ import { serverEnv } from "./env.ts";
  *  - a SIGNED UPLOAD URL — a short-lived, single-object capability the browser PUTs its bytes to, so
  *    a 50 MB file never streams through an application request worker;
  *  - SIGNED READ URLs for a PRIVATE bucket (the picker's thumbnails of a person's own library);
- *  - download / upload / remove, for the quarantine → scan → promote step.
+ *  - download / upload / remove, for the quarantine → scan → promote step;
+ *  - copy, for a pasted file: `files.items` allows one row per stored object, so a copy is new bytes.
  *
  * Authorisation is NOT this module's job — it trusts its caller. Every function here is reached only
  * after the fat service has checked, under the caller's own JWT, that the row it is about to act on
@@ -122,6 +123,18 @@ export async function uploadObject(
 		upsert: options.upsert ?? false,
 		cacheControl: options.immutable ? "31536000" : "3600",
 	});
+	return !error;
+}
+
+/** Copy an object. Never overwrites: a copy's path carries a fresh asset id, as an upload's does. */
+export async function copyObject(
+	fromBucket: string,
+	fromPath: string,
+	toBucket: string,
+	toPath: string,
+): Promise<boolean> {
+	const { error } = await getServiceClient().storage.from(fromBucket)
+		.copy(fromPath, toPath, { destinationBucket: toBucket });
 	return !error;
 }
 

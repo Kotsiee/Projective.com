@@ -16,7 +16,8 @@ import { DRAG_ATTR, dragOf, DROP_ATTR } from "../core/files-dnd.ts";
  * gesture that scrolls the page.
  *
  * The keyboard keeps the pick-up it had on the old grip, on `M`, because Enter and Space belong to the
- * card. Arrow keys then step between every target on the page, Enter drops and Escape cancels.
+ * explorer's keyboard, which stands aside while the drag runs. Arrow keys then step between every
+ * target on the page, Enter drops and Escape cancels.
  *
  * Must render inside a `DndContext`, with {@link DRAG_DISTANCE} and {@link underPointer}.
  */
@@ -25,7 +26,7 @@ import { DRAG_ATTR, dragOf, DROP_ATTR } from "../core/files-dnd.ts";
 export const DRAG_DISTANCE = 6;
 
 /** What takes its own press inside a row: the kebab, the table's check and actions cells. */
-const NO_DRAG = "[data-fh-nodrag], [data-dt-check], .ui-dt__tail";
+export const NO_DRAG = "[data-fh-nodrag], [data-dt-check], .ui-dt__tail";
 
 /** The target actually painted under the pointer; a folder is no target for its own drag. */
 export const underPointer: DndCollisionDetector = ({ active, pointer }) => {

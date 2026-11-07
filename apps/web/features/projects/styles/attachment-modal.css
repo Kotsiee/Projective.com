@@ -448,10 +448,28 @@
 	padding: var(--space-6) var(--space-4);
 	text-align: center;
 }
-.fx-preview__glyph {
+.fx-preview--link {
+	padding: var(--space-6) var(--space-4);
+	gap: var(--space-2);
+	text-align: center;
+}
+.fx-preview__cover {
+	max-inline-size: min(100%, 40rem);
+	max-block-size: 50%;
+	min-block-size: 0;
+	border-radius: var(--card-radius);
+	object-fit: contain;
+}
+.fx-preview__host {
 	display: inline-flex;
-	margin-block-end: var(--space-1);
-	color: var(--text-secondary);
+	align-items: center;
+	gap: var(--space-2);
+}
+.fx-preview__favicon {
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border-radius: var(--radius-sm);
+	object-fit: contain;
 }
 .fx-preview__name {
 	max-inline-size: var(--measure-narrow);

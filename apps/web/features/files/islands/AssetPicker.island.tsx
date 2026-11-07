@@ -35,6 +35,7 @@ import {
 } from "@projective/ui/dnd";
 
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
+import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
 import { linkHref } from "@web/features/projects/components/preview/preview-model.ts";
 
 import { FilesService } from "../core/FilesService.ts";
@@ -2216,7 +2217,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 														{asset.thumbnailUrl &&
 																(asset.kind === "image" || asset.kind === "video")
 															? <img src={asset.thumbnailUrl} alt="" loading="lazy" />
-															: <FileKindIcon kind={asset.kind} size={16} />}
+															: <FileTypeIcon file={asset} size={16} />}
 													</span>
 													<Tooltip content={asset.name} whenTruncated>
 														<span class="apk-tray__name">{asset.name}</span>

@@ -151,6 +151,8 @@ CREATE TABLE files.items (
   link_title text,
   link_description text,
   link_favicon_url text,
+  -- The page's og:image, re-hosted in public_assets on the same terms as the favicon.
+  link_image_url text,
   -- NULL until the safety pipeline has run at all — distinct from 'pending' (queued) and from
   -- 'unscannable' (reached for, refused inspection).
   link_scan_status files.link_scan_status,

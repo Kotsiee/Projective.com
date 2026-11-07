@@ -253,3 +253,136 @@
 :root[data-motion="reduced"] .ins-font__sample {
 	transition: none;
 }
+
+/* Slides: one slide fitted to the stage, on a tone that lets a white slide read as a page. */
+.ins-slides {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--surface-2);
+}
+.ins-slides__stage {
+	flex: 1;
+	min-block-size: 0;
+	display: grid;
+	place-items: center;
+	padding: var(--space-5);
+	container-type: size;
+}
+.ins-slides__canvas {
+	display: block;
+	inline-size: min(100cqi, calc(100cqb * var(--ins-slide-ratio, 1.7778)));
+	aspect-ratio: var(--ins-slide-ratio, 1.7778);
+	box-shadow: var(--elevation-low);
+}
+
+/* Archive: a tree of rows with the facts in fixed columns, windowed like the spreadsheet grid. */
+.ins-archive {
+	--archive-columns: minmax(0, 1fr) 6rem 11rem;
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	background: var(--bg);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+.ins-archive__notice {
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	color: var(--text-secondary);
+}
+.ins-archive__head,
+.ins-archive__row {
+	display: grid;
+	grid-template-columns: var(--archive-columns);
+	align-items: center;
+	gap: var(--space-3);
+	padding-inline: var(--space-4);
+}
+.ins-archive__head {
+	flex: none;
+	block-size: 2.25rem;
+	border-block-end: var(--hairline);
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.ins-archive__tree {
+	flex: 1;
+	min-block-size: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+.ins-archive__tree:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+}
+.ins-archive__body {
+	box-sizing: border-box;
+	block-size: var(--archive-height);
+	padding-block-start: var(--archive-offset);
+}
+.ins-archive__row {
+	block-size: var(--archive-row);
+	cursor: default;
+}
+.ins-archive__row:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+.ins-archive__row[data-active] {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+.ins-archive__name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding-inline-start: calc(var(--archive-depth, 0) * var(--space-4));
+}
+.ins-archive__twist {
+	display: inline-flex;
+	flex: none;
+	inline-size: 1rem;
+	justify-content: center;
+	color: var(--text-secondary);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ins-archive__twist[data-open] {
+	transform: rotate(90deg);
+}
+.ins-archive__folder {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+}
+.ins-archive__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ins-archive__size,
+.ins-archive__date {
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+	.ins-archive {
+		--archive-columns: minmax(0, 1fr) 5rem;
+	}
+	.ins-archive__date {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ins-archive__twist {
+		transition: none;
+	}
+}
+:root[data-motion="reduced"] .ins-archive__twist {
+	transition: none;
+}

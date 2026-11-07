@@ -36,11 +36,11 @@ const SEEK_TIMEOUT_MS = 6000;
 /**
  * How far into the video the poster is taken from.
  *
- * Half a second in, because frame zero of a great many videos is a black or white lead-in and a
+ * One second in, because frame zero of a great many videos is a black or white lead-in and a
  * placeholder derived from it describes nothing. Clamped to the midpoint so a 200 ms clip still gets
  * a frame from inside itself rather than a seek past its own end.
  */
-const POSTER_OFFSET_MS = 500;
+const POSTER_OFFSET_MS = 1000;
 // #endregion
 
 // #region Event plumbing

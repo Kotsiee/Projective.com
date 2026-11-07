@@ -1,0 +1,108 @@
+/*
+ * FileTypeIcon — a family's tile: its fill, its ink and one glyph. The radius follows the edge, so an
+ * 18px list tile and a 96px card tile are the same shape. A filled tile rather than a tinted glyph,
+ * because a fill keeps its contrast against either theme's surfaces with no per-mode override.
+ */
+.fx-type {
+	--fx-type-size: 2.5rem;
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	inline-size: var(--fx-type-size);
+	block-size: var(--fx-type-size);
+	border-radius: calc(var(--fx-type-size) * 0.22);
+	background: var(--fx-type-fill, var(--surface-2));
+	color: var(--fx-type-ink, var(--text-secondary));
+	overflow: hidden;
+}
+.fx-type__glyph {
+	--ui-icon-size: calc(var(--fx-type-size) * 0.64);
+}
+
+/* Decision #397. FileTypeIcon maps a software's fill and ink in, and each mark carries its own inset. */
+.fx-type__mark {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	min-block-size: 0;
+	font-family: var(--font-mono);
+	font-weight: var(--fw-bold);
+	user-select: none;
+}
+
+/*
+ * The banner inverts the tile's own pair rather than tinting it, so its letters keep the tile's
+ * contrast: a tonal band moved the fill toward the ink and left four brands under 4.5:1.
+ */
+.fx-type--banner {
+	grid-template-rows: 1fr 28%;
+	place-items: stretch;
+}
+.fx-type--banner .fx-type__mark {
+	scale: 1.2;
+}
+.fx-type__banner {
+	display: grid;
+	place-items: center;
+	background: var(--fx-type-ink);
+	color: var(--fx-type-fill);
+	font-family: var(--font-mono);
+	font-size: calc(var(--fx-type-size) * 0.18);
+	font-weight: var(--fw-bold);
+	line-height: 1;
+}
+
+/* The near-black brand fills would melt into a dark surface; the rim costs the bright ones nothing. */
+:root[data-theme="dark"] .fx-type[data-software] {
+	box-shadow: inset 0 0 0 1px var(--hairline-strong-color);
+}
+
+.fx-type[data-family="spreadsheet"] {
+	--fx-type-fill: var(--file-spreadsheet);
+	--fx-type-ink: var(--on-file-spreadsheet);
+}
+.fx-type[data-family="document"] {
+	--fx-type-fill: var(--file-document);
+	--fx-type-ink: var(--on-file-document);
+}
+.fx-type[data-family="presentation"] {
+	--fx-type-fill: var(--file-presentation);
+	--fx-type-ink: var(--on-file-presentation);
+}
+.fx-type[data-family="pdf"] {
+	--fx-type-fill: var(--file-pdf);
+	--fx-type-ink: var(--on-file-pdf);
+}
+.fx-type[data-family="image"] {
+	--fx-type-fill: var(--file-image);
+	--fx-type-ink: var(--on-file-image);
+}
+.fx-type[data-family="video"] {
+	--fx-type-fill: var(--file-video);
+	--fx-type-ink: var(--on-file-video);
+}
+.fx-type[data-family="audio"] {
+	--fx-type-fill: var(--file-audio);
+	--fx-type-ink: var(--on-file-audio);
+}
+.fx-type[data-family="code"] {
+	--fx-type-fill: var(--file-code);
+	--fx-type-ink: var(--on-file-code);
+}
+.fx-type[data-family="model"] {
+	--fx-type-fill: var(--file-model);
+	--fx-type-ink: var(--on-file-model);
+}
+.fx-type[data-family="archive"] {
+	--fx-type-fill: var(--file-archive);
+	--fx-type-ink: var(--on-file-archive);
+}
+.fx-type[data-family="link"] {
+	--fx-type-fill: var(--file-link);
+	--fx-type-ink: var(--on-file-link);
+}
+
+/* A tile is a filled shape, and a forced-contrast overlay needs its edge drawn. */
+:root[data-contrast="high"] .fx-type {
+	outline: 1px solid var(--on-surface);
+}

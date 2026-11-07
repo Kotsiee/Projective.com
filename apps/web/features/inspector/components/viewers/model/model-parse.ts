@@ -91,8 +91,14 @@ function surfaceMaterial(rt: ThreeRuntime, vertexColors: boolean): THREE.MeshSta
 	return material;
 }
 
+/** STL lets a file write every normal as zero and leave them to the reader, and many exporters do. */
+function hasNormals(geometry: THREE.BufferGeometry): boolean {
+	const normals = geometry.getAttribute("normal");
+	return normals !== undefined && normals.array.some((value) => value !== 0);
+}
+
 function meshObject(rt: ThreeRuntime, geometry: THREE.BufferGeometry): THREE.Mesh {
-	if (geometry.getAttribute("normal") === undefined) geometry.computeVertexNormals();
+	if (!hasNormals(geometry)) geometry.computeVertexNormals();
 	const hasColor = geometry.getAttribute("color") !== undefined;
 	return new rt.THREE.Mesh(geometry, surfaceMaterial(rt, hasColor));
 }

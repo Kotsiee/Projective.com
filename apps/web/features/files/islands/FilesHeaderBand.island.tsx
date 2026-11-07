@@ -10,6 +10,8 @@ import { nodePath, rootChildren } from "../core/asset-model.ts";
 import {
 	commitFiles,
 	facetCount,
+	filesCanvasFocus,
+	filesSearchFocus,
 	goTo,
 	query,
 	seeded,
@@ -32,6 +34,9 @@ import type { FileSortKey } from "../types/file-types.ts";
  * "Where am I" is the body's `.fh-hub__crumbbar` trail, which renders at every width. The band used
  * to carry a second copy (scope name + trail) at its leading edge; two trails for one location is one
  * too many, and the band's leading edge now belongs to search.
+ *
+ * `Cmd/Ctrl+F` reaches the field through {@link filesSearchFocus}, whichever of the two is showing, with
+ * its text selected for a quick overwrite; Esc clears it and hands focus back to the canvas.
  *
  * Every control writes shared intent into `files-state` and then calls {@link commitFiles} — the BODY
  * is the single fetch owner, so there is exactly one request path and this band can never describe a
@@ -79,6 +84,8 @@ const SEARCH_LABEL = "Search files in this folder";
 export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Element {
 	const browseOpen = useSignal(false);
 	const filterOpen = useSignal(false);
+	const searchOpen = useSignal(false);
+	const band = useRef<HTMLDivElement>(null);
 	const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	// #region Intent
@@ -97,14 +104,52 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	}
 
 	function onSearchKey(event: JSX.TargetedKeyboardEvent<HTMLInputElement>): void {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			event.stopPropagation();
+			leaveSearch();
+			return;
+		}
 		if (event.key !== "Enter" || debounce.current === undefined) return;
 		clearTimeout(debounce.current);
 		debounce.current = undefined;
 		commitFiles();
 	}
 
-	useEffect(() => () => {
+	/** Esc: nothing left to search for, and the canvas gets the keyboard back. */
+	function leaveSearch(): void {
 		if (debounce.current !== undefined) clearTimeout(debounce.current);
+		debounce.current = undefined;
+		const searched = query.value !== "";
+		query.value = "";
+		if (searched) commitFiles();
+		searchOpen.value = false;
+		(document.activeElement as HTMLElement | null)?.blur();
+		filesCanvasFocus.value?.();
+	}
+
+	/** Focus whichever field is showing, its text selected; below the band's width, open the popover. */
+	function focusSearch(): void {
+		const inline = band.current?.querySelector<HTMLInputElement>(".fh-headerband__search input");
+		if (inline?.offsetParent) {
+			inline.focus();
+			inline.select();
+			return;
+		}
+		searchOpen.value = true;
+		setTimeout(() => {
+			const field = document.querySelector<HTMLInputElement>(".fh-headerband__panel input");
+			field?.focus();
+			field?.select();
+		}, 0);
+	}
+
+	useEffect(() => {
+		filesSearchFocus.value = focusSearch;
+		return () => {
+			filesSearchFocus.value = null;
+			if (debounce.current !== undefined) clearTimeout(debounce.current);
+		};
 	}, []);
 
 	function navigate(segments: string[]): void {
@@ -147,7 +192,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	}
 
 	return (
-		<div class="fh-headerband">
+		<div class="fh-headerband" ref={band}>
 			<span class="fh-headerband__browse">
 				<Tooltip content="Browse file locations" placement="bottom">
 					<Popover
@@ -204,6 +249,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 				<span class="fh-headerband__searchtoggle">
 					<Tooltip content="Search files" placement="bottom">
 						<Popover
+							open={searchOpen}
 							placement="bottom-end"
 							label="Search files"
 							trigger={(api) => (
