@@ -2946,7 +2946,8 @@ Three decisions in it are contract, not preference:
 File-Explorer additions (root CLAUDE.md §8 Decision #32): **`fields/SortControl`** (a sort-property
 dropdown + an asc/desc toggle inside ONE borderless compound block, signal-first so it can share the
 sort signals with a table's clickable headers), **`fields/ZoomSlider`** (zoom-out lens · a muted segmented track with
-a distinct centre transition marker · zoom-in lens, for a zoom-density rig; redesigned by Decision #223), the borderless
+a distinct centre transition marker · zoom-in lens, for a zoom-density rig; redesigned by Decision #223; the track is 7rem
+at rest and shrinks with its container rather than overflowing it), the borderless
 **`.ui-field--bare`** variant (no resting border/background; hover reveals a faint tint, focus a
 soft ring — for dense enterprise toolbars), and **`layout/Splitter` `SplitterPanel.maxSize`** (a
 hard per-pane maximum so a modal split enforces a fixed structural ratio). **Splitter collision
@@ -3215,7 +3216,8 @@ exports `PRESUBMIT_LIBRARY_TRIGGER`.
 the centre (Decision #399, below); at the end New folder · Attach link · Connect drive · Export list as tier-4 neutral outlined
 circles (`Button rounded iconOnly size="sm"`, `.ui-hit`, an `aria-label` and a portal `Tooltip`
 each), then **Upload**, the rig's one filled action (icon and text, last). No overflow menu: under a
-28rem container the Upload label folds into its Tooltip and the button becomes a circle. Its dialogs
+28rem container the Upload label folds into its Tooltip, the button becomes a circle and the zoom's
+lenses drop, the track doing what they do. Its dialogs
 use `Button` (Cancel `text`, the commit filled); `ConnectDriveDialog` (`components/`, `visible`,
 `returnTo`) reads the provider catalogue on open. `FilesHeaderBand` opens every popover through the
 `Popover` `trigger` render-prop, and ends with the Details toggle (Decision #399). The band carries no scope name or trail (Decision #362): "where am

@@ -152,6 +152,7 @@ interface UploadRequest {
 	setRequestHeader(name: string, value: string): void;
 	send(body: Blob): void;
 	abort(): void;
+	getAllResponseHeaders(): string;
 	getResponseHeader(name: string): string | null;
 	readonly status: number;
 	readonly upload: { onprogress: ((event: UploadProgressEvent) => void) | null };
@@ -264,12 +265,9 @@ function showsProgress(phase: UploadPhase): boolean {
  * absent or not exposed to script by CORS, which `UploadCompleteSchema` models rather than rejects.
  */
 function readEtag(request: UploadRequest): string | null {
-	let raw: string | null = null;
-	try {
-		raw = request.getResponseHeader("etag");
-	} catch {
-		return null;
-	}
+	// Reading a header CORS hides logs an error no `catch` can stop, so check it is exposed first.
+	if (!/^etag:/im.test(request.getAllResponseHeaders())) return null;
+	const raw = request.getResponseHeader("etag");
 	if (!raw) return null;
 	return raw.replaceAll('"', "").slice(0, 120) || null;
 }

@@ -6,6 +6,7 @@ import {
 	assetMediaSrcset,
 	assetPlaceholder,
 } from "@features/files/core/asset-media.ts";
+import { fileDateLabel } from "../core/file-model.ts";
 import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
 import { FileTypeIcon } from "./FileTypeIcon.tsx";
@@ -108,7 +109,7 @@ export function FileCard({ file, onOpen, preview }: FileCardProps): JSX.Element 
 							</>
 						)}
 				</span>
-				<span class="fx-card__date">{file.dateLabel}</span>
+				<span class="fx-card__date">{fileDateLabel(file)}</span>
 			</span>
 		</button>
 	);

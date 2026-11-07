@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import type { InspectAsset } from "@projective/types/files";
+import { fileDateLabel } from "@features/projects/core/file-model.ts";
 import type { DetailRow } from "../../core/inspector-model.ts";
 
 /** Props for {@link Fact}. */
@@ -35,7 +36,7 @@ export function PlainFact({ row }: { row: DetailRow }): JSX.Element {
 export function UploadedFact({ asset }: { asset: InspectAsset }): JSX.Element {
 	return (
 		<Fact label="Uploaded">
-			<time class="ins-facts__text" dateTime={asset.createdAt}>{asset.dateLabel}</time>
+			<time class="ins-facts__text" dateTime={asset.createdAt}>{fileDateLabel(asset)}</time>
 		</Fact>
 	);
 }

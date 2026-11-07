@@ -12,6 +12,7 @@ import {
 	type FileSortKey,
 	sourceLabel,
 } from "../types/projects-types.ts";
+import { formatFileDate } from "../core/file-model.ts";
 import { displayZoom, listRowHeight, listShowsThumbnails } from "../core/view-state.ts";
 import { FileTypeIcon } from "./FileTypeIcon.tsx";
 
@@ -145,6 +146,7 @@ export function FileTable(props: FileTableProps): JSX.Element {
 			columnState={COLUMN_STATE}
 			stickyTop={STICKY_TOP}
 			avatarFallback={DEFAULT_AVATAR_URL}
+			formatDate={formatFileDate}
 		/>
 	);
 }

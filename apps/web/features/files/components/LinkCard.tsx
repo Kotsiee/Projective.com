@@ -7,6 +7,7 @@ import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx
 import { ProgressiveImage } from "@projective/ui/display/image";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
+import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 
 /**
  * LinkCard — the grid cell for a web link stored as a first-class asset (`source === "link"`).
@@ -116,7 +117,7 @@ export function LinkCard({ asset, link, onOpen }: LinkCardProps): JSX.Element {
 					</span>
 					<span class="fx-card__sender">{link.domain}</span>
 				</span>
-				<span class="fx-card__date">{note ?? asset.dateLabel}</span>
+				<span class="fx-card__date">{note ?? fileDateLabel(asset)}</span>
 			</span>
 		</button>
 	);
