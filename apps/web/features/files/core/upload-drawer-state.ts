@@ -1,7 +1,9 @@
-import { signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
+import { uploadQueue } from "./files-state.ts";
+import { summariseUploads } from "./upload-progress.ts";
 
 /**
- * upload-drawer-state — whether the upload queue is on screen.
+ * upload-drawer-state — whether the upload queue is on screen, and what the footer reports about it.
  *
  * One boolean, and it lives in a module rather than in a prop for a reason that was MEASURED rather
  * than assumed. `FilesFooterRig` and `UploadDrawer` are both islands, and the rig renders the drawer:
@@ -17,22 +19,44 @@ import { signal } from "@preact/signals";
  *
  * **Module-level means per-PROCESS on the server.** Nothing in the SSR path may write it — a server
  * write would leak one request's state into the next person's first paint. It is only ever written
- * from the browser: by the drawer when the queue gains work, and by the rig's queue affordance.
+ * from the browser, by the footer's upload widget and the drawer's own dismissal.
  */
 
 // #region Open state
 /**
  * Whether the upload queue drawer is showing.
  *
- * Two owners on purpose. The drawer raises it when work arrives, because a queue that starts
- * invisibly is a queue nobody can cancel; the rig's affordance raises it again afterwards, because a
- * person who closed the report must be able to get back to it — and closing the report must never
- * stop the work.
+ * Raised only by a person: the footer's upload widget opens it, and a drop never does (the widget
+ * reports the batch in place). Closing the drawer never stops the work.
  */
 export const uploadDrawerOpen = signal(false);
 
 /** Show the queue. Idempotent, and deliberately without a matching close: the drawer owns dismissal. */
 export function openUploadDrawer(): void {
 	uploadDrawerOpen.value = true;
+}
+// #endregion
+
+// #region Footer report
+/**
+ * The ids a closed footer report covered. Everything else in the queue is the report the widget is
+ * showing, so the next drop after a report closes counts from one. Retired rows stay in the drawer:
+ * retiring ends the report, not the record.
+ */
+export const retiredUploads = signal<ReadonlySet<string>>(new Set());
+
+/** The tasks the footer report covers, oldest first. */
+export const reportedUploads = computed(() =>
+	uploadQueue.value.filter((task) => !retiredUploads.value.has(task.id))
+);
+
+/** The footer report, counted (`core/upload-progress.ts`). `idle` hides the widget. */
+export const uploadReport = computed(() => summariseUploads(reportedUploads.value));
+
+/** Close the footer report: every id it covers is retired. */
+export function retireUploadReport(): void {
+	const next = new Set(retiredUploads.peek());
+	for (const task of reportedUploads.peek()) next.add(task.id);
+	retiredUploads.value = next;
 }
 // #endregion

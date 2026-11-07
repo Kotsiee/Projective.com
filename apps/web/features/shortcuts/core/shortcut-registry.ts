@@ -182,6 +182,15 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		isProtected: false,
 	},
 	{
+		id: "files-details",
+		category: "Files",
+		label: "Show or hide details",
+		description:
+			"Opens or closes the details panel. While it's open, clicking a file shows its preview and details there.",
+		keys: ["Mod", "I"],
+		isProtected: false,
+	},
+	{
 		id: "files-select-all",
 		category: "Files",
 		label: "Select everything in view",

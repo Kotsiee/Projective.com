@@ -142,6 +142,7 @@ export const ToggleableShortcutId = z.enum([
 	"attach-device",
 	"voice-message",
 	"files-find",
+	"files-details",
 	"files-select-all",
 	"files-copy",
 	"files-cut",

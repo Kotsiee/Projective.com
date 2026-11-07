@@ -72,6 +72,7 @@ export function isActionKey(e: Modifiers, apple: boolean): boolean {
 /** What a keystroke asks of the explorer. */
 export type FilesKeyAction =
 	| "find"
+	| "details"
 	| "select-all"
 	| "copy"
 	| "cut"
@@ -88,6 +89,7 @@ export type FilesKeyAction =
 /** The registry id of each action a person may switch off (Decision #371). */
 export const SWITCHABLE_ACTIONS: Partial<Record<FilesKeyAction, ToggleableShortcutId>> = {
 	find: "files-find",
+	details: "files-details",
 	"select-all": "files-select-all",
 	copy: "files-copy",
 	cut: "files-cut",
@@ -100,6 +102,7 @@ export const SWITCHABLE_ACTIONS: Partial<Record<FilesKeyAction, ToggleableShortc
 
 const ACTION_LETTERS: Readonly<Record<string, FilesKeyAction>> = {
 	f: "find",
+	i: "details",
 	a: "select-all",
 	c: "copy",
 	x: "cut",

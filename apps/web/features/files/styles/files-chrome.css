@@ -298,6 +298,27 @@
 	color: var(--primary-ink);
 }
 
+/*
+ * The Details toggle: engaged reads as a resting pill (the hover wash, kept) in the primary ink, so
+ * "the panel is open" is visible without pointing at it. Press feedback is scale alone (gate 12).
+ */
+.fh-headerband__icon--toggle {
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.fh-headerband__icon--toggle[data-on="true"],
+.fh-headerband__icon--toggle[data-on="true"]:hover {
+	background: var(--surface-3);
+	color: var(--primary-ink);
+}
+
+.fh-headerband__icon--toggle:active {
+	transform: scale(0.94);
+	transition-duration: var(--dur-press);
+}
+
 .fh-headerband__icon:focus-visible {
 	outline: none;
 }
@@ -647,10 +668,18 @@
  *
  * The band itself is transparent with no hairline of its own: the seam is the canvas frame's.
  */
+/*
+ * Three tracks, always: whatever stands in the centre (the upload report, the allowance ring) is
+ * TRULY centred only between two equal side tracks (`minmax(0, 1fr)`, the three-region header rule),
+ * and the actions' floor is their own width, so a narrow band squeezes the centre before it ever
+ * clips Upload. An empty centre is an `auto` track of no width, so nothing moves when a batch starts
+ * or its report fades.
+ */
 .fh-rig {
 	container-type: inline-size;
 	container-name: fhrig;
-	display: flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
 	align-items: center;
 	gap: var(--space-4);
 	padding: var(--space-2) var(--space-4);
@@ -658,37 +687,19 @@
 }
 
 .fh-rig__status {
+	grid-area: 1 / 1;
 	display: flex;
-	flex: 1 1 auto;
 	align-items: center;
 	gap: var(--space-3);
 	min-inline-size: 0;
 }
 
 .fh-rig__actions {
-	display: inline-flex;
-	flex: none;
-	align-items: center;
-	gap: var(--space-2);
-}
-
-/*
- * With the allowance ring the rig becomes three tracks: the ring is TRULY centred only between two
- * equal side tracks (`minmax(0, 1fr)` — the three-region header rule), and the actions' floor is
- * their own width, so a narrow band moves the ring a little before it ever clips Upload.
- */
-.fh-rig[data-centred="true"] {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-}
-
-.fh-rig[data-centred="true"] > .fh-rig__status {
-	grid-area: 1 / 1;
-}
-
-.fh-rig[data-centred="true"] > .fh-rig__actions {
 	grid-area: 1 / 3;
 	justify-self: end;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 .fh-rig__centre {
@@ -720,8 +731,7 @@
 	flex: none;
 }
 
-.fh-rig__note,
-.fh-rig__uploads {
+.fh-rig__note {
 	min-inline-size: 0;
 	overflow: hidden;
 	color: var(--text-secondary);
@@ -729,25 +739,212 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* #endregion */
 
-.fh-rig__uploads {
-	padding: var(--space-1) var(--space-2);
+/* #region Footer rig — the upload report */
+/*
+ * The centre's upload report: one pressable ghost row (mark · sentence · bar) that opens the upload
+ * drawer, and a dismiss beside it once the report waits on the person. A control, so it may wash on
+ * hover; it never draws a four-sided hairline at rest. Its figures are tabular, because "3 of 10"
+ * changes under the eye.
+ */
+.fh-upw {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	max-inline-size: 22rem;
+	transition: opacity var(--dur-slow) var(--ease-exit);
+}
+
+.fh-upw[data-leaving] {
+	opacity: 0;
+}
+
+.fh-upw .ui-tooltip__anchor {
+	min-inline-size: 0;
+}
+
+.fh-upw__open {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	min-block-size: var(--fh-rig-row);
+	padding: var(--space-1) var(--space-3);
 	border: none;
 	border-radius: var(--radius-base);
 	background: none;
+	color: var(--on-surface);
 	font-family: inherit;
-	text-decoration: underline;
-	text-underline-offset: 0.15em;
+	text-align: start;
 	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
-.fh-rig__uploads:hover {
+.fh-upw__open:hover {
+	background: var(--surface-3);
+}
+
+.fh-upw__open:active {
+	transform: scale(0.98);
+	transition-duration: var(--dur-press);
+}
+
+.fh-upw__open:focus-visible {
+	outline: none;
+}
+
+.fh-upw__mark {
+	display: inline-flex;
+	flex: none;
+	color: var(--primary-ink);
+}
+
+.fh-upw[data-tone="success"] .fh-upw__mark {
+	color: var(--success);
+}
+
+.fh-upw[data-tone="attention"] .fh-upw__mark,
+.fh-upw[data-tone="noted"] .fh-upw__mark {
+	color: var(--warning);
+}
+
+.fh-upw[data-tone="failed"] .fh-upw__mark {
+	color: var(--danger);
+}
+
+.fh-upw__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.fh-upw__line {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-size: var(--fh-fs-micro);
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.fh-upw__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-variant-numeric: tabular-nums;
+}
+
+.fh-upw__meta {
+	flex: none;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A slim track under the sentence: the widget is a status line, not a second progress panel. */
+.fh-upw__bar {
+	inline-size: 100%;
+	min-inline-size: 8rem;
+}
+
+.fh-upw__bar .ui-progressbar__track {
+	block-size: 0.25rem;
+}
+
+/*
+ * The in-flight pulse: a light sheen breathing over the FILLED part only, on opacity alone. The fill
+ * width is the data; the sheen decorates it and never changes it.
+ */
+.fh-upw[data-tone="active"] .fh-upw__bar .ui-progressbar__track::after {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--progressbar-value, 0%);
+	border-radius: inherit;
+	background: var(--on-primary);
+	opacity: 0;
+	animation: fh-upw-pulse var(--dur-ambient) var(--ease-standard) infinite;
+}
+
+@keyframes fh-upw-pulse {
+	0%,
+	100% {
+		opacity: 0;
+	}
+
+	50% {
+		opacity: 0.32;
+	}
+}
+
+.fh-upw__dismiss {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.fh-upw__dismiss:hover {
+	background: var(--surface-3);
 	color: var(--on-surface);
 }
 
-.fh-rig__uploads:focus-visible {
+.fh-upw__dismiss:active {
+	transform: scale(0.94);
+	transition-duration: var(--dur-press);
+}
+
+.fh-upw__dismiss:focus-visible {
 	outline: none;
-	box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fh-upw,
+	.fh-upw__open,
+	.fh-upw__dismiss {
+		transition: none;
+	}
+
+	.fh-upw__open:active,
+	.fh-upw__dismiss:active {
+		transform: none;
+	}
+
+	.fh-upw[data-tone="active"] .fh-upw__bar .ui-progressbar__track::after {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .fh-upw,
+:root[data-motion="reduced"] .fh-upw__open,
+:root[data-motion="reduced"] .fh-upw__dismiss {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .fh-upw__open:active,
+:root[data-motion="reduced"] .fh-upw__dismiss:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .fh-upw[data-tone="active"] .fh-upw__bar .ui-progressbar__track::after {
+	animation: none;
 }
 /* #endregion */
 
@@ -836,8 +1033,13 @@
 
 /* #region Footer rig — tiers */
 @container fhrig (max-width: 36rem) {
-	.fh-rig__note {
+	.fh-rig__note,
+	.fh-upw__meta {
 		display: none;
+	}
+
+	.fh-upw__bar {
+		min-inline-size: 5rem;
 	}
 
 	/* The ring alone still says how full the library is; its figure moves into the tooltip. */
@@ -849,6 +1051,25 @@
 @container fhrig (max-width: 28rem) {
 	.fh-rig {
 		gap: var(--space-2);
+	}
+
+	/* The mark and the bar still say "working"; the sentence moves into the tooltip and the name. */
+	.fh-upw__line {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.fh-upw__open {
+		padding-inline: var(--space-2);
+	}
+
+	.fh-upw__bar {
+		min-inline-size: 3rem;
 	}
 
 	.fh-rig .fh-rig__density {
@@ -915,13 +1136,19 @@
 	}
 
 	.fh-filter__toggle,
-	.fh-filter__toggle:active {
+	.fh-filter__toggle:active,
+	.fh-headerband__icon--toggle:active {
 		transform: none;
 	}
 }
 
 :root[data-motion="reduced"] .fh-filter__toggle,
-:root[data-motion="reduced"] .fh-filter__toggle:active {
+:root[data-motion="reduced"] .fh-filter__toggle:active,
+:root[data-motion="reduced"] .fh-headerband__icon--toggle:active {
 	transform: none;
+}
+
+:root[data-motion="reduced"] .fh-headerband__icon--toggle {
+	transition: none;
 }
 /* #endregion */

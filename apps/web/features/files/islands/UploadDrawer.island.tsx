@@ -22,6 +22,7 @@ import { DuplicatePrompt } from "../components/DuplicatePrompt.tsx";
 import { FilesService } from "../core/FilesService.ts";
 import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
 import { uploadDrawerOpen } from "../core/upload-drawer-state.ts";
+import { awaitsAnswer } from "../core/upload-progress.ts";
 import {
 	createFingerprinter,
 	degradedKey,
@@ -44,7 +45,6 @@ import {
 	canAccept,
 	type ContentFingerprint,
 	DEDUP_BATCH_MAX,
-	type DedupVerdict,
 	type DuplicateResolution,
 	sanitisedNoteOf,
 	type StorageQuota,
@@ -69,7 +69,7 @@ import {
  *     the same `fingerprintFile`.
  *  2. **Check the batch.** One round trip for the whole drop, per destination folder.
  *  3. **Ask, when there is something to ask about.** A prompt appears only when the server both found
- *     a match AND named it — see {@link needsAnswer}.
+ *     a match AND named it — see `needsAnswer` in `core/upload-progress.ts`.
  *  4. **Init → PUT → complete.** Bytes go straight at the signed URL, never through an application
  *     route.
  *
@@ -87,12 +87,14 @@ import {
  * band; the only refusal this island can produce is the one the server has already said it will make
  * anyway.
  *
- * ## Two owners raise it, and they share a module rather than a prop
+ * ## It opens when asked, never on its own
  *
- * The drawer opens itself when the queue gains work, and the rig's affordance reopens it afterwards.
- * That flag is {@link uploadDrawerOpen} in `core/upload-drawer-state.ts`, NOT a prop: both halves are
- * islands, and a `Signal` passed across that boundary arrives as a different instance — the drawer
- * opened while the rig's copy stayed `false`. See the note on that module.
+ * A drop does NOT raise the drawer: the footer's upload widget (`UploadProgress`) reports the batch
+ * in the rig's centre, and pressing it is what opens this breakdown. A question the batch cannot
+ * finish without (a duplicate prompt) holds the widget in its attention state until it is answered
+ * here, so work never stalls invisibly. The open flag is {@link uploadDrawerOpen} in
+ * `core/upload-drawer-state.ts`, NOT a prop: the widget and this drawer are separate hydration roots,
+ * and a `Signal` passed across that boundary arrives as a different instance. See that module.
  *
  * ## What it never does
  *
@@ -182,21 +184,8 @@ function isSettled(phase: UploadPhase): boolean {
 	return phase === "done" || phase === "error" || phase === "cancelled" || phase === "blocked";
 }
 
-/**
- * Whether a verdict actually warrants a question.
- *
- * A non-`new` verdict carrying no `existing` is deliberately treated as `new`: a prompt that claims a
- * duplicate without naming it asks the person to guess, and the safe guess is always "upload it
- * again" — so the prompt would cost a decision and save nothing. Uploading is the honest fallback.
- */
-function needsAnswer(verdict: DedupVerdict | null): verdict is DedupVerdict {
-	return verdict !== null && verdict.verdict !== "new" && verdict.existing !== null;
-}
-
 /** Whether this task is parked waiting for a person rather than for the network. */
-function awaitsDecision(task: UploadTask): boolean {
-	return task.phase === "ready" && task.resolution === null && needsAnswer(task.verdict);
-}
+const awaitsDecision = awaitsAnswer;
 
 /** The queue mark. Shape carries the state, so it survives a colour-blindness overlay. */
 function phaseIcon(task: UploadTask): IconName {
@@ -829,13 +818,15 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 		};
 	}, []);
 
-	/** Start anything newly enqueued, and surface the drawer that is about to report on it. */
+	/**
+	 * Start anything newly enqueued. The drawer stays where it is: the footer's widget reports the
+	 * batch, and opening this breakdown is the person's call.
+	 */
 	useSignalEffect(() => {
 		const pending = uploadQueue.value.filter(
 			(task) => task.phase === "queued" && !claimed.current.has(task.id),
 		);
 		if (pending.length === 0) return;
-		uploadDrawerOpen.value = true;
 		void drain();
 	});
 

@@ -144,7 +144,16 @@ import { starFile } from "@features/files/core/star-file.ts";
  * One hydration root, and **the single fetch owner** — the lane, the header band and the footer rig
  * write intent into `files-state` and call `commitFiles()`; this island is what turns that into a
  * request. There is therefore exactly one request path, and no region can describe data it did not
- * load. A selection opens {@link FilesInspector} in the frame's right panel, not here.
+ * load.
+ *
+ * ## Click selects, double click opens, empty canvas clears
+ *
+ * In both views a plain click on a file or a folder selects it, and a double click opens it (the file
+ * in the preview modal, the folder in place); a touch tap on a folder still drills down. What the
+ * selection describes streams into {@link FilesInspector}, the frame's right panel, only while the
+ * person has that panel open (`core/details-panel.ts`): closed, a click highlights and nothing slides
+ * in. A press that starts and ends on empty canvas, not on an item, a control, the crumb bar or the
+ * table's header, clears the selection ({@link KEEPS_SELECTION}).
  *
  * ## What the body deliberately does NOT contain
  *
@@ -264,6 +273,40 @@ function cellClass(id: string): string {
 function rowStateOf(row: { id: string }): string | null {
 	return isCut(row.id) ? "cut" : null;
 }
+
+/**
+ * What a press on the canvas may land on without clearing the selection: an item, any control, the
+ * crumb bar and the table's header. The toolbars, the footer, the details panel and every menu are
+ * outside the hub's DOM already (other regions, or portalled), so they never reach the handler.
+ */
+const KEEPS_SELECTION = [
+	".fh-cell",
+	".ui-dt__row",
+	".ui-dt__head",
+	".fh-hub__crumbbar",
+	"a",
+	"button",
+	"input",
+	"textarea",
+	"select",
+	"label",
+	"summary",
+	"[contenteditable]",
+	"[role='button']",
+	"[role='checkbox']",
+	"[role='menu']",
+	"[role='menuitem']",
+].join(", ");
+
+/** Whether a press landed on empty canvas. */
+function onEmptyCanvas(target: EventTarget | null): boolean {
+	return target instanceof Element && target.closest(KEEPS_SELECTION) === null;
+}
+
+/** A press with a modifier extends or toggles elsewhere; on empty canvas it changes nothing. */
+function plainPress(e: MouseEvent): boolean {
+	return e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+}
 // #endregion
 
 // #region Cells
@@ -303,6 +346,7 @@ interface FolderCellProps {
 	folder: AssetFolder;
 	selected: boolean;
 	onOpen: (folder: AssetFolder) => void;
+	onSelect: (folder: AssetFolder) => void;
 	rows: (folder: AssetFolder) => MenuItem[];
 }
 
@@ -313,12 +357,12 @@ interface FolderCellProps {
  * what they already have, not so it can become a second write path into someone else's system of
  * record. It stays in the grid unmarked: still browsable, it simply refuses a drop.
  */
-function FolderCell({ folder, selected, onOpen, rows }: FolderCellProps): JSX.Element {
+function FolderCell({ folder, selected, onOpen, onSelect, rows }: FolderCellProps): JSX.Element {
 	const cell = useRef<HTMLDivElement>(null);
 
 	return (
 		<div class={cellClass(folder.id)} ref={cell} data-key={folder.id} {...folderMarks(folder)}>
-			<AssetFolderCard folder={folder} selected={selected} onOpen={onOpen} />
+			<AssetFolderCard folder={folder} selected={selected} onOpen={onOpen} onSelect={onSelect} />
 			<ItemMenu model={rows(folder)} label={folder.name} surface={cell} />
 		</div>
 	);
@@ -381,6 +425,7 @@ interface WorkspaceProps {
 	onPreview: (asset: AssetItem) => void;
 	onOpenRaw: (asset: AssetItem) => void;
 	onOpenFolder: (folder: AssetFolder) => void;
+	onSelectFolder: (folder: AssetFolder) => void;
 	onReachEnd: () => void;
 	busy: boolean;
 	assetRows: (asset: AssetItem) => MenuItem[];
@@ -416,6 +461,7 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 								folder={cell.folder}
 								selected={selection.value.includes(cell.folder.id)}
 								onOpen={p.onOpenFolder}
+								onSelect={p.onSelectFolder}
 								rows={p.folderRows}
 							/>
 						)
@@ -443,6 +489,7 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 						nodes={p.folderList.map((folder) => shapeFolderAsNode(folder))}
 						header={false}
 						aria-label="Folders"
+						openOn="dblclick"
 						rowKey={(node) => folderOf(node)?.id ?? node.segment}
 						selection={p.selection}
 						onSelectionChange={p.onSelectionChange}
@@ -475,6 +522,7 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 				onSelectionChange={p.onSelectionChange}
 				selectionAnchor={anchorId}
 				onOpen={p.onPreview}
+				openOn="dblclick"
 				onReachEnd={p.onReachEnd}
 				loading={p.busy}
 				rowActions={p.assetRows}
@@ -629,9 +677,41 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	// #endregion
 
 	// #region Selection
-	/** A plain click. A modified one never gets here: the keyboard hook answers it, in either view. */
+	/**
+	 * A plain click on a file or a folder. A modified one never gets here: the keyboard hook answers it,
+	 * in either view. The details panel shows the pick only while it is open; selecting never opens it.
+	 */
 	function onSelect(asset: AssetItem): void {
 		selectOnly(asset.id);
+		inspectSelection();
+	}
+
+	function onSelectFolder(folder: AssetFolder): void {
+		selectOnly(folder.id);
+		inspectSelection();
+	}
+
+	/** Where the last plain press on empty canvas began; `null` when it began anywhere else. */
+	const emptyPress = useRef<{ x: number; y: number } | null>(null);
+
+	function onCanvasPointerDown(e: JSX.TargetedPointerEvent<HTMLDivElement>): void {
+		emptyPress.current = plainPress(e) && onEmptyCanvas(e.target)
+			? { x: e.clientX, y: e.clientY }
+			: null;
+	}
+
+	/**
+	 * Click-away: a press that began AND ended on empty canvas, without travelling as far as a drag,
+	 * clears the selection. Both ends are checked because a drag from a card that is let go over empty
+	 * space fires its click on the common ancestor, which would otherwise read as a click away.
+	 */
+	function onCanvasClick(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		const press = emptyPress.current;
+		emptyPress.current = null;
+		if (!press || !plainPress(e) || !onEmptyCanvas(e.target)) return;
+		if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > DRAG_DISTANCE) return;
+		if (selection.peek().length === 0) return;
+		clearSelection();
 		inspectSelection();
 	}
 
@@ -981,6 +1061,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				onPreview={(asset) => (previewId.value = asset.id)}
 				onOpenRaw={openInNewTab}
 				onOpenFolder={openFolder}
+				onSelectFolder={onSelectFolder}
 				onReachEnd={loadMore}
 				busy={loadingMore.value}
 				assetRows={assetRows}
@@ -1062,6 +1143,8 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 			data-busy={busy.value || undefined}
 			data-drop={drop.active.value || undefined}
 			{...drop.handlers}
+			onPointerDown={onCanvasPointerDown}
+			onClick={onCanvasClick}
 		>
 			{drop.active.value && <FileDropOverlay destination={here ?? "this library"} />}
 			<span class="ui-visually-hidden" role="status">{keyboard.note.value}</span>

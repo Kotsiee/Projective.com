@@ -25,6 +25,9 @@ Deno.test("isActionKey is ⌘ on Apple and Ctrl elsewhere, never both, never wit
 
 Deno.test("keyAction reads the compound letters, and by position on a non-Latin layout", () => {
 	assertEquals(keyAction(press("f", { ctrlKey: true }), false), "find");
+	assertEquals(keyAction(press("i", { ctrlKey: true }), false), "details");
+	assertEquals(keyAction(press("i", { metaKey: true }), true), "details");
+	assertEquals(keyAction(press("I", { ctrlKey: true, shiftKey: true }), false), null);
 	assertEquals(keyAction(press("A", { ctrlKey: true }), false), "select-all");
 	assertEquals(keyAction(press("с", { ctrlKey: true, code: "KeyC" }), false), "copy");
 	assertEquals(keyAction(press("x", { metaKey: true }), true), "cut");

@@ -23,6 +23,11 @@ export interface TableInputOptions<T> {
 	/** Where the Shift anchor lives when it must outlast the table (a layout that remounts it). */
 	anchor?: Signal<string | null>;
 	onRowActivate?: (row: T, event: MouseEvent | KeyboardEvent) => void;
+	/**
+	 * What activates a row by pointer: a plain `click` (default), or a `dblclick`, where a plain click
+	 * selects instead. A touch tap and a keyboard Enter activate either way.
+	 */
+	activateOn?: "click" | "dblclick";
 	/** The rendered range, so exactly one rendered row is in the tab order. */
 	range: { start: number; end: number };
 	scrollIntoView: (index: number) => void;
@@ -37,6 +42,8 @@ export interface TableInput {
 	tabKey: string | null;
 	onClick: (e: JSX.TargetedMouseEvent<HTMLDivElement>) => void;
 	onMouseDown: (e: JSX.TargetedMouseEvent<HTMLDivElement>) => void;
+	onPointerDown: (e: JSX.TargetedPointerEvent<HTMLDivElement>) => void;
+	onDblClick: (e: JSX.TargetedMouseEvent<HTMLDivElement>) => void;
 	onKeyDown: (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => void;
 	onFocusIn: (e: JSX.TargetedFocusEvent<HTMLDivElement>) => void;
 }
@@ -56,6 +63,8 @@ export function useTableInput<T>(opts: TableInputOptions<T>): TableInput {
 	const anchor = opts.anchor ?? ownAnchor;
 	const anchorRef = useRef(anchor);
 	anchorRef.current = anchor;
+	/** The last press's pointer type: a touch tap opens even where a click only selects. */
+	const pointerType = useRef("");
 
 	const handlers = useMemo(() => {
 		const select = (gesture: SelectionGesture) => {
@@ -122,9 +131,27 @@ export function useTableInput<T>(opts: TableInputOptions<T>): TableInput {
 			}
 			if (link) return;
 			const rowLink = hit.el.querySelector<HTMLAnchorElement>("[data-dt-link]");
+			// `detail === 0` is a keyboard or assistive-technology click, which always activates.
+			const clickActivates = o.activateOn !== "dblclick" || e.detail === 0 ||
+				pointerType.current === "touch";
 			if (rowLink) rowLink.click();
-			else if (o.onRowActivate) o.onRowActivate(hit.row, e);
+			else if (o.onRowActivate && clickActivates) o.onRowActivate(hit.row, e);
 			else if (selectable) select({ kind: "row", id: hit.key, ctrl: false, shift: false });
+		};
+
+		const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+			pointerType.current = e.pointerType;
+		};
+
+		const onDblClick = (e: JSX.TargetedMouseEvent<HTMLDivElement>) => {
+			const o = latest.current;
+			if (o.activateOn !== "dblclick" || !o.onRowActivate) return;
+			if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+			const hit = rowAt(e.target);
+			const target = e.target as Element;
+			if (!hit || target.closest("[data-dt-check], .ui-dt__tail, [data-dt-link]")) return;
+			if (target.closest(CONTROL)) return;
+			o.onRowActivate(hit.row, e);
 		};
 
 		const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
@@ -193,7 +220,7 @@ export function useTableInput<T>(opts: TableInputOptions<T>): TableInput {
 			if (hit && focusKey.peek() !== hit.key) focusKey.value = hit.key;
 		};
 
-		return { select, onClick, onMouseDown, onKeyDown, onFocusIn };
+		return { select, onClick, onMouseDown, onPointerDown, onDblClick, onKeyDown, onFocusIn };
 	}, []);
 
 	const { keys, range } = opts;

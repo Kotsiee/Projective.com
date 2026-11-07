@@ -29,6 +29,8 @@ export interface FileTableProps {
 	/** Set/toggle the shared sort (owned by the island — it refetches). */
 	onSort: (key: FileSortKey) => void;
 	onOpen: (file: AssetItem) => void;
+	/** `dblclick`: a plain click selects and a double click opens (the `/files` hub). Default `click`. */
+	openOn?: "click" | "dblclick";
 	onReachEnd?: () => void;
 	/** The next page is loading. */
 	loading?: boolean;
@@ -131,6 +133,7 @@ export function FileTable(props: FileTableProps): JSX.Element {
 				: undefined}
 			selectionAnchor={props.selectionAnchor}
 			onRowActivate={(file) => props.onOpen(file)}
+			activateOn={props.openOn}
 			rowActions={props.rowActions}
 			rowAttrs={props.rowAttrs}
 			rowState={props.rowState}

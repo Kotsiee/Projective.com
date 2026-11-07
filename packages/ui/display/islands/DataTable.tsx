@@ -99,6 +99,11 @@ export interface DataTableProps<T> {
 
 	/** A plain click or Enter on a row (open a preview). Modifier clicks select instead. */
 	onRowActivate?: (row: T, event: MouseEvent | KeyboardEvent) => void;
+	/**
+	 * What activates a row by pointer (default `click`). `dblclick` is the file-explorer model: a plain
+	 * click selects the row and a double click activates it; a touch tap and Enter still activate.
+	 */
+	activateOn?: "click" | "dblclick";
 	/** The row's link: the whole row navigates, and middle-click opens a new tab. */
 	rowHref?: (row: T) => string | null;
 	/**
@@ -397,6 +402,7 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 		setSelection: selCtl.set,
 		anchor: props.selectionAnchor,
 		onRowActivate: props.onRowActivate,
+		activateOn: props.activateOn,
 		range,
 		scrollIntoView: vp.scrollIntoView,
 		pageRows: vp.pageRows,
@@ -633,6 +639,8 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
 				role="rowgroup"
 				onClick={input.onClick}
 				onMouseDown={input.onMouseDown}
+				onPointerDown={input.onPointerDown}
+				onDblClick={input.onDblClick}
 				onKeyDown={input.onKeyDown}
 				onFocusIn={input.onFocusIn}
 				onScroll={onBodyScroll}

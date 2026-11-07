@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
 import { ConfirmDialog, Dialog, Tooltip } from "@projective/ui/feedback";
@@ -11,8 +11,8 @@ import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
 import { FolderColorDialog } from "../components/FolderColorDialog.tsx";
 import { QuotaRing } from "../components/QuotaRing.tsx";
+import { UploadProgress } from "../components/UploadProgress.tsx";
 import { FilesService } from "../core/FilesService.ts";
-import { openUploadDrawer, uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
 	askNewFolder,
 	attachLinkOpen,
@@ -31,9 +31,8 @@ import {
 	removalOpen,
 	seeded,
 	treeRevision,
-	uploadQueue,
-	uploadsActive,
 } from "../core/files-state.ts";
+import { uploadReport } from "../core/upload-drawer-state.ts";
 import { disconnectDrive, removeRows } from "../core/files-actions.ts";
 import {
 	type AssetOwnerType,
@@ -49,13 +48,16 @@ import { uploadTasksOf } from "../core/upload-tasks.ts";
  *
  * ## Drawn like the catalogue workspace rig (Decision #311)
  *
- * The density control and the upload queue's status sit at the start; the actions sit at the end:
- * the secondaries — New folder · Attach link · Connect drive · Export — as neutral outlined circles,
- * each with a portal `Tooltip` and an `aria-label`, then **Upload**, the region's one filled action,
- * last in the inline direction (§B.8.2 / §B.8.6). There is no overflow menu: every action stays on
- * the bar at every width, and the narrowest container tier folds Upload's label into its Tooltip
- * rather than removing anything. A host that hands the rig an allowance (`quota`) gets the storage
- * {@link QuotaRing} truly centred between the two, on equal side tracks.
+ * The density control sits at the start; the actions sit at the end: the secondaries — New folder ·
+ * Attach link · Connect drive · Export — as neutral outlined circles, each with a portal `Tooltip`
+ * and an `aria-label`, then **Upload**, the region's one filled action, last in the inline direction
+ * (§B.8.2 / §B.8.6). There is no overflow menu: every action stays on the bar at every width, and the
+ * narrowest container tier folds Upload's label into its Tooltip rather than removing anything.
+ *
+ * The centre is a track of its own between two equal side tracks, so whatever stands in it is truly
+ * centred. While a batch uploads it holds {@link UploadProgress}, the report that opens the upload
+ * drawer when pressed; otherwise a host that hands the rig an allowance (`quota`) gets the storage
+ * {@link QuotaRing} there.
  *
  * `container-type: inline-size` on the root still stops the band bidding for the lane's space (the
  * `/wallet` 739px min-content defect) and makes that tier switch a container query.
@@ -170,31 +172,11 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const connectDrive = props.connectDrive ?? true;
 	const lockedNote = props.lockedNote ?? null;
 	const locked = readOnly.value || lockedNote !== null;
-	const centred = props.quota !== undefined;
+	const hasRing = props.quota !== undefined;
 	const allowance = seeded.value ? quota.value : props.quota ?? null;
 	const secondaries = SECONDARY.filter((a) =>
 		(locked ? !a.writes : true) && (connectDrive || a.key !== "connect_drive")
 	);
-
-	/**
-	 * The queue affordance's label, or `null` when there is no queue to describe. Keyed on the WHOLE
-	 * queue rather than on `uploadsActive`: a failed upload is not active, and gating on activity
-	 * would take the affordance away at the moment the last file of a drop failed — and with it the
-	 * only route back to the reason.
-	 */
-	const queueLabel = useComputed<string | null>(() => {
-		const rows = uploadQueue.value;
-		if (rows.length === 0) return null;
-		const active = uploadsActive.value.length;
-		if (active > 0) return `${active} uploading`;
-		const failed = rows.filter((t) => t.phase === "error" || t.phase === "blocked").length;
-		if (failed > 0) {
-			return failed === 1 ? "1 file did not upload" : `${failed} files did not upload`;
-		}
-		const done = rows.filter((t) => t.phase === "done").length;
-		if (done === 0) return "Upload queue";
-		return done === 1 ? "1 file uploaded" : `${done} files uploaded`;
-	});
 
 	// #region Actions
 	/**
@@ -298,11 +280,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	// #endregion
 
 	return (
-		<div
-			class="fh-rig"
-			data-readonly={locked ? "true" : undefined}
-			data-centred={centred ? "true" : undefined}
-		>
+		<div class="fh-rig" data-readonly={locked ? "true" : undefined}>
 			<div class="fh-rig__status">
 				<ViewZoomRig
 					store={filesZoom}
@@ -317,37 +295,19 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 						{lockedNote ?? "Read-only here — this location is mounted, not stored in your library."}
 					</span>
 				)}
-
-				{
-					/*
-					 * The way back into the queue: while it runs, the only path to cancelling a transfer;
-					 * once it stops, the only path to what went wrong. No live-region role — `role="status"`
-					 * on a button REPLACES the button role. The open flag is read from the shared module,
-					 * because a `Signal` prop does not survive the island boundary as the same instance.
-					 */
-				}
-				{queueLabel.value !== null && (
-					<button
-						type="button"
-						class="fh-rig__uploads"
-						aria-haspopup="dialog"
-						aria-expanded={uploadDrawerOpen.value ? "true" : "false"}
-						onClick={openUploadDrawer}
-					>
-						{queueLabel.value}
-					</button>
-				)}
 			</div>
 
 			{
-				/* The centre is a grid cell of its own, present even while it is empty, so a scope with no
-				   allowance leaves the status and the actions exactly where they were. */
+				/* The centre is a grid cell of its own, present even while it is empty, so the status and the
+				   actions never move when a batch starts or the report fades. A batch in flight takes the
+				   ring's place: the drawer it opens carries the full allowance meter. */
 			}
-			{centred && (
-				<div class="fh-rig__centre">
+			<div class="fh-rig__centre">
+				<UploadProgress />
+				{hasRing && uploadReport.value.tone === "idle" && (
 					<QuotaRing quota={allowance} ownerLabel={props.quotaOwner} />
-				</div>
-			)}
+				)}
+			</div>
 
 			<div class="fh-rig__actions">
 				{secondaries.map((spec) => (

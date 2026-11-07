@@ -7,6 +7,7 @@ import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { NO_DRAG } from "../components/FilesDragSurface.tsx";
 import { pasteRows } from "../core/files-actions.ts";
 import { canGoBack } from "../core/files-history.ts";
+import { toggleDetailsPanel } from "../core/details-panel.ts";
 import {
 	cellId,
 	cellsOf,
@@ -341,6 +342,13 @@ export function useFileExplorerKeyboardShortcuts(
 				if (!focus || zone === "typing" || zone === "modal") return;
 				take(e);
 				focus();
+				return;
+			}
+			// The details panel is the page's, not the canvas's: it answers anywhere but a field or a modal.
+			if (action === "details") {
+				if (zone === "typing" || zone === "modal") return;
+				take(e);
+				toggleDetailsPanel();
 				return;
 			}
 			if (zone === "canvas") act(action, e, target);

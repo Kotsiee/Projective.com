@@ -16,6 +16,8 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 export interface SubmissionNodeListProps {
 	nodes: SubmissionTreeNode[];
 	onOpen: (node: SubmissionTreeNode) => void;
+	/** `dblclick`: a plain click selects and a double click opens (the `/files` hub). Default `click`. */
+	openOn?: "click" | "dblclick";
 	/** `false` drops the header row, for folder rows listed above a file table. */
 	header?: boolean;
 	/** A row's leading mark, when the host draws its own. */
@@ -120,6 +122,7 @@ export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element 
 			aria-label={props["aria-label"] ?? "Submissions"}
 			header={props.header}
 			onRowActivate={(node) => props.onOpen(node)}
+			activateOn={props.openOn}
 			rowActions={props.rowActions}
 			rowAttrs={props.rowAttrs}
 			rowState={props.rowState}

@@ -5,7 +5,12 @@ import "../styles/files-chrome.css";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { InputText, SortControl } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { useMediaQuery } from "@projective/ui/navigation";
+import { isApplePlatform } from "@features/projects/core/chat-keyboard.ts";
+import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { CONTEXT_PANEL_INFLOW_QUERY } from "@web/features/shell/core/context-panel-state.ts";
 import { FilesFilterPanel } from "../components/FilesFilterPanel.tsx";
+import { detailsShown, toggleDetailsPanel } from "../core/details-panel.ts";
 import { nodePath, rootChildren } from "../core/asset-model.ts";
 import {
 	commitFiles,
@@ -37,6 +42,13 @@ import type { FileSortKey } from "../types/file-types.ts";
  *
  * `Cmd/Ctrl+F` reaches the field through {@link filesSearchFocus}, whichever of the two is showing, with
  * its text selected for a quick overwrite; Esc clears it and hands focus back to the canvas.
+ *
+ * ## The Details toggle
+ *
+ * The last control opens and closes the details panel (`core/details-panel.ts`): the frame's docked
+ * right panel from 1280px, a drawer below. Open, a click on a file streams it into the panel; closed,
+ * a click only selects. It reads as engaged (a tinted pill, the primary ink) while the panel shows,
+ * and `Ctrl/⌘+I` does the same from anywhere on the page outside a field.
  *
  * Every control writes shared intent into `files-state` and then calls {@link commitFiles} — the BODY
  * is the single fetch owner, so there is exactly one request path and this band can never describe a
@@ -159,6 +171,12 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	// #endregion
 
 	const facets = facetCount.value;
+	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
+	const detailsOpen = detailsShown(inflow);
+	// Read after hydration: the server has no platform to spell the shortcut for.
+	const apple = useSignal(false);
+	useEffect(() => void (apple.value = isApplePlatform()), []);
+	const detailsKeys = shortcutOn("files-details") ? (apple.value ? "⌘I" : "Ctrl+I") : null;
 
 	/**
 	 * Gated on `seeded`, never on `total > 0`: before the body has applied a page the total is 0
@@ -316,6 +334,24 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 						}}
 					/>
 				</span>
+
+				<Tooltip
+					content={detailsKeys ? `Toggle details panel (${detailsKeys})` : "Toggle details panel"}
+					placement="bottom-end"
+				>
+					<button
+						type="button"
+						class="fh-headerband__icon fh-headerband__icon--toggle"
+						data-on={detailsOpen ? "true" : undefined}
+						aria-label="Details panel"
+						aria-expanded={detailsOpen}
+						aria-controls={inflow ? "fh-details" : undefined}
+						aria-keyshortcuts={detailsKeys ? (apple.value ? "Meta+I" : "Control+I") : undefined}
+						onClick={toggleDetailsPanel}
+					>
+						<Icon name="panel-right" />
+					</button>
+				</Tooltip>
 			</span>
 
 			<span class="ui-visually-hidden" role="status">{matchNote}</span>

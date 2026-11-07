@@ -259,6 +259,13 @@ export const LocalKeys = {
 	FILES_COLUMNS: "pj.local.files.columns",
 	/** The folder colours last picked, newest first (a JSON array of `#rrggbb`). */
 	FILES_FOLDER_COLORS: "pj.local.files.folderColors",
+	/**
+	 * Whether the `/files` details panel stands docked from 1280px (`"1"` open | `"0"` closed; absent is
+	 * closed). The hub's own choice, apart from the shell's `CONTEXT_PANEL_DOCKED`: that one defaults
+	 * open, and a details panel that opens by default is the auto-open this toggle replaced. Below
+	 * 1280px the panel is a drawer that is never persisted.
+	 */
+	FILES_DETAILS_OPEN: "pj.local.files.detailsOpen",
 	/** Whether the file inspector's details panel is open on desktop (`"1"`|`"0"`). */
 	INSPECTOR_PANEL_OPEN: "pj.local.inspector.panelOpen",
 	/** Whether the file preview modal's side panel is open on desktop (`"1"`|`"0"`). */

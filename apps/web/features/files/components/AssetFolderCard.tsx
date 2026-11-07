@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
 import "@web/features/projects/styles/submission-card.css";
 import "../styles/files-hub.css";
@@ -15,11 +16,15 @@ import { SourceMark, VisibilityMark } from "./file-hub-glyphs.tsx";
  * `cellWidth + 62 + gap` hold folders and files in the same rows without the virtualizer's maths
  * drifting from what is painted.
  *
- * ## A click opens; the hub's keyboard and a modified click select
+ * ## A click selects where the host selects; otherwise it opens
  *
- * A plain click navigates into the folder, as the Submissions explorer's cards do. Selecting one is
- * the hub's: `Ctrl`/`Cmd`+click, `Shift`+click and the keyboard reach it from `.fh-cell`, above this
- * card, and {@link AssetFolderCardProps.selected} only draws the result.
+ * Given {@link AssetFolderCardProps.onSelect} (the `/files` hub), a plain mouse click picks the folder
+ * and a double click opens it, as a file explorer does. A touch tap still opens: on a phone the card
+ * is how a person drills down, and a double tap is not a gesture anyone reaches for. A keyboard or
+ * assistive-technology activation (`detail === 0`) opens too. Without `onSelect` (the Asset Picker),
+ * a plain click opens, as the Submissions explorer's cards do. `Ctrl`/`Cmd`+click, `Shift`+click and
+ * the keyboard reach the hub's selection from `.fh-cell`, above this card, and
+ * {@link AssetFolderCardProps.selected} only draws the result.
  *
  * ## Drop target
  *
@@ -32,6 +37,8 @@ export interface AssetFolderCardProps {
 	folder: AssetFolder;
 	/** Navigate into this folder. */
 	onOpen: (folder: AssetFolder) => void;
+	/** Pick this folder on a plain mouse click; `onOpen` then waits for a double click or a tap. */
+	onSelect?: (folder: AssetFolder) => void;
 	/** Whether a compatible drag is currently hovering this card. */
 	dropOver?: boolean;
 	/** Whether this folder is in the current selection — drives the selected treatment. */
@@ -39,7 +46,9 @@ export interface AssetFolderCardProps {
 }
 
 export function AssetFolderCard(props: AssetFolderCardProps): JSX.Element {
-	const { folder, onOpen, dropOver = false, selected = false } = props;
+	const { folder, onOpen, onSelect, dropOver = false, selected = false } = props;
+	/** The last press's pointer type, read by the click that follows it. */
+	const pointer = useRef("");
 	// The folder's own item count: a child-folder count here would disagree with the tree, which
 	// counts the whole subtree.
 	const count = `${folder.itemCount} file${folder.itemCount === 1 ? "" : "s"}`;
@@ -56,7 +65,12 @@ export function AssetFolderCard(props: AssetFolderCardProps): JSX.Element {
 			<button
 				type="button"
 				class="subm-card"
-				onClick={() => onOpen(folder)}
+				onPointerDown={(e) => (pointer.current = e.pointerType)}
+				onClick={(e) => {
+					if (!onSelect || e.detail === 0 || pointer.current === "touch") onOpen(folder);
+					else onSelect(folder);
+				}}
+				onDblClick={onSelect ? () => onOpen(folder) : undefined}
 				aria-label={`${folder.name} — ${sub}, ${count}`}
 			>
 				<span class="fh-folder__art">

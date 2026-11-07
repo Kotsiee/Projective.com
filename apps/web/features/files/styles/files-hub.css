@@ -595,6 +595,15 @@
 	overflow-y: visible;
 }
 
+/* The open panel with no file to describe: a title and one meta sentence, never boxed. */
+.fh-inspect__emptynote {
+	margin: 0;
+	max-inline-size: var(--measure);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+}
+
 .fh-inspect__head {
 	display: flex;
 	align-items: flex-start;
