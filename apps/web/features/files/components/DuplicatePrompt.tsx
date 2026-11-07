@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Button, type ButtonVariant, type Severity } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { SourceMark } from "./file-hub-glyphs.tsx";
+import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import {
 	type AssetItem,
 	type DedupOutcome,
@@ -187,7 +188,8 @@ function locationOf(asset: AssetItem): string {
 
 /** When it arrived, and from whom when that is known. */
 function arrivalOf(asset: AssetItem): string {
-	return asset.sender ? `${asset.dateLabel} · ${asset.sender.name}` : asset.dateLabel;
+	const date = fileDateLabel(asset);
+	return asset.sender ? `${date} · ${asset.sender.name}` : date;
 }
 // #endregion
 

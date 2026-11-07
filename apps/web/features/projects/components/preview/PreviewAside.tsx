@@ -12,7 +12,7 @@ import { Fact } from "@features/inspector/components/panel/facts.tsx";
 import { ShortcutsDisclosure } from "@features/inspector/components/panel/ShortcutsDisclosure.tsx";
 import type { ViewerShortcut } from "@features/inspector/components/viewers/viewer.ts";
 import { type AssetItem, sourceLabel, visibilityLabel } from "../../types/projects-types.ts";
-import { kindLabel } from "../../core/file-model.ts";
+import { fileDateLabel, kindLabel } from "../../core/file-model.ts";
 import type { SourcePaint } from "./preview-model.ts";
 import { SourceMessage } from "./SourceMessage.tsx";
 
@@ -47,7 +47,7 @@ function RowFacts({ file }: { file: AssetItem }): JSX.Element {
 				: null}
 			{file.durationLabel ? <Fact label="Duration">{file.durationLabel}</Fact> : null}
 			<Fact label={posted ? "Shared" : "Added"}>
-				<time class="ins-facts__text" dateTime={file.createdAt}>{file.dateLabel}</time>
+				<time class="ins-facts__text" dateTime={file.createdAt}>{fileDateLabel(file)}</time>
 			</Fact>
 			{posted ? null : (
 				<>

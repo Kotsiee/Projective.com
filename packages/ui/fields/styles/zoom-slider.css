@@ -6,6 +6,7 @@
 	align-items: center;
 	gap: var(--space-1);
 	block-size: var(--zoom-h);
+	min-inline-size: 0;
 	color: var(--on-surface);
 }
 .ui-zoom--size-md {
@@ -41,7 +42,8 @@
 .ui-zoom__track {
 	position: relative;
 	flex: 1 1 auto;
-	min-inline-size: 7rem;
+	inline-size: 7rem;
+	min-inline-size: 0;
 	block-size: var(--zoom-h);
 	cursor: pointer;
 	touch-action: none;

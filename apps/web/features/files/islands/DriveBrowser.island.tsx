@@ -25,6 +25,7 @@ import {
 
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
+import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
 import {
 	type AssetFolder,
@@ -648,7 +649,9 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 									</span>
 									<span class="drv-row__body">
 										<span class="drv-row__name">{asset.name}</span>
-										<span class="drv-row__meta">{`${asset.sizeLabel} · ${asset.dateLabel}`}</span>
+										<span class="drv-row__meta">
+											{`${asset.sizeLabel} · ${fileDateLabel(asset)}`}
+										</span>
 									</span>
 								</button>
 								{out

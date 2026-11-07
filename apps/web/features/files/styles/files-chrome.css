@@ -711,13 +711,14 @@
 
 /*
  * A SCOPED override of the shared `.ui-viewrig`: it already owns the layout, the mode glyph and the
- * slider cap; this only strips the padding it would add inside a band that already pads itself, and
- * holds a floor so the track never collapses to nothing.
+ * slider cap; this only strips the padding it would add inside a band that already pads itself,
+ * gives way to the actions' fixed width on a narrow band, and holds a floor so the track never
+ * collapses to nothing.
  */
 .fh-rig .fh-rig__density {
 	padding: 0;
 	min-inline-size: 9rem;
-	flex: none;
+	flex: 0 1 auto;
 }
 
 .fh-rig__note,
@@ -853,6 +854,11 @@
 
 	.fh-rig .fh-rig__density {
 		min-inline-size: 6rem;
+	}
+
+	/* The track does all the lenses do, and at this width it needs their room to stay draggable. */
+	.fh-rig .ui-zoom__btn {
+		display: none;
 	}
 
 	.ui-button.fh-rig__upload {

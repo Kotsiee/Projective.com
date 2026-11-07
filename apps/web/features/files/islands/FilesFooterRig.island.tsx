@@ -6,6 +6,7 @@ import { ConfirmDialog, Dialog, Tooltip } from "@projective/ui/feedback";
 import { Button, InputText } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
+import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
@@ -53,8 +54,9 @@ import { uploadTasksOf } from "../core/upload-tasks.ts";
  * the secondaries — New folder · Attach link · Connect drive · Export — as neutral outlined circles,
  * each with a portal `Tooltip` and an `aria-label`, then **Upload**, the region's one filled action,
  * last in the inline direction (§B.8.2 / §B.8.6). There is no overflow menu: every action stays on
- * the bar at every width, and the narrowest container tier folds Upload's label into its Tooltip
- * rather than removing anything. A host that hands the rig an allowance (`quota`) gets the storage
+ * the bar at every width. The narrowest container tier folds Upload's label into its Tooltip and
+ * drops the zoom's lenses, which only repeat what its track does, so the track keeps room to drag.
+ * A host that hands the rig an allowance (`quota`) gets the storage
  * {@link QuotaRing} truly centred between the two, on equal side tracks.
  *
  * `container-type: inline-size` on the root still stops the band bidding for the lane's space (the
@@ -264,7 +266,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				csvCell(it.name),
 				csvCell(it.kind),
 				csvCell(it.sizeLabel),
-				csvCell(it.dateLabel),
+				csvCell(fileDateLabel(it)),
 				csvCell(sourceLabel(it.source)),
 				csvCell(it.sender?.name ?? ""),
 			].join(",")

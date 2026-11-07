@@ -15,6 +15,7 @@ import { profileHref } from "@web/features/projects/core/routing.ts";
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
 import { ScanMark, SourceMark, StatusMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 
 /**
  * InspectPanel — the right-hand detail pane, revealed only when an asset is selected.
@@ -31,9 +32,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * The panel lists what the asset IS (type · size · when · who · where · privacy · digest) before what
  * can be done to it. The two everyday actions are icon-only ghost controls in the corners — Open in
  * new tab beside Close, Download on the preview's top-left — and only the manage block below speaks
- * in labelled buttons, because a destructive action must never be a bare icon. Every figure is the SERVER's — `sizeLabel`, `dateLabel` and the digest are all
- * pre-formatted on the row — so nothing here divides bytes, parses a timestamp or re-derives a state
- * the server already resolved.
+ * in labelled buttons, because a destructive action must never be a bare icon. Every figure but the
+ * date is the SERVER's — `sizeLabel` and the digest are pre-formatted on the row — so nothing here
+ * divides bytes or re-derives a state the server already resolved. The date alone is written here,
+ * because only the browser knows the viewer's clock.
  *
  * ## Two gates behave differently, on purpose
  *
@@ -212,7 +214,7 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 				<Fact label="Size">
 					{isLink ? "A link — no stored bytes" : asset.sizeLabel}
 				</Fact>
-				<Fact label="Added">{asset.dateLabel}</Fact>
+				<Fact label="Added">{fileDateLabel(asset)}</Fact>
 
 				<Fact
 					label="Added by"

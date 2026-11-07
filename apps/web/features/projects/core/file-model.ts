@@ -1,3 +1,4 @@
+import { formatDate } from "@ui/display/core/table-format.ts";
 import type { ExplorerFileItem, FileKind, FileSortKey } from "../types/projects-types.ts";
 
 /**
@@ -68,5 +69,24 @@ export function messageGroup<T extends ExplorerFileItem>(items: T[], file: T): T
 export function groupIndexOf(group: ExplorerFileItem[], file: ExplorerFileItem): number {
 	const i = group.findIndex((it) => it.id === file.id);
 	return i === -1 ? 0 : i;
+}
+// #endregion
+
+// #region Dates
+/**
+ * A file's date on the viewer's own clock, in the shape of the server's `dateLabel`
+ * (`Nov 6 · 10:05 PM`). The server writes that label in UTC, the one zone it can render the same way
+ * twice, so it can be a day out for the person reading it. `en-US` is the shape, not a language.
+ */
+export function formatFileDate(ms: number): string {
+	return formatDate(ms, "datetime", "en-US", Date.now());
+}
+
+/** {@link formatFileDate} for a row. One with no stored date keeps the words it came with. */
+export function fileDateLabel(
+	file: { createdAt: string; dateLabel: string; status?: string },
+): string {
+	const ms = Date.parse(file.createdAt);
+	return Number.isNaN(ms) || file.status === "pending_upload" ? file.dateLabel : formatFileDate(ms);
 }
 // #endregion
