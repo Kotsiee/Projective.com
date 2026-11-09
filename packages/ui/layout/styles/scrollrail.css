@@ -1,0 +1,102 @@
+.ui-scrollrail {
+	--scrollrail-step: 2rem;
+	--scrollrail-step-bg: var(--surface);
+	display: grid;
+	grid-template-areas: "track";
+	grid-template-columns: minmax(0, 1fr);
+	align-items: center;
+	min-inline-size: 0;
+}
+.ui-scrollrail[data-overflow] {
+	grid-template-areas: "back track forward";
+	grid-template-columns: var(--scrollrail-step) minmax(0, 1fr) var(--scrollrail-step);
+	column-gap: var(--space-1);
+}
+.ui-scrollrail__track {
+	grid-area: track;
+	display: flex;
+	gap: var(--scrollrail-gap, var(--space-2));
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+	scrollbar-width: none;
+}
+.ui-scrollrail__track::-webkit-scrollbar {
+	display: none;
+}
+.ui-scrollrail__track > * {
+	flex: none;
+}
+.ui-scrollrail__edge {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.ui-scrollrail__edge--back {
+	grid-area: back;
+}
+.ui-scrollrail__edge--forward {
+	grid-area: forward;
+}
+.ui-scrollrail__step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--scrollrail-step);
+	block-size: var(--scrollrail-step);
+	padding: 0;
+	border: var(--hairline-strong);
+	border-radius: var(--radius-full);
+	background: var(--scrollrail-step-bg);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.ui-scrollrail__step:hover,
+.ui-scrollrail__step:focus-visible {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.ui-scrollrail__step:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.ui-scrollrail__step:active {
+	transform: scale(var(--btn-press-scale-icon));
+}
+.ui-scrollrail__step .ui-icon:dir(rtl) {
+	transform: scaleX(-1);
+}
+
+@media (pointer: coarse) {
+	.ui-scrollrail__track {
+		scroll-snap-type: inline proximity;
+		scroll-padding-inline: var(--space-1);
+	}
+	.ui-scrollrail__track > * {
+		scroll-snap-align: start;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-scrollrail__step {
+		transition: none;
+	}
+	.ui-scrollrail__step:active {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .ui-scrollrail__step {
+	transition: none;
+}
+:root[data-motion="reduced"] .ui-scrollrail__step:active {
+	transform: none;
+}

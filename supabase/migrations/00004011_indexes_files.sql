@@ -99,3 +99,16 @@ CREATE INDEX IF NOT EXISTS idx_files_items_derived_from
     ON files.items (derived_from_id)
     WHERE derived_from_id IS NOT NULL;
 -- #endregion
+
+-- #region files.item_grants (Decision #402)
+-- One LIVE grant per grantee per file; a revoked row stays for the audit and does not block a new
+-- grant. Its leading `item_id` also serves files.fn_item_grant_role, which fn_can_read calls per row.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_item_grants_live
+    ON files.item_grants (item_id, grantee_kind, grantee_id)
+    WHERE revoked_at IS NULL;
+
+-- "What has been granted to this person / team / project?" — a grantee's own lookups.
+CREATE INDEX IF NOT EXISTS idx_files_item_grants_grantee
+    ON files.item_grants (grantee_kind, grantee_id)
+    WHERE revoked_at IS NULL;
+-- #endregion

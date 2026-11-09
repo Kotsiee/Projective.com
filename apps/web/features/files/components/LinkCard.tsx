@@ -3,6 +3,7 @@ import "@web/features/projects/styles/file-card.css";
 import "../styles/files-hub.css";
 import type { AssetItem, LinkAttachment } from "../types/file-types.ts";
 import { ScanMark } from "./file-hub-glyphs.tsx";
+import { FallbackPicture } from "./FallbackPicture.tsx";
 import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
 import { ProgressiveImage } from "@projective/ui/display/image";
 import { Icon } from "@projective/ui/icons";
@@ -28,8 +29,8 @@ import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
  * **Both pictures are always the platform's re-hosted copies** (`LinkAttachment.imageUrl` and
  * `faviconUrl` point into our own public bucket). Hotlinking `https://origin/favicon.ico` would leak
  * every viewer's IP address to a host the link's author chose, which turns pasting a link into an
- * IP-harvesting primitive. When the re-hosted copy is missing the card falls back to the link tile
- * and never to the origin.
+ * IP-harvesting primitive. When the re-hosted copy is missing, or fails to load, the card falls back
+ * to the link tile and never to the origin.
  *
  * A `blocked` or `suspicious` verdict is shown as a mark plus a caption, and never as the ONLY
  * difference in tone: the state has to survive a colour-blindness overlay.
@@ -64,9 +65,12 @@ export function LinkCard({ asset, link, onOpen }: LinkCardProps): JSX.Element {
 	const identity = (
 		<>
 			<span class="fh-linkcard__favicon">
-				{link.faviconUrl
-					? <img src={link.faviconUrl} alt="" loading="lazy" draggable={false} />
-					: <FileTypeIcon file={asset} />}
+				<FallbackPicture
+					src={link.faviconUrl}
+					loading="lazy"
+					draggable={false}
+					fallback={<FileTypeIcon file={asset} />}
+				/>
 			</span>
 			<span class="fh-linkcard__domain">{link.domain}</span>
 		</>

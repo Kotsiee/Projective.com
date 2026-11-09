@@ -10,6 +10,7 @@ import {
 	initialPanelOpen,
 	inspectorLink,
 	metaLine,
+	shareTargetOf,
 	shortHash,
 	visibilityText,
 	workspaceCommand,
@@ -100,6 +101,13 @@ Deno.test("accessDetails shows downloads only when the count is visible", () => 
 	assertEquals(accessDetails(asset({ downloadCount: null })).map((r) => r.key), ["visibility"]);
 });
 
+Deno.test("accessDetails follows a tier saved after the page painted", () => {
+	const owned = asset({ visibility: "private", canManage: true });
+	assertEquals(accessDetails(owned)[0].value, "Only you");
+	assertEquals(accessDetails(owned, "restricted")[0].value, "Specific people");
+	assertEquals(accessDetails(asset({ canManage: false }), "restricted")[0].value, "Shared with you");
+});
+
 Deno.test("inspectorLink carries the share slug only for share access", () => {
 	const origin = "https://projective.example";
 	assertEquals(inspectorLink(origin, asset({ share: "abc" })), `${origin}/inspect/${ID}`);
@@ -183,6 +191,41 @@ Deno.test("fileOpenHref sends stored files to the inspector and everything else 
 		"https://a.example",
 	);
 	assertEquals(fileOpenHref({ id: ID, source: "supabase", status: "pending", url: "/x" }), "/x");
+});
+
+Deno.test("Share hands out the inspector page, which opens only for people with access, while the file is private or restricted", () => {
+	for (const visibility of ["private", "restricted"] as const) {
+		assertEquals(shareTargetOf(asset(), { visibility, shareUrl: null }), {
+			href: `/inspect/${ID}`,
+			reach: "with-access",
+		});
+	}
+	assertEquals(shareTargetOf(asset(), { visibility: "link", shareUrl: null }).reach, "with-access");
+});
+
+Deno.test("Share hands out the live share link, or a public file's page, for anyone", () => {
+	assertEquals(shareTargetOf(asset(), { visibility: "link", shareUrl: "/share/s1" }), {
+		href: "/share/s1",
+		reach: "anyone",
+	});
+	assertEquals(shareTargetOf(asset(), { visibility: "public", shareUrl: null }), {
+		href: `/inspect/${ID}`,
+		reach: "anyone",
+	});
+	assertEquals(
+		shareTargetOf(asset(), { visibility: "public", shareUrl: "/share/s2" }).href,
+		"/share/s2",
+	);
+});
+
+Deno.test("Share passes on the share slug a visitor arrived with, which opens for whoever holds it", () => {
+	assertEquals(
+		shareTargetOf(asset({ share: "slug1", access: "share" }), {
+			visibility: "private",
+			shareUrl: null,
+		}),
+		{ href: `/inspect/${ID}?share=slug1`, reach: "anyone" },
+	);
 });
 
 Deno.test("shell options default to the standalone page and freeze", () => {

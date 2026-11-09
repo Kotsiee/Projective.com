@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
 import type { InspectorShell } from "../../core/inspector-shell.ts";
 import { accessDetails, fileDetails, shortHash } from "../../core/inspector-model.ts";
+import { reachOf } from "../../core/access-live.ts";
 import { useInspectorActions } from "../InspectorContext.ts";
 import { ToolButton } from "../controls/ToolButton.tsx";
 import { Fact, OwnerFact, PlainFact, UploadedFact } from "./facts.tsx";
@@ -24,7 +25,9 @@ export function DetailsSection({ shell, titleId }: DetailsSectionProps): JSX.Ele
 				{fileDetails(asset, shell.facts.value).map((row) => <PlainFact key={row.key} row={row} />)}
 				<UploadedFact asset={asset} />
 				<OwnerFact asset={asset} />
-				{accessDetails(asset).map((row) => <PlainFact key={row.key} row={row} />)}
+				{accessDetails(asset, reachOf(asset).visibility).map((row) => (
+					<PlainFact key={row.key} row={row} />
+				))}
 				{asset.contentHash
 					? (
 						<Fact label="Content hash">

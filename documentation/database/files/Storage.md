@@ -199,11 +199,16 @@ bucket_id = 'workspace' AND (
   OR org.is_active_business_member((storage.foldername(name))[1]::uuid)
   OR org.is_enterprise_member   ((storage.foldername(name))[1]::uuid)
 )
+AND NOT files.fn_storage_object_withheld(bucket_id, name)
 ```
 
 The three helpers are OR-ed because **one uuid anchor may name any of the three entity kinds** — the
 caller passes exactly one and the other two return `false`. (There is no discriminator in the path,
 by design: adding one would mean a folder rename whenever an entity changed class.)
+
+The last line (Decision #402) withholds a file its owner turned away from the members
+(`member_access` off), with its tiers, from every member `files.fn_can_read` does not still admit
+(the entity's admins and the file's grantees keep it).
 
 No member writes the bucket directly (Decision #340, Q0.2 (a)): the `/files` pipeline promotes an
 upload here as the service role, and rename, move and delete act on the `files.items` row under its

@@ -71,6 +71,7 @@ import { getUserClient } from "../../core/supabase.ts";
 import { AutoFundMode } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { fetchMessageAttachments } from "./message-attachments.ts";
+import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
 import { batchFieldOf, type BatchId, WriteBatch } from "./write-batch.ts";
 import {
 	REPLY_ORIGINAL_COLUMNS,
@@ -2589,6 +2590,10 @@ export async function insertProjectMessage(
 	}
 
 	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
+	const linkedIds = input.linkedFileIds;
+	const linkRefusal = await prepareLinkShares(actor, linkedIds);
+	if (linkRefusal) return { refusal: linkRefusal };
+	const fileIds = [...attachmentIds, ...linkedIds];
 	const body = clamp(input.text, RICH_TEXT_MAX);
 	const { data, error } = await db
 		.from("project_messages")
@@ -2605,7 +2610,7 @@ export async function insertProjectMessage(
 			// body is one every reader would discard, so it is not written at all.
 			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
 			reply_to_id: original?.id ?? null,
-			has_attachments: attachmentIds.length > 0,
+			has_attachments: fileIds.length > 0,
 			is_audio: input.audio !== null,
 		})
 		.select("id, created_at, body, body_delta")
@@ -2619,18 +2624,14 @@ export async function insertProjectMessage(
 		| null;
 	if (!row?.id) return { refusal: refusalFrom("project_messages insert returned no id", "text") };
 
-	if (attachmentIds.length > 0) {
+	if (fileIds.length > 0) {
 		await db.from("message_attachments").insert(
-			attachmentIds.map((attachmentId) => ({
-				message_table: "comms.project_messages",
-				message_id: row.id,
-				attachment_id: attachmentId,
-			})),
+			attachmentInserts("comms.project_messages", row.id, attachmentIds, linkedIds),
 		);
 		// The RESOLVED room, never `input.channelId`: the route segment may be a `stg-…` address or the
 		// word `discussion`, and either one in this uuid column fails the insert without a trace.
 		await db.from("channel_files").insert(
-			attachmentIds.map((attachmentId) => ({
+			fileIds.map((attachmentId) => ({
 				channel_type: "project",
 				channel_id: channelId,
 				attachment_id: attachmentId,
@@ -2642,7 +2643,7 @@ export async function insertProjectMessage(
 	const parties = await fetchParties(actor, [actor.userId, original?.sender_user_id]);
 	// Read back through the feed's own loader, so the echo and the next page agree on what each file
 	// is called and where it opens.
-	const attachments = attachmentIds.length > 0
+	const attachments = fileIds.length > 0
 		? (await fetchMessageAttachments(actor, "comms.project_messages", [row.id])).get(row.id) ?? []
 		: [];
 	const text = clamp(row.body ?? body, RICH_TEXT_MAX);

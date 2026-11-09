@@ -65,7 +65,8 @@ async function ownerProfile(ownerUserId: string): Promise<OwnerProfileRow | null
 	};
 }
 
-async function managedShareSlug(
+/** The newest live share link `actorId` made for the file, judged on its terms, or `null`. */
+export async function managedShareSlug(
 	client: SupabaseClient,
 	actorId: string,
 	id: string,

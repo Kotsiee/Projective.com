@@ -53,6 +53,9 @@ export type AssetSource = z.infer<typeof AssetSource>;
  *
  * - `private` — the default. Readable only by the owner (and, for an entity-owned asset, members
  *   holding the matching capability).
+ * - `restricted` — "only the people it was sent to" (Decision #401). Sharing a file as a link in a
+ *   message raises a private file here; the message's readers open it while it stays here or above,
+ *   and setting it back to `private` takes every link share away. A folder is never `restricted`.
  * - `link` — "link only". Reachable by anyone holding the opaque, server-minted `shareSlug`, and
  *   ONLY through the share route. Elevated automatically when an asset is attached inside a
  *   semi-private context (a channel, a DM, a project submission), because a recipient who can read
@@ -63,7 +66,7 @@ export type AssetSource = z.infer<typeof AssetSource>;
  * Elevation is one-directional and automatic; DE-escalation is always an explicit owner action, so
  * attaching an asset can never silently narrow access that something else already depends on.
  */
-export const AssetVisibility = z.enum(["private", "link", "public"]);
+export const AssetVisibility = z.enum(["private", "restricted", "link", "public"]);
 export type AssetVisibility = z.infer<typeof AssetVisibility>;
 
 /** Which kind of principal owns an asset — the axis storage quota is metered against. */
@@ -474,11 +477,40 @@ export function visibilityLabel(visibility: AssetVisibility): string {
 	switch (visibility) {
 		case "private":
 			return "Only you";
+		case "restricted":
+			return "Specific people";
 		case "link":
 			return "Anyone with the link";
 		case "public":
 			return "Public";
 	}
+}
+
+/**
+ * The scopes a quick privacy control offers, least to most reachable. `restricted` is chosen in the
+ * inspector's Access tab beside the people it names (Decision #402) or reached by sharing a file as a
+ * link in a message, so a control without a people list offers it only while the file already holds
+ * it; a folder never does (`folders_visibility_check`). The Access tab offers all four (`ACCESS_TIERS`).
+ */
+export function visibilityChoices(
+	current: AssetVisibility,
+	subject: "asset" | "folder",
+): AssetVisibility[] {
+	return AssetVisibility.options.filter((scope) =>
+		scope !== "restricted" || (subject === "asset" && current === "restricted")
+	);
+}
+
+/**
+ * Whether the viewer may share a file as a link in a message (Decision #401): an upload they own in
+ * their personal library, which the link card opens in the inspector. A row with no `source` (the
+ * inspector's DTO) is a stored upload. The server holds the same rule and also refuses a project
+ * room's file (`files/link-shares.ts`).
+ */
+export function canShareAsLink(
+	asset: { canManage: boolean; ownerType: AssetOwnerType; source?: AssetSource },
+): boolean {
+	return asset.canManage && asset.ownerType === "user" && (asset.source ?? "supabase") === "supabase";
 }
 
 /** Whether an asset physically consumes the platform's own storage quota. */

@@ -375,7 +375,7 @@ function toFileStatus(raw: string | null | undefined): FileStatus {
 	return (raw && FILE_STATUSES.has(raw) ? raw : "uploaded") as FileStatus;
 }
 
-const VISIBILITIES: ReadonlySet<string> = new Set(["private", "link", "public"]);
+const VISIBILITIES: ReadonlySet<string> = new Set(["private", "restricted", "link", "public"]);
 
 /** Unknown → `private`, the narrowest reading. A privacy scope must never widen by accident. */
 function toAssetVisibility(raw: string | null | undefined): AssetVisibility {

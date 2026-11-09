@@ -11,6 +11,10 @@
  * - **Supabase** (the storage bucket a signed upload PUTs to, and the origin stored images and media
  *   are served from) — whatever `SUPABASE_PUBLIC_URL` points at, which is `http://127.0.0.1` locally.
  * - **YouTube (no-cookie)** for an article's video embed, loaded only after the reader presses play.
+ * - **Provider frames** (Decision #401): the file preview's second rung draws a connected Google
+ *   Drive file or a link to Google Docs, YouTube, Vimeo, Loom or Figma in that provider's own
+ *   viewer. `EMBED_FRAME_ORIGINS` (`@projective/types/files`) is both the resolver's allowlist and
+ *   these `frame-src` entries, so a frame the policy would refuse is never built.
  *
  * `'unsafe-inline'` stays on `script-src` and `style-src`: Fresh 2 renders inline bootstrap scripts
  * and the theme's pre-paint script without nonces, and the design system sets custom properties through
@@ -25,6 +29,7 @@
  * frames. The middleware pairs that one profile, and no other, with `x-frame-options: SAMEORIGIN`.
  */
 
+import { EMBED_FRAME_ORIGINS } from "@projective/types/files";
 import { isProductionEnv } from "@web/utils/app-env.ts";
 
 /** Page-scoped loosenings of the platform policy; each is off unless a profile asks for it. */
@@ -90,7 +95,10 @@ export function contentSecurityPolicy(options: CspOptions): string {
 				...(options.dev ? ["ws:", "wss:"] : []),
 			],
 		],
-		["frame-src", ["'self'", ...STRIPE_FRAME, "https://www.youtube-nocookie.com"]],
+		[
+			"frame-src",
+			["'self'", ...STRIPE_FRAME, "https://www.youtube-nocookie.com", ...EMBED_FRAME_ORIGINS],
+		],
 		["worker-src", ["'self'", "blob:"]],
 		["object-src", ["'none'"]],
 		["base-uri", ["'self'"]],

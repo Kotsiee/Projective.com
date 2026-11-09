@@ -132,10 +132,17 @@ export function buildComposerPayload(source: ComposerDraftSource): ComposerPaylo
 		text: body,
 		delta,
 		replyToId: source.replyToId,
-		// Device files carry bytes; library picks carry an id. They are separated HERE rather than by
-		// the send path, so nothing downstream has to know how a card got onto the tray.
-		files: source.attachments.flatMap((a) => (a.file ? [a.file] : [])),
-		libraryAssetIds: source.attachments.flatMap((a) => (a.assetId ? [a.assetId] : [])),
+		// Device files carry bytes; library picks carry an id; each is a copy or a link share. They are
+		// separated HERE rather than by the send path, so nothing downstream has to know how a card got
+		// onto the tray.
+		files: source.attachments.flatMap((a) => (a.file && a.mode !== "link" ? [a.file] : [])),
+		linkedFiles: source.attachments.flatMap((a) => (a.file && a.mode === "link" ? [a.file] : [])),
+		libraryAssetIds: source.attachments.flatMap((a) =>
+			a.assetId && a.mode !== "link" ? [a.assetId] : []
+		),
+		linkedAssetIds: source.attachments.flatMap((a) =>
+			a.assetId && a.mode === "link" ? [a.assetId] : []
+		),
 		voice,
 	};
 }
@@ -195,20 +202,23 @@ export async function dispatchDraft(
 	target: DispatchTarget,
 ): Promise<DispatchOutcome> {
 	const { scope, projectId, channelId } = target;
-	// The memo goes LAST so its id is the last one back — it is the only attachment whose id the
-	// payload needs individually, and a positional answer is cheaper than a second round trip.
+	// Copies, then link shares, then the memo LAST so its id is the last one back — the answer is
+	// positional, which is cheaper than a second round trip to learn which id is which.
 	const memo = draft.voice;
 	const uploaded = await uploadDraftFiles(
-		memo ? [...draft.files, memo.file] : draft.files,
+		[...draft.files, ...draft.linkedFiles, ...(memo ? [memo.file] : [])],
 		target.actingOwnerId,
 	);
 	if (!("ids" in uploaded)) return { ok: false, failure: uploaded };
-	const memoId = memo ? uploaded.ids[uploaded.ids.length - 1] ?? null : null;
+	const copies = draft.files.length;
+	const links = draft.linkedFiles.length;
+	const memoId = memo ? uploaded.ids[copies + links] ?? null : null;
 	const attachmentIds = [
-		...(memo ? uploaded.ids.slice(0, draft.files.length) : uploaded.ids),
+		...uploaded.ids.slice(0, copies),
 		...draft.libraryAssetIds,
 		...(memoId ? [memoId] : []),
 	];
+	const linkedFileIds = [...uploaded.ids.slice(copies, copies + links), ...draft.linkedAssetIds];
 	const audio = memo && memoId
 		? {
 			// The server resolves the playable address from the asset the memo was uploaded as;
@@ -228,6 +238,7 @@ export async function dispatchDraft(
 			delta: draft.delta,
 			replyToId: draft.replyToId,
 			attachmentIds,
+			linkedFileIds,
 			audio,
 		})
 		: await MessagesService.send({
@@ -237,6 +248,7 @@ export async function dispatchDraft(
 			delta: draft.delta,
 			replyToId: draft.replyToId,
 			attachmentIds,
+			linkedFileIds,
 			audio,
 		});
 	if (res.ok) return { ok: true, message: res.data?.message ?? null };

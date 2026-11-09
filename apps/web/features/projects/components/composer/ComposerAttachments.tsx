@@ -2,12 +2,14 @@ import { cloneElement, type JSX } from "preact";
 import { type ReadonlySignal, type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import type { MessageReplyDetail } from "@web/utils/lane-events.ts";
 import { CloseIcon } from "../glyphs.tsx";
 import { ReplyIcon } from "../chat-glyphs.tsx";
 import { FileTypeGlyph } from "../composer-glyphs.tsx";
 import {
+	canShareAsLink,
 	extOf,
 	fileKindOf,
 	formatBytes,
@@ -44,10 +46,14 @@ export function stageDeviceFiles(
 			ext: extOf(file.name),
 			kind,
 			previewUrl,
+			mode: "copy",
+			canLink: true,
 		});
 	}
 	return next;
 }
+
+export { toggleAttachmentMode } from "../../core/composer-model.ts";
 
 /**
  * Stage assets the viewer already has, from the Asset Picker.
@@ -89,6 +95,8 @@ export function stageLibraryAssets(
 			previewUrl: kind === "image" || kind === "video"
 				? asset.thumbnailUrl ?? asset.url
 				: undefined,
+			mode: "copy",
+			canLink: canShareAsLink(asset),
 		});
 	}
 	return next;
@@ -199,6 +207,8 @@ export interface ComposerAttachmentsProps {
 	pasted: Signal<PastedBlock[]>;
 	/** Remove one card from the tray by its draft id. */
 	onRemoveAttachment: (id: string) => void;
+	/** Switch one card between a copy and a link; absent hides the switch. */
+	onToggleMode?: (id: string) => void;
 	/** Remove one collapsed paste block by its id. */
 	onRemovePasted: (id: string) => void;
 }
@@ -206,10 +216,11 @@ export interface ComposerAttachmentsProps {
 /**
  * The composer's attachment tray: the preview cards for staged files (an image or video previews
  * itself, anything else shows its type glyph) followed by the collapsed long-paste chips. Each item
- * carries its own remove control.
+ * carries its own remove control, and a card the sender may share as a link carries the copy ⇄ link
+ * switch (Decision #401).
  */
 export function ComposerAttachments(
-	{ attachments, pasted, onRemoveAttachment, onRemovePasted }: ComposerAttachmentsProps,
+	{ attachments, pasted, onRemoveAttachment, onToggleMode, onRemovePasted }: ComposerAttachmentsProps,
 ): JSX.Element {
 	return (
 		<>
@@ -217,7 +228,12 @@ export function ComposerAttachments(
 			{attachments.value.length > 0 && (
 				<ul class="chat-composer__cards" aria-label="Attachments">
 					{attachments.value.map((att) => (
-						<li key={att.id} class="chat-composer__card" data-kind={att.kind}>
+						<li
+							key={att.id}
+							class="chat-composer__card"
+							data-kind={att.kind}
+							data-mode={att.mode === "link" ? "link" : undefined}
+						>
 							{att.kind === "image" && att.previewUrl
 								? <img class="chat-composer__card-media" src={att.previewUrl} alt={att.name} />
 								: att.kind === "video" && att.previewUrl
@@ -239,6 +255,27 @@ export function ComposerAttachments(
 							<Tooltip content={`${att.name} · ${formatBytes(att.size)}`}>
 								<span class="chat-composer__card-name">{att.name}</span>
 							</Tooltip>
+							{onToggleMode && att.canLink
+								? (
+									<span class="chat-composer__card-mode">
+										<Tooltip
+											content={att.mode === "link"
+												? "Sending a link they can open until you set it to Only you. Press to send a copy."
+												: "Sending a copy they keep. Press to send a link instead."}
+										>
+											<button
+												type="button"
+												class="chat-composer__card-modebtn"
+												aria-label={`Send ${att.name} as a link`}
+												aria-pressed={att.mode === "link" ? "true" : "false"}
+												onClick={() => onToggleMode(att.id)}
+											>
+												<Icon name="link" size="2xs" />
+											</button>
+										</Tooltip>
+									</span>
+								)
+								: null}
 							<button
 								type="button"
 								class="chat-composer__card-remove"

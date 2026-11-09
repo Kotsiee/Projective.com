@@ -18,6 +18,8 @@ import {
 	pageHosts,
 	requestLinkPreviews,
 } from "../core/link-previews.ts";
+import { fileCardMeta } from "../core/file-link-card.ts";
+import { FileLinkCard } from "./FileLinkCard.tsx";
 
 /**
  * MessageLinks — how a message body's links render. {@link MessageText} turns written links into
@@ -168,6 +170,13 @@ function faceOf(target: LinkTarget, preview: LinkPreview | null | undefined): Ro
 				meta: middot([preview.deliverable, preview.price]),
 				state: "ready",
 			};
+		case "file":
+			return {
+				lead: leadImage(preview.thumbnail, false),
+				title: preview.name,
+				meta: middot([preview.typeLabel, preview.sizeLabel]),
+				state: "ready",
+			};
 		case "external": {
 			if (isFlaggedVerdict(preview.verdict)) {
 				return {
@@ -204,6 +213,21 @@ function faceOf(target: LinkTarget, preview: LinkPreview | null | undefined): Ro
 function LinkPreviewRow(
 	{ target, preview }: { target: LinkTarget; preview: LinkPreview | null | undefined },
 ): JSX.Element {
+	if (preview?.kind === "file") {
+		return (
+			<FileLinkCard
+				href={preview.href}
+				name={preview.name}
+				file={{ ext: preview.ext, kind: preview.fileKind }}
+				meta={fileCardMeta({
+					ext: preview.ext,
+					typeLabel: preview.typeLabel,
+					sizeLabel: preview.sizeLabel,
+				})}
+				thumbnail={preview.thumbnail}
+			/>
+		);
+	}
 	const to = destinationOf(target, preview);
 	const face = faceOf(target, preview);
 	return (

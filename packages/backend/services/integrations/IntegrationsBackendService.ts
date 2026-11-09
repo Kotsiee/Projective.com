@@ -4,6 +4,7 @@ import type {
 	ConnectionsView,
 	DriveBrowsePage,
 	DriveBrowseParams,
+	DriveThumbnailParams,
 	IntegrationProvider,
 	ProviderKind,
 	RevokeConnection,
@@ -16,6 +17,7 @@ import type { PresenceOutcome } from "@projective/types/projects";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isBearerAuthorised } from "../../core/bearer.ts";
 import { serverEnv } from "../../core/env.ts";
+import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import {
 	getAnonClient,
 	getServiceClient,
@@ -49,6 +51,7 @@ import {
 	type StorageAdapter,
 	StorageAdapterError,
 	type StorageAdapterErrorCode,
+	type StorageThumbnail,
 } from "./adapters/mod.ts";
 
 /**
@@ -92,6 +95,12 @@ const NOT_LIVE = "Connections aren't live in this environment.";
 const FORGED = "The delivery's signature didn't verify.";
 /** The page a browse asks a provider for when the caller names none. */
 const BROWSE_PAGE = 100;
+
+/**
+ * Card pictures per person per minute. A grid fetches four at a time while it scrolls; this only stops
+ * the route being used as a loop against the provider's quota.
+ */
+const thumbnailLimiter = new SlidingWindowLimiter({ max: 600, windowMs: 60_000 });
 
 /** One leading `/`, and no backslash or whitespace a browser would normalise into another origin. */
 const RETURN_PATH = /^\/(?!\/)[^\\\s]*$/;
@@ -1036,6 +1045,37 @@ export class IntegrationsBackendService {
 					};
 				}),
 		);
+	}
+
+	/**
+	 * One connected object's preview picture, for its card: read under the caller's own storage-granted
+	 * connection and fetched here, so the provider's short-lived link and its token never reach the
+	 * page and no reader's browser contacts the provider. `404` when the provider has no picture of it.
+	 */
+	static thumbnail(
+		input: DriveThumbnailParams,
+		actor: ReadActor,
+	): Promise<ServiceResult<StorageThumbnail>> {
+		return signedIn("thumbnail", actor, async (a) => {
+			const decision = thumbnailLimiter.take(a.userId);
+			if (!decision.allowed) {
+				return fail<StorageThumbnail>(429, {
+					message: "Too many previews at once. Try again in a moment.",
+					details: { retryAt: new Date(Date.now() + decision.retryAfterMs).toISOString() },
+				});
+			}
+			const read = await withStorage(
+				a,
+				input.connectionId,
+				async (adapter) => (await adapter.thumbnail?.(input.id)) ?? null,
+			);
+			if (!read.ok) {
+				const { status, message, errors, details } = read;
+				return fail<StorageThumbnail>(status, { message, errors, details });
+			}
+			if (read.data) return ok(read.data);
+			return fail<StorageThumbnail>(404, { message: "This file has no preview picture." });
+		});
 	}
 
 	/**

@@ -1,5 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { AssetMetadata } from "@projective/types/files";
+import { driveThumbnailHref } from "@projective/types/integrations";
+import { assetMediaSrc } from "../asset-media.ts";
 import { type ThumbAsset, type ThumbJob, thumbPlan, wavePath } from "./thumb-plan.ts";
 
 const ID = "00000000-0000-4000-8000-000000000001";
@@ -98,6 +100,18 @@ Deno.test("a connector's own preview is shown for a file with no stored bytes", 
 		thumbPlan(asset("a.pdf", { source: "google_drive", thumbnailUrl: "https://t/x" }), true),
 		{ kind: "picture", src: "https://t/x" },
 	);
+});
+
+Deno.test("a connected drive's picture address reaches the card: a document plans it, an image draws it", () => {
+	const href = driveThumbnailHref(ID, "P1", "17") ?? "";
+	const drive = { id: "google_drive:P1", source: "google_drive", thumbnailUrl: href } as const;
+	assertEquals(thumbPlan(asset("brief.pdf", drive), true), { kind: "picture", src: href });
+	const photo = asset("photo.jpg", { ...drive, kind: "image", url: "https://drive.google.com/x" });
+	assertEquals(thumbPlan(photo, true), { kind: "none" });
+	assertEquals(assetMediaSrc(photo, "sm"), href);
+	const clip = asset("clip.mp4", { ...drive, kind: "video" });
+	assertEquals(thumbPlan(clip, true), { kind: "none" });
+	assertEquals(assetMediaSrc(clip, "sm"), href);
 });
 
 Deno.test("whole-file renderers stop at their limits; ranged ones do not", () => {

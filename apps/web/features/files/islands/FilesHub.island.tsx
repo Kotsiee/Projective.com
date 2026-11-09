@@ -74,6 +74,7 @@ import {
 	shareHrefOf,
 } from "../core/files-actions.ts";
 import { shareRow } from "@features/share/core/share-menu.ts";
+import { canShareAsLink, inspectable } from "@projective/types/files";
 import {
 	canGoBack,
 	canGoForward,
@@ -762,7 +763,11 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 			command: () => openInNewTab(asset),
 		},
 		{ key: "download", label: "Download", icon: "download", command: () => void download(asset) },
-		shareRow({ title: asset.name, href: shareHrefOf(asset) }, viewerId.peek() !== ""),
+		shareRow({
+			title: asset.name,
+			href: shareHrefOf(asset),
+			file: inspectable(asset) ? { id: asset.id, canLink: canShareAsLink(asset) } : undefined,
+		}, viewerId.peek() !== ""),
 		...(asset.canManage
 			? [
 				{

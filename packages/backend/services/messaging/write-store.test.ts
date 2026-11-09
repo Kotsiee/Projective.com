@@ -43,6 +43,7 @@ function page(channelId: string, ids: string[]): MessagePage {
 					delta: null,
 					replyToId: null,
 					attachmentIds: [],
+					linkedFileIds: [],
 					audio: null,
 				},
 				stubViewerSender(),
@@ -76,6 +77,7 @@ Deno.test("write store: a sent message folds onto the latest page, once, for its
 			delta: null,
 			replyToId: null,
 			attachmentIds: ["a1"],
+			linkedFileIds: [],
 			audio: null,
 		},
 		stubViewerSender(),
@@ -117,6 +119,7 @@ function send(
 		delta: null,
 		replyToId: null,
 		attachmentIds: [],
+		linkedFileIds: [],
 		audio: null,
 		...overrides,
 	};

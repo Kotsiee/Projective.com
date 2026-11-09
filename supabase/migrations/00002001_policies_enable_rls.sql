@@ -285,6 +285,10 @@ ALTER TABLE files.download_events ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE files.storage_usage ENABLE ROW LEVEL SECURITY;
 
+-- Who else may open a file (Decision #402): read by its owner and the named person, written only by
+-- the definer files.set_item_access. RLS on + no write policy is what makes the schema grant harmless.
+ALTER TABLE files.item_grants ENABLE ROW LEVEL SECURITY;
+
 
 -- --- from 0211_business.sql ---
 

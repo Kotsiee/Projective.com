@@ -440,6 +440,13 @@ export type DevClientPipeline = "auto" | "empty" | "action_required" | "busy";
 export type DevAvailabilityConflict = "auto" | "call_outside_work" | "empty_horizon";
 
 /**
+ * The inspector's Access tab (Decision #402): follow the server's answer, or draw the tab as the
+ * file's owner, an editor, a viewer or a signed-out visitor would see it. Client-only: every save
+ * still meets the database's own rule for the real session.
+ */
+export type DevFileAccess = "auto" | "owner" | "editor" | "viewer" | "signed-out";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -619,6 +626,8 @@ export interface DevSeamState {
 	clientPipeline?: DevClientPipeline;
 	/** The simulated availability conflict. Optional like `walletAurora`; absent reads as `auto`. */
 	availabilityConflict?: DevAvailabilityConflict;
+	/** The simulated Access tab standing. Optional like `walletAurora`; absent reads as `auto`. */
+	fileAccess?: DevFileAccess;
 }
 // #endregion
 
@@ -856,6 +865,7 @@ const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = [
 	"call_outside_work",
 	"empty_horizon",
 ];
+const FILE_ACCESSES: readonly DevFileAccess[] = ["auto", "owner", "editor", "viewer", "signed-out"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -939,6 +949,7 @@ export function readDevSeam(): DevSeamState | null {
 		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),
 		clientPipeline: coerce(ds.devClientPipeline, CLIENT_PIPELINES, "auto"),
 		availabilityConflict: coerce(ds.devAvailabilityConflict, AVAILABILITY_CONFLICTS, "auto"),
+		fileAccess: coerce(ds.devFileAccess, FILE_ACCESSES, "auto"),
 	};
 }
 

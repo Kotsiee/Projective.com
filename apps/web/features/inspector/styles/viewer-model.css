@@ -43,6 +43,10 @@
 	visibility: hidden;
 	pointer-events: none;
 }
+.ins-model__swatches,
+.ins-model__swatches * {
+	transition: none;
+}
 .ins-model__swatch--theme {
 	color: var(--bg);
 }

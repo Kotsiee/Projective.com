@@ -27,6 +27,7 @@ export { Panel, type PanelProps } from "./islands/Panel.tsx";
 export { Fieldset, type FieldsetProps } from "./islands/Fieldset.tsx";
 export { Toolbar, type ToolbarOrientation, type ToolbarProps } from "./components/Toolbar.tsx";
 export { ScrollPanel, type ScrollPanelProps } from "./islands/ScrollPanel.tsx";
+export { ScrollRail, type ScrollRailProps } from "./islands/ScrollRail.tsx";
 export {
 	Splitter,
 	type SplitterLayout,

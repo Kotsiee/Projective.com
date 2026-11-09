@@ -385,6 +385,9 @@ CREATE TABLE comms.message_attachments (
     ),
     message_id uuid NOT NULL,
     attachment_id uuid NOT NULL,
+    -- Decision #401: `link` grants a read only while the file is not `private` (files.fn_can_read).
+    -- No UPDATE policy exists, so a stored mode is never rewritten into a permanent copy.
+    mode comms.attachment_mode NOT NULL DEFAULT 'copy',
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),

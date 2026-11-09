@@ -1,5 +1,7 @@
 import { fileInspectHref, inspectable, type InspectAsset } from "@projective/types/files";
 import type { StageFact } from "./inspector-shell.ts";
+import type { ShareReach } from "@features/share/core/share-request.ts";
+import { type LiveReach, opensForAnyone } from "./access-live.ts";
 
 /**
  * inspector-model — the pure decisions behind the workspace chrome: the bar's meta line, the
@@ -30,6 +32,8 @@ export function visibilityText(asset: Pick<InspectAsset, "visibility" | "canMana
 	switch (asset.visibility) {
 		case "private":
 			return asset.canManage ? "Only you" : "Private";
+		case "restricted":
+			return asset.canManage ? "Specific people" : "Shared with you";
 		case "link":
 			return "Anyone with the link";
 		case "public":
@@ -109,9 +113,17 @@ export function embedDetails(
 	);
 }
 
-/** Visibility, then the download count when the viewer may see it. */
-export function accessDetails(asset: InspectAsset): DetailRow[] {
-	const rows = [row("visibility", "Visibility", visibilityText(asset))];
+/**
+ * Visibility, then the download count when the viewer may see it. `visibility` is the tier as last
+ * saved, which a save in the Access tab moves past the page's first paint.
+ */
+export function accessDetails(
+	asset: InspectAsset,
+	visibility: InspectAsset["visibility"] = asset.visibility,
+): DetailRow[] {
+	const rows = [
+		row("visibility", "Visibility", visibilityText({ visibility, canManage: asset.canManage })),
+	];
 	if (asset.downloadCount !== null) {
 		rows.push(row("downloads", "Downloads", BYTES.format(asset.downloadCount)));
 	}
@@ -134,6 +146,30 @@ export function fileOpenHref(
 	file: { id: string; source: string; status: string; url: string },
 ): string {
 	return inspectable(file) ? fileInspectHref(file.id) : file.url;
+}
+
+/** The address a Share control hands out for a file, and who it opens for. */
+export interface InspectShareTarget {
+	href: string;
+	reach: ShareReach;
+}
+
+/**
+ * What Share hands out: the share slug the viewer arrived with (it opens for whoever holds it), else
+ * the live share link of a file anyone may open, else the inspector page, which opens only for people
+ * who already have access.
+ */
+export function shareTargetOf(
+	asset: Pick<InspectAsset, "id" | "share">,
+	reach: LiveReach,
+): InspectShareTarget {
+	if (asset.share) {
+		return { href: fileInspectHref(asset.id, { share: asset.share }), reach: "anyone" };
+	}
+	if (opensForAnyone(reach)) {
+		return { href: reach.shareUrl ?? fileInspectHref(asset.id), reach: "anyone" };
+	}
+	return { href: fileInspectHref(asset.id), reach: "with-access" };
 }
 
 /** The absolute form of a same-origin path such as `/share/<slug>`. */

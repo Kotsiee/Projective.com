@@ -354,11 +354,14 @@ CREATE TYPE files.file_source AS ENUM (
     'supabase', 'google_drive', 'dropbox', 'onedrive', 'frameio', 's3', 'link'
 );
 
--- `file_visibility` — the privacy scope hierarchy. `link` means "reachable by anyone holding the
+-- `file_visibility` — the privacy scope hierarchy, least to most reachable. `restricted` means
+-- "readable by specific people": those it was shared with as a link in a message (Decision #401) and
+-- those its owner granted it to (files.item_grants, Decision #402). Both switch on only while the file
+-- is not `private`, so returning it to `private` pauses every link share and grant at once. `link` means "reachable by anyone holding the
 -- opaque, server-minted share slug, and ONLY through the share route"; it is NOT a licence for any
 -- signed-in user to enumerate the row (see files.fn_can_read, which deliberately does not honour
 -- `link` — the slug is the credential, not the item id).
-CREATE TYPE files.file_visibility AS ENUM ('private', 'link', 'public');
+CREATE TYPE files.file_visibility AS ENUM ('private', 'restricted', 'link', 'public');
 
 -- `file_status` — the upload/scan lifecycle. Replaces the free-text `files.items.status` column,
 -- which had a DEFAULT but no domain, so a typo was storable. `scanning`/`quarantined` make the
@@ -402,6 +405,15 @@ CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase', 'conta
 -- its poster stills). Three tiers rather than a width list so a reader asks for a ROLE — a card
 -- thumbnail, a hero, a full-screen view — and the pipeline decides the pixels per purpose.
 CREATE TYPE files.variant_tier AS ENUM ('sm', 'md', 'lg');
+
+-- `grantee_kind` — mirrors @projective/types/files GranteeKind (Decision #402). Who a file can be
+-- granted to: one person, everyone active in a team or a business, or everyone with access to a
+-- project.
+CREATE TYPE files.grantee_kind AS ENUM ('user', 'team', 'business', 'project');
+
+-- `grant_role` — mirrors @projective/types/files GrantRole (Decision #402). A `viewer` opens and
+-- downloads the file; an `editor` may also change who it is granted to, never its tier.
+CREATE TYPE files.grant_role AS ENUM ('viewer', 'editor');
 -- #endregion
 
 -- #region catalogue
@@ -455,6 +467,12 @@ CREATE TYPE marketplace.service_delivery_model AS ENUM (
 -- the DM shield, auto-replies or request routing — each of those reads a thread as a relationship
 -- between people, and a channel is a relationship between a person and an entity.
 CREATE TYPE comms.conversation_kind AS ENUM ('dm', 'group', 'service_inquiry', 'entity_channel');
+
+-- `attachment_mode` — mirrors @projective/types/projects MessageAttachmentMode (Decision #401). How a
+-- file rides a message. `copy` hands the message's readers the file for good, as every attachment
+-- always has. `link` shares the sender's own file in place: its readers open it only while the file is
+-- not `private`, so the owner can take it back.
+CREATE TYPE comms.attachment_mode AS ENUM ('copy', 'link');
 
 -- `ticket_priority` — mirrors @projective/types/projects TicketPriority.
 -- NOT the same axis as `workload_intensity`, which is the Architect's Override and moves both the

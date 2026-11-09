@@ -33,7 +33,7 @@ combination unrepresentable.
 | Type                     | Members                                                              |
 | :----------------------- | :------------------------------------------------------------------- |
 | `files.file_source`      | `supabase` · `google_drive` · `dropbox` · `onedrive` · `frameio` · `s3` · `link` |
-| `files.file_visibility`  | `private` · `link` · `public`                                        |
+| `files.file_visibility`  | `private` · `restricted` · `link` · `public` (`restricted`: Decision #401) |
 | `files.file_status`      | `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined` |
 | `files.link_scan_status` | `pending` · `safe` · `suspicious` · `blocked` · `unscannable`        |
 | `files.owner_kind`       | `user` · `team` · `business` · `enterprise`                        |
@@ -41,6 +41,8 @@ combination unrepresentable.
 | `files.file_category`    | the 28 `FileCategory` literals (pre-existing)                        |
 | `files.asset_purpose`    | `library` · `avatar` · `showcase` · `contact` (Decision #276)        |
 | `files.variant_tier`     | `sm` · `md` · `lg`                                                   |
+| `files.grantee_kind`     | `user` · `team` · `business` · `project` (Decision #402)             |
+| `files.grant_role`       | `viewer` · `editor` (Decision #402)                                  |
 
 Each mirrors a Zod enum in `@projective/types/files` **member-for-member, in the same order**:
 `file_source`, `file_visibility`, `file_status`, `link_scan_status` and `owner_kind` in `assets.ts`
@@ -104,7 +106,9 @@ Hierarchical grouping of assets. Carries the same ownership / provenance / visib
 | `deleted_at`           | timestamptz             | Soft delete — nothing here is hard-deleted.                           |
 
 **Constraints:** `UNIQUE (share_slug)` · `UNIQUE (source_connection_id, external_folder_id)` ·
-`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)` · `CHECK (color ~ '^#[0-9a-f]{6}$')`; the connection FK is added in
+`CHECK (owner_type = 'user' OR owner_entity_id IS NOT NULL)` · `CHECK (color ~ '^#[0-9a-f]{6}$')` ·
+`folders_visibility_check CHECK (visibility <> 'restricted')` (a folder is never sent in a message,
+Decision #401); the connection FK is added in
 `00000030`. Neither `owner_user_id` nor `parent_folder_id` carries an `ON DELETE` action.
 
 `path` is materialised so the breadcrumb renders without a recursive CTE per row — that is what
@@ -145,8 +149,9 @@ database entry and the actual Supabase Storage object. It is **the** primary ass
 | `status`                                                                            | `files.file_status`                    | **Changed** from free-text: `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined`. Now `NOT NULL`.                                                                                                                                                  |
 | `is_archived`                                                                       | boolean                                | Logical deletion flag (pre-existing; distinct from `deleted_at`).                                                                                                                                                                                                  |
 | `source`                                                                            | `files.file_source`                    | Where the bytes live. Only `supabase` consumes our quota.                                                                                                                                                                                                          |
-| `visibility`                                                                        | `files.file_visibility`                | `private` · `link` · `public`.                                                                                                                                                                                                                                     |
+| `visibility`                                                                        | `files.file_visibility`                | `private` · `restricted` · `link` · `public`. `restricted` means specific people: those the owner sent it to as a link in a message (Decision #401) and those in `files.item_grants` (Decision #402). Both count in `files.fn_can_read` only while the file is not `private`, so `private` pauses them all at once. |
 | `owner_type` / `owner_entity_id`                                                    | `files.owner_kind` / uuid              | The metered owning principal.                                                                                                                                                                                                                                      |
+| `member_access`                                                                     | boolean                                | `NOT NULL DEFAULT true` (Decision #402). Whether every active member of the owning team / business / enterprise reads it. Off leaves the creator, the entity's owners and admins, and the grantees, and withholds its bytes and tiers from the `workspace` storage read too. `items_member_access_check` keeps a personal row `true`. |
 | `content_hash` / `hash_algo` / `hash_sampled`                                       | text / text / boolean                  | Client-computed digest for dedup **before** bytes cross the wire. `hash_sampled` records the STRENGTH of the claim — a sampled digest (head, tail, length) is a strong hint, never on its own sufficient to collapse two assets onto one stored object.            |
 | `source_connection_id`                                                              | uuid                                   | FK → `integrations.user_connections`, `ON DELETE SET NULL` (added in `00000030`).                                                                                                                                                                                  |
 | `external_file_id` / `external_parent_id` / `external_web_url` / `external_etag`    | text                                   | Mounted-connector provenance. `external_etag` is the provider's change token, so a delta sync can tell "unchanged" from "not re-read".                                                                                                                             |
@@ -322,6 +327,30 @@ without an account. No upload/replace/delete path exists through a slug, and rev
 The slug — not the item id — is the credential, which is why `files.fn_can_read` does **not** return
 true for a `link`-visibility asset, and why this table has no visitor grant. See
 [Policies.md](Policies.md).
+
+## 👥 `files.item_grants`
+
+Who else may open one file, and what they may do (Decision #402) — the inspector's Access tab. One row
+names one grantee: a person, everyone active in a team or a business, or everyone with access to a
+project. A `viewer` opens and downloads; an `editor` may also change the file's grants, never its tier
+or its member switch. A grant counts in `files.fn_can_read` only while the file is not `private`.
+
+| Column                       | Type                 | Notes                                                                    |
+| :--------------------------- | :------------------- | :----------------------------------------------------------------------- |
+| `id`                         | uuid                 | PK.                                                                      |
+| `item_id`                    | uuid                 | FK → `files.items.id`, `ON DELETE CASCADE`.                              |
+| `grantee_kind` / `grantee_id` | `files.grantee_kind` / uuid | Polymorphic, so no FK (the `owner_entity_id` precedent); `files.set_item_access` checks it. |
+| `role`                       | `files.grant_role`   | `NOT NULL DEFAULT 'viewer'`.                                             |
+| `granted_by`                 | uuid                 | FK → `auth.users.id`: the owner or the editor who added it.              |
+| `created_at` / `updated_at`  | timestamptz          | `updated_at` moves on a role change and on revocation.                   |
+| `revoked_at` / `revoked_by`  | timestamptz / uuid   | Revoking is a column, never a `DELETE`. `item_grants_revoked_check`: both or neither. |
+
+**Indexes:** `idx_files_item_grants_live` — UNIQUE `(item_id, grantee_kind, grantee_id)` partial on
+`revoked_at IS NULL` (one live grant per grantee, a revoked row never blocks a new one);
+`idx_files_item_grants_grantee` — `(grantee_kind, grantee_id)`, partial on live rows.
+
+Written only by the definer `files.set_item_access`: RLS is on with a read policy and no write policy.
+See [Functions.md](Functions.md) and [Policies.md](Policies.md).
 
 ## 📉 `files.download_events`
 

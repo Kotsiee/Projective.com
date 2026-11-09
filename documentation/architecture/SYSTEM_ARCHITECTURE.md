@@ -1050,6 +1050,17 @@ the inviter cannot resolve for another user under RLS) and carries neither the c
 message, so a live insert would record a success the row does not describe — flagged for a schema
 decision rather than papered over.
 
+**Copies and link shares (Decision #401).** Both send schemas, and `CreateConversationSchema`'s
+opening message, carry `attachmentIds` (copies) and `linkedFileIds` (the sender's own files shared as
+a link), at most 20 together and none in both (`sendFilesAgree`). Before the message is written,
+`files/link-shares.ts` checks every link share under the sender's JWT (an upload in their own personal
+library, never a team's, a project room's, a mount or a saved web link; else `422` on `linkedFileIds`)
+and raises a private one to `restricted`; the rows then land in `comms.message_attachments` with
+`mode = 'link'`, and the loader hands `MessageAttachment.mode` and `sizeBytes` to the bubble, which
+draws a link share as a `FileLinkCard`. `/inspect/{uuid}` and `/share/{slug}` links in a body unfurl
+into the same card through `POST /api/links/preview` (`LinkPreview` kind `file`, read under the
+reader's own access).
+
 **Formatting and replies.** Both send schemas — `SendProjectMessageSchema`
 (`@projective/types/projects/messages.ts`) and `SendConversationMessageSchema` — carry, besides
 `text` · `attachmentIds` · `audio`, two optional fields that default to "plain, not a reply":
@@ -1569,6 +1580,28 @@ to 280 characters. A guest, or any failure, gets `[]`; mock mode answers from th
 conversations. Served by `GET|HEAD /api/messaging/attachment-source` through the messaging read
 cache (ETag); the client is `MessagingService.attachmentSource`.
 
+#### Who has access — grants and the Access tab (Decision #402)
+
+`files.item_grants` names who else may open one stored file: a person, a team, a business or a
+project, as a `viewer` or an `editor`. `files.fn_can_read` counts a live grant only while the file is
+not `private` — the same terms as a #401 link share — and it is the one arm an entity's or a project's
+file shares with a personal one, so a grant can widen a file beyond its library. An entity file's
+`member_access` decides whether every active member reads it (off leaves the creator, the entity's
+owners and admins, and the grantees); the `workspace` storage read withholds such a file's bytes with
+`files.fn_storage_object_withheld`. A project's file always stays open to the project.
+
+The rules sit in three definers, because who may grant to which workspace is not a row check:
+`files.get_item_access` (the read; grants for the owner and editors, message shares for the owner),
+`files.set_item_access` (one transaction for the tier, the member switch and the whole grant list; an
+editor may change the grants only, a new grant needs the granter in the workspace or project), and
+`files.list_access_targets` (the caller's teams, businesses and projects). The fat side is
+`FilesBackendService.access` · `setAccess` · `accessTargets` (`services/files/live-access.ts`, pure
+projection and refusal mapping in `access-dto.ts`); the routes are `GET|POST /api/files/access` and
+`GET /api/files/access-targets`; the SSOT is `@projective/types/files` `access.ts`. The inspector's
+Access tab is a dumb draft over `FilesService.access` / `setAccess`: Save sends only what changed, and
+the saved reach is mirrored into `features/inspector/core/access-live.ts` so the bar's Share and the
+Details row stay true after a save.
+
 #### The connector adapter interface
 
 `StorageAdapter` (`services/integrations/adapters/StorageAdapter.ts`) is the seam that stops a
@@ -1583,7 +1616,7 @@ provider's refusal comes back in words by its adapter code. `importAsset` still 
 
 | Source         | Client                         | Paging cursor              | Download                       | Thumbnail               |
 | :------------- | :----------------------------- | :------------------------- | :----------------------------- | :---------------------- |
-| `google_drive` | Drive v3 (`supportsAllDrives`) | `nextPageToken`            | `webContentLink` / PDF export  | `thumbnailLink`         |
+| `google_drive` | Drive v3 (`supportsAllDrives`) | `nextPageToken`            | `webContentLink` / PDF export  | `thumbnailLink`, proxied |
 | `dropbox`      | API v2 RPC                     | `list_folder` cursor       | `get_temporary_link` (4 h)     | none (bytes only)       |
 | `onedrive`     | Microsoft Graph v1.0           | `@odata.nextLink` **path** | `@microsoft.graph.downloadUrl` | `…/thumbnails` `medium` |
 | `frameio`      | Frame.io **V4** (Adobe IMS)    | `after`                    | `media_links.original`         | `media_links.thumbnail` |
@@ -1598,6 +1631,11 @@ interface StorageAdapter {
   folder?(id: string): Promise<{ id: string; name: string } | null>; // a breadcrumb's name
   downloadUrl(id: string): Promise<string | null>;
   thumbnailUrl(id: string): Promise<string | null>;
+  thumbnail?(id: string): Promise<StorageThumbnail | null>; // the picture's bytes, read server-side
+}
+interface StorageThumbnail {
+  bytes: Uint8Array<ArrayBuffer>;
+  contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; // sniffed, never declared
 }
 type StorageCredential =
   | { scheme: "bearer"; accessToken: string }
@@ -1629,7 +1667,16 @@ Seven decisions in that shape carry weight:
    inventing ids or discarding the prefix.
 4. **`downloadUrl` / `thumbnailUrl` are async and per-call.** Caching one on the asset row would
    persist a credential-bearing URL into a projection the client reads, and a signed URL that outlives
-   its purpose is a leaked capability.
+   its purpose is a leaked capability. A card's picture therefore never carries the provider's link
+   (Decision #401): a row the provider can picture (Drive's `hasThumbnail`) carries the same-origin
+   `driveThumbnailHref` (`/api/files/drive-thumbnail?connectionId=&id=&v=`), and
+   `IntegrationsBackendService.thumbnail` reads it under the caller's own connection through the
+   adapter's `thumbnail`, which `readThumbnail` (`adapter-support.ts`) fetches from that provider's own
+   picture hosts only (every redirect hop re-checked and sent without the credential), within 8 s and a
+   2 MiB stream-enforced cap, keeping only bytes that sniff as PNG, JPEG, GIF or WebP. So no reader's
+   browser contacts the provider, the no-hotlinking rule `link-favicon.ts` keeps. Only Google Drive
+   implements it (`lhN.googleusercontent.com`, `docs.google.com`, `drive.google.com`, asked at `=s512`);
+   the others keep `thumbnail` absent and their rows keep their tile until their hosts are confirmed.
 5. **The credential is a typed union, not a token string.** S3 signs every request with a key pair
    (or an STS session from an assumed role) and has no bearer token to hold; an adapter handed the
    wrong scheme refuses at construction. Which of the two an S3 connection uses is decided by where
@@ -2729,8 +2776,15 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   by `features/payments/core/stripe-js.ts`, never in every page's head), `frame-src` the same plus
   `hooks.stripe.com` (the Payment Element and 3-D Secure challenges), `connect-src api.stripe.com`;
   **Supabase** — the public storage origin (`SUPABASE_PUBLIC_URL`, else `SUPABASE_URL`) on
-  `img-src`/`media-src`/`connect-src`, which is `http://127.0.0.1:54321` locally; and the no-cookie
-  YouTube frame. `object-src 'none'`, `frame-ancestors 'none'`, `base-uri`/`form-action 'self'`, and
+  `img-src`/`media-src`/`connect-src`, which is `http://127.0.0.1:54321` locally; the no-cookie
+  YouTube frame; and the **provider frames** of the file preview's second rung (Decision #401):
+  `frame-src` `drive.google.com`, `docs.google.com`, `player.vimeo.com`, `www.loom.com` and
+  `www.figma.com`, exactly `EMBED_FRAME_ORIGINS` in `@projective/types/files` (`embed.ts`), which is
+  also the only list `embedFor` builds a frame for, in every profile because `FilePreview` draws on
+  app pages (`/messages`, `/projects`) as well as `/files`. Each frame is rebuilt from a matched id,
+  sandboxed without top navigation, and never opened on a link whose scan is suspicious or blocked;
+  no other host is framed, because a frame reports its reader's IP to a host the sender chose.
+  `object-src 'none'`, `frame-ancestors 'none'`, `base-uri`/`form-action 'self'`, and
   `upgrade-insecure-requests` outside development. The policy is built on the FIRST request, not at
   import — the Supabase origin comes from `.env`, which is loaded after the module graph (built at
   import it silently blocked every local storage image). **`'unsafe-inline'` remains on `script-src`

@@ -4,8 +4,8 @@ import { useToast } from "@projective/ui/feedback";
 import type { MenuItem } from "@projective/ui/navigation";
 import { ContactsService } from "@features/messaging/core/ContactsService.ts";
 import { recentRecipients } from "./recent-recipients.ts";
-import { absoluteUrl, requestShare } from "./share-request.ts";
-import { composeInternalMessage } from "./share-targets.ts";
+import { absoluteUrl, requestShare, type ShareReach } from "./share-request.ts";
+import { defaultShareMode, type ShareFile, shareMessage } from "./share-mode.ts";
 
 /**
  * share-menu — the Share row every file menu carries (Decision #400). Pressed, it opens the one share
@@ -53,6 +53,12 @@ export interface ShareTarget {
 	title: string;
 	/** Where the link points; a relative address is resolved against the page. */
 	href: string;
+	/** The stored file, so a person can be sent a link or a copy rather than a URL (Decision #401). */
+	file?: ShareFile;
+	/** Who {@link href} opens for (Decision #402); `anyone` when absent. */
+	reach?: ShareReach;
+	/** Open the place where the sharer changes who has access. */
+	manageAccess?: () => void;
 }
 
 /**
@@ -64,7 +70,15 @@ export function shareRow(target: ShareTarget, signedIn: boolean): MenuItem {
 		key: "share",
 		label: "Share",
 		icon: "share",
-		command: () => requestShare({ href: target.href, title: target.title, noun: "file" }),
+		command: () =>
+			requestShare({
+				href: target.href,
+				title: target.title,
+				noun: "file",
+				file: target.file,
+				reach: target.reach,
+				manageAccess: target.manageAccess,
+			}),
 	};
 	if (!signedIn) return row;
 	const { people, failed } = recentPeople();
@@ -86,17 +100,26 @@ export function shareRow(target: ShareTarget, signedIn: boolean): MenuItem {
 }
 
 async function sendTo(person: RankedContact, target: ShareTarget): Promise<void> {
+	const request = { title: target.title, url: absoluteUrl(target.href), file: target.file };
+	const mode = target.file ? defaultShareMode(target.file) : "copy";
 	const res = await ContactsService.createConversation({
 		contactIds: [person.id],
-		message: composeInternalMessage({ title: target.title, url: absoluteUrl(target.href) }, ""),
+		...shareMessage(request, "", mode),
 	}).catch(() => null);
 	const sent = res?.ok === true && res.data?.messageAccepted === true;
+	const linked = target.file !== undefined && mode === "link";
 	useToast().show(
-		sent ? { severity: "success", summary: `Sent to ${person.name}` } : {
-			severity: "danger",
-			summary: `Couldn't send to ${person.name}`,
-			detail: "Try again from Share.",
-		},
+		sent
+			? {
+				severity: "success",
+				summary: linked ? `Sent ${person.name} a link` : `Sent to ${person.name}`,
+				detail: linked ? "They can open it until you set it to Only you." : undefined,
+			}
+			: {
+				severity: "danger",
+				summary: `Couldn't send to ${person.name}`,
+				detail: res?.message ?? "Try again from Share.",
+			},
 	);
 }
 // #endregion

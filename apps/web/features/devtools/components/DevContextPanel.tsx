@@ -21,6 +21,7 @@ import {
 	DEV_DISPUTE_STATES,
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_EMBEDDINGS,
+	DEV_FILE_ACCESSES,
 	DEV_FUNDING_STATES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
@@ -545,6 +546,18 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.availabilityConflict}
 						disabled={!o.enabled}
 						onChange={(availabilityConflict) => patchDevContext({ availabilityConflict })}
+					/>
+				</Field>
+
+				<div class="dev-ctx__grouphead">Files</div>
+
+				<Field label="Access tab" hint="inspector standing">
+					<Segment
+						name="File access"
+						options={DEV_FILE_ACCESSES}
+						value={o.fileAccess}
+						disabled={!o.enabled}
+						onChange={(fileAccess) => patchDevContext({ fileAccess })}
 					/>
 				</Field>
 

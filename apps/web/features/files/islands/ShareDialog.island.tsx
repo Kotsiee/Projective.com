@@ -25,6 +25,7 @@ import {
 	type AssetVisibility,
 	shareHref,
 	type ShareLink,
+	visibilityChoices,
 	visibilityLabel,
 } from "../types/file-types.ts";
 import { VisibilityMark } from "../components/file-hub-glyphs.tsx";
@@ -129,9 +130,6 @@ export interface ShareDialogProps {
 // #endregion
 
 // #region Vocabulary
-/** The three scopes in reading order — least to most reachable, so the ladder reads as one. */
-const SCOPES: readonly AssetVisibility[] = ["private", "link", "public"];
-
 /**
  * What each scope actually MEANS for the reader, phrased as a consequence rather than a definition.
  *
@@ -143,6 +141,8 @@ function scopeNote(visibility: AssetVisibility, kind: ShareSubject["kind"]): str
 	switch (visibility) {
 		case "private":
 			return `Nobody else can open this ${noun} from a link.`;
+		case "restricted":
+			return "Only the people it's shared with in its Access tab, or sent as a link in a message, can open it. Choose Only you to pause their access.";
 		case "link":
 			return `Anyone holding the link can open it, without signing in. It is not listed anywhere.`;
 		case "public":
@@ -343,7 +343,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 	async function createLink(): Promise<void> {
 		if (!subject || busy.value) return;
 		const scope = visibility.value;
-		if (scope === "private") return;
+		if (scope !== "link" && scope !== "public") return;
 		busy.value = true;
 		error.value = null;
 		const res = await FilesService.createShare({
@@ -416,7 +416,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 	// #region Derived
 	const scope = visibility.value;
 	const hasLink = slug.value !== null;
-	const shared = scope !== "private";
+	const shared = scope === "link" || scope === "public";
 	const url = slug.value ? absoluteShareUrl(slug.value) : "";
 	const link = minted.value;
 	const noun = subject.kind === "folder" ? "folder" : "file";
@@ -455,7 +455,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 							{subject.canManage
 								? (
 									<div class="fsh-choices">
-										{SCOPES.map((value) => {
+										{visibilityChoices(subject.visibility, subject.kind).map((value) => {
 											const noteId = `${rootId}-scope-${value}`;
 											const chosen = scope === value;
 											return (
@@ -611,7 +611,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 												<Message
 													severity="warning"
 													text={`This ${noun} is set to "${
-														visibilityLabel("private")
+														visibilityLabel(scope)
 													}" — a link you shared earlier is revoked separately. Revoke it if it should stop working.`}
 												/>
 											)

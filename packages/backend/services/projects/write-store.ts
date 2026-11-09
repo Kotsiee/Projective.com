@@ -1945,7 +1945,10 @@ export function buildStubMessage(
 	now: number,
 	replyTo: MessageReply | null = null,
 ): ChatMessage {
-	const attachments: MessageAttachment[] = input.attachmentIds.map((id, index) => ({
+	const attachments: MessageAttachment[] = [
+		...input.attachmentIds.map((id) => ({ id, mode: "copy" as const })),
+		...input.linkedFileIds.map((id) => ({ id, mode: "link" as const })),
+	].map(({ id, mode }, index) => ({
 		id,
 		kind: "file",
 		url: `/api/files/${id}`,
@@ -1953,6 +1956,7 @@ export function buildStubMessage(
 		ext: "",
 		width: null,
 		height: null,
+		mode,
 	}));
 	return {
 		id: `sent-${input.channelId}-${ordinal}`,

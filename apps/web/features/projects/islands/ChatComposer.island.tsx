@@ -38,6 +38,7 @@ import {
 	releasePreview,
 	stageDeviceFiles,
 	stageLibraryAssets,
+	toggleAttachmentMode,
 	useFileDrop,
 } from "../components/composer/ComposerAttachments.tsx";
 import {
@@ -545,6 +546,7 @@ export default function ChatComposer(
 					attachments={attachments}
 					pasted={pasted}
 					onRemoveAttachment={removeAttachment}
+					onToggleMode={(id) => (attachments.value = toggleAttachmentMode(attachments.value, id))}
 					onRemovePasted={removePasted}
 				/>
 

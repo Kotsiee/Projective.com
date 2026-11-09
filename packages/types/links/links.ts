@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LinkScanStatus } from "../files/assets.ts";
+import { FileKind } from "../files/kinds.ts";
 import { isSlug } from "../slugs/slug.ts";
 import { CounterpartStandingSchema } from "../messaging/context.ts";
 
@@ -97,14 +98,19 @@ export type LinkTarget =
 	| { kind: "profile"; url: string; handle: string }
 	| { kind: "project"; url: string; slug: string }
 	| { kind: "listing"; url: string; id: string }
+	| { kind: "file"; url: string; id: string; share: string | null }
+	| { kind: "share"; url: string; slug: string }
 	| { kind: "internal"; url: string; path: string }
 	| { kind: "external"; url: string; host: string };
+
+const FILE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Classify a link against the hosts that ARE this platform (`internalHosts`, e.g. the serving
  * origin's host, plus {@link CANONICAL_HOSTS}). An internal link names a profile (`/@handle`), a
- * project workspace (`/projects/prj-…`) or an entity view (`/view/{id}`, `/@handle/view/{id}`);
- * anything else internal is a plain internal link and gets no card.
+ * project workspace (`/projects/prj-…`), an entity view (`/view/{id}`, `/@handle/view/{id}`), a file's
+ * inspector (`/inspect/{uuid}`, with its `?share=` slug) or a share link (`/share/{slug}`, Decision
+ * #401); anything else internal is a plain internal link and gets no card.
  */
 export function classifyLink(url: string, internalHosts: readonly string[]): LinkTarget {
 	let parsed: URL;
@@ -128,6 +134,10 @@ export function classifyLink(url: string, internalHosts: readonly string[]): Lin
 		return { kind: "project", url, slug: second };
 	}
 	if (first === "view" && second) return { kind: "listing", url, id: second };
+	if (first === "inspect" && second && FILE_ID_RE.test(second) && !third) {
+		return { kind: "file", url, id: second.toLowerCase(), share: parsed.searchParams.get("share") || null };
+	}
+	if (first === "share" && second && !third) return { kind: "share", url, slug: second };
 	return { kind: "internal", url, path: parsed.pathname };
 }
 // #endregion
@@ -212,12 +222,36 @@ export const ExternalLinkPreviewSchema = z.object({
 });
 export type ExternalLinkPreview = z.infer<typeof ExternalLinkPreviewSchema>;
 
+/**
+ * A file on the platform: `/inspect/{uuid}` or `/share/{slug}` (Decision #401), read under the
+ * reader's own access, so a file they cannot open has no card.
+ */
+export const FileLinkPreviewSchema = z.object({
+	kind: z.literal("file"),
+	url: z.string().max(LINK_URL_MAX),
+	/** The same-origin path the card opens. */
+	href: z.string().max(LINK_URL_MAX),
+	/** The stored file, when the reader reached it through its own access. */
+	assetId: z.string().uuid().nullable(),
+	name: z.string().min(1).max(200),
+	ext: z.string().max(12),
+	/** The file's kind, for its type tile. */
+	fileKind: FileKind,
+	/** The type in words ("Document", "Image"). */
+	typeLabel: z.string().max(60).nullable(),
+	sizeLabel: z.string().max(16).nullable(),
+	/** A same-origin picture of the file, or null for its type tile. */
+	thumbnail: z.string().max(600).nullable(),
+});
+export type FileLinkPreview = z.infer<typeof FileLinkPreviewSchema>;
+
 /** Any link preview. */
 export const LinkPreviewSchema = z.discriminatedUnion("kind", [
 	ProfileLinkPreviewSchema,
 	ProjectLinkPreviewSchema,
 	ListingLinkPreviewSchema,
 	ExternalLinkPreviewSchema,
+	FileLinkPreviewSchema,
 ]);
 export type LinkPreview = z.infer<typeof LinkPreviewSchema>;
 

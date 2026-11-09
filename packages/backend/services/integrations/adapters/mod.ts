@@ -18,6 +18,7 @@ export type {
 	StorageAdapterErrorCode,
 	StorageCredential,
 	StorageListing,
+	StorageThumbnail,
 } from "./StorageAdapter.ts";
 export { StorageAdapterError } from "./StorageAdapter.ts";
 export { s3ExternalIdOf } from "./aws.ts";

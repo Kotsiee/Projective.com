@@ -6,7 +6,7 @@
  * schemas, not transient client state.
  */
 
-import type { MessageDelta } from "@projective/types/projects";
+import type { MessageAttachmentMode, MessageDelta } from "@projective/types/projects";
 
 // #region Attachments
 /** How an attachment preview renders: the real image, a video thumbnail, or a file-type glyph. */
@@ -45,6 +45,16 @@ export interface DraftAttachment {
 	 * it is the asset's own thumbnail, which is not ours to revoke. `assetId` is the discriminator.
 	 */
 	previewUrl?: string;
+	/**
+	 * How the file rides the message (Decision #401): a `copy` the readers keep, or a `link` to the
+	 * sender's own file they can open until it is set back to private. Every card starts as a copy.
+	 */
+	mode: MessageAttachmentMode;
+	/**
+	 * Whether this card may switch to a link: the sender's own personal file (a device upload always
+	 * is). A file somebody else owns, or a team's, can only be sent as a copy.
+	 */
+	canLink: boolean;
 }
 // #endregion
 
@@ -154,16 +164,20 @@ export interface ComposerPayload {
 	delta: MessageDelta | null;
 	/** The message this draft replies to, or null. */
 	replyToId: string | null;
-	/** Staged DEVICE files, in the order they were queued — the only ones with bytes to upload. */
+	/** Staged DEVICE files sent as copies, in the order they were queued. */
 	files: File[];
+	/** Staged DEVICE files shared as a link once uploaded (Decision #401), in queue order. */
+	linkedFiles: File[];
 	/**
-	 * Assets picked from the viewer's existing library, by id, in pick order.
+	 * Assets picked from the viewer's existing library and sent as copies, by id, in pick order.
 	 *
 	 * Kept apart from {@link ComposerPayload.files} rather than merged into it because the two need
 	 * opposite things from the send path: a file is uploaded, an asset id is linked. Flattening them
 	 * would make "attach something I already have" cost a second copy and a second slice of quota.
 	 */
 	libraryAssetIds: string[];
+	/** Assets picked from the viewer's own library and shared as a link, by id, in pick order. */
+	linkedAssetIds: string[];
 	/** The recorded voice memo, or `null` when the draft is text/attachments. */
 	voice: VoicePayload | null;
 }

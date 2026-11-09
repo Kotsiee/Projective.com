@@ -1,4 +1,5 @@
 import { signal } from "@preact/signals";
+import type { ShareFile } from "./share-mode.ts";
 
 /**
  * share-request — the cross-island bridge behind the {@link ShareHost} modal.
@@ -14,6 +15,12 @@ import { signal } from "@preact/signals";
  * back on close, while the request survives the close so the exit transition still has its title.
  */
 
+/**
+ * Who the shared URL opens for (Decision #402): anyone it is passed to, or only the people who already
+ * have access — a private or restricted file's address, which the external apps cannot widen.
+ */
+export type ShareReach = "anyone" | "with-access";
+
 /** What is being shared. `url` is ABSOLUTE by the time it reaches the host. */
 export interface ShareRequest {
 	url: string;
@@ -23,6 +30,12 @@ export interface ShareRequest {
 	text?: string;
 	/** A short noun for the modal's header ("listing", "project", "profile"); defaults to "link". */
 	noun?: string;
+	/** The stored file being shared, which can be sent as a link or a copy (Decision #401). */
+	file?: ShareFile;
+	/** Who {@link url} opens for; `anyone` when absent. */
+	reach?: ShareReach;
+	/** Open the place where the sharer changes who has access, when the trigger has one. */
+	manageAccess?: () => void;
 }
 
 /** Whether the share modal is open — the boolean `Dialog` binds. */

@@ -63,6 +63,8 @@ interface AttachmentLinkRow {
 	id: string;
 	message_id: string;
 	attachment_id: string;
+	/** `copy` or `link` (Decision #401); anything else reads as a copy. */
+	mode?: string | null;
 	created_at: string;
 }
 
@@ -77,6 +79,7 @@ const FILE_COLUMNS = [
 	"link_url",
 	"external_web_url",
 	"metadata",
+	"size_bytes",
 ].join(", ");
 
 /** One `files.items` row as selected by {@link FILE_COLUMNS}. */
@@ -91,6 +94,8 @@ export interface FileRow {
 	external_web_url: string | null;
 	/** The upload-time extraction envelope; parsed by `metadataOf`. */
 	metadata: unknown;
+	/** `bigint`, so PostgREST may answer a string; absent on rows read before the column was asked. */
+	size_bytes?: number | string | null;
 }
 
 /** The polymorphic discriminators `comms.message_attachments.message_table` accepts. */
@@ -137,7 +142,7 @@ function mediaOf(
  * without a database.
  */
 export function toAttachment(
-	link: Pick<AttachmentLinkRow, "id">,
+	link: Pick<AttachmentLinkRow, "id" | "mode">,
 	file: FileRow,
 ): MessageAttachment {
 	const name = file.display_name?.trim() || file.original_name?.trim() || "";
@@ -158,7 +163,15 @@ export function toAttachment(
 		assetId: assetIdOf(file.id),
 		mimeType: mime ? clamp(mime, MIME_MAX) : null,
 		blurhash: media.blurhash,
+		mode: link.mode === "link" ? "link" : "copy",
+		sizeBytes: sizeOf(file.size_bytes),
 	};
+}
+
+/** A stored size as a whole byte count, or `null` when the column holds nothing usable. */
+function sizeOf(raw: FileRow["size_bytes"]): number | null {
+	const n = typeof raw === "string" ? Number(raw) : raw;
+	return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 // #endregion
 
@@ -200,7 +213,7 @@ export async function fetchMessageAttachments(
 
 	const { data, error } = await commsDb(actor)
 		.from("message_attachments")
-		.select("id, message_id, attachment_id, created_at")
+		.select("id, message_id, attachment_id, mode, created_at")
 		.eq("message_table", messageTable)
 		.in("message_id", messageIds as string[])
 		.order("created_at", { ascending: true })

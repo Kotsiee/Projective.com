@@ -6,7 +6,7 @@ import {
 	describeFile,
 	durationLabelOf,
 } from "@projective/types/files";
-import type { UserConnection } from "@projective/types/integrations";
+import { driveThumbnailHref, type UserConnection } from "@projective/types/integrations";
 import type { z } from "zod";
 import { clamp, clampOr } from "../../../core/text.ts";
 import { fmtDateTime, fmtDay, fmtSize, fmtTime } from "../../files/asset-row.ts";
@@ -16,6 +16,7 @@ import {
 	StorageAdapterError,
 	type StorageAdapterErrorCode,
 	type StorageNet,
+	type StorageThumbnail,
 } from "./StorageAdapter.ts";
 
 /**
@@ -214,6 +215,174 @@ export function configOf<S extends z.ZodType>(
 
 // #endregion
 
+// #region Thumbnails
+
+/** The most a preview picture may weigh. A larger answer is refused, never cut. */
+export const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+
+const THUMBNAIL_TIMEOUT_MS = 8_000;
+const THUMBNAIL_REDIRECTS = 2;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Where one provider's preview pictures may be read from, and what the first request carries. */
+export interface ThumbnailRead {
+	/** Whether a (lower-cased) host is one of the provider's own picture hosts; every hop is re-checked. */
+	allowHost: (hostname: string) => boolean;
+	/** Headers for the FIRST request only: a redirect hop never carries a credential. */
+	headers?: Record<string, string>;
+	/** The whole read's deadline, ms. */
+	timeoutMs?: number;
+}
+
+/** The raster type a picture's first bytes prove, or `null`. A declared `content-type` is never trusted. */
+export function sniffRaster(bytes: Uint8Array): StorageThumbnail["contentType"] | null {
+	const at = (offset: number, expected: number[]) =>
+		expected.every((b, i) => bytes[offset + i] === b);
+	if (at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
+	if (at(0, [0xff, 0xd8, 0xff])) return "image/jpeg";
+	if (
+		at(0, [0x47, 0x49, 0x46, 0x38]) && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61
+	) {
+		return "image/gif";
+	}
+	if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) return "image/webp";
+	return null;
+}
+
+function outsideHosts(provider: string): StorageAdapterError {
+	return new StorageAdapterError(
+		"provider_error",
+		`${provider} named a picture address outside its own hosts.`,
+	);
+}
+
+function tooLarge(provider: string): StorageAdapterError {
+	return new StorageAdapterError(
+		"provider_error",
+		`${provider}'s picture is larger than a preview.`,
+	);
+}
+
+function pictureAddress(raw: string, read: ThumbnailRead, provider: string): URL {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		throw outsideHosts(provider);
+	}
+	const plain = url.protocol === "https:" && !url.username && !url.password && url.port === "";
+	if (!plain || !read.allowHost(url.hostname.toLowerCase())) throw outsideHosts(provider);
+	return url;
+}
+
+async function readCapped(
+	response: Response,
+	max: number,
+	provider: string,
+): Promise<Uint8Array<ArrayBuffer>> {
+	const declared = Number(response.headers.get("content-length"));
+	if (Number.isFinite(declared) && declared > max) {
+		await response.body?.cancel();
+		throw tooLarge(provider);
+	}
+	const reader = response.body?.getReader();
+	if (!reader) return new Uint8Array(0);
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		total += value.byteLength;
+		if (total > max) {
+			await reader.cancel();
+			throw tooLarge(provider);
+		}
+		chunks.push(value);
+	}
+	const bytes = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return bytes;
+}
+
+/**
+ * Read a provider's preview picture on the server, so no reader's browser contacts the provider. Only
+ * the provider's own picture hosts are reached (every redirect hop re-checked, and stripped of the
+ * first request's headers); the body is capped while it streams; and it is kept only when its first
+ * bytes prove a PNG, JPEG, GIF or WebP. A picture the provider no longer has is `null`; every other
+ * refusal is a {@link StorageAdapterError} whose message names no address.
+ */
+export async function readThumbnail(
+	net: StorageNet,
+	provider: string,
+	raw: string,
+	read: ThumbnailRead,
+): Promise<StorageThumbnail | null> {
+	const signal = AbortSignal.timeout(read.timeoutMs ?? THUMBNAIL_TIMEOUT_MS);
+	const accept = "image/webp,image/png,image/jpeg,image/gif";
+	let url = pictureAddress(raw, read, provider);
+	let headers: Record<string, string> = { ...read.headers, accept };
+	for (let hop = 0;; hop++) {
+		let response: Response;
+		try {
+			response = await net.fetch(url.href, { headers, redirect: "manual", signal });
+		} catch (cause) {
+			throw new StorageAdapterError(
+				"provider_error",
+				`${provider}'s picture could not be reached.`,
+				{ cause },
+			);
+		}
+		if (REDIRECT_STATUSES.has(response.status)) {
+			await response.body?.cancel();
+			const location = response.headers.get("location");
+			if (!location || hop >= THUMBNAIL_REDIRECTS) {
+				throw new StorageAdapterError(
+					"provider_error",
+					`${provider}'s picture redirected too far.`,
+				);
+			}
+			url = pictureAddress(new URL(location, url).href, read, provider);
+			headers = { accept };
+			continue;
+		}
+		if (response.status === 404 || response.status === 410) {
+			await response.body?.cancel();
+			return null;
+		}
+		if (!response.ok) {
+			await response.body?.cancel();
+			throw new StorageAdapterError(
+				response.status === 429 ? "rate_limited" : "provider_error",
+				`${provider}'s picture answered ${response.status}.`,
+				{ status: response.status },
+			);
+		}
+		let bytes: Uint8Array<ArrayBuffer>;
+		try {
+			bytes = await readCapped(response, THUMBNAIL_MAX_BYTES, provider);
+		} catch (error) {
+			if (error instanceof StorageAdapterError) throw error;
+			throw new StorageAdapterError("provider_error", `${provider}'s picture could not be read.`, {
+				cause: error,
+			});
+		}
+		const contentType = sniffRaster(bytes);
+		if (!contentType) {
+			throw new StorageAdapterError(
+				"provider_error",
+				`${provider}'s picture is not a raster image.`,
+			);
+		}
+		return { bytes, contentType };
+	}
+}
+
+// #endregion
+
 // #region Projection
 
 /** One provider object, normalised just enough to be projected. */
@@ -234,6 +403,8 @@ export interface ConnectorObject {
 	width?: number | null;
 	height?: number | null;
 	durationMs?: number | null;
+	/** The provider says it can draw a preview picture of the object; the card then asks for one. */
+	hasThumbnail?: boolean;
 }
 
 /** One provider folder. */
@@ -302,6 +473,7 @@ export function connectorAsset(
 	const at = instantOf(object.modifiedAt, now);
 	const webUrl = whole(object.webUrl, 600);
 	const durationMs = object.durationMs ?? 0;
+	const etag = whole(object.etag, 120);
 	return {
 		id: connectorRowId(source, object.externalId),
 		assetId: null,
@@ -310,7 +482,9 @@ export function connectorAsset(
 		name,
 		ext: clamp(described.extension, 12),
 		url: webUrl ?? "#",
-		thumbnailUrl: null,
+		thumbnailUrl: object.hasThumbnail
+			? driveThumbnailHref(connection.id, object.externalId, etag)
+			: null,
 		sizeBytes,
 		sizeLabel: clamp(fmtSize(sizeBytes), 16),
 		width: positiveInt(object.width),
@@ -346,7 +520,7 @@ export function connectorAsset(
 			externalFileId: object.externalId,
 			externalParentId: object.parentId,
 			externalWebUrl: webUrl,
-			externalEtag: whole(object.etag, 120),
+			externalEtag: etag,
 		},
 		link: null,
 		shareSlug: null,

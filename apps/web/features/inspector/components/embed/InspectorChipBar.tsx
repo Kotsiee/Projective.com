@@ -10,6 +10,7 @@ import "../../styles/viewer-document.css";
 import type { JSX } from "preact";
 import type { InspectorHost } from "../../hooks/use-inspector-host.ts";
 import { InspectorActionsContext } from "../InspectorContext.ts";
+import { CanvasToolbar } from "../CanvasToolbar.tsx";
 
 /** Props for {@link InspectorChipBar}. */
 export interface InspectorChipBarProps {
@@ -17,17 +18,19 @@ export interface InspectorChipBarProps {
 }
 
 /**
- * Compact chips floating at the bottom of the canvas, for canvases that have them: image and SVG
- * (zoom out, level, zoom in, fit, rotate, reset, rule of thirds) and PDF (page n / N, zoom). Nothing
- * for other canvases or until the canvas is ready. Absolutely positioned: render it as a child of
- * `InspectorEmbedStage`, or inside another positioned box over the stage.
+ * The canvas's footer toolbar for an embedding host, once the canvas is ready: its compact chips
+ * where it has them (image and SVG zoom, rotate and thirds; PDF pages and zoom; slides), then
+ * Fullscreen. It hides after a moment of pointer stillness over the host's stage box and returns on
+ * the next movement; the theater carries its own copy, so nothing renders while it is open.
+ * Absolutely positioned: render it as a child of `InspectorEmbedStage`, or inside another positioned
+ * box over the stage.
  */
 export function InspectorChipBar({ host }: InspectorChipBarProps): JSX.Element | null {
-	const Chips = host.viewer.Chips;
-	if (!Chips || host.shell.status.value !== "ready") return null;
+	const { shell } = host;
+	if (shell.status.value !== "ready" || shell.fullscreen.value) return null;
 	return (
 		<InspectorActionsContext.Provider value={host.actions}>
-			<Chips />
+			<CanvasToolbar shell={shell} viewer={host.viewer} />
 		</InspectorActionsContext.Provider>
 	);
 }

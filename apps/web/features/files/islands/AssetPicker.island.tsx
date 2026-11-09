@@ -82,6 +82,7 @@ import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
 import { type AssetActivation, AssetCard } from "../components/AssetCard.tsx";
 import { AssetFolderCard } from "../components/AssetFolderCard.tsx";
 import { AssetTree, ROOT_KEY } from "../components/AssetTree.tsx";
+import { FallbackPicture } from "../components/FallbackPicture.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
 import { QuotaRing } from "../components/QuotaRing.tsx";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
@@ -2214,10 +2215,13 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 											{pickerSelection.value.map((asset) => (
 												<li class="apk-tray__item" key={asset.id}>
 													<span class="apk-tray__thumb" aria-hidden="true">
-														{asset.thumbnailUrl &&
-																(asset.kind === "image" || asset.kind === "video")
-															? <img src={asset.thumbnailUrl} alt="" loading="lazy" />
-															: <FileTypeIcon file={asset} size={16} />}
+														<FallbackPicture
+															src={asset.kind === "image" || asset.kind === "video"
+																? asset.thumbnailUrl
+																: null}
+															loading="lazy"
+															fallback={<FileTypeIcon file={asset} size={16} />}
+														/>
 													</span>
 													<Tooltip content={asset.name} whenTruncated>
 														<span class="apk-tray__name">{asset.name}</span>

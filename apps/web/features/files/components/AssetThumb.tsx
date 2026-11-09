@@ -6,6 +6,7 @@ import "@web/features/projects/styles/file-card.css";
 import { peekThumb, type ThumbResult } from "../core/thumbs/thumb-cache.ts";
 import { type ThumbPlan, wavePath } from "../core/thumbs/thumb-plan.ts";
 import { loadThumb } from "../core/thumbs/thumb-store.ts";
+import { usePictureFallback } from "../hooks/use-picture-fallback.ts";
 import type { AssetItem } from "../types/file-types.ts";
 
 // #region Near the viewport
@@ -41,7 +42,8 @@ export interface AssetThumbProps {
  * AssetThumb — a card's lazy preview. The file's tile paints at once and stays until something better
  * is ready, so a card is never blank and never changes size. Work starts when the card comes near the
  * viewport and is cancelled if it leaves first: a card the person scrolled past never costs a byte,
- * and everything on screen shares one queue and one cache (`core/thumbs/`).
+ * and everything on screen shares one queue and one cache (`core/thumbs/`). A picture that fails to
+ * load leaves the card exactly as if it had none, and stays that way for the page.
  *
  * Decorative: the file's name and type are the card's own label, so nothing here is announced.
  */
@@ -75,13 +77,25 @@ export function AssetThumb({ asset, plan }: AssetThumbProps): JSX.Element {
 	}, [job?.key]);
 
 	const shown = result.value;
-	const picture = plan.kind === "picture" ? plan.src : shown?.type === "image" ? shown.url : null;
+	const picture = usePictureFallback(
+		plan.kind === "picture" ? plan.src : shown?.type === "image" ? shown.url : null,
+	);
 	const lines = shown?.type === "lines" ? shown.lines : null;
 
 	return (
 		<span ref={host} class="fx-thumb" aria-hidden="true">
-			{picture
-				? <img class="fx-thumb__img" src={picture} alt="" decoding="async" draggable={false} />
+			{picture.src
+				? (
+					<img
+						ref={picture.ref}
+						class="fx-thumb__img"
+						src={picture.src}
+						alt=""
+						decoding="async"
+						draggable={false}
+						onError={picture.onError}
+					/>
+				)
 				: null}
 			{lines
 				? (
@@ -106,7 +120,7 @@ export function AssetThumb({ asset, plan }: AssetThumbProps): JSX.Element {
 					</svg>
 				)
 				: null}
-			{picture || lines || plan.kind === "wave"
+			{picture.src || lines || plan.kind === "wave"
 				? <FileTypeIcon file={asset} size={22} class="fx-card__family" />
 				: (
 					<span class="fx-card__glyph">

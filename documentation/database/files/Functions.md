@@ -17,7 +17,7 @@ tables, the item row itself, `security.platform_params`, the `finance` plan and 
 (`get_storage_quota`), and the server-written `storage_usage` / `download_events` / `share_links`
 counters (`fn_recompute_usage`, `fn_record_download`).
 
-## The thirteen
+## The functions
 
 | Function                                             | Kind       | Definer | Reachable by                    | Purpose                                                     |
 | :--------------------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
@@ -38,6 +38,13 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `fn_owns_library(owner_kind, uuid)`                  | `STABLE`   | —       | `PUBLIC` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
 | `get_storage_quota(owner_kind, uuid)`                | `STABLE`   | ✅      | `authenticated` · svc           | One principal's allowance, for that principal only.         |
 | `fn_record_download(…)`                              | `VOLATILE` | ✅      | `service_role`                  | The download ledger's only writer.                          |
+| `fn_item_grant_role(uuid) → grant_role`              | `STABLE`   | ✅      | definers only (`REVOKE`d)       | The caller's strongest live grant on a file (Decision #402). |
+| `fn_entity_admin(owner_kind, uuid) → boolean`        | `STABLE`   | ✅      | definers only (`REVOKE`d)       | Is the caller an owner or admin of that entity?             |
+| `fn_grantee_card(grantee_kind, uuid) → jsonb`        | `STABLE`   | ✅      | definers only (`REVOKE`d)       | A grantee's name, detail line and public picture.           |
+| `get_item_access(uuid) → jsonb`                      | `STABLE`   | ✅      | `authenticated` · svc           | The Access tab's read.                                      |
+| `set_item_access(uuid, file_visibility, boolean, jsonb)` | `VOLATILE` | ✅  | `authenticated` · svc           | The Access tab's one save: tier, member switch, grants.     |
+| `list_access_targets(text, integer) → jsonb`         | `STABLE`   | ✅      | `authenticated` · svc           | The caller's teams, businesses and projects to grant to.    |
+| `fn_storage_object_withheld(text, text) → boolean`   | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | Is this object a file turned away from the caller? (the `workspace` storage policy calls it) |
 
 Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
 the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
@@ -120,25 +127,36 @@ the other (the `scheduling` refusal-function precedent).
 | :---------------------------------------------------------------------------------- |
 | `visibility = 'public'`                                                             |
 | `owner_user_id = auth.uid()`                                                        |
-| `owner_type = 'team'` and `org.is_active_team_member(owner_entity_id)`              |
-| `owner_type = 'business'` and `org.is_active_business_member(owner_entity_id)`      |
-| `owner_type = 'enterprise'` and `org.is_enterprise_member(owner_entity_id)`     |
+| `owner_type = 'team'` and `org.is_active_team_member(owner_entity_id)`, while `member_access` is on — with it off, only `files.fn_entity_admin` (an owner or admin) (Decision #402) |
+| `owner_type = 'business'` and `org.is_active_business_member(owner_entity_id)`, on the same terms |
+| `owner_type = 'enterprise'` and `org.is_enterprise_member(owner_entity_id)`, on the same terms |
 | `bucket_id = 'project'`, `source = 'supabase'` and `projects.has_project_access({project_id} path anchor)` (stored bytes only — a link or mount anchors nothing, SEC G9) |
-| attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
+| attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits — a `link`-mode row only while the item is not `private` (Decision #401) |
+| a live `files.item_grants` row reaches the caller (`files.fn_item_grant_role`) while the item is not `private` (Decision #402) — the one arm entity and project rows share with personal ones |
 | filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
 | `purpose = 'contact'` (a `/contact` attachment, Decision #276), linked to a request (`ops.contact_request_attachments`), and the reader is `security.is_admin()` — a file its sender removed or never sent is not readable |
 
 **The arms run top to bottom, and two of them end the evaluation.** An entity-owned row (`team` /
-`business` / `enterprise`) returns the membership answer itself, and a row in the `project` bucket
-returns `has_project_access` itself — neither falls through. So the message, dispute-evidence and
-contact arms only ever decide `owner_type = 'user'` rows outside the `project` bucket, and the
-project arm only ever decides user-owned rows.
+`business` / `enterprise`) answers with its membership (on the `member_access` terms above) or else a
+live grant, and a row in the `project` bucket answers with `has_project_access` or else a live grant —
+neither falls through to the message arm. So the message, dispute-evidence and contact arms only ever
+decide `owner_type = 'user'` rows outside the `project` bucket, and an entity's or a project's file
+reaches someone outside only through a grant (Decision #402): a project's people always keep it,
+because a project's files are the engagement's record.
 
 The message arm (Decision #132) is what lets the person a chat file was SENT to read it: a chat
 upload lands in the sender's own `personal` library, private, so no other arm admits the recipient
 — the link row was visible and the file behind it was not. It cannot be used to reach somebody
 else's asset, because the INSERT policy on `comms.message_attachments` requires the linker to
 pass `fn_can_read` for the file already.
+
+**Copies and link shares (Decision #401).** A row's `mode` says how the file rode the message. A
+`copy` grants the read for as long as the message is readable, as every attachment always has. A
+`link` shares the sender's own file in place and grants it only while `visibility <> 'private'`:
+sending one raises a private file to `restricted` (`files/link-shares.ts`, under the sender's JWT and
+the owner-only UPDATE policy), and the owner setting it back to `private` stops every link share at
+once. No UPDATE policy exists on `comms.message_attachments`, so a stored `link` row can never be
+rewritten into a permanent `copy`.
 
 The dispute-evidence arm (Decision #212) is the same shape: evidence is uploaded into its sender's
 private library, and the counterparty and the auditor must open it. Filing cannot widen it —
@@ -153,6 +171,59 @@ revoked / expired / exhausted predicate, and only then serves the bytes.
 
 A soft-deleted row (`deleted_at IS NOT NULL`) is never readable. An unparseable project path anchor
 returns `false` — a malformed anchor is not an authorization.
+
+---
+
+## 👥 Who else may open a file (Decision #402)
+
+`files.fn_item_grant_role(p_item_id)` · `STABLE` · `SECURITY DEFINER`. The role of the strongest live
+grant that reaches the caller — named to them, to a team or business they are an active member of, or
+to a project `projects.has_project_access` admits them to — or `NULL`. It does not read the tier:
+`fn_can_read` and the two RPCs below count a grant only while the file is not `private`.
+
+`files.fn_entity_admin(p_owner_type, p_entity_id)` · `STABLE` · `SECURITY DEFINER`. An active `owner`
+or `admin` of the team or business (`role`, kept in step with `role_id` by `org.fn_member_role_sync`),
+or `org.is_enterprise_member(…, 'admin')`. They read every file of the library whatever its
+`member_access`.
+
+`files.get_item_access(p_item_id) → jsonb` · `STABLE` · `SECURITY DEFINER`. For anyone who can read
+the file: its `visibility`, the caller's `standing` (`owner` · `editor` · `viewer`) and its `container`
+(`personal`; `entity` with its name and `memberAccess`; `project` with its title). The live grants
+with their cards (`files.fn_grantee_card`) and the `ownerId` (so a picker never offers the owner) go to
+the owner and editors only, and `messageShares` (the
+`link`-mode `comms.message_attachments` rows) to the owner only. `PF404` for a file the caller cannot
+read. The service adds the owner's live share link.
+
+`files.set_item_access(p_item_id, p_visibility, p_member_access, p_grants) → void` · `VOLATILE` ·
+`SECURITY DEFINER`. One save, one transaction. A `NULL` argument is left alone; `p_grants` is the
+complete list afterwards (≤ 50), so a live grant missing from it is revoked by stamping
+`revoked_at` / `revoked_by`, and a role change updates the live row in place. The rules, checked here
+because the function writes past RLS:
+
+| Change                         | Who                                   | Refused with |
+| :----------------------------- | :------------------------------------ | :----------- |
+| `visibility`, `member_access`  | the owner (`owner_user_id`)           | `42501`      |
+| the grants                     | the owner, or an editor while the file is not `private` | `42501` |
+| `member_access` on a personal file | nobody                            | `22023`      |
+| a NEW grant to a person        | they exist in `org.users_public` and are not the owner | `22023` |
+| a NEW grant to a team / business / project | the caller is an active member / has project access | `22023` |
+| a duplicate grantee, a list over 50 | nobody                           | `22023`      |
+| a malformed kind, role or id   | nobody                                | `22P02`      |
+
+A grant kept from before is not re-checked, so an editor can keep the owner's grant to a team the
+editor is not in. Only a stored upload (`source = 'supabase'`) takes grants, and an archived entity's
+library is refused (`42501`) as the guard trigger would, since a definer write does not fire it.
+
+`files.list_access_targets(p_query, p_limit) → jsonb` · `STABLE` · `SECURITY DEFINER`. The caller's
+active, non-archived teams and businesses and the non-archived projects they are on (gathered from
+ownership, participation, live stage assignments and cohort seats, each confirmed through
+`projects.has_project_access`), with their cards, narrowed by a case-insensitive substring and capped
+at 50. People come from the messaging contact search instead.
+
+`files.fn_storage_object_withheld(p_bucket, p_name)` · `STABLE` · `SECURITY DEFINER`. True when the
+object is the original or a WebP tier of a file with `member_access` off that `fn_can_read` does not
+admit the caller to. The `workspace` storage policy refuses such an object; a definer because the row
+it looks for is the one the caller's RLS hides.
 
 ---
 

@@ -7,6 +7,7 @@ import {
 	PANEL_TABS,
 	panelTab,
 	restorePanelTab,
+	tabWithin,
 } from "@features/inspector/core/panel-tab.ts";
 import { Button, ResizeFrame } from "@projective/ui/fields";
 import { useId } from "@projective/ui/hooks";
@@ -126,7 +127,7 @@ export function PreviewAside(props: PreviewAsideProps): JSX.Element {
 		? <InspectorEmbedControls key={host.shell.asset.id} host={host} />
 		: null;
 	const panel = `${ids}-panel`;
-	const tab = panelTab.value;
+	const tab = tabWithin(panelTab.value, PANEL_TABS);
 	useEffect(() => restorePanelTab(), []);
 	return (
 		<div class="fx-aside">

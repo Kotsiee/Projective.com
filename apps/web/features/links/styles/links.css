@@ -112,3 +112,90 @@
 .msg-linkcard[data-state="flagged"]:hover .msg-linkcard__title {
 	text-decoration: none;
 }
+
+.file-linkcard {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: min(22rem, 100%);
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+	color: var(--on-surface);
+	text-decoration: none;
+	background: var(--surface-1);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.file-linkcard:hover {
+	background: var(--surface-3);
+	border-color: var(--hairline-strong-color);
+}
+.file-linkcard:active {
+	transform: scale(var(--btn-press-scale));
+}
+.file-linkcard:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.file-linkcard__media {
+	flex: none;
+	display: grid;
+	place-items: center;
+	inline-size: 3.5rem;
+	block-size: 3.5rem;
+	overflow: hidden;
+	border-radius: var(--radius-base);
+	background: var(--surface-3);
+}
+.file-linkcard__img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+.file-linkcard__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+.file-linkcard__name,
+.file-linkcard__meta,
+.file-linkcard__url {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: var(--leading-tight);
+}
+.file-linkcard__name {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+.file-linkcard__meta {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.file-linkcard__url {
+	margin-block-start: var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+	.file-linkcard {
+		transition: none;
+	}
+	.file-linkcard:active {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .file-linkcard {
+	transition: none;
+}
+:root[data-motion="reduced"] .file-linkcard:active {
+	transform: none;
+}

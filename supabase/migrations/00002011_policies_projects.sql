@@ -778,6 +778,25 @@ WITH
 -- The predicate is unchanged. Only the reachability model is: you must present the slug, rather
 -- than being handed the list.
 
+-- --- files.item_grants — who else may open a file (Decision #402) ---
+
+-- The file's owner reads every grant on it, and a person reads the grant that names them. A team-,
+-- business- or project-wide grant names nobody, so its members learn of it only through the file they
+-- can now open; editors read the list through files.get_item_access, which decides they may. NO
+-- client write policy anywhere: files.set_item_access is the only writer, because who may grant to
+-- which workspace is a rule a row-level check cannot express.
+CREATE POLICY "Owners and named people can read file grants" ON files.item_grants FOR
+SELECT TO authenticated USING (
+        (grantee_kind = 'user'::files.grantee_kind AND grantee_id = auth.uid ())
+        OR EXISTS (
+            SELECT 1
+            FROM files.items i
+            WHERE
+                i.id = item_grants.item_id
+                AND i.owner_user_id = auth.uid ()
+        )
+    );
+
 -- --- files.download_events — the audit trail ---
 
 -- Read-own only, and NO client INSERT policy anywhere in this file. That absence is the point:

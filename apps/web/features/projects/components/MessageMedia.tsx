@@ -9,6 +9,8 @@ import {
 } from "../core/chat-attachments.ts";
 import { FileTypeGlyph } from "./composer-glyphs.tsx";
 import { PlayIcon } from "./chat-glyphs.tsx";
+import { FileLinkCard } from "@features/links/components/FileLinkCard.tsx";
+import { fileCardMeta } from "@features/links/core/file-link-card.ts";
 
 /**
  * MessageMedia — the attachment layout for a chat bubble (task §4):
@@ -208,7 +210,58 @@ function GridSquare(
 }
 // #endregion
 
+// #region Link shares
+/** One file shared as a link (Decision #401): a card that opens the file, not a copy's tile. */
+function LinkShare(
+	{ att, onOpen }: { att: MessageAttachment; onOpen?: (trigger: HTMLElement) => void },
+): JSX.Element | null {
+	const href = attachmentOpenHref(att);
+	if (!href) return null;
+	return (
+		<FileLinkCard
+			href={href}
+			name={att.name}
+			file={{ ext: att.ext, kind: att.kind }}
+			meta={fileCardMeta({ ext: att.ext, sizeBytes: att.sizeBytes ?? null })}
+			thumbnail={att.kind === "image" ? attachmentPicture(att).src : null}
+			onOpen={onOpen}
+		/>
+	);
+}
+// #endregion
+
+/**
+ * The bubble's files: link shares as cards, then the copies in the media layout. Each keeps its index
+ * in `attachments`, which is the order the preview modal pages through.
+ */
 export function MessageMedia({ attachments, onOpen }: MessageMediaProps): JSX.Element | null {
+	if (attachments.length === 0) return null;
+	const indexed = attachments.map((att, index) => ({ att, index }));
+	const links = indexed.filter(({ att }) => att.mode === "link");
+	const copies = indexed.filter(({ att }) => att.mode !== "link");
+	const opener = (index: number) =>
+		onOpen ? (trigger: HTMLElement) => onOpen(index, trigger) : undefined;
+	return (
+		<>
+			{links.length > 0
+				? (
+					<div class="msg-media msg-media--links" role="group" aria-label="Shared files">
+						{links.map(({ att, index }) => <LinkShare key={att.id} att={att} onOpen={opener(index)} />)}
+					</div>
+				)
+				: null}
+			<MediaLayout
+				attachments={copies.map(({ att }) => att)}
+				onOpen={onOpen
+					? (position, trigger) => onOpen(copies[position].index, trigger)
+					: undefined}
+			/>
+		</>
+	);
+}
+
+/** The copies' layout: one picture large, a row of a few, or the grid of squares. */
+function MediaLayout({ attachments, onOpen }: MessageMediaProps): JSX.Element | null {
 	if (attachments.length === 0) return null;
 
 	const opener = (index: number) =>

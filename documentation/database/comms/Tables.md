@@ -518,6 +518,7 @@ Poly-morphic link table connecting messages to `files.items`.
 | `message_table` | text        | `comms.project_messages` or `comms.dm_messages` (CHECK).                  |
 | `message_id`    | uuid        | ID from the specified message table (no FK — two possible parents).       |
 | `attachment_id` | uuid        | FK → `files.items.id` — the asset the proxy and the inspector address.    |
+| `mode`          | `comms.attachment_mode` | `copy` (default) · `link` (Decision #401). A `link` row is the sender's own file shared in place: drawn as a link card, readable through `files.fn_can_read` only while the file is not `private`. No UPDATE policy, so a mode is never rewritten. |
 | `created_at`    | timestamptz | When the link was written.                                                |
 
 Indexes (`00004006`): `idx_message_attachments_message (message_table, message_id)` — the files of a

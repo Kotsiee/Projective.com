@@ -11,12 +11,14 @@ import {
 	orNull,
 	pageSize,
 	providerJson,
+	readThumbnail,
 } from "./adapter-support.ts";
 import type {
 	DrivePath,
 	StorageAdapter,
 	StorageAdapterContext,
 	StorageListing,
+	StorageThumbnail,
 } from "./StorageAdapter.ts";
 
 /**
@@ -32,7 +34,8 @@ import type {
  *   Doc is a Document) and download as their PDF export.
  * - **Download** — Drive mints no pre-signed URL for a private file, so this hands off `webContentLink`,
  *   which downloads under the viewer's own Google session and carries no credential.
- * - **Thumbnail** — `thumbnailLink`, short-lived and credential-bearing, so read per call only.
+ * - **Thumbnail** — `thumbnailLink`, short-lived and credential-bearing, so read per call only; its
+ *   bytes are read here, from Google's own picture hosts, and reach the page through this origin.
  */
 
 const API = "https://www.googleapis.com/drive/v3";
@@ -40,9 +43,36 @@ const PROVIDER = "Google Drive";
 const FOLDER = "application/vnd.google-apps.folder";
 const SHORTCUT = "application/vnd.google-apps.shortcut";
 const NATIVE = "application/vnd.google-apps.";
-const FILE_FIELDS = "id,name,mimeType,size,parents,modifiedTime,webViewLink,version," +
+const FILE_FIELDS = "id,name,mimeType,size,parents,modifiedTime,webViewLink,version,hasThumbnail," +
 	"imageMediaMetadata(width,height),videoMediaMetadata(width,height,durationMillis)," +
 	"shortcutDetails(targetId,targetMimeType)";
+
+/** The long edge a card's picture is asked for: an 18rem card on a 2x screen, near enough. */
+const THUMBNAIL_EDGE = 512;
+
+/**
+ * Google's own picture hosts, where a `thumbnailLink` points: the numbered `lhN` image servers, and
+ * the Docs and Drive thumbnail endpoints. Nothing else under `googleusercontent.com`, whose other
+ * subdomains serve content Google's users wrote.
+ */
+function isGooglePictureHost(hostname: string): boolean {
+	return /^lh\d{1,2}\.googleusercontent\.com$/.test(hostname) ||
+		hostname === "docs.google.com" || hostname === "drive.google.com";
+}
+
+/** A `thumbnailLink` asked for at {@link THUMBNAIL_EDGE}: Google sizes by an `=sN` suffix or `sz=sN`. */
+function sizedThumbnail(link: string): string {
+	if (/=s\d+$/.test(link)) return link.replace(/=s\d+$/, `=s${THUMBNAIL_EDGE}`);
+	try {
+		const url = new URL(link);
+		if (/^s\d+$/.test(url.searchParams.get("sz") ?? "")) {
+			url.searchParams.set("sz", `s${THUMBNAIL_EDGE}`);
+		}
+		return url.href;
+	} catch {
+		return link;
+	}
+}
 
 /** The export family each Google-native type classifies as. */
 const NATIVE_AS: Readonly<Record<string, string>> = {
@@ -119,7 +149,15 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 			width: media?.width ?? null,
 			height: media?.height ?? null,
 			durationMs: Number(file.videoMediaMetadata?.durationMillis ?? 0),
+			hasThumbnail: file.hasThumbnail === true,
 		}, now);
+	}
+
+	async function thumbnailLink(id: string): Promise<string | null> {
+		const file = await orNull(get<DriveFile>(`/files/${encodeURIComponent(id)}`, {
+			fields: "hasThumbnail,thumbnailLink",
+		}));
+		return file?.hasThumbnail && file.thumbnailLink ? file.thumbnailLink : null;
 	}
 
 	return {
@@ -189,11 +227,15 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 			return file.webContentLink ?? null;
 		},
 
-		async thumbnailUrl(id: string): Promise<string | null> {
-			const file = await orNull(get<DriveFile>(`/files/${encodeURIComponent(id)}`, {
-				fields: "hasThumbnail,thumbnailLink",
-			}));
-			return file?.hasThumbnail && file.thumbnailLink ? file.thumbnailLink : null;
+		thumbnailUrl: thumbnailLink,
+
+		async thumbnail(id: string): Promise<StorageThumbnail | null> {
+			const link = await thumbnailLink(id);
+			if (!link) return null;
+			return await readThumbnail(net, PROVIDER, sizedThumbnail(link), {
+				allowHost: isGooglePictureHost,
+				headers: { authorization: `Bearer ${token}` },
+			});
 		},
 	};
 }

@@ -3,10 +3,13 @@ import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { Logo } from "@web/components/Logo.tsx";
+import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
+import { requestShare } from "@features/share/core/share-request.ts";
 import type { InspectorShell } from "../core/inspector-shell.ts";
 import { metaLine } from "../core/inspector-model.ts";
 import { useInspectorActions } from "./InspectorContext.ts";
 import { ToolButton } from "./controls/ToolButton.tsx";
+import { inspectShareTarget } from "./inspect-share.ts";
 
 /** Props for {@link InspectorBar}. */
 export interface InspectorBarProps {
@@ -17,12 +20,17 @@ export interface InspectorBarProps {
 	panelId: string;
 }
 
-/** The inspector's only chrome: home mark, file name and facts, then download, fullscreen, panel. */
+/**
+ * The inspector's only chrome: home mark, file name and facts, then share, download, fullscreen, the
+ * light/dark switch and the panel. Share opens the one share modal on the address the file's latest
+ * reach allows (Decision #402).
+ */
 export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JSX.Element {
 	const { asset } = shell;
 	const actions = useInspectorActions();
 	const fullscreen = shell.fullscreen.value;
 	const panelOpen = shell.panelOpen.value;
+	const share = () => requestShare({ ...inspectShareTarget(shell), noun: "file" });
 
 	return (
 		<header class="ins-bar">
@@ -39,16 +47,31 @@ export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JS
 			</div>
 			<div class="ins-bar__end">
 				{compact
-					? <ToolButton icon="download" label="Download" onClick={actions.download} />
+					? (
+						<>
+							<ToolButton icon="share" label="Share" onClick={share} />
+							<ToolButton icon="download" label="Download" onClick={actions.download} />
+						</>
+					)
 					: (
-						<Button
-							size="sm"
-							severity="neutral"
-							variant="outlined"
-							icon={<Icon name="download" size="sm" />}
-							label="Download"
-							onClick={actions.download}
-						/>
+						<>
+							<Button
+								size="sm"
+								severity="neutral"
+								variant="outlined"
+								icon={<Icon name="share" size="sm" />}
+								label="Share"
+								onClick={share}
+							/>
+							<Button
+								size="sm"
+								severity="neutral"
+								variant="outlined"
+								icon={<Icon name="download" size="sm" />}
+								label="Download"
+								onClick={actions.download}
+							/>
+						</>
 					)}
 				<ToolButton
 					icon={fullscreen ? "collapse" : "expand"}
@@ -56,6 +79,7 @@ export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JS
 					shortcut="F"
 					onClick={() => shell.toggleFullscreen()}
 				/>
+				<ThemeToggle />
 				<Tooltip content={panelOpen ? "Hide details (I)" : "Show details (I)"}>
 					<Button
 						iconOnly

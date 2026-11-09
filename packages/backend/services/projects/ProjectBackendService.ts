@@ -1953,6 +1953,7 @@ export class ProjectBackendService {
 					delta: null,
 					replyToId: null,
 					attachmentIds: [],
+					linkedFileIds: [],
 					audio: null,
 				},
 				actor,

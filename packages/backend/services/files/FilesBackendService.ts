@@ -1,4 +1,7 @@
 import type {
+	AccessTargetList,
+	ItemAccess,
+	SetItemAccess,
 	AssetFolder,
 	AssetItem,
 	AssetListPage,
@@ -68,6 +71,7 @@ import { completeUpload, initUpload } from "./live-uploads.ts";
 import { objectUrlFor } from "./live-objects.ts";
 import { childNodesOf, listElsewhere } from "./live-locations.ts";
 import { inspectAssetFor } from "./live-inspect.ts";
+import { readAccessTargets, readItemAccess, saveItemAccess } from "./live-access.ts";
 
 /**
  * FilesBackendService — the FAT half of the `/files` asset hub (thin routes / fat services, root
@@ -335,6 +339,27 @@ export class FilesBackendService {
 	/** Revoke a link — the same answer whether it existed, was someone else's, or was already closed. */
 	static revokeShare(input: RevokeShare, actor: ReadActor): Promise<Result<{ revoked: boolean }>> {
 		return signedIn("share-revoke", actor, async (a) => toResult(await revokeShare(a, input)));
+	}
+
+	/**
+	 * Who may open one file, as the caller may know it (Decision #402): its tier, its library, the
+	 * caller's standing, and — for its owner and editors — its grants. Every refusal to read is a 404.
+	 */
+	static access(id: string, actor: ReadActor): Promise<Result<ItemAccess>> {
+		return signedIn("access", actor, async (a) => toResult(await readItemAccess(a, id)));
+	}
+
+	/**
+	 * Save a file's tier, its library's member switch and its whole grant list in one transaction.
+	 * The tier and the switch are the owner's; an editor may change the grants only.
+	 */
+	static setAccess(input: SetItemAccess, actor: ReadActor): Promise<Result<ItemAccess>> {
+		return signedIn("access-save", actor, async (a) => toResult(await saveItemAccess(a, input)));
+	}
+
+	/** The teams, businesses and projects the caller may grant a file to: the ones they belong to. */
+	static accessTargets(query: string | null, actor: ReadActor): Promise<Result<AccessTargetList>> {
+		return signedIn("access-targets", actor, async (a) => toResult(await readAccessTargets(a, query)));
 	}
 
 	/**

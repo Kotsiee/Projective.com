@@ -48,12 +48,20 @@ export interface StorageListing {
 	nextCursor: string | null;
 }
 
+/** A raster picture's bytes, read by the server. Never SVG or markup: only these four are sniffed. */
+export interface StorageThumbnail {
+	bytes: Uint8Array<ArrayBuffer>;
+	contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+}
+
 /**
  * A storage connector.
  *
  * `downloadUrl` and `thumbnailUrl` return **short-lived, provider-minted** URLs and are deliberately
  * async and per-call: caching one on the asset row would persist a credential-bearing URL into a
  * projection the client reads, and a signed URL that outlives its purpose is a leaked capability.
+ * `thumbnail` reads that URL's bytes on the server, so a card's picture reaches the page through this
+ * origin and no reader's browser contacts the provider.
  */
 export interface StorageAdapter {
 	/** The `integrations.providers.slug` this adapter serves. */
@@ -73,6 +81,11 @@ export interface StorageAdapter {
 	downloadUrl(id: string): Promise<string | null>;
 	/** A short-lived thumbnail URL, or `null` when the object has no visual preview. */
 	thumbnailUrl(id: string): Promise<string | null>;
+	/**
+	 * The object's preview picture, fetched server-side from the provider's own picture hosts only, or
+	 * `null` when it has none. Optional: only a provider whose picture hosts are known implements it.
+	 */
+	thumbnail?(id: string): Promise<StorageThumbnail | null>;
 }
 
 /**

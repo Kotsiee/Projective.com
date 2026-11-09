@@ -807,14 +807,17 @@ export class MessagingBackendService {
 
 		let messageAccepted = false;
 		const text = (input.message ?? "").trim();
-		if (text.length > 0) {
+		const attachmentIds = input.attachmentIds ?? [];
+		const linkedFileIds = input.linkedFileIds ?? [];
+		if (text.length > 0 || attachmentIds.length + linkedFileIds.length > 0) {
 			const sent = await MessagingBackendService.sendMessage(
 				{
 					conversationId: summary.id,
 					text,
 					delta: null,
 					replyToId: null,
-					attachmentIds: [],
+					attachmentIds,
+					linkedFileIds,
 					audio: null,
 				},
 				actor,

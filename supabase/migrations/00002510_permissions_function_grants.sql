@@ -1619,6 +1619,38 @@ EXECUTE ON FUNCTION files.fn_record_download (
     text
 ) TO service_role;
 
+-- Who else may open a file (Decision #402). The three doors authorise the caller inside: the Access
+-- tab's read, its one save, and the picker's teams, businesses and projects.
+REVOKE ALL ON FUNCTION files.get_item_access (uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION files.get_item_access (uuid) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION files.set_item_access (uuid, files.file_visibility, boolean, jsonb)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION files.set_item_access (uuid, files.file_visibility, boolean, jsonb) TO authenticated,
+service_role;
+
+REVOKE ALL ON FUNCTION files.list_access_targets (text, integer) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION files.list_access_targets (text, integer) TO authenticated, service_role;
+
+-- Internal: called only from inside the definers above and files.fn_can_read, which run as the owner.
+REVOKE ALL ON FUNCTION files.fn_item_grant_role (uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION files.fn_entity_admin (files.owner_kind, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION files.fn_grantee_card (files.grantee_kind, uuid) FROM public, anon, authenticated;
+
+-- The `workspace` storage policy's withheld-object check runs as the invoking role, so like
+-- files.fn_can_read it stays executable by the roles that read storage. It answers one boolean about
+-- one object path the caller already named.
+GRANT
+EXECUTE ON FUNCTION files.fn_storage_object_withheld (text, text) TO anon,
+authenticated,
+service_role;
+
 -- The owner's Availability editor (00001510). INVOKER: the scheduling policies are the gate.
 REVOKE ALL ON FUNCTION scheduling.save_owner_availability (
     scheduling.owner_type,

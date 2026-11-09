@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Icon } from "@projective/ui/icons";
+import { Icon, type IconName } from "@projective/ui/icons";
 import { sourceGlyphKey } from "../core/asset-model.ts";
 import type {
 	AssetNodeKind,
@@ -159,16 +159,23 @@ export function SourceMark(
 /**
  * The privacy-scope mark.
  *
- * Phrased from the reader's point of view the way `visibilityLabel` is: a closed lock is "only you", a
- * chain link is "anyone holding the link", a globe is "the world". The three are distinguishable by
- * SHAPE and not only by tone, so the state survives a colour-blindness overlay.
+ * Phrased from the reader's point of view the way `visibilityLabel` is: a closed lock is "only you",
+ * two people are "the people you sent it to", a chain link is "anyone holding the link", a globe is
+ * "the world". The four are distinguishable by SHAPE and not only by tone, so the state survives a
+ * colour-blindness overlay.
  */
 export function VisibilityMark(
 	{ visibility, class: c }: { visibility: AssetVisibility; class?: string },
 ): JSX.Element {
-	const name = visibility === "private" ? "lock" : visibility === "link" ? "link" : "globe";
-	return <Icon name={name} class={c} aria-hidden="true" />;
+	return <Icon name={VISIBILITY_ICONS[visibility]} class={c} aria-hidden="true" />;
 }
+
+const VISIBILITY_ICONS: Readonly<Record<AssetVisibility, IconName>> = {
+	private: "lock",
+	restricted: "members",
+	link: "link",
+	public: "globe",
+};
 
 /**
  * The link-safety mark.

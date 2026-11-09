@@ -4,7 +4,7 @@
  * amplitude/attachment math (root CLAUDE.md §2 — logic out of the island).
  */
 
-import type { AttachmentKind, AudioDraft } from "../types/composer-types.ts";
+import type { AttachmentKind, AudioDraft, DraftAttachment } from "../types/composer-types.ts";
 
 // #region Tunables
 /** Hard cap on staged attachments (task spec). */
@@ -189,5 +189,19 @@ export function resamplePeaks(peaks: number[], count: number): number[] {
 export function makeId(prefix = "id"): string {
 	const uuid = globalThis.crypto?.randomUUID?.();
 	return `${prefix}-${uuid ?? Math.random().toString(36).slice(2, 10)}`;
+}
+// #endregion
+
+// #region Share mode
+export { canShareAsLink } from "@projective/types/files";
+
+/** Switch one card between a copy and a link; a card that may not link stays a copy. */
+export function toggleAttachmentMode(
+	attachments: readonly DraftAttachment[],
+	id: string,
+): DraftAttachment[] {
+	return attachments.map((a) =>
+		a.id === id && a.canLink ? { ...a, mode: a.mode === "link" ? "copy" : "link" } : a
+	);
 }
 // #endregion

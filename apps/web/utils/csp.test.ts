@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { EMBED_FRAME_ORIGINS } from "@projective/types/files";
 import { contentSecurityPolicy, cspHeaderFor, frameOptionsFor, originOf } from "./csp.ts";
 
 function directive(policy: string, name: string): string[] {
@@ -12,6 +13,33 @@ Deno.test("csp: Stripe.js, the Payment Element frames and the Stripe API are all
 	assert(directive(policy, "frame-src").includes("https://js.stripe.com"));
 	assert(directive(policy, "frame-src").includes("https://hooks.stripe.com"));
 	assert(directive(policy, "connect-src").includes("https://api.stripe.com"));
+});
+
+Deno.test("csp: frames load from exactly the allowlisted embed providers, in every profile", () => {
+	for (const profile of ["app", "inspector", "framed"] as const) {
+		const frames = directive(cspHeaderFor(profile), "frame-src");
+		for (const origin of EMBED_FRAME_ORIGINS) {
+			assert(frames.includes(origin), `${profile} ${origin}`);
+		}
+		assert(!frames.includes("https:"), profile);
+		assert(!frames.includes("*"), profile);
+		assertEquals(new Set(frames).size, frames.length, profile);
+	}
+	assertEquals(
+		directive(contentSecurityPolicy({ dev: false, supabaseOrigin: null }), "frame-src"),
+		[
+			"'self'",
+			"https://js.stripe.com",
+			"https://*.js.stripe.com",
+			"https://hooks.stripe.com",
+			"https://www.youtube-nocookie.com",
+			"https://drive.google.com",
+			"https://docs.google.com",
+			"https://player.vimeo.com",
+			"https://www.loom.com",
+			"https://www.figma.com",
+		],
+	);
 });
 
 Deno.test("csp: nothing can frame the app, and plugins are off", () => {

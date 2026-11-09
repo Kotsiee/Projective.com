@@ -1,0 +1,49 @@
+.ins-frame {
+	position: relative;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	block-size: 100%;
+	min-inline-size: 0;
+	min-block-size: 0;
+	background: var(--bg);
+}
+.ins-frame__view {
+	flex: 1 1 auto;
+	inline-size: 100%;
+	min-block-size: 0;
+	border: 0;
+	background: var(--bg);
+	opacity: 1;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+.ins-frame[data-phase="loading"] .ins-frame__view {
+	opacity: 0;
+}
+.ins-frame__wait {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+}
+.ins-frame__bar {
+	display: flex;
+	flex: none;
+	justify-content: center;
+	padding: var(--space-2) var(--space-3);
+}
+.ins-frame__open {
+	text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ins-frame__view {
+		transition: none;
+	}
+}
+:root[data-motion="reduced"] .ins-frame__view {
+	transition: none;
+}

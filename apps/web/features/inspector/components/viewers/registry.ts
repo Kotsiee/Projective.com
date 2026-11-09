@@ -15,7 +15,15 @@ import { archiveViewer } from "./archive/mod.ts";
 import { unsupportedViewer } from "./unsupported/mod.ts";
 import { pageAllowsEngines } from "../../core/page-engines.ts";
 
-/** The canvas for every {@link InspectViewer}, chosen server-side by `resolveViewer`. */
+/**
+ * The canvas for every {@link InspectViewer}, chosen server-side by `resolveViewer`.
+ *
+ * This is the first rung of the preview ladder (Decision #401), and for stored bytes the only one
+ * before the fallback: the media proxy serves a file as an attachment under a sandboxing policy, so
+ * there is nothing a frame could draw that a canvas here does not, and `unsupported` is the standard
+ * fallback. The provider-frame rung (`ProviderFrame`, `embedFor`) is for links and mounted files,
+ * which `FilePreview` draws.
+ */
 export const VIEWERS: Readonly<Record<InspectViewer, (shell: InspectorShell) => MountedViewer>> = {
 	image: imageViewer,
 	svg: imageViewer,

@@ -309,6 +309,39 @@ export const DriveBrowsePageSchema = z.object({
 	nextCursor: z.string().max(600).nullable(),
 });
 export type DriveBrowsePage = z.infer<typeof DriveBrowsePageSchema>;
+
+/** The same-origin route that serves a connected object's preview picture. */
+export const DRIVE_THUMBNAIL_ROUTE = "/api/files/drive-thumbnail";
+
+/** The longest address an `AssetItem.thumbnailUrl` holds. */
+const THUMBNAIL_HREF_MAX = 2000;
+
+/**
+ * `GET /api/files/drive-thumbnail` — one connected object's preview picture, read by the server under
+ * the caller's own connection. `id` is the provider's own object id; `v` is the provider's change
+ * token, carried only so a changed file gets a fresh address and the browser's cached copy is skipped.
+ */
+export const DriveThumbnailParamsSchema = z.object({
+	connectionId: uuid,
+	id: z.string().min(1).max(1024),
+	v: z.string().max(120).nullable().optional(),
+});
+export type DriveThumbnailParams = z.infer<typeof DriveThumbnailParamsSchema>;
+
+/**
+ * The address a connected object's card draws its picture from, or `null` when it would not fit an
+ * `AssetItem.thumbnailUrl` whole. Same-origin, so no reader's browser contacts the provider.
+ */
+export function driveThumbnailHref(
+	connectionId: string,
+	externalId: string,
+	version?: string | null,
+): string | null {
+	const query = new URLSearchParams({ connectionId, id: externalId });
+	if (version) query.set("v", version);
+	const href = `${DRIVE_THUMBNAIL_ROUTE}?${query}`;
+	return href.length <= THUMBNAIL_HREF_MAX ? href : null;
+}
 // #endregion
 
 // #region Helpers

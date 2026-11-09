@@ -109,6 +109,11 @@ SELECT TO authenticated USING (
 -- storage.objects are OR-combined, so adding a broad "any authenticated" read here would not
 -- loosen `workspace` alone — do not add one (same warning as the project/messages buckets above).
 
+--
+-- A file its owner turned away from the members (`member_access` off, Decision #402) is withheld here
+-- too, with its tiers, unless files.fn_can_read still admits the caller (the entity's admins, a grant):
+-- otherwise a member who once saw its path could read its bytes straight from storage. The check is a
+-- definer (files.fn_storage_object_withheld) because the row it looks for is exactly the one RLS hides.
 CREATE POLICY "Entity members can read workspace files" ON storage.objects FOR
 SELECT TO authenticated USING (
         bucket_id = 'workspace'
@@ -123,6 +128,7 @@ SELECT TO authenticated USING (
                 (storage.foldername (name)) [1]::uuid
             )
         )
+        AND NOT files.fn_storage_object_withheld (bucket_id, name)
     );
 
 -- #endregion

@@ -1,9 +1,10 @@
 import type { ComponentChildren, JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
+import { ScrollRail } from "@projective/ui/layout";
 import {
 	composeShareText,
 	externalShareUrl,
@@ -13,13 +14,21 @@ import {
 import { ShareBrandIcon } from "./share-brand-icons.tsx";
 
 /**
- * ShareLinkBar — the link at the top of the share and invite modals (Decision #145): the URL in a
- * selectable field with one-click Copy, the external shortcuts beneath it, and the device's own share
- * sheet where `navigator.share` exists (a control that opens nothing is never rendered, §3 gate 11).
+ * ShareLinkBar — the link at the top of the share modal (Decision #145, re-cut by #401): the URL in a
+ * selectable field with an icon-only Copy beside it, then the external destinations as one rail of
+ * circular icon buttons, and the device's own share sheet where `navigator.share` exists (a control
+ * that opens nothing is never rendered, §3 gate 11). The rail scrolls, with arrows, once the modal is
+ * too narrow for it ({@link ScrollRail}).
+ *
+ * Copy confirms in place: its glyph turns into a check and its tooltip reads "Copied!" for
+ * {@link COPIED_MS}, while the status line announces the outcome to assistive technology.
+ *
+ * With `external` off the rail is left out: an address only the people with access can open is
+ * copied, never posted to an app (Decision #402).
  *
  * With no `url` the bar renders `emptyNote` and, when given, the `onCreate` control in place of Copy —
- * a stage's invite link is created by an explicit act, not by opening a modal. `actions` is a slot
- * for the caller's own link controls (reset · turn off).
+ * a link that must be created is created by an explicit act, not by opening a modal. `actions` is a
+ * slot for the caller's own link controls (reset · turn off).
  */
 
 // #region Props
@@ -44,26 +53,59 @@ export interface ShareLinkBarProps {
 	busy?: boolean;
 	/** The caller's own link controls, under the field. */
 	actions?: ComponentChildren;
+	/**
+	 * Offer the external apps and the device's share sheet (default `true`). Off for an address only
+	 * the people who already have access can open, which no app can widen (Decision #402).
+	 */
+	external?: boolean;
+	/** A line said directly under the link, such as who it opens for. */
+	note?: ComponentChildren;
+	/**
+	 * Called once the URL is on the clipboard. Answers whether it told the person itself (a toast), in
+	 * which case the bar's own status line stays quiet so the outcome is announced once.
+	 */
+	onCopied?: () => boolean;
 }
 // #endregion
+
+/** How long Copy shows its check and "Copied!" before it reverts. */
+export const COPIED_MS = 1600;
 
 export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 	const { url, targets } = props;
 	const status = useSignal("");
+	const copied = useSignal(false);
 	const canNativeShare = useSignal(false);
+	const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		canNativeShare.value = typeof navigator !== "undefined" &&
 			typeof navigator.share === "function";
+		return () => {
+			if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+		};
 	}, []);
 
-	async function copy(): Promise<void> {
-		if (!url) return;
+	function settleCopied(): void {
+		if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+		copied.value = true;
+		copiedTimer.current = setTimeout(() => {
+			copied.value = false;
+			copiedTimer.current = null;
+		}, COPIED_MS);
+	}
+
+	async function copy(): Promise<boolean> {
+		if (!url) return false;
 		try {
 			await navigator.clipboard.writeText(url);
-			status.value = "Link copied";
+			status.value = props.onCopied?.() ? "" : "Link copied";
+			settleCopied();
+			return true;
 		} catch {
+			copied.value = false;
 			status.value = "Couldn't copy — select the link and copy it";
+			return false;
 		}
 	}
 
@@ -97,11 +139,14 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 			void nativeShare();
 			return;
 		}
-		void copy().then(() => {
+		void copy().then((done) => {
+			if (!done) return;
 			globalThis.open(INSTAGRAM_HOME, "_blank", "noopener,noreferrer");
 			status.value = "Link copied — paste it into your post or story";
 		});
 	}
+
+	const isCopied = copied.value;
 
 	return (
 		<div class="share-link">
@@ -120,13 +165,24 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 				/>
 				{url
 					? (
-						<Button
-							label="Copy link"
-							size="sm"
-							icon={<Icon name="copy" size="sm" />}
-							disabled={props.busy}
-							onClick={() => void copy()}
-						/>
+						<Tooltip content={isCopied ? "Copied!" : "Copy link"}>
+							<Button
+								iconOnly
+								rounded
+								size="md"
+								class="share-link__copy"
+								data-copied={isCopied ? "true" : undefined}
+								icon={
+									<span class="share-link__copy-glyph" aria-hidden="true">
+										<Icon name="copy" size="sm" class="share-link__copy-icon" />
+										<Icon name="check" size="sm" class="share-link__copy-check" />
+									</span>
+								}
+								aria-label="Copy link"
+								disabled={props.busy}
+								onClick={() => void copy()}
+							/>
+						</Tooltip>
 					)
 					: props.onCreate && (
 						<Button
@@ -139,10 +195,17 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 					)}
 			</div>
 
-			{url && (
-				<ul class="share-link__targets" aria-label="Share the link">
+			{props.note}
+
+			{url && props.external !== false && (
+				<ScrollRail
+					label="Share the link"
+					backLabel="Previous apps"
+					forwardLabel="Next apps"
+					class="share-link__rail"
+				>
 					{targets.map((target) => (
-						<li key={target.key}>
+						<li key={target.key} class="share-link__item">
 							<Tooltip content={target.label} placement="top">
 								<button
 									type="button"
@@ -152,13 +215,12 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 									onClick={() => openTarget(target)}
 								>
 									<ShareBrandIcon target={target.key} class="share-link__mark" />
-									<span class="share-link__target-label">{target.label}</span>
 								</button>
 							</Tooltip>
 						</li>
 					))}
 					{canNativeShare.value && (
-						<li>
+						<li key="native" class="share-link__item">
 							<Tooltip content="More apps" placement="top">
 								<button
 									type="button"
@@ -168,12 +230,11 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 									onClick={() => void nativeShare()}
 								>
 									<Icon name="kebab-horizontal" size="md" />
-									<span class="share-link__target-label">More</span>
 								</button>
 							</Tooltip>
 						</li>
 					)}
-				</ul>
+				</ScrollRail>
 			)}
 
 			{props.actions && <div class="share-link__actions">{props.actions}</div>}

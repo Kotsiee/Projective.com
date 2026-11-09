@@ -10,6 +10,7 @@ import "../styles/viewer-pdf.css";
 import "../styles/inspector-print.css";
 import "../styles/viewer-model.css";
 import "../styles/viewer-document.css";
+import "../styles/inspector-access.css";
 import { fileInspectHref, type InspectAsset } from "@projective/types/files";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { useIsMobile } from "@projective/ui/hooks";

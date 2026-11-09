@@ -190,15 +190,23 @@ export async function createLiveConversation(
 
 	let messageAccepted = false;
 	const text = (input.message ?? "").trim();
-	if (text.length > 0) {
+	const attachmentIds = input.attachmentIds ?? [];
+	const linkedFileIds = input.linkedFileIds ?? [];
+	if (text.length > 0 || attachmentIds.length + linkedFileIds.length > 0) {
 		const sent = await insertDmMessage(actor, {
 			conversationId: threadId,
 			text,
 			delta: null,
 			replyToId: null,
-			attachmentIds: [],
+			attachmentIds,
+			linkedFileIds,
 			audio: null,
 		}, now);
+		// A refused link share is the sender's to fix ("send a copy instead"), so it is reported in its
+		// own words; the thread exists either way.
+		if (sent && "refusal" in sent && sent.refusal.errors?.linkedFileIds) {
+			return { refusal: sent.refusal };
+		}
 		messageAccepted = !!sent && "data" in sent;
 	}
 

@@ -84,6 +84,29 @@ Deno.test("an internal page with no card, and a malformed project slug, are plai
 	assertEquals(classifyLink("http://localhost:4000/projects/not-a-slug", HOSTS).kind, "internal");
 });
 
+Deno.test("a file's inspector and a share link are file targets", () => {
+	const id = "6D43F88F-84C7-4454-A2E1-C3BD6A2839E2";
+	assertEquals(classifyLink(`http://localhost:4000/inspect/${id}?share=s1`, HOSTS), {
+		kind: "file",
+		url: `http://localhost:4000/inspect/${id}?share=s1`,
+		id: id.toLowerCase(),
+		share: "s1",
+	});
+	assertEquals(classifyLink(`https://projective.io/inspect/${id}`, []).kind, "file");
+	assertEquals(classifyLink("http://localhost:4000/share/AbC_123", HOSTS), {
+		kind: "share",
+		url: "http://localhost:4000/share/AbC_123",
+		slug: "AbC_123",
+	});
+});
+
+Deno.test("an inspector address that names no file, or a deeper share path, stays a plain link", () => {
+	assertEquals(classifyLink("http://localhost:4000/inspect/not-a-uuid", HOSTS).kind, "internal");
+	assertEquals(classifyLink("http://localhost:4000/inspect", HOSTS).kind, "internal");
+	assertEquals(classifyLink("http://localhost:4000/share/slug/extra", HOSTS).kind, "internal");
+	assertEquals(classifyLink("https://evil.example/inspect/6d43f88f-84c7-4454-a2e1-c3bd6a2839e2", HOSTS).kind, "external");
+});
+
 Deno.test("another host is external, even on the same port or a lookalike name", () => {
 	assertEquals(classifyLink("http://localhost:5000/@juno", HOSTS).kind, "external");
 	assertEquals(classifyLink("https://projective.io.evil.example/@juno", []), {

@@ -1,7 +1,8 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { effect, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { AudioVisualizer } from "@projective/ui/display";
+import { dsConfig } from "@projective/ui/system";
 import { drawWaveform } from "@ui/display/core/audio.ts";
 import { decodeAudio } from "../../../core/media-decode.ts";
 import { audioFacts, type AudioProbe, waveformNote } from "../../../core/media-model.ts";
@@ -124,15 +125,25 @@ export function AudioStage({ shell, tools }: ViewerProps<AudioTools>): JSX.Eleme
 		if (audio.error) onError();
 		if (audio.readyState >= 1) onMetadata();
 
-		const resize = new ResizeObserver(() => {
+		const repaint = () => {
 			const current = peaks.peek();
 			if (current) repaintWave(host, current, audio);
-		});
+		};
+		const resize = new ResizeObserver(repaint);
 		resize.observe(host);
+
+		let themeFrame = 0;
+		const stopTheme = effect(() => {
+			void dsConfig.value;
+			cancelAnimationFrame(themeFrame);
+			themeFrame = requestAnimationFrame(repaint);
+		});
 
 		if (shell.status.peek() === "loading") shell.status.value = "ready";
 
 		return () => {
+			stopTheme();
+			cancelAnimationFrame(themeFrame);
 			resize.disconnect();
 			audio.removeEventListener("error", onError);
 			audio.removeEventListener("loadedmetadata", onMetadata);

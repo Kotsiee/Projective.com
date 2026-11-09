@@ -44,44 +44,80 @@
 	outline: none;
 	border-color: var(--primary);
 }
-.share-link__targets {
+.share-link__rail {
+	--scrollrail-gap: var(--space-2);
+}
+.share-link__item {
 	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
 }
 .share-link__target {
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+	justify-content: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	padding: 0;
 	border: none;
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--on-surface);
-	font-family: var(--font-sans);
-	font-size: var(--text-sm);
 	cursor: pointer;
 	transform: scale(1);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
 		transform var(--dur-press) var(--ease-standard);
 }
-.share-link__target:hover {
+.share-link__target:hover,
+.share-link__target:focus-visible {
 	background: var(--surface-3, var(--surface-1));
 }
 .share-link__target:active {
-	transform: scale(var(--btn-press-scale));
+	transform: scale(var(--btn-press-scale-icon));
 }
 .share-link__target:focus-visible {
 	outline: none;
 	box-shadow: none;
 }
 .share-link__mark {
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
+	inline-size: var(--icon-lg);
+	block-size: var(--icon-lg);
+}
+.share-link__copy {
+	flex: none;
+}
+.share-link__copy-glyph {
+	display: inline-grid;
+	place-items: center;
+	transform: scale(1);
+}
+.share-link__copy-glyph > .ui-icon {
+	grid-area: 1 / 1;
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-snappy);
+}
+.share-link__copy-check {
+	opacity: 0;
+	transform: scale(0.4);
+}
+.share-link__copy[data-copied] .share-link__copy-glyph {
+	animation: share-link-copied var(--dur-slow) var(--spring-snappy);
+}
+.share-link__copy[data-copied] .share-link__copy-icon {
+	opacity: 0;
+	transform: scale(0.4);
+}
+.share-link__copy[data-copied] .share-link__copy-check {
+	opacity: 1;
+	transform: scale(1);
+}
+@keyframes share-link-copied {
+	from {
+		transform: scale(0.8);
+	}
+	to {
+		transform: scale(1);
+	}
 }
 .share-link__actions {
 	display: flex;
@@ -308,18 +344,8 @@
 /* #endregion */
 
 @media (max-width: 767px) {
-	.share-link__row {
-		flex-wrap: wrap;
-	}
-	.share-link__field {
-		flex-basis: 100%;
-		order: 1;
-	}
 	.share-link__glyph {
 		display: none;
-	}
-	.share-link__row > .ui-button {
-		order: 2;
 	}
 	.quick-add__person {
 		inline-size: 5.75rem;
@@ -328,6 +354,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.share-link__target,
+	.share-link__copy-glyph > .ui-icon,
 	.people-search__control,
 	.people-search__option {
 		transition: none;
@@ -335,7 +362,17 @@
 	.share-link__target:active {
 		transform: none;
 	}
+	.share-link__copy[data-copied] .share-link__copy-glyph {
+		animation: none;
+	}
+}
+:root[data-motion="reduced"] .share-link__target,
+:root[data-motion="reduced"] .share-link__copy-glyph > .ui-icon {
+	transition: none;
 }
 :root[data-motion="reduced"] .share-link__target:active {
 	transform: none;
+}
+:root[data-motion="reduced"] .share-link__copy[data-copied] .share-link__copy-glyph {
+	animation: none;
 }

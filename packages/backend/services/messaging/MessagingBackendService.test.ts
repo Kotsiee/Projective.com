@@ -88,6 +88,7 @@ Deno.test("live gate on: a tokenless sender is refused rather than written to th
 				delta: null,
 				replyToId: null,
 				attachmentIds: [],
+				linkedFileIds: [],
 				audio: null,
 			},
 			TOKENLESS,

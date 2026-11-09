@@ -25,6 +25,10 @@ import {
 	type DownloadHistoryPage,
 	type DownloadVia,
 	type InspectAsset,
+	type ItemAccess,
+	type AccessTargetList,
+	type SetItemAccess,
+	SetItemAccessSchema,
 	type LinkAttach,
 	LinkAttachSchema,
 	type MoveAssets,
@@ -52,6 +56,16 @@ import {
 import type { FilesResult } from "../types/results.ts";
 
 /**
+ * How a read of a file's access came out: the state, or why it isn't shown — no session, not the
+ * viewer's to see (missing, unreadable), or a failure worth retrying.
+ */
+export type AccessRead =
+	| { state: "ok"; access: ItemAccess }
+	| { state: "signed-out" }
+	| { state: "unavailable" }
+	| { state: "error"; message: string };
+
+/**
  * FilesService — the THIN client controller for the `/files` asset hub and the Asset Picker.
  *
  * A dumb object of named methods; each validates its input against the Zod SSOT, builds a query
@@ -63,7 +77,7 @@ import type { FilesResult } from "../types/results.ts";
  * moving between the two halves never has to translate: `list` · `tree` · `item` · `inspect` · `quota` ·
  * `dedupCheck` · `uploadInit` · `uploadComplete` · `attachLink` · `createFolder` · `rename` ·
  * `renameFolder` · `move` · `copy` · `remove` · `setVisibility` · `createShare` · `revokeShare` · `resolveShare` · `downloadGuard` ·
- * `recordDownload` · `history`. The payload type is the fat method's payload verbatim — the routes
+ * `recordDownload` · `history` · `access` · `setAccess` · `accessTargets`. The payload type is the fat method's payload verbatim — the routes
  * put it in `data` unwrapped, so there is no per-endpoint envelope to remember.
  *
  * **Validation happens BEFORE the network call, and that is the point of it.** A malformed payload
@@ -350,6 +364,41 @@ export const FilesService = {
 			return Promise.resolve(invalid(parsed.error, "That share link could not be revoked."));
 		}
 		return postFiles<{ revoked: boolean }>("/api/files/share-revoke", parsed.data);
+	},
+
+	/** Who may open one file and how, as the viewer may know it (Decision #402). */
+	async access(id: string): Promise<AccessRead> {
+		try {
+			const res = await apiFetch(`/api/files/access?${new URLSearchParams({ id }).toString()}`, {
+				headers: { accept: "application/json" },
+			});
+			if (res.status === 401) return { state: "signed-out" };
+			if (res.status === 403 || res.status === 404) return { state: "unavailable" };
+			const body = await res.json().catch(() => null) as FilesResult<ItemAccess> | null;
+			if (res.ok && body?.ok && body.data) return { state: "ok", access: body.data };
+			return {
+				state: "error",
+				message: body?.message ?? `Who has access couldn't be loaded (${res.status}).`,
+			};
+		} catch {
+			return { state: "error", message: "Network error — please try again." };
+		}
+	},
+
+	/** Save one file's tier, member switch and grants in one write; answers the saved state. */
+	setAccess(input: SetItemAccess): Promise<FilesResult<ItemAccess>> {
+		const parsed = SetItemAccessSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "Those access changes are not valid."));
+		}
+		return postFiles<ItemAccess>("/api/files/access", parsed.data);
+	},
+
+	/** The teams, businesses and projects the viewer may grant a file to, narrowed by `q`. */
+	accessTargets(q?: string): Promise<FilesResult<AccessTargetList>> {
+		const query = q?.trim() ?? "";
+		const qs = query ? `?${new URLSearchParams({ q: query }).toString()}` : "";
+		return getFiles<AccessTargetList>(`/api/files/access-targets${qs}`);
 	},
 
 	/**

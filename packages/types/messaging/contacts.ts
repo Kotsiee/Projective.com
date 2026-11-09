@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ConversationKind, MessagingContactSchema } from "./conversations.ts";
 import { CropStateSchema } from "../files/crop.ts";
+import { MessageFileIdsSchema, sendFilesAgree } from "../projects/messages.ts";
 
 /**
  * messaging.contacts — the Zod SSOT for the RANKED people picker (New message · New group · Add
@@ -379,6 +380,10 @@ export const CreateConversationSchema = z.object({
 	contactIds: z.array(z.string().min(1).max(80)).min(1).max(50),
 	groupName: z.string().trim().max(80).optional(),
 	message: z.string().trim().max(4000).optional(),
+	/** Files the opening message carries as copies (the share modal's Send a copy). */
+	attachmentIds: MessageFileIdsSchema.optional(),
+	/** The sender's own files the opening message shares as a link (Decision #401). */
+	linkedFileIds: MessageFileIdsSchema.optional(),
 	/** A group's photo, applied once the group exists. Ignored for a DM (its picture is the person). */
 	photo: GroupPhotoInputSchema.optional(),
 	/**
@@ -390,7 +395,10 @@ export const CreateConversationSchema = z.object({
 }).refine((c) => c.subjectListingId === undefined || c.contactIds.length === 1, {
 	message: "An inquiry about a listing goes to its seller alone.",
 	path: ["subjectListingId"],
-});
+}).refine(
+	(c) => sendFilesAgree({ attachmentIds: c.attachmentIds ?? [], linkedFileIds: c.linkedFileIds ?? [] }),
+	{ message: "A message carries up to 20 files, each sent once.", path: ["linkedFileIds"] },
+);
 export type CreateConversation = z.infer<typeof CreateConversationSchema>;
 
 /** `POST /api/messaging/conversations/members` — add people to an existing conversation. */

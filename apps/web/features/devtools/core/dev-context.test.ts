@@ -299,3 +299,32 @@ Deno.test("checkoutPayment — an unknown attribute or cookie value reads as no 
 	assertEquals(parseCheckoutPaymentSim(" timeout "), "timeout");
 });
 // #endregion
+
+// #region fileAccess (the inspector's Access tab, Decision #402)
+const FILE_ACCESS_ATTR = "data-dev-file-access";
+
+Deno.test("fileAccess — reflect writes the standing while it simulates, and deletes it on auto and off", async () => {
+	await withDocument((root) => {
+		assertEquals(ctx.DEV_DEFAULTS.fileAccess, "auto");
+		ctx.patchDevContext({ enabled: true, fileAccess: "editor" });
+		assertEquals(root.attributes.get(FILE_ACCESS_ATTR), "editor");
+		assertEquals(seam.readDevSeam()?.fileAccess, "editor");
+
+		ctx.patchDevContext({ fileAccess: "auto" });
+		assertFalse(root.attributes.has(FILE_ACCESS_ATTR));
+		assertEquals(seam.readDevSeam()?.fileAccess, "auto");
+
+		ctx.patchDevContext({ fileAccess: "signed-out" });
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(FILE_ACCESS_ATTR));
+	});
+});
+
+Deno.test("fileAccess — an unknown attribute value reads as auto", async () => {
+	await withDocument((root) => {
+		root.dataset.devPersona = "client";
+		root.dataset.devFileAccess = "admin";
+		assertEquals(seam.readDevSeam()?.fileAccess, "auto");
+	});
+});
+// #endregion

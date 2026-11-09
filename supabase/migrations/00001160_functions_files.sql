@@ -111,6 +111,73 @@ END;
 $$;
 -- #endregion
 
+-- #region 3a. files.fn_item_grant_role — the caller's strongest live grant on one file
+-- Decision #402. The role of the strongest LIVE grant that reaches the caller — granted to them by
+-- name, to a team or business they are an active member of, or to a project they have access to — or
+-- NULL. It does not read the file's tier: fn_can_read and the access RPCs count a grant only while the
+-- file is not `private`, which is how choosing Private pauses every grant at once.
+--
+-- SECURITY DEFINER + STABLE: files.item_grants is read by the file's owner and the named grantee only,
+-- and a team-, business- or project-wide grant names nobody.
+CREATE OR REPLACE FUNCTION files.fn_item_grant_role (p_item_id uuid)
+RETURNS files.grant_role
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT g.role
+    FROM files.item_grants g
+    WHERE g.item_id = p_item_id
+      AND g.revoked_at IS NULL
+      AND auth.uid () IS NOT NULL
+      AND CASE g.grantee_kind
+          WHEN 'user'::files.grantee_kind THEN g.grantee_id = auth.uid ()
+          WHEN 'team'::files.grantee_kind THEN org.is_active_team_member (g.grantee_id)
+          WHEN 'business'::files.grantee_kind THEN org.is_active_business_member (g.grantee_id)
+          WHEN 'project'::files.grantee_kind THEN projects.has_project_access (g.grantee_id)
+          ELSE false
+      END
+    ORDER BY (g.role = 'editor'::files.grant_role) DESC
+    LIMIT 1;
+$$;
+-- #endregion
+
+-- #region 3b. files.fn_entity_admin — does the caller govern this entity's library?
+-- Decision #402. An active owner or admin of the team / business / enterprise. They read every file of
+-- its library whatever its `member_access`, so turning a file away from the members never hides it
+-- from the people answerable for the workspace.
+CREATE OR REPLACE FUNCTION files.fn_entity_admin (p_owner_type files.owner_kind, p_entity_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE p_owner_type
+        WHEN 'team'::files.owner_kind THEN EXISTS (
+            SELECT 1
+            FROM org.team_members m
+            WHERE m.team_id = p_entity_id
+              AND m.user_id = auth.uid ()
+              AND m.status = 'active'
+              AND m.role IN ('owner', 'admin')
+        )
+        WHEN 'business'::files.owner_kind THEN EXISTS (
+            SELECT 1
+            FROM org.business_members m
+            WHERE m.business_id = p_entity_id
+              AND m.user_id = auth.uid ()
+              AND m.status = 'active'
+              AND m.role IN ('owner', 'admin')
+        )
+        WHEN 'enterprise'::files.owner_kind THEN
+            org.is_enterprise_member (p_entity_id, 'admin'::org.enterprise_role)
+        ELSE false
+    END;
+$$;
+-- #endregion
+
 -- #region 3. files.fn_can_read — THE read predicate
 -- One function, called by the RLS SELECT policy on files.items AND by the share route, so a read
 -- rule cannot be tightened in one place and left open in the other (the scheduling refusal-function
@@ -119,9 +186,13 @@ $$;
 -- What grants a read:
 --   * `public` visibility — world readable by design.
 --   * Personal ownership — owner_type = 'user' and the caller is owner_user_id.
---   * Entity membership — an active member of the owning team / business / enterprise.
+--   * Entity membership — an active member of the owning team / business / enterprise, while the
+--     row's `member_access` is on; with it off, the entity's owners and admins (Decision #402).
 --   * A project mount — the asset sits in the `project` bucket and the caller passes the existing
 --     projects.has_project_access gate for the {project_id} path anchor.
+--   * A live grant (files.item_grants, Decision #402) that reaches the caller, while the file is not
+--     `private`: the one arm an entity's or a project's file shares with a personal one, so a grant
+--     can open a file beyond the library it sits in.
 --
 -- What does NOT grant a read, deliberately:
 --   * `link` visibility. The opaque SLUG is the credential, not the item id. If `link` returned
@@ -142,6 +213,7 @@ DECLARE
     v_item files.items%ROWTYPE;
     v_uid uuid := auth.uid ();
     v_project_id uuid;
+    v_member boolean;
 BEGIN
     SELECT * INTO v_item FROM files.items i WHERE i.id = p_item_id;
 
@@ -162,12 +234,28 @@ BEGIN
         RETURN true;
     END IF;
 
-    IF v_item.owner_type = 'team'::files.owner_kind THEN
-        RETURN org.is_active_team_member (v_item.owner_entity_id);
-    ELSIF v_item.owner_type = 'business'::files.owner_kind THEN
-        RETURN org.is_active_business_member (v_item.owner_entity_id);
-    ELSIF v_item.owner_type = 'enterprise'::files.owner_kind THEN
-        RETURN org.is_enterprise_member (v_item.owner_entity_id);
+    -- An entity's library answers here and nowhere below: its file sent in a message travels no further
+    -- than the entity allows (Decision #401), and only a grant opens it to someone outside.
+    IF v_item.owner_type <> 'user'::files.owner_kind THEN
+        v_member := CASE v_item.owner_type
+            WHEN 'team'::files.owner_kind THEN org.is_active_team_member (v_item.owner_entity_id)
+            WHEN 'business'::files.owner_kind THEN org.is_active_business_member (v_item.owner_entity_id)
+            ELSE org.is_enterprise_member (v_item.owner_entity_id)
+        END;
+        -- Nested, not AND/OR: PL/pgSQL does not promise to evaluate either left to right, and these
+        -- run per row of a library listing.
+        IF v_member THEN
+            IF v_item.member_access THEN
+                RETURN true;
+            END IF;
+            IF files.fn_entity_admin (v_item.owner_type, v_item.owner_entity_id) THEN
+                RETURN true;
+            END IF;
+        END IF;
+        IF v_item.visibility = 'private'::files.file_visibility THEN
+            RETURN false;
+        END IF;
+        RETURN files.fn_item_grant_role (p_item_id) IS NOT NULL;
     END IF;
 
     -- Mounted engagement attachment: the `project` bucket anchors on {project_id}, the same anchor
@@ -180,7 +268,15 @@ BEGIN
         EXCEPTION WHEN OTHERS THEN
             RETURN false;   -- an unparseable anchor is not an authorization
         END;
-        RETURN projects.has_project_access (v_project_id);
+        -- Everyone on the project, always: a project's files are the engagement's record, so a grant
+        -- can only widen them (Decision #402).
+        IF projects.has_project_access (v_project_id) THEN
+            RETURN true;
+        END IF;
+        IF v_item.visibility = 'private'::files.file_visibility THEN
+            RETURN false;
+        END IF;
+        RETURN files.fn_item_grant_role (p_item_id) IS NOT NULL;
     END IF;
 
     -- A file attached to a message is readable by whoever may read that message. A chat attachment
@@ -190,13 +286,28 @@ BEGIN
     -- for a project message, thread participation for a DM — through the one predicate the reaction /
     -- pin / favourite policies already share. Linking cannot widen it: the INSERT policy on
     -- comms.message_attachments requires the linker to be able to read the file already.
+    -- A LINK-mode row (Decision #401) shares the file in place rather than handing over a copy, so it
+    -- counts only while the file is not `private`: the owner sets it back to private and every link
+    -- share stops opening at once, while copies sent earlier stay with their readers.
     IF EXISTS (
         SELECT 1
         FROM comms.message_attachments ma
         WHERE ma.attachment_id = p_item_id
+          AND (
+              ma.mode = 'copy'::comms.attachment_mode
+              OR v_item.visibility <> 'private'::files.file_visibility
+          )
           AND comms.can_read_message (ma.message_table, ma.message_id)
     ) THEN
         RETURN true;
+    END IF;
+
+    -- A person, team, business or project the owner granted it to (Decision #402), counted on the same
+    -- terms as a link share: only while the file is not `private`.
+    IF v_item.visibility <> 'private'::files.file_visibility THEN
+        IF files.fn_item_grant_role (p_item_id) IS NOT NULL THEN
+            RETURN true;
+        END IF;
     END IF;
 
     -- Dispute evidence (Decision #212): a file filed in a dispute's Evidence Vault is uploaded into its
@@ -1095,5 +1206,452 @@ BEGIN
     RETURNING * INTO v_event;
     RETURN v_event;
 END;
+$$;
+-- #endregion
+
+-- #region 11. files.fn_grantee_card — a grantee as the people who manage a file see it
+-- Decision #402. One person, team, business or project, as `{ name, detail, avatar }` (the avatar a
+-- public media reference, or NULL). NULL when the grantee no longer exists. Internal: called by the
+-- access read and the picker below, which have already decided the caller may know it.
+CREATE OR REPLACE FUNCTION files.fn_grantee_card (p_kind files.grantee_kind, p_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE p_kind
+        WHEN 'user'::files.grantee_kind THEN (
+            SELECT jsonb_build_object (
+                'name', COALESCE (NULLIF (btrim (concat_ws (' ', u.first_name, u.last_name)), ''), u.username),
+                'detail', '@' || u.username,
+                'avatar', files.fn_public_media_ref (u.avatar_file_id)
+            )
+            FROM org.users_public u
+            WHERE u.user_id = p_id
+        )
+        WHEN 'team'::files.grantee_kind THEN (
+            SELECT jsonb_build_object (
+                'name', t.name,
+                'detail', 'Team',
+                'avatar', files.fn_public_media_ref (t.avatar_file_id)
+            )
+            FROM org.teams t
+            WHERE t.id = p_id
+        )
+        WHEN 'business'::files.grantee_kind THEN (
+            SELECT jsonb_build_object (
+                'name', b.name,
+                'detail', 'Business',
+                'avatar', files.fn_public_media_ref (b.logo_file_id)
+            )
+            FROM org.business_profiles b
+            WHERE b.id = p_id
+        )
+        WHEN 'project'::files.grantee_kind THEN (
+            SELECT jsonb_build_object ('name', p.title, 'detail', 'Project', 'avatar', NULL)
+            FROM projects.projects p
+            WHERE p.id = p_id
+        )
+    END;
+$$;
+-- #endregion
+
+-- #region 12. files.get_item_access — who may open one file, for the inspector's Access tab
+-- Decision #402. Anyone who can read the file learns its tier, the library it sits in and their own
+-- standing (`owner`, `editor` or `viewer`). Only the owner and the editors are told who it is granted
+-- to and who owns it (so their picker never offers the owner), and only the owner how many messages
+-- carry it as a link share (#401): being able to open a file is not the same right as knowing who else
+-- can.
+--
+-- `PF404` for a file the caller cannot read (or that is gone), the same answer as one that does not
+-- exist. The service adds the owner's live share link, whose terms are read in TypeScript.
+CREATE OR REPLACE FUNCTION files.get_item_access (p_item_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_item files.items%ROWTYPE;
+    v_standing text := 'viewer';
+    v_container jsonb;
+    v_anchor text;
+    v_grants jsonb := '[]'::jsonb;
+    v_shares integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to see who has access' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT * INTO v_item FROM files.items i WHERE i.id = p_item_id AND i.deleted_at IS NULL;
+    IF NOT FOUND OR NOT files.fn_can_read (p_item_id) THEN
+        RAISE EXCEPTION 'No such file' USING ERRCODE = 'PF404';
+    END IF;
+
+    IF v_item.owner_user_id = v_uid THEN
+        v_standing := 'owner';
+    ELSIF v_item.visibility <> 'private'::files.file_visibility
+          AND files.fn_item_grant_role (p_item_id) = 'editor'::files.grant_role THEN
+        v_standing := 'editor';
+    END IF;
+
+    IF v_item.owner_type <> 'user'::files.owner_kind THEN
+        v_container := jsonb_build_object (
+            'kind', 'entity',
+            'entityKind', v_item.owner_type,
+            'entityId', v_item.owner_entity_id,
+            'name', COALESCE (
+                CASE v_item.owner_type
+                    WHEN 'team'::files.owner_kind THEN
+                        (SELECT t.name FROM org.teams t WHERE t.id = v_item.owner_entity_id)
+                    WHEN 'business'::files.owner_kind THEN
+                        (SELECT b.name FROM org.business_profiles b WHERE b.id = v_item.owner_entity_id)
+                    ELSE (
+                        SELECT COALESCE (e.trading_name, e.legal_name)
+                        FROM org.enterprises e
+                        WHERE e.id = v_item.owner_entity_id
+                    )
+                END,
+                'This workspace'
+            ),
+            'memberAccess', v_item.member_access
+        );
+    ELSIF v_item.bucket_id = 'project' AND v_item.source = 'supabase'::files.file_source THEN
+        v_anchor := split_part (v_item.storage_path, '/', 1);
+        IF v_anchor ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            v_container := jsonb_build_object (
+                'kind', 'project',
+                'projectId', v_anchor::uuid,
+                'name', COALESCE (
+                    (SELECT p.title FROM projects.projects p WHERE p.id = v_anchor::uuid),
+                    'This project'
+                )
+            );
+        END IF;
+    END IF;
+
+    IF v_standing IN ('owner', 'editor') THEN
+        SELECT COALESCE (
+            jsonb_agg (
+                jsonb_build_object (
+                    'kind', g.grantee_kind,
+                    'id', g.grantee_id,
+                    'role', g.role,
+                    'grantedAt', g.created_at,
+                    'name', COALESCE (c.card ->> 'name', 'No longer on Projective'),
+                    'detail', c.card ->> 'detail',
+                    'avatar', c.card -> 'avatar'
+                )
+                ORDER BY g.created_at, g.id
+            ),
+            '[]'::jsonb
+        )
+        INTO v_grants
+        FROM files.item_grants g
+        CROSS JOIN LATERAL (SELECT files.fn_grantee_card (g.grantee_kind, g.grantee_id) AS card) c
+        WHERE g.item_id = p_item_id AND g.revoked_at IS NULL;
+    END IF;
+
+    IF v_standing = 'owner' THEN
+        SELECT count (*)::integer INTO v_shares
+        FROM comms.message_attachments ma
+        WHERE ma.attachment_id = p_item_id AND ma.mode = 'link'::comms.attachment_mode;
+    END IF;
+
+    RETURN jsonb_build_object (
+        'itemId', v_item.id,
+        'visibility', v_item.visibility,
+        'standing', v_standing,
+        'container', COALESCE (v_container, jsonb_build_object ('kind', 'personal')),
+        'grants', v_grants,
+        'ownerId', CASE WHEN v_standing IN ('owner', 'editor') THEN v_item.owner_user_id END,
+        'messageShares', v_shares
+    );
+END;
+$$;
+-- #endregion
+
+-- #region 13. files.set_item_access — one save of the Access tab
+-- Decision #402. Applies a file's tier, its library's member switch and its whole grant list in ONE
+-- transaction, so a save lands entirely or not at all. A NULL argument leaves that part as it is;
+-- `p_grants` is the complete list the file should hold afterwards, so a live grant missing from it is
+-- revoked (a column, never a DELETE) and a revoked one can be granted again.
+--
+-- Who may do what, decided here because the function writes past RLS:
+--   * the tier and the member switch: the owner (owner_user_id), as the items UPDATE policy says;
+--   * the grants: the owner, or an editor while the file is not `private`.
+-- A NEW grant must name a person who exists and is not the owner, or a team, business or project the
+-- CALLER belongs to (or is on): nobody hands a file to a workspace they cannot see into. A grant kept
+-- from before is not re-checked, so an editor can keep the owner's grant to a team the editor is not in.
+-- An archived entity's library is read-only here as it is through the guard trigger, which a definer
+-- write does not fire for.
+--
+-- Errors: 42501 not yours to change; PF404 no such file; 22023 a grant list the rules refuse (the
+-- message says which); 22P02 a malformed kind, role or id.
+CREATE OR REPLACE FUNCTION files.set_item_access (
+    p_item_id uuid,
+    p_visibility files.file_visibility DEFAULT NULL,
+    p_member_access boolean DEFAULT NULL,
+    p_grants jsonb DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_item files.items%ROWTYPE;
+    v_owner boolean;
+    v_entry jsonb;
+    v_kind files.grantee_kind;
+    v_id uuid;
+    v_role files.grant_role;
+    v_key text;
+    v_wanted jsonb := '{}'::jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to change who has access' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT * INTO v_item FROM files.items i WHERE i.id = p_item_id AND i.deleted_at IS NULL FOR UPDATE;
+    IF NOT FOUND OR NOT files.fn_can_read (p_item_id) THEN
+        RAISE EXCEPTION 'No such file' USING ERRCODE = 'PF404';
+    END IF;
+    IF v_item.source <> 'supabase'::files.file_source THEN
+        RAISE EXCEPTION 'Only a file stored on Projective can be shared with people' USING ERRCODE = '22023';
+    END IF;
+    IF files.fn_library_archived (v_item.owner_type, v_item.owner_entity_id) THEN
+        RAISE EXCEPTION 'files: an archived library is read-only' USING ERRCODE = '42501';
+    END IF;
+
+    v_owner := v_item.owner_user_id = v_uid;
+    IF NOT v_owner AND NOT (
+        v_item.visibility <> 'private'::files.file_visibility
+        AND files.fn_item_grant_role (p_item_id) = 'editor'::files.grant_role
+    ) THEN
+        RAISE EXCEPTION 'Only the owner and people who can edit decide who has access'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_visibility IS NOT NULL AND p_visibility <> v_item.visibility THEN
+        IF NOT v_owner THEN
+            RAISE EXCEPTION 'Only the owner can change who can see this' USING ERRCODE = '42501';
+        END IF;
+        UPDATE files.items SET visibility = p_visibility WHERE id = p_item_id;
+    END IF;
+
+    IF p_member_access IS NOT NULL AND p_member_access <> v_item.member_access THEN
+        IF NOT v_owner THEN
+            RAISE EXCEPTION 'Only the owner can change who in the workspace can see this'
+                USING ERRCODE = '42501';
+        END IF;
+        IF v_item.owner_type = 'user'::files.owner_kind THEN
+            RAISE EXCEPTION 'A file in your own library has no members to open it to'
+                USING ERRCODE = '22023';
+        END IF;
+        UPDATE files.items SET member_access = p_member_access WHERE id = p_item_id;
+    END IF;
+
+    IF p_grants IS NULL THEN
+        RETURN;
+    END IF;
+    IF jsonb_typeof (p_grants) <> 'array' THEN
+        RAISE EXCEPTION 'The people list is not valid' USING ERRCODE = '22023';
+    END IF;
+    IF jsonb_array_length (p_grants) > 50 THEN
+        RAISE EXCEPTION 'A file can be shared with at most 50 people, teams and projects'
+            USING ERRCODE = '22023';
+    END IF;
+
+    FOR v_entry IN SELECT e.value FROM jsonb_array_elements (p_grants) e LOOP
+        v_kind := (v_entry ->> 'kind')::files.grantee_kind;
+        v_id := (v_entry ->> 'id')::uuid;
+        v_role := COALESCE (v_entry ->> 'role', 'viewer')::files.grant_role;
+        IF v_kind IS NULL OR v_id IS NULL THEN
+            RAISE EXCEPTION 'The people list is not valid' USING ERRCODE = '22023';
+        END IF;
+        v_key := v_kind::text || ':' || v_id::text;
+        IF v_wanted ? v_key THEN
+            RAISE EXCEPTION 'Each person, team or project can be added once' USING ERRCODE = '22023';
+        END IF;
+        v_wanted := v_wanted || jsonb_build_object (v_key, v_role);
+
+        IF EXISTS (
+            SELECT 1
+            FROM files.item_grants g
+            WHERE g.item_id = p_item_id
+              AND g.revoked_at IS NULL
+              AND g.grantee_kind = v_kind
+              AND g.grantee_id = v_id
+        ) THEN
+            UPDATE files.item_grants g
+               SET role = v_role, updated_at = now ()
+             WHERE g.item_id = p_item_id
+               AND g.revoked_at IS NULL
+               AND g.grantee_kind = v_kind
+               AND g.grantee_id = v_id
+               AND g.role <> v_role;
+            CONTINUE;
+        END IF;
+
+        IF v_kind = 'user'::files.grantee_kind THEN
+            IF v_id = v_item.owner_user_id THEN
+                RAISE EXCEPTION 'The owner already has access' USING ERRCODE = '22023';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_id) THEN
+                RAISE EXCEPTION 'One of those people is no longer on Projective' USING ERRCODE = '22023';
+            END IF;
+        ELSIF v_kind = 'team'::files.grantee_kind AND NOT org.is_active_team_member (v_id) THEN
+            RAISE EXCEPTION 'You can share a file only with teams you belong to' USING ERRCODE = '22023';
+        ELSIF v_kind = 'business'::files.grantee_kind AND NOT org.is_active_business_member (v_id) THEN
+            RAISE EXCEPTION 'You can share a file only with businesses you belong to'
+                USING ERRCODE = '22023';
+        ELSIF v_kind = 'project'::files.grantee_kind AND NOT projects.has_project_access (v_id) THEN
+            RAISE EXCEPTION 'You can share a file only with projects you are on' USING ERRCODE = '22023';
+        END IF;
+
+        INSERT INTO files.item_grants (item_id, grantee_kind, grantee_id, role, granted_by)
+        VALUES (p_item_id, v_kind, v_id, v_role, v_uid);
+    END LOOP;
+
+    UPDATE files.item_grants g
+       SET revoked_at = now (), revoked_by = v_uid, updated_at = now ()
+     WHERE g.item_id = p_item_id
+       AND g.revoked_at IS NULL
+       AND NOT (v_wanted ? (g.grantee_kind::text || ':' || g.grantee_id::text));
+END;
+$$;
+-- #endregion
+
+-- #region 14. files.list_access_targets — the teams, businesses and projects the caller can grant to
+-- Decision #402. The caller's active teams and businesses (not archived) and the projects they are on
+-- (not archived), each with its card, narrowed by a case-insensitive substring of the name. People come
+-- from the messaging contact search instead, which already ranks them.
+--
+-- Projects are gathered from every road into one (ownership, participation, a live stage assignment,
+-- a cohort seat) and then each is confirmed through projects.has_project_access, the one rule.
+CREATE OR REPLACE FUNCTION files.list_access_targets (p_query text DEFAULT NULL, p_limit integer DEFAULT 30)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH args AS (
+        SELECT
+            lower (NULLIF (btrim (COALESCE (p_query, '')), '')) AS term,
+            LEAST (GREATEST (COALESCE (p_limit, 30), 1), 50) AS cap
+    ),
+    my_teams AS (
+        SELECT 'team'::text AS kind, t.id, t.name, 1 AS rank
+        FROM org.team_members m
+        JOIN org.teams t ON t.id = m.team_id
+        WHERE m.user_id = auth.uid () AND m.status = 'active' AND t.status <> 'archived'
+    ),
+    my_businesses AS (
+        SELECT 'business'::text AS kind, b.id, b.name, 2 AS rank
+        FROM org.business_members m
+        JOIN org.business_profiles b ON b.id = m.business_id
+        WHERE m.user_id = auth.uid () AND m.status = 'active' AND b.status <> 'archived'
+    ),
+    project_roads AS (
+        SELECT p.id FROM projects.projects p WHERE p.owner_user_id = auth.uid ()
+        UNION
+        SELECT pp.project_id
+        FROM projects.project_participants pp
+        WHERE (pp.profile_type = 'freelancer' AND pp.profile_id = auth.uid ())
+           OR (pp.profile_type = 'business' AND pp.profile_id IN (
+                SELECT b.id FROM org.business_profiles b WHERE b.owner_user_id = auth.uid ()
+           ))
+        UNION
+        SELECT ps.project_id
+        FROM projects.stage_assignments sa
+        JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+        WHERE sa.status NOT IN ('declined', 'cancelled', 'released')
+          AND (
+              sa.freelancer_profile_id = auth.uid ()
+              OR sa.team_id IN (
+                  SELECT m.team_id FROM org.team_members m
+                  WHERE m.user_id = auth.uid () AND m.status = 'active'
+              )
+          )
+        UNION
+        SELECT c.project_id
+        FROM projects.cohort_memberships cm
+        JOIN projects.cohorts c ON c.id = cm.cohort_id
+        WHERE cm.user_id = auth.uid () AND cm.status <> 'cancelled'
+    ),
+    my_projects AS (
+        SELECT 'project'::text AS kind, p.id, p.title AS name, 3 AS rank
+        FROM projects.projects p
+        JOIN project_roads r ON r.id = p.id
+        WHERE p.archived_at IS NULL AND projects.has_project_access (p.id)
+    ),
+    picked AS (
+        SELECT x.*
+        FROM (
+            SELECT * FROM my_teams
+            UNION ALL SELECT * FROM my_businesses
+            UNION ALL SELECT * FROM my_projects
+        ) x, args a
+        WHERE auth.uid () IS NOT NULL
+          AND (a.term IS NULL OR strpos (lower (x.name), a.term) > 0)
+        ORDER BY x.rank, lower (x.name)
+        LIMIT (SELECT cap FROM args)
+    )
+    SELECT COALESCE (
+        jsonb_agg (
+            jsonb_build_object (
+                'kind', pk.kind,
+                'id', pk.id,
+                'name', pk.name,
+                'detail', files.fn_grantee_card (pk.kind::files.grantee_kind, pk.id) ->> 'detail',
+                'avatar', files.fn_grantee_card (pk.kind::files.grantee_kind, pk.id) -> 'avatar'
+            )
+            ORDER BY pk.rank, lower (pk.name)
+        ),
+        '[]'::jsonb
+    )
+    FROM picked pk;
+$$;
+-- #endregion
+
+-- #region 15. files.fn_storage_object_withheld — is this stored object a file kept from the caller?
+-- Decision #402. True when the object is the original or a WebP tier of a file whose owner turned it
+-- away from its library's members (`member_access` off) and that files.fn_can_read does not admit the
+-- caller to. The `workspace` storage policy (00002017) refuses such an object to a member who would
+-- otherwise read every object under the entity's anchor.
+--
+-- SECURITY DEFINER: the row it looks for is exactly the one the caller's RLS hides, so an invoker
+-- lookup would find nothing and wave the object through.
+CREATE OR REPLACE FUNCTION files.fn_storage_object_withheld (p_bucket text, p_name text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM files.items i
+        WHERE i.bucket_id = p_bucket
+          AND i.storage_path = p_name
+          AND NOT i.member_access
+          AND NOT files.fn_can_read (i.id)
+    )
+    OR EXISTS (
+        SELECT 1
+        FROM files.item_variants v
+        JOIN files.items i ON i.id = v.item_id
+        WHERE v.bucket_id = p_bucket
+          AND v.storage_path = p_name
+          AND NOT i.member_access
+          AND NOT files.fn_can_read (i.id)
+    );
 $$;
 -- #endregion

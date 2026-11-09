@@ -20,6 +20,8 @@ import { urlSuspicion } from "../files/link-guards.ts";
 import { ExploreBackendService } from "../explore/ExploreBackendService.ts";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import { ProjectBackendService } from "../projects/ProjectBackendService.ts";
+import { FilesBackendService } from "../files/FilesBackendService.ts";
+import { fileCardFromInspect, fileCardFromShare } from "./file-cards.ts";
 
 /**
  * LinkPreviewBackendService — what a link inside a message shows its reader
@@ -194,6 +196,23 @@ async function listingCard(url: string, id: string): Promise<LinkPreview | null>
 	const read = await ExploreBackendService.item(id);
 	return read.ok && read.data ? listingFrom(url, read.data.item) : null;
 }
+
+/** A file's inspector link, read under the reader's own access: a file they cannot open has no card. */
+async function inspectCard(
+	url: string,
+	target: { id: string; share: string | null },
+	actor: ReadActor,
+): Promise<LinkPreview | null> {
+	const read = await FilesBackendService.inspect(target.id, { share: target.share }, actor);
+	return read.ok && read.data ? fileCardFromInspect(url, read.data) : null;
+}
+
+/** A share link's file. Resolving a slug records nothing; only a download is counted. */
+async function shareCard(url: string, slug: string): Promise<LinkPreview | null> {
+	const read = await FilesBackendService.resolveShare(slug);
+	const resolved = read.ok ? read.data : undefined;
+	return resolved?.state === "ok" ? fileCardFromShare(url, slug, resolved.asset) : null;
+}
 // #endregion
 
 // #region External
@@ -239,6 +258,8 @@ async function previewOne(
 		if (target.kind === "profile") preview = await profileCard(href, target.handle, actor);
 		else if (target.kind === "project") preview = await projectCard(href, target.slug, actor);
 		else if (target.kind === "listing") preview = await listingCard(href, target.id);
+		else if (target.kind === "file") preview = await inspectCard(href, target, actor);
+		else if (target.kind === "share") preview = await shareCard(href, target.slug);
 	} catch {
 		preview = null;
 	}

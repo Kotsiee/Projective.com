@@ -270,6 +270,16 @@ server observation, not a claim a browser gets to make (the same discipline as
 `comms.notifications`). The schema-wide `INSERT` grant in `00002500` is
 harmless precisely because RLS is on and no `INSERT` policy exists.
 
+## `files.item_grants`
+
+`SELECT` ("Owners and named people can read file grants") for the file's owner and for the person a
+`user` grant names (Decision #402). A team-, business- or project-wide grant names nobody, so its
+members learn of it only through the file they can now open; editors read the list through
+`files.get_item_access`, which decides they may. **No write policy at all** — `files.set_item_access`
+is the only writer, because who may grant to which workspace is a rule a row check cannot express. RLS
+on + no write policy is what makes the schema-wide grant in `00002500` harmless, as for the audit
+tables.
+
 ## `files.storage_usage`
 
 `SELECT` ("Owners can read their storage usage") for the owning user or an active member of the
@@ -296,6 +306,9 @@ client that could write it could write itself unlimited storage.
 | `EXECUTE ON files.fn_owns_library`      | `00002510` | To `anon` + `authenticated` + svc: it is called by the write policies themselves. |
 | `EXECUTE ON files.get_storage_quota`    | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; it authorises its own caller. |
 | `EXECUTE ON files.fn_record_download`   | `00002510` | To the **service role only** — a download is a server observation. |
+| `EXECUTE ON files.get_item_access` · `set_item_access` · `list_access_targets` | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; each authorises its caller inside (Decision #402). |
+| `REVOKE` on `fn_item_grant_role` · `fn_entity_admin` · `fn_grantee_card` | `00002510` | From `PUBLIC`, `anon` and `authenticated`: reached only from inside `fn_can_read` and the access definers. |
+| `EXECUTE ON files.fn_storage_object_withheld` | `00002510` | To `anon` + `authenticated` + svc: the `workspace` storage policy calls it as the reader's own role. |
 
 `files.fn_can_read` and `files.fn_owns_library` are deliberately left executable by `PUBLIC`: they
 **are** the `SELECT` and write policies on `files.items`, and a policy expression runs as the invoking
@@ -314,6 +327,12 @@ team **or** business **or** enterprise, OR-ed because one uuid anchor may name a
 Deliberately **not** `auth.uid() = owner`: an entity asset must outlive the member who uploaded it.
 No member writes the bucket directly: the `/files` pipeline promotes an upload here as the service
 role (Decision #340, Q0.2 (a)).
+
+A file its owner turned away from the members (`files.items.member_access` off, Decision #402) is
+withheld with its tiers: the policy also requires `NOT files.fn_storage_object_withheld(bucket_id,
+name)`, so a member who once saw the path cannot read the bytes straight from storage while the
+entity's admins and the file's grantees still can. The app itself serves bytes through the media
+proxy, which reads the row under the caller's own session first.
 
 > Multiple permissive `SELECT` policies on `storage.objects` are **OR-combined**. The workspace
 > rules are written as the sole policies for that bucket; adding a broad "any authenticated" read

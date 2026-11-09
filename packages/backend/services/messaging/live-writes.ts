@@ -3,6 +3,7 @@ import { dmHandleOf, type SendConversationMessage } from "@projective/types/mess
 import type { ReadActor } from "../read-actor.ts";
 import { refusalFrom, type WriteOutcome } from "../projects/live-writes.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
+import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
 import { UUID_RE } from "../projects/live-support.ts";
 import { REPLY_REFUSAL_MESSAGE, replyRefusal } from "../projects/message-replies.ts";
 import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
@@ -135,6 +136,10 @@ export async function insertDmMessage(
 	}
 
 	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
+	const linkedIds = input.linkedFileIds;
+	const linkRefusal = await prepareLinkShares(actor, linkedIds);
+	if (linkRefusal) return { refusal: linkRefusal };
+	const fileIds = [...attachmentIds, ...linkedIds];
 	const body = input.text.length <= MESSAGE_TEXT_MAX
 		? input.text
 		: input.text.slice(0, MESSAGE_TEXT_MAX);
@@ -148,7 +153,7 @@ export async function insertDmMessage(
 			// character send to 4,000, and a Delta that no longer agrees is one every reader discards.
 			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
 			reply_to_id: original?.id ?? null,
-			has_attachments: attachmentIds.length > 0,
+			has_attachments: fileIds.length > 0,
 			is_audio: input.audio !== null,
 		})
 		.select(DM_MESSAGE_COLUMNS)
@@ -161,16 +166,12 @@ export async function insertDmMessage(
 	const row = data as unknown as DmMessageRow | null;
 	if (!row?.id) return { refusal: refusalFrom("dm_messages insert returned no id", "text") };
 
-	if (attachmentIds.length > 0) {
+	if (fileIds.length > 0) {
 		await db.from("message_attachments").insert(
-			attachmentIds.map((attachmentId) => ({
-				message_table: "comms.dm_messages",
-				message_id: row.id,
-				attachment_id: attachmentId,
-			})),
+			attachmentInserts("comms.dm_messages", row.id, attachmentIds, linkedIds),
 		);
 		await db.from("channel_files").insert(
-			attachmentIds.map((attachmentId) => ({
+			fileIds.map((attachmentId) => ({
 				channel_type: "dm",
 				channel_id: threadId,
 				attachment_id: attachmentId,
@@ -185,7 +186,7 @@ export async function insertDmMessage(
 	// The sender's own echo carries its files too, read back through the same loader the feed uses,
 	// so the bubble that appears on send is the bubble a reload draws — not a text-only row whose
 	// attachments only show up after a refresh.
-	const attachments = attachmentIds.length > 0
+	const attachments = fileIds.length > 0
 		? await fetchMessageAttachments(actor, "comms.dm_messages", [row.id])
 		: undefined;
 	const message = toChatMessage(

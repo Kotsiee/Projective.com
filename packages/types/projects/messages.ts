@@ -39,6 +39,14 @@ export const MessageAttachmentKind = z.enum(["image", "video", "pdf", "file"]);
 export type MessageAttachmentKind = z.infer<typeof MessageAttachmentKind>;
 
 /**
+ * How a file rides a message (`comms.attachment_mode`, Decision #401). `copy` hands its readers the
+ * file for good; `link` shares the sender's own file in place, readable only while the file is not
+ * private, so the owner can take it back. Drawn as a tile and as a link card respectively.
+ */
+export const MessageAttachmentMode = z.enum(["copy", "link"]);
+export type MessageAttachmentMode = z.infer<typeof MessageAttachmentMode>;
+
+/**
  * One attachment on a message. Images/videos carry intrinsic `width`/`height` so a single row lays out
  * in true aspect ratio; mixed or overflowing sets condense into a rounded-square grid (max 4 visible,
  * the 4th a `+N` overlay).
@@ -66,6 +74,10 @@ export const MessageAttachmentSchema = z.object({
 	mimeType: z.string().max(255).nullable().optional(),
 	/** The BlurHash read at upload (an image, or a video's poster) — the tile's loading placeholder. */
 	blurhash: BlurHashSchema.nullable().optional(),
+	/** How the file rides the message; absent on a fixture tile, which is a copy. */
+	mode: MessageAttachmentMode.optional(),
+	/** The stored size in bytes, for a link card's meta line; `null` when unknown. */
+	sizeBytes: z.number().int().nonnegative().nullable().optional(),
 });
 export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
 // #endregion
@@ -292,6 +304,22 @@ export function sendDeltaAgrees(
 	return v.delta === null || messageDeltaText(v.delta) === v.text;
 }
 
+/** The most files one message carries, copies and link shares together. */
+export const MESSAGE_FILES_MAX = 20;
+
+/** A send's `files.items` id list, copies or link shares. */
+export const MessageFileIdsSchema = z.array(z.string().min(1).max(120)).max(MESSAGE_FILES_MAX);
+
+/**
+ * The file rule for a send (Decision #401): copies and link shares together stay within
+ * {@link MESSAGE_FILES_MAX}, and no file is both. Shared with the conversation send schema.
+ */
+export function sendFilesAgree(v: { attachmentIds: string[]; linkedFileIds: string[] }): boolean {
+	if (v.attachmentIds.length + v.linkedFileIds.length > MESSAGE_FILES_MAX) return false;
+	const copies = new Set(v.attachmentIds);
+	return v.linkedFileIds.every((id) => !copies.has(id));
+}
+
 /**
  * The composer payload as it reaches the server.
  *
@@ -318,16 +346,23 @@ export const SendProjectMessageSchema = z.object({
 	delta: MessageDeltaSchema.nullable().default(null),
 	/** The message this one replies to, in the same channel; null when it is not a reply. */
 	replyToId: z.string().min(1).max(80).nullable().default(null),
-	/** Every attachment, device-uploaded and library-picked alike, as `files.items` ids. */
-	attachmentIds: z.array(z.string().min(1).max(120)).max(20).default([]),
+	/** Every attachment sent as a copy, device-uploaded and library-picked alike, as `files.items` ids. */
+	attachmentIds: MessageFileIdsSchema.default([]),
+	/** The sender's own files shared as a link (Decision #401), as `files.items` ids. */
+	linkedFileIds: MessageFileIdsSchema.default([]),
 	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
 	audio: MessageAudioSchema.nullable().default(null),
 }).refine(
-	(v) => v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.audio !== null,
+	(v) =>
+		v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.linkedFileIds.length > 0 ||
+		v.audio !== null,
 	{ message: "Write a message, attach a file, or record a memo." },
 ).refine(sendDeltaAgrees, {
 	message: "The formatted body does not match the message text.",
 	path: ["delta"],
+}).refine(sendFilesAgree, {
+	message: "A message carries up to 20 files, each sent once.",
+	path: ["linkedFileIds"],
 });
 export type SendProjectMessage = z.infer<typeof SendProjectMessageSchema>;
 // #endregion

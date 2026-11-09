@@ -54,7 +54,8 @@ export interface InspectorShell {
 	readonly panelOpen: Signal<boolean>;
 	/**
 	 * Whether the canvas fills the viewport in place (the theater, Decision #400): headers, panels and
-	 * the host's chrome are covered, on the standalone page and inside a host alike.
+	 * the host's chrome are covered, on the standalone page and inside a host alike. The stage also
+	 * takes the document fullscreen where the browser allows it (`useNativeFullscreen`, Decision #401).
 	 */
 	readonly fullscreen: Signal<boolean>;
 	readonly status: Signal<StageStatus>;

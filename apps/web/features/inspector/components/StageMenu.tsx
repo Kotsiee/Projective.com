@@ -1,14 +1,15 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { fileInspectHref, type InspectAsset, type InspectViewer } from "@projective/types/files";
+import type { InspectViewer } from "@projective/types/files";
 import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
 import { isApplePlatform } from "@features/projects/core/chat-keyboard.ts";
 import { isActionKey } from "@features/files/core/files-keyboard.ts";
 import { shareRow } from "@features/share/core/share-menu.ts";
 import type { InspectorShell } from "../core/inspector-shell.ts";
 import { type InspectorActions, useInspectorActions } from "./InspectorContext.ts";
-import { ToolButton } from "./controls/ToolButton.tsx";
+import { CanvasToolbar } from "./CanvasToolbar.tsx";
+import { inspectShareTarget } from "./inspect-share.ts";
 import type { MountedViewer } from "./viewers/viewer.ts";
 
 /**
@@ -85,11 +86,6 @@ function downloadLabel(viewer: InspectViewer): string {
 	return viewer === "model" ? "Download asset" : "Download";
 }
 
-/** Where a Share row points: the file's live share link, else its inspector page. */
-export function shareHrefOfInspect(asset: InspectAsset): string {
-	return asset.shareUrl ?? fileInspectHref(asset.id, { share: asset.share });
-}
-
 function stageRows(
 	shell: InspectorShell,
 	viewer: MountedViewer,
@@ -120,7 +116,7 @@ function stageRows(
 			icon: "download",
 			command: () => actions.download(),
 		},
-		shareRow({ title: shell.asset.name, href: shareHrefOfInspect(shell.asset) }, actions.signedIn),
+		shareRow(inspectShareTarget(shell), actions.signedIn),
 	];
 }
 // #endregion
@@ -183,9 +179,6 @@ export function StageMenu({ shell, viewer, stage }: StageMenuProps): JSX.Element
 // #endregion
 
 // #region Theater
-/** How long the theater's toolbar stays after the pointer stops, ms. */
-export const THEATER_IDLE_MS = 2500;
-
 /** Props for {@link TheaterChrome}. */
 export interface TheaterChromeProps {
 	shell: InspectorShell;
@@ -195,44 +188,10 @@ export interface TheaterChromeProps {
 }
 
 /**
- * The floating toolbar of the in-page fullscreen: the canvas's own chips, where it has them, and Exit.
- * It shows while the pointer moves and fades {@link THEATER_IDLE_MS} after it stops; hover and keyboard
- * focus inside it keep it up, so a person can always reach Exit.
+ * The floating toolbar of the theater: the canvas's footer toolbar ({@link CanvasToolbar}) woken by
+ * the whole fullscreen frame, so a person can always reach Exit.
  */
 export function TheaterChrome({ shell, viewer, frame }: TheaterChromeProps): JSX.Element {
-	const awake = useSignal(true);
-
-	useEffect(() => {
-		const el = frame.current;
-		if (!el) return;
-		let timer = setTimeout(() => (awake.value = false), THEATER_IDLE_MS);
-		const wake = () => {
-			awake.value = true;
-			clearTimeout(timer);
-			timer = setTimeout(() => (awake.value = false), THEATER_IDLE_MS);
-		};
-		el.addEventListener("pointermove", wake);
-		el.addEventListener("pointerdown", wake);
-		return () => {
-			clearTimeout(timer);
-			el.removeEventListener("pointermove", wake);
-			el.removeEventListener("pointerdown", wake);
-		};
-	}, []);
-
-	const Chips = shell.status.value === "ready" ? viewer.Chips : null;
-	return (
-		<div class="ins-theater" data-awake={awake.value || undefined}>
-			{Chips ? <Chips /> : null}
-			<div class="ins-chips">
-				<ToolButton
-					icon="collapse"
-					label="Exit fullscreen"
-					shortcut="Esc"
-					onClick={() => shell.toggleFullscreen()}
-				/>
-			</div>
-		</div>
-	);
+	return <CanvasToolbar shell={shell} viewer={viewer} surface={frame} />;
 }
 // #endregion

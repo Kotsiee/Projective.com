@@ -3701,15 +3701,57 @@ a channel — without being copied, so renaming or revoking it takes effect ever
 
 ### Privacy scopes
 
-Three scopes, ordered by reach. Elevation is **automatic and one-directional**; narrowing is always
+Four scopes, ordered by reach. Elevation is **automatic and one-directional**; narrowing is always
 an explicit owner action, so attaching something can never silently revoke access another surface
 already depends on.
 
 | Scope         | Who can read it                                    | How it is reached                                                                              |
 | :------------ | :------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
-| **Private**   | The uploader only (plus entity members, for an entity-owned asset) | The default for everything.                                                    |
+| **Private**   | The uploader only (plus entity members, for an entity-owned asset, unless its owner turned it away from them; plus a project's people, for a project's file) | The default for everything.                                                    |
+| **Restricted** ("Specific people") | The uploader, the people they sent it to as a link in a message, and the people, teams, businesses and projects they added in the file's Access tab | Chosen in the inspector's Access tab (Decision #402), or elevated automatically from Private when the owner shares their own file **as a link** in a conversation or a project room (Decision #401). Setting the file back to Private pauses every link share and every grant at once; choosing Restricted again brings them back. Never a folder. |
 | **Link only** | Anyone holding the opaque share slug                | Elevated automatically when attached inside a **semi-private** context — a channel, a direct message, a project submission. A recipient who can read the message must be able to open what it carries. |
 | **Public**    | Anyone                                              | Elevated automatically when attached to a **public** entity — a service, a product, a public profile, a banner. |
+
+**Sending a file to people (Decision #401).** A file sent in `/messages` or a project room goes one of
+two ways, chosen per file in the composer's tray and in the share modal:
+
+- **Send a copy** — the file rides the message as an attachment, and everyone who can read the message
+  may open and download it for as long as the message exists. This is what attaching has always done.
+- **Send a link** — offered only for an upload in the sender's own personal library. The file stays the
+  sender's: it is drawn in the conversation as a link card (its picture or type tile, its name, type and
+  size, and its address), opens in the inspector for the people who can read the message, and raises a
+  Private file to **Restricted**. Setting it back to Private stops every link share opening, while copies
+  sent earlier stay with their readers. A team's, a business's or a project room's file, a mounted drive
+  file and a saved web link can only be sent as a copy.
+
+A file's inspector or share address pasted into a message unfurls into the same link card for a reader
+who can open it, and stays a plain link for one who cannot.
+
+**Who has access (Decision #402).** The inspector (`/inspect/{file}`) has an **Access** tab beside View
+and Details. It shows the file's scope as four choices — Only you · Specific people · Anyone with the
+link · Public — and, for Specific people, the people, teams, businesses and projects it is shared with:
+
+- **Adding.** One search finds people on Projective (ranked as in the share modal), the teams and
+  businesses the person belongs to, and the projects they are on. A file can be shared only with a
+  workspace or project its sharer is in, and with at most 50 grantees.
+- **Levels.** **Can view** opens and downloads the file. **Can edit** also adds and removes people and
+  changes their levels; it never changes the scope or the workspace switch, never moves, renames or
+  deletes the file. Only the owner changes the scope.
+- **Private pauses, it does not forget.** While the file is Private the list stays, dimmed, and nobody on
+  it can open the file; choosing Specific people again restores them. Removing someone is recorded,
+  never erased.
+- **Where the file lives decides the start.** A file in a team's, business's or enterprise's library
+  opens to every member, and its owner can turn that off ("Everyone in {workspace} can view"); the
+  workspace's owners and admins always keep it. A file in a project room always stays open to the
+  project's people — a project's files are the engagement's record, which funded stages, approvals and
+  disputes depend on — so sharing can only widen it. The people a file was sent to as a link in a
+  message keep it while the file is not Private, and copies sent earlier stay with their readers.
+- **Saving.** Changes are drafted, then saved together with **Save changes** or dropped with
+  **Revert**; one save lands entirely or not at all.
+
+Viewers see the scope as text and are not shown who else has access; a signed-out visitor is asked to
+sign in. Granting does not notify anyone: the owner sends the file's link through **Share**, whose
+external shortcuts appear only while the link would open for whoever receives it.
 
 A share link is **read-only** and revocable. Its slug is opaque, server-minted and high-entropy: it
 is a credential, so it is never enumerable, never derived from the asset id or the owner, and the

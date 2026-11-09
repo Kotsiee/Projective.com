@@ -43,6 +43,45 @@
 	font-size: var(--text-sm);
 	overflow-wrap: anywhere;
 }
+.share__reach {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+.share__reach-action {
+	display: inline-block;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	font-weight: var(--fw-medium);
+	color: var(--primary-ink);
+	cursor: pointer;
+	transition: transform var(--dur-press) var(--ease-standard);
+}
+.share__reach-action:hover {
+	text-decoration: underline;
+}
+.share__reach-action:active {
+	transform: scale(var(--btn-press-scale));
+}
+.share__reach-action:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.share__reach-action,
+	.share__reach-action:active {
+		transition: none;
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .share__reach-action,
+:root[data-motion="reduced"] .share__reach-action:active {
+	transition: none;
+	transform: none;
+}
 /* #endregion */
 
 /* #region People tier — note + outcome */
@@ -61,6 +100,11 @@
 .share__note:focus-visible {
 	outline: none;
 	border-color: var(--primary);
+}
+.share__mode-note {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 .share__outcome {
 	margin: 0;

@@ -377,7 +377,7 @@ const STATUSES: ReadonlySet<string> = new Set([
 	"quarantined",
 ]);
 
-const VISIBILITIES: ReadonlySet<string> = new Set(["private", "link", "public"]);
+const VISIBILITIES: ReadonlySet<string> = new Set(["private", "restricted", "link", "public"]);
 
 const OWNER_KINDS: ReadonlySet<string> = new Set(["user", "team", "business", "enterprise"]);
 

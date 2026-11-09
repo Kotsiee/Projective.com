@@ -62,6 +62,8 @@ CREATE TABLE files.folders (
 
     CONSTRAINT folders_pkey PRIMARY KEY (id),
     CONSTRAINT folders_color_check CHECK (color ~ '^#[0-9a-f]{6}$'),
+    -- `restricted` is a file's link share in a message (Decision #401); a folder is never attached.
+    CONSTRAINT folders_visibility_check CHECK (visibility <> 'restricted'),
     CONSTRAINT folders_owner_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users (id),
     CONSTRAINT folders_parent_fkey FOREIGN KEY (parent_folder_id) REFERENCES files.folders (id),
     CONSTRAINT folders_share_slug_key UNIQUE (share_slug),
@@ -117,6 +119,11 @@ CREATE TABLE files.items (
   owner_type files.owner_kind NOT NULL DEFAULT 'user',
   -- NULL when owner_type = 'user' — `owner_user_id` carries the identity in that case.
   owner_entity_id uuid,
+  -- Whether every active member of the owning team / business / enterprise may read it (Decision
+  -- #402). Off leaves the creator, the entity's owners and admins, and the people it is granted to;
+  -- an entity's governance never loses sight of its own library. A personal row has no members, so it
+  -- stays true (items_member_access_check).
+  member_access boolean NOT NULL DEFAULT true,
   -- #endregion
 
   -- #region Deduplication
@@ -204,7 +211,40 @@ CREATE TABLE files.items (
   CONSTRAINT items_link_url_check CHECK (source <> 'link' OR link_url IS NOT NULL),
   CONSTRAINT items_owner_entity_check CHECK (
       owner_type = 'user' OR owner_entity_id IS NOT NULL
-  )
+  ),
+  CONSTRAINT items_member_access_check CHECK (member_access OR owner_type <> 'user')
+);
+-- #endregion
+
+-- #region files.item_grants — who else may open one file (Decision #402)
+-- One row names one grantee — a person, a team, a business or a project — and what they may do:
+-- `viewer` opens and downloads; `editor` may also change this file's grants, never its tier. A grant
+-- counts in files.fn_can_read only while the file is not `private`, so the owner pauses every grant at
+-- once by choosing Private, and choosing Restricted again brings them back.
+--
+-- `grantee_id` is polymorphic over `grantee_kind` (the owner_entity_id precedent), so it carries no
+-- foreign key; files.set_item_access checks the grantee exists, and that the granter belongs to the
+-- team, business or project they grant to, before it writes.
+--
+-- Revoking is a column, not a DELETE, so who had access and who took it away stays auditable; the
+-- partial unique index in 00004011 allows one LIVE grant per grantee. Written only by the definer
+-- RPC files.set_item_access: there is no client write policy (00002011).
+CREATE TABLE files.item_grants (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    item_id uuid NOT NULL,
+    grantee_kind files.grantee_kind NOT NULL,
+    grantee_id uuid NOT NULL,
+    role files.grant_role NOT NULL DEFAULT 'viewer',
+    granted_by uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    revoked_at timestamp with time zone,
+    revoked_by uuid,
+    CONSTRAINT item_grants_pkey PRIMARY KEY (id),
+    CONSTRAINT item_grants_item_fkey FOREIGN KEY (item_id) REFERENCES files.items (id) ON DELETE CASCADE,
+    CONSTRAINT item_grants_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES auth.users (id),
+    CONSTRAINT item_grants_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES auth.users (id),
+    CONSTRAINT item_grants_revoked_check CHECK ((revoked_at IS NULL) = (revoked_by IS NULL))
 );
 -- #endregion
 

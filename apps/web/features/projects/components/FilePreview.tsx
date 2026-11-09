@@ -4,13 +4,14 @@ import { AudioVisualizer } from "@projective/ui/display";
 import { ProgressiveImage } from "@projective/ui/display/image";
 import { VideoPlayer } from "@projective/ui/display/video";
 import { Icon } from "@projective/ui/icons";
-import { MEDIA_PROXY_ROUTE } from "@projective/types/files";
+import { embedFor, MEDIA_PROXY_ROUTE } from "@projective/types/files";
 import {
 	assetMediaSrc,
 	assetMediaSrcset,
 	assetPlaceholder,
 } from "@features/files/core/asset-media.ts";
 import type { LinkAttachment } from "@projective/types/files";
+import { ProviderFrame } from "@features/inspector/components/viewers/frame/ProviderFrame.tsx";
 import type { AssetItem } from "../types/projects-types.ts";
 import { FileTypeIcon } from "./FileTypeIcon.tsx";
 import { linkHref, previewDownloadHref } from "./preview/preview-model.ts";
@@ -78,7 +79,9 @@ function highlight(line: string): JSX.Element[] {
  * Both pictures are the platform's re-hosted copies, and the address goes through `/exit` until its
  * scan comes back safe, so opening this preview contacts neither the site nor anyone else.
  */
-function LinkPreview({ file, link }: { file: AssetItem; link: LinkAttachment }): JSX.Element {
+function LinkPreview(
+	{ file, link, note }: { file: AssetItem; link: LinkAttachment; note?: string },
+): JSX.Element {
 	const href = linkHref(file);
 	return (
 		<div class="fx-preview fx-preview--link">
@@ -93,6 +96,7 @@ function LinkPreview({ file, link }: { file: AssetItem; link: LinkAttachment }):
 			</div>
 			<p class="fx-preview__name">{link.title || file.name}</p>
 			{link.description ? <p class="fx-preview__note">{link.description}</p> : null}
+			{note ? <p class="fx-preview__note">{note}</p> : null}
 			{href
 				? (
 					<a
@@ -259,15 +263,13 @@ function CodePreview({ file }: { file: AssetItem }): JSX.Element {
 }
 // #endregion
 
-/**
- * FilePreview — the row's own renderer for one file, where the inspector's canvas does not apply (a
- * fixture, a link, a connector file) and wherever a surface draws a file inline (the submission
- * review and pre-submit stages, the public share page). Stored bytes are read through the media
- * proxy: a picture with its BlurHash, a playable video, an audio player, the file's real text for
- * code; anything else names itself and offers its download.
- */
-export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
-	if (file.source === "link" && file.link) return <LinkPreview file={file} link={file.link} />;
+function StandardPreview(
+	{ file, active, reason }: FilePreviewProps & { reason?: string },
+): JSX.Element {
+	if (file.source === "link" && file.link) {
+		return <LinkPreview file={file} link={file.link} note={reason} />;
+	}
+	if (reason) return <Placeholder file={file} reason={reason} />;
 	switch (file.kind) {
 		case "image":
 			return <ImagePreview file={file} active={active} />;
@@ -280,4 +282,37 @@ export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
 		default:
 			return <Placeholder file={file} />;
 	}
+}
+
+function providerHref(file: AssetItem): string | null {
+	if (file.source === "link") return linkHref(file);
+	return file.external?.externalWebUrl ?? (file.url && file.url !== "#" ? file.url : null);
+}
+
+/**
+ * FilePreview — the row's own renderer for one file, where the inspector's canvas does not apply (a
+ * fixture, a link, a connector file) and wherever a surface draws a file inline (the submission
+ * review and pre-submit stages, the public share page). It walks the preview ladder (Decision #401):
+ *
+ *  1. **Our own canvas** — stored bytes, read through the media proxy: a picture with its BlurHash, a
+ *     playable video, an audio player, the file's real text for code.
+ *  2. **The provider's viewer** — a link to, or a mounted file from, an allowlisted provider
+ *     (`embedFor`) in a sandboxed frame ({@link ProviderFrame}).
+ *  3. **The standard fallback** — the link's card or the file's name and download, which is also
+ *     what a frame that errors or never loads gives way to.
+ */
+export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
+	const embed = file.source === "supabase" ? null : embedFor(file);
+	if (embed) {
+		return (
+			<ProviderFrame
+				key={embed.src}
+				embed={embed}
+				name={file.name}
+				openHref={providerHref(file)}
+				fallback={(reason) => <StandardPreview file={file} active={active} reason={reason} />}
+			/>
+		);
+	}
+	return <StandardPreview file={file} active={active} />;
 }

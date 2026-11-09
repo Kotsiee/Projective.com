@@ -15,7 +15,7 @@ import {
 } from "../core/files-state.ts";
 import {
 	type AssetSource,
-	type AssetVisibility,
+	AssetVisibility,
 	CATEGORY_META,
 	FileCategory,
 	sourceLabel,
@@ -54,7 +54,7 @@ const TYPE_OPTIONS = [
 	{ value: OTHER_VALUE, label: "Other types" },
 ];
 
-const VISIBILITY_ROWS: readonly AssetVisibility[] = ["private", "link", "public"];
+const VISIBILITY_ROWS: readonly AssetVisibility[] = AssetVisibility.options;
 
 const SOURCE_ROWS: readonly AssetSource[] = [
 	"supabase",

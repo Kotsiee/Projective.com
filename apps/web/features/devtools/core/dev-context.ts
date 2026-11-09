@@ -48,6 +48,7 @@ import {
 	type DevCatalogueAnalytics,
 	type DevCheckoutGate,
 	type DevCheckoutPayment,
+	type DevFileAccess,
 	type DevClientPipeline,
 	type DevDiscoveryActivity,
 	type DevDiscoveryViewer,
@@ -115,6 +116,7 @@ export type {
 	DevAgeRestriction,
 	DevAutoFundMode,
 	DevAvailabilityConflict,
+	DevFileAccess,
 	DevBasketScenario,
 	DevBusinessKyb,
 	DevBusinessPlanGates,
@@ -493,6 +495,11 @@ export interface DevOverrides {
 	 * publish readiness on the client; a save still meets the real gate.
 	 */
 	availabilityConflict: DevAvailabilityConflict;
+	/**
+	 * The inspector's Access tab (Decision #402): the server's standing, or the tab as the owner, an
+	 * editor, a viewer or a signed-out visitor sees it. Client-only; a save still meets the database.
+	 */
+	fileAccess: DevFileAccess;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -567,6 +574,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	catalogueAnalytics: "auto",
 	clientPipeline: "auto",
 	availabilityConflict: "auto",
+	fileAccess: "auto",
 };
 
 /** Account-type options in display order. */
@@ -1057,6 +1065,15 @@ export const DEV_AVAILABILITY_CONFLICTS: ReadonlyArray<DevOption<DevAvailability
 	{ value: "empty_horizon", label: "Empty 30 days" },
 ];
 
+/** Access tab standings (Decision #402). `Real` shows the server's answer. */
+export const DEV_FILE_ACCESSES: ReadonlyArray<DevOption<DevFileAccess>> = [
+	{ value: "auto", label: "Real" },
+	{ value: "owner", label: "Owner" },
+	{ value: "editor", label: "Editor" },
+	{ value: "viewer", label: "Viewer" },
+	{ value: "signed-out", label: "Signed out" },
+];
+
 // #endregion
 
 // #region Store
@@ -1218,6 +1235,8 @@ function reflect(next: DevOverrides): void {
 		if (next.availabilityConflict !== "auto") {
 			root.dataset.devAvailabilityConflict = next.availabilityConflict;
 		} else delete root.dataset.devAvailabilityConflict;
+		if (next.fileAccess !== "auto") root.dataset.devFileAccess = next.fileAccess;
+		else delete root.dataset.devFileAccess;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -1284,6 +1303,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devCatalogueAnalytics;
 		delete root.dataset.devClientPipeline;
 		delete root.dataset.devAvailabilityConflict;
+		delete root.dataset.devFileAccess;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

@@ -11,12 +11,14 @@ import {
 	CATEGORY_META,
 	sanitisedNoteOf,
 	sourceLabel,
+	visibilityChoices,
 	visibilityLabel,
 } from "../types/file-types.ts";
 import { profileHref } from "@web/features/projects/core/routing.ts";
 import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
 import { assetMediaSrc } from "../core/asset-media.ts";
 import { thumbPlan } from "../core/thumbs/thumb-plan.ts";
+import { usePictureFallback } from "../hooks/use-picture-fallback.ts";
 import { AssetThumb } from "./AssetThumb.tsx";
 import { ScanMark, SourceMark, StatusMark, VisibilityMark } from "./file-hub-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -87,11 +89,13 @@ export interface InspectPanelProps {
 // #endregion
 
 // #region Vocabulary
-/** The three privacy scopes, phrased from the reader's point of view (the SSOT's `visibilityLabel`). */
-const VISIBILITY_OPTIONS = (["private", "link", "public"] as const).map((value) => ({
-	value,
-	label: visibilityLabel(value),
-}));
+/** The privacy scopes the file may move between, phrased from the reader's point of view. */
+function visibilityOptions(current: AssetVisibility): { value: AssetVisibility; label: string }[] {
+	return visibilityChoices(current, "asset").map((value) => ({
+		value,
+		label: visibilityLabel(value),
+	}));
+}
 
 /** The stored-bytes lifecycle, in words. Only shown when it is not the unremarkable `uploaded`. */
 function statusLabel(status: AssetItem["status"]): string {
@@ -146,10 +150,22 @@ function Fact({ label, children, mark }: FactProps): JSX.Element | null {
 /** The panel's picture: the card's preview, larger, or a link's share image. */
 function PanelPreview({ asset }: { asset: AssetItem }): JSX.Element {
 	const linkImage = asset.link?.imageUrl ?? null;
-	const picture = linkImage ?? (asset.kind === "image" ? assetMediaSrc(asset, "md") : null) ??
-		(asset.kind === "video" ? asset.thumbnailUrl : null);
-	if (picture) {
-		return <img class="fh-inspect__thumb" src={picture} alt="" loading="lazy" draggable={false} />;
+	const picture = usePictureFallback(
+		linkImage ?? (asset.kind === "image" ? assetMediaSrc(asset, "md") : null) ??
+			(asset.kind === "video" ? asset.thumbnailUrl : null),
+	);
+	if (picture.src) {
+		return (
+			<img
+				ref={picture.ref}
+				class="fh-inspect__thumb"
+				src={picture.src}
+				alt=""
+				loading="lazy"
+				draggable={false}
+				onError={picture.onError}
+			/>
+		);
 	}
 	const plan = thumbPlan(asset, pageAllowsEngines());
 	if (plan.kind !== "none") return <AssetThumb key={asset.id} asset={asset} plan={plan} />;
@@ -350,7 +366,7 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 						<p class="fh-inspect__managetitle">Who can see this</p>
 						<SelectButton
 							size="sm"
-							options={VISIBILITY_OPTIONS}
+							options={visibilityOptions(asset.visibility)}
 							value={asset.visibility}
 							disabled={busy}
 							aria-label="Who can see this"

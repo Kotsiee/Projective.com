@@ -49,6 +49,7 @@ function sendOf(text: string, overrides: Partial<SendProjectMessage> = {}): Send
 		delta: null,
 		replyToId: null,
 		attachmentIds: [],
+		linkedFileIds: [],
 		audio: null,
 		...overrides,
 	};

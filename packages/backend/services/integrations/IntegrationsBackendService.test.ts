@@ -1557,6 +1557,90 @@ Deno.test("browseLocation: the trail names each level on the first page, and onl
 			assertEquals(calls.slice(before).filter((c) => c.host !== "postgrest.fake").length, 1);
 		});
 	}));
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+
+/** Drive's answer for a file's thumbnail facts, and the picture host's for its bytes. */
+function pictured(
+	link: string | null,
+	host: () => Response = () => new Response(PNG_BYTES),
+): ProviderRoute {
+	return (call) =>
+		call.host === "www.googleapis.com"
+			? json(link ? { hasThumbnail: true, thumbnailLink: link } : { hasThumbnail: false })
+			: host();
+}
+
+Deno.test("thumbnail: the picture comes back as sniffed bytes, read under the caller's own connection", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: pictured("https://lh3.googleusercontent.com/drive-storage/T=s220"),
+		}, async (calls) => {
+			const res = await Service.thumbnail({ connectionId: CONNECTION, id: "P1" }, ADA);
+			assert(res.ok, res.message);
+			assertEquals(res.data?.contentType, "image/png");
+			assertEquals(res.data?.bytes, PNG_BYTES);
+			const [facts] = named(calls, "/drive/v3/files/P1");
+			assertEquals(facts.headers.get("authorization"), "Bearer drive-token");
+			const [host] = calls.filter((c) => c.host === "lh3.googleusercontent.com");
+			assertEquals(host.url.pathname, "/drive-storage/T=s512");
+		});
+	}));
+
+Deno.test("thumbnail: a file Drive cannot picture is a 404, with no picture request", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: pictured(null),
+		}, async (calls) => {
+			const res = await Service.thumbnail({ connectionId: CONNECTION, id: "Z1" }, ADA);
+			assertEquals(res.status, 404);
+			assertEquals(calls.filter((c) => c.host.endsWith("googleusercontent.com")).length, 0);
+		});
+	}));
+
+Deno.test("thumbnail: someone else's connection is a 404, and no token is claimed", () =>
+	world({
+		db: { "integrations.v_my_connections": () => [] },
+	}, async (calls) => {
+		const res = await Service.thumbnail({ connectionId: CONNECTION, id: "P1" }, MALLORY);
+		assertEquals(res.status, 404);
+		assertEquals(named(calls, "integrations.rpc.fn_claim_connection_token").length, 0);
+	}));
+
+Deno.test("thumbnail: a picture address off Google's hosts is a 502 that names no address", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: pictured("https://evil.example/steal?token=x"),
+		}, async (calls) => {
+			const res = await Service.thumbnail({ connectionId: CONNECTION, id: "P1" }, ADA);
+			assertEquals(res.status, 502);
+			assertEquals(res.message?.includes("evil.example"), false);
+			assertEquals(calls.filter((c) => c.host === "evil.example").length, 0);
+		});
+	}));
+
+Deno.test("thumbnail: signed out is a 401 before anything is read", () =>
+	world({}, async (calls) => {
+		const signedOut: ReadActor = { ...ADA, userId: "", accessToken: "" };
+		const res = await Service.thumbnail({ connectionId: CONNECTION, id: "P1" }, signedOut);
+		assertEquals(res.status, 401);
+		assertEquals(calls.length, 0);
+	}));
 // #endregion
 
 // #region Shared Google grant

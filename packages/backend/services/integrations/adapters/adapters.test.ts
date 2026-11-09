@@ -1,9 +1,10 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
 import { AssetSource } from "@projective/types/files";
 import { DriveBrowsePageSchema, type UserConnection } from "@projective/types/integrations";
 import { isIntegrationsBackendLive } from "../../../core/supabase.ts";
 import { isMountedSource } from "../../files/asset-row.ts";
 import { pinnedRequest, pinnedRequestHead } from "../../files/link-fetch.ts";
+import { netOf, readThumbnail, sniffRaster, THUMBNAIL_MAX_BYTES } from "./adapter-support.ts";
 import { clearAssumedRoles } from "./aws.ts";
 import { createDropboxAdapter } from "./DropboxAdapter.ts";
 import { createFrameIoAdapter } from "./FrameIoAdapter.ts";
@@ -310,6 +311,235 @@ Deno.test("google drive: no adapter is built without a bearer token", () => {
 		StorageAdapterError,
 	);
 	assertEquals(error.code, "misconfigured");
+});
+
+// #endregion
+
+// #region Thumbnails
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16]);
+const GIF = new TextEncoder().encode("GIF89a\x01\x00");
+const WEBP = new Uint8Array([
+	0x52,
+	0x49,
+	0x46,
+	0x46,
+	1,
+	0,
+	0,
+	0,
+	0x57,
+	0x45,
+	0x42,
+	0x50,
+	0x56,
+	0x50,
+]);
+const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>');
+const LH3_LINK = "https://lh3.googleusercontent.com/drive-storage/AJQWt=s220";
+
+function picture(bytes: Uint8Array<ArrayBuffer>, headers: Record<string, string> = {}): Response {
+	return new Response(bytes, { status: 200, headers: { "content-type": "image/png", ...headers } });
+}
+
+/** A Drive that answers a file's thumbnail facts with `link`, and its picture host with `host`. */
+function driveWithPicture(link: string | null, host: (call: Call) => Response) {
+	return fakeNet((call) =>
+		call.url.hostname === "www.googleapis.com"
+			? json(link ? { hasThumbnail: true, thumbnailLink: link } : { hasThumbnail: false })
+			: host(call)
+	);
+}
+
+Deno.test("thumbnails: the four raster formats are recognised by their bytes, and markup is not", () => {
+	assertEquals(sniffRaster(PNG), "image/png");
+	assertEquals(sniffRaster(JPEG), "image/jpeg");
+	assertEquals(sniffRaster(GIF), "image/gif");
+	assertEquals(sniffRaster(WEBP), "image/webp");
+	assertEquals(sniffRaster(SVG), null);
+	assertEquals(sniffRaster(new TextEncoder().encode("<!doctype html>")), null);
+	assertEquals(sniffRaster(new Uint8Array(0)), null);
+});
+
+Deno.test("google drive: a listed file Drive can picture carries a same-origin address, and only that file", async () => {
+	const { calls, net } = fakeNet(() =>
+		json({
+			files: [
+				{
+					id: "P1",
+					name: "brief.pdf",
+					mimeType: "application/pdf",
+					version: "17",
+					hasThumbnail: true,
+				},
+				{ id: "Z1", name: "bundle.zip", mimeType: "application/zip", hasThumbnail: false },
+			],
+		})
+	);
+	const listing = contract(
+		await createGoogleDriveAdapter(ctxOf("google_drive", net)).list(
+			{ folderId: null, path: null },
+			null,
+			50,
+		),
+	);
+	assertStringIncludes(calls[0].url.searchParams.get("fields") ?? "", "hasThumbnail");
+	const [pdf, zip] = listing.entries;
+	assertEquals(
+		pdf.thumbnailUrl,
+		"/api/files/drive-thumbnail?connectionId=c0a8012e-0000-4000-8000-000000000001&id=P1&v=17",
+	);
+	assertEquals(zip.thumbnailUrl, null);
+});
+
+Deno.test("google drive: the picture is read from Google's own host at card size, as its sniffed bytes", async () => {
+	const { calls, net } = driveWithPicture(
+		LH3_LINK,
+		() => picture(PNG, { "content-type": "text/html" }),
+	);
+	const shot = await createGoogleDriveAdapter(ctxOf("google_drive", net)).thumbnail?.("P1");
+	assertEquals(shot?.contentType, "image/png");
+	assertEquals(shot?.bytes, PNG);
+	assertEquals(calls[0].url.searchParams.get("fields"), "hasThumbnail,thumbnailLink");
+	const host = calls[1];
+	assertEquals(host.url.href, "https://lh3.googleusercontent.com/drive-storage/AJQWt=s512");
+	assertEquals(host.headers.get("authorization"), "Bearer tok-123");
+	assertEquals(host.address, null);
+});
+
+Deno.test("google drive: a file with no picture costs no picture request", async () => {
+	const { calls, net } = driveWithPicture(null, () => picture(PNG));
+	assertEquals(await createGoogleDriveAdapter(ctxOf("google_drive", net)).thumbnail?.("Z1"), null);
+	assertEquals(calls.length, 1);
+});
+
+Deno.test("google drive: a picture link outside Google's picture hosts is refused before it is requested", async () => {
+	for (
+		const link of [
+			"https://evil.example/thumb.png",
+			"https://script.googleusercontent.com/macros/echo",
+			"http://lh3.googleusercontent.com/x=s220",
+			"https://lh3.googleusercontent.com:8443/x=s220",
+			"https://user:pw@lh3.googleusercontent.com/x=s220",
+		]
+	) {
+		const { calls, net } = driveWithPicture(link, () => picture(PNG));
+		await refusal(
+			() => createGoogleDriveAdapter(ctxOf("google_drive", net)).thumbnail!("P1"),
+			"provider_error",
+		);
+		assertEquals(calls.length, 1, link);
+	}
+});
+
+Deno.test("thumbnails: a redirect is followed only to an allowed host, and without the credential", async () => {
+	const hops = (to: string) =>
+		driveWithPicture(
+			LH3_LINK,
+			(call) =>
+				call.url.hostname === "lh3.googleusercontent.com"
+					? new Response(null, { status: 302, headers: { location: to } })
+					: picture(JPEG),
+		);
+	const ok = hops("https://lh4.googleusercontent.com/next");
+	const shot = await createGoogleDriveAdapter(ctxOf("google_drive", ok.net)).thumbnail?.("P1");
+	assertEquals(shot?.contentType, "image/jpeg");
+	assertEquals(ok.calls[2].url.hostname, "lh4.googleusercontent.com");
+	assertEquals(ok.calls[2].headers.has("authorization"), false);
+
+	const away = hops("https://evil.example/next.jpg");
+	await refusal(
+		() => createGoogleDriveAdapter(ctxOf("google_drive", away.net)).thumbnail!("P1"),
+		"provider_error",
+	);
+	assertEquals(away.calls.length, 2);
+});
+
+Deno.test("thumbnails: an oversized picture is refused, declared or streamed", async () => {
+	const big = new Uint8Array(THUMBNAIL_MAX_BYTES + 1);
+	big.set(PNG);
+	const allow = { allowHost: (h: string) => h === "pics.example" };
+	const declared = fakeNet(() =>
+		picture(PNG, { "content-length": String(THUMBNAIL_MAX_BYTES + 1) })
+	);
+	await refusal(
+		() =>
+			readThumbnail(
+				netOf(ctxOf("google_drive", declared.net)),
+				"Drive",
+				"https://pics.example/a",
+				allow,
+			),
+		"provider_error",
+	);
+	const streamed = fakeNet(() =>
+		new Response(
+			new ReadableStream({
+				start(controller) {
+					controller.enqueue(big.subarray(0, THUMBNAIL_MAX_BYTES));
+					controller.enqueue(big.subarray(THUMBNAIL_MAX_BYTES));
+					controller.close();
+				},
+			}),
+			{ status: 200 },
+		)
+	);
+	await refusal(
+		() =>
+			readThumbnail(
+				netOf(ctxOf("google_drive", streamed.net)),
+				"Drive",
+				"https://pics.example/a",
+				allow,
+			),
+		"provider_error",
+	);
+});
+
+Deno.test("thumbnails: markup served as a picture is refused, whatever its content-type says", async () => {
+	const { net } = driveWithPicture(LH3_LINK, () => picture(SVG, { "content-type": "image/png" }));
+	await refusal(
+		() => createGoogleDriveAdapter(ctxOf("google_drive", net)).thumbnail!("P1"),
+		"provider_error",
+	);
+});
+
+Deno.test("thumbnails: a picture gone at the host is null, a throttled one rate-limited", async () => {
+	const gone = driveWithPicture(LH3_LINK, () => new Response("nope", { status: 404 }));
+	assertEquals(
+		await createGoogleDriveAdapter(ctxOf("google_drive", gone.net)).thumbnail?.("P1"),
+		null,
+	);
+	const busy = driveWithPicture(LH3_LINK, () => new Response(null, { status: 429 }));
+	await refusal(
+		() => createGoogleDriveAdapter(ctxOf("google_drive", busy.net)).thumbnail!("P1"),
+		"rate_limited",
+	);
+	const denied = driveWithPicture(LH3_LINK, () => new Response(null, { status: 403 }));
+	await refusal(
+		() => createGoogleDriveAdapter(ctxOf("google_drive", denied.net)).thumbnail!("P1"),
+		"provider_error",
+	);
+});
+
+Deno.test("thumbnails: a host that never answers is cut off at the deadline", async () => {
+	const net: Partial<StorageNet> = {
+		fetch: (_url, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+			}),
+	};
+	const error = await assertRejects(
+		() =>
+			readThumbnail(netOf(ctxOf("google_drive", net)), "Drive", "https://pics.example/a", {
+				allowHost: () => true,
+				timeoutMs: 20,
+			}),
+		StorageAdapterError,
+	);
+	assertEquals(error.code, "provider_error");
+	assertEquals(error.message.includes("pics.example"), false);
 });
 
 // #endregion

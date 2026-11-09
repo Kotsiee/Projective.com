@@ -196,6 +196,9 @@ export const SetVisibilitySchema = z.object({
 }).refine(
 	(v) => v.assetIds.length + v.folderIds.length > 0,
 	{ message: "Select at least one asset or folder." },
+).refine(
+	(v) => v.visibility !== "restricted" || v.folderIds.length === 0,
+	{ message: "A folder can't be limited to the people a file was sent to.", path: ["visibility"] },
 );
 export type SetVisibility = z.infer<typeof SetVisibilitySchema>;
 
@@ -213,7 +216,7 @@ export const CreateFolderSchema = z.object({
 	ownerType: AssetOwnerType,
 	ownerId: z.string().min(1).max(80),
 	/** Omitted inherits the parent's scope, which is the only non-surprising default. */
-	visibility: AssetVisibility.optional(),
+	visibility: AssetVisibility.exclude(["restricted"]).optional(),
 	/** The folder's colour from birth (Decision #400); omitted is none, the default drawing. */
 	color: FolderColor.optional(),
 });
