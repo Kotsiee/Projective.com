@@ -129,6 +129,8 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 				<Button
 					label="Pay from wallet"
 					variant="filled"
+					severity="accent"
+					rounded
 					disabled={busy}
 					loading={step.value === "starting" && method.value === "wallet"}
 					onClick={() => void pay("wallet")}

@@ -60,16 +60,14 @@ export interface ShareLinkBarProps {
 	external?: boolean;
 	/** A line said directly under the link, such as who it opens for. */
 	note?: ComponentChildren;
-	/**
-	 * Called once the URL is on the clipboard. Answers whether it told the person itself (a toast), in
-	 * which case the bar's own status line stays quiet so the outcome is announced once.
-	 */
-	onCopied?: () => boolean;
 }
 // #endregion
 
 /** How long Copy shows its check and "Copied!" before it reverts. */
 export const COPIED_MS = 1600;
+
+/** How long a success line ("Link copied") stays before it clears itself (Decision #406). */
+export const STATUS_MS = 2200;
 
 export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 	const { url, targets } = props;
@@ -77,14 +75,28 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 	const copied = useSignal(false);
 	const canNativeShare = useSignal(false);
 	const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		canNativeShare.value = typeof navigator !== "undefined" &&
 			typeof navigator.share === "function";
 		return () => {
 			if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+			if (statusTimer.current !== null) clearTimeout(statusTimer.current);
 		};
 	}, []);
+
+	/** Say how it went: a success clears after {@link STATUS_MS}; a failure stays until the next act. */
+	function say(text: string, success: boolean): void {
+		if (statusTimer.current !== null) clearTimeout(statusTimer.current);
+		statusTimer.current = null;
+		status.value = text;
+		if (!success) return;
+		statusTimer.current = setTimeout(() => {
+			status.value = "";
+			statusTimer.current = null;
+		}, STATUS_MS);
+	}
 
 	function settleCopied(): void {
 		if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
@@ -99,12 +111,12 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 		if (!url) return false;
 		try {
 			await navigator.clipboard.writeText(url);
-			status.value = props.onCopied?.() ? "" : "Link copied";
+			say("Link copied", true);
 			settleCopied();
 			return true;
 		} catch {
 			copied.value = false;
-			status.value = "Couldn't copy — select the link and copy it";
+			say("Couldn't copy — select the link and copy it", false);
 			return false;
 		}
 	}
@@ -117,10 +129,10 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 				text: composeShareText({ title: props.title, text: props.text }) || undefined,
 				url,
 			});
-			status.value = "Shared";
+			say("Shared", true);
 		} catch (error) {
 			if (error instanceof Error && error.name === "AbortError") return;
-			status.value = "Couldn't open the share sheet";
+			say("Couldn't open the share sheet", false);
 		}
 	}
 
@@ -142,7 +154,7 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 		void copy().then((done) => {
 			if (!done) return;
 			globalThis.open(INSTAGRAM_HOME, "_blank", "noopener,noreferrer");
-			status.value = "Link copied — paste it into your post or story";
+			say("Link copied — paste it into your post or story", true);
 		});
 	}
 
@@ -170,6 +182,8 @@ export function ShareLinkBar(props: ShareLinkBarProps): JSX.Element {
 								iconOnly
 								rounded
 								size="md"
+								severity="neutral"
+								variant="outlined"
 								class="share-link__copy"
 								data-copied={isCopied ? "true" : undefined}
 								icon={

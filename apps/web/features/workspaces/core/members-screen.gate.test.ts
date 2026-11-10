@@ -132,10 +132,12 @@ Deno.test("members: the inspector docks in the panel, its quick actions tier 4, 
 	assert(!FILES["islands/MembersScreen.island.tsx"].includes("MemberDrawer"), "the drawer is gone");
 });
 
-Deno.test("members: Invite is the Universal Invite modal — one field, no tabs, the model's roles (#318)", () => {
+Deno.test("members: Invite is the Universal Invite modal — one field, no tabs, the model's roles (#318, #405)", () => {
 	const invite = FILES["islands/InviteModal.island.tsx"];
 	assert(invite.includes("<UniversalInviteModal"), "the shared modal");
-	assert(invite.includes("<InviteLinkPanel"), "the ask-to-join link");
+	assert(invite.includes("onEnable:"), "the ask-to-join link's switch");
+	assert(invite.includes("memberAbilities("), "people with access follow the rank rule");
+	assert(!/allowNote|footnote=/.test(invite), "no note and no footnote");
 	assert(!invite.includes("<SelectButton"), "the By handle / By email tabs are gone");
 	assert(invite.includes("grantableRoles("), "the role list mirrors the server");
 	assert(invite.includes("inviteManagerOverflow("), "the batch honours the manager cap");

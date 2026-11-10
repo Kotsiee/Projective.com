@@ -2,7 +2,13 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import WorkspaceFooterRig from "../islands/WorkspaceFooterRig.island.tsx";
 import RolesFooterRig from "../islands/RolesFooterRig.island.tsx";
-import { resolveEntityDrive, resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import {
+	resolveEntityCalendar,
+	resolveEntityDrive,
+	resolveRoster,
+	resolveWorkspaceConsole,
+} from "./workspace-ssr.ts";
+import { entityAgendaPage } from "./calendar-module-model.ts";
 import {
 	activeModuleOf,
 	channelSlugOfPath,
@@ -16,6 +22,7 @@ import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx
 import ViewControlRig from "@web/features/projects/islands/ViewControlRig.island.tsx";
 import { channelTabOfPath } from "./channel-model.ts";
 import FilesFooterRig from "@features/files/islands/FilesFooterRig.island.tsx";
+import CalendarFooterRig from "@features/calendar/islands/CalendarFooterRig.island.tsx";
 import { folderSegmentsOfQuery } from "@projective/types/files";
 import { entityDriveView } from "./files-module-model.ts";
 
@@ -107,6 +114,20 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 				lockedNote={view.readOnlyNote}
 				quota={drive.page?.quota ?? null}
 				quotaOwner={ws.name}
+			/>
+		);
+	}
+
+	// On Calendar the band is `/calendar`'s rig: the zoom ruler, the display options and Export
+	// (Decision #403). The union is read-only and a connection is a person's, so it offers no create,
+	// import or connect.
+	if (bootstrap.activeModule === "calendar") {
+		const read = await resolveEntityCalendar(bootstrap.workspace, actor, url);
+		return (
+			<CalendarFooterRig
+				surface="entity"
+				initial={read.page ? entityAgendaPage(read.page) : null}
+				returnTo={url.pathname}
 			/>
 		);
 	}

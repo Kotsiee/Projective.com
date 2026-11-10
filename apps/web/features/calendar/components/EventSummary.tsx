@@ -13,6 +13,7 @@ import {
 	detectTimeClash,
 	ENTRY_CLASS_LABEL,
 	entryClassOf,
+	type SchedulingTarget,
 } from "@projective/types/scheduling";
 import { normalizeLink } from "@projective/types/links";
 import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
@@ -45,6 +46,8 @@ const HOUR12 = true;
 export interface EventSummaryProps {
 	event: CalendarEvent;
 	tz: string;
+	/** Where an answer to the entry is addressed (`answerTargetFor`); default the agenda itself. */
+	answerTarget?: Omit<SchedulingTarget, "eventId"> | null;
 }
 
 /**
@@ -223,7 +226,7 @@ function Agenda(
  * holds its time are its owner's, an entry from a connected calendar included, because neither reaches
  * the provider.
  */
-export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
+export function EventSummary({ event, tz, answerTarget }: EventSummaryProps): JSX.Element {
 	const canEdit = entryEditable(event);
 	const page = calendarPage.value;
 	const events = page?.events ?? [];
@@ -335,7 +338,7 @@ export function EventSummary({ event, tz }: EventSummaryProps): JSX.Element {
 					/>
 				)
 				: null}
-			<EventInvitationActions event={event} nowMs={nowMs} />
+			<EventInvitationActions event={event} nowMs={nowMs} target={answerTarget} />
 
 			{joinHref
 				? (

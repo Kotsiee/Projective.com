@@ -1,40 +1,39 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
-import { Accordion, AccordionTab } from "@projective/ui/display";
-import { DatePicker, NumberStepper, Select, SelectButton } from "@projective/ui/fields";
+import { useEffect } from "preact/hooks";
+import {
+	Checkbox,
+	DatePicker,
+	NumberInput,
+	NumberStepper,
+	Select,
+	SelectButton,
+	WeekdayRail,
+} from "@projective/ui/fields";
 import type { CalendarEvent, IsoDate } from "@projective/types/scheduling";
 import { addMonths, civilParts, isoDateOf } from "@projective/types/scheduling";
 import {
 	describeRepeat,
 	fromRRule,
+	isoWeekday,
 	presetDraft,
-	presetLabel,
-	presetOf,
-	REPEAT_PRESETS,
 	repeatAnchor,
 	type RepeatDraft,
 	type RepeatFreq,
-	type RepeatPreset,
 	seriesOf,
-	templateDraft,
+	sundayWeekday,
 	toRRule,
-	weekdayShort,
 } from "../core/event-recurrence.ts";
-import { libraryPresets } from "@features/catalogue/core/availability-model.ts";
-import { loadPresets, presets } from "@features/catalogue/core/availability-store.ts";
-import { calendarModeHref } from "../core/availability-view.ts";
 
 /**
- * EventRecurrenceField — whether a new entry repeats, in two tiers.
+ * EventRecurrenceField — whether an entry repeats, and how.
  *
- * Tier 1 is one dropdown: the five cadences almost every entry wants, then the owner's availability
- * templates — each repeats on the weekdays its weekly working hours cover (`templateDraft`) — then
- * "Create custom template…", which opens the availability page in a new tab so the entry being
- * composed is not lost (Decision #378). Tier 2 is a flush `Accordion` for the rest: an
- * interval, the weekdays, and how the series ends. Every choice writes the same thing —
- * `recurrenceRule` on the working copy — and both tiers read it back, so choosing "Weekly" and then
- * opening the custom panel shows the weekly rule's own fields.
+ * One checkbox, "Do not repeat", checked by default. Unchecked, the rule is laid out the way the
+ * availability rule editor lays out its own (`RuleEditor`, Decision #379): `Every [n] [Day · Week ·
+ * Month · Year]`, then for a weekly rule the days it falls `On` as a {@link WeekdayRail} that toggles a
+ * day by click and a run of days by dragging across them, then how the series ends. Every control
+ * writes the same thing — `recurrenceRule` on the working copy — and reads it back, so the fields can
+ * never disagree with the rule.
  *
  * The sentence under them is the rule read aloud, in the Meta register and a polite live region, so a
  * keyboard user hears what each change did without leaving the control.
@@ -51,7 +50,7 @@ export interface EventRecurrenceFieldProps {
 /**
  * A CONTROLLED binding that follows `value` whenever `key` changes. A raw value would be read once
  * by `useControllable` and freeze (EventMetaBar's `useInstantBinding` records the same trap), so a
- * preset chosen in tier 1 would leave tier 2 showing the rule before it.
+ * control would keep showing the rule before the last change.
  */
 function useBound<T>(value: T, key: string): Signal<T> {
 	const bound = useSignal(value);
@@ -61,44 +60,45 @@ function useBound<T>(value: T, key: string): Signal<T> {
 	return bound;
 }
 
-const UNIT: Record<RepeatFreq, string> = { DAILY: "day", WEEKLY: "week", MONTHLY: "month" };
-const TEMPLATE = "tpl:";
-const NEW_TEMPLATE = "new-template";
-const FREQS: RepeatFreq[] = ["DAILY", "WEEKLY", "MONTHLY"];
-const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7];
+const UNITS: { value: RepeatFreq; label: string }[] = [
+	{ value: "DAILY", label: "Day" },
+	{ value: "WEEKLY", label: "Week" },
+	{ value: "MONTHLY", label: "Month" },
+	{ value: "YEARLY", label: "Year" },
+];
+const UNIT_WORD: Record<RepeatFreq, string> = {
+	DAILY: "day",
+	WEEKLY: "week",
+	MONTHLY: "month",
+	YEARLY: "year",
+};
+const MAX_INTERVAL = 99;
 
 function pickerDate(date: IsoDate): Date {
 	const p = civilParts(date);
 	return new Date(p.year, p.month - 1, p.day);
 }
 
+function unitWord(freq: RepeatFreq, interval: number): string {
+	return interval > 1 ? `${UNIT_WORD[freq]}s` : UNIT_WORD[freq];
+}
+
+function isFreq(v: unknown): v is RepeatFreq {
+	return UNITS.some((u) => u.value === v);
+}
+
 export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Element {
 	const { event, tz, onPatch } = props;
 	const anchor = repeatAnchor(event.start, tz);
 	const rule = event.recurrenceRule;
-	const preset = presetOf(rule, anchor);
 	const draft = (rule ? fromRRule(rule) : null) ?? presetDraft("weekly", anchor);
 	const series = rule && !props.cadenceOnly ? seriesOf(event, tz) : null;
 	const key = rule ?? "";
 
-	// Read once: the disclosure opens on a custom rule and is the reader's to toggle after that.
-	const openOnMount = useRef(preset === "custom").current;
-	const picked = useSignal<string | null>(null);
-
-	useEffect(() => {
-		if (presets.peek() === null) void loadPresets();
-	}, []);
-
-	const templates = libraryPresets(presets.value ?? []).flatMap((p) => {
-		const d = templateDraft(p.rules);
-		return d ? [{ id: p.id, name: p.name, rule: toRRule(d, anchor), draft: d }] : [];
-	});
-	const chosen = templates.find((t) => t.id === picked.value && t.rule === rule);
-	const shown = chosen ? `${TEMPLATE}${chosen.id}` : preset;
-	const presetValue = useBound<string>(shown, shown);
+	const once = useBound<boolean>(!rule, key);
 	const freq = useBound<string>(draft.freq, key);
 	const interval = useBound<number | null>(draft.interval, key);
-	const days = useBound<string[]>(draft.isoDays.map(String), key);
+	const days = useBound<number[]>(draft.isoDays.map(sundayWeekday), key);
 	const endType = useBound<string>(draft.end.type, key);
 	const until = useBound<Date | null>(
 		draft.end.type === "until" ? pickerDate(draft.end.date) : null,
@@ -114,75 +114,48 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 		setRule({ ...draft, ...next });
 	}
 
-	const options = [
-		...REPEAT_PRESETS.map((p) => ({ value: p, label: presetLabel(p, anchor) })),
-		...(preset === "custom" && !chosen ? [{ value: "custom", label: "Custom" }] : []),
-		...templates.map((t) => ({
-			value: `${TEMPLATE}${t.id}`,
-			label: `Like “${t.name}” · ${t.draft.isoDays.map(weekdayShort).join(" ")}`,
-		})),
-		{ value: NEW_TEMPLATE, label: "Create custom template…" },
-	];
-
 	return (
 		<div class="evm-repeat">
-			<Select
+			<Checkbox
 				size="sm"
-				value={presetValue}
-				options={options}
-				aria-label="Repeats"
-				onValueChange={(v) => {
-					if (v === NEW_TEMPLATE) {
-						// A new tab, so the entry being composed here survives the detour.
-						globalThis.open(calendarModeHref("availability"), "_blank", "noopener");
-						presetValue.value = shown;
-					} else if (typeof v === "string" && v.startsWith(TEMPLATE)) {
-						const t = templates.find((x) => `${TEMPLATE}${x.id}` === v);
-						if (!t) return;
-						picked.value = t.id;
-						setRule(t.draft);
-					} else if (v === "none") {
-						setRule(null);
-					} else if (v && v !== "custom") {
-						setRule(presetDraft(v as Exclude<RepeatPreset, "none">, anchor));
-					}
-				}}
+				label="Do not repeat"
+				value={once}
+				// Unticked, an entry starts from the plainest series — every week on its own weekday — so
+				// the fields that appear show the rule in force rather than a preview of one.
+				onValueChange={(on) => setRule(on ? null : presetDraft("weekly", anchor))}
 			/>
 
-			<Accordion
-				variant="flush"
-				activeIndex={openOnMount ? 0 : -1}
-				onTabChange={(index) => {
-					// Opening the panel on a one-off entry starts it from the plainest series, so the
-					// fields it shows are the rule in force rather than a preview of one.
-					if (index === 0 && !rule) setRule(presetDraft("weekly", anchor));
-				}}
-			>
-				<AccordionTab header="Custom / Advanced">
+			{rule
+				? (
 					<div class="evm-repeat__custom">
-						<div class="evm-repeat__row">
-							<span class="evm-repeat__k">Repeat every</span>
-							<NumberStepper
+						<div class="evm-repeat__row" role="group" aria-label="Frequency">
+							<span class="evm-repeat__word" aria-hidden="true">Every</span>
+							<NumberInput
 								size="sm"
+								class="evm-repeat__interval"
 								value={interval}
 								min={1}
-								max={99}
-								aria-label="Repeat every"
+								max={MAX_INTERVAL}
+								step={1}
+								maxFractionDigits={0}
+								aria-label={`Every how many ${UNIT_WORD[draft.freq]}s`}
 								onValueChange={(n) => {
-									if (n) edit({ interval: n });
-									else interval.value = draft.interval;
+									if (n === null) return;
+									const next = Math.min(MAX_INTERVAL, Math.max(1, Math.round(n)));
+									if (next !== draft.interval) edit({ interval: next });
 								}}
 							/>
 							<Select
 								size="sm"
 								value={freq}
-								aria-label="Unit"
-								options={FREQS.map((f) => ({
-									value: f,
-									label: draft.interval === 1 ? UNIT[f] : `${UNIT[f]}s`,
-								}))}
+								options={UNITS}
+								panelWidth="auto"
+								valueTemplate={(opt) =>
+									isFreq(opt.value) ? unitWord(opt.value, draft.interval) : String(opt.label)}
+								aria-label="Repeats every"
 								onValueChange={(f) => {
-									if (f) edit({ freq: f as RepeatFreq });
+									if (!isFreq(f) || f === draft.freq) return;
+									edit({ freq: f, isoDays: f === "WEEKLY" ? [anchor.isoDay] : [] });
 								}}
 							/>
 						</div>
@@ -190,19 +163,14 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 						{draft.freq === "WEEKLY"
 							? (
 								<div class="evm-repeat__row">
-									<span class="evm-repeat__k">On</span>
-									<SelectButton
-										multiple
+									<span class="evm-repeat__k" aria-hidden="true">On</span>
+									<WeekdayRail
 										size="sm"
 										value={days}
-										aria-label="On"
-										options={ISO_DAYS.map((d) => ({ value: String(d), label: weekdayShort(d) }))}
-										onValueChange={(v) => {
-											const next = (v as string[]).map(Number).sort((a, b) => a - b);
-											// A weekly series needs a day to fall on: the last one cannot be cleared.
-											if (next.length) edit({ isoDays: next });
-											else days.value = draft.isoDays.map(String);
-										}}
+										min={1}
+										aria-label="Repeats on"
+										onValueChange={(next) =>
+											edit({ isoDays: next.map(isoWeekday).sort((a, b) => a - b) })}
 									/>
 								</div>
 							)
@@ -266,8 +234,8 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 								: null}
 						</div>
 					</div>
-				</AccordionTab>
-			</Accordion>
+				)
+				: null}
 
 			<p class="evm-repeat__sentence" aria-live="polite">
 				{rule ? describeRepeat(draft, anchor) : ""}

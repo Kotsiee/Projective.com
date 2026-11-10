@@ -812,20 +812,18 @@ export function eventLiveStatus(
 }
 
 /**
- * Why a NEW entry cannot be created at this time, or `null` when it can.
+ * Whether an entry starts before `nowMs`.
  *
- * The one rule and the one wording for every create path — the grid's quick composer, the event
- * modal's Create, and the create route once the scheduling write path lands — so a refusal never
- * reads two ways. Editing and deleting an existing entry are not gated by time at all.
+ * A new entry may be created in the past — a meeting logged after it happened — so no create path
+ * refuses one; the composer warns instead (Decision #403). Editing and deleting are not gated by time.
  *
  * An all-day entry is judged by its END, because it starts at the zone's midnight: an all-day entry
- * for today is legitimate all day long, and one that has already ended is in the past.
+ * for today is current all day long, and one that has already ended is in the past.
  */
-export function createRefusal(
+export function startsInPast(
 	nowMs: number,
 	range: { start: number; end: number; allDay?: boolean },
-): string | null {
-	const past = range.allDay ? range.end <= nowMs : range.start < nowMs;
-	return past ? "New events can’t start in the past." : null;
+): boolean {
+	return range.allDay ? range.end <= nowMs : range.start < nowMs;
 }
 // #endregion

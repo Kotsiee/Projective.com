@@ -8,7 +8,6 @@ import type {
 	EntryReminder,
 	EntryRoom,
 } from "@projective/types/scheduling";
-import { createRefusal } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, seriesKey, spreadDaily } from "../core/event-series.ts";
 import { seriesOf } from "../core/event-recurrence.ts";
@@ -46,12 +45,7 @@ export interface CalendarComposerOptions {
 	kind: CalendarEventKind;
 	/** The display timezone, read when a range becomes entries. */
 	timezone: () => string;
-	/**
-	 * The surface's clock. Present, every create path refuses a range that starts before it
-	 * ({@link createRefusal}); absent, nothing is gated.
-	 */
-	now?: () => number;
-	/** Told the refusal's own words when a create is refused, or a persisted write is. */
+	/** Told the server's own words when a persisted write is refused. */
 	onRefuse?: (message: string) => void;
 	/**
 	 * The entries are the viewer's own and every create, edit, move and delete is written through
@@ -115,14 +109,6 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 	optsRef.current = opts;
 
 	const mint = (range: CalendarRange) => blankEvent(range, optsRef.current.kind);
-
-	/** The create guard: `true` when the range may be created, else the refusal is reported. */
-	function creatable(range: { start: number; end: number; allDay?: boolean }): boolean {
-		const { now, onRefuse } = optsRef.current;
-		const refusal = now ? createRefusal(now(), range) : null;
-		if (refusal) onRefuse?.(refusal);
-		return !refusal;
-	}
 
 	function close(): void {
 		eventStack.close();
@@ -188,13 +174,11 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		},
 		quickCreate(range, title) {
 			draft.value = null;
-			if (!creatable(range)) return;
 			create(eventsForRange(range, title, optsRef.current.timezone(), mint));
 		},
 		expandCreate(range, title) {
 			const daily = range.daily ? range : null;
 			const at = daily ? firstOccurrence(range, optsRef.current.timezone()) : range;
-			if (!creatable(at)) return;
 			const blank = { ...mint(at), title };
 			series.current = daily;
 			draft.value = blank;
@@ -222,7 +206,6 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 				draft.value = null;
 				return;
 			}
-			if (!creatable(event)) return;
 			const tz = optsRef.current.timezone();
 			create(
 				event.recurrenceRule

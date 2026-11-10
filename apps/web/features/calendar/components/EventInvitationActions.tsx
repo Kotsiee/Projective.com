@@ -5,6 +5,7 @@ import {
 	type CalendarEvent,
 	eligibleVoterCount,
 	type RsvpResponse,
+	type SchedulingTarget,
 } from "@projective/types/scheduling";
 import {
 	agendaReload,
@@ -22,6 +23,8 @@ const FADE_MS = 250;
 export interface EventInvitationActionsProps {
 	event: CalendarEvent;
 	nowMs: number;
+	/** Where an answer is addressed (`answerTargetFor`); `null` offers none. Default: the agenda. */
+	target?: Omit<SchedulingTarget, "eventId"> | null;
 }
 
 /**
@@ -38,10 +41,11 @@ export interface EventInvitationActionsProps {
  */
 export function EventInvitationActions(props: EventInvitationActionsProps): JSX.Element | null {
 	const { event, nowMs } = props;
+	const target = props.target === undefined ? { scope: "personal" as const } : props.target;
 	const busy = useSignal(false);
 	const refusal = useSignal<string | null>(null);
 
-	const answering = canAnswer(event, nowMs);
+	const answering = target !== null && canAnswer(event, nowMs);
 	const hosting = event.viewerIsHost === true;
 	const guests = eligibleVoterCount(event.roster ?? []) > 0 && !event.callId;
 	if (!answering && !(hosting && guests)) return null;
@@ -58,13 +62,13 @@ export function EventInvitationActions(props: EventInvitationActionsProps): JSX.
 		: "Propose alternate time";
 
 	async function answer(response: RsvpResponse): Promise<void> {
-		if (busy.peek()) return;
+		if (busy.peek() || !target) return;
 		busy.value = true;
 		refusal.value = null;
 		const leaving = response === "rejected";
 		if (leaving) leavingEvents.value = [...leavingEvents.peek(), event.id];
 		const [res] = await Promise.all([
-			ScheduleService.respond({ scope: "personal", eventId: event.id, response }),
+			ScheduleService.respond({ ...target, eventId: event.id, response }),
 			leaving ? new Promise((done) => setTimeout(done, FADE_MS)) : null,
 		]);
 		leavingEvents.value = leavingEvents.peek().filter((id) => id !== event.id);

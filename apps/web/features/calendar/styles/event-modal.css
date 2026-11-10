@@ -275,6 +275,11 @@ label.evm-meta__k {
 	font-variant-numeric: tabular-nums;
 }
 
+.evm-meta__error {
+	color: var(--danger);
+	font-size: var(--text-sm);
+}
+
 /*
  * The live status ("Upcoming in 3 hours"). Plain Meta-register text, never a pill (§B.11): nothing
  * here can be pressed, so nothing here is contained. The countdown is a changing figure, so it sets in
@@ -807,6 +812,19 @@ label.evm-meta__k {
 	flex-basis: 100%;
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
+}
+
+.evm-repeat__word {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.evm-repeat__interval {
+	inline-size: calc(var(--space-8) + var(--space-5));
+}
+
+.evm-repeat__interval .ui-number-input__input {
+	text-align: center;
 }
 
 /* A person's alerts: each row fits a narrow column, so the two selects share the width. */

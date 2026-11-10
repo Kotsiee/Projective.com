@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import type { Ref } from "preact";
 import { Icon, type IconName } from "@projective/ui/icons";
+import { FormControl, type Option, SelectButton } from "@projective/ui/fields";
 import {
 	PROJECT_TYPE_HINT,
 	PROJECT_TYPE_LABEL,
@@ -9,9 +10,10 @@ import {
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * ProjectCreateTypeCards — the type control in both of {@link ProjectCreateModal}'s pacings, and the
- * read-only invited-freelancer row. Pure renderers: every choice and keystroke is handed back to the
- * modal, which owns the form state and the step it is on.
+ * ProjectCreateTypeCards — the type control in both of {@link ProjectCreateModal}'s pacings (a
+ * segmented control on the single screen, glyph cards on the profile's type step), and the
+ * read-only invited-freelancer row. Pure renderers: every choice is handed back to the modal, which
+ * owns the form state and the step it is on.
  */
 
 // #region Vocabulary
@@ -25,13 +27,11 @@ const TYPE_ICON: Record<ProjectTypeChoice, IconName> = {
 /** The three cards, derived from the SSOT enum's own members rather than restated. */
 export const TYPE_CARDS: readonly ProjectTypeChoice[] = ProjectTypeChoice.options;
 
-/**
- * The type control is a `radiogroup`, which is not a labelable element, so it carries an
- * `aria-labelledby` pointing at its visible heading rather than a `<label for>` that would resolve to
- * nothing (WCAG 2.5.3 holds either way).
- */
-const TYPE_LABEL_ID = "pjc-type-label";
-const TYPE_HINT_ID = "pjc-type-hint";
+const TYPE_OPTIONS: Option[] = TYPE_CARDS.map((value) => ({
+	value,
+	label: PROJECT_TYPE_LABEL[value],
+}));
+
 const INVITE_ID = "pjc-invite";
 // #endregion
 
@@ -60,7 +60,7 @@ export function TypeStepCards(
 		<>
 			<div
 				ref={cardsRef}
-				class="pjc__types pjc__types--list"
+				class="pjc__types"
 				role="group"
 				aria-label="Project type"
 			>
@@ -69,7 +69,7 @@ export function TypeStepCards(
 						key={value}
 						type="button"
 						data-type={value}
-						class="pjc__type pjc__type--row"
+						class="pjc__type"
 						aria-current={value === picked ? "true" : undefined}
 						onClick={() => onPick(value)}
 					>
@@ -83,64 +83,44 @@ export function TypeStepCards(
 					</button>
 				))}
 			</div>
-			{error && <p class="pjc__hint pjc__hint--error">{error}</p>}
+			{error && <p class="ui-field-hint ui-field-hint--error" role="alert">{error}</p>}
 		</>
 	);
 }
 // #endregion
 
-// #region The single flow's radiogroup
-/** Props for {@link TypeRadioGroup}. */
-export interface TypeRadioGroupProps {
-	picked: ProjectTypeChoice | null;
-	/** Whose hint shows while nothing is picked. */
-	fallback: ProjectTypeChoice;
+// #region The single flow's segmented control
+/** Props for {@link TypeSelect}. */
+export interface TypeSelectProps {
+	picked: ProjectTypeChoice;
 	onPick: (value: ProjectTypeChoice) => void;
-	onCardKeyDown: (e: JSX.TargetedKeyboardEvent<HTMLButtonElement>, index: number) => void;
 	error?: string;
 }
 
-/** The type as one field among the others, on the single-screen flow. */
-export function TypeRadioGroup(
-	{ picked, fallback, onPick, onCardKeyDown, error }: TypeRadioGroupProps,
-): JSX.Element {
+/** The type as one field among the others on the single-screen flow; its sentence sits behind "?". */
+export function TypeSelect({ picked, onPick, error }: TypeSelectProps): JSX.Element {
 	return (
-		<div class="pjc__field">
-			<span class="pjc__label" id={TYPE_LABEL_ID}>Project type</span>
-			<div
-				class="pjc__types"
-				role="radiogroup"
-				aria-labelledby={TYPE_LABEL_ID}
-				aria-describedby={TYPE_HINT_ID}
-			>
-				{TYPE_CARDS.map((value, index) => {
-					const active = value === picked;
-					return (
-						<button
-							key={value}
-							type="button"
-							role="radio"
-							aria-checked={active}
-							data-type={value}
-							class="pjc__type"
-							// Roving tabindex: one stop for the whole group, on the chosen card, so Tab
-							// steps past the control rather than through it.
-							tabIndex={active ? 0 : -1}
-							onClick={() => onPick(value)}
-							onKeyDown={(e) => onCardKeyDown(e, index)}
-						>
-							<span class="pjc__type-glyph" aria-hidden="true">
-								<Icon name={TYPE_ICON[value]} size="lg" />
-							</span>
-							<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
-						</button>
-					);
-				})}
-			</div>
-			<p class="pjc__hint" id={TYPE_HINT_ID}>
-				{error ?? PROJECT_TYPE_HINT[picked ?? fallback]}
-			</p>
-		</div>
+		<FormControl
+			label="Project type"
+			hint={PROJECT_TYPE_HINT[picked]}
+			status={error ? "invalid" : "default"}
+			error={error}
+		>
+			{({ describedBy }) => (
+				<SelectButton
+					aria-label="Project type"
+					aria-describedby={describedBy}
+					options={TYPE_OPTIONS}
+					value={picked}
+					onValueChange={(next) => {
+						const parsed = ProjectTypeChoice.safeParse(next);
+						if (parsed.success) onPick(parsed.data);
+					}}
+					status={error ? "invalid" : "default"}
+					fluid
+				/>
+			)}
+		</FormControl>
 	);
 }
 // #endregion
@@ -164,7 +144,7 @@ export function InvitedFreelancerField(
 ): JSX.Element {
 	return (
 		<div class="pjc__field">
-			<span class="pjc__label" id={INVITE_ID}>Invited freelancer</span>
+			<span class="ui-field-label" id={INVITE_ID}>Invited freelancer</span>
 			<div class="pjc__invitee" aria-labelledby={INVITE_ID}>
 				<UserAvatar image={avatar ?? undefined} label={name} shape="circle" size="sm" />
 				<span class="pjc__invitee-text">
@@ -172,9 +152,6 @@ export function InvitedFreelancerField(
 					<span class="pjc__invitee-handle">{handle}</span>
 				</span>
 			</div>
-			<p class="pjc__hint">
-				They are invited from the project's roster once it has a scope and a price.
-			</p>
 		</div>
 	);
 }

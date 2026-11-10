@@ -6,7 +6,6 @@ import {
 	canOpenVote,
 	canReschedule,
 	counterpartyAcceptRefusal,
-	createRefusal,
 	eligibleVoterCount,
 	type EventAttendee,
 	EventAttendeeSchema,
@@ -28,6 +27,7 @@ import {
 	rsvpTally,
 	type SchedulingParty,
 	settleVote,
+	startsInPast,
 	viewerAttendee,
 	VOTE_RESOLUTION_LEAD_HOURS,
 	VOTE_RESOLUTION_LEAD_MS,
@@ -346,14 +346,14 @@ Deno.test("eventLiveStatus — after the end it has passed, and nothing counts d
 	assertStrictEquals(s.msUntilEnd, 0);
 });
 
-Deno.test("createRefusal — a timed entry may not start in the past; an all-day one may run today", () => {
-	assertStrictEquals(createRefusal(NOW, { start: NOW, end: NOW + HOUR }), null);
-	assert(createRefusal(NOW, { start: NOW - MINUTE, end: NOW + HOUR }));
+Deno.test("startsInPast — a timed entry by its start; an all-day one is current all day", () => {
+	assertStrictEquals(startsInPast(NOW, { start: NOW, end: NOW + HOUR }), false);
+	assert(startsInPast(NOW, { start: NOW - MINUTE, end: NOW + HOUR }));
 	assertStrictEquals(
-		createRefusal(NOW, { start: NOW - HOUR, end: NOW + HOUR, allDay: true }),
-		null,
+		startsInPast(NOW, { start: NOW - HOUR, end: NOW + HOUR, allDay: true }),
+		false,
 	);
-	assert(createRefusal(NOW, { start: NOW - 2 * HOUR, end: NOW, allDay: true }));
+	assert(startsInPast(NOW, { start: NOW - 2 * HOUR, end: NOW, allDay: true }));
 });
 
 Deno.test("eventLiveStatus — an all-day span runs for its whole day", () => {

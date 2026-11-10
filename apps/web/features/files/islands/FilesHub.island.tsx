@@ -87,8 +87,8 @@ import {
 	applyError,
 	anchorId,
 	applyPage,
+	askAttachLink,
 	askNewFolder,
-	attachLinkOpen,
 	beginLoad,
 	busy,
 	categoryFilter,
@@ -132,6 +132,7 @@ import {
 	viewerId,
 	visibilityFilter,
 } from "../core/files-state.ts";
+import { recentPress } from "../core/press-point.ts";
 import { uploadTasksOf } from "../core/upload-tasks.ts";
 import { useFileDrop } from "../hooks/use-file-drop.ts";
 import { useFileExplorerKeyboardShortcuts } from "../hooks/use-file-explorer-keyboard-shortcuts.ts";
@@ -505,7 +506,13 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 							const folder = folderOf(node);
 							return folder ? rowStateOf(folder) : null;
 						}}
-						lead={(node) => <FolderMark color={folderOf(node)?.color} size={LIST_MARK} />}
+						lead={(node) => (
+							<FolderMark
+								color={folderOf(node)?.color}
+								folderId={folderOf(node)?.id}
+								size={LIST_MARK}
+							/>
+						)}
 						onOpen={(node) => {
 							const folder = folderOf(node);
 							if (folder) p.onOpenFolder(folder);
@@ -1000,7 +1007,12 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	const canvasRows: MenuItem[] = [
 		...(takesFiles()
 			? [
-				{ key: "folder", label: "New Folder", icon: "folder", command: () => askNewFolder() },
+				{
+					key: "folder",
+					label: "New Folder",
+					icon: "folder",
+					command: () => askNewFolder(undefined, recentPress()),
+				},
 				{
 					key: "upload",
 					label: "Upload File",
@@ -1011,7 +1023,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 					key: "link",
 					label: "Attach Link",
 					icon: "link",
-					command: () => (attachLinkOpen.value = true),
+					command: () => askAttachLink(recentPress()),
 				},
 				{ separator: true },
 			]

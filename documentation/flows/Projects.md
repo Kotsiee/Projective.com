@@ -34,7 +34,7 @@ loses nothing. So the modal's only job is to reach a URL, and the URL is where t
 
 ```mermaid
 flowchart TD
-    A["1. Quick-Init modal<br/>Title · Description · Type · Currency · Baseline price"] -->|"POST /api/projects/create"| B["projects.create_project — one transaction<br/>draft row · status draft · visibility unlisted<br/>+ root stage + its room + Discussion room"]
+    A["1. Quick-Init modal<br/>Title · Type · Currency · Baseline price"] -->|"POST /api/projects/create"| B["projects.create_project — one transaction<br/>draft row · status draft · visibility unlisted<br/>+ root stage + its room + Discussion room"]
     B -->|"opened from a profile"| I["hire path → projects.invite_to_project<br/>staged invitation to the seller"]
     B -->|"navigate to /projects/[projectSlug]"| C
     I -->|"navigate to /projects/[projectSlug]"| C["2. Setup configuration<br/>sections registered in setup-sections.ts"]
@@ -48,10 +48,11 @@ flowchart TD
 project, wherever the client starts from (Decision #117). Its fields:
 
 - **Title** — required; trimmed, 3–160 characters (§4 Basics).
-- **Description** — optional plain text, ≤ 2000; stored as one escaped paragraph so the workspace
-  opens on the sentence the client already wrote.
 - **Type** — Task · One-off · Pipeline (`ProjectTypeChoice`, labels `PROJECT_TYPE_LABEL`, hints
-  `PROJECT_TYPE_HINT`; §2).
+  `PROJECT_TYPE_HINT` behind the field's "?"; §2). A `SelectButton` on the single screen; the
+  profile's stepped flow keeps its glyph cards (Decision #404).
+- **Personal project** — a checkbox (hint behind "?") for any adult creator not opened from a
+  profile; a restricted account's project is always personal (Decision #208).
 - **Currency** — required, a `CurrencySelect` over `DISPLAY_CURRENCIES` (the set the workspace's
   Rules section offers), seeded from the viewer's `preferred_display_currency` through
   `toDisplayCurrency`. It prices escrow for the life of the engagement (Decision #195).
@@ -67,6 +68,10 @@ project, wherever the client starts from (Decision #117). Its fields:
   (the seller's required intake, a cooldown, the hire rate limit, an unknown handle) never fails the
   create: it comes back as `invitation.outcome = "refused"` with the reason, and the modal shows it
   with an **Open project** action instead of navigating straight away.
+
+The modal collects no description (Decision #404, PRODUCT_SPEC §Quick-Init's four fields): the
+payload sends `description: ""` and the brief is written in the workspace. Create project is the
+tier-2 `structural` fill.
 
 **Pacing** is a prop, never a second modal (Decision #118): `flow: "single"` on the `/projects` lane,
 whose create menu has already settled the type (the selector can still change it), and

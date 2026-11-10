@@ -1,37 +1,37 @@
 import {
 	addDays,
-	type AvailabilityRuleDraft,
 	type CalendarEvent,
 	civilParts,
 	dateInZone,
 	ENTRY_BATCH_MAX,
+	entryClassOf,
 	expandIcsSeries,
 	type IsoDate,
 	parseIsoDate,
 	parseRRule,
 	type RRuleParts,
 	serialiseRRule,
+	startsInPast,
 	wallClockInZone,
 	weekdayOf,
 	zonedSpan,
 } from "@projective/types/scheduling";
 
 /**
- * event-recurrence — the composer's repeat control, as data: the five standard cadences, the custom
- * draft behind them, the RFC 5545 rule both serialise to, the sentence that rule reads as, and the
- * occurrences a commit lays onto the grid.
+ * event-recurrence — the composer's repeat control, as data: the standard cadences, the draft behind
+ * them, the RFC 5545 rule a draft serialises to, the sentence that rule reads as, and the occurrences
+ * a commit lays onto the grid.
  *
  * The RULE on the working copy (`CalendarEvent.recurrenceRule`) is the one source of truth. The
- * preset a dropdown shows and the custom panel's fields are both READ BACK from it, so the two tiers
- * can never disagree about what the entry does.
+ * repeat control's fields are READ BACK from it, so they can never disagree about what the entry does.
  *
- * Weekdays here are ISO (1 = Monday … 7 = Sunday), the order the toggles draw in; `rrule.ts` counts
- * from Sunday = 0, and the conversion happens only at that boundary.
+ * Weekdays here are ISO (1 = Monday … 7 = Sunday); `rrule.ts` and the weekday rail count from
+ * Sunday = 0, and the conversion happens only at those boundaries ({@link isoWeekday}).
  */
 
 // #region Model
 /** The frequencies the composer offers. */
-export type RepeatFreq = "DAILY" | "WEEKLY" | "MONTHLY";
+export type RepeatFreq = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
 /** How a series stops. */
 export type RepeatEnd =
@@ -48,7 +48,7 @@ export interface RepeatDraft {
 	end: RepeatEnd;
 }
 
-/** The tier-1 cadences, in the order the dropdown lists them. */
+/** The standard cadences a rule is recognised as ({@link presetOf}). */
 export const REPEAT_PRESETS = ["none", "daily", "weekdays", "weekly", "monthly"] as const;
 export type RepeatPreset = (typeof REPEAT_PRESETS)[number];
 
@@ -57,23 +57,36 @@ export interface RepeatAnchor {
 	date: IsoDate;
 	isoDay: number;
 	monthDay: number;
+	/** 1 = January. */
+	month: number;
 }
 
 const NEVER: RepeatEnd = { type: "never" };
 const WORKWEEK = [1, 2, 3, 4, 5];
 
-const isoOf = (wd: number) => (wd === 0 ? 7 : wd);
-const wdOf = (iso: number) => iso % 7;
+/** An ISO weekday (1 = Monday … 7 = Sunday) for a Sunday = 0 one. */
+export function isoWeekday(wd: number): number {
+	return wd === 0 ? 7 : wd;
+}
+
+/** A Sunday = 0 weekday, the weekday rail's numbering, for an ISO one. */
+export function sundayWeekday(iso: number): number {
+	return iso % 7;
+}
+
+const isoOf = isoWeekday;
+const wdOf = sundayWeekday;
 
 /** The anchor of an entry starting at `startMs`, read in `tz`. */
 export function repeatAnchor(startMs: number, tz: string): RepeatAnchor {
 	const date = dateInZone(startMs, tz);
-	return { date, isoDay: isoOf(weekdayOf(date)), monthDay: civilParts(date).day };
+	const parts = civilParts(date);
+	return { date, isoDay: isoOf(weekdayOf(date)), monthDay: parts.day, month: parts.month };
 }
 // #endregion
 
 // #region Rule
-/** The custom draft a tier-1 cadence stands for. */
+/** The draft a standard cadence stands for. */
 export function presetDraft(preset: Exclude<RepeatPreset, "none">, a: RepeatAnchor): RepeatDraft {
 	const base = { interval: 1, end: NEVER };
 	switch (preset) {
@@ -86,25 +99,6 @@ export function presetDraft(preset: Exclude<RepeatPreset, "none">, a: RepeatAnch
 		case "monthly":
 			return { ...base, freq: "MONTHLY", isoDays: [] };
 	}
-}
-
-/**
- * The weekly cadence an availability template stands for in the Repeats dropdown: every weekday its
- * active, every-week working-hours rules add. `null` when it has none — a template of monthly or
- * one-off rules has no weekly shape to repeat on.
- */
-export function templateDraft(
-	rules: readonly Pick<AvailabilityRuleDraft, "layer" | "effect" | "active" | "pattern">[],
-): RepeatDraft | null {
-	const days = new Set<number>();
-	for (const r of rules) {
-		if (!r.active || r.layer !== "working_hours" || r.effect !== "add") continue;
-		if (r.pattern.type !== "weekly" || r.pattern.interval !== 1) continue;
-		for (const wd of r.pattern.days) days.add(isoOf(wd));
-	}
-	return days.size
-		? { freq: "WEEKLY", interval: 1, isoDays: [...days].sort((a, b) => a - b), end: NEVER }
-		: null;
 }
 
 /** The weekdays a weekly draft repeats on — the anchor's own when none are picked. */
@@ -123,8 +117,8 @@ export function toRRule(d: RepeatDraft, a: RepeatAnchor): string {
 		byDay: d.freq === "WEEKLY"
 			? weeklyDays(d, a).map((iso) => ({ wd: wdOf(iso) })).sort((x, y) => x.wd - y.wd)
 			: [],
-		byMonthDay: d.freq === "MONTHLY" ? [a.monthDay] : [],
-		byMonth: [],
+		byMonthDay: d.freq === "MONTHLY" || d.freq === "YEARLY" ? [a.monthDay] : [],
+		byMonth: d.freq === "YEARLY" ? [a.month] : [],
 		bySetPos: [],
 		wkst: 1,
 		...(d.end.type === "until" ? { until: d.end.date } : {}),
@@ -133,7 +127,7 @@ export function toRRule(d: RepeatDraft, a: RepeatAnchor): string {
 	return d.end.type === "count" ? `${rule};COUNT=${d.end.count}` : rule;
 }
 
-/** Read a rule back into the custom panel's fields, or `null` for one the composer cannot author. */
+/** Read a rule back into the repeat control's fields, or `null` for one the composer cannot author. */
 export function fromRRule(rule: string): RepeatDraft | null {
 	let count: number | null = null;
 	const rest = rule.split(";").filter((seg) => {
@@ -144,11 +138,10 @@ export function fromRRule(rule: string): RepeatDraft | null {
 	const parsed = parseRRule(rest);
 	if (!parsed.ok) return null;
 	const p = parsed.value;
-	if (p.freq === "YEARLY") return null;
 	return {
 		freq: p.freq,
 		interval: p.interval,
-		isoDays: p.byDay.map((b) => isoOf(b.wd)).sort((x, y) => x - y),
+		isoDays: p.freq === "YEARLY" ? [] : p.byDay.map((b) => isoOf(b.wd)).sort((x, y) => x - y),
 		end: count !== null
 			? { type: "count", count }
 			: p.until
@@ -157,7 +150,7 @@ export function fromRRule(rule: string): RepeatDraft | null {
 	};
 }
 
-/** Which tier-1 cadence a rule is, or `custom` for anything the dropdown does not name. */
+/** Which standard cadence a rule is, or `custom` for anything else. */
 export function presetOf(rule: string | undefined, a: RepeatAnchor): RepeatPreset | "custom" {
 	if (!rule) return "none";
 	return REPEAT_PRESETS.find((p) => p !== "none" && toRRule(presetDraft(p, a), a) === rule) ??
@@ -181,26 +174,9 @@ function ordinal(n: number): string {
 	return `${n}${suffix}`;
 }
 
-/** A cadence's dropdown label, naming the day it falls on so "Weekly" is never a guess. */
-export function presetLabel(p: RepeatPreset, a: RepeatAnchor): string {
-	switch (p) {
-		case "none":
-			return "Does not repeat";
-		case "daily":
-			return "Daily";
-		case "weekdays":
-			return "Every weekday";
-		case "weekly":
-			return `Weekly on ${weekdayName(a.isoDay)}`;
-		case "monthly":
-			return `Monthly on the ${ordinal(a.monthDay)}`;
-	}
-}
-
-/** The short name of an ISO weekday, for a toggle that has no room for the long one. */
-export function weekdayShort(iso: number): string {
-	return new Intl.DateTimeFormat(LOCALE, { weekday: "short", timeZone: "UTC" })
-		.format(new Date(Date.UTC(2024, 0, iso)));
+function monthDayName(a: RepeatAnchor): string {
+	return new Intl.DateTimeFormat(LOCALE, { month: "long", day: "numeric", timeZone: "UTC" })
+		.format(new Date(Date.UTC(2024, a.month - 1, a.monthDay)));
 }
 
 function every(interval: number, unit: string): string {
@@ -248,6 +224,8 @@ export function describeRepeat(d: RepeatDraft, a: RepeatAnchor): string {
 		head = `${d.interval === 1 ? "Monthly" : every(d.interval, "month")} on the ${
 			ordinal(a.monthDay)
 		}`;
+	} else if (d.freq === "YEARLY") {
+		head = `${d.interval === 1 ? "Yearly" : every(d.interval, "year")} on ${monthDayName(a)}`;
 	} else {
 		const days = weeklyDays(d, a);
 		const workweek = days.length === 5 && days.every((x, i) => x === WORKWEEK[i]);
@@ -329,5 +307,22 @@ export function seriesOf(
 		),
 		clipped: expansion.clipped || expansion.starts.length > ENTRY_BATCH_MAX,
 	};
+}
+
+/**
+ * What the composer says about a new entry in the past, or `null`: a single entry by its own start, and
+ * a series only when nothing it lays down is still to come. It is judged on the occurrences one create
+ * writes ({@link seriesOf}), so a long-past open series whose first batch never reaches today warns too.
+ */
+export function pastNotice(event: CalendarEvent, tz: string, nowMs: number): string | null {
+	if (!event.recurrenceRule) {
+		if (!startsInPast(nowMs, event)) return null;
+		return `This ${entryClassOf(event) === "reminder" ? "reminder" : "event"} is in the past.`;
+	}
+	const series = seriesOf(event, tz);
+	if (series.events.some((e) => !startsInPast(nowMs, e))) return null;
+	return series.clipped
+		? `The first ${series.events.length} occurrences are added now, and all of them are in the past.`
+		: "Every occurrence of this series is in the past.";
 }
 // #endregion

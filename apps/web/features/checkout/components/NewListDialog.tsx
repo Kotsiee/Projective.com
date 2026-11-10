@@ -42,7 +42,7 @@ export function NewListDialog(props: NewListDialogProps): JSX.Element {
 					</Button>
 					<Button
 						variant="filled"
-						severity="primary"
+						structural
 						loading={creating}
 						disabled={name.value.trim() === ""}
 						onClick={onCreate}
@@ -52,15 +52,11 @@ export function NewListDialog(props: NewListDialogProps): JSX.Element {
 				</>
 			}
 		>
-			<p class="bsk-lane__dialognote">
-				A list is a basket you have named. Anything parked in one stays there until you move it
-				back, and nothing in it is charged for.
-			</p>
 			<label class="bsk-lane__dialoglabel" for="bsk-new-list">List name</label>
 			<InputText
 				id="bsk-new-list"
 				fluid
-				placeholder="3D assets"
+				placeholder="e.g. 3D assets"
 				autoComplete="off"
 				value={name}
 				disabled={creating}

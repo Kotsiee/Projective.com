@@ -4,7 +4,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { Logo } from "@web/components/Logo.tsx";
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
-import { requestShare } from "@features/share/core/share-request.ts";
+import { requestShare, shareAnchor } from "@features/share/core/share-request.ts";
 import type { InspectorShell } from "../core/inspector-shell.ts";
 import { metaLine } from "../core/inspector-model.ts";
 import { useInspectorActions } from "./InspectorContext.ts";
@@ -30,7 +30,8 @@ export function InspectorBar({ shell, compact, panelId }: InspectorBarProps): JS
 	const actions = useInspectorActions();
 	const fullscreen = shell.fullscreen.value;
 	const panelOpen = shell.panelOpen.value;
-	const share = () => requestShare({ ...inspectShareTarget(shell), noun: "file" });
+	const share = (event?: Event) =>
+		requestShare({ ...inspectShareTarget(shell), noun: "file", anchor: shareAnchor(event) });
 
 	return (
 		<header class="ins-bar">

@@ -4,6 +4,7 @@ import { ENTRY_BATCH_MAX } from "@projective/types/scheduling";
 import {
 	describeRepeat,
 	fromRRule,
+	pastNotice,
 	presetDraft,
 	presetOf,
 	repeatAnchor,
@@ -11,7 +12,6 @@ import {
 	repeatSentence,
 	seriesMasterOf,
 	seriesOf,
-	templateDraft,
 	toRRule,
 } from "./event-recurrence.ts";
 
@@ -38,7 +38,8 @@ Deno.test("an entry's repeat reads aloud, from its own rule or its master's", ()
 	assertEquals(said("FREQ=DAILY;UNTIL=20261231T235959Z"), "Every day, until Dec 31, 2026");
 	assertEquals(said("FREQ=MONTHLY;BYMONTHDAY=25"), "Monthly on the 25th");
 	assertEquals(said("FREQ=MONTHLY;BYDAY=2TU"), "Every month", "no date to name");
-	assertEquals(said("FREQ=YEARLY"), "Every year");
+	assertEquals(said("FREQ=YEARLY"), "Yearly on March 25");
+	assertEquals(said("FREQ=YEARLY;BYDAY=-1FR"), "Every year", "no date to name");
 
 	const master = { ...event, id: "master", recurrenceRule: "FREQ=DAILY" };
 	const later = { ...event, id: "later", recurrenceParentId: "master" };
@@ -50,7 +51,7 @@ Deno.test("an entry's repeat reads aloud, from its own rule or its master's", ()
 });
 
 Deno.test("the anchor reads DTSTART's civil date in the zone", () => {
-	assertEquals(A, { date: "2026-03-25", isoDay: 3, monthDay: 25 });
+	assertEquals(A, { date: "2026-03-25" as IsoDate, isoDay: 3, monthDay: 25, month: 3 });
 });
 
 Deno.test("each cadence serialises canonically and is recognised again", () => {
@@ -127,22 +128,30 @@ Deno.test("an open-ended series is capped at one create batch and says so", () =
 	assertEquals(seriesOf(event, TZ), { events: [event], clipped: false });
 });
 
-Deno.test("a template repeats on the weekdays its weekly working hours add", () => {
-	const weekly = (days: number[], extra: Record<string, unknown> = {}) => ({
-		layer: "working_hours" as const,
-		effect: "add" as const,
-		active: true,
-		pattern: { type: "weekly" as const, days, interval: 1 },
-		...extra,
-	});
-	const draft = templateDraft([
-		weekly([1, 2, 3]),
-		weekly([4, 5, 0]),
-		weekly([6], { layer: "call_window" }),
-		weekly([6], { active: false }),
-		weekly([6], { pattern: { type: "weekly", days: [6], interval: 2 } }),
-	]);
-	assertEquals(draft?.isoDays, [1, 2, 3, 4, 5, 7]);
-	assertEquals(draft && toRRule(draft, A), "FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH,FR");
-	assertEquals(templateDraft([weekly([1], { effect: "subtract" })]), null);
+Deno.test("a yearly draft names its month and day, and round-trips through its rule", () => {
+	const yearly: RepeatDraft = { freq: "YEARLY", interval: 2, isoDays: [], end: { type: "never" } };
+	assertEquals(toRRule(yearly, A), "FREQ=YEARLY;INTERVAL=2;BYMONTH=3;BYMONTHDAY=25");
+	assertEquals(fromRRule(toRRule(yearly, A)), yearly);
+	assertEquals(describeRepeat(yearly, A), "Every other year on March 25");
+	assertEquals(describeRepeat({ ...yearly, interval: 1 }, A), "Yearly on March 25");
+});
+
+Deno.test("a past entry is named; a series only when nothing it lays down is still to come", () => {
+	const later = START + 30 * 24 * HOUR;
+	assertEquals(pastNotice(event, TZ, START - HOUR), null);
+	assertEquals(pastNotice(event, TZ, START + HOUR), "This event is in the past.");
+	assertEquals(
+		pastNotice({ ...event, end: event.start, kind: "general" }, TZ, START + HOUR),
+		"This reminder is in the past.",
+	);
+	const weekly = { ...event, recurrenceRule: "FREQ=WEEKLY;COUNT=10" };
+	assertEquals(pastNotice(weekly, TZ, later), null, "the tenth week is still ahead");
+	assertEquals(
+		pastNotice({ ...event, recurrenceRule: "FREQ=WEEKLY;COUNT=3" }, TZ, later),
+		"Every occurrence of this series is in the past.",
+	);
+	assertEquals(
+		pastNotice({ ...event, recurrenceRule: "FREQ=DAILY" }, TZ, START + 60 * 24 * HOUR),
+		`The first ${ENTRY_BATCH_MAX} occurrences are added now, and all of them are in the past.`,
+	);
 });

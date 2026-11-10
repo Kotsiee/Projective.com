@@ -31,6 +31,7 @@ import {
 	calendarPage,
 	calendarPresent,
 	calendarQuery,
+	type CalendarSurface,
 	calendarView,
 	filtersEngaged,
 	focusedAt,
@@ -67,10 +68,18 @@ import {
  * must transfer); the scheduler's Undo and Redo; then Go to now, which moves the grid onto today and
  * centres its now-line; then the panel toggle — the month navigator on the agenda, the template's
  * settings and rules on Availability — from 1280px docked, a drawer below.
+ *
+ * **A team's or business's calendar** (`surface="entity"`) wears the agenda's band without the page
+ * tabs: it has no availability page for a tab to lead to, and a control that renders must do
+ * something. Its panel toggle names the Events tab the console's lane has no room for.
  */
 export interface CalendarHeaderBandProps {
 	/** Which of `/calendar`'s two pages this is. */
 	mode: CalendarMode;
+	/** Which calendar the band frames (default `personal`). */
+	surface?: CalendarSurface;
+	/** The page's visually hidden heading (default "Calendar"). */
+	title?: string;
 	/** The agenda's SSR page, so its period and filter options paint in the first byte. */
 	initial: SchedulePage | null;
 	/** The availability page's SSR presets read, for its zone and the template undo acts on. */
@@ -105,7 +114,13 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 				locale={props.locale}
 			/>
 		)
-		: <AgendaBand initial={props.initial} />;
+		: (
+			<AgendaBand
+				initial={props.initial}
+				surface={props.surface ?? "personal"}
+				title={props.title}
+			/>
+		);
 }
 
 // #region Frame
@@ -118,6 +133,10 @@ interface BandFrameProps {
 	onNow: () => void;
 	panelId: string;
 	panelName: string;
+	/** Whether the Events ⇄ Availability page tabs are drawn (default `true`). */
+	tabs?: boolean;
+	/** The page's visually hidden heading. */
+	title?: string;
 	/** The page's own actions, before Go to now. */
 	children?: ComponentChildren;
 }
@@ -130,7 +149,7 @@ function BandFrame(props: BandFrameProps): JSX.Element {
 
 	return (
 		<div class="cal-band">
-			<h1 class="ui-visually-hidden">Calendar</h1>
+			<h1 class="ui-visually-hidden">{props.title ?? "Calendar"}</h1>
 
 			<div class="cal-band__start" role="group" aria-label="Change period">
 				<Tooltip content="Previous" density="compact">
@@ -156,13 +175,15 @@ function BandFrame(props: BandFrameProps): JSX.Element {
 				</Tooltip>
 			</div>
 
-			<TabStrip
-				tone="header"
-				label="Calendar pages"
-				items={MODE_TABS}
-				activeKey={props.mode}
-				class="cal-band__modes"
-			/>
+			{props.tabs === false ? null : (
+				<TabStrip
+					tone="header"
+					label="Calendar pages"
+					items={MODE_TABS}
+					activeKey={props.mode}
+					class="cal-band__modes"
+				/>
+			)}
 
 			<div class="cal-band__end">
 				<span class="cal-band__tz">{props.tz.replace(/_/g, " ")}</span>
@@ -200,7 +221,10 @@ function BandFrame(props: BandFrameProps): JSX.Element {
 // #endregion
 
 // #region Events
-function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
+function AgendaBand(
+	props: { initial: SchedulePage | null; surface: CalendarSurface; title?: string },
+): JSX.Element {
+	const entity = props.surface === "entity";
 	const filterOpen = useSignal(false);
 	const filterRef = useRef<HTMLButtonElement>(null);
 	const page = calendarPage.value ?? props.initial;
@@ -223,7 +247,9 @@ function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
 				calendarPresent.value += 1;
 			}}
 			panelId={CALENDAR_PANEL_ID}
-			panelName="event and month panel"
+			panelName={entity ? "events and month panel" : "event and month panel"}
+			tabs={!entity}
+			title={props.title}
 		>
 			<label class="cal-band__search">
 				<Icon name="search" size="xs" class="cal-band__searchglyph" aria-hidden="true" />
@@ -232,7 +258,7 @@ function AgendaBand(props: { initial: SchedulePage | null }): JSX.Element {
 					type="search"
 					value={calendarQuery.value}
 					placeholder="Search"
-					aria-label="Search your calendar"
+					aria-label={entity ? "Search this calendar" : "Search your calendar"}
 					onInput={(e) => (calendarQuery.value = (e.currentTarget as HTMLInputElement).value)}
 				/>
 			</label>

@@ -1,10 +1,11 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import "../styles/workspace.css";
 import "@features/calendar/styles/calendar-page.css";
+import "@features/calendar/styles/calendar-chrome.css";
 import { Calendar } from "@projective/ui/calendar";
-import type { CalendarEvent, CalendarPage } from "@projective/types/scheduling";
+import { Message } from "@projective/ui/feedback";
+import { awaitsAnswer, type CalendarEvent, type CalendarPage } from "@projective/types/scheduling";
 import type { WorkspaceKind } from "@projective/types/workspace";
 import { EventModal } from "@features/calendar/components/EventModal.tsx";
 import { renderCalendarSource } from "@features/calendar/components/provider-marks.tsx";
@@ -15,21 +16,49 @@ import {
 	resolveEventAccess,
 	subscribeDevSeam,
 } from "@features/calendar/core/event-access.ts";
-import { entityCalendarView, entityEventTarget } from "../core/calendar-module-model.ts";
+import { deepLinkedEvent, invitationsFiltered } from "@features/calendar/core/event-deep-link.ts";
+import {
+	calendarFocus,
+	calendarPage,
+	calendarPresent,
+	calendarSnapZoom,
+	calendarView,
+	calendarZoom,
+	eventReread,
+	focusedAt,
+	gridSpotlight,
+	inspectInPanel,
+	invitationsOnly,
+	leavingEvents,
+	selectedEventId,
+	selectEvent,
+	sourceIsVisible,
+	timelineZoom,
+	visibleEvents,
+} from "@features/calendar/core/calendar-state.ts";
+import { useCalendarViewMemory } from "@features/calendar/hooks/useCalendarViewMemory.ts";
+import {
+	entityAgendaPage,
+	entityCalendarView,
+	entityEventTarget,
+} from "../core/calendar-module-model.ts";
 
 /**
- * EntityCalendarScreen — a team's or business's Calendar module (Decision #308): the union of the
- * entity's projects' calendars on the `@projective/ui/calendar` engine, inside the console canvas.
+ * EntityCalendarScreen — a team's or business's Calendar module (Decisions #308, #403): the union of the
+ * entity's projects' calendars, laid out as `/calendar` is.
  *
  * The page is read server-side by the `[module]` route (`resolveEntityCalendar`), as the viewer, so
  * every meeting, stage due date and ticket deadline on it is one RLS let them see on its own project.
- * It is the project calendar's body (`ProjectCalendar`) without the composer: an entry belongs to one
- * project, so new ones are added on that project's calendar and this grid creates nothing. An existing
- * event opens the {@link EventModal} as on its project, and its RSVP and reschedule writes are addressed
- * to that project (`entityEventTarget`), where the server re-resolves it.
+ * This is the BODY and nothing but the grid: the console's header, footer and panel slots mount
+ * `/calendar`'s own header band (the period trail, Go to now, the panel toggle), footer rig (the zoom
+ * ruler and Export) and panel (Month, and an Events tab holding the list the `/calendar` lane carries,
+ * since this console's lane is its rail). They render in the frame, outside this tree, and read the
+ * page through `calendarPage`, which this island publishes — one reader, one answer.
  *
- * It sits in the console's scrolling canvas rather than filling a region, so it takes the bounded
- * `cal-surface--schedule` height the public schedule page uses.
+ * It creates nothing: an entry belongs to one project, so new ones are added on that project's
+ * calendar. A pick opens in the panel's inspector, and its RSVP and reschedule writes — there or in the
+ * {@link EventModal} it opens — are addressed to the entry's own project (`entityEventTarget`), where the
+ * server re-resolves it.
  */
 
 // #region Props
@@ -45,82 +74,125 @@ export interface EntityCalendarScreenProps {
 }
 // #endregion
 
+/** An answer re-read on its project keeps the union's attribution and its meta line. */
+function adopt(events: readonly CalendarEvent[], next: CalendarEvent): CalendarEvent[] {
+	return events.map((e) =>
+		e.id === next.id ? { ...next, projectId: e.projectId, meta: e.meta } : e
+	);
+}
+
 export default function EntityCalendarScreen(props: EntityCalendarScreenProps): JSX.Element {
 	const view = entityCalendarView(props);
-	const events = useSignal<CalendarEvent[]>(props.initial?.events ?? []);
-	const access = useSignal<EventAccess>(
-		resolveEventAccess({
-			viewerIsClient: props.initial?.viewerIsClient ?? props.kind === "business",
-		}, null),
-	);
+	const page = props.initial ? entityAgendaPage(props.initial) : null;
+	const events = useSignal<CalendarEvent[]>(page?.events ?? []);
+	const viewerIsClient = props.initial?.viewerIsClient ?? props.kind === "business";
+	const access = useSignal<EventAccess>(resolveEventAccess({ viewerIsClient }, null));
+
+	useCalendarViewMemory();
 
 	useEffect(() => {
+		invitationsOnly.value = invitationsFiltered(globalThis.location?.search ?? "");
+		if (page) calendarPage.value = page;
 		const apply = () => {
-			access.value = resolveEventAccess(
-				{ viewerIsClient: props.initial?.viewerIsClient ?? props.kind === "business" },
-				readDevSeam(),
-			);
+			access.value = resolveEventAccess({ viewerIsClient }, readDevSeam());
 		};
 		apply();
-		return subscribeDevSeam(apply);
+		// `?event=<id>` opens that occurrence in the inspector, on its week, when it is on the calendar.
+		const linked = deepLinkedEvent(globalThis.location?.search ?? "", events.peek());
+		if (linked) {
+			calendarFocus.value = linked.start;
+			inspectInPanel(linked);
+		}
+		const unsubscribe = subscribeDevSeam(apply);
+		// The page is a module signal the frame's regions share, so it goes when this tree does.
+		return () => {
+			unsubscribe();
+			calendarPage.value = null;
+			selectedEventId.value = null;
+			eventStack.close();
+		};
 	}, []);
 
-	// Discard the chain when the module goes, so a later visit never inherits a stale frame.
-	useEffect(() => () => eventStack.close(), []);
+	/** The session's answers travel to the regions that read the page. */
+	useSignalEffect(() => {
+		const list = events.value;
+		const current = calendarPage.peek();
+		if (current) calendarPage.value = { ...current, events: list };
+	});
 
-	const page = props.initial;
+	/** An entry the inspector re-read: an answer given in the panel. */
+	useSignalEffect(() => {
+		const next = eventReread.value;
+		if (!next) return;
+		eventReread.value = null;
+		events.value = adopt(events.peek(), next);
+	});
+
+	if (!page) {
+		return (
+			<div class="cal-surface cal-surface--full cal-surface--empty" data-kind={props.kind}>
+				<p class="cal-surface__empty" role="alert">{props.initialError ?? view.failedNote}</p>
+			</div>
+		);
+	}
+
+	const leaving = leavingEvents.value;
+	// The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words.
+	const shown = visibleEvents(events.value).map((e) =>
+		awaitsAnswer(e) || leaving.includes(e.id)
+			? { ...e, ghost: awaitsAnswer(e), leaving: leaving.includes(e.id) }
+			: e
+	);
 	const open = eventStack.top.value;
 	const framed = open ? events.value.find((e) => e.id === open.id) ?? null : null;
 	const target = framed ? entityEventTarget(framed) : null;
+	const renderSource = (source: string) =>
+		sourceIsVisible(source) ? renderCalendarSource(source) : null;
 
 	return (
-		<div class="wsp" data-kind={props.kind}>
-			<div class="wsp__stack">
-				<section
-					class="wsp-band wsp-band--plain wsp-band--tail"
-					aria-label={`${props.name}'s calendar`}
-				>
-					<div class="wsp-band__inner">
-						{page
-							? (
-								<div class="cal-surface cal-surface--schedule">
-									{events.value.length === 0
-										? <p class="wsp-pagehead__note" role="status">{view.emptyNote}</p>
-										: null}
-									<Calendar
-										events={events.value}
-										timezone={page.timezone}
-										view="week"
-										focus={page.now}
-										title={page.title}
-										canCreate={false}
-										renderSource={renderCalendarSource}
-										storageKey="pj.calendar.entity"
-										onOpenEvent={(ev) => {
-											const event = ev as CalendarEvent;
-											if (entityEventTarget(event)) {
-												eventStack.open("event", event.id, {
-													mode: "view",
-												});
-											} else if (event.href) globalThis.location.assign(event.href);
-										}}
-									/>
-								</div>
-							)
-							: (
-								<p class="wsp-pagehead__note" role="alert">
-									{props.initialError ?? view.failedNote}
-								</p>
-							)}
-					</div>
-				</section>
-			</div>
-			{page && open && framed && target
+		<div class="cal-surface cal-surface--full" data-kind={props.kind}>
+			{events.value.length === 0
+				? (
+					<Message severity="info" size="sm" class="cal-surface__notice">
+						{view.emptyNote}
+					</Message>
+				)
+				: null}
+			<Calendar
+				events={shown}
+				spotlight={gridSpotlight}
+				present={calendarPresent}
+				// The entry opens in the panel beside the grid, so the engine's popover would repeat it.
+				directOpen
+				timezone={page.timezone}
+				view={calendarView.value}
+				zoom={calendarZoom}
+				timelineZoom={timelineZoom}
+				snapZoom={calendarSnapZoom.value}
+				focus={focusedAt(page)}
+				hideSidePanel
+				hideHeader
+				canCreate={false}
+				renderSource={renderSource}
+				storageKey="pj.calendar.entity"
+				onViewChange={(v) => (calendarView.value = v)}
+				onFocusChange={(ms) => (calendarFocus.value = ms)}
+				onOpenEvent={(ev) => {
+					const event = ev as CalendarEvent;
+					// An entry the union could not attribute has no project to answer on, so it opens where
+					// it lives instead of in an inspector whose every action would be refused.
+					if (entityEventTarget(event)) selectEvent(event, "grid");
+					else if (event.href) globalThis.location.assign(event.href);
+				}}
+			/>
+
+			{open && framed && target
 				? (
 					<EventModal
 						key={open.uid}
 						uid={open.uid}
 						mode={(open.input?.mode ?? "view") as EventMode}
+						initialTab={open.input?.tab}
 						event={framed}
 						tz={page.timezone}
 						hour12
@@ -131,15 +203,13 @@ export default function EntityCalendarScreen(props: EntityCalendarScreenProps): 
 						canBook={false}
 						onClose={() => eventStack.close()}
 						onSubmit={(ev) => {
-							events.value = events.value.map((
-								e,
-							) => (e.id === ev.id ? { ...ev, projectId: e.projectId } : e));
+							events.value = events.value.map((e) =>
+								e.id === ev.id ? { ...ev, projectId: e.projectId } : e
+							);
 						}}
 						onBook={() => {}}
 						onServerUpdate={(ev) => {
-							events.value = events.value.map((e) =>
-								e.id === ev.id ? { ...ev, projectId: e.projectId, meta: e.meta } : e
-							);
+							events.value = adopt(events.value, ev);
 						}}
 					/>
 				)

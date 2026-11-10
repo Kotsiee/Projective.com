@@ -4,22 +4,17 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
-import { Button, Checkbox, InputText, Textarea } from "@projective/ui/fields";
+import { Button, Checkbox, FormControl, InputText } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
 import { toDisplayCurrency, toMinorUnits } from "@projective/types/finance";
 import { PERSONAL_PROJECT_NOTE } from "@projective/types/auth";
-import { InlineNotice } from "@projective/ui/feedback";
+import { HintPopover, InlineNotice } from "@projective/ui/feedback";
 import { createInputForType, PROJECT_TYPE_LABEL } from "../types/projects-types.ts";
 import type { CreatedProject, CreateProject, ProjectTypeChoice } from "../types/projects-types.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { CloseIcon } from "./glyphs.tsx";
-import {
-	InvitedFreelancerField,
-	TYPE_CARDS,
-	TypeRadioGroup,
-	TypeStepCards,
-} from "./ProjectCreateTypeCards.tsx";
+import { InvitedFreelancerField, TypeSelect, TypeStepCards } from "./ProjectCreateTypeCards.tsx";
 import { ProjectCreatePricingFields } from "./ProjectCreatePricingFields.tsx";
 import type { PricingFieldKey } from "./ProjectCreatePricingFields.tsx";
 
@@ -32,11 +27,10 @@ import type { PricingFieldKey } from "./ProjectCreatePricingFields.tsx";
  * chances to disagree about what a project needs before it can exist — and they already had: the
  * wizard's Task card minted one structure while the lane's had no Task at all.
  *
- * The fields, each something the client already knows at the moment they press Create:
+ * The fields are PRODUCT_SPEC §Quick-Init's four, each something the client already knows at the
+ * moment they press Create — the brief is written in the workspace:
  *
  *  - **Title** — the address bar, the feed card and the channel header;
- *  - **Description** — one or two lines, optional, so the workspace opens on the sentence they
- *    already wrote rather than an empty editor;
  *  - **Currency** and an optional **baseline price** ({@link ProjectCreatePricingFields}) — the
  *    currency is seeded from the viewer's `preferred_display_currency`, and the baseline is a
  *    per-ticket rate on a pipeline and the escrow budget on a one-off or Task;
@@ -61,14 +55,12 @@ import type { PricingFieldKey } from "./ProjectCreatePricingFields.tsx";
  */
 
 // #region Vocabulary
-/** Stable ids — one instance is ever mounted, and each hint must bind to the control it describes. */
-const TITLE_ID = "pjc-title";
-const BRIEF_ID = "pjc-brief";
-
 /** The SSOT's own bounds, restated where the controls enforce them. */
 const TITLE_MIN = 3;
 const TITLE_MAX = 160;
-const BRIEF_MAX = 2000;
+
+const PERSONAL_HINT_ID = "pjc-personal-hint";
+const PERSONAL_HINT = "Private to you, with no members, hiring or payments. It stays personal.";
 // #endregion
 
 /** The seller a project is being created FOR, when the modal was opened from their profile. */
@@ -115,7 +107,7 @@ export interface ProjectCreateModalProps {
 }
 
 /** Which control a server-side field error belongs to. */
-type FieldKey = "title" | "description" | "format" | PricingFieldKey;
+type FieldKey = "title" | "format" | PricingFieldKey;
 
 /**
  * The refusal paths this surface can render. A Zod issue whose path names anything else (`scopeId`,
@@ -124,7 +116,6 @@ type FieldKey = "title" | "description" | "format" | PricingFieldKey;
  */
 const FIELD_KEYS: ReadonlySet<string> = new Set<FieldKey>([
 	"title",
-	"description",
 	"format",
 	"currency",
 	"baselineAmountCents",
@@ -172,7 +163,6 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	/** Which screen `stepped` is on. Pinned at 2 in `single`, where both halves render at once. */
 	const step = useSignal<1 | 2>(stepped ? 1 : 2);
 	const title = useSignal("");
-	const brief = useSignal("");
 	const currency = useSignal(toDisplayCurrency(defaultCurrency));
 	/** The baseline in MAJOR units of {@link currency}, converted once at submit. */
 	const amount = useSignal<number | null>(null);
@@ -208,7 +198,6 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		if (!open) return;
 		step.value = stepped ? 1 : 2;
 		title.value = "";
-		brief.value = "";
 		currency.value = toDisplayCurrency(defaultCurrency);
 		amount.value = null;
 		personalChoice.value = false;
@@ -279,11 +268,6 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		clearFieldError("title");
 	};
 
-	const onBriefChange = (value: string) => {
-		brief.value = value;
-		clearFieldError("description");
-	};
-
 	const onCurrencyChange = (code: string) => {
 		currency.value = code;
 		clearFieldError("currency");
@@ -326,37 +310,13 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		}, 0);
 	};
 
-	/**
-	 * Arrow keys move the choice, and moving it SELECTS it.
-	 *
-	 * The radiogroup pattern's own rule: a radio's selection follows focus, so a reader driving the
-	 * three cards with the arrows never has to press a second key to commit the one they have landed
-	 * on. Enter is then free to mean "done here", which is what `formKeyNav` makes it do.
-	 */
-	const onCardKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLButtonElement>, index: number) => {
-		const delta = e.key === "ArrowRight" || e.key === "ArrowDown"
-			? 1
-			: e.key === "ArrowLeft" || e.key === "ArrowUp"
-			? -1
-			: 0;
-		if (delta === 0) return;
-		e.preventDefault();
-		const n = TYPE_CARDS.length;
-		const next = TYPE_CARDS[(index + delta + n) % n];
-		pickType(next);
-		// Focus follows the selection, so the roving tabindex and the caret agree about where the
-		// reader is. Queried by value rather than held in a ref array — the cards are three static
-		// children, and a ref array would need re-seeding on every render for no gain.
-		panelRef.current?.querySelector<HTMLButtonElement>(`[data-type="${next}"]`)?.focus();
-	};
-
 	const buildPayload = (chosen: ProjectTypeChoice): CreateProject => {
 		const [format, hasStages] = createInputForType(chosen);
 		return {
 			title: title.value.trim(),
 			format,
 			hasStages,
-			description: brief.value.trim(),
+			description: "",
 			currency: currency.value,
 			baselineAmountCents: personal ? null : toMinorUnits(amount.value, currency.value),
 			inviteeHandle: seller?.handle,
@@ -416,16 +376,11 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	// #endregion
 
 	const drafted = created.value;
-	const blocked = drafted !== null ||
-		(!onTypeStep && (titleError !== null || formError.value !== null));
 	const note = drafted
 		? `Project created, but ${seller?.name ?? "the freelancer"} wasn't invited.`
 		: onTypeStep
-		? "You can change the type later in the project's settings."
-		: (formError.value ?? titleError ??
-			(seller
-				? `${seller.name} is invited as soon as the draft exists — staged until you publish.`
-				: "You can add the stages, the pricing and the rules straight after this."));
+		? null
+		: formError.value;
 	const format = picked ? createInputForType(picked)[0] : null;
 
 	/** The heading names what is being made, once the reader has said what it is. */
@@ -477,67 +432,42 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 						)}
 
 						{!drafted && onTypeStep && (
-							<>
-								<p class="pjc__lead">
-									{seller
-										? `What kind of work are you bringing ${seller.name} into?`
-										: "What kind of work is this?"}
-								</p>
-								<TypeStepCards
-									cardsRef={cardsRef}
-									picked={picked}
-									onPick={pickType}
-									error={fieldErrors.value.format}
-								/>
-							</>
+							<TypeStepCards
+								cardsRef={cardsRef}
+								picked={picked}
+								onPick={pickType}
+								error={fieldErrors.value.format}
+							/>
 						)}
 
 						{!drafted && !onTypeStep && (
 							<>
 								<div ref={titleFieldRef} {...fieldProps("title")}>
-									<label class="pjc__label" for={TITLE_ID}>Project name</label>
-									<InputText
-										id={TITLE_ID}
-										value={title}
-										onValueChange={onTitleChange}
-										placeholder="e.g. Helia wallet redesign"
-										block
-										maxLength={TITLE_MAX}
-										required
+									<FormControl
+										label="Project name"
 										status={titleStatus}
-									/>
-									{titleError && <p class="pjc__hint pjc__hint--error">{titleError}</p>}
-								</div>
-
-								<div {...fieldProps("description")}>
-									<label class="pjc__label" for={BRIEF_ID}>
-										Description
-										<span class="pjc__optional">Optional</span>
-									</label>
-									<Textarea
-										id={BRIEF_ID}
-										value={brief}
-										onValueChange={onBriefChange}
-										placeholder="What needs doing, and what does finished look like?"
-										rows={3}
-										maxRows={7}
-										autoResize
-										maxLength={BRIEF_MAX}
-										status={statusOf("description")}
-										fluid
-									/>
-									<p class="pjc__hint">
-										{fieldErrors.value.description ??
-											"A line or two is plenty — the full brief comes next."}
-									</p>
+										error={titleError ?? undefined}
+									>
+										{({ id, describedBy }) => (
+											<InputText
+												id={id}
+												aria-describedby={describedBy}
+												value={title}
+												onValueChange={onTitleChange}
+												placeholder="e.g. Brand redesign"
+												block
+												maxLength={TITLE_MAX}
+												required
+												status={titleStatus}
+											/>
+										)}
+									</FormControl>
 								</div>
 
 								{!stepped && (
-									<TypeRadioGroup
-										picked={picked}
-										fallback={initialType}
+									<TypeSelect
+										picked={picked ?? initialType}
 										onPick={pickType}
-										onCardKeyDown={onCardKeyDown}
 										error={fieldErrors.value.format}
 									/>
 								)}
@@ -546,10 +476,17 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 									<InlineNotice align="start" text={PERSONAL_PROJECT_NOTE} />
 								)}
 								{format && !props.restricted && !seller && (
-									<Checkbox
-										value={personalChoice}
-										label="Personal project — private to you, with no members, hiring or payments"
-									/>
+									<div class="pjc__check">
+										<Checkbox
+											value={personalChoice}
+											label="Personal project"
+											aria-describedby={PERSONAL_HINT_ID}
+										/>
+										<HintPopover label="About personal projects">{PERSONAL_HINT}</HintPopover>
+										<span id={PERSONAL_HINT_ID} class="ui-visually-hidden">
+											{PERSONAL_HINT}
+										</span>
+									</div>
 								)}
 								{format && !personal && (
 									<ProjectCreatePricingFields
@@ -578,7 +515,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 					</div>
 
 					<footer class="pjc__foot">
-						<p class="pjc__note" role="status" data-tone={blocked ? "error" : "muted"}>
+						<p class="pjc__note" role="status" data-tone={note ? "error" : "muted"}>
 							{note}
 						</p>
 						{drafted
@@ -608,7 +545,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 									{!onTypeStep && (
 										<Button
 											variant="filled"
-											severity="primary"
+											structural
 											label={submitting.value ? "Creating…" : "Create project"}
 											loading={submitting.value}
 											disabled={submitting.value}

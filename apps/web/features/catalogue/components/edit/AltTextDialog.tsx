@@ -58,7 +58,7 @@ export function AltTextDialog(props: AltTextDialogProps): JSX.Element {
 			width="min(28rem, calc(100vw - 2rem))"
 			footer={
 				<div class="cat-sec__dialog-actions">
-					<Button label="Cancel" severity="neutral" variant="outlined" onClick={close} />
+					<Button label="Cancel" variant="text" severity="secondary" onClick={close} />
 					<Button label="Save" loading={busy.value} onClick={() => void save()} />
 				</div>
 			}

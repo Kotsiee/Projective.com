@@ -28,14 +28,16 @@ import type {
 	RsvpResponse,
 	SchedulingTarget,
 } from "@projective/types/scheduling";
-import { type CallActionInput, createRefusal, eventLiveStatus } from "@projective/types/scheduling";
+import { type CallActionInput, eventLiveStatus } from "@projective/types/scheduling";
 import { readDevSeam } from "@web/utils/dev-seam.ts";
 import { callViewOf } from "../core/call-view.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import type { EventAccess } from "../core/event-access.ts";
 import { checkJoinLink } from "../core/meeting-link.ts";
+import { pastNotice } from "../core/event-recurrence.ts";
 import {
 	canAnswer,
+	composesAsMoment,
 	durationLabel,
 	entryEditable,
 	eventFingerprint,
@@ -287,12 +289,16 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const live = eventLiveStatus(nowMs, event.start, event.end);
 	const money = eventMoney(event, access);
 	const view = rescheduleView(event, nowMs);
-	/** A new entry may not start in the past; editing an existing one is never gated by time. */
-	const pastRefusal = creating ? createRefusal(nowMs, event) : null;
+	/** A new entry may start in the past; the footer says so rather than holding Create back. */
+	const pastWarning = creating ? pastNotice(event, tz, nowMs) : null;
+	/** A Reminder or a deadline has no end to move, decided by its kind rather than its span. */
+	const moment = composesAsMoment(event, props.event, props.createKinds);
+	/** An Event that no longer ends after it starts; the End field says why beside itself. */
+	const backwards = canEdit && !moment && !event.allDay && event.end <= event.start;
 	// The field states why beside itself; here it only holds Create and Save back.
 	const linkCheck = canEdit && event.meeting?.joinUrl ? checkJoinLink(event.meeting.joinUrl) : null;
 	const linkRefused = !!linkCheck && !linkCheck.ok;
-	const unsaveable = !event.title.trim() || linkRefused;
+	const unsaveable = !event.title.trim() || linkRefused || backwards;
 
 	/** Where a discovery call stands for this viewer, and what they may do about it. */
 	const callView = callViewOf(event, readDevSeam()?.discoveryCall ?? "auto", nowMs);
@@ -333,7 +339,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	}
 
 	function commit(): void {
-		if (!canEdit || unsaveable || pastRefusal) return;
+		if (!canEdit || unsaveable) return;
 		const committed: CalendarEvent = { ...draft.value, title: draft.value.title.trim() };
 		draft.value = committed;
 		baseline.value = eventFingerprint(committed);
@@ -659,6 +665,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 												tz={tz}
 												hour12={hour12}
 												canEdit={canEdit}
+												moment={moment}
 												when={canEdit
 													? (
 														<>
@@ -668,6 +675,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 																hour12={hour12}
 																nowMs={nowMs}
 																canEdit={canEdit}
+																moment={moment}
 																timesOnly
 																onPatch={patch}
 															/>
@@ -828,10 +836,10 @@ export function EventModal(props: EventModalProps): JSX.Element {
 							)
 							: null}
 
-						{refusal.value || pastRefusal
+						{refusal.value || pastWarning
 							? (
 								<Message severity="warning" class="evm__refusal">
-									{refusal.value ?? pastRefusal}
+									{refusal.value ?? pastWarning}
 								</Message>
 							)
 							: callView?.note
@@ -895,7 +903,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 											variant="filled"
 											severity="primary"
 											size="sm"
-											disabled={unsaveable || !!pastRefusal}
+											disabled={unsaveable}
 											onClick={commit}
 										>
 											Create

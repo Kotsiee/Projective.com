@@ -54,6 +54,14 @@ export function paletteFor(palette: readonly string[], own: string | null): stri
 	return !own || palette.includes(own) ? [...palette] : [...palette.slice(0, -1), own];
 }
 
+/**
+ * New folder's swatches: one fewer than a folder's menu shows, since its grid also holds "No colour"
+ * beside the `+`, with a custom pick in the last place so it stays in view (Decision #407).
+ */
+export function fieldPalette(palette: readonly string[], own: string | null): string[] {
+	return paletteFor(palette.slice(0, -1), own);
+}
+
 /** The recents after picking `hex`: it leads, and it appears once. */
 export function afterPick(recent: readonly string[], hex: string): string[] {
 	return [hex, ...recent.filter((color) => color !== hex)].slice(0, SWATCHES);

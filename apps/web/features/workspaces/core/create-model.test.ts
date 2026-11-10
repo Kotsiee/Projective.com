@@ -76,7 +76,7 @@ Deno.test("copy: the title and the commit name the route's kind — the dialog n
 	assertEquals(createCopy("team").submit, "Create team");
 	assertEquals(createCopy("business").header, "Create a business");
 	assertEquals(createCopy("business").submit, "Create business");
-	assert(createCopy("team").intro.includes("draft"));
+	assert(!("intro" in createCopy("team")), "the dialog carries no intro paragraph");
 });
 
 Deno.test("copy: a business's placeholders are neutral and agree; a team's are unchanged (BU1)", () => {
@@ -88,10 +88,6 @@ Deno.test("copy: a business's placeholders are neutral and agree; a team's are u
 	const team = createCopy("team");
 	assertEquals(team.namePlaceholder, "Northern Grid Collective");
 	assertEquals(team.handlePlaceholder, "northern-grid");
-	// The intro claims nothing a free business lacks: caps and approvals are Business Pro (#230 (e)).
-	assert(!/limits you set/i.test(business.intro), business.intro);
-	assert(business.intro.includes("you decide who may spend"), business.intro);
-	assert(business.intro.endsWith("It starts as a draft — you finish setting it up inside."));
 });
 // #endregion
 

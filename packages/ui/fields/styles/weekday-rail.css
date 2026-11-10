@@ -22,6 +22,11 @@
 	align-items: center;
 	gap: var(--space-1);
 	min-inline-size: 0;
+	touch-action: pan-y;
+}
+
+.ui-weekday-rail[data-sweeping="true"] .ui-weekday-rail__day {
+	cursor: grabbing;
 }
 
 .ui-weekday-rail--size-sm {

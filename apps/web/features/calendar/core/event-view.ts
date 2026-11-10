@@ -20,6 +20,7 @@ import {
 	counterpartyAcceptRefusal,
 	electorateSize,
 	eligibleVoterCount,
+	entryClassOf,
 	eventLiveStatus,
 	isRescheduleClosed,
 	leadingProposal,
@@ -228,6 +229,23 @@ export function viewerSeat(event: CalendarEvent) {
  */
 export function entryEditable(event: CalendarEvent): boolean {
 	return event.viewerIsHost === true && !event.callId && !event.projectId;
+}
+
+/**
+ * Whether the composer treats an entry as a moment — a Reminder or a deadline, one instant with no end
+ * to move — by its kind and by what it was opened as, never by its current span: read from the span,
+ * an end set onto the start turned an Event into a Reminder and took its End picker away.
+ */
+export function composesAsMoment(
+	draft: Pick<CalendarEvent, "kind">,
+	opened: Pick<CalendarEvent, "kind" | "start" | "end">,
+	kinds: readonly { value: CalendarEventKind; instant?: boolean }[],
+): boolean {
+	if (draft.kind === "deadline") return true;
+	if (draft.kind !== opened.kind) {
+		return kinds.some((k) => k.value === draft.kind && k.instant === true);
+	}
+	return entryClassOf(opened) === "reminder";
 }
 
 /**

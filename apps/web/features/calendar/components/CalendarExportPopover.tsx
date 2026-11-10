@@ -1,9 +1,10 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { CALENDAR_KIND_LABEL, calendarTime } from "@projective/ui/calendar";
-import { Dialog, HintPopover, Message, Toast, useToast } from "@projective/ui/feedback";
+import { HintPopover, Message, Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Button, DateTimePicker, FormControl, Select, SelectButton } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import type { CalendarEvent } from "@projective/types/scheduling";
 import { integrationLabel } from "@projective/types/scheduling";
 import {
@@ -13,8 +14,8 @@ import {
 	EXPORT_RANGES,
 	EXPORT_STATUS_LABEL,
 	type ExportCriteria,
-	type ExportRange,
 	exportFacets,
+	type ExportRange,
 	selectForExport,
 } from "../core/calendar-export.ts";
 import { downloadExportFile } from "../core/calendar-download.ts";
@@ -22,8 +23,8 @@ import { exportOpen, hiddenSources } from "../core/calendar-state.ts";
 import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
 
 /**
- * CalendarExportModal — `/calendar`'s Export: pick a format, a date range and the entries, and take
- * the file away.
+ * CalendarExportPopover — `/calendar`'s Export, anchored to its own rig circle beside Import
+ * (Decision #405): pick a format, a date range and the entries, and take the file away.
  *
  * **It opens on what the grid is showing.** The event types and calendars start from the header
  * band's own filter, so a reader who has narrowed the week and presses Export gets what they were
@@ -33,19 +34,21 @@ import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
  *
  * **The count is live and the button says it.** "Export 14 events", the span they cover and how many
  * private blocks were left out are worked out as the reader chooses, so an empty selection is caught
- * BEFORE a download — the button disables and says why — rather than reported after an empty file
- * has already landed in their downloads folder. An invalid custom range disables it the same way.
- *
- * The file is written on this thread by the SSOT writers; the button shows its spinner for that frame.
- * A failure keeps the modal open with the reason; a success closes it and says so in a toast.
+ * BEFORE a download — the button disables and says why. An invalid custom range disables it the same
+ * way. A failure keeps the popover open with the reason; a success closes it and says so in a toast.
  */
-export interface CalendarExportModalProps {
-	/** Every entry on the agenda, imported ones included. The modal narrows them itself. */
+export interface CalendarExportPopoverProps {
+	/** Every entry on the agenda, imported ones included. The popover narrows them itself. */
 	events: readonly CalendarEvent[];
 	/** The surface's zone: all-day dates, the CSV wall clock and the custom range are read in it. */
 	timezone: string;
 	/** Written into the file as the calendar's name. */
 	calendarName: string;
+	/** The trigger's classes — the rig's ghost circle. */
+	triggerClass: string;
+	/** Which side the panel opens on — up from the footer rig. */
+	placement: "bottom-end" | "top-end";
+	iconSize?: "xs" | "sm";
 }
 
 const ANYONE = "anyone";
@@ -70,7 +73,7 @@ function spanLabel(events: readonly CalendarEvent[], tz: string): string {
 	return fmt.formatRange(new Date(events[0].start), new Date(events[events.length - 1].start));
 }
 
-export function CalendarExportModal(props: CalendarExportModalProps): JSX.Element {
+export function CalendarExportPopover(props: CalendarExportPopoverProps): JSX.Element {
 	const format = useSignal<string>("ics");
 	const range = useSignal<string>("all");
 	const from = useSignal<Date | null>(null);
@@ -114,7 +117,9 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 		statuses: offer.statuses
 			? facets.statuses.filter((s) => statuses.value.includes(s))
 			: facets.statuses,
-		sources: offer.sources ? facets.sources.filter((s) => sources.value.includes(s)) : facets.sources,
+		sources: offer.sources
+			? facets.sources.filter((s) => sources.value.includes(s))
+			: facets.sources,
 		organiser: offer.organisers && organiser.value !== ANYONE ? organiser.value : null,
 	};
 	const rangeError = customRangeError(criteria);
@@ -151,44 +156,45 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 
 	return (
 		<>
-			<Dialog
-				visible={exportOpen}
-				header="Export calendar"
-				width="34rem"
-				footer={
-					<div class="cal-export__foot">
-						<Button variant="text" size="sm" onClick={() => (exportOpen.value = false)}>
-							Cancel
-						</Button>
-						<Button
-							variant="filled"
-							size="sm"
-							loading={busy.value}
-							disabled={busy.value || rangeError !== null || count === 0}
-							onClick={() => void runExport()}
+			<Popover
+				open={exportOpen}
+				label="Export calendar"
+				placement={props.placement}
+				class="cal-export-pop"
+				avoid={[".ui-app-shell__sidebar"]}
+				trigger={(api) => (
+					<Tooltip content="Export calendar" density="compact">
+						<button
+							type="button"
+							ref={api.ref as RefObject<HTMLButtonElement>}
+							class={props.triggerClass}
+							aria-label="Export calendar"
+							aria-haspopup="dialog"
+							aria-expanded={api.expanded ? "true" : "false"}
+							aria-controls={api.panelId}
+							onClick={api.toggle}
 						>
-							{count > 0 ? `Export ${plural(count, "event", "events")}` : "Export"}
-						</Button>
-					</div>
-				}
+							<Icon name="download" size={props.iconSize ?? "xs"} />
+						</button>
+					</Tooltip>
+				)}
 			>
 				<div class="cal-export">
+					<p class="cal-export__title">Export calendar</p>
+
 					<section class="cal-export__section">
 						<div class="cal-export__head">
 							<h3 class="cal-export__label">Format</h3>
 							<HintPopover label="About export formats">
-								iCalendar opens in any calendar app. jCal is the same calendar written as JSON
-								(RFC 7265). CSV opens in a spreadsheet, with times in {tz.replace(/_/g, " ")}.
+								iCalendar opens in any calendar app. jCal is the same calendar written as JSON (RFC
+								7265). CSV opens in a spreadsheet, with times in {tz.replace(/_/g, " ")}.
 							</HintPopover>
 						</div>
 						<SelectButton
 							aria-label="Format"
 							size="sm"
-							options={EXPORT_FORMATS.map((f) => ({
-								label: f.label,
-								value: f.value,
-								description: f.description,
-							}))}
+							fluid
+							options={EXPORT_FORMATS.map((f) => ({ label: f.label, value: f.value }))}
 							value={format}
 						/>
 					</section>
@@ -205,6 +211,7 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 						<SelectButton
 							aria-label="Date range"
 							size="sm"
+							fluid
 							options={EXPORT_RANGES.map((r) => ({ label: r.label, value: r.value }))}
 							value={range}
 						/>
@@ -268,7 +275,10 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 									aria-label="Status"
 									size="sm"
 									multiple
-									options={facets.statuses.map((s) => ({ label: EXPORT_STATUS_LABEL[s], value: s }))}
+									options={facets.statuses.map((s) => ({
+										label: EXPORT_STATUS_LABEL[s],
+										value: s,
+									}))}
 									value={statuses}
 								/>
 							</section>
@@ -307,29 +317,36 @@ export function CalendarExportModal(props: CalendarExportModalProps): JSX.Elemen
 						)
 						: null}
 
-					<div class="cal-export__summary" role="status">
-						{rangeError
-							? null
-							: count > 0
-							? (
-								<p class="cal-export__count">
-									<span class="cal-export__figure">{plural(count, "event", "events")}</span>
-									{` · ${spanLabel(selection.events, tz)}`}
-									{selection.withheld > 0
-										? ` · ${plural(selection.withheld, "private block", "private blocks")} left out`
-										: null}
-								</p>
-							)
-							: (
-								<Message severity="warning" size="sm">
-									No events match. Widen the date range or turn a filter back on.
-								</Message>
-							)}
-					</div>
-
 					{failure.value ? <Message severity="danger" size="sm">{failure.value}</Message> : null}
+
+					<div class="cal-export__foot">
+						<p class="cal-export__count" role="status">
+							{rangeError ? null : count > 0
+								? (
+									<>
+										<span class="cal-export__figure">{plural(count, "event", "events")}</span>
+										{` · ${spanLabel(selection.events, tz)}`}
+										{selection.withheld > 0
+											? ` · ${
+												plural(selection.withheld, "private block", "private blocks")
+											} left out`
+											: null}
+									</>
+								)
+								: "No events match these choices."}
+						</p>
+						<Button
+							variant="filled"
+							size="sm"
+							loading={busy.value}
+							disabled={busy.value || rangeError !== null || count === 0}
+							onClick={() => void runExport()}
+						>
+							Export
+						</Button>
+					</div>
 				</div>
-			</Dialog>
+			</Popover>
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</>
 	);

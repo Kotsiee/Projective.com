@@ -65,6 +65,8 @@ export interface EventDetailsTabProps {
 	hour12: boolean;
 	/** Whether the acting viewer arranges this event (the host). */
 	canEdit: boolean;
+	/** Whether the entry is a moment (a Reminder or a deadline), by its kind; absent, read from its span. */
+	moment?: boolean;
 	/** While editing: the When row (the modal's meta bar), drawn at the head of the left column. */
 	when?: ComponentChildren;
 	onPatch: (patch: Partial<CalendarEvent>) => void;
@@ -331,7 +333,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 
 	// #region Connected calendars
 	// A Reminder has no span, so it never goes out and there is nothing to keep back.
-	const projectiveOnly = canEdit && entryClassOf(event) !== "reminder"
+	const projectiveOnly = canEdit && !(props.moment ?? entryClassOf(event) === "reminder")
 		? (
 			<section class="evm-doc__sec">
 				<ToggleSwitch

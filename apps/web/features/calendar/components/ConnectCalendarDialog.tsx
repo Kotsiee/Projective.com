@@ -149,13 +149,12 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 	return (
 		<Dialog visible={props.open} header="Connect a calendar" width="28rem">
 			<p class="cal-connect__hint">
-				Connecting is a separate permission from signing in — signing in with Google grants no
-				access to your calendar. We read your main calendar and keep each event's title, times,
-				repeat pattern, location, notes and meeting link, never its guests. Only you see those
-				details, and they stay read-only here; anyone else who can see your calendar sees Busy. Turn
-				on publishing and your Projective events also go to a separate Projective calendar there,
-				which disconnecting removes, along with those details. Your own calendars are never changed,
-				and an edit made on the Projective calendar is replaced by the next change here.
+				We read your main calendar and keep each event's title, times, repeat pattern, location,
+				notes and meeting link, never its guests. Only you see those details, and they stay
+				read-only here; anyone else who can see your calendar sees Busy. Turn on publishing and your
+				Projective events also go to a separate Projective calendar there, which disconnecting
+				removes, along with those details. Your own calendars are never changed, and an edit made on
+				the Projective calendar is replaced by the next change here.
 			</p>
 
 			{connections.length > 0
@@ -218,8 +217,16 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 							{!data
 								? notice.value ? null : "Loading the calendars you can connect…"
 								: anyOffered
-								? "Every calendar this account can connect is already connected."
-								: "No calendars can be connected yet."}
+								? "Every calendar you can connect is connected."
+								: "No calendar can be connected here yet."}
+							{data && (
+								<>
+									{" "}
+									<a class="cal-connect__manage" href="/settings/integrations">
+										Manage connections
+									</a>
+								</>
+							)}
 						</p>
 					)
 					: (

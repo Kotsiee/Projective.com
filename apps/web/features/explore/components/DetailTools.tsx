@@ -5,7 +5,7 @@ import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { isSaveableEntity } from "@projective/types/explore";
-import { requestShare } from "@web/features/share/core/share-request.ts";
+import { requestShare, shareAnchor } from "@web/features/share/core/share-request.ts";
 import { hydrateSaved, savedIds, setSaved } from "../core/bookmark-state.ts";
 import { type HrefContext, itemHref } from "../core/routing.ts";
 import type { ExploreItem } from "../types/explore-types.ts";
@@ -79,7 +79,7 @@ export function DetailTools(
 					class="ui-hit"
 					icon={<Icon name="share" size="sm" />}
 					aria-label="Share"
-					onClick={() => requestShare({ href, title: item.title })}
+					onClick={(event) => requestShare({ href, title: item.title, anchor: shareAnchor(event) })}
 				/>
 			</Tooltip>
 			<span class="ui-visually-hidden" role="status">{status.value}</span>

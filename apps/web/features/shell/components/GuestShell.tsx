@@ -72,7 +72,7 @@ export function GuestShell(
 			<a class="guest-shell__skip" href={`#${PAGE_CANVAS_MAIN_ID}`}>Skip to content</a>
 			<SiteHeader authenticated={false} returnTo={returnTo} />
 			{/* The one share modal every Share control on the page opens; a guest gets the sign-in route inside it. */}
-			<ShareHost authed={false} returnTo={returnTo ?? "/"} />
+			<ShareHost authed={false} />
 			{header ? <div class="guest-shell__subheader">{header}</div> : null}
 			{hasAside
 				? (

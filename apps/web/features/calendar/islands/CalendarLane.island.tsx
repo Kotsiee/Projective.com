@@ -1,56 +1,39 @@
-import type { JSX, VNode } from "preact";
+import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
-import { calendarTime, scrollBehaviorFor } from "@projective/ui/calendar";
+import { scrollBehaviorFor } from "@projective/ui/calendar";
 import {
-	LaneBar,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
-	LaneFilterPopover,
 	LaneFooter,
 	LaneFooterActions,
 	LaneHead,
 	LaneIconButton,
 	LaneList,
-	LaneSearch,
-	type LaneToggleOption,
-	LaneToggleRow,
-	NavItem,
 } from "@projective/ui/navigation";
 import { DndContext, type DragEndEvent, DragOverlay, useDraggable } from "@projective/ui/dnd";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import type { IconName } from "@projective/ui/icons";
-import {
-	awaitsAnswer,
-	type CalendarEvent,
-	detectTimeClash,
-	ENTRY_CLASS_PLURAL,
-	type EntryClass,
-	type SchedulePage,
-} from "@projective/types/scheduling";
+import type { CalendarEvent, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
-import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
+import { AgendaFilters } from "../components/AgendaFilters.tsx";
+import { AgendaRow, type AgendaRowProps, agendaRowTitle } from "../components/AgendaRow.tsx";
 import {
 	ENTRY_DRAG,
 	LooseEntries,
 	RoutineSection,
 	routineTarget,
 } from "../components/RoutineSection.tsx";
-import { EventClashNote } from "../components/EventClashNote.tsx";
 import { calendarModeHref } from "../core/availability-view.ts";
-import { withInvitationsFilter } from "../core/event-deep-link.ts";
-import { providerMarkFor } from "../components/provider-marks.tsx";
 import {
 	activeFilterCount,
 	calendarFocus,
 	calendarPage,
 	calendarQuery,
-	classesOnPage,
 	importedEvents,
 	invitationsOnly,
 	laneSpotlight,
@@ -59,19 +42,12 @@ import {
 	pendingInvitations,
 	requestCreate,
 	requestOrganise,
-	resetFilters,
 	routinesOn,
 	selectedEventId,
-	selectEvent,
-	setInvitationsOnly,
-	showOnlyClass,
-	soleVisibleClass,
-	sourceIsVisible,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 import { repeatSentence } from "../core/event-recurrence.ts";
 import { listRows } from "../core/event-series.ts";
-import { timesLabel } from "../core/event-view.ts";
 import { entryOrganisable } from "../core/routine-actions.ts";
 import { entryHoldsTime, groupByRoutine } from "../core/routine-view.ts";
 
@@ -124,12 +100,8 @@ export interface CalendarLaneProps {
 	invitations?: boolean;
 }
 
-/** The registry glyph each class is drawn with in the quick row. */
-const CLASS_ICON: Record<EntryClass, IconName> = { event: "calendar", reminder: "flag" };
-
 export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
-	const filterOpen = useSignal(false);
 	const laneRef = useRef<HTMLDivElement>(null);
 	/** The row being dragged, for the ghost that follows the pointer. */
 	const dragged = useSignal<CalendarEvent | null>(null);
@@ -195,7 +167,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	}
 
 	const rowFor = (e: CalendarEvent) => (
-		<UpcomingRow
+		<DraggableRow
 			key={e.id}
 			event={e}
 			repeat={repeatSentence(e, all, tz)}
@@ -221,21 +193,6 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 		// A task, so the row the pick just selected has rendered before it is measured.
 		setTimeout(() => centreRow(flashing, scrollBehaviorFor()), 0);
 	}, [flashing]);
-
-	/*
-	 * The quick row offers only the classes actually ON the page, so it never presents a filter that
-	 * would empty the list — and it is SINGLE-select, because the shared lane chrome names every
-	 * toggle "Show {label} only" and a control has to mean what its accessible name says. It writes
-	 * the same `hiddenClasses` deny list the filter's facet reads, so the two are one axis with two
-	 * entry points rather than two filters that can disagree.
-	 */
-	const present = classesOnPage(all);
-	const classToggles: readonly LaneToggleOption<EntryClass>[] = present.map((entry) => ({
-		key: entry,
-		label: ENTRY_CLASS_PLURAL[entry],
-		icon: <Icon name={CLASS_ICON[entry]} />,
-	}));
-	const solo = soleVisibleClass(present);
 
 	return (
 		<div class="cal-lanewrap">
@@ -286,52 +243,13 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			{/* Expanded presentation. */}
 			<div class="cal-lane" ref={laneRef}>
 				<LaneHead class="cal-lane__head">
-					<LaneBar>
-						<LaneSearch
-							value={calendarQuery.value}
-							placeholder="Search your calendar"
-							label="Search your calendar"
-							icon={<Icon name="search" />}
-							onInput={(v) => (calendarQuery.value = v)}
-						/>
-						<LaneFilterPopover
-							open={filterOpen}
-							active={activeFilterCount()}
-							icon={<Icon name="filter" />}
-							onReset={resetFilters}
-						>
-							<CalendarFilterFacets events={all} tz={tz} />
-						</LaneFilterPopover>
-					</LaneBar>
-
-					{classToggles.length > 1
-						? (
-							<LaneToggleRow
-								label="Event type"
-								options={classToggles}
-								active={solo ? [solo] : []}
-								onToggle={(c) => showOnlyClass(c, present)}
-							/>
-						)
-						: null}
-
-					{invites > 0 || invitesOn
-						? (
-							<NavItem
-								href={withInvitationsFilter("/calendar", "", !invitesOn)}
-								label="Invitations"
-								aria-label={`Invitations, ${invites} waiting for your answer`}
-								icon={<Icon name="mail" />}
-								active={invitesOn}
-								trailing={<span class="cal-lane__count">{invites}</span>}
-								onClick={(e) => {
-									if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-									e.preventDefault();
-									setInvitationsOnly(!invitesOn);
-								}}
-							/>
-						)
-						: null}
+					<AgendaFilters
+						events={all}
+						tz={tz}
+						invitationsOn={invitesOn}
+						invitations={invites}
+						path="/calendar"
+					/>
 				</LaneHead>
 
 				<DndContext
@@ -361,7 +279,9 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						</LaneList>
 					</LooseEntries>
 					<DragOverlay class="cal-up-ghost">
-						{dragged.value ? <span class="cal-up__title">{rowTitle(dragged.value)}</span> : null}
+						{dragged.value
+							? <span class="cal-up__title">{agendaRowTitle(dragged.value)}</span>
+							: null}
 					</DragOverlay>
 				</DndContext>
 
@@ -390,141 +310,31 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	);
 }
 
-/** What a row calls an entry. A masked one has only its privacy-safe status. */
-function rowTitle(event: CalendarEvent): string {
-	if (!event.masked) return event.title;
-	return event.status === "available"
-		? "Available"
-		: event.status === "tentative"
-		? "Tentative"
-		: "Busy";
-}
-
 /**
- * One upcoming entry: when, what, and which calendars it is on.
- *
- * The provider marks are the same stack the grid draws, so an entry recognised in the lane is
- * recognisable in the grid. A masked block shows its privacy-safe status instead of a title, exactly
- * as it does everywhere else — the lane is not a way around the projection.
- *
- * An entry the reader may organise drags by its whole row, and from the keyboard by its grip: the row's
- * own button is already the pick, and one control cannot be both.
+ * A lane row: the shared {@link AgendaRow}, draggable into and out of a routine when its reader may
+ * organise it — by its whole row, and from the keyboard by its grip, since the row's own button is
+ * already the pick and one control cannot be both.
  */
-function UpcomingRow(
-	{ event, repeat, tz, selected, flashing, all, leaving }: {
-		event: CalendarEvent;
-		/** How it repeats, for the one row a series gets. */
-		repeat: string | null;
-		tz: string;
-		selected: boolean;
-		flashing: boolean;
-		/** The whole agenda, read only by a row that clashes, to name what with. */
-		all: readonly CalendarEvent[];
-		/** Declined, and fading off the list. */
-		leaving: boolean;
-	},
-): JSX.Element {
-	const title = rowTitle(event);
-	const organisable = entryOrganisable(event);
+function DraggableRow(props: Omit<AgendaRowProps, "drag">): JSX.Element {
+	const organisable = entryOrganisable(props.event);
 	const drag = useDraggable({
-		id: event.id,
+		id: props.event.id,
 		data: { type: ENTRY_DRAG },
 		disabled: !organisable,
 		roleDescription: "movable entry",
 	});
-	const when = event.allDay
-		? calendarTime.fmtDayLabel(event.start, tz)
-		: `${calendarTime.fmtDayLabel(event.start, tz)} · ${timesLabel(event, tz, true)}`;
-	/*
-	 * Paired, and filtered on the RESULT of the dispatcher rather than on a rendered component.
-	 * `<ProviderMark …/>` is a VNode even when it draws nothing, so filtering on it kept the
-	 * platform's own copy and put an empty pip on every row.
-	 *
-	 * Two suppressions, and each matches the grid so a row and its block never say different things:
-	 * a MASKED entry draws none at all (§Part 1.4 allows it one fact — Available / Busy / Tentative —
-	 * and which calendar it lives on is not that fact), and a calendar the reader has switched off
-	 * draws none either, because a withdrawn layer must leave no trace on the entries it did not take
-	 * with it.
-	 */
-	const marks: { source: string; mark: VNode }[] = [];
-	for (const source of event.masked ? [] : event.sources ?? []) {
-		if (!sourceIsVisible(source)) continue;
-		const mark = providerMarkFor(source, 12);
-		if (mark) marks.push({ source, mark });
-	}
-
-	const facts = [
-		awaitsAnswer(event) ? "Invitation" : null,
-		event.meta,
-		repeat,
-		event.availabilityBehavior === "passive" ? "Passive" : null,
-	].filter(Boolean).join(" · ");
-
-	const row = (
-		<span class="cal-up__body">
-			<span class="cal-up__when">{when}</span>
-			<span class="cal-up__title">{title}</span>
-			{facts ? <span class="cal-up__meta">{facts}</span> : null}
-			{event.clashCount
-				? (
-					<EventClashNote
-						clashes={detectTimeClash({ ...event, excludeId: event.id }, all).clashes}
-						span={event}
-						tz={tz}
-					/>
-				)
-				: null}
-		</span>
-	);
-
-	/*
-	 * The row is a PICK, not a link: it opens the entry beside the grid and moves the grid onto it.
-	 * Where the entry lives (its engagement, `href`) is one step further, from the details it opens.
-	 * The row's rect is what a popover points from, when that is how its reader has things open.
-	 */
 	return (
-		<div
-			class="cal-up"
-			data-kind={event.kind}
-			data-event-id={event.id}
-			data-selected={selected ? "true" : undefined}
-			data-flash={flashing ? "true" : undefined}
-			data-dragging={drag.isDragging.value ? "true" : undefined}
-			data-leaving={leaving ? "true" : undefined}
-			ref={drag.setNodeRef}
-			onPointerDown={organisable ? drag.listeners.onPointerDown : undefined}
-		>
-			<button
-				type="button"
-				class="cal-up__link"
-				aria-current={selected ? "true" : undefined}
-				onClick={(e) => {
-					const box = e.currentTarget.getBoundingClientRect();
-					selectEvent(event, "list", { x: box.left, y: box.top, w: box.width, h: box.height });
-				}}
-			>
-				{row}
-			</button>
-			{marks.length > 0
-				? (
-					<span class="cal-up__sources" aria-hidden="true">
-						{marks.map((m) => <span class="cal-up__source" key={m.source}>{m.mark}</span>)}
-					</span>
-				)
-				: null}
-			{organisable
-				? (
-					<button
-						type="button"
-						class="cal-up__grip"
-						aria-label={`Move ${title} to a routine`}
-						aria-roledescription={drag.attributes["aria-roledescription"]}
-						onKeyDown={drag.listeners.onKeyDown}
-					>
-						<Icon name="grip" size="xs" />
-					</button>
-				)
-				: null}
-		</div>
+		<AgendaRow
+			{...props}
+			drag={organisable
+				? {
+					setNodeRef: drag.setNodeRef,
+					onPointerDown: drag.listeners.onPointerDown,
+					onGripKeyDown: drag.listeners.onKeyDown,
+					dragging: drag.isDragging.value,
+					roleDescription: drag.attributes["aria-roledescription"],
+				}
+				: undefined}
+		/>
 	);
 }

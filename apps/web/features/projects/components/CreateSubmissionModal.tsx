@@ -110,12 +110,6 @@ export function CreateSubmissionModal(props: CreateSubmissionModalProps): JSX.El
 				</div>
 			}
 		>
-			<p class="subm-modal__note">
-				Start a new submission for{" "}
-				<strong>{stageName ?? projectTitle}</strong>. You can add files and submit it for the
-				client's review once it's ready.
-			</p>
-
 			<form id={FORM_ID} class="subm-modal__form" onSubmit={submit}>
 				{hasTickets
 					? (

@@ -695,11 +695,29 @@
 }
 
 .fh-rig__actions {
+	position: relative;
 	grid-area: 1 / 3;
 	justify-self: end;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+}
+
+.fh-rig__anchor {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 0;
+	inline-size: 0;
+	block-size: 0;
+}
+
+.fh-point {
+	position: fixed;
+	inset-block-start: var(--fh-point-y, 0);
+	left: var(--fh-point-x, 0);
+	inline-size: 0;
+	block-size: 0;
+	pointer-events: none;
 }
 
 .fh-rig__centre {
@@ -949,17 +967,24 @@
 }
 /* #endregion */
 
-/* #region Footer rig — the action layer's dialogs */
-/*
- * A real, associated `<label>` — matched to the fields layer's own label register (`--fld-label-*`)
- * rather than restyled, so a dialog field reads identically to every other labelled control.
- */
-.fh-rig__fieldlabel {
-	display: block;
-	margin-block-end: var(--space-1);
-	font-size: var(--fld-label-fs, var(--fh-fs-micro));
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
+/* #region Footer rig — the action layer's popovers and dialogs */
+.fh-rig__pop {
+	inline-size: var(--overlay-w-sm);
+}
+
+.fh-rig__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.fh-rig__form .fh-rig__error {
+	margin: 0;
+}
+
+.fh-rig__formfoot {
+	display: flex;
+	justify-content: flex-end;
 }
 
 .fh-rig__dialogfoot {
@@ -974,6 +999,16 @@
 	font-size: var(--fh-fs-micro);
 	line-height: 1.55;
 	color: var(--text-secondary);
+}
+
+.fh-rig__manage {
+	font-weight: var(--fw-medium);
+	color: var(--primary-ink);
+	text-decoration: none;
+}
+
+.fh-rig__manage:hover {
+	text-decoration: underline;
 }
 
 .fh-rig__error {

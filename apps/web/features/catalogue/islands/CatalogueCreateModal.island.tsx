@@ -2,14 +2,7 @@ import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/console.css";
 import { Dialog, HintPopover } from "@projective/ui/feedback";
-import {
-	Button,
-	CurrencySelect,
-	FieldLegend,
-	InputText,
-	Select,
-	SelectButton,
-} from "@projective/ui/fields";
+import { Button, CurrencySelect, InputText, Select, SelectButton } from "@projective/ui/fields";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { CreateCategory } from "@projective/types/org";
 import { CatalogueService } from "../core/CatalogueService.ts";
@@ -135,7 +128,7 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 					<Button variant="text" label="Cancel" onClick={closeCreate} />
 					<Button
 						variant="filled"
-						severity="primary"
+						structural
 						label={submitting.value ? "Creating…" : "Create draft"}
 						loading={submitting.value}
 						disabled={!title.value.trim()}
@@ -226,8 +219,6 @@ export default function CatalogueCreateModal(props: CatalogueCreateModalProps): 
 						fluid
 					/>
 				</div>
-
-				<FieldLegend text="Required to create the draft" />
 
 				{error.value && <p class="cat-create__error" role="alert">{error.value}</p>}
 			</div>

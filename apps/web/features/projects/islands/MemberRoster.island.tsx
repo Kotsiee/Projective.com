@@ -772,9 +772,12 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 					showStages={context.showStages}
 					defaultStageId={context.stageChannel ? roster.stageId : null}
 					viewerRole={roster.viewerRole}
+					caps={caps}
 					members={members.value}
 					invites={invites.value}
 					onInvite={invite}
+					saveRole={saveEdit}
+					onRemove={(m) => askRemove(m)}
 				/>
 			)}
 			<RemoveMemberDialog

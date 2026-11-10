@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { createRefusal, type EntryFields } from "@projective/types/scheduling";
+import type { EntryFields } from "@projective/types/scheduling";
 import type { ReadActor } from "../read-actor.ts";
 import { ScheduleBackendService } from "./ScheduleBackendService.ts";
 import {
@@ -76,18 +76,17 @@ const fields = (start: number, over: Partial<EntryFields> = {}): EntryFields => 
 // #endregion
 
 // #region Create
-Deno.test("create: a past start is refused 422 in createRefusal's own words, and nothing is written", async () => {
+Deno.test("create: a past start is written like any other", async () => {
 	const s = store();
 	const { deps } = stack(s);
+	const before = s.events.length;
 	const res = await createEntries(
-		{ entries: [fields(NOW + HOUR), fields(NOW - HOUR)] },
+		{ entries: [fields(NOW - 2 * HOUR), fields(NOW - HOUR)] },
 		HOST,
 		deps,
 	);
-	assertEquals(res.status, 422);
-	assertEquals(res.message, createRefusal(NOW, fields(NOW - HOUR)));
-	assertEquals(res.errors?.start, res.message);
-	assertEquals(s.events.length, 1);
+	assert(res.ok);
+	assertEquals(s.events.length, before + 2);
 });
 
 Deno.test("create: today's all-day entry is creatable after midnight; an end before its start is not", async () => {

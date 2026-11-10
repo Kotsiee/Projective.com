@@ -3,18 +3,19 @@ import {
 	type InviteRecipient,
 	type InviteRecipientRefusal,
 	type ParsedRecipient,
+	parseInviteInput,
 	recipientAddress,
 	recipientKey,
 } from "@projective/types/invites";
 
 /**
  * invite-queue — the Universal Invite modal's model, as pure functions over an immutable list
- * (Decision #318).
+ * (Decisions #318, #405).
  *
- * The modal stages people before anything is sent: each typed or pasted address becomes a row at the
- * default role, every row's role can be changed on its own, and a row can be taken out again. Send
- * issues the whole list; a refusal keeps its row, with the server's sentence, so the inviter fixes or
- * removes it and sends again, while every row that went out leaves the list.
+ * The invite bar reads every address in its one field as a batch at the bar's role
+ * ({@link draftBatch}); Invite sends that batch. A refusal never unsends the others: what the server
+ * or the surface refused goes back into the field ({@link leftoverDraft}) with the first reason in
+ * the bar's message slot, and everything that went out leaves it.
  *
  * Nothing here knows which surface it serves — a project, a team and a business all pass their own
  * roles, their own local refusals (already a member, the entity's own handle) and their own seat
@@ -120,20 +121,6 @@ export function stageRecipients(
 	return { queue: next, skipped };
 }
 
-/** Change one row's role; its refusal clears, since the role may have been the reason. */
-export function setRowRole(
-	queue: readonly QueuedRecipient[],
-	key: string,
-	roleId: string,
-): QueuedRecipient[] {
-	return queue.map((r) => (r.key === key ? { ...r, roleId, error: null } : r));
-}
-
-/** Take a row out before sending. */
-export function removeRow(queue: readonly QueuedRecipient[], key: string): QueuedRecipient[] {
-	return queue.filter((r) => r.key !== key);
-}
-
 /** The batch a send carries. */
 export function toRecipients(queue: readonly QueuedRecipient[]): InviteRecipient[] {
 	return queue.map((r) => ({ type: r.type, value: r.value, roleId: r.roleId }));
@@ -155,6 +142,62 @@ export function applyOutcome(
 }
 // #endregion
 
+// #region The invite bar
+/** What one Invite press would carry, read from the bar's field. */
+export interface DraftBatch {
+	/** Every readable address, at the bar's role, within {@link INVITE_RECIPIENTS_MAX}. */
+	queue: QueuedRecipient[];
+	/** Addresses the surface refused or that were past the batch cap, with the reason. */
+	skipped: SkippedRecipient[];
+	/** Text no address could be read from. */
+	invalid: string[];
+}
+
+/** Read the field as a batch at `roleId`, honouring the surface's refusals. */
+export function draftBatch(
+	draft: string,
+	roleId: string,
+	refuse: (r: ParsedRecipient) => string | null = () => null,
+): DraftBatch {
+	const parsed = parseInviteInput(draft);
+	const { queue, skipped } = stageRecipients([], parsed.recipients, roleId, refuse);
+	return { queue, skipped, invalid: parsed.invalid };
+}
+
+/** Why part of the field cannot be sent, in one sentence, or `null` when all of it can. */
+export function batchProblem(batch: DraftBatch): string | null {
+	const unreadable = invalidInputMessage(batch.invalid);
+	if (unreadable) return unreadable;
+	const first = batch.skipped[0];
+	return first ? `${first.address}: ${first.reason}` : null;
+}
+
+/**
+ * The field after a send: what still needs fixing, comma-separated — the rows the server refused,
+ * then anything that was never sendable. Empty once everything went out.
+ */
+export function leftoverDraft(
+	refused: readonly QueuedRecipient[],
+	batch: Pick<DraftBatch, "skipped" | "invalid">,
+): string {
+	return [
+		...refused.map((r) => recipientAddress(r)),
+		...batch.skipped.map((s) => s.address),
+		...batch.invalid,
+	].join(", ");
+}
+
+/** The field with a picked suggestion in place of the fragment being typed, ready for the next. */
+export function withPicked(draft: string, handle: string): string {
+	return `${draft.replace(/[^\s,;]*$/, "")}@${handle}, `;
+}
+
+/** The fragment being typed at the end of the field, without a leading `@`. */
+export function typedFragment(draft: string): string {
+	return (draft.match(/[^\s,;]*$/)?.[0] ?? "").replace(/^@+/, "");
+}
+// #endregion
+
 // #region Seats & copy
 /** Seats still free, or `null` when the plan has no cap (or the surface has no seats). */
 export function freeSeats(seats: InviteSeats | null | undefined): number | null {
@@ -162,34 +205,27 @@ export function freeSeats(seats: InviteSeats | null | undefined): number | null 
 	return Math.max(0, seats.limit - seats.used);
 }
 
-/** The header caption: "3 of 4 seats free", or `null` with no cap. */
+/** The header caption: "3 of 4 seats available", or `null` with no cap. */
 export function seatCaption(seats: InviteSeats | null | undefined): string | null {
 	const free = freeSeats(seats);
 	if (free === null || !seats || seats.limit === null) return null;
-	return `${free} of ${seats.limit} ${seats.limit === 1 ? "seat" : "seats"} free`;
+	return `${free} of ${seats.limit} ${seats.limit === 1 ? "seat" : "seats"} available`;
 }
 
-/** How many staged rows are past the free seats (0 when they all fit or there is no cap). */
+/** How many addresses in a batch are past the free seats (0 when they all fit or there is no cap). */
 export function seatOverflow(seats: InviteSeats | null | undefined, staged: number): number {
 	const free = freeSeats(seats);
 	return free === null ? 0 : Math.max(0, staged - free);
 }
 
-/** The commit's label for `count` staged rows. */
-export function sendLabel(count: number): string {
-	if (count <= 1) return "Send invite";
-	return `Send ${count} invites`;
-}
-
-/** A row's display line: the name when known, else the address. */
-export function rowTitle(r: Pick<QueuedRecipient, "type" | "value" | "name">): string {
-	return r.name?.trim() || recipientAddress(r);
-}
-
-/** A row's meta line, beneath the title: the address when a name is shown, else what it is. */
-export function rowMeta(r: Pick<QueuedRecipient, "type" | "value" | "name">): string {
-	if (r.name?.trim()) return recipientAddress(r);
-	return r.type === "email" ? "Invite by email" : "Invite by handle";
+/** The seat refusal for a batch past the plan, or `null` when it fits. */
+export function seatProblem(seats: InviteSeats | null | undefined, staged: number): string | null {
+	const over = seatOverflow(seats, staged);
+	if (over === 0) return null;
+	const free = staged - over;
+	return free === 0
+		? "No seats are free."
+		: `Only ${free} ${free === 1 ? "seat is" : "seats are"} free.`;
 }
 
 /** What to say when the field held text no address could be read from. */

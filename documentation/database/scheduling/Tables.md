@@ -170,8 +170,8 @@ relies on can never be passive: `trg_guard_event_behavior` refuses it (`55000`),
 **A host's own entries are written as the host.** `/calendar` creates, edits and removes the
 caller's entries through `POST` · `PATCH` · `DELETE /api/scheduling/events`
 (`packages/backend/services/scheduling/live-entries.ts`), under the caller's JWT and the `Manage
-scheduling events` policy — never the service role. A new entry may not start in the past
-(`createRefusal`, `@projective/types/scheduling`); an edit or a removal may (Decision #328 (A)). A
+scheduling events` policy — never the service role. A create, an edit or a removal may touch an
+entry whatever its time; a new entry may start in the past (Decision #403, amending #328 (A)). A
 removal is `status = 'cancelled'` + `archived_at = now()`; the first create on an account with no
 schedule opens an unpublished one in the profile's zone.
 

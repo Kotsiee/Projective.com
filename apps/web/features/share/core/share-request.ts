@@ -36,6 +36,17 @@ export interface ShareRequest {
 	reach?: ShareReach;
 	/** Open the place where the sharer changes who has access, when the trigger has one. */
 	manageAccess?: () => void;
+	/**
+	 * The standing button that asked (Decision #405): the share then opens as a popover anchored to it
+	 * from `--bp-md` up. A menu row passes none — it is gone by the time the share opens — and gets the
+	 * modal.
+	 */
+	anchor?: EventTarget | null;
+}
+
+/** The control a share was asked from — the host anchors to it when it is an element on the page. */
+export function shareAnchor(event: Event | undefined): EventTarget | null {
+	return event?.currentTarget ?? null;
 }
 
 /** Whether the share modal is open — the boolean `Dialog` binds. */
@@ -50,6 +61,11 @@ export const shareRequest = signal<ShareRequest | null>(null);
  */
 export function requestShare(request: Omit<ShareRequest, "url"> & { href: string }): void {
 	const { href, ...rest } = request;
+	// A second press on the button an open share is anchored to closes it, as a popover trigger does.
+	if (shareOpen.peek() && rest.anchor && shareRequest.peek()?.anchor === rest.anchor) {
+		shareOpen.value = false;
+		return;
+	}
 	shareRequest.value = { ...rest, url: absoluteUrl(href) };
 	shareOpen.value = true;
 }

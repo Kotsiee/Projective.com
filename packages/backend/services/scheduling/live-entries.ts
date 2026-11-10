@@ -11,12 +11,7 @@ import type {
 	SetEntryRemindersInput,
 	UpdateEntryInput,
 } from "@projective/types/scheduling";
-import {
-	createRefusal,
-	normalizeReminders,
-	takesReminders,
-	uuid,
-} from "@projective/types/scheduling";
+import { normalizeReminders, takesReminders, uuid } from "@projective/types/scheduling";
 import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -37,8 +32,8 @@ import type { ReadActor } from "../read-actor.ts";
  * occurrence has to name a master that does not exist yet. An entry's routine and behaviour move with
  * its whole series through `scheduling.organise_event`, so they are not among {@link columns}.
  *
- * **Time.** A NEW entry may not start in the past ({@link createRefusal}, the composer's own rule and
- * wording); an edit or a removal may touch an entry whatever its time. **Removal is soft**: the row
+ * **Time.** A create, an edit or a removal may touch an entry whatever its time: a new entry may start in
+ * the past, which the composer warns about rather than refuses (Decision #403). **Removal is soft**: the row
  * is `cancelled` (which releases the time from free/busy and the booking gate) and `archived_at`
  * (which takes it off every reader), never deleted. A rostered entry can do neither through a client
  * role — `trg_guard_rostered_event` refuses it `55000`, answered as a `409` — except that removing
@@ -205,17 +200,11 @@ export function organise(
 // #endregion
 
 // #region The rules (pure)
-/** Why these fields cannot be written, or `null`. A create also may not start in the past. */
-export function fieldsRefusal(
-	fields: EntryFields,
-	now: number,
-	creating: boolean,
-): ServiceResult<never> | null {
-	if (fields.end < fields.start) {
-		return fail(422, { message: BACKWARDS, errors: { end: BACKWARDS } });
-	}
-	const past = creating ? createRefusal(now, fields) : null;
-	return past ? fail(422, { message: past, errors: { start: past } }) : null;
+/** Why these fields cannot be written, or `null`. */
+export function fieldsRefusal(fields: EntryFields): ServiceResult<never> | null {
+	return fields.end < fields.start
+		? fail(422, { message: BACKWARDS, errors: { end: BACKWARDS } })
+		: null;
 }
 
 /**
@@ -271,7 +260,7 @@ export async function createEntries(
 	deps: EntryDeps,
 ): Promise<ServiceResult<{ events: CalendarEvent[] }>> {
 	for (const fields of input.entries) {
-		const refused = fieldsRefusal(fields, deps.now, true);
+		const refused = fieldsRefusal(fields);
 		if (refused) return refused;
 	}
 	const scheduleId = await openSchedule(deps.db, actor.userId);
@@ -317,7 +306,7 @@ export async function updateEntry(
 ): Promise<ServiceResult<{ event: CalendarEvent; series: CalendarEvent[] }>> {
 	const { eventId, room, routineId, availabilityBehavior, recurrenceRule: _once, ...fields } =
 		input;
-	const refused = fieldsRefusal(fields, deps.now, false) ?? await judge(deps.db, actor, eventId);
+	const refused = fieldsRefusal(fields) ?? await judge(deps.db, actor, eventId);
 	if (refused) return refused;
 	const changes = organiseChanges(routineId, availabilityBehavior);
 	const moved = changes ? await organise(deps.db, eventId, changes) : null;

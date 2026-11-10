@@ -11,6 +11,8 @@ import { durationLabel, eventBadge } from "../core/event-view.ts";
 import { fromPickerDate, toPickerDate } from "../core/picker-time.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
+const MINUTE_MS = 60_000;
+
 /**
  * EventMetaBar — the facts that govern an occurrence, read at a glance, and the two that can be moved.
  *
@@ -47,6 +49,11 @@ export interface EventMetaBarProps {
 	 * second rule about who may move a session is a second answer waiting to disagree with the first.
 	 */
 	canEdit: boolean;
+	/**
+	 * Whether the entry is a moment (a Reminder or a deadline), with a time and no end to move — the
+	 * modal's `composesAsMoment`, decided by its kind. Absent, it is read from the span.
+	 */
+	moment?: boolean;
 	/**
 	 * The composer's When row: the two instants only. The countdown badge sits in the composer's
 	 * footer beside the occurrence it counts down to (Decision #378), and the room and the organiser
@@ -162,8 +169,11 @@ function MetaTimeField(props: {
 	hour12: boolean;
 	/** A static fact that belongs beside the control rather than inside it. */
 	aside?: string;
+	/** Why the value cannot be saved, printed beside the control in place of the aside. */
+	error?: string;
 	onChange: (next: Date | null) => void;
 }): JSX.Element {
+	const errorId = `${props.id}-error`;
 	return (
 		<li class="evm-meta__item evm-meta__item--edit">
 			<Icon name={props.icon} size="2xs" class="evm-meta__mark" />
@@ -175,6 +185,8 @@ function MetaTimeField(props: {
 					value={props.value}
 					min={props.min}
 					hour12={props.hour12}
+					status={props.error ? "invalid" : "default"}
+					aria-describedby={props.error ? errorId : undefined}
 					// Month-first, matching `calendarTime.fmtFullDate` ("Thursday, July 17, 2026") — the
 					// convention the rest of this surface already reads in, so the two orderings cannot
 					// disagree about which number is the day.
@@ -182,7 +194,11 @@ function MetaTimeField(props: {
 					onValueChange={props.onChange}
 				/>
 			</span>
-			{props.aside ? <span class="evm-meta__aside">{props.aside}</span> : null}
+			{props.error
+				? <span class="evm-meta__error" id={errorId} role="alert">{props.error}</span>
+				: props.aside
+				? <span class="evm-meta__aside">{props.aside}</span>
+				: null}
 		</li>
 	);
 }
@@ -214,8 +230,9 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 	 * built here; it is a separate control, not a flag on this one.
 	 */
 	const editable = canEdit && !event.allDay;
-	// A Reminder is one instant (`end === start`): it has a time and no end to move.
-	const reminder = entryClassOf(event) === "reminder";
+	// A Reminder is one instant: it has a time and no end to move.
+	const reminder = props.moment ?? entryClassOf(event) === "reminder";
+	const backwards = !reminder && event.end <= event.start;
 
 	/**
 	 * Moving the start MOVES THE END WITH IT, keeping the occurrence the same length.
@@ -237,12 +254,12 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 	}
 
 	/**
-	 * Moving the end changes the length, and can never cross the start.
+	 * Moving the end changes the length, and can never reach the start.
 	 *
-	 * That refusal is the picker's `min`, not a check performed afterwards: earlier days are struck out
-	 * of the calendar and the tumbler's reels stop at the start's own minute on the boundary day, so
-	 * an illegal end is never selectable in the first place. There is deliberately no clamp here — a
-	 * `Math.max` that can never fire is untested code reading as though the bound is not trusted.
+	 * That refusal is the picker's `min`, one minute after the start: earlier days are struck out of the
+	 * calendar and the tumbler's reels stop past the start's own minute on the boundary day, so picking
+	 * the start's day for the end lands on the first time after it rather than on the start itself. An
+	 * entry that arrived backwards keeps both fields and says so on the End field ({@link backwards}).
 	 */
 	function moveEnd(next: Date | null): void {
 		if (!next) return;
@@ -283,9 +300,10 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 								value={endBinding}
 								// The invariant, expressed as the control's own bound. It is re-read from the draft
 								// on every render, so a start that has just moved narrows this one immediately.
-								min={toPickerDate(event.start, tz)}
+								min={toPickerDate(event.start + MINUTE_MS, tz)}
 								hour12={hour12}
 								aside={durationLabel(event.start, event.end) ?? undefined}
+								error={backwards ? "Ends before it starts" : undefined}
 								onChange={moveEnd}
 							/>
 						)}

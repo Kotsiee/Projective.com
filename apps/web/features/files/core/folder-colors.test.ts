@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
 	afterPick,
 	colorName,
+	fieldPalette,
 	FOLDER_COLORS,
 	paletteFor,
 	paletteOf,
@@ -49,6 +50,16 @@ Deno.test("a folder's own colour stays reachable once it falls out of the recent
 	const own = paletteFor(palette, CUSTOM);
 	assertEquals(own.length, palette.length);
 	assertEquals(own.at(-1), CUSTOM);
+});
+
+Deno.test("New folder's grid holds No colour, the swatches and the + in a menu's twelve cells", () => {
+	const palette = paletteOf([]);
+	const field = fieldPalette(palette, null);
+	assertEquals(1 + field.length + 1, SWATCH_CELLS);
+	const custom = fieldPalette(palette, CUSTOM);
+	assertEquals(custom.length, field.length);
+	assertEquals(custom.at(-1), CUSTOM);
+	assertEquals(fieldPalette(palette, field[0]), field);
 });
 
 Deno.test("picking again moves a colour to the front rather than repeating it", () => {

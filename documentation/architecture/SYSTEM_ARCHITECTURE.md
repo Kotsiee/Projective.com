@@ -1017,11 +1017,13 @@ rule lives ONCE in the SSOT (`@projective/types/messaging` `deriveContactRank`) 
 feed it EVIDENCE: the live path from `org.*_members`, `org.profile_follows` (both directions),
 `projects.projects`/`project_participants` and the viewer's threads; the stub from the same casts
 the rest of the app renders. The same ranked read (`useContactSearch`) feeds the messaging picker
-(`ContactList`) and the three people pieces in `apps/web/features/share/` — `ShareLinkBar`,
-`UserSearchPopover` (a debounced combobox over the read) and `QuickAddRail` — which the
-platform-wide **share modal** (one `ShareHost` island per shell, driven by the `share-request`
-bridge) and the Members tab's **Invite modal** (`InviteShareModal`) both compose (Decision #145), so
-"send this to somebody", "invite somebody" and "start a conversation" cannot disagree about who
+(`ContactList`), the platform-wide **share surface**'s "Send to…" picker (`ShareContactGrid`, the
+ranked read as cards a press chooses; Send then opens or reopens each person's own DM through
+`POST /api/messaging/conversations`, whose DM insert masks a note's PII like any message —
+Decision #406; one `ShareHost` island per shell, driven by the `share-request` bridge, opening as a
+popover anchored to the Share button that asked or as a modal from a menu, Decision #405) and the
+**Invite modal**'s suggestions (`InviteBar`, Decision #318),
+so "send this to somebody", "invite somebody" and "start a conversation" cannot disagree about who
 comes first.
 
 **Sending a message, and the profile-side Hire (Decision #103).** The inbox's send is

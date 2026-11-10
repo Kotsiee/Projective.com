@@ -6,17 +6,19 @@ import {
 } from "@projective/types/invites";
 import {
 	applyOutcome,
+	batchProblem,
+	draftBatch,
 	invalidInputMessage,
-	removeRow,
-	rowMeta,
-	rowTitle,
+	leftoverDraft,
 	seatCaption,
 	seatOverflow,
-	sendLabel,
-	setRowRole,
+	seatProblem,
 	stageRecipients,
 	toRecipients,
+	typedFragment,
+	withPicked,
 } from "./invite-queue.ts";
+import { type AccessPerson, rowRoleOptions, sortAccess } from "./access-people.ts";
 
 Deno.test("classify: an email wins over a handle; a leading @ marks a handle", () => {
 	assertEquals(classifyInviteToken("User@Company.com"), {
@@ -71,17 +73,72 @@ Deno.test("stage: dedupes silently, honours the surface's refusal, caps at the b
 	assertEquals(capped.skipped.length, 2);
 });
 
-Deno.test("rows: a per-row role clears its refusal; remove unstages; the batch keeps each role", () => {
-	let queue = stageRecipients([], parseInviteInput("@ravi ana@x.io").recipients, "member").queue;
-	queue = queue.map((r) => ({ ...r, error: "nope" }));
-	queue = setRowRole(queue, "handle:ravi", "admin");
-	assertEquals(queue[0].error, null);
-	assertEquals(queue[1].error, "nope");
-	assertEquals(toRecipients(queue), [
-		{ type: "handle", value: "ravi", roleId: "admin" },
+Deno.test("bar: the field is one batch at the bar's role; its problem is the first that blocks", () => {
+	const batch = draftBatch(
+		"@ravi, ana@x.io ?? @owner",
+		"member",
+		(r) => r.value === "owner" ? "Already a member" : null,
+	);
+	assertEquals(toRecipients(batch.queue), [
+		{ type: "handle", value: "ravi", roleId: "member" },
 		{ type: "email", value: "ana@x.io", roleId: "member" },
 	]);
-	assertEquals(removeRow(queue, "handle:ravi").map((r) => r.key), ["email:ana@x.io"]);
+	assertEquals(batch.skipped, [{ address: "@owner", reason: "Already a member" }]);
+	assertEquals(batch.invalid, ["??"]);
+	assertEquals(batchProblem(batch), `"??" isn't an email address or an @handle.`);
+	assertEquals(batchProblem({ ...batch, invalid: [] }), "@owner: Already a member");
+	assertEquals(batchProblem(draftBatch("@ravi", "member")), null);
+});
+
+Deno.test("bar: what is left to fix goes back into the field, refused rows first", () => {
+	const batch = draftBatch(
+		"@ravi ana@x.io ?? @owner",
+		"m",
+		(r) => r.value === "owner" ? "Already a member" : null,
+	);
+	const refused = applyOutcome(batch.queue, {
+		refused: [{ address: "ana@x.io", message: "Already invited", code: "duplicate" }],
+		error: null,
+		message: null,
+	});
+	assertEquals(leftoverDraft(refused, batch), "ana@x.io, @owner, ??");
+	assertEquals(leftoverDraft([], { skipped: [], invalid: [] }), "");
+});
+
+Deno.test("bar: a picked suggestion replaces the fragment being typed", () => {
+	assertEquals(withPicked("ana@x.io, @ra", "ravi"), "ana@x.io, @ravi, ");
+	assertEquals(withPicked("ra", "ravi"), "@ravi, ");
+	assertEquals(typedFragment("ana@x.io, @ra"), "ra");
+	assertEquals(typedFragment("ana@x.io, "), "");
+});
+
+Deno.test("access: owner, then the viewer, then by name; a row keeps its own role on offer", () => {
+	const person = (key: string, name: string, extra: Partial<AccessPerson> = {}): AccessPerson => ({
+		key,
+		name,
+		handle: key,
+		avatar: null,
+		roleId: "member",
+		roleLabel: "Member",
+		roles: null,
+		removable: false,
+		self: false,
+		owner: false,
+		...extra,
+	});
+	const sorted = sortAccess([
+		person("zed", "Zed"),
+		person("me", "Me", { self: true }),
+		person("amy", "amy"),
+		person("own", "Owner", { owner: true }),
+	]);
+	assertEquals(sorted.map((p) => p.key), ["own", "me", "amy", "zed"]);
+	const offered = [{ id: "member", name: "Member" }];
+	assertEquals(rowRoleOptions({ roleId: "member", roleLabel: "Member" }, offered), offered);
+	assertEquals(
+		rowRoleOptions({ roleId: "lead", roleLabel: "Lead" }, offered).map((r) => r.id),
+		["lead", "member"],
+	);
 });
 
 Deno.test("outcome: sent rows leave, refused rows stay with the sentence, a whole refusal keeps all", () => {
@@ -98,17 +155,16 @@ Deno.test("outcome: sent rows leave, refused rows stay with the sentence, a whol
 });
 
 Deno.test("seats and copy", () => {
-	assertEquals(seatCaption({ used: 1, limit: 4 }), "3 of 4 seats free");
-	assertEquals(seatCaption({ used: 0, limit: 1 }), "1 of 1 seat free");
+	assertEquals(seatCaption({ used: 1, limit: 4 }), "3 of 4 seats available");
+	assertEquals(seatCaption({ used: 0, limit: 1 }), "1 of 1 seat available");
 	assertEquals(seatCaption({ used: 3, limit: null }), null);
 	assertEquals(seatCaption(null), null);
 	assertEquals(seatOverflow({ used: 2, limit: 4 }, 3), 1);
 	assertEquals(seatOverflow({ used: 2, limit: null }, 30), 0);
-	assertEquals(sendLabel(1), "Send invite");
-	assertEquals(sendLabel(3), "Send 3 invites");
-	assertEquals(rowTitle({ type: "handle", value: "ravi", name: null }), "@ravi");
-	assertEquals(rowMeta({ type: "email", value: "a@x.io", name: null }), "Invite by email");
-	assertEquals(rowMeta({ type: "handle", value: "ravi", name: "Ravi Shah" }), "@ravi");
+	assertEquals(seatProblem({ used: 2, limit: 4 }, 3), "Only 2 seats are free.");
+	assertEquals(seatProblem({ used: 3, limit: 4 }, 2), "Only 1 seat is free.");
+	assertEquals(seatProblem({ used: 4, limit: 4 }, 1), "No seats are free.");
+	assertEquals(seatProblem({ used: 1, limit: 4 }, 3), null);
 	assertEquals(invalidInputMessage(["??"]), `"??" isn't an email address or an @handle.`);
 	assertEquals(invalidInputMessage([]), null);
 });

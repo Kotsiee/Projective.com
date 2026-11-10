@@ -33,7 +33,6 @@ export interface CreateStagePayload {
 export interface CreateStageModalProps {
 	/** Visibility, owned by the caller (the shared overlay contract is signal-first). */
 	open: Signal<boolean>;
-	projectTitle: string;
 	onClose: () => void;
 	/**
 	 * Called with the drafted stage. The parent persists it and closes the modal on success; the
@@ -48,7 +47,7 @@ const NAME_ID = "create-stage-name";
 const DESC_ID = "create-stage-description";
 
 export function CreateStageModal(
-	{ open, projectTitle, onClose, onCreate }: CreateStageModalProps,
+	{ open, onClose, onCreate }: CreateStageModalProps,
 ): JSX.Element {
 	const nameRef = useRef<HTMLDivElement>(null);
 	const name = useSignal("");
@@ -92,6 +91,7 @@ export function CreateStageModal(
 					<Button
 						type="submit"
 						form={FORM_ID}
+						structural
 						label="Create stage"
 						icon={PlusIcon}
 						loading={busy.value}
@@ -99,11 +99,6 @@ export function CreateStageModal(
 				</div>
 			}
 		>
-			<p class="proj-stage-modal__note">
-				Add a stage to{" "}
-				<strong>{projectTitle}</strong>. Reordering stages changes the workflow sequence; its escrow
-				milestone is negotiated with the freelancer before work begins.
-			</p>
 			<form id={FORM_ID} class="proj-stage-modal__form" onSubmit={submit}>
 				<div ref={nameRef} class="proj-stage-modal__field">
 					<label class="proj-stage-modal__label" for={NAME_ID}>Stage name</label>

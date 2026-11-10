@@ -621,6 +621,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 							<div class="bnow__foot">
 								<Button
 									fluid
+									severity="accent"
 									rounded
 									loading={submitting.value}
 									disabled={!payable || submitting.value}

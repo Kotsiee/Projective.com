@@ -1,30 +1,35 @@
-import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import type { ComponentChildren, JSX, RefObject } from "preact";
+import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/files-chrome.css";
-import { ConfirmDialog, Dialog, Tooltip } from "@projective/ui/feedback";
-import { Button, InputText } from "@projective/ui/fields";
+import { ConfirmDialog, Popover, Tooltip } from "@projective/ui/feedback";
+import { Button, FormControl, InputText } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
-import { FolderColorDialog } from "../components/FolderColorDialog.tsx";
 import { FolderColorField } from "../components/FolderColorField.tsx";
+import { FolderColorPopover } from "../components/FolderColorPopover.tsx";
+import { PointAnchor } from "../components/PointAnchor.tsx";
 import { rememberFolderColor } from "../core/folder-colors.ts";
 import { QuotaRing } from "../components/QuotaRing.tsx";
 import { UploadProgress } from "../components/UploadProgress.tsx";
 import { FilesService } from "../core/FilesService.ts";
 import {
-	askNewFolder,
+	attachLinkAt,
 	attachLinkOpen,
 	commitFiles,
 	connectDriveOpen,
 	disconnectOpen,
 	enqueueUploads,
+	folderColorAt,
+	folderColorOpen,
+	folderColorTarget,
 	folderId,
 	items,
+	newFolderAt,
 	newFolderOpen,
 	newFolderParent,
 	pendingDisconnect,
@@ -36,7 +41,9 @@ import {
 	treeRevision,
 } from "../core/files-state.ts";
 import { uploadReport } from "../core/upload-drawer-state.ts";
-import { disconnectDrive, removeRows } from "../core/files-actions.ts";
+import { disconnectDrive, paintFolder, removeRows } from "../core/files-actions.ts";
+import type { PressPoint } from "../core/press-point.ts";
+import { usePressTracking } from "../hooks/use-press-tracking.ts";
 import {
 	type AssetOwnerType,
 	type FileScope,
@@ -68,9 +75,11 @@ import { uploadTasksOf } from "../core/upload-tasks.ts";
  *
  * ## The action layer mounts HERE
  *
- * The trigger owns the layer, so every `/files` route gets the same dialogs. That includes the
- * {@link UploadDrawer}, mounted UNCONDITIONALLY: a conditionally-rendered island is absent from the
- * page's island graph until its condition flips, and that graph is what carries component CSS.
+ * The trigger owns the layer, so every `/files` route gets the same popovers and dialogs. New folder
+ * and Attach link are popovers anchored to their rig buttons; a menu that opens one while the rig
+ * withholds its button anchors it to the rig's end. The {@link UploadDrawer} is mounted
+ * UNCONDITIONALLY: a conditionally-rendered island is absent from the page's island graph until its
+ * condition flips, and that graph is what carries component CSS.
  *
  * ## Two gates, told apart on purpose
  *
@@ -123,9 +132,22 @@ interface ActionSpec {
 // #endregion
 
 // #region Action model
+const NEW_FOLDER: ActionSpec = {
+	key: "new_folder",
+	label: "New folder",
+	icon: "folder",
+	writes: true,
+};
+const ATTACH_LINK: ActionSpec = {
+	key: "attach_link",
+	label: "Attach link",
+	icon: "link",
+	writes: true,
+};
+
 const SECONDARY: readonly ActionSpec[] = [
-	{ key: "new_folder", label: "New folder", icon: "folder", writes: true },
-	{ key: "attach_link", label: "Attach link", icon: "link", writes: true },
+	NEW_FOLDER,
+	ATTACH_LINK,
 	// `box` is the glyph the tree's `NodeMark` gives a connected drive: the action and its result match.
 	{ key: "connect_drive", label: "Connect drive", icon: "box", writes: false },
 	{ key: "export", label: "Export list", icon: "download", writes: false },
@@ -141,9 +163,14 @@ interface RigIconProps {
 	spec: ActionSpec;
 	disabled?: boolean;
 	onClick: () => void;
+	triggerRef?: RefObject<HTMLElement>;
+	expanded?: boolean;
+	panelId?: string;
 }
 
-function RigIcon({ spec, disabled, onClick }: RigIconProps): JSX.Element {
+function RigIcon(
+	{ spec, disabled, onClick, triggerRef, expanded, panelId }: RigIconProps,
+): JSX.Element {
 	return (
 		<Tooltip content={spec.label} placement="top">
 			<Button
@@ -157,13 +184,75 @@ function RigIcon({ spec, disabled, onClick }: RigIconProps): JSX.Element {
 				icon={<Icon name={spec.icon} size="sm" />}
 				disabled={disabled}
 				onClick={onClick}
+				triggerRef={triggerRef}
+				aria-haspopup={panelId ? "dialog" : undefined}
+				aria-expanded={panelId ? expanded : undefined}
+				aria-controls={panelId && expanded ? panelId : undefined}
 			/>
 		</Tooltip>
 	);
 }
 
+interface RigFormProps {
+	spec: ActionSpec;
+	open: Signal<boolean>;
+	/** Whether the rig shows the action's button; without it a bare anchor holds a menu-opened panel. */
+	visible: boolean;
+	/** Where a menu row opened it — the press on the row — or `null` for the rig button. */
+	at: PressPoint | null;
+	/** The scope holding the field focus opens on, ahead of its label's "?". */
+	focusRef: RefObject<HTMLElement>;
+	/** The rig button opened it: forget any menu's place. */
+	onOpen: () => void;
+	children: ComponentChildren;
+}
+
+function RigForm(
+	{ spec, open, visible, at, focusRef, onOpen, children }: RigFormProps,
+): JSX.Element {
+	return (
+		<Popover
+			open={open}
+			label={spec.label}
+			placement={at ? "bottom-start" : "top-end"}
+			class="fh-rig__pop"
+			initialFocusRef={focusRef}
+			avoid={[".ui-app-shell__sidebar"]}
+			trigger={(api) => (
+				<>
+					{visible
+						? (
+							<RigIcon
+								spec={spec}
+								triggerRef={at ? undefined : api.ref}
+								expanded={api.expanded && !at}
+								panelId={api.panelId}
+								onClick={() => {
+									if (!api.expanded || at) onOpen();
+									api.toggle();
+								}}
+							/>
+						)
+						: !at && (
+							<span
+								ref={api.ref as RefObject<HTMLSpanElement>}
+								class="fh-rig__anchor"
+								aria-hidden="true"
+							/>
+						)}
+					{at && <PointAnchor at={at} anchorRef={api.ref} />}
+				</>
+			)}
+		>
+			{children}
+		</Popover>
+	);
+}
+
 export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element {
 	const fileInput = useRef<HTMLInputElement>(null);
+	const folderNameScope = useRef<HTMLDivElement>(null);
+	const linkUrlScope = useRef<HTMLDivElement>(null);
 
 	const folderName = useSignal("");
 	/** The new folder's colour; `null` is none. */
@@ -174,6 +263,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const busy = useSignal(false);
 
 	useEffect(() => filesZoom.restoreZoom(), []);
+	usePressTracking();
 
 	const connectDrive = props.connectDrive ?? true;
 	const lockedNote = props.lockedNote ?? null;
@@ -273,12 +363,6 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	function activate(action: SecondaryAction): void {
 		notice.value = null;
 		switch (action) {
-			case "new_folder":
-				askNewFolder();
-				return;
-			case "attach_link":
-				attachLinkOpen.value = true;
-				return;
 			case "connect_drive":
 				connectDriveOpen.value = true;
 				return;
@@ -287,6 +371,119 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				return;
 		}
 	}
+	// #endregion
+
+	// #region Forms
+	const shown = new Set(secondaries.map((spec) => spec.key));
+
+	const newFolderForm = (visible: boolean) => (
+		<RigForm
+			key="new_folder"
+			spec={NEW_FOLDER}
+			open={newFolderOpen}
+			visible={visible}
+			at={newFolderAt.value}
+			focusRef={folderNameScope}
+			onOpen={() => {
+				notice.value = null;
+				newFolderParent.value = undefined;
+				newFolderAt.value = null;
+			}}
+		>
+			<form
+				class="fh-rig__form"
+				noValidate
+				onSubmit={(event) => {
+					event.preventDefault();
+					void createFolder();
+				}}
+			>
+				<FormControl label="Folder name" collapseHint>
+					{({ id, describedBy }) => (
+						<div ref={folderNameScope}>
+							<InputText
+								id={id}
+								aria-describedby={describedBy}
+								value={folderName}
+								placeholder="e.g. Brand assets"
+								required
+								block
+								onValueChange={(v) => (folderName.value = v)}
+							/>
+						</div>
+					)}
+				</FormControl>
+				<span class="ui-field-label" id="fh-folder-color">Colour (optional)</span>
+				<FolderColorField value={folderColor} labelledBy="fh-folder-color" />
+				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
+				<div class="fh-rig__formfoot">
+					<Button
+						type="submit"
+						structural
+						size="sm"
+						label="Create folder"
+						loading={busy.value}
+						disabled={busy.value || folderName.value.trim().length === 0}
+					/>
+				</div>
+			</form>
+		</RigForm>
+	);
+
+	const attachLinkForm = (visible: boolean) => (
+		<RigForm
+			key="attach_link"
+			spec={ATTACH_LINK}
+			open={attachLinkOpen}
+			visible={visible}
+			at={attachLinkAt.value}
+			focusRef={linkUrlScope}
+			onOpen={() => {
+				notice.value = null;
+				attachLinkAt.value = null;
+			}}
+		>
+			<form
+				class="fh-rig__form"
+				noValidate
+				onSubmit={(event) => {
+					event.preventDefault();
+					void attachLink();
+				}}
+			>
+				<FormControl
+					label="Link address"
+					hint="Only https:// addresses can be attached."
+					collapseHint
+				>
+					{({ id, describedBy }) => (
+						<div ref={linkUrlScope}>
+							<InputText
+								id={id}
+								aria-describedby={describedBy}
+								value={linkUrl}
+								type="url"
+								placeholder="https://…"
+								required
+								block
+								onValueChange={(v) => (linkUrl.value = v)}
+							/>
+						</div>
+					)}
+				</FormControl>
+				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
+				<div class="fh-rig__formfoot">
+					<Button
+						type="submit"
+						size="sm"
+						label="Attach link"
+						loading={busy.value}
+						disabled={busy.value || linkUrl.value.trim().length === 0}
+					/>
+				</div>
+			</form>
+		</RigForm>
+	);
 	// #endregion
 
 	return (
@@ -320,14 +517,43 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 			</div>
 
 			<div class="fh-rig__actions">
-				{secondaries.map((spec) => (
-					<RigIcon
-						key={spec.key}
-						spec={spec}
-						disabled={spec.key === "export" && items.value.length === 0}
-						onClick={() => activate(spec.key)}
-					/>
-				))}
+				{secondaries.map((spec) =>
+					spec.key === "new_folder"
+						? newFolderForm(true)
+						: spec.key === "attach_link"
+						? attachLinkForm(true)
+						: (
+							<RigIcon
+								key={spec.key}
+								spec={spec}
+								disabled={spec.key === "export" && items.value.length === 0}
+								onClick={() => activate(spec.key)}
+							/>
+						)
+				)}
+				{!shown.has("new_folder") && newFolderForm(false)}
+				{!shown.has("attach_link") && attachLinkForm(false)}
+				<FolderColorPopover
+					open={folderColorOpen}
+					placement={folderColorAt.value ? "bottom-start" : "top-end"}
+					initial={folderColorTarget.value?.color ?? null}
+					folderId={folderColorTarget.value?.folderId}
+					name={folderColorTarget.value?.name ?? "this folder"}
+					onCommit={(hex) => {
+						const target = folderColorTarget.peek();
+						if (target) void paintFolder(target.folderId, hex);
+					}}
+					trigger={(api) =>
+						folderColorAt.value
+							? <PointAnchor at={folderColorAt.value} anchorRef={api.ref} />
+							: (
+								<span
+									ref={api.ref as RefObject<HTMLSpanElement>}
+									class="fh-rig__anchor"
+									aria-hidden="true"
+								/>
+							)}
+				/>
 				{!locked && (
 					<Tooltip content="Upload files" placement="top">
 						<Button
@@ -356,76 +582,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				}}
 			/>
 
-			<Dialog
-				visible={newFolderOpen}
-				header="New folder"
-				width="26rem"
-				footer={
-					<div class="fh-rig__dialogfoot">
-						<Button variant="text" label="Cancel" onClick={() => (newFolderOpen.value = false)} />
-						<Button
-							label="Create folder"
-							loading={busy.value}
-							disabled={busy.value || folderName.value.trim().length === 0}
-							onClick={() => void createFolder()}
-						/>
-					</div>
-				}
-			>
-				{
-					/*
-					 * The visible label is ASSOCIATED by id, not replaced by an `aria-label`, so the name a
-					 * screen-reader user hears matches the words a speech-control user says (WCAG 2.5.3).
-					 */
-				}
-				<label class="fh-rig__fieldlabel" for="fh-folder-name">Folder name</label>
-				<InputText
-					id="fh-folder-name"
-					value={folderName.value}
-					placeholder="Brand assets"
-					block
-					onValueChange={(v) => (folderName.value = v)}
-				/>
-				<p class="fh-rig__fieldlabel" id="fh-folder-color">Colour (optional)</p>
-				<FolderColorField value={folderColor} labelledBy="fh-folder-color" />
-				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
-			</Dialog>
-
-			<Dialog
-				visible={attachLinkOpen}
-				header="Attach a link"
-				width="28rem"
-				footer={
-					<div class="fh-rig__dialogfoot">
-						<Button variant="text" label="Cancel" onClick={() => (attachLinkOpen.value = false)} />
-						<Button
-							label="Attach link"
-							loading={busy.value}
-							disabled={busy.value || linkUrl.value.trim().length === 0}
-							onClick={() => void attachLink()}
-						/>
-					</div>
-				}
-			>
-				<label class="fh-rig__fieldlabel" for="fh-link-url">Link address</label>
-				<InputText
-					id="fh-link-url"
-					value={linkUrl.value}
-					type="url"
-					placeholder="https://…"
-					block
-					onValueChange={(v) => (linkUrl.value = v)}
-				/>
-				<p class="fh-rig__hint">
-					A link is stored as a file in its own right, so you can find it beside everything else.
-					Only <code>https://</code> addresses can be attached.
-				</p>
-				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
-			</Dialog>
-
 			{connectDrive && <ConnectDriveDialog visible={connectDriveOpen} returnTo={props.base} />}
-
-			<FolderColorDialog />
 
 			<ConfirmDialog
 				visible={removalOpen}

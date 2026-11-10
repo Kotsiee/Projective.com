@@ -90,10 +90,7 @@ export function ConnectDriveDialog({ visible, returnTo }: ConnectDriveDialogProp
 
 	return (
 		<Dialog visible={visible} header="Connect a drive" width="28rem">
-			<p class="fh-rig__hint">
-				Connecting is a separate permission from signing in — signing in with Google grants no
-				access to your Drive. A connected drive is browsable here and stays read-only.
-			</p>
+			<p class="fh-rig__hint">A connected drive is browsable here and stays read-only.</p>
 			{offered && offered.offers.length > 0
 				? (
 					<div class="fh-rig__providers">
@@ -119,8 +116,14 @@ export function ConnectDriveDialog({ visible, returnTo }: ConnectDriveDialogProp
 						{offered === null
 							? notice.value ? null : "Loading the drives you can connect…"
 							: offered.anyOffered
-							? "Every drive this account can connect is already connected."
-							: "No drives can be connected yet."}
+							? "Every drive you can connect is connected."
+							: "No drive can be connected here yet."}
+						{offered !== null && (
+							<>
+								{" "}
+								<a class="fh-rig__manage" href="/settings/integrations">Manage connections</a>
+							</>
+						)}
 					</p>
 				)}
 			{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}

@@ -410,7 +410,8 @@ export class ScheduleBackendService {
 	// #region A host's own entries (Decision #328 (a))
 	/**
 	 * Create entries on the caller's own calendar (a daily series in one write) and answer with them
-	 * as the agenda draws them. A new entry may not start in the past (`createRefusal`, `422`).
+	 * as the agenda draws them. A new entry may start in the past (Decision #403); one that ends before
+	 * it starts is a `422`.
 	 */
 	static createEntries(
 		input: CreateEntriesInput,

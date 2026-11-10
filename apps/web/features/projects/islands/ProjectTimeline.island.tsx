@@ -506,7 +506,6 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 
 			<CreateStageModal
 				open={stageModalOpen}
-				projectTitle={page.value?.title ?? "Timeline"}
 				onClose={() => (stageModalOpen.value = false)}
 				onCreate={onCreateStage}
 			/>

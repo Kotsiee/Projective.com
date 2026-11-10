@@ -63,6 +63,7 @@ import {
 	tree,
 	treeRevision,
 } from "../core/files-state.ts";
+import { recentPress } from "../core/press-point.ts";
 import type { AssetNodeKind, FileScope } from "../types/file-types.ts";
 
 /**
@@ -110,7 +111,7 @@ function rowIcon(row: LaneNode): JSX.Element {
 	if (row.key === PROJECTS_KEY) return <Icon name="projects" />;
 	if (row.key === DRIVES_KEY) return <Icon name="box" />;
 	if (row.nodeKind === "root" || row.nodeKind === "folder") {
-		return <FolderMark color={row.color} size={TREE_MARK} />;
+		return <FolderMark color={row.color} folderId={row.folderId} size={TREE_MARK} />;
 	}
 	return <NodeMark nodeKind={row.nodeKind as AssetNodeKind} />;
 }
@@ -298,7 +299,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 					key: action,
 					label: "New Folder",
 					icon: "folder",
-					command: () => askNewFolder(row.key === LIBRARY_KEY ? null : row.folderId),
+					command: () => askNewFolder(row.key === LIBRARY_KEY ? null : row.folderId, recentPress()),
 				};
 			case "delete-folder":
 				return {

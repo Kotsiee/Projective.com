@@ -2,11 +2,14 @@ import type { ComponentChildren } from "preact";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ContextPanelDockOptions } from "@web/features/shell/core/context-panel-state.ts";
 import FilesInspector from "@features/files/islands/FilesInspector.island.tsx";
+import CalendarPanel from "@features/calendar/islands/CalendarPanel.island.tsx";
+import { EVENT_PARAM, invitationsFiltered } from "@features/calendar/core/event-deep-link.ts";
 import { channelDetailsInfo, ChannelDetailsPanel } from "../components/ChannelDetails.tsx";
 import MemberInspector from "../islands/MemberInspector.island.tsx";
 import { MEMBER_PARAM } from "./member-inspector-model.ts";
 import { channelTabOfPath } from "./channel-model.ts";
-import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import { resolveEntityCalendar, resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import { entityAgendaPage } from "./calendar-module-model.ts";
 import {
 	activeModuleOf,
 	channelSlugOfPath,
@@ -76,6 +79,39 @@ export async function workspaceMembersPanelFor(
 		<MemberInspector
 			workspace={bootstrap.workspace}
 			member={url.searchParams.get(MEMBER_PARAM)}
+		/>
+	);
+}
+
+/** The Calendar module, whose grid is `/calendar`'s. */
+function onCalendarModule(url: URL): boolean {
+	return kindFromPath(url.pathname) !== null && activeModuleOf(url.pathname) === "calendar";
+}
+
+/**
+ * The middle-nav frame's right PANEL on a team's or business's Calendar module (Decision #403):
+ * `/calendar`'s {@link CalendarPanel} — Month, an Events tab holding the agenda list the console's
+ * rail leaves no lane for, and the inspector a pick opens. `?event=` names the entry it opens on, and
+ * `?filter=invitations` narrows its list in the first byte. Server-only; never imported by an island.
+ */
+export async function workspaceCalendarPanelFor(
+	url: URL,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	if (!onCalendarModule(url)) return null;
+	const kind = kindFromPath(url.pathname);
+	const handle = workspaceHandleOf(url.pathname);
+	if (!kind || !handle) return null;
+	const bootstrap = await resolveWorkspaceConsole(kind, handle, "calendar", actor, url);
+	if (!bootstrap || bootstrap.activeModule !== "calendar") return null;
+	const read = await resolveEntityCalendar(bootstrap.workspace, actor, url);
+	return (
+		<CalendarPanel
+			surface="entity"
+			initial={read.page ? entityAgendaPage(read.page) : null}
+			linkedEventId={url.searchParams.get(EVENT_PARAM)}
+			invitations={invitationsFiltered(url.search)}
+			path={url.pathname}
 		/>
 	);
 }

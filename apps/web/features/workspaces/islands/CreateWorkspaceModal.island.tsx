@@ -3,13 +3,7 @@ import { batch, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Dialog, InlineNotice, ProgressSpinner } from "@projective/ui/feedback";
-import {
-	Button,
-	FieldLegend,
-	FormControl,
-	InputText,
-	useFieldValidation,
-} from "@projective/ui/fields";
+import { Button, FormControl, InputText, useFieldValidation } from "@projective/ui/fields";
 import { Link } from "@projective/ui/navigation";
 import {
 	CreateWorkspaceInputSchema,
@@ -273,21 +267,17 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 					void submit();
 				}}
 			>
-				<p class="wsp-create__intro">{copy.intro}</p>
-
 				<div ref={nameScope}>
 					<FormControl
 						label="Display name"
-						required
-						hint="You can change this later."
 						status={nameField.hintStatus.value}
 						error={nameField.message.value ?? undefined}
 					>
-						{({ id, describedBy, required }) => (
+						{({ id, describedBy }) => (
 							<InputText
 								id={id}
 								aria-describedby={describedBy}
-								required={required}
+								required
 								value={name}
 								onValueChange={onNameInput}
 								status={nameField.status.value}
@@ -307,16 +297,15 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 				<div ref={handleScope} class="wsp-create__handle">
 					<FormControl
 						label="Handle"
-						required
 						hint="Lowercase letters, numbers and hyphens. It is also your public address."
 						status={handleField.hintStatus.value}
 						error={handleField.message.value ?? undefined}
 					>
-						{({ id, describedBy, required }) => (
+						{({ id, describedBy }) => (
 							<InputText
 								id={id}
 								aria-describedby={describedBy}
-								required={required}
+								required
 								value={handle}
 								onValueChange={onHandleInput}
 								status={handleField.status.value}
@@ -380,8 +369,6 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 						</div>
 					)}
 				</div>
-
-				<FieldLegend text="Required to create the draft" />
 
 				{refusal.value && <RefusalNotice refusal={refusal.value} />}
 			</form>

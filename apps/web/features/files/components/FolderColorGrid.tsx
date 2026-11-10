@@ -6,6 +6,7 @@ import type { MenuItem } from "@projective/ui/navigation";
 import "../styles/files-hub.css";
 import { paintFolder } from "../core/files-actions.ts";
 import { askFolderColor, type FolderColorTarget } from "../core/files-state.ts";
+import { recentPress } from "../core/press-point.ts";
 import { colorName, folderPalette, paletteFor, SWATCH_COLUMNS } from "../core/folder-colors.ts";
 
 export interface FolderColorGridProps {
@@ -77,7 +78,7 @@ export function FolderColorGrid({ target, onDone }: FolderColorGridProps): JSX.E
 				tabIndex={-1}
 				onClick={() => {
 					onDone();
-					askFolderColor(target);
+					askFolderColor(target, recentPress());
 				}}
 				onKeyDown={(e) => onKeyDown(e, colors.length)}
 			>

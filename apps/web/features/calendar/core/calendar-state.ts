@@ -21,6 +21,7 @@ import type {
 	EntryReminder,
 	Routine,
 	SchedulePage,
+	SchedulingTarget,
 } from "@projective/types/scheduling";
 import { awaitsAnswer, entryClassOf, isDeclinedInvitation } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
@@ -34,7 +35,8 @@ import { eventStack, type EventTab } from "./event-view.ts";
 import type { EntryOrganisation } from "./routine-view.ts";
 
 /**
- * calendar-state — the cross-island bridge for the `/calendar` hub.
+ * calendar-state — the cross-island bridge for the `/calendar` hub, and for a team's or business's
+ * Calendar module, which wears the same chrome ({@link CalendarSurface}).
  *
  * The surface is FOUR hydration roots, not one: the shell resolves the lane, the header band and the
  * footer band above the route (they render in the frame, outside the page body), so the mini-month,
@@ -48,6 +50,28 @@ import type { EntryOrganisation } from "./routine-view.ts";
  * {@link calendarPage} by the body island so the lane and the bands can read the same data the grid
  * is drawing, rather than fetching it a second time and drifting.
  */
+
+// #region The surface
+/**
+ * Which calendar the chrome frames: the reader's own agenda (`/calendar`), or a team's or business's
+ * union of its projects' calendars (`/teams/:h/calendar`, `/businesses/:h/calendar`, Decision #308).
+ * The same lane, bands and panel serve both; the server hands each region its surface as a prop.
+ */
+export type CalendarSurface = "personal" | "entity";
+
+/**
+ * Where an answer to `event` is addressed: the agenda itself, or on an entity's calendar the entry's
+ * own project, where the server re-resolves it — the address `entityEventTarget` gives the entity
+ * body's modal. `null` for an entry the union could not attribute, which then offers no answer.
+ */
+export function answerTargetFor(
+	surface: CalendarSurface,
+	event: Pick<CalendarEvent, "projectId">,
+): Omit<SchedulingTarget, "eventId"> | null {
+	if (surface === "personal") return { scope: "personal" };
+	return event.projectId ? { scope: "project", projectId: event.projectId, channelId: null } : null;
+}
+// #endregion
 
 // #region The page
 /**
@@ -509,8 +533,20 @@ function pulse(target: typeof gridSpotlight, id: string): void {
 	}, FLASH_MS);
 }
 
-/** Which tab the right panel shows. */
-export const panelTab = signal<"event" | "month">("month");
+/**
+ * What the right panel shows: one of its tabs, or (`event`) the entry or routine picked, which its Back
+ * leaves. Month is the only tab on `/calendar`; a team's or business's calendar adds Events, the agenda
+ * list its console lane has no room for.
+ */
+export type PanelView = "month" | "events" | "event";
+/** A tab of the right panel. */
+export type PanelTab = Exclude<PanelView, "event">;
+
+/** What the right panel shows; Month until something is picked. */
+export const panelTab = signal<PanelView>("month");
+
+/** The tab a picked entry's Back returns to: the one the reader was on when they picked it. */
+export const panelReturn = signal<PanelTab>("month");
 
 /**
  * How a picked entry opens: the reader's setting, or the Dev Context Switcher's override of it.
@@ -531,11 +567,23 @@ function writeEventParam(id: string | null): void {
 	if (loc) history.replaceState(history.state, "", withEventParam(loc.pathname, loc.search, id));
 }
 
-/** Show the docked panel, or below 1280px its drawer. */
+/** Show the pick in the docked panel, or below 1280px its drawer, remembering the tab it covers. */
 function revealPanel(): void {
+	const showing = panelTab.peek();
+	if (showing !== "event") panelReturn.value = showing;
 	panelTab.value = "event";
 	if (contextPanelInflow()) contextPanelDocked.value = true;
 	else contextDrawerOpen.value = true;
+}
+
+/**
+ * The inspector's Back: return to the tab the pick covered and let the entry or routine go, so the
+ * list stops marking it and the address stops naming it.
+ */
+export function leaveInspector(): void {
+	panelTab.value = panelReturn.peek();
+	if (selectedEventId.peek()) deselectEvent();
+	if (selectedRoutineId.peek()) deselectRoutine();
 }
 
 /**

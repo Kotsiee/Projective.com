@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { TeamEngagement, WorkspaceProject } from "@projective/types/workspace";
 import {
+	entityAgendaPage,
 	entityCalendarProjectIds,
 	entityCalendarView,
 	entityEventTarget,
@@ -76,4 +77,30 @@ Deno.test("a write on an entity event is addressed to its own project", () => {
 		channelId: null,
 	});
 	assertEquals(entityEventTarget({}), null);
+});
+
+Deno.test("the chrome reads the union as an agenda with no availability, booking or routines", () => {
+	const events = [{ id: "e1", title: "Sync", kind: "sync" as const, start: 1, end: 2 }];
+	const page = entityAgendaPage({
+		scope: "entity",
+		projectId: "atelier-nova",
+		channelId: null,
+		title: "Atelier Nova",
+		timezone: "Europe/London",
+		viewerIsClient: false,
+		canCreate: false,
+		events,
+		now: 1_000,
+	});
+	assertEquals(page, {
+		scope: "entity",
+		title: "Atelier Nova",
+		subtitle: null,
+		timezone: "Europe/London",
+		ownerHandle: null,
+		viewerCanBook: false,
+		availability: { rules: [], blackouts: [] },
+		events,
+		now: 1_000,
+	});
 });

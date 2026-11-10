@@ -1655,10 +1655,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			return (
 				<div class="apk-state" role="status">
 					<p class="apk-state__title">No drives connected</p>
-					<p class="apk-state__note">
-						Connecting a drive is a separate permission from signing in. You can link one from your
-						Files page, then browse it here without copying anything.
-					</p>
+					<p class="apk-state__note">Link one from your Files page to browse it here.</p>
 					<a class="apk-state__link" href="/files">Open Files</a>
 				</div>
 			);
@@ -1686,12 +1683,12 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 					onValueChange={(v: string) => (linkUrl.value = v)}
 				/>
 				<p class="apk-form__hint">
-					A link is stored as a file in its own right, so you can find it beside everything else.
 					Only <code>https://</code> addresses can be attached.
 				</p>
 				<div class="apk-form__actions">
 					<Button
-						variant="filled"
+						severity="neutral"
+						variant="outlined"
 						size="sm"
 						label="Save and choose"
 						loading={busy.value}

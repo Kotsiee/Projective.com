@@ -74,7 +74,7 @@ export function AssetFolderCard(props: AssetFolderCardProps): JSX.Element {
 				aria-label={`${folder.name} — ${sub}, ${count}`}
 			>
 				<span class="fh-folder__art">
-					<FolderMark color={folder.color} />
+					<FolderMark color={folder.color} folderId={folder.id} />
 				</span>
 				<span class="subm-card__meta">
 					<Tooltip content={folder.name} whenTruncated>

@@ -1,56 +1,54 @@
 import type { JSX } from "preact";
-import { type Signal, useSignal } from "@preact/signals";
+import { batch, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { MessageAttachmentMode } from "@projective/types/projects";
+import { InputText } from "@projective/ui/fields";
 import { useContactSearch } from "@features/messaging/hooks/useContactSearch.ts";
-import { ContactsService } from "@features/messaging/core/ContactsService.ts";
 import type { RankedContact } from "@features/messaging/types/messaging-types.ts";
-import type { ShareRequest } from "../core/share-request.ts";
+import { shareOpen, type ShareRequest } from "../core/share-request.ts";
 import { SHARE_TARGETS } from "../core/share-targets.ts";
-import { defaultShareMode, type ShareFile, shareMessage } from "../core/share-mode.ts";
-import type { PersonActionState } from "../core/people-picker.ts";
+import { defaultShareMode } from "../core/share-mode.ts";
+import { pinnedPeople, toggleRecipient } from "../core/share-select.ts";
+import { useShareSend } from "../hooks/useShareSend.ts";
 import { ShareLinkBar } from "./ShareLinkBar.tsx";
-import { QuickAddRail } from "./QuickAddRail.tsx";
-import { UserSearchPopover } from "./UserSearchPopover.tsx";
-import { ResizeFrame, SelectButton } from "@projective/ui/fields";
-import { useToast } from "@projective/ui/feedback";
+import { ShareContactGrid } from "./ShareContactGrid.tsx";
+import { ShareSendBar } from "./ShareSendBar.tsx";
 
 /**
- * ShareModalBody — the unified share surface, in the layout the invite modal shares (Decision #145):
+ * ShareModalBody — the share surface (Decisions #145, #401, #406), Instagram's direct share:
  *
- *  1. **The link** — Copy, the external shortcuts (WhatsApp · LinkedIn · X · Email · …) and the
- *     device's own share sheet where it exists ({@link ShareLinkBar}).
- *  2. **Send to people on Projective** — a search whose matches open in a popover
- *     ({@link UserSearchPopover}) over a Quick Add rail of the viewer's ranked relationships
- *     ({@link QuickAddRail}). Send is one click per person: it posts the optional note + link as a
- *     message through `ContactsService.createConversation`, which reopens the pair's DM or opens one,
- *     and each person keeps their own outcome — a share that reached three of four says so. A stored
- *     file is sent as a link or a copy instead of its URL (Decision #401, `core/share-mode.ts`).
+ *  1. **Send to…** (signed in) — a search field under the header and the people it finds, ranked by
+ *     relationship (`useContactSearch`), as a grid of cards ({@link ShareContactGrid}). A press
+ *     chooses a person; it never sends.
+ *  2. **The link** — the URL read-only with Copy inline, then the external shortcuts and the device's
+ *     own share sheet ({@link ShareLinkBar}).
+ *  3. **The send footer** ({@link ShareSendBar}) — only while somebody is chosen: a note and
+ *     **Send to {n}**, one direct message per person. Everyone reached closes the surface with a
+ *     toast (`onSent`); a refusal keeps who is left, chosen, with the reason.
  *
- * A request whose address only the people with access can open (`reach: "with-access"`, a private or
- * restricted file) keeps Copy, leaves out the apps, and says so, with the way to change who has access
- * when the trigger has one (Decision #402). A copy is confirmed by a toast where the page has a stack.
- *
- * A guest cannot send inside the platform (a conversation is a claim on their own inbox), so the
- * second tier offers the standard sign-in route instead of a picker that would 401 on Send.
+ * A guest sees the link alone. A request whose address only the people with access can open
+ * (`reach: "with-access"`) keeps Copy, leaves out the apps and says so, with the way to change who
+ * has access when the trigger has one (Decision #402). Escape dismisses the surface (§B.10.6), and a
+ * dismissed surface forgets its selection.
  */
 
 // #region Props
 export interface ShareModalBodyProps {
 	request: ShareRequest;
-	/** Whether the viewer is signed in — decides whether the people tier is a picker or a sign-in. */
+	/** Whether the viewer is signed in — only a signed-in viewer can send inside the platform. */
 	authed: boolean;
-	/** The page to return to after signing in (a guest). */
-	returnTo: string;
+	/** Everyone was reached: close the surface and say so. */
+	onSent: (summary: string) => void;
+	/**
+	 * The room, px, on the side an anchored surface opened on: the people's grid gives way inside it
+	 * rather than the surface outgrowing its side. `null` in the dialog.
+	 */
+	room?: number | null;
 }
 // #endregion
 
-/** Toast the copy when the page has a toast stack to show it on; answers whether it did. */
-function toastCopied(): boolean {
-	if (typeof document === "undefined" || !document.querySelector(".ui-toast")) return false;
-	useToast().show({ severity: "success", summary: "Link copied" });
-	return true;
-}
+/** People the picker loads. */
+const PEOPLE_LIMIT = 24;
 
 /**
  * Said under the link when only the people who already have access can open it (Decision #402): the
@@ -74,154 +72,160 @@ function ReachNote({ manageAccess }: { manageAccess?: () => void }): JSX.Element
 	);
 }
 
-export function ShareModalBody({ request, authed, returnTo }: ShareModalBodyProps): JSX.Element {
-	const signIn = `/login?redirectTo=${encodeURIComponent(returnTo)}`;
-	const withAccess = request.reach === "with-access";
-
-	return (
-		<div class="share">
-			<section class="share__section" aria-labelledby="share-link-title">
-				<h3 class="share__heading" id="share-link-title">Share the link</h3>
-				<ShareLinkBar
-					url={request.url}
-					title={request.title}
-					text={request.text}
-					targets={SHARE_TARGETS}
-					label="Link to share"
-					external={!withAccess}
-					note={withAccess ? <ReachNote manageAccess={request.manageAccess} /> : null}
-					onCopied={toastCopied}
-				/>
-			</section>
-
-			{authed
-				? <SendToPeople request={request} />
-				: (
-					<section class="share__section" aria-labelledby="share-internal-title">
-						<h3 class="share__heading" id="share-internal-title">Send to people on Projective</h3>
-						<p class="share__guest">
-							<a class="share__signin" href={signIn}>Sign in</a>{" "}
-							to send this straight to somebody's inbox.
-						</p>
-					</section>
-				)}
-		</div>
-	);
-}
-
-const MODE_OPTIONS = [
-	{
-		value: "link",
-		label: "Send a link",
-		description: "They open your file. Set it to Only you to take their access away.",
-	},
-	{
-		value: "copy",
-		label: "Send a copy",
-		description: "They get the file to keep and download.",
-	},
-];
-
-/**
- * How a file goes to people (Decision #401). A file the sender does not own in their own library can
- * only travel as a copy, which is said rather than offered as a choice that would be refused.
- */
-function ShareModeChoice(
-	{ file, mode }: { file: ShareFile; mode: Signal<MessageAttachmentMode> },
+export function ShareModalBody(
+	{ request, authed, onSent, room }: ShareModalBodyProps,
 ): JSX.Element {
-	if (!file.canLink) {
-		return (
-			<p class="share__mode-note">
-				This file isn't in your own library, so it goes as a copy they can keep.
-			</p>
-		);
-	}
-	return (
-		<SelectButton
-			class="share__mode"
-			options={MODE_OPTIONS}
-			value={mode.value}
-			aria-label="How to send this file"
-			onValueChange={(next) => (mode.value = next === "copy" ? "copy" : "link")}
-		/>
+	const withAccess = request.reach === "with-access";
+	const link = (
+		<section class="share__section share__link" aria-label="Share the link">
+			<ShareLinkBar
+				url={request.url}
+				title={request.title}
+				text={request.text}
+				targets={SHARE_TARGETS}
+				label="Link to share"
+				external={!withAccess}
+				note={withAccess ? <ReachNote manageAccess={request.manageAccess} /> : null}
+			/>
+		</section>
 	);
+
+	if (!authed) return <div class="share">{link}</div>;
+	return <SendTo request={request} onSent={onSent} link={link} room={room ?? null} />;
 }
 
-/** The signed-in people tier: a note, the search, and the rail — one Send per person. */
-function SendToPeople({ request }: { request: ShareRequest }): JSX.Element {
-	const suggestions = useContactSearch({ limit: 20 });
+/** The signed-in surface: search, the people, the link, and the send footer while anyone is chosen. */
+function SendTo(
+	{ request, onSent, link, room }: {
+		request: ShareRequest;
+		onSent: (s: string) => void;
+		link: JSX.Element;
+		room: number | null;
+	},
+): JSX.Element {
+	const contacts = useContactSearch({ limit: PEOPLE_LIMIT });
+	const query = useSignal("");
+	const selectedRecipients = useSignal<string[]>([]);
+	const known = useRef(new Map<string, RankedContact>());
+	const pinned = useSignal<RankedContact[]>([]);
 	const note = useSignal("");
 	const mode = useSignal<MessageAttachmentMode>(
 		request.file ? defaultShareMode(request.file) : "copy",
 	);
-	const sent = useSignal<Record<string, PersonActionState>>({});
-	const failed = useSignal<string | null>(null);
-	const live = useRef(true);
+	const error = useSignal<string | null>(null);
+	const { sending, send } = useShareSend(request);
+	const root = useRef<HTMLDivElement>(null);
 
+	// The body arrives after the surface has opened (a lazy chunk), so the surface's own initial focus
+	// finds nothing yet; the search is where a reader starts, so it takes focus once it exists.
 	useEffect(() => {
-		live.current = true;
-		return () => {
-			live.current = false;
-		};
+		const timer = setTimeout(() => {
+			const field = root.current?.querySelector<HTMLInputElement>(".share__search input");
+			const panel = root.current?.closest<HTMLElement>("[role=dialog]");
+			const focus = document.activeElement;
+			const parked = !focus || focus === document.body || focus === panel ||
+				focus.classList.contains("ui-dialog__close");
+			if (field && parked) field.focus();
+		}, 0);
+		return () => clearTimeout(timer);
 	}, []);
 
-	function stateOf(person: RankedContact): PersonActionState {
-		return sent.value[person.id] ?? "idle";
+	// A new result set re-reads who is pinned; a press never does, so a card stays where it was.
+	const results = contacts.contacts.value;
+	useEffect(() => {
+		pinned.value = pinnedPeople(results, selectedRecipients.peek(), known.current);
+	}, [results]);
+
+	// A dismissed surface forgets its selection, so the next open starts clean.
+	useSignalEffect(() => {
+		if (shareOpen.value) return;
+		batch(() => {
+			selectedRecipients.value = [];
+			pinned.value = [];
+			note.value = "";
+			error.value = null;
+		});
+	});
+
+	function toggle(person: RankedContact): void {
+		const next = toggleRecipient(selectedRecipients.peek(), person.id);
+		known.current.set(person.id, person);
+		batch(() => {
+			selectedRecipients.value = next.selected;
+			error.value = next.refused;
+		});
 	}
 
-	async function send(person: RankedContact): Promise<void> {
-		if (stateOf(person) !== "idle") return;
-		sent.value = { ...sent.value, [person.id]: "busy" };
-		failed.value = null;
-		const res = await ContactsService.createConversation({
-			contactIds: [person.id],
-			...shareMessage(request, note.value, mode.value),
+	async function commit(): Promise<void> {
+		const chosen = selectedRecipients.peek()
+			.map((id) => known.current.get(id))
+			.filter((c): c is RankedContact => c !== undefined);
+		error.value = null;
+		const summary = await send(chosen, note.peek(), mode.peek());
+		if (!summary) return;
+		if (summary.toast) {
+			batch(() => {
+				selectedRecipients.value = [];
+				note.value = "";
+			});
+			onSent(summary.toast);
+			return;
+		}
+		batch(() => {
+			selectedRecipients.value = selectedRecipients.peek().filter((id) =>
+				summary.failed.includes(id)
+			);
+			error.value = summary.error;
 		});
-		if (!live.current) return;
-		const ok = res.ok && res.data?.messageAccepted;
-		sent.value = { ...sent.value, [person.id]: ok ? "done" : "idle" };
-		if (!ok) failed.value = res.message ?? `Couldn't reach ${person.name} — try again.`;
 	}
+
+	const people = [
+		...pinned.value,
+		...results.filter((r) => !pinned.value.some((p) => p.id === r.id)),
+	];
+	const count = selectedRecipients.value.length;
 
 	return (
-		<section class="share__section" aria-labelledby="share-internal-title">
-			<h3 class="share__heading" id="share-internal-title">Send to people on Projective</h3>
-			{request.file ? <ShareModeChoice file={request.file} mode={mode} /> : null}
-			<ResizeFrame>
-				<textarea
-					class="share__note"
-					rows={2}
-					maxLength={1000}
-					placeholder="Add a note (optional) — it goes with every send"
-					aria-label="Note to send with the link"
-					value={note.value}
-					onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+		<div
+			class="share share--send"
+			ref={root}
+			style={room === null ? undefined : `--share-room: ${room}px`}
+		>
+			<InputText
+				size="sm"
+				class="share__search"
+				value={query}
+				onValueChange={(next) => contacts.setQuery(next)}
+				placeholder="Search by name or @handle…"
+				aria-label="Search people to send this to"
+				aria-controls="share-people"
+				autoComplete="off"
+				autoCapitalize="none"
+				spellcheck={false}
+				block
+			/>
+			<ShareContactGrid
+				id="share-people"
+				people={people}
+				selected={selectedRecipients.value}
+				onToggle={toggle}
+				loading={contacts.loading.value}
+				error={contacts.error.value}
+				onRetry={contacts.retry}
+				query={query.value}
+			/>
+			{link}
+			{count > 0 && (
+				<ShareSendBar
+					count={count}
+					note={note}
+					sending={sending.value}
+					error={error.value}
+					onSend={() => void commit()}
+					file={request.file}
+					mode={mode}
 				/>
-			</ResizeFrame>
-			<UserSearchPopover
-				label="Search people to send this to"
-				placeholder="Search by name or @handle"
-				actionLabel="Send"
-				doneLabel="Sent"
-				busyLabel="Sending…"
-				stateOf={stateOf}
-				onAct={(person) => void send(person)}
-			/>
-			<QuickAddRail
-				heading="Quick send"
-				people={suggestions.contacts.value}
-				loading={suggestions.loading.value}
-				error={suggestions.error.value}
-				onRetry={suggestions.retry}
-				actionLabel="Send"
-				doneLabel="Sent"
-				stateOf={stateOf}
-				onAct={(person) => void send(person)}
-				emptyNote="No suggestions yet. Search by name or @handle to find someone."
-			/>
-			{failed.value && (
-				<p class="share__outcome share__outcome-failed" role="alert">{failed.value}</p>
 			)}
-		</section>
+		</div>
 	);
 }

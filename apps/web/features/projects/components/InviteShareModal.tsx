@@ -8,28 +8,29 @@ import type {
 	MemberInvite,
 	MemberRole,
 	MemberStageRef,
+	MemberViewerCaps,
 	ProjectMemberRow,
 } from "../types/projects-types.ts";
 import { OVERSIGHT_ROLES } from "../types/projects-types.ts";
-import { ASSIGNABLE_ROLES } from "../core/member-model.ts";
+import { ASSIGNABLE_ROLES, roleMeta } from "../core/member-model.ts";
 import { handleSet, normaliseHandle } from "@features/share/core/people-picker.ts";
 import { absoluteUrl } from "@features/share/core/share-request.ts";
 import { UniversalInviteModal } from "@features/invites/components/UniversalInviteModal.tsx";
-import { InviteLinkPanel } from "@features/invites/components/InviteLinkPanel.tsx";
 import type { InviteSendOutcome } from "@features/invites/core/invite-queue.ts";
+import type { AccessPerson } from "@features/invites/core/access-people.ts";
 import { useStageInviteLink } from "../hooks/useStageInviteLink.ts";
 
 /**
- * InviteShareModal — the Members tab's Invite, on the Universal Invite modal (Decision #318,
- * superseding #145's one-click-per-person layout).
+ * InviteShareModal — the Members tab's Invite, on the Universal Invite modal (Decisions #318, #405).
  *
- * One field for `@handles` and emails (the text decides which), a staged list with a role per person,
- * and the stage's ask-to-join link underneath (`useStageInviteLink`, Decision #145 — a link asks, it
- * never seats). On a pipeline the invitation's scope — the whole project or one stage — is chosen
- * under the header, and the link follows it: a link always opens one stage.
+ * The bar invites `@handles` and emails at one role; on a pipeline the invitation's scope — the whole
+ * project or one stage — is chosen under the header, and the link follows it: a link always opens one
+ * stage (`useStageInviteLink`, Decision #145 — a link asks, it never seats). "People with access" is
+ * the roster: a role changes in place where the viewer may change it (`saveRole`), and a removal is
+ * handed to the roster's consequence-aware confirmation (`onRemove`).
  *
  * Persisted through the roster's `onInvite` (`POST /api/projects/[id]/invites`): each recipient is
- * one invitation at its own role, addressed as the field read it. Nobody on the roster is staged, and
+ * one invitation, addressed as the field read it. Nobody on the roster can be invited again, and
  * anybody holding an open invitation to the chosen scope reads "Already invited".
  */
 export interface InviteShareModalProps {
@@ -42,13 +43,22 @@ export interface InviteShareModalProps {
 	/** The routed stage, pre-selected and the link's stage on a stage page. */
 	defaultStageId: string | null;
 	viewerRole: MemberRole;
+	/** What the viewer may do to the roster — the kebab's own rule. */
+	caps: MemberViewerCaps;
 	members: readonly ProjectMemberRow[];
 	invites: readonly MemberInvite[];
 	onInvite: (recipients: InviteRecipient[], stageId: string | null) => Promise<InviteSendOutcome>;
+	/** Save a member's role; answers the refusal, or `null` once saved. */
+	saveRole: (memberId: string, role: MemberRole) => Promise<string | null>;
+	/** Confirm a removal in the roster's own dialog, in place of this modal. */
+	onRemove: (member: ProjectMemberRow) => void;
 }
 
+/** The project's top seats: listed first, never re-roled or removed from here. */
+const TOP_SEATS: ReadonlySet<MemberRole> = new Set<MemberRole>(["client", "owner"]);
+
 export function InviteShareModal(props: InviteShareModalProps): JSX.Element {
-	const { stages } = props;
+	const { stages, caps } = props;
 	const stageId = useSignal<string | null>(props.defaultStageId);
 
 	// A delegate staffs the project; only the owner's side may appoint another admin or manager.
@@ -83,6 +93,23 @@ export function InviteShareModal(props: InviteShareModalProps): JSX.Element {
 		return invited ? "Already invited" : null;
 	}
 
+	const people: AccessPerson[] = props.members.map((m) => {
+		const top = TOP_SEATS.has(m.role);
+		const manageable = caps.canManage && !m.isViewer && !top;
+		return {
+			key: m.id,
+			name: m.party.name,
+			handle: normaliseHandle(m.party.handle),
+			avatar: m.party.avatar,
+			roleId: m.role,
+			roleLabel: roleMeta(m.role).label,
+			roles: manageable && caps.canEditRoles ? roles : null,
+			removable: manageable && caps.canRemove,
+			self: m.isViewer,
+			owner: top,
+		};
+	});
+
 	const current = link.link.value;
 
 	return (
@@ -115,27 +142,27 @@ export function InviteShareModal(props: InviteShareModalProps): JSX.Element {
 					/>
 				</>
 			)}
-			link={linkStage
-				? (
-					<InviteLinkPanel
-						url={current ? absoluteUrl(current.path) : null}
-						targetName={linkStage.name}
-						hint="You accept or decline each request in Members › Requests."
-						shareTitle={`Join ${linkStage.name} on ${props.projectTitle}`}
-						shareText="You're invited to ask to join this stage on Projective."
-						busy={link.busy.value}
-						error={link.error.value}
-						notice={link.notice.value}
-						onCreate={() => void link.act("ensure")}
-						onReset={() => void link.act("reset")}
-						onRevoke={() => void link.act("revoke")}
-					/>
-				)
-				: pickStage && (
-					<p class="inv-link__hint">
-						Choose a stage to share its invite link — a link always opens one stage.
-					</p>
-				)}
+			link={{
+				url: current ? absoluteUrl(current.path) : null,
+				stageName: linkStage?.name,
+				busy: link.busy.value,
+				error: link.error.value,
+				onEnable: () => void link.act("ensure"),
+				onDisable: () => void link.act("revoke"),
+				onReset: () => void link.act("reset"),
+				unavailable: linkStage ? null : "Choose a stage above to share its link",
+			}}
+			people={people}
+			onRoleChange={(key, roleId) => {
+				const role = roles.find((r) => r.id === roleId)?.id;
+				return role ? props.saveRole(key, role) : Promise.resolve("That role can't be given here.");
+			}}
+			onRemove={(key) => {
+				const member = props.members.find((m) => m.id === key);
+				if (!member) return;
+				props.open.value = false;
+				props.onRemove(member);
+			}}
 		/>
 	);
 }

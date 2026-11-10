@@ -1244,13 +1244,6 @@
  * `font-weight: 700`, which §A.4 forbids; and `:focus-visible { outline: none; box-shadow: none }` on
  * the buttons, i.e. no keyboard focus indicator at all.
  */
-.proj-stage-modal__note {
-	margin: 0;
-	font-size: var(--text-sm);
-	line-height: var(--leading-normal);
-	color: var(--text-secondary);
-}
-
 .proj-stage-modal__form {
 	display: flex;
 	flex-direction: column;

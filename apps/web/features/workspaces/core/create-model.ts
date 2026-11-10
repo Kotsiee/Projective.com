@@ -39,8 +39,6 @@ export interface CreateCopy {
 	submit: string;
 	/** The commit button's label while the create is in flight. */
 	submitting: string;
-	/** The one line under the title: what the kind is, and that it starts as a draft. */
-	intro: string;
 	/** A placeholder name in the kind's register. */
 	namePlaceholder: string;
 	/**
@@ -66,7 +64,6 @@ export function createCopy(kind: WorkspaceKind): CreateCopy {
 		header: `Create a ${copy.noun}`,
 		submit: `Create ${copy.noun}`,
 		submitting: "Creating…",
-		intro: `${copy.pitch} It starts as a draft — you finish setting it up inside.`,
 		namePlaceholder: PLACEHOLDERS[kind].name,
 		handlePlaceholder: PLACEHOLDERS[kind].handle,
 	};

@@ -40,6 +40,7 @@ import {
 import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
+import { useCalendarViewMemory } from "../hooks/useCalendarViewMemory.ts";
 import {
 	agendaReload,
 	calendarFocus,
@@ -64,11 +65,8 @@ import {
 	leavingEvents,
 	openEventModal,
 	organiseRequest,
-	persistCalendarView,
-	persistCalendarZoom,
 	remindersRequest,
 	removeRequest,
-	restoreCalendarView,
 	routineDialogOpen,
 	selectedEventId,
 	selectedRoutineId,
@@ -222,8 +220,8 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 
 	/**
 	 * The surface's clock: the page's own `now`, advanced at wall rate since it was read — the same
-	 * frame the event modal reasons in (`useEventClock`), so the composer and the modal's Create can
-	 * never disagree about whether a slot is in the past.
+	 * frame the event modal reasons in (`useEventClock`), so a blank entry and the modal's past warning
+	 * agree about where now is.
 	 */
 	const clockOrigin = useRef({ page: props.initial?.now ?? 0, wall: Date.now() });
 	const clock = () =>
@@ -234,7 +232,6 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		initial: props.initial?.events ?? [],
 		kind: "sync",
 		timezone: () => page.peek()?.timezone ?? "UTC",
-		now: clock,
 		// The personal agenda's entries are the viewer's own, and the only ones with a write route.
 		persist: true,
 		onRefuse: (message) => {
@@ -330,16 +327,17 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		}
 	}
 
+	// The view and zoom are the APP's to remember here (the control lives in the footer band, so the
+	// engine is driven rather than deciding) — restored after mount, never at module scope, because this
+	// module is also imported during SSR where storage does not exist.
+	useCalendarViewMemory();
+
 	useEffect(() => {
 		invitationsOnly.value = invitationsFiltered(globalThis.location?.search ?? "");
 		if (props.initial) {
 			calendarPage.value = props.initial;
 			calendarRoutines.value = props.initial.routines ?? [];
 		}
-		// The view and zoom are the APP's to remember here (the control lives in the footer band, so
-		// the engine is driven rather than deciding) — restored after mount, never at module scope,
-		// because this module is also imported during SSR where storage does not exist.
-		restoreCalendarView();
 		const apply = () => {
 			seam.value = readDevSeam();
 		};
@@ -382,37 +380,11 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		calendarInspectMode.value = inspectMode;
 	}, [inspectMode]);
 
-	/**
-	 * Remember the reader's view choice.
-	 *
-	 * The first run is skipped: it fires with the default the signal was constructed with, which
-	 * would be written over the value {@link restoreCalendarView} is in the middle of installing.
-	 */
-	const viewSettled = useSignal(false);
-	useEffect(() => {
-		if (!viewSettled.value) {
-			viewSettled.value = true;
-			return;
-		}
-		persistCalendarView(calendarView.value);
-	}, [calendarView.value]);
-
-	const zoomSettled = useSignal(false);
-	useSignalEffect(() => {
-		calendarZoom.value;
-		timelineZoom.value;
-		if (!zoomSettled.peek()) {
-			zoomSettled.value = true;
-			return;
-		}
-		persistCalendarZoom();
-	});
-
 	/** A band asked for a blank entry (the footer's New event, or the lane rail's). */
 	useEffect(() => {
 		if (createRequest.value === 0) return;
-		// On the reader's focus, but never behind the clock: a blank entry in the past is one that
-		// could only be refused.
+		// On the reader's focus, but never behind the clock: a blank entry opens on the next free slot,
+		// and one meant for the past is moved there in the modal, which says so.
 		const start = Math.max(focusedAt(page.value), Math.ceil(clock() / SLOT_MS) * SLOT_MS);
 		composer.expandCreate({ start, end: start + HOUR_MS }, "");
 	}, [createRequest.value]);

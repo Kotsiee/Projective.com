@@ -248,7 +248,7 @@ export function UserShell(
 			}
 			{focus ? null : <BottomNav items={bottomNavItems(path, context)} label="Primary" />}
 			{/* The one share modal every Share control on the page opens (share-request bridge). */}
-			<ShareHost authed returnTo={path} />
+			<ShareHost authed />
 			{/* The contextual Settings modal: owns `?settings=` and every gear's `openSettings()` (Decision #150). */}
 			<SettingsModalHost context={context} />
 			{focus ? null : <MilestoneCelebration />}

@@ -169,23 +169,35 @@
 	color: var(--text-secondary);
 }
 
-.fh-colordialog {
+.fh-colorpop {
+	inline-size: min(15rem, calc(100vw - 2 * var(--space-4)));
+}
+.fh-colorpop .ui-popover__content {
+	max-block-size: min(var(--overlay-h-md), calc(100vh - var(--space-8)));
+}
+.fh-colorpop__body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	gap: var(--space-3);
 }
-.fh-colordialog__preview {
-	inline-size: 4.5rem;
+.fh-colorpop__preview {
+	inline-size: var(--space-7);
 }
-.fh-colordialog .ui-colorpicker {
+.fh-colorpop .ui-colorpicker {
 	inline-size: 100%;
 }
-.fh-colordialog .ui-colorpicker__panel--inline {
+.fh-colorpop .ui-colorpicker__panel--inline {
 	inline-size: 100%;
 	padding: 0;
 	border: 0;
 	background: transparent;
+}
+.fh-colorpop__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	align-self: stretch;
 }
 /* #endregion */
 

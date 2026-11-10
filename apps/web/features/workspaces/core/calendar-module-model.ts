@@ -1,4 +1,9 @@
-import type { CalendarEvent, SchedulingTarget } from "@projective/types/scheduling";
+import type {
+	CalendarEvent,
+	CalendarPage,
+	SchedulePage,
+	SchedulingTarget,
+} from "@projective/types/scheduling";
 import { kindCopy, type WorkspaceDetail, type WorkspaceKind } from "@projective/types/workspace";
 
 /**
@@ -62,6 +67,27 @@ export function entityCalendarView(facts: EntityCalendarFacts): EntityCalendarVi
 			? `This ${noun} has no projects yet, so nothing is scheduled.`
 			: "Nothing you can see is scheduled on these projects.",
 		failedNote: `${facts.name}'s calendar couldn't be read just now. Try again in a moment.`,
+	};
+}
+// #endregion
+
+// #region Chrome
+/**
+ * The entity's calendar as the `/calendar` chrome reads it — the lane, the bands and the panel all take
+ * a `SchedulePage` (Decision #403). The events, zone, title and clock are the union's own; there is no
+ * availability layer, owner, booking, preferences or routines, because an entity's union has none.
+ */
+export function entityAgendaPage(page: CalendarPage): SchedulePage {
+	return {
+		scope: "entity",
+		title: page.title,
+		subtitle: null,
+		timezone: page.timezone,
+		ownerHandle: null,
+		viewerCanBook: false,
+		availability: { rules: [], blackouts: [] },
+		events: page.events,
+		now: page.now,
 	};
 }
 // #endregion

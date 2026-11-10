@@ -11,7 +11,7 @@ import "../styles/inspector-print.css";
 import "../styles/viewer-model.css";
 import "../styles/viewer-document.css";
 import "../styles/inspector-access.css";
-import { fileInspectHref, type InspectAsset } from "@projective/types/files";
+import type { InspectAsset } from "@projective/types/files";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { useIsMobile } from "@projective/ui/hooks";
 import { Toast } from "@projective/ui/feedback";
@@ -142,7 +142,7 @@ export default function InspectorWorkspace(
 					/* The page has no shell, so it mounts the share modal and the toast stack a Share row's
 					   quick send reports on (Decision #400). */
 				}
-				<ShareHost authed={signedIn} returnTo={fileInspectHref(asset.id, { share: asset.share })} />
+				<ShareHost authed={signedIn} />
 				{hydrated.value ? <Toast position="bottom-center" /> : null}
 			</div>
 		</InspectorActionsContext.Provider>

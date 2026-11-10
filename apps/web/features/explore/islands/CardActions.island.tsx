@@ -5,7 +5,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { ActionMenu, linkActionItems, linkOpenItem } from "@projective/ui/navigation";
 import type { ExploreEntity } from "@projective/types/explore";
 import { Button } from "@ui/fields/components/Button.tsx";
-import { requestShare } from "@web/features/share/core/share-request.ts";
+import { requestShare, shareAnchor } from "@web/features/share/core/share-request.ts";
 import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
 
 /**
@@ -46,9 +46,9 @@ export default function CardActions(
 	const kind = savedTypeOf(type);
 	const saved = authed ? savedFlag(kind, id) : null;
 
-	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
-	function share() {
-		requestShare({ href, title });
+	/** Open the unified share surface, anchored to the card's Share button when it asked. */
+	function share(event?: Event) {
+		requestShare({ href, title, anchor: shareAnchor(event) });
 		status.value = "";
 	}
 
@@ -66,7 +66,7 @@ export default function CardActions(
 			href,
 			title,
 			include: ["copy-link", "share", "save"],
-			onShare: share,
+			onShare: () => share(),
 			save: saved ? { saved: on, onToggle: () => void save() } : undefined,
 			onCopied: (ok) => {
 				status.value = ok ? "Link copied" : "Couldn't copy the link";

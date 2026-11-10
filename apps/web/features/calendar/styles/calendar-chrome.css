@@ -835,6 +835,49 @@
 	margin-block: auto;
 }
 
+.cal-panel__view:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.cal-panel[data-view="events"]:not(.cal-panel--drawer) {
+	flex: 1 1 0;
+	min-block-size: 0;
+}
+
+.cal-panel__agenda {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	gap: var(--space-2);
+	min-block-size: 0;
+}
+
+.cal-panel__agenda-head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cal-panel__list {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	margin-inline: calc(var(--space-2) * -1);
+}
+
+.cal-panel__inspect {
+	display: flex;
+	flex-direction: column;
+}
+
+.cal-panel__back {
+	flex: none;
+	margin-block-end: var(--space-2);
+	margin-inline-start: calc(var(--space-2) * -1);
+}
+
 /* The picked event, read. Spacing and type registers only — nothing here is boxed (§B.4). */
 .cal-sum {
 	display: flex;
@@ -1157,6 +1200,16 @@
 	color: var(--text-secondary);
 }
 
+.cal-connect__manage {
+	font-weight: var(--fw-medium);
+	color: var(--primary-ink);
+	text-decoration: none;
+}
+
+.cal-connect__manage:hover {
+	text-decoration: underline;
+}
+
 .cal-connect__error {
 	color: var(--danger);
 }
@@ -1316,7 +1369,19 @@
 .cal-export {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-6);
+	gap: var(--space-4);
+	inline-size: min(24rem, calc(100vw - 2 * var(--space-4)));
+}
+
+.cal-export-pop .ui-popover__content {
+	max-block-size: min(var(--overlay-h-md), calc(100vh - var(--space-8)));
+}
+
+.cal-export__title {
+	margin: 0;
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
 }
 
 .cal-export__section {
@@ -1349,6 +1414,8 @@
 }
 
 .cal-export__count {
+	flex: 1 1 auto;
+	min-inline-size: 0;
 	margin: 0;
 	font-size: var(--cal-hub-fs-body);
 	color: var(--text-secondary);
@@ -1363,8 +1430,9 @@
 .cal-export__foot {
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
 }
 
 /* #endregion */

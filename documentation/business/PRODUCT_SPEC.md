@@ -268,11 +268,14 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
 - **Bringing people in (a Team or a Business alike):** a member who may invite opens **Invite**
   from anywhere in the console, and it opens in place — it never takes them to Members. One field
   takes `@handles` and email addresses together (the text decides which; a paste of many is read
-  whole), each person is staged at the default role and may be given their own, and one send issues
-  up to ten invitations — each still names one person or one address that only they can accept, for
-  14 days. Only roles the inviter may grant are offered; the plan's free seats ("3 of 4 seats free")
-  cap the batch, and on a Business, rows past the plan's manager headroom close the send. A refusal
-  stays on its row and never unsends the others (Decision #318).
+  whole) beside the role they are invited as, and one Invite issues up to ten invitations at that
+  role — each still names one person or one address that only they can accept, for 14 days; people
+  invited at different roles are invited in turn. Only roles the inviter may grant are offered; the
+  plan's free seats ("3 of 4 seats available") cap the batch, and on a Business, a role past the
+  plan's manager headroom closes Invite. A refusal never unsends the others: what was refused stays
+  in the field with its reason. Under the link, **People with access** lists the members, each role
+  changeable and each member removable exactly where the inviter's rank allows (Decisions #318,
+  #405).
 
   > **An invite link asks; it never seats.** Whoever may invite can make the entity's **invite
   > link** — one at a time, naming the role a request asks for — copy it, share it, **reset** it
@@ -794,8 +797,8 @@ configured rates, resolved by one rule the modal and the server both call, and a
 project takes a **placeholder assignment** — the seller is attached to the stages now and the terms
 are settled when the client prices and publishes. Picking Create opens a two-step wizard — a type
 card (Task · One-off project · Pipeline) with a prominent glyph, then the same lightweight setup the
-projects lane's Quick-Init collects (a name, an optional one-line brief, the currency and an optional
-baseline price) — that mints the draft, invites the seller onto it as a placeholder assignment
+projects lane's Quick-Init collects (a name, the currency and an optional baseline price; the brief
+is written in the configuration workspace, Decision #404) — that mints the draft, invites the seller onto it as a placeholder assignment
 (settled at publish, exactly as Add-to-project does), and sends the client to its setup page. If the
 invitation is refused — the seller's intake has a required question, or a re-invitation cooldown is
 running — the draft is kept and the client is told why. A **guest** sees the
@@ -1400,11 +1403,14 @@ context without "ping fatigue."
   a long press on a phone) to copy them together — the copy reads as a transcript with who said
   what and when. Selecting is a reading aid only: it changes nothing anybody else sees.
 - **Sharing:** every _Share_ control on the platform (a discovery card, a listing, a project)
-  opens ONE share surface: the same ranked people first (a share is a message with a link — it
-  lands in the pair's DM), then the external quick actions (Snapchat · WhatsApp · Facebook ·
-  Instagram · X · Telegram · Copy link) and, where the device offers one, its own share sheet
-  (`•••`). Instagram has no web share intent; the control is honest about it (the device sheet
-  where one exists, otherwise copy-and-open).
+  opens ONE share surface, headed **Send to…**: a search over the same ranked people first, where
+  a press chooses a person rather than sending, then the link with the external quick actions
+  (Snapchat · WhatsApp · Facebook · Instagram · X · Telegram · Copy link) and, where the device
+  offers one, its own share sheet (`•••`). Choosing anyone brings up an optional note and **Send to
+  {n}**: one send reaches up to ten people, each as their own message with the link in the pair's
+  DM — never a group — and a refusal keeps that person chosen without unsending the others
+  (Decision #406). A guest sees the link and the apps only. Instagram has no web share intent; the
+  control is honest about it (the device sheet where one exists, otherwise copy-and-open).
 
 #### 3. Technical Implementation: The "Handover" State
 
@@ -2043,15 +2049,16 @@ There are two primary ways an engagement begins:
   > person already on the stage, already invited to it, already asking, or without a freelancer
   > profile; a link to a finished stage or a closed project does not work (Decision #145).
 
-  > **Inviting is staged, then sent.** The Invite modal is the same one a Team or a Business uses:
-  > one field for `@handles` and emails (the text decides which; a pasted list is read whole), with
-  > the people the viewer already works with suggested as they type; each person is staged at the
-  > default role and may be given their own; one send issues up to ten invitations to the chosen
-  > scope (the whole project or one stage), and a refusal — a cooldown, a duplicate, the outbound
-  > ceiling — stays on its row without unsending the rest. People already on the roster cannot be
-  > staged, and anyone holding an open invitation to the chosen scope reads _Already invited_. The
-  > stage's invite link sits beneath, with its share shortcuts. Opening or sending never leaves the
-  > page (Decision #318, superseding #145's one-click layout; the Share modal keeps it).
+  > **Inviting is one row.** The Invite modal is the same one a Team or a Business uses: one field
+  > for `@handles` and emails (the text decides which; a pasted list is read whole), with the people
+  > the viewer already works with suggested as they type, beside the role and Invite; one Invite
+  > issues up to ten invitations at that role to the chosen scope (the whole project or one stage),
+  > and a refusal — a cooldown, a duplicate, the outbound ceiling — stays in the field with its
+  > reason without unsending the rest. People already on the roster cannot be invited again, and
+  > anyone holding an open invitation to the chosen scope reads _Already invited_. The stage's
+  > invite link is a Link access row with an on/off switch, copied from the footer, and People with
+  > access lists the roster, a role changed or a member removed where the viewer may. Opening or
+  > sending never leaves the page (Decisions #318, #405).
 
 ##### Discovery & Courtesy Calls (the third path)
 

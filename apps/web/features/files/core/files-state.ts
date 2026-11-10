@@ -16,6 +16,7 @@ import type {
 	UploadTask,
 } from "../types/file-types.ts";
 import type { ExplorerCell } from "./files-keyboard.ts";
+import type { PressPoint } from "./press-point.ts";
 
 /**
  * files-state — the cross-island signal bridge for the `/files` asset hub, where the surface is
@@ -250,14 +251,20 @@ export function inspectSelection(): void {
 /** A write over listed rows is in flight, from whichever region raised it. */
 export const busy = signal(false);
 
-/** The New folder dialog. */
+/** The New folder popover. */
 export const newFolderOpen = signal(false);
 
 /** Where a New folder lands when a menu named a place; `undefined` is the folder in view. */
 export const newFolderParent = signal<string | null | undefined>(undefined);
 
-/** The Attach link dialog. */
+/** Where a menu-opened New folder appears (the press that chose the row); `null` is the rig button. */
+export const newFolderAt = signal<PressPoint | null>(null);
+
+/** The Attach link popover. */
 export const attachLinkOpen = signal(false);
+
+/** Where a menu-opened Attach link appears; `null` is the rig button. */
+export const attachLinkAt = signal<PressPoint | null>(null);
 
 /** The Connect a drive dialog. */
 export const connectDriveOpen = signal(false);
@@ -316,22 +323,42 @@ export interface FolderColorTarget {
 	color: string | null;
 }
 
-/** The custom colour dialog. */
+/** The custom colour popover. */
 export const folderColorOpen = signal(false);
 
-/** The folder the custom colour dialog is for. */
+/** The folder the custom colour popover is for. */
 export const folderColorTarget = signal<FolderColorTarget | null>(null);
 
-/** Open the wheel for a folder. */
-export function askFolderColor(target: FolderColorTarget): void {
+/** Where the custom colour popover appears (the press on a menu's `+`); `null` is the rig's end. */
+export const folderColorAt = signal<PressPoint | null>(null);
+
+/** A colour being tried on a folder: every mark of that folder draws it until the wheel closes. */
+export interface FolderColorPreview {
+	folderId: string;
+	color: string | null;
+}
+
+/** The colour the wheel is trying on a folder, live; `null` while no wheel is open on one. */
+export const folderColorPreview = signal<FolderColorPreview | null>(null);
+
+/** Open the wheel for a folder, where the reader pressed when a menu opened it. */
+export function askFolderColor(target: FolderColorTarget, at: PressPoint | null = null): void {
 	folderColorTarget.value = target;
+	folderColorAt.value = at;
 	folderColorOpen.value = true;
 }
 
-/** Open New folder, inside `parentId` when a menu named a place. */
-export function askNewFolder(parentId?: string | null): void {
+/** Open New folder, inside `parentId` when a menu named a place, where the reader pressed. */
+export function askNewFolder(parentId?: string | null, at: PressPoint | null = null): void {
 	newFolderParent.value = parentId;
+	newFolderAt.value = at;
 	newFolderOpen.value = true;
+}
+
+/** Open Attach link where the reader pressed, when a menu opened it. */
+export function askAttachLink(at: PressPoint | null = null): void {
+	attachLinkAt.value = at;
+	attachLinkOpen.value = true;
 }
 // #endregion
 
@@ -535,7 +562,9 @@ export function resetFilesState(): void {
 	busy.value = false;
 	newFolderOpen.value = false;
 	newFolderParent.value = undefined;
+	newFolderAt.value = null;
 	attachLinkOpen.value = false;
+	attachLinkAt.value = null;
 	connectDriveOpen.value = false;
 	pendingRemoval.value = null;
 	removalOpen.value = false;
@@ -543,6 +572,8 @@ export function resetFilesState(): void {
 	disconnectOpen.value = false;
 	folderColorOpen.value = false;
 	folderColorTarget.value = null;
+	folderColorAt.value = null;
+	folderColorPreview.value = null;
 	uploadQueue.value = [];
 	pickerOpen.value = false;
 	pickerRequest.value = null;

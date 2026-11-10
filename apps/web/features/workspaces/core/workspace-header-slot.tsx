@@ -5,10 +5,12 @@ import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBac
 import WorkspaceHeaderBand from "../islands/WorkspaceHeaderBand.island.tsx";
 import WorkspaceChannelHeader from "../islands/WorkspaceChannelHeader.island.tsx";
 import FilesHeaderBand from "@features/files/islands/FilesHeaderBand.island.tsx";
+import CalendarHeaderBand from "@features/calendar/islands/CalendarHeaderBand.island.tsx";
 import { folderSegmentsOfQuery } from "@projective/types/files";
 import { channelDetailsInfo } from "../components/ChannelDetails.tsx";
 import { channelHref, channelTabOfPath } from "./channel-model.ts";
-import { resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import { resolveEntityCalendar, resolveWorkspaceConsole } from "./workspace-ssr.ts";
+import { entityAgendaPage } from "./calendar-module-model.ts";
 import {
 	activeModuleOf,
 	channelSlugOfPath,
@@ -71,6 +73,21 @@ export async function workspaceHeaderFor(url: URL, actor: ReadActor): Promise<Co
 	if (bootstrap.activeModule === "files") {
 		const ws = bootstrap.workspace;
 		return <FilesHeaderBand segments={folderSegmentsOfQuery(url.search)} ownerLabel={ws.name} />;
+	}
+
+	// On Calendar the band is `/calendar`'s own — the period trail, Go to now and the panel toggle
+	// (Decision #403) — over the union the module's handler read, from the request memo.
+	if (bootstrap.activeModule === "calendar") {
+		const ws = bootstrap.workspace;
+		const read = await resolveEntityCalendar(ws, actor, url);
+		return (
+			<CalendarHeaderBand
+				mode="agenda"
+				surface="entity"
+				initial={read.page ? entityAgendaPage(read.page) : null}
+				title={`${ws.name} · Calendar`}
+			/>
+		);
 	}
 
 	return (
