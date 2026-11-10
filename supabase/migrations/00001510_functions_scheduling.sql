@@ -662,7 +662,7 @@ $$;
 -- With a blueprint whose resolved preset (fn_preset_for_blueprint) has been compiled over the span's
 -- local dates, the answer is "inside ONE compiled occurrence of that layer" (Decision #217 (d)). In
 -- every other case — no blueprint, no preset, a preset not compiled yet, a span outside the compiled
--- window — it is "inside ONE active weekly band of that kind", as it always was.
+-- window — it is "inside one run of touching active weekly bands of that kind" (Decision #408).
 --
 -- ⚠️ Known bound (weekly branch): because `end_minute > start_minute` is a table constraint, a band
 -- cannot cross local midnight, and therefore neither can a call booked against one. A provider who
@@ -685,6 +685,11 @@ SET search_path = scheduling, public
 AS $$
 DECLARE
     v_preset uuid;
+    v_tz text;
+    v_start_minute integer;
+    v_end_minute integer;
+    v_same_day boolean;
+    v_to_midnight boolean;
 BEGIN
     IF p_blueprint IS NOT NULL THEN
         v_preset := scheduling.fn_preset_for_blueprint (p_blueprint);
@@ -700,30 +705,58 @@ BEGIN
         END IF;
     END IF;
 
+    SELECT s.timezone INTO v_tz FROM scheduling.schedules s WHERE s.id = p_schedule;
+    IF v_tz IS NULL THEN
+        RETURN false;
+    END IF;
+    v_start_minute := scheduling.fn_local_minute_of_day (p_starts_at, v_tz);
+    v_end_minute := scheduling.fn_local_minute_of_day (p_ends_at, v_tz);
+    v_same_day := scheduling.fn_local_weekday (p_ends_at, v_tz) = scheduling.fn_local_weekday (p_starts_at, v_tz);
+    -- A band that runs to 24:00 covers a slot ending at the NEXT local midnight — minute 0 of the
+    -- following day — which the slot grid offers (slot-grid.ts) and the editor allows (end_minute <=
+    -- 1440).
+    v_to_midnight := v_end_minute = 0
+        AND (p_ends_at AT TIME ZONE v_tz)::date = (p_starts_at AT TIME ZONE v_tz)::date + 1;
+
+    -- Bands of one day that TOUCH read as one span, so a booking may run from one into the next: the
+    -- default template's mirror splits a working day where its price changes (Decision #408). Bands of
+    -- a kind and day never overlap (save_owner_availability refuses it), so each run of touching bands
+    -- is one island, and the span must sit inside one island. gateCovers (slot-grid.ts) is the same.
     RETURN EXISTS (
+        WITH day_bands AS (
+            SELECT r.start_minute,
+                   r.end_minute,
+                   max(r.end_minute) OVER (
+                       ORDER BY r.start_minute, r.end_minute
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                   ) AS prior_end
+              FROM scheduling.availability_rules r
+             WHERE r.schedule_id = p_schedule
+               AND r.kind = p_kind
+               AND r.is_active
+               AND r.weekday = scheduling.fn_local_weekday (p_starts_at, v_tz)
+        ), runs AS (
+            SELECT d.start_minute,
+                   d.end_minute,
+                   sum(CASE WHEN d.start_minute <= d.prior_end THEN 0 ELSE 1 END)
+                       OVER (ORDER BY d.start_minute, d.end_minute) AS run
+              FROM day_bands d
+        )
         SELECT 1
-        FROM scheduling.availability_rules r
-        JOIN scheduling.schedules s ON s.id = r.schedule_id
-        WHERE r.schedule_id = p_schedule
-          AND r.kind = p_kind
-          AND r.is_active
-          AND r.weekday = scheduling.fn_local_weekday (p_starts_at, s.timezone)
-          AND r.start_minute <= scheduling.fn_local_minute_of_day (p_starts_at, s.timezone)
-          AND (
-              (r.weekday = scheduling.fn_local_weekday (p_ends_at, s.timezone)
-               AND r.end_minute >= scheduling.fn_local_minute_of_day (p_ends_at, s.timezone))
-              -- A band that runs to 24:00 covers a slot ending at the NEXT local midnight — minute
-              -- 0 of the following day — which the slot grid offers (slot-grid.ts) and the editor
-              -- allows (end_minute <= 1440).
-              OR (r.end_minute = 1440
-                  AND scheduling.fn_local_minute_of_day (p_ends_at, s.timezone) = 0
-                  AND (p_ends_at AT TIME ZONE s.timezone)::date = (p_starts_at AT TIME ZONE s.timezone)::date + 1)
-          )
+          FROM runs
+         GROUP BY runs.run
+        HAVING min(runs.start_minute) <= v_start_minute
+           AND (
+               (v_same_day AND max(runs.end_minute) >= v_end_minute)
+               OR (v_to_midnight AND max(runs.end_minute) = 1440)
+           )
     );
 END;
 $$;
 
--- Convenience wrapper: is this span inside a declared CALL WINDOW?
+-- Is this span inside the hours a call may be booked in? Availability is one layer (Decision #408),
+-- so those are the working hours. The name, and the 'outside_call_window' refusal it backs, predate
+-- the ruling and are kept for the callers that know them.
 CREATE OR REPLACE FUNCTION scheduling.fn_call_window_covers(
     p_schedule uuid, p_starts_at timestamptz, p_ends_at timestamptz
 )
@@ -731,7 +764,54 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 AS $$
-    SELECT scheduling.fn_band_covers (p_schedule, 'call_window'::scheduling.availability_kind, p_starts_at, p_ends_at);
+    SELECT scheduling.fn_band_covers (p_schedule, 'working_hours'::scheduling.availability_kind, p_starts_at, p_ends_at);
+$$;
+
+-- The price of a PAID call starting at p_starts_at (Decision #408): the price of the active weekly
+-- band the start falls in, when that band carries one, else call_settings' fee. A band carries the
+-- price of the default template rule it mirrors (save_owner_availability). Always one row, NULL
+-- columns when no price is set at all; no row for a schedule the caller may not read — a visitor reads
+-- a published schedule's prices, as its call offer already shows its fee. Paid calls are off (Decision
+-- #343, ruling C1), so nothing charges this yet: it is the price the paid path holds when built.
+CREATE OR REPLACE FUNCTION scheduling.fn_resolved_slot_fee(p_schedule_id uuid, p_starts_at timestamptz)
+RETURNS TABLE (fee_amount_minor bigint, fee_currency char(3))
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_tz text;
+    v_minute integer;
+    v_weekday smallint;
+BEGIN
+    IF NOT (scheduling.fn_schedule_is_public (p_schedule_id) OR scheduling.fn_can_manage_schedule (p_schedule_id)) THEN
+        RETURN;
+    END IF;
+    SELECT s.timezone INTO v_tz FROM scheduling.schedules s WHERE s.id = p_schedule_id;
+    v_minute := scheduling.fn_local_minute_of_day (p_starts_at, v_tz);
+    v_weekday := scheduling.fn_local_weekday (p_starts_at, v_tz);
+
+    RETURN QUERY
+    SELECT COALESCE(band.amount, cs.fee_amount_minor),
+           CASE WHEN band.amount IS NOT NULL THEN band.currency ELSE cs.fee_currency END
+      FROM (SELECT 1) AS one
+      LEFT JOIN LATERAL (
+          -- Bands of a day never overlap, so at most one holds the minute; the order only settles a tie.
+          SELECT r.fee_amount_minor AS amount, r.fee_currency AS currency
+            FROM scheduling.availability_rules r
+           WHERE r.schedule_id = p_schedule_id
+             AND r.kind = 'working_hours'::scheduling.availability_kind
+             AND r.is_active
+             AND r.weekday = v_weekday
+             AND r.start_minute <= v_minute
+             AND v_minute < r.end_minute
+             AND r.fee_amount_minor IS NOT NULL
+           ORDER BY r.fee_amount_minor DESC
+           LIMIT 1
+      ) AS band ON true
+      LEFT JOIN scheduling.call_settings cs ON cs.schedule_id = p_schedule_id;
+END;
 $$;
 
 -- #endregion
@@ -4495,9 +4575,11 @@ $$;
 -- An individual's schedule is `owner_type = 'user'` — ONE schedule per human, whatever their
 -- freelancer flag — so turning freelancer on or off can never strand a second calendar.
 --
--- `rules` REPLACES the weekly bands. Overlapping bands of the same kind on the same weekday are
--- refused rather than merged: the editor offers no way to draw one, so receiving one means the
--- request did not come from it. `call` is optional; absent leaves the call settings as they are.
+-- `rules` REPLACES the weekly bands, and only the default template's mirror sends it (Decision
+-- #408): every band is working hours, with the price a paid call starting in it costs, or none.
+-- Overlapping bands on the same weekday are refused rather than merged: the mirror never makes one,
+-- so receiving one means the request did not come from it. Bands that touch stay apart where their
+-- prices differ. `call` is optional; absent leaves the call settings as they are.
 -- Errors are SQLSTATE 22023 with `<field>: <reason>` messages, like org.save_profile.
 CREATE OR REPLACE FUNCTION scheduling.save_owner_availability (
     p_owner_type scheduling.owner_type,
@@ -4547,18 +4629,31 @@ BEGIN
                OR COALESCE(v_rule ->> 'end_minute', '') !~ '^[0-9]{1,4}$'
                OR (v_rule ->> 'start_minute')::integer > 1439
                OR (v_rule ->> 'end_minute')::integer > 1440
-               OR (v_rule ->> 'end_minute')::integer <= (v_rule ->> 'start_minute')::integer
-               OR COALESCE(v_rule ->> 'kind', 'working_hours') NOT IN ('working_hours', 'call_window') THEN
+               OR (v_rule ->> 'end_minute')::integer <= (v_rule ->> 'start_minute')::integer THEN
                 RAISE EXCEPTION USING ERRCODE = '22023',
                     MESSAGE = format('rules.%s: a band needs a day and an end after its start', v_i);
             END IF;
-            INSERT INTO scheduling.availability_rules (schedule_id, kind, weekday, start_minute, end_minute)
+            IF COALESCE(v_rule ->> 'kind', 'working_hours') <> 'working_hours' THEN
+                RAISE EXCEPTION USING ERRCODE = '22023',
+                    MESSAGE = format('rules.%s.kind: every band is working hours', v_i);
+            END IF;
+            IF (NULLIF(v_rule ->> 'fee_amount_minor', '') IS NULL) <> (NULLIF(v_rule ->> 'fee_currency', '') IS NULL)
+               OR COALESCE(NULLIF(v_rule ->> 'fee_amount_minor', ''), '1') !~ '^[1-9][0-9]{0,14}$'
+               OR COALESCE(NULLIF(v_rule ->> 'fee_currency', ''), 'GBP') !~ '^[A-Za-z]{3}$' THEN
+                RAISE EXCEPTION USING ERRCODE = '22023',
+                    MESSAGE = format('rules.%s.fee_amount_minor: a price is a whole number of minor units above 0, with its currency', v_i);
+            END IF;
+            INSERT INTO scheduling.availability_rules (
+                schedule_id, kind, weekday, start_minute, end_minute, fee_amount_minor, fee_currency
+            )
             VALUES (
                 v_schedule,
-                COALESCE(v_rule ->> 'kind', 'working_hours')::scheduling.availability_kind,
+                'working_hours'::scheduling.availability_kind,
                 (v_rule ->> 'weekday')::smallint,
                 (v_rule ->> 'start_minute')::integer,
-                (v_rule ->> 'end_minute')::integer
+                (v_rule ->> 'end_minute')::integer,
+                NULLIF(v_rule ->> 'fee_amount_minor', '')::bigint,
+                upper(NULLIF(v_rule ->> 'fee_currency', ''))
             );
             v_i := v_i + 1;
         END LOOP;
@@ -4846,9 +4941,11 @@ $$;
 -- the preset write, before any rule is touched.
 --
 -- Payload (snake_case, mapped from @projective/types/scheduling SavePresetInputSchema by the service):
---   { id?, name, description?, is_default?, scope?, blueprint_id?, rules: [{ id?, kind, effect,
+--   { id?, name, description?, is_default?, scope?, blueprint_id?, rules: [{ id?, kind?, effect,
 --     rrule, starts_on, ends_on?, priority?, unless_weekdays?, label?, is_active?,
---     bands: [{ start_minute, end_minute }] }] }
+--     fee_amount_minor?, fee_currency?, color_token?, bands: [{ start_minute, end_minute }] }] }
+-- `kind` is working hours or absent: availability is one layer (Decision #408). A rule's price
+-- overrides call_settings' fee for a paid call inside its bands; its colour is a swatch token.
 -- `id` absent creates; present updates that live preset, which keeps its scope and service. `rules`
 -- REPLACES the preset's rules and bands (a rule's uuid `id` is kept, anything else is minted). Only
 -- the RRULE's shape is checked — at most 400 characters, starting `FREQ=`; the TypeScript parser
@@ -4987,10 +5084,13 @@ BEGIN
 
     FOR v_rule IN SELECT value FROM jsonb_array_elements(v_rules) LOOP
         IF jsonb_typeof(v_rule) <> 'object'
-           OR COALESCE(v_rule ->> 'kind', '') NOT IN ('working_hours', 'call_window')
            OR COALESCE(v_rule ->> 'effect', '') NOT IN ('add', 'replace', 'subtract') THEN
             RAISE EXCEPTION USING ERRCODE = '22023',
-                MESSAGE = format('rules.%s: a rule needs a layer and an effect', v_i);
+                MESSAGE = format('rules.%s: a rule needs an effect', v_i);
+        END IF;
+        IF COALESCE(v_rule ->> 'kind', 'working_hours') <> 'working_hours' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.kind: every rule is working hours', v_i);
         END IF;
         IF char_length(COALESCE(v_rule ->> 'rrule', '')) > 400 OR COALESCE(v_rule ->> 'rrule', '') !~ '^FREQ=' THEN
             RAISE EXCEPTION USING ERRCODE = '22023',
@@ -5031,6 +5131,21 @@ BEGIN
         SELECT COALESCE(array_agg(d::smallint ORDER BY d::smallint), '{}')
           INTO v_unless
           FROM (SELECT DISTINCT d FROM jsonb_array_elements_text(COALESCE(v_rule -> 'unless_weekdays', '[]'::jsonb)) d) x;
+        IF (NULLIF(v_rule ->> 'fee_amount_minor', '') IS NULL) <> (NULLIF(v_rule ->> 'fee_currency', '') IS NULL)
+           OR COALESCE(NULLIF(v_rule ->> 'fee_amount_minor', ''), '1') !~ '^[1-9][0-9]{0,14}$'
+           OR COALESCE(NULLIF(v_rule ->> 'fee_currency', ''), 'GBP') !~ '^[A-Za-z]{3}$' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.fee_amount_minor: a price is a whole number of minor units above 0, with its currency', v_i);
+        END IF;
+        IF v_rule ->> 'effect' = 'subtract' AND NULLIF(v_rule ->> 'fee_amount_minor', '') IS NOT NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.fee_amount_minor: a rule that removes hours has no price', v_i);
+        END IF;
+        IF NULLIF(v_rule ->> 'color_token', '') IS NOT NULL
+           AND (v_rule ->> 'color_token') !~ '^--[a-z][a-z0-9-]{0,58}$' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.color_token: a colour is a token name such as --swatch-blue', v_i);
+        END IF;
 
         v_bands := COALESCE(v_rule -> 'bands', '[]'::jsonb);
         IF jsonb_typeof(v_bands) <> 'array' OR jsonb_array_length(v_bands) > 6 THEN
@@ -5041,11 +5156,11 @@ BEGIN
         v_rule_id := CASE WHEN COALESCE(v_rule ->> 'id', '') ~ v_uuid_re THEN (v_rule ->> 'id')::uuid END;
         INSERT INTO scheduling.recurrence_rules (
             id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label,
-            is_active, position
+            is_active, position, fee_amount_minor, fee_currency, color_token
         ) VALUES (
             COALESCE(v_rule_id, gen_random_uuid()),
             v_id,
-            (v_rule ->> 'kind')::scheduling.availability_kind,
+            'working_hours'::scheduling.availability_kind,
             (v_rule ->> 'effect')::scheduling.rule_effect,
             v_rule ->> 'rrule',
             v_starts,
@@ -5054,7 +5169,10 @@ BEGIN
             v_unless,
             COALESCE(v_rule ->> 'label', ''),
             COALESCE(v_rule ->> 'is_active', 'true')::boolean,
-            v_i
+            v_i,
+            NULLIF(v_rule ->> 'fee_amount_minor', '')::bigint,
+            upper(NULLIF(v_rule ->> 'fee_currency', '')),
+            NULLIF(v_rule ->> 'color_token', '')
         )
         RETURNING id INTO v_rule_id;
 
@@ -5153,7 +5271,8 @@ $$;
 -- ruleIds } — and stamps the compiled window: the preset-local dates wholly inside [p_from, p_to),
 -- joined to the previous window when the two touch (a horizon extension), else replacing it.
 --
--- Checks only what the database can know: each span is a layer, ends after it starts, lies inside the
+-- Checks only what the database can know: each span is working hours (one layer, Decision #408),
+-- ends after it starts, lies inside the
 -- window, and names only this preset's rules. Whether the spans are RIGHT is the evaluator's word.
 -- SECURITY DEFINER and executable by service_role alone (00002510): there is no client write path to
 -- availability_occurrences. Returns the number of spans written.
@@ -5197,7 +5316,7 @@ BEGIN
         SELECT 1
           FROM jsonb_array_elements(p_spans) e
          WHERE jsonb_typeof(e) <> 'object'
-            OR COALESCE(e ->> 'kind', '') NOT IN ('working_hours', 'call_window')
+            OR COALESCE(e ->> 'kind', '') <> 'working_hours'
             OR jsonb_typeof(e -> 'startsAt') IS DISTINCT FROM 'string'
             OR jsonb_typeof(e -> 'endsAt') IS DISTINCT FROM 'string'
             OR jsonb_typeof(COALESCE(e -> 'ruleIds', '[]'::jsonb)) <> 'array'

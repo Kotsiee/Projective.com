@@ -25,6 +25,7 @@ import {
 	electorateSize,
 	eligibleVoterCount,
 	EntryRemindersSchema,
+	joinTouchingBands,
 	MEETING_PROVIDER_LABEL,
 	normalizeReminders,
 	RESCHEDULE_LOCKOUT_MS,
@@ -1414,6 +1415,7 @@ export async function readPersonalCalendar(
 				? sched.from("availability_rules")
 					.select("weekday, start_minute, end_minute, kind, label")
 					.eq("schedule_id", own.id)
+					.eq("kind", "working_hours")
 					.eq("is_active", true)
 					.order("weekday")
 					.order("start_minute")
@@ -1654,22 +1656,21 @@ export async function readPersonalCalendar(
 		viewerCanBook: true,
 		availability: {
 			timezone: tz,
-			rules: ((rules.data ?? []) as {
+			rules: joinTouchingBands(((rules.data ?? []) as {
 				weekday: number;
 				start_minute: number;
 				end_minute: number;
-				kind: AvailabilityRule["kind"];
 				label: string | null;
 			}[]).map((r) => {
 				const rule: AvailabilityRule = {
 					weekday: r.weekday,
 					startMinute: r.start_minute,
 					endMinute: r.end_minute,
-					kind: r.kind,
+					kind: "working_hours",
 				};
 				if (r.label) rule.label = clamp(r.label, 80);
 				return rule;
-			}),
+			})),
 			// The owner's own leave, so every label is theirs to read.
 			blackouts: ((blackouts.data ?? []) as { starts_at: string; ends_at: string; label: string }[])
 				.map((b): BlackoutDate => ({

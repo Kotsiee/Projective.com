@@ -482,14 +482,14 @@ export function memberNoticeFor(
  * is not quite the visitors' one (Decision #244 amends #119 (B) for business editors).
  */
 export const BUSINESS_PREVIEW_NOTE =
-	"This is how your business looks to visitors. They see Message where you see Manage business.";
+	"This is how your business looks to visitors. They see Message where you see Manage business, and none of the edit buttons or empty blocks.";
 
 /**
  * The same note on a team page (Teams P1): Manage team stands in Hire's place for the team's editors
  * only. It does not promise visitors a Hire — a team with nothing to hire for offers none.
  */
 export const TEAM_PREVIEW_NOTE =
-	"This is how your team looks to visitors, who never see Manage team.";
+	"This is how your team looks to visitors, who never see Manage team, the edit buttons or empty blocks.";
 
 /**
  * The Preview note for a workspace editor (a viewer whose read carries the console door), or

@@ -3,6 +3,7 @@ import { cx } from "../../../core/cx.ts";
 import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Button } from "../../../fields/components/Button.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
+import { swatchFor } from "../../../fields/core/swatches.ts";
 import { ruleName } from "./announce.ts";
 import { useScheduler } from "./context.ts";
 import type { RuleDraft } from "./types.ts";
@@ -43,6 +44,7 @@ export function RuleList(): JSX.Element {
 						{draft.rules.map((rule) => {
 							const name = ruleName(rule, describe);
 							const verb = rule.active ? "Pause" : "Resume";
+							const swatch = swatchFor(rule.colorToken);
 							return (
 								<li
 									key={rule.id}
@@ -59,7 +61,15 @@ export function RuleList(): JSX.Element {
 										aria-current={editing === rule.id ? "true" : undefined}
 										onClick={() => store.dispatch({ type: "edit", ruleId: rule.id })}
 									>
-										<span class="ui-avsched__rule-sentence">{describe(rule)}</span>
+										<span class="ui-avsched__rule-sentence">
+											{swatch.token && (
+												<span
+													class={cx("ui-avsched__rule-dot", `ui-avsched__rule-dot--${swatch.slug}`)}
+													aria-hidden="true"
+												/>
+											)}
+											{describe(rule)}
+										</span>
 										{(rule.label || !rule.active) && (
 											<span class="ui-avsched__rule-meta">
 												{[rule.label, rule.active ? "" : "Paused"].filter(Boolean).join(" · ")}

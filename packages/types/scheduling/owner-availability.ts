@@ -9,6 +9,10 @@ import { z } from "zod";
  * `scheduling.availability_rules` (the weekly bands) and `scheduling.call_settings` — written in one
  * transaction by `scheduling.save_owner_availability`. Field limits mirror the column CHECKs, so a
  * value the form accepts is one the database stores.
+ *
+ * The weekly bands are written by one writer only: the default availability template's mirror
+ * (Decision #408). The profile and Settings save {@link SaveOwnerAvailabilitySchema}, which carries
+ * no bands, so the stored hours are kept as they are.
  */
 
 // #region Bands
@@ -19,11 +23,23 @@ export const OwnerBandSchema = z.object({
 	weekday: z.number().int().min(0).max(6),
 	startMinute: z.number().int().min(0).max(1439),
 	endMinute: z.number().int().min(1).max(1440),
-	/** `working_hours` = "at my desk"; `call_window` = the narrower "you may book a call" subset. */
-	kind: z.enum(["working_hours", "call_window"]).default("working_hours"),
+	/**
+	 * Availability is one layer (Decision #408): every band is working hours, and calls are booked
+	 * inside them. A stored `call_window` row predates the ruling and is read by nothing.
+	 */
+	kind: z.literal("working_hours").default("working_hours"),
+	/**
+	 * A paid call's price for a call starting inside this band, carried from the template rule the
+	 * band mirrors; `null` charges the call settings' fee.
+	 */
+	feeAmountMinor: z.number().int().min(1).nullable().default(null),
+	feeCurrency: z.string().regex(/^[A-Z]{3}$/).nullable().default(null),
 }).refine((b) => b.endMinute > b.startMinute, {
 	message: "The end time must be after the start time.",
 	path: ["endMinute"],
+}).refine((b) => (b.feeAmountMinor === null) === (b.feeCurrency === null), {
+	message: "A price needs both an amount and a currency.",
+	path: ["feeAmountMinor"],
 });
 export type OwnerBand = z.infer<typeof OwnerBandSchema>;
 
@@ -31,6 +47,34 @@ export type OwnerBand = z.infer<typeof OwnerBandSchema>;
 export function bandsOverlap(a: OwnerBand, b: OwnerBand): boolean {
 	return a.weekday === b.weekday && a.kind === b.kind && a.startMinute < b.endMinute &&
 		b.startMinute < a.endMinute;
+}
+
+/** The slice of a weekly band {@link joinTouchingBands} reads. */
+export interface WeeklySpan {
+	weekday: number;
+	startMinute: number;
+	endMinute: number;
+}
+
+/**
+ * Weekly bands for SHOWING hours: each day's bands sorted, and every run of touching or overlapping
+ * bands joined into its first. The default template's mirror splits a day where its price changes
+ * (Decision #408), and a reader that shows hours shows the day, not its prices.
+ */
+export function joinTouchingBands<T extends WeeklySpan>(bands: readonly T[]): T[] {
+	const sorted = [...bands].sort((a, b) =>
+		a.weekday - b.weekday || a.startMinute - b.startMinute || a.endMinute - b.endMinute
+	);
+	const out: T[] = [];
+	for (const band of sorted) {
+		const last = out[out.length - 1];
+		if (last && last.weekday === band.weekday && band.startMinute <= last.endMinute) {
+			out[out.length - 1] = { ...last, endMinute: Math.max(last.endMinute, band.endMinute) };
+		} else {
+			out.push({ ...band });
+		}
+	}
+	return out;
 }
 
 // #endregion
@@ -93,14 +137,19 @@ export const DEFAULT_CALL_SETTINGS: OwnerCallSettings = {
 
 // #region The whole editor
 
-export const OwnerAvailabilitySchema = z.object({
+const scheduleFields = {
 	/** IANA timezone the bands are expressed in. */
 	timezone: z.string().min(1).max(60),
 	/** Published schedules are visible (and bookable) to visitors; an unpublished one is a draft. */
 	published: z.boolean(),
-	bands: z.array(OwnerBandSchema).max(42),
 	/** `null` for an owner who cannot take calls (a buyer entity). */
 	call: OwnerCallSettingsSchema.nullable(),
+};
+
+/** The owner's schedule as it is read: the settings, and the weekly bands the default template mirrors. */
+export const OwnerAvailabilitySchema = z.object({
+	...scheduleFields,
+	bands: z.array(OwnerBandSchema).max(42),
 }).refine((v) => {
 	for (let i = 0; i < v.bands.length; i++) {
 		for (let j = i + 1; j < v.bands.length; j++) if (bandsOverlap(v.bands[i], v.bands[j])) return false;
@@ -109,6 +158,13 @@ export const OwnerAvailabilitySchema = z.object({
 }, { message: "Two hours on the same day overlap.", path: ["bands"] });
 export type OwnerAvailability = z.infer<typeof OwnerAvailabilitySchema>;
 
+/**
+ * What `PUT /api/profile/:handle/availability` saves: the time zone, publishing and call settings.
+ * No bands, so the stored weekly hours are kept; they are edited on `/calendar?view=availability`.
+ */
+export const SaveOwnerAvailabilitySchema = z.object(scheduleFields);
+export type SaveOwnerAvailability = z.infer<typeof SaveOwnerAvailabilitySchema>;
+
 /** A weekday working window the editor offers as the starting point: Mon–Fri, 09:00–17:00. */
 export function defaultBands(): OwnerBand[] {
 	return [1, 2, 3, 4, 5].map((weekday) => ({
@@ -116,6 +172,8 @@ export function defaultBands(): OwnerBand[] {
 		startMinute: 9 * 60,
 		endMinute: 17 * 60,
 		kind: "working_hours" as const,
+		feeAmountMinor: null,
+		feeCurrency: null,
 	}));
 }
 

@@ -37,6 +37,13 @@
     min-inline-size: 0;
 }
 
+.pf-context__story--owned {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 var(--space-3);
+    align-items: start;
+}
+
 .pf-context__headline {
     margin: 0;
     font-size: var(--text-xl);

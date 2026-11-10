@@ -5,7 +5,7 @@ import { CallRefusalReason, CallType } from "./calls.ts";
  * scheduling.booking — the **bookable slot grid**: the projection behind the date rail and the slot
  * picker on a session listing's Book modal, and behind the discovery-call handshake.
  *
- * It is the read side of `scheduling.availability_rules` (`kind = 'call_window'`) filtered through
+ * It is the read side of `scheduling.availability_rules` (working hours, Decision #408) filtered through
  * `scheduling.fn_slot_is_free()`, flattened for a picker rather than for a calendar grid: the engine
  * in `@projective/ui/calendar` draws a continuous time axis, while a booker is choosing from a short
  * enumerated list, and forcing one into the other's shape would mean the picker had to re-derive
@@ -109,7 +109,7 @@ export type SlotPurpose = z.infer<typeof SlotPurpose>;
  * The bands exist for the CUSTOM start time: the enumerated slots are the provider's offerable
  * cadence, but a buyer may ask for a start the cadence does not land on, and the picker needs the
  * span it must fall inside to say so BEFORE the request is sent. They disclose nothing the public
- * schedule does not already show — a call window's shape is public (§Part 1.4); who holds which
+ * schedule does not already show — the working hours' shape is public (§Part 1.4); who holds which
  * minute of it is not, and that stays on the slots.
  */
 export const OpenBandSchema = z.object({

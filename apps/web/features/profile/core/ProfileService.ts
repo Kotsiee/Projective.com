@@ -10,7 +10,7 @@ import type {
 	ShowcaseSlot,
 } from "@projective/types/profile";
 import type { ImagePlaceholder } from "@projective/types/files";
-import type { OwnerAvailability } from "@projective/types/scheduling";
+import type { OwnerAvailability, SaveOwnerAvailability } from "@projective/types/scheduling";
 import type { ProfileResult } from "../types/results.ts";
 import type { FollowDirection, ProfileConnections } from "@projective/types/profile";
 
@@ -69,10 +69,10 @@ export const ProfileService = {
 		);
 	},
 
-	/** Save the owner's schedule + call settings. */
+	/** Save the owner's time zone, publishing and call settings; the weekly hours are kept. */
 	saveAvailability(
 		handle: string,
-		value: OwnerAvailability,
+		value: SaveOwnerAvailability,
 	): Promise<ProfileResult<{ availability: OwnerAvailability; takesCalls: boolean }>> {
 		return sendProfile<{ availability: OwnerAvailability; takesCalls: boolean }>(
 			`${base(handle)}/availability`,

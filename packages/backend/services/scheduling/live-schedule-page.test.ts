@@ -33,16 +33,30 @@ function stubClient(answers: Answers): SupabaseClient {
 			: { data: value ?? null, error: null };
 
 	const query = (table: string) => {
-		const result = resultFor(table, answers.tables[table]);
+		const filters: Array<[string, unknown]> = [];
 		const chain: Record<string, unknown> = {};
-		for (const method of ["select", "eq", "neq", "lt", "gt", "in", "order"]) {
+		for (const method of ["select", "neq", "lt", "gt", "in", "order"]) {
 			chain[method] = () => chain;
 		}
-		chain.maybeSingle = () => Promise.resolve(result);
+		// An equality filter narrows a list answer, as PostgREST would; a single row passes through.
+		chain.eq = (column: string, value: unknown) => {
+			filters.push([column, value]);
+			return chain;
+		};
+		const settle = () => {
+			const result = resultFor(table, answers.tables[table]);
+			if (!Array.isArray(result.data)) return result;
+			const rows = result.data as Array<Record<string, unknown>>;
+			return {
+				...result,
+				data: rows.filter((row) => filters.every(([c, v]) => !(c in row) || row[c] === v)),
+			};
+		};
+		chain.maybeSingle = () => Promise.resolve(settle());
 		chain.then = (
 			resolve: (value: unknown) => unknown,
 			reject: (reason: unknown) => unknown,
-		) => Promise.resolve(result).then(resolve, reject);
+		) => Promise.resolve(settle()).then(resolve, reject);
 		return chain;
 	};
 
@@ -73,8 +87,9 @@ function publishedSchedule(overrides: Partial<Answers> = {}): Answers {
 		tables: {
 			schedules: { id: "sched-1", timezone: "Europe/Dublin", is_published: true },
 			availability_rules: [
-				{ weekday: 1, start_minute: 540, end_minute: 1020, kind: "working_hours" },
-				{ weekday: 1, start_minute: 600, end_minute: 720, kind: "call_window" },
+				{ weekday: 1, start_minute: 540, end_minute: 720, kind: "working_hours", is_active: true },
+				{ weekday: 1, start_minute: 720, end_minute: 1020, kind: "working_hours", is_active: true },
+				{ weekday: 1, start_minute: 600, end_minute: 720, kind: "call_window", is_active: true },
 			],
 			call_settings: null,
 			call_platforms: [],
@@ -146,9 +161,11 @@ Deno.test("public schedule — the label mask lives in the database, and a visit
 	assert(i >= 0 && !/\banon\b/.test(policy), "blackout_dates is readable by a visitor again");
 });
 
-Deno.test("public schedule — working hours and call windows stay two different claims", async () => {
+Deno.test("public schedule — one layer: working hours alone, a day split by price drawn whole", async () => {
 	const page = await readSchedulePage(OWNER, META, WINDOW, stubClient(publishedSchedule()));
-	assertEquals(page!.availability.rules.map((r) => r.kind), ["working_hours", "call_window"]);
+	assertEquals(page!.availability.rules, [
+		{ weekday: 1, startMinute: 540, endMinute: 1020, kind: "working_hours" },
+	]);
 	assertStrictEquals(page!.availability.timezone, "Europe/Dublin");
 	assertStrictEquals(page!.timezone, "Europe/Dublin");
 });

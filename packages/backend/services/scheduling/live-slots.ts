@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "supabaseClient";
-import type { IsoDate } from "@projective/types/scheduling";
+import { type IsoDate, joinTouchingBands } from "@projective/types/scheduling";
 import { getAnonClient, getServiceClient } from "../../core/supabase.ts";
 import {
 	type CompiledAvailability,
@@ -36,8 +36,11 @@ export interface ScheduleOwner {
 	id: string;
 }
 
-/** Which bands a booking lands in: a discovery call in the call windows, paid work in working hours. */
-export type BandKind = "call_window" | "working_hours";
+/**
+ * Which bands a booking lands in: working hours, for a session and a discovery call alike — availability
+ * is one layer (Decision #408).
+ */
+export type BandKind = "working_hours";
 
 /** The reason a grid is closed because the provider has published nothing to book. */
 export const UNPUBLISHED_REASON = "This provider has not published their availability yet.";
@@ -191,11 +194,13 @@ export async function readGridSource(
 		return {
 			timezone: row.timezone,
 			compiled,
-			bands: ((bands.data ?? []) as BandRow[]).map((b): GridBand => ({
+			// Touching bands are one span to the gate (fn_band_covers): the mirror splits a day where its
+			// price changes (Decision #408), and a booking may run across the change.
+			bands: joinTouchingBands(((bands.data ?? []) as BandRow[]).map((b): GridBand => ({
 				weekday: b.weekday,
 				startMinute: b.start_minute,
 				endMinute: b.end_minute,
-			})),
+			}))),
 			blackouts: ((blackouts.data ?? []) as SpanRow[]).map(spanOf),
 			busy: ((busy.data ?? []) as SpanRow[]).map(spanOf),
 			rules,

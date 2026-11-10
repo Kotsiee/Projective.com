@@ -254,26 +254,26 @@ meeting link the host would click. A request now goes through `scheduling.reques
 (the schedule, the flavour, the time, an agenda, a platform from the host's list) and derives the
 rest from the schedule and its settings.
 
-Everything about the SLOT — call windows, minimum notice, booking horizon, buffers, weekly caps,
-per-requester cooldowns, whether calls are offered at all — is still enforced by the **BEFORE
-INSERT** trigger `scheduling.fn_enforce_call_request`, which fires inside the function because the
-insert runs with the caller's `auth.uid()`. A `WITH CHECK` expression cannot express that much
-logic, and a trigger cannot be skipped by the function that performs the insert — so the request
-door and any future client path are held to the same gate. The same applies to the legal-transition
-matrix on UPDATE (`fn_enforce_call_transition`).
+Everything about the SLOT — working hours (one layer, Decision #408), minimum notice, booking
+horizon, buffers, weekly caps, per-requester cooldowns, whether calls are offered at all — is still
+enforced by the **BEFORE INSERT** trigger `scheduling.fn_enforce_call_request`, which fires inside
+the function because the insert runs with the caller's `auth.uid()`. A `WITH CHECK` expression
+cannot express that much logic, and a trigger cannot be skipped by the function that performs the
+insert — so the request door and any future client path are held to the same gate. The same applies
+to the legal-transition matrix on UPDATE (`fn_enforce_call_transition`).
 
 **There is no client UPDATE path either** (2026-09-28). The `Update own discovery calls` policy
 checked only that the caller was a party, on both `USING` and `WITH CHECK`, and the transition
 trigger returns early when the status is unchanged — so either party could rewrite any column of a
 call without moving its status, and the matrix never asked WHICH party was moving it. Probed as the
 requester: a paid fee cut from 7500 to 1; a paid call turned courtesy, past the courtesy caps; the
-host's `meeting_url` replaced with a phishing link (then logged as `link_generated` in the requester's
-name); times inside the notice window or outside every call window; a requester confirming their own
-proposed call; a false `no_show` against the host; `event_id` pointed at an unrelated event, which
-the personal agenda then drops as "mirrored" for both parties; and `host_schedule_id` re-pointed at
-an unrelated provider's schedule, which painted a busy span onto that provider's free/busy and
-counted toward their weekly courtesy cap. The policy was dropped, and the table grant is now `SELECT` only. Nothing in the app
-wrote through it.
+host's `meeting_url` replaced with a phishing link (then logged as `link_generated` in the
+requester's name); times inside the notice window or outside every call window (since #408, the
+working hours); a requester confirming their own proposed call; a false `no_show` against the host;
+`event_id` pointed at an unrelated event, which the personal agenda then drops as "mirrored" for
+both parties; and `host_schedule_id` re-pointed at an unrelated provider's schedule, which painted a
+busy span onto that provider's free/busy and counted toward their weekly courtesy cap. The policy
+was dropped, and the table grant is now `SELECT` only. Nothing in the app wrote through it.
 
 > ⚠️ **Still open: no client door for the rest of the lifecycle.** A client can only CREATE a call
 > (`request_discovery_call`, `proposed` or — under `auto_confirm` — `confirmed`). Confirming,

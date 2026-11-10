@@ -3,7 +3,8 @@ import { Icon } from "@projective/ui/icons";
 
 /**
  * OwnerNav — the owner's management sub-nav, above their own profile: **Preview** (the public page,
- * exactly as a visitor sees it) · **Edit profile & settings** · **Availability**.
+ * as a visitor sees it, with an edit link on each block, Decision #408) · **Edit profile & settings** ·
+ * **Availability**.
  *
  * Three real anchors with `aria-current="page"` on the one the reader is on — a view held in a
  * signal has no address, cannot be linked or reloaded, and could not be guarded on the server.
@@ -27,7 +28,8 @@ export interface OwnerNavProps {
 	note?: string;
 }
 
-const PREVIEW_NOTE = "This is how your profile looks to visitors.";
+const PREVIEW_NOTE =
+	"This is how your profile looks to visitors, who never see the edit buttons or empty blocks.";
 
 const TABS: ReadonlyArray<{ id: OwnerNavTab; label: string; icon: "eye" | "edit" | "calendar"; path: string }> = [
 	{ id: "preview", label: "Preview profile", icon: "eye", path: "" },

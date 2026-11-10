@@ -2,20 +2,19 @@ import { assertEquals } from "@std/assert";
 import type { AvailabilityRule } from "@projective/types/scheduling";
 import { availabilityAt, hoursSummary, localTimeLabel, minuteLabel, wallClockAt } from "./hours.ts";
 
-const band = (
-	weekday: number,
-	startMinute: number,
-	endMinute: number,
-	kind: AvailabilityRule["kind"] = "working_hours",
-): AvailabilityRule => ({ weekday, startMinute, endMinute, kind });
+const band = (weekday: number, startMinute: number, endMinute: number): AvailabilityRule => ({
+	weekday,
+	startMinute,
+	endMinute,
+	kind: "working_hours",
+});
 
-/** Mon–Fri 9:00–12:30 + 13:30–17:00, Sat 10:00–13:00, plus a call window that must be ignored. */
+/** Mon–Fri 9:00–12:30 + 13:30–17:00, Sat 10:00–13:00. */
 const WEEK: AvailabilityRule[] = [
 	...[1, 2, 3, 4, 5].flatMap((
 		d,
 	) => [band(d, 9 * 60, 12 * 60 + 30), band(d, 13 * 60 + 30, 17 * 60)]),
 	band(6, 10 * 60, 13 * 60),
-	band(2, 10 * 60, 12 * 60, "call_window"),
 ];
 
 Deno.test("minuteLabel prints a fixed-locale 12-hour clock", () => {
@@ -25,7 +24,7 @@ Deno.test("minuteLabel prints a fixed-locale 12-hour clock", () => {
 	assertEquals(minuteLabel(1440), "12:00 AM");
 });
 
-Deno.test("hoursSummary collapses a standard week to two lines and ignores call windows", () => {
+Deno.test("hoursSummary collapses a standard week to two lines", () => {
 	assertEquals(hoursSummary(WEEK), [
 		{ days: "Mon–Fri", times: "9:00 AM – 5:00 PM" },
 		{ days: "Sat", times: "10:00 AM – 1:00 PM" },
@@ -37,7 +36,9 @@ Deno.test("hoursSummary names a non-contiguous run day by day and yields nothing
 		{ days: "Mon, Wed, Fri", times: "9:00 AM – 5:00 PM" },
 	]);
 	assertEquals(hoursSummary([]), []);
-	assertEquals(hoursSummary([band(2, 600, 720, "call_window")]), []);
+	assertEquals(hoursSummary([{ weekday: 2, startMinute: 600, endMinute: 720 }]), [
+		{ days: "Tue", times: "10:00 AM – 12:00 PM" },
+	]);
 });
 
 Deno.test("wallClockAt reads the seller's zone, not the server's", () => {
@@ -78,11 +79,4 @@ Deno.test("availabilityAt with no working bands is away with no next edge", () =
 		available: false,
 		nextLabel: null,
 	});
-	assertEquals(
-		availabilityAt(
-			{ timezone: "UTC", rules: [band(2, 600, 720, "call_window")] },
-			Date.UTC(2026, 6, 14),
-		),
-		{ available: false, nextLabel: null },
-	);
 });

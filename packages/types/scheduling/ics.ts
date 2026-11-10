@@ -10,10 +10,9 @@ import {
 	isoDateOf,
 	zonedSpan,
 } from "./civil.ts";
-import { layerBandsFor, occursOn, type PresetLike, unionBands } from "./evaluate.ts";
+import { dayBandsFor, occursOn, type PresetLike, unionBands } from "./evaluate.ts";
 import { expandIcsSeries } from "./ics-recurrence.ts";
 import { type Band, compileRecurrence } from "./recurrence.ts";
-import type { AvailabilityKind } from "./rows.ts";
 import { expandRRule, serialiseRRule } from "./rrule.ts";
 import type { CalendarEvent, CalendarEventKind } from "./scheduling.ts";
 import {
@@ -877,8 +876,6 @@ export function icsEventsToCalendarEvents(
 // #region Availability export
 /** How {@link toVAvailability} renders a preset. */
 export interface VAvailabilityOptions {
-	/** The layer exported. Defaults to `working_hours`; `call_window` exports the bookable windows. */
-	layer?: AvailabilityKind;
 	/** `DTSTAMP`, ISO. Defaults to midnight UTC of `range.from`, so equal inputs give equal bytes. */
 	stampIso?: string;
 	/** The component `UID`. Defaults to `availability`. */
@@ -904,11 +901,12 @@ function sameBands(a: readonly Band[], b: readonly Band[]): boolean {
 }
 
 /**
- * One preset layer as an RFC 7953 `VAVAILABILITY` calendar (plan §5.3 export), bounded to `range`.
+ * A preset as an RFC 7953 `VAVAILABILITY` calendar (plan §5.3 export), bounded to `range`: its
+ * working hours, which are also the hours a call is booked in (Decision #408).
  *
  * Each `add` rule's band is one `AVAILABLE` carrying the rule's RRULE (`UNTIL` as the UTC instant of
  * its last start, as RFC 5545 requires beside a zoned `DTSTART`). Every date inside `range` where
- * `replace`, `subtract` or the call clip changes the naive union of those bands is then emitted
+ * `replace` or `subtract` changes the naive union of those bands is then emitted
  * EVALUATED: an `EXDATE` on each recurring instance of that date plus one plain `AVAILABLE` per
  * final band, so a consumer that knows nothing of precedence still sees the evaluator's result.
  * Times carry the preset's IANA `TZID`; no `VTIMEZONE` is embedded.
@@ -918,16 +916,15 @@ export function toVAvailability(
 	range: DateRange,
 	options: VAvailabilityOptions = {},
 ): string {
-	const layer = options.layer ?? "working_hours";
 	const tz = preset.timezone;
 	const stamp = icsUtc(
 		options.stampIso ? Date.parse(options.stampIso) : Date.parse(`${range.from}T00:00:00Z`),
 	);
-	const adds = preset.rules.filter((r) => r.active && r.layer === layer && r.effect === "add");
+	const adds = preset.rules.filter((r) => r.active && r.effect === "add");
 
 	const changed = eachDate(range.from, range.to).filter((date) => {
 		const naive = unionBands(...adds.filter((r) => occursOn(r, date)).map((r) => r.bands));
-		return !sameBands(naive, layerBandsFor(preset, date, layer));
+		return !sameBands(naive, dayBandsFor(preset, date));
 	});
 
 	const lines = [
@@ -973,7 +970,7 @@ export function toVAvailability(
 	}
 
 	for (const date of changed) {
-		layerBandsFor(preset, date, layer).forEach((band, i) => {
+		dayBandsFor(preset, date).forEach((band, i) => {
 			lines.push(
 				"BEGIN:AVAILABLE",
 				`UID:${date}-${i}-evaluated`,

@@ -584,7 +584,7 @@ export class BookingBackendService {
 				sessionCount: 1,
 				durationMinutes: callDurationFor(offer, query.callType ?? "courtesy"),
 				seatsPerSession: null,
-			}, { owner, kind: "call_window" });
+			}, { owner, kind: "working_hours" });
 		}
 
 		const listing = await listingOf<{ grid: SlotGrid }>(query.subjectId);
@@ -1115,7 +1115,7 @@ async function bookDiscoveryCall(
 		durationMinutes: callDurationFor(call, input.callType),
 		seatsPerSession: null,
 	};
-	const target = { owner, kind: "call_window" as const };
+	const target = { owner, kind: "working_hours" as const };
 
 	let startsAt: number;
 	let endsAt: number;

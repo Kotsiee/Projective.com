@@ -43,7 +43,7 @@ import {
 import { resolveSkills } from "../explore/skills.ts";
 import { mockAvatar, mockCover, mockCoverPlaceholder, mockShowreel } from "../../mocks/assets.ts";
 import { hash as scheduleHash } from "../scheduling/derive.ts";
-import { buildRules, workingHoursOf } from "../scheduling/hours.ts";
+import { buildRules } from "../scheduling/hours.ts";
 import { callOfferKindFor, offersCourtesyCall } from "../booking/call-offer.ts";
 import { hireIntakeFor } from "../booking/intake-fixtures.ts";
 
@@ -135,7 +135,7 @@ function responseTimeLabel(minutes: number): string {
  */
 function hoursFor(kind: ProfileKind, handle: string, timezone: string): ProfileView["hours"] {
 	if (kind !== "freelancer" && kind !== "team") return null;
-	return { timezone, rules: workingHoursOf(buildRules(scheduleHash(handle))) };
+	return { timezone, rules: buildRules(scheduleHash(handle)) };
 }
 
 const BANNERS = [

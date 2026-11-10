@@ -7,9 +7,9 @@ import {
 	addDays,
 	type AvailabilityPreset,
 	type Band,
+	dayBandsFor,
 	evaluate,
 	type IsoDate,
-	layerBandsFor,
 	type PresetLike,
 	type SavePresetInput,
 	SavePresetInputSchema,
@@ -216,7 +216,7 @@ export function stripDays(
 	const sunday = Date.UTC(2023, 0, 1);
 	return Array.from({ length: days }, (_, i) => {
 		const date = addDays(today, i);
-		const bands = layerBandsFor(preset, date, "working_hours");
+		const bands = dayBandsFor(preset, date);
 		return {
 			date,
 			weekday: weekday.format(new Date(sunday + weekdayOf(date) * 86_400_000)),

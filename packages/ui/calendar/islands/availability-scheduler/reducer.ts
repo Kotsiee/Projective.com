@@ -10,7 +10,6 @@ import {
 import { addMonths, clamp, DAY_MINUTES, monthOf, snapTo, startOfWeek, weekdayOf } from "./civil.ts";
 import type {
 	Band,
-	Layer,
 	Preset,
 	RuleDraft,
 	SchedulerTemplate,
@@ -49,7 +48,6 @@ export interface SchedulerState {
 	selection: Selection | null;
 	/** The rule open in the RuleEditor. */
 	editing: string | null;
-	layer: Layer;
 	snap: Snap;
 	view: SchedulerView;
 	/** `YYYY-MM`. */
@@ -78,7 +76,6 @@ export function initialState(draft: Preset, options: InitialStateOptions): Sched
 		cursor: { day: weekdayOf(options.today), minute: 9 * 60 },
 		selection: null,
 		editing: null,
-		layer: "working_hours",
 		snap: 15,
 		view: "week",
 		focusMonth: monthOf(options.today),
@@ -120,7 +117,6 @@ export type SchedulerAction =
 	| { type: "upsertRule"; rule: RuleDraft }
 	| { type: "deleteRule"; ruleId: string; name?: string }
 	| { type: "setDetails"; name?: string; isDefault?: boolean }
-	| { type: "setLayer"; layer: Layer }
 	| { type: "undo" }
 	| { type: "redo" }
 	| { type: "loadTemplate"; template: SchedulerTemplate }
@@ -164,25 +160,21 @@ export interface CanvasBand {
 	band: Band;
 }
 
-/** Every canvas band on `day`, working hours first. */
+/** Every canvas band on `day`, in rule order. */
 export function bandsOnDay(draft: Preset, day: number): CanvasBand[] {
 	const out: CanvasBand[] = [];
-	for (const layer of ["working_hours", "call_window"] as const) {
-		for (const rule of draft.rules) {
-			if (rule.layer !== layer || !isCanvasRule(rule)) continue;
-			if (rule.pattern.type !== "weekly" || !rule.pattern.days.includes(day)) continue;
-			rule.bands.forEach((band, bandIndex) => out.push({ rule, bandIndex, band }));
-		}
+	for (const rule of draft.rules) {
+		if (!isCanvasRule(rule)) continue;
+		if (rule.pattern.type !== "weekly" || !rule.pattern.days.includes(day)) continue;
+		rule.bands.forEach((band, bandIndex) => out.push({ rule, bandIndex, band }));
 	}
 	return out;
 }
 
-/** The canvas band under the cursor, preferring the active layer. */
+/** The canvas band under the cursor: the first rule's, where rules overlap. */
 export function bandAt(state: SchedulerState, day: number, minute: number): CanvasBand | null {
-	const hits = bandsOnDay(state.draft, day).filter((c) =>
-		c.band.start <= minute && minute < c.band.end
-	);
-	return hits.find((c) => c.rule.layer === state.layer) ?? hits[0] ?? null;
+	return bandsOnDay(state.draft, day).find((c) => c.band.start <= minute && minute < c.band.end) ??
+		null;
 }
 // #endregion
 
@@ -197,16 +189,16 @@ function mintId(state: SchedulerState, rules: readonly RuleDraft[]): [string, nu
 	return [id, seq];
 }
 
+/** A new weekly rule; `like` lends it a colour and a price (a band duplicated off its rule). */
 function weeklyRule(
 	id: string,
-	layer: Layer,
 	days: number[],
 	bands: Band[],
 	startsOn: string,
+	like?: Pick<RuleDraft, "fee" | "colorToken">,
 ): RuleDraft {
 	return {
 		id,
-		layer,
 		effect: "add",
 		pattern: { type: "weekly", days: [...days].sort((a, b) => a - b), interval: 1 },
 		condition: { unlessWeekdays: [] },
@@ -216,6 +208,8 @@ function weeklyRule(
 		priority: 50,
 		label: "",
 		active: true,
+		fee: like?.fee ?? null,
+		colorToken: like?.colorToken ?? null,
 	};
 }
 
@@ -252,12 +246,12 @@ function placeBand(
 	state: SchedulerState,
 	draft: Preset,
 	seq: number,
-	layer: Layer,
 	day: Weekday,
 	band: Band,
+	like?: Pick<RuleDraft, "fee" | "colorToken">,
 ): Placed | null {
 	for (const rule of draft.rules) {
-		if (rule.layer !== layer || !isCanvasRule(rule)) continue;
+		if (!isCanvasRule(rule)) continue;
 		if (rule.pattern.type !== "weekly" || !rule.pattern.days.includes(day)) continue;
 		const bands = normaliseBands([...rule.bands, band]);
 		if (bands.length > MAX_BANDS) continue;
@@ -270,7 +264,7 @@ function placeBand(
 	}
 	if (draft.rules.length >= MAX_RULES) return null;
 	const [id, next] = mintId({ ...state, seq }, draft.rules);
-	const rule = weeklyRule(id, layer, [day], [band], startOfWeek(state.today, state.weekStartsOn));
+	const rule = weeklyRule(id, [day], [band], startOfWeek(state.today, state.weekStartsOn), like);
 	return {
 		draft: { ...draft, rules: [...draft.rules, rule] },
 		ruleId: id,
@@ -305,25 +299,24 @@ function createBand(
 	let end = snapTo(rawEnd, state.snap);
 	if (end <= start) end += DAY_MINUTES;
 	end = clamp(end, start + state.snap, start + DAY_MINUTES);
-	const layer = state.layer;
 
-	const first = placeBand(state, state.draft, state.seq, layer, day, {
+	const first = placeBand(state, state.draft, state.seq, day, {
 		start,
 		end: Math.min(end, DAY_MINUTES),
 	});
 	if (!first) return say(state, RULE_CAP);
 	let { draft, seq } = first;
-	let text = announceCreated(day, { start, end: Math.min(end, DAY_MINUTES) }, layer, state.locale);
+	let text = announceCreated(day, { start, end: Math.min(end, DAY_MINUTES) }, state.locale);
 
 	if (end > DAY_MINUTES) {
 		const nextDay = ((day + 1) % 7) as Weekday;
-		const second = placeBand(state, draft, seq, layer, nextDay, {
+		const second = placeBand(state, draft, seq, nextDay, {
 			start: 0,
 			end: end - DAY_MINUTES,
 		});
 		if (!second) return say(state, RULE_CAP);
 		({ draft, seq } = second);
-		text = announceOvernight(day, start, nextDay, end - DAY_MINUTES, layer, state.locale);
+		text = announceOvernight(day, start, nextDay, end - DAY_MINUTES, state.locale);
 	}
 
 	const owner = draft.rules.find((r) => r.id === first.ruleId);
@@ -423,7 +416,7 @@ function duplicateBand(
 	const rule = findRule(state, a.ruleId);
 	const band = rule?.bands[a.bandIndex];
 	if (!rule || !band) return state;
-	const placed = placeBand(state, state.draft, state.seq, rule.layer, a.toDay, band);
+	const placed = placeBand(state, state.draft, state.seq, a.toDay, band, rule);
 	if (!placed) return say(state, RULE_CAP);
 	const next = withDraft(state, placed.draft);
 	return say({
@@ -453,7 +446,7 @@ function deleteBand(
 			selection: null,
 			editing: removeRule && state.editing === rule.id ? null : state.editing,
 		},
-		announceDeleted(a.day, band, rule.layer, removeRule, state.locale),
+		announceDeleted(a.day, band, removeRule, state.locale),
 	);
 }
 // #endregion
@@ -518,7 +511,6 @@ export function reduce(state: SchedulerState, action: SchedulerAction): Schedule
 			const end = action.minute === undefined ? 17 * 60 : Math.min(DAY_MINUTES, start + 60);
 			const rule = weeklyRule(
 				id,
-				state.layer,
 				[action.day ?? state.cursor.day],
 				[{ start, end }],
 				startOfWeek(state.today, state.weekStartsOn),
@@ -560,12 +552,6 @@ export function reduce(state: SchedulerState, action: SchedulerAction): Schedule
 			if (name === state.draft.name && isDefault === state.draft.isDefault) return state;
 			return withDraft(state, { ...state.draft, name, isDefault });
 		}
-		case "setLayer":
-			if (state.layer === action.layer) return state;
-			return say(
-				{ ...state, layer: action.layer },
-				action.layer === "working_hours" ? "Editing working hours." : "Editing call windows.",
-			);
 		case "undo":
 		case "redo":
 			return travel(state, action.type);

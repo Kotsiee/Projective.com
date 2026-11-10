@@ -150,7 +150,7 @@ BEGIN
         min_notice_minutes
     ) VALUES (v_schedule, true, true, 30, 0, 0);
     INSERT INTO scheduling.availability_rules (schedule_id, kind, weekday, start_minute, end_minute)
-    SELECT v_schedule, 'call_window', d, 0, 1440 FROM generate_series(0, 6) d;
+    SELECT v_schedule, 'working_hours', d, 0, 1440 FROM generate_series(0, 6) d;
     RETURN v_schedule;
 END $$;
 

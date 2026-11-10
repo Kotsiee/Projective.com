@@ -3,7 +3,7 @@ import { useContext } from "preact/hooks";
 import { type ReadonlySignal, type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import type { KeyCommand } from "./keymap.ts";
 import type { SchedulerStore } from "./store.ts";
-import type { SchedulerBlackout } from "./types.ts";
+import type { SchedulerBlackout, SchedulerPricing } from "./types.ts";
 
 // #region Context
 /** What every AvailabilityScheduler part reads from its Root. */
@@ -16,6 +16,8 @@ export interface SchedulerContextValue {
 	blackouts: readonly SchedulerBlackout[];
 	/** The viewer owns the schedule, so private blackout labels show. */
 	viewerOwns: boolean;
+	/** The rule editor's price field, or `null` while paid calls are off and it is not drawn. */
+	pricing: SchedulerPricing | null;
 	/** Prefix for element ids, unique per Root. */
 	idBase: string;
 	/** Run a keyboard command (an action, or opening the shortcut sheet). */

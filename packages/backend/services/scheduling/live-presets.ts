@@ -13,7 +13,7 @@ import {
 } from "@projective/types/scheduling";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { availabilityPayload } from "./live-owner-availability.ts";
+import { availabilityPayload, callFee } from "./live-owner-availability.ts";
 import { compilePreset } from "./live-occurrences.ts";
 import {
 	BAND_COLUMNS,
@@ -174,16 +174,29 @@ export async function presetUsage(
 	return usage;
 }
 
-/** The schedule's zone, publishing and the blackouts that have not ended yet, soonest first. */
+/**
+ * The schedule's zone, publishing, the blackouts that have not ended yet (soonest first), and the paid
+ * call fee a rule without a price of its own inherits.
+ */
 export async function readScheduleSettings(
 	db: SupabaseClient,
 	schedule: ScheduleRow,
 	now: number,
 ): Promise<ScheduleSettings> {
-	const { data, error } = await db.schema("scheduling").from("blackout_dates")
-		.select("id, starts_at, ends_at, label, label_is_public").eq("schedule_id", schedule.id)
-		.gt("ends_at", new Date(now).toISOString()).order("starts_at");
+	const [{ data, error }, call] = await Promise.all([
+		db.schema("scheduling").from("blackout_dates")
+			.select("id, starts_at, ends_at, label, label_is_public").eq("schedule_id", schedule.id)
+			.gt("ends_at", new Date(now).toISOString()).order("starts_at"),
+		db.schema("scheduling").from("call_settings")
+			.select("fee_amount_minor, fee_currency").eq("schedule_id", schedule.id).maybeSingle(),
+	]);
 	if (error) throw new Error(`blackout_dates read failed: ${error.message}`);
+	if (call.error) throw new Error(`call_settings read failed: ${call.error.message}`);
+	const fee = call.data
+		? callFee(
+			call.data as { fee_amount_minor: number | string | null; fee_currency: string | null },
+		)
+		: null;
 	return {
 		timezone: schedule.timezone,
 		published: schedule.is_published,
@@ -196,6 +209,9 @@ export async function readScheduleSettings(
 			label: b.label,
 			labelIsPublic: b.label_is_public === true,
 		})),
+		callFee: fee?.feeAmountMinor && fee.feeCurrency
+			? { amountMinor: fee.feeAmountMinor, currency: fee.feeCurrency }
+			: null,
 	};
 }
 

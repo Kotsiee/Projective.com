@@ -2,7 +2,8 @@ import { z } from "zod";
 import { slugPattern } from "../slugs/slug.ts";
 import { civilParts, daysInMonth, IsoDate, weekdayOf } from "./civil.ts";
 import { parseRRule, type RRuleParts, serialiseRRule } from "./rrule.ts";
-import { AvailabilityKind, ianaTimezone, PresetScope, RuleEffect } from "./rows.ts";
+import { ianaTimezone, PresetScope, RuleEffect } from "./rows.ts";
+import { SwatchAccentSchema } from "./swatches.ts";
 
 /**
  * scheduling.recurrence — the AUTHORING shape of an availability rule (plan §5.2) and its exact,
@@ -132,11 +133,20 @@ export class RecurrenceError extends Error {
 // #endregion
 
 // #region Draft
-/** One authored rule. */
+/** A rule's price for a paid call: positive minor units in an upper-case ISO currency (Decision #408). */
+export const RuleFeeSchema = z.object({
+	amountMinor: z.number().int().min(1).max(999_999_999_999_999),
+	currency: z.string().regex(/^[A-Z]{3}$/, "Expected an ISO currency such as GBP."),
+});
+export type RuleFee = z.infer<typeof RuleFeeSchema>;
+
+/**
+ * One authored rule. Availability is one layer (Decision #408): every rule is working hours, and a
+ * discovery call is booked inside them, so a rule carries no layer.
+ */
 export const AvailabilityRuleDraftSchema = z.object({
 	/** Client id until saved; uuid after. */
 	id: z.string().min(1).max(40),
-	layer: AvailabilityKind,
 	effect: RuleEffect,
 	pattern: RulePatternSchema,
 	condition: RuleConditionSchema.default({ unlessWeekdays: [] }),
@@ -149,6 +159,13 @@ export const AvailabilityRuleDraftSchema = z.object({
 	priority: z.number().int().min(0).max(99).default(50),
 	label: z.string().max(80).default(""),
 	active: z.boolean().default(true),
+	/**
+	 * A paid call's price inside this rule's bands, overriding the call settings' fee; `null` inherits
+	 * it. Where two rules' bands overlap, the higher price applies. A rule that removes hours has none.
+	 */
+	fee: RuleFeeSchema.nullable().default(null),
+	/** The swatch the rule is drawn in, as its stored token name (`./swatches.ts`); `null` is the default. */
+	colorToken: SwatchAccentSchema.nullable().default(null),
 }).superRefine((draft, ctx) => {
 	const refusal = recurrenceRefusal(draft);
 	if (refusal) {
@@ -156,6 +173,13 @@ export const AvailabilityRuleDraftSchema = z.object({
 			code: "custom",
 			message: RECURRENCE_REFUSAL_COPY[refusal],
 			path: ["condition"],
+		});
+	}
+	if (draft.effect === "subtract" && draft.fee !== null) {
+		ctx.addIssue({
+			code: "custom",
+			message: "A rule that removes hours has no price.",
+			path: ["fee"],
 		});
 	}
 });

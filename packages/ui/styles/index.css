@@ -366,6 +366,30 @@
 	--file-protools: #702a8c;
 	--on-file-protools: var(--file-ink-light);
 
+	--swatch-ink: #000000;
+	--swatch-blue: #3b82f6;
+	--on-swatch-blue: var(--swatch-ink);
+	--swatch-emerald: #22a06b;
+	--on-swatch-emerald: var(--swatch-ink);
+	--swatch-coral: #e5484d;
+	--on-swatch-coral: var(--swatch-ink);
+	--swatch-amber: #f5a524;
+	--on-swatch-amber: var(--swatch-ink);
+	--swatch-purple: #8e5cf0;
+	--on-swatch-purple: var(--swatch-ink);
+	--swatch-rose: #ec5aa5;
+	--on-swatch-rose: var(--swatch-ink);
+	--swatch-teal: #14b8a6;
+	--on-swatch-teal: var(--swatch-ink);
+	--swatch-orange: #f76b15;
+	--on-swatch-orange: var(--swatch-ink);
+	--swatch-cyan: #0ea5e9;
+	--on-swatch-cyan: var(--swatch-ink);
+	--swatch-bronze: #a8703f;
+	--on-swatch-bronze: var(--swatch-ink);
+	--swatch-slate: #7c8598;
+	--on-swatch-slate: var(--swatch-ink);
+
 	/* --- Container max-widths (§C.3) --- */
 	--container-sm: 40rem;
 	--container-md: 48rem;

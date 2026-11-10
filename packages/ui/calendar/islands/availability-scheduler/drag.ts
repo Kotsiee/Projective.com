@@ -1,6 +1,6 @@
 import { clamp, DAY_MINUTES, snapTo, weekColumns } from "./civil.ts";
 import type { SchedulerAction, Selection } from "./reducer.ts";
-import type { Band, Layer, Weekday } from "./types.ts";
+import type { Band, Weekday } from "./types.ts";
 
 // #region Types
 /** What a pointer drag on the week canvas does. */
@@ -16,7 +16,8 @@ export interface DragPoint {
 export interface DragSpec {
 	kind: DragKind;
 	origin: DragPoint;
-	layer: Layer;
+	/** The swatch the dragged band's rule is drawn in; `null` for a new band. */
+	colorToken: string | null;
 	sel?: Selection;
 	band?: Band;
 }
@@ -25,7 +26,7 @@ export interface DragSpec {
 export interface GhostPart {
 	day: Weekday;
 	band: Band;
-	layer: Layer;
+	colorToken: string | null;
 }
 
 /** What the drag would do if released now. */
@@ -62,13 +63,13 @@ function createOutcome(
 	const ghost: GhostPart[] = [{
 		day,
 		band: { start, end: Math.min(end, DAY_MINUTES) },
-		layer: spec.layer,
+		colorToken: spec.colorToken,
 	}];
 	if (end > DAY_MINUTES) {
 		ghost.push({
 			day: ((day + 1) % 7) as Weekday,
 			band: { start: 0, end: end - DAY_MINUTES },
-			layer: spec.layer,
+			colorToken: spec.colorToken,
 		});
 	}
 	return { ghost, action: { type: "createBand", day, start, end } };
@@ -86,7 +87,7 @@ export function dragOutcome(
 	weekStartsOn: number,
 ): DragOutcome {
 	if (spec.kind === "create") return createOutcome(spec, at, snap, weekStartsOn);
-	const { sel, band, layer } = spec;
+	const { sel, band, colorToken } = spec;
 	if (!sel || !band) return { ghost: [], action: null };
 	const length = band.end - band.start;
 
@@ -100,19 +101,19 @@ export function dragOutcome(
 			const minutes = start - band.start;
 			const unchanged = minutes === 0 && at.day === sel.day;
 			return {
-				ghost: [{ day: at.day, band: { start, end: start + length }, layer }],
+				ghost: [{ day: at.day, band: { start, end: start + length }, colorToken }],
 				action: unchanged ? null : { type: "moveBand", ...sel, toDay: at.day, minutes },
 			};
 		}
 		case "copy":
 			return at.day === sel.day ? { ghost: [], action: null } : {
-				ghost: [{ day: at.day, band, layer }],
+				ghost: [{ day: at.day, band, colorToken }],
 				action: { type: "duplicateBand", ...sel, toDay: at.day },
 			};
 		case "start": {
 			const start = clamp(snapTo(at.minute, snap), 0, band.end - snap);
 			return {
-				ghost: [{ day: sel.day, band: { start, end: band.end }, layer }],
+				ghost: [{ day: sel.day, band: { start, end: band.end }, colorToken }],
 				action: start === band.start
 					? null
 					: { type: "resizeBand", ...sel, edge: "start", minutes: start - band.start },
@@ -121,7 +122,7 @@ export function dragOutcome(
 		case "end": {
 			const end = clamp(snapTo(at.minute, snap), band.start + snap, DAY_MINUTES);
 			return {
-				ghost: [{ day: sel.day, band: { start: band.start, end }, layer }],
+				ghost: [{ day: sel.day, band: { start: band.start, end }, colorToken }],
 				action: end === band.end
 					? null
 					: { type: "resizeBand", ...sel, edge: "end", minutes: end - band.end },

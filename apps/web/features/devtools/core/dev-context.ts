@@ -490,9 +490,9 @@ export interface DevOverrides {
 	 */
 	clientPipeline: DevClientPipeline;
 	/**
-	 * A simulated availability conflict in the listing workspace (plan §10): a call window outside
-	 * working hours, or nothing bookable in the next 30 days. Drives the scheduler's `Issues` and the
-	 * publish readiness on the client; a save still meets the real gate.
+	 * A simulated availability conflict in the listing workspace (plan §10): nothing bookable in the
+	 * next 30 days. Drives the scheduler's `Issues` and the publish readiness on the client; a save
+	 * still meets the real gate.
 	 */
 	availabilityConflict: DevAvailabilityConflict;
 	/**
@@ -1061,7 +1061,6 @@ export const DEV_CLIENT_PIPELINES: ReadonlyArray<DevOption<DevClientPipeline>> =
 /** Availability conflicts (plan §10). `Real` lets the scheduler's own validation decide. */
 export const DEV_AVAILABILITY_CONFLICTS: ReadonlyArray<DevOption<DevAvailabilityConflict>> = [
 	{ value: "auto", label: "Real" },
-	{ value: "call_outside_work", label: "Call outside work" },
 	{ value: "empty_horizon", label: "Empty 30 days" },
 ];
 

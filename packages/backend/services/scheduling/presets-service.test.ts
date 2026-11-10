@@ -51,7 +51,6 @@ function rule(
 	over: Partial<AvailabilityRuleDraft> & Pick<AvailabilityRuleDraft, "id">,
 ): AvailabilityRuleDraft {
 	return {
-		layer: "working_hours",
 		effect: "add",
 		pattern: { type: "weekly", days: [1, 2, 3, 4, 5], interval: 1 },
 		condition: { unlessWeekdays: [] },
@@ -61,6 +60,8 @@ function rule(
 		priority: 50,
 		label: "",
 		active: true,
+		fee: null,
+		colorToken: null,
 		...over,
 	};
 }
@@ -109,18 +110,34 @@ Deno.test("savePreset: soft issues ride along; the save compiles and mirrors the
 	const result = await savePreset(
 		input([
 			rule({ id: "rule-work" }),
-			rule({ id: "rule-calls", layer: "call_window", bands: [{ start: 960, end: 1140 }] }),
+			rule({
+				id: "rule-evening",
+				bands: [{ start: 1080, end: 1140 }],
+				fee: { amountMinor: 6000, currency: "GBP" },
+			}),
+			rule({
+				id: "rule-a",
+				effect: "replace",
+				pattern: { type: "weekly", days: [3], interval: 1 },
+				bands: [{ start: 600, end: 660 }],
+			}),
+			rule({
+				id: "rule-b",
+				effect: "replace",
+				pattern: { type: "weekly", days: [3], interval: 1 },
+				bands: [{ start: 720, end: 780 }],
+			}),
 		]),
 		OWNER,
 		deps,
 	);
 	assert(result.ok, result.message);
 	assertEquals(result.data?.issues.map((i) => [i.kind, i.severity]), [[
-		"call_outside_work",
+		"replace_tie",
 		"warning",
 	]]);
 	assert((result.data?.compiled?.spans ?? 0) > 0);
-	assertEquals(result.data?.mirrored, { full: true });
+	assertEquals(result.data?.mirrored, { full: false });
 	assertEquals(result.data?.preset.isDefault, true);
 	assertEquals(calls.map((c) => c.name), [
 		"save_availability_preset",
@@ -129,12 +146,17 @@ Deno.test("savePreset: soft issues ride along; the save compiles and mirrors the
 	]);
 	const mirror = calls[2].args.p_payload as {
 		published: boolean;
-		rules: unknown[];
+		rules: Array<{ kind: string; fee_amount_minor: number | null; fee_currency: string | null }>;
 		call?: unknown;
 	};
 	assertEquals(mirror.published, true);
 	assertEquals("call" in mirror, false);
 	assertEquals(mirror.rules.length, 10);
+	assertEquals(mirror.rules.every((r) => r.kind === "working_hours"), true);
+	assertEquals(
+		mirror.rules.filter((r) => r.fee_amount_minor === 6000 && r.fee_currency === "GBP").length,
+		5,
+	);
 });
 
 Deno.test("savePreset: a zone other than the schedule's is a 422 on timezone", async () => {
@@ -169,7 +191,6 @@ Deno.test("compile: VIP Intensive across the spring-forward week lands on the ri
 	);
 	const day = (date: string, from: string, to: string) => [
 		`working_hours ${date}T${from}:00.000Z–${to}`,
-		`call_window ${date}T${from}:00.000Z–${to}`,
 	];
 	assertEquals(
 		spans.sort(),
@@ -188,7 +209,7 @@ Deno.test("compile: VIP Intensive across the spring-forward week lands on the ri
 			...day("2026-04-04", "09:00", "12:00"),
 		].sort(),
 	);
-	assertEquals(outcome, { spans: 18, compiledThrough: "2026-04-05" });
+	assertEquals(outcome, { spans: 9, compiledThrough: "2026-04-05" });
 });
 
 Deno.test("compile: an archived preset is not compiled", async () => {

@@ -134,7 +134,7 @@ function patternPhrase(pattern: RulePattern, locale: string): string {
 /** The sentence-shaped slice of a rule. */
 export type DescribableRule = Pick<
 	AvailabilityRuleDraft,
-	"layer" | "effect" | "pattern" | "condition" | "bands" | "startsOn" | "endsOn"
+	"effect" | "pattern" | "condition" | "bands" | "startsOn" | "endsOn"
 >;
 
 function bandsPhrase(bands: readonly Band[], locale: string): string {
@@ -146,7 +146,8 @@ function bandsPhrase(bands: readonly Band[], locale: string): string {
 
 /**
  * One rule as a sentence, segments joined with " · ": the pattern, its range and any weekday
- * exception; the times (with the effect); and the layer.
+ * exception; and the times (with the effect). Every rule is working hours (Decision #408), so the
+ * sentence names no layer.
  */
 export function describeRule(draft: DescribableRule, locale = "en-GB"): string {
 	let when = patternPhrase(draft.pattern, locale);
@@ -163,15 +164,14 @@ export function describeRule(draft: DescribableRule, locale = "en-GB"): string {
 		: times
 		? `not ${times}`
 		: "the whole day off";
-	const layer = draft.layer === "working_hours" ? "working hours" : "calls";
-	return [when, effect, layer].join(" · ");
+	return [when, effect].join(" · ");
 }
 // #endregion
 
 // #region Preset
 /** A preset as the rule list renders it. */
 export interface PresetDescription {
-	/** A one-line count, e.g. "3 working-hours rules · 1 call rule · Europe/London". */
+	/** A one-line count, e.g. "3 rules · Europe/London". */
 	summary: string;
 	/** Each active rule's sentence, in the preset's order. */
 	rules: { id: string; sentence: string }[];
@@ -184,14 +184,7 @@ export function describePreset(
 ): PresetDescription {
 	const active = preset.rules.filter((r) => r.active);
 	const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-	const working = active.filter((r) => r.layer === "working_hours").length;
-	const calls = active.length - working;
-	const parts = active.length
-		? [
-			count(working, "working-hours rule", "working-hours rules"),
-			count(calls, "call rule", "call rules"),
-		]
-		: ["No rules"];
+	const parts = active.length ? [count(active.length, "rule", "rules")] : ["No rules"];
 	return {
 		summary: [...parts, preset.timezone].join(" · "),
 		rules: active.map((r) => ({ id: r.id, sentence: describeRule(r, locale) })),

@@ -37,7 +37,9 @@
  *   availability RECURRENCE ENGINE (Decision #217 (d)): timezone-free civil dates, an RFC 5545 RRULE
  *   subset, the authored rule/preset shapes and the one pure evaluator that compiles a preset into
  *   absolute spans. {@link ./describe.ts} words a rule, {@link ./templates.ts} holds the starting
- *   presets and {@link ./presets.ts} the save / bind / occurrence payloads.
+ *   presets and {@link ./presets.ts} the save / bind / occurrence payloads. Availability is one
+ *   layer, working hours, inside which a call is booked (Decision #408).
+ * - {@link ./swatches.ts} — the twelve swatches a rule or an entry is drawn in, stored as token names.
  *
  * `coordination.ts` and `meeting.ts` are read+write PROJECTIONS over real tables, in
  * `00000022_tables_scheduling.sql`: `event_attendees`, `event_reschedules`, `reschedule_proposals`,
@@ -67,3 +69,4 @@ export * from "./evaluate.ts";
 export * from "./describe.ts";
 export * from "./templates.ts";
 export * from "./presets.ts";
+export * from "./swatches.ts";

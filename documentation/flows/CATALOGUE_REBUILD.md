@@ -534,6 +534,12 @@ Rules for all of them:
 
 ## 5. The Rule-Based Availability Scheduler
 
+> **Superseded in part by Decision #408 (2026-11-10).** Availability is one layer: every rule is
+> working hours and a discovery call is booked anywhere inside them, so goal 1's call layer, step 4
+> of §5.2's evaluation, the `layer` field of the rule draft and the `W` / `C` keys below are
+> retired. A rule now also carries a swatch colour and, once paid calls are live, a call price of
+> its own.
+
 ### 5.1 Goals, beyond typical calendar tools
 
 1. **Two layers in one view.** Working hours and call windows are distinct layers (#56). A call

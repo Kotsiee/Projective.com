@@ -16,8 +16,8 @@ import { working } from "@features/catalogue/core/availability-store.ts";
  * availability-page — the state the regions of `/calendar?view=availability` share (Decision #377).
  *
  * The page's parts live in four islands — the header band (period, undo, redo, Go to now), the body
- * (the grid), the panel (settings, services, rules, the rule editor) and the footer band (layer, zoom,
- * Save) — so the grid's position and the scheduler's store cannot live in any one of them. These
+ * (the grid), the panel (settings, services, rules, the rule editor) and the footer band (zoom, Save)
+ * — so the grid's position and the scheduler's store cannot live in any one of them. These
  * signals are written only by a reader's actions in the browser, never during a server render, where
  * module state is shared by every request.
  */

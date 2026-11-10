@@ -47,15 +47,24 @@ export const ScheduleOwnerType = z.enum(["user", "freelancer", "team", "business
 export type ScheduleOwnerType = z.infer<typeof ScheduleOwnerType>;
 
 /**
- * `scheduling.availability_kind` — what a weekly recurring band MEANS.
+ * `scheduling.availability_kind` — what a weekly recurring band MEANS, as the column stores it.
  *
- * `working_hours` is the broad "at my desk" overlay the calendar already renders. `call_window` is
- * the narrower subset during which the owner accepts a discovery call — the distinction that lets
- * the UI paint a call band as a visually distinct subset of working hours rather than conflating
- * "I am working" with "interrupt me".
+ * Availability is one layer (Decision #408): every band is `working_hours`, and a discovery call is
+ * booked inside them. `call_window`, the narrower "interrupt me" subset it replaced, stays in the
+ * enum only because stored rows predate the ruling; nothing reads one and no door writes one.
  */
 export const AvailabilityKind = z.enum(["working_hours", "call_window"]);
 export type AvailabilityKind = z.infer<typeof AvailabilityKind>;
+
+/** A custom-property NAME (`--primary`, `--swatch-teal`), never a literal colour (root CLAUDE.md §3). */
+export const CssTokenName = z.string().max(60).regex(
+	/^--[a-z][a-z0-9-]{0,58}$/,
+	"Expected a token name such as --primary.",
+);
+
+/** A paid call's price as the columns hold it: positive minor units with an upper-case ISO currency. */
+const feeAmount = z.number().int().min(1).max(999_999_999_999_999);
+const feeCurrency = z.string().regex(/^[A-Z]{3}$/, "Expected an ISO currency such as GBP.");
 
 /**
  * Whether an entry holds its time against bookings (`scheduling.events.availability_behavior`,
@@ -100,6 +109,8 @@ export type UpdateSchedule = z.infer<typeof UpdateScheduleSchema>;
  *
  * ⚠️ `endMinute > startMinute` is a table constraint, so a band cannot cross local midnight. A
  * provider who takes calls 23:00–01:00 expresses it as two bands. Deliberate — see the migration.
+ * Bands of a day that touch are read as one span by the booking gate, because the default
+ * template's mirror splits a working day where its price changes (Decision #408).
  */
 export const AvailabilityRuleRowSchema = z.object({
 	id: uuid,
@@ -111,21 +122,32 @@ export const AvailabilityRuleRowSchema = z.object({
 	endMinute: z.number().int().min(0).max(1440),
 	label: z.string().max(80).nullable(),
 	isActive: z.boolean(),
+	/** A paid call's price for a call starting in this band; `null` charges the call settings' fee. */
+	feeAmountMinor: feeAmount.nullable(),
+	feeCurrency: feeCurrency.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
+}).refine((r) => (r.feeAmountMinor === null) === (r.feeCurrency === null), {
+	message: "A price needs both an amount and a currency.",
+	path: ["feeAmountMinor"],
 });
 export type AvailabilityRuleRow = z.infer<typeof AvailabilityRuleRowSchema>;
 
-/** Create/replace a weekly band. */
+/** Create/replace a weekly band. Always working hours (Decision #408). */
 export const UpsertAvailabilityRuleSchema = z.object({
 	id: uuid.optional(),
 	scheduleId: uuid,
-	kind: AvailabilityKind.default("working_hours"),
+	kind: z.literal("working_hours").default("working_hours"),
 	weekday: z.number().int().min(0).max(6),
 	startMinute: z.number().int().min(0).max(1440),
 	endMinute: z.number().int().min(0).max(1440),
 	label: z.string().max(80).optional(),
 	isActive: z.boolean().default(true),
+	feeAmountMinor: feeAmount.nullable().default(null),
+	feeCurrency: feeCurrency.nullable().default(null),
+}).refine((r) => (r.feeAmountMinor === null) === (r.feeCurrency === null), {
+	message: "A price needs both an amount and a currency.",
+	path: ["feeAmountMinor"],
 });
 export type UpsertAvailabilityRule = z.infer<typeof UpsertAvailabilityRuleSchema>;
 // #endregion
@@ -205,8 +227,11 @@ export const SchedulingEventRowSchema = z.object({
 	allDay: z.boolean(),
 	/** When true the reader renders only `status`, never `title`. */
 	isMasked: z.boolean(),
-	/** A CSS custom-property NAME (e.g. `--primary`), never a literal colour. */
-	accent: z.string().max(60).nullable(),
+	/**
+	 * The colour the entry is drawn in: a custom-property NAME (`--primary`, or the swatch its host
+	 * picked, `--swatch-teal` — `./swatches.ts`), never a literal colour. `null` takes the kind's.
+	 */
+	accent: CssTokenName.nullable(),
 	location: z.string().max(160).nullable(),
 	/** The agenda, as `sanitizeRichText` (`@projective/types/richtext`) left it. */
 	description: z.string().max(8000).nullable(),
@@ -252,7 +277,7 @@ export const CreateSchedulingEventSchema = z.object({
 	endsAt: timestamp,
 	allDay: z.boolean().default(false),
 	isMasked: z.boolean().default(false),
-	accent: z.string().max(60).optional(),
+	accent: CssTokenName.optional(),
 	location: z.string().max(160).optional(),
 	description: z.string().max(8000).optional(),
 	meta: z.string().max(160).optional(),
@@ -387,8 +412,19 @@ export const RecurrenceRuleRowSchema = z.object({
 	label: z.string().max(80),
 	isActive: z.boolean(),
 	position: z.number().int().min(0).max(63),
+	/**
+	 * A paid call's price inside this rule's bands, overriding the call settings' fee; `null`
+	 * inherits it (Decision #408).
+	 */
+	feeAmountMinor: feeAmount.nullable(),
+	feeCurrency: feeCurrency.nullable(),
+	/** The swatch the rule is drawn in, as its token name (`./swatches.ts`); `null` is the default. */
+	colorToken: CssTokenName.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
+}).refine((r) => (r.feeAmountMinor === null) === (r.feeCurrency === null), {
+	message: "A price needs both an amount and a currency.",
+	path: ["feeAmountMinor"],
 });
 export type RecurrenceRuleRow = z.infer<typeof RecurrenceRuleRowSchema>;
 

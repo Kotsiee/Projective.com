@@ -26,26 +26,22 @@ Deno.test("the adapter implements every SchedulerEngine method", () => {
 
 Deno.test("evaluate end to end: General weekdays in London across the autumn clock change", () => {
 	const spans = engine.evaluate(GENERAL, { from: "2026-10-23", to: "2026-10-26" });
-	const working = spans.filter((s) => s.kind === "working_hours");
+	assertEquals(spans.every((s) => s.kind === "working_hours"), true);
 	assertEquals(
-		working.map((s) => [new Date(s.startsAt).toISOString(), new Date(s.endsAt).toISOString()]),
+		spans.map((s) => [new Date(s.startsAt).toISOString(), new Date(s.endsAt).toISOString()]),
 		[
 			["2026-10-23T08:00:00.000Z", "2026-10-23T16:30:00.000Z"],
 			["2026-10-26T09:00:00.000Z", "2026-10-26T17:30:00.000Z"],
 		],
 	);
-	const calls = spans.filter((s) =>
-		s.kind === "call_window" && s.startsAt >= Date.UTC(2026, 9, 26)
-	);
-	assertEquals(calls.length, 2);
-	assertEquals(working[0].ruleIds, ["general-work"]);
+	assertEquals(spans[0].ruleIds, ["general-work"]);
 });
 
 Deno.test("explain, describe and validate read the scheduler's plain dates", () => {
-	const [workingHours] = engine.explain(GENERAL, "2026-10-26");
-	assertEquals(workingHours.layer, "working_hours");
-	assertEquals(workingHours.bands, [{ start: 540, end: 1050 }]);
-	assert(engine.describe(GENERAL.rules[0]).includes("working hours"));
+	const day = engine.explain(GENERAL, "2026-10-26");
+	assertEquals(day.bands, [{ start: 540, end: 1050 }]);
+	assertEquals(day.contributed.map((r) => r.ruleId), ["general-work"]);
+	assertEquals(engine.describe(GENERAL.rules[0]), "Every weekday from 5 Jan · 09:00–17:30");
 	assertEquals(engine.validate(GENERAL, { today: "2026-10-14" }), []);
 });
 
@@ -73,6 +69,6 @@ Deno.test("a malformed date is a bug, thrown rather than guessed at", () => {
 			slug: "avp-2222222222",
 			blueprintId: null,
 		}).rules.length,
-		2,
+		1,
 	);
 });

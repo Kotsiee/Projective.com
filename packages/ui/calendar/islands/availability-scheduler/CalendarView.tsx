@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { type Signal, useComputed, useSignal } from "@preact/signals";
 import { Button } from "../../../fields/components/Button.tsx";
-import { SelectButton } from "../../../fields/islands/SelectButton.tsx";
 import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import Calendar from "../Calendar.tsx";
@@ -25,32 +24,33 @@ import type {
 } from "../../core/types.ts";
 import { CALENDAR_ZOOM_DEFAULT } from "../../core/zoom.ts";
 import { addDays, todayIn } from "./civil.ts";
-import { pickOption, useBound, useScheduler } from "./context.ts";
+import { useScheduler } from "./context.ts";
 import { isCanvasRule } from "./reducer.ts";
-import type { Layer, Occurrence, Weekday } from "./types.ts";
-
-/** The two layers the calendar view switches between, in the order its toggle offers them. */
-export const LAYERS: { label: string; value: Layer }[] = [
-	{ label: "Hours", value: "working_hours" },
-	{ label: "Calls", value: "call_window" },
-];
+import type { Occurrence, RuleDraft, Weekday } from "./types.ts";
 
 /** Days evaluated either side of the focus: wider than the Month view's ten weeks. */
 const BEFORE_DAYS = 42;
 const AFTER_DAYS = 84;
 
 /**
- * One evaluated span as a calendar entry; its id keys back to the rules that made it. Each layer paints
- * a SOLID fill of its own (`--cal-ev-hours` · `--cal-ev-calls`, declared on `.ui-avsched`), never the
- * open-slot `--info` wash a bookable slot takes elsewhere.
+ * The colour a span is drawn in: the swatch every rule that drew it shares (Decision #408), else the
+ * SOLID default hours fill (`--cal-ev-hours`, declared on `.ui-avsched`) — never the open-slot
+ * `--info` wash a bookable slot takes elsewhere. A span joining rules of different colours is drawn
+ * in the default, since it is none of them.
  */
-function toEvent(o: Occurrence): CalendarEvent {
-	const working = o.kind === "working_hours";
+function accentOf(ruleIds: readonly string[], rules: readonly RuleDraft[]): string {
+	const tokens = new Set(ruleIds.map((id) => rules.find((r) => r.id === id)?.colorToken ?? null));
+	const [only] = tokens;
+	return tokens.size === 1 && only ? only : "--cal-ev-hours";
+}
+
+/** One evaluated span as a calendar entry; its id keys back to the rules that made it. */
+function toEvent(o: Occurrence, rules: readonly RuleDraft[]): CalendarEvent {
 	return {
 		id: `${o.kind}:${o.startsAt}`,
-		title: working ? "Working hours" : "Calls",
-		kind: working ? "availability" : "session",
-		accent: working ? "--cal-ev-hours" : "--cal-ev-calls",
+		title: "Working hours",
+		kind: "availability",
+		accent: accentOf(o.ruleIds, rules),
 		start: o.startsAt,
 		end: o.endsAt,
 	};
@@ -68,7 +68,7 @@ export interface SchedulerContextTarget {
 /** Props for `AvailabilityScheduler.Calendar`. */
 export interface CalendarViewProps {
 	/**
-	 * Draw the built-in bar — period, layer, undo, redo, zoom (default `true`). A host that draws those
+	 * Draw the built-in bar — period, undo, redo, zoom (default `true`). A host that draws those
 	 * controls in its own chrome passes `false` and owns `focus`, `view` and `zoom`.
 	 */
 	bar?: boolean;
@@ -93,9 +93,9 @@ export interface CalendarViewProps {
 /**
  * The scheduler on the shared Calendar engine — the `/calendar` grid with its zoom, from a day's
  * hours through the week (the default) to months with every rule applied. Spans come from the
- * engine's `evaluate()` over a window around the focus, for the active layer (Hours or Calls). Drag on
- * empty time adds a band on that layer; a span opens its rule in the editor; dragging a span of one
- * weekly rule moves that band.
+ * engine's `evaluate()` over a window around the focus, each in its rules' swatch. Drag on empty time
+ * adds working hours; a span opens its rule in the editor; dragging a span of one weekly rule moves
+ * that band.
  */
 export function CalendarView(props: CalendarViewProps = {}): JSX.Element {
 	const { store, timezone } = useScheduler();
@@ -106,7 +106,6 @@ export function CalendarView(props: CalendarViewProps = {}): JSX.Element {
 	const focus = props.focus ?? ownFocus;
 	const view = props.view ?? ownView;
 	const zoom = props.zoom ?? ownZoom;
-	const layer = useBound(store.layer, (v): string => v);
 
 	const spans = useComputed(() => {
 		const from = addDays(todayIn(tz, focus.value || Date.now()), -BEFORE_DAYS);
@@ -115,12 +114,10 @@ export function CalendarView(props: CalendarViewProps = {}): JSX.Element {
 			to: addDays(from, BEFORE_DAYS + AFTER_DAYS),
 		});
 	});
-	const rulesOf = useComputed(() => new Map(spans.value.map((o) => [toEvent(o).id, o.ruleIds])));
-	// One layer at a time: call windows sit inside working hours, and drawn together the grid folds
-	// them into the working-hours card where they cannot be read or picked.
-	const events = useComputed(() =>
-		spans.value.filter((o) => o.kind === store.layer.value).map(toEvent)
+	const rulesOf = useComputed(() =>
+		new Map(spans.value.map((o) => [`${o.kind}:${o.startsAt}`, o.ruleIds]))
 	);
+	const events = useComputed(() => spans.value.map((o) => toEvent(o, store.draft.value.rules)));
 
 	const v = view.value;
 	const f = focus.value || Date.now();
@@ -222,18 +219,6 @@ export function CalendarView(props: CalendarViewProps = {}): JSX.Element {
 						<h3 class="ui-avsched__cal-period" aria-live="polite">{period}</h3>
 					</div>
 					<div class="ui-avsched__cal-tools">
-						<SelectButton
-							options={LAYERS}
-							value={layer}
-							onValueChange={(next) => {
-								const picked = pickOption(LAYERS, next);
-								if (picked) {
-									store.setLayer(picked);
-								}
-							}}
-							aria-label="Layer"
-							size="sm"
-						/>
 						<Tooltip content="Undo" density="compact">
 							<Button
 								variant="text"

@@ -12,38 +12,22 @@ import type { DevAvailabilityConflict } from "@web/utils/dev-seam.ts";
  */
 
 // #region Pure
-const CALL_OUTSIDE_WORK: Omit<SchedulerIssue, "date"> = {
-	kind: "call_outside_work",
-	severity: "warning",
-	ruleId: null,
-	otherRuleId: null,
-	layer: "call_window",
-	message: "Some call times fall outside working hours, so they are not offered.",
-};
-
 /**
- * The issues a conflict adds to the scheduler's own, in the engine's words: one warning per kind,
- * never a duplicate of a kind the real validation already reported.
+ * The issues a conflict adds to the scheduler's own, in the engine's words: one warning, never a
+ * duplicate of a kind the real validation already reported.
  */
 export function conflictIssues(
 	conflict: DevAvailabilityConflict,
 	real: readonly SchedulerIssue[],
 	today: string | undefined,
 ): SchedulerIssue[] {
-	const has = (kind: string, layer?: string) =>
-		real.some((i) => i.kind === kind && (layer === undefined || i.layer === layer));
-	const date = today ?? null;
-	if (conflict === "call_outside_work" && !has("call_outside_work")) {
-		return [{ ...CALL_OUTSIDE_WORK, date }];
-	}
-	if (conflict === "empty_horizon" && !has("empty_next_30_days", "working_hours")) {
+	if (conflict === "empty_horizon" && !real.some((i) => i.kind === "empty_next_30_days")) {
 		return [{
 			kind: "empty_next_30_days",
 			severity: "warning",
 			ruleId: null,
 			otherRuleId: null,
-			layer: "working_hours",
-			date,
+			date: today ?? null,
 			message: "No working hours in the next 30 days.",
 		}];
 	}

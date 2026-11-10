@@ -148,6 +148,22 @@
     min-inline-size: 0;
 }
 
+.pf-hero__namerow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-inline-size: 100%;
+    margin-block-start: var(--space-4);
+}
+
+.pf-hero__namerow > .pf-hero__name {
+    margin: 0;
+}
+
+.pf-hero__showcasestub {
+    margin-block-start: var(--space-5);
+}
+
 .pf-hero__crest {
     flex: none;
     --icon-knockout: var(--surface);
@@ -306,6 +322,21 @@
     background: var(--surface-1);
     box-shadow: var(--elevation-low);
     overflow: clip;
+}
+
+.pf-hero__showcaseedit {
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
+    z-index: 1;
+}
+
+.pf-hero__showcaseedit .ui-button.pf-owneredit {
+    background: var(--surface);
+}
+
+.pf-hero__showcaseedit .ui-button.pf-owneredit:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), var(--surface));
 }
 
 /* #endregion */

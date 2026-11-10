@@ -6,7 +6,6 @@ import { SCHEDULE_TEMPLATES } from "./templates.ts";
 /** Rule sentences: the plan §5.3 example verbatim, every pattern, and locale-driven names. */
 
 const base: DescribableRule = {
-	layer: "working_hours",
 	effect: "add",
 	pattern: { type: "weekly", days: [3], interval: 2 },
 	condition: { unlessWeekdays: [] },
@@ -18,7 +17,7 @@ const base: DescribableRule = {
 Deno.test("the plan's example sentence", () => {
 	assertEquals(
 		describeRule(base),
-		"Every other Wednesday from 6 Oct · 06:00–12:00, 14:00–19:00 · working hours",
+		"Every other Wednesday from 6 Oct · 06:00–12:00, 14:00–19:00",
 	);
 });
 
@@ -27,35 +26,34 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 	const cases: [Partial<DescribableRule>, string][] = [
 		[
 			{ pattern: { type: "weekly", days: [1, 2, 3, 4, 5], interval: 1 }, bands: nine },
-			"Every weekday from 6 Oct · 09:00–17:00 · working hours",
+			"Every weekday from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "weekly", days: [0, 1, 2, 3, 4, 5, 6], interval: 1 }, bands: nine },
-			"Every day from 6 Oct · 09:00–17:00 · working hours",
+			"Every day from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "weekly", days: [1, 5], interval: 3 }, bands: nine },
-			"Every 3 weeks on Monday and Friday from 6 Oct · 09:00–17:00 · working hours",
+			"Every 3 weeks on Monday and Friday from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "monthly_date", days: [15, 1], interval: 1 }, bands: nine },
-			"Monthly on the 1st and 15th from 6 Oct · 09:00–17:00 · working hours",
+			"Monthly on the 1st and 15th from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "monthly_date", days: [-1], interval: 2 }, bands: nine },
-			"Every other month on the last day from 6 Oct · 09:00–17:00 · working hours",
+			"Every other month on the last day from 6 Oct · 09:00–17:00",
 		],
 		[
 			{
 				pattern: { type: "monthly_weekday", ordinal: -1, weekday: 5, interval: 1 },
 				bands: nine,
-				layer: "call_window",
 			},
-			"Monthly on the last Friday from 6 Oct · 09:00–17:00 · calls",
+			"Monthly on the last Friday from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "monthly_weekday", ordinal: 2, weekday: 2, interval: 3 }, bands: nine },
-			"Every 3 months on the 2nd Tuesday from 6 Oct · 09:00–17:00 · working hours",
+			"Every 3 months on the 2nd Tuesday from 6 Oct · 09:00–17:00",
 		],
 		[
 			{
@@ -64,7 +62,7 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 				condition: { unlessWeekdays: [5, 4] },
 				bands: [],
 			},
-			"Monthly on the 12th from 6 Oct, unless it's a Thursday or Friday · the whole day off · working hours",
+			"Monthly on the 12th from 6 Oct, unless it's a Thursday or Friday · the whole day off",
 		],
 		[
 			{
@@ -72,7 +70,7 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 				pattern: { type: "monthly_date", days: [21], interval: 1 },
 				bands: [{ start: 900, end: 1020 }],
 			},
-			"Monthly on the 21st from 6 Oct · 15:00–17:00 instead · working hours",
+			"Monthly on the 21st from 6 Oct · 15:00–17:00 instead",
 		],
 		[
 			{
@@ -80,7 +78,7 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 				pattern: { type: "weekly", days: [3], interval: 1 },
 				bands: [{ start: 720, end: 780 }],
 			},
-			"Every Wednesday from 6 Oct · not 12:00–13:00 · working hours",
+			"Every Wednesday from 6 Oct · not 12:00–13:00",
 		],
 		[
 			{
@@ -88,31 +86,31 @@ Deno.test("each pattern and effect reads as a sentence", () => {
 				bands: nine,
 				endsOn: "2036-12-31" as IsoDate,
 			},
-			"Every year on 29 February from 6 Oct until 31 Dec 2036 · 09:00–17:00 · working hours",
+			"Every year on 29 February from 6 Oct until 31 Dec 2036 · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "yearly", month: 3, day: 14, interval: 2 }, bands: nine },
-			"Every other year on 14 March from 6 Oct · 09:00–17:00 · working hours",
+			"Every other year on 14 March from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "yearly", month: 3, day: 14, interval: 3 }, bands: nine },
-			"Every 3 years on 14 March from 6 Oct · 09:00–17:00 · working hours",
+			"Every 3 years on 14 March from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "daily", interval: 2 }, bands: nine },
-			"Every other day from 6 Oct · 09:00–17:00 · working hours",
+			"Every other day from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "daily", interval: 3 }, bands: nine },
-			"Every 3 days from 6 Oct · 09:00–17:00 · working hours",
+			"Every 3 days from 6 Oct · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "once", date: "2026-10-21" as IsoDate }, bands: nine },
-			"On Wednesday, 21 October 2026 · 09:00–17:00 · working hours",
+			"On Wednesday, 21 October 2026 · 09:00–17:00",
 		],
 		[
 			{ pattern: { type: "weekly", days: [6], interval: 1 }, bands: [{ start: 1320, end: 1440 }] },
-			"Every Saturday from 6 Oct · 22:00–00:00 · working hours",
+			"Every Saturday from 6 Oct · 22:00–00:00",
 		],
 	];
 	for (const [over, expected] of cases) assertEquals(describeRule({ ...base, ...over }), expected);
@@ -124,14 +122,18 @@ Deno.test("weekday and month names come from the locale", () => {
 	assertEquals(sentence.includes("oct."), true, sentence);
 });
 
-Deno.test("a preset summary counts each layer", () => {
+Deno.test("a preset summary counts its rules", () => {
 	const vip = SCHEDULE_TEMPLATES.find((t) => t.key === "vip_intensive");
 	if (!vip) throw new Error("missing vip template");
 	const description = describePreset(vip);
-	assertEquals(description.summary, "2 working-hours rules · 2 call rules · Europe/London");
-	assertEquals(description.rules[2], {
+	assertEquals(description.summary, "2 rules · Europe/London");
+	assertEquals(description.rules[1], {
 		id: "vip-saturday-work",
-		sentence: "Every other Saturday from 5 Jan · 10:00–13:00 · working hours",
+		sentence: "Every other Saturday from 5 Jan · 10:00–13:00",
 	});
 	assertEquals(describePreset({ timezone: "UTC", rules: [] }).summary, "No rules · UTC");
+	assertEquals(
+		describePreset({ timezone: "UTC", rules: [vip.rules[0]] }).summary,
+		"1 rule · UTC",
+	);
 });

@@ -9,9 +9,6 @@
  */
 
 // #region Vocabulary
-/** The two availability layers. */
-export type Layer = "working_hours" | "call_window";
-
 /** How a rule combines with the day it falls on. */
 export type RuleEffect = "add" | "replace" | "subtract";
 
@@ -49,10 +46,15 @@ export interface RuleCondition {
 	unlessWeekdays: number[];
 }
 
-/** One authored rule. */
+/** A rule's own price for a paid call: minor units in an ISO currency. */
+export interface RuleFee {
+	amountMinor: number;
+	currency: string;
+}
+
+/** One authored rule. Every rule is working hours: availability is one layer (Decision #408). */
 export interface RuleDraft {
 	id: string;
-	layer: Layer;
 	effect: RuleEffect;
 	pattern: RulePattern;
 	condition: RuleCondition;
@@ -62,6 +64,10 @@ export interface RuleDraft {
 	priority: number;
 	label: string;
 	active: boolean;
+	/** A paid call's price inside the rule's bands; `null` inherits the host's fee. */
+	fee: RuleFee | null;
+	/** The swatch the rule is drawn in, a `--swatch-*` token name; `null` is the default fill. */
+	colorToken: string | null;
 }
 
 /** A named rule set — the scheduler's value. */
@@ -93,9 +99,9 @@ export interface DateRange {
 	to: string;
 }
 
-/** An evaluated span on the timeline. */
+/** An evaluated span on the timeline: working hours, with the rules that drew it. */
 export interface Occurrence {
-	kind: Layer;
+	kind: "working_hours";
 	startsAt: number;
 	endsAt: number;
 	ruleIds: string[];
@@ -121,20 +127,18 @@ export interface BlackoutSpan {
 	labelIsPublic?: boolean;
 }
 
-/** Why one layer of one date looks the way it does. */
-export interface LayerExplanation {
-	layer: Layer;
+/** Why one date looks the way it does. */
+export interface DayExplanation {
 	bands: Band[];
 	contributed: RuleRef[];
 	replacedBy?: RuleRef;
 	outranked: RuleRef[];
 	removedBy: RemovalRef[];
-	clipped: Band[];
 	blackout?: { spans: BlackoutSpan[] };
 }
 
-/** One entry per layer, working hours first. */
-export type Explanation = LayerExplanation[];
+/** The engine's account of one date. */
+export type Explanation = DayExplanation;
 
 /** One finding about a preset. Errors block a save; warnings are shown. */
 export interface Issue {
@@ -142,7 +146,6 @@ export interface Issue {
 	severity: "error" | "warning";
 	ruleId: string | null;
 	otherRuleId: string | null;
-	layer: Layer | null;
 	date: string | null;
 	message: string;
 }
@@ -162,7 +165,7 @@ export type RRuleWriting = { ok: true; rrule: string } | { ok: false; message: s
  * computeds, so they must not touch the clock or the network.
  */
 export interface SchedulerEngine {
-	/** Absolute availability over the local dates of `range`, both layers. */
+	/** Absolute availability over the local dates of `range`. */
 	evaluate(preset: Preset, range: DateRange): Occurrence[];
 	/** Why `date` looks the way it does. */
 	explain(preset: Preset, date: string): Explanation;
@@ -181,6 +184,16 @@ export interface SchedulerBlackout {
 	date: string;
 	label?: string;
 	labelIsPublic?: boolean;
+}
+
+/**
+ * What the rule editor's price field needs (Decision #408): the currency a rule is priced in and the
+ * fee a rule without its own inherits. A host passes it only while paid calls are live; without it
+ * the field is not drawn.
+ */
+export interface SchedulerPricing {
+	currency: string;
+	inherited: RuleFee | null;
 }
 
 /** The binding line under the preset bar (plan §5.5). Each action renders only when supplied. */

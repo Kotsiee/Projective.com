@@ -204,7 +204,7 @@ export const CallSettingsSchema = z.object({
 	minNoticeMinutes: z.number().int().min(0),
 	/** How far ahead the booking grid opens. */
 	maxAdvanceDays: z.number().int().min(1).max(365),
-	/** True → a request inside a call window is auto-confirmed instead of awaiting the host. */
+	/** True → a request inside the working hours is auto-confirmed instead of awaiting the host. */
 	autoConfirm: z.boolean(),
 	/** The anti-tyre-kicker field: force the requester to state a purpose. */
 	agendaRequired: z.boolean(),
@@ -431,7 +431,7 @@ export const CALL_REFUSAL_COPY: Record<CallRefusalReason, string> = {
 	duration_exceeds_platform_max: "That call is longer than we allow.",
 	inside_minimum_notice: "That's too soon — pick a later slot.",
 	beyond_booking_horizon: "That's further ahead than bookings are open.",
-	outside_call_window: "That time is outside their call hours.",
+	outside_call_window: "That time is outside their working hours.",
 	slot_unavailable: "That slot has just been taken.",
 	weekly_courtesy_cap_reached: "They're fully booked for free calls this week.",
 	requester_in_cooldown: "You've had a free call recently — try again later.",

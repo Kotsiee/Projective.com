@@ -1,12 +1,13 @@
 import { type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
-import type {
-	CalendarEvent,
-	CalendarEventKind,
-	EntryFields,
-	EntryReminder,
-	EntryRoom,
+import {
+	type CalendarEvent,
+	type CalendarEventKind,
+	type EntryFields,
+	type EntryReminder,
+	type EntryRoom,
+	swatchOf,
 } from "@projective/types/scheduling";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, seriesKey, spreadDaily } from "../core/event-series.ts";
@@ -33,6 +34,7 @@ function fieldsOf(e: CalendarEvent): EntryFields {
 		externalSync: e.externalSync,
 		availabilityBehavior: e.availabilityBehavior ?? "disruptive",
 		routineId: e.routineId ?? null,
+		accent: swatchOf(e.accent) === "default" ? null : e.accent,
 		recurrenceRule: e.recurrenceRule,
 	};
 }

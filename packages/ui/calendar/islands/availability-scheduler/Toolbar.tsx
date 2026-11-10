@@ -4,12 +4,8 @@ import { SelectButton } from "../../../fields/islands/SelectButton.tsx";
 import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { pickOption, useBound, useScheduler } from "./context.ts";
-import type { Layer, SchedulerView } from "./types.ts";
+import type { SchedulerView } from "./types.ts";
 
-const LAYERS: { label: string; value: Layer }[] = [
-	{ label: "Working hours", value: "working_hours" },
-	{ label: "Calls", value: "call_window" },
-];
 const SNAPS: { label: string; value: "5" | "15" | "30" }[] = [
 	{ label: "5 min", value: "5" },
 	{ label: "15 min", value: "15" },
@@ -20,25 +16,14 @@ const VIEWS: { label: string; value: SchedulerView }[] = [
 	{ label: "Month", value: "month" },
 ];
 
-/** Layer toggle · view (Week | Month) · snap · undo/redo · shortcut help. */
+/** View (Week | Month) · snap · undo/redo · shortcut help. */
 export function Toolbar(): JSX.Element {
 	const { store, timezone } = useScheduler();
-	const layer = useBound(store.layer, (v): string => v);
 	const view = useBound(store.view, (v): string => v);
 	const snap = useBound(store.snap, String);
 
 	return (
 		<div class="ui-avsched__toolbar" role="group" aria-label="Scheduler tools">
-			<SelectButton
-				options={LAYERS}
-				value={layer}
-				onValueChange={(v) => {
-					const next = pickOption(LAYERS, v);
-					if (next) store.setLayer(next);
-				}}
-				aria-label="Active layer"
-				size="sm"
-			/>
 			<SelectButton
 				options={VIEWS}
 				value={view}

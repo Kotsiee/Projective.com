@@ -14,20 +14,19 @@ import {
 	type RRuleParts,
 	serialiseRRule,
 } from "./rrule.ts";
-import type { AvailabilityKind } from "./rows.ts";
 
 /**
  * scheduling.evaluate — THE availability evaluator (Decision #217 (d)): one pure implementation
  * the editor preview, the occurrence compiler and the booking gate's compiled spans all share.
  *
- * Per local date D, in the preset's zone, for each layer (plan §5.2):
+ * Availability is one layer (Decision #408): every rule is working hours, and a discovery call is
+ * booked inside them. Per local date D, in the preset's zone (plan §5.2):
  *  1. base = the union of every active `add` rule occurring on D;
  *  2. an active `replace` rule on D replaces base — highest priority, then the most recent
  *     `startsOn`, then the lowest id;
  *  3. every active `subtract` rule on D removes its bands; one with no bands removes the day;
- *  4. `call_window` is clipped to `working_hours` — never the reverse;
- *  5. bands become absolute spans (DST gap → the gap's end; overlap → the first occurrence);
- *  6. blackouts (absolute) are cut out, and spans touching across midnight are joined.
+ *  4. bands become absolute spans (DST gap → the gap's end; overlap → the first occurrence);
+ *  5. blackouts (absolute) are cut out, and spans touching across midnight are joined.
  *
  * Pure: no clock. Anything that needs "today" takes it as an argument.
  */
@@ -59,10 +58,9 @@ export interface RemovalRef extends RuleRef {
 	removed: Band[];
 }
 
-/** Why one layer of one date looks the way it does. */
-export interface LayerExplanation {
-	layer: AvailabilityKind;
-	/** The final local bands, after steps 1–4. */
+/** Why one date looks the way it does. */
+export interface DayExplanation {
+	/** The final local bands, after steps 1–3. */
 	bands: Band[];
 	/** `add` rules that occurred on the date (discarded when {@link replacedBy} is set). */
 	contributed: RuleRef[];
@@ -72,15 +70,12 @@ export interface LayerExplanation {
 	outranked: RuleRef[];
 	/** `subtract` rules that occurred. */
 	removedBy: RemovalRef[];
-	/** Call minutes cut away because they fall outside working hours (step 4). */
-	clipped: Band[];
 	/** Blackouts overlapping the date. */
 	blackout?: { spans: BlackoutSpan[] };
 }
 
 /** What {@link validate} can report. */
 export type IssueKind =
-	| "call_outside_work"
 	| "overlapping_bands"
 	| "empty_next_30_days"
 	| "rrule_invalid"
@@ -93,7 +88,6 @@ export interface Issue {
 	ruleId: string | null;
 	/** The other rule of a pair (`replace_tie`). */
 	otherRuleId: string | null;
-	layer: AvailabilityKind | null;
 	/** The first date the issue shows on, when it is date-bound. */
 	date: IsoDate | null;
 	message: string;
@@ -170,7 +164,7 @@ function partsOf(rule: AvailabilityRuleDraft): RRuleParts | null {
 }
 
 /**
- * Whether `rule`'s recurrence falls on `date` — recurrence only; `active` is the layer step's
+ * Whether `rule`'s recurrence falls on `date` — recurrence only; `active` is the day step's
  * concern. A rule whose recurrence does not compile never occurs (and {@link validate} says so).
  */
 export function occursOn(rule: AvailabilityRuleDraft, date: IsoDate): boolean {
@@ -205,53 +199,42 @@ function byReplacePrecedence(a: AvailabilityRuleDraft, b: AvailabilityRuleDraft)
 	return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-interface LayerResolution {
+interface DayResolution {
 	bands: Band[];
-	/** Bands after steps 1–3, before the call clip. */
-	unclipped: Band[];
 	adds: AvailabilityRuleDraft[];
 	winner: AvailabilityRuleDraft | null;
 	outranked: AvailabilityRuleDraft[];
 	removals: { rule: AvailabilityRuleDraft; removed: Band[] }[];
 }
 
-function resolveLayer(
-	rules: readonly AvailabilityRuleDraft[],
-	date: IsoDate,
-	layer: AvailabilityKind,
-	occurs: Occurs,
-	working: readonly Band[] | null,
-): LayerResolution {
-	const live = rules.filter((r) => r.active && r.layer === layer && occurs(r, date));
+function resolveDay(preset: PresetLike, date: IsoDate, occurs: Occurs): DayResolution {
+	const live = preset.rules.filter((r) => r.active && occurs(r, date));
 	const adds = live.filter((r) => r.effect === "add");
 	const replaces = live.filter((r) => r.effect === "replace").sort(byReplacePrecedence);
 	const winner = replaces[0] ?? null;
 
-	let base = winner ? unionBands(winner.bands) : unionBands(...adds.map((r) => r.bands));
-	const removals: LayerResolution["removals"] = [];
+	let bands = winner ? unionBands(winner.bands) : unionBands(...adds.map((r) => r.bands));
+	const removals: DayResolution["removals"] = [];
 	for (const rule of live.filter((r) => r.effect === "subtract")) {
 		const cut = rule.bands.length ? unionBands(rule.bands) : [{ start: 0, end: 1440 }];
-		removals.push({ rule, removed: intersectBands(base, cut) });
-		base = subtractBands(base, cut);
+		removals.push({ rule, removed: intersectBands(bands, cut) });
+		bands = subtractBands(bands, cut);
 	}
-	const bands = working ? intersectBands(base, working) : base;
-	return { bands, unclipped: base, adds, winner, outranked: replaces.slice(1), removals };
+	return { bands, adds, winner, outranked: replaces.slice(1), removals };
 }
 
-function contributorsOf(resolution: LayerResolution): AvailabilityRuleDraft[] {
-	return resolution.winner ? [resolution.winner] : resolution.adds;
+/**
+ * The rules that drew one final band: the day's `replace` winner, or the `add` rules whose own bands
+ * reach into it — so two rules that share a day but not their hours each keep their own spans.
+ */
+function contributorsOf(resolution: DayResolution, band: Band): AvailabilityRuleDraft[] {
+	if (resolution.winner) return [resolution.winner];
+	return resolution.adds.filter((rule) => intersectBands(rule.bands, [band]).length > 0);
 }
 
-function resolveDay(preset: PresetLike, date: IsoDate, occurs: Occurs) {
-	const working = resolveLayer(preset.rules, date, "working_hours", occurs, null);
-	const call = resolveLayer(preset.rules, date, "call_window", occurs, working.bands);
-	return { working, call };
-}
-
-/** The final local bands of one layer on one date (plan §5.2 steps 1–4). */
-export function layerBandsFor(preset: PresetLike, date: IsoDate, layer: AvailabilityKind): Band[] {
-	const day = resolveDay(preset, date, occursOn);
-	return layer === "working_hours" ? day.working.bands : day.call.bands;
+/** The final local bands of one date (plan §5.2 steps 1–3). */
+export function dayBandsFor(preset: PresetLike, date: IsoDate): Band[] {
+	return resolveDay(preset, date, occursOn).bands;
 }
 // #endregion
 
@@ -273,26 +256,24 @@ function cutBlackouts(span: Occurrence, blackouts: readonly BlackoutSpan[]): Occ
 
 function joinSpans(spans: Occurrence[]): Occurrence[] {
 	const out: Occurrence[] = [];
-	for (const kind of ["working_hours", "call_window"] as const) {
-		const ofKind = spans.filter((s) => s.kind === kind).sort((a, b) => a.startsAt - b.startsAt);
-		let current: Occurrence | null = null;
-		for (const s of ofKind) {
-			if (current && s.startsAt <= current.endsAt) {
-				current.endsAt = Math.max(current.endsAt, s.endsAt);
-				current.ruleIds = [...new Set([...current.ruleIds, ...s.ruleIds])].sort();
-			} else {
-				current = { ...s, ruleIds: [...s.ruleIds] };
-				out.push(current);
-			}
+	let current: Occurrence | null = null;
+	for (const s of [...spans].sort((a, b) => a.startsAt - b.startsAt)) {
+		if (current && s.startsAt <= current.endsAt) {
+			current.endsAt = Math.max(current.endsAt, s.endsAt);
+			current.ruleIds = [...new Set([...current.ruleIds, ...s.ruleIds])].sort();
+		} else {
+			current = { ...s, ruleIds: [...s.ruleIds] };
+			out.push(current);
 		}
 	}
-	return out.sort((a, b) => a.startsAt - b.startsAt || (a.kind < b.kind ? -1 : 1));
+	return out;
 }
 
 /**
- * The absolute availability of `preset` over the local dates of `range` (inclusive), both layers,
- * blackouts removed (plan §5.2 steps 1–6). Each span lists the rules that produced it — the `add`
- * rules of its day, or the `replace` rule that won it.
+ * The absolute availability of `preset` over the local dates of `range` (inclusive), blackouts
+ * removed (plan §5.2 steps 1–5). Each span lists the rules that drew it — the `add` rules whose bands
+ * reach into it, or the `replace` rule that won its day; spans that touch are joined, and so are
+ * their rules.
  */
 export function evaluate(
 	preset: PresetLike,
@@ -303,19 +284,13 @@ export function evaluate(
 	const spans: Occurrence[] = [];
 	for (const date of eachDate(range.from, range.to)) {
 		const day = resolveDay(preset, date, occurs);
-		for (
-			const [kind, resolution] of [["working_hours", day.working], [
-				"call_window",
-				day.call,
-			]] as const
-		) {
-			const ruleIds = contributorsOf(resolution).map((r) => r.id).sort();
-			for (const band of resolution.bands) {
-				const { startsAt, endsAt } = zonedSpan(date, band.start, band.end, preset.timezone);
-				if (endsAt > startsAt) {
-					spans.push(...cutBlackouts({ kind, startsAt, endsAt, ruleIds }, blackouts));
-				}
-			}
+		for (const band of day.bands) {
+			const { startsAt, endsAt } = zonedSpan(date, band.start, band.end, preset.timezone);
+			if (endsAt <= startsAt) continue;
+			const ruleIds = contributorsOf(day, band).map((r) => r.id).sort();
+			spans.push(
+				...cutBlackouts({ kind: "working_hours", startsAt, endsAt, ruleIds }, blackouts),
+			);
 		}
 	}
 	return joinSpans(spans);
@@ -323,32 +298,26 @@ export function evaluate(
 // #endregion
 
 // #region Explain
-/** Why `date` looks the way it does, one entry per layer (working hours first). */
+/** Why `date` looks the way it does. */
 export function explain(
 	preset: PresetLike,
 	date: IsoDate,
 	blackouts: readonly BlackoutSpan[] = [],
-): LayerExplanation[] {
+): DayExplanation {
 	const day = resolveDay(preset, date, occursOn);
 	const dayStart = zonedSpan(date, 0, 0, preset.timezone).startsAt;
 	const dayEnd = zonedSpan(date, 1440, 1440, preset.timezone).startsAt;
 	const hits = blackouts.filter((b) => b.startsAt < dayEnd && b.endsAt > dayStart);
 
-	return ([["working_hours", day.working], ["call_window", day.call]] as const).map(
-		([layer, r]) => {
-			const out: LayerExplanation = {
-				layer,
-				bands: r.bands,
-				contributed: r.adds.map(ref),
-				outranked: r.outranked.map(ref),
-				removedBy: r.removals.map(({ rule, removed }) => ({ ...ref(rule), removed })),
-				clipped: subtractBands(r.unclipped, r.bands),
-			};
-			if (r.winner) out.replacedBy = ref(r.winner);
-			if (hits.length) out.blackout = { spans: hits };
-			return out;
-		},
-	);
+	const out: DayExplanation = {
+		bands: day.bands,
+		contributed: day.adds.map(ref),
+		outranked: day.outranked.map(ref),
+		removedBy: day.removals.map(({ rule, removed }) => ({ ...ref(rule), removed })),
+	};
+	if (day.winner) out.replacedBy = ref(day.winner);
+	if (hits.length) out.blackout = { spans: hits };
+	return out;
 }
 // #endregion
 
@@ -366,7 +335,6 @@ function issue(
 		severity,
 		ruleId: null,
 		otherRuleId: null,
-		layer: null,
 		date: null,
 		message,
 		...extra,
@@ -383,10 +351,8 @@ function earliestStart(rules: readonly AvailabilityRuleDraft[]): IsoDate | null 
  * Everything worth telling the author about `preset`:
  * - `rrule_invalid` (error) — a recurrence that does not compile, or whose RRULE does not re-parse;
  * - `overlapping_bands` (error) — two bands of one rule overlap;
- * - `call_outside_work` (warning) — a call band falls outside working hours (it is clipped, never
- *   widened), reported once per rule at its first date;
- * - `replace_tie` (warning) — two `replace` rules of one layer and priority fall on the same date;
- * - `empty_next_30_days` (warning, per layer) — nothing in the 30 days from `options.today`.
+ * - `replace_tie` (warning) — two `replace` rules of one priority fall on the same date;
+ * - `empty_next_30_days` (warning) — no working hours in the 30 days from `options.today`.
  *
  * Date-bound checks look a year ahead of `options.today`, or of the earliest rule start without it.
  */
@@ -416,7 +382,6 @@ export function validate(preset: PresetLike, options: ValidateOptions = {}): Iss
 				issues.push(
 					issue("overlapping_bands", "error", "Two times in this rule overlap.", {
 						ruleId: rule.id,
-						layer: rule.layer,
 					}),
 				);
 				break;
@@ -429,37 +394,11 @@ export function validate(preset: PresetLike, options: ValidateOptions = {}): Iss
 	const horizon: DateRange = { from: start, to: addDays(start, VALIDATE_HORIZON_DAYS - 1) };
 	const occurs = occurrenceIndex(active, horizon);
 
-	const outside = new Map<string, IsoDate>();
-	for (const date of eachDate(horizon.from, horizon.to)) {
-		const day = resolveDay(preset, date, occurs);
-		const beyond = subtractBands(day.call.unclipped, day.working.bands);
-		if (!beyond.length) continue;
-		for (const rule of contributorsOf(day.call)) {
-			if (!outside.has(rule.id) && intersectBands(rule.bands, beyond).length) {
-				outside.set(rule.id, date);
-			}
-		}
-	}
-	for (const [ruleId, date] of outside) {
-		issues.push(
-			issue(
-				"call_outside_work",
-				"warning",
-				"Some call times fall outside working hours, so they are not offered.",
-				{
-					ruleId,
-					layer: "call_window",
-					date,
-				},
-			),
-		);
-	}
-
 	const replaces = active.filter((r) => r.effect === "replace");
 	for (let i = 0; i < replaces.length; i++) {
 		for (let j = i + 1; j < replaces.length; j++) {
 			const [a, b] = [replaces[i], replaces[j]];
-			if (a.layer !== b.layer || a.priority !== b.priority) continue;
+			if (a.priority !== b.priority) continue;
 			const shared = eachDate(horizon.from, horizon.to).find((d) => occurs(a, d) && occurs(b, d));
 			if (!shared) continue;
 			const winner = [a, b].sort(byReplacePrecedence)[0];
@@ -470,7 +409,7 @@ export function validate(preset: PresetLike, options: ValidateOptions = {}): Iss
 					`Two overrides with the same priority fall on the same day; “${
 						winner.label || winner.id
 					}” wins.`,
-					{ ruleId: a.id, otherRuleId: b.id, layer: a.layer, date: shared },
+					{ ruleId: a.id, otherRuleId: b.id, date: shared },
 				),
 			);
 		}
@@ -479,12 +418,9 @@ export function validate(preset: PresetLike, options: ValidateOptions = {}): Iss
 	if (options.today) {
 		const next30: DateRange = { from: options.today, to: addDays(options.today, 29) };
 		const spans = evaluate({ timezone: preset.timezone, rules: active }, next30);
-		for (const layer of ["working_hours", "call_window"] as const) {
-			if (spans.some((s) => s.kind === layer)) continue;
-			const what = layer === "working_hours" ? "working hours" : "call windows";
+		if (!spans.length) {
 			issues.push(
-				issue("empty_next_30_days", "warning", `No ${what} in the next 30 days.`, {
-					layer,
+				issue("empty_next_30_days", "warning", "No working hours in the next 30 days.", {
 					date: options.today,
 				}),
 			);

@@ -252,12 +252,6 @@
 /* #endregion */
 
 /* #region Footer band */
-/* On the agenda rig's grid (`.cal-rig`): the layer takes the display lens's slot. */
-.cal-avfoot__layer {
-	grid-area: preset;
-	justify-self: start;
-}
-
 .cal-avfoot__status {
 	max-inline-size: 14rem;
 	margin: 0;

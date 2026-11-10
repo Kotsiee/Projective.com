@@ -5,6 +5,7 @@ const at = (path: string) => new URL(path, "https://projective.test");
 
 Deno.test("only ?view=availability leaves the agenda", () => {
 	assertEquals(calendarModeOf(at("/calendar")), "agenda");
+	assertEquals(calendarModeOf(at("/calendar?view=events")), "agenda");
 	assertEquals(calendarModeOf(at("/calendar?view=availability")), "availability");
 	assertEquals(calendarModeOf(at("/calendar?view=Availability")), "agenda");
 	assertEquals(calendarModeOf(at("/calendar?view=month")), "agenda");

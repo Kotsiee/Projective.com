@@ -14,6 +14,7 @@ import type { ListingDetail } from "@features/catalogue/types/catalogue-types.ts
 import { SCHEDULER_TEMPLATES } from "@features/catalogue/core/scheduler-engine.ts";
 import { workspaceSchedulerEngine } from "@features/catalogue/core/availability-conflict-store.ts";
 import { pageViewerOf } from "../core/availability-page.ts";
+import { schedulerPricing } from "../core/availability-pricing.ts";
 import { TimeOffManager } from "./AvailabilityPageParts.tsx";
 import {
 	bindingView,
@@ -150,6 +151,7 @@ export function AvailabilityModal(props: AvailabilityModalProps): JSX.Element {
 					engine={workspaceSchedulerEngine}
 					today={dateInZone(Date.now(), value.timezone)}
 					weekStartsOn={viewer.weekStartsOn}
+					pricing={schedulerPricing(schedule.value)}
 					label={`Availability · ${value.name}`}
 				>
 					<AvailabilityScheduler.Studio

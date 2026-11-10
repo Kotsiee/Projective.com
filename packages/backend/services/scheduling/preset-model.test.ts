@@ -14,6 +14,7 @@ import {
 	presetFromRows,
 	presetPayload,
 	presetRefusal,
+	pricedBands,
 	type RuleRow,
 } from "./preset-model.ts";
 
@@ -30,7 +31,6 @@ function rule(
 	over: Partial<AvailabilityRuleDraft> & Pick<AvailabilityRuleDraft, "id">,
 ): AvailabilityRuleDraft {
 	return {
-		layer: "working_hours",
 		effect: "add",
 		pattern: { type: "weekly", days: [1, 2, 3, 4, 5], interval: 1 },
 		condition: { unlessWeekdays: [] },
@@ -40,9 +40,13 @@ function rule(
 		priority: 50,
 		label: "",
 		active: true,
+		fee: null,
+		colorToken: null,
 		...over,
 	};
 }
+
+const GBP = (amountMinor: number) => ({ amountMinor, currency: "GBP" });
 
 const template = (key: string) => {
 	const t = SCHEDULE_TEMPLATES.find((x) => x.key === key)!;
@@ -51,13 +55,18 @@ const template = (key: string) => {
 // #endregion
 
 // #region Mirror
-Deno.test("mirror: an all-weekly preset mirrors fully, calls clipped to working hours", () => {
+Deno.test("mirror: an all-weekly preset mirrors fully, as working hours", () => {
 	const { bands, full } = mirrorProjection(template("general"), TODAY);
 	assertEquals(full, true);
 	assertEquals(bands.filter((b) => b.weekday === 3), [
-		{ weekday: 3, startMinute: 540, endMinute: 1050, kind: "working_hours" },
-		{ weekday: 3, startMinute: 600, endMinute: 720, kind: "call_window" },
-		{ weekday: 3, startMinute: 840, endMinute: 960, kind: "call_window" },
+		{
+			weekday: 3,
+			startMinute: 540,
+			endMinute: 1050,
+			kind: "working_hours",
+			feeAmountMinor: null,
+			feeCurrency: null,
+		},
 	]);
 	assertEquals(bands.some((b) => b.weekday === 0 || b.weekday === 6), false);
 });
@@ -66,7 +75,7 @@ Deno.test("mirror: a bi-weekly rule is left out and the projection is partial", 
 	const { bands, full } = mirrorProjection(template("vip_intensive"), TODAY);
 	assertEquals(full, false);
 	assertEquals(bands.some((b) => b.weekday === 6), false);
-	assertEquals(bands.filter((b) => b.weekday === 2).length, 4);
+	assertEquals(bands.filter((b) => b.weekday === 2).length, 2);
 });
 
 Deno.test("mirror: overlapping weekly rules merge; future, ending and non-add rules are partial", () => {
@@ -79,7 +88,14 @@ Deno.test("mirror: overlapping weekly rules merge; future, ending and non-add ru
 	}, TODAY);
 	assertEquals(merged.full, true);
 	assertEquals(merged.bands.filter((b) => b.weekday === 1), [
-		{ weekday: 1, startMinute: 540, endMinute: 900, kind: "working_hours" },
+		{
+			weekday: 1,
+			startMinute: 540,
+			endMinute: 900,
+			kind: "working_hours",
+			feeAmountMinor: null,
+			feeCurrency: null,
+		},
 	]);
 
 	for (
@@ -107,6 +123,77 @@ Deno.test("mirror: an inactive rule neither mirrors nor makes it partial", () =>
 	assertEquals(out.full, true);
 	assertEquals(out.bands.length, 5);
 });
+
+Deno.test("mirror: a priced rule splits the day where its price changes; an overlap takes the higher", () => {
+	const out = mirrorProjection({
+		timezone: "UTC",
+		rules: [
+			rule({ id: "day", pattern: { type: "weekly", days: [1], interval: 1 } }),
+			rule({
+				id: "noon",
+				pattern: { type: "weekly", days: [1], interval: 1 },
+				bands: [{ start: 720, end: 840 }],
+				fee: GBP(8000),
+			}),
+			rule({
+				id: "early",
+				pattern: { type: "weekly", days: [1], interval: 1 },
+				bands: [{ start: 780, end: 900 }],
+				fee: GBP(6000),
+			}),
+		],
+	}, TODAY);
+	assertEquals(out.full, true);
+	assertEquals(out.bands, [
+		{
+			weekday: 1,
+			startMinute: 540,
+			endMinute: 720,
+			kind: "working_hours",
+			feeAmountMinor: null,
+			feeCurrency: null,
+		},
+		{
+			weekday: 1,
+			startMinute: 720,
+			endMinute: 840,
+			kind: "working_hours",
+			feeAmountMinor: 8000,
+			feeCurrency: "GBP",
+		},
+		{
+			weekday: 1,
+			startMinute: 840,
+			endMinute: 900,
+			kind: "working_hours",
+			feeAmountMinor: 6000,
+			feeCurrency: "GBP",
+		},
+		{
+			weekday: 1,
+			startMinute: 900,
+			endMinute: 1020,
+			kind: "working_hours",
+			feeAmountMinor: null,
+			feeCurrency: null,
+		},
+	]);
+});
+
+Deno.test("priced bands: touching pieces at one price join, gaps stay gaps", () => {
+	assertEquals(
+		pricedBands([
+			rule({ id: "am", bands: [{ start: 540, end: 720 }], fee: GBP(5000) }),
+			rule({ id: "pm", bands: [{ start: 720, end: 1020 }], fee: GBP(5000) }),
+			rule({ id: "eve", bands: [{ start: 1080, end: 1200 }] }),
+		]),
+		[
+			{ start: 540, end: 1020, fee: GBP(5000) },
+			{ start: 1080, end: 1200, fee: null },
+		],
+	);
+	assertEquals(pricedBands([]), []);
+});
 // #endregion
 
 // #region Payload
@@ -120,7 +207,7 @@ Deno.test("payload: snake_case, canonical RRULEs, client ids dropped and uuids k
 		scope: "library",
 		blueprintId: null,
 		rules: [
-			rule({ id: "rule-1" }),
+			rule({ id: "rule-1", fee: GBP(6000), colorToken: "--swatch-teal" }),
 			rule({
 				id: keep,
 				effect: "subtract",
@@ -139,6 +226,16 @@ Deno.test("payload: snake_case, canonical RRULEs, client ids dropped and uuids k
 	assertEquals(rules[1].id, keep);
 	assertEquals(rules[1].rrule, "FREQ=MONTHLY;BYMONTHDAY=12;BYDAY=SU,MO,TU,WE,SA");
 	assertEquals(rules[1].unless_weekdays, [4, 5]);
+	assertEquals(rules.map((r) => r.kind), ["working_hours", "working_hours"]);
+	assertEquals(
+		[rules[0].fee_amount_minor, rules[0].fee_currency, rules[0].color_token],
+		[6000, "GBP", "--swatch-teal"],
+	);
+	assertEquals([rules[1].fee_amount_minor, rules[1].fee_currency, rules[1].color_token], [
+		null,
+		null,
+		null,
+	]);
 });
 
 Deno.test("rows: a saved preset reads back as the drafts that were saved", () => {
@@ -146,6 +243,8 @@ Deno.test("rows: a saved preset reads back as the drafts that were saved", () =>
 		rule({
 			id: "11111111-1111-4111-8111-111111111111",
 			bands: [{ start: 360, end: 720 }, { start: 840, end: 1140 }],
+			fee: GBP(12000),
+			colorToken: "--swatch-coral",
 		}),
 		rule({
 			id: "22222222-2222-4222-8222-222222222222",
@@ -188,6 +287,9 @@ Deno.test("rows: a saved preset reads back as the drafts that were saved", () =>
 		label: r.label as string,
 		is_active: r.is_active as boolean,
 		position,
+		fee_amount_minor: r.fee_amount_minor as number | null,
+		fee_currency: r.fee_currency as string | null,
+		color_token: r.color_token as string | null,
 	}));
 	const bandRows = (payload.rules as Array<
 		{ id: string; bands: Array<{ start_minute: number; end_minute: number }> }
@@ -243,11 +345,53 @@ Deno.test("rows: a stored RRULE no pattern expresses is refused, never approxima
 				label: "",
 				is_active: true,
 				position: 0,
+				fee_amount_minor: null,
+				fee_currency: null,
+				color_token: null,
 			}],
 			[],
 			"UTC",
 		)
 	);
+});
+
+Deno.test("rows: a stored call-window rule is left out, and a colour that is no swatch reads as none", () => {
+	const row = (id: string, kind: RuleRow["kind"], color: string | null): RuleRow => ({
+		id,
+		preset_id: "p",
+		kind,
+		effect: "add",
+		rrule: "FREQ=WEEKLY;BYDAY=MO",
+		starts_on: "2026-01-05",
+		ends_on: null,
+		priority: 50,
+		unless_weekdays: [],
+		label: id,
+		is_active: true,
+		position: 0,
+		fee_amount_minor: null,
+		fee_currency: null,
+		color_token: color,
+	});
+	const preset = presetFromRows(
+		{
+			id: "p",
+			schedule_id: "s",
+			scope: "library",
+			blueprint_id: null,
+			slug: "avp-2222222222",
+			name: "x",
+			description: "",
+			is_default: false,
+			compiled_from: null,
+			compiled_through: null,
+			archived_at: null,
+		},
+		[row("work", "working_hours", "--primary"), row("calls", "call_window", "--swatch-teal")],
+		[],
+		"UTC",
+	);
+	assertEquals(preset.rules.map((r) => [r.id, r.colorToken]), [["work", null]]);
 });
 // #endregion
 

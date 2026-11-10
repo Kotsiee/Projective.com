@@ -5,6 +5,7 @@ import {
 	type Band,
 	evaluate,
 	type IsoDate,
+	joinTouchingBands,
 	type RulePattern,
 	type SlotQuery,
 } from "@projective/types/scheduling";
@@ -81,7 +82,6 @@ function rule(rand: () => number, i: number): AvailabilityRuleDraft {
 	const effect = rand() < 0.7 ? "add" : rand() < 0.5 ? "replace" : "subtract";
 	return {
 		id: `r${i}`,
-		layer: rand() < 0.8 ? "working_hours" : "call_window",
 		effect,
 		...pattern(rand),
 		condition: { unlessWeekdays: [] },
@@ -90,6 +90,8 @@ function rule(rand: () => number, i: number): AvailabilityRuleDraft {
 		priority: int(rand, 0, 99),
 		label: "",
 		active: rand() < 0.9,
+		fee: null,
+		colorToken: null,
 	};
 }
 
@@ -97,7 +99,17 @@ function weeklyBands(rand: () => number): GridBand[] {
 	const out: GridBand[] = [];
 	for (let weekday = 0; weekday < 7; weekday++) {
 		if (rand() < 0.4) continue;
-		for (const b of bands(rand, 2)) out.push({ weekday, startMinute: b.start, endMinute: b.end });
+		for (const b of bands(rand, 2)) {
+			// A third of the bands are stored split where a price would change (Decision #408): two
+			// touching rows that the gate and the reader both read as one span.
+			const cut = b.start + Math.floor((b.end - b.start) / 30) * 15;
+			if (rand() < 0.33 && cut > b.start && cut < b.end) {
+				out.push({ weekday, startMinute: b.start, endMinute: cut });
+				out.push({ weekday, startMinute: cut, endMinute: b.end });
+			} else {
+				out.push({ weekday, startMinute: b.start, endMinute: b.end });
+			}
+		}
 	}
 	return out;
 }
@@ -136,7 +148,10 @@ interface OccurrenceStore {
 	spans: Array<{ startsAt: number; endsAt: number }>;
 }
 
-/** `scheduling.fn_band_covers(schedule, 'working_hours', from, to, blueprint)`. */
+/**
+ * `scheduling.fn_band_covers(schedule, 'working_hours', from, to, blueprint)`: the weekly branch joins
+ * each run of touching bands on the start's weekday into an island, and asks one island to cover.
+ */
 function sqlBandCovers(
 	tz: string,
 	rules: readonly GridBand[],
@@ -149,10 +164,20 @@ function sqlBandCovers(
 	if (store.compiledFrom <= s.date && store.compiledThrough >= e.date) {
 		return store.spans.some((o) => o.startsAt <= from && o.endsAt >= to);
 	}
-	return rules.some((r) =>
-		r.weekday === s.weekday && r.startMinute <= s.minute && (
-			(r.weekday === e.weekday && r.endMinute >= e.minute) ||
-			(r.endMinute === 1440 && e.minute === 0 && e.date === addDays(s.date as IsoDate, 1))
+	const islands: Array<{ start: number; end: number }> = [];
+	for (
+		const r of rules.filter((r) => r.weekday === s.weekday).sort((a, b) =>
+			a.startMinute - b.startMinute || a.endMinute - b.endMinute
+		)
+	) {
+		const last = islands[islands.length - 1];
+		if (last && r.startMinute <= last.end) last.end = Math.max(last.end, r.endMinute);
+		else islands.push({ start: r.startMinute, end: r.endMinute });
+	}
+	return islands.some((i) =>
+		i.start <= s.minute && (
+			(s.weekday === e.weekday && i.end >= e.minute) ||
+			(i.end === 1440 && e.minute === 0 && e.date === addDays(s.date as IsoDate, 1))
 		)
 	);
 }
@@ -181,7 +206,7 @@ Deno.test("slot grid ⇔ booking gate: 200 generated presets × every listed slo
 		const weekly = weeklyBands(rand);
 		const source: GridSource = {
 			timezone: tz,
-			bands: weekly,
+			bands: joinTouchingBands(weekly),
 			compiled: {
 				from: TODAY,
 				through,

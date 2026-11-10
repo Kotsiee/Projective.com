@@ -88,6 +88,7 @@ function columns(f: EntryFields): Record<string, unknown> {
 		location: f.location?.trim() || null,
 		description: hasRichTextProse(agenda) ? agenda : null,
 		...(f.externalSync === undefined ? {} : { external_sync: f.externalSync }),
+		...(f.accent === undefined ? {} : { accent: f.accent }),
 	};
 }
 

@@ -24,6 +24,8 @@ CREATE TABLE scheduling.schedules (
 CREATE TABLE scheduling.availability_rules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     schedule_id uuid NOT NULL REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
+    -- Availability is one layer (Decision #408): every band is working hours, and a call is booked
+    -- inside them. 'call_window' rows predate the ruling; nothing reads them and no door writes one.
     kind scheduling.availability_kind NOT NULL DEFAULT 'working_hours',
     -- 0 = Sunday … 6 = Saturday (matches the Zod contract and JS `Date#getDay`).
     weekday smallint NOT NULL CHECK (weekday BETWEEN 0 AND 6),
@@ -31,9 +33,16 @@ CREATE TABLE scheduling.availability_rules (
     end_minute integer NOT NULL CHECK (end_minute BETWEEN 0 AND 1440),
     label text,
     is_active boolean NOT NULL DEFAULT true,
+    -- A paid call's price for a call that STARTS inside this band (Decision #408), mirrored from the
+    -- default template's rule; NULL charges call_settings' fee. Bands that differ only in price touch
+    -- rather than merge, so the gate reads touching bands as one span (fn_band_covers) and
+    -- scheduling.fn_resolved_slot_fee reads the price of the band a call starts in.
+    fee_amount_minor bigint CHECK (fee_amount_minor > 0),
+    fee_currency char(3) CHECK (fee_currency ~ '^[A-Z]{3}$'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT ck_availability_rule_span CHECK (end_minute > start_minute)
+    CONSTRAINT ck_availability_rule_span CHECK (end_minute > start_minute),
+    CONSTRAINT ck_availability_rule_fee CHECK ((fee_amount_minor IS NULL) = (fee_currency IS NULL))
 );
 
 CREATE TABLE scheduling.blackout_dates (
@@ -96,7 +105,9 @@ CREATE TABLE scheduling.events (
     ends_at timestamptz NOT NULL,
     all_day boolean NOT NULL DEFAULT false,
     is_masked boolean NOT NULL DEFAULT false,
-    -- A CSS custom-property NAME (e.g. '--primary'), never a literal colour (root CLAUDE.md §3).
+    -- A CSS custom-property NAME (e.g. '--primary', or a swatch the host picked, '--swatch-teal'),
+    -- never a literal colour (root CLAUDE.md §3). The calendar paints it through a probe, so the shape is
+    -- checked here as well as in Zod (ck_event_accent). NULL takes the kind's colour.
     accent text,
     location text,
     -- The agenda: rich-text HTML its host writes for attendees to read, so it is stored only after
@@ -167,6 +178,7 @@ CREATE TABLE scheduling.events (
     -- one shape that view exists to render. A milestone — a review that genuinely takes time — keeps
     -- its span; the two are different objects, not one object recorded two ways.
     CONSTRAINT ck_event_span CHECK (ends_at >= starts_at),
+    CONSTRAINT ck_event_accent CHECK (accent ~ '^--[a-z][a-z0-9-]{0,58}$'),
     CONSTRAINT ck_event_anchor CHECK (
         schedule_id IS NOT NULL
         OR project_id IS NOT NULL
@@ -883,6 +895,7 @@ CREATE TABLE scheduling.availability_presets (
 CREATE TABLE scheduling.recurrence_rules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     preset_id uuid NOT NULL REFERENCES scheduling.availability_presets (id) ON DELETE CASCADE,
+    -- Always 'working_hours' (Decision #408, one layer): save_availability_preset refuses a call window.
     kind scheduling.availability_kind NOT NULL DEFAULT 'working_hours',
     effect scheduling.rule_effect NOT NULL DEFAULT 'add',
     rrule text NOT NULL CHECK (char_length(rrule) <= 400 AND rrule ~ '^FREQ='),
@@ -900,9 +913,20 @@ CREATE TABLE scheduling.recurrence_rules (
     label text NOT NULL DEFAULT '' CHECK (char_length(label) <= 80),
     is_active boolean NOT NULL DEFAULT true,
     position smallint NOT NULL DEFAULT 0 CHECK (position BETWEEN 0 AND 63),
+    -- A paid call's price inside this rule's bands, overriding call_settings' fee (Decision #408);
+    -- NULL inherits it. A default template's weekly rules carry it onto availability_rules, which the
+    -- call gate reads. Where two rules' bands overlap, the higher price applies (preset-model.ts). A
+    -- subtract rule removes hours, so it has none.
+    fee_amount_minor bigint CHECK (fee_amount_minor > 0),
+    fee_currency char(3) CHECK (fee_currency ~ '^[A-Z]{3}$'),
+    -- A swatch's CSS custom-property NAME (packages/types/scheduling/swatches.ts), never a literal
+    -- colour (root CLAUDE.md §3); NULL draws the default hours fill.
+    color_token text CHECK (color_token ~ '^--[a-z][a-z0-9-]{0,58}$'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT ck_recurrence_rule_range CHECK (ends_on IS NULL OR ends_on >= starts_on)
+    CONSTRAINT ck_recurrence_rule_range CHECK (ends_on IS NULL OR ends_on >= starts_on),
+    CONSTRAINT ck_recurrence_rule_fee CHECK ((fee_amount_minor IS NULL) = (fee_currency IS NULL)),
+    CONSTRAINT ck_recurrence_rule_subtract_fee CHECK (effect <> 'subtract' OR fee_amount_minor IS NULL)
 );
 
 -- Up to six bands per rule (a split shift is one rule). The same span CHECK as availability_rules:

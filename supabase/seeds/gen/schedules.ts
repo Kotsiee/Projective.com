@@ -1,6 +1,7 @@
 /**
- * schedules.ts — the development world's AVAILABILITY: who publishes a schedule, when they work,
- * when they take calls, what a call costs, where it happens, and what already occupies their week.
+ * schedules.ts — the development world's AVAILABILITY: who publishes a schedule, when they work — and
+ * so when a call can be booked, availability being one layer (Decision #408) — what a call costs,
+ * where it happens, and what already occupies their week.
  *
  * Every seller whose listings or profile offer a booking publishes a schedule here, because the
  * booking surfaces read it live — the listing's Book modal draws its slot grid from these bands, the
@@ -51,7 +52,6 @@ export interface ScheduleSpec {
 	owner: string;
 	published: boolean;
 	working: Band[];
-	calls: Band[];
 	/** Discovery-call settings; absent = this owner takes no calls. */
 	call?: CallSpec;
 	blackouts?: Array<{ from: WeekSlot; to: WeekSlot; label: string; public: boolean }>;
@@ -95,7 +95,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "maris",
 		published: true,
 		working: [...everyDay([1, 2, 3, 4], "09:00", "17:30"), [5, "09:00", "13:00"]],
-		calls: [[2, "14:00", "16:00"], [4, "10:00", "12:00"]],
 		call: {
 			courtesy: { minutes: 20, maxPerWeek: 4, cooldownDays: 30 },
 			paid: { minutes: 45, feeMinor: 7500, currency: "GBP" },
@@ -123,7 +122,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "ren",
 		published: true,
 		working: everyDay([2, 3, 4, 5, 6], "10:00", "18:00"),
-		calls: [[3, "16:00", "18:00"], [6, "11:00", "12:30"]],
 		call: {
 			courtesy: { minutes: 15, maxPerWeek: 3, cooldownDays: 60 },
 			bufferBefore: 5,
@@ -142,7 +140,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "juno",
 		published: true,
 		working: everyDay(MON_FRI, "08:30", "16:30"),
-		calls: [[1, "09:00", "10:30"], [3, "09:00", "10:30"], [5, "09:00", "10:30"]],
 		call: {
 			paid: { minutes: 30, feeMinor: 6000, currency: "EUR" },
 			bufferBefore: 0,
@@ -164,7 +161,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "samuel",
 		published: true,
 		working: everyDay(MON_FRI, "09:00", "17:00"),
-		calls: [[2, "15:00", "17:00"], [4, "15:00", "17:00"]],
 		call: {
 			courtesy: { minutes: 20, maxPerWeek: 5, cooldownDays: 14 },
 			bufferBefore: 0,
@@ -180,7 +176,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "tomasz",
 		published: true,
 		working: everyDay(MON_FRI, "08:00", "16:00"),
-		calls: [[1, "13:00", "15:00"]],
 		call: {
 			courtesy: { minutes: 15, maxPerWeek: 2, cooldownDays: 30 },
 			paid: { minutes: 60, feeMinor: 20000, currency: "PLN" },
@@ -198,20 +193,17 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "aiko",
 		published: true,
 		working: everyDay(MON_FRI, "10:00", "19:00"),
-		calls: [],
 	},
 	{
 		// A new account still drafting availability. Nothing here is visible to anybody but Chloe.
 		owner: "chloe",
 		published: false,
 		working: everyDay(MON_FRI, "10:00", "16:00"),
-		calls: [],
 	},
 	{
 		owner: "nova",
 		published: true,
 		working: everyDay(MON_FRI, "09:30", "18:00"),
-		calls: [[2, "11:00", "13:00"], [4, "11:00", "13:00"]],
 		call: {
 			courtesy: { minutes: 30, maxPerWeek: 5, cooldownDays: 30 },
 			paid: { minutes: 60, feeMinor: 12000, currency: "EUR" },
@@ -232,7 +224,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "north",
 		published: true,
 		working: everyDay(MON_FRI, "09:00", "17:00"),
-		calls: [[3, "10:00", "12:00"]],
 		call: {
 			courtesy: { minutes: 20, maxPerWeek: 3, cooldownDays: 30 },
 			bufferBefore: 0,
@@ -256,7 +247,6 @@ export const SCHEDULES: ScheduleSpec[] = [
 		owner: "fern",
 		published: true,
 		working: everyDay(MON_FRI, "09:00", "17:00"),
-		calls: [[1, "12:00", "13:00"], [3, "12:00", "13:00"]],
 		call: {
 			paid: { minutes: 30, feeMinor: 4000, currency: "GBP" },
 			bufferBefore: 0,

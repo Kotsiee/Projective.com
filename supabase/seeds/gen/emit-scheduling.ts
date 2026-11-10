@@ -8,8 +8,8 @@
  *
  * The seed inserts as the table owner, so `auth.uid()` is NULL and the discovery-call booking gate
  * (`fn_enforce_call_request`) steps aside — it guards the CLIENT path. The calls below are still
- * written to satisfy it (inside a call window, the configured length, the host's fee) so the world
- * reads the way a real one would.
+ * written to satisfy it (inside the host's working hours, the configured length, the host's fee) so
+ * the world reads the way a real one would.
  */
 
 import {
@@ -85,6 +85,26 @@ function assertBands(owner: string, kind: string, bands: Band[]): void {
 	}
 }
 
+/**
+ * Refuse a call the booking gate would refuse for its time: one that does not sit inside one band of
+ * its host's working hours, where every call is booked (Decision #408).
+ */
+function assertInWorkingHours(
+	host: ResolvedSchedule,
+	key: string,
+	slot: WeekSlot,
+	minutes: number,
+): void {
+	const weekday = (slot.day + 1) % 7;
+	const start = minutesOf(slot.time);
+	const inside = host.spec.working.some(([day, from, to]) =>
+		day === weekday && minutesOf(from) <= start && start + minutes <= minutesOf(to)
+	);
+	if (!inside) {
+		throw new Error(`schedules: call "${key}" is outside ${host.spec.owner}'s working hours`);
+	}
+}
+
 /** A `WeekSlot` in the owner's zone as a SQL timestamptz expression, shifted by `plusMinutes`. */
 function at(tz: string, slot: WeekSlot, plusMinutes = 0): string {
 	return localAt(tz, slot.week, slot.day, minutesOf(slot.time) + plusMinutes);
@@ -121,23 +141,16 @@ export function emitScheduling(world: World): string {
 	const bandRows: string[][] = [];
 	for (const r of resolved) {
 		assertBands(r.spec.owner, "working_hours", r.spec.working);
-		assertBands(r.spec.owner, "call_window", r.spec.calls);
-		const kinds: Array<["working_hours" | "call_window", Band[]]> = [
-			["working_hours", r.spec.working],
-			["call_window", r.spec.calls],
-		];
-		for (const [kind, bands] of kinds) {
-			for (const [weekday, start, end] of bands) {
-				bandRows.push([
-					id(uuidFor("availability-rule", `${r.spec.owner}:${kind}:${weekday}:${start}`)),
-					id(r.scheduleId),
-					`${q(kind)}::scheduling.availability_kind`,
-					String(weekday),
-					String(minutesOf(start)),
-					String(minutesOf(end)),
-					"true",
-				]);
-			}
+		for (const [weekday, start, end] of r.spec.working) {
+			bandRows.push([
+				id(uuidFor("availability-rule", `${r.spec.owner}:working_hours:${weekday}:${start}`)),
+				id(r.scheduleId),
+				"'working_hours'::scheduling.availability_kind",
+				String(weekday),
+				String(minutesOf(start)),
+				String(minutesOf(end)),
+				"true",
+			]);
 		}
 	}
 	out.push(insert(
@@ -192,8 +205,8 @@ export function emitScheduling(world: World): string {
 			if (!c.courtesy && !c.paid) {
 				throw new Error(`schedules: ${r.spec.owner} accepts calls but offers no flavour`);
 			}
-			if (r.spec.calls.length === 0) {
-				throw new Error(`schedules: ${r.spec.owner} takes calls but publishes no call window`);
+			if (r.spec.working.length === 0) {
+				throw new Error(`schedules: ${r.spec.owner} takes calls but publishes no working hours`);
 			}
 			return [
 				id(r.scheduleId),
@@ -253,7 +266,10 @@ export function emitScheduling(world: World): string {
 		if (!host?.spec.call) throw new Error(`schedules: call "${c.key}" is hosted by "${c.host}", who takes no calls`);
 		const settings = host.spec.call;
 		const flavour = c.type === "paid" ? settings.paid : settings.courtesy;
-		if (!flavour) throw new Error(`schedules: call "${c.key}" is ${c.type}, which "${c.host}" does not offer`);
+		if (!flavour) {
+			throw new Error(`schedules: call "${c.key}" is ${c.type}, which "${c.host}" does not offer`);
+		}
+		assertInWorkingHours(host, c.key, c.at, flavour.minutes);
 		if (c.platform && !settings.platforms.includes(c.platform)) {
 			throw new Error(`schedules: call "${c.key}" is on ${c.platform}, which "${c.host}" does not offer`);
 		}
@@ -358,7 +374,7 @@ function emitPresets(
 			ruleRows.push([
 				id(ruleId),
 				id(presetId),
-				`${q(rule.layer)}::scheduling.availability_kind`,
+				"'working_hours'::scheduling.availability_kind",
 				`${q(rule.effect)}::scheduling.rule_effect`,
 				q(draftToRRule(rule)),
 				q(rule.startsOn),

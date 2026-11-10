@@ -12,8 +12,9 @@ import {
 	SchedulingPartySchema,
 } from "./coordination.ts";
 import { CalendarPrefsSchema, EntryRemindersSchema } from "./reminders.ts";
-import { AvailabilityBehavior, RRuleText, uuid } from "./rows.ts";
+import { AvailabilityBehavior, CssTokenName, RRuleText, uuid } from "./rows.ts";
 import { RoutineSchema } from "./routines.ts";
+import { SwatchAccentSchema } from "./swatches.ts";
 
 /**
  * scheduling — the Zod SSOT for the Calendar & Schedule domain shared across every surface: the
@@ -100,8 +101,11 @@ export const CalendarEventSchema = z.object({
 	externalSync: z.boolean().optional(),
 	/** Only the privacy-safe status label renders — the real title is withheld (§Part 1.4). */
 	masked: z.boolean().optional(),
-	/** A CSS custom-property NAME (e.g. "--primary") accenting the block; defaults per kind. */
-	accent: z.string().max(60).optional(),
+	/**
+	 * A CSS custom-property NAME (e.g. "--primary", or a swatch, "--swatch-teal") accenting the block;
+	 * defaults per kind.
+	 */
+	accent: CssTokenName.optional(),
 	location: z.string().max(160).optional(),
 	meta: z.string().max(160).optional(),
 	/** Live attendee count — rendered on public group sessions only. */
@@ -162,7 +166,7 @@ export const CalendarEventSchema = z.object({
 	callSide: CallSide.optional(),
 	/** The moves the viewer may make now ({@link callMovesFor}); the doors still judge each one. */
 	callMoves: z.array(CallMove).optional(),
-	/** True on a synthetic block a visitor may CLICK to request a call (a free call-window slot). */
+	/** True on a synthetic block a visitor may CLICK to request a call (a free slot in working hours). */
 	bookable: z.boolean().optional(),
 	/** `courtesy` (free) or `paid` — drives whether the booking flow asks for payment. */
 	callType: z.enum(["courtesy", "paid"]).optional(),
@@ -263,13 +267,11 @@ export const AvailabilityRuleSchema = z.object({
 	endMinute: z.number().int().min(0).max(1440),
 	label: z.string().max(80).optional(),
 	/**
-	 * What the band MEANS (`scheduling.availability_kind`). `working_hours` is the broad "at my
-	 * desk" overlay; `call_window` is the narrower subset during which the owner accepts a
-	 * discovery call — so the UI can paint a call band as a visually distinct subset rather than
-	 * conflating "I am working" with "interrupt me". Optional and defaulting to `working_hours`, so
-	 * every pre-existing payload stays valid.
+	 * What the band MEANS (`scheduling.availability_kind`): always working hours, inside which a
+	 * discovery call is booked — availability is one layer (Decision #408). Optional, so every
+	 * pre-existing payload stays valid.
 	 */
-	kind: z.enum(["working_hours", "call_window"]).optional(),
+	kind: z.literal("working_hours").optional(),
 });
 export type AvailabilityRule = z.infer<typeof AvailabilityRuleSchema>;
 
@@ -494,6 +496,11 @@ export const EntryFieldsSchema = z.object({
 	availabilityBehavior: AvailabilityBehavior.optional(),
 	/** The routine it belongs to; `null` takes it out, and absent leaves it as it is. */
 	routineId: uuid.nullable().optional(),
+	/**
+	 * The swatch the host draws it in (`./swatches.ts`, Decision #408), stored as `events.accent`;
+	 * `null` returns it to its kind's colour, and absent leaves it as it is.
+	 */
+	accent: SwatchAccentSchema.nullable().optional(),
 	/**
 	 * The rule of the series a batch lays down, on its FIRST entry, which becomes the master and the
 	 * rest its occurrences. Read on a create only: an edit reaches one occurrence.

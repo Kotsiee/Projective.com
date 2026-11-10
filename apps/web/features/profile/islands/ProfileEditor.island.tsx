@@ -185,7 +185,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 			</header>
 
 			<EditSection
-				id="edit-media"
+				id="showcase"
 				title="Photo & showcase"
 				description="Your profile photo and the six items at the top of your profile."
 			>
@@ -202,7 +202,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 			<div class="pf-edit__form" key={formKey.value}>
 				{sections.identity && (
 					<EditSection
-						id="edit-basics"
+						id="basics"
 						title="Basics"
 						description="Your name and the one line under it."
 						state={stateOf(["firstName", "lastName", "name", "headline"])}
@@ -300,7 +300,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 
 				{sections.about && (
 					<EditSection
-						id="edit-about"
+						id="about"
 						title="About"
 						description="Your story, in your own words."
 						state={stateOf(["story"])}
@@ -331,7 +331,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 
 				{sections.location && (
 					<EditSection
-						id="edit-location"
+						id="location"
 						title="Location & time"
 						description="Where you're based, and the time zone your hours are shown in."
 						state={stateOf(["city", "country", "timezone"])}
@@ -397,7 +397,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 
 				{sections.skills && (
 					<EditSection
-						id="edit-skills"
+						id="skills"
 						title="Skills"
 						description="Up to 15 — each one links visitors to search."
 						state={stateOf(["skills"])}
@@ -427,7 +427,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 
 				{sections.languages && (
 					<EditSection
-						id="edit-languages"
+						id="languages"
 						title="Languages"
 						description="The languages you work in, and how well."
 						state={stateOf(["languages"])}
@@ -438,7 +438,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 
 				{sections.experience && (
 					<EditSection
-						id="edit-experience"
+						id="experience"
 						title="Experience"
 						description="Roles, education and certifications — shown on your Experience tab."
 						state={stateOf(["experience", "education", "certifications"])}
@@ -457,7 +457,7 @@ export default function ProfileEditor({ model, userId, restricted }: ProfileEdit
 				)}
 
 				<EditSection
-					id="edit-privacy"
+					id="privacy"
 					title="Privacy & display"
 					description="Who can see your profile, and what it shows."
 					state={stateOf(["visibility", "settings"])}

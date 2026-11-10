@@ -1,5 +1,5 @@
 import { fmtMinutes } from "./civil.ts";
-import type { Band, Layer, RuleDraft } from "./types.ts";
+import type { Band, RuleDraft } from "./types.ts";
 
 // #region Names
 const SUNDAY_UTC = Date.UTC(2023, 0, 1);
@@ -32,11 +32,6 @@ export function dateName(iso: string, locale = "en-GB"): string {
 	}).format(Date.UTC(y, m - 1, d));
 }
 
-/** The layer as a phrase. */
-export function layerName(layer: Layer): string {
-	return layer === "working_hours" ? "working hours" : "call window";
-}
-
 /** A band as "06:00 to 12:00". */
 export function bandRange(band: Band): string {
 	return `${fmtMinutes(band.start)} to ${fmtMinutes(band.end)}`;
@@ -48,21 +43,15 @@ export function ruleName(rule: RuleDraft, describe: (rule: RuleDraft) => string)
 }
 
 /** A band button's accessible name (plan §5.4). */
-export function bandLabel(
-	day: number,
-	band: Band,
-	layer: Layer,
-	rule: string,
-	locale?: string,
-): string {
-	return `${weekdayName(day, locale)}, ${bandRange(band)}, ${layerName(layer)}, rule: ${rule}`;
+export function bandLabel(day: number, band: Band, rule: string, locale?: string): string {
+	return `${weekdayName(day, locale)}, ${bandRange(band)}, rule: ${rule}`;
 }
 // #endregion
 
 // #region Announcements
 /** The live-region sentence after a band is created. */
-export function announceCreated(day: number, band: Band, layer: Layer, locale?: string): string {
-	return `Created ${weekdayName(day, locale)}, ${bandRange(band)}, ${layerName(layer)}.`;
+export function announceCreated(day: number, band: Band, locale?: string): string {
+	return `Created ${weekdayName(day, locale)}, ${bandRange(band)}.`;
 }
 
 /** The live-region sentence after an overnight drag is stored as two bands. */
@@ -71,12 +60,11 @@ export function announceOvernight(
 	start: number,
 	nextDay: number,
 	end: number,
-	layer: Layer,
 	locale?: string,
 ): string {
 	return `Created ${weekdayName(day, locale)} ${fmtMinutes(start)} to ${
 		weekdayName(nextDay, locale)
-	} ${fmtMinutes(end)}, ${layerName(layer)}, stored as two bands.`;
+	} ${fmtMinutes(end)}, stored as two bands.`;
 }
 
 /** The live-region sentence after a band moves. */
@@ -98,11 +86,10 @@ export function announceDuplicated(day: number, band: Band, locale?: string): st
 export function announceDeleted(
 	day: number,
 	band: Band,
-	layer: Layer,
 	ruleRemoved: boolean,
 	locale?: string,
 ): string {
-	const base = `Deleted ${weekdayName(day, locale)}, ${bandRange(band)}, ${layerName(layer)}.`;
+	const base = `Deleted ${weekdayName(day, locale)}, ${bandRange(band)}.`;
 	return ruleRemoved ? `${base} Its rule was removed; undo to restore it.` : base;
 }
 // #endregion

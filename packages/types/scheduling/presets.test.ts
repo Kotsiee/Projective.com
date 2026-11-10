@@ -44,18 +44,19 @@ Deno.test("a save takes a template's rules and refuses an inconsistent scope", (
 
 Deno.test("occurrences serialise to ISO spans the door accepts", () => {
 	const spans = toOccurrenceSpans([{
-		kind: "call_window",
+		kind: "working_hours",
 		startsAt: Date.parse("2026-10-12T09:00:00Z"),
 		endsAt: Date.parse("2026-10-12T10:00:00Z"),
 		ruleIds: ["r1"],
 	}]);
 	assertEquals(spans, [{
-		kind: "call_window",
+		kind: "working_hours",
 		startsAt: "2026-10-12T09:00:00.000Z",
 		endsAt: "2026-10-12T10:00:00.000Z",
 		ruleIds: ["r1"],
 	}]);
 	assertEquals(OccurrenceSpanSchema.safeParse(spans[0]).success, true);
+	assertEquals(OccurrenceSpanSchema.safeParse({ ...spans[0], kind: "call_window" }).success, false);
 	assertEquals(
 		OccurrenceSpanSchema.safeParse({ ...spans[0], endsAt: spans[0].startsAt }).success,
 		false,

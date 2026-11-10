@@ -8,10 +8,11 @@ import AvailabilityEditor from "@features/profile/islands/AvailabilityEditor.isl
 import { firstWeekdayOf } from "@projective/types/org";
 
 /**
- * `/[handle]/edit/availability` — the owner's **Availability** page: working hours and the
- * discovery-call offer. Owner-only with the same server guard as `/[handle]/edit` — a guest is sent
- * to sign in, anyone else to the profile — and seeded from the owner's own schedule (a draft
- * included), read under their session.
+ * `/[handle]/edit/availability` — the owner's **Availability** page: the discovery-call offer and its
+ * burnout guards, the time zone and publishing, and the weekly hours as a summary beside the link to
+ * `/calendar?view=availability`, where they are edited (Decision #408). Owner-only with the same
+ * server guard as `/[handle]/edit` — a guest is sent to sign in, anyone else to the profile — and
+ * seeded from the owner's own schedule (a draft included), read under their session.
  */
 export const handler = define.handlers({
 	async GET(ctx) {

@@ -1,10 +1,8 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/calendar-chrome.css";
 import "../styles/availability-page.css";
-import { CalendarZoom, SCHEDULER_LAYERS } from "@projective/ui/calendar";
-import { Button, SelectButton } from "@projective/ui/fields";
-import type { PresetListResult } from "@projective/types/scheduling";
+import { CalendarZoom } from "@projective/ui/calendar";
+import { Button } from "@projective/ui/fields";
 import {
 	availabilityBusy,
 	availabilityNotice,
@@ -15,23 +13,14 @@ import {
 	working,
 } from "@features/catalogue/core/availability-store.ts";
 import { discardDraft, draftRestored, hasPending, saveDraft } from "../core/availability-draft.ts";
-import { availabilityZoom, pageViewerOf, usePageScheduler } from "../core/availability-page.ts";
-import { pageValueOf } from "../components/AvailabilityPageParts.tsx";
-
-/** Props for {@link AvailabilityFooter}. */
-export interface AvailabilityFooterProps {
-	initial: PresetListResult | null;
-	presetSlug: string | null;
-	/** The viewer's `org.user_preferences.locale`, so the shared store is made the same everywhere. */
-	locale?: string;
-}
+import { availabilityZoom } from "../core/availability-page.ts";
 
 /**
  * AvailabilityFooter — the middle-nav FOOTER band on `/calendar?view=availability`, on the agenda
- * rig's three-part grid (Decision #377): the layer the grid paints (Hours or Calls) on the leading
- * edge, where the agenda keeps its display lens; the zoom ruler in the centre (Day · Week · Month, the
- * grid's Ctrl+wheel moving the same value); and what is unsaved, Discard, and Save — the band's one
- * filled commit — on the trailing edge.
+ * rig's three-part grid (Decision #377): the zoom ruler in the centre (Day · Week · Month, the grid's
+ * Ctrl+wheel moving the same value), and what is unsaved, Discard, and Save — the band's one filled
+ * commit, brand primary (§B.8.1 tier 3) — on the trailing edge. Availability is one layer (Decision
+ * #408), so the leading edge, where the agenda keeps its display lens, holds no layer switch.
  *
  * Save writes the open template, compiled for the booking gate and, for the default, mirrored into
  * the profile's weekly hours; Discard drops its edits. Other templates edited and not saved are
@@ -39,17 +28,7 @@ export interface AvailabilityFooterProps {
  * restored local draft says so ("Local draft restored"), and its Discard becomes Discard changes,
  * which drops every unsaved template back to what is stored, and the draft with them.
  */
-export default function AvailabilityFooter(props: AvailabilityFooterProps): JSX.Element {
-	const store = usePageScheduler(
-		pageValueOf(props.initial, props.presetSlug),
-		pageViewerOf(props.locale),
-	);
-	// The toggle stays controlled through a local signal that follows the store's layer.
-	const layer = useSignal<string>(store.layer.peek());
-	useSignalEffect(() => {
-		layer.value = store.layer.value;
-	});
-
+export default function AvailabilityFooter(): JSX.Element {
 	const value = working.value;
 	const dirty = value ? isUnsaved(value) : false;
 	const others = Object.keys(drafts.value).filter((id) => id !== value?.id).length;
@@ -66,18 +45,6 @@ export default function AvailabilityFooter(props: AvailabilityFooterProps): JSX.
 
 	return (
 		<div class="cal-rig cal-avfoot">
-			<SelectButton
-				class="cal-avfoot__layer"
-				options={SCHEDULER_LAYERS}
-				value={layer}
-				size="sm"
-				aria-label="Layer"
-				onValueChange={(next) => {
-					const picked = SCHEDULER_LAYERS.find((l) => l.value === next);
-					if (picked) store.setLayer(picked.value);
-				}}
-			/>
-
 			<CalendarZoom
 				class="cal-rig__zoom"
 				mode="calendar"
@@ -111,6 +78,7 @@ export default function AvailabilityFooter(props: AvailabilityFooterProps): JSX.
 				<Button
 					label="Save"
 					size="sm"
+					severity="primary"
 					loading={busy}
 					disabled={!dirty}
 					onClick={() => void saveDraft()}

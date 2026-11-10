@@ -8,7 +8,7 @@ import { SchedulerContext, type SchedulerContextValue } from "./context.ts";
 import { isTextInput, type KeyCommand, keyToAction } from "./keymap.ts";
 import { ShortcutSheet } from "./ShortcutSheet.tsx";
 import { createSchedulerStore, type SchedulerStore } from "./store.ts";
-import type { Preset, SchedulerBlackout, SchedulerEngine } from "./types.ts";
+import type { Preset, SchedulerBlackout, SchedulerEngine, SchedulerPricing } from "./types.ts";
 
 // #region Props
 /** Props for `AvailabilityScheduler.Root`. */
@@ -31,6 +31,11 @@ export interface AvailabilitySchedulerRootProps {
 	blackouts?: readonly SchedulerBlackout[];
 	/** The viewer owns the schedule, so private blackout labels show (default `true`). */
 	viewerOwns?: boolean;
+	/**
+	 * The rule editor's price field (Decision #408). Pass it only while paid calls are live: without it
+	 * the field is not drawn, and a rule's stored price is kept as it is.
+	 */
+	pricing?: SchedulerPricing;
 	/** The region's accessible name. */
 	label?: string;
 	/** Mount the built-in shortcut sheet (default `true`). */
@@ -54,7 +59,7 @@ export interface AvailabilitySchedulerRootProps {
 // #region Root
 /**
  * The scheduler's provider and layout block. Owns a local store, routes the scheduler-wide keys
- * (`W`/`C`, `[`/`]`, undo/redo, `?`), hosts the polite live region, and sizes from its container,
+ * (`[`/`]`, undo/redo, `?`), hosts the polite live region, and sizes from its container,
  * so it behaves the same inside a `Dialog` and on a full page.
  */
 export function Root(props: AvailabilitySchedulerRootProps): JSX.Element {
@@ -112,6 +117,7 @@ export function Root(props: AvailabilitySchedulerRootProps): JSX.Element {
 		today,
 		blackouts,
 		viewerOwns,
+		pricing: props.pricing ?? null,
 		idBase,
 		run,
 	};

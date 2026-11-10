@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Tooltip } from "@projective/ui/feedback";
 import {
 	Button,
 	CurrencySelect,
@@ -9,46 +8,33 @@ import {
 	InputNumber,
 	Select,
 	ToggleSwitch,
-	weekdayOrder,
 } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import {
 	type OwnerAvailability,
-	OwnerAvailabilitySchema,
-	type OwnerBand,
 	type OwnerCallSettings,
 	PAID_CALLS_LIVE,
+	type SaveOwnerAvailability,
+	SaveOwnerAvailabilitySchema,
 } from "@projective/types/scheduling";
 import { DISPLAY_CURRENCIES, toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import "../styles/profile.css";
-import {
-	bandsFor,
-	copyDay,
-	dayOverlaps,
-	endOptions,
-	nextBand,
-	START_OPTIONS,
-	WEEK,
-	withDayBands,
-} from "../core/availability-model.ts";
+import { weekHours } from "../core/availability-model.ts";
 import { errorsFromIssues } from "../core/edit-model.ts";
 import { ProfileService } from "../core/ProfileService.ts";
 import { calendarModeHref } from "@features/calendar/core/availability-view.ts";
 
 /**
- * AvailabilityEditor — the owner's **Availability** page (`/[handle]/edit/availability`): the weekly
- * working hours (in the owner's own time zone), whether they are published, and — for a seller — the
- * discovery-call offer: a free intro call, a paid consultation, and the booking rules both follow.
+ * AvailabilityEditor — the owner's **Availability** page (`/[handle]/edit/availability`): for a
+ * seller, the discovery-call offer (a free intro call, a paid consultation) and the burnout guards
+ * every call is booked within; for every owner, the time zone, whether the hours are published, and
+ * the stored weekly hours as a summary beside the way to the calendar that edits them.
  *
- * One Save writes everything in one transaction (`scheduling.save_owner_availability`), because a
- * time zone saved without the hours expressed in it would silently re-time every one of them. The
- * same checks run here first (`OwnerAvailabilitySchema`: no overlapping hours on a day, an end after
- * each start, a fee before a paid call) so a refusal is shown where it applies.
- *
- * Only WORKING hours are edited here. Narrower "call window" bands, when a schedule has any, are
- * kept exactly as they are. The same hours are the default availability template's weekly part, and
- * the templates themselves are managed on one full page, `/calendar?view=availability` (Decision
- * #376), which this page links to; leaving with unsaved changes here asks first.
+ * The weekly hours are the default availability template's, edited on one full page,
+ * `/calendar?view=availability` (Decisions #376, #408), so this page never writes them: one Save sends
+ * the time zone, publishing and call settings ({@link SaveOwnerAvailabilitySchema}) to
+ * `scheduling.save_owner_availability`, which keeps the bands as they are. The same checks run here
+ * first, so a refusal is shown where it applies; leaving with unsaved changes asks first.
  *
  * While paid calls are off ({@link PAID_CALLS_LIVE}, Decision #343 ruling C1) the paid switch is
  * locked at whatever the owner stored and says why, and its fee fields are not drawn: a setting that
@@ -61,7 +47,7 @@ export interface AvailabilityEditorProps {
 	takesCalls: boolean;
 	/**
 	 * The weekday the owner's week starts on, 0 = Sunday — from their `org.user_preferences.locale`
-	 * (default Monday). Only the order the days are listed in; each day keeps its own number.
+	 * (default Monday). Only the order the summary reads in; each day keeps its own number.
 	 */
 	weekStartsOn?: number;
 }
@@ -88,11 +74,12 @@ const NOTICE = [
 const ADVANCE = [7, 14, 30, 60, 90, 180, 365].map((d) => ({ label: `${d} days`, value: String(d) }));
 const PAID_NOTE_ID = "pf-avail-paid-note";
 
+function savedPart(v: OwnerAvailability): SaveOwnerAvailability {
+	return { timezone: v.timezone, published: v.published, call: v.call };
+}
+
 export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.Element {
 	const { handle, takesCalls } = props;
-	const week = weekdayOrder(props.weekStartsOn ?? 1)
-		.map((weekday) => WEEK.find((d) => d.weekday === weekday))
-		.filter((d): d is (typeof WEEK)[number] => d !== undefined);
 	const baseline = useSignal<OwnerAvailability>(props.initial);
 	const value = useSignal<OwnerAvailability>(props.initial);
 	const formKey = useSignal(0);
@@ -103,8 +90,9 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 
 	const v = value.value;
 	const call = v.call;
-	const dirty = JSON.stringify(v) !== JSON.stringify(baseline.value);
+	const dirty = JSON.stringify(savedPart(v)) !== JSON.stringify(savedPart(baseline.value));
 	dirtyRef.current = dirty;
+	const hours = weekHours(baseline.value.bands, props.weekStartsOn ?? 1);
 
 	function setCall(patch: Partial<OwnerCallSettings>): void {
 		const current = value.peek();
@@ -112,13 +100,9 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 		value.value = { ...current, call: { ...current.call, ...patch } };
 	}
 
-	function setDay(weekday: number, bands: OwnerBand[]): void {
-		value.value = withDayBands(value.peek(), weekday, bands);
-	}
-
 	async function save(): Promise<void> {
 		if (saving.peek()) return;
-		const parsed = OwnerAvailabilitySchema.safeParse(value.peek());
+		const parsed = SaveOwnerAvailabilitySchema.safeParse(savedPart(value.peek()));
 		if (!parsed.success) {
 			errors.value = errorsFromIssues(parsed.error.issues);
 			status.value = Object.values(errors.value)[0] ?? "Some settings need fixing before they can be saved.";
@@ -174,157 +158,13 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 			<header class="pf-edit__head">
 				<h1 class="pf-edit__h1">Availability</h1>
 				<p class="pf-edit__lede">
-					When you work, and how people can book time with you. Times are in your own time zone;
-					visitors see them converted to theirs.
+					{takesCalls
+						? "How people book a call with you, and the limits that keep your week your own."
+						: "Your time zone, and whether your working hours show on your profile."}
 				</p>
 			</header>
 
 			<div class="pf-edit__form" key={formKey.value}>
-				<details class="pf-edit__section" open>
-					<summary class="pf-edit__summary">
-						<span class="pf-edit__heading">
-							<span class="pf-edit__title">Working hours</span>
-							<span class="pf-edit__desc">The weekly hours shown on your profile.</span>
-						</span>
-						<Icon name="chevron-down" size="sm" class="pf-edit__caret" aria-hidden />
-					</summary>
-					<div class="pf-edit__body">
-						<div class="pf-edit__grid">
-							<FormControl label="Time zone" error={err.timezone} status={err.timezone ? "invalid" : "default"}>
-								{({ id, describedBy, status: s }) => (
-									<Select
-										id={id}
-										aria-describedby={describedBy}
-										status={s}
-										options={TIME_ZONES.map((z) => ({ label: z.replace(/_/g, " "), value: z }))}
-										value={v.timezone}
-										filter
-										fluid
-										onValueChange={(tz) => (value.value = { ...value.peek(), timezone: tz })}
-									/>
-								)}
-							</FormControl>
-							<div class="pf-edit__switchcell">
-								<ToggleSwitch
-									value={v.published}
-									label="Show my hours on my profile"
-									onValueChange={(on) => (value.value = { ...value.peek(), published: on })}
-								/>
-							</div>
-						</div>
-
-						<Tooltip content="Reusable hours for your services, in your calendar">
-							<a
-								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
-								href={calendarModeHref("availability")}
-							>
-								<span class="ui-button__icon" aria-hidden="true">
-									<Icon name="calendar" size="sm" />
-								</span>
-								<span class="ui-button__label">Availability templates</span>
-							</a>
-						</Tooltip>
-
-						<ol class="pf-week" role="list">
-							{week.map((day) => {
-								const bands = bandsFor(v, day.weekday);
-								const working = bands.length > 0;
-								const overlaps = dayOverlaps(bands);
-								const next = nextBand(bands, day.weekday);
-								return (
-									<li key={day.weekday} class="pf-week__day" data-working={working ? "true" : "false"}>
-										<div class="pf-week__head">
-											<ToggleSwitch
-												value={working}
-												label={day.label}
-												onValueChange={(on) =>
-													setDay(day.weekday, on ? [nextBand([], day.weekday)!] : [])}
-											/>
-											{working && day.weekday === 1 && (
-												<Button
-													size="sm"
-													variant="text"
-													class="pf-edit__ghost"
-													icon={<Icon name="copy" size="sm" />}
-													onClick={() => (value.value = copyDay(value.peek(), 1, [2, 3, 4, 5]))}
-												>
-													Copy to weekdays
-												</Button>
-											)}
-										</div>
-										{working
-											? (
-												<ul class="pf-week__bands" role="list">
-													{bands.map((band, i) => (
-														<li key={`${band.startMinute}-${i}`} class="pf-week__band">
-															<Select
-																size="sm"
-																class="ui-field--bare pf-week__time"
-																aria-label={`${day.label} band ${i + 1} starts`}
-																options={START_OPTIONS}
-																value={String(band.startMinute)}
-																onValueChange={(sv) => {
-																	const start = Number(sv);
-																	const end = Math.max(band.endMinute, start + 30);
-																	setDay(
-																		day.weekday,
-																		bands.map((b, j) =>
-																			j === i ? { ...b, startMinute: start, endMinute: Math.min(1440, end) } : b
-																		),
-																	);
-																}}
-															/>
-															<span class="pf-week__to" aria-hidden="true">–</span>
-															<Select
-																size="sm"
-																class="ui-field--bare pf-week__time"
-																aria-label={`${day.label} band ${i + 1} ends`}
-																options={endOptions(band.startMinute)}
-																value={String(band.endMinute)}
-																onValueChange={(ev) =>
-																	setDay(
-																		day.weekday,
-																		bands.map((b, j) => (j === i ? { ...b, endMinute: Number(ev) } : b)),
-																	)}
-															/>
-															<Tooltip content="Remove these hours" placement="top">
-																<Button
-																	size="sm"
-																	variant="text"
-																	iconOnly
-																	class="pf-edit__ghost"
-																	aria-label={`Remove ${day.label} band ${i + 1}`}
-																	icon={<Icon name="close" size="sm" />}
-																	onClick={() => setDay(day.weekday, bands.filter((_, j) => j !== i))}
-																/>
-															</Tooltip>
-														</li>
-													))}
-													{next && (
-														<li class="pf-week__band pf-week__band--add">
-															<Button
-																size="sm"
-																variant="text"
-																class="pf-edit__ghost"
-																icon={<Icon name="plus" size="sm" />}
-																onClick={() => setDay(day.weekday, [...bands, next])}
-															>
-																Add hours
-															</Button>
-														</li>
-													)}
-												</ul>
-											)
-											: <p class="pf-week__off">Not working</p>}
-										{overlaps && <p class="pf-edit__error" role="alert">These hours overlap.</p>}
-									</li>
-								);
-							})}
-						</ol>
-						{err.bands && <p class="pf-edit__error" role="alert">{err.bands}</p>}
-					</div>
-				</details>
-
 				{takesCalls && call && (
 					<details class="pf-edit__section" open>
 						<summary class="pf-edit__summary">
@@ -362,32 +202,6 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 													/>
 												)}
 											</FormControl>
-											<FormControl label="Most per week" hint="0 means no limit.">
-												{({ id, describedBy }) => (
-													<InputNumber
-														id={id}
-														aria-describedby={describedBy}
-														value={call.courtesyMaxPerWeek}
-														min={0}
-														max={100}
-														fluid
-														onValueChange={(n) => setCall({ courtesyMaxPerWeek: Math.max(0, Math.round(n ?? 0)) })}
-													/>
-												)}
-											</FormControl>
-											<FormControl label="Days before the same person can book again" hint="0 means no wait.">
-												{({ id, describedBy }) => (
-													<InputNumber
-														id={id}
-														aria-describedby={describedBy}
-														value={call.courtesyCooldownDays}
-														min={0}
-														max={365}
-														fluid
-														onValueChange={(n) => setCall({ courtesyCooldownDays: Math.max(0, Math.round(n ?? 0)) })}
-													/>
-												)}
-											</FormControl>
 										</div>
 									)}
 
@@ -422,6 +236,7 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 											<FormControl
 												label="Fee"
 												required
+												hint="Your price for a consultation. A working-hours rule on your calendar can set its own."
 												error={err["call.feeAmountMinor"]}
 												status={err["call.feeAmountMinor"] ? "invalid" : "default"}
 											>
@@ -455,53 +270,7 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 										</div>
 									)}
 
-									<h3 class="pf-edit__subhead">Booking rules</h3>
-									<div class="pf-edit__grid">
-										<FormControl label="Notice needed">
-											{({ id }) => (
-												<Select
-													id={id}
-													options={NOTICE}
-													value={String(call.minNoticeMinutes)}
-													fluid
-													onValueChange={(n) => setCall({ minNoticeMinutes: Number(n) })}
-												/>
-											)}
-										</FormControl>
-										<FormControl label="Bookable up to">
-											{({ id }) => (
-												<Select
-													id={id}
-													options={ADVANCE}
-													value={String(call.maxAdvanceDays)}
-													fluid
-													onValueChange={(n) => setCall({ maxAdvanceDays: Number(n) })}
-												/>
-											)}
-										</FormControl>
-										<FormControl label="Gap before a call">
-											{({ id }) => (
-												<Select
-													id={id}
-													options={BUFFERS}
-													value={String(call.bufferBeforeMinutes)}
-													fluid
-													onValueChange={(n) => setCall({ bufferBeforeMinutes: Number(n) })}
-												/>
-											)}
-										</FormControl>
-										<FormControl label="Gap after a call">
-											{({ id }) => (
-												<Select
-													id={id}
-													options={BUFFERS}
-													value={String(call.bufferAfterMinutes)}
-													fluid
-													onValueChange={(n) => setCall({ bufferAfterMinutes: Number(n) })}
-												/>
-											)}
-										</FormControl>
-									</div>
+									<h3 class="pf-edit__subhead">Requests</h3>
 									<ul class="pf-edit__switches" role="list">
 										<li>
 											<ToggleSwitch
@@ -523,6 +292,184 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 						</div>
 					</details>
 				)}
+
+				{takesCalls && call && call.acceptsCalls && (
+					<details class="pf-edit__section" open>
+						<summary class="pf-edit__summary">
+							<span class="pf-edit__heading">
+								<span class="pf-edit__title">Burnout guards</span>
+								<span class="pf-edit__desc">
+									The limits every call is booked within, so calls can't crowd your week.
+								</span>
+							</span>
+							<Icon name="chevron-down" size="sm" class="pf-edit__caret" aria-hidden />
+						</summary>
+						<div class="pf-edit__body">
+							<div class="pf-edit__grid">
+								<FormControl
+									label="Gap before a call"
+									hint="Kept clear before every call, so calls are never back to back."
+								>
+									{({ id, describedBy }) => (
+										<Select
+											id={id}
+											aria-describedby={describedBy}
+											options={BUFFERS}
+											value={String(call.bufferBeforeMinutes)}
+											fluid
+											onValueChange={(n) => setCall({ bufferBeforeMinutes: Number(n) })}
+										/>
+									)}
+								</FormControl>
+								<FormControl
+									label="Gap after a call"
+									hint="Kept clear after every call, to wrap up before the next thing."
+								>
+									{({ id, describedBy }) => (
+										<Select
+											id={id}
+											aria-describedby={describedBy}
+											options={BUFFERS}
+											value={String(call.bufferAfterMinutes)}
+											fluid
+											onValueChange={(n) => setCall({ bufferAfterMinutes: Number(n) })}
+										/>
+									)}
+								</FormControl>
+								<FormControl
+									label="Notice needed"
+									hint="How close to its start a call can still be booked."
+								>
+									{({ id, describedBy }) => (
+										<Select
+											id={id}
+											aria-describedby={describedBy}
+											options={NOTICE}
+											value={String(call.minNoticeMinutes)}
+											fluid
+											onValueChange={(n) => setCall({ minNoticeMinutes: Number(n) })}
+										/>
+									)}
+								</FormControl>
+								<FormControl label="Bookable up to" hint="How far ahead people can book.">
+									{({ id, describedBy }) => (
+										<Select
+											id={id}
+											aria-describedby={describedBy}
+											options={ADVANCE}
+											value={String(call.maxAdvanceDays)}
+											fluid
+											onValueChange={(n) => setCall({ maxAdvanceDays: Number(n) })}
+										/>
+									)}
+								</FormControl>
+								{call.courtesyEnabled && (
+									<>
+										<FormControl
+											label="Free calls per week"
+											hint="The most free intro calls you take in a week. 0 means no limit."
+										>
+											{({ id, describedBy }) => (
+												<InputNumber
+													id={id}
+													aria-describedby={describedBy}
+													value={call.courtesyMaxPerWeek}
+													min={0}
+													max={100}
+													fluid
+													onValueChange={(n) =>
+														setCall({ courtesyMaxPerWeek: Math.max(0, Math.round(n ?? 0)) })}
+												/>
+											)}
+										</FormControl>
+										<FormControl
+											label="Days before the same person can book again"
+											hint="How long someone waits before another free call with you. 0 means no wait."
+										>
+											{({ id, describedBy }) => (
+												<InputNumber
+													id={id}
+													aria-describedby={describedBy}
+													value={call.courtesyCooldownDays}
+													min={0}
+													max={365}
+													fluid
+													onValueChange={(n) =>
+														setCall({ courtesyCooldownDays: Math.max(0, Math.round(n ?? 0)) })}
+												/>
+											)}
+										</FormControl>
+									</>
+								)}
+							</div>
+						</div>
+					</details>
+				)}
+
+				<details class="pf-edit__section" open>
+					<summary class="pf-edit__summary">
+						<span class="pf-edit__heading">
+							<span class="pf-edit__title">Working hours</span>
+							<span class="pf-edit__desc">
+								The weekly hours shown on your profile, set on your calendar.
+							</span>
+						</span>
+						<Icon name="chevron-down" size="sm" class="pf-edit__caret" aria-hidden />
+					</summary>
+					<div class="pf-edit__body">
+						<div class="pf-edit__grid">
+							<FormControl
+								label="Time zone"
+								error={err.timezone}
+								status={err.timezone ? "invalid" : "default"}
+							>
+								{({ id, describedBy, status: s }) => (
+									<Select
+										id={id}
+										aria-describedby={describedBy}
+										status={s}
+										options={TIME_ZONES.map((z) => ({ label: z.replace(/_/g, " "), value: z }))}
+										value={v.timezone}
+										filter
+										fluid
+										onValueChange={(tz) => (value.value = { ...value.peek(), timezone: tz })}
+									/>
+								)}
+							</FormControl>
+							<div class="pf-edit__switchcell">
+								<ToggleSwitch
+									value={v.published}
+									label="Show my hours on my profile"
+									onValueChange={(on) => (value.value = { ...value.peek(), published: on })}
+								/>
+							</div>
+						</div>
+
+						{hours.length
+							? (
+								<ul class="pf-hours" role="list" aria-label="Your weekly hours">
+									{hours.map((line) => (
+										<li key={line.days} class="pf-hours__line">
+											<span class="pf-hours__days">{line.days}</span>
+											<span class="pf-hours__times">{line.times}</span>
+										</li>
+									))}
+								</ul>
+							)
+							: <p class="pf-edit__hint">No working hours yet.</p>}
+
+						<a
+							class="ui-button ui-button--neutral ui-button--outlined ui-button--size-md pf-edit__calendarlink"
+							href={calendarModeHref("availability")}
+							data-icon-pos="right"
+						>
+							<span class="ui-button__label">Edit working hours on visual calendar</span>
+							<span class="ui-button__icon" aria-hidden="true">
+								<Icon name="arrow-right" size="sm" />
+							</span>
+						</a>
+					</div>
+				</details>
 			</div>
 
 			<div class="pf-edit__savebar" data-dirty={dirty ? "true" : "false"}>

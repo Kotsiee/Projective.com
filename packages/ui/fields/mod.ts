@@ -174,6 +174,8 @@ export { SelectButton, type SelectButtonProps } from "./islands/SelectButton.tsx
  * value is weekday numbers (0 = Sunday), never positions.
  */
 export { weekdayOrder, WeekdayRail, type WeekdayRailProps } from "./islands/WeekdayRail.tsx";
+export { SwatchPicker, type SwatchPickerProps } from "./islands/SwatchPicker.tsx";
+export { type Swatch, SWATCH_COLUMNS, SWATCHES, swatchFor } from "./core/swatches.ts";
 export { Rating, type RatingProps } from "./islands/Rating.tsx";
 // #endregion
 

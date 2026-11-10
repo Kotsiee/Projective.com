@@ -5,7 +5,7 @@ import {
 	AvailabilityPresetSchema,
 	AvailabilityRuleDraftSchema,
 } from "./recurrence.ts";
-import { AvailabilityKind, ianaTimezone, PresetScope } from "./rows.ts";
+import { ianaTimezone, PresetScope } from "./rows.ts";
 import { IsoDate } from "./civil.ts";
 
 /**
@@ -103,6 +103,11 @@ export interface ScheduleSettings {
 	published: boolean;
 	/** Blackouts that have not ended yet, soonest first. */
 	blackouts: ScheduleBlackout[];
+	/**
+	 * The paid call fee the call settings charge, which a rule without a price of its own inherits
+	 * (Decision #408); `null` while none is set.
+	 */
+	callFee: { amountMinor: number; currency: string } | null;
 }
 
 /**
@@ -165,10 +170,11 @@ export type BindListingAvailability = z.infer<typeof BindListingAvailabilitySche
 // #region Occurrences
 /**
  * One compiled span of `scheduling.availability_occurrences`, as the jsonb element the definer
- * door receives: ISO instants, `endsAt` exclusive, and the rules that produced it.
+ * door receives: ISO instants, `endsAt` exclusive, and the rules that produced it. Always working
+ * hours: availability is one layer (Decision #408).
  */
 export const OccurrenceSpanSchema = z.object({
-	kind: AvailabilityKind,
+	kind: z.literal("working_hours"),
 	startsAt: z.iso.datetime({ offset: true }),
 	endsAt: z.iso.datetime({ offset: true }),
 	ruleIds: z.array(z.string().min(1).max(64)).max(64),
@@ -180,7 +186,7 @@ export type OccurrenceSpan = z.infer<typeof OccurrenceSpanSchema>;
 
 /** An evaluated occurrence in epoch milliseconds, as `evaluate()` yields it. */
 export interface OccurrenceInstant {
-	kind: AvailabilityKind;
+	kind: "working_hours";
 	startsAt: number;
 	endsAt: number;
 	ruleIds: string[];

@@ -10,7 +10,6 @@ import {
 } from "./reducer.ts";
 import type {
 	Issue,
-	Layer,
 	Occurrence,
 	Preset,
 	SchedulerEngine,
@@ -45,7 +44,6 @@ export interface SchedulerStore {
 	readonly cursor: ReadonlySignal<Cursor>;
 	readonly selection: ReadonlySignal<Selection | null>;
 	readonly editing: ReadonlySignal<string | null>;
-	readonly layer: ReadonlySignal<Layer>;
 	readonly snap: ReadonlySignal<Snap>;
 	readonly view: ReadonlySignal<SchedulerView>;
 	readonly focusMonth: ReadonlySignal<string>;
@@ -66,7 +64,6 @@ export interface SchedulerStore {
 	deleteBand(sel: Selection): void;
 	upsertRule(rule: Preset["rules"][number]): void;
 	deleteRule(ruleId: string, name?: string): void;
-	setLayer(layer: Layer): void;
 	undo(): void;
 	redo(): void;
 	loadTemplate(template: SchedulerTemplate): void;
@@ -113,7 +110,6 @@ export function createSchedulerStore(
 		cursor: computed(() => state.value.cursor),
 		selection: computed(() => state.value.selection),
 		editing: computed(() => state.value.editing),
-		layer: computed(() => state.value.layer),
 		snap: computed(() => state.value.snap),
 		view: computed(() => state.value.view),
 		focusMonth,
@@ -138,7 +134,6 @@ export function createSchedulerStore(
 		deleteBand: (sel) => dispatch({ type: "deleteBand", ...sel }),
 		upsertRule: (rule) => dispatch({ type: "upsertRule", rule }),
 		deleteRule: (ruleId, name) => dispatch({ type: "deleteRule", ruleId, name }),
-		setLayer: (layer) => dispatch({ type: "setLayer", layer }),
 		undo: () => dispatch({ type: "undo" }),
 		redo: () => dispatch({ type: "redo" }),
 		loadTemplate: (template) => dispatch({ type: "loadTemplate", template }),

@@ -807,9 +807,7 @@ INSERT INTO scheduling.availability_rules (id, schedule_id, kind, weekday, start
 SELECT pg_temp.sid('band:' || b.kind || ':' || d || ':' || b.start_minute), pg_temp.c2_schedule(),
        b.kind::scheduling.availability_kind, d, b.start_minute, b.end_minute, b.label
   FROM (VALUES
-      ('working_hours', 540, 1140, 'Working hours'),
-      ('call_window', 600, 720, 'Morning calls'),
-      ('call_window', 840, 960, 'Afternoon calls')
+      ('working_hours', 540, 1140, 'Working hours')
   ) AS b (kind, start_minute, end_minute, label)
  CROSS JOIN generate_series(1, 5) AS d
  WHERE NOT EXISTS (SELECT 1 FROM scheduling.availability_rules r WHERE r.schedule_id = pg_temp.c2_schedule())

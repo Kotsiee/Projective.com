@@ -199,8 +199,8 @@ export type ProfileStats = z.infer<typeof ProfileStatsSchema>;
  * carried here so the context bar's schedule summary, its "Available now ⁄ Away" badge and the
  * bookable calendar can never disagree about when this person is at their desk.
  *
- * Only the broad `working_hours` kind is carried; the narrower `call_window` bands are a booking
- * concern and stay on the schedule page. `null` on the projection means no hours are configured —
+ * Availability is one layer (Decision #408), so these are also the hours a call is booked in.
+ * `null` on the projection means no hours are configured —
  * a buyer-only entity, or a seller who has not set any — and the bar then renders no availability
  * block at all rather than a badge with nothing behind it.
  */

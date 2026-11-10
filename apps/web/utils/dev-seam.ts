@@ -432,12 +432,12 @@ export type DevCatalogueAnalytics = "auto" | "empty" | "sparse" | "rich";
 export type DevClientPipeline = "auto" | "empty" | "action_required" | "busy";
 
 /**
- * A simulated availability conflict for the listing workspace (plan §10): `call_outside_work` adds the
- * scheduler's call-outside-working-hours warning to `Issues`; `empty_horizon` acts as if nothing were
- * bookable in the next 30 days, so `Issues` warns and the publish readiness blocks. Client-only: a save
- * still meets the real gate.
+ * A simulated availability conflict for the listing workspace (plan §10): `empty_horizon` acts as if
+ * nothing were bookable in the next 30 days, so `Issues` warns and the publish readiness blocks.
+ * Client-only: a save still meets the real gate. Availability is one layer (Decision #408), so there is
+ * no call window to fall outside working hours.
  */
-export type DevAvailabilityConflict = "auto" | "call_outside_work" | "empty_horizon";
+export type DevAvailabilityConflict = "auto" | "empty_horizon";
 
 /**
  * The inspector's Access tab (Decision #402): follow the server's answer, or draw the tab as the
@@ -860,11 +860,7 @@ const OPERATOR_MODES: readonly DevOperatorMode[] = ["auto", "on", "off"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
 const CLIENT_PIPELINES: readonly DevClientPipeline[] = ["auto", "empty", "action_required", "busy"];
-const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = [
-	"auto",
-	"call_outside_work",
-	"empty_horizon",
-];
+const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = ["auto", "empty_horizon"];
 const FILE_ACCESSES: readonly DevFileAccess[] = ["auto", "owner", "editor", "viewer", "signed-out"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */

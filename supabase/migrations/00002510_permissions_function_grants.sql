@@ -2231,6 +2231,11 @@ GRANT EXECUTE ON FUNCTION scheduling.fn_is_owner_schedule (uuid, uuid, uuid) TO 
 REVOKE ALL ON FUNCTION scheduling.trg_preset_guard () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.trg_blueprint_preset_binding () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.trg_invalidate_preset_compilation () FROM PUBLIC, anon, authenticated;
+-- The price of a paid call at a start (Decision #408) is what a published schedule already shows a
+-- visitor — its bands and its call offer's fee — so anon holds it too; the definer itself answers
+-- nothing for a schedule the caller may not read.
+REVOKE ALL ON FUNCTION scheduling.fn_resolved_slot_fee (uuid, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION scheduling.fn_resolved_slot_fee (uuid, timestamptz) TO anon, authenticated, service_role;
 -- #endregion
 
 -- #region Email addresses (00001050, 2026-10-06)

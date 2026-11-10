@@ -21,6 +21,7 @@ import {
 	pageViewerOf,
 	usePageScheduler,
 } from "../core/availability-page.ts";
+import { schedulerPricing } from "../core/availability-pricing.ts";
 import { pageValueOf, presetListOf, ServiceLinks } from "../components/AvailabilityPageParts.tsx";
 import { SchedulerMenu } from "../components/AvailabilityMenus.tsx";
 
@@ -66,6 +67,7 @@ export default function AvailabilityPanel(props: AvailabilityPanelProps): JSX.El
 			engine={workspaceSchedulerEngine}
 			store={store}
 			weekStartsOn={viewer.weekStartsOn}
+			pricing={schedulerPricing(list?.schedule ?? null)}
 			satellite
 			label={`Settings and rules · ${value.name}`}
 			class="cal-avpanel__scheduler"

@@ -56,20 +56,27 @@ One owner-level header. Everything below it is expressed in **this row's timezon
 
 ### `scheduling.availability_rules`
 
-One weekly-recurring band. **`kind` is the load-bearing column**: `working_hours` is the broad "at
-my desk" overlay, `call_window` the narrower subset during which the owner accepts a discovery call
-— so the UI can paint a call band as a visually distinct subset instead of conflating "I am working"
-with "interrupt me".
+One weekly-recurring band of **working hours**. Availability is one layer (Decision #408): a
+discovery call is booked anywhere inside these bands, and a session listing on the weekly fallback
+too. The default availability template's mirror is the one writer of these rows; the profile and
+Settings save the schedule without them.
 
-| Column                      | Type                           | Notes                                            |
-| :-------------------------- | :----------------------------- | :----------------------------------------------- |
-| `id`                        | uuid                           | PK.                                              |
-| `schedule_id`               | uuid                           | FK → `schedules` (CASCADE).                      |
-| `kind`                      | `scheduling.availability_kind` | `working_hours` (default) / `call_window`.       |
-| `weekday`                   | smallint                       | 0 = Sunday … 6 = Saturday (`CHECK 0–6`).         |
-| `start_minute` `end_minute` | integer                        | Minutes from local midnight (`CHECK 0–1440`).    |
-| `label` · `is_active`       | text · boolean                 | Optional caption; soft-disable without deleting. |
-| CHECK                       | —                              | `end_minute > start_minute`.                     |
+| Column                              | Type                           | Notes                                                                                                                           |
+| :---------------------------------- | :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                                | uuid                           | PK.                                                                                                                             |
+| `schedule_id`                       | uuid                           | FK → `schedules` (CASCADE).                                                                                                     |
+| `kind`                              | `scheduling.availability_kind` | Always `working_hours` (the default; `save_owner_availability` refuses anything else). A `call_window` row predates #408: nothing reads it, and the next mirror save replaces it. |
+| `weekday`                           | smallint                       | 0 = Sunday … 6 = Saturday (`CHECK 0–6`).                                                                                        |
+| `start_minute` `end_minute`         | integer                        | Minutes from local midnight (`CHECK 0–1440`).                                                                                   |
+| `label` · `is_active`               | text · boolean                 | Optional caption; soft-disable without deleting.                                                                                |
+| `fee_amount_minor` · `fee_currency` | bigint · char(3)               | Decision #408: the price of a paid call that STARTS in this band, carried from the template rule it mirrors; NULL charges `call_settings`' fee. `CHECK > 0` · `CHECK ~ '^[A-Z]{3}$'`. Read by `fn_resolved_slot_fee` ([Functions.md](Functions.md) §2b). |
+| CHECK                               | —                              | `end_minute > start_minute` · `ck_availability_rule_fee`: both price columns or neither.                                        |
+
+> **Touching bands are one span.** The mirror splits a working day where its price changes, so two
+> bands of a day may touch (09:00–12:00 and 12:00–17:00). The booking gate joins every run of
+> touching bands before it asks whether a slot fits (`fn_band_covers`, [Functions.md](Functions.md)
+> §2), and so do the slot grid and every reader that shows hours (`joinTouchingBands`), so the split
+> moves no booking and no displayed hour. Bands of a day never OVERLAP (`save_owner_availability`).
 
 > ⚠️ **A band cannot cross local midnight** (that CHECK). A provider taking calls 23:00–01:00
 > expresses it as two bands, and a call must fit inside one. Deliberate: midnight-spanning bands
@@ -114,7 +121,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `status`                          | `scheduling.event_status` | Mirrors `CalendarEventStatus`.                                                        |
 | `title` · `starts_at` · `ends_at` | text · timestamptz        | `ck_event_span`: `ends_at >= starts_at` — equal is a deadline, a point in time.       |
 | `all_day` · `is_masked`           | boolean                   | `is_masked` → render `status` only, never `title`.                                    |
-| `accent`                          | text                      | A CSS custom-property **name** (`--primary`), never a literal colour.                 |
+| `accent`                          | text                      | A CSS custom-property **name** (`--primary`, or a swatch its host picked, `--swatch-teal` — Decision #408), never a literal colour. `ck_event_accent` checks the shape, because the calendar paints it through a probe. The composer writes only a swatch (`EntryFieldsSchema.accent`); NULL takes the kind's colour. |
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
 | `description`                     | text                      | The agenda: rich-text HTML a host writes for attendees. Stored only after `sanitizeRichText` (`@projective/types/richtext`) rebuilds it from the editor's attribute-free tags, and rendered only through it again; `NULL` when it holds no prose. Withheld from a non-party by the privacy allow-list (`PUBLIC_EVENT_FIELDS`). |
 | `meeting_provider` · `meeting_provider_label` · `meeting_pending` | text · text · boolean | The online room's provider (a slug, or `custom`; deliberately no FK), its display label, and "still to be minted". Readable wherever the row is. |
@@ -362,7 +369,7 @@ The provider's booking configuration, one row per schedule (PK is `schedule_id`)
 | `fee_amount_minor` · `fee_currency`                | bigint · char(3) | The `(amount_minor, currency)` pair — same money model as `finance`, not a fork. |
 | `buffer_before_minutes` · `buffer_after_minutes`   | integer          | The burnout guard (`CHECK 0–240`; after defaults to 10).                         |
 | `min_notice_minutes` · `max_advance_days`          | integer          | How close / how far ahead a request may land (default 720 min / 60 days).        |
-| `auto_confirm`                                     | boolean          | True → a request inside a call window skips host approval.                       |
+| `auto_confirm`                                     | boolean          | True → a request inside the working hours skips host approval.                   |
 | `agenda_required`                                  | boolean          | The anti-tyre-kicker field. Default `true`.                                      |
 | `preferred_provider_slug`                          | text             | → `integrations.providers` (SET NULL); null falls back to the active connection. |
 | CHECK `ck_paid_call_priced`                        | —                | `paid_enabled` ⇒ a positive fee **and** a currency.                              |
@@ -600,18 +607,19 @@ unchanged), each holding RFC 5545 recurrence rules with up to six bands apiece.
 A rule's meaning lives in **one** place: `@projective/types/scheduling` (`rrule.ts` parses and
 serialises the RFC 5545 subset, `recurrence.ts` compiles an authored draft to an RRULE, and
 `evaluate.ts` turns a preset into absolute spans per local date: add, then replace by priority, then
-subtract, then call windows clipped to working hours, then blackouts). The database **never expands
-an RRULE**. A second implementation in SQL would drift from the first. So:
+subtract, then blackouts — one layer, working hours, Decision #408). The database **never expands an
+RRULE**. A second implementation in SQL would drift from the first. So:
 
 - **`recurrence_rules.rrule`** stores the normalised rule. The database checks only its shape
   (`FREQ=` prefix, at most 400 characters). The service re-validates every rule with the TypeScript
   parser before `scheduling.save_availability_preset` stores it (Decision #217 flag (d)).
-- **`availability_occurrences`** stores what the evaluator produced: absolute `timestamptz` spans per
-  layer. The scheduling service compiles a preset after every save and writes the spans through the
-  service-role door `scheduling.replace_preset_occurrences` ([Functions.md](Functions.md) §10).
-- **The booking gate reads the spans, not the rules.** `fn_band_covers` with a blueprint answers from
-  the occurrences when the blueprint's preset has been compiled over the slot's dates, and from the
-  weekly bands otherwise ([Functions.md](Functions.md) §3).
+- **`availability_occurrences`** stores what the evaluator produced: absolute `timestamptz` spans of
+  working hours, each naming the rules whose bands drew it. The scheduling service compiles a preset
+  after every save and writes the spans through the service-role door
+  `scheduling.replace_preset_occurrences` ([Functions.md](Functions.md) §10).
+- **The booking gate reads the spans, not the rules.** `fn_band_covers` with a blueprint answers
+  from the occurrences when the blueprint's preset has been compiled over the slot's dates, and from
+  the weekly bands otherwise ([Functions.md](Functions.md) §3).
 
 ### The horizon
 
@@ -626,7 +634,8 @@ back to the weekly bands. It is never refused only because the compile has not c
 
 **Discovery calls and `/[handle]/availability` stay on the weekly bands** (ruling (d)). The default
 preset's weekly-expressible rules are mirrored into `availability_rules` by the service when it is
-saved. Retiring the weekly model is a follow-up.
+saved, split where a rule's price changes, the higher price where two rules overlap (`pricedBands`,
+Decision #408). Retiring the weekly model is a follow-up.
 
 ### `scheduling.availability_presets`
 
@@ -651,7 +660,7 @@ A live library preset's name is unique per schedule, case-insensitively
 | Column                      | Type                           | Notes                                                                                                         |
 | :-------------------------- | :----------------------------- | :------------------------------------------------------------------------------------------------------------ |
 | `id` · `preset_id`          | uuid                           | PK · FK → `availability_presets` (CASCADE).                                                                   |
-| `kind`                      | `scheduling.availability_kind` | The layer: `working_hours` or `call_window`.                                                                  |
+| `kind`                      | `scheduling.availability_kind` | Always `working_hours` (Decision #408): `save_availability_preset` refuses a call window, and a stored one predating it is left out on read. |
 | `effect`                    | `scheduling.rule_effect`       | `add` · `replace` (the day's bands become this rule's) · `subtract` (no bands = the whole day off).           |
 | `rrule`                     | text                           | Normalised RRULE, DTSTART carried as `starts_on`. `CHECK` length ≤ 400 and `~ '^FREQ='` (shape only).          |
 | `starts_on` · `ends_on`     | date                           | DTSTART (fixes bi-weekly parity) · UNTIL, inclusive, NULL open-ended. `CHECK ends_on >= starts_on`.           |
@@ -659,6 +668,8 @@ A live library preset's name is unique per schedule, case-insensitively
 | `unless_weekdays`           | smallint[]                     | The authored "unless it is …" weekdays (0 = Sunday), at most six. Already compiled into the RRULE's `BYDAY`.   |
 | `label` · `is_active`       | text · boolean                 | Up to 80 characters · soft-disable.                                                                            |
 | `position`                  | smallint                       | 0–63: the rule's order in the editor (64 rules per preset at most).                                           |
+| `fee_amount_minor` · `fee_currency` | bigint · char(3)       | Decision #408: a paid call's price inside this rule's bands, overriding `call_settings`' fee; NULL inherits it. `CHECK > 0` · `CHECK ~ '^[A-Z]{3}$'` · `ck_recurrence_rule_fee` (both or neither). A `subtract` rule carries none (`ck_recurrence_rule_subtract_fee`, `AvailabilityRuleDraftSchema`). Drawn in the editor only once paid calls are live. |
+| `color_token`               | text                           | Decision #408: the swatch the rule is drawn in, a token NAME (`--swatch-teal`, `packages/types/scheduling/swatches.ts`), never a literal colour; `CHECK` on the shape. NULL is the default hours fill. |
 | `created_at` · `updated_at` | timestamptz                    | `trg_recurrence_rules_touch`.                                                                                 |
 
 ### `scheduling.recurrence_rule_bands`
@@ -672,9 +683,9 @@ midnight. FK → `recurrence_rules` (CASCADE).
 | Column                  | Type                           | Notes                                                                                  |
 | :---------------------- | :----------------------------- | :------------------------------------------------------------------------------------- |
 | `preset_id`             | uuid                           | FK → `availability_presets` (CASCADE).                                                 |
-| `kind`                  | `scheduling.availability_kind` | The layer.                                                                             |
+| `kind`                  | `scheduling.availability_kind` | Always `working_hours` (`replace_preset_occurrences` refuses anything else).          |
 | `starts_at` · `ends_at` | timestamptz                    | `CHECK ends_at > starts_at`. The evaluator joins touching spans, across midnight too. |
-| `rule_ids`              | uuid[]                         | The rules that produced the span; checked to be this preset's on write.               |
+| `rule_ids`              | uuid[]                         | The rules whose bands drew the span (the day's `replace` winner alone); checked to be this preset's on write. |
 | PK                      | —                              | `(preset_id, kind, starts_at)`, which is also the gate's lookup.                       |
 
 Read-only to the client (the schedule's own side reads it); written only by
@@ -701,7 +712,7 @@ the gate reads the seeded weekly bands until the scheduling service compiles the
 
 ```sql
 CREATE TYPE scheduling.owner_type        AS ENUM ('user', 'freelancer', 'team', 'business', 'enterprise');
-CREATE TYPE scheduling.availability_kind AS ENUM ('working_hours', 'call_window');
+CREATE TYPE scheduling.availability_kind AS ENUM ('working_hours', 'call_window');   -- one layer since #408: only working_hours is written
 CREATE TYPE scheduling.event_kind        AS ENUM ('deadline','milestone','sync','session','booking','availability','busy','holiday','general');
 CREATE TYPE scheduling.event_status      AS ENUM ('confirmed','tentative','busy','available','cancelled');
 CREATE TYPE scheduling.call_type         AS ENUM ('courtesy', 'paid');

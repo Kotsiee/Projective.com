@@ -18,6 +18,8 @@ import "../styles/profile.css";
 import "../styles/profile-hire.css";
 import { AvatarLightbox } from "../components/AvatarLightbox.tsx";
 import { OwnerAvatarEdit } from "../components/OwnerAvatarEdit.tsx";
+import { OwnerEditLink, OwnerStub } from "../components/OwnerEditLink.tsx";
+import { editHrefFor, type OwnerEdit } from "../core/owner-edit.ts";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
@@ -88,7 +90,8 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * page renders as a visitor's, rig and all, and a press on a visitor's control explains what it does
  * rather than acting on their own account (`preview`, `core/rig-actions.ts`). The one exception is
  * the photo: for the owner it is {@link OwnerAvatarEdit}, whose hover overlay opens the File Picker
- * in avatar mode.
+ * in avatar mode. The name and the showcase carry the owner's {@link OwnerEditLink} to their editor
+ * section, and an empty showcase stands as an {@link OwnerStub} (Decision #408).
  *
  * # The full-size photo is the owner's to offer
  *
@@ -122,6 +125,8 @@ export interface ProfileHeroProps {
 	defaultCurrency: string;
 	/** The viewer's active workspace id → a created project's `scopeId`. */
 	scopeId: string;
+	/** The owner's edit links (`core/owner-edit.ts`); `null` for a visitor. */
+	ownerEdit?: OwnerEdit | null;
 }
 
 export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
@@ -154,6 +159,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	const toast = useToast();
 	const consultation = props.consultation;
 	const rigHost = useRef<HTMLDivElement>(null);
+	const basicsHref = editHrefFor(props.ownerEdit, "basics");
+	const showcaseHref = editHrefFor(props.ownerEdit, "showcase");
 
 	/**
 	 * Focus RETURN for the four flows: when the one in progress closes and focus has fallen to
@@ -311,10 +318,22 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 							)}
 					</div>
 
-					<h1 class="pf-hero__name">
-						<span class="pf-hero__nametext">{profile.name}</span>
-						<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
-					</h1>
+					{basicsHref
+						? (
+							<div class="pf-hero__namerow pf-ownerblock">
+								<h1 class="pf-hero__name">
+									<span class="pf-hero__nametext">{profile.name}</span>
+									<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
+								</h1>
+								<OwnerEditLink href={basicsHref} label="your name and headline" />
+							</div>
+						)
+						: (
+							<h1 class="pf-hero__name">
+								<span class="pf-hero__nametext">{profile.name}</span>
+								<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
+							</h1>
+						)}
 
 					<p class="pf-hero__meta">
 						<span class="pf-hero__handle">{profile.handle}</span>
@@ -356,11 +375,26 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					</div>
 
 					<ProfileMetrics profile={profile} spend={spend} />
+
+					{!showcase && showcaseHref && (
+						<OwnerStub
+							class="pf-hero__showcasestub"
+							title="Showcase"
+							note="Visitors see none until you add pictures or videos."
+							href={showcaseHref}
+							label="your showcase"
+						/>
+					)}
 				</div>
 
 				{showcase && (
-					<div class="pf-hero__showcase">
+					<div class={showcaseHref ? "pf-hero__showcase pf-ownerblock" : "pf-hero__showcase"}>
 						<ProfileShowcase showcase={showcase} name={profile.name} reduced={reduced} />
+						{showcaseHref && (
+							<span class="pf-hero__showcaseedit">
+								<OwnerEditLink href={showcaseHref} label="your showcase" />
+							</span>
+						)}
 					</div>
 				)}
 			</header>

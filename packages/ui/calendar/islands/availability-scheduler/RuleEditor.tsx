@@ -3,10 +3,13 @@ import { useEffect } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import { Tooltip } from "../../../feedback/islands/Tooltip.tsx";
 import { Button } from "../../../fields/components/Button.tsx";
+import { currencyAdornment, formatMoneyInput } from "../../../fields/core/money-input.ts";
 import { DatePicker } from "../../../fields/islands/DatePicker.tsx";
 import { InputText } from "../../../fields/islands/InputText.tsx";
+import { MoneyInput } from "../../../fields/islands/MoneyInput.tsx";
 import { NumberInput } from "../../../fields/islands/NumberInput.tsx";
 import { Select } from "../../../fields/islands/Select.tsx";
+import { SwatchPicker } from "../../../fields/islands/SwatchPicker.tsx";
 import { WeekdayRail } from "../../../fields/islands/WeekdayRail.tsx";
 import { Icon } from "../../../icons/components/Icon.tsx";
 import { weekdayName } from "./announce.ts";
@@ -22,18 +25,29 @@ import {
 } from "./civil.ts";
 import { pickOption, useScheduler } from "./context.ts";
 import { MAX_BANDS } from "./reducer.ts";
-import type { Band, Layer, RuleDraft, RuleEffect, RulePattern, RulePatternType } from "./types.ts";
+import type {
+	Band,
+	RuleDraft,
+	RuleEffect,
+	RuleFee,
+	RulePattern,
+	RulePatternType,
+	SchedulerPricing,
+} from "./types.ts";
 
 /**
  * RuleEditor — the open rule as a short form, read top to bottom as the sentence above it says it:
  * how often it repeats (`Every [2] [weeks]`), on which days (a weekday letter rail, a month-day
- * grid, or a weekday of the month), at what times, with what effect on which layer, and between
- * which dates. Every control is a `@projective/ui/fields` control on the `bare` surface: no resting
- * border or fill, a tint on hover and the field halo on keyboard focus.
+ * grid, or a weekday of the month), at what times, with what effect, between which dates, and in
+ * which colour. Every rule is working hours (Decision #408), so the form names no layer. Every
+ * control is a `@projective/ui/fields` control on the `bare` surface: no resting border or fill, a
+ * tint on hover and the field halo on keyboard focus.
  *
  * The interval runs as far as the recurrence contract does (`RulePatternSchema`): days 1–30, weeks
  * 1–8, months 1–12, years 1–10. Every single day stays a weekly rule on all seven days; only a wider
- * gap is a daily one. The raw RRULE and the replace priority sit behind a closed Advanced disclosure.
+ * gap is a daily one. The raw RRULE, the replace priority and — while the host passes `pricing`,
+ * which it does only once paid calls are live — the rule's own call price sit behind a closed
+ * Advanced disclosure.
  */
 
 // #region Options
@@ -60,11 +74,6 @@ const EFFECTS: { label: string; value: RuleEffect }[] = [
 	{ label: "Add these hours", value: "add" },
 	{ label: "Replace the day", value: "replace" },
 	{ label: "Remove these hours", value: "subtract" },
-];
-
-const LAYERS: { label: string; value: Layer }[] = [
-	{ label: "Working hours", value: "working_hours" },
-	{ label: "Calls", value: "call_window" },
 ];
 
 const ORDINALS = [
@@ -546,10 +555,68 @@ function OnField({ rule, patch, ids, dayMode }: PatternFieldsProps): JSX.Element
 }
 // #endregion
 
+// #region Price
+/** A fee as the reader's money text, mark included: "£60.00". */
+function feeText(fee: RuleFee, locale: string): string {
+	const mark = currencyAdornment(fee.currency, locale);
+	const amount = formatMoneyInput(fee.amountMinor, fee.currency, locale);
+	return mark.position === "start" ? `${mark.symbol}${amount}` : `${amount} ${mark.symbol}`;
+}
+
+interface PriceFieldProps {
+	rule: RuleDraft;
+	patch: (p: Partial<RuleDraft>) => void;
+	ids: (part: string) => string;
+	pricing: SchedulerPricing;
+}
+
+/**
+ * The rule's own price for a paid call that starts inside its bands (Decision #408). Empty inherits
+ * the host's call price, which the line under the field names.
+ */
+function PriceField({ rule, patch, ids, pricing }: PriceFieldProps): JSX.Element {
+	const { locale } = useScheduler();
+	const currency = rule.fee?.currency ?? pricing.currency;
+	const amount = useSynced<number | null>(
+		rule.fee?.amountMinor ?? null,
+		rule.fee ? `${rule.fee.amountMinor}${rule.fee.currency}` : "",
+	);
+	const inherited = pricing.inherited;
+	return (
+		<div class="ui-avsched__field">
+			<span class="ui-avsched__label" aria-hidden="true">Call price</span>
+			<MoneyInput
+				size="sm"
+				variant="bare"
+				class="ui-avsched__price"
+				currency={currency}
+				locale={locale}
+				value={amount}
+				min={1}
+				placeholder={inherited
+					? formatMoneyInput(inherited.amountMinor, currency, locale)
+					: undefined}
+				aria-label="Paid call price for this rule"
+				aria-describedby={ids("price-inherit")}
+				onValueChange={(minor) =>
+					patch({ fee: minor === null || minor <= 0 ? null : { amountMinor: minor, currency } })}
+			/>
+			<p class="ui-avsched__meta" id={ids("price-inherit")}>
+				{inherited
+					? `Empty charges your call price, ${feeText(inherited, locale)}.`
+					: "Empty charges your call price."}
+			</p>
+		</div>
+	);
+}
+// #endregion
+
 // #region Advanced
-/** The raw RRULE and the replace priority: closed until asked for. */
-function Advanced({ rule, patch }: Pick<PatternFieldsProps, "rule" | "patch">): JSX.Element {
-	const { store } = useScheduler();
+/** The rule's call price (while paid calls are live), the raw RRULE and the replace priority. */
+function Advanced(
+	{ rule, patch, ids }: Pick<PatternFieldsProps, "rule" | "patch" | "ids">,
+): JSX.Element {
+	const { store, pricing } = useScheduler();
 	const written = store.engine.draftToRRule(rule);
 	const compiled = written.ok ? written.rrule : "";
 	const text = useSynced(compiled);
@@ -573,6 +640,9 @@ function Advanced({ rule, patch }: Pick<PatternFieldsProps, "rule" | "patch">): 
 				<Icon name="chevron-down" size="sm" class="ui-avsched__advanced-caret" />
 			</summary>
 			<div class="ui-avsched__advanced-body">
+				{pricing && rule.effect !== "subtract" && (
+					<PriceField rule={rule} patch={patch} ids={ids} pricing={pricing} />
+				)}
 				{rule.effect === "replace" && (
 					<div class="ui-avsched__field">
 						<span class="ui-avsched__label" aria-hidden="true">Priority</span>
@@ -641,7 +711,7 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 		if (current) store.upsertRule({ ...current, ...p });
 	};
 	const effect = useSynced<string>(rule.effect);
-	const layer = useSynced<string>(rule.layer);
+	const colour = useSynced<string | null>(rule.colorToken, rule.colorToken ?? "");
 	const label = useSynced(rule.label);
 	const startsOn = useSynced<Date | null>(dateOfCivil(rule.startsOn), rule.startsOn);
 	const endsOn = useSynced<Date | null>(dateOfCivil(rule.endsOn), rule.endsOn ?? "");
@@ -724,39 +794,26 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 				)}
 			</div>
 
-			<div class="ui-avsched__pair">
-				<div class="ui-avsched__field">
-					<span class="ui-avsched__label" aria-hidden="true">Effect</span>
-					<Select
-						size="sm"
-						class="ui-field--bare"
-						panelWidth="auto"
-						options={EFFECTS}
-						value={effect}
-						aria-label="Effect"
-						fluid
-						onValueChange={(v) => {
-							const next = pickOption(EFFECTS, v);
-							if (next) patch({ effect: next });
-						}}
-					/>
-				</div>
-				<div class="ui-avsched__field">
-					<span class="ui-avsched__label" aria-hidden="true">Layer</span>
-					<Select
-						size="sm"
-						class="ui-field--bare"
-						panelWidth="auto"
-						options={LAYERS}
-						value={layer}
-						aria-label="Layer"
-						fluid
-						onValueChange={(v) => {
-							const next = pickOption(LAYERS, v);
-							if (next) patch({ layer: next });
-						}}
-					/>
-				</div>
+			<div class="ui-avsched__field">
+				<span class="ui-avsched__label" aria-hidden="true">Effect</span>
+				<Select
+					size="sm"
+					class="ui-field--bare"
+					panelWidth="auto"
+					options={EFFECTS}
+					value={effect}
+					aria-label="Effect"
+					fluid
+					onValueChange={(v) => {
+						const next = pickOption(EFFECTS, v);
+						if (!next) return;
+						patch(
+							next === "subtract"
+								? { effect: next, fee: null, colorToken: null }
+								: { effect: next },
+						);
+					}}
+				/>
 			</div>
 
 			{rule.pattern.type !== "once" && (
@@ -816,12 +873,24 @@ function RuleForm({ rule }: RuleFormProps): JSX.Element {
 				/>
 			</div>
 
-			<Advanced rule={rule} patch={patch} />
+			{rule.effect !== "subtract" && (
+				<div class="ui-avsched__field">
+					<span class="ui-avsched__label" id={ids("colour")}>Colour</span>
+					<SwatchPicker
+						size="sm"
+						value={colour}
+						aria-labelledby={ids("colour")}
+						onValueChange={(token) => patch({ colorToken: token })}
+					/>
+				</div>
+			)}
+
+			<Advanced rule={rule} patch={patch} ids={ids} />
 		</div>
 	);
 }
 
-/** Repeats · on · times · effect · dates · label for the rule being edited, with its sentence. */
+/** Repeats · on · times · effect · dates · label · colour for the open rule, with its sentence. */
 export function RuleEditor(): JSX.Element {
 	const { store } = useScheduler();
 	const editing = store.editing.value;

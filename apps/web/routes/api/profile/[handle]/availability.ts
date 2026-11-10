@@ -1,14 +1,16 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { refuseIfRestricted } from "@web/utils/age-gate.ts";
-import { OwnerAvailabilitySchema } from "@projective/types/scheduling";
+import { SaveOwnerAvailabilitySchema } from "@projective/types/scheduling";
 import { parseBody, toProfileResponse } from "@features/profile/core/respond.ts";
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
 
 /**
  * `GET /api/profile/:handle/availability` — the OWNER's schedule and call settings, as the editor
- * is seeded (a draft included). `PUT` saves the whole editor value in one transaction. Body:
- * {@link OwnerAvailabilitySchema}. Owner-only both ways: the fat {@link ProfileBackendService}
+ * is seeded (a draft included), weekly hours with them. `PUT` saves the time zone, publishing and
+ * call settings in one transaction and keeps the weekly hours, which only the default availability
+ * template writes (Decision #408). Body: {@link SaveOwnerAvailabilitySchema}, so a body carrying
+ * bands has them stripped. Owner-only both ways: the fat {@link ProfileBackendService}
  * refuses anyone the database does not say manages the profile, and the scheduling policies refuse
  * them again underneath it.
  */
@@ -29,7 +31,7 @@ export const handler = define.handlers({
 		if (!actor.userId) {
 			return Response.json({ ok: false, message: "Sign in to manage availability." }, { status: 401 });
 		}
-		const body = await parseBody(ctx.req, OwnerAvailabilitySchema);
+		const body = await parseBody(ctx.req, SaveOwnerAvailabilitySchema);
 		if (!body.ok) return body.response;
 		return toProfileResponse(
 			await ProfileBackendService.saveAvailability(ctx.params.handle, body.data, actor),

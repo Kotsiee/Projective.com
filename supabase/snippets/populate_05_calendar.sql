@@ -317,7 +317,8 @@ $$;
 /**
  * The target's week, one row per band, in minutes from local midnight. Friday is the day off and
  * Wednesday the split day. The weekend keeps short hours, so late in a week there is still call time
- * left to book. `days` are the weekday column's numbering (0 = Sunday), `byday` the same days as RRULE.
+ * left to book: a call is booked inside working hours, availability being one layer (Decision #408).
+ * `days` are the weekday column's numbering (0 = Sunday), `byday` the same days as RRULE.
  */
 CREATE OR REPLACE FUNCTION pg_temp.cal_week()
 RETURNS TABLE (
@@ -329,12 +330,7 @@ LANGUAGE sql IMMUTABLE AS $$
         ('wednesday', 'working_hours', 'Split Wednesday', ARRAY[3], 'WE', 0, 510, 750),
         ('wednesday', 'working_hours', 'Split Wednesday', ARRAY[3], 'WE', 1, 900, 1140),
         ('saturday', 'working_hours', 'Short Saturday', ARRAY[6], 'SA', 0, 600, 840),
-        ('sunday', 'working_hours', 'Short Sunday', ARRAY[0], 'SU', 0, 600, 900),
-        ('call-afternoons', 'call_window', 'Afternoon calls', ARRAY[1, 4], 'MO,TH', 0, 840, 1020),
-        ('call-tuesday', 'call_window', 'Tuesday calls', ARRAY[2], 'TU', 0, 600, 720),
-        ('call-wednesday', 'call_window', 'Wednesday calls', ARRAY[3], 'WE', 0, 960, 1110),
-        ('call-saturday', 'call_window', 'Saturday calls', ARRAY[6], 'SA', 0, 660, 810),
-        ('call-sunday', 'call_window', 'Sunday calls', ARRAY[0], 'SU', 0, 660, 840);
+        ('sunday', 'working_hours', 'Short Sunday', ARRAY[0], 'SU', 0, 600, 900);
 $$;
 
 /**
@@ -347,7 +343,7 @@ LANGUAGE sql STABLE AS $$
       FROM generate_series(p_from::timestamp, p_to::timestamp, interval '1 day') AS d(day)
       JOIN scheduling.availability_rules r
         ON r.schedule_id = pg_temp.cal_schedule()
-       AND r.kind = 'call_window'
+       AND r.kind = 'working_hours'
        AND r.is_active
        AND r.weekday = extract(dow FROM d.day)::integer
       JOIN scheduling.call_settings c ON c.schedule_id = r.schedule_id

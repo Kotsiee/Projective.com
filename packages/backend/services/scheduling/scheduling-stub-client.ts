@@ -200,7 +200,7 @@ export function fakePresetDoors(): Record<string, StubRpc> {
 				store.recurrence_rules.push({
 					id: ruleId,
 					preset_id: id,
-					kind: r.kind,
+					kind: r.kind ?? "working_hours",
 					effect: r.effect,
 					rrule: r.rrule,
 					starts_on: r.starts_on,
@@ -210,6 +210,9 @@ export function fakePresetDoors(): Record<string, StubRpc> {
 					label: r.label ?? "",
 					is_active: r.is_active ?? true,
 					position,
+					fee_amount_minor: r.fee_amount_minor ?? null,
+					fee_currency: r.fee_currency ?? null,
+					color_token: r.color_token ?? null,
 				});
 				((r.bands ?? []) as Row[]).forEach((b, i) =>
 					store.recurrence_rule_bands.push({

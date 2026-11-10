@@ -38,7 +38,11 @@ import {
 	type SaveShowcase,
 } from "@projective/types/profile";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
-import type { OwnerAvailability, PublicCallOffer } from "@projective/types/scheduling";
+import type {
+	OwnerAvailability,
+	PublicCallOffer,
+	SaveOwnerAvailability,
+} from "@projective/types/scheduling";
 
 /**
  * ProfileBackendService — the FAT server-side service behind the `/[handle]` public profile and its
@@ -350,10 +354,10 @@ export class ProfileBackendService {
 		return ok({ availability: value, takesCalls });
 	}
 
-	/** Save the owner's schedule + call settings in one transaction. */
+	/** Save the owner's time zone, publishing and call settings in one transaction; the hours are kept. */
 	static async saveAvailability(
 		handle: string,
-		value: OwnerAvailability,
+		value: SaveOwnerAvailability,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ availability: OwnerAvailability; takesCalls: boolean }>> {
 		const target = await ownedProfile(handle, actor);

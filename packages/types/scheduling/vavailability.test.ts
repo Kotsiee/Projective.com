@@ -14,7 +14,6 @@ function rule(
 	over: Partial<AvailabilityRuleDraft> & Pick<AvailabilityRuleDraft, "id" | "pattern">,
 ): AvailabilityRuleDraft {
 	return {
-		layer: "working_hours",
 		effect: "add",
 		condition: { unlessWeekdays: [] },
 		bands: [{ start: 540, end: 1020 }],
@@ -23,6 +22,8 @@ function rule(
 		priority: 50,
 		label: "",
 		active: true,
+		fee: null,
+		colorToken: null,
 		...over,
 	};
 }
@@ -105,25 +106,23 @@ Deno.test("UNTIL beside a zoned DTSTART is the UTC instant of the last start", (
 	assertEquals(text.includes("DTSTART;TZID=Europe/London:20260107T090000"), true, text);
 });
 
-Deno.test("the call layer exports its clipped windows as evaluated instances", () => {
+Deno.test("a subtract re-emits the day it changes as evaluated instances", () => {
 	const p = {
 		timezone: "UTC",
 		rules: [
 			rule({ id: "work", pattern: { type: "weekly", days: [1], interval: 1 } }),
 			rule({
-				id: "calls",
-				layer: "call_window",
+				id: "late-start",
+				effect: "subtract",
 				pattern: { type: "weekly", days: [1], interval: 1 },
-				bands: [{ start: 480, end: 600 }],
+				bands: [{ start: 540, end: 600 }],
 			}),
 		],
 	};
-	const text = toVAvailability(p, { from: d("2026-10-12"), to: d("2026-10-12") }, {
-		layer: "call_window",
-	});
-	assertEquals(text.includes("EXDATE;TZID=UTC:20261012T080000"), true, text);
+	const text = toVAvailability(p, { from: d("2026-10-12"), to: d("2026-10-12") });
+	assertEquals(text.includes("EXDATE;TZID=UTC:20261012T090000"), true, text);
 	assertEquals(
-		text.includes("DTSTART;TZID=UTC:20261012T090000\r\nDTEND;TZID=UTC:20261012T100000"),
+		text.includes("DTSTART;TZID=UTC:20261012T100000\r\nDTEND;TZID=UTC:20261012T170000"),
 		true,
 		text,
 	);

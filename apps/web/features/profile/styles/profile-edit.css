@@ -81,6 +81,40 @@
     color: var(--text-secondary);
 }
 
+.pf-ownerblock {
+    min-inline-size: 0;
+}
+
+.pf-ownerhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-block-end: var(--space-2);
+}
+
+.pf-ownerhead > .pf-h {
+    margin: 0;
+}
+
+.pf-ownerstub__note {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+@media (hover: hover) {
+    .pf-ownerblock .pf-owneredit {
+        opacity: 0;
+    }
+
+    .pf-ownerblock:hover .pf-owneredit,
+    .pf-ownerblock:focus-within .pf-owneredit {
+        opacity: 1;
+    }
+}
+
 /* #endregion */
 
 /* #region The edit page */
@@ -124,6 +158,7 @@
 
 .pf-edit__section {
     border-block-start: var(--hairline);
+    scroll-margin-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-3));
 }
 
 .pf-edit__summary {
@@ -410,73 +445,34 @@
 /* #endregion */
 
 /* #region The week (Availability) */
-.pf-week {
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.pf-week__day {
-    display: grid;
-    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
-    align-items: start;
-    gap: var(--space-2) var(--space-5);
-    padding-block: var(--space-4);
-    border-block-end: var(--hairline);
-}
-
-.pf-week__head {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-}
-
-.pf-week__bands {
+.pf-hours {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     margin: 0;
     padding: 0;
     list-style: none;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
 }
 
-.pf-week__band {
+.pf-hours__line {
     display: grid;
-    grid-template-columns: repeat(4, auto);
-    justify-content: start;
-    align-items: center;
-    gap: var(--space-1);
+    grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+    gap: var(--space-4);
 }
 
-.pf-week__band--add {
-    display: flex;
+.pf-hours__days {
+    color: var(--on-surface);
 }
 
-.pf-week__to {
+.pf-hours__times {
     color: var(--text-secondary);
-}
-
-/* The band's two edges are bare selects: no resting border or fill, a tint on hover, the field
-   halo on keyboard focus — the same treatment as the rule editor's times. */
-.pf-week__time {
-    inline-size: calc(var(--space-8) + var(--space-5));
     font-variant-numeric: tabular-nums;
 }
 
-.pf-week__off {
-    margin: 0;
-    padding-block-start: var(--space-1);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-}
-
-@media (max-width: 40rem) {
-    .pf-week__day {
-        grid-template-columns: minmax(0, 1fr);
-    }
+.pf-edit__calendarlink {
+    align-self: flex-start;
 }
 
 /* #endregion */

@@ -9,25 +9,21 @@ import { Icon } from "../../../icons/components/Icon.tsx";
 import { dateName, monthName, ruleName, weekdayName } from "./announce.ts";
 import { DAY_MINUTES, monthMatrix, monthOf, weekColumns } from "./civil.ts";
 import { type SchedulerContextValue, useScheduler } from "./context.ts";
-import { bucketByDate, type DayBands, explanationLines, summarise } from "./month.ts";
+import { bucketByDate, explanationLines, summarise } from "./month.ts";
 import type { Band, SchedulerBlackout } from "./types.ts";
 
 // #region Pieces
 interface BarsProps {
 	bands: Band[];
-	layer: "working" | "call";
 }
 
-function Bars({ bands, layer }: BarsProps): JSX.Element {
+function Bars({ bands }: BarsProps): JSX.Element {
 	return (
-		<span
-			class={cx("ui-avsched__date-track", `ui-avsched__date-track--${layer}`)}
-			aria-hidden="true"
-		>
+		<span class="ui-avsched__date-track" aria-hidden="true">
 			{bands.map((b) => (
 				<span
 					key={b.start}
-					class={cx("ui-avsched__date-bar", `ui-avsched__date-bar--${layer}`)}
+					class="ui-avsched__date-bar ui-avsched__date-bar--working"
 					style={styleVars({
 						"--avsched-from": b.start / DAY_MINUTES,
 						"--avsched-to": b.end / DAY_MINUTES,
@@ -73,8 +69,8 @@ function WhyPanel(props: WhyPanelProps): JSX.Element {
 
 // #region MonthPreview
 /**
- * The evaluated result for the focused month: each date carries band bars for both layers and a
- * summary, and opening a date shows the engine's "why" in a popover.
+ * The evaluated result for the focused month: each date carries its working hours as band bars and
+ * a summary, and opening a date shows the engine's "why" in a popover.
  */
 export function MonthPreview(): JSX.Element | null {
 	const ctx = useScheduler();
@@ -162,7 +158,7 @@ export function MonthPreview(): JSX.Element | null {
 				{weeks.map((week) => (
 					<div role="row" class="ui-avsched__month-row" key={week[0]}>
 						{week.map((date) => {
-							const day: DayBands | undefined = buckets.get(date);
+							const day: Band[] | undefined = buckets.get(date);
 							const blackout = blackouts.find((b) => b.date === date);
 							const summary = blackout ? "Blackout" : summarise(day);
 							const showLabel = blackout?.label && (blackout.labelIsPublic || viewerOwns);
@@ -202,8 +198,7 @@ export function MonthPreview(): JSX.Element | null {
 												<span class="ui-avsched__date-num" aria-hidden="true">
 													{Number(date.slice(8))}
 												</span>
-												<Bars bands={day?.working ?? []} layer="working" />
-												<Bars bands={day?.call ?? []} layer="call" />
+												<Bars bands={day ?? []} />
 												<span class="ui-avsched__date-summary" aria-hidden="true">
 													{showLabel ? blackout?.label : summary}
 												</span>
@@ -220,7 +215,6 @@ export function MonthPreview(): JSX.Element | null {
 			</div>
 			<p class="ui-avsched__legend" aria-hidden="true">
 				<span class="ui-avsched__swatch ui-avsched__swatch--working" />Working hours
-				<span class="ui-avsched__swatch ui-avsched__swatch--call" />Calls
 				<span class="ui-avsched__swatch ui-avsched__swatch--blackout" />Blackout
 			</p>
 		</div>

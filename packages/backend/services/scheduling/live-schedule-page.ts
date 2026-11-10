@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "supabaseClient";
-import type { CalendarEvent, CalendarScope, SchedulePage } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	type CalendarScope,
+	joinTouchingBands,
+	type SchedulePage,
+} from "@projective/types/scheduling";
 import { getAnonClient } from "../../core/supabase.ts";
 import { readPublicCallOffer } from "./live-call-offer.ts";
 import type { ScheduleOwner } from "./live-slots.ts";
@@ -30,7 +35,6 @@ interface RuleRow {
 	weekday: number;
 	start_minute: number;
 	end_minute: number;
-	kind: "working_hours" | "call_window";
 }
 
 /** One span from `scheduling.get_public_blackouts` — the label already masked by the database. */
@@ -82,8 +86,9 @@ export async function readSchedulePage(
 		const toIso = new Date(window.to).toISOString();
 		const [rules, blackouts, busy, callOffer] = await Promise.all([
 			client.schema("scheduling").from("availability_rules")
-				.select("weekday, start_minute, end_minute, kind")
+				.select("weekday, start_minute, end_minute")
 				.eq("schedule_id", row.id)
+				.eq("kind", "working_hours")
 				.eq("is_active", true)
 				.order("weekday")
 				.order("start_minute"),
@@ -127,12 +132,12 @@ export async function readSchedulePage(
 			viewerCanBook: meta.viewerCanBook,
 			availability: {
 				timezone: row.timezone,
-				rules: ((rules.data ?? []) as RuleRow[]).map((r) => ({
+				rules: joinTouchingBands(((rules.data ?? []) as RuleRow[]).map((r) => ({
 					weekday: r.weekday,
 					startMinute: r.start_minute,
 					endMinute: r.end_minute,
-					kind: r.kind,
-				})),
+					kind: "working_hours" as const,
+				}))),
 				blackouts: ((blackouts.data ?? []) as BlackoutRow[]).map((b) => ({
 					start: Date.parse(b.starts_at),
 					end: Date.parse(b.ends_at),

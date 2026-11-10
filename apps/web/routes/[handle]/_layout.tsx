@@ -15,6 +15,7 @@ import { ProfileServicesSection } from "@features/profile/components/ProfileServ
 import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
 import { OwnerNav, type OwnerNavTab } from "@features/profile/components/OwnerNav.tsx";
+import { ownerEditFor } from "@features/profile/core/owner-edit.ts";
 import { ProfileMemberNotice } from "@features/profile/components/ProfileMemberNotice.tsx";
 import type { ProductItem, ServiceItem } from "@features/profile/types/profile-types.ts";
 import {
@@ -72,8 +73,9 @@ import {
  *
  * When the DATABASE says the viewer owns the profile (`profile.viewer.isOwner`, read under their own
  * session — never the unverified chrome token), an {@link OwnerNav} sits above the page with three
- * tabs: **Preview** (the public page, rendered exactly as a visitor sees it — the rig explains
- * itself rather than acting), **Edit profile & settings** (`/[handle]/edit`) and **Availability**
+ * tabs: **Preview** (the public page as a visitor sees it — the rig explains itself rather than
+ * acting — with each block's edit link and a stub where a visitor would see nothing, Decision #408),
+ * **Edit profile & settings** (`/[handle]/edit`) and **Availability**
  * (`/[handle]/edit/availability`). The two edit routes render only the owner nav and their own body;
  * their pages refuse anyone who is not the owner.
  *
@@ -252,6 +254,8 @@ export default define.page(async function ProfileLayout(ctx) {
 	const seller = isSellerKind(profile.kind);
 	const actor = readActor(ctx);
 	const restricted = isRestrictedRequest(ctx.req, context);
+	// The owner's Preview links each block to the part of the editor that changes it (Decision #408).
+	const ownerEdit = ownerEditFor(profile, { scheduling: !restricted });
 	// Independent reads, so they run in one wave. The listings render on every section. A seller's
 	// call offer feeds the Hire popover's consultation row (and the owner's preview shows the row
 	// their visitors see); a buyer entity takes none. Only a signed-in VISITOR of a seller can add
@@ -303,8 +307,9 @@ export default define.page(async function ProfileLayout(ctx) {
 					hireProjects={hireProjects}
 					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
 					scopeId={context?.contextId ?? ""}
+					ownerEdit={ownerEdit}
 				/>
-				<ProfileContextBar profile={profile} />
+				<ProfileContextBar profile={profile} ownerEdit={ownerEdit} />
 				<ProfileServicesSection services={services} authed={authed} />
 				<ProfileProductsSection products={products} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">

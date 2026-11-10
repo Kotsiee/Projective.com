@@ -96,7 +96,6 @@ Deno.test("a condition RRULE cannot express is refused, never approximated", () 
 Deno.test("the draft schema reports a refusal under condition", () => {
 	const result = AvailabilityRuleDraftSchema.safeParse({
 		id: "r1",
-		layer: "working_hours",
 		effect: "add",
 		pattern: { type: "weekly", days: [1], interval: 1 },
 		condition: { unlessWeekdays: [2] },
@@ -111,7 +110,6 @@ Deno.test("the draft schema reports a refusal under condition", () => {
 Deno.test("the draft schema applies its defaults and refuses a midnight-crossing band", () => {
 	const base = {
 		id: "r1",
-		layer: "call_window",
 		effect: "add",
 		pattern: { type: "monthly_date", days: [12], interval: 1 },
 		bands: [{ start: 540, end: 1020 }],
@@ -136,7 +134,6 @@ Deno.test("the draft schema applies its defaults and refuses a midnight-crossing
 Deno.test("a daily rule starts at two, refuses an exception, and a yearly interval defaults to one", () => {
 	const base = {
 		id: "r1",
-		layer: "working_hours",
 		effect: "add",
 		bands: [{ start: 540, end: 1020 }],
 		startsOn: START,

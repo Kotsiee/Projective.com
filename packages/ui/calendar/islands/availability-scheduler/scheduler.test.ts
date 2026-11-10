@@ -30,7 +30,6 @@ function weekly(
 ): RuleDraft {
 	return {
 		id,
-		layer: "working_hours",
 		effect: "add",
 		pattern: { type: "weekly", days, interval: 1 },
 		condition: { unlessWeekdays: [] },
@@ -40,6 +39,8 @@ function weekly(
 		priority: 50,
 		label: "",
 		active: true,
+		fee: null,
+		colorToken: null,
 		...extra,
 	};
 }
@@ -95,12 +96,12 @@ Deno.test("reduce: create on a day with no weekly rule mints a weekly add rule",
 	const [rule] = s.draft.rules;
 	assertEquals(rule.pattern, { type: "weekly", days: [3], interval: 1 });
 	assertEquals(rule.bands, [{ start: 360, end: 720 }]);
-	assertEquals(rule.layer, "working_hours");
+	assertEquals([rule.fee, rule.colorToken], [null, null]);
 	assertEquals(rule.effect, "add");
 	assertEquals(rule.startsOn, "2026-10-12");
 	assertEquals(s.selection, { ruleId: rule.id, bandIndex: 0, day: 3 });
 	assertEquals(s.past.length, 1);
-	assertEquals(s.announcement, "Created Wednesday, 06:00 to 12:00, working hours.");
+	assertEquals(s.announcement, "Created Wednesday, 06:00 to 12:00.");
 });
 
 Deno.test("reduce: create on a day a weekly add rule covers adds the band to that rule", () => {
@@ -125,15 +126,16 @@ Deno.test("reduce: create merges an overlapping band and snaps to the grid", () 
 	assertEquals(s.draft.rules[0].bands, [{ start: 540, end: 675 }]);
 });
 
-Deno.test("reduce: create on the call layer never joins a working-hours rule", () => {
-	let s = reduce(start([weekly("w", [3], [[540, 1020]])]), {
-		type: "setLayer",
-		layer: "call_window",
+Deno.test("reduce: one layer — a new band joins the day's weekly rule, whatever its colour", () => {
+	const s = reduce(start([weekly("w", [3], [[540, 600]], { colorToken: "--swatch-teal" })]), {
+		type: "createBand",
+		day: 3,
+		start: 660,
+		end: 720,
 	});
-	s = reduce(s, { type: "createBand", day: 3, start: 600, end: 660 });
-	assertEquals(s.draft.rules.length, 2);
-	assertEquals(s.draft.rules[1].layer, "call_window");
-	assertEquals(s.draft.rules[0].bands, [{ start: 540, end: 1020 }]);
+	assertEquals(s.draft.rules.length, 1);
+	assertEquals(s.draft.rules[0].bands, [{ start: 540, end: 600 }, { start: 660, end: 720 }]);
+	assertEquals(s.draft.rules[0].colorToken, "--swatch-teal");
 });
 
 Deno.test("reduce: an overnight create is stored as two bands on two days", () => {
@@ -148,7 +150,7 @@ Deno.test("reduce: an overnight create is stored as two bands on two days", () =
 	assertEquals(s.past.length, 1);
 	assertEquals(
 		s.announcement,
-		"Created Wednesday 23:00 to Thursday 01:00, working hours, stored as two bands.",
+		"Created Wednesday 23:00 to Thursday 01:00, stored as two bands.",
 	);
 });
 
@@ -267,12 +269,13 @@ Deno.test("reduce: resize that changes nothing returns the same state", () => {
 	assertStrictEquals(s, base);
 });
 
-Deno.test("reduce: duplicate to an uncovered day mints a rule there with the band's layer", () => {
-	const base = start([weekly("c", [3], [[600, 660]], { layer: "call_window" })]);
+Deno.test("reduce: duplicate to an uncovered day mints a rule there with the band's colour and price", () => {
+	const fee = { amountMinor: 6000, currency: "GBP" };
+	const base = start([weekly("c", [3], [[600, 660]], { colorToken: "--swatch-coral", fee })]);
 	const s = reduce(base, { type: "duplicateBand", ruleId: "c", bandIndex: 0, day: 3, toDay: 5 });
 	assertEquals(s.draft.rules.length, 2);
 	const copy = s.draft.rules[1];
-	assertEquals(copy.layer, "call_window");
+	assertEquals([copy.colorToken, copy.fee], ["--swatch-coral", fee]);
 	assertEquals(copy.pattern, { type: "weekly", days: [5], interval: 1 });
 	assertEquals(copy.bands, [{ start: 600, end: 660 }]);
 	assertEquals(s.announcement, "Duplicated to Friday, 10:00 to 11:00.");
@@ -298,7 +301,7 @@ Deno.test("reduce: deleting the last band removes the rule, and undo restores it
 	assertEquals(s.editing, null);
 	assertEquals(
 		s.announcement,
-		"Deleted Wednesday, 06:00 to 12:00, working hours. Its rule was removed; undo to restore it.",
+		"Deleted Wednesday, 06:00 to 12:00. Its rule was removed; undo to restore it.",
 	);
 	const back = reduce(s, { type: "undo" });
 	assertEquals(back.draft.rules.map((r) => r.id), ["w"]);
@@ -369,7 +372,6 @@ Deno.test("reduce: history is capped at the plan's depth", () => {
 
 Deno.test("reduce: view-only actions never enter the history", () => {
 	let s = start([weekly("w", [3], [[540, 600]])]);
-	s = reduce(s, { type: "setLayer", layer: "call_window" });
 	s = reduce(s, { type: "setSnap", snap: 30 });
 	s = reduce(s, { type: "setView", view: "month" });
 	s = reduce(s, { type: "shiftMonth", months: 1 });
@@ -397,7 +399,7 @@ Deno.test("reduce: loading a template mints fresh ids and re-anchors to this wee
 			rules: [
 				{ ...weekly("general-work", [1, 2, 3, 4, 5], [[540, 1050]]), startsOn: "2026-01-05" },
 				{
-					...weekly("general-calls", [1, 2, 3, 4, 5], [[600, 720]], { layer: "call_window" }),
+					...weekly("general-eve", [1, 2, 3, 4], [[1080, 1140]], { colorToken: "--swatch-teal" }),
 					startsOn: "2026-01-05",
 				},
 			],
@@ -407,13 +409,14 @@ Deno.test("reduce: loading a template mints fresh ids and re-anchors to this wee
 	assert(s.draft.rules.every((r) => r.id.startsWith("rule-") && r.id !== "rule-1"));
 	assert(s.draft.rules.every((r) => r.startsOn === "2026-10-12"));
 	assertEquals(new Set(s.draft.rules.map((r) => r.id)).size, 2);
+	assertEquals(s.draft.rules.map((r) => r.colorToken), [null, "--swatch-teal"]);
 	assertEquals(s.announcement, "Loaded General.");
 });
 
-Deno.test("reduce: moving the cursor onto a band selects it, preferring the active layer", () => {
+Deno.test("reduce: moving the cursor onto a band selects it, the first rule where rules overlap", () => {
 	const base = start([
 		weekly("w", [3], [[540, 1020]]),
-		weekly("c", [3], [[600, 660]], { layer: "call_window" }),
+		weekly("o", [3], [[600, 660]], { colorToken: "--swatch-amber" }),
 	]);
 	const onWork = reduce({ ...base, cursor: { day: 3, minute: 585 } }, {
 		type: "moveCursor",
@@ -421,10 +424,7 @@ Deno.test("reduce: moving the cursor onto a band selects it, preferring the acti
 		minutes: 15,
 	});
 	assertEquals(onWork.selection, { ruleId: "w", bandIndex: 0, day: 3 });
-	const calls = reduce(onWork, { type: "setLayer", layer: "call_window" });
-	const onCall = reduce(calls, { type: "moveCursor", toDay: 3, minutes: 15 });
-	assertEquals(onCall.selection, { ruleId: "c", bandIndex: 0, day: 3 });
-	const empty = reduce(onCall, { type: "moveCursor", toDay: 4, minutes: 0 });
+	const empty = reduce(onWork, { type: "moveCursor", toDay: 4, minutes: 0 });
 	assertEquals(empty.selection, null);
 });
 // #endregion
@@ -499,10 +499,8 @@ Deno.test("keyToAction: selection keys resize, move, duplicate and delete", () =
 Deno.test("keyToAction: scheduler-wide keys work in either scope; arrows only on the canvas", () => {
 	const s = start();
 	const wide = { scope: "scheduler" as const, inTextInput: false };
-	assertEquals(keyToAction(key("w"), s, wide), { type: "setLayer", layer: "working_hours" });
-	assertEquals(keyToAction(key("C"), s, wide), { type: "setLayer", layer: "call_window" });
-	assertEquals(keyToAction(key("C", { shiftKey: true }), s, wide), null);
-	assertEquals(keyToAction(key("c"), s, wide), { type: "setLayer", layer: "call_window" });
+	assertEquals(keyToAction(key("w"), s, wide), null);
+	assertEquals(keyToAction(key("c"), s, wide), null);
 	assertEquals(keyToAction(key("["), s, wide), { type: "shiftMonth", months: -1 });
 	assertEquals(keyToAction(key("]"), s, wide), { type: "shiftMonth", months: 1 });
 	assertEquals(keyToAction(key("z", { ctrlKey: true }), s, wide), { type: "undo" });
@@ -525,33 +523,33 @@ Deno.test("keyToAction: every key belongs to a focused text input", () => {
 // #region Announcements + names
 Deno.test("bandLabel: the plan §5.4 accessible name", () => {
 	assertEquals(
-		bandLabel(3, { start: 360, end: 720 }, "working_hours", "Every other Wednesday"),
-		"Wednesday, 06:00 to 12:00, working hours, rule: Every other Wednesday",
+		bandLabel(3, { start: 360, end: 720 }, "Every other Wednesday"),
+		"Wednesday, 06:00 to 12:00, rule: Every other Wednesday",
 	);
 	assertEquals(
-		bandLabel(0, { start: 600, end: 1440 }, "call_window", "Sundays"),
-		"Sunday, 10:00 to 24:00, call window, rule: Sundays",
+		bandLabel(0, { start: 600, end: 1440 }, "Sundays"),
+		"Sunday, 10:00 to 24:00, rule: Sundays",
 	);
 });
 
 Deno.test("ruleName: the label wins, else the recurrence segment of the sentence", () => {
-	const describe = () => "Every other Wednesday from 6 Oct · 06:00–12:00 · working hours";
+	const describe = () => "Every other Wednesday from 6 Oct · 06:00–12:00";
 	assertEquals(ruleName(weekly("a", [3], [[0, 60]]), describe), "Every other Wednesday from 6 Oct");
 	assertEquals(ruleName(weekly("a", [3], [[0, 60]], { label: "Mornings" }), describe), "Mornings");
 });
 
 Deno.test("announcements: create, overnight and delete sentences", () => {
 	assertEquals(
-		announceCreated(5, { start: 540, end: 1050 }, "call_window"),
-		"Created Friday, 09:00 to 17:30, call window.",
+		announceCreated(5, { start: 540, end: 1050 }),
+		"Created Friday, 09:00 to 17:30.",
 	);
 	assertEquals(
-		announceOvernight(6, 1320, 0, 120, "working_hours"),
-		"Created Saturday 22:00 to Sunday 02:00, working hours, stored as two bands.",
+		announceOvernight(6, 1320, 0, 120),
+		"Created Saturday 22:00 to Sunday 02:00, stored as two bands.",
 	);
 	assertEquals(
-		announceDeleted(1, { start: 0, end: 60 }, "working_hours", false),
-		"Deleted Monday, 00:00 to 01:00, working hours.",
+		announceDeleted(1, { start: 0, end: 60 }, false),
+		"Deleted Monday, 00:00 to 01:00.",
 	);
 });
 // #endregion
@@ -559,7 +557,7 @@ Deno.test("announcements: create, overnight and delete sentences", () => {
 // #region Drag
 Deno.test("dragOutcome: dragging a new band into the next column is an overnight create", () => {
 	const out = dragOutcome(
-		{ kind: "create", origin: { day: 3, minute: 1382 }, layer: "working_hours" },
+		{ kind: "create", origin: { day: 3, minute: 1382 }, colorToken: null },
 		{ day: 4, minute: 58 },
 		15,
 		1,
@@ -577,7 +575,7 @@ Deno.test("dragOutcome: an upward drag creates the same band as a downward one",
 	const spec = {
 		kind: "create" as const,
 		origin: { day: 2 as const, minute: 720 },
-		layer: "working_hours" as const,
+		colorToken: null,
 	};
 	assertEquals(dragOutcome(spec, { day: 2, minute: 540 }, 15, 1).action, {
 		type: "createBand",
@@ -592,7 +590,7 @@ Deno.test("dragOutcome: move snaps the delta; copy needs another day; edges resi
 	const band = { start: 540, end: 600 };
 	const base = {
 		origin: { day: 3 as const, minute: 560 },
-		layer: "working_hours" as const,
+		colorToken: "--swatch-blue",
 		sel,
 		band,
 	};
@@ -640,53 +638,37 @@ Deno.test("bucketByDate: splits a span across local midnight and summarises each
 			endsAt: at("2026-10-14T12:00:00Z"),
 			ruleIds: [],
 		},
-		{
-			kind: "call_window",
-			startsAt: at("2026-10-14T10:00:00Z"),
-			endsAt: at("2026-10-14T11:30:00Z"),
-			ruleIds: [],
-		},
 	], "UTC");
-	assertEquals(buckets.get("2026-10-14")?.working, [{ start: 540, end: 720 }, {
+	assertEquals(buckets.get("2026-10-14"), [{ start: 540, end: 720 }, {
 		start: 1320,
 		end: 1440,
 	}]);
-	assertEquals(buckets.get("2026-10-15")?.working, [{ start: 0, end: 120 }]);
-	assertEquals(summarise(buckets.get("2026-10-14")), "5h · calls 1h 30m");
+	assertEquals(buckets.get("2026-10-15"), [{ start: 0, end: 120 }]);
+	assertEquals(summarise(buckets.get("2026-10-14")), "5h");
 	assertEquals(summarise(undefined), "Off");
 });
 
-Deno.test("explanationLines: names overrides, removals and clipped call time", () => {
-	const lines = explanationLines([
-		{
-			layer: "working_hours",
-			bands: [{ start: 900, end: 1020 }],
-			contributed: [{ ruleId: "w", label: "Weekdays", bands: [] }],
-			replacedBy: { ruleId: "r", label: "", bands: [] },
-			outranked: [],
-			removedBy: [{
-				ruleId: "s",
-				label: "Skip the 12th",
-				bands: [],
-				removed: [{ start: 540, end: 600 }],
-			}],
-			clipped: [],
-		},
-		{
-			layer: "call_window",
+Deno.test("explanationLines: names overrides and removals", () => {
+	const lines = explanationLines({
+		bands: [{ start: 900, end: 1020 }],
+		contributed: [{ ruleId: "w", label: "Weekdays", bands: [] }],
+		replacedBy: { ruleId: "r", label: "", bands: [] },
+		outranked: [],
+		removedBy: [{
+			ruleId: "s",
+			label: "Skip the 12th",
 			bands: [],
-			contributed: [],
-			outranked: [],
-			removedBy: [],
-			clipped: [{ start: 1080, end: 1140 }],
-		},
-	], (id, label) => label || `rule ${id}`);
+			removed: [{ start: 540, end: 600 }],
+		}],
+	}, (id, label) => label || `rule ${id}`);
 	assertEquals(lines, [
 		"Working hours 15:00–17:00",
 		"Override “rule r” replaced working hours",
 		"Rule “Skip the 12th” removed 09:00–10:00",
-		"No calls",
-		"Not offered outside working hours: 18:00–19:00",
 	]);
+	assertEquals(
+		explanationLines({ bands: [], contributed: [], outranked: [], removedBy: [] }, (id) => id),
+		["No working hours"],
+	);
 });
 // #endregion

@@ -111,8 +111,6 @@ export function keyToAction(
 	if (e.key === "?" && !mod && !e.altKey) return { type: "openShortcuts" };
 
 	if (!mod && !e.altKey && !e.shiftKey) {
-		if (key === "w") return { type: "setLayer", layer: "working_hours" };
-		if (key === "c") return { type: "setLayer", layer: "call_window" };
 		if (e.key === "[") return { type: "shiftMonth", months: -1 };
 		if (e.key === "]") return { type: "shiftMonth", months: 1 };
 	}
@@ -149,13 +147,12 @@ export const SHORTCUTS: readonly ShortcutRow[] = [
 	{ keys: "Alt + ↑ / ↓ / ← / →", action: "Move the selected band in time or across days" },
 	{ keys: "Ctrl / ⌘ + D", action: "Duplicate the selected band to the next day" },
 	{ keys: "Delete / Backspace", action: "Remove the band (the last band removes its rule)" },
-	{ keys: "W / C", action: "Edit working hours / call windows" },
 	{ keys: "[ / ]", action: "Previous / next month" },
 	{ keys: "Ctrl / ⌘ + Z", action: "Undo" },
 	{ keys: "Shift + Ctrl / ⌘ + Z", action: "Redo" },
 	{ keys: "Escape", action: "Clear the selection" },
 	{ keys: "?", action: "Show these shortcuts" },
-	{ keys: "Drag on empty time", action: "Create a band on the active layer" },
+	{ keys: "Drag on empty time", action: "Create a band of working hours" },
 	{ keys: "Drag a band or its edge", action: "Move or resize it" },
 	{ keys: "Alt + drag", action: "Duplicate to another day" },
 	{ keys: "Shift + click a day", action: "Apply the selected band to that day" },

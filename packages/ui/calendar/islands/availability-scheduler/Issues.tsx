@@ -33,7 +33,7 @@ export function Issues(): JSX.Element | null {
 					const error = issue.severity === "error";
 					return (
 						<li
-							key={`${issue.kind}-${issue.ruleId ?? ""}-${issue.layer ?? ""}-${i}`}
+							key={`${issue.kind}-${issue.ruleId ?? ""}-${i}`}
 							class={cx(
 								"ui-avsched__issue",
 								error ? "ui-avsched__issue--error" : "ui-avsched__issue--warn",

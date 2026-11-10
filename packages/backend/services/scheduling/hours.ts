@@ -12,17 +12,9 @@ import type { AvailabilityRule } from "@projective/types/scheduling";
  */
 
 /**
- * Weekly windows, varied by seed — working hours plus the narrower **call windows** inside them.
- *
- * The two `availability_kind` bands are genuinely different claims, which is why the schema carries
- * both (Decision #56): `working_hours` is the broad "at my desk" overlay, `call_window` is the subset
- * during which the owner accepts a booking from a stranger. Emitting only the broad band and letting
- * the booking layer treat it as bookable would publish a provider's entire working week as open —
- * which is both wrong and the kind of wrong nobody notices, because the grid looks healthy.
- *
- * The call windows are deliberately a MINORITY of the working week: mid-morning and mid-afternoon on
- * most workdays, never the first or last hour, never Saturday. That is what a real provider's booking
- * page looks like, and it is what makes the picker's "offered but spoken for" states reachable.
+ * Weekly working hours, varied by seed: a morning and an afternoon on each workday, a Saturday
+ * morning for every third seed. Availability is one layer (Decision #408), so these are also the
+ * hours a call is booked in.
  */
 export function buildRules(seed: number): AvailabilityRule[] {
 	const startH = 8 + (seed % 2); // 8 or 9
@@ -48,41 +40,5 @@ export function buildRules(seed: number): AvailabilityRule[] {
 			});
 		}
 	}
-	for (const wd of callWindowDays(seed, days)) {
-		rules.push({
-			weekday: wd,
-			startMinute: (startH + 1) * 60 + 30,
-			endMinute: 12 * 60,
-			label: "Open for calls",
-			kind: "call_window",
-		});
-		rules.push({
-			weekday: wd,
-			startMinute: 14 * 60,
-			endMinute: (closeH - 1) * 60,
-			label: "Open for calls",
-			kind: "call_window",
-		});
-	}
 	return rules;
-}
-
-/**
- * Which weekdays this owner opens for bookings — a stable subset of the days they work.
- *
- * Never all of them, and never none: a provider who takes calls every working hour is not modelling
- * anything a real booking page has to cope with, and one who takes none makes the picker unreachable
- * across the whole corpus. Saturday is excluded outright — an owner who works a Saturday morning is
- * catching up, not receiving strangers.
- */
-export function callWindowDays(seed: number, workdays: readonly number[]): number[] {
-	const weekdays = workdays.filter((d) => d >= 1 && d <= 5);
-	// Drop one workday, chosen stably, so the rail always has a visible closed day inside its fortnight.
-	const skip = weekdays[seed % weekdays.length];
-	return weekdays.filter((d) => d !== skip);
-}
-
-/** The `working_hours` bands alone — what a profile publishes as its schedule. */
-export function workingHoursOf(rules: readonly AvailabilityRule[]): AvailabilityRule[] {
-	return rules.filter((rule) => (rule.kind ?? "working_hours") === "working_hours");
 }

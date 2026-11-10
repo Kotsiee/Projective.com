@@ -40,8 +40,8 @@ import { sectionMeta } from "../../core/settings-registry.ts";
  * come from the default availability template, which this page summarises and opens in the shared
  * availability modal; a template save re-reads them, so a later save here never writes stale hours
  * back. Saved through the editor's own route (`PUT /api/profile/[handle]/availability`, one
- * transaction in `scheduling.save_owner_availability`): the bands and timezone travel back exactly as
- * they were read, only `call` changes.
+ * transaction in `scheduling.save_owner_availability`): the time zone and publishing travel back as
+ * they were read and only `call` changes; no bands are sent, so the stored hours are kept.
  */
 
 // #region Options
@@ -254,7 +254,11 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 		if (!current || !draft.peek()) return;
 		busy.value = true;
 		status.value = { tone: "busy", text: "Saving…" };
-		const res = await ProfileService.saveAvailability(handle!, { ...current, call: draft.peek() });
+		const res = await ProfileService.saveAvailability(handle!, {
+			timezone: current.timezone,
+			published: current.published,
+			call: draft.peek(),
+		});
 		busy.value = false;
 		if (!res.ok || !res.data) {
 			status.value = {

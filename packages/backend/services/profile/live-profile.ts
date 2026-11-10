@@ -37,6 +37,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { resolveSkill } from "../explore/skills.ts";
 import { displayPrice } from "../explore/live-catalog.ts";
 import { flattenRichText, type RichTextInput } from "@projective/types/richtext";
+import { joinTouchingBands } from "@projective/types/scheduling";
 import {
 	isVideoMedia,
 	mediaAspect,
@@ -413,9 +414,16 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 	const intake = Array.isArray(raw.hire_intake)
 		? raw.hire_intake.map((f) => IntakeFieldSchema.safeParse(f)).filter((r) => r.success).map((r) => r.data!)
 		: [];
-	const workingHours = (raw.hours?.rules ?? [])
-		.filter((r) => r.kind === "working_hours")
-		.map((r) => ({ weekday: r.weekday, startMinute: r.start_minute, endMinute: r.end_minute, kind: "working_hours" as const }));
+	const workingHours = joinTouchingBands(
+		(raw.hours?.rules ?? [])
+			.filter((r) => r.kind === "working_hours")
+			.map((r) => ({
+				weekday: r.weekday,
+				startMinute: r.start_minute,
+				endMinute: r.end_minute,
+				kind: "working_hours" as const,
+			})),
+	);
 	const timezone = raw.timezone ?? raw.hours?.timezone ?? "";
 
 	return {

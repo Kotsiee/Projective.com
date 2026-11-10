@@ -23,7 +23,6 @@ const hours = (from: number, to: number): Band => ({
 
 function weekly(
 	id: string,
-	layer: AvailabilityRuleDraft["layer"],
 	days: number[],
 	bands: Band[],
 	label: string,
@@ -31,7 +30,6 @@ function weekly(
 ): AvailabilityRuleDraft {
 	return {
 		id,
-		layer,
 		effect: "add",
 		pattern: { type: "weekly", days, interval },
 		condition: { unlessWeekdays: [] },
@@ -41,6 +39,8 @@ function weekly(
 		priority: 50,
 		label,
 		active: true,
+		fee: null,
+		colorToken: null,
 	};
 }
 // #endregion
@@ -53,22 +53,15 @@ const BASE = {
 	archivedAt: null,
 } as const;
 
-/** The three plan §5.5 templates. */
+/** The three plan §5.5 templates, one layer each (Decision #408): calls are booked inside the hours. */
 export const SCHEDULE_TEMPLATES: readonly ScheduleTemplate[] = [
 	{
 		...BASE,
 		key: "general",
 		name: "General Freelancer Availability",
-		description: "Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.",
+		description: "Monday to Friday, 09:00–17:30.",
 		rules: [
-			weekly("general-work", "working_hours", [1, 2, 3, 4, 5], [hours(9, 17.5)], "Weekdays"),
-			weekly(
-				"general-calls",
-				"call_window",
-				[1, 2, 3, 4, 5],
-				[hours(10, 12), hours(14, 16)],
-				"Weekday calls",
-			),
+			weekly("general-work", [1, 2, 3, 4, 5], [hours(9, 17.5)], "Weekdays"),
 		],
 	},
 	{
@@ -78,39 +71,17 @@ export const SCHEDULE_TEMPLATES: readonly ScheduleTemplate[] = [
 		description:
 			"Early and late advising on Tuesdays and Thursdays, and every other Saturday morning.",
 		rules: [
-			weekly(
-				"vip-work",
-				"working_hours",
-				[2, 4],
-				[hours(7, 9), hours(18, 20)],
-				"Tuesday and Thursday",
-			),
-			weekly(
-				"vip-calls",
-				"call_window",
-				[2, 4],
-				[hours(7, 9), hours(18, 20)],
-				"Tuesday and Thursday calls",
-			),
-			weekly("vip-saturday-work", "working_hours", [6], [hours(10, 13)], "Alternate Saturdays", 2),
-			weekly(
-				"vip-saturday-calls",
-				"call_window",
-				[6],
-				[hours(10, 13)],
-				"Alternate Saturday calls",
-				2,
-			),
+			weekly("vip-work", [2, 4], [hours(7, 9), hours(18, 20)], "Tuesday and Thursday"),
+			weekly("vip-saturday-work", [6], [hours(10, 13)], "Alternate Saturdays", 2),
 		],
 	},
 	{
 		...BASE,
 		key: "evening_sprints",
 		name: "Evening Sprints",
-		description: "Monday to Thursday evenings, 18:00–22:00, with calls in the first hour.",
+		description: "Monday to Thursday evenings, 18:00–22:00.",
 		rules: [
-			weekly("evening-work", "working_hours", [1, 2, 3, 4], [hours(18, 22)], "Weeknights"),
-			weekly("evening-calls", "call_window", [1, 2, 3, 4], [hours(18, 19)], "Weeknight calls"),
+			weekly("evening-work", [1, 2, 3, 4], [hours(18, 22)], "Weeknights"),
 		],
 	},
 ];

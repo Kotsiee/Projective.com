@@ -294,14 +294,14 @@ Deno.test("previewNoteFor: a workspace editor's preview says what visitors do no
 	const editor = { hiddenReason: null, consoleHref: "/teams/northloop", settingsHref: null };
 	assertEquals(
 		previewNoteFor({ kind: "team", workspace: editor }),
-		"This is how your team looks to visitors, who never see Manage team.",
+		"This is how your team looks to visitors, who never see Manage team, the edit buttons or empty blocks.",
 	);
 	assertEquals(
 		previewNoteFor({
 			kind: "business",
 			workspace: { ...editor, consoleHref: "/businesses/atlaslabs" },
 		}),
-		"This is how your business looks to visitors. They see Message where you see Manage business.",
+		"This is how your business looks to visitors. They see Message where you see Manage business, and none of the edit buttons or empty blocks.",
 	);
 	// No console door (a platform admin, a person's own page): the owner nav's plain note.
 	assertEquals(

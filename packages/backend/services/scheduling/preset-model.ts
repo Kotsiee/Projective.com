@@ -6,7 +6,6 @@ import {
 	type Band,
 	type DateRange,
 	draftToRRule,
-	intersectBands,
 	type IsoDate,
 	type Issue,
 	type OwnerBand,
@@ -14,7 +13,9 @@ import {
 	type PresetScope,
 	rruleToDraft,
 	type RuleEffect,
+	type RuleFee,
 	type SavePresetInput,
+	swatchOf,
 	unionBands,
 	zonedSpan,
 } from "@projective/types/scheduling";
@@ -58,6 +59,9 @@ export interface RuleRow {
 	label: string;
 	is_active: boolean;
 	position: number;
+	fee_amount_minor: number | string | null;
+	fee_currency: string | null;
+	color_token: string | null;
 }
 
 /** A `scheduling.recurrence_rule_bands` row. */
@@ -71,7 +75,7 @@ export interface RuleBandRow {
 export const PRESET_COLUMNS =
 	"id, schedule_id, scope, blueprint_id, slug, name, description, is_default, compiled_from, compiled_through, archived_at";
 export const RULE_COLUMNS =
-	"id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label, is_active, position";
+	"id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label, is_active, position, fee_amount_minor, fee_currency, color_token";
 export const BAND_COLUMNS = "rule_id, position, start_minute, end_minute";
 
 /**
@@ -85,13 +89,21 @@ export class UnreadableRuleError extends Error {
 	}
 }
 
+/** A stored price as a draft's, or `null` when the row holds none (or half of one). */
+function feeFromRow(row: Pick<RuleRow, "fee_amount_minor" | "fee_currency">): RuleFee | null {
+	const amount = row.fee_amount_minor === null ? NaN : Number(row.fee_amount_minor);
+	const currency = row.fee_currency?.trim().toUpperCase() ?? "";
+	return Number.isInteger(amount) && amount > 0 && /^[A-Z]{3}$/.test(currency)
+		? { amountMinor: amount, currency }
+		: null;
+}
+
 function ruleFromRow(row: RuleRow, bands: readonly RuleBandRow[]): AvailabilityRuleDraft {
 	const startsOn = row.starts_on as IsoDate;
 	const recurrence = rruleToDraft(row.rrule, startsOn);
 	if (!recurrence) throw new UnreadableRuleError(row.id, row.rrule);
 	return {
 		id: row.id,
-		layer: row.kind,
 		effect: row.effect,
 		pattern: recurrence.pattern,
 		condition: recurrence.condition,
@@ -104,10 +116,16 @@ function ruleFromRow(row: RuleRow, bands: readonly RuleBandRow[]): AvailabilityR
 		priority: row.priority,
 		label: row.label,
 		active: row.is_active,
+		fee: row.effect === "subtract" ? null : feeFromRow(row),
+		colorToken: swatchOf(row.color_token) === "default" ? null : row.color_token,
 	};
 }
 
-/** The authored preset a stored row, its rules and their bands describe, in its schedule's zone. */
+/**
+ * The authored preset a stored row, its rules and their bands describe, in its schedule's zone. A
+ * stored call-window rule predates the one-layer ruling (Decision #408) and is left out, so the next
+ * save no longer holds it.
+ */
 export function presetFromRows(
 	preset: PresetRow,
 	rules: readonly RuleRow[],
@@ -124,7 +142,7 @@ export function presetFromRows(
 		scope: preset.scope,
 		blueprintId: preset.blueprint_id,
 		rules: rules
-			.filter((r) => r.preset_id === preset.id)
+			.filter((r) => r.preset_id === preset.id && r.kind === "working_hours")
 			.sort((a, b) => a.position - b.position)
 			.map((r) => ruleFromRow(r, bands)),
 		archivedAt: preset.archived_at,
@@ -150,7 +168,7 @@ export function presetPayload(input: SavePresetInput): Record<string, unknown> {
 		blueprint_id: input.blueprintId,
 		rules: input.rules.map((r) => ({
 			...(UUID_RE.test(r.id) ? { id: r.id } : {}),
-			kind: r.layer,
+			kind: "working_hours" satisfies AvailabilityKind,
 			effect: r.effect,
 			rrule: draftToRRule(r),
 			starts_on: r.startsOn,
@@ -159,6 +177,9 @@ export function presetPayload(input: SavePresetInput): Record<string, unknown> {
 			unless_weekdays: r.condition.unlessWeekdays,
 			label: r.label,
 			is_active: r.active,
+			fee_amount_minor: r.fee?.amountMinor ?? null,
+			fee_currency: r.fee?.currency ?? null,
+			color_token: r.colorToken,
 			bands: r.bands.map((b) => ({ start_minute: b.start, end_minute: b.end })),
 		})),
 	};
@@ -239,31 +260,74 @@ function isWeeklyBand(rule: AvailabilityRuleDraft, today: IsoDate): boolean {
 		rule.endsOn === null && rule.startsOn <= today && rule.condition.unlessWeekdays.length === 0;
 }
 
+/** One band of a weekday and the price a paid call starting in it costs, or `null` to inherit. */
+export interface PricedBand extends Band {
+	fee: RuleFee | null;
+}
+
+function morePricey(a: RuleFee | null, b: RuleFee | null): RuleFee | null {
+	if (!a || !b) return a ?? b;
+	if (a.amountMinor !== b.amountMinor) return a.amountMinor > b.amountMinor ? a : b;
+	return a.currency <= b.currency ? a : b;
+}
+
+function sameFee(a: RuleFee | null, b: RuleFee | null): boolean {
+	return a === b || (!!a && !!b && a.amountMinor === b.amountMinor && a.currency === b.currency);
+}
+
+/**
+ * The union of `rules`' bands, split where the price changes (Decision #408): each piece carries the
+ * price of the rules whose bands cover it — the higher where two disagree, none where no covering rule
+ * names one — and touching pieces that cost the same are merged.
+ */
+export function pricedBands(
+	rules: readonly Pick<AvailabilityRuleDraft, "bands" | "fee">[],
+): PricedBand[] {
+	const covering = unionBands(...rules.map((r) => r.bands));
+	const cuts = [
+		...new Set([
+			...covering.flatMap((b) => [b.start, b.end]),
+			...rules.filter((r) => r.fee).flatMap((r) => r.bands.flatMap((b) => [b.start, b.end])),
+		]),
+	].sort((a, b) => a - b);
+	const out: PricedBand[] = [];
+	for (let i = 0; i + 1 < cuts.length; i++) {
+		const [start, end] = [cuts[i], cuts[i + 1]];
+		if (!covering.some((b) => b.start <= start && end <= b.end)) continue;
+		const fee = rules
+			.filter((r) => r.bands.some((b) => b.start <= start && end <= b.end))
+			.reduce<RuleFee | null>((best, r) => morePricey(best, r.fee), null);
+		const last = out[out.length - 1];
+		if (last && last.end === start && sameFee(last.fee, fee)) last.end = end;
+		else out.push({ start, end, fee });
+	}
+	return out;
+}
+
 /**
  * Project a preset onto the weekly bands `/[handle]/availability` and discovery calls still read
- * (plan §5.6 step 4). Bands of one day and layer are merged; call windows are clipped to working
- * hours, as the evaluator clips them. `full` tells the editor whether to explain the gap.
+ * (plan §5.6 step 4). A day's bands are merged, then split where the price a paid call costs changes
+ * ({@link pricedBands}); the call gate reads touching bands as one span, so the split moves no
+ * booking. `full` tells the editor whether to explain the gap.
  */
 export function mirrorProjection(preset: PresetLike, today: IsoDate): MirrorProjection {
 	const active = preset.rules.filter((r) => r.active);
 	const weekly = active.filter((r) => isWeeklyBand(r, today));
-	const bandsOn = (layer: AvailabilityKind, weekday: number): Band[] =>
-		unionBands(
-			...weekly
-				.filter((r) =>
-					r.layer === layer && r.pattern.type === "weekly" && r.pattern.days.includes(weekday)
-				)
-				.map((r) => r.bands),
-		);
 
 	const bands: OwnerBand[] = [];
 	for (let weekday = 0; weekday < 7; weekday++) {
-		const working = bandsOn("working_hours", weekday);
-		const calls = intersectBands(bandsOn("call_window", weekday), working);
-		for (const [kind, list] of [["working_hours", working], ["call_window", calls]] as const) {
-			for (const b of list) {
-				bands.push({ weekday, startMinute: b.start, endMinute: b.end, kind });
-			}
+		const day = weekly.filter((r) =>
+			r.pattern.type === "weekly" && r.pattern.days.includes(weekday)
+		);
+		for (const b of pricedBands(day)) {
+			bands.push({
+				weekday,
+				startMinute: b.start,
+				endMinute: b.end,
+				kind: "working_hours",
+				feeAmountMinor: b.fee?.amountMinor ?? null,
+				feeCurrency: b.fee?.currency ?? null,
+			});
 		}
 	}
 	const fits = bands.length <= MAX_WEEKLY_BANDS;

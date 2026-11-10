@@ -4,6 +4,7 @@ import {
 	type OwnerAvailability,
 	type OwnerBand,
 	type OwnerCallSettings,
+	type SaveOwnerAvailability,
 } from "@projective/types/scheduling";
 import type { ProfileOwnerType } from "@projective/types/profile";
 
@@ -17,9 +18,10 @@ import type { ProfileOwnerType } from "@projective/types/profile";
  * VISITOR's view of the same call settings is `./live-call-offer.ts`, which reads only a published
  * schedule.
  *
- * The one write, {@link saveOwnerAvailability}, is a single `scheduling.save_owner_availability`
- * call: the timezone, the bands and the call settings land in one transaction, because a timezone
- * saved without the bands expressed in it re-times every band.
+ * The owner's write, {@link saveOwnerAvailability}, is a single `scheduling.save_owner_availability`
+ * call carrying the timezone, publishing and call settings and no bands, so the stored weekly hours
+ * stay as they are: only the default template's mirror writes them (Decision #408). A band is minutes
+ * from local midnight, so a new time zone keeps every band's local times.
  *
  * Every function returns `undefined` when the database could not answer — never a default dressed up
  * as the owner's settings.
@@ -51,8 +53,9 @@ interface RuleRow {
 	weekday: number;
 	start_minute: number;
 	end_minute: number;
-	kind: "working_hours" | "call_window";
 	is_active: boolean;
+	fee_amount_minor: number | string | null;
+	fee_currency: string | null;
 }
 
 /** One `scheduling.call_settings` row as selected by {@link CALL_COLUMNS}. */
@@ -171,8 +174,9 @@ export async function fetchOwnerAvailability(
 		}
 		const [rules, call] = await Promise.all([
 			client.schema("scheduling").from("availability_rules")
-				.select("weekday, start_minute, end_minute, kind, is_active")
+				.select("weekday, start_minute, end_minute, is_active, fee_amount_minor, fee_currency")
 				.eq("schedule_id", schedule.id)
+				.eq("kind", "working_hours")
 				.order("weekday")
 				.order("start_minute"),
 			// The door, not the table: the client grant stops at what a visitor may read (audit S-16).
@@ -183,12 +187,18 @@ export async function fetchOwnerAvailability(
 		if (rules.error || call.error) return undefined;
 		const bands: OwnerBand[] = ((rules.data ?? []) as RuleRow[])
 			.filter((r) => r.is_active)
-			.map((r) => ({
-				weekday: r.weekday,
-				startMinute: r.start_minute,
-				endMinute: r.end_minute,
-				kind: r.kind,
-			}));
+			.map((r) => {
+				const { feeAmountMinor, feeCurrency } = callFee(r);
+				const priced = feeAmountMinor !== null && feeCurrency !== null;
+				return {
+					weekday: r.weekday,
+					startMinute: r.start_minute,
+					endMinute: r.end_minute,
+					kind: "working_hours" as const,
+					feeAmountMinor: priced ? feeAmountMinor : null,
+					feeCurrency: priced ? feeCurrency : null,
+				};
+			});
 		return {
 			timezone: schedule.timezone,
 			published: schedule.is_published,
@@ -206,18 +216,27 @@ export async function fetchOwnerAvailability(
 
 // #region The write
 
-/** The `save_owner_availability` payload for an editor value. */
-export function availabilityPayload(value: OwnerAvailability): Record<string, unknown> {
+/**
+ * The `save_owner_availability` payload. `rules` is sent only when `value` carries bands — the
+ * default template's mirror — and then REPLACES the weekly hours; without them the hours are kept.
+ */
+export function availabilityPayload(
+	value: SaveOwnerAvailability & { bands?: readonly OwnerBand[] },
+): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		timezone: value.timezone,
 		published: value.published,
-		rules: value.bands.map((b) => ({
+	};
+	if (value.bands) {
+		payload.rules = value.bands.map((b) => ({
 			weekday: b.weekday,
 			start_minute: b.startMinute,
 			end_minute: b.endMinute,
 			kind: b.kind,
-		})),
-	};
+			fee_amount_minor: b.feeAmountMinor,
+			fee_currency: b.feeCurrency,
+		}));
+	}
 	if (value.call) {
 		const c = value.call;
 		payload.call = {
@@ -242,11 +261,14 @@ export function availabilityPayload(value: OwnerAvailability): Record<string, un
 	return payload;
 }
 
-/** Save the whole editor value in one transaction. Resolves the raw error for the caller to map. */
+/**
+ * Save the owner's time zone, publishing and call settings in one transaction, keeping the weekly
+ * hours. Resolves the raw error for the caller to map.
+ */
 export async function saveOwnerAvailability(
 	client: SupabaseClient,
 	owner: { type: ProfileOwnerType; id: string },
-	value: OwnerAvailability,
+	value: SaveOwnerAvailability,
 ): Promise<{ error: { code?: string; message: string } | null }> {
 	try {
 		const { error } = await client.schema("scheduling").rpc("save_owner_availability", {

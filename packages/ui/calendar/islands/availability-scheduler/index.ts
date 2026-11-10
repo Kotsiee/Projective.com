@@ -1,4 +1,4 @@
-import { CalendarView, LAYERS } from "./CalendarView.tsx";
+import { CalendarView } from "./CalendarView.tsx";
 import { Details } from "./Details.tsx";
 import { Issues } from "./Issues.tsx";
 import { Library } from "./Library.tsx";
@@ -66,7 +66,6 @@ export type {
 	CalendarViewProps as SchedulerCalendarProps,
 	SchedulerContextTarget,
 } from "./CalendarView.tsx";
-export { LAYERS as SCHEDULER_LAYERS };
 export type { PresetBarProps } from "./PresetBar.tsx";
 export type { StudioProps } from "./Studio.tsx";
 export type { LibraryItem, LibraryProps } from "./Library.tsx";
@@ -92,10 +91,9 @@ export type {
 	Band as SchedulerBand,
 	BlackoutSpan as SchedulerBlackoutSpan,
 	DateRange as SchedulerDateRange,
+	DayExplanation as SchedulerDayExplanation,
 	Explanation as SchedulerExplanation,
 	Issue as SchedulerIssue,
-	Layer as SchedulerLayer,
-	LayerExplanation as SchedulerLayerExplanation,
 	Occurrence as SchedulerOccurrence,
 	Preset as SchedulerPreset,
 	PresetBinding,
@@ -103,8 +101,10 @@ export type {
 	RRuleWriting,
 	RuleCondition as SchedulerRuleCondition,
 	RuleDraft as SchedulerRuleDraft,
+	RuleFee as SchedulerRuleFee,
 	RulePattern as SchedulerRulePattern,
 	SchedulerBlackout,
 	SchedulerEngine,
+	SchedulerPricing,
 	SchedulerTemplate,
 } from "./types.ts";

@@ -3,7 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { RichTextEditor } from "@projective/ui/editor";
 import { Accordion, AccordionTab } from "@projective/ui/display";
-import { InputText, ToggleSwitch } from "@projective/ui/fields";
+import { InputText, SwatchPicker, ToggleSwitch } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { calendarTime } from "@projective/ui/calendar";
@@ -13,6 +13,7 @@ import {
 	entryClassOf,
 	isRoomAddress,
 	MEETING_PROVIDER_LABEL,
+	swatchOf,
 } from "@projective/types/scheduling";
 import { normalizeLink } from "@projective/types/links";
 import { sanitizeRichText } from "@projective/types/richtext";
@@ -363,6 +364,29 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 		: null;
 	// #endregion
 
+	// #region Colour
+	// A swatch of the host's own (Decision #408); a colour that is no swatch reads as the default.
+	const ownAccent = swatchOf(event.accent) === "default" ? null : event.accent ?? null;
+	const accent = useSignal<string | null>(ownAccent);
+	useEffect(() => {
+		accent.value = ownAccent;
+	}, [ownAccent]);
+	const colourId = `evm-colour-${event.id}`;
+	const colour = canEdit
+		? (
+			<section class="evm-doc__sec">
+				<h3 class="evm-h" id={colourId}>Colour</h3>
+				<SwatchPicker
+					size="sm"
+					value={accent}
+					aria-labelledby={colourId}
+					onValueChange={(token) => props.onPatch({ accent: token ?? undefined })}
+				/>
+			</section>
+		)
+		: null;
+	// #endregion
+
 	// Only the personal agenda has routines, and only it publishes its page to this module.
 	const organise = calendarPage.value
 		? (
@@ -392,6 +416,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 				<div class="evm-compose__side">
 					{room}
 					{organise}
+					{colour}
 					{creating
 						? (
 							<section class="evm-doc__sec">

@@ -2,11 +2,11 @@
 
 `supabase db reset` (or `deno task db:reset`) rebuilds the local database from the consolidated
 migrations and then loads a **complete, interconnected development world**: eighteen real personas
-(one of them the platform operator), three teams, two businesses, seven projects in every hiring and delivery state, funded and released
-escrows, a computed wallet ledger, product and service orders, direct messages, project channels,
-read/unread notifications, and published schedules with working hours, call windows, time off and
-discovery calls — with profile photos, banners, brand marks, product/service covers and submission
-deliverables served from the local storage buckets.
+(one of them the platform operator), three teams, two businesses, seven projects in every hiring and
+delivery state, funded and released escrows, a computed wallet ledger, product and service orders,
+direct messages, project channels, read/unread notifications, and published schedules with working
+hours, time off and discovery calls — with profile photos, banners, brand marks, product/service
+covers and submission deliverables served from the local storage buckets.
 
 Everything below is **generated**, and it is the ONLY copy of this data: the discovery surfaces
 (`/explore`, `/view/[id]`, the landing page) and the booking surfaces (a listing's Book modal and
@@ -18,7 +18,7 @@ fixture for it to drift from. The source of truth is three places:
 | `supabase/seeds/gen/corpus.ts` (the listings) | The authored listing content — nine services with their stage templates, intake questions, team roles and session terms; eight products with manifests, specs and compatibility; five articles with block bodies. Seed-only: nothing outside `supabase/seeds/` imports it. |
 | `supabase/seeds/gen/reviews.ts`           | The listing reviews (21 on services, 16 on products), each by a persona key.                           |
 | `supabase/seeds/gen/world.ts` (the world) | Everything a running product accumulates — who is a member of what, who was hired into which stage, which tickets were paid, who messaged whom, what is unread. |
-| `supabase/seeds/gen/schedules.ts`         | Ten schedules: each owner's timezone, working hours, call windows, time off, call settings and platforms, their busy events, and four discovery calls; plus the stage calendar facts `06_projects.sql` reads — five fixed stage deadlines (`STAGE_DEADLINES`) and one fixed stage start (`STAGE_STARTS`: Meridian's documentation stage). |
+| `supabase/seeds/gen/schedules.ts`         | Ten schedules: each owner's timezone, working hours (where every call is booked, Decision #408 — the generator refuses a seeded call outside them), time off, call settings and platforms, their busy events, and four discovery calls; plus the stage calendar facts `06_projects.sql` reads — five fixed stage deadlines (`STAGE_DEADLINES`) and one fixed stage start (`STAGE_STARTS`: Meridian's documentation stage). |
 
 `supabase/seeds/generate.ts` resolves them into `supabase/seeds/0*.sql` and the image tree under
 `supabase/seed-assets/`, and **both outputs are committed** so a clone resets with no toolchain.
@@ -96,7 +96,7 @@ every persona lands on the authenticated shell directly.
 | `06_projects.sql`      | Seven projects with stable `prj-…` slugs, stages, participants, assignments (individual + team), invitations (pending/accepted/declined/placeholder), applications, tickets with history, submissions with deliverable files and a revision chain, starred projects, dual-track reviews |
 | `07_finance.sql`       | Wallets (and each team's `treasury_wallet_id`), a **computed** ledger, escrows (funded + released), team payout splits, invoices with line items, orders + lines (products, services, a booked session, a refund), baskets, cards, payment methods, payout accounts/schedules/payouts, subscriptions, a spending cap, a pending spend approval, the vault audit trail (`finance.ledger_audit`, **derived** from the ledger — see below), Income Smoother, pots — plus the checkout's own states (see [§ Checkout states](#checkout-states)). **No `finance.vault_permissions` rows are written**: the wallet insert trigger projects them from the workspace roles (`org.fn_sync_vault_permissions`), so the seed cannot disagree with the console about who may spend |
 | `08_comms.sql`         | General + per-stage project channels with messages and participants, DM/group/service-inquiry threads with per-participant read state, **entity channels** (Decision #306, `gen/world.ts` `ENTITY_CHANNELS`): every team's and business's `general` is made by the entity-insert trigger (an idempotent `comms.fn_ensure_default_channel` backfill covers the rest), Atelier Nova and North Loop also get `delivery-sync` and `client-updates`; participants are added by trigger from the active rosters, so the seed writes only the extra channels, their messages and each member's `last_read_at`; 44 catalog-typed notifications (16 unread), auto-responses |
-| `08_scheduling.sql`    | Ten schedules (nine published, Chloe's a draft) in their owners' own timezones: 65 weekly bands (50 `working_hours`, 15 `call_window`), three blackouts (one private label, two public), eight call-settings rows with twelve platforms, eight events (five busy blocks, two syncs, and Chloe's booked review at the same instant as her order line), and four discovery calls — one proposed, two confirmed (one paid) and one completed |
+| `08_scheduling.sql`    | Ten schedules (nine published, Chloe's a draft) in their owners' own timezones: 50 weekly `working_hours` bands (one layer, Decision #408), three blackouts (one private label, two public), eight call-settings rows with twelve platforms, eight events (five busy blocks, two syncs, and Chloe's booked review at the same instant as her order line), and four discovery calls — one proposed, two confirmed (one paid) and one completed |
 | `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes — products and articles into `search.catalogue_index` (Decision #179). No vectors: see the backfill above |
 | `10_profiles.sql`      | The public profile's presentation layer (`gen/profiles.ts`): 30 showcase slots across seven freelancers and three teams (slot 1 always a still), 12 "Selected work" pieces with covers, 4 certifications (two platform-verified), and 4 privacy rows — Maris and Juno allow their photo to be opened full size, Ren hides the local clock, Theo hides the location line |
 | `11_standing.sql`      | Hand-written: every seller's Standing inputs **derived from the seeded record**, then the rung computed by the platform's own `org.fn_recompute_standing` (see [§ Standing](#standing)) |

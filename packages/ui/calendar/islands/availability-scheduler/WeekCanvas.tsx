@@ -9,7 +9,8 @@ import { useScheduler } from "./context.ts";
 import { dragOutcome, type DragPoint, type DragSpec, type GhostPart } from "./drag.ts";
 import { keyToAction } from "./keymap.ts";
 import { bandsOnDay, type CanvasBand, type SchedulerAction, type Selection } from "./reducer.ts";
-import type { Band, Layer, RuleDraft, Weekday } from "./types.ts";
+import { swatchFor } from "../../../fields/core/swatches.ts";
+import type { Band, RuleDraft, Weekday } from "./types.ts";
 
 // #region Geometry
 /** Minutes per grid row. */
@@ -26,8 +27,12 @@ function bandVars(band: Band) {
 	});
 }
 
-function layerClass(layer: Layer): string {
-	return layer === "working_hours" ? "ui-avsched__band--working" : "ui-avsched__band--call";
+/** A band's fill: the default hours tone, or the swatch its rule is drawn in. */
+function bandClass(colorToken: string | null): string {
+	const swatch = swatchFor(colorToken);
+	return swatch.token
+		? `ui-avsched__band--working ui-avsched__band--swatch-${swatch.slug}`
+		: "ui-avsched__band--working";
 }
 
 function pointAt(grid: HTMLElement, x: number, y: number): DragPoint | null {
@@ -83,7 +88,7 @@ function BandButton(props: BandButtonProps): JSX.Element {
 			data-day={day}
 			class={cx(
 				"ui-avsched__band",
-				layerClass(item.rule.layer),
+				bandClass(item.rule.colorToken),
 				selected && "ui-avsched__band--selected",
 			)}
 			style={bandVars(item.band)}
@@ -152,9 +157,9 @@ export function WeekCanvas(): JSX.Element | null {
 
 	const byDay = new Map<number, CanvasBand[]>();
 	for (const d of columns) byDay.set(d, bandsOnDay(state.draft, d));
-	const touches = (day: number, layer: Layer, minute: number) =>
+	const touches = (day: number, minute: number) =>
 		(byDay.get(day) ?? []).some((c) =>
-			c.rule.layer === layer && (minute === 0 ? c.band.start === 0 : c.band.end === DAY_MINUTES)
+			minute === 0 ? c.band.start === 0 : c.band.end === DAY_MINUTES
 		);
 
 	const sel = state.selection;
@@ -202,9 +207,9 @@ export function WeekCanvas(): JSX.Element | null {
 			if (!rule || !band) return;
 			const handle = target.closest<HTMLElement>("[data-handle]")?.dataset.handle;
 			const kind = handle === "start" || handle === "end" ? handle : e.altKey ? "copy" : "move";
-			spec = { kind, origin, sel: picked, band, layer: rule.layer };
+			spec = { kind, origin, sel: picked, band, colorToken: rule.colorToken };
 		} else {
-			spec = { kind: "create", origin, layer: now.layer };
+			spec = { kind: "create", origin, colorToken: null };
 		}
 
 		const x0 = e.clientX;
@@ -268,9 +273,8 @@ export function WeekCanvas(): JSX.Element | null {
 	return (
 		<div class="ui-avsched__week">
 			<p class="ui-avsched__meta" id={hintId}>
-				Drag on empty time to add{" "}
-				{state.layer === "working_hours" ? "working hours" : "call windows"}
-				{" · "}arrow keys move · Enter adds · ? lists every shortcut
+				Drag on empty time to add working hours · arrow keys move · Enter adds · ? lists every
+				shortcut
 				{otherRules > 0 &&
 					` · ${otherRules} more ${otherRules === 1 ? "rule shows" : "rules show"} in Month`}
 			</p>
@@ -346,14 +350,13 @@ export function WeekCanvas(): JSX.Element | null {
 											let label = bandLabel(
 												d,
 												item.band,
-												item.rule.layer,
 												ruleName(item.rule, describeRule),
 												locale,
 											);
 											const continuesOut = item.band.end === DAY_MINUTES &&
-												touches((d + 1) % 7, item.rule.layer, 0);
+												touches((d + 1) % 7, 0);
 											const continuesIn = item.band.start === 0 &&
-												touches((d + 6) % 7, item.rule.layer, DAY_MINUTES);
+												touches((d + 6) % 7, DAY_MINUTES);
 											if (continuesOut) {
 												label += `, continues into ${weekdayName((d + 1) % 7, locale)}`;
 											}
@@ -379,7 +382,7 @@ export function WeekCanvas(): JSX.Element | null {
 												key={`ghost-${gi}`}
 												class={cx(
 													"ui-avsched__band",
-													layerClass(g.layer),
+													bandClass(g.colorToken),
 													"ui-avsched__band--dragging",
 												)}
 												style={bandVars(g.band)}

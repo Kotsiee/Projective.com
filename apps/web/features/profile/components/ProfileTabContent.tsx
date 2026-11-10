@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import TabCreateButton from "../islands/TabCreateButton.island.tsx";
 import { type ReviewStance, TAB_LABEL } from "../core/profile-model.ts";
+import { editHrefFor, type OwnerEdit } from "../core/owner-edit.ts";
+import { OwnerEditLink } from "./OwnerEditLink.tsx";
 import { tabIcon } from "./profile-glyphs.tsx";
 import { ExperienceTab, PostsTab, ReviewsTab, WorkTab } from "./tabs/mod.ts";
 import type {
@@ -17,6 +19,9 @@ import type {
  *
  * There is no visible panel title: the tab strip directly above already names the section in its
  * active state. The heading survives visually-hidden so the panel keeps its landmark name.
+ *
+ * For the owner the Experience section carries the {@link OwnerEditLink} to its editor section
+ * (Decision #408), shown at once while the section is empty and on hover or focus once it is not.
  */
 export interface ProfileTabContentProps {
 	profile: ProfileView;
@@ -26,6 +31,14 @@ export interface ProfileTabContentProps {
 	authed: boolean;
 	/** Reviews only — the stance the URL asked for (`?as=`), so SSR paints the filtered list. */
 	reviewStance?: ReviewStance;
+	/** The owner's edit links (`core/owner-edit.ts`); `null` for a visitor. */
+	ownerEdit?: OwnerEdit | null;
+}
+
+/** The editor section a profile section is changed in, where it has one. */
+function editLinkFor(tab: ProfileTab, edit: OwnerEdit | null | undefined): JSX.Element | null {
+	const href = tab === "experience" ? editHrefFor(edit, "experience") : null;
+	return href ? <OwnerEditLink href={href} label="your experience" /> : null;
 }
 
 // #region Owner create triggers
@@ -141,10 +154,12 @@ export function ProfileTabContent(props: ProfileTabContentProps): JSX.Element {
 		? <TabCreateButton label={create.label} noun={create.noun} />
 		: null;
 	const empty = countFor(tab, payload) === 0;
+	const editLink = editLinkFor(tab, props.ownerEdit);
+	const headCreate = createButton && !empty ? createButton : null;
 	return (
-		<div class="pf-panel">
+		<div class={editLink && !empty ? "pf-panel pf-ownerblock" : "pf-panel"}>
 			<h2 class="ui-visually-hidden">{TAB_LABEL[tab]}</h2>
-			{createButton && !empty ? <div class="pf-panel__head">{createButton}</div> : null}
+			{headCreate || editLink ? <div class="pf-panel__head">{headCreate}{editLink}</div> : null}
 			<div class="pf-panel__body">
 				{empty
 					? <EmptySection tab={tab} kind={profile.kind} action={createButton} />

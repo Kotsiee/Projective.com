@@ -31,7 +31,8 @@ import {
  * A slot the grid offers is a slot `scheduling.fn_call_request_refusal` accepts, because the two apply
  * the same four rules in the same way:
  *
- *  - **inside a band** of the relevant kind, on one local weekday (a band never crosses midnight) —
+ *  - **inside a band** of working hours, on one local weekday (a band never crosses midnight; the
+ *    reader joins bands that touch, as the gate does, Decision #408) —
  *    or, for a listing whose preset is compiled over the slot's local dates, **inside one compiled
  *    occurrence** of that kind ({@link gateCovers}, the mirror of `scheduling.fn_band_covers`);
  *  - **after the notice floor** (`now + min_notice_minutes`) and **before the horizon**
@@ -88,7 +89,7 @@ export interface CompiledAvailability {
 export interface GridSource {
 	/** The provider's IANA zone. */
 	timezone: string;
-	/** The bands of the kind this grid books into (call windows for a call, working hours otherwise). */
+	/** The working-hours bands this grid books into, touching bands joined (`live-slots.ts`). */
 	bands: GridBand[];
 	/** The listing's compiled preset, when its blueprint resolves one that has been compiled. */
 	compiled?: CompiledAvailability | null;

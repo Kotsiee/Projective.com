@@ -403,12 +403,16 @@ MS Teams or Google Calendar, but with integrated financial protection.
   a routine can carry the cadence its new entries repeat on. A routine organises time and never scores
   it: no check-off, no completion, no streak (§5 keeps attendance streaks out on purpose).
 - **Whether an entry blocks bookings is its owner's call** (Decision #389). A **Disruptive** entry
-  counts as busy for discovery calls and session bookings. A **Passive** one leaves the time free, so
-  a client can book over it, and it shows on the grid as a hatched ghost rather than a solid card. An
-  entry takes its routine's setting on joining and follows it, unless its host set it apart. A
-  commitment somebody else relies on (a booked session, a call, an engagement's meeting, anything with
-  people on it) always holds its time. A passive routine's details point to matching Session Services
-  on the marketplace.
+  counts as busy for discovery calls and session bookings. A **Passive** one leaves the time free,
+  so a client can book over it, and it shows on the grid as a hatched ghost rather than a solid
+  card. An entry takes its routine's setting on joining and follows it, unless its host set it
+  apart. A commitment somebody else relies on (a booked session, a call, an engagement's meeting,
+  anything with people on it) always holds its time. A passive routine's details point to matching
+  Session Services on the marketplace.
+- **An entry takes a colour of its host's choosing** (Decision #408). One of twelve: Default, which
+  keeps the colour its kind is drawn in, and the eleven hues a folder can take in Files. Everyone
+  the entry is shown to sees it in that colour, and the rules of an availability template take the
+  same palette, so a week's hours read apart at a glance.
 - **Invitations** (Decision #390). The host of an entry can invite anyone on Projective to it, up to
   50 people, and each hears in the app, by push and by email. An invitation waits under Invitations
   beside the search, and as a hatched ghost on the grid, holding none of the reader's time until they
@@ -783,7 +787,7 @@ turnaround, and its one primary does what the listing's own page would — a sco
 its brief and continues to checkout, a session books the chosen slot and continues to checkout, a
 pipeline is added to the buyer's projects as a draft. Picking the consultation opens the
 **consultation modal**: the same date rail and slots, a **custom start time** inside the provider's
-open call windows with the end computed from the provider's configured duration (never chosen by
+working hours with the end computed from the provider's configured duration (never chosen by
 the buyer), the **platform** restricted to those the provider has connected (one is stated, several
 are chosen, none means the provider arranges the room), an optional message — required when the
 provider asks what the call is about — and a footer carrying the rate or Free beside Confirm
@@ -849,9 +853,14 @@ address:
   they are inert here rather than acting on the owner's own account — except that a team's or a
   business's editor sees its console link (**Manage team** in Hire's place, **Manage business** in
   Message's), and the Preview tab's note says so (Decision #244; Teams P1). The one thing the owner can
-  change from it is the photo: hovering it reveals an edit overlay that opens the File Picker to
-  upload a picture, choose one from their library or bring in their sign-in account's picture, then
-  frame it (Decision #158).
+  change from it in place is the photo: hovering it reveals an edit overlay that opens the File Picker
+  to upload a picture, choose one from their library or bring in their sign-in account's picture, then
+  frame it (Decision #158). Every other block the editor changes carries an owner-only edit link, a
+  pencil that shows while the block is hovered or focused (always, on touch), to the section of Edit
+  Profile & Settings that changes it — the name and headline, the showcase, the story, where they are
+  based, skills, languages, experience — or, for the hours, to Availability. A block a visitor would
+  not see, because it is empty or hidden, stands in its place as a one-line note with the same link
+  (Decision #408). A visitor's page carries none of it.
 - **Edit Profile & Settings** (`/[handle]/edit`) is one vertically stacked page of collapsible
   sections that mirror the preview's structure, every field a persistently editable input: the
   photo and the six-slot showcase (adding to an empty slot lets the owner choose up to as many
@@ -862,12 +871,15 @@ address:
   verified loses that verification the moment its name or issuer is edited, because the check
   described the credential that was checked. Changes are saved together (with an unsaved-changes
   warning and Ctrl + S), and a refused field is marked where it is.
-- **Availability** (`/[handle]/edit/availability`) sets the weekly working hours (per-day start and
-  end times, several bands a day), the time zone, whether the schedule is published, and — for a
-  seller — the discovery-call terms: whether calls are taken, a free courtesy call and ⁄ or a paid
-  one with its duration and fee, and the booking rules (buffers, minimum notice, how far ahead,
-  automatic confirmation, whether a reason is required). Everything the public profile says about
-  availability is derived from what is saved here.
+- **Availability** (`/[handle]/edit/availability`) is where a seller sets the discovery-call terms —
+  whether calls are taken, a free courtesy call and ⁄ or a paid one with its duration and fee,
+  automatic confirmation and whether a reason is required — and the burnout guards every call is
+  booked within: gaps before and after a call, minimum notice, how far ahead, and for free calls a
+  weekly cap and a per-person cooldown. Every owner also sets the time zone and whether the hours are
+  published there. The weekly working hours are shown there as a summary and edited on the calendar
+  (`/calendar?view=availability`), the default availability template being their one source
+  (Decision #408). Everything the public profile says about availability is derived from what is
+  saved in these two places.
 
 **The showcase is a six-slot grid, and slot 1 is the profile's face.** In the editor each empty slot
 is a dashed placeholder and each filled one offers replace and remove on hover or focus (removal is
@@ -2108,15 +2120,21 @@ third-party tools at all — the platform falls back to a manually supplied link
 **Pricing.** A paid consultation is priced by the provider and is **not negotiable**, for exactly
 the reason given in [§Why Sessions are Fixed](#why-sessions-are-fixed): consultation time is the
 provider's product, and haggling over it reintroduces the friction the fixed-price rule exists to
-remove.
+remove. The provider may price some of their hours differently — a rule of their availability
+template can carry its own price, an evening or a weekend dearer than a weekday — and a call costs
+the price of the hours it starts in, the call settings' fee wherever no rule names one (Decision
+#408). That is still the provider's fixed price for a time, never a negotiation; like the paid path
+itself, it is **Not built yet** for booking, and the editor draws the price field only once paid
+calls are switched on.
 
-**Availability is two layers, not one.** A provider's **working hours** say when they are at their
-desk; a **call window** is the narrower subset during which they will accept an interruption. The
-two are configured and displayed separately — "I am working" and "interrupt me" are not the same
-statement. Providers additionally set **buffers** either side of a call (so bookings cannot be
-stacked back-to-back), a **minimum notice** period, a **booking horizon**, and — for free calls
-only — a **weekly cap** and a **per-requester cooldown**. These are burnout and abuse guards, and
-they belong to the provider, not the platform.
+**Availability is one layer** (Decision #408, replacing the earlier two). A provider's **working
+hours** are the hours they can be booked in, for a call as for a session: a call is booked anywhere
+inside them, and there is no separate, narrower call window to keep. Providers keep their time their
+own with **buffers** either side of a call (so bookings cannot be stacked back-to-back), a **minimum
+notice** period, a **booking horizon**, and — for free calls only — a **weekly cap** and a
+**per-requester cooldown**. These are burnout and abuse guards, and they belong to the provider, not
+the platform. Hours they want kept clear of calls are hours they leave out, or an entry they mark as
+holding its time.
 
 **Cancellation, lateness and no-shows.**
 
@@ -2134,8 +2152,9 @@ join/leave callbacks are logged as a **Digital Handshake** — the same evidence
 Session Service produces, and the basis on which a no-show can be asserted rather than alleged.
 
 **Where it is configured.** The public booking surface is the provider's availability page
-(`/[handle]/availability`); the configuration — call windows, durations, fees, buffers, caps, and
-connected conferencing tools — lives under Settings. See
+(`/[handle]/availability`). The working hours, and any price a rule of them carries, are edited on
+the calendar (`/calendar?view=availability`); durations, fees, buffers, caps and connected
+conferencing tools live on the profile's Availability page and under Settings. See
 [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §Conferencing for the technical
 contract and `documentation/database/scheduling/` for the schema.
 
@@ -3921,7 +3940,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `calendar`               | The business's calendar — the meetings, stage due dates and ticket deadlines of every project it has commissioned, on one grid, each as the viewer may see it on that project and linking to it; an event is answered or rescheduled as on its project, and new entries are added on the project's own calendar (Decision #308) |
 |               |                           | _other modules_          | `roles` · `invitations` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`). A business has no `catalogue`: it shows no seller surface |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
-|               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
+|               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |
 |               | `/catalogue/[listing slug]` | `edit`                 | One listing's workspace — the Edit tab (basics, media showcase, SEO and reach, with the live feed card and the publish checklist beside it), then Preview, Analytics and Clients. Autosaves; the footer holds the save status, the publish gate and the lifecycle actions (Decision #304) |
 |               | `/catalogue/[listing slug]/simulate` | `simulate`    | The owner's buyer simulation (Decision #217(j)) — the real listing page, framed by the Preview tab with no shell; every buyer action shows what would happen and nothing is booked or charged. Owner only; anyone else gets a 404 |

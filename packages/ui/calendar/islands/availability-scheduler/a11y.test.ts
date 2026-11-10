@@ -176,15 +176,14 @@ Deno.test("css: token-only, uncommented, no hardcoded colours or durations", () 
 
 Deno.test("css: bands follow the plan's tokens and the ghost derives from an existing alpha", () => {
 	const working = rule(".ui-avsched__band--working");
-	assert(working.includes("background: var(--surface-3)"));
-	assert(working.includes("border: 1px solid var(--outline)"));
-	assert(
-		rule(".ui-avsched").includes(
-			"--avsched-call-fill: color-mix(in oklch, var(--accent) var(--tint-soft), var(--surface-1))",
-		),
-	);
+	assert(working.includes("background: var(--avsched-band-fill, var(--surface-3))"));
+	assert(working.includes("border: 1px solid var(--avsched-band-edge, var(--outline))"));
+	assert(working.includes("color: var(--avsched-band-ink, var(--on-surface))"));
+	const teal = rule(".ui-avsched__band--swatch-teal");
+	assert(teal.includes("--avsched-band-fill: var(--swatch-teal)"));
+	assert(teal.includes("--avsched-band-ink: var(--on-swatch-teal)"));
+	assert(!css.includes("--avsched-call-fill"), "the retired call layer still has a fill");
 	assert(rule(".ui-avsched").includes("--avsched-ghost-opacity: var(--fld-loading-alpha)"));
-	assert(rule(".ui-avsched__band--call").includes("45deg"));
 	assert(rule(".ui-avsched__date--blackout").includes("-45deg"));
 	assert(rule(".ui-avsched__band").includes("border-radius: var(--radius-sm)"));
 	assert(rule(".ui-avsched__band").includes("var(--spring-snappy)"));

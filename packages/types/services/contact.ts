@@ -26,7 +26,7 @@ import { ConferencingProviderSchema } from "../scheduling/meeting.ts";
  * system (scheduling · comms · the quote ledger) and produces a different record.
  */
 export const ContactActionKind = z.enum([
-	/** `scheduling.discovery_calls` — a courtesy or paid call against the provider's call windows. */
+	/** `scheduling.discovery_calls` — a courtesy or paid call inside the provider's working hours. */
 	"discovery_call",
 	/** `comms.get_or_create_dm_thread` — an ordinary DM, opened at `/messages/[chatId]`. */
 	"ask_question",

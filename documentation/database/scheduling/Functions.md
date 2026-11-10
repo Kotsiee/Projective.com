@@ -57,8 +57,13 @@ not pass one:** ruling (d) keeps discovery calls and `/[handle]/availability` on
 so `request_discovery_call` → `fn_call_request_refusal` → `fn_call_window_covers` is unchanged, even
 for a call booked about a listing.
 
-**The weekly answer.** Is the whole span inside **one** active weekly band of that kind? Resolves the
-schedule's own timezone, then compares local weekday + minute-of-day at both edges.
+**The weekly answer.** Is the whole span inside **one run of touching** active weekly bands of that
+kind (Decision #408)? Resolves the schedule's own timezone once, joins the start's weekday's bands
+into islands (a window over the sorted bands: a band that starts at or before the previous end
+extends its island), then asks one island to hold the span. The default template's mirror splits a
+working day where its price changes, so a call may run from one price into the next; bands of a day
+never overlap. `gateCovers` (`slot-grid.ts`) joins them the same way (`joinTouchingBands`), and
+`slot-grid.agreement.test.ts` stores a third of its generated bands split to prove the two agree.
 
 > ⚠️ **Known bound.** Because `end_minute > start_minute` is a table constraint, a band cannot cross
 > local midnight — so neither can a call booked against one. A provider taking calls 23:00–01:00
@@ -72,8 +77,25 @@ following day, so the old same-weekday test refused a slot ending at 24:00 that 
 (`slot-grid.ts`, which admits `start + duration <= 1440`) offered and the editor allows
 (`end_minute <= 1440`).
 
-**`scheduling.fn_call_window_covers(schedule, starts_at, ends_at)`** is the convenience wrapper for
-`kind = 'call_window'`.
+**`scheduling.fn_call_window_covers(schedule, starts_at, ends_at)`** is the convenience wrapper the
+call gate asks. Availability is one layer (Decision #408), so it asks for `kind = 'working_hours'`:
+a call is booked anywhere inside the working hours. Its name, and the `outside_call_window` refusal
+it backs, predate the ruling and are kept for the callers that know them.
+
+### `scheduling.fn_resolved_slot_fee(schedule_id, starts_at) → TABLE (fee_amount_minor bigint, fee_currency char(3))`
+
+**§2b — the price of a paid call at a start (Decision #408).** `SECURITY DEFINER`,
+`search_path = ''`. One row: the price of the active weekly working-hours band the start's local
+minute falls in (`start_minute <= minute < end_minute`), when that band carries one, else
+`call_settings`' `fee_amount_minor` · `fee_currency`; both NULL when no price is set anywhere. A
+band carries the price of the default template rule it mirrors, the higher where two rules overlap.
+No row for a schedule the caller may not read: it answers a published one (`fn_schedule_is_public`),
+whose prices its call offer already shows, and its manager (`fn_can_manage_schedule`). Granted by
+name to anon, authenticated and service_role, revoked from PUBLIC (`00002510`).
+
+Paid calls are off (Decision #343, ruling C1) and `request_discovery_call` refuses one before any
+price is asked, so nothing charges this yet: it is the price the paid path holds when it is built,
+and what a surface shows beside a slot.
 
 ### `scheduling.fn_has_conflicting_event(schedule, starts_at, ends_at) → boolean` (`20260724102000`)
 
@@ -127,7 +149,7 @@ the rules client-side. The codes are mirrored in `packages/types/scheduling/call
 | `duration_exceeds_platform_max` | Beyond `discovery_call_max_duration_minutes`.                     |
 | `inside_minimum_notice`         | Closer than `min_notice_minutes`.                                 |
 | `beyond_booking_horizon`        | Further ahead than `max_advance_days`.                            |
-| `outside_call_window`           | Not covered by a `call_window` band.                              |
+| `outside_call_window`           | Not inside one run of working-hours bands (Decision #408; the code keeps its old name). |
 | `slot_unavailable`              | Fails `fn_slot_is_free` (blackout / conflict / buffer collision). |
 | `weekly_courtesy_cap_reached`   | `courtesy_max_per_week` already met in that week — the provider's own week, Monday 00:00 in the schedule's `timezone` (UTC if none), not the database session's UTC week (since 2026-09-28). |
 | `requester_in_cooldown`         | This requester had a free call inside `courtesy_cooldown_days`.   |
@@ -295,9 +317,9 @@ a platform and (optionally) the listing the call is about; everything else is de
 - an **agenda** is demanded when `agenda_required`;
 - the **status** is `proposed`, or `confirmed` (with `confirmed_*` stamped) when `auto_confirm`.
 
-The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
-existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs
-with the caller's `auth.uid()`.
+The slot itself — working hours (Decision #408), notice, horizon, free time, weekly cap, cooldown —
+is judged by the existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because
+the insert runs with the caller's `auth.uid()`.
 
 **Paid calls are refused** (audit S-02; Decision #343, ruling C1). Nothing writes a paid call's
 `payment_ref` or `escrow_id`, so this door booked a paid consultation with no money behind it, born
@@ -576,10 +598,12 @@ None fires for a row read from a provider.
 
 ### `scheduling.save_owner_availability(owner_type, owner_id, payload jsonb) → jsonb`
 
-The profile owner's Availability surface (`/[handle]/edit/availability`) writes three tables — the
-schedule (timezone + published), its weekly bands, and the discovery-call settings — and they must
-land together: a timezone saved without the bands it is expressed in re-times every band. So this is
-**one call, one transaction**.
+One call, one transaction, over three tables — the schedule (timezone + published), its weekly
+bands, and the discovery-call settings. Two writers use it (Decision #408): the profile's
+Availability page and Settings → Scheduling & calls save the schedule and the call settings and send
+**no** `rules`, so the stored bands are kept; the default availability template's mirror sends
+`rules` and the call settings not. A band is minutes from local midnight, so a new time zone keeps
+every band's local times.
 
 **`SECURITY INVOKER`, on purpose.** The existing policies ("Manage own schedule", "Manage
 availability rules", "Manage call settings") already decide who may write, through
@@ -594,7 +618,7 @@ freelancer flag — so turning freelancer on or off can never strand a second ca
 | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `timezone`  | Required (`timezone: choose a time zone`). Upserts `scheduling.schedules`.                                                                                                                                                                                                                                                                               |
 | `published` | Whether the schedule is readable by visitors (default `false`).                                                                                                                                                                                                                                                                                          |
-| `rules`     | **Replaces** the weekly bands: `[{kind, weekday, start_minute, end_minute}]`, at most 42 (six a day). A band needs a day and an end after its start. Two overlapping bands of the same kind on the same weekday are **refused**, not merged — the editor cannot draw one, so receiving one means the request did not come from it.                       |
+| `rules`     | **Replaces** the weekly bands: `[{kind?, weekday, start_minute, end_minute, fee_amount_minor?, fee_currency?}]`, at most 42 (six a day). A band needs a day and an end after its start; `kind` is `working_hours` or absent (`rules.N.kind: every band is working hours`, Decision #408); a price is positive minor units with a three-letter currency, both or neither (`rules.N.fee_amount_minor`). Two overlapping bands on the same weekday are **refused**, not merged — the mirror never makes one, so receiving one means the request did not come from it. Touching bands are kept apart where their prices differ. |
 | `call`      | Optional; absent leaves the call settings as they are. Upserts `scheduling.call_settings`: `accepts_calls`, the courtesy half (`courtesy_enabled`, duration, weekly cap, cooldown), the paid half (`paid_enabled`, duration, `fee_amount_minor` + `fee_currency`), buffers, `min_notice_minutes`, `max_advance_days`, `auto_confirm`, `agenda_required`. |
 
 Refusals are `42501` for the caller (`auth: sign in to edit availability`,
@@ -963,7 +987,7 @@ may write, and the explicit check up front only names the refusal. Granted to `a
 | `name` `description` | 1–60 characters (a live library name is unique per schedule, case-insensitively) · up to 200.                                                                                               |
 | `scope` `blueprint_id` | `library` (default) with no service, or `service` with the blueprint being forked for.                                                                                                     |
 | `is_default`         | `true` moves the default here. A library preset saved onto a schedule with no default becomes it. A default is moved, never cleared: `false` on the current default leaves it the default.   |
-| `rules`              | **Replaces** the rules and bands: at most 64 rules, each `{id?, kind, effect, rrule, starts_on, ends_on?, priority?, unless_weekdays?, label?, is_active?, bands: [{start_minute, end_minute}]}` with at most 6 bands. A uuid `id` is kept; anything else is minted. |
+| `rules`              | **Replaces** the rules and bands: at most 64 rules, each `{id?, kind?, effect, rrule, starts_on, ends_on?, priority?, unless_weekdays?, label?, is_active?, fee_amount_minor?, fee_currency?, color_token?, bands: [{start_minute, end_minute}]}` with at most 6 bands. A uuid `id` is kept; anything else is minted. `kind` is `working_hours` or absent (`rules.N.kind: every rule is working hours`, Decision #408); a price is positive minor units with its currency, both or neither, and never on a `subtract` (`rules.N.fee_amount_minor: a rule that removes hours has no price`); `color_token` a token name such as `--swatch-blue`. |
 
 The RRULE is checked for shape only (`FREQ=` prefix, ≤ 400 characters). The service re-validated it
 with the TypeScript parser, the authority on its meaning (flag d). Refusals: `42501`
@@ -989,12 +1013,13 @@ be the service role (the grants). `P0002` for an unknown id.
 The compiler's door (`ScheduleBackendService.compileOccurrences`, C7). **`SECURITY DEFINER`, EXECUTE
 granted to `service_role` only**: there is no client write path to `availability_occurrences`. It
 replaces every occurrence of the preset overlapping `[from, to)` with `spans`, where each element is
-an `OccurrenceSpanSchema` (`{kind, startsAt, endsAt, ruleIds}`). It then stamps the compiled window:
-the preset-local dates wholly inside `[from, to)`, joined to the previous window when the two touch
-(a horizon extension) and replacing it otherwise. It checks only what the database can know: each
-span is a layer, ends after it starts, lies inside the window (≤ 400 days, ≤ 10,000 spans), and
-names only this preset's rules (`22023`). Whether the spans are right is the evaluator's word.
-Returns the number of spans written.
+an `OccurrenceSpanSchema` (`{kind, startsAt, endsAt, ruleIds}`, `kind` always `working_hours` since
+Decision #408 — anything else is refused). It then stamps the compiled window: the preset-local
+dates wholly inside `[from, to)`, joined to the previous window when the two touch (a horizon
+extension) and replacing it otherwise. It checks only what the database can know: each span is a
+layer, ends after it starts, lies inside the window (≤ 400 days, ≤ 10,000 spans), and names only
+this preset's rules (`22023`). Whether the spans are right is the evaluator's word. Returns the
+number of spans written.
 
 ### `scheduling.fn_preset_for_blueprint(blueprint) → uuid`
 
@@ -1037,7 +1062,7 @@ its owner).
 | `save_availability_preset` | `savePreset` (`PUT /api/scheduling/presets`) and `bindListing`'s override fork (`POST /api/catalogue/availability`) | the owner |
 | `archive_availability_preset` | `archivePreset` (`POST /api/scheduling/presets/archive`) | the owner |
 | `replace_preset_occurrences` | `compileOccurrences`: straight after every save and fork, and `extendHorizons` (`POST /api/scheduling/cron/horizon`, job `scheduling-availability-horizon`) | service role |
-| `save_owner_availability` | `savePreset` / `archivePreset` when the default preset changes: its active, open-ended, every-week `add` rules already in force are mirrored into `availability_rules` (calls clipped to working hours). `mirrored.full = false` tells the editor the rest is not mirrored | the owner |
+| `save_owner_availability` | `savePreset` / `archivePreset` when the default preset changes: its active, open-ended, every-week `add` rules already in force are mirrored into `availability_rules`, split where a rule's price changes (the higher where two overlap, Decision #408). `mirrored.full = false` tells the editor the rest is not mirrored | the owner |
 | `fn_preset_for_blueprint` + the occurrence spans | the session slot grid (`live-slots.ts`), which judges each slot by `fn_band_covers`' own rule (`slot-grid.ts` `gateCovers`); the spans are read with the service client because occurrences carry no `anon` grant | service role |
 
 A compile evaluates the preset in its schedule's zone over today → today + 120 days, with the
