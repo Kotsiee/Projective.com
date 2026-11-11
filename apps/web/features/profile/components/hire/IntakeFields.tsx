@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
+import "../../styles/intake-fields.css";
 import {
 	Checkbox,
 	FormControl,

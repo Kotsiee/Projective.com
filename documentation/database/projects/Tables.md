@@ -166,7 +166,8 @@ written from a client payload; `publish_visibility` is the only half the form ca
 into the buyer's personal workspace as `status = 'draft'`, `visibility = 'unlisted'`, with
 `source_blueprint_id` set — one `marketplace.instantiate_service_blueprint` transaction (Decision
 #209; [`../marketplace/Functions.md`](../marketplace/Functions.md)) that also writes one stage per
-`stage_template` entry, one priced backlog ticket per stage, every room, and the request row in
+`stage_template` entry, every room, and the request row — and no tickets, which the client
+creates (Decision #409) — in
 [`projects.service_instantiations`](#projectsservice_instantiations). No money moves, nothing is
 reserved and **no seat is minted** — a seat only ever comes from an accepted invitation or
 application, and a seat accepted on such a draft stays `pending_funding` until funded (Decision

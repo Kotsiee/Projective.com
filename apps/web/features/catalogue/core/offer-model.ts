@@ -8,6 +8,7 @@ import {
 	type ListingOffer,
 	ListingOfferSchema,
 	type Milestone,
+	normaliseSessionPlan,
 	type ServiceType,
 	STAGES_MAX,
 	type StartTrigger,
@@ -165,6 +166,12 @@ export function sanitiseOffer(offer: ListingOffer): ListingOffer {
 				stages: offer.stages.map(cleanStage),
 				teamRoles: offer.teamRoles.map(cleanRole),
 			};
+		case "session":
+			return offer.rolling
+				? { ...offer, count: 1, plan: [] }
+				: { ...offer, plan: normaliseSessionPlan(offer) };
+		case "cohort":
+			return { ...offer, plan: normaliseSessionPlan(offer) };
 		default:
 			return offer;
 	}
@@ -240,8 +247,9 @@ export function deliveryLabel(offer: ListingOffer): string | null {
 export const DEFAULT_COHORT_SEATS = 10;
 
 /**
- * The same session offer in the other format. One-to-one ↔ cohort keeps the length, the count and
- * the provider; a cohort gains a seat cap and enrolment, a one-to-one session drops them.
+ * The same session offer in the other format. One-to-one ↔ cohort keeps the length, the count, the
+ * session plan and the provider; a cohort gains a seat cap and enrolment, a one-to-one session drops
+ * them and starts as a fixed number of sessions. Only a one-to-one session can be rolling.
  */
 export function switchSessionFormat(
 	offer: Extract<ListingOffer, { archetype: "session" | "cohort" }>,
@@ -251,8 +259,9 @@ export function switchSessionFormat(
 		minutes: offer.minutes,
 		count: offer.count,
 		meetingProvider: offer.meetingProvider,
+		plan: offer.plan,
 	};
-	if (to === "session") return { archetype: "session", ...base };
+	if (to === "session") return { archetype: "session", ...base, rolling: false };
 	return {
 		archetype: "cohort",
 		...base,

@@ -40,7 +40,7 @@ export const ServiceBookingFormat = z.enum([
 	"single_task",
 	/** One 1-on-1 booking against the provider's availability. */
 	"session",
-	/** A block of N sessions sold together; the first is scheduled at checkout. */
+	/** A block of N sessions sold together; the first is scheduled at booking, the rest then or later. */
 	"set_session",
 	/** A multi-attendee cohort with finite capacity. */
 	"cohort",
@@ -89,12 +89,6 @@ export const BookingActionKind = z.enum([
 	 * line (Decision #171) — a cohort's sittings are fixed, so there is no time to pick.
 	 */
 	"reserve_seat",
-	/**
-	 * Navigate to the listing's full-page schedule leaf (`/view/[id]/schedule`). The Proactive
-	 * Calendar entry for a scheduled format — a SECONDARY that navigates, never the primary, because
-	 * the in-page slot picker is the flow that actually reaches checkout.
-	 */
-	"view_schedule",
 	/** Rendered, but refuses — a full cohort. The label carries the reason. */
 	"unavailable",
 ]);
@@ -181,30 +175,6 @@ export interface CtaInput {
 	draftHref: string | null;
 	/** Whether the provider is currently accepting bookings at all. */
 	bookingsOpen: boolean;
-	/**
-	 * The listing's full-page schedule leaf, for the scheduled formats. Optional — a caller with no
-	 * leaf to offer (a test, a surface with no schedule route) gets exactly the rig it always got.
-	 */
-	scheduleHref?: string | null;
-}
-
-/**
- * The scheduled formats' SECONDARY: a navigation to the schedule leaf, never a basket line.
- *
- * A session cannot sit in a basket without a time, so the only honest secondary beside "Book session"
- * is the one that shows the whole calendar. It is rendered `outlined`, and it exists only when the
- * caller has a leaf to point at — a control that renders must do something (root CLAUDE.md §3).
- */
-function scheduleLink(scheduleHref: string | null | undefined): BookingCta | null {
-	if (!scheduleHref) return null;
-	return {
-		kind: "view_schedule",
-		label: "Full schedule",
-		ariaLabel: "Open the full availability schedule for this listing",
-		href: scheduleHref,
-		disabled: false,
-		disabledReason: null,
-	};
 }
 
 /**
@@ -227,7 +197,7 @@ function scheduleLink(scheduleHref: string | null | undefined): BookingCta | nul
  * and is exhausted, and those are different facts.
  */
 export function resolveCta(input: CtaInput): ServiceCtaRig {
-	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, scheduleHref, cohortOpen = true } =
+	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, cohortOpen = true } =
 		input;
 
 	const basket: BookingCta = {
@@ -311,9 +281,8 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 						: "This provider is not accepting bookings at the moment.",
 				},
 				// A session cannot sit in a basket without a time. Offering "Add to basket" beside it would
-				// be a control that either refuses or silently books an unspecified slot (§D.7.2). The one
-				// secondary that IS honest here is the schedule leaf.
-				secondary: scheduleLink(scheduleHref),
+				// be a control that either refuses or silently books an unspecified slot (§D.7.2).
+				secondary: null,
 			};
 		}
 
@@ -330,7 +299,7 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 						disabled: true,
 						disabledReason: "This listing has no cohort taking bookings yet.",
 					},
-					secondary: scheduleLink(scheduleHref),
+					secondary: null,
 				};
 			}
 			return {
@@ -345,9 +314,7 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 					disabled: full,
 					disabledReason: full ? "Every seat in this cohort is taken." : null,
 				},
-				// A full cohort still offers the schedule: the next cohort is exactly what a reader who
-				// just read "Cohort full" wants to see.
-				secondary: scheduleLink(scheduleHref),
+				secondary: null,
 			};
 		}
 	}

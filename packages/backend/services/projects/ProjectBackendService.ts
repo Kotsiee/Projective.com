@@ -54,6 +54,7 @@ import {
 } from "./live-writes.ts";
 import { lockStateOf, onboardingLockRefusal, touchesLockableFields } from "./live-writes.ts";
 import { CLAIM_REFUSAL, claimTicketRow } from "./live-claim.ts";
+import { DELETE_REFUSAL, deleteTicketRow } from "./live-ticket-delete.ts";
 import {
 	applyOnboardingSim,
 	effectiveOnboardingSim,
@@ -95,6 +96,7 @@ import {
 	recordMemberRemoval,
 	recordProjectArchive,
 	recordRoleChange,
+	recordTicketDeletion,
 	recordTicketManager,
 	sentMessageCount,
 	setupPatchFrom,
@@ -152,10 +154,12 @@ import type {
 import {
 	type ClaimTicket,
 	composeWorkspace,
+	type DeleteTicket,
 	isSelfClaimable,
 	type ProjectWorkspace,
 	STALE_MOVE_MESSAGE,
 	TICKET_MANAGER_ROLES,
+	ticketDeletable,
 	ticketTermsLocked,
 	ticketWorkLocked,
 	type WorkspaceViewer,
@@ -3162,6 +3166,57 @@ export class ProjectBackendService {
 	}
 
 	/**
+	 * Delete one ticket from the board — PRODUCT_SPEC §Deletion Protocol.
+	 *
+	 * Refused unless the ticket is pristine ({@link ticketDeletable}): a claimed, funded or
+	 * submitted-against ticket is archived, never deleted, and that archive is not built yet, so it is
+	 * refused rather than routed through the door's post-claim escrow release. The card is read first
+	 * on both paths for exactly that check; the board's client seat (`viewerIsClient`) is checked on
+	 * both, and live the door re-checks review authority (`can_review_project`) under the caller's JWT.
+	 */
+	static async deleteTicket(
+		input: DeleteTicket,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ ticketId: string }>> {
+		const denied = requireIdentity<{ ticketId: string }>(actor, "delete a ticket");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ ticketId: string }>(
+			"deleteTicket",
+			actor,
+			input.ticketId,
+			"Ticket deleted.",
+			async (a) => {
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === input.ticketId);
+				if (!page || !card) return null;
+				if (!page.viewerIsClient) return { refusal: DELETE_REFUSAL.notPermitted };
+				if (!ticketDeletable(card)) return { refusal: DELETE_REFUSAL.notPristine };
+				const outcome = await deleteTicketRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				invalidateProjects(a);
+				return { data: { ticketId: outcome.data } };
+			},
+			"ticket",
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const owner = writeOwnerOf(actor);
+		const page = overlayBoardPage(board, actor);
+		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
+			page.cards.find((card) => card.id === input.ticketId);
+		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		if (!page.viewerIsClient) return refused(DELETE_REFUSAL.notPermitted);
+		if (!ticketDeletable(current)) return refused(DELETE_REFUSAL.notPristine);
+
+		recordTicketDeletion(owner, input.projectId, input.ticketId);
+		invalidateProjects(actor);
+		return ok({ ticketId: input.ticketId }, { message: "Ticket deleted." });
+	}
+
+	/**
 	 * Post one message into a project channel.
 	 *
 	 * Attachments arrive as `files.items` ids, never as bytes: the device upload already went through
@@ -3549,7 +3604,8 @@ export class ProjectBackendService {
 	 * **Live** (`PROJECTS_BACKEND_LIVE`): ONE `marketplace.instantiate_service_blueprint` transaction
 	 * under the buyer's JWT (Decision #209) — the project (`status = 'draft'`, `visibility =
 	 * 'unlisted'`, `source_blueprint_id`), one stage per `stage_template` entry at the stage's standard
-	 * price, one priced backlog ticket per stage, every room, and the request record. The door owns
+	 * price, every room, and the request record — no tickets, which the client creates (Decision
+	 * #409). The door owns
 	 * every caller check (published, pipeline, not the buyer's own, adult, currency); this method owns
 	 * resolving the listing LIVE ({@link resolveListing}) and normalising the answers against its
 	 * intake. **Stub** otherwise: the draft store plus the write-store projection, as before.

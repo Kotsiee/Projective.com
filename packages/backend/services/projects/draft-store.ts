@@ -1,6 +1,7 @@
 import { mintSlug } from "@projective/types/slugs";
 import type { InstantiateServiceInput, PipelineDraft } from "@projective/types/services";
 import { draftArchivesAt, draftIsStale } from "@projective/types/services";
+import { engagementHomeHref } from "@projective/types/projects";
 import { NOW } from "../scheduling/derive.ts";
 
 /**
@@ -169,7 +170,7 @@ export function instantiateDraft(
 		createdAt: now,
 		lastActivityAt: now,
 		archivesAt: null,
-		boardHref: `/projects/${slug}/board`,
+		boardHref: engagementHomeHref(slug, "pipeline"),
 	};
 	drafts.set(row.projectId, row);
 	return { draft: toDraft(row), created: true };

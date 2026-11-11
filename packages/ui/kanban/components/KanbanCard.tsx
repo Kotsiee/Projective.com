@@ -1,4 +1,5 @@
-import type { ComponentChildren, JSX } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import { cx } from "../../core/cx.ts";
 import { useDnd } from "../../dnd/core/context.ts";
 import { useSortable } from "../../dnd/hooks/useSortable.ts";
@@ -33,12 +34,15 @@ export interface KanbanCardProps {
 	render: (ctx: KanbanItemRenderCtx) => ComponentChildren;
 	/** Activate the card — a click that did not become a drag, or Enter (Space too when not draggable). */
 	onActivate?: () => void;
+	/** The card's right-click menu, handed this card's root as its surface. */
+	menu?: (surface: RefObject<HTMLElement>) => ComponentChildren;
 }
 
 const isSpace = (key: string): boolean => key === " " || key === "Spacebar";
 
 export function KanbanCard(props: KanbanCardProps): JSX.Element {
-	const { itemId, draggable, label, render, onActivate } = props;
+	const { itemId, draggable, label, render, onActivate, menu } = props;
+	const rootRef = useRef<HTMLDivElement>(null);
 	const { keyboardActive } = useDnd();
 	const sortable = useSortable({
 		id: `card:${itemId}`,
@@ -77,8 +81,10 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 
 	return (
 		<div
-			// deno-lint-ignore no-explicit-any
-			ref={sortable.setNodeRef as any}
+			ref={(el: HTMLDivElement | null) => {
+				rootRef.current = el;
+				sortable.setNodeRef(el);
+			}}
 			class={cx("ui-kanban__card", dragging && "ui-kanban__card--dragging")}
 			data-dragging={dragging || undefined}
 			data-draggable={draggable ? "true" : "false"}
@@ -93,6 +99,7 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 			onKeyDown={interactive ? onKeyDown : undefined}
 		>
 			<div id={bodyId} class="ui-kanban__card-body">{render({ dragging, overlay: false })}</div>
+			{menu ? menu(rootRef) : null}
 		</div>
 	);
 }

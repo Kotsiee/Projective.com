@@ -7,11 +7,14 @@
  * writes regardless of mode.
  *
  * Returns a `Signal<T>` to read/write plus a `set(next)` helper that writes the signal and fires the
- * callback. Reading `.value` in JSX subscribes the component, per signal-first (§C.2).
+ * callback. Reading `.value` in JSX subscribes the component, per signal-first (§C.2). A read-only
+ * binding (a `computed`) is never assigned: `set` only fires the callback, and the owner moves the
+ * source the binding derives from.
  */
 import { Signal, signal } from "@preact/signals";
 import { useMemo } from "preact/hooks";
 import type { Bindable, ValueChange } from "../types/mod.ts";
+import { isWritableSignal } from "../core/signal-binding.ts";
 
 export interface Controllable<T> {
 	/** The live signal — read `.value` in render to subscribe. */
@@ -39,13 +42,14 @@ export function useControllable<T>(
 		[],
 	);
 	const sig = controlled ?? internal;
+	const writable = useMemo(() => isWritableSignal(sig), [sig]);
 
 	return useMemo<Controllable<T>>(() => ({
 		signal: sig,
 		get: () => sig.peek(),
 		set: (next: T) => {
-			sig.value = next;
+			if (writable) sig.value = next;
 			onValueChange?.(next);
 		},
-	}), [sig, onValueChange]);
+	}), [sig, writable, onValueChange]);
 }

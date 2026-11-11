@@ -103,7 +103,3 @@
  * island — see the note at the top of `../components/EventModal.tsx` for why.
  */
 
-/* The `.view-schedule*` block moved to `features/view/styles/view.css`. It styles the
-   `/view/[id]/schedule` routes, which the VIEW feature owns, and it was only ever delivered here
-   because a calendar island happened to carry this sheet — so the branch that renders no calendar
-   (schedule unavailable) shipped with no rules at all. */

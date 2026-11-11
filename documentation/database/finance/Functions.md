@@ -916,7 +916,7 @@ so it is passed as `place_wallet_order`'s `p_expected_minor` (refused `PC409 pri
 debit) and the order's charge must still equal it afterwards, or the whole call is refused `PC409`
 (the checkout's "price changed") and the credit with it: a surplus would otherwise stay in the wallet
 as spendable, withdrawable balance, and a shortfall would come out of money already there
-(FINANCE_COMPLETENESS_AUDIT CO20; `supabase/probes/on_account_amount.sql`). The key is checked again
+(FINANCE_AUDIT CO20; `supabase/probes/on_account_amount.sql`). The key is checked again
 once the advisory lock is held, so a twin of the same attempt replays rather than crediting twice.
 The order is then written **`invoiced`**, `payment_method_label` "On account", `charged_minor` 0 (the
 business pays on its monthly invoice), and the answer says `status: invoiced`. `SECURITY DEFINER`,
@@ -1427,7 +1427,7 @@ writes its contribution in the same transaction, exactly as `transfer_funds` doe
 misses card money (BUSINESSES_AUDIT BF25; probe `business_vault_alignment.sql` §1). A settlement in another currency, or of nothing, is `unmatched`, not a
 credit.
 
-**Bind by metadata (FINANCE_COMPLETENESS_AUDIT N1).** `p_payment_id` is the intent's
+**Bind by metadata (FINANCE_AUDIT N1).** `p_payment_id` is the intent's
 `metadata.projective_payment_id` (the webhook reads it from the signed event). When no payment is
 bound to `p_provider_ref`, an UNBOUND Stripe payment with that id in `requires_payment` /
 `processing` / `canceled` / `failed` is bound to the intent here (its start key closed `succeeded`)

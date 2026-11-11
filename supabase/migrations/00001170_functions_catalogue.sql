@@ -224,8 +224,8 @@ $$;
 --              create_category · currency (until first published)
 --   service    delivery_model (while a draft) · intake (ids and kinds fixed once first published) ·
 --              stage_template · team_roles · deliverables ·
---              turnaround_days · session_minutes · session_count · meeting_provider ·
---              max_seats_per_cohort · allow_continuous_enrollment
+--              turnaround_days · session_minutes · session_count · session_plan · session_rolling ·
+--              meeting_provider · max_seats_per_cohort · allow_continuous_enrollment
 --   product    format · licence · attribution_required · file_manifest
 --   children   skills (`org.skills` labels) · tags (at most 10) · collections (names)
 --   envelopes  offer — a `ListingOffer` (camelCase, discriminated by `archetype`) decoded onto the
@@ -314,9 +314,12 @@ BEGIN
               ('pipeline', 'teamRoles', 'team_roles'),
               ('session', 'minutes', 'session_minutes'),
               ('session', 'count', 'session_count'),
+              ('session', 'plan', 'session_plan'),
+              ('session', 'rolling', 'session_rolling'),
               ('session', 'meetingProvider', 'meeting_provider'),
               ('cohort', 'minutes', 'session_minutes'),
               ('cohort', 'count', 'session_count'),
+              ('cohort', 'plan', 'session_plan'),
               ('cohort', 'meetingProvider', 'meeting_provider'),
               ('cohort', 'maxSeatsPerCohort', 'max_seats_per_cohort'),
               ('cohort', 'continuousEnrollment', 'allow_continuous_enrollment')
@@ -326,6 +329,9 @@ BEGIN
         IF v_offer_archetype <> v_archetype THEN
             v_patch := v_patch || pg_catalog.jsonb_build_object(
                 'delivery_model', CASE v_offer_archetype WHEN 'cohort' THEN 'group_session' ELSE 'session' END);
+        END IF;
+        IF v_offer_archetype = 'cohort' THEN
+            v_patch := v_patch || '{"session_rolling": false}'::jsonb;
         END IF;
     END IF;
 
@@ -352,8 +358,8 @@ BEGIN
 
     IF v_row.kind = 'product' AND (
         v_patch ?| ARRAY['delivery_model', 'intake', 'stage_template', 'team_roles', 'deliverables', 'turnaround_days',
-                         'session_minutes', 'session_count', 'meeting_provider', 'max_seats_per_cohort',
-                         'allow_continuous_enrollment']
+                         'session_minutes', 'session_count', 'session_plan', 'session_rolling',
+                         'meeting_provider', 'max_seats_per_cohort', 'allow_continuous_enrollment']
     ) THEN
         RAISE EXCEPTION 'A product has no service terms' USING ERRCODE = '22023', DETAIL = 'kind';
     END IF;
@@ -444,6 +450,27 @@ BEGIN
            ) THEN
             RAISE EXCEPTION 'Scope is up to 24 lines of up to 140 characters' USING ERRCODE = '22023', DETAIL = 'deliverables';
         END IF;
+    END IF;
+
+    IF v_patch ? 'session_plan' THEN
+        v_doc := COALESCE(v_patch -> 'session_plan', '[]'::jsonb);
+        IF pg_catalog.jsonb_typeof(v_doc) <> 'array' OR pg_catalog.jsonb_array_length(v_doc) > 52 THEN
+            RAISE EXCEPTION 'A session plan describes at most 52 sessions' USING ERRCODE = '22023', DETAIL = 'session_plan';
+        END IF;
+        FOR v_item, v_ord IN SELECT s.value, s.ordinality FROM pg_catalog.jsonb_array_elements(v_doc) WITH ORDINALITY AS s LOOP
+            IF pg_catalog.jsonb_typeof(v_item) IS DISTINCT FROM 'object'
+               OR (v_item ? 'title' AND (pg_catalog.jsonb_typeof(v_item -> 'title') IS DISTINCT FROM 'string'
+                   OR pg_catalog.char_length(v_item ->> 'title') > 80))
+               OR (v_item ? 'description' AND (pg_catalog.jsonb_typeof(v_item -> 'description') IS DISTINCT FROM 'string'
+                   OR pg_catalog.char_length(v_item ->> 'description') > 600)) THEN
+                RAISE EXCEPTION 'Session % takes a title of up to 80 characters and a description of up to 600', v_ord
+                    USING ERRCODE = '22023', DETAIL = 'session_plan.' || (v_ord - 1);
+            END IF;
+        END LOOP;
+    END IF;
+
+    IF v_patch ? 'session_rolling' AND pg_catalog.jsonb_typeof(v_patch -> 'session_rolling') IS DISTINCT FROM 'boolean' THEN
+        RAISE EXCEPTION 'Rolling sessions are on or off' USING ERRCODE = '22023', DETAIL = 'session_rolling';
     END IF;
 
     IF v_patch ? 'file_manifest' THEN
@@ -561,6 +588,10 @@ BEGIN
                 THEN (v_patch ->> 'session_minutes')::integer ELSE b.session_minutes END,
             session_count = CASE WHEN v_patch ? 'session_count'
                 THEN (v_patch ->> 'session_count')::integer ELSE b.session_count END,
+            session_plan = CASE WHEN v_patch ? 'session_plan'
+                THEN COALESCE(v_patch -> 'session_plan', '[]'::jsonb) ELSE b.session_plan END,
+            session_rolling = CASE WHEN v_patch ? 'session_rolling'
+                THEN (v_patch ->> 'session_rolling')::boolean ELSE b.session_rolling END,
             meeting_provider = CASE WHEN v_patch ? 'meeting_provider'
                 THEN NULLIF(v_patch ->> 'meeting_provider', '') ELSE b.meeting_provider END,
             updated_at = pg_catalog.now()

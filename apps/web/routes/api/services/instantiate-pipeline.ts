@@ -13,9 +13,9 @@ import { invalidPayload, toBookingResponse } from "@features/view/core/respond.t
  * must actually BE a pipeline, and which returns the existing draft rather than a second one for a
  * repeated `idempotencyKey`.
  *
- * **No money moves.** The draft carries `status = 'draft'`, `visibility = 'unlisted'`, its stages and
- * one priced backlog ticket per stage — no escrow and no seat — because a pipeline is not bought, it
- * is staffed and then bought against, one ticket at a time (`PRODUCT_SPEC.md` §Creation & Purchasing
+ * **No money moves.** The draft carries `status = 'draft'`, `visibility = 'unlisted'` and its stages —
+ * no tickets, no escrow and no seat — because a pipeline is not bought, it is staffed and then bought
+ * against, one ticket at a time, and the client creates each of those tickets (Decision #409) (`PRODUCT_SPEC.md` §Creation & Purchasing
  * Gate). Live, it is one `marketplace.instantiate_service_blueprint` transaction (Decision #209).
  *
  * The route deliberately carries no capability guard. A hard `isFreelancer`-style server bounce is

@@ -5,10 +5,11 @@ import {
 	type ListingOffer,
 	ListingProductFormat,
 	MilestoneSchema,
+	normaliseSessionPlan,
 	ScopeItem,
 	TeamRoleSchema,
 } from "@projective/types/catalogue";
-import { parseStoredList } from "@projective/types/explore";
+import { parseSessionPlan, parseStoredList } from "@projective/types/explore";
 import { MeetingProvider } from "@projective/types/scheduling";
 
 /**
@@ -29,6 +30,8 @@ export interface OfferBlueprintColumns {
 	turnaround_days: number | null;
 	session_minutes: number | null;
 	session_count: number | null;
+	session_plan: unknown;
+	session_rolling: boolean | null;
 	meeting_provider: string | null;
 	max_seats_per_cohort: number | null;
 	allow_continuous_enrollment: boolean | null;
@@ -62,6 +65,7 @@ function sessionFields(bp: OfferBlueprintColumns) {
 			: DEFAULT_SESSION_MINUTES,
 		count: Math.min(52, Math.max(1, bp.session_count ?? 1)),
 		meetingProvider: provider.success ? provider.data : null,
+		plan: parseSessionPlan(bp.session_plan),
 	};
 }
 
@@ -79,7 +83,7 @@ export function offerFromBlueprint(
 		case "pipeline":
 			return { archetype, stages, teamRoles };
 		case "session":
-			return { archetype, ...sessionFields(bp) };
+			return { archetype, ...sessionFields(bp), rolling: bp.session_rolling ?? false };
 		case "cohort":
 			return {
 				archetype,
@@ -137,9 +141,12 @@ export function offerColumns(offer: ListingOffer, current: FormArchetype): Recor
 			return { stage_template: offer.stages, team_roles: offer.teamRoles };
 		case "session":
 		case "cohort": {
+			const rolling = offer.archetype === "session" && offer.rolling;
 			const out: Record<string, unknown> = {
 				session_minutes: offer.minutes,
-				session_count: offer.count,
+				session_count: rolling ? 1 : offer.count,
+				session_plan: normaliseSessionPlan({ ...offer, rolling }),
+				session_rolling: rolling,
 				meeting_provider: offer.meetingProvider,
 			};
 			if (offer.archetype === "cohort") {

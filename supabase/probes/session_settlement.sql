@@ -141,7 +141,7 @@ BEGIN
     -- The doors stay closed to a client.
     BEGIN
         PERFORM projects.fn_book_session_slot(current_setting('probe.one')::uuid, auth.uid(), 'user', auth.uid(),
-            1, 1, 'USD', now() + interval '30 days', NULL);
+            1, 1, 'USD', now() + interval '30 days', NULL, NULL);
         RAISE EXCEPTION 'FAIL 10: a client called fn_book_session_slot';
     EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'PASS 10: fn_book_session_slot is not reachable by a client';
     END;
@@ -490,8 +490,8 @@ END $$;
 -- #region 10. Grants
 DO $$
 BEGIN
-    IF has_function_privilege('authenticated', 'projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid)', 'EXECUTE')
-       OR has_function_privilege('service_role', 'projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid)', 'EXECUTE')
+    IF has_function_privilege('authenticated', 'projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid, timestamptz[])', 'EXECUTE')
+       OR has_function_privilege('service_role', 'projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid, timestamptz[])', 'EXECUTE')
        OR has_function_privilege('anon', 'projects.fn_lapse_session_handshakes(timestamptz)', 'EXECUTE')
        OR has_function_privilege('authenticated', 'projects.fn_settle_membership_state(uuid, timestamptz)', 'EXECUTE')
        OR NOT has_function_privilege('service_role', 'projects.fn_lapse_session_handshakes(timestamptz)', 'EXECUTE') THEN

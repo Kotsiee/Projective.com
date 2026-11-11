@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "supabaseClient";
 import type { IntakeAnswers, PipelineDraft, PipelineDraftStatus } from "@projective/types/services";
 import { draftArchivesAt } from "@projective/types/services";
+import { engagementHomeHref } from "@projective/types/projects";
 import { getUserClient } from "../../core/supabase.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { clampOr } from "./live-support.ts";
@@ -13,8 +14,8 @@ import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes
  * buyer's own JWT so `auth.uid()` inside is the person who pressed the button:
  *
  * - {@link instantiateBlueprintRow} → `marketplace.instantiate_service_blueprint` — the project, its
- *   stages, one priced ticket per stage, every room and the request record, in one transaction,
- *   idempotent on the client's key and on the buyer's live draft of the listing;
+ *   stages, every room and the request record (no tickets — the client creates them), in one
+ *   transaction, idempotent on the client's key and on the buyer's live draft of the listing;
  * - {@link readServiceDraft} → `marketplace.get_service_draft` — the draft that flips the listing's
  *   primary control to "Open project →";
  * - {@link archiveServiceDraftRow} → `marketplace.archive_service_draft` — "Remove draft", refused
@@ -71,6 +72,8 @@ function instant(value: unknown): number {
  *
  * `projectId` is the SLUG, as it is on the stub path: it is what "Remove draft" sends back, and the
  * uuid does not route (Decision #88). `archivesAt` is derived by the SSOT's own rule, never stored.
+ * `boardHref` is the archetype's home view ({@link engagementHomeHref}); the door instantiates
+ * pipelines only (it raises 22023 for any other delivery model), so that is always the Board.
  */
 export function toPipelineDraft(row: Record<string, unknown>, serviceId: string): PipelineDraft {
 	const slug = String(row.slug ?? "");
@@ -90,7 +93,7 @@ export function toPipelineDraft(row: Record<string, unknown>, serviceId: string)
 		createdAt: instant(row.created_at),
 		lastActivityAt,
 		archivesAt: draftArchivesAt({ status, fundedStageCount, lastActivityAt }),
-		boardHref: `/projects/${slug}/board`,
+		boardHref: engagementHomeHref(slug, "pipeline"),
 	};
 }
 // #endregion

@@ -2,20 +2,32 @@ import type { JSX } from "preact";
 import { useEffect, useId, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Icon } from "@projective/ui/icons";
-import { boardView } from "./detail-glyphs.tsx";
+import {
+	type EngagementArchetype,
+	engagementArchetype,
+	engagementTypeLabel,
+} from "@projective/types/projects";
+import { archetypeIcon } from "./detail-glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
-import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * The type the header names and badges. A Task is a `one_off`, which {@link boardView} calls a Timeline — true
- * of a milestone one-off and false of a Task, which has no timeline at all — so it is named for what it
- * is, with the glyph the create menu offers it under.
+ * The type the header names and badges, from the stored axes alone. The engagement's `kind` only says
+ * who architected it, so a pipeline instantiated from a service reads "Pipeline service", never the
+ * calendar a session would carry. A Task has no board, so it takes the glyph the create menu offers it under.
  */
-function typeMark(detail: ProjectDetail): { label: string; icon: JSX.Element } {
-	if (isTaskDetail(detail)) return { label: "Task", icon: <Icon name="ticket" /> };
-	return boardView(detail.format, detail.kind);
+function typeMark(detail: ProjectDetail): {
+	archetype: EngagementArchetype;
+	label: string;
+	icon: JSX.Element;
+} {
+	const archetype = engagementArchetype(detail.format, detail.structure);
+	return {
+		archetype,
+		label: engagementTypeLabel(archetype, detail.kind),
+		icon: archetype === "task" ? <Icon name="ticket" /> : archetypeIcon(archetype),
+	};
 }
 
 /**
@@ -26,7 +38,7 @@ function typeMark(detail: ProjectDetail): { label: string; icon: JSX.Element } {
  *
  * Layout: the leading party's LARGE avatar on the left (a **project** leads with its owner, a
  * **service** with the client it's delivered for), the engagement's name + a single clickable
- * owner/client name stacked to its right. The engagement type (Pipeline · Timeline · Calendar · Task) is
+ * owner/client name stacked to its right. The engagement type (Pipeline · One-off · Session · Task) is
  * named in an uppercase meta line above the name, and its glyph sits as a small filled badge on the
  * avatar's bottom-right corner, tinted by the type's role pair. Beneath sits the description, clamped
  * to three lines with an in-place **Show details** disclosure.
@@ -50,7 +62,7 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 	// header always has an identity even for a client-less internal draft.
 	const lead = (isService ? detail.client : detail.owner) ?? detail.owner;
 	const board = typeMark(detail);
-	const typeTip = `${board.label} ${isService ? "service" : "project"}`;
+	const typeTip = board.label;
 
 	const expanded = useSignal(false);
 	// Optimistically `true` so the server render keeps the line it always had; the first measurement
@@ -76,7 +88,7 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 						shape="circle"
 					/>
 					{/* Decorative: the type line beside it already names the type. */}
-					<span class="proj-ctx__type" data-type={board.label.toLowerCase()} aria-hidden="true">
+					<span class="proj-ctx__type" data-type={board.archetype} aria-hidden="true">
 						{board.icon}
 					</span>
 				</span>

@@ -304,14 +304,13 @@ function membersOf(row: ProjectSummary): ProjectMember[] {
 // #region Viewer capability
 /**
  * Whether the acting user is the client/creator — gates the client-only "Create New Stage" action.
- * On a client-architected **project** the owner/admin/client seats are the client side; on a
- * provider-side **service** only an explicit `client` seat is (the actor is usually the provider).
+ * The owner is the client side on every engagement (an instantiated service is the buyer's own); a
+ * **project** also counts its admin and client seats, a **service** only an explicit `client` seat.
+ * The live board's `viewerIsClientOf` applies the same rule.
  */
 function viewerIsClient(row: ProjectSummary): boolean {
-	if (row.kind === "project") {
-		return row.viewerRole === "owner" || row.viewerRole === "admin" || row.viewerRole === "client";
-	}
-	return row.viewerRole === "client";
+	if (row.viewerRole === "owner" || row.viewerRole === "client") return true;
+	return row.kind === "project" && row.viewerRole === "admin";
 }
 // #endregion
 

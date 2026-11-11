@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: a charge Stripe captured is never left uncredited because its bind was lost
--- (FINANCE_COMPLETENESS_AUDIT N1). finance.settle_card_payment(p_payment_id) and
+-- (FINANCE_AUDIT N1). finance.settle_card_payment(p_payment_id) and
 -- finance.claim_unsettled_card_payments.
 --
 -- A saved card is charged when its PaymentIntent is created (`confirm: true`), before

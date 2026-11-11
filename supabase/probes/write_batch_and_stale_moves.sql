@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: PM-WP7 — orphaned submissions close, a stale move is refused, and a setup save or ticket
--- commit is one transaction (PROJECT_MANAGEMENT_DECISION_LOG.md S4, S7, S8).
+-- commit is one transaction (PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md S4, S7, S8).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \

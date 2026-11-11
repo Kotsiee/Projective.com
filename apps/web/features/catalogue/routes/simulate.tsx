@@ -21,7 +21,6 @@ export default define.page<typeof handler>(function ListingSimulationPage({ data
 				ctx={{ scope: "explore" }}
 				authed
 				offer={data.offer}
-				schedule={data.schedule}
 				simulation
 			/>
 			<PreviewFrameBridge />

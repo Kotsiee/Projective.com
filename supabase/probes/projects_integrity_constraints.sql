@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: the projects integrity constraints of PM-WP3 (PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md
--- §5.1, X17, C4; DECISION_LOG S6).
+-- §5.1, X17, C4, S6).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \

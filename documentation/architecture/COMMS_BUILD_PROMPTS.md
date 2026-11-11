@@ -213,8 +213,8 @@ Before writing code:
      documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (CAS) and the finding
      IDs your prompt cites in SECURITY_MODERATION_AND_AI_GAPS.md (SEC),
-     PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (RED), ARCHITECTURAL_DECISIONS_AND_
-     CLARIFICATIONS.md (ADC Q7, Q8, Q11) and documentation/api/EXTERNAL_PROVIDERS_AND_
+     PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (RED, with ADC Q7, Q8, Q11 in
+     its §2) and documentation/api/EXTERNAL_PROVIDERS_AND_
      INFRASTRUCTURE_SPECIFICATION.md (EPI §3, §5, §8).
   3. Read the OWNER RULINGS on Decision #339 in full (rulings N1–N4 and the P3 rows):
      grep -n '^| 339 |' documentation/reference/decisions/decisions-122-126.md. Then read the rows

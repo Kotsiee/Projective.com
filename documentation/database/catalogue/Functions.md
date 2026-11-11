@@ -49,14 +49,18 @@ Recognised `save_listing` keys (Decision #217):
   (≤ 12; each element a name of 1–80, ≤ 12 deliverables, `startTrigger` ∈ `on_project_start` ·
   `after_previous` · `fixed_offset`, `lagDays` an integer 0–90, `chainReaction` boolean) ·
   `team_roles` (≤ 12, a name and a headcount of 1–20) · `deliverables` (≤ 24 lines of ≤ 140) ·
-  `turnaround_days` · `session_minutes` · `session_count` · `meeting_provider` ·
-  `max_seats_per_cohort` · `allow_continuous_enrollment`.
+  `turnaround_days` · `session_minutes` · `session_count` · `session_plan` (≤ 52 objects, each an
+  optional `title` string of ≤ 80 and `description` of ≤ 600, else `22023` DETAIL `session_plan.<i>`) ·
+  `session_rolling` (a boolean, else `22023`; a rolling row must hold one sitting and no plan, else
+  the table's `check_violation`, Decision #411) · `meeting_provider` · `max_seats_per_cohort` ·
+  `allow_continuous_enrollment`.
 - **Product** (refused on a service): `format` · `licence` · `attribution_required` · `file_manifest`.
 - **Children:** `skills` (`org.skills` labels; an unknown label is dropped, not invented) · `tags`
   (at most 10) · `collections` (names).
 - **Envelopes:** `offer` — a `ListingOfferSchema` value (camelCase, discriminated by `archetype`),
   decoded per archetype onto the keys above (`milestones`/`stages` → `stage_template`, `scope` →
-  `deliverables`, `turnaroundDays`, `teamRoles`, `minutes`/`count`/`meetingProvider`,
+  `deliverables`, `turnaroundDays`, `teamRoles`, `minutes`/`count`/`meetingProvider`, `plan` →
+  `session_plan`, `rolling` → `session_rolling` (a cohort offer always writes `session_rolling` false),
   `maxSeatsPerCohort`/`continuousEnrollment`, `format`/`licence`/`attributionRequired`/
   `attachments` → `file_manifest`). The archetype must be the listing's (`22023` DETAIL
   `offer.archetype`), except that a session ↔ cohort offer is the solo/cohort toggle and sets

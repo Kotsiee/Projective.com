@@ -74,6 +74,15 @@
 	font-size: 0.75rem;
 }
 
+.ui-button.brd-dropzone__create {
+	--btn-accent: var(--text-secondary);
+	--btn-ink: var(--text-secondary);
+}
+
+.ui-button.brd-dropzone__create:hover {
+	--btn-ink: var(--on-surface);
+}
+
 .brd-empty {
 	display: flex;
 	flex-direction: column;

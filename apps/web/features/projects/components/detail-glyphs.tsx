@@ -1,10 +1,13 @@
 import type { JSX } from "preact";
-import { landingFor } from "@projective/types/projects";
-import type { ProjectDetail, ProjectFormat, ProjectNavActivity } from "../types/projects-types.ts";
+import {
+	type EngagementArchetype,
+	engagementArchetype,
+	landingFor,
+} from "@projective/types/projects";
+import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
 import { ChatIcon, FilesIcon } from "./channel-glyphs.tsx";
 import { discussionLinkOf } from "../core/chat-context.ts";
-import { isTaskDetail } from "../core/task-project.ts";
 import { type ProjectViewStatus, viewStatusOf } from "../core/nav-activity-model.ts";
 
 /**
@@ -203,35 +206,33 @@ export const ClockIcon = (
 // #endregion
 
 // #region Helpers
-/**
- * The dynamic Board-view label + icon for an engagement, per PRODUCT_SPEC: a pipeline renders a
- * Kanban ("Pipeline"), a one-off renders a "Timeline", and a service renders a "Calendar".
- */
-export function boardView(format: ProjectFormat, kind: "project" | "service"): {
-	label: string;
-	icon: JSX.Element;
-} {
-	if (kind === "service" || format === "session") {
-		return { label: "Calendar", icon: CalendarIcon };
-	}
-	if (format === "one_off") return { label: "Timeline", icon: TimelineIcon };
-	return { label: "Pipeline", icon: PipelineIcon };
-}
-
 /** The lane's primary view set — which archetype's top tier to draw. */
-export type ProjectNavArchetype = "task" | "one_off" | "pipeline" | "session";
+export type ProjectNavArchetype = EngagementArchetype;
 
 /**
- * Which top tier an engagement gets. A session archetype (real or dev-simulated) wins, exactly as it
- * wins the lane's body; then a Task; then the stored format.
+ * Which archetype the lane draws. A dev-simulated session wins, exactly as it wins the lane's body;
+ * otherwise the stored axes decide through {@link engagementArchetype}.
  */
 export function projectNavArchetype(
 	detail: Pick<ProjectDetail, "format" | "structure">,
 	sessionKind: "none" | "normal" | "group" = "none",
 ): ProjectNavArchetype {
-	if (sessionKind !== "none" || detail.format === "session") return "session";
-	if (isTaskDetail(detail)) return "task";
-	return detail.format === "one_off" ? "one_off" : "pipeline";
+	if (sessionKind !== "none") return "session";
+	return engagementArchetype(detail.format, detail.structure);
+}
+
+/** The glyph each archetype is badged with — the one its home view uses. */
+const ARCHETYPE_ICON: Record<Exclude<EngagementArchetype, "task">, JSX.Element> = {
+	pipeline: PipelineIcon,
+	one_off: TimelineIcon,
+	session: CalendarIcon,
+};
+
+/** The archetype's glyph. A Task has no board, so the caller supplies the glyph the create menu uses. */
+export function archetypeIcon(
+	archetype: Exclude<EngagementArchetype, "task">,
+): JSX.Element {
+	return ARCHETYPE_ICON[archetype];
 }
 
 /** One primary view of an engagement — a top-tier lane destination (Discussion · Board · Files · …). */

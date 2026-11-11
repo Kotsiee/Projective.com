@@ -3,32 +3,35 @@ import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { LaneSection, LaneSections } from "@projective/ui/navigation";
-import { DmIcon, HashIcon, StagesIcon, TeamsIcon } from "./detail-glyphs.tsx";
+import { DmIcon, HashIcon, TeamsIcon } from "./detail-glyphs.tsx";
+import { ChatIcon } from "./channel-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import type { ChannelFilterKey } from "./ChannelQuickFilters.tsx";
 import { channelHref } from "../core/chat-context.ts";
 import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
+import type { ProjectViewStatus } from "../core/nav-activity-model.ts";
 import { conditionalChannelGroups } from "@projective/types/projects";
 import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { isChannelStarred } from "../core/channel-stars.ts";
 
 /**
- * ChannelTree — the staged engagement's contextual body in the Project Details lane: its Stages and —
- * only when the viewer has something in them — Teams and Private Messages. Each group collapses/expands
- * independently. Every channel row is a real anchor into the project at `/projects/{slug}/{channelId}`
- * (see {@link channelHref}), so the conversation opens in-context; the channel's unified `chatId`
- * remains the shared thread identity the destination page loads (PRODUCT_SPEC §Unified Messaging).
- *
- * There is no General group. The project-wide room is the engagement's Discussion, a top-tier link of
- * its own above this tree at `/projects/{slug}/discussion`; a folder holding that one room beside it
- * would be the same destination twice, one of them a level down.
+ * ChannelTree — the staged engagement's contextual body in the Project Details lane: its Discussion
+ * and — only when the viewer has something in them — Teams and Private Messages. Each group
+ * collapses/expands independently. Every channel row is a real anchor into the project at
+ * `/projects/{slug}/{channelId}` (see {@link channelHref}), so the conversation opens in-context; the
+ * channel's unified `chatId` remains the shared thread identity the destination page loads
+ * (PRODUCT_SPEC §Unified Messaging).
  *
  * Group specifics:
- *   - **Stages**: the client/creator gets an inline "＋" to open Create New Stage (gated on
+ *   - **Discussion** (expanded by default): **General** first — the project-wide room at
+ *     `/projects/{slug}/discussion`, the address the top tier's Discussion link opens on every other
+ *     archetype, carrying that link's activity mark — then every stage's `#` channel. The
+ *     client/creator gets an inline "＋" on the header to open Create New Stage (gated on
  *     `viewerIsClient`, re-derived server-side); each stage shows a tiny icon-only
  *     {@link StageStatusIcon} for its actionable state (new ticket / revision / stage-join request).
+ *     The top tier draws no Discussion link beside it, so the room is never two destinations at once.
  *   - **Teams**: rendered only for a member of a team the engagement hired
  *     ({@link conditionalChannelGroups}). A team can hold several stages and the viewer can be on
  *     several teams; a team whose room nobody has opened yet still shows who it is and what it holds.
@@ -184,6 +187,38 @@ function StageRow(
 	);
 }
 
+/** The Discussion group's lead row: the project-wide room, and what the lane knows waits in it. */
+export interface GeneralChannel {
+	/** `/projects/{slug}/discussion`. */
+	href: string;
+	/** The Discussion view's activity mark; `null` when nothing waits or the room is open now. */
+	status: ProjectViewStatus | null;
+	/** `page` on the room itself, `true` on a page beneath it (its Files, Members, … tabs). */
+	current: "page" | "true" | null;
+}
+
+/** General — the project-wide room as the first `#` channel of the Discussion group. */
+function GeneralRow({ general }: { general: GeneralChannel }): JSX.Element {
+	const { status, current } = general;
+	return (
+		<a
+			class="proj-chan proj-chan--general"
+			href={general.href}
+			data-active={current ? "true" : undefined}
+			aria-current={current ?? undefined}
+			aria-label={status ? `General, ${status.label}` : undefined}
+		>
+			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
+			<span class="proj-chan__name">General</span>
+			{status
+				? status.count !== null
+					? <span class="proj-chan__count" aria-hidden="true">{status.count}</span>
+					: <span class={`proj-chan__dot proj-chan__dot--${status.tone}`} aria-hidden="true" />
+				: null}
+		</a>
+	);
+}
+
 /** A DM row — a project member the viewer has messaged; opens the DM inside the project. */
 export function DmRow(
 	{ dm, slug, activeChannelId }: {
@@ -220,7 +255,9 @@ export interface ChannelTreeProps {
 	 * has no draft. One prop, one code path — a live tree and a static tree could drift.
 	 */
 	stages: SidebarStageRow[];
-	/** Which groups are expanded (keyed `stages|teams|dms`). */
+	/** The Discussion group's General row, or `null` when the engagement has no project-wide room. */
+	general: GeneralChannel | null;
+	/** Which groups are expanded (keyed `discussion|teams|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
 	/** Client-only: open the Create New Stage modal. */
@@ -237,7 +274,7 @@ const anyUnread = (chans: { unread: boolean }[]) => chans.some((c) => c.unread);
 const stageUnread = (row: SidebarStageRow) => row.channel?.channel.unread ?? false;
 
 export function ChannelTree(
-	{ detail, stages, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
+	{ detail, stages, general, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
 		ChannelTreeProps,
 ): JSX.Element {
 	const { teams, dms } = conditionalChannelGroups(detail.channels);
@@ -265,6 +302,11 @@ export function ChannelTree(
 	const matchDm = (d: DmChannel) => !filtering || (has("unread") && d.unread);
 
 	const fStages = stages.filter(matchStage);
+	// General carries the Discussion view's mark, so it answers the Unread facet and nothing else.
+	const fGeneral = general && (!filtering || (has("unread") && general.status !== null))
+		? general
+		: null;
+	const discussionCount = fStages.length + (fGeneral ? 1 : 0);
 	// Unfiltered, a team stays even with no room yet; filtered, it stays only for a matching room.
 	const fTeams = filtering
 		? teams
@@ -278,7 +320,7 @@ export function ChannelTree(
 	const show = (n: number) => !filtering || n > 0;
 	const groupOpen = (key: string) => (filtering ? true : !!openGroups[key]);
 
-	if (filtering && fStages.length === 0 && fTeams.length === 0 && fDms.length === 0) {
+	if (filtering && discussionCount === 0 && fTeams.length === 0 && fDms.length === 0) {
 		return (
 			<LaneSections>
 				<p class="proj-chan-empty">No channels match these filters.</p>
@@ -289,15 +331,14 @@ export function ChannelTree(
 
 	return (
 		<LaneSections>
-			{/* 1 — Stages (the client/owner gets an inline Create New Stage ＋) */}
-			{show(fStages.length) && (
+			{show(discussionCount) && (
 				<AccordionGroup
-					id="stages"
-					icon={StagesIcon}
-					label="Stages"
-					open={groupOpen("stages")}
-					onToggle={() => onToggleGroup("stages")}
-					hasUnread={stages.some(stageUnread)}
+					id="discussion"
+					icon={ChatIcon}
+					label="Discussion"
+					open={groupOpen("discussion")}
+					onToggle={() => onToggleGroup("discussion")}
+					hasUnread={(general?.status ?? null) !== null || stages.some(stageUnread)}
 					action={!filtering && detail.viewerIsClient
 						? (
 							<button
@@ -311,6 +352,7 @@ export function ChannelTree(
 						)
 						: undefined}
 				>
+					{fGeneral ? <GeneralRow general={fGeneral} /> : null}
 					{fStages.map((row) => (
 						<StageRow key={row.id} row={row} slug={slug} activeChannelId={activeChannelId} />
 					))}

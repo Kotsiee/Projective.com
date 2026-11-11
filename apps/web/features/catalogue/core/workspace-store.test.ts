@@ -271,7 +271,14 @@ Deno.test("reconcileDraft takes a field the server re-derived when the seller le
 	const base = listing();
 	const typed = { ...base, serviceType: "Session" as const };
 	const sent = buildPatch(typed, diffFields(base, typed), T0);
-	const offer = { archetype: "session", minutes: 60, count: 1, meetingProvider: null };
+	const offer = {
+		archetype: "session",
+		minutes: 60,
+		count: 1,
+		meetingProvider: null,
+		plan: [],
+		rolling: false,
+	};
 	const server = ListingDetailSchema.parse({ ...typed, offer, updatedAt: T2 });
 	assertEquals(reconcileDraft(typed, sent, server, base).offer, server.offer);
 	const editedOffer = { ...typed, tags: ["mine"] };

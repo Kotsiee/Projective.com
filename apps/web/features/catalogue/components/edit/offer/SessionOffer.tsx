@@ -12,6 +12,7 @@ import { draft, edit } from "../../../core/workspace-store.ts";
 import { useGatedDraft } from "../../../hooks/useGatedDraft.ts";
 import { OfferGroup } from "./OfferGroup.tsx";
 import { ConferencingSelect } from "./ConferencingSelect.tsx";
+import { SessionPlanEditor } from "./SessionPlanEditor.tsx";
 import { FieldHead } from "../FieldHead.tsx";
 
 type TimedOffer = SessionOfferValue | CohortListingOffer;
@@ -21,17 +22,25 @@ const FORMAT_OPTIONS = [
 	{ label: "Cohort", value: "cohort" },
 ];
 
+const MODE_OPTIONS = [
+	{ label: "Fixed number", value: "fixed" },
+	{ label: "Ongoing", value: "rolling" },
+];
+
 const FORMAT_HINT_ID = "cat-offer-session-format-hint";
 const DURATION_ID = "cat-offer-duration";
+const MODE_HINT_ID = "cat-offer-session-mode-hint";
 const COUNT_ID = "cat-offer-count";
 const COUNT_HINT_ID = "cat-offer-count-hint";
+const PLAN_HINT_ID = "cat-offer-session-plan-hint";
 const SEATS_ID = "cat-offer-seats";
 const COHORT_ID = "cat-offer-cohort-cap";
 
 /**
  * SessionOffer — a Session's or Group Session's offer: the format (one-to-one or cohort, switchable
- * only while a draft, since bookings depend on it), the session length, the sittings in one
- * booking, a cohort's seats and enrolment, and the meeting tool that mints each room.
+ * only while a draft, since bookings depend on it), the session length, whether a one-to-one listing
+ * is a fixed number of sessions or ongoing (Decision #411), the sittings in one booking with what each
+ * covers, a cohort's seats and enrolment, and the meeting tool that mints each room.
  */
 export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer }): JSX.Element {
 	const { listing } = props;
@@ -41,8 +50,15 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 		commitOffer,
 	);
 	const offer = gated.value.value;
-	const update = (patch: Partial<Pick<TimedOffer, "minutes" | "count" | "meetingProvider">>) =>
-		gated.set({ ...offer, ...patch });
+	const update = (
+		patch: Partial<Pick<TimedOffer, "minutes" | "count" | "meetingProvider" | "plan">>,
+	) => gated.set({ ...offer, ...patch });
+	const rolling = offer.archetype === "session" && offer.rolling;
+	const setRolling = (next: boolean) => {
+		if (offer.archetype === "session" && next !== offer.rolling) {
+			gated.set({ ...offer, rolling: next, count: 1 });
+		}
+	};
 	const updateCohort = (
 		patch: Partial<Pick<CohortListingOffer, "maxSeatsPerCohort" | "continuousEnrollment">>,
 	) => {
@@ -100,26 +116,58 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 						aria-label="Session length"
 					/>
 				</div>
-				<div class="cat-sec__field">
-					<FieldHead
-						label="Sessions per booking"
-						htmlFor={COUNT_ID}
-						hint="More than one, and a buyer books them all at once, as a series."
-						hintId={COUNT_HINT_ID}
-					/>
-					<div class="cat-offer__compact">
-						<NumberStepper
-							id={COUNT_ID}
-							value={offer.count}
-							onValueChange={(count) => update({ count: count ?? 1 })}
-							min={1}
-							max={52}
-							unit={offer.count === 1 ? "session" : "sessions"}
-							aria-describedby={COUNT_HINT_ID}
+				{offer.archetype === "session" && (
+					<div class="cat-sec__field">
+						<FieldHead
+							label="How buyers book"
+							hint="Fixed number: a buyer books a set number of sessions as one purchase, and you can say what each one covers. Ongoing: each booking is one session, and the buyer books again whenever they need another."
+							hintId={MODE_HINT_ID}
+						/>
+						<SelectButton
+							options={MODE_OPTIONS}
+							value={rolling ? "rolling" : "fixed"}
+							onValueChange={(v) => setRolling(v === "rolling")}
+							aria-label="How buyers book"
+							aria-describedby={MODE_HINT_ID}
 						/>
 					</div>
-				</div>
+				)}
+				{!rolling && (
+					<div class="cat-sec__field">
+						<FieldHead
+							label="Sessions per booking"
+							htmlFor={COUNT_ID}
+							hint="More than one, and a buyer books them all at once, as a series."
+							hintId={COUNT_HINT_ID}
+						/>
+						<div class="cat-offer__compact">
+							<NumberStepper
+								id={COUNT_ID}
+								value={offer.count}
+								onValueChange={(count) => update({ count: count ?? 1 })}
+								min={1}
+								max={52}
+								unit={offer.count === 1 ? "session" : "sessions"}
+								aria-describedby={COUNT_HINT_ID}
+							/>
+						</div>
+					</div>
+				)}
 			</OfferGroup>
+
+			{!rolling && (
+				<OfferGroup
+					title="Session plan"
+					hintId={PLAN_HINT_ID}
+					hint="Optional. Give each session a title, a description or both. Buyers see the breakdown on your listing and when they book."
+				>
+					<SessionPlanEditor
+						count={offer.count}
+						plan={offer.plan}
+						onChange={(plan) => update({ plan })}
+					/>
+				</OfferGroup>
+			)}
 
 			{offer.archetype === "cohort" && (
 				<OfferGroup title="Seats and enrolment">

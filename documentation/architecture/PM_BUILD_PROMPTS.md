@@ -4,7 +4,8 @@
 > prompts for track **P** of [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part B §B.3.
 > Together they close the open gaps in
 > [`PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md`](PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md) (findings
-> `F*`, `X*`) and [`PROJECT_MANAGEMENT_DECISION_LOG.md`](PROJECT_MANAGEMENT_DECISION_LOG.md) (`S*`,
+> `F*`, `X*`) and
+> [`PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md`](PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md) (`S*`,
 > `C*`, `W*`, `D*`) under the owner's rulings of 2026-10-30. Every prompt cites its evidence by
 > finding ID and its ruling as `(Decision #338, ruling X)`, the OWNER RULINGS on row #338 of
 > `reference/decisions/decisions-122-126.md`, or `#337` for the ghosting auto-approve. Paste each
@@ -164,7 +165,7 @@ Before writing code:
      documentation/CLAUDE.md, packages/ui/CLAUDE.md, and documentation/database/CLAUDE.md when SQL
      changes), then documentation/reference/guardrails.md and pr-checklist.md.
   2. Read documentation/architecture/PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md and
-     PROJECT_MANAGEMENT_DECISION_LOG.md (the finding IDs cited below), the OWNER RULINGS on
+     PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md (the finding IDs cited below), the OWNER RULINGS on
      Decision #338 (grep -n '^| 338 |' documentation/reference/decisions/decisions-122-126.md),
      and FOUNDER_QUESTIONNAIRE.md Part C, the ruling table.
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
@@ -1454,7 +1455,7 @@ FILES: documentation/database/projects/*; business/PRODUCT_SPEC.md (Resource All
 Ticketing; Stage Management; Project Creation 2; Escrow); business/finance-model.md (§3, §8,
 §16.3); PRODUCT_MANAGEMENT.md (§3.4-§3.8, §5.4); flows/Projects.md (§4, §7);
 architecture/ROUTING.md; architecture/SYSTEM_ARCHITECTURE.md (§Scheduled jobs);
-architecture/PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md and PROJECT_MANAGEMENT_DECISION_LOG.md (add a
+architecture/PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md (add a
 Status column: Fixed by <prompt> · Planned · Open, with an owner); the #338 decision row (each flag
 Resolved with its prompt, or Open with an owner).
 

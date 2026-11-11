@@ -82,7 +82,7 @@ BEGIN
 
     BEGIN
         PERFORM projects.fn_book_session_slot(v_bp.id, v_buyer, 'user', v_buyer, 5000, 1,
-            COALESCE(v_bp.currency, 'GBP'), t, gen_random_uuid());
+            COALESCE(v_bp.currency, 'GBP'), t, gen_random_uuid(), NULL);
         RAISE EXCEPTION 'FAIL a 1-1 session was booked on top of a requested discovery call';
     EXCEPTION
         WHEN SQLSTATE 'PS409' THEN

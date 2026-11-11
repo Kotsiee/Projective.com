@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, RefObject } from "preact";
 
 /**
  * @projective/ui/kanban — the generic Kanban board contract.
@@ -61,4 +61,13 @@ export interface KanbanColumnRenderCtx<C = unknown> {
 
 export type KanbanRenderItem<T> = (item: T, ctx: KanbanItemRenderCtx) => ComponentChildren;
 export type KanbanRenderColumnHeader<C> = (ctx: KanbanColumnRenderCtx<C>) => ComponentChildren;
+
+/**
+ * Renders the right-click menu of a card or column. `surface` is that card's or column's root, ready
+ * to hand to `ActionMenu`'s `surface`; a card's menu takes the event first, so the column's yields.
+ */
+export type KanbanRenderMenu<X> = (
+	subject: X,
+	surface: RefObject<HTMLElement>,
+) => ComponentChildren;
 // #endregion

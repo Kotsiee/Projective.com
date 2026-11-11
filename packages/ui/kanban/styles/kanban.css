@@ -23,8 +23,18 @@
 	gap: var(--space-3);
 	overflow-x: auto;
 	overflow-y: hidden;
+	overscroll-behavior-x: contain;
 	padding: var(--space-2) var(--space-1) var(--space-4);
-	scroll-snap-type: x proximity;
+}
+
+.ui-kanban__board[data-panning="true"] {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.ui-kanban__board[data-panning="true"] .ui-kanban__card,
+.ui-kanban__board[data-panning="true"] .ui-kanban__col-header--handle {
+	cursor: grabbing;
 }
 
 /* #region Column */
@@ -37,7 +47,6 @@
 	flex-direction: column;
 	background: var(--surface-1);
 	border-radius: var(--radius-lg);
-	scroll-snap-align: start;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
@@ -127,10 +136,14 @@
 }
 
 .ui-kanban__col-empty {
+	flex: 1 1 auto;
 	min-block-size: 3rem;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	gap: var(--space-2);
+	text-align: center;
 	color: var(--text-secondary);
 	font-size: 0.75rem;
 }

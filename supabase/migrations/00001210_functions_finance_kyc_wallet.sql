@@ -1600,7 +1600,14 @@ BEGIN
                 'session_count', v_sess_count,
                 'scheduled_at', v_line.scheduled_at,
                 'timezone', v_line.timezone,
-                'duration_minutes', COALESCE(v_sess.session_minutes, 60)
+                'duration_minutes', COALESCE(v_sess.session_minutes, 60),
+                'later_starts', CASE
+                    WHEN v_line.item_type = 'set_session'
+                         AND pg_catalog.jsonb_typeof(v_line.metadata -> 'laterStarts') = 'array'
+                    THEN (SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY n), '[]'::jsonb)
+                            FROM pg_catalog.jsonb_array_elements(v_line.metadata -> 'laterStarts') WITH ORDINALITY AS t (x, n)
+                           WHERE pg_catalog.jsonb_typeof(x) = 'string')
+                    ELSE '[]'::jsonb END
             );
             CONTINUE;
         END IF;
@@ -1832,7 +1839,11 @@ BEGIN
             v_booking := projects.fn_book_session_slot((v_line.l ->> 'item_id')::uuid, v_uid,
                 v_wallet.owner_type, v_wallet.owner_id, (v_line.l ->> 'session_unit')::bigint,
                 (v_line.l ->> 'session_count')::integer, v_currency,
-                (v_line.l ->> 'scheduled_at')::timestamptz, v_order_line);
+                (v_line.l ->> 'scheduled_at')::timestamptz, v_order_line,
+                ARRAY(SELECT (s #>> '{}')::timestamptz
+                        FROM pg_catalog.jsonb_array_elements(COALESCE(v_line.l -> 'later_starts', '[]'::jsonb))
+                             WITH ORDINALITY AS t (s, n)
+                       ORDER BY n));
             UPDATE finance.order_lines SET stage_id = (v_booking ->> 'stage_id')::uuid WHERE id = v_order_line;
             UPDATE finance.basket_items
                SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()

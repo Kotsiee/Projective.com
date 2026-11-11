@@ -153,6 +153,8 @@ export default function EntityBuyBar(
 				offer={offer}
 				host="body"
 				stages={view.service?.stages}
+				intake={view.service?.intake}
+				sessionPlan={view.service?.sessionPlan}
 				currency={item.type === "services" || item.type === "products" ? item.currency : undefined}
 			/>
 		</div>

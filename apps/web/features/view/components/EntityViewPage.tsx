@@ -4,7 +4,6 @@ import "@features/explore/styles/explore.css";
 import "@features/explore/styles/explore-results.css";
 import "../styles/entity-view.css";
 import type { EntityView } from "@projective/types/explore";
-import type { SchedulePage } from "@projective/types/scheduling";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import EntityCanvas from "../islands/EntityCanvas.island.tsx";
@@ -13,13 +12,13 @@ import EntityLane from "../islands/EntityLane.island.tsx";
 import ProjectLane from "../islands/ProjectLane.island.tsx";
 import ProjectApplyBar from "../islands/ProjectApplyBar.island.tsx";
 import ProjectApplyModal from "../islands/ProjectApplyModal.island.tsx";
-import SessionSchedulerStage from "../islands/SessionSchedulerStage.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
+import { SessionPlanTrack } from "./SessionPlanTrack.tsx";
 import { PreviewNotice, ProjectBody, ProjectHero } from "./project-view-parts.tsx";
 import { BackLink } from "./BackLink.tsx";
 import { RestrictedLaneNotice } from "./RestrictedLaneNotice.tsx";
@@ -42,6 +41,8 @@ import {
 	resolveArchetype,
 	scopeHeadingFor,
 	seatCapacityFor,
+	sessionBookingNoteFor,
+	sessionTrackFor,
 	showsCommercialRails,
 	showsProductLedger,
 	showsScheduler,
@@ -61,10 +62,14 @@ import {
  * own template — a profile-page banner as a hero, boxed stage cards, a lane resolved into the
  * SHELL's navigation slot — so the two pages a reader most often opens back to back were two
  * design systems. Now a project is one more branch of this controller: it has no media column, so
- * its hero spans the two content tracks (the same shape a session's scheduler stage takes), its
- * lane is `ProjectLane` in the frame's END column, and its body is composed from the same unboxed
- * primitives as everything else. What differs between a brief and a service is the DATA each shows;
- * the containers, registers, rhythm and gates are shared.
+ * its hero spans the two content tracks, its lane is `ProjectLane` in the frame's END column, and its
+ * body is composed from the same unboxed primitives as everything else. What differs between a brief
+ * and a service is the DATA each shows; the containers, registers, rhythm and gates are shared.
+ *
+ * A Session or Group Session wears exactly the Pipeline / One-Off frame (Decision #411): the media
+ * column, the hero, the lane, and a body whose primary block is the same timeline track — one node
+ * per sitting instead of per stage. Booking happens in the slot picker the lane's primary opens, so
+ * the page carries no calendar of its own.
  *
  * # The Gutenberg reading gravity
  *
@@ -112,8 +117,6 @@ export interface EntityViewPageProps {
 	 * is applied to rather than bought, and for a listing whose offer could not be resolved.
 	 */
 	offer?: ServiceBookingOffer | null;
-	/** The provider's public schedule for a session listing, resolved by the route; `null` otherwise. */
-	schedule?: SchedulePage | null;
 	/**
 	 * The listing could not be READ (the marketplace was unreachable), as opposed to not existing.
 	 * The two are different pages for a reader: one says the link is dead, the other says try again.
@@ -151,7 +154,6 @@ export function EntityViewPage(
 		ctx = { scope: "explore" },
 		authed = false,
 		offer = null,
-		schedule = null,
 		unavailable = false,
 		mode = "public",
 		editHref,
@@ -177,17 +179,10 @@ export function EntityViewPage(
 	const rating = item.rating?.asHelper ?? item.rating?.asClient ?? null;
 	const price = headlinePriceFor(view);
 	/*
-	 * Availability is resolved SERVER-side for the first byte. It is the anonymous/masked projection
-	 * (`scheduling` §Part 1.4): a public listing page discloses that a time is free, never who else is
-	 * in it — the roster, join URL and per-occurrence earnings are withheld from every non-party.
+	 * A frame with no media column: the hero takes both content tracks. Only a project has no gallery —
+	 * its identity is the client's banner strip inside the hero.
 	 */
-	const scheduled = showsScheduler(archetype);
-	/*
-	 * A frame with no media column: the hero takes both content tracks. A session's artefact is the
-	 * full-width scheduler stage, and a project has no gallery at all — its identity is the client's
-	 * banner strip inside the hero.
-	 */
-	const noMedia = scheduled || isProject;
+	const noMedia = isProject;
 	const preview = mode === "preview";
 	// A restricted viewer's lane explains instead of transacting; an owner's preview shows applicants.
 	// A simulation shows what a buyer meets, and that buyer is an adult whatever the owner's age.
@@ -283,11 +278,8 @@ export function EntityViewPage(
 					/*
 				  ---- The MEDIA column ----
 
-				  A session or a cohort has no media column at all: its artefact is the scheduler stage,
-				  which needs the whole content width or the calendar engine drops its own mini-month and
-				  availability panel — the only place the provider's working hours are explained. A
-				  project has none either. `--nomedia` collapses the track for them and the hero takes
-				  the width.
+				  Every commerce archetype has one. A project has none: `--nomedia` collapses the track
+				  and the hero takes the width.
 				*/
 				}
 				{!noMedia && (
@@ -349,23 +341,6 @@ export function EntityViewPage(
 				<div class="evp-main">
 					{
 						/*
-					  Session / cohort: the FULL-WIDTH booking stage (§D.8.3 / §D.8.4).
-					*/
-					}
-					{scheduled && (
-						<SessionSchedulerStage
-							gallery={gallery}
-							title={item.title}
-							schedule={schedule}
-							entityId={item.id}
-							group={archetype === "cohort"}
-							providerTimezone={schedule?.timezone ?? null}
-							simulation={sim}
-						/>
-					)}
-
-					{
-						/*
 					  The below-breakpoint transactional block, and the booking overlay layer with it.
 
 					  `offer` is the SAME object the lane receives, so the two regions describe one offer
@@ -408,9 +383,14 @@ export function EntityViewPage(
 					)}
 
 					{/* ---- Archetype body ---- */}
-					{project
-						? <ProjectBody view={view} project={project} />
-						: <ArchetypeBody view={view} archetype={archetype} deliverables={deliverables} />}
+					{project ? <ProjectBody view={view} project={project} /> : (
+						<ArchetypeBody
+							view={view}
+							archetype={archetype}
+							deliverables={deliverables}
+							offer={offer}
+						/>
+					)}
 
 					{
 						/*
@@ -503,10 +483,12 @@ export function EntityViewPage(
  * in what order.
  */
 function ArchetypeBody(
-	{ view, archetype, deliverables }: {
+	{ view, archetype, deliverables, offer }: {
 		view: EntityView;
 		archetype: EntityArchetype;
 		deliverables: readonly string[];
+		/** The resolved offer — a Group Session's cohort sittings are dated from it. */
+		offer: ServiceBookingOffer | null;
 	},
 ): JSX.Element | null {
 	const heading = scopeHeadingFor(archetype);
@@ -549,40 +531,32 @@ function ArchetypeBody(
 		);
 	}
 
-	// ---- Session / Cohort (§D.8.3 / §D.8.4) ----
+	// ---- Session / Cohort: the same timeline track, one node per sitting (§D.8.3 / §D.8.4) ----
 	if (showsScheduler(archetype)) {
+		const service = view.service;
 		const capacity = seatCapacityFor(view, archetype);
 		const rows = [];
-		if (view.service?.bookingSummary) {
-			rows.push({ label: "Format", value: view.service.bookingSummary });
-		}
-		if (view.item.type === "services") {
+		if (service?.bookingSummary) rows.push({ label: "Format", value: service.bookingSummary });
+		if (view.item.type === "services" && view.item.delivery !== service?.bookingSummary) {
 			rows.push({ label: "Delivery", value: view.item.delivery });
 		}
 		if (capacity) rows.push({ label: "Capacity", value: capacity.sentence });
+		const sittings = archetype === "cohort" ? offer?.cohort?.sittings : undefined;
 		return (
 			<>
-				<Section title={heading}>
-					{
-						/*
-					  The picker itself is the full-bleed `SessionSchedulerStage` above; this section
-					  carries what a booker needs to KNOW rather than a second copy of the control.
-
-					  The sentence here used to read "Times are shown in your local timezone", which was
-					  FALSE as shipped — the engine renders one wall clock from one zone string and
-					  `ScheduleView` feeds it the schedule's own `timezone`, the PROVIDER's. The honest
-					  disclosure now sits on the stage, beside the grid it describes.
-					*/
-					}
-					<p class="evp-prose">
-						The provider's working hours, buffers and blackout dates are already applied, so every
-						slot offered is a slot that can be booked. The calendar states which timezone it is
-						drawn in, and your own when the two differ.
-					</p>
+				<Section title={service?.sessionRolling ? "Ongoing sessions" : heading}>
+					<p class="evp-prose">{sessionBookingNoteFor(view, archetype)}</p>
+					<SessionPlanTrack
+						items={sessionTrackFor(view, sittings?.length ?? 0)}
+						minutes={service?.sessionMinutes}
+						sittings={sittings}
+					/>
 					<SpecLedger rows={rows} />
 				</Section>
 				{deliverables.length > 0 && (
-					<Section title="What the session covers">
+					<Section
+						title={archetype === "cohort" ? "What the cohort covers" : "What every session covers"}
+					>
 						<ScopeChecklist items={deliverables} />
 					</Section>
 				)}

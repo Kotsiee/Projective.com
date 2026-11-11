@@ -5,6 +5,7 @@ import {
 	type BoardStageRef,
 	type BoardView,
 	buildBoardColumns,
+	engagementArchetype,
 	type FileItem,
 	formatTicketMoney,
 	isTaskProject,
@@ -1098,9 +1099,10 @@ function matches(card: BoardCard, params: BoardListParams): boolean {
 
 function boardTitle(detail: ProjectDetail, kind: "project" | "stage"): string {
 	if (kind === "stage") return "Tasks";
-	if (detail.kind === "service" || detail.format === "session") return "Calendar";
-	if (detail.format === "one_off") return "Timeline";
-	return "Pipeline";
+	const archetype = engagementArchetype(detail.format, detail.structure);
+	if (archetype === "session") return "Calendar";
+	if (archetype === "pipeline") return "Pipeline";
+	return "Timeline";
 }
 // #endregion
 

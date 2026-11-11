@@ -2318,7 +2318,7 @@ GRANT EXECUTE ON FUNCTION finance.auto_release_session_escrow (timestamptz) TO s
 REVOKE ALL ON FUNCTION projects.fn_session_engagement_for (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_session_host_schedule (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_settle_membership_state (uuid, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION projects.fn_book_session_slot (uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_book_session_slot (uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid, timestamptz[]) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.trg_sitting_follows_calendar () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.trg_session_handshake_closed () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) FROM PUBLIC, anon, authenticated;

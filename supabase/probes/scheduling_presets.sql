@@ -310,7 +310,7 @@ BEGIN
     RAISE NOTICE 'PASS 7: once compiled, a slot inside an occurrence is covered and one outside is not';
 
     BEGIN
-        PERFORM projects.fn_book_session_slot(v_fern_listing, v_adult, 'user', v_adult, 1000, 1, 'USD', v_in_start, NULL);
+        PERFORM projects.fn_book_session_slot(v_fern_listing, v_adult, 'user', v_adult, 1000, 1, 'USD', v_in_start, NULL, NULL);
         RAISE EXCEPTION 'FAIL 7: a session was booked outside the compiled hours';
     EXCEPTION WHEN SQLSTATE 'PS409' THEN
         IF SQLERRM NOT LIKE '%outside the provider''s hours%' THEN
@@ -338,7 +338,7 @@ BEGIN
     END;
     RESET ROLE;
     BEGIN
-        PERFORM projects.fn_book_session_slot(v_fern_listing, v_teen, 'user', v_teen, 1000, 1, 'USD', v_in_start, NULL);
+        PERFORM projects.fn_book_session_slot(v_fern_listing, v_teen, 'user', v_teen, 1000, 1, 'USD', v_in_start, NULL, NULL);
         RAISE EXCEPTION 'FAIL 8: a minor booked a session';
     EXCEPTION WHEN SQLSTATE 'PM403' THEN NULL;
     END;

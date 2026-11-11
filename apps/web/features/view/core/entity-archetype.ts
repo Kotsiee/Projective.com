@@ -1,4 +1,9 @@
-import type { EntityView, ExploreOwner, ServiceViewExtra } from "@projective/types/explore";
+import type {
+	EntityView,
+	ExploreOwner,
+	ServiceViewExtra,
+	SessionPlanItem,
+} from "@projective/types/explore";
 
 /**
  * View feature — the polymorphic archetype resolver for `/view/[entity]`.
@@ -321,7 +326,7 @@ export function showsStageLedger(archetype: EntityArchetype, view: EntityView): 
 	return false;
 }
 
-/** Whether the canvas embeds the `@projective/ui/calendar` mini-scheduler. */
+/** Whether the archetype is booked from the slot picker (Session / Group Session) — its body is the sitting track. */
 export function showsScheduler(archetype: EntityArchetype): boolean {
 	return archetype === "session" || archetype === "cohort";
 }
@@ -371,14 +376,51 @@ export function scopeHeadingFor(archetype: EntityArchetype): string {
 		case "one_off":
 			return "What you get";
 		case "session":
-			return "Book a time";
+			return "Sessions";
 		case "cohort":
-			return "Cohort schedule";
+			return "Cohort sessions";
 		case "product":
 			return "What's in the download";
 		default:
 			return "Overview";
 	}
+}
+
+/** The session facts the sitting track and its lead sentence read from a view. */
+export interface SessionFacts {
+	service?: Pick<ServiceViewExtra, "sessionCount" | "sessionPlan" | "sessionRolling">;
+}
+
+/**
+ * The rows of a Session's or Group Session's sitting track: the seller's plan, extended to one row
+ * per scheduled sitting so a cohort whose seller wrote no plan still lists every sitting's time.
+ */
+export function sessionTrackFor(view: SessionFacts, sittingCount = 0): SessionPlanItem[] {
+	const plan = view.service?.sessionPlan ?? [];
+	const count = Math.max(plan.length, sittingCount);
+	return Array.from(
+		{ length: count },
+		(_, i) => plan[i] ?? { index: i + 1, title: "", description: "" },
+	);
+}
+
+/**
+ * The one sentence above a Session's or Group Session's sittings: what a booking commits the buyer
+ * to — one sitting, a block (session 1 required, the rest then or later), an ongoing run booked one
+ * at a time, or a seat in a cohort's fixed sittings.
+ */
+export function sessionBookingNoteFor(view: SessionFacts, archetype: EntityArchetype): string {
+	if (archetype === "cohort") {
+		return "The group meets at set times. Reserving a seat books you into every sitting.";
+	}
+	if (view.service?.sessionRolling) {
+		return "Book one session at a time, whenever you need the next. There is no fixed number of sessions.";
+	}
+	const count = view.service?.sessionCount ?? 1;
+	if (count > 1) {
+		return `A block of ${count} sessions. Pick a time for session 1 when you book; schedule the others then, or agree them with the provider after checkout.`;
+	}
+	return "Pick a time when you book. The provider's working hours, buffers and blackout dates are already applied, so every time offered can be booked.";
 }
 
 /**

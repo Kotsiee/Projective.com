@@ -7,7 +7,7 @@
 > rulings on Decision #341 (E1–E3). Every prompt cites its evidence by finding ID (`U-`, `L-`, `D-`,
 > `G-`, and the audit's `QW-`, `SC-`, `DB-` rows) and its ruling as `(Decision #NNN, ruling X)`. The
 > options behind each ruling are in
-> [`ARCHITECTURAL_DECISIONS_AND_CLARIFICATIONS.md`](ARCHITECTURAL_DECISIONS_AND_CLARIFICATIONS.md)
+> [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md)
 > (ADC, Q1–Q17). Paste each prompt into its **own fresh session**, after the standard header (§1).
 >
 > **Before you start:** these prompts assume `main` at or after `94d22e84` (Wave 1.1). Run them in
@@ -123,7 +123,7 @@ These cannot run in parallel because they edit the same files:
   the forced-colors outline (closing DESIGN_SYSTEM §F.1), and corrects the cited criterion to WCAG
   2.4.7.
 - **Owner action, no prompt: Q0.5.** The root `CLAUDE.md` diff is drafted in
-  [`WAVE1_CLAUDE_MD_PROPOSAL.md`](WAVE1_CLAUDE_MD_PROPOSAL.md). Agents may not edit guardrail files.
+  the root `CLAUDE.md` edit `f1f10e31`. Agents may not edit guardrail files.
 - **Inherited open items:** none of the five rulings still open after Wave 1.1 (#338 P4's
   `create_category` label, #252 S2's storage and contract-rate questions, #337 M5's FX margin, and
   the ⚖️ items) gates a prompt here.
@@ -195,7 +195,7 @@ Before writing code:
      changes), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (the U-, L-,
-     D-, G-, QW-, SC- and DB- IDs cited below) and ARCHITECTURAL_DECISIONS_AND_CLARIFICATIONS.md
+     D-, G-, QW-, SC- and DB- IDs cited below) and PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md
      (Q1-Q17, the options behind each ruling).
   3. Read Decision #341's OWNER RULINGS (grep -n '^| 341 |'
      documentation/reference/decisions/decisions-122-126.md) and FOUNDER_QUESTIONNAIRE.md Part C,
@@ -1320,7 +1320,7 @@ ROLE: Documentation steward. Runs after every prompt above has merged.
 
 FILES: architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (a Status column on every U-,
 L-, D-, G-, QW-, SC- and DB- row: Fixed by <prompt> / Owned by <track and prompt> / Open),
-architecture/ARCHITECTURAL_DECISIONS_AND_CLARIFICATIONS.md (each Q: ruled, and built by <prompt>),
+architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (each Q: ruled, and built by <prompt>),
 the #341 decision row (each flag (a)-(q) Resolved with its ruling and prompt, or Open with an
 owner), architecture/SYSTEM_ARCHITECTURE.md §Caching Strategy (no Not built yet marker left on a
 built piece), design-system/DESIGN_SYSTEM.md (§B.4.2, §B.9.6, §B.10.1, §B.14, §C.1, §F.1, §F.5,

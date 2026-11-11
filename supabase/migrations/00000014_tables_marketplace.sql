@@ -124,6 +124,16 @@ CREATE TABLE marketplace.service_blueprints (
     -- instead of assuming an hour.
     session_minutes integer CHECK (session_minutes IS NULL OR session_minutes BETWEEN 5 AND 600),
     session_count integer CHECK (session_count IS NULL OR session_count BETWEEN 1 AND 52),
+    -- THE SESSION PLAN: what each sitting of a fixed-count Session or Group Session covers, as the
+    -- seller writes it (Decision #411). An ORDERED array of `{ title, description }` objects
+    -- (`@projective/types/explore` `stored.ts`, `BlueprintSessionPlanEntrySchema`) read BY POSITION —
+    -- entry 0 is session 1 — so a blank entry keeps the numbers of the ones after it. A document for
+    -- the reason `stage_template` is one. Readers take at most `session_count` entries.
+    session_plan jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- A 1-on-1 Session sold as an ONGOING relationship rather than a fixed block (Decision #411): every
+    -- booking is one session and the buyer books again whenever they need another, so a rolling row has
+    -- no count beyond one and no plan (`ck_service_blueprints_rolling_session`).
+    session_rolling boolean NOT NULL DEFAULT false,
     -- A One-Off's delivery time in days, as the seller commits to it (Decision #217). NULL until stated.
     turnaround_days smallint CHECK (turnaround_days IS NULL OR turnaround_days BETWEEN 1 AND 90),
     -- The room provider a Session or Group Session books into. NULL defers to the seller's connected
@@ -162,6 +172,15 @@ CREATE TABLE marketplace.service_blueprints (
     ),
     CONSTRAINT ck_service_blueprints_team_roles_shape CHECK (
         jsonb_typeof(team_roles) = 'array' AND jsonb_array_length(team_roles) <= 12
+    ),
+    CONSTRAINT ck_service_blueprints_session_plan_shape CHECK (
+        jsonb_typeof(session_plan) = 'array' AND jsonb_array_length(session_plan) <= 52
+    ),
+    -- Settlement writes `session_count` sittings per purchase, so a rolling listing must be one sitting
+    -- per booking, with no per-sitting plan to promise.
+    CONSTRAINT ck_service_blueprints_rolling_session CHECK (
+        NOT session_rolling
+        OR (COALESCE(session_count, 1) = 1 AND jsonb_array_length(session_plan) = 0)
     ),
     -- The discriminator and the team reference must agree. Storing both without this constraint is
     -- how a row comes to say "team-owned" while pointing at no team, which a reader can only resolve

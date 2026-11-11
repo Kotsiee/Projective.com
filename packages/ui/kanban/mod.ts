@@ -5,7 +5,9 @@
  * emits {@link KanbanItemMove}/{@link KanbanColumnMove} on drop and never mutates the model — so a
  * consumer can commit immediately or intercept a move (e.g. a warning/confirmation modal) before
  * committing. Column and item drag, drop indicators, WIP counts, sleek scrollbars, elevation-on-drag,
- * reduced-motion jump-to-final, and an `aria-live` keyboard-DnD announcer are all built in.
+ * reduced-motion jump-to-final, and an `aria-live` keyboard-DnD announcer are all built in, as are the
+ * viewport gestures (continuous wheel, Ctrl/Meta-drag pan, settle-on-release) and per-card and
+ * per-column right-click menu slots.
  */
 
 // #region Board (island) + parts
@@ -26,5 +28,21 @@ export type {
 	KanbanItemRenderCtx,
 	KanbanRenderColumnHeader,
 	KanbanRenderItem,
+	KanbanRenderMenu,
 } from "./core/types.ts";
+// #endregion
+
+// #region Viewport
+export { useBoardViewport } from "./hooks/useBoardViewport.ts";
+export type { BoardViewport, BoardViewportOptions } from "./hooks/useBoardViewport.ts";
+export {
+	boardWheelDelta,
+	PAN_THRESHOLD_PX,
+	SNAP_IDLE_MS,
+	snapTarget,
+	WHEEL_LINE_PX,
+	wheelPixels,
+	wheelStaysInColumn,
+} from "./core/viewport.ts";
+export type { BoardWheel } from "./core/viewport.ts";
 // #endregion

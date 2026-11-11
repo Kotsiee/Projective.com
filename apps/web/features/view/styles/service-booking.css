@@ -578,6 +578,13 @@
     color: var(--text-secondary);
 }
 
+.sbk__picked {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--on-surface);
+}
+
 /* ============================================================================
  * Fields
  * ========================================================================== */
@@ -729,7 +736,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-.sbk__fileremove {
+.sbk__fileremove,
+.sbk__unpick {
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -744,12 +752,14 @@
     cursor: pointer;
 }
 
-.sbk__fileremove:hover {
+.sbk__fileremove:hover,
+.sbk__unpick:hover {
     background: var(--surface-2);
     color: var(--on-surface);
 }
 
-.sbk__fileremove:focus-visible {
+.sbk__fileremove:focus-visible,
+.sbk__unpick:focus-visible {
     outline: none;
     box-shadow: none;
 }

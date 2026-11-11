@@ -152,6 +152,9 @@ function ArchetypeScope(
 		push("Format", view.service?.bookingSummary);
 		if (view.item.type === "services") push("Delivery", view.item.delivery);
 		if (view.service?.sessionMinutes) push("Length", `${view.service.sessionMinutes} minutes`);
+		for (const sitting of view.service?.sessionPlan ?? []) {
+			if (sitting.title) rows.push({ label: `Session ${sitting.index}`, value: sitting.title });
+		}
 		return (
 			<>
 				<PreviewSection title={heading}>

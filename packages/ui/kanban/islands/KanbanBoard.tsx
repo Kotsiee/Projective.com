@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
+import { useBoardViewport } from "../hooks/useBoardViewport.ts";
 import "../styles/kanban.css";
 import { cx } from "../../core/cx.ts";
 import DndContext from "../../dnd/islands/DndContext.tsx";
@@ -15,6 +16,7 @@ import type {
 	KanbanItemMove,
 	KanbanRenderColumnHeader,
 	KanbanRenderItem,
+	KanbanRenderMenu,
 } from "../core/types.ts";
 
 /**
@@ -25,6 +27,12 @@ import type {
  * {@link KanbanColumnMove} so the consumer can commit immediately OR intercept (e.g. confirm a move
  * with a warning modal). Sleek scrollbars come free from the global `:not(html):not(body)` rule; an
  * `aria-live` region announces every pickup/move/drop for keyboard users.
+ *
+ * The viewport follows {@link useBoardViewport}: the wheel moves the board sideways 1:1 (a column that
+ * scrolls keeps its own vertical wheel), Ctrl/Meta + drag pans it while the middle button keeps the
+ * browser's autoscroll, and it settles on the nearest column only once the reader lets go. Cards and
+ * columns can each carry a right-click menu ({@link KanbanBoardProps.renderItemMenu} ·
+ * {@link KanbanBoardProps.renderColumnMenu}).
  */
 export interface KanbanBoardProps<T, C = unknown> {
 	columns: KanbanColumnModel<C>[];
@@ -63,6 +71,13 @@ export interface KanbanBoardProps<T, C = unknown> {
 	/** Enable column drag-reorder board-wide (per-column still gated by `column.reorderable`). */
 	columnsReorderable?: boolean;
 	emptyColumn?: (column: KanbanColumnModel<C>) => ComponentChildren;
+	/**
+	 * A card's right-click menu — typically an `ActionMenu` given `surface`. The card root is the
+	 * surface, so the ContextMenu key and Shift+F10 on a focused card open it too.
+	 */
+	renderItemMenu?: KanbanRenderMenu<T>;
+	/** A column's right-click menu, for its header, body and empty space. A card's own menu wins. */
+	renderColumnMenu?: KanbanRenderMenu<KanbanColumnModel<C>>;
 	ariaLabel?: string;
 	class?: string;
 }
@@ -75,6 +90,11 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 	const columnDropIndex = useSignal<number | null>(null);
 	const announce = useSignal("");
 	const lastAnnounceKey = useRef("");
+	const boardRef = useRef<HTMLDivElement>(null);
+	const viewport = useBoardViewport({
+		scrollerRef: boardRef,
+		isDragging: () => store.active.peek() !== null,
+	});
 
 	// #region Per-render lookups (fresh maps; the monitor reads the latest via useDndMonitor's ref)
 	const idOf = props.getItemId;
@@ -337,6 +357,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 			render: (ctx) => props.renderItem(it, ctx),
 			onActivate: props.onItemActivate ? () => props.onItemActivate?.(it) : undefined,
 			actions: props.renderItemActions?.(it) ?? null,
+			menu: props.renderItemMenu ? (surface) => props.renderItemMenu?.(it, surface) : undefined,
 		}));
 
 	const colIndicator = (key: string) => (
@@ -350,7 +371,11 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 			aria-label={props.ariaLabel ?? "Board"}
 			aria-roledescription="Kanban board"
 		>
-			<div class="ui-kanban__board">
+			<div
+				ref={boardRef}
+				class="ui-kanban__board"
+				data-panning={viewport.panning.value || undefined}
+			>
 				{props.columns.map((col, i) => (
 					<>
 						{columnDragActive && columnDropIndex.value === i ? colIndicator(`ci-${i}`) : null}
@@ -364,6 +389,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 							header={props.renderColumnHeader}
 							footer={props.renderColumnFooter}
 							empty={props.emptyColumn}
+							menu={props.renderColumnMenu}
 						/>
 					</>
 				))}

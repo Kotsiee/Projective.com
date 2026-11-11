@@ -3,13 +3,12 @@
 > **Status: WORK ORDERS, not binding. Refreshed 2026-10-30 against the owner's rulings (Wave 1.2).**
 > A sequenced series of self-contained Claude Code prompts for the finance engine, the Stripe rails,
 > `/wallet` and `/checkout`. Every prompt cites its evidence by finding ID: the IDs of
-> [`FINANCE_AUDIT.md`](FINANCE_AUDIT.md) (FA: `L` `W` `E` `S` `K` `H` `A` `V` `R` `M` `Z` `C` `CO`
-> `D`), as re-verified by [`FINANCE_COMPLETENESS_AUDIT.md`](FINANCE_COMPLETENESS_AUDIT.md) (FCA,
-> which adds `N1`–`N34`). It cites its ruling as `(Decision #337, ruling X)`, from the OWNER RULINGS
-> on Decision #337 and the ruling table in [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md)
-> Part C. The `X` contradictions and `D-` items are those of
-> [`FINANCE_DISCREPANCIES_AND_DECISIONS.md`](FINANCE_DISCREPANCIES_AND_DECISIONS.md) (FDD). The
-> never-recorded "Decision #251" is superseded by #337, and F0 is retired (ruling Q0.1).
+> [`FINANCE_AUDIT.md`](FINANCE_AUDIT.md), the one finance audit: FA's `L` `W` `E` `S` `K` `H` `A`
+> `V` `R` `M` `Z` `C` `CO` `D`, as re-verified by FCA, which adds `N1`–`N34`. It cites its ruling as
+> `(Decision #337, ruling X)`, from the OWNER RULINGS on Decision #337 and the ruling table in
+> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C. The `X` contradictions and `D-`
+> items are FDD's, in the same file. The never-recorded "Decision #251" is superseded by #337, and
+> F0 is retired (ruling Q0.1).
 >
 > **Done, each verified in git:** A12 and CO20 (`660c9658`); DB1's remainder, N1 and N5 (`172f9d66`;
 > N1's cron job, `finance-sweep-card-payments`, is registered by the Wave 1 jobs session in
@@ -187,8 +186,8 @@ logged; the coordinator logs them.
 - **M1's `/pricing` copy** (#252 (l)) is `SUBSCRIPTIONS_BUILD_PROMPTS.md`'s. **#341 E2's lint ban**
   on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7). **The
   abandoned-basket nudge** (FA (t)) is a comms notification (`COMMS_BUILD_PROMPTS.md`).
-- **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit
-  (`WAVE1_CLAUDE_MD_PROPOSAL.md`). No prompt here touches a guardrail file.
+- **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (the root `CLAUDE.md` edit
+  `f1f10e31`). No prompt here touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),
   instant payouts and maintenance cycles (ruling P3), the shadow double-entry journal and the
   Stripe-balance reconciliation (ruling M2 B; FA L6), tax computation (A9) and the wallet-plus-card
@@ -209,9 +208,9 @@ Before writing code:
      documentation/CLAUDE.md; documentation/database/CLAUDE.md when SQL changes;
      packages/ui/CLAUDE.md for UI), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
-  2. Read the evidence your prompt cites: documentation/architecture/FINANCE_COMPLETENESS_AUDIT.md
+  2. Read the evidence your prompt cites: documentation/architecture/FINANCE_AUDIT.md
      (FCA: the re-verified FA IDs and N1-N34), FINANCE_AUDIT.md (FA) and
-     FINANCE_DISCREPANCIES_AND_DECISIONS.md (FDD: the X and D- items).
+     FINANCE_AUDIT.md (FDD: the X and D- items).
   3. Read the rulings: Decision #337's OWNER RULINGS (grep -n '^| 337 |'
      documentation/reference/decisions/decisions-122-126.md) and the ruling table in
      documentation/architecture/FOUNDER_QUESTIONNAIRE.md Part C. Then grep
@@ -2279,15 +2278,15 @@ FILES: documentation/database/finance/*; business/finance-model.md; business/PRO
 rule, payout schedule, pots, checkout order and lines, spend approval);
 architecture/SYSTEM_ARCHITECTURE.md (Stripe, reconciliation, the env contract);
 architecture/ROUTING.md (the wallet 303, /admin/ledger, checkout); design-system/DESIGN_SYSTEM.md
-(§C.1, the Wallet exception, §B.8); architecture/FINANCE_AUDIT.md and FINANCE_COMPLETENESS_AUDIT.md
+(§C.1, the Wallet exception, §B.8); architecture/FINANCE_AUDIT.md
 (a Status column: "Fixed by <prompt> (<commit>)" or "Open — <owner>");
-FINANCE_DISCREPANCIES_AND_DECISIONS.md (each X and D- item: built, or open with its prompt);
+FINANCE_AUDIT.md (each X and D- item: built, or open with its prompt);
 Decision #337's row (each ruling marked built with its prompt; re-check the index for a number
 collision before any decision edit).
 
 SPEC: rollup, not restatement (documentation/CLAUDE.md rule 2). grep every "**Not built yet**" and
 "**Planned**" that cites Decision #337: each one left names its open prompt or its Planned owner. Do
-not edit the root CLAUDE.md: the X4 / N31 persona fix is the owner's (WAVE1_CLAUDE_MD_PROPOSAL.md);
+not edit the root CLAUDE.md: the X4 / N31 persona fix is the owner's (the root `CLAUDE.md` edit `f1f10e31`);
 report whether it has landed.
 
 ACCEPTANCE: every function, trigger, view and job named in DB2-DB21 and SV8 appears in

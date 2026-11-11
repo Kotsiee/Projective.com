@@ -45,6 +45,17 @@
 	align-self: stretch;
 }
 
+.cat-offer__sessions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-self: stretch;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: 0;
+}
+
 .cat-offer__step-number {
 	display: inline-flex;
 	align-items: center;

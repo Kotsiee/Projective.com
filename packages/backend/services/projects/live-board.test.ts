@@ -7,6 +7,7 @@ import {
 	STAGE_WINDOW_COLUMNS,
 	type StageWindowRow,
 	stageWindows,
+	viewerIsClientOf,
 } from "./live-board.ts";
 
 /**
@@ -811,5 +812,16 @@ Deno.test("fetchTicketLocation THROWS when either read fails", async () => {
 			"projects.projects read failed",
 		);
 	});
+});
+// #endregion
+
+// #region Client side
+Deno.test("the owner of an instantiated pipeline service is its client side", () => {
+	assertEquals(viewerIsClientOf("service", "owner"), true);
+	assertEquals(viewerIsClientOf("service", "client"), true);
+	assertEquals(viewerIsClientOf("service", "admin"), false);
+	assertEquals(viewerIsClientOf("service", "freelancer"), false);
+	assertEquals(viewerIsClientOf("project", "admin"), true);
+	assertEquals(viewerIsClientOf("project", "member"), false);
 });
 // #endregion

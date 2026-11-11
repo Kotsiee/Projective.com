@@ -1,5 +1,5 @@
 -- =============================================================================================
--- Probe: a recurring deposit is written only through its door (FINANCE_COMPLETENESS_AUDIT A12).
+-- Probe: a recurring deposit is written only through its door (FINANCE_AUDIT A12).
 --
 -- A rule charges the card of the member who authorised it (`created_by`, stamped by
 -- finance.create_deposit_rule, which requires `add_funds`). Before the fix `authenticated` held

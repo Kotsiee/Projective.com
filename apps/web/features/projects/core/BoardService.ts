@@ -8,6 +8,7 @@ import type {
 	CommitTicket,
 	CreatedStage,
 	CreateStageInput,
+	DeleteTicket,
 	MoveTicket,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
@@ -92,5 +93,13 @@ export const BoardService = {
 	 */
 	claim(payload: ClaimTicket): Promise<ProjectsResult<{ card: BoardCard }>> {
 		return postProjects<{ card: BoardCard }>("/api/projects/ticket/claim", payload);
+	},
+
+	/**
+	 * Delete one pristine ticket. Not optimistic: the board drops the card only once the server has
+	 * deleted it, and a refusal (claimed, funded, submitted against, not the client) is said as is.
+	 */
+	remove(payload: DeleteTicket): Promise<ProjectsResult<{ ticketId: string }>> {
+		return postProjects<{ ticketId: string }>("/api/projects/ticket/delete", payload);
 	},
 };

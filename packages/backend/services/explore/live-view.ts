@@ -3,7 +3,7 @@ import { publicObjectUrl } from "../../core/storage-url.ts";
 import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
-import type { Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
+import type { BlueprintRow, Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
 import { displayPrice, entityKey, peekCatalog, readArticleBody, stampOf } from "./live-catalog.ts";
 import { nearestToEntity } from "../search/embedding-index.ts";
 import { reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
@@ -22,6 +22,7 @@ import {
 	type ExploreItem,
 	type ExploreOwner,
 	licenceTerms,
+	parseSessionPlan,
 	parseStoredList,
 	type ProductFile,
 	type ProductFormat,
@@ -37,6 +38,7 @@ import {
 	type ServiceModel,
 	type ServiceRole,
 	type ServiceViewExtra,
+	type SessionPlanItem,
 	type StageRevisions,
 	type StageRole,
 	StoredArticleBlockSchema,
@@ -636,10 +638,16 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 
 	const seatsPerSession = group ? bp.max_seats_per_cohort : undefined;
 	const sessionMinutes = bookable ? bp.session_minutes ?? undefined : undefined;
-	const sessionCount = model === "session" ? bp.session_count ?? 1 : undefined;
+	const sessionRolling = model === "session" && bp.session_rolling === true;
+	const sessionCount = model === "session"
+		? (sessionRolling ? 1 : bp.session_count ?? 1)
+		: undefined;
+	const sessionPlan = bookable && !sessionRolling ? sessionPlanOf(bp) : undefined;
 	const bookingSummary = bookable
 		? group
 			? `${item.delivery}${seatsPerSession ? ` · up to ${seatsPerSession} seats` : ""}`
+			: sessionRolling && sessionMinutes
+			? `Ongoing · ${sessionMinutes} min sessions`
 			: (sessionCount ?? 1) > 1 && sessionMinutes
 			? `${sessionCount} × ${sessionMinutes} min sessions`
 			: item.delivery
@@ -657,8 +665,25 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 		bookingSummary,
 		sessionCount,
 		sessionMinutes,
+		sessionRolling: model === "session" ? sessionRolling : undefined,
+		sessionPlan,
 		intake: parseStoredList(IntakeFieldSchema, bp.intake_fields),
 	};
+}
+
+/**
+ * A fixed-count listing's sittings, one entry per sitting and numbered from 1. Absent for a single
+ * sitting the seller did not describe, where a one-row breakdown would say nothing.
+ */
+function sessionPlanOf(bp: BlueprintRow): SessionPlanItem[] | undefined {
+	const count = Math.min(52, Math.max(1, bp.session_count ?? 1));
+	const stored = parseSessionPlan(bp.session_plan).slice(0, count);
+	if (count === 1 && !stored.some((s) => s.title || s.description)) return undefined;
+	return Array.from({ length: count }, (_, i) => ({
+		index: i + 1,
+		title: stored[i]?.title ?? "",
+		description: stored[i]?.description ?? "",
+	}));
 }
 
 // #endregion

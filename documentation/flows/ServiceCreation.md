@@ -23,8 +23,8 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 > **Status (2026-10-13) — pipeline instantiation is a real transaction (Decision #209).** "Add to
 > Projects" is one `marketplace.instantiate_service_blueprint` call
 > ([`../database/marketplace/Functions.md`](../database/marketplace/Functions.md)): project, one
-> stage per `stage_template` entry at its standard price, one priced backlog ticket per stage, every
-> room and the request record, idempotent on the client's key and on the buyer's live draft. The
+> stage per `stage_template` entry at its standard price, every room and the request record — and
+> no tickets: the client creates them (Decision #409, amending #209), idempotent on the client's key and on the buyer's live draft. The
 > listing's CTA reads `marketplace.get_service_draft`, and "Remove draft" is
 > `marketplace.archive_service_draft`. Both services now resolve the listing they act on through
 > `resolveListing` (`packages/backend/services/explore/listing-source.ts`). With
@@ -120,7 +120,7 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | Service Detail → session booking       | `finance.basket_items` with `scheduled_at`, `timezone`, `metadata.answers`                                    | Stub (per-process store) — see `API_BACKLOG.md` P0 #12                                                                                     |
 | Service Detail → one-off / task brief  | `finance.basket_items` with `metadata.answers` + the brief                                                     | Stub                                                                                                                                         |
-| Service Detail → pipeline instantiate  | `projects.projects` (`source_blueprint_id`, `status='draft'`, `visibility='unlisted'`) + stages + one priced ticket per stage + rooms + `projects.service_instantiations` (key, `answers`, currency) | **Live** — `marketplace.instantiate_service_blueprint`, one transaction (Decision #209); stub (`draft-store` + `write-store`) only with `PROJECTS_BACKEND_LIVE` off |
+| Service Detail → pipeline instantiate  | `projects.projects` (`source_blueprint_id`, `status='draft'`, `visibility='unlisted'`) + stages + rooms (no tickets — the client creates them, Decision #409) + `projects.service_instantiations` (key, `answers`, currency) | **Live** — `marketplace.instantiate_service_blueprint`, one transaction (Decision #209); stub (`draft-store` + `write-store`) only with `PROJECTS_BACKEND_LIVE` off |
 | Project Assignment → hire invitation   | `projects.project_invitations` with `target_user_id`, `message`, `offer_price_cents`, `answers`, `placeholder` | Stub — the live INSERT needs a token minter; `resolveHireOffer` derives `placeholder` server-side and it is never accepted from the payload |
 | Consultation → discovery call          | `scheduling.discovery_calls` with `proposed_start/_end`, `provider_slug`, `service_blueprint_id` (NULL from a profile) | Stub (`call-store.ts`, whose row already mirrors every column)                                                                              |
 

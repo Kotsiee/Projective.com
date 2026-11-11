@@ -250,6 +250,8 @@ function primeServices(): void {
 			deliverables: [],
 			session_minutes: null,
 			session_count: null,
+			session_plan: [],
+			session_rolling: false,
 			rating_average: 0,
 			rating_count: 0,
 		})),

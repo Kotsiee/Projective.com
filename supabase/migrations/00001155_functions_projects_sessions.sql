@@ -545,23 +545,26 @@ $$;
 -- `set_session` line (p_sittings = the listing's session_count), inside its own transaction, after
 -- writing the order line. In one step it:
 --   * finds or makes the listing's engagement and seats the buyer on a fresh one-seat cohort;
---   * writes the sittings — the first at the time the buyer picked, each later one PROVISIONALLY a week
---     after the one before (PRODUCT_SPEC §Session-Based A: the buyer commits to a block, not to six
---     specific Tuesdays) — and holds one escrow per sitting from the paying wallet;
+--   * writes the sittings — the first at the time the buyer picked, then each later time the buyer also
+--     chose at booking (`p_later_starts`, ascending, Decision #411), and every sitting left for later
+--     PROVISIONALLY a week after the one before (PRODUCT_SPEC §Session-Based A: the buyer commits to a
+--     block, not to six specific Tuesdays) — and holds one escrow per sitting from the paying wallet;
+--   * titles a sitting from the listing's session plan when the seller described it;
 --   * mirrors every sitting onto the provider's calendar (`scheduling.events.source_session_event_id`,
 --     with both people on its roster), so it blocks their free/busy and the Proactive Calendar can
 --     move it;
---   * for a block, opens the n-1 scheduling handshakes: a 1-on-1 reschedule round (round 0,
---     `collecting`, the provider to propose) on each provisional sitting, due `set_session_schedule_hours`
+--   * for a block, opens a scheduling handshake on each PROVISIONAL sitting: a 1-on-1 reschedule round
+--     (round 0, `collecting`, the provider to propose), due `set_session_schedule_hours`
 --     (72) after payment and never later than `session_cancel_notice_hours` before the provisional
 --     time. A round still open at its deadline lapses and the provisional time stands — exactly what
 --     `lapsed` already means (projects.fn_lapse_session_handshakes, which also reminds the provider
 --     once, 24 hours before the earliest deadline).
--- The buyer must be an adult (Decision #208), and the first sitting must sit inside the provider's
--- working hours — the listing's compiled availability preset when there is one, else the weekly bands
--- (scheduling.fn_band_covers with the blueprint, Decision #217 (d)); the pencilled-in later sittings
--- are agreed through their handshakes instead.
--- The first sitting's time is re-tested against the provider's calendar under a lock on it
+-- The buyer must be an adult (Decision #208), and every sitting the buyer chose must sit inside the
+-- provider's working hours — the listing's compiled availability preset when there is one, else the
+-- weekly bands (scheduling.fn_band_covers with the blueprint, Decision #217 (d)); the pencilled-in
+-- sittings are agreed through their handshakes instead. Chosen times run in order, each starting after
+-- the one before it ends, and number at most p_sittings - 1 after the first.
+-- Every chosen time is re-tested against the provider's calendar under a lock on it
 -- (scheduling.fn_slot_is_free: their events, their requested and confirmed discovery calls, their
 -- blackouts, with the schedule's buffers), so two buyers paying for the same slot at once queue here
 -- and the second is refused (and charged nothing — the whole order rolls back) rather than both being
@@ -575,7 +578,8 @@ CREATE OR REPLACE FUNCTION projects.fn_book_session_slot(
     p_sittings integer,
     p_currency text,
     p_starts_at timestamptz,
-    p_order_line_id uuid
+    p_order_line_id uuid,
+    p_later_starts timestamptz[]
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -585,6 +589,9 @@ SET search_path = ''
 AS $$
 DECLARE
     v_bp marketplace.service_blueprints;
+    v_chosen integer := COALESCE(pg_catalog.cardinality(p_later_starts), 0);
+    v_prev_end timestamptz;
+    v_plan_title text;
     v_eng record;
     v_project projects.projects;
     v_schedule uuid;
@@ -628,6 +635,19 @@ BEGIN
     END IF;
     v_minutes := COALESCE(v_bp.session_minutes, 60);
 
+    IF v_chosen > p_sittings - 1 THEN
+        RAISE EXCEPTION 'This booking holds % sessions, and % times were chosen', p_sittings, v_chosen + 1
+            USING ERRCODE = '22023';
+    END IF;
+    v_prev_end := p_starts_at + pg_catalog.make_interval(mins => v_minutes);
+    FOR k IN 1 .. v_chosen LOOP
+        IF p_later_starts[k] IS NULL OR p_later_starts[k] < v_prev_end THEN
+            RAISE EXCEPTION 'Each session has to start after the one before it ends — pick new times; nothing was charged'
+                USING ERRCODE = 'PC409';
+        END IF;
+        v_prev_end := p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes);
+    END LOOP;
+
     SELECT * INTO v_eng FROM projects.fn_session_engagement_for(p_blueprint_id);
     SELECT * INTO v_project FROM projects.projects WHERE id = v_eng.o_project_id;
     IF projects.fn_is_session_host(v_project.id, p_buyer) THEN
@@ -647,6 +667,18 @@ BEGIN
         IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes)) THEN
             RAISE EXCEPTION 'That time was just taken — pick another; nothing was charged' USING ERRCODE = 'PS409';
         END IF;
+        FOR k IN 1 .. v_chosen LOOP
+            IF NOT scheduling.fn_band_covers(v_schedule, 'working_hours'::scheduling.availability_kind,
+                   p_later_starts[k], p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes), p_blueprint_id) THEN
+                RAISE EXCEPTION 'The time for session % is outside the provider''s hours — pick another; nothing was charged', k + 1
+                    USING ERRCODE = 'PS409';
+            END IF;
+            IF NOT scheduling.fn_slot_is_free(v_schedule, p_later_starts[k],
+                   p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes)) THEN
+                RAISE EXCEPTION 'The time for session % was just taken — pick another; nothing was charged', k + 1
+                    USING ERRCODE = 'PS409';
+            END IF;
+        END LOOP;
     END IF;
 
     IF v_project.owner_team_id IS NOT NULL THEN
@@ -665,9 +697,17 @@ BEGIN
     RETURNING id INTO v_membership;
 
     FOR k IN 0 .. p_sittings - 1 LOOP
-        v_start := p_starts_at + pg_catalog.make_interval(days => 7 * k);
+        v_start := CASE
+            WHEN k = 0 THEN p_starts_at
+            WHEN k <= v_chosen THEN p_later_starts[k]
+            ELSE COALESCE(p_later_starts[v_chosen], p_starts_at) + pg_catalog.make_interval(days => 7 * (k - v_chosen))
+        END;
         v_end := v_start + pg_catalog.make_interval(mins => v_minutes);
-        v_title := CASE WHEN p_sittings = 1 THEN v_bp.title
+        v_plan_title := CASE WHEN pg_catalog.jsonb_typeof(v_bp.session_plan -> k) = 'object'
+                             THEN NULLIF(pg_catalog.btrim(COALESCE(v_bp.session_plan -> k ->> 'title', '')), '') END;
+        v_title := CASE WHEN p_sittings = 1 THEN COALESCE(v_bp.title || ' — ' || v_plan_title, v_bp.title)
+                        WHEN v_plan_title IS NOT NULL
+                        THEN pg_catalog.format('%s — session %s of %s: %s', v_bp.title, k + 1, p_sittings, v_plan_title)
                         ELSE pg_catalog.format('%s — session %s of %s', v_bp.title, k + 1, p_sittings) END;
 
         INSERT INTO projects.session_events (cohort_id, title, start_time, end_time)
@@ -692,7 +732,7 @@ BEGIN
             source_session_event_id, created_by
         ) VALUES (
             v_schedule, v_project.id, 'session'::scheduling.event_kind,
-            CASE WHEN k = 0 THEN 'confirmed'::scheduling.event_status ELSE 'tentative'::scheduling.event_status END,
+            CASE WHEN k <= v_chosen THEN 'confirmed'::scheduling.event_status ELSE 'tentative'::scheduling.event_status END,
             v_title, v_start, v_end, 1, 1, v_event, v_project.owner_user_id
         )
         RETURNING id INTO v_mirror;
@@ -701,11 +741,11 @@ BEGIN
             (v_mirror, v_project.owner_user_id, 'host'::scheduling.attendee_role,
                 'accepted'::scheduling.rsvp_response, pg_catalog.now()),
             (v_mirror, p_buyer, 'participant'::scheduling.attendee_role,
-                CASE WHEN k = 0 THEN 'accepted'::scheduling.rsvp_response ELSE 'pending'::scheduling.rsvp_response END,
-                CASE WHEN k = 0 THEN pg_catalog.now() END);
+                CASE WHEN k <= v_chosen THEN 'accepted'::scheduling.rsvp_response ELSE 'pending'::scheduling.rsvp_response END,
+                CASE WHEN k <= v_chosen THEN pg_catalog.now() END);
 
         v_deadline := NULL;
-        IF k > 0 THEN
+        IF k > v_chosen THEN
             v_deadline := LEAST(pg_catalog.now() + pg_catalog.make_interval(hours => v_window),
                                 v_start - pg_catalog.make_interval(hours => v_notice));
             INSERT INTO scheduling.event_reschedules (event_id, round, mode, status, opened_by_user_id, opened_at, resolves_at)
@@ -715,7 +755,7 @@ BEGIN
 
         v_sittings := v_sittings || pg_catalog.jsonb_build_object(
             'event_id', v_event, 'calendar_event_id', v_mirror, 'starts_at', v_start, 'ends_at', v_end,
-            'escrow_id', v_escrow, 'provisional', k > 0, 'agree_by', v_deadline);
+            'escrow_id', v_escrow, 'provisional', k > v_chosen, 'agree_by', v_deadline);
     END LOOP;
 
     PERFORM comms.fn_notify(
@@ -730,18 +770,21 @@ BEGIN
             'currency', v_currency),
         p_buyer, 'project', v_project.id, NULL, '/projects/' || v_project.slug
     );
-    IF p_sittings > 1 THEN
+    IF p_sittings - 1 > v_chosen THEN
         PERFORM comms.fn_notify(
             v_project.owner_user_id, 'session.scheduling_requested', 'Agree the remaining session times',
             pg_catalog.format('%s more sessions of "%s" are pencilled in weekly. Propose the times that suit you both within %s hours, or the pencilled-in times stand.',
-                p_sittings - 1, v_bp.title, v_window),
+                p_sittings - 1 - v_chosen, v_bp.title, v_window),
             'projects.cohorts', v_cohort, pg_catalog.jsonb_build_object('agree_by', v_first_deadline),
             p_buyer, 'project', v_project.id, NULL, '/projects/' || v_project.slug
         );
         PERFORM comms.fn_notify(
             p_buyer, 'session.scheduling_requested', 'Your remaining sessions are pencilled in',
-            pg_catalog.format('Your first session of "%s" is booked. The other %s are pencilled in weekly; your provider will propose times to agree with you within %s hours, or the pencilled-in times stand.',
-                v_bp.title, p_sittings - 1, v_window),
+            pg_catalog.format('%s The other %s are pencilled in weekly; your provider will propose times to agree with you within %s hours, or the pencilled-in times stand.',
+                CASE WHEN v_chosen = 0
+                     THEN pg_catalog.format('Your first session of "%s" is booked.', v_bp.title)
+                     ELSE pg_catalog.format('Your first %s sessions of "%s" are booked.', v_chosen + 1, v_bp.title) END,
+                p_sittings - 1 - v_chosen, v_window),
             'projects.cohorts', v_cohort, pg_catalog.jsonb_build_object('agree_by', v_first_deadline),
             v_project.owner_user_id, 'project', v_project.id, NULL, '/projects/' || v_project.slug
         );
@@ -754,15 +797,18 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid) IS
+COMMENT ON FUNCTION projects.fn_book_session_slot(uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid, timestamptz[]) IS
 'Internal (finance.place_wallet_order): seat a 1-1 buyer on a one-seat cohort of the listing''s session
-engagement, write the sittings (the first at the picked time, the rest provisionally weekly), hold one
-escrow per sitting from the paying wallet, mirror each sitting onto the provider''s calendar, and for a
-block open a 1-on-1 reschedule round on each provisional sitting due set_session_schedule_hours after
-payment (Decision #211). Refusals roll the whole order back: 22023 · PU422 own session / payer · PF402 ·
-PC409 time passed or listing gone · PM403 the buyer is under 18 · PS409 the time is not free on the
-provider''s calendar (scheduling.fn_slot_is_free: events, discovery calls, blackouts, buffers) or is
-outside their working hours (the listing''s compiled preset, else the weekly bands).';
+engagement, write the sittings (the first at the picked time, then the later times the buyer chose in
+p_later_starts, the rest provisionally weekly after the last chosen one), title each from the session
+plan, hold one escrow per sitting from the paying wallet, mirror each sitting onto the provider''s
+calendar, and for a block open a 1-on-1 reschedule round on each provisional sitting due
+set_session_schedule_hours after payment (Decisions #211, #411). Refusals roll the whole order back:
+22023 more chosen times than the block holds · PU422 own session / payer · PF402 · PC409 time passed,
+chosen times out of order or overlapping, or listing gone · PM403 the buyer is under 18 · PS409 a chosen
+time is not free on the provider''s calendar (scheduling.fn_slot_is_free: events, discovery calls,
+blackouts, buffers) or is outside their working hours (the listing''s compiled preset, else the weekly
+bands).';
 -- #endregion
 
 -- #region 4c. Group sittings — the provider's two doors (D0, S-05)

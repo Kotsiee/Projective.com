@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/board.css";
@@ -17,6 +17,7 @@ import "../styles/file-card.css";
 import "../styles/submission-review.css";
 import { KanbanBoard, type KanbanColumnModel, type KanbanItemMove } from "@projective/ui/kanban";
 import type { KanbanColumnMove } from "@projective/ui/kanban";
+import { ActionMenu } from "@projective/ui/navigation";
 import { Button, InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import {
 	type BoardCard,
@@ -57,6 +58,10 @@ import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeleton
 import { SearchIcon } from "../components/file-glyphs.tsx";
 import { TicketCard } from "../components/TicketCard.tsx";
 import { BoardColumnHeader } from "../components/BoardColumnHeader.tsx";
+import { BoardEmptyColumn } from "../components/BoardEmptyColumn.tsx";
+import { DeleteTicketDialog } from "../components/DeleteTicketDialog.tsx";
+import { columnMenuModel, ticketMenuModel } from "../core/board-menus.ts";
+import { channelHref } from "../core/chat-context.ts";
 import { TicketListView } from "../components/TicketListView.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
@@ -112,6 +117,12 @@ import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/fi
  * full card set is loaded — search/priority/assignee filter + Stages⁄Status grouping rebuild locally via
  * the shared column builder). Moves are OPTIMISTIC (persistence lands behind `PROJECTS_BACKEND_LIVE`);
  * the board is controlled, so a consequential move is committed only after its confirmation modal.
+ *
+ * Every card and column carries a right-click menu (`ActionMenu` on the package's card/column root,
+ * so the ContextMenu key and Shift+F10 work too): a card's rows are {@link ticketMenuModel}'s, a
+ * column's {@link columnMenuModel}'s, and each row runs the same handler its on-screen control does —
+ * a Move to goes through `onItemMove` and its warnings, a Delete through a confirmation. An empty
+ * column the viewer may create in offers a muted Create ticket beneath its drop hint.
  */
 export interface ProjectBoardProps {
 	scope: "project" | "channel";
@@ -255,6 +266,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	).current;
 	const pending = useSignal<PendingWarning | null>(null);
 	const warningVisible = useSignal(false);
+	/** The card a right-click Delete is confirming, and the dialog that confirms it. */
+	const deleteTarget = useSignal<BoardCard | null>(null);
+	const deleteOpen = useSignal(false);
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
 
@@ -911,6 +925,98 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		openCompose(col.kind === "stage" ? col.stageId : boardStageId);
 	}
 
+	/** The same gate the column header's ＋ draws: a client seat, a ticket-bearing board, a creatable column. */
+	function canCreateIn(col: BoardColumn | undefined): col is BoardColumn {
+		return !!col && access.value.isClient && access.value.hasTickets && col.canCreateTicket;
+	}
+
+	/**
+	 * A Move to row — the keyboard-free twin of a drag, appended to the end of its destination and sent
+	 * through {@link onItemMove}, so it meets every refusal and confirmation a drop meets.
+	 */
+	function moveToColumn(card: BoardCard, columnId: string): void {
+		const toIndex = visible.filter((c) => laneOf(c) === columnId).length;
+		onItemMove({ itemId: card.id, fromColumn: laneOf(card), toColumn: columnId, toIndex });
+	}
+
+	function requestDelete(card: BoardCard): void {
+		deleteTarget.value = card;
+		deleteOpen.value = true;
+	}
+
+	/**
+	 * Delete the confirmed ticket. Not optimistic: the card leaves the board once the server has deleted
+	 * it, and a ticket open in the modal chain closes with it. A refusal stays on the board and says why.
+	 */
+	async function deleteTicket(): Promise<void> {
+		const card = deleteTarget.peek();
+		deleteTarget.value = null;
+		if (!card) return;
+		const res = await BoardService.remove({ projectId: props.projectId, ticketId: card.id });
+		if (!res.ok) {
+			toast(res.message ?? "That ticket couldn't be deleted.");
+			return;
+		}
+		cards.value = cards.value.filter((c) => c.id !== card.id);
+		if ((ticketStack.top.peek()?.input?.ticketId ?? null) === card.id) ticketStack.close();
+		toast(res.message ?? "Ticket deleted.");
+	}
+
+	/** The stage channel a stage column is, or `null` for the New, Completed and status lanes. */
+	function stageHrefOf(col: BoardColumn): string | null {
+		if (col.kind !== "stage" || !col.stageId) return null;
+		const stage = stages.value.find((s) => s.id === col.stageId);
+		return stage ? channelHref(props.projectId, stage.slug) : null;
+	}
+
+	function ticketMenu(c: BoardCard, surface: RefObject<HTMLElement>): JSX.Element {
+		const model = ticketMenuModel({
+			card: c,
+			columns: boardColumns,
+			currentColumnId: laneOf(c),
+			isClient: access.value.isClient,
+			isFreelancer: access.value.isFreelancer,
+			boardHref: boardUrl,
+			canClaim: viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient),
+			canMove: canDrag(c),
+			dropRefusal: (col) => dropRefusal(c, col),
+		}, {
+			open: () => openDetail(c),
+			claim: () => void claimTicket(c),
+			startWork: () => void startWork(c),
+			submitWork: onCreateSubmission,
+			fund: () => buyTicket(c),
+			moveTo: (columnId) => moveToColumn(c, columnId),
+			copied: (ok) => toast(ok ? "Ticket link copied." : "That link couldn't be copied."),
+			remove: () => requestDelete(c),
+		});
+		return <ActionMenu model={model} surface={surface} aria-label={`Actions for ${c.title}`} />;
+	}
+
+	function columnMenu(
+		col: KanbanColumnModel<BoardColumn>,
+		surface: RefObject<HTMLElement>,
+	): JSX.Element | null {
+		const data = col.data;
+		if (!data) return null;
+		const model = columnMenuModel({
+			column: data,
+			canCreate: canCreateIn(data),
+			canAddStage: access.value.isClient && boardKind === "project" && grouping === "stages",
+			stageHref: stageHrefOf(data),
+		}, {
+			createTicket: () => openCreateForColumn(data),
+			addStage: () => (stageModalOpen.value = true),
+		});
+		return (
+			<ActionMenu
+				model={model}
+				surface={surface}
+				aria-label={`${col.title} column actions`}
+			/>
+		);
+	}
+
 	/**
 	 * Re-point the open ticket frame at a different id, keeping whatever sits beneath it.
 	 *
@@ -1158,18 +1264,29 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							renderColumnHeader={(ctx) => (
 								<BoardColumnHeader
 									ctx={ctx}
-									canCreate={access.value.isClient && access.value.hasTickets &&
-										!!ctx.column.data?.canCreateTicket}
+									canCreate={canCreateIn(ctx.column.data)}
 									onCreate={openCreateForColumn}
 								/>
 							)}
+							renderItemMenu={ticketMenu}
+							renderColumnMenu={columnMenu}
 							itemDraggable={canDrag}
 							itemDropRefusal={(c, col) => (col.data ? dropRefusal(c, col.data) : null)}
 							onItemMove={onItemMove}
 							onColumnMove={onColumnMove}
 							columnsReorderable={boardKind === "project" && grouping === "stages" &&
 								access.value.isClient}
-							emptyColumn={() => <span class="brd-dropzone">Drop tickets here</span>}
+							emptyColumn={(col) => {
+								const data = col.data;
+								return (
+									<BoardEmptyColumn
+										title={col.title}
+										onCreate={canCreateIn(data)
+											? () => openCreateForColumn(data)
+											: undefined}
+									/>
+								);
+							}}
 							ariaLabel={boardTitle}
 						/>
 					)
@@ -1281,6 +1398,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				open={stageModalOpen}
 				onClose={() => (stageModalOpen.value = false)}
 				onCreate={onCreateStage}
+			/>
+
+			<DeleteTicketDialog
+				visible={deleteOpen}
+				title={deleteTarget.value?.title ?? null}
+				onAccept={() => void deleteTicket()}
 			/>
 
 			<BoardWarnings

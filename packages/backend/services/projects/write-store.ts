@@ -163,6 +163,8 @@ interface OwnerBucket {
 	aliases: Map<string, string>;
 	/** Whole replacement cards, keyed by project id then ticket id. */
 	cards: Map<string, Map<string, BoardCard>>;
+	/** Tickets the client deleted, keyed by project id — withheld from every board read after. */
+	deletedCards: Map<string, Set<string>>;
 	/** Sent messages, keyed by {@link channelKey}, oldest first. */
 	messages: Map<string, ChatMessage[]>;
 	/** Created submission units, keyed by project id, newest first. */
@@ -249,6 +251,7 @@ function bucketFor(owner: string): OwnerBucket {
 		created: new Map(),
 		aliases: new Map(),
 		cards: new Map(),
+		deletedCards: new Map(),
 		messages: new Map(),
 		submissions: new Map(),
 		hires: new Map(),
@@ -459,6 +462,15 @@ export function putTicketCard(owner: string, projectId: string, card: BoardCard)
 	const forProject = bucket.cards.get(projectId) ?? new Map<string, BoardCard>();
 	forProject.set(card.id, card);
 	bucket.cards.set(projectId, forProject);
+}
+
+/** Record a deleted ticket: its stored card goes, and the corpus card is withheld from now on. */
+export function recordTicketDeletion(owner: string, projectId: string, ticketId: string): void {
+	const bucket = bucketFor(owner);
+	bucket.cards.get(projectId)?.delete(ticketId);
+	const gone = bucket.deletedCards.get(projectId) ?? new Set<string>();
+	gone.add(ticketId);
+	bucket.deletedCards.set(projectId, gone);
 }
 
 /** The stored card for one ticket, or `undefined` — the write path's read-before-write. */
@@ -1140,16 +1152,17 @@ export function overlayBoardPage(page: BoardPage, actor?: ReadActor): BoardPage 
 	const bucket = peekBucket(writeOwnerOf(actor));
 	if (!bucket) return page;
 	const stored = bucket.cards.get(page.projectId);
+	const deleted = bucket.deletedCards.get(page.projectId);
 	// Through the resolver, because a board page carries only the routed segment: the alias table is
 	// what lets a board opened by slug still see stages added through a save made by uuid.
 	const setup = storedSetupFor(writeOwnerOf(actor), [page.projectId])?.patch;
-	if (!stored?.size && !setup?.stages?.length) return page;
+	if (!stored?.size && !setup?.stages?.length && !deleted?.size) return page;
 
 	// A stage board is addressed by its channel id, and the fixture corpus mints a stage and its room
 	// with the SAME id (`stage-N`), which is also what `findBoardPage` matches on. Scope is therefore a
 	// stage-id comparison; a card in the New backlog carries no stage and is correctly excluded.
 	const inScope = (card: BoardCard): boolean =>
-		page.scope === "project" || card.stageId === page.channelId;
+		!deleted?.has(card.id) && (page.scope === "project" || card.stageId === page.channelId);
 
 	const cards: BoardCard[] = [];
 	const seen = new Set<string>();

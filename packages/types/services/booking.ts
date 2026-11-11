@@ -26,11 +26,12 @@ import { IntakeAnswersSchema } from "./intake.ts";
  * up front and a cohort seat is one occurrence of a recurring series — one shape covers all three,
  * and the count is validated against the listing server-side rather than by shape.
  *
- * **A set-session block requires exactly ONE slot at checkout.** The remaining `n - 1` are scheduled
- * after payment, which is the honest model: the buyer is committing to a block, not to six specific
- * Tuesdays four months out that they will inevitably need to move. The server enforces it; the
- * schema does not, because the rule is a property of the listing (its `sessionCount`) and a schema
- * that hard-coded `.length === 1` could not express a buyer who chose to schedule all of them.
+ * **A set-session block needs session 1; the rest are the buyer's choice (Decision #411).** The
+ * earliest chosen slot is session 1, and the buyer may also schedule any number of the later sittings
+ * now, up to the listing's `sessionCount`. Every sitting they leave unscheduled is booked later: it is
+ * pencilled in weekly after the last chosen one and agreed with the provider after payment. The
+ * server enforces the cap and refuses overlapping times; the schema does not, because the cap is a
+ * property of the listing.
  */
 export const SessionBookingInputSchema = z.object({
 	/** The listing being booked. */

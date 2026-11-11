@@ -1,9 +1,9 @@
 /*
  * profile-hire.css — the hire and project-addition workflows on a seller's `/[handle]` page
  * (root CLAUDE.md §8 Decision #108): the two hero popovers (`.pf-hiremenu`, `.pf-addmenu`), the
- * shared split modal (`.pf-split`) both assignment modals render in, the dynamic intake renderer
- * (`.pf-intake`), the consultation booking modal (`.pf-consult`) and the create-project wizard
- * (`.pf-wizard`). Token-only, strict BEM.
+ * shared split modal (`.pf-split`) both assignment modals render in, the consultation booking
+ * modal (`.pf-consult`) and the create-project wizard (`.pf-wizard`). The intake renderer's
+ * `.pf-intake` lives in `intake-fields.css`, carried by `IntakeFields` itself. Token-only, strict BEM.
  *
  * BODY-PORTALLED, all of it. `Popover` and `Dialog` project their panels into `document.body`,
  * outside `.pf`, so nothing here may read a `--pf-*` token — those are scoped to `.pf` and would
@@ -605,35 +605,6 @@
 .pf-projpreview__member-meta.evp-meta {
 	margin: 0;
 	font-size: var(--text-xs);
-}
-
-/* #endregion */
-
-/* #region Intake — the dynamic renderer */
-.pf-intake {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-}
-
-.pf-intake__number {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-
-.pf-intake__number[data-slider="true"] .ui-slider {
-	margin-inline: var(--space-2);
-}
-
-.pf-intake__checks {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-}
-
-.pf-intake__pills .ui-select-button__option {
-	border-radius: var(--radius-full);
 }
 
 /* #endregion */

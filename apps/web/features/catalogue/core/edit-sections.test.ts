@@ -45,12 +45,20 @@ const OFFERS: Readonly<Record<ListingOffer["archetype"], ListingOffer>> = {
 		],
 		teamRoles: [],
 	},
-	session: { archetype: "session", minutes: 45, count: 2, meetingProvider: "zoom" },
+	session: {
+		archetype: "session",
+		minutes: 45,
+		count: 2,
+		meetingProvider: "zoom",
+		plan: [],
+		rolling: false,
+	},
 	cohort: {
 		archetype: "cohort",
 		minutes: 90,
 		count: 1,
 		meetingProvider: null,
+		plan: [],
 		maxSeatsPerCohort: 20,
 		continuousEnrollment: true,
 	},
@@ -127,13 +135,15 @@ function blank(archetype: ListingOffer["archetype"]): ListingOffer {
 		case "pipeline":
 			return { archetype, stages: [], teamRoles: [] };
 		case "session":
-			return { archetype, minutes: 60, count: 1, meetingProvider: null };
+			return { archetype, minutes: 60, count: 1, meetingProvider: null, plan: [], rolling: false };
 		case "cohort":
 			return switchSessionFormat({
 				archetype: "session",
 				minutes: 60,
 				count: 1,
 				meetingProvider: null,
+				plan: [],
+				rolling: false,
 			}, "cohort");
 	}
 }

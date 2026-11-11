@@ -1,5 +1,5 @@
 -- =============================================================================================
--- Probe: wallet pots are read-only to clients (FINANCE_COMPLETENESS_AUDIT A4).
+-- Probe: wallet pots are read-only to clients (FINANCE_AUDIT A4).
 --
 -- A pot is a carve-out of a wallet's money, and its `auto_allocate_bp` decides where future income
 -- goes. Before the fix `authenticated` held INSERT/UPDATE on finance.wallet_pots under a FOR ALL

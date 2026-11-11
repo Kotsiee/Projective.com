@@ -5,7 +5,6 @@ import { cspHeaderFor } from "@web/utils/csp.ts";
 import { isListingSlug } from "@projective/types/catalogue";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { routeSellerScope } from "../core/seller-scope.ts";
 
 /**
@@ -17,8 +16,8 @@ import { routeSellerScope } from "../core/seller-scope.ts";
  * - The listing is read as its OWNER through `CatalogueBackendService.previewView`, the same
  *   `EntityView` assembler `/view/[id]` uses, so a draft simulates. A listing that is not the
  *   caller's is a 404, exactly as a missing one, so the answer never reveals that it exists.
- * - The offer and a session listing's schedule are resolved in simulation mode: the real offer, for
- *   a signed-in first-time buyer, without the owner's own "already in your projects" or sign-in states.
+ * - The offer is resolved in simulation mode: the real offer, for a signed-in first-time buyer,
+ *   without the owner's own "already in your projects" or sign-in states.
  * - Every answer carries the `framed` policy (`frame-ancestors 'self'`, paired by the middleware with
  *   `x-frame-options: SAMEORIGIN`): only this origin — the item workspace's Preview tab — may frame
  *   it, and a not-found inside the frame still renders as a page rather than a refused frame.
@@ -37,7 +36,7 @@ export const handler = define.handlers({
 		if (scope instanceof Response && scope.status === 308) return scope;
 		if (!isListingSlug(slug) || scope instanceof Response) {
 			ctx.state.title = "Preview · Catalogue";
-			return page({ view: null, offer: null, schedule: null, unavailable: false }, {
+			return page({ view: null, offer: null, unavailable: false }, {
 				status: 404,
 				headers: FRAMED_HEADERS(),
 			});
@@ -48,7 +47,7 @@ export const handler = define.handlers({
 		if (!read.ok || !read.data) {
 			const unavailable = read.status >= 500;
 			ctx.state.title = "Preview · Catalogue";
-			return page({ view: null, offer: null, schedule: null, unavailable }, {
+			return page({ view: null, offer: null, unavailable }, {
 				status: unavailable ? 503 : 404,
 				headers: FRAMED_HEADERS(),
 			});
@@ -58,14 +57,12 @@ export const handler = define.handlers({
 		const commerce = await resolveEntityCommerce(view, {
 			context: ctx.state.userContext,
 			handle: null,
-			viewer: viewerFromState(ctx.state),
 			simulation: { owner: actor },
 		});
 		ctx.state.title = `Preview ${view.item.title} · Catalogue`;
 		return page({
 			view,
 			offer: commerce.offer,
-			schedule: commerce.schedule,
 			unavailable: false,
 		}, { headers: FRAMED_HEADERS() });
 	},

@@ -1,5 +1,5 @@
 -- =============================================================================================
--- Probe: paying on account credits exactly what the order charges (FINANCE_COMPLETENESS_AUDIT CO20).
+-- Probe: paying on account credits exactly what the order charges (FINANCE_AUDIT CO20).
 --
 -- finance.place_on_account_order credits the business wallet with `p_amount` (`on_account_credit`)
 -- and then lets place_wallet_order debit the order's own server-priced total. The function is granted

@@ -3,7 +3,6 @@ import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
@@ -27,24 +26,18 @@ export const handler = define.handlers({
 			ctx.state.description = view.item.summary;
 			recordViewInBackground(ctx, view.item.id);
 		}
-		// The booking offer and a session's schedule are resolved HERE, server-side: the CTA is the reason
-		// this route exists, and it must be correct in the first byte rather than after a round trip that
-		// changes it under the reader's cursor.
+		// The booking offer is resolved HERE, server-side: the CTA is the reason this route exists, and it
+		// must be correct in the first byte rather than after a round trip that changes it under the
+		// reader's cursor.
 		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		const commerce = view
-			? await resolveEntityCommerce(view, {
-				context: ctx.state.userContext,
-				handle: null,
-				viewer: viewerFromState(ctx.state),
-				restricted,
-			})
-			: { offer: null, schedule: null };
+			? await resolveEntityCommerce(view, { context: ctx.state.userContext, handle: null })
+			: { offer: null };
 		return page({
 			view,
 			unavailable: status >= 500,
 			authed: !!ctx.state.isAuthenticated,
 			offer: commerce.offer,
-			schedule: commerce.schedule,
 			restricted,
 			// The page renders its own not-found / unavailable state, and the STATUS says so too — a
 			// crawler or a link checker must not record a missing listing as a live 200.
@@ -60,7 +53,6 @@ export default define.page<typeof handler>(function PublicEntityViewRoute({ data
 			ctx={{ scope: "explore" }}
 			authed={data.authed}
 			offer={data.offer}
-			schedule={data.schedule}
 			restricted={data.restricted}
 		/>
 	);

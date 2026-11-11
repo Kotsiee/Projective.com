@@ -432,8 +432,9 @@ export type ArticleViewExtra = z.infer<typeof ArticleViewSchema>;
  *   Stage Flow: sequence, per-stage deliverables, turnaround, and dependencies).
  * - **Direct Deliverable** → no stages; instead {@link ServiceViewSchema.roles} defines the optional
  *   project-team roles (the right-column "Project Team Roles" block).
- * - **Session / Group Session** → `bookable` is true, so the side-nav offers the availability-calendar
- *   toggle; `group` distinguishes a multi-attendee workshop from a 1:1 slot.
+ * - **Session / Group Session** → `bookable` is true, so the lane's primary opens the slot picker;
+ *   `group` distinguishes a multi-attendee workshop from a 1:1 slot, and {@link ServiceViewSchema.sessionPlan}
+ *   is the per-sitting breakdown (or `sessionRolling` the ongoing model).
  */
 
 /** The normalised delivery-model key the Services template dispatches on (slug of the {@link ServiceType}). */
@@ -455,6 +456,18 @@ export const ServiceRoleSchema = z.object({
 });
 export type ServiceRole = z.infer<typeof ServiceRoleSchema>;
 
+/**
+ * One sitting of a fixed-count Session or Group Session as the listing describes it — the session
+ * plan the seller wrote (`service_blueprints.session_plan`), numbered from 1. A sitting the seller
+ * did not describe carries blank strings rather than being left out, so the numbering holds.
+ */
+export const SessionPlanItemSchema = z.object({
+	index: z.number().int().min(1).max(52),
+	title: z.string().max(80),
+	description: z.string().max(600),
+});
+export type SessionPlanItem = z.infer<typeof SessionPlanItemSchema>;
+
 /** The services-only extension bundle attached to {@link EntityViewSchema}. */
 export const ServiceViewSchema = z.object({
 	/** The normalised delivery model the template dispatches on. */
@@ -469,7 +482,7 @@ export const ServiceViewSchema = z.object({
 	stages: z.array(ProjectStageSchema),
 	/** Defined project-team roles — Direct Deliverable only (the right-column block). Empty otherwise. */
 	roles: z.array(ServiceRoleSchema),
-	/** Whether the service is booked from a schedule (Session / Group Session) — gates the calendar toggle. */
+	/** Whether the service is booked from a schedule (Session / Group Session) — gates the slot picker. */
 	bookable: z.boolean(),
 	/** Whether this is a multi-attendee **Group Session** (vs a 1:1 Session). */
 	group: z.boolean(),
@@ -499,6 +512,17 @@ export const ServiceViewSchema = z.object({
 	 * offering a duration control that would imply otherwise.
 	 */
 	sessionMinutes: z.number().int().min(5).max(600).optional(),
+	/**
+	 * 1-on-1 Session only: the ongoing model (`session_rolling`). Each booking is one session and the
+	 * buyer books again whenever they need another, so there is no fixed number and no plan. Absent
+	 * (or false) on a fixed-count listing and on every other model.
+	 */
+	sessionRolling: z.boolean().optional(),
+	/**
+	 * Session / Group Session with a fixed count: one entry per sitting, in order. Present when the
+	 * listing has more than one sitting or the seller described any of them; absent otherwise.
+	 */
+	sessionPlan: z.array(SessionPlanItemSchema).max(52).optional(),
 	/**
 	 * The seller's own intake — the questions a buyer answers in the service modal before the
 	 * purchase is staged (`@projective/types/services` `IntakeField`). Seller-authored DATA, so the

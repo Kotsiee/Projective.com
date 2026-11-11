@@ -1235,6 +1235,44 @@ export const ClaimTicketSchema = z.object({
 });
 export type ClaimTicket = z.infer<typeof ClaimTicketSchema>;
 
+/** Delete one ticket (`projects.delete_ticket`) — offered only while {@link ticketDeletable} holds. */
+export const DeleteTicketSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	ticketId: z.string().min(1).max(120),
+});
+export type DeleteTicket = z.infer<typeof DeleteTicketSchema>;
+
+/**
+ * Whether a ticket may be DELETED — PRODUCT_SPEC §Deletion Protocol: only while nothing has happened
+ * to it. Never claimed, never funded (no hold, no payment, not paid ahead, no purchase in flight),
+ * never submitted against, and not completed. Anything else is archived, never deleted, so its history
+ * and the evidence the Reliability Index reads survive.
+ */
+export function ticketDeletable(
+	card: Pick<
+		BoardCard,
+		| "claimed"
+		| "claimedAt"
+		| "escrowHeld"
+		| "paymentScope"
+		| "payments"
+		| "submissions"
+		| "status"
+		| "frozen"
+		| "funding"
+	>,
+): boolean {
+	if (card.frozen || card.claimed || card.claimedAt !== null || card.escrowHeld) return false;
+	if (card.status === "completed" || card.paymentScope !== "unpaid" || card.payments.length > 0) {
+		return false;
+	}
+	if (card.submissions.length > 0) return false;
+	const f = card.funding;
+	if (!f) return true;
+	if (f.state === "needs_funding") return true;
+	return f.state === "draft" && f.nextAction !== "none";
+}
+
 /**
  * Whether a ticket is open for a self-claim: Ready (`todo`), unclaimed, described (the purchasing
  * gate), not on a personal project (only its owner holds those) and on a stage whose routing is an

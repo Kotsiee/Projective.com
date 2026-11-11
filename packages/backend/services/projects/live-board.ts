@@ -10,9 +10,11 @@ import {
 	buildBoardColumns,
 	cardColumnId,
 	countsAsOnboarded,
+	engagementArchetype,
 	formatTicketMoney,
 	isDiscussionRef,
 	isTaskProject,
+	type ProjectFormat,
 	type ProjectParty,
 	type ProjectStructure,
 	providerVisibleCards,
@@ -1369,34 +1371,38 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 // #region Board shape
 
 /**
- * The board's pre-resolved title. Mirrors the fixtures' `boardTitle` exactly, so a live board and a
- * stubbed one label the same engagement the same way.
+ * The board's pre-resolved title, named for the engagement's archetype. Mirrors the fixtures'
+ * `boardTitle` exactly, so a live board and a stubbed one label the same engagement the same way. Who
+ * architected the engagement plays no part: a pipeline instantiated from a service is still a Pipeline.
  */
-function boardTitle(kind: BoardKind, engagement: "service" | "project", format: string): string {
+function boardTitle(
+	kind: BoardKind,
+	format: ProjectFormat,
+	structure: ProjectStructure,
+): string {
 	if (kind === "stage") return "Tasks";
-	if (engagement === "service" || format === "session") return "Calendar";
-	if (format === "one_off") return "Timeline";
-	return "Pipeline";
+	const archetype = engagementArchetype(format, structure);
+	if (archetype === "session") return "Calendar";
+	if (archetype === "pipeline") return "Pipeline";
+	return "Timeline";
 }
 
 /**
  * Whether the acting viewer is on the CLIENT side of the engagement.
  *
- * Mirrors the rule the detail fixtures apply: on a client-architected project the owner, admin and
- * client seats are the buying side; on a provider-side service only an explicit `client` seat is,
- * because the actor there is usually the provider. The rule is reproduced rather than imported
- * because the fixture module does not export it, and it gates the client-only actions (ticket
- * moves, stage reorder, create) — so the two implementations agreeing matters more than either
- * being clever.
+ * The owner is the buying side on every engagement, exactly as `projects.can_review_project` and the
+ * detail read's `resolveViewerIsClient` decide it: the person who instantiated a pipeline service into
+ * their own workspace OWNS it, so the blueprint FK that makes it a `service` must not hand them the
+ * provider surface with no create actions. Beyond ownership, a client-architected project counts its
+ * admin and client seats, and a service counts only an explicit `client` seat — its admins are the
+ * provider's delegates. It gates the client-only actions (ticket moves, stage reorder, create).
  */
-function viewerIsClientOf(
+export function viewerIsClientOf(
 	engagement: "service" | "project",
 	viewerRole: string,
 ): boolean {
-	if (engagement === "project") {
-		return viewerRole === "owner" || viewerRole === "admin" || viewerRole === "client";
-	}
-	return viewerRole === "client";
+	if (viewerRole === "owner" || viewerRole === "client") return true;
+	return engagement === "project" && viewerRole === "admin";
 }
 
 /**
@@ -1858,7 +1864,7 @@ export async function fetchBoardPage(
 		channelId: params.channelId ? clamp(params.channelId, 120) : null,
 		format: summary.format,
 		structure,
-		title: boardTitle(kind, summary.kind, summary.format),
+		title: boardTitle(kind, summary.format, structure),
 		currency,
 		view,
 		viewerIsClient,

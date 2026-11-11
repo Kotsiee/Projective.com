@@ -258,6 +258,8 @@ function blueprintRow(
 		turnaround_days: null,
 		session_minutes: null,
 		session_count: null,
+		session_plan: [],
+		session_rolling: false,
 		meeting_provider: null,
 		availability_preset_id: null,
 		rating_average: null,
@@ -449,6 +451,12 @@ export const FIXTURE_LISTINGS: FixtureListing[] = [
 			{
 				session_minutes: 90,
 				session_count: 4,
+				session_plan: [
+					{ title: "Frames and auto layout", description: "Build a responsive card from scratch." },
+					{ title: "Components and variants", description: "" },
+					{ title: "Prototyping", description: "Wire a three-screen flow with smart animate." },
+					{ title: "Handoff", description: "Dev mode, tokens and a review of your file." },
+				],
 				max_seats_per_cohort: 12,
 				allow_continuous_enrollment: true,
 				rating_average: 4.8333,

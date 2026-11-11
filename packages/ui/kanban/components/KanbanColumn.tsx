@@ -1,4 +1,5 @@
-import type { ComponentChildren, JSX } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import { type Signal, useComputed } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
 import { useDraggable } from "../../dnd/hooks/useDraggable.ts";
@@ -20,6 +21,8 @@ export interface KanbanColumnItem {
 	onActivate?: () => void;
 	/** Controls drawn beside the card, outside its `role="button"` root; `null` for none. */
 	actions?: ComponentChildren;
+	/** The card's right-click menu, handed the card root as its surface. */
+	menu?: (surface: RefObject<HTMLElement>) => ComponentChildren;
 }
 
 /**
@@ -45,12 +48,15 @@ export interface KanbanColumnProps<C> {
 	header?: (ctx: KanbanColumnRenderCtx<C>) => ComponentChildren;
 	footer?: (column: KanbanColumnModel<C>) => ComponentChildren;
 	empty?: (column: KanbanColumnModel<C>) => ComponentChildren;
+	/** The column's right-click menu, handed the column root as its surface. */
+	menu?: (column: KanbanColumnModel<C>, surface: RefObject<HTMLElement>) => ComponentChildren;
 }
 
 export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 	const { column, items, dropTarget, columnDragEnabled } = props;
 	const refusal = props.refusal ?? null;
 	const canReorder = columnDragEnabled && !!column.reorderable;
+	const rootRef = useRef<HTMLElement>(null);
 
 	const body = useDroppable({
 		id: `col:${column.id}`,
@@ -79,8 +85,10 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 
 	return (
 		<section
-			// deno-lint-ignore no-explicit-any
-			ref={colDrag.setNodeRef as any}
+			ref={(el: HTMLElement | null) => {
+				rootRef.current = el;
+				colDrag.setNodeRef(el);
+			}}
 			class={cx("ui-kanban__column", canReorder && "ui-kanban__column--reorderable")}
 			data-over={body.isOver.value || undefined}
 			data-overlimit={overLimit || undefined}
@@ -128,6 +136,7 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 								label={it.label}
 								render={it.render}
 								onActivate={it.onActivate}
+								menu={it.menu}
 							/>
 							{it.actions ? <div class="ui-kanban__card-actions">{it.actions}</div> : null}
 						</div>
@@ -137,6 +146,7 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 			</div>
 
 			{props.footer ? <footer class="ui-kanban__col-footer">{props.footer(column)}</footer> : null}
+			{props.menu ? props.menu(column, rootRef) : null}
 		</section>
 	);
 }

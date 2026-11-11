@@ -264,7 +264,8 @@ transaction that call writes:
 - the draft: personal workspace, `format = 'pipeline'`, `status = 'draft'`, `visibility =
   'unlisted'`, `source_blueprint_id`, and the listing's brief and currency;
 - **one stage per `stage_template` entry**, priced at the stage's standard per-ticket price;
-- **one backlog ticket per stage**, priced the same and routed to that stage;
+- **no tickets** — the client creates every ticket on the board, and one created on a stage takes
+  that stage's price (Decision #409, amending #209's one backlog ticket per stage);
 - every stage's room and the Discussion room;
 - the request row (`projects.service_instantiations`).
 

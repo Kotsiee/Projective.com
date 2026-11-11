@@ -17,7 +17,13 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { BoardService } from "../core/BoardService.ts";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
-import { projectViewLinks, viewLinkCurrent } from "../components/detail-glyphs.tsx";
+import {
+	projectNavArchetype,
+	projectViewLinks,
+	viewLinkCurrent,
+} from "../components/detail-glyphs.tsx";
+import type { GeneralChannel } from "../components/ChannelTree.tsx";
+import { isStagedArchetype } from "@projective/types/projects";
 import {
 	LaneBackLink,
 	LaneCollapseButton,
@@ -53,9 +59,9 @@ import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.
 import { currentNavView } from "../core/nav-activity-model.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
-/** SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded. */
+/** SSR default open-set — the highest-traffic groups (Discussion/Sub-groups) lead expanded. */
 const DEFAULT_GROUPS: Record<string, boolean> = {
-	stages: true,
+	discussion: true,
 	subgroups: true,
 	teams: false,
 	dms: false,
@@ -72,7 +78,9 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  *       2. the **top tier** ({@link ProjectNavSection}) — the engagement's primary views as full nav
  *          rows: Overview first (the engagement's root, Decision #144), then Discussion, the
  *          archetype's Board / Timeline / Calendar, Files, Submissions and Members
- *          ({@link projectViewLinks});
+ *          ({@link projectViewLinks}). On a staged engagement (a pipeline or a milestone one-off)
+ *          Discussion leaves this tier for the body's Discussion group, whose General row opens the
+ *          same room; the collapsed rail keeps its Discussion icon either way;
  *       3. the **contextual body**, which adapts to the archetype (below);
  *       4. a **utility footer** — the collapse toggle and, for the owner, Project details (the
  *          engagement's configuration at `/details`), nothing else.
@@ -81,9 +89,10 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  * The contextual body is **archetype-aware** (task §3), resolved from the SSR `sessionKind` baseline
  * layered with the dev Context Switcher (`liveSessionKind`), exactly like the channel header:
  *
- *   - **One-off / pipeline** (`none`) — the channel tree: a STAGES section (the owner's inline ＋ opens
- *     Create Stage) plus Teams and Private Messages when the viewer has something in them, under the
- *     quick filters. There is no General group: the project-wide room is the top tier's Discussion.
+ *   - **One-off / pipeline** (`none`) — the channel tree: a collapsible DISCUSSION section — General
+ *     (the project-wide room) then every stage's `#` channel, the owner's inline ＋ opening Create
+ *     Stage — plus Teams and Private Messages when the viewer has something in them, under the quick
+ *     filters.
  *   - **Normal (1-1) session** (`normal`) — {@link NormalSessionPanel}: a mini-calendar + upcoming-
  *     session widget + session counter + shared-resources links (no stage tree).
  *   - **Group session** (`group`) — {@link GroupSessionPanel}: Sub-groups + Private-messages tree,
@@ -441,6 +450,18 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 			? { ...link, status: null }
 			: link
 	);
+	// A staged engagement files its Discussion under the body's Discussion group as General, so the
+	// expanded top tier drops the link; the rail keeps the full set.
+	const staged = isStagedArchetype(projectNavArchetype(view, activeKind));
+	const discussionLink = staged ? views.find((l) => l.key === "discussion") ?? null : null;
+	const topTier = discussionLink ? views.filter((l) => l !== discussionLink) : views;
+	const general: GeneralChannel | null = discussionLink
+		? {
+			href: `${base}/${discussionLink.seg}`,
+			status: discussionLink.status,
+			current: viewLinkCurrent(currentPath.value, base, discussionLink),
+		}
+		: null;
 
 	return (
 		<div class="proj-detail" data-service={activeKind}>
@@ -468,7 +489,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				<div class="proj-detail__scroll">
 					<ProjectContextCard detail={view} />
 
-					<ProjectNavSection links={views} base={base} currentPath={currentPath.value} />
+					<ProjectNavSection links={topTier} base={base} currentPath={currentPath.value} />
 
 					{!bodyless && <hr class="proj-detail__divider" />}
 
@@ -499,6 +520,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 								<ChannelTree
 									detail={view}
 									stages={projection.stages}
+									general={general}
 									openGroups={openGroups.value}
 									onToggleGroup={toggleGroup}
 									onCreateStage={openCreateStage}

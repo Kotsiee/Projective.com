@@ -189,13 +189,19 @@ released after its last.
 
 ###### D. The Session Workflow
 
-1. **Booking:** Client selects/purchases session(s). Escrow is locked.
+1. **Booking:** Client selects/purchases session(s). Escrow is locked. A 1-on-1 Session listing is
+   either a **fixed number of sessions** (one purchase holds them all, and the Freelancer may give
+   each a title and description — the session plan the listing shows) or **ongoing** (each booking is
+   one session, and the Client books again whenever they need the next; no cap and no plan)
+   (Decision #411).
 2. **Coordination:** Parties finalize time/location via the Calendar Proposal interface. A
-   **set-session block** is bought with ONE chosen time: that sitting is confirmed, and the rest are
-   pencilled in a week apart. The Freelancer then proposes the times that suit both parties, and the
-   Client approves or counter-proposes. Each pencilled-in time must be agreed within **72 hours** of
-   payment (never later than 24 hours before it). The Freelancer is reminded a day before that
-   deadline; past it, the pencilled-in time stands (Decision #211).
+   **set-session block** needs ONE chosen time — session 1 — and the Client may also choose times
+   for any of the later sessions when booking; every chosen sitting is confirmed. The sessions left
+   to book later are pencilled in a week apart after the last chosen one, and the Freelancer then
+   proposes the times that suit both parties, and the Client approves or counter-proposes. Each
+   pencilled-in time must be agreed within **72 hours** of payment (never later than 24 hours before
+   it). The Freelancer is reminded a day before that deadline; past it, the pencilled-in time stands
+   (Decisions #211, #411).
 3. **Execution:** Session occurs via the platform-generated link.
 4. **Validation:** System logs presence via Webhooks.
 5. **Resolution:** - **Success:** Client approves or stays silent for 24 hours $\rightarrow$ Payout.

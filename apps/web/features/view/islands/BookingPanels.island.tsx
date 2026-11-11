@@ -11,8 +11,8 @@ import {
 	registerBookingHost,
 	seedOffer,
 } from "../core/booking-state.ts";
-import type { ServiceBookingOffer } from "@projective/types/services";
-import type { ProjectStage } from "@projective/types/explore";
+import type { IntakeField, ServiceBookingOffer } from "@projective/types/services";
+import type { ProjectStage, SessionPlanItem } from "@projective/types/explore";
 
 /**
  * BookingPanels — the single mount point for every booking overlay on a listing page, and the one
@@ -48,10 +48,14 @@ export interface BookingPanelsProps {
 	stages?: readonly ProjectStage[];
 	/** The listing's own currency, so every figure in a panel scales the way the body's does. */
 	currency?: string;
+	/** The listing's own intake questions, asked by the session and scope panels before they commit. */
+	intake?: readonly IntakeField[];
+	/** A session block's sittings as the seller describes them, naming the session panel's rows. */
+	sessionPlan?: readonly SessionPlanItem[];
 }
 
 export default function BookingPanels(
-	{ offer, host, stages, currency }: BookingPanelsProps,
+	{ offer, host, stages, currency, intake, sessionPlan }: BookingPanelsProps,
 ): JSX.Element | null {
 	// Seed before the election, so whichever instance loses still contributes the SSR offer — the
 	// signal is shared, and a lane that never renders a panel still renders CTAs that read from it.
@@ -64,8 +68,8 @@ export default function BookingPanels(
 
 	return (
 		<>
-			<SessionBookingModal offer={offer} />
-			<ScopeBriefModal offer={offer} stages={stages} currency={currency} />
+			<SessionBookingModal offer={offer} intake={intake} sessionPlan={sessionPlan} />
+			<ScopeBriefModal offer={offer} stages={stages} currency={currency} intake={intake} />
 			<QuoteRequestModal offer={offer} currency={currency} />
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{bookingStatus.value}</p>
 		</>

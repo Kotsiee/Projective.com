@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: a taken seat cannot be un-taken, a pin needs a seat, and capacity counts what is held
--- (PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md X4, X8; DECISION_LOG W7). PM-WP2.
+-- (PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md X4, X8, W7). PM-WP2.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \

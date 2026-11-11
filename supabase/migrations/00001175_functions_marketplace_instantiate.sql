@@ -3,12 +3,13 @@
 --
 -- The one write behind `POST /api/services/instantiate-pipeline` on the live path. A Pipeline
 -- listing's blueprint becomes a DRAFT engagement in the buyer's own workspace — the project, one
--- stage per `stage_template` entry, one priced ticket per stage, every stage's room and the
--- project-wide Discussion room — in ONE transaction, so a buyer can never be navigated to a project
--- that has stages and no rooms, or a board with half its tickets.
+-- stage per `stage_template` entry, every stage's room and the project-wide Discussion room — in ONE
+-- transaction, so a buyer can never be navigated to a project that has stages and no rooms. It
+-- writes NO tickets: the seller architects the stages, and the client creates the tickets on them
+-- (owner ruling, Decision #409 — AMENDS #209, which seeded one priced backlog ticket per stage).
 --
 -- No money moves and nothing is reserved (PRODUCT_SPEC.md §Creation & Purchasing Gate; Decision #80):
--- the tickets sit in the backlog, unassigned and unfunded, and no seat is minted — a seat is only
+-- the stages wait, unstaffed and unfunded, and no seat is minted — a seat is only
 -- ever created by an accepted invitation or application (PRODUCT_MANAGEMENT.md §Stage assignment).
 -- The seller is hired into the draft afterwards through the ordinary hire path.
 --
@@ -166,13 +167,11 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --      price, else the listing's `ticket_price_cents`, else NULL ("priced on scope" — never a guessed
 --      zero). The revision allotment arrives through `trg_stage_revision_terms`, which reads the
 --      blueprint because `source_blueprint_id` is already set;
---   3. one `projects.tickets` row per stage — titled after it, its checklist seeded from the
---      deliverables, `current_stage_id`/`required_stages` = that stage, `unit_price_cents` = the
---      stage's price, `status = 'backlog'`, unassigned. `finance.fn_hold_ticket_escrow` holds
---      `COALESCE(ticket, stage)` price at claim, so the figure the board shows is the figure held;
---   4. each stage's room and the project-wide Discussion room
+--   3. each stage's room and the project-wide Discussion room
 --      (`comms.get_or_create_project_channel`, the same calls `projects.create_project` makes);
---   5. `projects.service_instantiations` — the request: key, answers, currency.
+--   4. `projects.service_instantiations` — the request: key, answers, currency.
+--   No `projects.tickets` row: the client creates every ticket. A ticket created on a stage defaults
+--   to that stage's price (`finance.fn_hold_ticket_escrow` holds `COALESCE(ticket, stage)` at claim).
 --
 -- IDEMPOTENT, in this order (all under one per-owner advisory lock, so two concurrent presses
 -- serialise instead of racing to two projects):
@@ -236,7 +235,6 @@ DECLARE
     v_price bigint;
     v_deliverables text[];
     v_tasks jsonb;
-    v_checklist jsonb;
     v_prev_stage_id uuid;
     v_trigger text;
     v_trigger_type start_trigger_type;
@@ -371,7 +369,7 @@ BEGIN
     END LOOP;
     -- #endregion
 
-    -- #region Stages, their tickets and their rooms
+    -- #region Stages and their rooms
     FOR v_stage, v_ord IN
         SELECT s.value, s.ord FROM jsonb_array_elements(v_bp.stage_template) WITH ORDINALITY AS s (value, ord)
     LOOP
@@ -399,13 +397,11 @@ BEGIN
             ORDER BY n
             LIMIT 12
         );
-        -- One id per deliverable, shared by the stage's template entry and the ticket's own item, so a
-        -- reader can tell which template line a ticket's checklist item came from.
+        -- One id per deliverable: the stage's default checklist, which a ticket the client creates on
+        -- this stage starts from.
         SELECT
-            COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id', i.id, 'text', i.text) ORDER BY i.n), '[]'::jsonb),
-            COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
-                'id', i.id, 'text', i.text, 'done', false, 'completed_by', '[]'::jsonb) ORDER BY i.n), '[]'::jsonb)
-        INTO v_tasks, v_checklist
+            COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id', i.id, 'text', i.text) ORDER BY i.n), '[]'::jsonb)
+        INTO v_tasks
         FROM (
             SELECT gen_random_uuid() AS id, d AS text, n
             FROM pg_catalog.unnest(v_deliverables) WITH ORDINALITY AS u (d, n)
@@ -462,19 +458,6 @@ BEGIN
             v_trigger_type, v_dependency, v_lag, v_chain
         );
 
-        INSERT INTO projects.tickets (
-            project_id, current_stage_id, owner_user_id, title, description, text_description,
-            status, required_stages, tasks, unit_price_cents, sort_order
-        ) VALUES (
-            v_project_id, v_stage_id, v_owner, v_stage_name,
-            pg_catalog.jsonb_build_object('html', v_stage_html), v_stage_text,
-            'backlog'::ticket_status,
-            pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('stage_id', v_stage_id, 'order', 0)),
-            v_checklist,
-            v_price,
-            0
-        );
-
         PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, v_stage_name);
         v_prev_stage_id := v_stage_id;
     END LOOP;
@@ -491,7 +474,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) IS
-'Add-to-Projects: copies a published Pipeline blueprint into the caller''s personal workspace as a draft — project, stages, one priced backlog ticket per stage, every room and the instantiation record — in one transaction. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow, no seat. Returns the draft projection plus created.';
+'Add-to-Projects: copies a published Pipeline blueprint into the caller''s personal workspace as a draft — project, stages, every room and the instantiation record — in one transaction. No tickets: the client creates them. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow, no seat. Returns the draft projection plus created.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.archive_service_draft(p_project_slug text, p_reason text) -> jsonb

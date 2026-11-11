@@ -1,8 +1,11 @@
 import { z } from "zod";
 import {
+	type BlueprintSessionPlanEntry,
+	BlueprintSessionPlanEntrySchema,
 	BlueprintStageSchema,
 	BlueprintTeamRoleSchema,
 	ProductManifestEntrySchema,
+	SESSION_PLAN_MAX,
 } from "../explore/stored.ts";
 import { MeetingProvider } from "../scheduling/meeting.ts";
 import { AvailabilityBindingMode } from "../scheduling/presets.ts";
@@ -146,18 +149,24 @@ export const SessionMinutes = z.number().int().min(5).max(600);
 const sessionFields = {
 	minutes: SessionMinutes,
 	/** Sittings in one booking. */
-	count: z.number().int().min(1).max(52),
+	count: z.number().int().min(1).max(SESSION_PLAN_MAX),
 	/** The room provider; `null` uses the seller's connected default. */
 	meetingProvider: MeetingProvider.nullable(),
+	/** What each sitting covers, by position (`session_plan`). At most {@link count} entries are read. */
+	plan: z.array(BlueprintSessionPlanEntrySchema).max(SESSION_PLAN_MAX),
 };
 
 /**
  * A 1-on-1 Session's offer. Its availability is not part of the offer: the preset binding is written
  * by its own route and read as `ListingDetail.availabilityBinding`.
+ *
+ * `rolling` is the ongoing model (`session_rolling`): each booking is one session and the buyer books
+ * again whenever they need another, so a rolling offer always carries `count: 1` and an empty plan.
  */
 export const SessionOfferSchema = z.object({
 	archetype: z.literal("session"),
 	...sessionFields,
+	rolling: z.boolean(),
 });
 export type SessionOffer = z.infer<typeof SessionOfferSchema>;
 
@@ -169,6 +178,24 @@ export const CohortListingOfferSchema = z.object({
 	continuousEnrollment: z.boolean(),
 });
 export type CohortListingOffer = z.infer<typeof CohortListingOfferSchema>;
+
+/**
+ * A session offer's plan as it should be stored: one entry per sitting, cut to the count, with
+ * trailing blank entries dropped. A rolling offer has no plan.
+ */
+export function normaliseSessionPlan(
+	offer: Pick<SessionOffer | CohortListingOffer, "count" | "plan"> & { rolling?: boolean },
+): BlueprintSessionPlanEntry[] {
+	if (offer.rolling) return [];
+	const plan = offer.plan.slice(0, offer.count).map((entry) => ({
+		title: entry.title.trim(),
+		description: entry.description.trim(),
+	}));
+	while (plan.length > 0 && !plan[plan.length - 1].title && !plan[plan.length - 1].description) {
+		plan.pop();
+	}
+	return plan;
+}
 // #endregion
 
 // #region Union

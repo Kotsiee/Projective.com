@@ -106,25 +106,3 @@ export function jumpToStage(id: string): void {
 /** The heading id the article scrollspy currently marks active (drives the TOC highlight). */
 export const activeTocId = signal<string | null>(null);
 // #endregion
-
-// #region Service — availability calendar toggle
-/**
- * Whether the Services view's main left showcase currently shows the availability CALENDAR instead of
- * the media gallery. Session / Group Session services offer a `pf-availtoggle` pill in the side-nav
- * lane; toggling it flips this shared signal, which the body `ServiceShowcase` island reads to swap the
- * showcase for the `@projective/ui/calendar` viewport (so clients can pick a slot and book in place).
- * The lane and the showcase are separate mount points, exactly like the stage-flow ↔ lane bridge above.
- */
-export const availabilityMode = signal(false);
-
-/** Set the showcase mode (media vs availability calendar). */
-export function setAvailabilityMode(next: boolean): void {
-	availabilityMode.value = next;
-}
-
-/** Toggle the showcase mode; returns the new value. */
-export function toggleAvailabilityMode(): boolean {
-	availabilityMode.value = !availabilityMode.value;
-	return availabilityMode.value;
-}
-// #endregion

@@ -11,6 +11,8 @@
 > **Sources (short names used below):**
 >
 > - FDD = `FINANCE_DISCREPANCIES_AND_DECISIONS.md` (#337).
+> - Since 2026-11-11 each source pair is one file: FA, FCA and FDD are `FINANCE_AUDIT.md`; DL is in
+>   PMA, SDG in SCA, IDG in IWA and ADC in RED, each with a section map at its end.
 > - FA / FBP = `FINANCE_AUDIT.md` / `FINANCE_BUILD_PROMPTS.md`.
 > - SA / SBP = `SUBSCRIPTIONS_AUDIT.md` / `_BUILD_PROMPTS.md` (#252).
 > - IDG / IWA = the identity pair (#336).
@@ -917,7 +919,7 @@ now clean.
 ## B.2 Wave 1: as soon as you return the form
 
 > **Status 2026-10-30:** step 1 is done (Part C; the rows; PRODUCT_SPEC, `finance-model.md` and
-> PRODUCT_MANAGEMENT; the Q0.4 sweep; `WAVE1_CLAUDE_MD_PROPOSAL.md`). Steps 2–3 follow.
+> PRODUCT_MANAGEMENT; the Q0.4 sweep; the root `CLAUDE.md` edit `f1f10e31`). Steps 2–3 follow.
 
 1. **One session only:** record every ruling.
    - Rows: #252 (subsumes SBP S0), #336, #337, #338, #339, #340, #341, and the new scheduling
@@ -987,7 +989,7 @@ named = primary). Track and step names are Part B's.
 | Q0.2 f | ⭐ Yes: delete `search.fn_search_entities` and `fn_search_global`                                                                                                                                                                                                                                                                                      | #340 (E), G11                                                                                       | T, O                                                        |
 | Q0.3   | ⭐ Register the whole set, plus N1's card-payment recovery sweep. Reading: the workload-report sweep is not in this set; PM-WP5 registers it with its fixes                                                                                                                                                                                            | #343 D9; #338 (a) D1; #203 (a); #290 (a); #337 N1                                                   | jobs-sql; P: WP1; M: notify engine                          |
 | Q0.4   | ⭐ Approve the factual sweep (doc halves applied in Wave 1.1; code-comment halves wait for Wave 2)                                                                                                                                                                                                                                                     | #340 (a)(h)(j)–(m); #339 (e)(i)(k)(l); FDD X11–X14, X19, X22, X23, N30; FA (d)(s); IDG §4; #343 (c) | —                                                           |
-| Q0.5   | Reading: the Wave 1 brief stands over the form's edit permission, so the diff is drafted for the owner to apply                                                                                                                                                                                                                                        | #341 (a) Q1; #337 X4                                                                                | `WAVE1_CLAUDE_MD_PROPOSAL.md`                               |
+| Q0.5   | Reading: the Wave 1 brief stands over the form's edit permission, so the diff is drafted for the owner to apply                                                                                                                                                                                                                                        | #341 (a) Q1; #337 X4                                                                                | the root `CLAUDE.md` edit `f1f10e31`                        |
 | M1     | ⭐ A: product sales pay the seller's Standing-tapered commission; #187's payer rate covers escrow fees only. ⭐ /pricing: the fee in one sentence, the taper in one line; ✎ "negotiable fee" = a contract term via `negotiated_rates`, never a plan perk                                                                                               | #337 D-3 (X3, X4, N3, FA (q)); #252 (l)                                                             | F: N3 commission                                            |
 | M2     | ⭐ A now (a conservation-identity view), B (shadow double-entry) before scale. ✎ ⚖️ How long escrow may sit in the platform balance: open, no owner position                                                                                                                                                                                           | #337 D-5 (X6, X8); #54 (b)                                                                          | F: conservation view                                        |
 | M3     | ⭐ A: freeze the payee's pending rows inside the 7 days                                                                                                                                                                                                                                                                                                | #337 D-6 (X9), FA (c), #126, #191 B3                                                                | F: DB6                                                      |

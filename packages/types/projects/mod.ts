@@ -21,6 +21,7 @@ export * from "./submissions.ts";
 export * from "./settlement.ts";
 export * from "./board.ts";
 export * from "./setup.ts";
+export * from "./archetype.ts";
 export * from "./overview.ts";
 export * from "./access.ts";
 export * from "./workspace.ts";

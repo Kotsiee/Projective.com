@@ -184,11 +184,6 @@ export default define.page(async function ProfileLayout(ctx) {
 	// The profile-scoped Entity View page renders its own layout: mount the item's own action lane
 	// (pricing/CTAs/trust) — resolved from the URL like the public `/view/[id]` — and no profile chrome.
 	if (segments[1] === "view") {
-		// The session-schedule leaf (/[handle]/view/[id]/schedule) is a full-page calendar surface —
-		// no lane/footer; the schedule island fills the region itself.
-		if (segments[3] === "schedule") {
-			return shell(<ctx.Component />, { footer: false });
-		}
 		/*
 		 * `viewLaneFor` owns the slot for any id that RESOLVES, and for a commerce archetype it returns a
 		 * collapsed back rail on the authenticated shell and `null` on the guest one — that listing's

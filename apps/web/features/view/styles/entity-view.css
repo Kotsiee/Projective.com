@@ -149,10 +149,6 @@
 	* normally. Both consumers use the band's own duration and easing, so the three move as one.
 	*/
 	--evp-band-offset: 0px;
-
-	/* The full-bleed session scheduler (§D.8.3). The floor is what a week grid needs before the
-	* engine starts dropping its own side panel; below it the mini-month and availability panel go. */
-	--evp-sched-min-h: 34rem;
 }
 
 /* ============================================================================
@@ -1356,6 +1352,12 @@
 	color: var(--text-secondary);
 }
 
+.evp-track__meta {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
 .evp-track__caret {
 	flex: none;
 	color: var(--text-secondary);
@@ -1889,23 +1891,6 @@
 
 .evp-cta__link:hover {
 	background: color-mix(in srgb, var(--btn-accent) var(--btn-mix-hover), var(--btn-shade));
-}
-
-/*
- * The OUTLINED link — the scheduled formats' "Full schedule" secondary. It mirrors
- * `.ui-button--outlined` declaration for declaration (transparent ground, accent ink AND border, a
- * soft accent tint on hover) so a navigating secondary and a writing one rank identically in the rig.
- * `--fld-bw` is the same border width every field control draws, so the pill's box matches the
- * button beside it to the pixel.
- */
-.evp-cta__link--outlined {
-	border: var(--fld-bw) solid var(--evp-cta-brand-fill);
-	background: transparent;
-	color: var(--evp-cta-brand-ink);
-}
-
-.evp-cta__link--outlined:hover {
-	background: color-mix(in srgb, var(--evp-cta-brand-fill) var(--tint-soft), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2706,99 +2691,6 @@ a.evp-cta__btn--mono {
 }
 
 /* ============================================================================
- * FULL-WIDTH SESSION SCHEDULER (§D.8.3 / §D.8.4)
- * ========================================================================== */
-.evp-scheduler {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
-.evp-scheduler__bar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	flex-wrap: wrap;
-	gap: var(--space-3);
-}
-
-/*
- * The segmented switcher — the SINGLE copy of this control at every width. It previously existed
- * twice and neither copy worked: the in-showcase tablist was `display: none` above 767px, and the
- * lane's replacement only ever set availability ON, so a desktop reader who opened the calendar could
- * not get back to the gallery without reloading.
- */
-.evp-scheduler__switch {
-	display: inline-flex;
-	gap: var(--space-px);
-	padding: var(--space-px);
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
-}
-
-.evp-scheduler__tab {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-block-size: var(--evp-cta-h);
-	padding-inline: var(--space-4);
-	border: none;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-normal);
-	cursor: pointer;
-	white-space: nowrap;
-}
-
-.evp-scheduler__tab[data-active] {
-	background: var(--surface);
-	color: var(--on-surface);
-	font-weight: var(--fw-medium);
-	box-shadow: var(--elevation-low);
-}
-
-.evp-scheduler__tab:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/* The timezone disclosure — a fact, so Meta register and no container. */
-.evp-scheduler__zones {
-	margin: 0;
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
-
-/*
- * The calendar's box.
- *
- * A DEFINITE height is required, not optional: the engine's `.cal` is `block-size: 100%`, which
- * resolves to 0 against an auto-height block parent, and its own `overflow: hidden` then hides the
- * fact — a silently blank calendar. `.cal-surface--schedule` supplies a real resolvable height, so
- * this only has to provide a floor generous enough that the engine keeps its side panel: below about
- * 768px of ELEMENT width it drops the mini-month and the availability panel, which is the only place
- * the provider's working hours are explained.
- */
-.evp-scheduler__cal {
-	inline-size: 100%;
-	min-inline-size: 0;
-	min-block-size: var(--evp-sched-min-h);
-	/* The scheduler stage stands where the media canvas stands, so it takes the same curvature. */
-	border-radius: var(--radius-container-xl);
-	overflow: hidden;
-	background: var(--surface-1);
-}
-
-.evp-scheduler__gallery {
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-
-/* ============================================================================
  * SELLER INQUIRY COMPOSER
  * ========================================================================== */
 .evp-inquiry__body {
@@ -2868,6 +2760,12 @@ a.evp-cta__btn--mono {
 	font-size: var(--text-md);
 	line-height: var(--leading-relaxed);
 	color: var(--text-secondary);
+}
+
+.evp-prose + .evp-track,
+.evp-prose + .evp-ledger,
+.evp-track + .evp-ledger {
+	margin-block-start: var(--space-5);
 }
 
 /*

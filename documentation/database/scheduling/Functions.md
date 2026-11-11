@@ -50,9 +50,10 @@ compiled. A compiled span may cross midnight; a weekly band may not. Now plpgsql
 4-argument call sites (`fn_call_window_covers`, the comms out-of-hours auto-reply) resolve to it
 unchanged.
 
-**Callers that pass a blueprint:** `projects.fn_book_session_slot` (#211) tests the FIRST sitting
-against `working_hours` with the listing's blueprint and refuses `PS409` ("outside the provider's
-hours"). The pencilled-in later sittings are agreed through their handshakes. **Discovery calls do
+**Callers that pass a blueprint:** `projects.fn_book_session_slot` (#211) tests the first sitting
+and every later one the buyer chose at booking (#411) against `working_hours` with the listing's
+blueprint and refuses `PS409` ("outside the provider's hours"). The pencilled-in sittings are agreed
+through their handshakes. **Discovery calls do
 not pass one:** ruling (d) keeps discovery calls and `/[handle]/availability` on the weekly bands,
 so `request_discovery_call` → `fn_call_request_refusal` → `fn_call_window_covers` is unchanged, even
 for a call booked about a listing.

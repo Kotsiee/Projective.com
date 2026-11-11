@@ -485,7 +485,6 @@ async function composeOffer(
 			cohortOpen: format !== "cohort" || cohort !== null,
 			draftHref: draft?.boardHref ?? null,
 			bookingsOpen,
-			scheduleHref: scheduleHrefFor(item, handle),
 		}),
 		contact: contactOfferFor(item, signedIn, signInHref, callOffer),
 		capacity,
@@ -677,12 +676,9 @@ export class BookingBackendService {
 		}
 
 		const wanted = [...new Set(input.slotIds)];
-		if (format !== "set_session" && wanted.length !== 1) {
-			return fail(422, {
-				message: "Pick one time for this booking.",
-				errors: { slotIds: "expected_single_slot" },
-			});
-		}
+		const total = format === "set_session" ? (view.service?.sessionCount ?? 1) : 1;
+		const countRefusal = slotCountRefusal(format, total, wanted.length);
+		if (countRefusal) return fail(422, countRefusal);
 
 		const target = {
 			owner: owner.schedule,
@@ -698,6 +694,8 @@ export class BookingBackendService {
 			resolved.push(check.data.slot);
 		}
 		resolved.sort((a, b) => a.startsAt - b.startsAt);
+		const overlap = slotOverlapRefusal(resolved);
+		if (overlap) return fail(422, overlap);
 
 		const first = resolved[0];
 
@@ -720,7 +718,8 @@ export class BookingBackendService {
 				bookingFormat: format,
 				slotIds: resolved.map((s) => s.id),
 				sessionsBooked: resolved.length,
-				sessionsTotal: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
+				sessionsTotal: total,
+				laterStarts: resolved.slice(1).map((s) => new Date(s.startsAt).toISOString()),
 				note: input.note ?? null,
 				answers,
 			},
@@ -732,16 +731,13 @@ export class BookingBackendService {
 		}
 
 		const line = write.data.basket.items.find((l) => l.itemId === item.id) ?? null;
-		const total = format === "set_session" ? (view.service?.sessionCount ?? 1) : 1;
 		return ok({
 			outcome: {
 				subjectId: item.id,
 				format,
 				basketItemId: line?.id ?? null,
 				route: "/checkout",
-				summary: total > 1
-					? `First session selected. Complete checkout to confirm all ${total}.`
-					: "Time selected. Complete checkout to confirm.",
+				summary: sessionOutcomeSummary(resolved.length, total),
 				scheduled: { booked: resolved.length, total, firstStartsAt: first.startsAt },
 			},
 		}, { status: 201 });
@@ -1309,9 +1305,72 @@ function basketQueryFor(actor: BookingActor, serviceId: string): BasketQuery {
 	};
 }
 
-/** The listing's full-page schedule leaf, in the namespace the viewer is reading it from. */
-function scheduleHrefFor(item: ExploreItem, handle: string | null): string {
-	return handle ? `/${handle}/view/${item.id}/schedule` : `/view/${item.id}/schedule`;
+/** A session booking refusal, in the shape `fail` takes. */
+export interface SlotRefusal {
+	message: string;
+	errors: Record<string, string>;
+}
+
+/**
+ * Whether a session booking may carry this many chosen times: exactly one for a single session, and
+ * from one up to the block's size for a set-session block (Decision #411).
+ */
+export function slotCountRefusal(
+	format: ServiceBookingFormat,
+	total: number,
+	count: number,
+): SlotRefusal | null {
+	if (format !== "set_session" && count !== 1) {
+		return {
+			message: "Pick one time for this booking.",
+			errors: { slotIds: "expected_single_slot" },
+		};
+	}
+	if (count < 1) {
+		return {
+			message: "Pick a time for the first session.",
+			errors: { slotIds: "expected_first_slot" },
+		};
+	}
+	if (count > total) {
+		return {
+			message: `This booking holds ${total} sessions. Remove a time to continue.`,
+			errors: { slotIds: "too_many_slots" },
+		};
+	}
+	return null;
+}
+
+/**
+ * Chosen times sorted ascending must not overlap: the earliest is session 1, and each later one
+ * starts after the one before it ends. Settlement re-checks the same rule under the calendar lock.
+ */
+export function slotOverlapRefusal(
+	sorted: readonly { startsAt: number; endsAt: number }[],
+): SlotRefusal | null {
+	const clash = sorted.some((slot, i) => i > 0 && slot.startsAt < sorted[i - 1].endsAt);
+	return clash
+		? {
+			message: "Two of the times you chose overlap. Pick a different time for one of them.",
+			errors: { slotIds: "overlapping_slots" },
+		}
+		: null;
+}
+
+/**
+ * The sentence a session booking resolves with: how many sittings now have a time, and what happens to
+ * the rest. Server-authored so the modal, the status line and any later surface say the same thing.
+ */
+export function sessionOutcomeSummary(booked: number, total: number): string {
+	if (total <= 1) return "Time selected. Complete checkout to confirm.";
+	if (booked >= total) return `All ${total} sessions selected. Complete checkout to confirm them.`;
+	const later = total - booked;
+	const first = booked === 1
+		? "First session selected."
+		: `${booked} of ${total} sessions selected.`;
+	return `${first} Complete checkout to confirm; the other ${later} ${
+		later === 1 ? "is" : "are"
+	} booked later.`;
 }
 
 /** The sign-in bounce that returns to the listing the viewer is on. */

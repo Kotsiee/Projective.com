@@ -62,6 +62,32 @@ export const BlueprintTeamRoleSchema = z.object({
 });
 export type BlueprintTeamRole = z.infer<typeof BlueprintTeamRoleSchema>;
 
+/** The most sittings a session plan describes — the `session_count` ceiling. */
+export const SESSION_PLAN_MAX = 52;
+
+/**
+ * What one sitting of a fixed-count Session covers (`service_blueprints.session_plan`). Positional:
+ * entry 0 is session 1. Either field may be blank, and a blank entry keeps the numbers of the ones
+ * after it.
+ */
+export const BlueprintSessionPlanEntrySchema = z.object({
+	title: z.string().trim().max(80).default(""),
+	description: z.string().trim().max(600).default(""),
+});
+export type BlueprintSessionPlanEntry = z.infer<typeof BlueprintSessionPlanEntrySchema>;
+
+/**
+ * Parse a stored session plan by position. Unlike {@link parseStoredList} a malformed entry reads as
+ * blank rather than being dropped, so session 3's description never slides up onto session 2.
+ */
+export function parseSessionPlan(raw: unknown): BlueprintSessionPlanEntry[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.slice(0, SESSION_PLAN_MAX).map((entry) => {
+		const parsed = BlueprintSessionPlanEntrySchema.safeParse(entry);
+		return parsed.success ? parsed.data : { title: "", description: "" };
+	});
+}
+
 // #endregion
 
 // #region Product documents

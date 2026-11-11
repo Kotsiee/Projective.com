@@ -216,6 +216,8 @@ export interface BlueprintRow {
 	deliverables: string[] | null;
 	session_minutes: number | null;
 	session_count: number | null;
+	session_plan: unknown;
+	session_rolling: boolean | null;
 	rating_average: number | string | null;
 	rating_count: number | null;
 }
@@ -646,7 +648,7 @@ const OPEN_SEAT_COLUMNS =
 const LISTING_COLUMNS =
 	"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, seo_description, status, published_at, created_at, updated_at";
 const BLUEPRINT_COLUMNS =
-	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, rating_average, rating_count";
+	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, session_plan, session_rolling, rating_average, rating_count";
 const PRODUCT_COLUMNS =
 	"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count";
 const FILE_COLUMNS = "id, bucket_id, storage_path, metadata";

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Dialog } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
@@ -16,11 +16,12 @@ import {
 } from "../core/simulation.ts";
 import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
-import type { StageFundingScope } from "@projective/types/services";
-import type { ServiceBookingOffer } from "@projective/types/services";
+import type { IntakeField, ServiceBookingOffer, StageFundingScope } from "@projective/types/services";
 import type { ProjectStage } from "@projective/types/explore";
 import { toMinorUnits } from "@projective/types/finance";
 import { ResizeFrame } from "@projective/ui/fields";
+import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
+import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 
 /**
  * ScopeBriefModal — the **Continue** panel for the two scoped formats.
@@ -46,6 +47,12 @@ import { ResizeFrame } from "@projective/ui/fields";
  * The file list is real, the sizes are real, and nothing is uploaded: the asset pipeline lands with
  * `FILES_BACKEND_LIVE`. That is stated in the interface rather than implied, because a buyer who
  * believes they have attached a specification and has not is worse off than one who was told.
+ *
+ * # The seller's questions are asked here too
+ *
+ * The brief is prose; the listing's intake (`ServiceView.intake`) is structured, and the server holds
+ * the staged line to it, so a required question is asked beside the brief through the profile's
+ * `IntakeFields` and checked by the same `intakeRefusal` before Continue commits.
  */
 export interface ScopeBriefModalProps {
 	offer: ServiceBookingOffer;
@@ -56,10 +63,12 @@ export interface ScopeBriefModalProps {
 	 * the same way. `TicketPrice` carries major units and no currency of its own.
 	 */
 	currency?: string;
+	/** The listing's own intake questions (`ServiceView.intake`), asked beside the brief. */
+	intake?: readonly IntakeField[];
 }
 
 export default function ScopeBriefModal(
-	{ offer: ssrOffer, stages = [], currency }: ScopeBriefModalProps,
+	{ offer: ssrOffer, stages = [], currency, intake = [] }: ScopeBriefModalProps,
 ): JSX.Element {
 	const offer = useComputed(() => currentOffer.value ?? ssrOffer);
 	const open = useComputed(() => openPanel.value === "scope");
@@ -70,6 +79,8 @@ export default function ScopeBriefModal(
 	const files = useSignal<readonly File[]>([]);
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
+	const bodyRef = useRef<HTMLDivElement>(null);
+	const intakeState = useIntakeAnswers(intake, bodyRef);
 
 	// Reset on close, so re-opening is a fresh brief rather than a half-written one from an abandoned
 	// attempt. A draft that survives is a feature this surface deliberately does not have: the brief is
@@ -83,6 +94,7 @@ export default function ScopeBriefModal(
 		scope.value = "first_stage";
 		files.value = [];
 		error.value = null;
+		intakeState.reset();
 		cta.reset();
 	}, [open.value]);
 
@@ -98,6 +110,7 @@ export default function ScopeBriefModal(
 			return false;
 		}
 		error.value = null;
+		if (!intakeState.check()) return false;
 
 		const out = await commitConfigure({
 			subjectId: offer.value.subjectId,
@@ -113,14 +126,13 @@ export default function ScopeBriefModal(
 				// than through an empty string that could be mistaken for an id.
 				assetId: null,
 			})),
-			// The listing page's brief is prose; the seller's intake fields are asked in the profile's
-			// service modal, so there is nothing structured to send from here.
-			answers: {},
+			answers: intakeState.answers.value,
 		});
 		// A simulated brief is staged nowhere and goes nowhere: the modal stays on its outcome.
 		if (out.simulated) return true;
 		const res = out.value;
 		if (!res.ok || !res.data) {
+			if (intakeState.fromServer(res.message, res.errors)) return false;
 			error.value = res.message ?? "Could not stage that. Please try again.";
 			return false;
 		}
@@ -179,7 +191,7 @@ export default function ScopeBriefModal(
 				</div>
 			}
 		>
-			<div class="sbk__body">
+			<div class="sbk__body" ref={bodyRef}>
 				{isOneOff.value && (
 					<section class="sbk__section">
 						<h3 class="sbk__sectiontitle">What to fund now</h3>
@@ -255,6 +267,20 @@ export default function ScopeBriefModal(
 						Required. Up to 8000 characters.
 					</p>
 				</section>
+
+				{intake.length > 0 && (
+					<section class="sbk__section" aria-labelledby="sbk-scope-intake-label">
+						<h3 class="sbk__sectiontitle" id="sbk-scope-intake-label">
+							{offer.value.contact.sellerName} asks
+						</h3>
+						<IntakeFields
+							fields={intake}
+							answers={intakeState.answers}
+							refusal={intakeState.refusal()}
+							idPrefix="sbk-scope-intake"
+						/>
+					</section>
+				)}
 
 				<section class="sbk__section">
 					<h3 class="sbk__sectiontitle">Attachments</h3>

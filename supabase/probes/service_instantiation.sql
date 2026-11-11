@@ -265,23 +265,18 @@ BEGIN
         IF v_stage.file_revisions_allowed IS DISTINCT FROM v_bp.free_revisions THEN
             RAISE EXCEPTION 'FAIL stage % revision terms % vs blueprint %', v_stage.ord, v_stage.file_revisions_allowed, v_bp.free_revisions;
         END IF;
-        IF (SELECT count(*) FROM projects.tickets t
-            WHERE t.current_stage_id = v_stage.id AND t.status = 'backlog' AND t.current_assignee_id IS NULL
-                AND t.unit_price_cents IS NOT DISTINCT FROM v_stage.unit_price_cents
-                AND t.title = v_stage.name
-                AND jsonb_array_length(t.tasks) = jsonb_array_length(v_stage.default_tasks)
-                AND t.required_stages = jsonb_build_array(jsonb_build_object('stage_id', v_stage.id, 'order', 0))) <> 1 THEN
-            RAISE EXCEPTION 'FAIL stage % should hold exactly one priced backlog ticket', v_stage.ord;
+        IF EXISTS (SELECT 1 FROM projects.tickets t WHERE t.current_stage_id = v_stage.id) THEN
+            RAISE EXCEPTION 'FAIL stage % was given a ticket: the client creates them (Decision #409)', v_stage.ord;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM comms.project_channels c WHERE c.project_id = v_project.id AND c.stage_id = v_stage.id) THEN
             RAISE EXCEPTION 'FAIL stage % has no room', v_stage.ord;
         END IF;
     END LOOP;
     IF v_n <> v_template_len THEN RAISE EXCEPTION 'FAIL % stages for a % stage template', v_n, v_template_len; END IF;
-    IF (SELECT count(*) FROM projects.tickets WHERE project_id = v_project.id) <> v_template_len THEN
-        RAISE EXCEPTION 'FAIL ticket count';
+    IF EXISTS (SELECT 1 FROM projects.tickets WHERE project_id = v_project.id) THEN
+        RAISE EXCEPTION 'FAIL the draft holds tickets nobody created';
     END IF;
-    RAISE NOTICE 'PASS % stages, each with its price, brief, checklist, revision terms, one priced ticket and a room', v_n;
+    RAISE NOTICE 'PASS % stages, each with its price, brief, checklist, revision terms and a room, and no tickets', v_n;
 
     IF NOT EXISTS (SELECT 1 FROM comms.project_channels c WHERE c.project_id = v_project.id AND c.stage_id IS NULL) THEN
         RAISE EXCEPTION 'FAIL no Discussion room';
@@ -368,9 +363,15 @@ EXCEPTION WHEN SQLSTATE 'P0002' THEN
 END $$;
 RESET ROLE;
 
--- A funded stage (an escrow row, as the sweep counts it — here a prepaid hold on its ticket, the
--- Decision #197 shape) blocks the archive.
+-- A funded stage (an escrow row, as the sweep counts it — here a prepaid hold on a ticket the client
+-- created, the Decision #197 shape) blocks the archive.
 SAVEPOINT funded;
+INSERT INTO projects.tickets (project_id, current_stage_id, owner_user_id, title, status, required_stages)
+SELECT ps.project_id, ps.id, current_setting('probe.buyer')::uuid, 'Probe ticket', 'backlog'::ticket_status,
+    jsonb_build_array(jsonb_build_object('stage_id', ps.id, 'order', 0))
+FROM projects.project_stages ps
+WHERE ps.project_id = current_setting('probe.project')::uuid
+ORDER BY ps.sort_order LIMIT 1;
 INSERT INTO finance.escrows (project_stage_id, ticket_id, payer_user_id, amount_cents, currency, status)
 SELECT ps.id, t.id, current_setting('probe.buyer')::uuid, COALESCE(ps.unit_price_cents, 100), 'USD', 'held'
 FROM projects.project_stages ps JOIN projects.tickets t ON t.current_stage_id = ps.id

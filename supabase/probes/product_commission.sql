@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- Probe: a product sale pays its seller's Standing-tapered commission (Decision #337, ruling M1;
--- FINANCE_COMPLETENESS_AUDIT N3, N19).
+-- FINANCE_AUDIT N3, N19).
 --
 -- finance.place_wallet_order charged every product sale the BUYER's platform fee (Decision #187's payer
 -- rate), and finance.fn_effective_commission_bp, the seller's 8% → 6.5% taper, had no caller. Ruling

@@ -2,6 +2,7 @@ import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import {
 	type ListingOffer,
 	ListingOfferSchema,
+	normaliseSessionPlan,
 	type OneOffOffer,
 	type PipelineOffer,
 } from "@projective/types/catalogue";
@@ -105,25 +106,60 @@ Deno.test("deliveryLabel follows the offer and stays silent where the offer deci
 	assertEquals(deliveryLabel(ONE_OFF), "5-day delivery");
 	assertEquals(deliveryLabel({ ...ONE_OFF, turnaroundDays: null }), null);
 	assertEquals(
-		deliveryLabel({ archetype: "session", minutes: 45, count: 1, meetingProvider: null }),
+		deliveryLabel({
+			archetype: "session",
+			minutes: 45,
+			count: 1,
+			meetingProvider: null,
+			plan: [],
+			rolling: false,
+		}),
 		"45-minute session",
 	);
 	assertEquals(deliveryLabel({ archetype: "pipeline", stages: [], teamRoles: [] }), null);
 });
 
-Deno.test("switchSessionFormat keeps the sitting and adds or drops the cohort facts", () => {
-	const session = { archetype: "session", minutes: 90, count: 4, meetingProvider: "zoom" } as const;
+Deno.test("switchSessionFormat keeps the sitting and the plan, and adds or drops the cohort facts", () => {
+	const plan = [{ title: "Discovery", description: "" }, {
+		title: "Build",
+		description: "Ship it.",
+	}];
+	const session = {
+		archetype: "session",
+		minutes: 90,
+		count: 4,
+		meetingProvider: "zoom",
+		plan,
+		rolling: false,
+	} as const;
 	const cohort = switchSessionFormat(session, "cohort");
 	assertEquals(cohort, {
 		archetype: "cohort",
 		minutes: 90,
 		count: 4,
 		meetingProvider: "zoom",
+		plan,
 		maxSeatsPerCohort: 10,
 		continuousEnrollment: false,
 	});
 	assertEquals(switchSessionFormat(cohort, "session"), session);
 	assert(ListingOfferSchema.safeParse(cohort).success);
+});
+
+Deno.test("normaliseSessionPlan keeps one entry per sitting, drops trailing blanks, and empties a rolling offer", () => {
+	const plan = [
+		{ title: " Discovery ", description: "" },
+		{ title: "", description: "" },
+		{ title: "Review", description: "Walk through it." },
+		{ title: "", description: "" },
+		{ title: "Past the count", description: "" },
+	];
+	assertEquals(normaliseSessionPlan({ count: 4, plan }), [
+		{ title: "Discovery", description: "" },
+		{ title: "", description: "" },
+		{ title: "Review", description: "Walk through it." },
+	]);
+	assertEquals(normaliseSessionPlan({ count: 4, plan, rolling: true }), []);
 });
 
 Deno.test("nearestStop snaps a stored turnaround onto the slider's stops", () => {

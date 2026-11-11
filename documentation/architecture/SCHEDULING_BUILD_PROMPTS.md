@@ -5,7 +5,7 @@
 > of self-contained Claude Code prompts. They close the open findings of
 > [`SCHEDULING_COMPLETENESS_AUDIT.md`](SCHEDULING_COMPLETENESS_AUDIT.md) (`S-nn`) under the owner's
 > rulings C1–C7 on **Decision #343**.
-> [`SCHEDULING_DECISIONS_AND_GAPS.md`](SCHEDULING_DECISIONS_AND_GAPS.md) (SDG, rulings D0–D9)
+> [`SCHEDULING_COMPLETENESS_AUDIT.md`](SCHEDULING_COMPLETENESS_AUDIT.md) (SDG, rulings D0–D9)
 > drafted that row as "#335". Every prompt cites its evidence by finding ID and its ruling as
 > `(Decision #343, ruling Cn)`. Paste each prompt into its **own fresh session**, after the standard
 > header (§1).
@@ -193,7 +193,7 @@ Before writing code:
      changes), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/SCHEDULING_COMPLETENESS_AUDIT.md (the S-nn findings cited
-     below), SCHEDULING_DECISIONS_AND_GAPS.md (rulings D0-D9 and the shapes it proposes) and the
+     below), SCHEDULING_COMPLETENESS_AUDIT.md (rulings D0-D9 and the shapes it proposes) and the
      OWNER RULINGS on Decision #343 (documentation/reference/decisions/decisions-122-126.md;
      grep -n '^| 343 |').
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
@@ -1456,7 +1456,7 @@ FILES:
     design-system/DESIGN_SYSTEM.md (§C.1)
   - api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md (§3.4, §7, §9.4, §10, §12)
   - architecture/SCHEDULING_COMPLETENESS_AUDIT.md (a Status column on §10: Fixed by <prompt> /
-    Open); SCHEDULING_DECISIONS_AND_GAPS.md (the §0 status line)
+    Open); SCHEDULING_COMPLETENESS_AUDIT.md (the §0 status line)
   - the decision rows #343 and #59: each ruling marked built by its prompt; #59's flag resolved by
     #343 ruling C4 (c)
 

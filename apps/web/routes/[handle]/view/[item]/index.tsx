@@ -3,7 +3,6 @@ import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
@@ -13,7 +12,6 @@ import { isRestrictedRequest } from "@web/utils/age-gate.ts";
  * Explore click-matrix target for items opened FROM a profile page (vs the public `/view/[id]`). Same
  * polymorphic {@link EntityViewPage}, rendered inside the `[handle]` profile shell with the sidebar
  * action lane (resolved by `viewLaneFor` in the `[handle]` layout) and back links honouring the handle.
- * Its session-schedule leaf lives alongside as `[item]/schedule.tsx`.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -31,17 +29,14 @@ export const handler = define.handlers({
 			? await resolveEntityCommerce(view, {
 				context: ctx.state.userContext,
 				handle: ctx.params.handle,
-				viewer: viewerFromState(ctx.state),
-				restricted,
 			})
-			: { offer: null, schedule: null };
+			: { offer: null };
 		return page({
 			view,
 			unavailable: status >= 500,
 			handle: ctx.params.handle,
 			authed: !!ctx.state.isAuthenticated,
 			offer: commerce.offer,
-			schedule: commerce.schedule,
 			restricted,
 		}, { status: view ? 200 : status, headers: rankingHeaders(ranking) });
 	},
@@ -55,7 +50,6 @@ export default define.page<typeof handler>(function ProfileEntityViewPage({ data
 			ctx={{ scope: "profile", handle: data.handle }}
 			authed={data.authed}
 			offer={data.offer}
-			schedule={data.schedule}
 			restricted={data.restricted}
 		/>
 	);

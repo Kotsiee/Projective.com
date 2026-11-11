@@ -136,7 +136,7 @@ export const SlotGridSchema = z.object({
 	durationMinutes: z.number().int().min(5).max(600),
 	/**
 	 * How many sessions this booking commits to. `1` for everything except a set-session block, where
-	 * it is the block size and the picker schedules only the FIRST.
+	 * it is the block size: the picker needs the first sitting and may take up to this many.
 	 */
 	sessionCount: z.number().int().min(1).max(52),
 	/** The rail, ascending. Contiguous — a day with no slots is present with `openCount: 0`. */

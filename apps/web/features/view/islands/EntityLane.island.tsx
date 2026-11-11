@@ -426,6 +426,8 @@ export default function EntityLane(
 				offer={bookingOffer}
 				host="lane"
 				stages={view.service?.stages}
+				intake={view.service?.intake}
+				sessionPlan={view.service?.sessionPlan}
 				currency={item.type === "services" || item.type === "products" ? item.currency : undefined}
 			/>
 

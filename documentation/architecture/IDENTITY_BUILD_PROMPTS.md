@@ -4,11 +4,11 @@
 > track I of `FOUNDER_QUESTIONNAIRE.md` Part B §B.3: the identity, privacy and workspace rulings of
 > Decision #336 (I1–I4, S7, Q0.2 (b) and (c)) and the findings they settle in
 > [`IDENTITY_AND_WORKSPACES_AUDIT.md`](IDENTITY_AND_WORKSPACES_AUDIT.md) (`IW-*`) and
-> [`IDENTITY_DECISIONS_AND_GAPS.md`](IDENTITY_DECISIONS_AND_GAPS.md) (`K*`, `F*`), plus SEC G16 from
-> [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md). Every prompt cites its
-> evidence by finding ID and its ruling as `(Decision #336, ruling X)`. Paste each prompt into its
-> **own fresh session**, after the standard header (§1). Written 2026-10-30 against `main` @
-> `94d22e84`.
+> [`IDENTITY_AND_WORKSPACES_AUDIT.md`](IDENTITY_AND_WORKSPACES_AUDIT.md) (`K*`, `F*`), plus SEC G16
+> from [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md). Every prompt
+> cites its evidence by finding ID and its ruling as `(Decision #336, ruling X)`. Paste each prompt
+> into its **own fresh session**, after the standard header (§1). Written 2026-10-30 against `main`
+> @ `94d22e84`.
 >
 > **How to run them:** in the §0 order. A prompt marked **🧑 DECISION** stops and puts the named
 > question to a human before it changes behaviour, with options and a recommendation. ⚖️ marks a
@@ -218,7 +218,7 @@ Before writing code:
      packages/ui/CLAUDE.md for UI), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/IDENTITY_AND_WORKSPACES_AUDIT.md (finding IDs IW-*) and
-     IDENTITY_DECISIONS_AND_GAPS.md (conflicts K1-K12, questions F1-F9). Then read Decision #336 in
+     IDENTITY_AND_WORKSPACES_AUDIT.md (conflicts K1-K12, questions F1-F9). Then read Decision #336 in
      documentation/reference/decisions/decisions-122-126.md (grep -n '^| 336 |'): its OWNER
      RULINGS are the law here. The ruling table is FOUNDER_QUESTIONNAIRE.md Part C, and this
      file's §0 lists the open stops.
@@ -1662,7 +1662,7 @@ FILES:
   - architecture/SYSTEM_ARCHITECTURE.md: §Authentication, §Security, the env contract and the
     restore runbook.
   - architecture/ROUTING.md and design-system/DESIGN_SYSTEM.md §C.1.
-  - architecture/IDENTITY_AND_WORKSPACES_AUDIT.md and IDENTITY_DECISIONS_AND_GAPS.md: add a Status
+  - architecture/IDENTITY_AND_WORKSPACES_AUDIT.md: add a Status
     column, reading "Fixed by <prompt or Wave 0 commit>" or "Open, owner <track>".
   - The #336 row (each flag resolved, with its ruling and prompt), and #87 (b), (c), which OWN1
     closes.
