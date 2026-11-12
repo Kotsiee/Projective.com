@@ -26,7 +26,7 @@ import { patchSetup } from "../../core/setup-state.ts";
 import { useAttachmentUpload } from "../../hooks/useAttachmentUpload.ts";
 import { Disclosure, Field, Note, PairRow, Section } from "./setup-primitives.tsx";
 import {
-	DEADLINE_BONUS_PERCENT,
+	DEADLINE_BONUS_NOTE,
 	IP_LABEL,
 	LANGUAGE_OPTIONS,
 	LOCATION_OPTIONS,
@@ -459,9 +459,8 @@ export function RulesSection(
 							label="Allow deadline bonuses on tickets"
 						/>
 						<Note>
-							A freelancer who delivers a ticket ahead of its due date earns an extra{" "}
-							{DEADLINE_BONUS_PERCENT}% of its price. Pipelines only — a one-off has one deadline,
-							which is the delivery itself.
+							{DEADLINE_BONUS_NOTE}{" "}
+							Pipelines only — a one-off has one deadline, which is the delivery itself.
 						</Note>
 					</div>
 				)}

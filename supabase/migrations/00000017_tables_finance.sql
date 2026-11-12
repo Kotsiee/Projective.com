@@ -112,7 +112,10 @@ CREATE TABLE finance.escrows (
     payee_id uuid,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     platform_fee_cents bigint NOT NULL DEFAULT 0 CHECK (platform_fee_cents >= 0),
-    deadline_bonus_cents bigint NOT NULL DEFAULT 0 CHECK (deadline_bonus_cents >= 0),
+    -- Refused above 0 until a bonus is held with its escrow (Decision #337, ruling M7): release pays
+    -- amount + bonus − fee, and nothing funds the bonus (FCA N4).
+    deadline_bonus_cents bigint NOT NULL DEFAULT 0
+        CONSTRAINT ck_escrows_bonus_unfunded CHECK (deadline_bonus_cents = 0),
     currency text NOT NULL,
     status text NOT NULL DEFAULT 'funded',
     created_at timestamptz NOT NULL DEFAULT now(),

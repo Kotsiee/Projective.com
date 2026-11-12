@@ -2,6 +2,7 @@ import type { DateValue, Option } from "@projective/ui/fields";
 import { currencyExponent } from "@projective/types/finance";
 import { FileKind } from "@projective/types/files";
 import {
+	DEADLINE_BONUS_FUNDED,
 	DEADLINE_BONUS_RATE,
 	PROJECT_TYPE_HINT,
 	PROJECT_TYPE_LABEL,
@@ -140,6 +141,15 @@ export function typeHint(setup: ProjectSetup): string {
 
 /** The uplift the deadline-bonus offer is stated as, from the one constant that carries the rate. */
 export const DEADLINE_BONUS_PERCENT = Math.round(DEADLINE_BONUS_RATE * 100);
+
+/**
+ * The sentence beside the deadline-bonus toggle. It states the uplift only once the bonus is held
+ * with its escrow ({@link DEADLINE_BONUS_FUNDED}); until then the toggle only gates ticket due dates.
+ */
+export const DEADLINE_BONUS_NOTE = DEADLINE_BONUS_FUNDED
+	? "A freelancer who delivers a ticket ahead of its due date earns an extra " +
+		`${DEADLINE_BONUS_PERCENT}% of its price.`
+	: "For now this only lets tickets carry due dates: no bonus for early delivery is paid yet.";
 
 export const SESSION_KIND_OPTIONS: Option[] = [
 	{ value: "normal", label: "One-to-one" },

@@ -126,18 +126,18 @@ export function ndaDocumentFor(mode: NdaMode, documentId: string | null): string
 }
 
 /**
- * The uplift a client offers for early delivery on a pipeline, as a fraction of the ticket price.
- *
- * FLAGGED, and deliberately not resolved here: the 0.1 figure comes from the creation brief and
- * appears in NO source-of-truth document, and `PRODUCT_SPEC.md` assigns the Deadline Bonus to
- * ONE-OFF engagements rather than pipelines. It exists as exactly one greppable named constant so
- * the figure can be corrected in one place once a human settles it.
- *
- * It is NEVER written to the database and never enters a money path. The money path is the existing
- * `finance.escrows.deadline_bonus_*` columns; this constant only lets a surface state the offer in
- * the sentence beside the toggle.
+ * The uplift a client offers for early delivery, as a fraction of the ticket price: the +10%
+ * starting dial of `finance-model.md` §13 (Decision #337, ruling M7). It never enters a money path;
+ * it only lets a surface state the offer, and only once {@link DEADLINE_BONUS_FUNDED}.
  */
 export const DEADLINE_BONUS_RATE = 0.1;
+
+/**
+ * Whether a deadline bonus is held with its escrow at funding (Decision #337, ruling M7, step A).
+ * While it is not, `finance.escrows` refuses a non-zero bonus (`ck_escrows_bonus_unfunded`), so no
+ * surface states the uplift or promises a bonus.
+ */
+export const DEADLINE_BONUS_FUNDED = false;
 
 /**
  * The URL-safe address derived from a title.

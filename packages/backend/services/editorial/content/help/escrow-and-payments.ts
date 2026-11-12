@@ -1,4 +1,5 @@
 import type { HelpCentreArticle } from "@projective/types/editorial";
+import { DEADLINE_BONUS_FUNDED } from "@projective/types/projects";
 import { helpArticle } from "./define.ts";
 
 /** The `escrow-and-payments` category's articles, in reading order. */
@@ -209,7 +210,9 @@ const fees = helpArticle({
 					type: "list",
 					items: [
 						"The fee is worked out in whole pennies and rounded down, so it is never more than 5%.",
-						"A deadline bonus is paid on top of the escrow, with no fee taken from it.",
+						...(DEADLINE_BONUS_FUNDED
+							? ["A deadline bonus is paid on top of the escrow, with no fee taken from it."]
+							: []),
 						"In a Fair Exit, the fee is charged only on the share the freelancer earned; the refunded part comes back to the client without a fee.",
 						"Your plan never changes the fee. Only an approved volume contract with an enterprise or business can.",
 					],

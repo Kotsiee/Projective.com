@@ -4,6 +4,7 @@ import {
 	type BoardPage,
 	briefOf,
 	composeWorkspace,
+	DEADLINE_BONUS_FUNDED,
 	type ProjectSetup,
 	type SubmissionListPage,
 } from "@projective/types/projects";
@@ -96,7 +97,9 @@ Deno.test("briefOf words the NDA, the budget model and the skills exactly as con
 	assertEquals(brief.tags.slice(0, 3), ["Figma", "Branding", "Motion"]);
 	assertEquals(brief.deadlineLabel, "Due Sat, 12 Sep");
 	assert(brief.description.includes("First paragraph."));
-	assert(brief.terms.some((t) => t.label === "Deadline bonuses"));
+	const bonusTerm = brief.terms.find((t) => t.label === "Deadline bonuses");
+	assert(bonusTerm);
+	assertEquals(/offered|%/i.test(bonusTerm.value), DEADLINE_BONUS_FUNDED);
 
 	const none = briefOf({ ...custom, rules: { ...custom.rules, ndaRequired: false } });
 	assertEquals(none.nda.source, "none");

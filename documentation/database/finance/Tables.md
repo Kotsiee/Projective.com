@@ -118,7 +118,7 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `payee_type`,`payee_id`        | assignment_type,uuid | `freelancer` or `team` payee. **NULL** on a PREPAID escrow until a claim binds it (Decision #197): `ck_escrows_payee_pair` (both or neither) and `ck_escrows_unbound` (an unbound escrow is a base ticket escrow that is `held`, or `refunded` — never released). |
 | `amount_cents`                 | bigint               | Principal (`CHECK > 0`).                          |
 | `platform_fee_cents`           | bigint               | Fee applied at release (0 while held).            |
-| `deadline_bonus_cents`         | bigint               | Optional bonus.                                   |
+| `deadline_bonus_cents`         | bigint               | `NOT NULL DEFAULT 0`. **Refused unless 0** (`ck_escrows_bonus_unfunded`) until a bonus is held with its escrow; see below. |
 | `currency`                     | text                 | Origin currency.                                  |
 | `status`                       | text                 | `held`/`released`/`refunded`/`disputed`/`funded` (`EscrowStatus`; no CHECK). |
 | `created_at`                   | timestamptz          | `NOT NULL DEFAULT now()`.                         |
@@ -136,6 +136,14 @@ twice. A paid revision round's escrow (`revision_id` set) sits beside the base e
 escrow (`cohort_membership_id`) has no ticket, so neither collides. `uq_escrows_revision` (UNIQUE
 `(revision_id) WHERE revision_id IS NOT NULL`) holds a round once, whatever became of its escrow.
 `idx_escrows_ticket` stays for the all-status reads. Probe: `supabase/probes/escrow_uniqueness.sql`.
+
+**No unfunded deadline bonus (Decision #337, ruling M7, step C).** A release pays
+`amount_cents + deadline_bonus_cents − platform_fee_cents`, and no hold debits the bonus from the
+payer, so a non-zero bonus would be money created at release (FCA N4). `ck_escrows_bonus_unfunded`
+(`CHECK (deadline_bonus_cents = 0)`) refuses one with `23514` until step A holds the bonus with the
+escrow at funding. The column stays, neither dropped nor retyped, for that step; the seeds write
+`0`, and `EscrowSchema.deadlineBonusCents` is `z.literal(0)`. Probe:
+`supabase/probes/escrow_bonus_unfunded.sql`.
 
 ### Other existing engine tables
 

@@ -9,6 +9,7 @@ import {
 	isSelfClaimable,
 	TICKET_INTENSITY_LABEL,
 } from "./board.ts";
+import { DEADLINE_BONUS_FUNDED } from "./create.ts";
 import type { MemberRosterPage } from "./members.ts";
 import { type ProjectOverview, ProjectOverviewSchema } from "./overview.ts";
 import {
@@ -648,7 +649,12 @@ export function briefOf(setup: ProjectSetup): WorkspaceBrief {
 		},
 	];
 	if (rules.allowDeadlineBonuses) {
-		terms.push({ label: "Deadline bonuses", value: "Offered for early delivery" });
+		terms.push({
+			label: "Deadline bonuses",
+			value: DEADLINE_BONUS_FUNDED
+				? "Offered for early delivery"
+				: "Due dates only; no bonus is paid yet",
+		});
 	}
 
 	return {

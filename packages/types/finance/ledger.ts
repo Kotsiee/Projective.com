@@ -151,7 +151,11 @@ export const EscrowSchema = z.object({
 	payeeId: uuid.nullable(),
 	amountCents: minorUnitsPositive,
 	platformFeeCents: minorUnitsNonNeg,
-	deadlineBonusCents: minorUnitsNonNeg,
+	/**
+	 * Refused above 0 until a bonus is held with its escrow (`ck_escrows_bonus_unfunded`, Decision
+	 * #337, ruling M7).
+	 */
+	deadlineBonusCents: z.literal(0),
 	currency,
 	status: EscrowStatus,
 	fxRate: z.number().nullable(),
