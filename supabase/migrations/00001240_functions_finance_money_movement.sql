@@ -32,13 +32,29 @@
 --     recorded on the case as `unrecovered_cents`, the platform's loss, never forced into a negative
 --     balance.
 --
+-- In any delivery order (FA H4): a dispute Stripe closed before its `.created` arrived has no case
+-- yet, so this door records one from the closed dispute's own facts (finance.fn_open_chargeback,
+-- without the freeze), resolves it at once and says so in `resolution_note`; the late `.created` then
+-- finds it resolved and freezes nothing. Nothing was frozen for it, so a won one thaws nothing, and a
+-- lost one takes the payment's still-held escrows as the frozen ones — what the in-order events would
+-- have refunded.
+--
+-- A thaw that would give a ticket a second held base escrow (the ticket was funded again while the
+-- dispute froze the first, uq_escrows_ticket_base_held, FA E3) leaves that escrow `disputed`, notes it
+-- in `resolution_note` and writes one ops.log_entries error for a human. It never raises out of the
+-- webhook, which would otherwise answer 5xx for every redelivery.
+--
 -- An escrow the payment funded that was ALREADY RELEASED to the freelancer before the dispute is not
 -- clawed back from the freelancer here: that recourse is a product decision (flagged in Decision #126).
 CREATE OR REPLACE FUNCTION finance.record_dispute_closed(
     p_event_id text,
     p_dispute_ref text,
     p_status text,
-    p_livemode boolean
+    p_livemode boolean,
+    p_provider_ref text DEFAULT NULL,
+    p_amount bigint DEFAULT NULL,
+    p_currency text DEFAULT NULL,
+    p_reason text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -56,6 +72,11 @@ DECLARE
     v_escrow finance.escrows;
     v_escrow_ids uuid[] := '{}';
     v_touched uuid[] := '{}';
+    v_stuck uuid[] := '{}';
+    v_late boolean := false;
+    v_note text;
+    v_constraint text;
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
     v_payer_wallet text;
     v_recover bigint := 0;
     v_from_pending bigint := 0;
@@ -72,8 +93,18 @@ BEGIN
 
     SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref FOR UPDATE;
     IF NOT FOUND THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'unmatched', 'detail', 'no recorded dispute carries this id'));
+        IF p_dispute_ref IS NULL OR p_dispute_ref !~ '^(du|dp)_[A-Za-z0-9_]{1,250}$'
+           OR p_amount IS NULL OR p_amount <= 0 OR v_currency !~ '^[A-Z]{3}$' THEN
+            RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+                'outcome', 'unmatched',
+                'detail', 'no recorded dispute carries this id, and the event cannot record one'));
+        END IF;
+        v_late := finance.fn_open_chargeback(p_dispute_ref, p_provider_ref, p_amount, v_currency, p_reason, false)
+                  IS NOT NULL;
+        SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref FOR UPDATE;
+        IF v_late THEN
+            v_note := 'Stripe closed this dispute before it reported it opened, so nothing was frozen for it.';
+        END IF;
     END IF;
     IF v_case.status IN ('won', 'lost', 'refunded') THEN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
@@ -94,31 +125,68 @@ BEGIN
     v_notify := v_payment.created_by;
 
     IF p_status IN ('won', 'warning_closed') THEN
-        WITH thawed AS (
-            UPDATE finance.escrows SET status = 'held'
+        FOR v_escrow IN
+            SELECT * FROM finance.escrows
              WHERE id = ANY (v_escrow_ids) AND status = 'disputed'
-            RETURNING id
-        )
-        SELECT COALESCE(pg_catalog.array_agg(id ORDER BY id), '{}') INTO v_touched FROM thawed;
+             ORDER BY id
+               FOR UPDATE
+        LOOP
+            BEGIN
+                UPDATE finance.escrows SET status = 'held' WHERE id = v_escrow.id;
+                v_touched := v_touched || v_escrow.id;
+            EXCEPTION WHEN unique_violation THEN
+                GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+                IF v_constraint IS DISTINCT FROM 'uq_escrows_ticket_base_held' THEN
+                    RAISE;
+                END IF;
+                v_stuck := v_stuck || v_escrow.id;
+            END;
+        END LOOP;
+        IF pg_catalog.cardinality(v_stuck) > 0 THEN
+            v_note := pg_catalog.concat_ws(' ', v_note, pg_catalog.format(
+                'The dispute was won, but %s escrow(s) stay disputed because their ticket was funded again while it was open: %s. Refund or release each by hand.',
+                pg_catalog.cardinality(v_stuck), pg_catalog.array_to_string(v_stuck, ', ')));
+            INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+            VALUES (
+                'chargeback:' || v_case.id::text, 'error',
+                pg_catalog.format('Chargeback %s was won, but %s escrow(s) could not return to held: their ticket already holds a newer escrow', v_case.id, pg_catalog.cardinality(v_stuck)),
+                pg_catalog.now(), 'server', 'finance.record_dispute_closed',
+                pg_catalog.jsonb_build_object('chargeback_id', v_case.id, 'dispute', p_dispute_ref,
+                    'disputed_escrow_ids', pg_catalog.to_jsonb(v_stuck))
+            );
+        END IF;
 
-        UPDATE finance.chargebacks SET status = 'won', resolved_at = pg_catalog.now() WHERE id = v_case.id;
+        UPDATE finance.chargebacks
+           SET status = 'won', resolved_at = pg_catalog.now(), resolution_note = v_note
+         WHERE id = v_case.id;
 
         IF v_notify IS NOT NULL THEN
             PERFORM comms.fn_notify(
                 v_notify, 'chargeback.won', 'Dispute resolved',
-                'The dispute on your card payment was resolved in the payment''s favour. Any escrow it funded is released from hold.',
+                CASE
+                    WHEN pg_catalog.cardinality(v_stuck) > 0
+                        THEN 'The dispute on your card payment was resolved in the payment''s favour. Part of the escrow it funded stays on hold until our team reviews it.'
+                    WHEN v_late
+                        THEN 'The dispute on your card payment was resolved in the payment''s favour. Nothing it funded was put on hold.'
+                    ELSE 'The dispute on your card payment was resolved in the payment''s favour. Any escrow it funded is released from hold.'
+                END,
                 'chargebacks', v_case.id,
-                pg_catalog.jsonb_build_object('released_escrows', pg_catalog.cardinality(v_touched))
+                pg_catalog.jsonb_build_object('released_escrows', pg_catalog.cardinality(v_touched),
+                    'still_disputed_escrows', pg_catalog.cardinality(v_stuck))
             );
         END IF;
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'won',
-            'unfrozen_escrow_ids', pg_catalog.to_jsonb(v_touched)));
+            'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'won', 'late', v_late,
+            'unfrozen_escrow_ids', pg_catalog.to_jsonb(v_touched),
+            'still_disputed_escrow_ids', pg_catalog.to_jsonb(v_stuck)));
     END IF;
 
-    -- LOST.
+    -- LOST. A case this door just recorded froze nothing, so the payment's still-held escrows stand in
+    -- for the frozen ones.
     FOR v_escrow IN
-        SELECT * FROM finance.escrows WHERE id = ANY (v_escrow_ids) AND status = 'disputed' FOR UPDATE
+        SELECT * FROM finance.escrows
+         WHERE id = ANY (v_escrow_ids) AND (status = 'disputed' OR (v_late AND status = 'held'))
+           FOR UPDATE
     LOOP
         UPDATE finance.escrows SET status = 'refunded' WHERE id = v_escrow.id;
         v_payer_wallet := finance.fn_escrow_payer_wallet_type(v_escrow.payer_business_id, v_escrow.payer_user_id);
@@ -151,7 +219,7 @@ BEGIN
     v_short := v_case.amount_cents - v_from_pending - v_recover;
 
     UPDATE finance.chargebacks
-       SET status = 'lost', resolved_at = pg_catalog.now(), unrecovered_cents = v_short
+       SET status = 'lost', resolved_at = pg_catalog.now(), unrecovered_cents = v_short, resolution_note = v_note
      WHERE id = v_case.id;
 
     IF v_notify IS NOT NULL THEN
@@ -165,7 +233,7 @@ BEGIN
     END IF;
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-        'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'lost',
+        'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'lost', 'late', v_late,
         'refunded_escrow_ids', pg_catalog.to_jsonb(v_touched),
         'recovered_cents', v_from_pending + v_recover, 'recovered_pending_cents', v_from_pending,
         'unrecovered_cents', v_short));
@@ -612,15 +680,17 @@ BEGIN
 END;
 $$;
 
--- Connect `payout.paid` / `payout.failed` (processor door): the connected account's own payout to
--- its bank. The fat service resolves which transfers that bank payout carried (its balance
--- transactions) and any earlier failed bank payouts it re-pays; this door records the outcome on
--- every Projective payout among them that belongs to the account's owner. Nothing moves in the
--- ledger: the money left Projective with the transfer, and a failed bank payout returns to the
--- connected account's Stripe balance until the owner fixes their bank details. A failure is final for
--- its own bank payout (a late `paid` for it changes nothing); a later bank payout that re-pays it
--- marks it paid. The account's person owner is told on a failure, and on a payout that landed.
--- Idempotent on the event id (Decision #202).
+-- Connect `payout.paid` / `payout.failed` / `payout.canceled` (processor door): the connected
+-- account's own payout to its bank. The fat service resolves which transfers that bank payout carried
+-- (its balance transactions) and any earlier failed or cancelled bank payouts it re-pays; this door
+-- records the outcome on every Projective payout among them that belongs to the account's owner.
+-- Nothing moves in the ledger: the money left Projective with the transfer, and a failed or cancelled
+-- bank payout returns to the connected account's Stripe balance, where Stripe pays it out again
+-- (Decision #337, ruling M9, as built in #202 (a)). It is not the refused-transfer path
+-- (finance.fail_payout), which credits the wallet. A failure or a cancellation is final for its own
+-- bank payout (a late `paid` for it changes nothing); a later bank payout that re-pays it marks it
+-- paid. The account's person owner is told on a failure or a cancellation, and on a payout that
+-- landed. Idempotent on the event id (Decision #202).
 CREATE OR REPLACE FUNCTION finance.record_bank_payout(
     p_event_id text,
     p_event_type text,
@@ -643,8 +713,8 @@ DECLARE
     v_code text := NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_failure_code, '')), 80), '');
     v_ids uuid[];
 BEGIN
-    IF p_status IS NULL OR p_status NOT IN ('paid', 'failed') THEN
-        RAISE EXCEPTION 'status: expected paid or failed' USING ERRCODE = '22023';
+    IF p_status IS NULL OR p_status NOT IN ('paid', 'failed', 'canceled') THEN
+        RAISE EXCEPTION 'status: expected paid, failed or canceled' USING ERRCODE = '22023';
     END IF;
     IF p_bank_payout_ref IS NULL OR p_bank_payout_ref !~ '^po_[A-Za-z0-9_]{1,250}$' THEN
         RAISE EXCEPTION 'payout: expected a Stripe payout id' USING ERRCODE = '22023';
@@ -682,14 +752,14 @@ BEGIN
                 w.owner_type = v_account.owner_type
                 OR (w.owner_type IN ('user', 'freelancer') AND v_account.owner_type IN ('user', 'freelancer'))
            )
-           -- A failure is final for its own bank payout, and a failure of an earlier bank payout never
-           -- undoes a later one that paid.
+           -- A failure or a cancellation is final for its own bank payout, and one of an earlier bank
+           -- payout never undoes a later one that paid.
            AND NOT (
-                p_status = 'paid' AND p.bank_status IS NOT DISTINCT FROM 'failed'
+                p_status = 'paid' AND COALESCE(p.bank_status, '') IN ('failed', 'canceled')
                 AND p.bank_payout_ref IS NOT DISTINCT FROM p_bank_payout_ref
            )
            AND NOT (
-                p_status = 'failed' AND p.bank_status IS NOT DISTINCT FROM 'paid'
+                p_status IN ('failed', 'canceled') AND p.bank_status IS NOT DISTINCT FROM 'paid'
                 AND p.bank_payout_ref IS DISTINCT FROM p_bank_payout_ref
            )
         RETURNING p.id
@@ -703,6 +773,13 @@ BEGIN
                 'Stripe couldn''t pay your bank account. Update your payout details — the money waits in your payout account until then.',
                 'payouts', v_ids[1],
                 pg_catalog.jsonb_build_object('failure_code', v_code, 'payouts', COALESCE(pg_catalog.cardinality(v_ids), 0))
+            );
+        ELSIF p_status = 'canceled' THEN
+            PERFORM comms.fn_notify(
+                v_account.owner_id, 'payout.failed', 'A payout to your bank was cancelled',
+                'Stripe cancelled a payout to your bank account before it was sent. The money is back in your payout account and is paid out again.',
+                'payouts', v_ids[1],
+                pg_catalog.jsonb_build_object('bank_status', 'canceled', 'payouts', COALESCE(pg_catalog.cardinality(v_ids), 0))
             );
         ELSIF v_ids IS NOT NULL THEN
             PERFORM comms.fn_notify(

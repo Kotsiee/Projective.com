@@ -144,6 +144,13 @@ export const InboundPaymentSchema = z.object({
 	orderError: z.string().max(400).nullable().optional(),
 	/** Why a `settled_unapplied` payment's lock or order was not applied; `null` on every other status. */
 	unappliedReason: z.string().max(400).nullable().optional(),
+	/**
+	 * How much of the charge `charge.refunded` has accounted for (Stripe's cumulative
+	 * `amount_refunded`, capped at what was credited); each newly refunded part is a `refund` debit.
+	 */
+	refundedCents: minorUnitsNonNeg,
+	/** The part of {@link refundedCents} the wallet could not cover when refunded: the platform's loss. */
+	refundUnrecoveredCents: minorUnitsNonNeg,
 	createdAt: timestamp,
 	updatedAt: timestamp,
 	succeededAt: timestamp.nullable(),
@@ -318,9 +325,11 @@ export type PayoutStatus = z.infer<typeof PayoutStatus>;
 
 /**
  * The connected account's own payout to the bank (`finance.payouts.bank_status`, from Connect
- * `payout.paid` / `payout.failed`). `null` until Stripe reports it.
+ * `payout.paid` / `payout.failed` / `payout.canceled`). `null` until Stripe reports it. `canceled` is
+ * spelled as Stripe spells it: the money is back in the connected account's balance and is paid out
+ * again, and nothing returns to the wallet (Decision #337, ruling M9).
  */
-export const BankPayoutStatus = z.enum(["paid", "failed"]);
+export const BankPayoutStatus = z.enum(["paid", "failed", "canceled"]);
 export type BankPayoutStatus = z.infer<typeof BankPayoutStatus>;
 
 /**
@@ -706,10 +715,11 @@ export function incomeSmootherFeeMinor(amountMinor: number, feeBp: number): numb
 
 // #region Webhooks
 /**
- * Every Stripe event type the webhook ACTS on. The four the architecture names (succeeded,
- * verified, transfer created, dispute created) plus the failure halves of the same two lifecycles —
- * without them a declined card or a failed ID check would sit at "pending" forever. Every other type
- * is acknowledged and ignored.
+ * Every Stripe event type the snapshot webhook ACTS on — the one list; SYSTEM_ARCHITECTURE links here
+ * rather than restating it. The four the architecture names (succeeded, verified, transfer created,
+ * dispute created) plus the failure halves of the same two lifecycles — without them a declined card
+ * or a failed ID check would sit at "pending" forever — and every later money event below. Every
+ * other type is acknowledged and ignored.
  */
 export const HANDLED_STRIPE_EVENTS = [
 	"payment_intent.succeeded",
@@ -731,6 +741,13 @@ export const HANDLED_STRIPE_EVENTS = [
 	"transfer.reversed",
 	"payout.paid",
 	"payout.failed",
+	// FINANCE_AUDIT H3: a refund made at Stripe, a dispute's review and its funds, and a cancelled bank
+	// payout (a Connect event, like payout.paid / payout.failed).
+	"charge.refunded",
+	"charge.dispute.updated",
+	"charge.dispute.funds_withdrawn",
+	"charge.dispute.funds_reinstated",
+	"payout.canceled",
 ] as const;
 export type HandledStripeEvent = (typeof HANDLED_STRIPE_EVENTS)[number];
 

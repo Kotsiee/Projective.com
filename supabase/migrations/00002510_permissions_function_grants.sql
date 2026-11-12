@@ -1188,8 +1188,14 @@ REVOKE ALL ON FUNCTION finance.record_transfer_created (text, text, text, bigint
 GRANT EXECUTE ON FUNCTION finance.record_transfer_created (text, text, text, bigint, text, uuid, boolean) TO service_role;
 REVOKE ALL ON FUNCTION finance.record_dispute_opened (text, text, text, bigint, text, text, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.record_dispute_opened (text, text, text, bigint, text, text, boolean) TO service_role;
+-- FA H3: a dispute's review and its funds withdrawn / reinstated, and a refund made at Stripe.
+REVOKE ALL ON FUNCTION finance.record_dispute_updated (text, text, text, text, bigint, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_dispute_updated (text, text, text, text, bigint, text, text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_charge_refunded (text, text, bigint, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_charge_refunded (text, text, bigint, text, text, boolean) TO service_role;
 
 -- Internal helpers: called only from inside the doors above, never over the API.
+REVOKE ALL ON FUNCTION finance.fn_open_chargeback (text, text, bigint, text, text, boolean) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_claim_stripe_event (text, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_release_stripe_event (text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_complete_stripe_event (text, jsonb) FROM PUBLIC, anon, authenticated, service_role;
@@ -1219,8 +1225,8 @@ GRANT EXECUTE ON FUNCTION finance.ensure_purchase_wallet (text, uuid, text) TO a
 
 -- PROCESSOR doors: service_role only (a client who could call them could announce their own payout
 -- sent, their own chargeback won, or a card saved against somebody else's billing profile).
-REVOKE ALL ON FUNCTION finance.record_dispute_closed (text, text, text, boolean) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION finance.record_dispute_closed (text, text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_dispute_closed (text, text, text, boolean, text, bigint, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_dispute_closed (text, text, text, boolean, text, bigint, text, text) TO service_role;
 REVOKE ALL ON FUNCTION finance.complete_payout (uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.complete_payout (uuid, text) TO service_role;
 REVOKE ALL ON FUNCTION finance.fail_payout (uuid, text) FROM PUBLIC, anon, authenticated;

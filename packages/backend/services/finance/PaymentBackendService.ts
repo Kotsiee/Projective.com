@@ -198,7 +198,7 @@ const LIVE_SWEEP: CardSweepDeps = { settle: settleCardPayment, now: () => Date.n
 
 /**
  * Settle, cancel or leave one leased card payment: the recovery sweep's step
- * (FINANCE_COMPLETENESS_AUDIT N1, FINANCE_AUDIT CO15), decided by `planCardSweep`.
+ * (FINANCE_AUDIT N1, CO15), decided by `planCardSweep`.
  *
  * - A succeeded intent is applied exactly as its webhook would be, through
  *   `finance.settle_card_payment`, under the claim `evt_sweep_<intent>` — so a sweep that runs twice
@@ -459,7 +459,7 @@ async function cardPayment(
 			// charged at creation (`confirm: true`). Nothing is lost either way: the next retry under the
 			// same key re-creates the SAME intent (Stripe idempotency) and binds it, and without a retry
 			// `settle_card_payment` binds it by its `projective_payment_id` when the webhook arrives,
-			// or the card-payment sweep does (FINANCE_COMPLETENESS_AUDIT N1).
+			// or the card-payment sweep does (FINANCE_AUDIT N1).
 			console.error("[payments:intent] could not bind", intent.id, bound.refusal.message);
 			return refused(bound.refusal);
 		}
@@ -1122,7 +1122,7 @@ export class PaymentBackendService {
 	/**
 	 * Credit every card payment Stripe charged but the ledger never settled, and cancel every intent
 	 * left waiting on its payer for a day — run by the scheduler (`POST /api/finance/cron/card-payments`,
-	 * FINANCE_COMPLETENESS_AUDIT N1, FINANCE_AUDIT CO15). Each payment still `requires_payment` /
+	 * FINANCE_AUDIT N1, CO15). Each payment still `requires_payment` /
 	 * `processing` past its grace period is leased once per window
 	 * (`finance.claim_unsettled_card_payments`) and looked up at Stripe by its intent or, when the bind
 	 * was lost, by its `projective_payment_id`: a succeeded intent is settled through the webhook's own
@@ -1189,7 +1189,9 @@ export class PaymentBackendService {
 	 * released its claim, so it answers 500 and Stripe's retry settles it — except a settlement whose
 	 * amount / currency can never match its payment, or one for a business that is now archived (which
 	 * takes no money in, Decision #248 (k)), each acknowledged into reconciliation (one ops row, claim
-	 * kept, listed by `finance.v_ops_unledgered_payments`) because no retry may credit it.
+	 * kept, listed by `finance.v_ops_unledgered_payments`) because no retry may credit it. A refund of a
+	 * payment that has not settled yet also answers 500 (its claim released, `requireClaimKept`), so the
+	 * retry debits it once the settlement has landed.
 	 */
 	static async handleStripeWebhook(
 		payload: string,

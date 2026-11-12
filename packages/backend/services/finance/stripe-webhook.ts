@@ -1,12 +1,18 @@
-import { type HandledStripeEvent, payoutAccountStatusFor } from "@projective/types/finance";
+import {
+	type BankPayoutStatus,
+	type HandledStripeEvent,
+	payoutAccountStatusFor,
+} from "@projective/types/finance";
 import { getStripe, type Stripe } from "../../core/stripe.ts";
 import {
 	applyIdentityEvent,
 	type EventOutcome,
 	recordBankPayout,
 	recordCardPaymentFailure,
+	recordChargeRefunded,
 	recordDisputeClosed,
 	recordDisputeOpened,
+	recordDisputeUpdated,
 	recordSavedCard,
 	recordTransferCreated,
 	recordTransferReversed,
@@ -77,25 +83,66 @@ export type StripePlan =
 	}
 	| {
 		kind: "bank_payout";
-		eventType: "payout.paid" | "payout.failed";
+		eventType: "payout.paid" | "payout.failed" | "payout.canceled";
 		/** The connected account the payout ran on (`event.account`). */
 		account: string;
 		payout: string;
-		status: "paid" | "failed";
+		status: BankPayoutStatus;
 		failureCode: string | null;
 	}
+	| ({ kind: "dispute_created" } & DisputeFacts)
+	| ({
+		kind: "dispute_updated";
+		eventType: Extract<
+			HandledStripeEvent,
+			| "charge.dispute.updated"
+			| "charge.dispute.funds_withdrawn"
+			| "charge.dispute.funds_reinstated"
+		>;
+		/** Stripe's dispute status (`needs_response`, `under_review`, `won`, …) as the event reports it. */
+		status: string;
+	} & DisputeFacts)
 	| {
-		kind: "dispute_created";
+		kind: "dispute_closed";
 		dispute: string;
+		status: string;
+		/** The dispute's own facts, so a close that beats `.created` can still record the case. */
 		paymentIntent: string | null;
-		amount: number;
-		currency: string;
+		amount: number | null;
+		currency: string | null;
 		reason: string | null;
 	}
-	| { kind: "dispute_closed"; dispute: string; status: string }
+	| {
+		kind: "charge_refunded";
+		charge: string;
+		paymentIntent: string;
+		/** The charge's CUMULATIVE refunded amount at the time of the event. */
+		amountRefunded: number;
+		currency: string;
+		/** The newest refund (`re_…`) when Stripe included the list; `null` otherwise. */
+		refund: string | null;
+	}
 	| { kind: "account_updated"; account: string }
 	| { kind: "card_saved"; card: ConfirmedCard }
 	| { kind: "ignore"; reason: string };
+
+/** What every dispute event carries about its dispute: enough to record the case whichever comes first. */
+export interface DisputeFacts {
+	dispute: string;
+	paymentIntent: string | null;
+	amount: number;
+	currency: string;
+	reason: string | null;
+}
+
+/** A connected account's bank payout events, and the outcome each records. */
+const BANK_PAYOUT_STATUS: Readonly<
+	Record<"payout.paid" | "payout.failed" | "payout.canceled", BankPayoutStatus>
+> = {
+	"payout.paid": "paid",
+	"payout.failed": "failed",
+	"payout.canceled": "canceled",
+};
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -110,6 +157,20 @@ function idOf(ref: unknown): string | null {
 
 function text(value: unknown, max = 200): string | null {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim().slice(0, max) : null;
+}
+
+/** A dispute object's facts, or `null` when it lacks its id, amount or currency. */
+function disputeFactsOf(dispute: Stripe.Dispute | null | undefined): DisputeFacts | null {
+	if (!dispute?.id || !Number.isInteger(dispute.amount) || typeof dispute.currency !== "string") {
+		return null;
+	}
+	return {
+		dispute: dispute.id,
+		paymentIntent: idOf(dispute.payment_intent),
+		amount: dispute.amount,
+		currency: dispute.currency.toUpperCase(),
+		reason: text(dispute.reason, 120),
+	};
 }
 
 /**
@@ -204,7 +265,8 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 			};
 		}
 		case "payout.paid":
-		case "payout.failed": {
+		case "payout.failed":
+		case "payout.canceled": {
 			// A payout without `event.account` is the PLATFORM's own payout to its bank, not a withdrawal.
 			const account = text(event.account, 255);
 			if (!account || !account.startsWith("acct_")) {
@@ -217,24 +279,64 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 				eventType: event.type,
 				account,
 				payout: payout.id,
-				status: event.type === "payout.paid" ? "paid" : "failed",
+				status: BANK_PAYOUT_STATUS[event.type],
 				failureCode: event.type === "payout.failed" ? text(payout.failure_code, 80) : null,
 			};
 		}
 		case "charge.dispute.created": {
-			const dispute = event.data.object;
+			const facts = disputeFactsOf(event.data.object);
+			return facts
+				? { kind: "dispute_created", ...facts }
+				: { kind: "ignore", reason: "the dispute is missing its id, amount or currency" };
+		}
+		case "charge.dispute.updated":
+		case "charge.dispute.funds_withdrawn":
+		case "charge.dispute.funds_reinstated": {
+			const facts = disputeFactsOf(event.data.object);
+			if (!facts) {
+				return { kind: "ignore", reason: "the dispute is missing its id, amount or currency" };
+			}
 			return {
-				kind: "dispute_created",
-				dispute: dispute.id,
-				paymentIntent: idOf(dispute.payment_intent),
-				amount: dispute.amount,
-				currency: dispute.currency.toUpperCase(),
-				reason: text(dispute.reason, 120),
+				kind: "dispute_updated",
+				eventType: event.type,
+				status: String(event.data.object.status),
+				...facts,
 			};
 		}
 		case "charge.dispute.closed": {
 			const dispute = event.data.object;
-			return { kind: "dispute_closed", dispute: dispute.id, status: String(dispute.status) };
+			if (!dispute?.id) {
+				return { kind: "ignore", reason: "the dispute event carries no dispute id" };
+			}
+			const facts = disputeFactsOf(dispute);
+			return {
+				kind: "dispute_closed",
+				dispute: dispute.id,
+				status: String(dispute.status),
+				paymentIntent: idOf(dispute.payment_intent),
+				amount: facts?.amount ?? null,
+				currency: facts?.currency ?? null,
+				reason: text(dispute.reason, 120),
+			};
+		}
+		case "charge.refunded": {
+			const charge = event.data.object;
+			const paymentIntent = idOf(charge.payment_intent);
+			// Every charge Projective makes comes from a PaymentIntent it created; one without is not ours.
+			if (!paymentIntent) {
+				return { kind: "ignore", reason: "the refunded charge has no PaymentIntent" };
+			}
+			if (!charge.id || !Number.isInteger(charge.amount_refunded) || !charge.currency) {
+				return { kind: "ignore", reason: "the refunded charge is missing its amount or currency" };
+			}
+			return {
+				kind: "charge_refunded",
+				charge: charge.id,
+				paymentIntent,
+				amountRefunded: charge.amount_refunded,
+				currency: charge.currency.toUpperCase(),
+				refund: text(charge.refunds?.data?.[0]?.id, 255),
+			};
 		}
 		case "account.updated": {
 			// Only the id is taken from the event: the account's state is re-read from Stripe before
@@ -309,6 +411,18 @@ export function requireLedgerRow(outcome: EventOutcome): EventOutcome {
 }
 
 /**
+ * A door that gave its event claim back (`retry` — a refund of a payment that has not settled yet)
+ * did not process the event, so it is not acknowledged: this throws, the webhook answers 5xx, and
+ * Stripe redelivers the event once the settlement it depends on has landed. Any other outcome passes.
+ */
+export function requireClaimKept(outcome: EventOutcome): EventOutcome {
+	if (outcome.raw.retry !== true) return outcome;
+	throw new Error(
+		`not processed yet (${outcome.detail ?? "the door released its claim"}); Stripe will retry`,
+	);
+}
+
+/**
  * Apply a plan through its processor door. Throws when the database could not be reached or refused
  * the call — the webhook must then answer 5xx so Stripe redelivers the event, which the door's event
  * claim makes safe.
@@ -377,8 +491,38 @@ export function applyStripePlan(
 				reason: plan.reason,
 				livemode,
 			});
+		case "dispute_updated":
+			return recordDisputeUpdated({
+				eventId,
+				eventType: plan.eventType,
+				dispute: plan.dispute,
+				paymentIntent: plan.paymentIntent,
+				amount: plan.amount,
+				currency: plan.currency,
+				reason: plan.reason,
+				status: plan.status,
+				livemode,
+			});
 		case "dispute_closed":
-			return recordDisputeClosed({ eventId, dispute: plan.dispute, status: plan.status, livemode });
+			return recordDisputeClosed({
+				eventId,
+				dispute: plan.dispute,
+				status: plan.status,
+				paymentIntent: plan.paymentIntent,
+				amount: plan.amount,
+				currency: plan.currency,
+				reason: plan.reason,
+				livemode,
+			});
+		case "charge_refunded":
+			return recordChargeRefunded({
+				eventId,
+				paymentIntent: plan.paymentIntent,
+				amountRefunded: plan.amountRefunded,
+				currency: plan.currency,
+				refund: plan.refund,
+				livemode,
+			}).then(requireClaimKept);
 		case "account_updated":
 			return syncConnectAccount(plan.account);
 		case "card_saved":

@@ -587,10 +587,11 @@ CREATE TABLE finance.payouts (
     -- How much of the transfer the platform has reversed (`transfer.reversed`), each part returned to
     -- the wallet as a `payout_reversal` credit. Equal to the amount exactly when the status is `reversed`.
     reversed_cents bigint NOT NULL DEFAULT 0,
-    -- The connected account's onward payout to the bank (Connect `payout.paid` / `payout.failed`).
-    -- Separate from `status`: the money has left Projective either way, and after a bank failure it
-    -- waits in the connected account's Stripe balance until the owner fixes their bank details.
-    bank_status text CHECK (bank_status IN ('paid', 'failed')),
+    -- The connected account's onward payout to the bank (Connect `payout.paid` / `payout.failed` /
+    -- `payout.canceled`). Separate from `status`: the money has left Projective either way, and after a
+    -- bank failure or a cancelled bank payout it waits in the connected account's Stripe balance until
+    -- Stripe pays it out again. `canceled` is spelled as Stripe spells it, like inbound_payment_status.
+    bank_status text CHECK (bank_status IN ('paid', 'failed', 'canceled')),
     bank_payout_ref text,                     -- Stripe Payout id on the connected account; XXXX-XXXX in docs
     bank_failure_code text,                   -- Stripe's failure CODE, never its prose
     bank_status_at timestamptz,
@@ -665,6 +666,15 @@ CREATE TABLE finance.chargebacks (
     -- the case is lost, and 0 whenever the wallet covered it in full (finance.record_dispute_closed).
     unrecovered_cents bigint NOT NULL DEFAULT 0 CHECK (unrecovered_cents >= 0),
     created_at timestamptz NOT NULL DEFAULT now(),
+    -- When Stripe reported the disputed funds withdrawn from, and reinstated to, the platform balance
+    -- (`charge.dispute.funds_withdrawn` / `funds_reinstated`). Facts for reconciliation only: the ledger
+    -- moves on `.created` (the freeze) and `.closed` (the outcome), never on these.
+    funds_withdrawn_at timestamptz,
+    funds_reinstated_at timestamptz,
+    -- What a human has to know about how the case was resolved: a dispute Stripe closed before it
+    -- reported it opened, or an escrow left `disputed` because its ticket was funded again meanwhile
+    -- (finance.record_dispute_closed). NULL for an ordinary case.
+    resolution_note text,
     -- Resolution and the three closed states are the same fact stated twice.
     CONSTRAINT chargebacks_resolved_matches_status CHECK (
         (status IN ('won', 'lost', 'refunded')) = (resolved_at IS NOT NULL)
@@ -1311,10 +1321,27 @@ CREATE TABLE finance.inbound_payments (
     -- Why a settled payment's purpose was not applied (`settled_unapplied`, Decision #200): the lock or
     -- the order refused after the credit, which is kept. The detail stays in lock_error / order_error.
     unapplied_reason text,
+    -- How much of the charge `charge.refunded` has accounted for: Stripe's CUMULATIVE
+    -- `amount_refunded`, capped at what was credited. Each newly refunded part is debited from the
+    -- wallet (reason `refund`), so a replay or an older, lower total debits nothing
+    -- (finance.record_charge_refunded).
+    refunded_cents bigint NOT NULL DEFAULT 0,
+    -- The part of `refunded_cents` the wallet could no longer cover when it was refunded (the payer had
+    -- spent it): the platform's loss, recorded rather than forced into a negative balance, the way
+    -- finance.chargebacks.unrecovered_cents records a lost dispute's.
+    refund_unrecovered_cents bigint NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     succeeded_at timestamptz,
     CONSTRAINT uq_inbound_payments_provider_ref UNIQUE (provider, provider_ref),
+    -- A refund never exceeds what was credited, and only a settled payment was credited anything.
+    CONSTRAINT inbound_payments_refund_within_received CHECK (
+        refunded_cents >= 0 AND refunded_cents <= COALESCE(amount_received_cents, 0)
+        AND (refunded_cents = 0 OR status IN ('succeeded', 'settled_unapplied'))
+    ),
+    CONSTRAINT inbound_payments_refund_unrecovered_within CHECK (
+        refund_unrecovered_cents >= 0 AND refund_unrecovered_cents <= refunded_cents
+    ),
     -- Only a top-up can pay for a checkout; an escrow lock funds a stage, never an order.
     CONSTRAINT inbound_payments_checkout_only_for_topups CHECK (
         checkout IS NULL OR purpose = 'wallet_topup'

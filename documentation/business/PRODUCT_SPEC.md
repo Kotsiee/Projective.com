@@ -1753,7 +1753,10 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   the platform later reverses comes back to the wallet. A bank that refuses the payout leaves the
   money in the owner's Stripe payout account, where it already belongs to them: the owner is told to
   update their bank details, and Stripe pays it out again once they do; it is not pulled back into
-  the platform wallet (Decision #202; Decision #337, ruling M9, pending counsel).
+  the platform wallet (Decision #202; Decision #337, ruling M9, pending counsel). A bank payout
+  Stripe cancels is the same: the owner is told and Stripe pays it out again. A card payment
+  refunded at Stripe is taken back from the wallet it topped up, once per refunded part; what the
+  wallet no longer holds is the platform's loss and goes to a human (`finance-model.md` §15).
 - **Earned money clears a 7-day safety window before it can be used** (root `CLAUDE.md` §8 Decision
   #191). A released escrow (a team's shares and vault cut included), a fair-exit or session payout
   (a session's once its 24-hour review window has passed) and a product sale show as **Pending** for

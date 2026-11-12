@@ -1,4 +1,5 @@
 import {
+	type BankPayoutStatus,
 	billingPeriod,
 	type CardOwnerScope,
 	type CheckoutOrderLink,
@@ -180,6 +181,8 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		orderId: row.order_id ?? null,
 		orderError: row.order_error ?? null,
 		unappliedReason: row.unapplied_reason ?? null,
+		refundedCents: num(row.refunded_cents) ?? 0,
+		refundUnrecoveredCents: num(row.refund_unrecovered_cents) ?? 0,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		succeededAt: row.succeeded_at ?? null,
@@ -785,7 +788,7 @@ function outcomeOf(row: Row): EventOutcome {
 /**
  * `payment_intent.succeeded` → `finance.settle_card_payment`. `paymentId` is the intent's
  * `metadata.projective_payment_id`: when no payment is bound to the intent yet, the door binds the
- * unbound payment it names and settles it (FINANCE_COMPLETENESS_AUDIT N1).
+ * unbound payment it names and settles it (FINANCE_AUDIT N1).
  */
 export async function settleCardPayment(args: {
 	eventId: string;
@@ -927,11 +930,18 @@ export async function recordDisputeOpened(args: {
 // #endregion
 
 // #region Processor doors added after the fiat rails (Decision #126)
-/** `charge.dispute.closed` → `finance.record_dispute_closed`. */
+/**
+ * `charge.dispute.closed` → `finance.record_dispute_closed`. The dispute's own facts (its intent,
+ * amount, currency, reason) let the door record the case when `.created` has not arrived yet.
+ */
 export async function recordDisputeClosed(args: {
 	eventId: string;
 	dispute: string;
 	status: string;
+	paymentIntent: string | null;
+	amount: number | null;
+	currency: string | null;
+	reason: string | null;
 	livemode: boolean;
 }): Promise<EventOutcome> {
 	return outcomeOf(
@@ -939,6 +949,68 @@ export async function recordDisputeClosed(args: {
 			p_event_id: args.eventId,
 			p_dispute_ref: args.dispute,
 			p_status: args.status,
+			p_livemode: args.livemode,
+			p_provider_ref: args.paymentIntent,
+			p_amount: args.amount,
+			p_currency: args.currency,
+			p_reason: args.reason,
+		}),
+	);
+}
+
+/**
+ * `charge.dispute.updated` / `.funds_withdrawn` / `.funds_reinstated` → `finance.record_dispute_updated`.
+ * Records a fact on the case (its review, its funds); never moves money.
+ */
+export async function recordDisputeUpdated(args: {
+	eventId: string;
+	eventType:
+		| "charge.dispute.updated"
+		| "charge.dispute.funds_withdrawn"
+		| "charge.dispute.funds_reinstated";
+	dispute: string;
+	paymentIntent: string | null;
+	amount: number;
+	currency: string;
+	reason: string | null;
+	status: string;
+	livemode: boolean;
+}): Promise<EventOutcome> {
+	return outcomeOf(
+		await serviceRpc("record_dispute_updated", {
+			p_event_id: args.eventId,
+			p_event_type: args.eventType,
+			p_dispute_ref: args.dispute,
+			p_provider_ref: args.paymentIntent,
+			p_amount: args.amount,
+			p_currency: args.currency,
+			p_reason: args.reason,
+			p_status: args.status,
+			p_livemode: args.livemode,
+		}),
+	);
+}
+
+/**
+ * `charge.refunded` → `finance.record_charge_refunded`: debits only what is newly refunded of the
+ * charge's cumulative `amountRefunded`. An outcome carrying `retry` released its event claim (the
+ * payment has not settled yet), so the caller must not acknowledge it.
+ */
+export async function recordChargeRefunded(args: {
+	eventId: string;
+	paymentIntent: string;
+	amountRefunded: number;
+	currency: string;
+	refund: string | null;
+	livemode: boolean;
+}): Promise<EventOutcome> {
+	return outcomeOf(
+		await serviceRpc("record_charge_refunded", {
+			p_event_id: args.eventId,
+			p_payment_intent: args.paymentIntent,
+			p_amount_refunded: args.amountRefunded,
+			p_currency: args.currency,
+			p_refund_ref: args.refund,
 			p_livemode: args.livemode,
 		}),
 	);
@@ -983,13 +1055,13 @@ export async function recordTransferReversed(args: {
 	);
 }
 
-/** Connect `payout.paid` / `payout.failed` → `finance.record_bank_payout`. */
+/** Connect `payout.paid` / `payout.failed` / `payout.canceled` → `finance.record_bank_payout`. */
 export async function recordBankPayout(args: {
 	eventId: string;
-	eventType: "payout.paid" | "payout.failed";
+	eventType: "payout.paid" | "payout.failed" | "payout.canceled";
 	account: string;
 	bankPayout: string;
-	status: "paid" | "failed";
+	status: BankPayoutStatus;
 	failureCode: string | null;
 	transfers: string[];
 	priorPayouts: string[];

@@ -34,20 +34,20 @@ beside it only from another track, on disjoint migration files (`FOUNDER_QUESTIO
 The **app lane** runs up to three code or UI prompts at once, file-disjoint. P0 items lead both
 lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide what may overlap.
 
-| Wave | SQL lane (serial)                                                                                        | App lane (parallel, file-disjoint)                                                       |
-| :--- | :------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
-| Done | ✅ DB1 · ✅ DB7 (remainder → DB19) · ✅ N1 · ✅ N5                                                       | ✅ SV1 Zod half (CHECKs → DB8)                                                           |
-| 1    | ✅ DB10 per-currency thresholds (P0)                                                                     | ✅ SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 wallet styles               |
-| 2    | ✅ DB11 seller commission (P0)                                                                           | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
-| 3    | DB16 conservation identity                                                                               | UI2 island and money-verb tiers (after SV2, UI1)                                         |
-| 4    | DB12 bonus refused → DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout (after SV3) | UI6 checkout gates (after SV4, UI2)                                                      |
-| 5    | DB4 payout schedules → DB5 pots                                                                          | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
-| 6    | DB14 ticket and funding gates → DB15 payout-ready gate                                                   | SV7 seller-side refusals (after DB15)                                                    |
-| 7    | DB13 bonus held → DB20 team splits                                                                       | —                                                                                        |
-| 8    | DB8 currency integrity → DB9 settlement and entity currency → DB17 FX feed → DB18 conversion             | SV5 currency honesty (after DB9) → UI5 estimates and MoneyView                           |
-| 9    | DB19 order lifecycle and promo cap → DB21 buyer and provider refunds                                     | —                                                                                        |
-| 10   | E3 paid-call contract (after SCH-WP6)                                                                    | E1 money lifecycle E2E → E2 visual matrix (after every UI prompt)                        |
-| Last | Z1 docs sweep                                                                                            |                                                                                          |
+| Wave | SQL lane (serial)                                                                                           | App lane (parallel, file-disjoint)                                                       |
+| :--- | :---------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
+| Done | ✅ DB1 · ✅ DB7 (remainder → DB19) · ✅ N1 · ✅ N5                                                          | ✅ SV1 Zod half (CHECKs → DB8)                                                           |
+| 1    | ✅ DB10 per-currency thresholds (P0)                                                                        | ✅ SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 wallet styles               |
+| 2    | ✅ DB11 seller commission (P0)                                                                              | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
+| 3    | DB16 conservation identity                                                                                  | UI2 island and money-verb tiers (after SV2, UI1)                                         |
+| 4    | DB12 bonus refused → ✅ DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout (after SV3) | UI6 checkout gates (after SV4, UI2)                                                      |
+| 5    | DB4 payout schedules → DB5 pots                                                                             | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
+| 6    | DB14 ticket and funding gates → DB15 payout-ready gate                                                      | SV7 seller-side refusals (after DB15)                                                    |
+| 7    | DB13 bonus held → DB20 team splits                                                                          | —                                                                                        |
+| 8    | DB8 currency integrity → DB9 settlement and entity currency → DB17 FX feed → DB18 conversion                | SV5 currency honesty (after DB9) → UI5 estimates and MoneyView                           |
+| 9    | DB19 order lifecycle and promo cap → DB21 buyer and provider refunds                                        | —                                                                                        |
+| 10   | E3 paid-call contract (after SCH-WP6)                                                                       | E1 money lifecycle E2E → E2 visual matrix (after every UI prompt)                        |
+| Last | Z1 docs sweep                                                                                               |                                                                                          |
 
 Why this order:
 
@@ -360,6 +360,17 @@ on-hold release already credited. `388d9952` fixed the `DepositRuleSchema` contr
 DB1's scope: A13's service and UI halves (SV3, UI3). **Do not re-run this prompt.**
 
 ### DB2 — Webhook coverage: refunds, dispute updates, cancelled payouts, out-of-order disputes
+
+> **Status 2026-11-12:** Done (H3's money events, H4, E3, N30's PBS half), awaiting the
+> coordinator's re-verification. `finance.record_charge_refunded` and
+> `finance.record_dispute_updated` (`00001230`, sharing `fn_open_chargeback`);
+> `record_dispute_closed` records a case it beat and survives the thaw collision;
+> `record_bank_payout` takes `canceled` (`00001240`); columns on `chargebacks`, `inbound_payments`
+> and the `bank_status` CHECK (`00000017`); probe `stripe_event_order.sql`. Built differently from
+> the text below: `record_charge_refunded` also takes `p_currency` and `p_livemode` (the sibling
+> doors' guard), and `payout.canceled` is its own `bank_status` value. Not built, no money moves:
+> `transfer.updated`, `identity.verification_session.processing`,
+> `v2.core.account[requirements].updated`.
 
 ```text
 PROMPT DB2: Ledger every Stripe money event, in any delivery order

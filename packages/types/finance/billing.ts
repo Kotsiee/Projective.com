@@ -132,6 +132,15 @@ export const ChargebackSchema = z.object({
 	 */
 	unrecoveredCents: minorUnitsNonNeg,
 	createdAt: timestamp,
+	/** When Stripe withdrew the disputed funds from the platform balance (`charge.dispute.funds_withdrawn`). */
+	fundsWithdrawnAt: timestamp.nullable(),
+	/** When Stripe reinstated them (`charge.dispute.funds_reinstated`). Neither moves the ledger. */
+	fundsReinstatedAt: timestamp.nullable(),
+	/**
+	 * What a human must know about the resolution: a dispute closed before it was reported opened, or
+	 * an escrow left `disputed` because its ticket was funded again meanwhile. `null` normally.
+	 */
+	resolutionNote: z.string().max(4000).nullable(),
 });
 export type Chargeback = z.infer<typeof ChargebackSchema>;
 // #endregion

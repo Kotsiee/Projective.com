@@ -345,9 +345,11 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   rejects a payout (Connect `payout.failed`), the money stays in their connected account's Stripe
   balance, where it is legally theirs, and Stripe pays it out again once the bank details are fixed.
   The owner is told, with a dashboard prompt to update their payout details. It never returns to the
-  platform wallet, which would leave Projective holding client money. Money returns to the wallet
-  only when the transfer itself is refused, never made (`fail_payout`), or reversed by the platform
-  (`transfer.reversed`). This is how it is built (Decision #202 (a)).
+  platform wallet, which would leave Projective holding client money. A bank payout Stripe cancels
+  (Connect `payout.canceled`) is treated the same way: the money is back in the connected account's
+  balance, Stripe pays it out again, the owner is told, and nothing moves in the ledger. Money
+  returns to the wallet only when the transfer itself is refused, never made (`fail_payout`), or
+  reversed by the platform (`transfer.reversed`). This is how it is built (Decision #202 (a)).
 
 ## 9. Stripe Integration & Tax Handling
 
@@ -602,6 +604,12 @@ Governs shared wallets (Business / Team / Enterprise).
 - **Refunds & chargebacks:** recorded as **negative** `finance.transactions` lines
   (`reason ∈ refund | chargeback | escrow_refund | fair_exit_refund`); the chargeback **case**
   (Stripe dispute) is tracked in `finance.chargebacks`.
+  - **A card refund made at Stripe** (the Dashboard or the API, `charge.refunded`) is taken back from
+    the wallet the card payment credited, by the newly refunded amount only (Stripe reports a running
+    total, so a partial refund twice debits each part once). What that wallet can no longer cover —
+    the payer spent it, or an escrow now holds it — is recorded on the payment as unrecovered, the
+    platform's loss, and sent to ops; the balance never goes negative and no escrow is unwound
+    automatically.
   - **A digital product** (Decision #337, ruling M8) is not refunded after its first download,
     except for non-delivery or a defective file, through a dispute; recovery comes from the seller's
     pending row first (§7). **Not built yet.**

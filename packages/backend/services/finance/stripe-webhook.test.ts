@@ -4,6 +4,7 @@ import type { EventOutcome } from "./live-payments.ts";
 import {
 	BUSINESS_ARCHIVED,
 	planStripeEvent,
+	requireClaimKept,
 	requireLedgerRow,
 	SETTLEMENT_MISMATCH,
 } from "./stripe-webhook.ts";
@@ -286,11 +287,146 @@ Deno.test("any other event type is planned as ignore", () => {
 	assertEquals(planStripeEvent(event("charge.succeeded", { id: "ch_1" })).kind, "ignore");
 });
 
-Deno.test("charge.dispute.closed carries the dispute and its final status (Decision #126)", () => {
+Deno.test("charge.dispute.closed carries its final status and the facts to record a case it beat (FA H4)", () => {
 	assertEquals(
-		planStripeEvent(event("charge.dispute.closed", { id: "du_1", status: "lost", amount: 900 })),
-		{ kind: "dispute_closed", dispute: "du_1", status: "lost" },
+		planStripeEvent(event("charge.dispute.closed", {
+			id: "du_1",
+			status: "lost",
+			amount: 900,
+			currency: "gbp",
+			payment_intent: "pi_1",
+			reason: "fraudulent",
+		})),
+		{
+			kind: "dispute_closed",
+			dispute: "du_1",
+			status: "lost",
+			paymentIntent: "pi_1",
+			amount: 900,
+			currency: "GBP",
+			reason: "fraudulent",
+		},
 	);
+	// A close without its amount still resolves a recorded case; it just cannot record one.
+	assertEquals(
+		planStripeEvent(event("charge.dispute.closed", { id: "du_2", status: "won" })),
+		{
+			kind: "dispute_closed",
+			dispute: "du_2",
+			status: "won",
+			paymentIntent: null,
+			amount: null,
+			currency: null,
+			reason: null,
+		},
+	);
+	assertEquals(planStripeEvent(event("charge.dispute.closed", { status: "won" })).kind, "ignore");
+});
+
+Deno.test("a dispute event missing its amount or currency is ignored, never half-applied", () => {
+	assertEquals(
+		planStripeEvent(
+			event("charge.dispute.created", { id: "du_1", amount: 500, payment_intent: "pi_1" }),
+		).kind,
+		"ignore",
+	);
+	assertEquals(
+		planStripeEvent(
+			event("charge.dispute.updated", { id: "du_1", currency: "usd", status: "under_review" }),
+		).kind,
+		"ignore",
+	);
+});
+
+Deno.test("charge.dispute.updated and the funds events carry the dispute's facts and Stripe's status (FA H3)", () => {
+	const dispute = {
+		id: "du_1",
+		amount: 4200,
+		currency: "eur",
+		payment_intent: { id: "pi_1" },
+		reason: "product_not_received",
+		status: "under_review",
+		// Evidence is never read.
+		evidence: { customer_name: "must never be read" },
+	};
+	for (
+		const type of [
+			"charge.dispute.updated",
+			"charge.dispute.funds_withdrawn",
+			"charge.dispute.funds_reinstated",
+		] as const
+	) {
+		assertEquals(planStripeEvent(event(type, dispute)), {
+			kind: "dispute_updated",
+			eventType: type,
+			status: "under_review",
+			dispute: "du_1",
+			paymentIntent: "pi_1",
+			amount: 4200,
+			currency: "EUR",
+			reason: "product_not_received",
+		});
+	}
+});
+
+Deno.test("charge.refunded carries the CUMULATIVE amount refunded and its intent (FA H3)", () => {
+	assertEquals(
+		planStripeEvent(event("charge.refunded", {
+			id: "ch_1",
+			payment_intent: "pi_1",
+			amount: 2000,
+			amount_refunded: 800,
+			currency: "gbp",
+			refunds: { object: "list", data: [{ id: "re_2" }, { id: "re_1" }] },
+		})),
+		{
+			kind: "charge_refunded",
+			charge: "ch_1",
+			paymentIntent: "pi_1",
+			amountRefunded: 800,
+			currency: "GBP",
+			refund: "re_2",
+		},
+	);
+	// Current API versions leave `refunds` off the charge: the refund id is then unknown, not a failure.
+	const bare = planStripeEvent(event("charge.refunded", {
+		id: "ch_1",
+		payment_intent: { id: "pi_1" },
+		amount_refunded: 500,
+		currency: "usd",
+	}));
+	assertEquals(bare.kind === "charge_refunded" ? [bare.paymentIntent, bare.refund] : "wrong kind", [
+		"pi_1",
+		null,
+	]);
+});
+
+Deno.test("a refunded charge with no PaymentIntent, or no amount, is ignored", () => {
+	assertEquals(
+		planStripeEvent(event("charge.refunded", { id: "ch_1", amount_refunded: 500, currency: "usd" }))
+			.kind,
+		"ignore",
+	);
+	assertEquals(
+		planStripeEvent(
+			event("charge.refunded", { id: "ch_1", payment_intent: "pi_1", currency: "usd" }),
+		).kind,
+		"ignore",
+	);
+});
+
+Deno.test("a door that released its claim is never acknowledged; every other outcome is", () => {
+	assertThrows(() =>
+		requireClaimKept(outcome({
+			outcome: "unmatched",
+			detail: "the refunded payment has not settled yet; Stripe will retry",
+			raw: { retry: true },
+		}))
+	);
+	for (const kept of ["applied", "replayed", "unmatched", "ignored"] as const) {
+		const o = outcome({ outcome: kept, raw: { outcome: kept } });
+		assertEquals(requireClaimKept(o), o);
+	}
 });
 
 Deno.test("account.updated takes only the account id — the state is re-read from Stripe", () => {
@@ -408,4 +544,30 @@ Deno.test("the platform's OWN payout to its bank is not a withdrawal and is igno
 		connectEvent("payout.failed", null, { id: "po_1", amount: 4000, currency: "gbp" }),
 	);
 	assertEquals(plan.kind, "ignore");
+	assertEquals(
+		planStripeEvent(
+			connectEvent("payout.canceled", null, { id: "po_1", amount: 4000, currency: "gbp" }),
+		).kind,
+		"ignore",
+	);
+});
+
+Deno.test("a connected account's payout.canceled is a bank outcome with no failure code (ruling M9)", () => {
+	assertEquals(
+		planStripeEvent(connectEvent("payout.canceled", "acct_1", {
+			id: "po_3",
+			amount: 4000,
+			currency: "gbp",
+			status: "canceled",
+			failure_code: "should_not_be_read",
+		})),
+		{
+			kind: "bank_payout",
+			eventType: "payout.canceled",
+			account: "acct_1",
+			payout: "po_3",
+			status: "canceled",
+			failureCode: null,
+		},
+	);
 });

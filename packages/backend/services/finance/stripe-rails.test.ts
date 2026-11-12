@@ -29,6 +29,8 @@ const PAYMENT: InboundPayment = {
 	failureReason: null,
 	livemode: null,
 	createdBy: "de29f2ce-0f36-4db5-a417-4edc88cedf83",
+	refundedCents: 0,
+	refundUnrecoveredCents: 0,
 	createdAt: "2026-09-29T00:00:00Z",
 	updatedAt: "2026-09-29T00:00:00Z",
 	succeededAt: null,

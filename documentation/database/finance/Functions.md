@@ -1553,7 +1553,49 @@ linked to the disputed payment's wallet, ledger line and — when the payment fu
 escrow, and **freezes every still-`held` escrow the payment funded** (`locked_escrow_ids` →
 `disputed`), so capital a chargeback may claw back cannot be released meanwhile. Notifies
 `chargeback.opened`. An unmatched dispute is still recorded, with no link. It writes no ledger line:
-the outcome is `finance.record_dispute_closed`'s (Decision #126).
+the outcome is `finance.record_dispute_closed`'s (Decision #126). A dispute already recorded —
+another event of it arrived first, or Stripe closed it before this event came — is `replayed` and
+changes nothing: a resolved case is never reopened and freezes nothing (FINANCE_AUDIT H4).
+
+#### `finance.fn_open_chargeback(p_dispute_ref, p_provider_ref, p_amount, p_currency, p_reason, p_freeze)` → jsonb (internal)
+
+The case-opening body every dispute door shares. Inserts the `finance.chargebacks` row linked to the
+payment `p_provider_ref` names (`ON CONFLICT` on `uq_chargebacks_provider_ref`, so a concurrent
+delivery of another event of the same dispute returns NULL instead of a second row). With
+`p_freeze` it also freezes the payment's still-`held` escrows and notifies `chargeback.opened`; without
+it (a dispute Stripe has already closed) it only records the case. Returns
+`{chargeback_id, payment_id, frozen_escrow_ids}`. No grant: called only from inside the doors.
+
+#### `finance.record_dispute_updated(p_event_id, p_event_type, p_dispute_ref, p_provider_ref, p_amount, p_currency, p_reason, p_status, p_livemode)` → jsonb
+
+`charge.dispute.updated`, `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`
+(any other `p_event_type` is `22023`). Moves no money: `.created` freezes and `.closed` settles.
+`.updated` with Stripe's `under_review` / `warning_under_review` moves an `opened` case to
+`under_review` — never back, never on a resolved case. The funds events stamp
+`funds_withdrawn_at` / `funds_reinstated_at` once, resolved case or not (Stripe reinstates after a
+won dispute), and read `applied`. An event of a still-open dispute (`needs_response`,
+`under_review`, `warning_needs_response`, `warning_under_review`) that arrives before `.created`
+opens the case through `fn_open_chargeback` with the freeze, so the late `.created` changes nothing;
+one whose dispute Stripe no longer reports open records nothing (`unmatched`) and leaves the case
+to `.closed`. Idempotent on the event id and by value. Probe: `supabase/probes/stripe_event_order.sql`.
+
+#### `finance.record_charge_refunded(p_event_id, p_payment_intent, p_amount_refunded, p_currency, p_refund_ref, p_livemode)` → jsonb
+
+`charge.refunded` — a refund of a card charge Projective settled, however it was made (the
+Dashboard, the API). `p_amount_refunded` is the charge's CUMULATIVE `amount_refunded`; the door
+accounts only for `LEAST(p_amount_refunded, amount_received_cents) − refunded_cents`, so a replay, a
+duplicate or an older, lower total moves nothing. That delta is debited from the wallet the payment
+credited (reason `refund`, ref `inbound_payments`); what the wallet can no longer cover is added to
+`refund_unrecovered_cents` and written to `ops.log_entries` (`scope = 'finance.record_charge_refunded'`),
+never a negative balance. A refund of a payment that has not settled yet releases its claim and
+answers `{outcome: 'unmatched', retry: true}`, so the webhook answers 5xx (`requireClaimKept`) and
+Stripe redelivers it after the settlement; a payment whose settlement was acknowledged into
+reconciliation (`settlement_mismatch` / `business_archived`) was never credited, so nothing is
+debited, the claim is kept and ops is told. A charge Projective did not create, or a currency that
+differs from the payment's, is `unmatched` (the latter with an ops row). `p_refund_ref` is the newest
+`re_…` when the event listed it; it is carried in the outcome and the ops row only. Escrow a refunded
+payment funded is not touched: the uncovered part is the platform's loss until a human acts on the
+ops row.
 
 | SQLSTATE | Meaning (Stripe doors)                                                          |
 | :------- | :------------------------------------------------------------------------------ |
@@ -1592,10 +1634,19 @@ pinned by `payments.contract.test.ts`) apply what Stripe reported or the schedul
   individual client: only the project's OWNER may fund it; the stage is checked against their wallet
   all-or-nothing (`PF402` — "pay by card instead").
 
-### Disputes — `finance.record_dispute_closed(p_event_id, p_dispute_ref, p_status, p_livemode)` (processor)
+### Disputes — `finance.record_dispute_closed(p_event_id, p_dispute_ref, p_status, p_livemode, p_provider_ref DEFAULT NULL, p_amount DEFAULT NULL, p_currency DEFAULT NULL, p_reason DEFAULT NULL)` (processor)
 
 `charge.dispute.closed`. `won` / `warning_closed` → the case is `won` and every escrow the payment funded
-returns from `disputed` to `held`. `lost` → each still-frozen escrow is refunded to the payer's wallet
+returns from `disputed` to `held`. A thaw that would give a ticket a second held base escrow (it was
+funded again while the first was frozen — `uq_escrows_ticket_base_held`, FINANCE_AUDIT E3) leaves that
+escrow `disputed` (outcome `still_disputed_escrow_ids`), writes it into the case's `resolution_note`
+and one `ops.log_entries` error (`scope = 'finance.record_dispute_closed'`), and never raises: a human
+refunds or releases it. **Out of order** (FINANCE_AUDIT H4): a close whose dispute has no case yet
+records one from the dispute's own facts (`p_provider_ref` … `p_reason`, through
+`fn_open_chargeback` without the freeze), resolves it at once (outcome `late: true`, a
+`resolution_note`), and the late `.created` then freezes nothing; a lost one takes the payment's
+still-`held` escrows as the frozen set, which is what the in-order events would have refunded. A
+close without those facts and without a case stays `unmatched`. `lost` → each still-frozen escrow is refunded to the payer's wallet
 (`escrow_refund`, its ticket back to `unpaid`), then the disputed amount is recovered from that wallet —
 first from its money still in the pending window (`fn_recover_from_pending`, Decision #191), then
 debited from its Available balance (`chargeback`); what the wallet can no longer cover is
@@ -1629,12 +1680,16 @@ open by #191: only the payer's own wallet is recovered from).
   A reversal of a payout already `failed` moves nothing and writes an `ops.log_entries` error. Person
   owners are told (`payout.reversed`). Idempotent on the event id and by value.
 - `finance.record_bank_payout(p_event_id, p_event_type, p_account, p_bank_payout_ref, p_status, p_failure_code, p_transfer_refs, p_prior_payout_refs, p_livemode)`
-  (processor, Decision #202) — a connected account's `payout.paid` / `payout.failed`. Records
-  `bank_status` on the account owner's sent payouts among `p_transfer_refs` (the transfers the bank
-  payout carried) and those already bound to a bank payout in `p_prior_payout_refs` (earlier failed
-  ones it re-pays). A failure is final for its own bank payout; a later one that re-pays it marks it
-  paid. Moves nothing in the ledger. Person owners are told (`payout.failed` / `payout.paid`). An
-  unknown account is `unmatched`.
+  (processor, Decision #202) — a connected account's `payout.paid` / `payout.failed` /
+  `payout.canceled` (`p_status` `paid` / `failed` / `canceled`, else `22023`). Records `bank_status`
+  on the account owner's sent payouts among `p_transfer_refs` (the transfers the bank payout carried)
+  and those already bound to a bank payout in `p_prior_payout_refs` (earlier failed or cancelled ones
+  it re-pays — `payout_failure` / `payout_cancel` balance transactions). A failure or a cancellation
+  is final for its own bank payout; a later one that re-pays it marks it paid. Moves nothing in the
+  ledger, a cancellation included: the money is back in the connected account's Stripe balance and
+  Stripe pays it out again (Decision #337, ruling M9); it is not `fail_payout`'s refused-transfer
+  path, which credits the wallet. Person owners are told (`payout.failed` for a failure and a
+  cancellation, `payout.paid`). An unknown account is `unmatched`.
 - `finance.fn_claim_stale_payouts(p_limit DEFAULT 25)` → jsonb (service role, Decision #202) — leases
   up to `p_limit` (≤ 200) `pending` payouts older than `payout_stale_minutes` and not claimed within it,
   oldest first, under `SKIP LOCKED` (`swept_at`, `sweep_attempts + 1`); returns each with its

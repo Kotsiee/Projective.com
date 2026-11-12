@@ -17,7 +17,7 @@
 --   * PROCESSOR doors (EXECUTE → service_role only) apply what Stripe REPORTS, reached only from the
 --     signature-verified webhook or from a status read the fat service made itself —
 --     settle_card_payment, record_card_payment_failure, apply_identity_event, sync_payout_account,
---     record_transfer_created, record_dispute_opened.
+--     record_transfer_created, record_dispute_opened, record_dispute_updated, record_charge_refunded.
 --
 -- Every processor door is IDEMPOTENT ON THE STRIPE EVENT ID. It claims `stripe:<evt_id>` in
 -- finance.idempotency_keys in the SAME transaction as its effects, so a redelivered event (Stripe
@@ -1650,20 +1650,23 @@ BEGIN
 END;
 $$;
 
--- `charge.dispute.created`: a cardholder contested a charge, and the processor has already withdrawn
--- the amount from the platform balance. Record the case (finance.chargebacks), linked to the payment,
--- wallet and ledger credit it contests, and FREEZE the escrows that payment funded — `held` →
--- `disputed`, the Dispute Lockbox — so capital that may be clawed back cannot be released meanwhile.
--- Arbitration (won → unfreeze, lost → reverse) is deliberately not decided here (Decision #125).
--- A dispute against a charge Projective did not create is still recorded, unlinked, for reconciliation.
-CREATE OR REPLACE FUNCTION finance.record_dispute_opened(
-    p_event_id text,
+-- Record the case for one Stripe dispute (internal: the dispute doors below and
+-- finance.record_dispute_closed), linked to the payment, wallet and ledger credit it contests. With
+-- `p_freeze` it also applies what an OPEN dispute means: every still-held escrow the payment funded
+-- goes `held` → `disputed` (the Dispute Lockbox), so capital that may be clawed back cannot be
+-- released meanwhile, and the payer is told. Whichever event of an open dispute arrives first opens
+-- it, so a late `charge.dispute.created` finds the case and changes nothing. Without `p_freeze` the
+-- case is only recorded: a dispute Stripe has already closed freezes nothing. A dispute against a
+-- charge Projective did not create is recorded unlinked. The caller has checked the dispute id, amount
+-- and currency. Returns `{chargeback_id, payment_id, frozen_escrow_ids}`, or NULL when a concurrent
+-- delivery recorded the same dispute first (one row per dispute, uq_chargebacks_provider_ref).
+CREATE OR REPLACE FUNCTION finance.fn_open_chargeback(
     p_dispute_ref text,
     p_provider_ref text,
     p_amount bigint,
     p_currency text,
     p_reason text,
-    p_livemode boolean
+    p_freeze boolean
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1677,20 +1680,6 @@ DECLARE
     v_frozen uuid[] := '{}';
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
 BEGIN
-    IF NOT finance.fn_claim_stripe_event(p_event_id, 'charge.dispute.created') THEN
-        RETURN finance.fn_stripe_event_replay(p_event_id);
-    END IF;
-    IF p_dispute_ref IS NULL OR p_dispute_ref !~ '^(du|dp)_[A-Za-z0-9_]{1,250}$'
-       OR p_amount IS NULL OR p_amount <= 0 OR v_currency !~ '^[A-Z]{3}$' THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'ignored', 'detail', 'the dispute event is missing its id, amount or currency'));
-    END IF;
-    SELECT c.id INTO v_chargeback FROM finance.chargebacks c WHERE c.provider_ref = p_dispute_ref;
-    IF FOUND THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'replayed', 'detail', 'this dispute is already recorded', 'chargeback_id', v_chargeback));
-    END IF;
-
     SELECT * INTO v_payment
       FROM finance.inbound_payments
      WHERE provider = 'stripe' AND provider_ref = p_provider_ref
@@ -1707,33 +1696,318 @@ BEGIN
         'opened',
         NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_reason, '')), 400), '')
     )
+    ON CONFLICT (provider_ref) WHERE provider_ref IS NOT NULL DO NOTHING
     RETURNING id INTO v_chargeback;
-
-    IF v_payment.id IS NULL THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'unmatched', 'detail', 'dispute recorded against a charge Projective did not create',
-            'chargeback_id', v_chargeback));
+    IF v_chargeback IS NULL THEN
+        RETURN NULL;
     END IF;
 
-    WITH frozen AS (
-        UPDATE finance.escrows
-           SET status = 'disputed'
-         WHERE id = ANY (v_payment.locked_escrow_ids) AND status = 'held'
-        RETURNING id
-    )
-    SELECT COALESCE(pg_catalog.array_agg(id ORDER BY id), '{}') INTO v_frozen FROM frozen;
+    IF v_payment.id IS NOT NULL AND p_freeze THEN
+        WITH frozen AS (
+            UPDATE finance.escrows
+               SET status = 'disputed'
+             WHERE id = ANY (v_payment.locked_escrow_ids) AND status = 'held'
+            RETURNING id
+        )
+        SELECT COALESCE(pg_catalog.array_agg(id ORDER BY id), '{}') INTO v_frozen FROM frozen;
 
-    PERFORM comms.fn_notify(
-        v_payment.created_by, 'chargeback.opened', 'Card payment disputed',
-        'A card payment you made has been disputed with your bank. Any escrow it funded is on hold while it is resolved.',
-        'chargebacks', v_chargeback,
-        pg_catalog.jsonb_build_object('amount_cents', p_amount, 'currency', v_currency, 'frozen_escrows', pg_catalog.cardinality(v_frozen)),
-        NULL, NULL, NULL, NULL, NULL, 'high'::comms.notification_urgency
-    );
+        PERFORM comms.fn_notify(
+            v_payment.created_by, 'chargeback.opened', 'Card payment disputed',
+            'A card payment you made has been disputed with your bank. Any escrow it funded is on hold while it is resolved.',
+            'chargebacks', v_chargeback,
+            pg_catalog.jsonb_build_object('amount_cents', p_amount, 'currency', v_currency, 'frozen_escrows', pg_catalog.cardinality(v_frozen)),
+            NULL, NULL, NULL, NULL, NULL, 'high'::comms.notification_urgency
+        );
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'chargeback_id', v_chargeback, 'payment_id', v_payment.id,
+        'frozen_escrow_ids', pg_catalog.to_jsonb(v_frozen));
+END;
+$$;
+
+-- `charge.dispute.created`: a cardholder contested a charge, and the processor has already withdrawn
+-- the amount from the platform balance. Record the case and freeze the escrows the payment funded
+-- (finance.fn_open_chargeback). The outcome is finance.record_dispute_closed's (Decision #126). A
+-- dispute already recorded — another event of it arrived first, or Stripe closed it before this
+-- event came — changes nothing: a resolved case is never reopened and freezes nothing (FA H4).
+CREATE OR REPLACE FUNCTION finance.record_dispute_opened(
+    p_event_id text,
+    p_dispute_ref text,
+    p_provider_ref text,
+    p_amount bigint,
+    p_currency text,
+    p_reason text,
+    p_livemode boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_case finance.chargebacks;
+    v_open jsonb;
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+BEGIN
+    IF NOT finance.fn_claim_stripe_event(p_event_id, 'charge.dispute.created') THEN
+        RETURN finance.fn_stripe_event_replay(p_event_id);
+    END IF;
+    IF p_dispute_ref IS NULL OR p_dispute_ref !~ '^(du|dp)_[A-Za-z0-9_]{1,250}$'
+       OR p_amount IS NULL OR p_amount <= 0 OR v_currency !~ '^[A-Z]{3}$' THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'ignored', 'detail', 'the dispute event is missing its id, amount or currency'));
+    END IF;
+
+    SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref;
+    IF NOT FOUND THEN
+        v_open := finance.fn_open_chargeback(p_dispute_ref, p_provider_ref, p_amount, v_currency, p_reason, true);
+        IF v_open IS NULL THEN
+            SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref;
+        END IF;
+    END IF;
+    IF v_case.id IS NOT NULL THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'replayed',
+            'detail', CASE WHEN v_case.status IN ('won', 'lost', 'refunded')
+                           THEN 'this dispute is already resolved; nothing is frozen'
+                           ELSE 'this dispute is already recorded' END,
+            'chargeback_id', v_case.id, 'status', v_case.status));
+    END IF;
+
+    IF v_open ->> 'payment_id' IS NULL THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'dispute recorded against a charge Projective did not create',
+            'chargeback_id', v_open -> 'chargeback_id'));
+    END IF;
+    RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+        'outcome', 'applied', 'chargeback_id', v_open -> 'chargeback_id', 'payment_id', v_open -> 'payment_id',
+        'frozen_escrow_ids', v_open -> 'frozen_escrow_ids'));
+END;
+$$;
+
+-- `charge.dispute.updated`, `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`
+-- (processor door). None of them moves money — `.created` freezes and `.closed` settles — so each
+-- records a fact on the case (FA H3): Stripe's review (`under_review` / `warning_under_review`) moves
+-- an `opened` case to `under_review`, never back and never on a resolved case; a withdrawal or a
+-- reinstatement of the disputed funds stamps `funds_withdrawn_at` / `funds_reinstated_at`, resolved
+-- or not (funds are reinstated after a won dispute). Any delivery order: an event of a dispute that
+-- is still open and arrives before `.created` opens the case itself (finance.fn_open_chargeback, with
+-- the freeze), so the late `.created` changes nothing; one whose dispute Stripe no longer reports open
+-- records nothing and leaves the case to `.closed`. Idempotent on the event id and by value.
+CREATE OR REPLACE FUNCTION finance.record_dispute_updated(
+    p_event_id text,
+    p_event_type text,
+    p_dispute_ref text,
+    p_provider_ref text,
+    p_amount bigint,
+    p_currency text,
+    p_reason text,
+    p_status text,
+    p_livemode boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_case finance.chargebacks;
+    v_open jsonb;
+    v_status text := pg_catalog.lower(pg_catalog.btrim(COALESCE(p_status, '')));
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_recorded text[] := '{}';
+BEGIN
+    IF p_event_type IS NULL OR p_event_type NOT IN (
+        'charge.dispute.updated', 'charge.dispute.funds_withdrawn', 'charge.dispute.funds_reinstated'
+    ) THEN
+        RAISE EXCEPTION 'event: expected charge.dispute.updated, .funds_withdrawn or .funds_reinstated'
+            USING ERRCODE = '22023';
+    END IF;
+    IF NOT finance.fn_claim_stripe_event(p_event_id, p_event_type) THEN
+        RETURN finance.fn_stripe_event_replay(p_event_id);
+    END IF;
+    IF p_dispute_ref IS NULL OR p_dispute_ref !~ '^(du|dp)_[A-Za-z0-9_]{1,250}$'
+       OR p_amount IS NULL OR p_amount <= 0 OR v_currency !~ '^[A-Z]{3}$' THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'ignored', 'detail', 'the dispute event is missing its id, amount or currency'));
+    END IF;
+
+    SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref FOR UPDATE;
+    IF NOT FOUND THEN
+        IF v_status NOT IN ('needs_response', 'under_review', 'warning_needs_response', 'warning_under_review') THEN
+            RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+                'outcome', 'unmatched',
+                'detail', 'no recorded dispute carries this id, and Stripe no longer reports it open',
+                'dispute', p_dispute_ref, 'dispute_status', v_status));
+        END IF;
+        v_open := finance.fn_open_chargeback(p_dispute_ref, p_provider_ref, p_amount, v_currency, p_reason, true);
+        SELECT * INTO v_case FROM finance.chargebacks WHERE provider_ref = p_dispute_ref FOR UPDATE;
+        IF v_open IS NOT NULL THEN
+            v_recorded := v_recorded || 'opened'::text;
+        END IF;
+    END IF;
+
+    IF p_event_type = 'charge.dispute.updated' THEN
+        IF v_case.status = 'opened' AND v_status IN ('under_review', 'warning_under_review') THEN
+            UPDATE finance.chargebacks SET status = 'under_review' WHERE id = v_case.id;
+            v_recorded := v_recorded || 'under_review'::text;
+        END IF;
+    ELSIF p_event_type = 'charge.dispute.funds_withdrawn' THEN
+        IF v_case.funds_withdrawn_at IS NULL THEN
+            UPDATE finance.chargebacks SET funds_withdrawn_at = pg_catalog.now() WHERE id = v_case.id;
+            v_recorded := v_recorded || 'funds_withdrawn'::text;
+        END IF;
+    ELSIF v_case.funds_reinstated_at IS NULL THEN
+        UPDATE finance.chargebacks SET funds_reinstated_at = pg_catalog.now() WHERE id = v_case.id;
+        v_recorded := v_recorded || 'funds_reinstated'::text;
+    END IF;
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-        'outcome', 'applied', 'chargeback_id', v_chargeback, 'payment_id', v_payment.id,
-        'frozen_escrow_ids', pg_catalog.to_jsonb(v_frozen)));
+        'outcome', 'applied',
+        'detail', CASE WHEN pg_catalog.cardinality(v_recorded) = 0 THEN 'nothing new to record' END,
+        'chargeback_id', v_case.id,
+        'status', (SELECT c.status FROM finance.chargebacks c WHERE c.id = v_case.id),
+        'recorded', pg_catalog.to_jsonb(v_recorded),
+        'frozen_escrow_ids', COALESCE(v_open -> 'frozen_escrow_ids', '[]'::jsonb)));
+END;
+$$;
+
+-- `charge.refunded` (processor door, FA H3): a card charge Projective settled was refunded, however
+-- the refund was made (the Stripe Dashboard, the API). The event carries the charge's CUMULATIVE
+-- `amount_refunded`, so the door accounts only for what is newly refunded — that total, capped at what
+-- the payment credited, minus its `refunded_cents` — and a replay, a duplicate or an older, lower
+-- total moves nothing. The newly refunded part is debited from the wallet the payment credited (reason
+-- `refund`); what that wallet can no longer cover (the payer spent it, or an escrow holds it) is added
+-- to the payment's `refund_unrecovered_cents` and written to ops.log_entries, never forced into a
+-- negative balance. A refund of a payment that has not settled yet releases its claim (`retry`): the
+-- webhook answers 5xx and Stripe redelivers it once the settlement has landed. The exception is a
+-- settlement acknowledged into reconciliation (`settlement_mismatch` / `business_archived`), whose
+-- money never reached the ledger: nothing is debited and ops is told. Never raises on an event's facts.
+CREATE OR REPLACE FUNCTION finance.record_charge_refunded(
+    p_event_id text,
+    p_payment_intent text,
+    p_amount_refunded bigint,
+    p_currency text,
+    p_refund_ref text,
+    p_livemode boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_payment finance.inbound_payments;
+    v_wallet finance.wallets;
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_refund text := NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_refund_ref, '')), 255), '');
+    v_total bigint;
+    v_delta bigint;
+    v_debit bigint := 0;
+    v_short bigint := 0;
+BEGIN
+    IF NOT finance.fn_claim_stripe_event(p_event_id, 'charge.refunded') THEN
+        RETURN finance.fn_stripe_event_replay(p_event_id);
+    END IF;
+    IF p_payment_intent IS NULL OR p_payment_intent !~ '^pi_[A-Za-z0-9_]{1,250}$'
+       OR p_amount_refunded IS NULL OR p_amount_refunded < 0 OR v_currency !~ '^[A-Z]{3}$' THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'ignored', 'detail', 'the refund event is missing its PaymentIntent, amount or currency'));
+    END IF;
+
+    SELECT * INTO v_payment
+      FROM finance.inbound_payments
+     WHERE provider = 'stripe' AND provider_ref = p_payment_intent
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'a refund of a charge Projective did not create',
+            'payment_intent', p_payment_intent));
+    END IF;
+
+    IF v_payment.transaction_id IS NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM finance.idempotency_keys k
+             WHERE k.scope = 'stripe.webhook' AND k.status = 'succeeded'
+               AND k.response ->> 'payment_id' = v_payment.id::text
+               AND k.response ->> 'reconciliation' IN ('settlement_mismatch', 'business_archived')
+        ) THEN
+            INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+            VALUES (
+                'stripe:' || p_event_id, 'error',
+                pg_catalog.format('Payment %s, held for reconciliation and never credited, was refunded at Stripe; nothing was debited', v_payment.id),
+                pg_catalog.now(), 'server', 'finance.record_charge_refunded',
+                pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'refund', v_refund,
+                    'amount_refunded_cents', p_amount_refunded, 'currency', v_currency)
+            );
+            RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+                'outcome', 'unmatched',
+                'detail', 'the refunded payment was held for reconciliation and never credited; nothing was debited',
+                'payment_id', v_payment.id, 'refund', v_refund));
+        END IF;
+        PERFORM finance.fn_release_stripe_event(p_event_id);
+        RETURN pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the refunded payment has not settled yet; Stripe will retry',
+            'retry', true, 'payment_id', v_payment.id);
+    END IF;
+
+    IF pg_catalog.upper(v_payment.currency) <> v_currency THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'stripe:' || p_event_id, 'error',
+            pg_catalog.format('A %s refund names payment %s, which was paid in %s; nothing was debited', v_currency, v_payment.id, v_payment.currency),
+            pg_catalog.now(), 'server', 'finance.record_charge_refunded',
+            pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'refund', v_refund,
+                'amount_refunded_cents', p_amount_refunded, 'currency', v_currency)
+        );
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the refund currency does not match the payment',
+            'payment_id', v_payment.id));
+    END IF;
+
+    v_total := LEAST(p_amount_refunded, COALESCE(v_payment.amount_received_cents, 0));
+    v_delta := v_total - v_payment.refunded_cents;
+    IF v_delta <= 0 THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'applied', 'detail', 'nothing more was refunded',
+            'payment_id', v_payment.id, 'refund', v_refund, 'refunded_cents', v_payment.refunded_cents,
+            'debited_cents', 0, 'unrecovered_cents', 0));
+    END IF;
+
+    SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_payment.wallet_id FOR UPDATE;
+    v_debit := LEAST(GREATEST(v_wallet.balance_cents, 0), v_delta);
+    IF v_debit > 0 THEN
+        PERFORM finance.fn_wallet_debit(
+            v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, v_debit,
+            'refund', 'inbound_payments', v_payment.id
+        );
+    END IF;
+    v_short := v_delta - v_debit;
+
+    UPDATE finance.inbound_payments
+       SET refunded_cents = v_total,
+           refund_unrecovered_cents = refund_unrecovered_cents + v_short,
+           updated_at = pg_catalog.now()
+     WHERE id = v_payment.id;
+
+    IF v_short > 0 THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'stripe:' || p_event_id, 'error',
+            pg_catalog.format('Payment %s was refunded %s %s that its wallet could not cover; the platform carries it', v_payment.id, v_short, v_payment.currency),
+            pg_catalog.now(), 'server', 'finance.record_charge_refunded',
+            pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'wallet_id', v_wallet.id, 'refund', v_refund,
+                'refunded_cents', v_total, 'debited_cents', v_debit, 'unrecovered_cents', v_short)
+        );
+    END IF;
+
+    RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+        'outcome', 'applied', 'payment_id', v_payment.id, 'refund', v_refund,
+        'refunded_cents', v_total, 'debited_cents', v_debit, 'unrecovered_cents', v_short));
 END;
 $$;
 -- #endregion

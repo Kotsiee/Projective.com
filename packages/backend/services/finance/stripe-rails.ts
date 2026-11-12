@@ -214,8 +214,8 @@ function isStale(intent: SweptIntent, nowMs: number): boolean {
 }
 
 /**
- * The PaymentIntents for one inbound payment — the recovery sweep's read (FINANCE_COMPLETENESS_AUDIT
- * N1). A bound payment is read by its intent id; an unbound one (its bind was lost after Stripe
+ * The PaymentIntents for one inbound payment — the recovery sweep's read (FINANCE_AUDIT N1). A
+ * bound payment is read by its intent id; an unbound one (its bind was lost after Stripe
  * charged it) is found by the `projective_payment_id` every intent here carries
  * ({@link paymentIntentParams}). Search is eventually consistent, which the sweep's grace period
  * absorbs. Read-only: it never creates, confirms or cancels anything.
@@ -576,17 +576,24 @@ export async function findPayoutTransfer(
 	return null;
 }
 
-/** What a connected account's bank payout carried: Projective transfers, and earlier failed payouts it re-pays. */
+/**
+ * What a connected account's bank payout carried: Projective transfers, and earlier failed or
+ * cancelled bank payouts it re-pays.
+ */
 export interface BankPayoutContents {
 	transfers: string[];
 	priorPayouts: string[];
 }
 
+/** The balance-transaction types that return an earlier bank payout's money to be paid again. */
+const RETURNED_PAYOUT_TYPES: ReadonlySet<string> = new Set(["payout_failure", "payout_cancel"]);
+
 /**
  * Read a connected account's bank payout back into the transfers it carried, through its balance
  * transactions (`payout` filter, on the connected account): an incoming transfer is a `payment` whose
- * source charge names its `source_transfer`; a `payout_failure` is an earlier bank payout's money
- * coming back to be paid again. Stripe lists balance transactions by payout for AUTOMATIC payouts only.
+ * source charge names its `source_transfer`; a `payout_failure` or `payout_cancel` is an earlier bank
+ * payout's money coming back to be paid again. Stripe lists balance transactions by payout for
+ * AUTOMATIC payouts only.
  */
 export async function bankPayoutContents(
 	stripe: Stripe,
@@ -605,7 +612,8 @@ export async function bankPayoutContents(
 		const sourceId = typeof source === "string" ? source : (source as { id?: unknown } | null)?.id;
 		if (typeof sourceId === "string" && sourceId.startsWith("tr_")) transfers.add(sourceId);
 		if (
-			txn.type === "payout_failure" && typeof sourceId === "string" && sourceId.startsWith("po_")
+			RETURNED_PAYOUT_TYPES.has(txn.type) && typeof sourceId === "string" &&
+			sourceId.startsWith("po_")
 		) {
 			priorPayouts.add(sourceId);
 		}

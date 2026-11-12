@@ -293,11 +293,12 @@ wallet with any amount. So (`00002510`):
   `payout_account_for`, `record_payout_account` — go to `authenticated` only, and each authorises the
   caller itself. The processor doors — `settle_card_payment`, `record_card_payment_failure`,
   `apply_identity_event`, `sync_payout_account`, `record_transfer_created`, `record_dispute_opened`,
-  and since Decision #202 `record_transfer_reversed`, `record_bank_payout` and `fn_claim_stale_payouts` —
-  are revoked from `PUBLIC`, `anon` **and `authenticated`** and granted to `service_role` alone: they
-  say that money arrived or that a person is verified, facts only the signature-checked webhook may
-  assert. The internal helpers (`fn_claim_stripe_event`, `fn_complete_stripe_event`,
-  `fn_stripe_event_replay`, `fn_release_stripe_event`, `fn_payout_owner`) are revoked from every role including `service_role`
+  since Decision #202 `record_transfer_reversed`, `record_bank_payout` and `fn_claim_stale_payouts`,
+  and since FINANCE_AUDIT H3 `record_dispute_updated` and `record_charge_refunded` — are revoked from
+  `PUBLIC`, `anon` **and `authenticated`** and granted to `service_role` alone: they say that money
+  arrived or that a person is verified, facts only the signature-checked webhook may assert. The
+  internal helpers (`fn_claim_stripe_event`, `fn_complete_stripe_event`, `fn_stripe_event_replay`,
+  `fn_release_stripe_event`, `fn_payout_owner`, `fn_open_chargeback`) are revoked from every role including `service_role`
   — only the definer doors call them. `payments.contract.test.ts` reads this file and fails if a
   processor door is ever granted to a client role.
 - **`finance.inbound_payments`** carries `SELECT` for `authenticated` (bounded by its policy) and

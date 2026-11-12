@@ -12,6 +12,7 @@
  */
 import { assert, assertEquals } from "@std/assert";
 import {
+	BankPayoutStatus,
 	EscrowLockStatus,
 	HANDLED_STRIPE_EVENTS,
 	InboundPaymentPurpose,
@@ -29,6 +30,7 @@ const read = (rel: string) => Deno.readTextFileSync(new URL(rel, REPO));
 const ENUMS_SQL = read("supabase/migrations/00000004_enums_domains.sql");
 const TABLES_SQL = read("supabase/migrations/00000017_tables_finance.sql");
 const FUNCTIONS_SQL = read("supabase/migrations/00001230_functions_finance_stripe.sql");
+const MONEY_SQL = read("supabase/migrations/00001240_functions_finance_money_movement.sql");
 const GRANTS_SQL = read("supabase/migrations/00002510_permissions_function_grants.sql");
 
 /** The quoted literals of the first `(...)` list after `anchor` in `sql`. */
@@ -118,6 +120,10 @@ Deno.test("no processor door is executable by a client role", () => {
 		"sync_payout_account",
 		"record_transfer_created",
 		"record_dispute_opened",
+		// FINANCE_AUDIT H3: a client who could call these could mark its own dispute under review, or
+		// record a refund that never happened.
+		"record_dispute_updated",
+		"record_charge_refunded",
 		// Decision #126 (00001240): a client who could call these could announce its own chargeback won,
 		// its own payout sent or failed back, a card saved against somebody else, or a scheduled charge run.
 		"record_dispute_closed",
@@ -149,6 +155,35 @@ Deno.test("a closed dispute's outcome is one finance.chargeback_status can hold"
 	const statuses = literalsAfter(ENUMS_SQL, /CREATE TYPE finance\.chargeback_status AS ENUM/);
 	// record_dispute_closed writes exactly these two resolutions.
 	for (const status of ["won", "lost"]) assert(statuses.includes(status), status);
+});
+
+Deno.test("a bank payout's outcome is BankPayoutStatus in the CHECK, the door and the SSOT", () => {
+	assertEquals(
+		literalsAfter(TABLES_SQL, /bank_status text CHECK \(bank_status IN/),
+		[...BankPayoutStatus.options],
+	);
+	assertEquals(
+		literalsAfter(MONEY_SQL, /IF p_status IS NULL OR p_status NOT IN \('paid'/),
+		[...BankPayoutStatus.options],
+	);
+	for (const status of BankPayoutStatus.options) {
+		assert(
+			HANDLED_STRIPE_EVENTS.includes(`payout.${status}` as never),
+			`payout.${status} is not handled`,
+		);
+	}
+});
+
+Deno.test("every dispute fact the webhook handles is one record_dispute_updated accepts", () => {
+	const accepted = literalsAfter(
+		FUNCTIONS_SQL,
+		/IF p_event_type IS NULL OR p_event_type NOT IN \(/,
+	);
+	const handled = HANDLED_STRIPE_EVENTS.filter((type) =>
+		type.startsWith("charge.dispute.") && type !== "charge.dispute.created" &&
+		type !== "charge.dispute.closed"
+	);
+	assertEquals([...handled].sort(), [...accepted].sort());
 });
 
 Deno.test("the withdrawal payout statuses are PayoutStatus, member for member", () => {

@@ -3325,23 +3325,23 @@ It is a satellite of this section: where they differ, this section wins, and its
   `fx_as_of` on the ledger row) so settlement is reproducible; display conversion is read-time only.
 - **Webhooks:** The `PaymentService` listens on TWO event destinations. The snapshot endpoint
   (`/api/finance/webhooks/stripe`, `STRIPE_WEBHOOK_SECRET`) takes exactly the
-  `HANDLED_STRIPE_EVENTS` of `@projective/types/finance` (`payments.ts`):
-  `payment_intent.succeeded`/`.payment_failed`/`.canceled`,
-  `identity.verification_session.verified`/`.requires_input`/`.canceled`, `transfer.created`,
-  `transfer.reversed`, `charge.dispute.created`/`.closed`, `account.updated` and
-  `setup_intent.succeeded`, and — signed by the platform's CONNECT destination
+  [`HANDLED_STRIPE_EVENTS`](../../packages/types/finance/payments.ts) of `@projective/types/finance`
+  — that list is the one statement of which events are handled; each is read into a plan by
+  `planStripeEvent` (`services/finance/stripe-webhook.ts`) and applied by one processor door. The
+  connected account's `payout.*` events are signed by the platform's CONNECT destination
   (`STRIPE_CONNECT_WEBHOOK_SECRET`, which may share the URL; the endpoint verifies against either
-  secret) — a connected account's `payout.paid` / `payout.failed` (Decision #202; a payout event
-  without `event.account` is the platform's own and is ignored); the Accounts v2 **thin**-event
-  endpoint (`/api/finance/webhooks/stripe-v2`, `STRIPE_THIN_WEBHOOK_SECRET`) takes the
-  recipient-capability and account-updated events, which carry only an id, so the handler re-reads
-  the account from Stripe before applying anything. Both update the `transactions` ledger, the
-  verification caches and `finance.chargebacks`. **Not handled** (FINANCE_AUDIT H3):
-  `charge.refunded` (a Dashboard refund is never ledgered), `charge.dispute.updated`,
-  `charge.dispute.funds_withdrawn` / `funds_reinstated`, `payout.canceled`, `transfer.updated`,
-  `identity.verification_session.processing` and `v2.core.account[requirements].updated`. **No
-  reconciliation against the Stripe balance is built** (FDD X14, L6): `finance.fn_reconcile_wallets`
-  and `finance.v_wallet_reconciliation` check the ledger's self-consistency only.
+  secret; Decision #202; a payout event without `event.account` is the platform's own and is
+  ignored). The Accounts v2 **thin**-event endpoint (`/api/finance/webhooks/stripe-v2`,
+  `STRIPE_THIN_WEBHOOK_SECRET`) takes `HANDLED_STRIPE_THIN_EVENTS`, which carry only an id, so the
+  handler re-reads the account from Stripe before applying anything. Both update the `transactions`
+  ledger, the verification caches and `finance.chargebacks`. **Any delivery order** (FINANCE_AUDIT
+  H4): whichever event of a dispute arrives first records its case, so a `.created` that lands after
+  `.closed` freezes nothing, and a refund is debited by its cumulative total, so a replay or an older
+  total moves nothing (`supabase/probes/stripe_event_order.sql`). Not handled, because they move no
+  money: `transfer.updated`, `identity.verification_session.processing` and
+  `v2.core.account[requirements].updated`. **No reconciliation against the Stripe balance is built**
+  (FDD X14, L6): `finance.fn_reconcile_wallets` and `finance.v_wallet_reconciliation` check the
+  ledger's self-consistency only.
 - **Ledger integrity (Decision #186):** `finance.transactions` is the record and is **append-only
   for every role**: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` (`PL403`) even for the
   table owner and the service role (which holds only `SELECT` + `INSERT`), `wallet_id` is
@@ -3374,7 +3374,7 @@ It is a satellite of this section: where they differ, this section wins, and its
 | Top a wallet up by card | the wallet's `top_up` action (`POST /api/wallet/action`) — the only door; the standalone `/api/finance/topup/intent` was retired with no caller | `WalletBackendService.topUp` → `createTopUpIntent` | the same three |
 | Payout account (Connect) onboarding | `POST /api/finance/connect/onboarding` · `GET …/refresh` (Stripe's `refresh_url`) · `GET …/return` (`return_url`) · `GET …/status` | `startConnectOnboarding` · `refreshConnectOnboarding` · `connectStatus` | `payout_account_for` · `record_payout_account` · `sync_payout_account` (service role) |
 | Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
-| The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_transfer_reversed` · `record_bank_payout` · `record_dispute_opened` (service role) |
+| The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_transfer_reversed` · `record_bank_payout` · `record_dispute_opened` · `record_dispute_updated` · `record_dispute_closed` · `record_charge_refunded` (service role) |
 
 - **Order of every user-initiated call:** gate (signed in → 401; `FINANCE_BACKEND_LIVE` + a
   well-formed key → else 503) → **record the request** through a user door (authorised by
