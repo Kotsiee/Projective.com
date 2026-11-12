@@ -186,7 +186,7 @@ Added by Decisions #82/#83; summarised here so this file is not read as the whol
 | Table                            | Read                                 | Write                                                     |
 | :------------------------------- | :----------------------------------- | :-------------------------------------------------------- |
 | `comms.dm_participants`          | **Own row only.**                    | —                                                         |
-| `comms.dm_threads`               | `comms.is_dm_participant(id)`        | —                                                         |
+| `comms.dm_threads`               | `comms.is_dm_participant(id)`        | — (and no `INSERT` / `UPDATE` privilege, `00002520`)      |
 | `comms.dm_messages`              | `comms.is_dm_participant(thread_id)` | `INSERT` as self into a thread one is a member of.        |
 | `comms.message_reactions`        | `comms.can_read_message(...)`        | `INSERT` as self on a readable message; `DELETE` own row. |
 | `comms.message_pins`             | `comms.can_read_message(...)`        | `INSERT` as self; `DELETE` by anyone who can read it.     |
@@ -204,7 +204,17 @@ may post into their own thread, with `sender_user_id` pinned to `auth.uid()` for
 `comms.project_messages` INSERT pins it — membership says who may post, not whose name goes on the
 row. Its third arm refuses a thread with `archived_at` set — an archived **entity channel**
 (Decision #306) keeps its history readable to its participants but takes no new message. The arm
-reads `comms.dm_threads` as the caller, whose own participation already admits the row.
+reads `comms.dm_threads` as the caller, whose own participation already admits the row. The post's
+`project_id` is not the client's to choose: `comms.tg_bind_dm_project` keeps a supplied one only
+when everyone in the thread is party to it, and otherwise derives it ([Functions.md](Functions.md)).
+
+`comms.dm_threads` takes **no client write at the privilege layer** either (`00002520`, ruling N1 of
+Decision #339): every thread is written by a definer door, so `authenticated` holds no `INSERT` or
+`UPDATE` on the table and no column is granted back. Its `cht-` `ref` and its derived summary
+(`last_message_at`, `last_message_id`) belong to their triggers; a client write naming any column is
+refused with `42501` rather than an `UPDATE` RLS quietly matches to no row, and
+`trg_dm_threads_derived` still refuses the summary should an `UPDATE` policy ever be added.
+`comms.inbox_tails` is `SECURITY INVOKER`, so these read policies are its whole guard.
 
 Entity channels need no policy of their own: a channel's `dm_participants` rows ARE the entity's
 active members (trigger-maintained, [Functions.md](Functions.md#entity-channels-00001300--00001840-decision-306)),

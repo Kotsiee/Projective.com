@@ -1,0 +1,31 @@
+.proj-stagepop {
+	inline-size: var(--overlay-w-sm);
+}
+
+.proj-stagepop__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.proj-stagepop__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+
+.proj-stagepop__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.proj-stagepop__point {
+	position: fixed;
+	inset-block-start: var(--stagepop-y, 0);
+	left: var(--stagepop-x, 0);
+	inline-size: 0;
+	block-size: 0;
+	pointer-events: none;
+}

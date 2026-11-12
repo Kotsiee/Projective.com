@@ -37,7 +37,8 @@ import { INTAKE_TEXT_MAX, isMultiChoice } from "@projective/types/services";
  *
  * Kind → control:
  *  - `text` → `InputText` · `textarea` → `Textarea`
- *  - `number` → `InputNumber`, plus a `Slider` when the seller set both bounds and asked for one
+ *  - `number` → `InputNumber`, plus a `Slider` when the seller set both bounds and asked for one —
+ *    one compound control on one value, the bounds printed under the track (Decision #424)
  *  - `boolean` → `ToggleSwitch`
  *  - `select` → `Select` · `multiselect` → `MultiSelect`
  *  - `radio` → `RadioGroup` · `pills` → `SelectButton` (single or `multiple`) · `checkboxes` → a
@@ -195,14 +196,13 @@ function IntakeControl(
 
 		case "number": {
 			const bounded = field.min !== undefined && field.max !== undefined;
+			const slider = bounded && !!field.slider;
 			const value = typeof answer === "number" ? answer : null;
+			const withUnit = (v: number) => `${v}${field.unit ? ` ${field.unit}` : ""}`;
 			return (
 				<FormControl {...common}>
 					{(a) => (
-						<div
-							class="pf-intake__number"
-							data-slider={bounded && field.slider ? "true" : undefined}
-						>
+						<div class="pf-intake__number" data-slider={slider ? "true" : undefined}>
 							<InputNumber
 								id={id}
 								aria-describedby={a.describedBy}
@@ -215,19 +215,27 @@ function IntakeControl(
 								step={field.step ?? 1}
 								suffix={field.unit ? ` ${field.unit}` : undefined}
 								disabled={disabled}
-								fluid
+								fluid={!slider}
+								class={slider ? "pf-intake__numberinput" : undefined}
 							/>
-							{bounded && field.slider && (
-								<Slider
-									aria-label={field.label}
-									value={value ?? field.min!}
-									onValueChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
-									min={field.min}
-									max={field.max}
-									step={field.step ?? 1}
-									disabled={disabled}
-									formatValue={(v) => `${v}${field.unit ? ` ${field.unit}` : ""}`}
-								/>
+							{slider && (
+								<div class="pf-intake__range">
+									<Slider
+										aria-label={field.label}
+										aria-describedby={a.describedBy}
+										value={value ?? field.min!}
+										onValueChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
+										min={field.min}
+										max={field.max}
+										step={field.step ?? 1}
+										disabled={disabled}
+										formatValue={withUnit}
+									/>
+									<span class="pf-intake__bounds" aria-hidden="true">
+										<span>{withUnit(field.min!)}</span>
+										<span>{withUnit(field.max!)}</span>
+									</span>
+								</div>
 							)}
 						</div>
 					)}

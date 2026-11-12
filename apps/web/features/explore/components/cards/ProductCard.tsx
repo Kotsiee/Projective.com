@@ -10,7 +10,8 @@ import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
 import { CardReveal, NewFact } from "../CardReveal.tsx";
 import { isNew, ratingSignals } from "../../core/card-signals.ts";
-import { itemHref, profileHref } from "../../core/routing.ts";
+import { profileHref } from "../../core/routing.ts";
+import { cardMenuFacts } from "../../core/card-menu.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProductItem } from "../../types/explore-types.ts";
 
@@ -85,13 +86,7 @@ export function ProductCard(
 				onSelect={onSelect}
 				label={`${item.title} by ${item.owner.name} — ${item.price}`}
 			/>
-			<CardActions
-				title={item.title}
-				href={itemHref(item, ctx)}
-				id={item.id}
-				type={item.type}
-				authed={authed}
-			/>
+			<CardActions facts={cardMenuFacts(item, ctx)} authed={authed} />
 
 			<div class="ex-media ex-media--product">
 				<ProgressiveImage

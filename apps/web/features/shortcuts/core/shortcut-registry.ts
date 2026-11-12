@@ -78,8 +78,18 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		id: "focus-search",
 		category: "Navigation",
 		label: "Search this page",
-		description: "Jumps to the page's own search, on Explore, Settings and Help.",
+		description:
+			"Jumps to the page's own search, or to the header's search on a page without one. Never while you type in a field.",
 		keys: ["/"],
+		isProtected: false,
+	},
+	{
+		id: "focus-lane-search",
+		category: "Navigation",
+		label: "Search the side lane",
+		description:
+			"Jumps to the search at the top of the side lane: conversations, projects, files, settings. Works from inside a field.",
+		keys: ["Mod", "Shift", "/"],
 		isProtected: false,
 	},
 	{
@@ -137,6 +147,15 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		label: "Record a voice message",
 		description: "Hold while the message box is empty to record; let go to stop.",
 		keys: ["Ctrl", "Space"],
+		isProtected: false,
+	},
+	{
+		id: "find-in-conversation",
+		category: "Messaging",
+		label: "Find in this conversation",
+		description:
+			"Opens the message finder in place of the browser's own find, on a conversation or channel chat. Esc closes it.",
+		keys: ["Mod", "F"],
 		isProtected: false,
 	},
 	{

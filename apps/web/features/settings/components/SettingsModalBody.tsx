@@ -7,8 +7,8 @@ import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { UserContext } from "@projective/types/auth";
 import type { SettingsSectionKey } from "@projective/types/settings";
-import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { isReachable, searchFieldOf } from "@features/shortcuts/core/shortcut-host.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { sectionMeta } from "../core/settings-registry.ts";
 import { type SettingsLocation, SettingsNavigator } from "./SettingsNavigator.tsx";
 import { useAttention } from "../hooks/useAttention.ts";
@@ -93,6 +93,7 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 	/** Which pane the narrow (drill-down) layout shows. */
 	const pane = useSignal<"nav" | "section">("section");
 	const contentRef = useRef<HTMLDivElement>(null);
+	const bodyRef = useRef<HTMLDivElement>(null);
 
 	// The Dialog places focus when it opens, which on a cold deep link is before this body has loaded —
 	// so focus lands on the panel itself. Hand it to the search field once the body exists, unless the
@@ -104,21 +105,20 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 		if (stranded) props.searchRef.current?.querySelector<HTMLInputElement>("input")?.focus();
 	}, []);
 
-	// `/` focuses the search unless the person is typing; Cmd/Ctrl+K stays the command palette's.
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
-			if (!shortcutOn("focus-search")) return;
-			const input = props.searchRef.current?.querySelector<HTMLInputElement>("input");
-			if (!input) return;
-			event.preventDefault();
+	useSearchTarget({
+		role: "page",
+		scopeRef: props.searchRef,
+		available: () => isReachable(bodyRef.current),
+		activate: () => {
 			pane.value = "nav";
-			input.focus();
-			input.select();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, []);
+			setTimeout(() => {
+				const input = searchFieldOf(props.searchRef.current);
+				if (!input || document.activeElement === input) return;
+				input.focus();
+				input.select();
+			}, 0);
+		},
+	});
 
 	function navigate(location: SettingsLocation, focus: boolean): void {
 		pane.value = "section";
@@ -127,7 +127,7 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 	}
 
 	return (
-		<div class="stg-modal__body" data-pane={pane.value}>
+		<div ref={bodyRef} class="stg-modal__body" data-pane={pane.value}>
 			<Splitter layout="horizontal" stateKey="settings-modal-split" class="stg-modal__split">
 				<SplitterPanel size={28} minSize={20} maxSize={40} class="stg-modal__navpane">
 					<nav class="stg-modal__nav" aria-label="Settings">
@@ -137,6 +137,7 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 							query={query}
 							marks={attention.marks}
 							searchRef={props.searchRef}
+							laneShortcut={false}
 							onSelect={navigate}
 						/>
 					</nav>

@@ -17,13 +17,17 @@
 > it changes behaviour there. **⚖️** means ruled pending counsel: build it behind a flag that stays
 > off, and never switch it on.
 >
-> **Verified against the tree at `94d22e84` (2026-10-30).** Wave 0 closed SEC E1–E5, E7, E6/G12,
-> G1–G3, G8, G9, G20, L1–L3, L4 (a) and (c), L5, L6, and SEC-P1c (Z2/P-2 by refusing video
-> renditions; V1, V2, V4); `supabase/functions/scan-file` is gone. Still open, and built here:
-> E8/G10 and the G11 deletion, L4 (b) and (d), L7, L8, L9, the public-copy check (§2.5, P-5), Tier
-> 1, Tier 3, R1–R5 (with G15 and G19), G5, G6, G13, G14, G18 (the sync-trigger half), Z1, Z3–Z6, V3,
-> V5, V6, AV-1–AV-5, the publication gate and Web Risk. Not in this track: G16 (identity's erasure
-> chain), G17 (#336), CAS F14 metering and CAS F20–F29 (proxy and inspector hardening).
+> **Re-verified in code at `8a3fd595` (2026-11-12).** Wave 0 closed SEC E1–E5, E7, E6/G12, G1–G3,
+> G8, G9, G20, L1–L3, L4 (a) and (c), L5, L6, and SEC-P1c (Z2/P-2 by refusing video renditions; V1,
+> V2, V4); `supabase/functions/scan-file` is gone. This track has merged ✅ E8 (`dd4206d3`: E8/G10,
+> the G11 deletion, AV-1 and Z3's write half) and ✅ W1 (`bc805dff`: Web Risk and the Voyage pin).
+> Nothing else here has landed: no table, function, trigger, route, service, env key or dev axis
+> that P1d–H1 name exists in the tree. Decision #396 (`0de5438f`) has since replaced V1's markup
+> refusal: markup is admitted as inert text and SVG is sanitised. Still open, and built here: L4 (b)
+> and (d), L7, L8, L9, the public-copy check (§2.5, P-5), Tier 1, Tier 3, R1–R5 (with G15 and G19),
+> G5, G6, G13, G14, G18 (the sync-trigger half), Z1, Z3's screening, Z4–Z6, V3, V5, V6, AV-2–AV-5
+> and the publication gate. Not in this track: G16 (identity's erasure chain), G17 (#336), CAS F14
+> metering and CAS F20–F29 (proxy and inspector hardening).
 >
 > **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file to
 > edit. A new category-1 file for a new module (`00001660_functions_ops_moderation.sql`, created by
@@ -32,6 +36,13 @@
 ---
 
 ## 0. Run order & dependencies
+
+Re-verified in code 2026-11-12 at `8a3fd595`: E8 and W1 hold. P1d, P2a–P2d, R1–R5, SN1–SN6, H1 and
+Z1 are not started, and none of their objects exists. Of the ⏳ waits below, jobs-sql (`817dbbd1`)
+and M·MS1 (`bbcf3506`, landed after the re-verification) are met. M·MS2, MS3 and C·WP10 have not
+landed, and neither has P·WP4, which the projects track has since split into WP4a → WP4b (T waits on
+WP4b, `PM_BUILD_PROMPTS.md` §0). `Projective-Safety` is not on this machine, so N0 is unverified and
+N1–N4 have not run here.
 
 | Phase                        | Prompts                                                         | Why this order                                                                                                                                                                                                                                                                                                            |
 | :--------------------------- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -58,7 +69,7 @@ Track and step names are Part B's; the comms prompt IDs (MS1–MS5, NT1–NT5, S
 | E8                | —                                                       | Runs first. Q0.2 (f) is E8's per the Wave 1.2 brief; COMMS SR1 also lists that deletion (RED D-29), so SR1 skips it once E8 has merged. Both edit `00001400` and `00002510`: never run them in parallel.                                    |
 | P1d               | ⏳ M·MS2 (soft)                                         | MS2 builds the single send door `MessagingBackendService.sendMessage(actor, ref, input)` (CAS §6.1, ruling N1): one Tier 1 insertion point, not two. If P1d must go first, it wires both doors and leaves a `shortcut:` comment naming MS2. |
 | P2a               | ⏳ P·WP4                                                | `projects.projects` copy and its trigger file belong to the projects track while WP4 runs.                                                                                                                                                  |
-| P2b               | ⏳ M·MS1, M·MS2, P·WP4                                  | `comms.dm_threads` (`00000016`) is in MS1's schema window; the thread openers sit behind MS2's door; a cancelled project's cooling-off reads WP4's lifecycle.                                                                               |
+| P2b               | ⏳ M·MS2, P·WP4 (✅ M·MS1)                              | `comms.dm_threads` (`00000016`) is in MS1's schema window; the thread openers sit behind MS2's door; a cancelled project's cooling-off reads WP4's lifecycle.                                                                               |
 | P2c               | ⏳ P·WP4, C·WP10                                        | Ticket and submission text (`00000015`, `00001850`) and scheduling event text (`00001860`). Reactions are out: COMMS MS5 pins them to one emoji set.                                                                                        |
 | P2d               | —                                                       | COMMS leaves G5, G6, G13, G14 to this track; SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers.                                                                                      |
 | R1, P1d           | I's erasure chain (coordinate)                          | `ops.reports`, `ops.refusal_counts` and the evidence copies are personal data. The erasure arm lives in `00001060` (identity's hot file): whichever lands second adds it, as that file's single writer at the time.                         |
@@ -267,6 +278,11 @@ Commit on the branch you were given with a clear message; do not push or open a 
 
 ### E8 — Storage write policies, SVG and the dead search definers (Q0.2 (a), (f))
 
+> **Status 2026-11-12:** Done — landed in `dd4206d3` (merged `ee0b004a`) and re-verified in code:
+> `00002017` has no client write policy outside quarantine (`310367f4` later only narrowed a
+> workspace read), `public_assets` and `storage.ts` admit no SVG, and both search definers are gone
+> from `00001400` and `00002510`. A hosted project's buckets still need the same change by hand.
+
 ```text
 PROMPT E8: Only the service role writes the six buckets; SVG and the dead search definers go
 
@@ -339,6 +355,11 @@ CROSS-TRACK: tell the comms (SR1) and optimisation sessions that the definers ar
 ## 3. Any time — Provider endpoints
 
 ### W1 — Link reputation on Web Risk; embeddings pinned to Voyage (T5)
+
+> **Status 2026-11-12:** Done — landed in `bc805dff` (merged `f5955b7c`) and re-verified in code:
+> `link-reputation.ts` calls Web Risk with `LINK_SAFETY_API_KEY` in the header, `voyage-client.ts`
+> calls `api.voyageai.com` only, and `EMBEDDINGS_ENABLED` still defaults to `false`. The Voyage
+> no-training terms remain a human action.
 
 ```text
 PROMPT W1: Link reputation runs on Google Web Risk; embeddings call Voyage, not Atlas
@@ -1375,11 +1396,11 @@ Sightengine itself (TRUST SN4).
 
 | Piece                                                          | State today                                                                                                                                                                    | Where it is built                  |
 | :------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------- |
-| Magic-byte sniffing and image decoders                         | **Built.** It refuses markup, undecodable images and video renditions, and falls back to octet-stream (Wave 0, SEC V1/V2/V4/Z2). V3 (the PDF/ZIP/OOXML sniffer) is still open. | This repo, TRUST SN2               |
+| Magic-byte sniffing and image decoders                         | **Built** (Wave 0). It refuses programs, undecodable images and video renditions; markup is admitted inert and SVG sanitised (#396, `0de5438f`). V3 (PDF/ZIP/OOXML) is open.   | This repo, TRUST SN2               |
 | Tier 1 in-process pre-filter (regex PII, IBAN, crypto, phones) | Not built. SEC-P1d.                                                                                                                                                            | This repo, TRUST P1d               |
 | Tier 2 `comms.mask_pii` (SQL floor)                            | Built. L8's new categories are open.                                                                                                                                           | This repo, TRUST P1d               |
-| Google Safe Browsing v4                                        | **Wired, gated off** (`services/files/link-reputation.ts`). The v4 licence is **non-commercial**; ruling T5 moves it to Google Web Risk.                                       | This repo, TRUST W1                |
-| ClamAV, NudeNet + OCR, Presidio (Tier 3)                       | **Not built.** N0 (the scaffold and the HTTP contract) is committed in `Projective-Safety`.                                                                                    | `Projective-Safety`, prompts N1–N5 |
+| Google Web Risk (link reputation)                              | **Wired** (`services/files/link-reputation.ts`, `bc805dff`); it answers once `LINK_SAFETY_API_KEY` holds a real key. Safe Browsing v4 is gone, in development too.             | This repo, TRUST W1 ✅             |
+| ClamAV, NudeNet + OCR, Presidio (Tier 3)                       | **Not built.** N0 (the scaffold and the HTTP contract) is recorded as committed in `Projective-Safety`; that repo is not on this machine (2026-11-12), so N0 is unverified.    | `Projective-Safety`, prompts N1–N5 |
 | Sightengine (hosted toxicity, violence and hate-symbol checks) | Not built. Ruling T2 makes it the hosted check for Glass Front media and text only.                                                                                            | This repo, TRUST SN4               |
 | App-side client, gates, queue, review sink                     | Not built. `MALWARE_SCAN_LIVE`, `MODERATION_BACKEND_LIVE`, `SAFETY_NODE_URL`, `SAFETY_NODE_TOKEN`, `MODERATION_CRON_SECRET`.                                                   | This repo, TRUST SN1–SN6           |
 
@@ -1422,7 +1443,8 @@ Never commit them.
 
 1. **Google Cloud** (Web Risk, ruling T5):
    - create a project, enable the **Web Risk API**, and create an API key restricted to that API;
-   - for local dev only, a Safe Browsing v4 key is acceptable.
+   - the app calls Web Risk only (TRUST W1, `bc805dff`), so local development needs a Web Risk key
+     too; a Safe Browsing v4 key no longer works.
 2. **Sightengine** (ruling T2; TRUST SN4): create an account under data-processing terms, then note
    the `api_user` and `api_secret`. Start on the free tier and turn on only the models T2 named.
 3. **Container registry**: GitHub Container Registry on `Projective-Safety` is enough.
@@ -1454,7 +1476,7 @@ Done: the repository is `Projective-Safety`, cloned beside this repo, with N0 co
    - `SAFETY_NODE_URL` (the private https origin; `http://127.0.0.1:8443` locally);
    - `SAFETY_NODE_TOKEN`;
    - `MODERATION_CRON_SECRET`;
-   - `WEB_RISK_API_KEY` (TRUST W1).
+   - `LINK_SAFETY_API_KEY`, the Web Risk key (TRUST W1 kept this name).
 2. Run the app-side prompts in **this** repo: this file's SN1–SN6, W1 and P1d (§8.5 maps them, and
    says which node prompt each waits for).
 3. Turn the gates on, one at a time, in the EPI §6.6 order:

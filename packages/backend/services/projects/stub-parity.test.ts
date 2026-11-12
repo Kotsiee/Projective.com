@@ -1,5 +1,12 @@
 import { assert, assertEquals } from "@std/assert";
-import { type BoardCard, type CommitTicket, STALE_MOVE_MESSAGE } from "@projective/types/projects";
+import {
+	type BoardCard,
+	type CommitTicket,
+	NEW_LANE_REFUSAL_MESSAGE,
+	STALE_MOVE_MESSAGE,
+	ticketDeletable,
+	ticketLeavesStage,
+} from "@projective/types/projects";
 import { ProjectBackendService } from "./ProjectBackendService.ts";
 import { CLAIM_REFUSAL } from "./live-claim.ts";
 import { resetWriteStore } from "./write-store.ts";
@@ -129,6 +136,40 @@ Deno.test("moveTicket (stub): the client cannot relocate a ticket a freelancer i
 		res.message,
 		"A freelancer is working this ticket — it can be moved once the work is handed back.",
 	);
+});
+
+Deno.test("moveTicket (stub): claimed work keeps its stage; a funded unclaimed ticket goes to New", async () => {
+	resetWriteStore();
+	const funded = await cardOf(TICKET);
+	assert(funded.stageId && !ticketDeletable(funded), "the fixture ticket is staged and funded");
+	assert(ticketLeavesStage(funded), "and nobody has claimed it");
+	const moved = await ProjectBackendService.moveTicket({
+		projectId: PROJECT,
+		ticketId: TICKET,
+		status: "backlog",
+		stageId: null,
+		sortOrder: 0,
+	}, ALICE);
+	assert(moved.ok && moved.data, moved.message);
+	assertEquals([moved.data.card.status, moved.data.card.stageId], ["backlog", null]);
+
+	const board = await ProjectBackendService.board({ projectId: PROJECT, view: "stages" }, ALICE);
+	const handedBackCard = board.data?.page.cards.find((c) =>
+		c.claimed && c.stageId !== null && (c.status === "in_review" || c.status === "completed")
+	);
+	assert(handedBackCard, "the fixture board carries claimed work handed back");
+	const handedBack = await ProjectBackendService.moveTicket({
+		projectId: PROJECT,
+		ticketId: handedBackCard.id,
+		status: "backlog",
+		stageId: null,
+		sortOrder: 0,
+	}, ALICE);
+	assertEquals([handedBack.status, handedBack.message, handedBack.errors], [
+		422,
+		NEW_LANE_REFUSAL_MESSAGE,
+		{ status: "not_allowed" },
+	]);
 });
 // #endregion
 

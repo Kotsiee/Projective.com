@@ -21,7 +21,6 @@ import {
 	calendarFocus,
 	calendarPage,
 	type CalendarSurface,
-	calendarView,
 	focusedAt,
 	importedEvents,
 	invitationsOnly,
@@ -32,7 +31,10 @@ import {
 	routinesOn,
 	selectedEventId,
 	selectedRoutineId,
+	viewAt,
 } from "../core/calendar-state.ts";
+import type { CalendarAddress } from "../core/calendar-address.ts";
+import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 
 const ENTITY_TABS: readonly LaneTabOption<PanelTab>[] = [
 	{ value: "month", label: "Month" },
@@ -53,6 +55,8 @@ export interface CalendarPanelProps {
 	invitations?: boolean;
 	/** The page the Events tab's Invitations row narrows (default `/calendar`). */
 	path?: string;
+	/** What the agenda's URL asks to be shown (Decision #413), so the month paints in the first byte. */
+	address?: CalendarAddress;
 }
 
 /**
@@ -75,6 +79,7 @@ export interface CalendarPanelProps {
  * and a pick, a step or a scroll that lands in another month brings the navigator with it.
  */
 export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
+	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const surface = props.surface ?? "personal";
 	const entity = surface === "entity";
 	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
@@ -87,7 +92,7 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 			)
 			: null
 	);
-	const monthMs = useSignal<number>(calendarFocus.peek() || props.initial?.now || Date.now());
+	const monthMs = useSignal<number>(focusedAt(props.initial, props.address));
 	/** Off until the mount below has moved a linked entry, and the address's narrowing, into state. */
 	const settled = useSignal(false);
 
@@ -145,9 +150,9 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 		<div class="cal-panel__mini">
 			<MiniMonth
 				monthMs={monthMs.value}
-				focusMs={focusedAt(page)}
+				focusMs={focusedAt(page, props.address)}
 				tz={tz}
-				view={calendarView.value}
+				view={viewAt(props.address)}
 				todayMs={todayMs.value}
 				onPick={(day) => (calendarFocus.value = day)}
 				onMonthStep={(d) => (monthMs.value = calendarTime.addZonedMonths(monthMs.value, d, tz))}

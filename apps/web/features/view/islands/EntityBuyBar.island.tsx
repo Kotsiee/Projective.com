@@ -1,13 +1,14 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
-import { PriceBlock } from "../components/lane-parts.tsx";
+import { PriceBlock, SeatSummary } from "../components/lane-parts.tsx";
 import "../styles/entity-view.css";
 import { basketIds, hydrateBasket } from "../core/basket-state.ts";
 import { commitBasket, commitBuyNow } from "../core/booking-commits.ts";
 import { seedSimulation, type SimulationFacts } from "../core/simulation.ts";
 import { signInHref } from "../core/view-model.ts";
-import { type EntityArchetype, offerFor } from "../core/entity-archetype.ts";
+import { type EntityArchetype, offerFor, seatCapacityFor } from "../core/entity-archetype.ts";
+import { offerSummaryFor } from "../core/offer-summary.ts";
 import type { HeadlinePrice } from "../core/view-pricing.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
@@ -21,7 +22,7 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
 /**
  * EntityBuyBar — the ≤767px transactional block (`DESIGN_SYSTEM.md` §D.7.4).
  *
- * Below the frame breakpoint (1100px) the conversion lane is not rendered — it is a page column now,
+ * Below the frame breakpoint (1024px of content) the purchase card is not rendered — it is a page column now,
  * and four tracks inside a content region the shell has already narrowed leave ~350px for the content
  * itself. So the entire transaction lives here instead. Measured at 390x844 before this existed, a
  * product page rendered its price, "Buy now", "Add to basket" and "Message" all at `0x0` — a commerce
@@ -65,6 +66,7 @@ export default function EntityBuyBar(
 	const { item } = view;
 	const archetypeOffer = offerFor(archetype);
 	const added = basketIds.value.includes(item.id);
+	const capacity = seatCapacityFor(view, archetype);
 
 	// A simulation never reads the owner's own basket: what a buyer sees is an empty one.
 	useEffect(() => {
@@ -125,6 +127,8 @@ export default function EntityBuyBar(
 				isFloor={price.isFloor}
 			/>
 
+			{capacity && <SeatSummary capacity={capacity} />}
+
 			<BookingCtaRig
 				offer={offer}
 				layout="bar"
@@ -156,6 +160,7 @@ export default function EntityBuyBar(
 				intake={view.service?.intake}
 				sessionPlan={view.service?.sessionPlan}
 				currency={item.type === "services" || item.type === "products" ? item.currency : undefined}
+				summary={offerSummaryFor(view)}
 			/>
 		</div>
 	);

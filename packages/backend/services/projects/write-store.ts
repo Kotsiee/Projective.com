@@ -30,6 +30,8 @@ import {
 	reconcileSetup,
 	type SendProjectMessage,
 	stageCostCents,
+	stageDefaultIntensity,
+	stageIntensityLocked,
 	type StageSetup,
 	type SubmissionListPage,
 	type SubmissionStatus,
@@ -37,6 +39,7 @@ import {
 	type SubmissionUnit,
 	stageAssignmentOf,
 	TICKET_MANAGER_ROLES,
+	ticketDueFromStages,
 	type TicketIntensity,
 	type TicketStageRef,
 	ticketTotalCents,
@@ -48,6 +51,7 @@ import { mintSlug } from "@projective/types/slugs";
 import { toMajorUnits } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import { fixtureFunding } from "./board-fixtures.ts";
+import { CLIENT_STAGE_TERMS } from "./stage-terms.ts";
 
 /**
  * projects write store — the mutable, PER-PROCESS overlay the projects write path keeps while
@@ -873,6 +877,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		viewerIsClient: true,
 		viewerCanConfigure: true,
 		viewerAccess: "owner",
+		currency: setup.budget.currency,
 		scopeType: actor?.contextType ?? "personal",
 		scopeLabel: actor?.contextId ? "Workspace" : "Personal",
 		starred: false,
@@ -1245,6 +1250,7 @@ function overlayStages(
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
 			chainReaction: stage.chainReaction ?? true,
+			...CLIENT_STAGE_TERMS,
 			// A stage minted from a setup save has no schedule yet; the timeline draws it as an
 			// unscheduled lane rather than guessing a week for it.
 			startAt: null,
@@ -1771,7 +1777,10 @@ function resolveStageRefs(
 	const byId = new Map(stages.map((stage) => [stage.id, stage]));
 	return refs.map((ref, index) => {
 		const stage = byId.get(ref.stageId);
-		const intensity = ref.intensity ?? ticketIntensity;
+		// A stage sold at one fixed intensity holds the ticket to it, as the live write does.
+		const intensity = stage && stageIntensityLocked(stage)
+			? stageDefaultIntensity(stage)
+			: ref.intensity ?? ticketIntensity;
 		const unitPriceCents = stage?.unitPriceCents ?? null;
 		return {
 			...ref,
@@ -1779,8 +1788,9 @@ function resolveStageRefs(
 			order: index,
 			status: stage?.status ?? ref.status,
 			intensity,
+			dueAt: ref.dueAt ? ref.dueAt.slice(0, 10) : null,
 			unitPriceCents,
-			costCents: stageCostCents(unitPriceCents, intensity),
+			costCents: stageCostCents(unitPriceCents, intensity, stage),
 		};
 	});
 }
@@ -1825,6 +1835,7 @@ export function buildStubCard(
 	const description = input.description.trim();
 	const tasks = input.tasks;
 	const escrowHeld = previous?.escrowHeld ?? false;
+	const dueDate = ticketDueFromStages(refs) ?? input.dueDate;
 	return {
 		id,
 		// A saved ticket always has an address, so the stub mints one the way the database's trigger
@@ -1860,8 +1871,8 @@ export function buildStubCard(
 		priority: input.priority,
 		intensity: input.intensity,
 		workload: workloadOf(refs, stages),
-		dueDate: input.dueDate,
-		dueLabel: dueLabelOf(input.dueDate),
+		dueDate,
+		dueLabel: dueLabelOf(dueDate),
 		budgetCents,
 		budgetLabel: budgetCents === null ? null : formatTicketMoney(budgetCents, "USD"),
 		currency: "USD",

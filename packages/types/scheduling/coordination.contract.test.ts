@@ -14,8 +14,11 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import {
 	EventRescheduleSchema,
+	RESCHEDULE_ATTENDEE_PROPOSALS_MAX,
 	RESCHEDULE_LOCKOUT_HOURS,
 	RESCHEDULE_PROPOSALS_MAX,
+	RESCHEDULE_SLOT_MAX_HOURS,
+	RescheduleRefusalReason,
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "./coordination.ts";
 import { GUEST_ADDRESS_MAILS_DAILY_MAX, GUEST_INVITES_DAILY_MAX } from "./guests.ts";
@@ -27,6 +30,9 @@ const read = (rel: string) => Deno.readTextFileSync(new URL(rel, REPO)).replace(
 
 const FN_SQL = "supabase/migrations/00001510_functions_scheduling.sql";
 const TRIGGER_SQL = "supabase/migrations/00001860_triggers_scheduling.sql";
+const TABLE_SQL = "supabase/migrations/00000022_tables_scheduling.sql";
+const SESSIONS_SQL = "supabase/migrations/00001155_functions_projects_sessions.sql";
+const PARAMS_SQL = "supabase/migrations/00005001_seed_platform_params.sql";
 const WRITER_TS = "packages/backend/services/scheduling/live-coordination-writes.ts";
 const SEED_TS = "supabase/seeds/gen/emit-scheduling.ts";
 
@@ -35,10 +41,20 @@ function functionBody(sql: string, name: string): string {
 	const head = `CREATE OR REPLACE FUNCTION ${name}`;
 	const tight = sql.indexOf(`${head}(`);
 	const start = tight >= 0 ? tight : sql.indexOf(`${head} (`);
-	assert(start >= 0, `${name} is no longer defined in ${FN_SQL}`);
+	assert(start >= 0, `${name} is no longer defined`);
 	const end = sql.indexOf("\n$$;", start);
 	assert(end > start, `${name} has no terminating $$;`);
 	return sql.slice(start, end);
+}
+
+/** Whitespace collapsed, so a predicate reads the same however it is wrapped. */
+const flat = (s: string) => s.replace(/\s+/g, " ");
+
+/** A `security.platform_params` seed value by key, as a number. */
+function seededParam(key: string): number {
+	const m = read(PARAMS_SQL).match(new RegExp(`'${key}',\\s*'(\\d+)'::jsonb`));
+	assert(m, `${key} is not seeded in ${PARAMS_SQL}`);
+	return Number(m[1]);
 }
 
 Deno.test("the invitation door caps an entry at the SAME seats the TypeScript rule does", () => {
@@ -173,5 +189,101 @@ Deno.test("closing a round locks it before testing it, and approves an accepted 
 	assertStringIncludes(
 		body,
 		"SET approved = true\n        WHERE id = p_resolved_proposal_id AND NOT approved;",
+	);
+});
+
+Deno.test("the session workspace counts the voters eligibleVoterCount counts", () => {
+	// Decision #343, ruling C6 D5: one denominator. `eligibleVoterCount` leaves out the host and a
+	// guest (a seat with no account) and keeps optional seats; so do the workspace and the guard.
+	const workspace = flat(functionBody(read(SESSIONS_SQL), "projects.get_session_workspace"));
+	const voters = workspace.match(
+		/'voters', \(SELECT count\(\*\) FROM scheduling\.event_attendees ea WHERE (.+?)\)\s*\)/,
+	);
+	assert(voters, "get_session_workspace no longer reports a voters count");
+	const predicate = voters[1];
+	for (
+		const term of [
+			"ea.event_id = ev.id",
+			"ea.archived_at IS NULL",
+			"ea.user_id IS NOT NULL",
+			"ea.role <> 'host'::scheduling.attendee_role",
+		]
+	) assertStringIncludes(predicate, term);
+	assert(!predicate.includes("'optional'"), "an optional seat is a voter");
+
+	const guard = flat(functionBody(read(FN_SQL), "scheduling.fn_event_has_voters"));
+	for (
+		const term of [
+			"a.archived_at IS NULL",
+			"a.user_id IS NOT NULL",
+			"a.role <> 'host'::scheduling.attendee_role",
+		]
+	) assertStringIncludes(guard, term);
+});
+
+Deno.test("the ballot trigger holds the attendee quota and the length rule the planner applies", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.fn_cap_reschedule_proposals");
+	const quota = [...body.matchAll(/v_mine\s*>=\s*(\d+)/g)].map((m) => Number(m[1]));
+	assertEquals(quota, [RESCHEDULE_ATTENDEE_PROPOSALS_MAX]);
+	// Only an attendee's slot still waiting on the host counts, and only that attendee's.
+	assertStringIncludes(body, "IF NEW.proposed_by_role = 'attendee' AND NOT NEW.approved THEN");
+	assertStringIncludes(
+		body,
+		"p.proposed_by_user_id IS NOT DISTINCT FROM NEW.proposed_by_user_id",
+	);
+	// A replacement keeps the event's own length.
+	assertStringIncludes(body, "SELECT e.ends_at - e.starts_at INTO v_length");
+	assertStringIncludes(body, "IF NEW.ends_at - NEW.starts_at IS DISTINCT FROM v_length THEN");
+	// The lock is taken before anything is counted.
+	assert(body.indexOf("FOR UPDATE") < body.indexOf("INTO v_length"));
+	assert(body.indexOf("FOR UPDATE") < body.indexOf("INTO v_mine"));
+});
+
+Deno.test("every ballot refusal names a planner reason the writer maps back", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.fn_cap_reschedule_proposals");
+	const hints = [...body.matchAll(/HINT = '([a-z_]+)'/g)].map((m) => m[1]);
+	assertEquals(hints, ["duration_changed", "ballot_full", "proposer_quota"]);
+	const writer = read(WRITER_TS);
+	for (const hint of hints) {
+		assert(RescheduleRefusalReason.safeParse(hint).success, `${hint} is not a refusal reason`);
+		assertStringIncludes(writer, `${hint}: { status:`);
+	}
+	assertStringIncludes(writer, 'error.message?.includes("ck_proposal_span")');
+});
+
+Deno.test("no stored slot runs past the TypeScript ceiling", () => {
+	const table = flat(read(TABLE_SQL));
+	const ceiling = [
+		...table.matchAll(
+			/CONSTRAINT ck_proposal_span CHECK \( ends_at > starts_at AND ends_at - starts_at <= interval '(\d+) hours' \)/g,
+		),
+	].map((m) => Number(m[1]));
+	assertEquals(ceiling, [RESCHEDULE_SLOT_MAX_HOURS]);
+});
+
+Deno.test("a courtesy no-show's dials are seeded and read with the same defaults", () => {
+	// Decision #343, ruling C6 D7, at the weight Decision #419 rules: 2 points, lapsing after 90 days,
+	// one per pair in 30. A default is only a fallback for a missing row, so it must say the same.
+	const body = functionBody(read(FN_SQL), "scheduling.fn_charge_call_no_show");
+	const dials: Record<string, number> = {
+		call_no_show_penalty_points: 2,
+		call_no_show_penalty_days: 90,
+		call_no_show_pair_window_days: 30,
+	};
+	for (const [key, ruled] of Object.entries(dials)) {
+		assertEquals(seededParam(key), ruled, `${key} is seeded at the ruled figure`);
+		const defaults = [...body.matchAll(new RegExp(`fn_session_param\\('${key}', (\\d+)\\)`, "g"))]
+			.map((m) => Number(m[1]));
+		assertEquals(defaults, [ruled], `${key} is read once, with the seeded figure as its default`);
+	}
+	// Courtesy only, and only on the marker's own recorded presence.
+	assertStringIncludes(body, "IF c.call_type <> 'courtesy'::scheduling.call_type THEN");
+	assertStringIncludes(
+		body,
+		"WHERE a.call_id = c.id AND a.user_id = p_marker AND a.joined_at <= p_window_closes",
+	);
+	assertStringIncludes(
+		functionBody(read(FN_SQL), "scheduling.mark_call_no_show"),
+		"scheduling.fn_charge_call_no_show(c, v_uid, v_named, v_opens)",
 	);
 });

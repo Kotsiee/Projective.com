@@ -219,6 +219,15 @@ export interface TicketTabSpec {
 export type TicketMode = "create" | "view";
 
 /**
+ * Whether the stages of a ticket being CREATED are composed in the side pane beside its details —
+ * true exactly when the side pane exists (wide enough to show one). Then the Stages tab is not
+ * offered: the pane IS that surface, moved beside the brief, never duplicated (§D.7.4).
+ */
+export function stagesInPane(mode: TicketMode, wide: boolean): boolean {
+	return mode === "create" && wide;
+}
+
+/**
  * The tab strip for a ticket.
  *
  * On a SAVED ticket every tab is always present: one with no attachments still HAS an attachments
@@ -228,7 +237,8 @@ export type TicketMode = "create" | "view";
  * A ticket being CREATED is the one exception, and not for tidiness. Submissions and History are
  * archives of things that have happened, and nothing has happened to a ticket that does not exist
  * yet — an empty archive on a new ticket would not be reporting emptiness, it would be inviting the
- * reader to wonder what they had missed.
+ * reader to wonder what they had missed. Its stages are composed in the side pane beside the details
+ * when there is room for one ({@link stagesInPane}), so the Stages tab is offered only without it.
  *
  * The Timeline tab is the other exception, and it is decided by the ENGAGEMENT rather than the ticket:
  * a Task's ticket has one stage, so its timeline would be one bar beside the ticket's own due date.
@@ -238,6 +248,7 @@ export function ticketTabs(
 	card: BoardCard,
 	mode: TicketMode = "view",
 	hasTimeline = true,
+	wide = true,
 ): TicketTabSpec[] {
 	const tabs: TicketTabSpec[] = [
 		{ key: "details", label: "Details", icon: "document", count: null, iconOnly: false },
@@ -251,9 +262,11 @@ export function ticketTabs(
 			iconOnly: false,
 		});
 	}
-	tabs.push(
-		{ key: "stages", label: "Stages", icon: "stages", count: card.stages.length, iconOnly: false },
-	);
+	if (!stagesInPane(mode, wide)) {
+		tabs.push(
+			{ key: "stages", label: "Stages", icon: "stages", count: card.stages.length, iconOnly: false },
+		);
+	}
 	if (hasTimeline) {
 		// The same stages on a time axis: which of them is scheduled when, and where the ticket's own
 		// claim-to-deadline sits against them. Present in create mode too — a stage's window is a fact
@@ -297,15 +310,22 @@ export function boardHasTimeline(page: Pick<BoardPage, "format" | "structure">):
 /**
  * Whether a tab hosts a side panel, and what that panel is for.
  *
- * Only two do, and they answer different questions: Details is being READ, so the panel carries the
- * recent activity that gives it context; Stages is being WORKED, so the panel carries the stage the
- * reader has selected. Everywhere else the content is the whole point — a submissions tree, a
- * breakdown table, a file grid — and a persistent column beside it would be taking width from the
- * thing the reader opened the tab for.
+ * On a saved ticket only two do, and they answer different questions: Details is being READ, so the
+ * panel carries the recent activity that gives it context; Stages is being WORKED, so the panel
+ * carries the stage the reader has selected. A ticket being CREATED has no activity to show, so its
+ * Details tab carries the stage `composer` instead — which stages the ticket needs and each one's
+ * settings, beside the brief they are priced against. Everywhere else the content is the whole point
+ * — a submissions tree, a breakdown table, a file grid — and a persistent column beside it would be
+ * taking width from the thing the reader opened the tab for.
+ *
+ * `wide` is false where the modal has no room for a side panel at all; the stages are then worked
+ * inside the Stages tab itself, the inspector included.
  */
-export type TicketPanelKind = "activity" | "stage" | null;
+export type TicketPanelKind = "activity" | "stage" | "composer" | null;
 
-export function panelFor(tab: TicketTab): TicketPanelKind {
+export function panelFor(tab: TicketTab, mode: TicketMode = "view", wide = true): TicketPanelKind {
+	if (!wide) return null;
+	if (mode === "create") return tab === "details" ? "composer" : null;
 	if (tab === "details") return "activity";
 	if (tab === "stages") return "stage";
 	return null;
@@ -528,9 +548,14 @@ export interface TicketMetric {
  * it leads the footer as its own pair of figures ({@link ticketMoney}).
  *
  * `mode` filters the same way the tab strip does: a badge that opens a tab which does not exist on a
- * ticket being created would be a control that cannot be used.
+ * ticket being created would be a control that cannot be used — so with the stages composed in the
+ * side pane the stage count is a figure, not a way in.
  */
-export function ticketMetrics(card: BoardCard, mode: TicketMode = "view"): TicketMetric[] {
+export function ticketMetrics(
+	card: BoardCard,
+	mode: TicketMode = "view",
+	wide = true,
+): TicketMetric[] {
 	const submissions = countUnits(card.submissions);
 	const out: TicketMetric[] = [
 		{
@@ -538,7 +563,7 @@ export function ticketMetrics(card: BoardCard, mode: TicketMode = "view"): Ticke
 			icon: "stages",
 			value: String(card.stages.length),
 			label: `${card.stages.length} ${card.stages.length === 1 ? "stage" : "stages"}`,
-			target: "stages",
+			target: stagesInPane(mode, wide) ? null : "stages",
 			active: card.stages.length > 0,
 		},
 		{
@@ -616,15 +641,14 @@ export function resolveTicketStages(
 	return ordered.map((ref, i) => {
 		const band = bandOf.get(ref.stageId) ?? i;
 		const stage = byId.get(ref.stageId) ?? null;
+		const cost = stageCostCents(ref.unitPriceCents, ref.intensity, stage);
 		return {
 			ref,
 			stage,
 			index: i,
 			band,
 			opensBand: i === 0 || (bandOf.get(ordered[i - 1].stageId) ?? i - 1) !== band,
-			costCents: ref.unitPriceCents === null
-				? ref.costCents
-				: stageCostCents(ref.unitPriceCents, ref.intensity),
+			costCents: cost ?? (ref.unitPriceCents === null ? ref.costCents : null),
 			workload: workloadIntensity(stage?.categoryWeight ?? 1, ref.intensity),
 		};
 	});
@@ -652,8 +676,9 @@ export function activeStagesFor(card: BoardCard): TicketStageRef[] {
 // #endregion
 
 // #region Labels
-/** `×0.5` — the multiplier as ARITHMETIC, for the Finances tab only. Never a badge label. */
+/** `×0.75` — the price multiplier as ARITHMETIC, for the Finances tab. Never a badge label. */
 export function multiplierLabel(multiplier: number): string {
-	return `×${multiplier % 1 === 0 ? multiplier : multiplier.toFixed(1)}`;
+	if (Number.isInteger(multiplier)) return `×${multiplier}`;
+	return `×${multiplier.toFixed(2).replace(/0+$/, "")}`;
 }
 // #endregion

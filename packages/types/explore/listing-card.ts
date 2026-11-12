@@ -1,5 +1,6 @@
 import type { ListingMetrics, ListingPricing } from "../catalogue/catalogue.ts";
 import { coverOf, type ListingMediaSlot } from "../catalogue/media.ts";
+import type { ListingOffer } from "../catalogue/offer.ts";
 import { aspectRatioOf } from "../files/aspect.ts";
 import { currencyExponent, toMajorUnits, toMinorUnits } from "../finance/wallet.ts";
 import type { ExploreOwner, ProductItem, ServiceItem, ServiceType, SkillRef } from "./items.ts";
@@ -47,6 +48,10 @@ export interface ListingCardSource {
 	metrics: Pick<ListingMetrics, "avgRating" | "ratingCount">;
 	/** Whether the card carries the sponsored mark. */
 	promoted: boolean;
+	/** A Pipeline service sold at tiered intensity (`service_blueprints.allow_tiered_intensity`). */
+	tieredIntensity?: boolean;
+	/** A workspace listing's offer; a Pipeline's tier flag is read off it when the source states none. */
+	offer?: ListingOffer;
 	updatedAt: string;
 	/** When the listing first went live (else when it was created); the card's "Newest" key. */
 	listedAt?: string;
@@ -118,6 +123,8 @@ export function listingCardItem(source: ListingCardSource): ServiceItem | Produc
 	};
 
 	if (source.kind === "service") {
+		const tiered = source.tieredIntensity ??
+			(source.offer?.archetype === "pipeline" && source.offer.allowTieredIntensity === true);
 		return {
 			...common,
 			type: "services",
@@ -126,6 +133,7 @@ export function listingCardItem(source: ListingCardSource): ServiceItem | Produc
 			category: source.category,
 			serviceType: source.serviceType ?? "One-Off",
 			ticketPrice: source.pricing.ticketPrice ?? undefined,
+			...(tiered ? { tieredIntensity: true } : {}),
 			sessionPrice: source.pricing.sessionPrice ?? undefined,
 			freeRevisions: source.pricing.freeRevisions ?? undefined,
 			extraRevisionPrice: source.pricing.extraRevisionPrice ?? undefined,

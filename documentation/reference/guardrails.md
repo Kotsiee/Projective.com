@@ -116,14 +116,15 @@ never by appending new timestamped migrations that patch earlier ones.
   9. **Functional transparency only** (§B.4.3) — `--glass-blur`/`backdrop-filter` is permitted only
      on viewport-pinned top bars, floating mobile sheets/scrims, and marks on arbitrary photography,
      and always on a `::before` underlay.
-  10. **The conversion-lane contract** (§D.7/§D.8) — on a public entity-view route the middle-nav
-      lane **is** the transaction: identity · price · an INVERTED monochrome primary · a brand
-      secondary · exactly one ghost tertiary (seller contact, the single sanctioned exception to
-      "secondary actions in the kebab") · summary ledger. **No third sticky column, and no price or
-      purchase control in the main stage on desktop**; none in the sticky header band either. The
-      canvas is content-first — structured information leads, media trails, reversed in the DOM and
-      never with `order`/`direction`. Below `--bp-md` the duty transfers to one body-side block —
-      moved, never duplicated. The lane is resolved by a pure URL slot resolver, never an island.
+  10. **The conversion-card contract** (§D.7/§D.8, Decision #424) — on a public entity-view route the
+      page's own purchase card (the `.evp-frame` END column, sticky, content-sized, never an inner
+      scrollbar) **is** the transaction: price + kebab · stage/seat summary · key terms · ONE tier-1
+      accent pill · a tier-4 outlined Add to basket · exactly one ghost (seller contact). **No identity
+      band in the card** — the creator is named once, in the editorial byline — and **no price or
+      purchase control in the editorial column on desktop**; none in the sticky header band either.
+      The column is content-first in DOM order — header, media, body — never with `order` /
+      `direction`. Below 1024px of content the duty transfers to one body-side block — moved, never
+      duplicated. No shell lane is built for a listing (`viewLaneFor` answers `null`).
   11. **A control that renders must do something** (§D.7.7/§D.8.3). A styled, focusable, hoverable
       affordance whose handler reaches nothing is a defect of the same class as a broken link, and it
       is invisible to a type-checker and to a source-reading review. Two shipped this way and were
@@ -142,26 +143,25 @@ never by appending new timestamped migrations that patch earlier ones.
       states, a **mode-adaptive** pair must reach **≥ 7:1** in dark, and no pair may narrow under
       `data-contrast="high"`. **`--primary`/`--on-primary` are mode-invariant** — the same colour in
       every state (§A.1.1) — so they are held to AA rather than AAA, and any re-mapping of them
-      inside a mode branch is a defect. **`--accent`/`--on-accent`** (§A.1.2, Decision #157) is held
-      to the full rule — ≥ 4.5:1 in all four states, ≥ 7:1 in dark, never narrowing under high
-      contrast — and is **fixed-polarity** (light fill, dark ink in every mode), so it bypasses
-      `fg()`/`on()` and must never flip polarity in any state. A hover or active state must never
+      inside a mode branch is a defect. **`--accent`/`--on-accent`** (§A.1.2, Decision #424) is the
+      monochrome inversion — `--on-surface` on `--surface`, achromatic, polarity following the theme —
+      held to the full rule: ≥ 4.5:1 in all four states, ≥ 7:1 in dark, never narrowing under high
+      contrast, its fill ≥ 3:1 on every surface, and never a hue of its own. A hover or active state must never
       lower a filled control's label contrast nor drop its fill under 3:1 against a surface it can
       sit on, which is why the tonal blend of a theme-following role runs toward `--on-surface`
-      rather than the ink, why `--accent` — whose ink IS the `--on-surface` side in light mode —
-      blends toward a mode-invariant LIGHT pole instead, and why the brand — which has headroom in
-      neither direction — takes a zero step and spends the border channel instead. The light
-      `--accent` fill's sub-3:1 page visibility is a logged deviation (Decision #157 flag (b)), not a
-      precedent. The colour half is machine-checked in `packages/ui/system/core/theme-engine.test.ts`,
+      rather than the ink, and why a fill with nowhere to move — the brand, the structural tone and
+      `--accent`, whose fill IS `--on-surface` — takes a zero step and spends the border channel
+      instead. The colour half is machine-checked in `packages/ui/system/core/theme-engine.test.ts`,
       because it is the one gate here whose failure is invisible to a source-reading review.
   13. **The Button Interaction Matrix** (§B.8.1, Decision #157) — a filled button takes the fill of
-      its tier: amber `severity="accent"` for a commit inside a financial / conversion flow or the
-      act that starts one (pill), monochrome inverted for a structural commitment, teal `--primary`
+      its tier: `severity="accent"` (the monochrome inversion, Decision #424) for a commit inside a
+      financial / conversion flow or the act that starts one (pill), monochrome inverted for a
+      structural commitment, teal `--primary`
       for major navigation active states and core workflow commits; utility actions are
       `severity="neutral" variant="outlined"` (`--hairline-strong` border, `--on-surface` ink);
-      toolbar tools and escape hatches are ghost. Two fills in one decision region only when
-      hue-ranked amber + monochrome (the entity-view lane rig is held as shipped, flag (f));
-      `accent` and `neutral` are Button-only.
+      toolbar tools and escape hatches are ghost. ONE fill per decision region — the hue-ranked
+      two-fill exception is retired (Decision #424); the profile rig's Hire + Add to project is the
+      one owner-directed exception; `accent` and `neutral` are Button-only.
 
 ## 4. Routing & Folder Conventions (Fresh 2.x)
 

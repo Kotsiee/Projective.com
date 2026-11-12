@@ -4,9 +4,11 @@
 > (2026-10-29) and `IDENTITY_DECISIONS_AND_GAPS.md` (IDG, 2026-10-29); IDG was deleted, and §15 maps
 > its old sections and IDs to this one. Pre-merge text:
 > `git show 08296359:documentation/architecture/IDENTITY_AND_WORKSPACES_AUDIT.md` (and
-> `…/IDENTITY_DECISIONS_AND_GAPS.md`). Status is doc-derived (audit banners,
+> `…/IDENTITY_DECISIONS_AND_GAPS.md`). Status was doc-derived (audit banners,
 > [`IDENTITY_BUILD_PROMPTS.md`](IDENTITY_BUILD_PROMPTS.md) run order, FOUNDER_QUESTIONNAIRE Part C,
-> `git log`), not re-verified in code. Rulings: Decision #336
+> `git log`). On 2026-11-12 (`8a3fd595`) the §7 Critical, High and Medium rows, §11 K1–K4 and
+> K6–K12, every §12 row, and the §7 Low rows owned by HK1, ERA2 and LOW1 (plus the OAuth-exchange
+> row) were re-verified in code; the rest keep their doc-derived status. Rulings: Decision #336
 > (`reference/decisions/decisions-122-126.md`; FLAGS (a)–(i) = F1–F9; OWNER RULINGS I1–I4, S7, Q0.2
 > (b), (c) and Q0.4), with the later flags #344 (h), (i), (n) and the correction #382.
 >
@@ -617,7 +619,7 @@ and should carry a probe in `supabase/probes/`. Their fixes:
 | —     | SSO reveals which domains are configured                                                                                      | §2.2           | Open (no prompt)                                                                                                 |
 | —     | `teams.visibility` has no CHECK                                                                                               | §6.1           | Fixed (`81a108f0`)                                                                                               |
 | —     | `enable_freelancer_profile` has a loose `search_path`                                                                         | §4.3           | Fixed (`81a108f0`)                                                                                               |
-| —     | The OAuth exchange uses the service role                                                                                      | §5.1           | Open (no prompt)                                                                                                 |
+| —     | The OAuth exchange uses the service role                                                                                      | §5.1           | Fixed (Decision #382, `ab72caf2`)                                                                                |
 | —     | `api/user/preferences.ts` re-implements `readActor` inline                                                                    | §5.1           | Open → LOW1 (9)                                                                                                  |
 | —     | `live-detail.ts:357` recomputes `effectivePermissions` for display; the contract test does not pin the union/revoke semantics | §5.2           | Open (no prompt)                                                                                                 |
 | —     | Retention windows are hard-coded                                                                                              | §6.5           | Ruled → I1 (b); Open → ERA2                                                                                      |
@@ -914,7 +916,8 @@ Fix text stays in the §7 rows; the prompts are IBP's. Priority is the audit's s
 | IW-H1 rebuild, F5, F6 roadmap, §6.6                                                                                                               | —              | X1                      | Open → X1 (🧑)                         |
 | F1 (the AML programme)                                                                                                                            | —              | X2                      | Open → X2 (⚖️, 🧑)                     |
 | Status columns, docs sweep                                                                                                                        | —              | Z1                      | Open → Z1                              |
-| OAuth exchange service role; vault reconciler; `effectivePermissions` recompute and union/revoke pin; SSO domain reveal; other tall `/join` steps | Low            | —                       | Open (no prompt)                       |
+| OAuth exchange service role                                                                                                                       | Low            | Decision #382           | Fixed (`ab72caf2`)                     |
+| vault reconciler; `effectivePermissions` recompute and union/revoke pin; SSO domain reveal; other tall `/join` steps                              | Low            | —                       | Open (no prompt)                       |
 
 ## 13. Documentation patches (IDG §4)
 

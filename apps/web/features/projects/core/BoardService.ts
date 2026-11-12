@@ -48,10 +48,10 @@ export const BoardService = {
 	},
 
 	/**
-	 * Append a stage to the project — the one write behind "Create stage" on the Board, the Timeline
-	 * and the lane. Answers with the PERSISTED stage as the board projects it (its `stg-…` slug
-	 * included), which is what the caller adds to its own model; a success is announced so the lane's
-	 * channel tree re-reads and shows the new stage's room.
+	 * Append a stage to the project — the one write behind "Create stage" on the Board, the Timeline,
+	 * their footer rigs and the lane. Answers with the PERSISTED stage as the board projects it (its
+	 * `stg-…` slug included); a success is announced with that stage, so the Board and the Timeline
+	 * draw it and the lane's channel tree re-reads to show its room.
 	 */
 	async createStage(
 		projectId: string,
@@ -61,7 +61,7 @@ export const BoardService = {
 			`/api/projects/${encodeURIComponent(projectId)}/stages`,
 			input,
 		);
-		if (res.ok && res.data) announceStageCreated();
+		if (res.ok && res.data) announceStageCreated(projectId, res.data.stage);
 		return res;
 	},
 

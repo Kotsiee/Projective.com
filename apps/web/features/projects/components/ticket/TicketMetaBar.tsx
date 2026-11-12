@@ -5,13 +5,14 @@ import { DatePicker, Select } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import type { BoardCard, ProjectParty } from "../../types/projects-types.ts";
-import { TICKET_INTENSITY_LABEL } from "../../types/projects-types.ts";
+import { LOCKED_INTENSITY_HINT, TICKET_INTENSITY_LABEL } from "../../types/projects-types.ts";
 import { PRIORITY_OPTIONS, priorityLabel, priorityTone } from "../../core/board-model.ts";
 import {
 	fromDateInput,
 	INTENSITY_OPTIONS,
 	isOverdue,
 	toDateInput,
+	type TicketDueMode,
 } from "../../core/ticket-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -31,6 +32,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  *
  * "Claimed by" sits alone at the far end because it is the one value on this row that is not the
  * client's to set: it records what the market did with the ticket, not what the client asked for.
+ *
+ * Two values read rather than offer when the ticket's stages decide them: the intensity, when every
+ * stage is sold at one fixed intensity; and the due date, when the ticket runs through several stages
+ * and is due on the latest of their dates.
  */
 export interface TicketMetaBarProps {
 	card: BoardCard;
@@ -42,7 +47,13 @@ export interface TicketMetaBarProps {
 	sharedWorkspace: boolean;
 	workspaceLabel: string;
 	clientMembers: ProjectParty[];
+	/** Every stage of the ticket is sold at one fixed intensity, so there is nothing to choose. */
+	intensityFixed: boolean;
+	/** How the due date is set — see `ticketDueMode`. */
+	dueMode: TicketDueMode;
 	onPatch: (patch: Partial<BoardCard>) => void;
+	/** Set the due date; in `stage` mode it is the ticket's one stage's date. */
+	onDue: (dueDate: string | null) => void;
 }
 
 /** The key by which a party is addressed in a Select's flat string options. */
@@ -208,16 +219,29 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 		<ul class="tkv-meta" aria-label="Ticket properties">
 			<MetaItem icon="analytics" label="Intensity">
 				<MetaEditor
-					editable={canEdit}
+					editable={canEdit && !props.intensityFixed}
 					label={`Change the workload intensity. Currently ${
 						TICKET_INTENSITY_LABEL[card.intensity]
 					}.`}
 					openSelector=".ui-select__trigger"
-					display={
-						<span class="tkv-meta__v" data-level={card.intensity}>
-							{TICKET_INTENSITY_LABEL[card.intensity]}
-						</span>
-					}
+					display={props.intensityFixed
+						? (
+							<Tooltip content={LOCKED_INTENSITY_HINT}>
+								<span
+									class="tkv-meta__v tkv-meta__v--fixed"
+									data-level={card.intensity}
+									tabIndex={0}
+								>
+									<Icon name="lock" size="2xs" />
+									{TICKET_INTENSITY_LABEL[card.intensity]}
+								</span>
+							</Tooltip>
+						)
+						: (
+							<span class="tkv-meta__v" data-level={card.intensity}>
+								{TICKET_INTENSITY_LABEL[card.intensity]}
+							</span>
+						)}
 					control={(done) => (
 						<Select
 							class="ui-field--bare tkv-meta__select"
@@ -262,14 +286,26 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 
 			<MetaItem icon="calendar" label="Due">
 				<MetaEditor
-					editable={canEdit}
+					editable={canEdit && props.dueMode !== "derived"}
 					label={`Change the due date. Currently ${card.dueLabel ?? "not set"}.`}
 					openSelector=".ui-datepicker__entry"
-					display={
-						<span class="tkv-meta__v" data-overdue={overdue ? "true" : undefined}>
-							{card.dueLabel ?? "No date"}
-						</span>
-					}
+					display={props.dueMode === "derived"
+						? (
+							<Tooltip content="The latest of this ticket's stage due dates. Each stage's date is set in its stage settings.">
+								<span
+									class="tkv-meta__v"
+									data-overdue={overdue ? "true" : undefined}
+									tabIndex={0}
+								>
+									{card.dueLabel ?? "No date"}
+								</span>
+							</Tooltip>
+						)
+						: (
+							<span class="tkv-meta__v" data-overdue={overdue ? "true" : undefined}>
+								{card.dueLabel ?? "No date"}
+							</span>
+						)}
 					control={(done) => (
 						<DatePicker
 							class="ui-field--bare tkv-meta__date"
@@ -280,7 +316,7 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 							dateFormat="M d, yy"
 							showButtonBar
 							onValueChange={(v) => {
-								props.onPatch({ dueDate: fromDateInput(Array.isArray(v) ? v[0] ?? null : v) });
+								props.onDue(fromDateInput(Array.isArray(v) ? v[0] ?? null : v));
 								done();
 							}}
 						/>

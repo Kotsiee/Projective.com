@@ -26,7 +26,7 @@
 	flex: 1 1 0;
 	min-block-size: 0;
 	padding-inline: var(--space-4);
-	padding-block: var(--space-2) 0;
+	padding-block: var(--space-2) var(--space-3);
 }
 
 /* #region Toolbar (sticky, borderless — mirrors the File Explorer toolbar) */

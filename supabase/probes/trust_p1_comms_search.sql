@@ -234,8 +234,8 @@ DECLARE
     v_first uuid;
     v_second uuid;
 BEGIN
-    v_first := comms.get_or_create_dm_thread(current_setting('probe.b')::uuid);
-    v_second := comms.get_or_create_dm_thread(current_setting('probe.b')::uuid);
+    v_first := (comms.get_or_create_dm_thread(current_setting('probe.b')::uuid) ->> 'thread_id')::uuid;
+    v_second := (comms.get_or_create_dm_thread(current_setting('probe.b')::uuid) ->> 'thread_id')::uuid;
     IF v_first IS DISTINCT FROM v_second THEN RAISE EXCEPTION 'FAIL the pair was given two threads'; END IF;
     BEGIN
         PERFORM comms.get_or_create_dm_thread(current_setting('probe.a')::uuid);

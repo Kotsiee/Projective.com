@@ -1,8 +1,10 @@
 /*
  * BoardViewControlRig — the Kanban board's action rig in the middle-nav footer band. Icon-first (§B.6):
- * segmented view/grouping switches + the primary client actions. Token-only.
+ * segmented view/grouping switches + the primary client actions, at the `md` control height. Token-only.
  */
 .brd-rig {
+    --brd-rig-ctl: var(--fld-h-md);
+    --brd-rig-inset: 2px;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -12,8 +14,8 @@
 .brd-rig__group {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px;
+    gap: var(--brd-rig-inset);
+    padding: var(--brd-rig-inset);
     border-radius: var(--radius-base);
     background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
@@ -22,8 +24,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 1.9rem;
-    block-size: 1.9rem;
+    inline-size: calc(var(--brd-rig-ctl) - 2 * var(--brd-rig-inset));
+    block-size: calc(var(--brd-rig-ctl) - 2 * var(--brd-rig-inset));
     padding: 0;
     border: none;
     border-radius: var(--radius-sm);
@@ -62,15 +64,19 @@
 .brd-rig__action {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
-    padding: 0.35rem 0.75rem;
+    justify-content: center;
+    gap: var(--space-2);
+    block-size: var(--brd-rig-ctl);
+    padding: 0 var(--space-4);
     border: none;
     border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
     color: var(--on-surface);
     font: inherit;
-    font-size: 0.78rem;
-    font-weight: 500;
+    font-size: var(--fld-fs-md);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    white-space: nowrap;
     cursor: pointer;
     transform: scale(1);
     transition:
@@ -91,12 +97,10 @@
     color: var(--on-accent);
 }
 
-.brd-rig__action--accent:hover {
-    background: color-mix(in srgb, var(--accent), var(--on-scrim) var(--tint-soft));
-}
-
+.brd-rig__action--accent:hover,
 .brd-rig__action--accent:active {
-    background: color-mix(in srgb, var(--accent), var(--on-scrim) var(--tint));
+    background: var(--accent);
+    box-shadow: inset 0 0 0 var(--fld-bw) color-mix(in srgb, var(--on-accent) 60%, transparent);
 }
 
 .brd-rig__action:active:not(:disabled) {
@@ -119,6 +123,7 @@
 .brd-rig__basket {
     display: inline-flex;
     align-items: center;
+    block-size: var(--brd-rig-ctl);
     padding-inline: var(--space-2);
     color: var(--text-secondary);
 }
@@ -136,6 +141,11 @@
 }
 
 @media (max-width: 768px) {
+    .brd-rig__action {
+        inline-size: var(--brd-rig-ctl);
+        padding: 0;
+    }
+
     .brd-rig__action span {
         display: none;
     }

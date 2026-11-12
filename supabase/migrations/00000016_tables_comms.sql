@@ -168,11 +168,28 @@ CREATE TABLE comms.dm_threads (
     -- A retired channel (root CLAUDE.md §5: nothing is hard-deleted). It leaves the console's list and
     -- refuses new messages; its history and participants stay.
     archived_at timestamptz,
+    -- The conversation's route address, `cht-` and 10 symbols (Decision #339, ruling N1): opaque,
+    -- prefixed and permanent like every other route slug (Decision #88). Named `ref` because `slug`
+    -- already holds an entity channel's `#` name (Decision #306). security.fn_ref_guard always mints it
+    -- on insert, so no caller chooses a thread's address, and refuses any later change (00001890). No
+    -- DEFAULT, for the reason the slug columns have none (00001001 §4). The TS twin is
+    -- SLUG_PREFIXES.thread (@projective/types/slugs), pinned by slug.contract.test.ts.
+    ref text NOT NULL,
+    -- The thread's newest message (CAS §6.1.1), so the inbox sorts and previews threads without
+    -- reading each one's messages. Derived: comms.tg_dm_thread_summary moves both after every insert,
+    -- never backwards, and no client may write them (trg_dm_threads_derived). No FK, because the
+    -- pointer is derived and dm_messages already references this table. Both NULL until the first
+    -- message, which is how an empty thread reads.
+    last_message_at timestamptz,
+    last_message_id uuid,
     created_by_user_id uuid NOT NULL,
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT dm_threads_pkey PRIMARY KEY (id),
+        CONSTRAINT dm_threads_ref_key UNIQUE (ref),
+        CONSTRAINT ck_dm_threads_ref_shape CHECK (ref ~ '^cht-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+        CONSTRAINT ck_dm_threads_last_message_pair CHECK ((last_message_at IS NULL) = (last_message_id IS NULL)),
         CONSTRAINT ck_dm_threads_subject_inquiry CHECK (
             subject_listing_id IS NULL OR kind = 'service_inquiry'
         ),

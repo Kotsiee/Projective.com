@@ -474,14 +474,22 @@ COMMENT ON FUNCTION scheduling.close_reschedule_round(uuid, text, uuid, uuid, te
 -- #endregion
 
 -- #region 6d. Capping a round's ballot
--- A round holds at most twelve slots, approved or not: RESCHEDULE_PROPOSALS_MAX in
--- `@projective/types/scheduling`, which `coordination.contract.test.ts` pins to the literal below.
--- The planner already refuses a thirteenth (`ballot_full`); this makes the cap true of the TABLE
--- rather than of one code path. Without it a thirteenth slot was stored, dropped by the read's
--- `proposals.slice(0, 12)`, and then answered "already proposed" when offered again — a time
--- nobody could see and nobody could offer.
+-- Three bounds on what one round may hold. The planner applies the same rules before it writes
+-- (`@projective/types/scheduling`); this makes them true of the TABLE rather than of one code path,
+-- and `coordination.contract.test.ts` pins every literal below to its constant.
 --
--- The count runs under a lock on the round's own row, so two offers made at once against an
+--   * A replacement keeps the event's length (`slotRefusal`, `duration_changed`): a move is a move,
+--     never an extension (Decision #343, ruling C6 D8). ck_proposal_span adds a 24-hour ceiling.
+--   * At most twelve slots, approved or not (RESCHEDULE_PROPOSALS_MAX, `ballot_full`). Without it a
+--     thirteenth slot was stored, dropped by the read's `proposals.slice(0, 12)`, and then answered
+--     "already proposed" when offered again — a time nobody could see and nobody could offer.
+--   * At most three unapproved slots from one attendee (RESCHEDULE_ATTENDEE_PROPOSALS_MAX,
+--     `proposer_quota`), so one person cannot fill the ballot with times waiting on the host. The
+--     host's own slots are outside the quota (ruling C6 D8).
+--
+-- Each refusal is 23514 with the planner's reason as its HINT, which the writer maps back to it.
+--
+-- The counts run under a lock on the round's own row, so two offers made at once against an
 -- eleven-slot round cannot both count eleven and both take the last place: the second waits for the
 -- first to commit, and its count (a fresh snapshot under READ COMMITTED) then includes it.
 --
@@ -496,8 +504,21 @@ SET search_path = ''
 AS $$
 DECLARE
     v_count integer;
+    v_mine integer;
+    v_length interval;
 BEGIN
     PERFORM 1 FROM scheduling.event_reschedules WHERE id = NEW.reschedule_id FOR UPDATE;
+
+    SELECT e.ends_at - e.starts_at INTO v_length
+    FROM scheduling.event_reschedules r
+    JOIN scheduling.events e ON e.id = r.event_id
+    WHERE r.id = NEW.reschedule_id;
+
+    IF NEW.ends_at - NEW.starts_at IS DISTINCT FROM v_length THEN
+        RAISE EXCEPTION 'a replacement slot on round % must keep the event''s length (%)',
+            NEW.reschedule_id, v_length
+            USING ERRCODE = 'check_violation', HINT = 'duration_changed';
+    END IF;
 
     SELECT count(*) INTO v_count
     FROM scheduling.reschedule_proposals
@@ -505,7 +526,22 @@ BEGIN
 
     IF v_count >= 12 THEN
         RAISE EXCEPTION 'reschedule round % already holds % proposals', NEW.reschedule_id, v_count
-            USING ERRCODE = 'check_violation';
+            USING ERRCODE = 'check_violation', HINT = 'ballot_full';
+    END IF;
+
+    IF NEW.proposed_by_role = 'attendee' AND NOT NEW.approved THEN
+        SELECT count(*) INTO v_mine
+        FROM scheduling.reschedule_proposals p
+        WHERE p.reschedule_id = NEW.reschedule_id
+          AND p.proposed_by_role = 'attendee'
+          AND NOT p.approved
+          AND p.proposed_by_user_id IS NOT DISTINCT FROM NEW.proposed_by_user_id;
+
+        IF v_mine >= 3 THEN
+            RAISE EXCEPTION 'reschedule round % already holds % unapproved slots from this attendee',
+                NEW.reschedule_id, v_mine
+                USING ERRCODE = 'check_violation', HINT = 'proposer_quota';
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -513,8 +549,9 @@ END;
 $$;
 
 COMMENT ON FUNCTION scheduling.fn_cap_reschedule_proposals() IS
-    'BEFORE INSERT on reschedule_proposals: refuse a thirteenth slot on one round (23514), counted '
-    'under a lock on the round so concurrent offers cannot both take the last place.';
+    'BEFORE INSERT on reschedule_proposals, under a lock on the round: refuse (23514, the reason as '
+    'HINT) a slot whose length is not the event''s, a thirteenth slot, or a fourth unapproved slot '
+    'from one attendee.';
 
 -- #endregion
 
@@ -2779,9 +2816,93 @@ BEGIN
 END;
 $$;
 
+-- A courtesy no-show the room itself verified costs the absent person a little Standing (Decision
+-- #343, ruling C6 D7; the weight is Decision #419): one security.penalties row of
+-- `call_no_show_penalty_points` that lapses after `call_no_show_penalty_days`. Verified means the room
+-- recorded the marker there inside the presence window; the absent person's own join inside it has
+-- already refused the mark (attendance_contradicts). So a mark no presence backs, from an untracked
+-- room or a manual link, costs nothing. A paid call answers a no-show with money, never with this. At
+-- most one penalty per marker and marked person in `call_no_show_pair_window_days`, under a lock on
+-- the pair, which caps retaliation. A free call stays free of money, not of honesty.
+--
+-- The marked person's cached penalty term is refreshed from their active penalties and their Standing
+-- recomputed, when they have a Standing row; a client with none keeps the penalty on record. Returns
+-- the penalty, or NULL when none was written. Internal to mark_call_no_show.
+CREATE OR REPLACE FUNCTION scheduling.fn_charge_call_no_show(
+    c scheduling.discovery_calls,
+    p_marker uuid,
+    p_named uuid,
+    p_window_closes timestamptz
+)
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_subject text;
+    v_penalty uuid;
+BEGIN
+    IF c.call_type <> 'courtesy'::scheduling.call_type THEN
+        RETURN NULL;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM scheduling.call_attendance a
+         WHERE a.call_id = c.id AND a.user_id = p_marker AND a.joined_at <= p_window_closes
+    ) THEN
+        RETURN NULL;
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended('call_no_show:' || p_marker::text || ':' || p_named::text, 0));
+    IF EXISTS (
+        SELECT 1
+          FROM security.penalties p
+          JOIN scheduling.discovery_calls dc ON dc.id = p.source_id
+         WHERE p.source_type = 'no_show'
+           AND p.subject_id = p_named
+           AND p_marker IN (dc.host_user_id, dc.requester_user_id)
+           AND p.issued_at > pg_catalog.now() - pg_catalog.make_interval(
+               days => projects.fn_session_param('call_no_show_pair_window_days', 30))
+    ) THEN
+        RETURN NULL;
+    END IF;
+
+    v_subject := CASE
+        WHEN EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = p_named) THEN 'freelancer'
+        ELSE 'user'
+    END;
+    INSERT INTO security.penalties (
+        subject_type, subject_id, penalty_type, source_type, source_id, severity, reason, expires_at
+    ) VALUES (
+        v_subject, p_named, 'trust_score', 'no_show', c.id,
+        projects.fn_session_param('call_no_show_penalty_points', 2),
+        'Did not join a confirmed courtesy call that the other person joined.',
+        pg_catalog.now() + pg_catalog.make_interval(
+            days => projects.fn_session_param('call_no_show_penalty_days', 90))
+    )
+    RETURNING id INTO v_penalty;
+
+    UPDATE org.entity_standing s
+       SET penalty_severity = (
+           SELECT COALESCE(sum(p.severity), 0)
+             FROM security.penalties p
+            WHERE p.subject_type = v_subject AND p.subject_id = p_named AND p.status = 'active'
+              AND (p.expires_at IS NULL OR p.expires_at > pg_catalog.now())
+       )
+     WHERE s.subject_type = v_subject::org.standing_subject AND s.subject_id = p_named;
+    IF FOUND THEN
+        PERFORM org.fn_recompute_standing(v_subject::org.standing_subject, p_named);
+    END IF;
+    RETURN v_penalty;
+END;
+$$;
+
 -- A party reports the other as a no-show, from session_presence_minutes after the start. Where the
 -- room reported attendance, a mark that evidence contradicts is refused: "where the call is tracked"
--- (ruling C3). A party never marks themselves.
+-- (ruling C3). A party never marks themselves. A courtesy mark the room verified is charged to the
+-- absent person's Standing (fn_charge_call_no_show), and the notice says so.
 CREATE OR REPLACE FUNCTION scheduling.mark_call_no_show(p_call uuid, p_party scheduling.call_party)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2825,8 +2946,13 @@ BEGIN
     RETURNING * INTO c;
 
     PERFORM comms.fn_cancel_queued(NULL, 'scheduling.discovery_calls', p_call);
-    PERFORM scheduling.fn_notify_call(c, v_named, 'call.no_show', 'You were reported as a no-show',
-        'The other person says you did not join the call.');
+    IF scheduling.fn_charge_call_no_show(c, v_uid, v_named, v_opens) IS NOT NULL THEN
+        PERFORM scheduling.fn_notify_call(c, v_named, 'call.no_show', 'You were reported as a no-show',
+            'The room shows the other person joined and you did not, so your Standing takes a small mark that lapses in time.');
+    ELSE
+        PERFORM scheduling.fn_notify_call(c, v_named, 'call.no_show', 'You were reported as a no-show',
+            'The other person says you did not join the call.');
+    END IF;
     RETURN pg_catalog.jsonb_build_object('id', c.id, 'status', c.status);
 END;
 $$;

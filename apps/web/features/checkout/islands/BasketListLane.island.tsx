@@ -9,10 +9,10 @@ import {
 	LaneHead,
 	LaneIconButton,
 	LaneList,
-	LaneSearch,
 	LaneSection,
 	LaneSections,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
@@ -170,7 +170,7 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 			{/* Expanded presentation */}
 			<div class="bsk-lane__full">
 				<LaneHead>
-					<LaneSearch
+					<LaneSearchField
 						value={query.value}
 						placeholder="Search…"
 						label="Search baskets, lists and tickets"

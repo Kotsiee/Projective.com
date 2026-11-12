@@ -80,24 +80,31 @@ Deno.test("isWheelNotch — line/page modes and 120-multiples are notches, arbit
 	assertEquals(isWheelNotch({ deltaX: 0, deltaY: 100, deltaMode: 0, timeStamp: 0 }), false);
 });
 
-Deno.test("createWheelStepper — one mouse notch is exactly one step, up increments", () => {
+Deno.test("createWheelStepper — scrolling down steps forward in time, scrolling up steps back", () => {
 	const s = createWheelStepper();
-	assertEquals(s.feed(mouseNotch(-100, 0)), 1);
-	assertEquals(s.feed(mouseNotch(-100, 80)), 1);
-	assertEquals(s.feed(mouseNotch(100, 160)), -1);
-	assertEquals(s.feed({ deltaX: 0, deltaY: 3, deltaMode: 1, timeStamp: 400 }), -1);
+	assertEquals(s.feed(mouseNotch(100, 0)), 1, "a notch down is the next month");
+	assertEquals(s.feed(mouseNotch(-100, 160)), -1, "a notch up is the previous month");
+});
+
+Deno.test("createWheelStepper — one mouse notch is exactly one step", () => {
+	const s = createWheelStepper();
+	assertEquals(s.feed(mouseNotch(100, 0)), 1);
+	assertEquals(s.feed(mouseNotch(100, 80)), 1);
+	assertEquals(s.feed(mouseNotch(-100, 160)), -1);
+	assertEquals(s.feed({ deltaX: 0, deltaY: 3, deltaMode: 1, timeStamp: 400 }), 1);
+	assertEquals(s.feed({ deltaX: 0, deltaY: -3, deltaMode: 1, timeStamp: 600 }), -1);
 });
 
 Deno.test("createWheelStepper — a small-delta notch on a macOS mouse still steps", () => {
 	const s = createWheelStepper();
-	assertEquals(s.feed({ deltaX: 0, deltaY: 4, deltaMode: 0, timeStamp: 0, wheelDeltaY: -120 }), -1);
+	assertEquals(s.feed({ deltaX: 0, deltaY: 4, deltaMode: 0, timeStamp: 0, wheelDeltaY: -120 }), 1);
 });
 
 Deno.test("createWheelStepper — a notch reported as a burst of small events steps once", () => {
 	const s = createWheelStepper();
 	const out = [0, 8, 16, 24, 32].map((t) => s.feed(trackpad(20, t)));
-	assertEquals(out.filter((x) => x !== 0), [-1]);
-	assertEquals(s.feed(mouseNotch(100, 32 + WHEEL_GAP_MS + 30)), -1);
+	assertEquals(out.filter((x) => x !== 0), [1]);
+	assertEquals(s.feed(mouseNotch(100, 32 + WHEEL_GAP_MS + 30)), 1);
 });
 
 Deno.test("createWheelStepper — a trackpad flick and its momentum step once, then re-arm after a pause", () => {
@@ -105,12 +112,12 @@ Deno.test("createWheelStepper — a trackpad flick and its momentum step once, t
 		const s = createWheelStepper();
 		const steps: number[] = [];
 		for (let t = 0; t < 900; t += 16) steps.push(s.feed(make(t < 200 ? 30 : 6, t)));
-		assertEquals(steps.filter((x) => x !== 0), [-1]);
+		assertEquals(steps.filter((x) => x !== 0), [1]);
 
 		const after = 900 + WHEEL_GAP_MS + 1;
 		const next: number[] = [];
 		for (let t = after; t < after + 200; t += 16) next.push(s.feed(make(12, t)));
-		assertEquals(next.filter((x) => x !== 0), [-1]);
+		assertEquals(next.filter((x) => x !== 0), [1]);
 	}
 });
 
@@ -124,7 +131,7 @@ Deno.test("createWheelStepper — reversing a gesture re-arms immediately", () =
 	const out: number[] = [];
 	for (let t = 0; t < 160; t += 16) out.push(s.feed(trackpad(12, t)));
 	for (let t = 160; t < 320; t += 16) out.push(s.feed(trackpad(-12, t)));
-	assertEquals(out.filter((x) => x !== 0), [-1, 1]);
+	assertEquals(out.filter((x) => x !== 0), [1, -1]);
 });
 
 Deno.test("createWheelStepper — horizontal travel is left to the month track", () => {

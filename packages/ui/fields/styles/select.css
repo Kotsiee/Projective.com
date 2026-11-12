@@ -27,8 +27,10 @@
 	cursor: inherit;
 	text-align: start;
 }
-.ui-select__trigger:focus {
+.ui-select__trigger:focus,
+.ui-select__trigger:focus-visible {
 	outline: none;
+	box-shadow: none;
 }
 .ui-select__label {
 	flex: 1 1 auto;

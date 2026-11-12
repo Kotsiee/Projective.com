@@ -12,15 +12,17 @@ import type { ExploreItem } from "@projective/types/explore";
 import { toMinorUnits } from "@projective/types/finance";
 import { PriceOrigin } from "./entity-view-parts.tsx";
 import { jumpToStage } from "../core/view-state.ts";
+import type { SeatCapacity } from "../core/entity-archetype.ts";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the conversion lane's shared parts (`DESIGN_SYSTEM.md` §D.7.2).
  *
- * The lane's anatomy is fixed — identity band · price · stage list · summary ledger · pinned action
- * footer — and TWO lanes render it: the commerce `EntityLane` and the project `ProjectLane`. They
- * share these components rather than each carrying a copy, because two copies of the identity band
- * are two kebab menus that drift apart, and two price blocks are two ways of raising the pence.
+ * TWO lanes render these parts: the project `ProjectLane` (identity band · price · stage list · summary
+ * ledger · pinned action footer) and the listing purchase card `EntityLane` (price + kebab · stage list ·
+ * summary ledger · action stack — no identity band, Decision #424). They share these components rather
+ * than each carrying a copy, because two kebab menus drift apart, and two price blocks are two ways of
+ * raising the pence.
  *
  * Every part here reads the SAME `.evp-lane*` / `.evp-price*` / `.evp-stages*` classes in
  * `entity-view.css`, which is what makes a project's lane and a service's lane one control set rather
@@ -92,46 +94,55 @@ export function LaneIdentity(
 				</span>
 			</a>
 
-			{
-				/* No actions, no kebab: a trigger that opens an empty menu is a control that does nothing. */
-			}
-			{menu.length > 0 && (
-				<Popover
-					placement="bottom-end"
-					class="evp-menu"
-					trigger={(api) => (
-						<button
-							type="button"
-							ref={api.ref as RefObject<HTMLButtonElement>}
-							class="evp-lane__kebab"
-							aria-label={menuLabel}
-							aria-expanded={api.expanded ? "true" : "false"}
-							aria-controls={api.panelId}
-							aria-haspopup="menu"
-							onClick={api.toggle}
-						>
-							<Icon name="kebab" size="sm" />
-						</button>
-					)}
-				>
-					<div class="evp-menu__list" role="menu">
-						{menu.map((action) => (
-							<button
-								key={action.key}
-								type="button"
-								class="ui-menu-item evp-menu__item"
-								role="menuitem"
-								data-danger={action.danger ? "true" : undefined}
-								onClick={action.onSelect}
-							>
-								<Icon name={action.icon} size="sm" class="ui-menu-item__icon" aria-hidden />
-								<span>{action.label}</span>
-							</button>
-						))}
-					</div>
-				</Popover>
-			)}
+			<LaneMenu menu={menu} menuLabel={menuLabel} />
 		</header>
+	);
+}
+
+/**
+ * The overflow kebab on its own — the identity band's, and the listing purchase card's, which carries
+ * no identity (Decision #424: the creator is named once, in the page's byline). No actions, no kebab:
+ * a trigger that opens an empty menu is a control that does nothing.
+ */
+export function LaneMenu(
+	{ menu, menuLabel }: { menu: readonly LaneMenuItem[]; menuLabel: string },
+): JSX.Element | null {
+	if (menu.length === 0) return null;
+	return (
+		<Popover
+			placement="bottom-end"
+			class="evp-menu"
+			trigger={(api) => (
+				<button
+					type="button"
+					ref={api.ref as RefObject<HTMLButtonElement>}
+					class="evp-lane__kebab"
+					aria-label={menuLabel}
+					aria-expanded={api.expanded ? "true" : "false"}
+					aria-controls={api.panelId}
+					aria-haspopup="menu"
+					onClick={api.toggle}
+				>
+					<Icon name="kebab" size="sm" />
+				</button>
+			)}
+		>
+			<div class="evp-menu__list" role="menu">
+				{menu.map((action) => (
+					<button
+						key={action.key}
+						type="button"
+						class="ui-menu-item evp-menu__item"
+						role="menuitem"
+						data-danger={action.danger ? "true" : undefined}
+						onClick={action.onSelect}
+					>
+						<Icon name={action.icon} size="sm" class="ui-menu-item__icon" aria-hidden />
+						<span>{action.label}</span>
+					</button>
+				))}
+			</div>
+		</Popover>
 	);
 }
 // #endregion
@@ -190,23 +201,30 @@ export function PriceBlock(
  *
  * Each row carries the stage's own price as muted subtext, rendered through the SAME `MoneyView` the
  * body ledger uses so the lane and the stage card cannot state different amounts, and quote the same
- * currency after a switch. ONE figure per stage — the INITIAL per-ticket price, never the 0.5×–2.0×
- * workload range, which belongs with the intensity that produces it.
+ * currency after a switch. ONE figure per stage — the INITIAL per-ticket price, never the 0.75×–1.5×
+ * intensity price range, which belongs with the intensity that produces it.
  *
  * A jump drives the DOM of the server-rendered `StageProgressLedger` (`jumpToStage`), so the control
  * reaches something on every page that mounts it (root CLAUDE.md §3 gate 11).
  */
 export function LaneStages(
-	{ stages, currency, label }: {
+	{ stages, currency, label, limit }: {
 		stages: readonly ProjectStage[];
 		currency: string;
 		label: string;
+		/**
+		 * The most rows to list; the rest fold into one jump to the first hidden stage in the body. The
+		 * purchase card passes it so its height is bounded and it never needs a scroll of its own.
+		 */
+		limit?: number;
 	},
 ): JSX.Element | null {
 	if (!stages.length) return null;
+	const shown = limit && stages.length > limit + 1 ? stages.slice(0, limit) : stages;
+	const hidden = stages.length - shown.length;
 	return (
 		<nav class="evp-stages" aria-label={label}>
-			{stages.map((s) => (
+			{shown.map((s) => (
 				<button
 					type="button"
 					class="evp-stages__item"
@@ -235,6 +253,15 @@ export function LaneStages(
 					<Icon name="chevron-right" size="sm" class="evp-stages__chevron" aria-hidden />
 				</button>
 			))}
+			{hidden > 0 && (
+				<button
+					type="button"
+					class="evp-stages__more"
+					onClick={() => jumpToStage(stages[shown.length].id)}
+				>
+					{hidden} more {hidden === 1 ? "stage" : "stages"}
+				</button>
+			)}
 		</nav>
 	);
 }
@@ -256,6 +283,30 @@ function revisionLabel(stage: ProjectStage): string {
 		default:
 			return `${revisions.free} free rev${revisions.free === 1 ? "" : "s"}`;
 	}
+}
+// #endregion
+
+// #region Seats
+/**
+ * The cohort's ONE seat meter (Decision #424 — the hero no longer repeats it): the purchase card's and
+ * the buy bar's, whichever region is on screen. The meter is decorative and the sentence is the fact
+ * (§D.8.4); the widths are `flex-grow` integers, never animated, so a frozen animation clock cannot draw
+ * an empty cohort as full (§8 Decision #60).
+ */
+export function SeatSummary({ capacity }: { capacity: SeatCapacity }): JSX.Element {
+	const segments = capacity.total <= 20 ? capacity.total : 20;
+	const taken = capacity.total <= 20 ? capacity.taken : Math.round((capacity.taken / capacity.total) * 20);
+	return (
+		<div class="evp-lane__seats">
+			<div class="evp-lane__seatstrack" aria-hidden="true">
+				{Array.from(
+					{ length: segments },
+					(_, i) => <span class="evp-lane__seatseg" key={i} data-state={i < taken ? "taken" : "open"} />,
+				)}
+			</div>
+			<p class="evp-lane__seatsfact">{capacity.sentence}</p>
+		</div>
+	);
 }
 // #endregion
 

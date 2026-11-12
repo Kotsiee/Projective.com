@@ -230,23 +230,35 @@ $$;
 
 -- The 5% project service fee. It does NOT taper with Standing and is NOT sold with any plan; the only
 -- sanctioned flex is an admin-approved `finance.negotiated_rates` row for an Enterprise/Business
--- volume commitment (owner decision, 2026-07-24). Falls back to the platform param.
+-- volume commitment (owner decision, 2026-07-24). Falls back to the platform param. With neither, it
+-- RAISES (PX500 `platform_fee_not_configured`, FINANCE_AUDIT S4): a silent 0 would waive the fee on
+-- every release, fair-exit split and order until somebody noticed.
 CREATE OR REPLACE FUNCTION finance.fn_effective_platform_fee_bp(p_subject_type text, p_subject_id uuid)
 RETURNS integer
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = finance, security, public
+SET search_path = ''
 AS $$
-    SELECT COALESCE(
+DECLARE
+    v_bp integer;
+BEGIN
+    v_bp := COALESCE(
         (SELECT n.platform_fee_bp FROM finance.negotiated_rates n
          WHERE n.subject_type = p_subject_type AND n.subject_id = p_subject_id
-           AND n.status = 'active' AND n.starts_at <= now()
-           AND (n.ends_at IS NULL OR n.ends_at > now())
+           AND n.status = 'active' AND n.starts_at <= pg_catalog.now()
+           AND (n.ends_at IS NULL OR n.ends_at > pg_catalog.now())
          ORDER BY n.starts_at DESC LIMIT 1),
-        (SELECT (value #>> '{}')::integer FROM security.platform_params WHERE key = 'platform_fee_bp'),
-        0
+        (SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp WHERE pp.key = 'platform_fee_bp')
     );
+    IF v_bp IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PX500',
+            MESSAGE = 'platform_fee_not_configured: security.platform_params has no platform_fee_bp, so no fee can be charged',
+            HINT = 'Seed platform_fee_bp (00005001_seed_platform_params.sql) before any money moves.';
+    END IF;
+    RETURN v_bp;
+END;
 $$;
 
 -- #endregion

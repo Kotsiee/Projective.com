@@ -13,6 +13,7 @@ import {
 } from "../core/booking-state.ts";
 import type { IntakeField, ServiceBookingOffer } from "@projective/types/services";
 import type { ProjectStage, SessionPlanItem } from "@projective/types/explore";
+import type { OfferSummary } from "../core/offer-summary.ts";
 
 /**
  * BookingPanels — the single mount point for every booking overlay on a listing page, and the one
@@ -52,10 +53,12 @@ export interface BookingPanelsProps {
 	intake?: readonly IntakeField[];
 	/** A session block's sittings as the seller describes them, naming the session panel's rows. */
 	sessionPlan?: readonly SessionPlanItem[];
+	/** The listing as the page names it — every conversion dialog's offer column (Decision #424). */
+	summary: OfferSummary;
 }
 
 export default function BookingPanels(
-	{ offer, host, stages, currency, intake, sessionPlan }: BookingPanelsProps,
+	{ offer, host, stages, currency, intake, sessionPlan, summary }: BookingPanelsProps,
 ): JSX.Element | null {
 	// Seed before the election, so whichever instance loses still contributes the SSR offer — the
 	// signal is shared, and a lane that never renders a panel still renders CTAs that read from it.
@@ -68,8 +71,14 @@ export default function BookingPanels(
 
 	return (
 		<>
-			<SessionBookingModal offer={offer} intake={intake} sessionPlan={sessionPlan} />
-			<ScopeBriefModal offer={offer} stages={stages} currency={currency} intake={intake} />
+			<SessionBookingModal offer={offer} intake={intake} sessionPlan={sessionPlan} summary={summary} />
+			<ScopeBriefModal
+				offer={offer}
+				stages={stages}
+				currency={currency}
+				intake={intake}
+				summary={summary}
+			/>
 			<QuoteRequestModal offer={offer} currency={currency} />
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{bookingStatus.value}</p>
 		</>

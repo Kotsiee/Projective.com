@@ -9,7 +9,9 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
  * hydration boundaries, so — exactly like the File Explorer's footer↔body `zoom` and the Submissions
  * footer↔modal `reviewOpen` — they coordinate through these module-level signals: the footer publishes
  * intents (open a modal, switch a view) and reads the body's published capabilities; the body reacts.
- * Reset on unmount so a later navigation starts clean.
+ * Create stage is the exception: its popover stands on the rig's own button and writes through
+ * `BoardService`, whose announcement (`stage-events.ts`) is what the body hears. Reset on unmount so a
+ * later navigation starts clean.
  */
 
 // #region View toggles (persisted)
@@ -45,16 +47,11 @@ export function setBoardGrouping(view: BoardView): void {
 // #region Footer → body intents
 /** Open the ticket-creation modal (footer Create Ticket). Consumed + reset by the body. */
 export const createTicketOpen = signal<boolean>(false);
-/** Open the Create-Stage modal (footer Create Stage — project board only). Consumed + reset by the body. */
-export const createStageOpen = signal<boolean>(false);
 /** Trigger the basket checkout flow (footer Checkout Tickets). Consumed + reset by the body. */
 export const checkoutOpen = signal<boolean>(false);
 
 export function requestCreateTicket(): void {
 	createTicketOpen.value = true;
-}
-export function requestCreateStage(): void {
-	createStageOpen.value = true;
 }
 export function requestCheckout(): void {
 	checkoutOpen.value = true;
@@ -68,8 +65,13 @@ export function requestCheckout(): void {
  * the board together instead of leaving the rig offering an action the body would refuse.
  */
 export interface BoardCaps {
-	/** The acting user is the client — gates Create Stage / Create Ticket / Checkout. */
+	/** The acting user is the client — gates Create Ticket / Checkout. */
 	isClient: boolean;
+	/**
+	 * May add a stage (`BoardAccess.canAddStage`, Decision #421): the client on a client project, the
+	 * seated freelancer on a service. Gates Create Stage on its own, so a freelancer can hold it.
+	 */
+	canAddStage: boolean;
 	/** The project pipeline board (vs a stage-level Tasks board) — gates the Stages/Status toggle + Create Stage. */
 	isProjectBoard: boolean;
 	/** Number of draft/unpurchased tickets in the basket (drives Add to Basket ⁄ Checkout + the count). */
@@ -80,13 +82,23 @@ export interface BoardCaps {
 	 * not", and the rig states it rather than silently dropping the controls.
 	 */
 	hasTickets: boolean;
+	/** The project's route slug — what the rig's Create stage popover writes to. */
+	projectId: string;
+	/**
+	 * The currency a stage's rate is typed in; `null` withholds the rate — a personal project carries
+	 * no money (Decision #192).
+	 */
+	stageCurrency: string | null;
 }
 
 const EMPTY_CAPS: BoardCaps = {
 	isClient: false,
+	canAddStage: false,
 	isProjectBoard: true,
 	basketCount: 0,
 	hasTickets: true,
+	projectId: "",
+	stageCurrency: null,
 };
 
 export const boardCaps = signal<BoardCaps>(EMPTY_CAPS);
@@ -98,7 +110,6 @@ export function publishBoardCaps(caps: BoardCaps): void {
 /** Reset every footer↔body signal (the body calls this on unmount). */
 export function resetBoardState(): void {
 	createTicketOpen.value = false;
-	createStageOpen.value = false;
 	checkoutOpen.value = false;
 	boardCaps.value = EMPTY_CAPS;
 }

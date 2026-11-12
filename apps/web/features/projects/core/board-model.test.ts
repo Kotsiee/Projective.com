@@ -16,7 +16,10 @@ import {
 import {
 	assigneeOptions,
 	boardCardColumn,
+	boardDropRefusal,
 	classifyMove,
+	columnTarget,
+	DROP_REFUSAL,
 	filterCards,
 	isClaimDrop,
 	priorityLabel,
@@ -400,5 +403,95 @@ Deno.test("only an unclaimed card dropped into In Progress is a claim", () => {
 	assert(!isClaimDrop({ ...CLAIMABLE, claimed: true }, inProgress));
 	assert(!isClaimDrop(CLAIMABLE, review));
 	assert(!isClaimDrop(CLAIMABLE, PIPELINE.find((c) => c.id === stageColumnId("b"))!));
+});
+// #endregion
+
+// #region Drop refusal (Decision #421)
+const col = (id: string, cols: BoardColumn[] = PIPELINE): BoardColumn => {
+	const found = cols.find((c) => c.id === id);
+	if (!found) throw new Error(`no column ${id}`);
+	return found;
+};
+const CLIENT_PIPELINE = { isClient: true, boardKind: "project" as const };
+const PROVIDER_STAGE = { isClient: false, boardKind: "stage" as const };
+
+Deno.test("an untouched ticket is free to go anywhere on the pipeline, New and Completed included", () => {
+	const routed = card({ stageId: "b", status: "todo" });
+	for (const id of [NEW_COLUMN_ID, stageColumnId("a"), stageColumnId("c"), COMPLETED_COLUMN_ID]) {
+		assertEquals(boardDropRefusal(routed, col(id), CLIENT_PIPELINE), null, id);
+	}
+	const parked = card({ stageId: "b", status: "completed" });
+	assertEquals(boardDropRefusal(parked, col(NEW_COLUMN_ID), CLIENT_PIPELINE), null);
+});
+
+Deno.test("funding is no bar to New; claimed or delivered work keeps its stage", () => {
+	const funded = card({ stageId: "b", status: "todo", escrowHeld: true });
+	assertEquals(boardDropRefusal(funded, col(NEW_COLUMN_ID), CLIENT_PIPELINE), null);
+	const paid = card({ stageId: "b", status: "todo", paymentScope: "full" });
+	assertEquals(boardDropRefusal(paid, col(NEW_COLUMN_ID), CLIENT_PIPELINE), null);
+	const reviewed = card({ stageId: "b", status: "in_review", claimed: true, escrowHeld: true });
+	assertEquals(
+		boardDropRefusal(reviewed, col(NEW_COLUMN_ID), CLIENT_PIPELINE),
+		DROP_REFUSAL.claimedToNew,
+	);
+	const released = card({ stageId: "b", status: "todo", claimedAt: "2026-11-01T10:00:00Z" });
+	assertEquals(
+		boardDropRefusal(released, col(NEW_COLUMN_ID), CLIENT_PIPELINE),
+		DROP_REFUSAL.claimedToNew,
+	);
+	assertEquals(boardDropRefusal(reviewed, col(stageColumnId("c")), CLIENT_PIPELINE), null);
+});
+
+Deno.test("nobody but the client moves on the project board, and nobody but the client confirms Done", () => {
+	const routed = card({ stageId: "b" });
+	assertEquals(
+		boardDropRefusal(routed, col(stageColumnId("c")), { isClient: false, boardKind: "project" }),
+		DROP_REFUSAL.clientOnlyBoard,
+	);
+	const done = col(statusColumnId("completed"), STAGE_BOARD);
+	assertEquals(boardDropRefusal(routed, done, PROVIDER_STAGE), DROP_REFUSAL.clientOnlyDone);
+});
+
+Deno.test("In Progress is a claim: the client is refused it, a provider is not", () => {
+	const ready = card({ stageId: "b", status: "todo" });
+	const lane = col(statusColumnId("in_progress"), STATUS_LANES);
+	assertEquals(boardDropRefusal(ready, lane, CLIENT_PIPELINE), DROP_REFUSAL.claimStarts);
+	assertEquals(boardDropRefusal(ready, col(statusColumnId("in_progress"), STAGE_BOARD), PROVIDER_STAGE), null);
+	assertEquals(boardDropRefusal({ ...ready, personal: true }, lane, CLIENT_PIPELINE), null);
+});
+
+Deno.test("Review is reached by a submission, and a claimed card's way back to New is the client's", () => {
+	const ready = card({ stageId: "b", status: "todo" });
+	const review = col(statusColumnId("in_review"), STAGE_BOARD);
+	assertEquals(boardDropRefusal(ready, review, PROVIDER_STAGE), DROP_REFUSAL.submitReviews);
+	const working = card({ stageId: "b", status: "in_progress", claimed: true, escrowHeld: true });
+	assertEquals(boardDropRefusal(working, review, PROVIDER_STAGE), null);
+	assertEquals(
+		boardDropRefusal(working, col(statusColumnId("backlog"), STAGE_BOARD), PROVIDER_STAGE),
+		DROP_REFUSAL.assigneeBacklog,
+	);
+});
+
+Deno.test("a claimed card whose escrow is not held is locked out of work, on either view", () => {
+	const waiting = card({ stageId: "b", status: "todo", claimed: true, escrowHeld: false });
+	assertEquals(
+		boardDropRefusal(waiting, col(statusColumnId("in_progress"), STAGE_BOARD), PROVIDER_STAGE),
+		DROP_REFUSAL.unheld,
+	);
+	assertEquals(
+		boardDropRefusal(waiting, col(stageColumnId("c")), CLIENT_PIPELINE),
+		DROP_REFUSAL.unheld,
+	);
+});
+
+Deno.test("the New bookend sends no stage; every other column keeps or names one", () => {
+	const routed = card({ stageId: "b", status: "todo" });
+	assertEquals(columnTarget(routed, col(NEW_COLUMN_ID)), { status: "backlog", stageId: null });
+	assertEquals(columnTarget(routed, col(COMPLETED_COLUMN_ID)), { status: "completed", stageId: "b" });
+	assertEquals(columnTarget(routed, col(stageColumnId("c"))), { status: "todo", stageId: "c" });
+	assertEquals(
+		columnTarget(routed, col(statusColumnId("backlog"), STATUS_LANES)),
+		{ status: "backlog", stageId: "b" },
+	);
 });
 // #endregion

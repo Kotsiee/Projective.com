@@ -1,33 +1,51 @@
-import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
-import { Tooltip } from "@projective/ui/feedback";
-import { Icon } from "@projective/ui/icons";
+import type { ComponentChildren, JSX } from "preact";
+import { useRef } from "preact/hooks";
+import { type Signal, useSignal } from "@preact/signals";
 import {
-	type BoardStageRef,
-	formatTicketMoney,
-	TICKET_INTENSITY_LABEL,
-} from "../../types/projects-types.ts";
+	DndContext,
+	DragOverlay,
+	DropIndicator,
+	pointerWithin,
+	useDnd,
+	useDroppable,
+} from "@projective/ui/dnd";
+import { useId } from "@projective/ui/hooks";
+import { Icon } from "@projective/ui/icons";
+import type { MenuItem } from "@ui/types/mod.ts";
+import type { BoardStageRef, TicketIntensity } from "../../types/projects-types.ts";
 import type { TicketStageView } from "../../core/ticket-view.ts";
-import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
+import { blankStageRef } from "../../core/ticket-model.ts";
+import { type PipelineDrop, type PipelineSlot, placeStage } from "../../core/stage-pipeline.ts";
+import {
+	inclusionRefusal,
+	type PipelineLocks,
+	removalRefusal,
+	stageMenuModel,
+} from "../../core/stage-menu.ts";
+import {
+	parseStageDndId,
+	type PipelineTarget,
+	STAGE_DRAG,
+	usePipelineDrop,
+	ZONE_AVAILABLE,
+	ZONE_INCLUDED,
+} from "../../hooks/usePipelineDrop.ts";
+import { StageCard } from "./StageCard.tsx";
+import { AvailableStageBody, IncludedStageBody } from "./StageCardBody.tsx";
 
 /**
- * StagePipeline — the ticket's stage sequence as a flow diagram.
+ * StagePipeline — the ticket's stages as two drop zones of Kanban-style cards.
  *
- * A checkbox list can express membership and order but not the two facts that actually govern a
- * ticket: what each stage COSTS at the chosen intensity, and which stages run at the same time. Both
- * are structural, so both are drawn — a gutter rail carries the execution steps, and stages sharing
- * a step are visibly tied to it.
+ * **Included in this ticket** is the ordered pipeline: drag a card to a seam to reorder it (the
+ * shared {@link DropIndicator} marks the landing), or onto another card's middle to run the two
+ * together. **Available project stages** lists the engagement's other stages; dragging a card between
+ * the zones adds it or takes it out. Each card's `…` and right-click open the same rows. A press
+ * opens the stage in the modal's inspector, the one place a stage is configured.
  *
- * It lives in the Stages tab of the one ticket modal and serves both postures. While a ticket is
- * being composed the rows reorder, join and detach; once it exists the same rows are the record of
- * what was agreed, and a viewer without the right to change it gets no grips, no joins and no
- * "stages not in this ticket" list. Selecting a row opens it in the modal's own right-hand panel
- * rather than a nested one, so there is one place a stage is configured.
- *
- * Reorder is the shared pointer/keyboard `useSortable`; the landing position is the shared
- * {@link DropIndicator}, not a highlighted neighbour, because "before or after this row" is exactly
- * the question a highlight cannot answer.
+ * The rules are pure (`stage-pipeline`, `stage-menu`): a ticket keeps at least one stage, and a
+ * claimed ticket's stages are its terms (Decision #291), so every card of a claimed ticket is locked
+ * with its reason and the available zone is withdrawn. A viewer who may not change the ticket gets
+ * the ordered list alone.
  */
 export interface StagePipelineProps {
 	resolved: TicketStageView[];
@@ -38,356 +56,334 @@ export interface StagePipelineProps {
 	editable: boolean;
 	/** The engagement's currency (`BoardCard.currency`). */
 	currency: string;
-	onSelect: (stageId: string | null) => void;
-	onToggle: (stageId: string) => void;
-	onMove: (from: number, to: number) => void;
+	/** The ticket's intensity — what an added stage starts at. */
+	intensity: TicketIntensity;
+	locks: PipelineLocks;
+	/** The list's heading — "Pipeline" on the Stages tab, "Stages" in the create pane. */
+	title?: string;
+	/** Open a stage in the inspector. */
+	onSelect: (stageId: string) => void;
+	/** Reorder, join, add or take out a stage. */
+	onPlace: (stageId: string, drop: PipelineDrop) => void;
+	/** Swap a stage with its neighbour. */
+	onSwap: (stageId: string, direction: -1 | 1) => void;
 	onParallel: (stageId: string, parallel: boolean) => void;
 }
 
-const idOf = (raw: string): string => raw.replace("stage:", "");
-
-/** Where a stage sits in its execution band — drives the gutter's rail geometry. */
-function bandPosition(list: TicketStageView[], i: number): "solo" | "start" | "middle" | "end" {
-	const band = list[i].band;
-	const first = i === 0 || list[i - 1].band !== band;
-	const last = i === list.length - 1 || list[i + 1].band !== band;
-	if (first && last) return "solo";
-	if (first) return "start";
-	return last ? "end" : "middle";
+interface ZonesProps extends StagePipelineProps {
+	notice: Signal<string | null>;
+	focusCard: (zone: "included" | "available", stageId: string) => void;
 }
 
-interface CardProps {
-	item: TicketStageView;
-	position: "solo" | "start" | "middle" | "end";
-	/** The step number shown on the gutter node, or `null` for a continuation row. */
-	step: number | null;
-	previousName: string | null;
-	selected: boolean;
-	editable: boolean;
-	currency: string;
-	onSelect: () => void;
-	onRemove: () => void;
-}
-
-function StageCard(props: CardProps): JSX.Element {
-	const { item, selected, editable } = props;
-	const { ref, stage, costCents, workload } = item;
-	const sortable = useSortable({
-		id: `stage:${ref.stageId}`,
-		data: { type: "stage", accepts: ["stage"] },
-		roleDescription: "pipeline stage",
-		disabled: !editable,
-	});
-
+function Ghost(props: { zone: "included" | "available"; children: ComponentChildren }) {
 	return (
-		<div class="tkc-row" data-band={props.position}>
-			<div class="tkc-row__rail" aria-hidden="true">
-				<span class="tkc-row__node" data-continuation={props.step === null ? "true" : undefined}>
-					{props.step !== null ? props.step : null}
-				</span>
+		<div class="tkc-stage tkc-stage--overlay" data-zone={props.zone}>
+			<div class="tkc-stage__surface">
+				<div class="tkc-stage__body">{props.children}</div>
 			</div>
-
-			<article
-				// deno-lint-ignore no-explicit-any
-				ref={sortable.setNodeRef as any}
-				class="tkc-stage"
-				data-selected={selected ? "true" : undefined}
-				data-dragging={sortable.isDragging.value || undefined}
-				data-locked={stage?.locked ? "true" : undefined}
-				data-missing={stage ? undefined : "true"}
-			>
-				{editable
-					? (
-						<button
-							type="button"
-							class="tkc-stage__grip"
-							aria-label={`Reorder ${ref.name}`}
-							aria-roledescription={sortable.attributes["aria-roledescription"]}
-							tabIndex={sortable.attributes.tabIndex}
-							onPointerDown={sortable.listeners.onPointerDown}
-							onKeyDown={sortable.listeners.onKeyDown}
-						>
-							<Icon name="grip" size="xs" />
-						</button>
-					)
-					: <span class="tkc-stage__grip tkc-stage__grip--static" />}
-
-				<div class="tkc-stage__body">
-					<div class="tkc-stage__line">
-						<h4 class="tkc-stage__name">{ref.name}</h4>
-						{ref.intensity !== "standard"
-							? (
-								<span class="tkc-stage__int" data-level={ref.intensity}>
-									{TICKET_INTENSITY_LABEL[ref.intensity]}
-								</span>
-							)
-							: null}
-						{stage?.locked
-							? (
-								<Tooltip content="This stage is already running — work added here starts immediately.">
-									<span class="tkc-stage__lock" tabIndex={0} aria-label="Stage already running">
-										<Icon name="lock" size="2xs" />
-									</span>
-								</Tooltip>
-							)
-							: null}
-					</div>
-					{
-						/*
-						 * A stage the engagement has since removed keeps its row. The ticket is priced against
-						 * it, so hiding it would leave an unexplained figure in the total — the honest move is
-						 * to say the stage is gone and keep the money it accounts for visible.
-						 */
-					}
-					<p class="tkc-stage__desc">
-						{stage
-							? (ref.brief || stage.description || "No brief on this stage yet.")
-							: "This stage has been removed from the engagement. The ticket keeps the price it was agreed at."}
-					</p>
-					{props.position !== "solo" && props.position !== "start" && props.previousName
-						? (
-							<p class="tkc-stage__with">
-								<Icon name="switch" size="2xs" />
-								Runs alongside {props.previousName}
-							</p>
-						)
-						: null}
-				</div>
-
-				<div class="tkc-stage__end">
-					{stage
-						? (
-							<UserAvatarStack
-								people={stage.members}
-								max={4}
-								size={22}
-								aria-label={stage.members.length === 0
-									? "No one assigned"
-									: `${stage.members.length} assigned: ${
-										stage.members.map((m) => m.name).join(", ")
-									}`}
-							/>
-						)
-						: null}
-					{
-						/*
-						 * The cost, and nothing beside it. The capacity this stage consumes is a real figure
-						 * but it is not a LABEL — a chip reading "W 1.35" next to one reading "High" invites
-						 * the reader to treat a derived number as the name of the setting they chose. The
-						 * figure lives on the ticket's Finances tab, where the arithmetic behind it is shown.
-						 */
-					}
-					<Tooltip
-						content={`${TICKET_INTENSITY_LABEL[ref.intensity]} intensity · ${
-							workload.toFixed(2).replace(/\.00$/, "")
-						} units of a freelancer's capacity`}
-					>
-						<span class="tkc-stage__cost" tabIndex={0}>
-							{costCents === null
-								? <span class="tkc-stage__cost--none">No rate</span>
-								: formatTicketMoney(costCents, props.currency)}
-						</span>
-					</Tooltip>
-				</div>
-
-				<div class="tkc-stage__acts">
-					{editable
-						? (
-							<Tooltip content="Remove from this ticket">
-								<button
-									type="button"
-									class="tkc-stage__act"
-									aria-label={`Remove ${ref.name} from this ticket`}
-									onClick={props.onRemove}
-								>
-									<Icon name="minus" size="xs" />
-								</button>
-							</Tooltip>
-						)
-						: null}
-					<Tooltip content={selected ? "Close stage details" : "Open stage details"}>
-						<button
-							type="button"
-							class="tkc-stage__act tkc-stage__act--open"
-							aria-label={`${selected ? "Close" : "Open"} details for ${ref.name}`}
-							aria-expanded={selected}
-							onClick={props.onSelect}
-						>
-							<Icon name="chevron-right" size="sm" />
-						</button>
-					</Tooltip>
-				</div>
-			</article>
 		</div>
 	);
 }
 
-/** The join control between two consecutive stages — sequence, or simultaneous execution. */
-function BandJoin(
-	props: {
-		parallel: boolean;
-		editable: boolean;
-		aboveName: string;
-		belowName: string;
-		onToggle: () => void;
-	},
-): JSX.Element {
-	const label = props.parallel
-		? `${props.belowName} runs alongside ${props.aboveName}. Split them into separate steps.`
-		: `${props.belowName} starts after ${props.aboveName}. Run them at the same time.`;
+/** The band opener's name for each continuation stage, keyed by stage id. */
+function alongsideNames(resolved: readonly TicketStageView[]): Map<string, string> {
+	const out = new Map<string, string>();
+	let opener: string | null = null;
+	for (const item of resolved) {
+		if (item.opensBand) opener = item.ref.name;
+		else if (opener) out.set(item.ref.stageId, opener);
+	}
+	return out;
+}
+
+function announcement(
+	target: PipelineTarget | null,
+	from: { zone: "included" | "available"; stageId: string } | null,
+	ids: readonly string[],
+	nameOf: (id: string) => string,
+): string {
+	if (!target || !from) return "";
+	const name = nameOf(from.stageId);
+	switch (target.kind) {
+		case "seam": {
+			const at = ids.indexOf(from.stageId);
+			const total = at < 0 ? ids.length + 1 : ids.length;
+			const position = at >= 0 && target.before > at ? target.before : target.before + 1;
+			return `${name}, position ${position} of ${total}.`;
+		}
+		case "join":
+			return `${name}, runs alongside ${nameOf(target.stageId)}.`;
+		case "exclude":
+			return `${name}, taken out of this ticket.`;
+		case "refused":
+			return target.reason;
+	}
+}
+
+function PipelineZones(props: ZonesProps): JSX.Element {
+	const { store } = useDnd();
+	const zoneId = useId(undefined, "tkc-zone");
+	const { resolved, available, editable, locks } = props;
+	const refs = resolved.map((v) => v.ref);
+	const ids = refs.map((r) => r.stageId);
+	const count = ids.length;
+	const lockOf = (id: string): string | null => locks.stages.get(id) ?? null;
+	const joining = inclusionRefusal(count, locks.ticket);
+	const nameOf = (id: string): string =>
+		resolved.find((v) => v.ref.stageId === id)?.ref.name ??
+			available.find((s) => s.id === id)?.name ?? "Stage";
+	const quote = (s: BoardStageRef) => blankStageRef(s, count, props.intensity);
+	const slotOf = (id: string): PipelineSlot =>
+		refs.find((r) => r.stageId === id) ?? { stageId: id, parallel: false };
+
+	const place = (id: string, drop: PipelineDrop, from: "included" | "available"): void => {
+		props.onPlace(id, drop);
+		const to = drop.kind === "exclude" ? "available" : "included";
+		if (to !== from) props.focusCard(to, id);
+	};
+
+	const target = usePipelineDrop({
+		included: ids,
+		removalRefusal: (id) => removalRefusal(count, lockOf(id)),
+		inclusionRefusal: () => joining,
+		changes: (id, drop) => placeStage(refs, slotOf(id), drop) !== null,
+		onDrop: (id, drop) => place(id, drop, ids.includes(id) ? "included" : "available"),
+		onRefused: (reason) => (props.notice.value = reason),
+		onStart: () => (props.notice.value = null),
+	});
+
+	const active = store.active.value;
+	const from = active ? parseStageDndId(String(active.id)) : null;
+	const t = target.value;
+	const seam = t?.kind === "seam" ? t.before : null;
+	const joinId = t?.kind === "join" ? t.stageId : null;
+	const showAvailable = editable && locks.ticket === null &&
+		(available.length > 0 || from?.zone === "included");
+
+	const includedDrop = useDroppable({ id: ZONE_INCLUDED, data: STAGE_DRAG, disabled: !editable });
+	const availableDrop = useDroppable({
+		id: ZONE_AVAILABLE,
+		data: STAGE_DRAG,
+		disabled: !showAvailable,
+	});
+
+	const alongside = alongsideNames(resolved);
+	const includedMenu = (item: TicketStageView, i: number): MenuItem[] | null => {
+		if (!editable) return null;
+		const id = item.ref.stageId;
+		return stageMenuModel(
+			{ zone: "included", index: i, count, parallel: item.ref.parallel, lock: lockOf(id) },
+			{
+				configure: () => props.onSelect(id),
+				move: (d) => props.onSwap(id, d),
+				parallel: (p) => props.onParallel(id, p),
+				include: () => {},
+				remove: () => place(id, { kind: "exclude" }, "included"),
+			},
+		);
+	};
+	const availableMenu = (s: BoardStageRef): MenuItem[] =>
+		stageMenuModel({ zone: "available", count, lock: locks.ticket }, {
+			configure: () => {},
+			move: () => {},
+			parallel: () => {},
+			include: () => place(s.id, { kind: "seam", before: count }, "available"),
+			remove: () => {},
+		});
+
+	let ghost: JSX.Element | null = null;
+	if (from?.zone === "included") {
+		const item = resolved.find((v) => v.ref.stageId === from.stageId);
+		if (item) {
+			ghost = (
+				<Ghost zone="included">
+					<IncludedStageBody
+						item={item}
+						alongside={alongside.get(item.ref.stageId) ?? null}
+						currency={props.currency}
+						lock={null}
+					/>
+				</Ghost>
+			);
+		}
+	} else if (from?.zone === "available") {
+		const s = available.find((a) => a.id === from.stageId);
+		if (s) {
+			const q = quote(s);
+			ghost = (
+				<Ghost zone="available">
+					<AvailableStageBody
+						stage={s}
+						intensity={q.intensity}
+						costCents={q.costCents}
+						currency={props.currency}
+					/>
+				</Ghost>
+			);
+		}
+	}
+
+	const refusal = t?.kind === "refused" ? t.reason : null;
+
 	return (
-		<div class="tkc-join" data-parallel={props.parallel ? "true" : undefined}>
-			<span class="tkc-join__rail" aria-hidden="true" />
-			{props.editable
+		<>
+			<section class="tkc-zone" data-zone="included" aria-labelledby={`${zoneId}-included`}>
+				<h4 class="tkc-zone__title" id={`${zoneId}-included`}>
+					Included in this ticket
+					<span class="tkc-zone__count">{count}</span>
+				</h4>
+				<div
+					ref={includedDrop.setNodeRef}
+					class="tkc-zone__drop"
+					data-over={from?.zone === "available" && seam !== null ? "true" : undefined}
+				>
+					{count === 0
+						? (
+							<div class="tkc-zone__empty">
+								<Icon name="stages" size="lg" class="tkc-zone__emptymark" />
+								<p class="tkc-zone__emptytext">
+									{editable
+										? "A ticket with no stages saves as a draft. Drag one in from below, or press it to add it."
+										: "A ticket with no stages carries no price, so nothing can be claimed against it."}
+								</p>
+							</div>
+						)
+						: (
+							<ol class="tkc-zone__list" aria-label="Stages in this ticket, in order">
+								{resolved.map((item, i) => {
+									const id = item.ref.stageId;
+									const lock = lockOf(id);
+									const menu = includedMenu(item, i);
+									return (
+										<li key={id} class="tkc-zone__slot">
+											<DropIndicator active={seam === i} class="tkc-seam" />
+											<StageCard
+												zone="included"
+												stageId={id}
+												label={`${item.ref.name}, step ${item.band + 1}`}
+												draggable={editable && lock === null}
+												selected={props.selectedStageId === id}
+												joinTarget={joinId === id}
+												menu={menu}
+												menuLabel={`Actions for ${item.ref.name}`}
+												onActivate={() => props.onSelect(id)}
+											>
+												<IncludedStageBody
+													item={item}
+													alongside={alongside.get(id) ?? null}
+													currency={props.currency}
+													lock={lock}
+												/>
+											</StageCard>
+											{i === count - 1
+												? (
+													<DropIndicator
+														active={seam === count}
+														class="tkc-seam tkc-seam--end"
+													/>
+												)
+												: null}
+										</li>
+									);
+								})}
+							</ol>
+						)}
+				</div>
+			</section>
+
+			{showAvailable
 				? (
-					<Tooltip content={label}>
-						<button
-							type="button"
-							class="tkc-join__btn"
-							aria-label={label}
-							aria-pressed={props.parallel}
-							onClick={props.onToggle}
-						>
-							<Icon name={props.parallel ? "switch" : "arrow-down"} size="2xs" />
-							<span class="tkc-join__text">
-								{props.parallel ? "At the same time" : "Then"}
-							</span>
-						</button>
-					</Tooltip>
+					<section
+						ref={availableDrop.setNodeRef}
+						class="tkc-zone tkc-zone--available"
+						data-zone="available"
+						data-over={t?.kind === "exclude" ? "true" : undefined}
+						data-refused={refusal && from?.zone === "included" ? "true" : undefined}
+						aria-labelledby={`${zoneId}-available`}
+					>
+						<h4 class="tkc-zone__title" id={`${zoneId}-available`}>Available project stages</h4>
+						{refusal && from?.zone === "included"
+							? <p class="tkc-zone__refusal">{refusal}</p>
+							: null}
+						{available.length === 0
+							? <p class="tkc-zone__hint">Drop a stage here to take it out of this ticket.</p>
+							: (
+								<ul class="tkc-zone__list" aria-label="Project stages not in this ticket">
+									{available.map((s) => {
+										const q = quote(s);
+										return (
+											<li key={s.id} class="tkc-zone__slot">
+												<StageCard
+													zone="available"
+													stageId={s.id}
+													label={`Add ${s.name} to this ticket`}
+													draggable={joining === null}
+													menu={availableMenu(s)}
+													menuLabel={`Actions for ${s.name}`}
+													onActivate={() =>
+														joining === null
+															? place(s.id, { kind: "seam", before: count }, "available")
+															: (props.notice.value = joining)}
+												>
+													<AvailableStageBody
+														stage={s}
+														intensity={q.intensity}
+														costCents={q.costCents}
+														currency={props.currency}
+													/>
+												</StageCard>
+											</li>
+										);
+									})}
+								</ul>
+							)}
+					</section>
 				)
-				: (
-					<span class="tkc-join__btn tkc-join__btn--static">
-						<Icon name={props.parallel ? "switch" : "arrow-down"} size="2xs" />
-						<span class="tkc-join__text">{props.parallel ? "At the same time" : "Then"}</span>
-					</span>
-				)}
-		</div>
+				: null}
+
+			<DragOverlay>{ghost}</DragOverlay>
+			<div class="ui-visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+				{announcement(t, from, ids, nameOf)}
+			</div>
+		</>
 	);
 }
 
 export function StagePipeline(props: StagePipelineProps): JSX.Element {
-	const { resolved, available, selectedStageId, editable } = props;
-	const dragIndex = useSignal<number | null>(null);
-	const overIndex = useSignal<number | null>(null);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const notice = useSignal<string | null>(null);
+	const count = props.resolved.length;
 
-	const indexOfId = (id: string) => resolved.findIndex((r) => r.ref.stageId === id);
-	const from = dragIndex.value;
-	const over = overIndex.value;
-	const seamBefore = from !== null && over !== null && from > over ? over : null;
-	const seamAfter = from !== null && over !== null && from < over ? over : null;
+	const focusCard = (zone: "included" | "available", stageId: string): void => {
+		setTimeout(() => {
+			rootRef.current
+				?.querySelector<HTMLElement>(
+					`.tkc-stage[data-zone="${zone}"][data-stage-id="${stageId}"] .tkc-stage__surface`,
+				)
+				?.focus();
+		}, 0);
+	};
+
+	const sub = props.locks.ticket && props.editable
+		? props.locks.ticket
+		: !props.editable
+		? count === 0
+			? "This ticket runs through no stages."
+			: "The stages this ticket runs through, in order."
+		: count === 0
+		? "Pick the stages this ticket passes through."
+		: "Drag a stage to reorder it, onto another to run them together, or down to Available to take it out.";
 
 	return (
-		<div class="tkc-pipe">
+		<div ref={rootRef} class="tkc-pipe">
 			<header class="tkc-pipe__head">
-				<h3 class="tkc-pipe__title">Pipeline</h3>
-				<p class="tkc-pipe__sub">
-					{resolved.length === 0
-						? editable
-							? "Pick the stages this ticket passes through."
-							: "This ticket runs through no stages."
-						: editable
-						? "Drag to reorder. Join two stages to run them at the same time."
-						: "The stages this ticket runs through, in order."}
-				</p>
+				<h3 class="tkc-pipe__title">{props.title ?? "Pipeline"}</h3>
+				<p class="tkc-pipe__sub">{sub}</p>
+				<p class="tkc-pipe__notice" role="status">{notice.value}</p>
 			</header>
-
-			{resolved.length === 0
-				? (
-					<div class="tkc-pipe__empty">
-						<Icon name="stages" size="lg" class="tkc-pipe__emptymark" />
-						<p class="tkc-pipe__emptytext">
-							{editable
-								? "A ticket with no stages saves as a draft. Add one below to price it."
-								: "A ticket with no stages carries no price, so nothing can be claimed against it."}
-						</p>
-					</div>
-				)
-				: (
-					<DndContext
-						onDragStart={(e) => (dragIndex.value = indexOfId(idOf(String(e.active.id))))}
-						onDragOver={(e) => {
-							overIndex.value = e.over === null ? null : indexOfId(idOf(String(e.over)));
-						}}
-						onDragEnd={(e) => {
-							const start = dragIndex.value;
-							const target = e.over === null ? null : indexOfId(idOf(String(e.over)));
-							dragIndex.value = null;
-							overIndex.value = null;
-							if (e.canceled || start === null || target === null || target < 0) return;
-							props.onMove(start, target);
-						}}
-					>
-						<ol class="tkc-pipe__list" aria-label="Ticket stages, in order">
-							{resolved.map((item, i) => {
-								const position = bandPosition(resolved, i);
-								const isBandStart = position === "solo" || position === "start";
-								const previous = i > 0 ? resolved[i - 1] : null;
-								return (
-									<li key={item.ref.stageId} class="tkc-pipe__slot">
-										{previous
-											? (
-												<BandJoin
-													parallel={item.ref.parallel}
-													// NOT gated on `stage.locked`. That lock is about the PROJECT's stage
-													// sequence; how one ticket routes through those stages, and which of
-													// them it runs concurrently, is the ticket's own property.
-													editable={editable}
-													aboveName={previous.ref.name}
-													belowName={item.ref.name}
-													onToggle={() => props.onParallel(item.ref.stageId, !item.ref.parallel)}
-												/>
-											)
-											: null}
-										<DropIndicator active={seamBefore === i} />
-										<StageCard
-											item={item}
-											position={position}
-											step={isBandStart ? item.band + 1 : null}
-											previousName={previous?.ref.name ?? null}
-											selected={selectedStageId === item.ref.stageId}
-											editable={editable}
-											currency={props.currency}
-											onSelect={() =>
-												props.onSelect(
-													selectedStageId === item.ref.stageId ? null : item.ref.stageId,
-												)}
-											onRemove={() => props.onToggle(item.ref.stageId)}
-										/>
-										<DropIndicator active={seamAfter === i} />
-									</li>
-								);
-							})}
-						</ol>
-					</DndContext>
-				)}
-
-			{available.length > 0 && editable
-				? (
-					<section class="tkc-avail">
-						<h4 class="tkc-avail__title">Stages not in this ticket</h4>
-						<ul class="tkc-avail__list">
-							{available.map((s) => (
-								<li key={s.id}>
-									<button
-										type="button"
-										class="tkc-avail__row"
-										onClick={() => props.onToggle(s.id)}
-										aria-label={`Add ${s.name} to this ticket`}
-									>
-										<Icon name="plus" size="xs" class="tkc-avail__mark" />
-										<span class="tkc-avail__name">{s.name}</span>
-										<span class="tkc-avail__cost">
-											{s.unitPriceCents === null
-												? "No rate"
-												: `${formatTicketMoney(s.unitPriceCents, props.currency)} / ticket`}
-										</span>
-									</button>
-								</li>
-							))}
-						</ul>
-					</section>
-				)
-				: null}
+			<DndContext collision={pointerWithin}>
+				<PipelineZones {...props} notice={notice} focusCard={focusCard} />
+			</DndContext>
 		</div>
 	);
 }

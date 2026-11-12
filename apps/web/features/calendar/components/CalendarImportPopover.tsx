@@ -32,8 +32,11 @@ import { connectOpen, importedEvents } from "../core/calendar-state.ts";
  * does not push the Add button off a phone screen.
  *
  * The trigger is a NATIVE button carrying `api.ref`: a `ref` on the `Button` component stops at the
- * component and the panel anchors at the origin. The band and the rig each mount one of these, in
- * their own chrome, so the panel always opens beside the control that was pressed.
+ * component and the panel anchors at the origin.
+ *
+ * **Not mounted.** What it adds lives only in the session (`importedEvents`), so no calendar draws it
+ * until a write door keeps an import (Decision #343, ruling C7 (a)); the reader and its preview wait
+ * here for that door.
  */
 export interface CalendarImportPopoverProps {
 	/** The surface's zone — floating times and all-day dates in the file are read in it. */

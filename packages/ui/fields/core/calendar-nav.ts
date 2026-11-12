@@ -34,7 +34,10 @@ export interface WheelSample {
 
 /** Turns a stream of wheel samples into whole navigation steps. */
 export interface WheelStepper {
-	/** `1` (wheel up), `-1` (wheel down), or `0` when this sample does not complete a step. */
+	/**
+	 * `1` (wheel down — forward in time), `-1` (wheel up — back in time), or `0` when this sample does
+	 * not complete a step.
+	 */
 	feed(sample: WheelSample): -1 | 0 | 1;
 }
 
@@ -114,6 +117,10 @@ export function isWheelNotch(sample: WheelSample): boolean {
 /**
  * Create a stepper that maps a wheel stream onto whole steps.
  *
+ * Scrolling DOWN (`deltaY > 0`) steps forward in time and scrolling up steps back — the direction
+ * the `/calendar` Month view and every scrolled page travel, so the popover and the page under it
+ * agree.
+ *
  * Travel accumulates to {@link WHEEL_STEP_PX} (a notch completes a step on its own), steps once,
  * then stays latched until the stream falls silent for {@link WHEEL_GAP_MS} or reverses. A trackpad
  * flick and its momentum arrive every frame and so are one step; separate notches arrive further
@@ -129,7 +136,7 @@ export function createWheelStepper(): WheelStepper {
 		feed(sample) {
 			const { deltaX, deltaY, timeStamp } = sample;
 			if (deltaY === 0 || Math.abs(deltaX) > Math.abs(deltaY)) return 0;
-			const direction: -1 | 1 = deltaY < 0 ? 1 : -1;
+			const direction: -1 | 1 = deltaY > 0 ? 1 : -1;
 
 			const paused = timeStamp - lastSample > WHEEL_GAP_MS;
 			const reversed = direction !== lastDirection;

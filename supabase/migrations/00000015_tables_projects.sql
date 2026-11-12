@@ -300,6 +300,24 @@ allowed_file_categories files.file_category[],
 -- The CHECK is not decorative: without it a negative price is storable and flows straight into an
 -- escrow hold, where it inverts the direction the money moves.
 unit_price_cents bigint CHECK (unit_price_cents IS NULL OR unit_price_cents >= 0),
+
+-- Intensity terms (Decision #417). `default_intensity` is the tier a ticket starts at here. On a stage
+-- `marketplace.instantiate_service_blueprint` copies from a FIXED-intensity service
+-- (`service_blueprints.allow_tiered_intensity = false`) `intensity_locked` is true: every ticket runs at
+-- `default_intensity` and costs `unit_price_cents` exactly. From a TIERED service it is false and the
+-- seller's own `low_price_cents` / `high_price_cents`, when set, price those tiers. A client-created
+-- stage is unlocked with no tier prices. `projects.fn_stage_intensity_terms` freezes all four on an
+-- instantiated project and keeps a client's own statement from locking a stage or pricing its tiers.
+-- Text with a CHECK, not an enum: the same vocabulary rides as text in `tickets.required_stages`, and
+-- the price resolver compares and coalesces the two.
+default_intensity text NOT NULL DEFAULT 'standard'
+    CHECK (default_intensity IN ('low', 'standard', 'high')),
+intensity_locked boolean NOT NULL DEFAULT false,
+low_price_cents bigint CHECK (low_price_cents IS NULL OR low_price_cents >= 0),
+high_price_cents bigint CHECK (high_price_cents IS NULL OR high_price_cents >= 0),
+-- The stage's CREATE category (PRODUCT_SPEC §The CREATE Framework): a label of the work, never a weight
+-- on W_i (Decision #338, ruling P4). NULL while untyped; written by `projects.create_stage`.
+create_category org.create_category,
   -- The delivery this stage owes, in the owner's own words: "Homepage + 3 inner pages, in Figma".
   -- Deliberately free text and NOT a schedule -- `due_date` and the duration modes below answer WHEN,
   -- and a sentence describing WHAT cannot be reconstructed from either.

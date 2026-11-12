@@ -9,8 +9,8 @@ import { Dialog, Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Kbd } from "@projective/ui/utils";
-import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { isReachable } from "@features/shortcuts/core/shortcut-host.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { HelpHit } from "../components/HelpHit.tsx";
 import {
 	groupResults,
@@ -229,19 +229,12 @@ export default function HelpSearch(props: HelpSearchProps): JSX.Element {
 		};
 	}, []);
 
-	// "/" opens the overlay from anywhere on the page, but never from inside a field or behind a modal.
-	useEffect(() => {
-		function onKey(event: KeyboardEvent): void {
-			if (open.value || !isFocusSearchShortcut(event) || !shortcutOn("focus-search")) return;
-			if (isEditableTarget(event.target instanceof Element ? event.target : null)) return;
-			const form = formRef.current;
-			if (!form || form.closest("[inert]") || form.getClientRects().length === 0) return;
-			event.preventDefault();
-			openOverlay();
-		}
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, []);
+	useSearchTarget({
+		role: "page",
+		scopeRef: formRef,
+		available: () => !open.value && isReachable(formRef.current),
+		activate: () => openOverlay(),
+	});
 
 	// The active option stays in view inside the scrolling body.
 	useEffect(() => {

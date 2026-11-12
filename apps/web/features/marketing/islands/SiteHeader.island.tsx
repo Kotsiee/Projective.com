@@ -9,11 +9,8 @@ import { Drawer } from "@projective/ui/feedback";
 import { Kbd } from "@ui/utils/components/Kbd.tsx";
 import { Logo } from "@web/components/Logo.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
-import {
-	headerSearchShortcutLabel,
-	isFocusHeaderSearchShortcut,
-} from "@features/shell/core/shortcuts.ts";
-import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
+import { headerSearchShortcutLabel } from "@features/shell/core/shortcuts.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import {
 	HEADER_TOP_BAND_PX,
 	isCurrentNavLink,
@@ -76,12 +73,7 @@ export default function SiteHeader(
 	const searchRef = useRef<HTMLFormElement>(null);
 	const toggleRef = useRef<HTMLButtonElement>(null);
 
-	useSearchShortcut({
-		scopeRef: searchRef,
-		matches: isFocusHeaderSearchShortcut,
-		shortcut: "focus-header-search",
-		fromFields: true,
-	});
+	useSearchTarget({ role: "header", scopeRef: searchRef });
 
 	// #region Megamenu hover intent — a short grace on leave tolerates the trigger→panel gap so the
 	// panel doesn't flicker shut while the pointer crosses the hover-bridge.

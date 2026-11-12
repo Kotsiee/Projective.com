@@ -22,10 +22,21 @@
 >
 > **Migrations are edited in place** (root `CLAUDE.md` §1). Every SQL prompt names the existing
 > category file to edit.
+>
+> **Status 2026-11-12, re-verified in code at `8a3fd595`:** WP10a (`7f6b43d5`) and WP3b
+> (`0c1e474f`) are done, with Wave 0's RED WP3 and WP15 (§0.3). No other prompt here has started:
+> the commits since 2026-11-03, the modal, files and inspector work included, built none of them.
+> Two findings were fixed outside a prompt: U-09's shared scope picker (`21309eeb`) and U-30's
+> native `title` (`7ffe91b6`). Prompts whose premise has gone stale say so under their heading.
 
 ---
 
 ## 0. Run order & dependencies
+
+**Re-verified in code 2026-11-12 at `8a3fd595`:** ✅ WP10a and ✅ WP3b; every other prompt is not
+started. Runnable now: WP17 first, then Q9, WP10b (steps 2–6; step 1 waits on F·DB17 and F·SV5),
+Q12 (🧑 mid-run) and WP5a (once a peer's uncommitted `board.ts` and pricing edits land). The rest
+wait on F·SV5, F·UI1–UI5, S·S5, PM-WP6, P·WP8/WP9, C·WP10 and COMMS MS3 (the table below).
 
 | Phase                               | Prompts                                  | Why this order                                                                                                                                                                                                                                                           |
 | :---------------------------------- | :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -39,18 +50,18 @@
 **Cross-track waits.** §B.3 lists the first five rows. The rest are added here because the prompt
 writes a file that the named step also writes.
 
-| Prompt                 | Waits for                                                                  | Status on 2026-10-30                                                                                                  |
-| :--------------------- | :------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| WP2, WP11              | F·SV2, F·SV3, F·SV5 (`live-wallet.ts` / `wallet-scope.ts`)                 | Open. §B.3 names SV2/SV5; §B.0's hot-file table also names SV3 as a writer of the same file, so WP2 waits for it too. |
-| WP5a                   | P·WP2                                                                      | **Merged** in Wave 0 (`3fcf2d54`, merge `8464dbdd`): X4, X8, W7, without D12.                                         |
-| WP4                    | F·UI2, F·UI3, F·UI5                                                        | Open.                                                                                                                 |
-| WP7                    | F·UI5, S·S5 (and F·UI2/UI3, which edit `WalletDialogs.tsx`)                | Open. S5 fixes `PlanBlock.tsx`; WP7 leaves it.                                                                        |
-| WP13                   | M·N2 (the ETag long-poll)                                                  | Open.                                                                                                                 |
-| WP5b, WP6              | P·WP6 (P·WP1–WP6 edit `00001110` / `00001140` and the board files)         | Open. P·WP6 also owns the move matrix (L-03); see §0.3.                                                               |
-| WP10b (FxService step) | F's FX-feed prompt (#337 M5 (f)) and F·SV5, if either edits `FxService.ts` | Open.                                                                                                                 |
-| Q15                    | WP2; F·UI3, F·UI4 (`wallet-home.ts`, `AnalyticsView.tsx`)                  | Open.                                                                                                                 |
-| WP8                    | F·UI1 (the wallet sheets, `wlt-account`)                                   | Open.                                                                                                                 |
-| WP9, WP16              | P·WP8/WP9 and C·WP10, while they are open on the modal files               | Open.                                                                                                                 |
+| Prompt                 | Waits for                                                                  | Status on 2026-11-12                                                                                      |
+| :--------------------- | :------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| WP2, WP11              | F·SV2, F·SV3, F·SV5 (`live-wallet.ts` / `wallet-scope.ts`)                 | Open. F·SV2 (`d4c4a194`) and F·SV3 (`fdeb3018`) merged; F·SV5 not started (it follows F·DB9).             |
+| WP5a                   | P·WP2                                                                      | **Merged** in Wave 0 (`3fcf2d54`, merge `8464dbdd`): X4, X8, W7, without D12.                             |
+| WP4                    | F·UI2, F·UI3, F·UI5                                                        | Open: none of F·UI2, UI3, UI5 has started.                                                                |
+| WP7                    | F·UI5, S·S5 (and F·UI2/UI3, which edit `WalletDialogs.tsx`)                | Open: F·UI5 and S·S5 not started. S5 fixes `PlanBlock.tsx`; WP7 leaves it.                                |
+| WP13                   | M·N2 (the ETag long-poll)                                                  | Open: N2's long-poll is COMMS MS3, after MS1 (✅ `bbcf3506`) and MS2; MS2 and MS3 have not started.       |
+| WP5b, WP6              | P·WP6 (P·WP1–WP6 edit `00001110` / `00001140` and the board files)         | Open: P·WP6 not started; it now follows PM-WP5a, after PM-WP4's finance window. It also owns L-03 (§0.3). |
+| WP10b (FxService step) | F's FX-feed prompt (#337 M5 (f)) and F·SV5, if either edits `FxService.ts` | Open. The FX feed is FBP DB17; DB17 and SV5 both edit `FxService.ts`. Steps 2–6 do not wait.              |
+| Q15                    | WP2; F·UI3, F·UI4 (`wallet-home.ts`, `AnalyticsView.tsx`)                  | Open: WP2, F·UI3 and F·UI4 not started.                                                                   |
+| WP8                    | F·UI1 (the wallet sheets, `wlt-account`)                                   | Open: F·UI1 not started.                                                                                  |
+| WP9, WP16              | P·WP8/WP9 and C·WP10, while they are open on the modal files               | Open: P·WP8, P·WP9 and C·WP10 not started.                                                                |
 
 These cannot run in parallel because they edit the same files:
 
@@ -89,7 +100,7 @@ These cannot run in parallel because they edit the same files:
 | ID    | Audit rows                                                                 | Ruling                      |
 | :---- | :------------------------------------------------------------------------- | :-------------------------- |
 | WP2   | DB-1, QW-4 (D-01, D-02)                                                    | #341 E1 Q13                 |
-| WP3b  | DB-4 / DB-8 invalidation half (D-14)                                       | #339 N2; #341 E1 Q11        |
+| WP3b  | DB-4 / DB-8 invalidation half (D-14)                                       | #339 N2; #341 E1 Q11 ✅     |
 | WP4   | SC-1, SC-2 (U-02, U-03, U-05–U-09, U-13–U-15), plus U-10, U-11, U-16, U-26 | none needed (audit §4.2)    |
 | WP5a  | SC-3 (L-04, L-05, L-07, L-09 TS half, L-10, L-12, L-14, L-16, L-17)        | #338 P5 (e) = #341 flag (n) |
 | WP5b  | SC-3 (L-09 SQL half)                                                       | #338 P5 (e) = #341 flag (n) |
@@ -97,7 +108,7 @@ These cannot run in parallel because they edit the same files:
 | WP7   | SC-5 (L-11, L-13), FDD N10, L-01's locale half                             | #341 E2                     |
 | WP8   | SC-6, SC-11 (U-21, U-22, U-28)                                             | #341 E3 Q6                  |
 | WP9   | SC-7, SC-8 (U-23, U-24, U-25, U-27), the split panes                       | #341 E3 Q4, Q5              |
-| WP10a | SC-9 (D-06's and D-23's primitives), `cachedGlobal`, version keys          | #341 E1 Q10, Q2; #339 N2    |
+| WP10a | SC-9 (D-06's and D-23's primitives), `cachedGlobal`, version keys          | #341 E1 Q10, Q2; #339 N2 ✅ |
 | WP10b | QW-7, DB-6, DB-7 (D-12, D-16, D-17, D-21, D-24, D-25)                      | #341 E1 Q11, Q10            |
 | WP11  | DB-2 (D-03, D-20)                                                          | #341 E1 Q13                 |
 | WP13  | DB-5 (D-08)                                                                | #341 E1 Q9; #339 N2         |
@@ -279,6 +290,11 @@ unless I ask.
 
 ### WP17 — SYSTEM_ARCHITECTURE §Caching Strategy describes the real tiers
 
+> **Status 2026-11-12:** Not started; runnable now (SA still carries `withCache`). Stale premise:
+> WP10a built all four helpers (`request-memo.ts`, single-flight in `through()`, `cachedGlobal`,
+> the version keys) and WP3b the catalogue's 5 min TTL and version key, so step 5 marks none of
+> them "Not built yet": describe them as built.
+
 ```text
 PROMPT WP17: SA §Caching Strategy describes the four real tiers and the placement table
 
@@ -342,6 +358,11 @@ ACCEPTANCE:
 ## 3. Phase 1 — Cache primitives
 
 ### WP10a — Single-flight, one request memo, `cachedGlobal` and version keys
+
+> **Status 2026-11-12:** Done in `7f6b43d5` (merge `508c2290`): single-flight in
+> `ArcCache.through`, `apps/web/utils/request-memo.ts` adopted by all six copies, and
+> `cachedGlobal`, `bumpCacheVersion` and `cacheVersionTag` in `kv.ts`, each with its test. Step 6
+> had no marker to remove, because WP17 has not run.
 
 ```text
 PROMPT WP10a: Single-flight in ArcCache, one request memo, cachedGlobal and KV version keys
@@ -530,6 +551,10 @@ ACCEPTANCE:
 
 ### WP10b — Each cacheable read in its Q11 tier
 
+> **Status 2026-11-12:** Not started. Steps 2–6 can run now. Step 1 waits: F's FX feed is now FBP
+> DB17, and DB17 and SV5 both edit `FxService.ts`. D-21's lane now calls `resolveWorkspaceDetail`
+> per team: still one detail read per team.
+
 ```text
 PROMPT WP10b: Put each cacheable read in its Q11 tier
 
@@ -583,6 +608,10 @@ ACCEPTANCE:
 ```
 
 ### WP3b — The catalogue invalidates across isolates
+
+> **Status 2026-11-12:** Done in `0c1e474f` (merge `7e476d6e`): `invalidateCatalog()` bumps
+> `["cache","v","catalogue"]`, other isolates refresh in the background through SWR,
+> `CATALOG_TTL_MS` is 5 min, and `live-catalog-version.test.ts` covers the two-isolate case.
 
 ```text
 PROMPT WP3b: The catalogue invalidates across isolates, so its TTL can grow
@@ -776,6 +805,12 @@ ACCEPTANCE:
 ## 5. Phase 3 — Shared rules & server flags
 
 ### WP5a — One home for each shared pure rule
+
+> **Status 2026-11-12:** Not started; its wait (P·WP2) is met. Hold it while a peer session's
+> uncommitted edits to `packages/types/projects/board.ts`,
+> `packages/backend/services/explore/pricing.ts` and `catalogue/core/pricing-model.ts` are open:
+> they move `INTENSITY_MULTIPLIER` to 0.75× / 1.5× (ruling P4) and point `PIPELINE_LOW` /
+> `PIPELINE_HIGH` and the client range at it, which changes L-04's premise.
 
 ```text
 PROMPT WP5a: One home for each shared pure rule, each with a parity test
@@ -990,6 +1025,13 @@ literal remains outside the landing.
 
 ### WP4 — Keyboard-complete money paths
 
+> **Status 2026-11-12:** Not started; waits on F·UI2, UI3, UI5. Stale premises: one shared scope
+> picker already exists (`explore/components/ScopeSelect.tsx`, `21309eeb`, in the shell, hero and
+> results search bars; the site header has no scope listbox now), so that step at most moves it
+> onto `Select`.
+> `SessionSchedulerStage.island.tsx` was deleted in `8a3fd595`, leaving U-13 to `StageInspector`.
+> U-10's combobox moved to `invites/components/InviteBar.tsx` in the #405 rewrite (`8b63f2b0`).
+
 ```text
 PROMPT WP4: Every money-path choice is keyboard-complete through @projective/ui
 
@@ -1194,6 +1236,12 @@ ACCEPTANCE:
 
 ### WP9 — No brand washes, no boxed facts, no metadata pills, one device per split pane
 
+> **Status 2026-11-12:** Not started; waits on WP8, F·UI5, P·WP9 and C·WP10. U-27's
+> `invite-modal.css` instance went in the `8b63f2b0` rewrite. `action-menu.css`'s `:focus` is
+> deliberate (its comment: the roving focus follows the pointer), so swapping it for
+> `:focus-visible` would drop the pointer's row tint. The washes now take token percentages
+> (`var(--primary) var(--tint)`), so WP8's rule (d) must match those too.
+
 ```text
 PROMPT WP9: No brand washes, no boxed facts, no metadata pills, one device per split pane
 
@@ -1263,6 +1311,12 @@ surface (checkout summary, project sidebar, the ticket and event modals, explore
 ```
 
 ### WP16 — Delete `Overlay`; one `useAppModal()` for the ten app modals
+
+> **Status 2026-11-12:** Not started. `Overlay` is still exported (`overlay/mod.ts:26-27`), still
+> renders through `Portal`, and has 0 consumers; no `useAppModal` exists. Neither `8b63f2b0` nor
+> `7ffe91b6` touched `packages/ui/overlay`. The ten modals assemble five pieces, not six:
+> `BodyPortal`, `Backdrop` (which carries `useBackdropPress`), `useFocusTrap`, `useDismiss` and
+> `useOverlayStack`; `LightboxDialog` has no `Backdrop`. No new hand-rolled modal has appeared.
 
 ```text
 PROMPT WP16: Delete Overlay; one useAppModal() for the ten app modals

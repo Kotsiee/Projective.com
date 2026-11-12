@@ -14,12 +14,12 @@ import {
 	LaneHead,
 	LaneIconButton,
 	LaneList,
-	LaneSearch,
 	type LaneTabOption,
 	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
@@ -461,7 +461,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 					/>
 
 					<LaneBar>
-						<LaneSearch
+						<LaneSearchField
 							value={q.value}
 							placeholder="Search conversations"
 							label="Search conversations"

@@ -1,5 +1,9 @@
 import { type ChatMessage, messageDeltaText } from "@projective/types/projects";
-import { dmHandleOf, type SendConversationMessage } from "@projective/types/messaging";
+import {
+	dmHandleOf,
+	OpenedDmThreadSchema,
+	type SendConversationMessage,
+} from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { refusalFrom, type WriteOutcome } from "../projects/live-writes.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
@@ -89,8 +93,16 @@ async function resolveThreadId(
 	if (thread.error) {
 		throw new Error(`comms.get_or_create_dm_thread failed: ${thread.error.message}`);
 	}
-	const threadId = thread.data as unknown;
-	return typeof threadId === "string" && UUID_RE.test(threadId) ? threadId : null;
+	return openedThreadId(thread.data);
+}
+
+/**
+ * The thread id `comms.get_or_create_dm_thread` answered (`{ thread_id, thread_ref }`), or `null`
+ * when the answer is not that shape.
+ */
+export function openedThreadId(data: unknown): string | null {
+	const opened = OpenedDmThreadSchema.safeParse(data);
+	return opened.success ? opened.data.thread_id : null;
 }
 // #endregion
 

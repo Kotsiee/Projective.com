@@ -391,7 +391,10 @@ summary:focus-visible,
 	.pjc__type,
 	.wlt-ruler__cell,
 	.apk-main__back,
-	.pf-media__iconbtn
+	.pf-media__iconbtn,
+	.ui-select__trigger,
+	.ui-multiselect__trigger,
+	.ui-datepicker__seg
 ) {
 	outline: var(--overlay-focus-ring) !important;
 	outline-offset: var(--overlay-focus-offset) !important;

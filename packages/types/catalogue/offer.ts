@@ -10,6 +10,7 @@ import {
 import { MeetingProvider } from "../scheduling/meeting.ts";
 import { AvailabilityBindingMode } from "../scheduling/presets.ts";
 import type { AvailabilityPreset } from "../scheduling/recurrence.ts";
+import { stageCostCents } from "../projects/board.ts";
 
 /**
  * catalogue.offer — what a listing actually sells, per form archetype (plan §7.1).
@@ -130,13 +131,66 @@ export const OneOffOfferSchema = z.object({
 });
 export type OneOffOffer = z.infer<typeof OneOffOfferSchema>;
 
-/** A Pipeline's offer: its stage blueprint and team. Publishing needs at least one stage. */
+/**
+ * A Pipeline's offer: its stage blueprint and team. Publishing needs at least one stage.
+ *
+ * `allowTieredIntensity` (`service_blueprints.allow_tiered_intensity`, Decision #417) is how the stages
+ * sell. Off, the default for a productised service, each stage sells at its one `intensity` and
+ * `priceCents`, and a client cannot change either on a ticket. On, the client picks Low · Standard ·
+ * High per ticket, at the stage's own `lowPriceCents` / `highPriceCents` where set.
+ */
 export const PipelineOfferSchema = z.object({
 	archetype: z.literal("pipeline"),
 	stages: z.array(MilestoneSchema).max(STAGES_MAX),
+	allowTieredIntensity: z.boolean().default(false),
 	teamRoles: z.array(TeamRoleSchema).max(STAGES_MAX),
 });
 export type PipelineOffer = z.infer<typeof PipelineOfferSchema>;
+
+/** What one ticket in a stage costs a buyer, from its cheapest tier to its dearest, in minor units. */
+export interface StagePriceSpan {
+	low: number;
+	high: number;
+}
+
+/**
+ * A blueprint stage's per-ticket price as buyers see it (Decision #417): ONE price when the service
+ * sells each stage at a fixed intensity, the Low–High span when it is tiered — the seller's own tier
+ * prices where set, else the Standard price at the platform's tier multiples ({@link stageCostCents}).
+ * The Standard price is the stage's own, else the listing's baseline ticket; `null` when neither is set.
+ */
+export function stagePriceSpan(
+	stage: Pick<Milestone, "priceCents" | "lowPriceCents" | "highPriceCents">,
+	tiered: boolean,
+	baselineMinor: number | null,
+): StagePriceSpan | null {
+	const standard = stage.priceCents ?? baselineMinor;
+	if (!tiered) return standard === null ? null : { low: standard, high: standard };
+	const terms = { lowPriceCents: stage.lowPriceCents ?? null, highPriceCents: stage.highPriceCents ?? null };
+	const low = stageCostCents(standard, "low", terms);
+	const high = stageCostCents(standard, "high", terms);
+	return low === null || high === null ? null : { low, high };
+}
+
+/**
+ * Why a tiered stage's own prices cannot be saved, or `null` — Low never above the stage's price and
+ * High never below it, each compared only where both are set (`catalogue.fn_tier_prices_ordered`).
+ */
+export function tierPriceProblem(
+	stage: Pick<Milestone, "priceCents" | "lowPriceCents" | "highPriceCents">,
+): string | null {
+	const low = stage.lowPriceCents ?? null;
+	const high = stage.highPriceCents ?? null;
+	const standard = stage.priceCents ?? null;
+	if (low !== null && high !== null && low > high) return "The Low price cannot be above the High price.";
+	if (low !== null && standard !== null && low > standard) {
+		return "The Low price cannot be above the stage's price.";
+	}
+	if (high !== null && standard !== null && high < standard) {
+		return "The High price cannot be below the stage's price.";
+	}
+	return null;
+}
 // #endregion
 
 // #region Session offers

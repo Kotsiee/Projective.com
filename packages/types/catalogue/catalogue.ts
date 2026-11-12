@@ -3,6 +3,7 @@ import { ExploreOwnerSchema, ServiceType, SkillRefSchema } from "../explore/item
 import { EntityPricingSchema } from "../explore/view.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 import { CreateCategory } from "../org/standing.ts";
+import { INTENSITY_PRICE_MULTIPLIER } from "../projects/board.ts";
 import { formArchetypeOf } from "./archetype.ts";
 import { coverOf, ListingMediaSlotsSchema } from "./media.ts";
 import { ListingAvailabilityBindingSchema, ListingOfferSchema } from "./offer.ts";
@@ -436,8 +437,8 @@ export type DuplicateListingInput = z.infer<typeof DuplicateListingInputSchema>;
 // #endregion
 
 // #region Pure helpers (shared client + server — no fork)
-const PIPELINE_LOW = 0.5;
-const PIPELINE_HIGH = 2.0;
+const PIPELINE_LOW = INTENSITY_PRICE_MULTIPLIER.low;
+const PIPELINE_HIGH = INTENSITY_PRICE_MULTIPLIER.high;
 
 /**
  * `$1,240` / `£1,240` — a whole-unit price in its own currency. A fixed `en-US` locale, so the server
@@ -461,8 +462,9 @@ export function money(n: number, currency = "USD"): string {
 /**
  * Resolve a listing's display price projection from its editable pricing config. Mirrors the Entity
  * View `servicePricing` helper (Decision #41/#45) so a catalogue card and the public `/view/[id]` show
- * the SAME figure: a **Pipeline** renders a 0.5×–2.0× per-ticket range, a **Session** `$X / session`, a
- * **Group Session** `$X / seat`, everything else the fixed `amount` — each in the listing's currency.
+ * the SAME figure: a **Pipeline** renders a Low–High per-ticket range when it sells tiered intensity
+ * and its one price when it sells a fixed one, a **Session** `$X / session`, a **Group Session**
+ * `$X / seat`, everything else the fixed `amount` — each in the listing's currency.
  * Pure — used by the console list and the manage-page preview.
  */
 export function resolveListingPricing(
@@ -471,16 +473,19 @@ export function resolveListingPricing(
 		serviceType: ServiceType | null;
 		pricing: ListingPricing;
 		currency?: string;
+		/** A Pipeline sold at tiered intensity (`PipelineOffer.allowTieredIntensity`); absent = fixed. */
+		tieredIntensity?: boolean;
 	},
 ): z.infer<typeof EntityPricingSchema> {
 	const { kind, serviceType, pricing } = input;
 	const currency = input.currency ?? "USD";
 	if (kind === "service" && serviceType === "Pipeline" && pricing.ticketPrice) {
-		const lo = Math.round(pricing.ticketPrice * PIPELINE_LOW);
-		const hi = Math.round(pricing.ticketPrice * PIPELINE_HIGH);
+		const tiered = input.tieredIntensity === true;
+		const lo = Math.round(pricing.ticketPrice * (tiered ? PIPELINE_LOW : 1));
+		const hi = Math.round(pricing.ticketPrice * (tiered ? PIPELINE_HIGH : 1));
 		return {
 			mode: "pipeline",
-			display: `${money(lo, currency)} – ${money(hi, currency)}`,
+			display: lo === hi ? money(lo, currency) : `${money(lo, currency)} – ${money(hi, currency)}`,
 			caption: "per ticket",
 			min: lo,
 			max: hi,

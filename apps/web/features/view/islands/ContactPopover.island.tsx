@@ -1,4 +1,5 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import { useComputed, useSignal } from "@preact/signals";
 import { Popover } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
@@ -12,7 +13,12 @@ import {
 	simulating,
 } from "../core/simulation.ts";
 import { SimulationOutcome } from "../components/SimulationNotices.tsx";
-import { announce, currentOffer, openBookingPanel } from "../core/booking-state.ts";
+import {
+	announce,
+	currentOffer,
+	openBookingPanel,
+	registerContactControl,
+} from "../core/booking-state.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import type { ContactActionKind, ServiceBookingOffer } from "@projective/types/services";
 import { ResizeFrame } from "@projective/ui/fields";
@@ -73,6 +79,15 @@ export default function ContactPopover(
 	const draft = useSignal("");
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
+	const trigger = useRef<HTMLButtonElement | null>(null);
+
+	useEffect(() =>
+		registerContactControl({
+			visible: () => (trigger.current?.getClientRects().length ?? 0) > 0,
+			open: () => {
+				open.value = true;
+			},
+		}), []);
 
 	function close(): void {
 		open.value = false;
@@ -161,7 +176,10 @@ export default function ContactPopover(
 			trigger={(api) => (
 				<button
 					type="button"
-					ref={api.ref as RefObject<HTMLButtonElement>}
+					ref={(el: HTMLButtonElement | null) => {
+						api.ref.current = el;
+						trigger.current = el;
+					}}
 					class={variant === "block" ? "evp-cta__ghost sbk-contact__trigger--block" : "evp-cta__ghost"}
 					aria-expanded={api.expanded ? "true" : "false"}
 					aria-controls={api.panelId}

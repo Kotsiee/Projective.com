@@ -52,7 +52,8 @@ CREATE TABLE marketplace.service_blueprints (
     pricing_model marketplace.pricing_model NOT NULL DEFAULT 'per_seat'::marketplace.pricing_model,
     -- `price_cents` is the headline engagement fee. The two below are the per-UNIT prices a Pipeline
     -- and a Session are actually bought at, and they are genuinely different figures — the card
-    -- renders a 0.5x-2.0x workload-intensity range around the ticket price, and a booked sitting or
+    -- quotes a Pipeline sold at tiered intensity as a 0.75x-1.5x price range around the ticket price
+    -- (one sold at a fixed intensity at that price alone), and a booked sitting or
     -- cohort seat is charged at the session price. Each is nullable because "not priced" and "priced
     -- at zero" are different claims, and a NOT NULL DEFAULT 0 would erase that difference on every
     -- blueprint that simply does not sell that way.
@@ -99,9 +100,11 @@ CREATE TABLE marketplace.service_blueprints (
     -- THE STAGE TEMPLATE a Pipeline or One-Off service is delivered through — the showcase the /view
     -- service template renders and the stages "Add to projects" instantiates (Decision #80). An
     -- ORDERED array of `BlueprintStage` objects (`@projective/types/explore` `stored.ts` — name,
-    -- description, deliverables, turnaround, the stage's price in minor units, skill labels, and when
+    -- description, deliverables, turnaround, the stage's price in minor units, skill labels, when
     -- the stage starts: `startTrigger` on_project_start · after_previous · fixed_offset, `lagDays`
-    -- 0–90, `chainReaction`), owned by that Zod SSOT and validated by every reader.
+    -- 0–90, `chainReaction`, and its intensity terms: `intensity` low · standard · high and the
+    -- optional `lowPriceCents` / `highPriceCents` read under `allow_tiered_intensity`), owned by that
+    -- Zod SSOT and validated by every reader.
     -- `catalogue.save_listing` checks each element's shape on the way in, and
     -- `marketplace.instantiate_service_blueprint` maps the trigger fields onto `project_stages`.
     --
@@ -110,6 +113,12 @@ CREATE TABLE marketplace.service_blueprints (
     -- Deliverable or a Session has no stages, and a Pipeline whose seller has not written any is a
     -- listing the showcase simply omits rather than one it fills with invented phases.
     stage_template jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- How the stage template prices intensity (Decision #417). Off (the default for a productised
+    -- service): each stage sells at ONE fixed intensity and price — its `intensity` and `priceCents` —
+    -- and the instantiated stages are locked. On: the client picks Low · Standard · High per ticket,
+    -- priced at each stage's `lowPriceCents` / `highPriceCents` where the seller set one, else at the
+    -- platform's tier multiple of its `priceCents`.
+    allow_tiered_intensity boolean NOT NULL DEFAULT false,
     -- A Direct Deliverable's TEAM: the named roles the engagement staffs (`ServiceRole` — name,
     -- summary, skill labels, headcount). Seller-declared, for the same reason the stage template is.
     team_roles jsonb NOT NULL DEFAULT '[]'::jsonb,

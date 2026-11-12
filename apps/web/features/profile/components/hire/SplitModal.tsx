@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX, RefObject } from "preact";
 import type { Signal } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
+import { useIsMobile } from "@projective/ui/hooks";
 
 /**
  * SplitModal — the two-column dialog frame BOTH assignment modals on a `/[handle]` page share: the
@@ -23,6 +24,9 @@ import { Dialog } from "@projective/ui/feedback";
  *
  * `Dialog` projects into `document.body`, so nothing this frame styles may read a `--pf-*` token
  * (they are scoped to `.pf` and would fall back silently — the `--wlt-*` lesson, Decision #60).
+ *
+ * Below `--bp-md` the frame docks as a bottom sheet (§B.10), its header and footer pinned around the
+ * stacked columns. The `/view` conversion dialogs render in this same frame (Decision #424).
  */
 export interface SplitModalProps {
 	open: Signal<boolean>;
@@ -42,15 +46,19 @@ export interface SplitModalProps {
 	initialFocusRef?: RefObject<HTMLElement>;
 	/** The scope both columns render in — what a refusal-focus query walks. */
 	bodyRef?: RefObject<HTMLDivElement>;
+	/** The right column's accessible name. Defaults to "Preview". */
+	asideLabel?: string;
 	onClose: () => void;
 	class?: string;
 }
 
 export function SplitModal(props: SplitModalProps): JSX.Element {
 	const { open, title, subtitle, left, right, summary, actions, notice, loading, onClose } = props;
+	const phone = useIsMobile();
 	return (
 		<Dialog
 			visible={open}
+			position={phone ? "bottom" : "center"}
 			header={
 				<span class="pf-split__head">
 					<span class="pf-split__title">{title}</span>
@@ -74,7 +82,7 @@ export function SplitModal(props: SplitModalProps): JSX.Element {
 				{notice && <div class="pf-split__notice">{notice}</div>}
 				<div class="pf-split__grid">
 					<div class="pf-split__inputs">{left}</div>
-					<aside class="pf-split__preview" aria-label="Preview">{right}</aside>
+					<aside class="pf-split__preview" aria-label={props.asideLabel ?? "Preview"}>{right}</aside>
 				</div>
 			</div>
 		</Dialog>

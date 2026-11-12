@@ -8,30 +8,34 @@ import { Icon } from "@projective/ui/icons";
 import { LaneFilterChoices, LaneFilterFacet } from "@projective/ui/navigation";
 import type { SchedulePage } from "@projective/types/scheduling";
 import { CalendarExportPopover } from "../components/CalendarExportPopover.tsx";
-import { CalendarImportPopover } from "../components/CalendarImportPopover.tsx";
 import { ConnectCalendarDialog } from "../components/ConnectCalendarDialog.tsx";
+import type { CalendarAddress } from "../core/calendar-address.ts";
 import {
 	calendarPage,
 	calendarPreset,
 	calendarSnapZoom,
 	type CalendarSurface,
-	calendarView,
 	calendarZoom,
+	calendarZoomAt,
 	connectOpen,
 	importedEvents,
 	PRESET_OPTIONS,
 	requestCreate,
 	setCalendarSnapZoom,
 	timelineZoom,
+	timelineZoomAt,
+	viewAt,
 } from "../core/calendar-state.ts";
+import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 
 /**
  * CalendarFooterRig — the middle-nav FOOTER band on every `/calendar` route, in three parts: the
  * display preset on the leading edge, the zoom ruler in the centre, and the surface's actions on the
  * trailing edge. The actions keep the anatomy of `/catalogue/[id]`'s rig: the secondaries are
- * icon-only ghost circles with a portal Tooltip each (Import · Export · Connect), and — below 767px
- * only, where the shell removes the lane whose footer carries it (Decision #378) — New event is the
- * band's one filled commit, last.
+ * icon-only ghost circles with a portal Tooltip each (Export · Connect), and — below 767px only, where
+ * the shell removes the lane whose footer carries it (Decision #378) — New event is the band's one
+ * filled commit, last. There is no `.ics` Import: nothing keeps what it would read yet, so it is not
+ * drawn (Decision #343, ruling C7 (a)).
  *
  * **The preset** is a ghost circle that opens a one-choice menu over {@link calendarPreset}:
  * everything, availability only, hide availability, or booked holidays only. It is a lens over the
@@ -44,7 +48,7 @@ import {
  * hands to the engine, so the marker and the grid's Ctrl+wheel move one value.
  *
  * **The layer is mounted HERE, not in a route body**, because it belongs to whatever triggers it:
- * the connect modal and the import and export popovers open from this rig at every width.
+ * the connect modal and the export popover open from this rig at every width.
  *
  * **The rig contains itself.** `container-type: inline-size` stops this `nowrap` row contributing its
  * min-content to the middle-nav's `minmax(0, 1fr)` content track and makes its tiers real container
@@ -63,20 +67,24 @@ export interface CalendarFooterRigProps {
 	returnTo: string;
 	/** Which calendar the rig frames (default `personal`). */
 	surface?: CalendarSurface;
+	/** What the agenda's URL asks to be shown (Decision #413), so the ruler paints in the first byte. */
+	address?: CalendarAddress;
 }
 
 /**
  * The ruler on its own, so a live zoom — which moves {@link calendarZoom} on every wheel event —
  * re-renders the ruler and not the whole rig with its popover, tooltips and buttons.
  */
-function RigZoom(): JSX.Element {
-	const timeline = calendarView.value === "timeline";
+function RigZoom(props: { address?: CalendarAddress }): JSX.Element {
+	const timeline = viewAt(props.address) === "timeline";
 	return (
 		<CalendarZoom
 			class="cal-rig__zoom"
 			snap={calendarSnapZoom.value}
 			mode={timeline ? "timeline" : "calendar"}
-			value={timeline ? timelineZoomFor(timelineZoom.value) : calendarZoom.value}
+			value={timeline
+				? timelineZoomFor(timelineZoomAt(props.address))
+				: calendarZoomAt(props.address)}
 			onValueChange={(u) => {
 				if (timeline) timelineZoom.value = timelinePxPerDayAt(u);
 				else calendarZoom.value = u;
@@ -91,6 +99,7 @@ const GHOST_CIRCLE = [
 ].join(" ");
 
 export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.Element {
+	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
 	const personal = (props.surface ?? "personal") === "personal";
@@ -156,19 +165,9 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 				</div>
 			</Popover>
 
-			<RigZoom />
+			<RigZoom address={props.address} />
 
 			<div class="cal-rig__actions">
-				{personal
-					? (
-						<CalendarImportPopover
-							timezone={tz}
-							triggerClass={GHOST_CIRCLE}
-							placement="top-end"
-							iconSize="sm"
-						/>
-					)
-					: null}
 				<CalendarExportPopover
 					events={[...(page?.events ?? []), ...importedEvents.value]}
 					timezone={tz}

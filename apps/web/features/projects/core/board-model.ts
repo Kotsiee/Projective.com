@@ -5,10 +5,14 @@ import {
 	type BoardView,
 	cardColumnId,
 	isSelfClaimable,
+	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectParty,
 	TICKET_PRIORITY_LABEL,
 	type TicketPriority,
+	ticketLeavesStage,
 	type TicketStatus,
+	ticketWorkLocked,
+	workColumnLocked,
 } from "../types/projects-types.ts";
 
 /**
@@ -149,6 +153,88 @@ export function viewerCanClaim(
  */
 export function isClaimDrop(card: BoardCard, to: BoardColumn): boolean {
 	return !card.claimed && to.kind === "status" && to.status === "in_progress";
+}
+// #endregion
+
+// #region Drop refusal (which columns a dragged card may not enter)
+/** Who is dragging, as far as a drop's legality depends on it. */
+export interface DropViewer {
+	/** A client-side seat (`BoardAccess.isClient`). */
+	isClient: boolean;
+	/** The project pipeline or a stage's Tasks board. */
+	boardKind: "project" | "stage";
+}
+
+/** The refusal sentences, shared by the drag highlight and the drop handler's toast. */
+export const DROP_REFUSAL = {
+	clientOnlyBoard: "Only the client moves tickets on the project board.",
+	clientOnlyDone: "Only the client can move a ticket to Done.",
+	workLocked: "A freelancer is working this ticket. It can be moved once the work is handed back.",
+	claimedToNew: NEW_LANE_REFUSAL_MESSAGE,
+	assigneeBacklog: "Only the client moves a claimed ticket back to New.",
+	unheld: "Escrow isn't held for this ticket here yet. Fund it before work starts.",
+	claimStarts: "A freelancer starts this ticket by claiming it.",
+	submitReviews: "Work reaches Review when its freelancer submits it.",
+} as const;
+
+/**
+ * Why `to` refuses `card` for this viewer, or `null` when the drop is allowed (Decision #421).
+ *
+ * Mirrors what `projects.move_ticket` and the escrow gate refuse, as far as a card can show it, so the
+ * board marks a column locked while the card is in flight instead of answering a refused write after
+ * the drop. A drop that is allowed but consequential (a claimed ticket crossing stages, a completed
+ * stage re-opened) is not refused here: {@link classifyMove} confirms it. `card.funding` is read as
+ * given, so the caller passes the Dev Context Switcher's forced state through it.
+ */
+export function boardDropRefusal(
+	card: BoardCard,
+	to: BoardColumn,
+	viewer: DropViewer,
+): string | null {
+	const toDone = to.kind === "completed" || (to.kind === "status" && to.status === "completed");
+	if (viewer.boardKind === "project" && !viewer.isClient) return DROP_REFUSAL.clientOnlyBoard;
+	if (toDone && !viewer.isClient) return DROP_REFUSAL.clientOnlyDone;
+	if (viewer.isClient && ticketWorkLocked(card)) return DROP_REFUSAL.workLocked;
+	if (to.kind === "new" && card.stageId !== null && !ticketLeavesStage(card)) {
+		return DROP_REFUSAL.claimedToNew;
+	}
+	if (
+		!viewer.isClient && card.claimed && to.kind === "status" && to.status === "backlog"
+	) {
+		return DROP_REFUSAL.assigneeBacklog;
+	}
+	if (workColumnLocked(card, columnTarget(card, to).status)) return DROP_REFUSAL.unheld;
+	if (card.personal) return null;
+	if (viewer.isClient && isClaimDrop(card, to)) return DROP_REFUSAL.claimStarts;
+	if (!card.claimed && to.kind === "status" && to.status === "in_review") {
+		return DROP_REFUSAL.submitReviews;
+	}
+	return null;
+}
+// #endregion
+
+// #region Move target
+/**
+ * Where a card lands when it is dropped into `col`, as a lifecycle transition rather than a lane.
+ *
+ * Deliberately narrow: it resolves `status` and `stageId` and NOTHING else. The board used to
+ * fabricate `claimed`/`escrowHeld` here — a drag into In Progress asserted that a freelancer had
+ * claimed the ticket and that escrow was held for it, which is a financial claim no gesture on this
+ * surface is entitled to make. The server's returned card is the authority on both.
+ *
+ * The New bookend is the stage-less backlog, so a move there sends `stageId: null`, which
+ * `projects.move_ticket` reads as "take it out of its stage" (Decision #421).
+ */
+export function columnTarget(
+	card: BoardCard,
+	col: BoardColumn,
+): { status: TicketStatus; stageId: string | null } {
+	if (col.kind === "new") return { status: "backlog", stageId: null };
+	if (col.kind === "completed") return { status: "completed", stageId: card.stageId };
+	if (col.kind === "stage") {
+		return { status: card.claimed ? "in_progress" : "todo", stageId: col.stageId };
+	}
+	return { status: col.status as TicketStatus, stageId: card.stageId };
 }
 // #endregion
 

@@ -1,11 +1,10 @@
 import type { JSX } from "preact";
-import { useEffect, useMemo, useRef } from "preact/hooks";
+import { useMemo, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import type { UserContext } from "@projective/types/auth";
 import type { SettingsAttentionFacts, SettingsSectionKey } from "@projective/types/settings";
 import { useEffectiveContext } from "@features/shell/core/effective-context.ts";
-import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import {
 	searchSettings,
 	sectionEntries,
@@ -47,20 +46,7 @@ export default function SettingsHome(props: SettingsHomeProps): JSX.Element {
 	const ctx = effective.value.context;
 	const attention = useAttention(props.facts, ctx.locale);
 
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent) => {
-			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
-			if (!shortcutOn("focus-search") || document.querySelector(".ui-dialog")) return;
-			const input = searchRef.current?.querySelector<HTMLInputElement>("input");
-			if (!input) return;
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			input.focus();
-			input.select();
-		};
-		document.addEventListener("keydown", onKey, true);
-		return () => document.removeEventListener("keydown", onKey, true);
-	}, []);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	const searching = query.value.trim().length > 0;
 	const hits = useMemo(() => searchSettings(query.value, ctx), [query.value, ctx]);

@@ -16,7 +16,13 @@
  * of the test runner does not matter.
  */
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES, SLUGGED_ENTITIES } from "./slug.ts";
+import {
+	SLUG_ALPHABET,
+	SLUG_BODY_LENGTH,
+	SLUG_PREFIXES,
+	SLUGGED_ENTITIES,
+	type SluggedEntity,
+} from "./slug.ts";
 
 const REPO = new URL("../../../", import.meta.url);
 const read = (rel: string) => Deno.readTextFileSync(new URL(rel, REPO));
@@ -31,84 +37,125 @@ const TRIGGER_FILES = [
 	"supabase/migrations/00001898_triggers_editorial_community.sql",
 ];
 
-/** Every table that carries a slug, with the migration and prefix that own it. */
-const SLUGGED_TABLES = [
+/** The column an address lives in, and the guard that fills and pins it. */
+type AddressColumn = "slug" | "ref";
+
+/**
+ * Which `security` guard owns each address column. `fn_slug_guard` keeps a supplied slug;
+ * `fn_ref_guard` always mints, so no caller chooses a conversation's address (Decision #339 N1).
+ */
+const GUARD_OF: Record<AddressColumn, string> = {
+	slug: "fn_slug_guard",
+	ref: "fn_ref_guard",
+};
+
+/** One table addressed by a prefixed slug. */
+interface SluggedTable {
+	entity: SluggedEntity;
+	table: string;
+	column: AddressColumn;
+	constraint: string;
+	unique: string;
+	file: string;
+}
+
+/** Every table that carries a slug, with the migration, column and prefix that own it. */
+const SLUGGED_TABLES: readonly SluggedTable[] = [
 	{
-		entity: "project" as const,
+		entity: "project",
 		table: "projects.projects",
+		column: "slug",
 		constraint: "ck_projects_slug_shape",
 		unique: "projects_slug_key",
 		file: "supabase/migrations/00000015_tables_projects.sql",
 	},
 	{
-		entity: "stage" as const,
+		entity: "stage",
 		table: "projects.project_stages",
+		column: "slug",
 		constraint: "ck_project_stages_slug_shape",
 		unique: "project_stages_slug_key",
 		file: "supabase/migrations/00000015_tables_projects.sql",
 	},
 	{
-		entity: "service" as const,
+		entity: "service",
 		table: "marketplace.service_blueprints",
+		column: "slug",
 		constraint: "ck_service_blueprints_slug_shape",
 		unique: "service_blueprints_slug_key",
 		file: "supabase/migrations/00000014_tables_marketplace.sql",
 	},
 	{
-		entity: "session" as const,
+		entity: "session",
 		table: "projects.session_events",
+		column: "slug",
 		constraint: "ck_session_events_slug_shape",
 		unique: "session_events_slug_key",
 		file: "supabase/migrations/00000015_tables_projects.sql",
 	},
 	{
-		entity: "ticket" as const,
+		entity: "ticket",
 		table: "projects.tickets",
+		column: "slug",
 		constraint: "ck_tickets_slug_shape",
 		unique: "tickets_slug_key",
 		file: "supabase/migrations/00000015_tables_projects.sql",
 	},
 	{
-		entity: "product" as const,
+		entity: "product",
 		table: "catalogue.products",
+		column: "slug",
 		constraint: "ck_products_slug_shape",
 		unique: "products_slug_key",
 		file: "supabase/migrations/00000023_tables_catalogue.sql",
 	},
 	{
-		entity: "article" as const,
+		entity: "article",
 		table: "catalogue.articles",
+		column: "slug",
 		constraint: "ck_articles_slug_shape",
 		unique: "articles_slug_key",
 		file: "supabase/migrations/00000023_tables_catalogue.sql",
 	},
 	{
-		entity: "idea" as const,
+		entity: "idea",
 		table: "community.feedback_ideas",
+		column: "slug",
 		constraint: "ck_feedback_ideas_slug_shape",
 		unique: "feedback_ideas_slug_key",
 		file: "supabase/migrations/00000025_tables_community.sql",
 	},
 	{
-		entity: "preset" as const,
+		entity: "preset",
 		table: "scheduling.availability_presets",
+		column: "slug",
 		constraint: "ck_availability_presets_slug_shape",
 		unique: "availability_presets_slug_key",
 		file: "supabase/migrations/00000022_tables_scheduling.sql",
 	},
 	{
-		entity: "room" as const,
+		entity: "room",
 		table: "scheduling.rooms",
+		column: "slug",
 		constraint: "ck_rooms_slug_shape",
 		unique: "rooms_slug_key",
 		file: "supabase/migrations/00000022_tables_scheduling.sql",
 	},
 	{
-		entity: "routine" as const,
+		entity: "routine",
 		table: "scheduling.routines",
+		column: "slug",
 		constraint: "ck_routines_slug_shape",
 		unique: "routines_slug_key",
 		file: "supabase/migrations/00000022_tables_scheduling.sql",
+	},
+	{
+		entity: "thread",
+		table: "comms.dm_threads",
+		column: "ref",
+		constraint: "ck_dm_threads_ref_shape",
+		unique: "dm_threads_ref_key",
+		file: "supabase/migrations/00000016_tables_comms.sql",
 	},
 ];
 
@@ -135,17 +182,19 @@ Deno.test("security.mint_slug produces the SAME number of symbols", () => {
 	assertStringIncludes(sql, `% ${SLUG_ALPHABET.length}) + 1`);
 });
 
-Deno.test("neither SQL helper is callable over PostgREST", () => {
+Deno.test("no SQL slug helper is callable over PostgREST", () => {
 	// `security` is an exposed schema and CREATE FUNCTION grants EXECUTE to PUBLIC by default, so the
 	// revoke is what keeps these off the public API. Nothing legitimate breaks by revoking BECAUSE the
 	// guard is a definer (below) — not, as this comment used to claim, because a trigger runs as the
 	// table owner. It does not.
 	const sql = read(FUNCTIONS_SQL);
 	assertStringIncludes(sql, "REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;");
-	assertStringIncludes(sql, "REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;");
+	for (const guard of Object.values(GUARD_OF)) {
+		assertStringIncludes(sql, `REVOKE ALL ON FUNCTION security.${guard}() FROM PUBLIC;`);
+	}
 });
 
-Deno.test("the slug guard is SECURITY DEFINER, or every insert into a slugged table fails", () => {
+Deno.test("every slug guard is SECURITY DEFINER, or every insert into a slugged table fails", () => {
 	// THE REGRESSION THIS EXISTS FOR. A trigger function runs as the INVOKING role: Postgres checks
 	// EXECUTE on the trigger function once, at CREATE TRIGGER time, but a call the body then makes to
 	// another function is checked at runtime against whoever fired it. So while this guard was
@@ -157,15 +206,30 @@ Deno.test("the slug guard is SECURITY DEFINER, or every insert into a slugged ta
 	// Asserted over the function's own header rather than the file, because `SECURITY DEFINER` appears
 	// throughout these migrations and a file-wide match would pass while this one function lost it.
 	const sql = read(FUNCTIONS_SQL);
-	const open = sql.indexOf("CREATE OR REPLACE FUNCTION security.fn_slug_guard()");
-	assert(open !== -1, "security.fn_slug_guard must be defined in " + FUNCTIONS_SQL);
-	const header = sql.slice(open, sql.indexOf("AS $$", open));
-	assertStringIncludes(
-		header,
-		"SECURITY DEFINER",
-		"security.fn_slug_guard() must be SECURITY DEFINER. As the invoker it cannot call " +
-			"security.mint_slug, which is revoked from PUBLIC, so no client role could insert a row " +
-			"into any slugged table.",
+	for (const guard of Object.values(GUARD_OF)) {
+		const open = sql.indexOf(`CREATE OR REPLACE FUNCTION security.${guard}()`);
+		assert(open !== -1, `security.${guard} must be defined in ${FUNCTIONS_SQL}`);
+		const header = sql.slice(open, sql.indexOf("AS $$", open));
+		assertStringIncludes(
+			header,
+			"SECURITY DEFINER",
+			`security.${guard}() must be SECURITY DEFINER. As the invoker it cannot call ` +
+				"security.mint_slug, which is revoked from PUBLIC, so no client role could insert a row " +
+				"into any slugged table.",
+		);
+	}
+});
+
+Deno.test("the ref guard mints on EVERY insert, so no caller chooses a thread's address", () => {
+	// fn_slug_guard keeps a supplied slug; a conversation's address must not be choosable at all
+	// (Decision #339 ruling N1), so its guard has no "only when NULL" branch.
+	const sql = read(FUNCTIONS_SQL);
+	const open = sql.indexOf("CREATE OR REPLACE FUNCTION security.fn_ref_guard()");
+	const body = sql.slice(open, sql.indexOf("$$;", open));
+	assertStringIncludes(body, "NEW.ref := security.mint_slug(TG_ARGV[0]);");
+	assert(
+		!body.includes("NEW.ref IS NULL"),
+		"fn_ref_guard must replace a supplied ref, not keep it",
 	);
 });
 
@@ -188,10 +252,20 @@ Deno.test("the minter is never granted to a client role", () => {
 // #endregion
 
 // #region The columns
+Deno.test("every slugged entity has exactly one table here", () => {
+	assertEquals(
+		SLUGGED_TABLES.map((t) => t.entity).sort(),
+		[...SLUGGED_ENTITIES].sort(),
+		"a prefix in SLUG_PREFIXES with no table row below is an address no CHECK or guard is pinned to",
+	);
+});
+
 Deno.test("every slugged table's CHECK is exactly the pattern this module produces", () => {
 	for (const t of SLUGGED_TABLES) {
 		const sql = read(t.file);
-		const expected = `CHECK (slug ~ '^${SLUG_PREFIXES[t.entity]}-[${SLUG_ALPHABET}]{${SLUG_BODY_LENGTH}}$')`;
+		const expected = `CHECK (${t.column} ~ '^${
+			SLUG_PREFIXES[t.entity]
+		}-[${SLUG_ALPHABET}]{${SLUG_BODY_LENGTH}}$')`;
 		assertStringIncludes(
 			sql,
 			expected,
@@ -206,14 +280,18 @@ Deno.test("every slugged column is NOT NULL with no DEFAULT, and UNIQUE", () => 
 		const sql = read(t.file);
 		// NO DEFAULT is the load-bearing half: the trigger fills the column BEFORE the NOT NULL is
 		// checked, and a DEFAULT would have to be a second, inline implementation of the minter.
-		assertStringIncludes(sql, "slug text NOT NULL,", `${t.table}: slug must be NOT NULL`);
+		assertStringIncludes(
+			sql,
+			`${t.column} text NOT NULL,`,
+			`${t.table}: ${t.column} must be NOT NULL`,
+		);
 		assert(
-			!/slug text NOT NULL DEFAULT/.test(sql),
-			`${t.table}: a slug DEFAULT would be a second minter to keep in step with the first`,
+			!sql.includes(`${t.column} text NOT NULL DEFAULT`),
+			`${t.table}: a ${t.column} DEFAULT would be a second minter to keep in step with the first`,
 		);
 		assertStringIncludes(
 			sql,
-			`CONSTRAINT ${t.unique} UNIQUE (slug)`,
+			`CONSTRAINT ${t.unique} UNIQUE (${t.column})`,
 			`${t.table}: the unique index is what the insert retry detects a collision from`,
 		);
 	}
@@ -230,12 +308,12 @@ Deno.test("every slugged table has a fill-and-pin trigger, with the RIGHT prefix
 	}
 	// The prefix is the one thing a copy-paste gets wrong silently: a stage table given `'prj'` mints
 	// perfectly valid addresses that its own CHECK then refuses — or worse, that resolve against
-	// another table's namespace.
-	for (const entity of SLUGGED_ENTITIES) {
-		assertStringIncludes(sql, `security.fn_slug_guard('${SLUG_PREFIXES[entity]}')`);
+	// another table's namespace. The guard must also be the one its column takes.
+	for (const t of SLUGGED_TABLES) {
+		assertStringIncludes(sql, `security.${GUARD_OF[t.column]}('${SLUG_PREFIXES[t.entity]}')`);
 	}
 	assertEquals(
-		[...sql.matchAll(/security\.fn_slug_guard\('([a-z]{3})'\)/g)].map((m) => m[1]).sort(),
+		[...sql.matchAll(/security\.fn_(?:slug|ref)_guard\('([a-z]{3})'\)/g)].map((m) => m[1]).sort(),
 		SLUGGED_ENTITIES.map((e) => SLUG_PREFIXES[e]).sort(),
 		"the trigger files must declare exactly one guard per slugged entity, with no prefix repeated",
 	);

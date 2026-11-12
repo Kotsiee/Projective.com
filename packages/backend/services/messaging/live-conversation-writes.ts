@@ -11,7 +11,7 @@ import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/l
 import { UUID_RE } from "../projects/live-support.ts";
 import { commsClient, orgClient } from "./live-queries.ts";
 import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
-import { insertDmMessage } from "./live-writes.ts";
+import { insertDmMessage, openedThreadId } from "./live-writes.ts";
 
 /**
  * live-conversation-writes — the RLS-scoped Postgres WRITE path for STARTING a conversation and for
@@ -96,8 +96,7 @@ async function resolveThreadId(actor: Actor, conversationId: string): Promise<st
 	if (thread.error) {
 		throw new Error(`comms.get_or_create_dm_thread failed: ${thread.error.message}`);
 	}
-	const id = thread.data as unknown;
-	return typeof id === "string" && UUID_RE.test(id) ? id : null;
+	return openedThreadId(thread.data);
 }
 
 /** The RPCs raise two sentences of their own; everything else goes through the shared mapper. */
@@ -173,8 +172,8 @@ export async function createLiveConversation(
 			res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
 		}
 		if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
-		const id = res.data as unknown;
-		if (typeof id !== "string" || !UUID_RE.test(id)) {
+		const id = openedThreadId(res.data);
+		if (!id) {
 			return { refusal: refusalFrom("get_or_create_dm_thread returned no id", "contactIds") };
 		}
 		threadId = id;

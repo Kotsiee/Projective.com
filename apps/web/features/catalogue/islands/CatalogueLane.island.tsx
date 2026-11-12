@@ -14,12 +14,12 @@ import {
 	LaneFooterActions,
 	LaneHead,
 	LaneList,
-	LaneSearch,
 	LaneSection,
 	LaneSections,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { CookieKeys, readStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
@@ -302,7 +302,7 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 			<div class="cat-lane__full">
 				<LaneHead>
 					<LaneBar>
-						<LaneSearch
+						<LaneSearchField
 							value={onConsole ? (consoleReady.value ? searchDraft.value : state.search) : draft.value}
 							placeholder="Search listings"
 							label="Search listings"

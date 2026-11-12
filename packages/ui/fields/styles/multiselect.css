@@ -38,8 +38,10 @@
 	cursor: inherit;
 	text-align: start;
 }
-.ui-multiselect__trigger:focus {
+.ui-multiselect__trigger:focus,
+.ui-multiselect__trigger:focus-visible {
 	outline: none;
+	box-shadow: none;
 }
 .ui-multiselect__value {
 	display: flex;

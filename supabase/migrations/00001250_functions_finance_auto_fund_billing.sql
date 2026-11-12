@@ -124,7 +124,7 @@ DECLARE
     v_queued bigint;
 BEGIN
     SELECT t.id, t.title, t.current_stage_id, t.project_id,
-           COALESCE(t.unit_price_cents, ps.unit_price_cents) AS amount,
+           projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) AS amount,
            p.client_business_id, p.owner_user_id, pg_catalog.upper(COALESCE(p.currency, 'USD')) AS currency,
            p.format::text AS format, p.structure_variation::text AS structure_variation,
            ps.name AS stage_name
@@ -171,7 +171,8 @@ BEGIN
         SELECT * INTO v_wallet FROM finance.wallets w
          WHERE w.owner_type = 'business' AND w.owner_id = v.client_business_id AND w.currency = v.currency;
         IF FOUND THEN
-            SELECT COALESCE(SUM(COALESCE(t.unit_price_cents, ps.unit_price_cents)), 0) INTO v_queued
+            SELECT COALESCE(SUM(projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps)), 0)
+              INTO v_queued
               FROM projects.tickets t
               JOIN projects.projects p ON p.id = t.project_id
               LEFT JOIN projects.project_stages ps ON ps.id = t.current_stage_id
@@ -232,7 +233,8 @@ BEGIN
     v_threshold := finance.fn_business_threshold(w.id);
 
     FOR t IN
-        SELECT tk.id, tk.title, tk.slug, COALESCE(tk.unit_price_cents, ps.unit_price_cents) AS amount,
+        SELECT tk.id, tk.title, tk.slug,
+               projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) AS amount,
                p.id AS project_id, p.slug AS project_slug, p.owner_user_id
           FROM projects.tickets tk
           JOIN projects.projects p ON p.id = tk.project_id

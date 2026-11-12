@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { FILE_KIND_OPTIONS, FILE_SORT_OPTIONS } from "../core/file-model.ts";
 import {
 	commitExplorer,
@@ -34,6 +35,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function ExplorerToolbar({ noun, placement = "body" }: ExplorerToolbarProps): JSX.Element {
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 	useEffect(() => () => {
 		if (timer.current !== null) clearTimeout(timer.current);
 	}, []);
@@ -49,7 +52,7 @@ export function ExplorerToolbar({ noun, placement = "body" }: ExplorerToolbarPro
 
 	return (
 		<div class={placement === "band" ? "fx-toolbar fx-toolbar--band" : "fx-toolbar"}>
-			<div class="fx-toolbar__search">
+			<div class="fx-toolbar__search" ref={searchRef}>
 				<InputText
 					type="search"
 					variant="bare"

@@ -9,8 +9,7 @@ import {
 	SEARCH_SCOPES,
 	type SearchScope,
 } from "@features/marketing/core/landing-data.ts";
-import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import HeroWeave from "../islands/HeroWeave.island.tsx";
 import SearchSuggest from "../islands/SearchSuggest.island.tsx";
 import { ScopeSelect } from "./ScopeSelect.tsx";
@@ -52,11 +51,7 @@ export function ResultsHeader(
 	const scope = useSignal<SearchScope>(scopeOf(category));
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({
-		scopeRef: formRef,
-		matches: isFocusSearchShortcut,
-		shortcut: "focus-search",
-	});
+	useSearchTarget({ role: "page", scopeRef: formRef });
 
 	useEffect(() => {
 		draft.value = query;

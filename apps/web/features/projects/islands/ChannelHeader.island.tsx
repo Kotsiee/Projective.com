@@ -24,6 +24,7 @@ import {
 } from "../components/detail-glyphs.tsx";
 import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx";
 import { KebabIcon, StarIcon, TicketIcon } from "../components/glyphs.tsx";
+import { ChatFindButton } from "../components/ChatFindButton.tsx";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { openPopout } from "@web/features/messaging/core/popout-state.ts";
 import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
@@ -321,6 +322,8 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				>
 					{cloneElement(StarIcon)}
 				</button>
+
+				{activeTab === "chat" && <ChatFindButton />}
 
 				<Tooltip content="Pop out chat" placement="bottom">
 					<button

@@ -83,6 +83,7 @@ function seam(over: Partial<DevSeamState> = {}): DevSeamState {
 		pendingInvites: false,
 		pendingRequests: false,
 		memberClient: "auto",
+		engagementOrigin: "auto",
 		messagingRole: "client",
 		micPermission: "auto",
 		layoutDirection: "auto",

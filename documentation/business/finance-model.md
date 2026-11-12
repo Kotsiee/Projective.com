@@ -379,7 +379,7 @@ the **concrete gate**. Schema: `finance.verification_cases` + the `org.freelance
 | **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. **Not built yet** (Decision #337, ruling M4): publishing a listing, taking a session or cohort-seat booking, and enabling paid calls — a team's every shareholder; a team invite shows the invitee's readiness on the roster, and the refusal stays at accept. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
 | **Business** (verified by a holder of its billing right — the owner, or an admin they named) | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Spending the pooled Business Wallet — every door through `finance.fn_assert_business_spend` (§14) — paying an invoice (`finance.pay_invoice`, Decision #247 (h)) and withdrawing (`finance.begin_payout`). Never adding money: top-ups, deposits and transfers in need no KYB (an archived Business takes none, Decision #248 (k)). |
-| **Enterprise**                             | KYB, as for a Business (`org.enterprises.verification_level = 'verified'`).                       | Paying from its wallet at checkout (`finance.place_wallet_order`). **Not built yet** (FDD X11, K4): the spend gate, transfers out (`finance.transfer_funds`) and withdrawals (`finance.begin_payout`) check only a business's KYB, never an enterprise's. |
+| **Enterprise**                             | KYB, as for a Business (`org.enterprises.verification_level = 'verified'`).                       | Paying from its wallet at checkout (`finance.place_wallet_order`), the spend gate (`finance.fn_assert_business_spend`), transfers out (`finance.transfer_funds`) and withdrawals (`finance.begin_payout`) — every door asks one predicate, `finance.fn_kyb_missing`, for a business and an enterprise alike (FINANCE_AUDIT K4). Never adding money. |
 
 - **Why the freelancer gate is at _onboarding_, not payout-time:** it guarantees no funds ever land
   in a **permanent-escrow / unpayable** state — a freelancer cannot accept work they can't be paid
@@ -523,8 +523,10 @@ Governs shared wallets (Business / Team / Enterprise).
   `add_funds`, spend → `spend`, manage finances → `distribute`, withdraw → `withdraw`, approve spend →
   `approve_spend`, the owner → `manage_members` + `manage_billing`, and on a business a named
   admin's owner-granted `manage_billing` → `manage_billing`, Decision #238), rewritten on every membership
-  change; the per-kind `org.business_permission` / `org.team_permission` enums are retired. Deciding an
-  over-limit spend needs `approve_spend`, not `manage_members` (which also carries `withdraw`).
+  change and on every change of owner; the per-kind `org.business_permission` / `org.team_permission` enums are retired. Deciding an
+  over-limit spend needs `approve_spend`, not `manage_members` (which also carries `withdraw`). Moving
+  your own money into a shared wallet (`finance.transfer_funds`) needs `add_funds`; belonging to it is
+  not enough (FINANCE_AUDIT V4).
 - **Spending caps** (`finance.spending_limits`, existing): per-member `cap_cents` per `weekly` /
   `monthly` / `total` period and an optional per-transaction ceiling; `spent_cents` tracked,
   `fn_check_spending_limit` enforced in the transaction that moves the money. A cap row, and a spend
@@ -558,7 +560,8 @@ Governs shared wallets (Business / Team / Enterprise).
   filed for, and is **spent exactly once**: the charge for that same thing, at or under that
   amount, by the member who asked (any spender for a ticket's automatic hold), redeems it in the
   same transaction as the money movement. A charge above the approved amount needs a new approval. A request lives
-  **7 days** from filing, deciding and spending included; there is one open request per thing.
+  **7 days** from filing, deciding and spending included; there is one open request per thing. An
+  hourly sweep expires every request still waiting past its 7 days (`finance.fn_expire_spend_approvals`).
   The member who asked may **withdraw** it while it waits (`finance.withdraw_spend_approval`,
   Decision #246): it becomes `withdrawn` — never decided, never spent, nothing moves — and the thing
   it named is free for a new request.
@@ -788,6 +791,20 @@ scores 20 · dispute-free rate 15 · $W_i$ reliability 10 · tenure 5, minus act
 `security.penalties` severity. **Never raw earnings and never raw proposal counts** — ranking by
 spend or by volume is the pay-to-win trap this ladder exists to avoid.
 
+**Courtesy-call no-shows** (Decision #343, ruling C6 D7; the weight is Decision #419). A
+presence-verified no-show on a free call is one `security.penalties` row against the absent person.
+Its dials are platform parameters:
+
+| Dial                            | Value    | Meaning                                                         |
+| :------------------------------ | :------- | :-------------------------------------------------------------- |
+| `call_no_show_penalty_points`   | 2 points | Taken off the score while the penalty is active                 |
+| `call_no_show_penalty_days`     | 90 days  | How long it stays active before it lapses                       |
+| `call_no_show_pair_window_days` | 30 days  | At most one penalty per marker and marked person in this window |
+
+Low on purpose. One mark moves the score by two points, so it costs a rung only to a seller already
+within two points of that rung's floor, and the 30-day window holds any one counterparty to about
+six points a quarter. A paid call's no-show is answered by money (§4), never by Standing.
+
 **Delivery efficiency** (Decision #338, ruling P4) — **Not built yet**. The Reliability Index gains
 the freelancer's measured efficiency: estimated against actual time, deadlines met against those the
 client asked for, and the slowdown when they hold several projects at once. Below a minimum history
@@ -805,7 +822,8 @@ contract** — an Enterprise, Agency or Business commitment — recorded as an e
 time-boxed `finance.negotiated_rates` row with its `minimum_volume_cents` commitment and
 `contract_ref`. It is agreed by contract, never bought with a plan: `/pricing` says "volume terms on
 request", never that a plan lowers the fee. `finance.fn_effective_platform_fee_bp` resolves it;
-absent a contract it falls through to `security.platform_params.platform_fee_bp`.
+absent a contract it falls through to `security.platform_params.platform_fee_bp`, and with neither it
+refuses (`platform_fee_not_configured`) rather than charge no fee (FINANCE_AUDIT S4).
 
 **What an Agency's contract covers** (Decision #252, ruled 2026-10-31). An escrow fee is always the
 payer's rate (below), so an Agency — a team, and so a payee — has no escrow fee of its own. Its

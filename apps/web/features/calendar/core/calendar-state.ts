@@ -30,6 +30,12 @@ import {
 	contextPanelDocked,
 	contextPanelInflow,
 } from "@web/features/shell/core/context-panel-state.ts";
+import {
+	type CalendarAddress,
+	dateFocus,
+	hiddenClassesFor,
+	timelineScaleOf,
+} from "./calendar-address.ts";
 import { withEventParam, withInvitationsFilter, withRoutineParam } from "./event-deep-link.ts";
 import { eventStack, type EventTab } from "./event-view.ts";
 import type { EntryOrganisation } from "./routine-view.ts";
@@ -125,28 +131,30 @@ export function setCalendarSnapZoom(on: boolean): void {
  * `localStorage` does not exist and where module state is shared across every request in the
  * process — seeding a shared signal from one reader's storage would hand it to the next.
  */
-export function restoreCalendarView(): void {
+export function restoreCalendarView(address: CalendarAddress = {}): void {
 	if (typeof localStorage === "undefined") return;
 	try {
+		calendarSnapZoom.value = localStorage.getItem(LocalKeys.CALENDAR_SNAP_ZOOM) !== "false";
+		const timeline = Number(localStorage.getItem(LocalKeys.CALENDAR_TIMELINE_ZOOM));
+		if (!address.zoom && timeline > 0) timelineZoom.value = timeline;
+		// The address names the view (Decision #413): the stored one is only the reader's default.
+		if (address.view) return;
 		const stored = localStorage.getItem(LocalKeys.CALENDAR_VIEW);
 		const zoom = localStorage.getItem(LocalKeys.CALENDAR_ZOOM);
-		const timeline = Number(localStorage.getItem(LocalKeys.CALENDAR_TIMELINE_ZOOM));
 		const u = zoom === null ? NaN : Number(zoom);
 		if (Number.isFinite(u) && u >= 0 && u <= 1) {
 			calendarZoom.value = u;
 		} else if (stored === "day" || stored === "week" || stored === "month") {
-			calendarZoom.value = calendarZoomFor({
-				view: stored,
-				pph: DEFAULT_PPH,
-				weeks: MONTH_WEEKS_DEFAULT,
-			});
+			calendarZoom.value = zoomForView(stored);
 		}
-		if (timeline > 0) timelineZoom.value = timeline;
-		calendarSnapZoom.value = localStorage.getItem(LocalKeys.CALENDAR_SNAP_ZOOM) !== "false";
 		calendarView.value = stored === "timeline"
 			? "timeline"
 			: calendarStateAt(calendarZoom.value).view;
 	} catch { /* storage unavailable — the default view is a fine answer */ }
+}
+
+function zoomForView(view: "day" | "week" | "month"): number {
+	return calendarZoomFor({ view, pph: DEFAULT_PPH, weeks: MONTH_WEEKS_DEFAULT });
 }
 
 /** Remember the current view for the next visit. Never throws: a full quota is not an error here. */
@@ -203,8 +211,13 @@ export const calendarPresent = signal(0);
  * sides), and the event modal measures "Upcoming in 3 hours" against the same clock the server used
  * to decide what is open. `Date.now()` is reached only when there is no page at all.
  */
-export function focusedAt(page: SchedulePage | null | undefined): number {
-	return calendarFocus.value || page?.now || Date.now();
+export function focusedAt(
+	page: SchedulePage | null | undefined,
+	address?: CalendarAddress,
+): number {
+	if (calendarFocus.value) return calendarFocus.value;
+	if (ON_SERVER && address?.date && page) return dateFocus(address.date, page.timezone);
+	return page?.now || Date.now();
 }
 
 /**
@@ -242,6 +255,66 @@ export function shiftedFocus(
 	if (view === "day") return calendarTime.addZonedDays(from, delta, tz);
 	if (view === "week" || view === "timeline") return calendarTime.addZonedDays(from, delta * 7, tz);
 	return calendarTime.addZonedMonths(from, delta, tz);
+}
+// #endregion
+
+// #region The address
+/**
+ * True while rendering on the server. There the address is read straight from each region's props,
+ * because module state is shared by every request the process renders and must never carry one
+ * reader's view into the next; on the client {@link installCalendarAddress} has already put it into
+ * the shared signals, so the two renders agree.
+ */
+const ON_SERVER = typeof document === "undefined";
+
+/** The address this page load installed, so a region hydrating after the first does not repeat it. */
+let installedAddress: string | null = null;
+
+/**
+ * Put what the address names (Decision #413) into the shared view state. Called on the client by the
+ * FIRST region to render, during that render and before anything reads the state — so every region,
+ * the engine included, mounts on the addressed view, day, zoom and kind, and the engine's own zoom
+ * sync has nothing to correct. A no-op on the server and for the regions after the first.
+ */
+export function installCalendarAddress(address: CalendarAddress, tz: string | null): void {
+	if (ON_SERVER) return;
+	const key = JSON.stringify(address);
+	if (installedAddress === key) return;
+	installedAddress = key;
+	if (address.view) {
+		calendarView.value = address.view;
+		if (address.view !== "timeline") calendarZoom.value = zoomForView(address.view);
+	}
+	if (address.zoom) timelineZoom.value = timelineScaleOf(address.zoom);
+	if (address.date && tz) calendarFocus.value = dateFocus(address.date, tz);
+	hiddenClasses.value = hiddenClassesFor(address.kind);
+}
+
+/** Forget the installed address when the surface goes, so its next mount installs its own. */
+export function releaseCalendarAddress(): void {
+	installedAddress = null;
+}
+
+/** The view a region draws: the address's while rendering on the server, else the shared state. */
+export function viewAt(address?: CalendarAddress): CalendarViewMode {
+	return ON_SERVER && address?.view ? address.view : calendarView.value;
+}
+
+/** The calendar axis position, read as {@link viewAt} reads the view. */
+export function calendarZoomAt(address?: CalendarAddress): number {
+	return ON_SERVER && address?.view && address.view !== "timeline"
+		? zoomForView(address.view)
+		: calendarZoom.value;
+}
+
+/** The Timeline scale (px per day), read as {@link viewAt} reads the view. */
+export function timelineZoomAt(address?: CalendarAddress): number {
+	return ON_SERVER && address?.zoom ? timelineScaleOf(address.zoom) : timelineZoom.value;
+}
+
+/** The Event · Reminder deny list, read as {@link viewAt} reads the view. */
+export function hiddenClassesAt(address?: CalendarAddress): readonly EntryClass[] {
+	return ON_SERVER && address?.kind ? hiddenClassesFor(address.kind) : hiddenClasses.value;
 }
 // #endregion
 
@@ -344,9 +417,12 @@ export function showOnlyClass(entry: EntryClass, present: readonly EntryClass[])
 	hiddenClasses.value = alreadySolo ? [] : others;
 }
 
-/** The one class currently shown alone, or `null` when both are. */
-export function soleVisibleClass(present: readonly EntryClass[]): EntryClass | null {
-	const visible = present.filter((c) => !hiddenClasses.value.includes(c));
+/** The one class currently shown alone, or `null` when both are. `hidden` as {@link visibleEvents}. */
+export function soleVisibleClass(
+	present: readonly EntryClass[],
+	hidden: readonly EntryClass[] = hiddenClasses.value,
+): EntryClass | null {
+	const visible = present.filter((c) => !hidden.includes(c));
 	return visible.length === 1 ? visible[0] : null;
 }
 
@@ -425,15 +501,15 @@ export const PRESET_OPTIONS: readonly { value: CalendarPreset; label: string }[]
 	{ value: "holidays", label: "Booked holidays only" },
 ];
 
-/** How many filter facets are narrowing — the Filter trigger's count. */
-export function activeFilterCount(): number {
-	return Number(hiddenSources.value.length > 0) + Number(hiddenClasses.value.length > 0) +
+/** How many filter facets are narrowing — the Filter trigger's count, `?kind=` included (#413). */
+export function activeFilterCount(address?: CalendarAddress): number {
+	return Number(hiddenSources.value.length > 0) + Number(hiddenClassesAt(address).length > 0) +
 		Number(shownOwners.value.length > 0) + Number(dateRange.value !== null);
 }
 
 /** Whether any narrowing is engaged — drives the filter control's engaged state. */
-export function filtersEngaged(): boolean {
-	return activeFilterCount() > 0;
+export function filtersEngaged(address?: CalendarAddress): boolean {
+	return activeFilterCount(address) > 0;
 }
 
 /** Clear every filter facet. The search and the display preset are their own controls and stay. */
@@ -456,18 +532,19 @@ export function resetFilters(): void {
  * vanish for a reason the reader cannot see or undo.
  *
  * A declined invitation leaves every view here, and stays on the page: its link still opens it in the
- * inspector, where the answer can be changed. `invitations` is for the lane's first byte, which has to
- * be drawn from the address before the signal can have been seeded.
+ * inspector, where the answer can be changed. `invitations` and `classes` are for the first byte,
+ * which has to be drawn from the address before the signals can have been seeded
+ * ({@link hiddenClassesAt}).
  */
 export function visibleEvents(
 	events: readonly CalendarEvent[],
 	invitations: boolean = invitationsOnly.value,
+	classes: readonly EntryClass[] = hiddenClasses.value,
 ): CalendarEvent[] {
 	const asked = invitations
 		? new Set(pendingInvitations(events, calendarPage.peek()?.now ?? Date.now()).map((e) => e.id))
 		: null;
 	const q = calendarQuery.value.trim().toLowerCase();
-	const classes = hiddenClasses.value;
 	const sources = hiddenSources.value;
 	const owners = shownOwners.value;
 	const range = dateRange.value;
@@ -788,11 +865,11 @@ export function requestCreate(): void {
 /**
  * Entries read out of an imported `.ics`, `.ical` or `.vcs`, held CLIENT-SIDE only.
  *
- * They are not posted anywhere: persisting an import needs the `scheduling.*` write path, which is
- * still behind the backend gate. Keeping them in a signal beside the fetched page means the grid can
- * draw them immediately and honestly — they carry the `ics` source mark, so nothing on screen claims
- * they are synced with anything. A second import of the same file replaces the first
- * (`mergeImported`).
+ * Nothing posts them: the event door (`/api/scheduling/events`) keeps an entry the host composes,
+ * not a file's worth, so no calendar draws the Import control that fills this (Decision #343, ruling
+ * C7 (a)) and it stays empty. The lane, the panel and the bands still read it beside the fetched page,
+ * so a door that keeps an import has one signal to fill. A second import of the same file replaces
+ * the first (`mergeImported`).
  */
 export const importedEvents = signal<readonly CalendarEvent[]>([]);
 // #endregion

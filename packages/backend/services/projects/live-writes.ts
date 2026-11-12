@@ -10,6 +10,8 @@ import {
 	cumulativeStageCents,
 	DEFAULT_STAGE_SETUP,
 	FIELD_LOCKED_POST_ONBOARDING,
+	NEW_LANE_REFUSAL_MESSAGE,
+	SERVICE_STAGE_REFUSAL_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	isSingleRoomEngagement,
 	isTaskProject,
@@ -47,6 +49,8 @@ import {
 	type StageStaffingRole,
 	type StageTask,
 	type SubmissionUnit,
+	ticketDueFromStages,
+	TicketIntensity,
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
@@ -183,6 +187,8 @@ interface SetupProjectRow {
 	client_business_id: string | null;
 	archived_at: string | null;
 	auto_fund_override?: string | null;
+	/** Set on an engagement a buyer instantiated from a service (Decision #209). */
+	source_blueprint_id?: string | null;
 }
 
 /**
@@ -264,6 +270,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"archived_at",
 	"auto_fund_override",
 	"is_personal",
+	"source_blueprint_id",
 ].join(", ");
 
 /** The stage columns the setup form reads and writes. */
@@ -603,6 +610,7 @@ function toSetup(
 		// business — the same predicate `create_stage`, `reorder_stages` and the write policies use, so
 		// the controls drawn are exactly the ones the database accepts.
 		viewerIsClient: viewerCanConfigure,
+		kind: row.source_blueprint_id ? "service" : "project",
 		autoFundInherited,
 		personal: row.is_personal === true,
 	});
@@ -891,7 +899,9 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		// sentences are written for the person refused.
 		message.includes("working this ticket") ||
 		message.includes("never by a move") ||
-		message.includes("any other move is the client's");
+		message.includes("any other move is the client's") ||
+		// `create_stage` on a service (Decision #421): the freelancer working it authors its stages.
+		message.includes(SERVICE_STAGE_REFUSAL_MESSAGE);
 	if (denied) {
 		return {
 			status: 403,
@@ -934,6 +944,8 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		// `reorder_stages` (audit X17) and the taken-seat guard (X8).
 		message.includes("exactly once") ||
 		message.includes("A seat a freelancer has taken") ||
+		// `move_ticket`'s New lane (Decision #421): only a pristine ticket leaves its stage.
+		message.includes(NEW_LANE_REFUSAL_MESSAGE) ||
 		message.includes("still open") ||
 		message.includes("unsettled") ||
 		// `comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`: a reply whose original is not
@@ -2213,11 +2225,19 @@ function ticketWorkload(stages: CommitTicket["stages"]): number {
 	return Math.min(WORKLOAD_MAX, Math.round(total * 100) / 100);
 }
 
-/** The `required_stages` jsonb shape the column documents. */
+/**
+ * The `required_stages` jsonb shape the column documents: each stage's order, the intensity the
+ * ticket runs at there (what `projects.fn_ticket_stage_price` prices it by) and its own due date.
+ */
 function requiredStages(
 	stages: CommitTicket["stages"],
-): Array<{ stage_id: string; order: number }> {
-	return stages.map((s) => ({ stage_id: s.stageId, order: s.order }));
+): Array<{ stage_id: string; order: number; intensity: string; due_at: string | null }> {
+	return stages.map((s) => ({
+		stage_id: s.stageId,
+		order: s.order,
+		intensity: s.intensity,
+		due_at: s.dueAt ? s.dueAt.slice(0, 10) : null,
+	}));
 }
 
 /** The `tasks` jsonb shape the column documents. */
@@ -2314,26 +2334,47 @@ async function resolveTicketOwner(
  * restates every existing ticket that runs through it (root CLAUDE.md §8 Decision #65 wanted the
  * opposite). A column per ticket cannot hold a rate per stage, and letting the client supply the
  * number is not a way to buy that back — it is the money hole this replaces.
+ *
+ * **A stage sold at one fixed intensity is held to it.** The returned stages carry the seller's
+ * intensity wherever the stage is `intensity_locked`, whatever the payload asked, so the capacity
+ * summed and the intensity stored are the service's terms (`projects.fn_ticket_stage_price` prices a
+ * locked stage at its rate regardless).
  */
 async function resolveTicketStages(
 	actor: ReadActor & { accessToken: string },
 	projectRowId: string,
 	stages: CommitTicket["stages"],
 	currentStageId: string | null,
-): Promise<{ rate: number | null } | WriteRefusal> {
-	if (stages.length === 0 && currentStageId === null) return { rate: null };
+): Promise<{ rate: number | null; stages: CommitTicket["stages"] } | WriteRefusal> {
+	if (stages.length === 0 && currentStageId === null) return { rate: null, stages };
 
 	const { data, error } = await projectsDb(actor)
 		.from("project_stages")
-		.select("id, unit_price_cents")
+		.select("id, unit_price_cents, default_intensity, intensity_locked")
 		.eq("project_id", projectRowId)
 		.is("archived_at", null);
 	if (error) return refusalFrom(error.message, "stages");
 
 	const rates = new Map<string, number | null>();
-	for (const row of (data ?? []) as Array<{ id: string; unit_price_cents: number | null }>) {
+	const locked = new Map<string, TicketIntensity>();
+	for (
+		const row of (data ?? []) as Array<{
+			id: string;
+			unit_price_cents: number | null;
+			default_intensity: string | null;
+			intensity_locked: boolean | null;
+		}>
+	) {
 		rates.set(row.id, row.unit_price_cents);
+		if (row.intensity_locked === true) {
+			const fixed = TicketIntensity.safeParse(row.default_intensity);
+			locked.set(row.id, fixed.success ? fixed.data : "standard");
+		}
 	}
+	const held = stages.map((s) => {
+		const fixed = locked.get(s.stageId);
+		return fixed ? { ...s, intensity: fixed } : s;
+	});
 
 	// The lane the card lands in is checked alongside the run it declares. It is a separate field, it
 	// is what `fn_hold_ticket_escrow` actually prices against, and a ticket can carry one without the
@@ -2347,9 +2388,9 @@ async function resolveTicketStages(
 		};
 	}
 
-	if (stages.length === 0) return { rate: null };
+	if (stages.length === 0) return { rate: null, stages: held };
 	const distinct = new Set(stages.map((s) => rates.get(s.stageId) ?? null));
-	return { rate: distinct.size === 1 ? [...distinct][0] : null };
+	return { rate: distinct.size === 1 ? [...distinct][0] : null, stages: held };
 }
 
 /**
@@ -2372,10 +2413,14 @@ export async function commitTicketRow(
 	const project = await fetchTicketProject(actor, input.projectId);
 	if (!project) return null;
 
+	// The ticket is due on the latest of its stage dates when any stage carries one; the trigger
+	// derives the column the same way, so the two never disagree.
+	const dueDate = ticketDueFromStages(input.stages) ?? input.dueDate;
+
 	// `fn_enforce_ticket_due_date` RAISES when a due date is set on a project that has not agreed to
 	// deadline bonus terms. Refusing here, with the reason, is the difference between a form the owner
 	// can correct and an aborted save they cannot explain.
-	if (input.dueDate && !project.allowDeadlines) {
+	if (dueDate && !project.allowDeadlines) {
 		return {
 			refusal: {
 				status: 422,
@@ -2417,10 +2462,10 @@ export async function commitTicketRow(
 		current_stage_id: input.stageId,
 		owner_user_id: owner.id,
 		priority: input.priority,
-		workload_intensity: ticketWorkload(input.stages),
-		required_stages: requiredStages(input.stages),
+		workload_intensity: ticketWorkload(stageSet.stages),
+		required_stages: requiredStages(stageSet.stages),
 		tasks: ticketTasks(input.tasks),
-		due_date: input.dueDate,
+		due_date: dueDate,
 		unit_price_cents: stageSet.rate,
 	};
 
@@ -2473,6 +2518,8 @@ export async function moveTicketRow(
 		p_sort_order: input.sortOrder,
 		// The stale-move check (DL S8): refused 409 when the row changed after the board read it.
 		p_expected_updated_at: input.expectedUpdatedAt ?? null,
+		// The New lane (Decision #421): backlog with no stage takes the ticket out of the one it has.
+		p_clear_stage: input.status === "backlog" && input.stageId === null,
 	});
 	if (error) return { refusal: refusalFrom(error.message, "status") };
 	return { data: input.ticketId };

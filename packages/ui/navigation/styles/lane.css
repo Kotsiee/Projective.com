@@ -239,6 +239,38 @@
 	border-color: var(--primary);
 	box-shadow: none;
 }
+
+.ui-lane-search__hint {
+	position: absolute;
+	inset-inline-end: var(--fld-px-sm);
+	display: inline-flex;
+	pointer-events: none;
+}
+
+.ui-lane-search:has(.ui-lane-search__hint) .ui-lane-search__input {
+	padding-inline-end: calc(var(--fld-px-sm) + 4rem);
+	text-overflow: ellipsis;
+}
+
+.ui-lane-search:focus-within .ui-lane-search__hint,
+.ui-lane-search:has(.ui-lane-search__input:not(:placeholder-shown)) .ui-lane-search__hint {
+	display: none;
+}
+
+.ui-lane-search:focus-within .ui-lane-search__input,
+.ui-lane-search:has(.ui-lane-search__input:not(:placeholder-shown)) .ui-lane-search__input {
+	padding-inline-end: var(--fld-px-sm);
+}
+
+@media (hover: none) {
+	.ui-lane-search__hint {
+		display: none;
+	}
+
+	.ui-lane-search:has(.ui-lane-search__hint) .ui-lane-search__input {
+		padding-inline-end: var(--fld-px-sm);
+	}
+}
 /* #endregion */
 
 /* #region Icon button — soft circular hover, optional active dot */

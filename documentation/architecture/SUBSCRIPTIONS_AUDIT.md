@@ -9,9 +9,12 @@
 > (a)–(m)); prompt S0 in [`SUBSCRIPTIONS_BUILD_PROMPTS.md`](SUBSCRIPTIONS_BUILD_PROMPTS.md) put them
 > to a human before any behaviour changed.
 >
-> **Status annotated 2026-11-11.** Every finding carries a `Status`, doc-derived from the SBP run
-> order, FQ Part C S1–S8 and `git log`, not re-verified in code; `—` means compliant at audit time,
-> nothing to track. S0 ran on 2026-10-30 (Wave 1.1, `94d22e84`): #252's OWNER RULINGS live in
+> **Status annotated 2026-11-11, re-verified in code 2026-11-12 at `8a3fd595`.** Every finding
+> carries a `Status`; `—` means compliant at audit time, nothing to track. The rows re-verified in
+> code on 2026-11-12 are L3–L5, L7, L13–L16, M2–M4, R2, R5, R6 and D1–D11, plus the status
+> lines in §1.3, §2.2, §2.4, §2.5, §4, §7, and §8 except flag (i). G4, flag (i) and the `—` rows
+> keep their 2026-11-11 status, which was derived from the docs. S0 ran on 2026-10-30 (Wave 1.1,
+> `94d22e84`): #252's OWNER RULINGS live in
 > `reference/decisions/decisions-122-126.md` (index §8 below). No S1–S8 prompt has landed. The
 > audit's own "S1" (the agency seed) and "S2" (`/pricing`) read as SBP S2 and S6. Pre-annotation
 > text: `git show 08296359:documentation/architecture/SUBSCRIPTIONS_AUDIT.md`.
@@ -86,7 +89,7 @@ Legend (the `Audit` column, the grade at 2026-10-17): ✅ compliant · ⚠️ pa
 | :-- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :------------------------------------------------------------------------------------------------------ |
 | L14 | Which states hold a plan | SQL `fn_active_plan` (F1220:67-88): `trialing · active · past_due` with `current_period_end > now`. TS `PlanBackendService` `HELD_STATES` (:47) adds **`paused`**. The settings page can therefore show a plan the database no longer honours. | ❌ → #252 (m) | Ruled → S6: trialing · active, plus past_due inside the 7 grace days; paused falls back · Open → SBP S1 |
 | L15 | Grace period             | `subscription_grace_days = 7` is seeded (S5001:162) and **read by nothing**; `fn_active_plan` checks the period end only.                                                                                                                      | ⚠️ → #252 (m) | Ruled → S6 · Open → SBP S1                                                                              |
-| L16 | Lifecycle documented     | `PRODUCT_MANAGEMENT.md:232` lists the subscription lifecycle; it says nothing about which states keep entitlements.                                                                                                                            | 📄 → #252 (m) | Ruled → S6 · Open → SBP S1                                                                              |
+| L16 | Lifecycle documented     | `PRODUCT_MANAGEMENT.md:232` lists the subscription lifecycle; it says nothing about which states keep entitlements.                                                                                                                            | 📄 → #252 (m) | Fixed (S0, `94d22e84`): PRODUCT_MANAGEMENT records the ruled set                                        |
 | L17 | No unentitled state      | `fn_active_plan` falls back to the audience's `is_default` plan ("there is no unentitled state").                                                                                                                                              | ✅            | —                                                                                                       |
 
 ### 1.3 Expanding the ladder for an agency tier
@@ -333,11 +336,11 @@ stays in the finding rows above.
 | ID(s)                                                                                       | Priority | Prompt                | Status                                                                                       |
 | :------------------------------------------------------------------------------------------ | :------- | :-------------------- | :------------------------------------------------------------------------------------------- |
 | #252 (a)–(m)                                                                                | P0       | SBP S0                | Fixed (S0, Wave 1.1, `94d22e84`); 🧑 Agency and Enterprise storage still open (stops SBP S2) |
-| L14, L15, L16                                                                               | P0       | SBP S1                | Open → S1                                                                                    |
+| L14, L15, L16                                                                               | P0       | SBP S1                | Open → S1 (L14, L15); L16 Fixed (S0, `94d22e84`)                                             |
 | D11                                                                                         | P0       | SBP S5                | Open → S5                                                                                    |
 | L13, §4.2, §4.3 (public plan read, `/api/finance/plans`, `PricingBackendService`)           | P1       | SBP S1 (the read), S3 | Open → S1, S3                                                                                |
 | §4.1, D1–D10, R5 (`/pricing` route, switcher band, columns, matrix)                         | P1       | SBP S6                | Open → S6                                                                                    |
-| §0 row 3 (megamenu / footer "Pricing" → `/pricing`); §4.2 upgrade links via `pricingHref`   | P1       | SBP S7; S5            | Open → S7, S5                                                                                |
+| §0 row 3 (megamenu / footer "Pricing" → `/pricing`); §4.2 upgrade links via `pricingHref`   | P1       | SBP S7; S5            | Partly fixed (P8, `9d5bc074`; `c82008df` → `/features#pricing`) · Open → S7, S5              |
 | Pricing Dev Context Switcher axis (`pricingViewer`: guest · free · pro · team_pro · agency) | P1       | SBP S6                | Open → S6                                                                                    |
 | §4.4, L4, L6, L7 (Stripe Billing checkout + webhook → `subscriptions`)                      | P2       | SBP S4                | Open → S4 (ruled S5)                                                                         |
 | L3, L5, §1.3, M2, M3, R6 (annual prices; agency plan seed + `custom_treasury_export`)       | P2       | SBP S2                | Open → S2 (ruled S1–S4)                                                                      |

@@ -372,6 +372,79 @@ BEGIN
 END $$;
 -- #endregion
 
+-- #region 6b. A pipeline's intensity terms (Decision #417): fixed or tiered, the stage intensity and own tier prices
+DO $$
+DECLARE
+    v_listing uuid;
+    v_bp marketplace.service_blueprints;
+    v_bad jsonb;
+BEGIN
+    v_listing := (catalogue.create_listing('service', 'Probe pipeline', 'pipeline') ->> 'listing_id')::uuid;
+    SELECT b.* INTO v_bp FROM marketplace.service_blueprints b JOIN catalogue.listings l ON l.service_blueprint_id = b.id
+     WHERE l.id = v_listing;
+    IF v_bp.allow_tiered_intensity THEN RAISE EXCEPTION 'FAIL a new pipeline starts tiered'; END IF;
+
+    PERFORM catalogue.save_listing(v_listing, jsonb_build_object('offer', jsonb_build_object(
+        'archetype', 'pipeline',
+        'allowTieredIntensity', true,
+        'teamRoles', '[]'::jsonb,
+        'stages', jsonb_build_array(
+            jsonb_build_object('name', 'Discovery', 'priceCents', 10000, 'intensity', 'standard',
+                'lowPriceCents', 7000, 'highPriceCents', 16000),
+            jsonb_build_object('name', 'Build', 'priceCents', 20000, 'intensity', 'high')))));
+    SELECT b.* INTO v_bp FROM marketplace.service_blueprints b JOIN catalogue.listings l ON l.service_blueprint_id = b.id
+     WHERE l.id = v_listing;
+    IF NOT v_bp.allow_tiered_intensity OR v_bp.stage_template -> 0 ->> 'lowPriceCents' <> '7000'
+       OR v_bp.stage_template -> 0 ->> 'highPriceCents' <> '16000' OR v_bp.stage_template -> 1 ->> 'intensity' <> 'high' THEN
+        RAISE EXCEPTION 'FAIL tiered offer not stored: tiered=% stages=%', v_bp.allow_tiered_intensity, v_bp.stage_template;
+    END IF;
+    RAISE NOTICE 'PASS a tiered pipeline stores its flag, each stage''s intensity and its own Low / High prices';
+
+    FOREACH v_bad IN ARRAY ARRAY[
+        jsonb_build_object('stage_template', jsonb_build_array(jsonb_build_object('name', 'S', 'intensity', 'extreme'))),
+        jsonb_build_object('stage_template', jsonb_build_array(jsonb_build_object('name', 'S', 'lowPriceCents', -1))),
+        jsonb_build_object('stage_template', jsonb_build_array(jsonb_build_object('name', 'S', 'highPriceCents', 12.5))),
+        jsonb_build_object('stage_template', jsonb_build_array(jsonb_build_object('name', 'S', 'lowPriceCents', '100'))),
+        jsonb_build_object('stage_template', jsonb_build_array(
+            jsonb_build_object('name', 'S', 'priceCents', 10000, 'lowPriceCents', 12000))),
+        jsonb_build_object('stage_template', jsonb_build_array(
+            jsonb_build_object('name', 'S', 'priceCents', 10000, 'highPriceCents', 9000))),
+        jsonb_build_object('stage_template', jsonb_build_array(
+            jsonb_build_object('name', 'S', 'lowPriceCents', 9000, 'highPriceCents', 8000))),
+        jsonb_build_object('allow_tiered_intensity', 'yes'),
+        jsonb_build_object('allow_tiered_intensity', NULL)
+    ] LOOP
+        BEGIN
+            PERFORM catalogue.save_listing(v_listing, v_bad);
+            RAISE EXCEPTION 'FAIL accepted: %', v_bad;
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLSTATE <> '22023' THEN RAISE EXCEPTION 'FAIL % refused % (%)', v_bad, SQLSTATE, SQLERRM; END IF;
+        END;
+    END LOOP;
+    RAISE NOTICE 'PASS an unknown intensity, a negative / fractional / string tier price and out-of-order tiers are refused 22023';
+
+    PERFORM catalogue.save_listing(v_listing, jsonb_build_object('offer', jsonb_build_object(
+        'archetype', 'pipeline', 'allowTieredIntensity', false, 'teamRoles', '[]'::jsonb,
+        'stages', jsonb_build_array(
+            jsonb_build_object('name', 'Discovery', 'priceCents', 10000, 'intensity', 'low', 'lowPriceCents', 12000)))));
+    SELECT b.* INTO v_bp FROM marketplace.service_blueprints b JOIN catalogue.listings l ON l.service_blueprint_id = b.id
+     WHERE l.id = v_listing;
+    IF v_bp.allow_tiered_intensity OR v_bp.stage_template -> 0 ->> 'intensity' <> 'low' THEN
+        RAISE EXCEPTION 'FAIL fixed offer not stored: %', v_bp.stage_template;
+    END IF;
+    RAISE NOTICE 'PASS a fixed pipeline stores its stage intensity and keeps unread tier prices without ordering them';
+
+    BEGIN
+        PERFORM catalogue.save_listing(current_setting('probe.product')::uuid,
+            jsonb_build_object('allow_tiered_intensity', true));
+        RAISE EXCEPTION 'FAIL a product took intensity terms';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLSTATE <> '22023' THEN RAISE EXCEPTION 'FAIL product intensity terms: % %', SQLSTATE, SQLERRM; END IF;
+    END;
+    RAISE NOTICE 'PASS a product has no intensity terms';
+END $$;
+-- #endregion
+
 -- #region 7. Batch partial success: one listing gated, one published
 DO $$
 DECLARE
@@ -480,7 +553,7 @@ BEGIN
         IF SQLSTATE <> '22023' THEN RAISE EXCEPTION 'FAIL unpublished subject: % %', SQLSTATE, SQLERRM; END IF;
     END;
 
-    v_thread := comms.get_or_create_dm_thread(current_setting('probe.seller')::uuid, current_setting('probe.listing')::uuid);
+    v_thread := (comms.get_or_create_dm_thread(current_setting('probe.seller')::uuid, current_setting('probe.listing')::uuid) ->> 'thread_id')::uuid;
     PERFORM set_config('probe.thread', v_thread::text, true);
     RAISE NOTICE 'PASS the opener refuses a subject that is not on sale from the recipient';
 END $$;

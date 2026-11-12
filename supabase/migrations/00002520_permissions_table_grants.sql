@@ -393,6 +393,13 @@ REVOKE INSERT ON TABLE comms.dm_messages FROM authenticated;
 
 GRANT INSERT (thread_id, sender_user_id, project_id, service_id, body, body_delta, reply_to_id, has_attachments, is_audio)
     ON TABLE comms.dm_messages TO authenticated;
+
+-- comms.dm_threads takes no client write at all: every thread is opened, renamed, photographed and
+-- archived by a definer door (00001300), and no INSERT or UPDATE policy exists. Its address (`ref`)
+-- and its derived summary (`last_message_at`, `last_message_id`) are the triggers' alone, so the
+-- write privilege goes too, and no column is granted back: a client write that names any column is
+-- refused outright (42501) instead of an UPDATE RLS quietly matches to no row.
+REVOKE INSERT, UPDATE ON TABLE comms.dm_threads FROM authenticated;
 -- #endregion
 
 -- comms notification view grants → 00003005_permissions_view_grants.sql (views, Category 3).

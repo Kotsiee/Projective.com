@@ -117,7 +117,7 @@ export interface CatalogueProductRow extends OfferProductColumns {
 export const LISTING_COLUMNS =
 	"id, owner_user_id, owner_team_id, kind, status, service_blueprint_id, product_id, title, description, description_text, category, delivery_label, amount_cents, ticket_price_cents, session_price_cents, seats_per_session, currency, free_revisions, extra_revision_price_cents, promoted, view_count, seo_title, seo_description, create_category, published_at, created_at, updated_at";
 const BLUEPRINT_COLUMNS =
-	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, team_roles, deliverables, turnaround_days, session_minutes, session_count, session_plan, session_rolling, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
+	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, allow_tiered_intensity, team_roles, deliverables, turnaround_days, session_minutes, session_count, session_plan, session_rolling, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
 const PRODUCT_COLUMNS =
 	"id, slug, rating_average, rating_count, span, format, licence, attribution_required, file_manifest";
 
@@ -262,7 +262,13 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 		status: l.status,
 		currency: l.currency,
 		cover: coverOf(media)?.thumb ?? null,
-		price: resolveListingPricing({ kind: l.kind, serviceType, pricing, currency: l.currency }),
+		price: resolveListingPricing({
+			kind: l.kind,
+			serviceType,
+			pricing,
+			currency: l.currency,
+			tieredIntensity: offer.archetype === "pipeline" && offer.allowTieredIntensity,
+		}),
 		metrics: input.metrics,
 		updatedAt: new Date(l.updated_at).toISOString(),
 		listedAt: l.published_at ?? l.created_at,
@@ -294,6 +300,7 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 
 const EMPTY_BLUEPRINT: OfferBlueprintColumns = {
 	stage_template: [],
+	allow_tiered_intensity: false,
 	team_roles: [],
 	deliverables: [],
 	turnaround_days: null,

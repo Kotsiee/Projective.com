@@ -3,6 +3,73 @@
 -- Consolidated verbatim from: 0115_ticket_lifecycle_rpcs.sql, 0117_ticket_board_and_finance.sql, 0121_kanban_sync.sql, 0310_ticket_automation_engine.sql
 -- ============================================================================
 
+-- #region Intensity pricing (Decision #414)
+-- ---------------------------------------------------------------------------------------------
+-- What one ticket costs in one stage — the ONE price rule every money path reads (the escrow hold,
+-- whole-stage and single-ticket funding, the card intent, the auto-fund drain, the cost breakdown).
+-- Mirrors `stageCostCents` in @projective/types/projects/board.ts exactly:
+--   · a stage sold at one fixed intensity (`intensity_locked`) costs its rate, whatever is asked;
+--   · otherwise the seller's own Low / High price where the stage sets one;
+--   · otherwise the rate (the Standard price) × the intensity's price multiplier, rounded.
+-- The rate is COALESCE(ticket.unit_price_cents, stage.unit_price_cents) — the figure every reader
+-- used before intensity priced anything, so an element with no `intensity` (every ticket written
+-- before it was stored) prices at Standard, exactly as it did. The intensity is the ticket's
+-- `required_stages` element for the stage; `$W_i$` reads the same choice on its own scale
+-- (0.5 / 1 / 2) and is not touched here.
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.fn_intensity_price_multiplier(p_intensity text)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN CASE p_intensity WHEN 'low' THEN 0.75 WHEN 'high' THEN 1.50 ELSE 1.00 END;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.fn_ticket_stage_price(
+    p_required_stages jsonb,
+    p_ticket_price bigint,
+    p_stage projects.project_stages
+)
+RETURNS bigint
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_base bigint;
+    v_intensity text;
+BEGIN
+    IF p_stage IS NULL OR p_stage.id IS NULL THEN
+        RETURN p_ticket_price;
+    END IF;
+    v_base := COALESCE(p_ticket_price, p_stage.unit_price_cents);
+    IF COALESCE(p_stage.intensity_locked, false) THEN
+        RETURN v_base;
+    END IF;
+    SELECT e->>'intensity' INTO v_intensity
+      FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(p_required_stages) = 'array' THEN p_required_stages
+                    ELSE '[]'::jsonb END) e
+     WHERE e->>'stage_id' = p_stage.id::text
+     LIMIT 1;
+    v_intensity := COALESCE(v_intensity, 'standard');
+    IF v_intensity = 'low' AND p_stage.low_price_cents IS NOT NULL THEN
+        RETURN p_stage.low_price_cents;
+    END IF;
+    IF v_intensity = 'high' AND p_stage.high_price_cents IS NOT NULL THEN
+        RETURN p_stage.high_price_cents;
+    END IF;
+    IF v_base IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN round(v_base * projects.fn_intensity_price_multiplier(v_intensity))::bigint;
+END;
+$$;
+-- #endregion
+
 -- ---------------------------------------------------------------------------------------------
 -- projects.complete_ticket(p_ticket_id)
 -- Marks a ticket complete and releases its held escrow to the assigned payee (fee/bonus/team
@@ -104,8 +171,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- ---------------------------------------------------------------------------------------------
 -- 2a. projects.get_ticket_finance(p_ticket_id)
 -- Per-ticket escrow breakdown that powers the modal's Installment Monitor. Each required stage is
--- one installment; its price mirrors the escrow-hold math in finance.fn_hold_ticket_escrow
--- (COALESCE(ticket.unit_price_cents, stage.unit_price_cents)). Returns a single row.
+-- one installment; its price is the escrow-hold price, projects.fn_ticket_stage_price (the rate at
+-- the ticket's intensity in that stage). Returns a single row.
 --   total_cost_cents   = Σ installment amounts
 --   paid_to_date_cents = tickets.total_amount_paid (net payouts already released)
 --   locked_escrow_cents= Σ finance.escrows.amount_cents currently 'held' for the ticket
@@ -142,7 +209,7 @@ BEGIN
             (elem->>'stage_id')::uuid AS stage_id,
             COALESCE((elem->>'order')::int, 0) AS ord,
             ps.name AS label,
-            COALESCE(tk.unit_price_cents, ps.unit_price_cents, 0)::bigint AS amount_cents,
+            COALESCE(projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps), 0)::bigint AS amount_cents,
             CASE
                 WHEN EXISTS (
                     SELECT 1 FROM finance.escrows e
@@ -349,6 +416,9 @@ $$;
 --                              trg_ticket_immutability_guard.
 --   • -> claimed / in_progress / in_review from outside work -> an escrow must be held: the
 --                              no-hold-no-work gate in trg_ticket_escrow_sync raises PF402 (#165).
+--   • p_clear_stage          -> the New lane: a move into `backlog` that takes the ticket out of its
+--                              stage, open only to a ticket nobody has claimed (Decision #421).
+--                              Without it a move that names no stage keeps the one it has.
 -- The status write cascades through the existing ticket triggers (escrow release on completed,
 -- submission ledger on in_review). Every move is written to projects.ticket_history for the timeline.
 --
@@ -362,12 +432,20 @@ $$;
 -- it is given and the row has changed since, the move is refused with SQLSTATE 'PS409' — a drag made
 -- on a stale board must not silently overwrite a move made elsewhere. NULL keeps last-writer-wins for
 -- callers that hold no reading of the row.
+--
+-- p_clear_stage is the New lane's own argument rather than a meaning read into a NULL stage, because
+-- a two-argument move into `backlog` has always kept the ticket in its stage. Adding a defaulted
+-- parameter changes the signature, so the five-argument form is dropped by name; every existing call
+-- still resolves against this one.
+DROP FUNCTION IF EXISTS projects.move_ticket (uuid, ticket_status, uuid, integer, timestamptz);
+
 CREATE OR REPLACE FUNCTION projects.move_ticket(
     p_ticket_id   uuid,
     p_to_status   ticket_status,
     p_to_stage_id uuid DEFAULT NULL,
     p_sort_order  integer DEFAULT NULL,
-    p_expected_updated_at timestamptz DEFAULT NULL
+    p_expected_updated_at timestamptz DEFAULT NULL,
+    p_clear_stage boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -415,7 +493,11 @@ BEGIN
             USING ERRCODE = 'insufficient_privilege';
     END IF;
 
-    v_to_stage := COALESCE(p_to_stage_id, v_from_stage);
+    IF p_clear_stage AND p_to_status IS DISTINCT FROM 'backlog'::ticket_status THEN
+        RAISE EXCEPTION 'Only the New backlog takes a ticket out of its stage.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    v_to_stage := CASE WHEN p_clear_stage THEN NULL ELSE COALESCE(p_to_stage_id, v_from_stage) END;
     IF p_to_stage_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM projects.project_stages ps WHERE ps.id = p_to_stage_id AND ps.project_id = v_project) THEN
         RAISE EXCEPTION 'Stage % does not belong to project %.', p_to_stage_id, v_project USING ERRCODE = 'check_violation';
@@ -423,6 +505,19 @@ BEGIN
 
     PERFORM projects.fn_assert_ticket_move(v_project, v_assignee, v_from_status, p_to_status,
         v_from_stage, v_to_stage);
+
+    -- The New backlog is the stage-less lane (Decision #421). A ticket nobody has claimed or delivered
+    -- against leaves its stage for it, paid or not: a fully paid ticket stays paid there and a per-stage
+    -- one reads unpaid. Claimed work keeps its stage, because its hold, its price and its delivery are
+    -- all reckoned against the stage it sits in.
+    IF p_clear_stage AND v_from_stage IS NOT NULL AND (
+        v_assignee IS NOT NULL
+        OR EXISTS (SELECT 1 FROM projects.tickets t WHERE t.id = p_ticket_id AND t.claimed_at IS NOT NULL)
+        OR EXISTS (SELECT 1 FROM projects.stage_submissions s WHERE s.ticket_id = p_ticket_id)
+    ) THEN
+        RAISE EXCEPTION 'Only a ticket nobody has claimed goes back to New.'
+            USING ERRCODE = 'check_violation';
+    END IF;
 
     UPDATE projects.tickets
     SET status = p_to_status,

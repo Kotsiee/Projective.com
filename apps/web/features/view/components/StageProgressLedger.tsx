@@ -148,8 +148,8 @@ export function StageProgressLedger(
 								</span>
 								{
 									/*
-								  ONE figure per stage — the INITIAL per-ticket price, never the 0.5×–2.0×
-								  workload range around it.
+								  ONE figure per stage — the INITIAL per-ticket price, never the 0.75×–1.5×
+								  intensity price range around it.
 
 								  The range is real (a pipeline bills per ticket at variable intensity), but two
 								  numbers in a summary row read as two prices, and the row a buyer scans is the one

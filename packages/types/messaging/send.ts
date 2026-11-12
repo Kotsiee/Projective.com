@@ -6,6 +6,7 @@ import {
 	sendFilesAgree,
 } from "../projects/messages.ts";
 import { MessageDeltaSchema } from "../projects/message-rich.ts";
+import { slugPattern } from "../slugs/slug.ts";
 
 /**
  * messaging.send — the Zod SSOT for posting ONE message into a global-inbox conversation
@@ -26,6 +27,35 @@ import { MessageDeltaSchema } from "../projects/message-rich.ts";
  * no text, no attachment and no memo is not a message, and refusing it here is what stops an empty
  * row from ever reaching a thread.
  */
+
+// #region Chat addresses
+/** A conversation's opaque `cht-` address (`comms.dm_threads.ref`, Decision #339 ruling N1). */
+export const ThreadRefSchema = z.string().regex(
+	slugPattern("thread"),
+	"Expected a thread address.",
+);
+export type ThreadRef = z.infer<typeof ThreadRefSchema>;
+
+/** The stage or project a project room is resolved through: a `stg-` or a `prj-` address. */
+export const RoomRefSchema = z.union([
+	z.string().regex(slugPattern("stage")),
+	z.string().regex(slugPattern("project")),
+], { error: "Expected a stage or project address." });
+export type RoomRef = z.infer<typeof RoomRefSchema>;
+
+/**
+ * One address for every conversation surface (CAS §6.1, Decision #339 ruling N1). A `thread` is a
+ * `comms.dm_threads` row (dm · group · service_inquiry · entity_channel) by its `cht-` ref; a `room`
+ * is a `comms.project_channels` room, resolved through its stage or project, with `channel` the room
+ * key `/api/projects/messages/send` takes as `channelId`. The two message stores stay separate; this
+ * is what the one send door dispatches on.
+ */
+export const ChatRefSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.literal("thread"), ref: ThreadRefSchema }),
+	z.object({ kind: z.literal("room"), ref: RoomRefSchema, channel: z.string().min(1).max(120) }),
+]);
+export type ChatRef = z.infer<typeof ChatRefSchema>;
+// #endregion
 
 // #region Send payload
 export const SendConversationMessageSchema = z.object({

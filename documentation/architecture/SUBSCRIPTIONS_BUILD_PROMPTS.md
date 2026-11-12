@@ -11,10 +11,30 @@
 > prompts in the §0 order. A prompt marked **🧑 DECISION** must stop and put the named question to a
 > human before it changes behaviour; it presents options with a recommendation. Nothing here
 > monetises execution capacity ($W_i$) or Standing — a prompt that would is wrong, whatever it says.
+>
+> **Status 2026-11-12 (re-verified in code at `8a3fd595`):** S0 is done (`94d22e84`). X1 and X2
+> are partly done: their 🧑 rulings and one PRODUCT_SPEC line each landed in `94d22e84`. S1–S8 and
+> Z1 have not started. Runnable now: S1, X1 and X2. S2 stops on the 🧑 Agency and Enterprise
+> storage figure, and S4 also waits for FINANCE_BUILD_PROMPTS DB2, which has not landed.
 
 ---
 
 ## 0. Run order & dependencies
+
+Re-verified in code 2026-11-12 at `8a3fd595`: only S0 has landed. None of these exist yet:
+`get_public_plan_catalogue`, `plan_prices`, `team_agency`, `custom_treasury_export`,
+`PricingBackendService`, `pricingHref`, `/api/finance/plans`, `features/pricing`, `/pricing` and any
+Stripe Billing event. `fn_active_plan` still ignores `subscription_grace_days`, `HELD_STATES` still
+holds `paused`, and `PlanBlock.tsx` still calls `formatMoney`. PUBLIC_ROUTES P8 landed
+(`9d5bc074`), so S7 now waits only for S6. Stale premises:
+
+- **S7:** the `megamenu-data.ts` Pricing link is gone. Pricing is now `LANDING_NAV_LINKS`
+  (`features/landing/core/header.ts`) plus `PRICING_HREF`
+  (`features/marketing/core/footer-links.ts`). Both have pointed at `/features#pricing` since
+  `c82008df`, which also moved the pricing section to `/features` (Decision #349).
+- **S6:** `/contact` reads `?intent=`, not `topic=plans`, so "Talk to us" is
+  `contactHref("sales")`.
+- **S8:** `test:e2e` still names `landing-hero.spec.ts`, which `21309eeb` deleted.
 
 | Phase | Prompts | Why this order |
 | :-- | :-- | :-- |
@@ -23,7 +43,7 @@
 | **2 — Services & routes** | S3 → S4 | The read service and `/api/finance/plans` first; the checkout (S4) needs (f) and S3's contract. |
 | **3 — UI** | S5 → S6 → S7 | Fix the existing plan UI and the link helper; then the `/pricing` page; then the entry points (megamenu, footer, upgrade links). |
 | **4 — Verification** | S8 | Playwright across viewports, currencies and contrast modes. |
-| **Roadmap (not buildable yet)** | X1, X2 | Hierarchical treasury and agency importers. Each stops at a 🧑 DECISION and a spec entry. |
+| **Roadmap (not buildable yet)** | X1, X2 (partly: the 🧑 rulings) | Hierarchical treasury and agency importers. Each stops at a 🧑 DECISION and a spec entry. |
 | **Last** | Z1 | Docs sweep. |
 
 Prompts that may **not** run in parallel because they edit the same files: S1/S2 (`00001220`,
@@ -137,6 +157,9 @@ Commit on the branch you were given with a clear message; do not open a PR unles
 
 ### S0 — Record the #252 owner rulings
 
+> **Status 2026-11-12:** Done in `94d22e84`. The 🧑 Agency and Enterprise storage figure is still
+> open (#252, ruling S2), so S2 still stops on it.
+>
 > **✅ Done 2026-10-30 (Wave 1.1).** The owner answered (a)–(m) through `FOUNDER_QUESTIONNAIRE.md`
 > (S1–S8, M1's and M4's sub-questions, M10 (c)) and replaced the form's prices with a plan table.
 > The rulings are recorded on #252, the numbers in `finance-model.md` §16.1, and the §7 wording in
@@ -550,6 +573,11 @@ Screenshots saved under the scratchpad, never committed. Clean up .playwright-mc
 
 ### X1 — Hierarchical treasury (🧑 DECISION (d))
 
+> **Status 2026-11-12:** Partly done. The 🧑 step landed in `94d22e84`: #252 (d) is ruled M10 (c)
+> [1] (one split rule plus per-engagement contribution agreements), and PRODUCT_SPEC §7 "Agency
+> scale" has one line on it. Still to do: the full spec entry, the finance-model.md numbers, the
+> decision-row schema sketch and X1-B.
+
 ```text
 PROMPT X1: Specify, do not build, a nested agency treasury
 
@@ -569,6 +597,10 @@ added, in X1-B, never before.
 ```
 
 ### X2 — Agency ingestion (🧑 DECISION (g))
+
+> **Status 2026-11-12:** Partly done. The 🧑 step landed in `94d22e84`: #252 (g) is ruled S8 (CSV
+> plus ClickUp first, attachments mounted), and PRODUCT_SPEC §7 marks it Planned in one line. Still
+> to do: the spec entry, the `integrations.providers` seed shape and X2-B.
 
 ```text
 PROMPT X2: Specify, do not build, board importers and external mounts

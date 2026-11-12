@@ -3,6 +3,7 @@ import type { Ref } from "preact";
 import { useEffect, useMemo } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import { LaneSearch, TreeNav, type TreeNavNode } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { Icon } from "@projective/ui/icons";
 import type { UserContext } from "@projective/types/auth";
 import {
@@ -43,9 +44,14 @@ export interface SettingsNavigatorProps {
 	query: Signal<string>;
 	/** Attention marks per section. */
 	marks?: Partial<Record<SettingsSectionKey, AttentionTone>>;
-	/** The search input, for the `/` shortcut. */
+	/** The search's wrapper, for a host that focuses it from a shortcut. */
 	searchRef?: Ref<HTMLDivElement>;
 	label?: string;
+	/**
+	 * Offer the search to Ctrl/Cmd+Shift+/ as the side lane's (default true). The modal passes false
+	 * and offers it to `/` itself, as the modal's own search.
+	 */
+	laneShortcut?: boolean;
 }
 // #endregion
 
@@ -100,16 +106,20 @@ export function SettingsNavigator(props: SettingsNavigatorProps): JSX.Element {
 		props.onSelect({ section: target.section, anchor: target.anchor }, true);
 	}
 
+	const search = {
+		value: query.value,
+		placeholder: "Search settings",
+		label: "Search settings",
+		icon: <Icon name="search" size="sm" />,
+		onInput: (value: string) => (query.value = value),
+	};
+
 	return (
 		<div class="stg-nav">
 			<div class="stg-nav__search" ref={props.searchRef} onKeyDown={onKeyDown}>
-				<LaneSearch
-					value={query.value}
-					placeholder="Search settings"
-					label="Search settings (press / to focus)"
-					icon={<Icon name="search" size="sm" />}
-					onInput={(value) => (query.value = value)}
-				/>
+				{props.laneShortcut === false
+					? <LaneSearch {...search} />
+					: <LaneSearchField {...search} />}
 			</div>
 			{nodes.length === 0
 				? <p class="stg-nav__empty" role="status">No settings match “{query.value.trim()}”.</p>

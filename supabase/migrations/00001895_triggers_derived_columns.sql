@@ -144,8 +144,8 @@ CREATE TRIGGER trg_team_members_search_workload
 -- #region org — the vault projection's backstop (Decision #226 (e))
 -- finance.vault_permissions is derived from who holds what (org.fn_sync_vault_permissions, 00001020).
 -- The workspace RPCs sync it explicitly; these re-project it on every other write to a member's role,
--- status or overrides, or to a role's capabilities. AFTER, so the member row (and its `role`, set by
--- the BEFORE trigger above) is what the projection reads.
+-- status or overrides, to a role's capabilities, or to the entity's owner (FINANCE_AUDIT V2). AFTER, so
+-- the member row (and its `role`, set by the BEFORE trigger above) is what the projection reads.
 DROP TRIGGER IF EXISTS trg_team_members_sync_vault ON org.team_members;
 CREATE TRIGGER trg_team_members_sync_vault
     AFTER INSERT OR UPDATE OF role_id, status, granted_capabilities, revoked_capabilities ON org.team_members
@@ -165,4 +165,14 @@ DROP TRIGGER IF EXISTS trg_business_roles_sync_vault ON org.business_roles;
 CREATE TRIGGER trg_business_roles_sync_vault
     AFTER UPDATE OF capabilities, base_preset ON org.business_roles
     FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_role();
+
+DROP TRIGGER IF EXISTS trg_teams_sync_vault_owner ON org.teams;
+CREATE TRIGGER trg_teams_sync_vault_owner
+    AFTER UPDATE OF owner_user_id ON org.teams
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_owner();
+
+DROP TRIGGER IF EXISTS trg_business_profiles_sync_vault_owner ON org.business_profiles;
+CREATE TRIGGER trg_business_profiles_sync_vault_owner
+    AFTER UPDATE OF owner_user_id ON org.business_profiles
+    FOR EACH ROW EXECUTE FUNCTION org.fn_trg_sync_vault_owner();
 -- #endregion

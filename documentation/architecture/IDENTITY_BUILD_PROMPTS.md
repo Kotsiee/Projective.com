@@ -8,7 +8,7 @@
 > from [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md). Every prompt
 > cites its evidence by finding ID and its ruling as `(Decision #336, ruling X)`. Paste each prompt
 > into its **own fresh session**, after the standard header (§1). Written 2026-10-30 against `main`
-> @ `94d22e84`.
+> @ `94d22e84`; statuses re-verified in code on 2026-11-12 at `8a3fd595` (below and §0).
 >
 > **How to run them:** in the §0 order. A prompt marked **🧑 DECISION** stops and puts the named
 > question to a human before it changes behaviour, with options and a recommendation. ⚖️ marks a
@@ -16,31 +16,41 @@
 > switch it on. **Migrations are edited in place** (root `CLAUDE.md` §1); every prompt names the
 > category file it edits.
 >
-> **Verified against git (2026-10-30), not taken from the brief:**
+> **Verified against git (2026-10-30), not taken from the brief; re-verified in code (2026-11-12,
+> `8a3fd595`):**
 >
 > - **Done.** IW-C1's column half and IW-H1 (`660c9658`). IW-H3, IW-M1/K10, IW-M2, IW-M3 and IW-H8
 >   (`12a80862`). IW-H7, IW-M6 (RLS on, nothing dropped), IW-M8, IW-H4/IW-M4/K6, IW-L1, IW-L2, the
 >   `teams.visibility` CHECK, and `org.fn_is_minor` failing closed (`81a108f0`). IW-M9 (`4c9482a2`).
->   IW-D1–D5 (`e30b4111`). The probe runner, `deno task test:probes` (`f9c4fc31`).
+>   IW-D1–D5 (`e30b4111`). The probe runner, `deno task test:probes` (`f9c4fc31`). OWN1
+>   (`96599cea`) and OWN2 (`aaaeab07`): IW-H2, IW-M7, K3 and F4.
 > - **Half done.** IW-M10: `ck_enterprise_member_status` landed, but `enterprise_members.user_id` is
 >   still `ON DELETE CASCADE` (`00000011:980`); HK1 finishes it.
-> - **Consequence of Wave 0.** `public.create_enterprise` seats a profile-less owner, so
->   `trg_workspace_member_adult` refuses the seat `PM403`: **enterprise sign-up is refused today**
->   until OWN1 and OWN2 land.
-> - **Still open, and verified open.**
+> - **Consequence of Wave 0, closed.** `public.create_enterprise` seated a profile-less owner, so
+>   `trg_workspace_member_adult` refused the seat `PM403` and enterprise sign-up was refused until
+>   OWN1 and OWN2 landed. `create_enterprise` now provisions the owner's profile first.
+> - **Still open, verified open on 2026-10-30 and again on 2026-11-12.**
 >   - `fn_erase_account` is unchanged (`00001060:555-582`), and both erasure windows are hard-coded
->     (`:434`, `:490`).
+>     (`:434`, `:490`). It reaches `catalogue.listings`, `marketplace.service_blueprints`,
+>     `org.freelancer_profiles`, `org.users_public`, `org.user_emails`, `auth.users`,
+>     `auth.identities` and `auth.sessions`, and nothing else.
 >   - The two dead `security` tables and all seven finance cascades are still there.
 >   - TOTP is off (`supabase/config.toml:343-361`), and `SsoPanel` still renders
->     (`LoginForm.island.tsx:58`, `SignInPrompt.island.tsx:98`).
+>     (`LoginForm.island.tsx:58`, `SignInPrompt.island.tsx:98`). No `AUTH_SSO_ENABLED`, no `aal`
+>     claim, no step-up helper and no `PT401` exist.
 >   - `fn_team_archive_blockers` checks `escrow_held` and `live_assignments` only.
 >   - The `users_public` row policy is unchanged (`00002010:10-13`).
->   - `resolveOnboardingBounce` skips enterprise owners (`auth-routing.ts:136-143`).
 >   - No flag exists for the minors proxy.
+>   - `search.fn_prune_query_logs` is named only by its dormant job row (`00005060`).
 
 ---
 
 ## 0. Run order & dependencies
+
+Re-verified in code 2026-11-12 at `8a3fd595`: OWN1 (`96599cea`) and OWN2 (`aaaeab07`) are done.
+No deliverable of HK1, ERA1–ERA4, SSO1, ARC1, MFA1–MFA3, MIN1, MIN2, RLS1 or LOW1 exists in code,
+so each is not started, and X1, X2 and Z1 are unstarted. Runnable now: HK1, SSO1, MFA1, MIN1 and
+LOW1; X1 and X2 stop at their 🧑 at once.
 
 ### 0.1 Run order
 
@@ -312,6 +322,10 @@ Commit on the branch you were given. Do not push or open a PR unless I ask.
 
 ### OWN1 — The owner's profile in the same transaction as the enterprise
 
+> **Status 2026-11-12:** Done in `96599cea`. `public.create_enterprise` provisions the owner
+> (`00001010:338`) and points `security.session_context` at the enterprise (`:392-394`);
+> `seed_owner_preferences` is gone; probe `enterprise_owner_profile.sql`.
+
 ```text
 PROMPT OWN1: Every natural person has a profile, the enterprise owner included
 
@@ -422,6 +436,10 @@ ACCEPTANCE:
 ```
 
 ### OWN2 — Step 1.6 asks for the owner, and profile-less owners complete it
+
+> **Status 2026-11-12:** Done in `aaaeab07`. `resolveOnboardingBounce` sends a profile-less owner
+> to `/join?complete=owner` (`auth-routing.ts`), and `AuthBackendService.completeOwnerProfile`
+> completes it or leaves an `ops.log_entries` row.
 
 ```text
 PROMPT OWN2: The owner's details on step 1.6, and a completion step for owners without a profile

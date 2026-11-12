@@ -150,7 +150,7 @@
 	flex: none;
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 }
 
 .evm__act {
@@ -1371,7 +1371,7 @@ label.evm-meta__k {
 	min-inline-size: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 }
 
 .evm-log__summary {
@@ -1424,7 +1424,7 @@ label.evm-meta__k {
 .evm-money__fig {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 }
 
 .evm-money__k {
@@ -1575,7 +1575,7 @@ label.evm-meta__k {
 
 	.evm-facts__row {
 		flex-direction: column;
-		gap: 2px;
+		gap: var(--space-px);
 	}
 }
 /* #endregion */

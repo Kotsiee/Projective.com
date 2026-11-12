@@ -165,8 +165,11 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --      HTML), deliverables as the stage's default checklist and its milestone line, skills (resolved
 --      to `org.skills` slugs where a label matches), and `unit_price_cents` = the stage's own STANDARD
 --      price, else the listing's `ticket_price_cents`, else NULL ("priced on scope" — never a guessed
---      zero). The revision allotment arrives through `trg_stage_revision_terms`, which reads the
---      blueprint because `source_blueprint_id` is already set;
+--      zero). Its intensity terms (Decision #417): `default_intensity` = the stage's `intensity`,
+--      `intensity_locked` = NOT `allow_tiered_intensity`, and — tiered only — the seller's own
+--      `lowPriceCents` / `highPriceCents` as `low_price_cents` / `high_price_cents`, frozen afterwards
+--      by `trg_stage_intensity_terms`. The revision allotment arrives through
+--      `trg_stage_revision_terms`, which reads the blueprint because `source_blueprint_id` is already set;
 --   3. each stage's room and the project-wide Discussion room
 --      (`comms.get_or_create_project_channel`, the same calls `projects.create_project` makes);
 --   4. `projects.service_instantiations` — the request: key, answers, currency.
@@ -241,6 +244,10 @@ DECLARE
     v_dependency uuid;
     v_lag integer;
     v_chain boolean;
+    v_locked boolean;
+    v_intensity text;
+    v_low bigint;
+    v_high bigint;
 BEGIN
     -- #region Identity and the request
     IF v_owner IS NULL THEN
@@ -370,6 +377,9 @@ BEGIN
     -- #endregion
 
     -- #region Stages and their rooms
+    -- A fixed-intensity service sells each stage at one intensity and price, so its stages arrive
+    -- locked; a tiered one leaves the pick to the client and carries the seller's own tier prices.
+    v_locked := NOT COALESCE(v_bp.allow_tiered_intensity, false);
     FOR v_stage, v_ord IN
         SELECT s.value, s.ord FROM jsonb_array_elements(v_bp.stage_template) WITH ORDINALITY AS s (value, ord)
     LOOP
@@ -427,11 +437,23 @@ BEGIN
         END IF;
         v_chain := CASE WHEN jsonb_typeof(v_stage->'chainReaction') = 'boolean'
             THEN (v_stage->>'chainReaction')::boolean ELSE true END;
+        v_intensity := CASE WHEN v_stage->>'intensity' IN ('low', 'standard', 'high')
+            THEN v_stage->>'intensity' ELSE 'standard' END;
+        -- Nested CASEs: only a JSON number is cast, whatever order the planner evaluates a WHEN's terms.
+        v_low := CASE WHEN NOT v_locked AND jsonb_typeof(v_stage->'lowPriceCents') = 'number' THEN
+            CASE WHEN (v_stage->>'lowPriceCents')::numeric >= 0
+                THEN pg_catalog.trunc((v_stage->>'lowPriceCents')::numeric)::bigint END
+        END;
+        v_high := CASE WHEN NOT v_locked AND jsonb_typeof(v_stage->'highPriceCents') = 'number' THEN
+            CASE WHEN (v_stage->>'highPriceCents')::numeric >= 0
+                THEN pg_catalog.trunc((v_stage->>'highPriceCents')::numeric)::bigint END
+        END;
 
         INSERT INTO projects.project_stages (
             id, project_id, name, description, description_text, sort_order,
             unit_price_cents, milestone, file_upload_required, default_tasks, skills,
-            start_trigger_type, start_dependency_stage_id, start_dependency_lag_days, chain_reaction
+            start_trigger_type, start_dependency_stage_id, start_dependency_lag_days, chain_reaction,
+            default_intensity, intensity_locked, low_price_cents, high_price_cents
         ) VALUES (
             v_stage_id, v_project_id, v_stage_name,
             pg_catalog.jsonb_build_object('html', v_stage_html), v_stage_text,
@@ -455,7 +477,8 @@ BEGIN
                 ORDER BY n
                 LIMIT 12
             ),
-            v_trigger_type, v_dependency, v_lag, v_chain
+            v_trigger_type, v_dependency, v_lag, v_chain,
+            v_intensity, v_locked, v_low, v_high
         );
 
         PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, v_stage_name);

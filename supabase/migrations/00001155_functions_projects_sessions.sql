@@ -1068,7 +1068,9 @@ $$;
 --   * the attendee cancels > notice before it   → full refund;
 --   * the attendee cancels inside the notice, or after the cohort has started → full FORFEIT: the
 --     escrow is released to the provider (Time Protection). There is no 50% split (Decision #171
---     retires the stale figure in flows/Projects.md §6.2 and finance-model.md §4).
+--     retires the stale figure in flows/Projects.md §6.2 and finance-model.md §4). A forfeit of an
+--     escrow with an open dispute is refused (PD409 `dispute_open`, finance.fn_assert_no_open_dispute):
+--     the ruling settles it (FINANCE_AUDIT L9).
 -- The notice is `session_cancel_notice_hours` (24). A seat whose cohort has no sitting yet refunds.
 --
 -- A 1-1 seat (Decision #211) holds one escrow PER SITTING, and the same rule is applied to each sitting
@@ -1155,6 +1157,7 @@ BEGIN
             v_refunded := v_refunded + finance.fn_refund_seat_escrow(e.id);
             v_refunds := v_refunds + 1;
         ELSE
+            PERFORM finance.fn_assert_no_open_dispute(e.id);
             v_forfeited := v_forfeited + finance.fn_release_seat_escrow(e.id, 'escrow_release');
             v_forfeits := v_forfeits + 1;
         END IF;
@@ -1906,8 +1909,11 @@ BEGIN
                 'sitting_title', se.title, 'mode', r.mode, 'status', r.status,
                 'opened_by_host', projects.fn_is_session_host(v_project.id, r.opened_by_user_id),
                 'votes', (SELECT count(*) FROM scheduling.proposal_votes pv WHERE pv.reschedule_id = r.id),
+                -- Who holds a vote, by the rule settlement runs (`eligibleVoterCount`): every seat with an
+                -- account except the host's, optional seats included (Decision #343, ruling C6 D5).
                 'voters', (SELECT count(*) FROM scheduling.event_attendees ea
-                            WHERE ea.event_id = ev.id AND ea.role <> 'optional')
+                            WHERE ea.event_id = ev.id AND ea.archived_at IS NULL
+                              AND ea.user_id IS NOT NULL AND ea.role <> 'host'::scheduling.attendee_role)
             )
               FROM scheduling.events ev
               JOIN projects.session_events se ON se.id = ev.source_session_event_id

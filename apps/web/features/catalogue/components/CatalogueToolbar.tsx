@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "@web/features/projects/styles/fx-toolbar.css";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { Button, InputText, Select } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { countLabel, scopeNoun, TYPE_TABS } from "../core/catalogue-model.ts";
@@ -44,6 +46,8 @@ export function CatalogueToolbar(
 	{ state, initialTotal, laned }: CatalogueToolbarProps,
 ): JSX.Element {
 	const search = useSignal(state.search);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	useSignalEffect(() => {
 		if (consoleReady.value) search.value = searchDraft.value;
@@ -65,7 +69,7 @@ export function CatalogueToolbar(
 			aria-label="Catalogue controls"
 		>
 			{listings && (
-				<div class="fx-toolbar__search">
+				<div class="fx-toolbar__search" ref={searchRef}>
 					<InputText
 						value={search}
 						onValueChange={setSearch}

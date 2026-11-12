@@ -470,7 +470,7 @@ const SERVICE_SEED: Array<
 /**
  * Per-service unit prices and revision allowances, keyed by seed id — the figures the SELLER declares.
  *
- * Pipeline services carry a standard `ticketPrice` (the card shows a 0.5×–2.0× workload range around
+ * Pipeline services carry a standard `ticketPrice` (the card shows a 0.75×–1.5× intensity price range around
  * it); Session services carry a `sessionPrice`; One-Off services keep only their fixed `price` string.
  *
  * `freeRevisions` / `extraRevisionPrice` are the seller's revision commitment, and they live here for

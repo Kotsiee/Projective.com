@@ -1,5 +1,5 @@
 import type { JSX, RefObject } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/board.css";
 import "../styles/ticket-pipeline.css";
@@ -29,15 +29,15 @@ import {
 	formatTicketMoney,
 	providerVisibleCards,
 	STALE_MOVE_MESSAGE,
-	type TicketStatus,
 	ticketWorkLocked,
-	workColumnLocked,
 } from "../types/projects-types.ts";
 import {
 	assigneeOptions,
 	BOARD_SORT_OPTIONS,
 	boardCardColumn,
+	boardDropRefusal,
 	classifyMove,
+	columnTarget,
 	filterCards,
 	isClaimDrop,
 	PRIORITY_OPTIONS,
@@ -48,7 +48,6 @@ import {
 	boardGrouping,
 	boardViewMode,
 	checkoutOpen,
-	createStageOpen,
 	createTicketOpen,
 	publishBoardCaps,
 	resetBoardState,
@@ -63,7 +62,10 @@ import { DeleteTicketDialog } from "../components/DeleteTicketDialog.tsx";
 import { columnMenuModel, ticketMenuModel } from "../core/board-menus.ts";
 import { channelHref } from "../core/chat-context.ts";
 import { TicketListView } from "../components/TicketListView.tsx";
-import { CreateStageModal } from "../components/CreateStageModal.tsx";
+import { CreateStagePopover, type StageAnchor } from "../components/CreateStagePopover.tsx";
+import { lastCreatedStage, stagesCreatedEpoch, withCreatedStage } from "../core/stage-events.ts";
+import { recentPress } from "@web/features/files/core/press-point.ts";
+import { usePressTracking } from "@web/features/files/hooks/use-press-tracking.ts";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
 import { TicketView } from "../components/ticket/TicketView.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
@@ -105,6 +107,7 @@ import { InlineNotice } from "@projective/ui/feedback";
 import { fundingRollup, previewFunding } from "../core/funding-ui.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
 import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 
 /**
  * ProjectBoard — the single island the Kanban board routes mount, for the project pipeline
@@ -143,27 +146,6 @@ interface PendingWarning {
 	 * mutate the board and let the write race the confirmation.
 	 */
 	apply: () => void | Promise<void>;
-}
-
-/**
- * Where a card lands when it is dropped into `col`, as a lifecycle transition rather than a lane.
- *
- * Deliberately narrow: it resolves `status` and `stageId` and NOTHING else. The board used to
- * fabricate `claimed`/`escrowHeld` here — a drag into In Progress asserted that a freelancer had
- * claimed the ticket and that escrow was held for it, which is a financial claim no gesture on this
- * surface is entitled to make. The server's returned card is the authority on both; until it answers,
- * the card keeps whatever it already carried.
- */
-function columnTarget(
-	card: BoardCard,
-	col: BoardColumn,
-): { status: TicketStatus; stageId: string | null } {
-	if (col.kind === "new") return { status: "backlog", stageId: null };
-	if (col.kind === "completed") return { status: "completed", stageId: card.stageId };
-	if (col.kind === "stage") {
-		return { status: card.claimed ? "in_progress" : "todo", stageId: col.stageId };
-	}
-	return { status: col.status as TicketStatus, stageId: card.stageId };
 }
 
 /**
@@ -243,7 +225,14 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const claimingId = useSignal<string | null>(null);
 	/** A claim the earning gate refused: the sentence and the viewer's own fix link. */
 	const claimGate = useSignal<{ message: string; href: string } | null>(null);
-	const stageModalOpen = useSignal(false);
+	/** The Create stage popover a column menu's Add stage opens, and where it stands. */
+	const stageOpen = useSignal(false);
+	const stageAnchor = useSignal<StageAnchor | null>(null);
+	const stageCurrency = useComputed(() =>
+		cards.value.some((c) => c.personal === true) ? null : currency.value
+	);
+	const seenStageEpoch = useRef(stagesCreatedEpoch.peek());
+	usePressTracking();
 	const fundStageOpen = useSignal(false);
 	/** Expanded tree keys for the review modal's own navigator (its own state, not the ticket's). */
 	const reviewExpanded = useSignal<Set<string>>(new Set());
@@ -271,6 +260,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const deleteOpen = useSignal(false);
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	/*
 	 * Effective capabilities, not the raw SSR flag.
@@ -283,6 +274,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const ssrBaseline = {
 		viewerIsClient: initial?.viewerIsClient ?? false,
 		sessionKind: resolveSessionKind(initial?.format ?? "pipeline", null),
+		engagementKind: initial?.engagementKind ?? "project",
+		viewerSeated: (initial?.viewerStageIds.length ?? 0) > 0,
 	};
 	const access = useSignal<BoardAccess>(resolveBoardAccess(ssrBaseline, null));
 	/** The Dev Context Switcher's forced funding state — it drives the column lock as it does the line. */
@@ -296,7 +289,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		};
 		apply();
 		return watchDevSeam(apply);
-	}, [ssrBaseline.viewerIsClient, ssrBaseline.sessionKind]);
+	}, [
+		ssrBaseline.viewerIsClient,
+		ssrBaseline.sessionKind,
+		ssrBaseline.engagementKind,
+		ssrBaseline.viewerSeated,
+	]);
 	// #endregion
 
 	// #region Derived (grouping + columns + filtered cards)
@@ -322,16 +320,17 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	};
 
 	/**
-	 * The column lock (`workColumnLocked`, PRODUCT_MANAGEMENT §3.6): why `col` refuses this card, or
-	 * `null`. A claimed ticket whose escrow is not held — a chained stage that is waiting on funding —
-	 * cannot be carried into work, which the database refuses anyway (#165); the board says so before
-	 * the drop. Read through the forced funding state so the Dev Context Switcher can show it.
+	 * Why `col` refuses this card for this viewer, or `null` ({@link boardDropRefusal}): the column lock
+	 * (PRODUCT_MANAGEMENT §3.6), the client-only lanes, the claim-only In Progress, and New for a ticket
+	 * something has happened to. The board marks each refusing column locked while the card is in
+	 * flight. Read through the forced funding state so the Dev Context Switcher can show the lock.
 	 */
 	const dropRefusal = (c: BoardCard, col: BoardColumn): string | null => {
 		const funding = c.funding ? previewFunding(c.funding, forcedFunding.value) : null;
-		return workColumnLocked({ ...c, funding }, columnTarget(c, col).status)
-			? "Escrow isn't held for this ticket here yet. Fund it before work starts."
-			: null;
+		return boardDropRefusal({ ...c, funding }, col, {
+			isClient: access.value.isClient,
+			boardKind,
+		});
 	};
 
 	const boardColumns = buildBoardColumns(stages.value, grouping, boardKind);
@@ -384,9 +383,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		const a = access.value;
 		publishBoardCaps({
 			isClient: a.isClient,
+			canAddStage: a.canAddStage,
 			isProjectBoard: boardKind === "project",
 			basketCount: a.hasTickets ? basket : 0,
 			hasTickets: a.hasTickets,
+			projectId: props.projectId,
+			stageCurrency: stageCurrency.value,
 		});
 	});
 	useSignalEffect(() => {
@@ -396,9 +398,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		}
 	});
 	useSignalEffect(() => {
-		if (createStageOpen.value) {
-			createStageOpen.value = false;
-			if (access.value.isClient && boardKind === "project") stageModalOpen.value = true;
+		const epoch = stagesCreatedEpoch.value;
+		if (epoch <= seenStageEpoch.current) return;
+		seenStageEpoch.current = epoch;
+		const created = lastCreatedStage.peek();
+		if (created && created.projectId === props.projectId) {
+			stages.value = withCreatedStage(stages.peek(), created.stage);
 		}
 	});
 	// Buy Now closed over a ticket: restore the ticket it replaced.
@@ -423,8 +428,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				composing.value = null;
 				if (ticketStack.top.value?.input?.ticketId === id) ticketStack.close();
 			}
-			if (stageModalOpen.value) stageModalOpen.value = false;
 		}
+		if (!a.canAddStage && stageOpen.value) stageOpen.value = false;
 	});
 	// Reset the shared board signals + defensively load if SSR produced no page.
 	useSignalEffect(() => {
@@ -763,22 +768,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		const card = cards.value.find((c) => c.id === move.itemId);
 		const to = boardColumns.find((c) => c.id === move.toColumn);
 		if (!card || !to) return;
-		if (boardKind === "project" && !access.value.isClient) {
-			toast("Only the client can move tickets on the project board.");
-			return;
-		}
-		const toDone = to.kind === "completed" || (to.kind === "status" && to.status === "completed");
-		if (toDone && !access.value.isClient) {
-			toast("Only the client can move a ticket to Done (confirm delivery).");
-			return;
-		}
-		// The same lock `canDrag` draws. A keyboard drag that was armed before a persona flip, or a
-		// stale board, must refuse here as well — the gate on the handle is not the gate on the write.
-		if (access.value.isClient && ticketWorkLocked(card)) {
-			toast("A freelancer is working this ticket — it can be moved once the work is handed back.");
-			return;
-		}
-		// The column lock `itemDropRefusal` draws, re-checked here for a keyboard drop or a stale board.
+		// The refusals `itemDropRefusal` draws, re-checked here: a keyboard drop, a Move to row, a drag
+		// armed before a persona flip and a stale board all reach this without the highlight.
 		const refusal = dropRefusal(card, to);
 		if (refusal) {
 			toast(refusal);
@@ -787,10 +778,6 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		// Work starts with a claim, and only a claim sets the assignee its escrow is held against. A
 		// personal project moves no money, so its owner's drag stays an ordinary move.
 		if (isClaimDrop(card, to) && !card.personal) {
-			if (access.value.isClient) {
-				toast("A freelancer starts this ticket by claiming it.");
-				return;
-			}
 			void claimTicket(card);
 			return;
 		}
@@ -1002,11 +989,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		const model = columnMenuModel({
 			column: data,
 			canCreate: canCreateIn(data),
-			canAddStage: access.value.isClient && boardKind === "project" && grouping === "stages",
+			canAddStage: access.value.canAddStage && boardKind === "project" && grouping === "stages",
 			stageHref: stageHrefOf(data),
 		}, {
 			createTicket: () => openCreateForColumn(data),
-			addStage: () => (stageModalOpen.value = true),
+			addStage: () => openStageFrom(surface.current),
 		});
 		return (
 			<ActionMenu
@@ -1089,21 +1076,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		toast(res.message ?? "That ticket could not be saved.");
 	}
 
-	/**
-	 * Persist a new stage, then add the SERVER's stage to the board — its `stg-…` slug, status and
-	 * order as a reload will read them. Not optimistic: a stage with no address yet would be a column
-	 * whose links resolve nowhere. A refusal is returned to the modal, which keeps the draft open and shows it.
-	 */
-	async function onCreateStage(
-		stage: { name: string; description: string },
-	): Promise<string | null> {
-		const res = await BoardService.createStage(props.projectId, stage);
-		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
-		const saved = res.data.stage;
-		stages.value = [...stages.value.filter((s) => s.id !== saved.id), saved]
-			.sort((a, b) => a.order - b.order);
-		stageModalOpen.value = false;
-		return null;
+	function openStageFrom(column: HTMLElement | null): void {
+		const rect = column?.getBoundingClientRect();
+		const point = recentPress() ?? (rect ? { x: rect.left, y: rect.top } : null);
+		if (!point) return;
+		stageAnchor.value = { kind: "point", point };
+		stageOpen.value = true;
 	}
 
 	function acceptWarning(): void {
@@ -1138,7 +1116,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	function toolbar(): JSX.Element {
 		return (
 			<div class="brd-toolbar">
-				<div class="brd-toolbar__search">
+				<div class="brd-toolbar__search" ref={searchRef}>
 					<InputText
 						type="search"
 						variant="bare"
@@ -1394,10 +1372,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				)
 				: null}
 
-			<CreateStageModal
-				open={stageModalOpen}
-				onClose={() => (stageModalOpen.value = false)}
-				onCreate={onCreateStage}
+			<CreateStagePopover
+				open={stageOpen}
+				projectId={props.projectId}
+				currency={stageCurrency.value}
+				anchor={stageAnchor.value}
 			/>
 
 			<DeleteTicketDialog

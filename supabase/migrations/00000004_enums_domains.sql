@@ -522,8 +522,10 @@ CREATE TYPE finance.fulfilment_kind AS ENUM ('download', 'engagement', 'session'
 CREATE TYPE scheduling.rsvp_response AS ENUM ('accepted', 'rejected', 'tentative', 'pending');
 
 -- `attendee_role` — mirrors @projective/types/scheduling AttendeeRole.
--- `optional` is separate from `participant` because it changes the vote arithmetic: an optional
--- attendee is not part of the majority denominator that decides a reschedule.
+-- `optional` is separate from `participant` for the RSVP (an optional attendee's absence does not
+-- block the meeting), never for the vote: the majority that decides a reschedule is counted over every
+-- seat with an account except the host's, optional seats included (`eligibleVoterCount`,
+-- `scheduling.fn_event_has_voters`; Decision #343, ruling C6 D5).
 CREATE TYPE scheduling.attendee_role AS ENUM ('host', 'participant', 'optional');
 
 -- `workspace_capability` — mirrors @projective/types/workspace WorkspaceCapability, in its declared

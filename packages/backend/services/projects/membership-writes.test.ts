@@ -1,7 +1,11 @@
 import { assert, assertEquals } from "@std/assert";
 import { hireLimiter, ProjectBackendService } from "./ProjectBackendService.ts";
 import { resetWriteStore } from "./write-store.ts";
-import { INVITE_BATCH_MAX, InviteProjectMemberInputSchema } from "@projective/types/projects";
+import {
+	CreateStageInputSchema,
+	INVITE_BATCH_MAX,
+	InviteProjectMemberInputSchema,
+} from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
@@ -36,7 +40,7 @@ Deno.test("a created stage is answered as the board projects it, and the next bo
 	reset();
 	const res = await ProjectBackendService.createStage(
 		STAGED,
-		{ name: "Launch review", description: "Final checks" },
+		CreateStageInputSchema.parse({ name: "Launch review", description: "Final checks" }),
 		CLIENT,
 	);
 	assertEquals(res.status, 201);
@@ -51,11 +55,28 @@ Deno.test("a created stage is answered as the board projects it, and the next bo
 	assertEquals(stages.at(-1)?.id, res.data.stage.id, "appended after every existing stage");
 });
 
+Deno.test("a created stage keeps the baseline rate and the CREATE category it was given", async () => {
+	reset();
+	const res = await ProjectBackendService.createStage(
+		STAGED,
+		CreateStageInputSchema.parse({ name: "QA pass", createCategory: "test", unitPriceCents: 42_500 }),
+		CLIENT,
+	);
+	assert(res.ok && res.data);
+	assertEquals(res.data.stage.unitPriceCents, 42_500);
+	assertEquals(res.data.stage.createCategory, "test");
+
+	const board = await ProjectBackendService.board({ projectId: STAGED, view: "stages" }, CLIENT);
+	assert(board.ok && board.data);
+	const saved = board.data.page.stages.find((s) => s.id === res.data!.stage.id);
+	assertEquals(saved?.unitPriceCents, 42_500, "the rate survives a re-read");
+});
+
 Deno.test("a stage create needs an identity", async () => {
 	reset();
 	const res = await ProjectBackendService.createStage(
 		PROJECT,
-		{ name: "x", description: "" },
+		CreateStageInputSchema.parse({ name: "x" }),
 		{ userId: "", contextId: "", contextType: "personal" },
 	);
 	assertEquals(res.status, 401);

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { ACCENT_SEED, buildScheme } from "./theme-engine.ts";
+import { buildScheme } from "./theme-engine.ts";
 
 /**
  * Scrollbar contrast.
@@ -397,23 +397,34 @@ Deno.test("the brand fill has no headroom to spend on a tonal step in dark", () 
 });
 
 /**
- * The accent pair (§A.1.2, Decision #157) — amber, global, FIXED POLARITY.
+ * The accent pair (§A.1.2, Decisions #157 / #424) — the MONOCHROME INVERSION.
  *
- * `--accent` / `--on-accent` is held to the whole filled-control rule: ≥ 4.5:1 in all four states,
- * ≥ 7:1 in dark, and never narrowed by the high-contrast overlay. It is pinned here on the resolved
- * hex because the failure this guards is the brand pair's: `fg()`/`on()` take their widening
- * direction from the mode, which assumes fill and ink swap sides with the theme. This pair never
- * swaps, so written `fg(62)`/`on(10)` the light pair converges under high contrast to 2.76:1.
+ * Tier 1 is the page's own ink as the fill and the page as the ink: `--accent` resolves to
+ * `--on-surface` and `--on-accent` to `--surface`, so the pair swaps sides with the theme and rides
+ * the overlay's widening of `--on-surface`. It replaced the amber seed, which measured 1.06:1 / 1.14:1
+ * against `--warning` and sat at 2.36:1 on the light page (#157 flags (a), (b)). Pinned on the resolved
+ * hex so a re-seed, a re-map in one branch or a high-contrast carve-out all fail here first.
  */
 const ACCENT_STATES = [
-	{ dark: false, highContrast: false, fill: "#d88115", ink: "#191c1d", ratio: "5.77" },
-	{ dark: false, highContrast: true, fill: "#d88115", ink: "#000000", ratio: "7.07" },
-	{ dark: true, highContrast: false, fill: "#e58b22", ink: "#0b0f0f", ratio: "7.39" },
-	{ dark: true, highContrast: true, fill: "#ffb061", ink: "#000000", ratio: "11.63" },
+	{ dark: false, highContrast: false, fill: "#191c1d", ink: "#ffffff", ratio: "17.14" },
+	{ dark: false, highContrast: true, fill: "#000000", ink: "#ffffff", ratio: "21.00" },
+	{ dark: true, highContrast: false, fill: "#e0e3e3", ink: "#151819", ratio: "13.83" },
+	{ dark: true, highContrast: true, fill: "#ffffff", ink: "#151819", ratio: "17.85" },
 ] as const;
 
 const stateLabel = (dark: boolean, highContrast: boolean) =>
 	`${dark ? "dark" : "light"}${highContrast ? " + high contrast" : ""}`;
+
+/** The widest sRGB channel spread a token may carry and still read as achromatic. */
+const ACHROMATIC_SPREAD = 8;
+/** The narrowest spread a status ramp carries — every one is unmistakably a hue. */
+const CHROMATIC_SPREAD = 64;
+
+function channelSpread(hex: string): number {
+	const n = parseInt(hex.slice(1), 16);
+	const channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+	return Math.max(...channels) - Math.min(...channels);
+}
 
 for (const { dark, highContrast, fill, ink, ratio } of ACCENT_STATES) {
 	const label = stateLabel(dark, highContrast);
@@ -429,6 +440,20 @@ for (const { dark, highContrast, fill, ink, ratio } of ACCENT_STATES) {
 		);
 	});
 
+	Deno.test(`the accent pair is the inverted page pair — ${label}`, () => {
+		const scheme = buildScheme({ seed: SEED, dark, highContrast });
+		assertEquals(
+			scheme["--accent"],
+			scheme["--on-surface"],
+			`--accent must be --on-surface in ${label}`,
+		);
+		assertEquals(
+			scheme["--on-accent"],
+			scheme["--surface"],
+			`--on-accent must be --surface in ${label}`,
+		);
+	});
+
 	Deno.test(`the accent pair clears ${AA_FLOOR}:1 — ${label}`, () => {
 		const scheme = buildScheme({ seed: SEED, dark, highContrast });
 		const measured = contrast(scheme["--accent"], scheme["--on-accent"]);
@@ -438,35 +463,66 @@ for (const { dark, highContrast, fill, ink, ratio } of ACCENT_STATES) {
 		);
 	});
 
-	/** Light fill, dark ink in every state — the property that rules out `fg()`/`on()`. */
-	Deno.test(`the accent pair keeps its polarity — ${label}`, () => {
+	/** The fill swaps sides with the theme: dark on a light page, light on a dark one. */
+	Deno.test(`the accent polarity follows the theme — ${label}`, () => {
 		const scheme = buildScheme({ seed: SEED, dark, highContrast });
-		assert(
-			relativeLuminance(scheme["--accent"]) > relativeLuminance(scheme["--on-accent"]),
-			`--accent (${scheme["--accent"]}) is not lighter than --on-accent (${
+		const fillLighter =
+			relativeLuminance(scheme["--accent"]) > relativeLuminance(scheme["--on-accent"]);
+		assertEquals(
+			fillLighter,
+			dark,
+			`--accent (${scheme["--accent"]}) on --on-accent (${
 				scheme["--on-accent"]
-			}) in ${label} — the pair is fixed-polarity (§A.1.2)`,
+			}) has the wrong polarity in ${label}`,
 		);
 	});
 
-	/**
-	 * Pressure blends the fill toward a mode-invariant LIGHT pole (`--on-scrim`, `N.tone(100)`), never
-	 * toward `--btn-shade`: for a fixed-polarity light fill, `--on-surface` IS the ink in light mode.
-	 * The accent severity in `button.css` must mirror this pole and these steps.
-	 */
-	Deno.test(`pressing the accent never lowers its contrast — ${label}`, () => {
+	/** #157 flag (b): the amber fill rested at 2.36–2.61:1 on the light page. A fill must be findable. */
+	Deno.test(`the accent fill clears ${FLOOR}:1 on every surface — ${label}`, () => {
 		const scheme = buildScheme({ seed: SEED, dark, highContrast });
-		const rest = contrast(scheme["--accent"], scheme["--on-accent"]);
-		for (const [state, pct] of [["hover", HOVER_MIX], ["active", ACTIVE_MIX]] as const) {
-			const blended = mixSrgb(scheme["--accent"], pct, scheme["--on-scrim"]);
-			const measured = contrast(blended, scheme["--on-accent"]);
+		for (const surface of SURFACES) {
+			const measured = contrast(scheme["--accent"], scheme[surface]);
 			assert(
-				measured >= rest,
-				`--accent ${state} blends to ${blended}, ${
+				measured >= FLOOR,
+				`--accent (${scheme["--accent"]}) on ${surface} (${scheme[surface]}) is ${
 					measured.toFixed(2)
-				}:1 against --on-accent — below its resting ${rest.toFixed(2)}:1 in ${label}`,
+				}:1 in ${label} — a filled commit must clear ${FLOOR}:1 against its page (SC 1.4.11)`,
 			);
 		}
+	});
+
+	/**
+	 * #157 flag (a): commit and warning were one hue. An achromatic fill cannot collide with any status
+	 * ramp, in either mode, whatever their relative luminance — pinned as a channel spread, because the
+	 * claim is about hue and a luminance ratio would not measure it.
+	 */
+	Deno.test(`the accent is achromatic and every status ramp is not — ${label}`, () => {
+		const scheme = buildScheme({ seed: SEED, dark, highContrast });
+		assert(
+			channelSpread(scheme["--accent"]) <= ACHROMATIC_SPREAD,
+			`--accent (${scheme["--accent"]}) carries a hue in ${label} — tier 1 is monochrome (§A.1.2)`,
+		);
+		for (const status of ["--warning", "--danger", "--success", "--info"] as const) {
+			assert(
+				channelSpread(scheme[status]) >= CHROMATIC_SPREAD,
+				`${status} (${
+					scheme[status]
+				}) reads as near-grey in ${label} — it would be confused with the commit`,
+			);
+		}
+	});
+
+	/**
+	 * The zero tonal step (§B.12.4): the fill IS the `--btn-shade` pole, so `button.css` takes 100% and
+	 * spends the border channel on hover — the structural tone's mechanism. A blend toward the page
+	 * would walk the fill toward its own ink.
+	 */
+	Deno.test(`the accent takes the zero tonal step — ${label}`, () => {
+		const scheme = buildScheme({ seed: SEED, dark, highContrast });
+		const rest = contrast(scheme["--accent"], scheme["--on-accent"]);
+		const pressed = mixSrgb(scheme["--accent"], 100, scheme["--on-surface"]);
+		assertEquals(pressed, scheme["--accent"], `the accent's pole is not its own fill in ${label}`);
+		assert(contrast(pressed, scheme["--on-accent"]) >= rest);
 	});
 }
 
@@ -498,28 +554,12 @@ Deno.test("high contrast never narrows the accent pair", () => {
 	}
 });
 
-/** SSR (`_app.tsx`) builds schemes without an accent seed; the default must be the documented amber. */
-Deno.test("omitting accentSeed is the same as passing ACCENT_SEED", () => {
+/** The accent derives from the brand seed's neutral alone: a re-seed moves it with the page's ink. */
+Deno.test("the accent follows the brand seed's neutral ramp", () => {
 	for (const { dark, highContrast } of ACCENT_STATES) {
-		assertEquals(
-			buildScheme({ seed: SEED, dark, highContrast }),
-			buildScheme({ seed: SEED, accentSeed: ACCENT_SEED, dark, highContrast }),
-		);
-	}
-});
-
-/** A custom accent seed re-derives the fill and touches nothing else — the ink is the brand neutral. */
-Deno.test("a custom accentSeed moves --accent and only --accent", () => {
-	for (const { dark, highContrast } of ACCENT_STATES) {
-		const base = buildScheme({ seed: SEED, dark, highContrast });
-		const custom = buildScheme({ seed: SEED, accentSeed: "#3D7BD9", dark, highContrast });
-		assert(
-			custom["--accent"] !== base["--accent"],
-			`accentSeed was ignored in ${stateLabel(dark, highContrast)}`,
-		);
-		const { ["--accent"]: _a, ...restCustom } = custom;
-		const { ["--accent"]: _b, ...restBase } = base;
-		assertEquals(restCustom, restBase, "a custom accent seed leaked into another token");
+		const other = buildScheme({ seed: "#3D7BD9", dark, highContrast });
+		assertEquals(other["--accent"], other["--on-surface"]);
+		assertEquals(other["--on-accent"], other["--surface"]);
 	}
 });
 

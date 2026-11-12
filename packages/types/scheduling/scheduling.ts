@@ -12,6 +12,7 @@ import {
 	SchedulingPartySchema,
 } from "./coordination.ts";
 import { CalendarPrefsSchema, EntryRemindersSchema } from "./reminders.ts";
+import { IsoDate } from "./civil.ts";
 import { AvailabilityBehavior, CssTokenName, RRuleText, uuid } from "./rows.ts";
 import { RoutineSchema } from "./routines.ts";
 import { SwatchAccentSchema } from "./swatches.ts";
@@ -330,6 +331,26 @@ export type CalendarScope = z.infer<typeof CalendarScope>;
 export const PageInstantSchema = z.number().int().nonnegative();
 
 /**
+ * The span a calendar page's events were read over, epoch ms, `[from, to)` — sized by the server and
+ * centred on the day the reader asked for (`around`), else on its `now`.
+ *
+ * Outside it the calendar has not been READ, which is not the same as free: the grid says "Not
+ * loaded" there and the island reads the next span. Absent on a page that is not windowed (a
+ * fixture), which then holds everything it has.
+ */
+export const CalendarWindowSchema = z.object({
+	from: PageInstantSchema,
+	to: PageInstantSchema,
+}).refine((w) => w.to > w.from, "A window ends after it starts.");
+export type CalendarWindow = z.infer<typeof CalendarWindowSchema>;
+
+/** The civil day a calendar read is centred on (`?around=`), in the reader's own calendar. */
+export const CalendarAroundSchema = z.object({
+	around: IsoDate.optional(),
+});
+export type CalendarAround = z.infer<typeof CalendarAroundSchema>;
+
+/**
  * The project / channel calendar page (`/projects/[id]/calendar`, `/projects/[id]/[channel]/calendar`):
  * task deadlines, review milestones, and scheduled stage syncs derived from the engagement.
  *
@@ -351,6 +372,8 @@ export const CalendarPageSchema = z.object({
 	/** Whether the viewer may create entries by clicking / dragging the grid. */
 	canCreate: z.boolean(),
 	events: z.array(CalendarEventSchema),
+	/** The span {@link events} were read over. See {@link CalendarWindowSchema}. */
+	window: CalendarWindowSchema.optional(),
 	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
 	now: PageInstantSchema,
 });
@@ -385,20 +408,26 @@ export const SchedulePageSchema = z.object({
 	prefs: CalendarPrefsSchema.optional(),
 	/** The reader's live routines, on the `personal` page only, and for the same reason. */
 	routines: z.array(RoutineSchema).optional(),
+	/** The span {@link events} and the blackouts were read over. See {@link CalendarWindowSchema}. */
+	window: CalendarWindowSchema.optional(),
 	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
 	now: PageInstantSchema,
 });
 export type SchedulePage = z.infer<typeof SchedulePageSchema>;
 
 /** Params for the project / channel calendar read. */
-export const CalendarParamsSchema = z.object({
+export const CalendarParamsSchema = CalendarAroundSchema.extend({
 	projectId: z.string().min(1).max(120),
 	channelId: z.string().min(1).max(120).nullable().optional(),
 });
 export type CalendarParams = z.infer<typeof CalendarParamsSchema>;
 
+/** Params for the acting account's own agenda (`/calendar`): only the day to read around. */
+export const PersonalCalendarParamsSchema = CalendarAroundSchema;
+export type PersonalCalendarParams = z.infer<typeof PersonalCalendarParamsSchema>;
+
 /** Params for a `@handle`'s availability read. */
-export const AvailabilityParamsSchema = z.object({
+export const AvailabilityParamsSchema = CalendarAroundSchema.extend({
 	handle: z.string().min(1).max(64),
 });
 export type AvailabilityParams = z.infer<typeof AvailabilityParamsSchema>;

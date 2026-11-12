@@ -14,11 +14,11 @@ import {
 	LaneIconButton,
 	LaneList,
 	type LaneMode,
-	LaneSearch,
 	LaneSection,
 	LaneSections,
 	LaneTabs,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { MetaLine, Tag, VerificationStampBadge } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
@@ -335,7 +335,7 @@ function RosterLane(props: RosterLaneProps): JSX.Element {
 					<ContextZone key={id} context={zones.context}>
 						<div class="wsp-lane__search">
 							<LaneBar>
-								<LaneSearch
+								<LaneSearchField
 									value={search.value}
 									placeholder={zones.context.search.placeholder}
 									label={zones.context.search.label}
@@ -707,7 +707,7 @@ function ConsoleLane(props: ConsoleLaneProps): JSX.Element {
 					<ContextZone key={id} context={zones.context}>
 						<div class="wsp-lane__search">
 							<LaneBar>
-								<LaneSearch
+								<LaneSearchField
 									value={query.value}
 									placeholder={zones.context.search.placeholder}
 									label={zones.context.search.label}

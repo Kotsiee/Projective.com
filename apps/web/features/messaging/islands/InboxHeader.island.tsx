@@ -3,6 +3,7 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/inbox.css";
 import { LaneFilterPopover, TabStrip, type TabStripItem } from "@projective/ui/navigation";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { MessagesFilterPanel } from "../components/MessagesFilterPanel.tsx";
 import {
@@ -71,6 +72,8 @@ const SEARCH_SETTLE_MS = 220;
 export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 	const filterOpen = useSignal(false);
 	const searchTimer = useRef<number | null>(null);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	const services = useComputed(() => serviceOptions(inboxAll.value));
 	const products = useComputed(() => productOptions(inboxAll.value));
@@ -156,7 +159,7 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 			/>
 
 			<div class="inbox-head__controls">
-				<div class="inbox-head__search">
+				<div class="inbox-head__search" ref={searchRef}>
 					<span class="inbox-head__search-icon" aria-hidden="true">
 						<MessagingIcon name="search" />
 					</span>

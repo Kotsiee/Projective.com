@@ -1,14 +1,25 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Dialog } from "@projective/ui/feedback";
+import { Button, FormControl, InputNumber, Textarea } from "@projective/ui/fields";
+import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { MoneyView } from "@projective/ui/display/money";
+import "@features/profile/styles/profile-hire.css";
 import "../styles/service-booking.css";
 import { DateRail } from "../components/DateRail.tsx";
 import { SlotPicker } from "../components/SlotPicker.tsx";
 import { CtaButton } from "../components/CtaButton.tsx";
+import { OfferLedger } from "../components/OfferLedger.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { commitContact, commitSession, readSlots } from "../core/booking-commits.ts";
+import {
+	callLedger,
+	type ConversionLedger,
+	seatLedger,
+	sessionLedger,
+} from "../core/conversion-ledger.ts";
+import type { OfferSummary } from "../core/offer-summary.ts";
 import {
 	clearSimulationOutcome,
 	SIMULATED_COMMIT_LABEL,
@@ -22,45 +33,39 @@ import type { BookableSlot, SlotGrid, SlotPurpose } from "@projective/types/sche
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
 import type { SessionPlanItem } from "@projective/types/explore";
 import { type IntakeField, plural, type ServiceBookingOffer } from "@projective/types/services";
-import { ResizeFrame } from "@projective/ui/fields";
 import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
+import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx";
 import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 
 /**
- * SessionBookingModal — the date-rail + slot-picker panel behind **Book session**, **Book *n*
- * sessions**, **Join cohort**, and the Contact menu's **Book a discovery call**.
+ * SessionBookingModal — the dialog behind **Book session**, **Book *n* sessions**, **Reserve seat**
+ * and the Contact menu's **Book a discovery call**, in the shared two-column conversion frame
+ * (`SplitModal`, Decision #424).
  *
- * # One modal, four entry points
+ * LEFT, in the fixed order every `/view` conversion dialog keeps: the commitment (the provider's date
+ * rail and bookable slots; for a cohort its fixed sittings and a seat count), the buyer's note, then
+ * the seller's intake questions. RIGHT, the live offer ledger: the picked times or seats and the total.
+ * FOOTER, the state in words and the one tier-1 commit.
  *
- * They differ in their copy, their slot count and where they submit — not in their mechanics. All four
- * are "pick from this provider's real availability, then commit", and building four would mean four
- * places for the timezone disclosure to be got wrong and four chances for one of them to keep offering
- * a slot somebody else has taken. `purpose` selects the copy; everything else is shared.
+ * # Rules the implementation holds
  *
- * # Two rules the implementation holds
+ * **The grid is re-read, never patched.** After a refused booking the whole window is re-fetched, so
+ * the picker never drifts from the provider's real calendar. A window that fails to load says so with
+ * a Try again, and an empty one offers the next window — the picker is never silently absent.
  *
- * **The grid is re-read, never patched.** After a refused booking (`409` — somebody got there first)
- * the whole window is re-fetched rather than the one slot being marked taken locally. A picker that
- * patched its own copy would drift from the provider's actual calendar with every refusal, and the
- * drift is invisible until it books a double.
+ * **A block books session 1 and as many of the rest as the buyer wants (Decision #411).** Picks are
+ * kept in time order, so the earliest is session 1; the commit waits only for that one.
  *
- * **Selection survives a window page, and is validated on submit.** Paging forward keeps a slot chosen
- * on an earlier page — a set-session buyer picking across a fortnight would otherwise lose their first
- * pick on every arrow press — and the server re-resolves every id through the reader that drew the
- * grid, so a stale selection is refused with a reason rather than silently booked.
- *
- * **A block books session 1 and as many of the rest as the buyer wants (Decision #411).** The picks
- * are kept in time order, so the earliest is session 1; the confirm control waits only for that one,
- * and every session left without a time is listed as booked later and agreed after checkout.
- *
- * **The listing's own questions are asked here.** A booking carries the buyer's answers to the
- * seller's intake (`ServiceView.intake`) and the server refuses a required one left blank, so the modal
- * renders them with the profile's `IntakeFields`, checks them by the same `intakeRefusal` before it
- * commits, and paints a refusal the server names (`answers.<id>`) on its control.
+ * **A cohort has no time to pick.** Its sittings are fixed, so the panel lists them and asks only for
+ * seats; the commit holds them (`reserve_seat`, Decision #171) and continues to checkout. The seller's
+ * intake is not asked: a seat hold carries no answers, and a question whose answer is dropped is not
+ * a question worth asking.
  */
 
 /** How many days one window of the rail holds. Paging is by window, not by day. */
 const WINDOW_DAYS = 14;
+/** The most seats one booking may take (`SessionBookingInputSchema.seats`). */
+const SEATS_MAX = 20;
 
 export interface SessionBookingModalProps {
 	/** The SSR-resolved offer. The live one comes from the shared signal once it hydrates. */
@@ -69,14 +74,17 @@ export interface SessionBookingModalProps {
 	intake?: readonly IntakeField[];
 	/** A block's sittings as the seller describes them (`ServiceView.sessionPlan`), naming each row. */
 	sessionPlan?: readonly SessionPlanItem[];
+	/** The listing as the page names it — the offer column's cover, title, seller and price. */
+	summary: OfferSummary;
 }
 
 export default function SessionBookingModal(
-	{ offer: ssrOffer, intake = [], sessionPlan = [] }: SessionBookingModalProps,
+	{ offer: ssrOffer, intake = [], sessionPlan = [], summary }: SessionBookingModalProps,
 ): JSX.Element {
 	const offer = useComputed(() => currentOffer.value ?? ssrOffer);
 	const open = useComputed(() => openPanel.value === "scheduler" || openPanel.value === "call");
 	const isCall = useComputed(() => openPanel.value === "call");
+	const isCohort = useComputed(() => !isCall.value && offer.value.format === "cohort");
 
 	const grid = useSignal<SlotGrid | null>(null);
 	const windowFrom = useSignal<number | null>(null);
@@ -84,19 +92,20 @@ export default function SessionBookingModal(
 	const picks = useSignal<readonly BookableSlot[]>([]);
 	const selectedSlots = useComputed(() => picks.value.map((slot) => slot.id));
 	const note = useSignal("");
-	const seats = useSignal(1);
+	const noteRefused = useSignal(false);
+	const seats = useSignal<number | null>(1);
 	const callType = useSignal<"courtesy" | "paid">("courtesy");
 	const loading = useSignal(false);
+	const loadError = useSignal<string | null>(null);
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
 	const bodyRef = useRef<HTMLDivElement>(null);
+	const firstRef = useRef<HTMLDivElement>(null);
 	const intakeState = useIntakeAnswers(intake, bodyRef);
 
 	const purpose = useComputed<SlotPurpose>(() =>
 		isCall.value
 			? "discovery_call"
-			: offer.value.format === "cohort"
-			? "cohort"
 			: offer.value.format === "set_session"
 			? "set_session"
 			: "session"
@@ -114,13 +123,11 @@ export default function SessionBookingModal(
 			: 1
 	);
 
-	/**
-	 * The viewer's own IANA zone.
-	 *
-	 * Read from `Intl` on the client, never guessed server-side. A server that guessed would bucket a
-	 * buyer's days into a calendar they do not live in, and every time on the screen would then be off
-	 * by the difference without anything on the page admitting it.
-	 */
+	const seatCap = useComputed(() =>
+		Math.min(SEATS_MAX, Math.max(1, offer.value.capacity?.remaining ?? 1))
+	);
+
+	/** The viewer's own IANA zone, read from `Intl` on the client — never guessed server-side. */
 	function viewerZone(): string | undefined {
 		try {
 			return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
@@ -129,10 +136,9 @@ export default function SessionBookingModal(
 		}
 	}
 
-	/** Load (or reload) a window of the grid. */
 	async function loadGrid(from?: number | null): Promise<void> {
 		loading.value = true;
-		error.value = null;
+		loadError.value = null;
 		const res = await readSlots({
 			subjectId: subjectId.value,
 			purpose: purpose.value,
@@ -142,27 +148,21 @@ export default function SessionBookingModal(
 		});
 		loading.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.message ?? "Could not load availability.";
+			loadError.value = res.message ?? "We couldn't load this provider's availability.";
 			return;
 		}
 		grid.value = res.data.grid;
 		windowFrom.value = res.data.grid.days[0]?.startsAt ?? null;
-		// Land on the first day that has something, rather than on an empty Monday. If a selection is
-		// still on the visible window it is kept — paging must not silently discard a chosen slot.
 		const stillVisible = selectedDay.value &&
 			res.data.grid.days.some((d) => d.key === selectedDay.value);
 		if (!stillVisible) selectedDay.value = firstOpenDay(res.data.grid)?.key ?? null;
 	}
 
-	// Load on OPEN, not on mount: this modal is mounted on every listing page, and reading a provider's
-	// fortnight of availability for a panel nobody opened is a request nobody asked for.
 	useEffect(() => {
-		if (!open.value) return;
-		if (grid.value) return;
+		if (!open.value || isCohort.value || grid.value) return;
 		void loadGrid(null);
 	}, [open.value]);
 
-	// Reset when the panel closes, so re-opening it is a fresh decision rather than a half-made one.
 	useEffect(() => {
 		if (open.value) {
 			clearSimulationOutcome();
@@ -173,7 +173,9 @@ export default function SessionBookingModal(
 		selectedDay.value = null;
 		picks.value = [];
 		note.value = "";
+		noteRefused.value = false;
 		seats.value = 1;
+		loadError.value = null;
 		error.value = null;
 		intakeState.reset();
 		cta.reset();
@@ -188,8 +190,6 @@ export default function SessionBookingModal(
 		}
 		const slot = slotById(grid.value, id);
 		if (!slot) return;
-		// Single-select flows replace rather than append: a buyer clicking a second time means "actually,
-		// that one", and a picker that made them deselect first is a picker fighting its user.
 		if (maxSlots.value === 1) {
 			picks.value = [slot];
 			return;
@@ -209,19 +209,14 @@ export default function SessionBookingModal(
 	function page(delta: number): void {
 		const g = grid.value;
 		if (!g) return;
-		// Calendar days, not `delta * WINDOW_DAYS * 86_400_000`. A fixed step drifts by an hour across
-		// each DST transition, and after two of them a "fortnight forward" lands on the wrong date —
-		// which reads as the rail skipping or repeating a day for no visible reason.
 		const from = windowFrom.value ?? g.windowStart;
 		const next = addDaysInZone(from, delta * WINDOW_DAYS, g.viewerTimezone);
 		void loadGrid(Math.max(g.windowStart, Math.min(next, g.windowEnd)));
 	}
 
-	/** Whether the window can page further back — never before the provider's own notice floor. */
 	const canPrev = useComputed(() => {
 		const g = grid.value;
-		if (!g) return false;
-		return (windowFrom.value ?? g.windowStart) > g.windowStart;
+		return !!g && (windowFrom.value ?? g.windowStart) > g.windowStart;
 	});
 
 	const canNext = useComputed(() => {
@@ -231,63 +226,85 @@ export default function SessionBookingModal(
 		return !!last && last.startsAt < g.windowEnd;
 	});
 
+	const zone = useComputed(() => grid.value?.viewerTimezone ?? viewerZone() ?? null);
+	const pickLabels = useComputed(() => picks.value.map((pick) => pickLabel(pick, zone.value)));
+
+	const sittings = useComputed(() => offer.value.cohort?.sittings ?? []);
+	const sittingsLine = useComputed(() => cohortLine(sittings.value, zone.value));
+
+	const ledger = useComputed<ConversionLedger>(() => {
+		if (isCall.value) {
+			const call = offer.value.contact.callOffer;
+			const paid = callType.value === "paid";
+			const fee = paid && call?.feeAmountMinor != null && call.feeCurrency
+				? { minor: call.feeAmountMinor, currency: call.feeCurrency }
+				: null;
+			const minutes = (paid ? call?.paidDurationMinutes : call?.courtesyDurationMinutes) ??
+				grid.value?.durationMinutes ?? 30;
+			return callLedger(callType.value, minutes, pickLabels.value[0] ?? null, fee);
+		}
+		if (isCohort.value) return seatLedger(summary.price, seats.value ?? 1, sittingsLine.value);
+		return sessionLedger(summary.price, pickLabels.value, maxSlots.value);
+	});
+
+	const ready = useComputed(() =>
+		isCohort.value ? sittings.value.length > 0 : selectedSlots.value.length > 0
+	);
+
 	async function submit(): Promise<boolean> {
-		const chosen = selectedSlots.value;
-		if (chosen.length === 0) {
-			error.value = maxSlots.value > 1 ? "Pick a time for session 1 first." : "Pick a time first.";
+		error.value = null;
+		if (!ready.value) {
+			error.value = isCohort.value
+				? "This cohort has no sittings scheduled yet."
+				: maxSlots.value > 1
+				? "Pick a time for session 1 first."
+				: "Pick a time first.";
 			return false;
 		}
-		error.value = null;
 
 		if (isCall.value) {
 			const call = offer.value.contact.callOffer;
 			if (call?.agendaRequired && !note.value.trim()) {
-				error.value = "This provider asks what the call is about before confirming.";
+				noteRefused.value = true;
 				return false;
 			}
 			const out = await commitContact({
 				kind: "discovery_call",
 				handle: offer.value.contact.handle,
 				subjectId: offer.value.subjectId,
-				slotId: chosen[0],
+				slotId: selectedSlots.value[0],
 				callType: callType.value,
 				timezone: viewerZone(),
 				agenda: note.value.trim() || undefined,
 			}, grid.value?.durationMinutes ?? null);
-			// A simulated request stays open on its outcome: nothing was sent, so nothing closes.
 			if (out.simulated) return true;
 			const res = out.value;
 			if (!res.ok || !res.data) {
-				error.value = res.message ?? "Could not request that call.";
-				// A refusal is usually somebody else taking the slot, so the honest response is a fresh
-				// read rather than leaving a grid on screen that no longer matches the calendar.
+				error.value = res.message ?? "We couldn't request that call.";
 				if (res.errors?.slotId) void loadGrid(windowFrom.value);
 				return false;
 			}
 			announce(res.data.result.confirmation);
-			// Resolve in place: a requested call has no page to land on, and navigating somewhere would
-			// take the reader off the listing they were still evaluating.
 			setTimeout(() => closeBookingPanel(), 900);
 			return true;
 		}
 
-		if (!intakeState.check()) return false;
+		if (!isCohort.value && !intakeState.check()) return false;
 
 		const out = await commitSession({
 			subjectId: offer.value.subjectId,
 			format: offer.value.format,
-			slotIds: [...chosen],
+			slotIds: isCohort.value ? [sittings.value[0].id] : [...selectedSlots.value],
 			timezone: viewerZone(),
 			note: note.value.trim() || undefined,
-			seats: offer.value.format === "cohort" ? seats.value : 1,
-			answers: intakeState.answers.value,
+			seats: isCohort.value ? Math.min(seatCap.value, Math.max(1, seats.value ?? 1)) : 1,
+			answers: isCohort.value ? {} : intakeState.answers.value,
 		});
-		// A simulated booking holds nothing and goes nowhere: the modal stays on its outcome.
 		if (out.simulated) return true;
 		const res = out.value;
 		if (!res.ok || !res.data) {
 			if (intakeState.fromServer(res.message, res.errors)) return false;
-			error.value = res.message ?? "Could not add that time to your basket.";
+			error.value = res.message ?? "We couldn't add that to your basket.";
 			if (res.errors?.slotId || res.errors?.slotIds) void loadGrid(windowFrom.value);
 			return false;
 		}
@@ -306,50 +323,23 @@ export default function SessionBookingModal(
 	const simulated = simulating.value;
 	const bothCallTypes = !!call?.courtesyEnabled && !!call?.paidEnabled;
 	const blockSize = maxSlots.value;
-	const later = blockSize - picks.value.length;
+	const total = ledger.value.total;
+	const sellerName = offer.value.contact.sellerName;
+	const dayHasSlots = !!g && !!selectedDay.value && (g.slots[selectedDay.value]?.length ?? 0) > 0;
+	const windowEmpty = !!g && !firstOpenDay(g);
 
-	return (
-		<Dialog
-			visible={open}
-			onVisibleChange={(next) => {
-				if (!next) closeBookingPanel();
-			}}
-			header={isCall.value ? `Book a call with ${offer.value.contact.sellerName}` : bookHeader(offer.value)}
-			width="min(46rem, 94vw)"
-			class="sbk"
-			footer={
-				<div class="sbk__footer">
-					<div class="sbk__summary">
-						<span class="sbk__summarymain">
-							{summaryLine(offer.value, isCall.value, picks.value.length, g)}
-						</span>
-						{blockSize > 1 && picks.value.length > 0 && later > 0 && (
-							<span class="sbk__summarynote">
-								The other {later} {plural(later, "session")} can be booked later.
-							</span>
-						)}
-					</div>
-					<CtaButton
-						label={simulated
-							? SIMULATED_COMMIT_LABEL
-							: isCall.value
-							? "Request call"
-							: confirmLabel(offer.value)}
-						settledLabel={simulated
-							? SIMULATED_SETTLED_LABEL
-							: isCall.value
-							? "Requested"
-							: "Selected"}
-						phase={cta.phase}
-						disabled={selectedSlots.value.length === 0 || loading.value}
-						icon={<Icon name="calendar" size="sm" aria-hidden />}
-						fluid={false}
-						onClick={() => void cta.run(submit)}
-					/>
-				</div>
-			}
-		>
-			<div class="sbk__body" ref={bodyRef}>
+	const left = (
+		<div class="sbk__form">
+			<section
+				class="sbk__section"
+				aria-labelledby="sbk-when-label"
+				ref={firstRef}
+				tabIndex={-1}
+			>
+				<h3 class="sbk__sectiontitle" id="sbk-when-label">
+					{isCohort.value ? "Cohort dates" : "Pick a time"}
+				</h3>
+
 				{isCall.value && bothCallTypes && (
 					<div class="sbk__calltype" role="radiogroup" aria-label="Call type">
 						<button
@@ -375,18 +365,46 @@ export default function SessionBookingModal(
 					</div>
 				)}
 
-				{loading.value && !g
-					? <p class="sbk__loading" role="status">Loading availability…</p>
-					: g
+				{isCohort.value
 					? (
+						sittings.value.length > 0
+							? (
+								<ol class="sbk__sittings">
+									{sittings.value.map((s, i) => (
+										<li class="sbk__sitting" key={s.id}>
+											<span class="sbk__stagenum">{i + 1}</span>
+											<span class="sbk__sittingtitle">{s.title}</span>
+											<span class="sbk__sittingwhen">
+												{sittingLabel(s.startsAt, s.endsAt, zone.value)}
+											</span>
+										</li>
+									))}
+								</ol>
+							)
+							: <p class="sbk__about">{sellerName} hasn't scheduled this cohort's sittings yet.</p>
+					)
+					: loadError.value
+					? (
+						<InlineNotice
+							assertive
+							align="start"
+							class="sbk__notice"
+							icon={<Icon name="error" size="xs" />}
+							text={loadError.value}
+							actionLabel="Try again"
+							busy={loading.value}
+							onAction={() => void loadGrid(windowFrom.value)}
+						/>
+					)
+					: !g
+					? <p class="sbk__loading" role="status">Loading availability…</p>
+					: (
 						<>
 							<DateRail
 								days={g.days}
 								selected={selectedDay.value}
 								onSelect={(key) => {
 									selectedDay.value = key;
-									// A day change clears a single-slot selection: keeping Tuesday's 2pm chosen while
-									// showing Wednesday's times is a picker whose footer and body disagree.
 									if (blockSize === 1) picks.value = [];
 								}}
 								timezone={g.viewerTimezone}
@@ -394,130 +412,235 @@ export default function SessionBookingModal(
 								onNext={canNext.value ? () => page(1) : undefined}
 								busy={loading.value}
 							/>
-							<SlotPicker
-								grid={g}
-								dayKey={selectedDay.value}
-								selected={selectedSlots.value}
-								onToggle={toggleSlot}
-								max={blockSize}
-								busy={loading.value}
-							/>
+							{windowEmpty
+								? (
+									<InlineNotice
+										align="start"
+										class="sbk__notice"
+										text={`${sellerName} has no open times in these two weeks.`}
+										actionLabel={canNext.value ? "Show the next two weeks" : undefined}
+										onAction={canNext.value ? () => page(1) : undefined}
+									/>
+								)
+								: (
+									<SlotPicker
+										grid={g}
+										dayKey={selectedDay.value}
+										selected={selectedSlots.value}
+										onToggle={toggleSlot}
+										max={blockSize}
+										busy={loading.value}
+									/>
+								)}
+							{!windowEmpty && selectedDay.value && !dayHasSlots && (
+								<p class="sbk__about">No open times on this day — pick another.</p>
+							)}
 						</>
-					)
-					: null}
+					)}
+			</section>
 
-				{blockSize > 1 && (
-					<section class="sbk__section" aria-labelledby="sbk-plan-label">
-						<h3 class="sbk__sectiontitle" id="sbk-plan-label">Your sessions</h3>
-						<p class="sbk__about">
-							Session 1 needs a time. Pick times for the others now, or leave them to book later.
-							The earliest time you pick is session 1.
-						</p>
-						<dl class="sbk__stages" aria-live="polite">
-							{Array.from({ length: blockSize }, (_, i) => {
-								const pick = picks.value[i];
-								const title = sessionPlan[i]?.title;
-								return (
-									<div class="sbk__stagerow" key={i} data-included={pick ? "true" : undefined}>
-										<dt class="sbk__stagename">
-											<span class="sbk__stagenum">{i + 1}</span>
-											<span>{title || `Session ${i + 1}`}</span>
-										</dt>
-										<dd class="sbk__stagevalue">
-											{pick
-												? (
-													<span class="sbk__picked">
-														<span>
-															{pickLabel(pick, g?.viewerTimezone ?? viewerZone() ?? null)}
-														</span>
-														<button
-															type="button"
-															class="sbk__unpick"
-															aria-label={`Remove the time for session ${i + 1}`}
-															onClick={() => removePick(pick.id)}
-														>
-															<Icon name="close" size="sm" aria-hidden />
-														</button>
-													</span>
-												)
-												: (
-													<span class="sbk__stagelater">
-														{i === 0 ? "Needs a time" : "Book later"}
-													</span>
-												)}
-										</dd>
-									</div>
-								);
-							})}
-						</dl>
-					</section>
-				)}
+			{blockSize > 1 && (
+				<section class="sbk__section" aria-labelledby="sbk-plan-label">
+					<h3 class="sbk__sectiontitle" id="sbk-plan-label">Your sessions</h3>
+					<p class="sbk__about">
+						Session 1 needs a time. Pick times for the others now, or leave them to book later. The
+						earliest time you pick is session 1.
+					</p>
+					<dl class="sbk__stages" aria-live="polite">
+						{Array.from({ length: blockSize }, (_, i) => {
+							const pick = picks.value[i];
+							const title = sessionPlan[i]?.title;
+							return (
+								<div class="sbk__stagerow" key={i} data-included={pick ? "true" : undefined}>
+									<dt class="sbk__stagename">
+										<span class="sbk__stagenum">{i + 1}</span>
+										<span>{title || `Session ${i + 1}`}</span>
+									</dt>
+									<dd class="sbk__stagevalue">
+										{pick
+											? (
+												<span class="sbk__picked">
+													<span>{pickLabels.value[i]}</span>
+													<button
+														type="button"
+														class="sbk__unpick"
+														aria-label={`Remove the time for session ${i + 1}`}
+														onClick={() => removePick(pick.id)}
+													>
+														<Icon name="close" size="sm" aria-hidden />
+													</button>
+												</span>
+											)
+											: (
+												<span class="sbk__stagelater">
+													{i === 0 ? "Needs a time" : "Book later"}
+												</span>
+											)}
+									</dd>
+								</div>
+							);
+						})}
+					</dl>
+				</section>
+			)}
 
-				{offer.value.format === "cohort" && !isCall.value && (
-					<label class="sbk__seats">
-						<span class="sbk__seatslabel">Seats</span>
-						<input
-							class="sbk__seatsinput"
-							type="number"
-							min={1}
-							max={offer.value.capacity?.remaining ?? 1}
-							value={seats.value}
-							onInput={(e) => {
-								const raw = Number((e.target as HTMLInputElement).value);
-								const cap = offer.value.capacity?.remaining ?? 1;
-								seats.value = Number.isFinite(raw) ? Math.min(cap, Math.max(1, raw)) : 1;
-							}}
-						/>
-						{offer.value.capacity && (
-							<span class="sbk__seatshint">{offer.value.capacity.sentence}</span>
+			{isCohort.value && (
+				<section class="sbk__section">
+					<FormControl
+						label="Seats"
+						hint={offer.value.capacity?.sentence}
+						note={`Up to ${seatCap.value}`}
+					>
+						{(a) => (
+							<InputNumber
+								id="sbk-seats"
+								aria-describedby={a.describedBy}
+								value={seats}
+								min={1}
+								max={seatCap.value}
+								step={1}
+								showButtons
+								buttonLayout="horizontal"
+								class="sbk__seatsfield"
+							/>
 						)}
-					</label>
-				)}
+					</FormControl>
+				</section>
+			)}
 
-				{!isCall.value && intake.length > 0 && (
-					<section class="sbk__section" aria-labelledby="sbk-intake-label">
-						<h3 class="sbk__sectiontitle" id="sbk-intake-label">
-							{offer.value.contact.sellerName} asks
-						</h3>
-						<IntakeFields
-							fields={intake}
-							answers={intakeState.answers}
-							refusal={intakeState.refusal()}
-							idPrefix="sbk-intake"
-						/>
-					</section>
-				)}
-
-				<label class="sbk__note">
-					<span class="sbk__notelabel">
-						{isCall.value
-							? call?.agendaRequired ? "What is the call about?" : "What is the call about? (optional)"
-							: "Anything the provider should know? (optional)"}
-					</span>
-					<ResizeFrame>
-						<textarea
-							class="sbk__notefield"
+			<section class="sbk__section">
+				<FormControl
+					label={isCall.value ? "What is the call about?" : `Anything ${sellerName} should know?`}
+					note={isCall.value && call?.agendaRequired ? undefined : "Optional"}
+					required={isCall.value && !!call?.agendaRequired}
+					error={noteRefused.value && !note.value.trim()
+						? `${sellerName} asks what the call is about before confirming.`
+						: undefined}
+					status={noteRefused.value && !note.value.trim() ? "invalid" : "default"}
+				>
+					{(a) => (
+						<Textarea
+							id="sbk-note"
+							aria-describedby={a.describedBy}
+							status={a.status}
+							value={note}
 							rows={3}
-							value={note.value}
+							maxRows={8}
+							autoResize
 							maxLength={2000}
-							onInput={(e) => (note.value = (e.target as HTMLTextAreaElement).value)}
+							fluid
 						/>
-					</ResizeFrame>
-				</label>
+					)}
+				</FormControl>
+			</section>
 
-				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}
-				{simulated && <SimulationOutcome />}
-			</div>
-		</Dialog>
+			{!isCall.value && !isCohort.value && intake.length > 0 && (
+				<section class="sbk__section" aria-labelledby="sbk-intake-label">
+					<h3 class="sbk__sectiontitle" id="sbk-intake-label">{sellerName} asks</h3>
+					<IntakeFields
+						fields={intake}
+						answers={intakeState.answers}
+						refusal={intakeState.refusal()}
+						idPrefix="sbk-intake"
+					/>
+				</section>
+			)}
+
+			{error.value && (
+				<InlineNotice
+					assertive
+					align="start"
+					class="sbk__notice"
+					icon={<Icon name="error" size="xs" />}
+					text={error.value}
+					actionLabel={ready.value ? "Try again" : undefined}
+					busy={cta.phase === "pending"}
+					onAction={ready.value ? () => void cta.run(submit) : undefined}
+				/>
+			)}
+			{simulated && <SimulationOutcome />}
+		</div>
+	);
+
+	return (
+		<SplitModal
+			open={open}
+			title={isCall.value ? `Book a call with ${sellerName}` : bookHeader(offer.value)}
+			subtitle={isCall.value ? "Discovery call" : isCohort.value ? "Group session" : "Session"}
+			left={left}
+			right={
+				<OfferLedger
+					summary={summary}
+					ledger={ledger.value}
+					escrows={!isCall.value && offer.value.escrows}
+				/>
+			}
+			asideLabel="Your booking"
+			summary={
+				<>
+					<span class="sbk__summarymain">
+						{summaryLine(
+							offer.value,
+							isCall.value,
+							isCohort.value,
+							pickLabels.value,
+							seats.value ?? 1,
+						)}
+						{total && (
+							<span class="sbk__summarytotal">
+								{" · "}
+								<MoneyView minor={total.amount.minor} currency={total.amount.currency} hideOrigin />
+							</span>
+						)}
+					</span>
+					<span class="sbk__summarynote">
+						{blockSize > 1 && picks.value.length > 0 && picks.value.length < blockSize
+							? `The other ${blockSize - picks.value.length} ${
+								plural(blockSize - picks.value.length, "session")
+							} can be booked later.`
+							: isCall.value
+							? `${sellerName} confirms the time.`
+							: "You review everything at checkout before paying."}
+					</span>
+				</>
+			}
+			actions={
+				<>
+					<Button variant="text" severity="secondary" label="Cancel" onClick={closeBookingPanel} />
+					<CtaButton
+						label={simulated
+							? SIMULATED_COMMIT_LABEL
+							: isCall.value
+							? "Request call"
+							: "Continue to checkout"}
+						settledLabel={simulated
+							? SIMULATED_SETTLED_LABEL
+							: isCall.value
+							? "Requested"
+							: "Selected"}
+						phase={cta.phase}
+						tone={isCall.value ? "inverted" : "accent"}
+						disabled={!ready.value || loading.value}
+						icon={<Icon name={isCall.value ? "calendar" : "arrow-right"} size="sm" aria-hidden />}
+						fluid={false}
+						onClick={() => void cta.run(submit)}
+					/>
+				</>
+			}
+			initialFocusRef={firstRef}
+			bodyRef={bodyRef}
+			onClose={closeBookingPanel}
+			class="sbk-split"
+		/>
 	);
 }
 
 // #region Copy
-/** The modal's title, per format. */
+/** The dialog's title, per format. */
 function bookHeader(offer: ServiceBookingOffer): string {
 	switch (offer.format) {
 		case "cohort":
-			return `Join ${offer.subjectTitle}`;
+			return `Reserve a seat on ${offer.subjectTitle}`;
 		case "set_session":
 			return `Book ${offer.sessionCount} sessions`;
 		default:
@@ -525,47 +648,40 @@ function bookHeader(offer: ServiceBookingOffer): string {
 	}
 }
 
-/**
- * The confirm button's label.
- *
- * It names the step the press actually takes. Nothing is held when it is pressed: the time goes into
- * the basket and is confirmed by paying, so "Hold this time" or "Reserve seat" would promise a claim
- * on the calendar that somebody else's checkout can still take first.
- */
-function confirmLabel(_offer: ServiceBookingOffer): string {
-	return "Continue to checkout";
-}
-
-/**
- * The footer's running summary.
- *
- * It states what is about to happen rather than a price. The price is the lane's job and the
- * checkout's job; repeating it here would be a third place for one figure to live, and §D.7.3's whole
- * point is that an offer stated twice is an offer that can disagree with itself.
- */
+/** The footer's running state, in the Meta register — what is about to happen, in words. */
 function summaryLine(
 	offer: ServiceBookingOffer,
 	isCall: boolean,
-	chosen: number,
-	grid: SlotGrid | null,
+	isCohort: boolean,
+	picked: readonly string[],
+	seats: number,
 ): string {
-	if (chosen === 0) return "No time selected yet";
-	const minutes = grid?.durationMinutes ?? offer.durationMinutes ?? 60;
-	if (isCall) return `${minutes} minute call`;
-	if (offer.format === "cohort") return `One seat · ${minutes} minutes`;
-	if (offer.format === "set_session" && offer.sessionCount > 1) {
-		return `${chosen} of ${offer.sessionCount} sessions scheduled · ${minutes} minutes each`;
+	if (isCohort) return `${seats} ${plural(seats, "seat")} · ${offer.subjectTitle}`;
+	if (picked.length === 0) return isCall ? "Pick a time for the call" : "Pick a time to continue";
+	if (!isCall && offer.format === "set_session" && offer.sessionCount > 1) {
+		return `${picked.length} of ${offer.sessionCount} sessions scheduled · ${picked[0]}`;
 	}
-	return `${minutes} minute session`;
+	return picked[0];
 }
 
-/** A chosen slot's day and time window in the viewer's zone, for its row in the session list. */
+/** A chosen slot's day and time window in the viewer's zone. */
 function pickLabel(slot: BookableSlot, zone: string | null): string {
 	return sittingLabel(
 		new Date(slot.startsAt).toISOString(),
 		new Date(slot.endsAt).toISOString(),
 		zone,
 	);
+}
+
+/** A cohort's run in one line — its sitting count and first date. */
+function cohortLine(
+	sittings: readonly { startsAt: string; endsAt: string }[],
+	zone: string | null,
+): string | null {
+	const first = sittings[0];
+	if (!first) return null;
+	const when = sittingLabel(first.startsAt, first.endsAt, zone);
+	return sittings.length === 1 ? when : `${sittings.length} sittings from ${when}`;
 }
 
 /** A slot anywhere in the loaded window, by id. */

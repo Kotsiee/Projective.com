@@ -242,9 +242,11 @@
 .ui-button--accent {
 	--btn-accent: var(--accent);
 	--btn-on: var(--on-accent);
-	--btn-shade: var(--on-scrim);
-	--btn-mix-hover: 92%;
-	--btn-mix-active: 88%;
+	--btn-mix-hover: 100%;
+	--btn-mix-active: 100%;
+}
+.ui-button--accent:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	border-color: color-mix(in srgb, var(--btn-on) 60%, transparent);
 }
 .ui-button--neutral {
 	--btn-accent: var(--on-surface);

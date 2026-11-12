@@ -187,6 +187,8 @@ type Gesture =
 		/** Client y at pointer-down — a press that never travels this far stays a click. */
 		originY: number;
 		moved: boolean;
+		/** Whether the host can keep a move of this card; when not, the card never follows the pointer. */
+		movable: boolean;
 	}
 	| {
 		/**
@@ -1244,6 +1246,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 					};
 				}
 			} else if (cur.kind === "move") {
+				if (!cur.movable) return;
 				const slot = slotAt(x, y);
 				gesture.value = {
 					...cur,
@@ -1378,11 +1381,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 			// dismisses it and does nothing else. A card tap is deliberately still live — moving between
 			// events is navigation, not a click-away, and blocking it would cost two taps per event.
 			else if (popoverWasOpen.current) return;
-			else if (hit.kind === "grid" && props.canCreate) {
-				const slot = slotAt(at.x, at.y);
-				const from = snapMinutes(Math.max(0, Math.min(BLOCK_MIN, slot.local)), SNAP);
-				props.onSelectRange?.(selectionRange(slot.dayStart, from, from, SNAP));
-			}
+			else if (hit.kind === "grid" && props.canCreate) createAt(at);
 		};
 		const cancel = () => detach();
 		endGesture.current = cancel;
@@ -1496,12 +1495,13 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				startMin: cardStart - blockIndex * BLOCK_MIN,
 				originY: ev.clientY,
 				moved: false,
+				movable: !!props.onMoveEvent && source.fixed !== true,
 			};
 			trackGesture((cur) => {
 				if (cur.kind !== "move") return;
 				// A press that did not travel is a CLICK — the card opens, exactly as it did when it was a
 				// button. Only a real drag rearranges, and only where the host gave it somewhere to land.
-				if (!cur.moved || !props.onMoveEvent) {
+				if (!cur.moved || !cur.movable || !props.onMoveEvent) {
 					openCard(cur.card, hit.rect);
 					return;
 				}
@@ -1702,12 +1702,32 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	 * Drag-to-create is a pointer gesture and has no keyboard equivalent — it was pointer-only before
 	 * this viewport was pixels too, but a capability reachable by one input device only is the gap
 	 * whether or not it predates the change. The slot is the first snapped quarter-hour in view, in
-	 * the FOCUSED period's first column, so the host's own dialog opens on something the reader can
-	 * see and adjust rather than on a guess about where they meant to point.
+	 * the FOCUSED period's first column, so the composer opens on something the reader can see and
+	 * adjust rather than on a guess about where they meant to point.
 	 */
 	function createFromKeyboard(): void {
-		const slot = slotAt(gutterW + 1, 0);
+		createAt({ x: gutterW + 1, y: 0 });
+	}
+
+	/**
+	 * Begin an entry at the slot under `at` without a drag — the keyboard's create and a touch tap on
+	 * empty grid. Where the host composes, this is the same half-hour DRAFT and composer a mouse press
+	 * leaves, so every input device reaches the one create the host keeps; otherwise the host is only
+	 * told the slot, through `onSelectRange`.
+	 */
+	function createAt(at: { x: number; y: number }): void {
+		const slot = slotAt(at.x, at.y);
 		const from = snapMinutes(Math.max(0, Math.min(BLOCK_MIN, slot.local)), SNAP);
+		if (props.popover && props.draft) {
+			const range = selectionRange(slot.dayStart, from, from + 30, SNAP);
+			props.draft.value = range;
+			props.popover.value = {
+				kind: "create",
+				range,
+				anchor: anchorFor({ x: at.x, y: at.y, w: 1, h: 1 }),
+			};
+			return;
+		}
 		props.onSelectRange?.(selectionRange(slot.dayStart, from, from, SNAP));
 	}
 
@@ -1865,7 +1885,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 						</button>
 					)
 					: null}
-				{props.canCreate && props.onSelectRange
+				{props.canCreate && (props.draft || props.onSelectRange)
 					? (
 						<button type="button" class="cal-tg__a11yitem" onClick={createFromKeyboard}>
 							Create an event at the top of the visible range

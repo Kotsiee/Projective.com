@@ -613,9 +613,9 @@
 	--shell-topbar-h: 48px;
 	--shell-midnav-header-h: 3rem;
 	/* configurable middle-nav content-pane header (PageCanvas header slot) */
-	--shell-midnav-footer-h: 3rem;
-	/* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
-	surface at the band's top edge; symmetric with the header band height */
+	--shell-midnav-footer-h: calc(var(--fld-h-md) + 2 * var(--space-4));
+	/* configurable middle-nav footer band (composer / View Control Rig) — its floor: an md control
+	with --space-4 above and below; used to stop the frame surface at the band's top edge */
 	--shell-sidebar-w: 64px;
 	/* collapsed icon rail */
 	--shell-sidebar-w-expanded: 224px;

@@ -450,7 +450,7 @@ Deno.test("a ticket's cost comes from the stage's rate, never from the payload",
 	assertEquals(card.stages[0].unitPriceCents, 40_000);
 });
 
-Deno.test("intensity is the one lever that moves both the cost and the capacity", () => {
+Deno.test("intensity moves the cost on the price scale and the capacity on the W_i scale", () => {
 	const stage = {
 		id: "stage-0",
 		slug: "stg-a1b2c3d4e5",
@@ -501,11 +501,64 @@ Deno.test("intensity is the one lever that moves both the cost and the capacity"
 	);
 
 	assertEquals(standard.budgetCents, 40_000);
-	assertEquals(high.budgetCents, 80_000);
-	// The same lever moves capacity, because the two were always one axis in the spec
-	// (PRODUCT_SPEC §The Weighting Engine) and are one axis here.
+	assertEquals(high.budgetCents, 60_000);
+	// One choice, two scales (PRODUCT_SPEC §The Weighting Engine): High is 1.5× the price and 2× the
+	// capacity.
 	assertEquals(standard.workload, 1);
 	assertEquals(high.workload, 2);
+});
+
+Deno.test("a stage sold at one fixed intensity holds the ticket to its intensity and price", () => {
+	const fixed = {
+		id: "stage-f",
+		slug: "stg-f1f2f3f4f5",
+		name: "Logo",
+		order: 0,
+		status: "active" as const,
+		locked: false,
+		description: "",
+		unitPriceCents: 50_000,
+		categoryWeight: 1,
+		members: [],
+		ticketCount: 0,
+		funding: null,
+		assignmentMode: "open_pull" as const,
+		maxConcurrentIntensity: null,
+		chainReaction: true,
+		startAt: null,
+		endAt: null,
+		dependsOnStageId: null,
+		defaultIntensity: "high" as const,
+		intensityLocked: true,
+	};
+	const card = buildStubCard(
+		commitOf({
+			intensity: "low",
+			dueDate: null,
+			stages: [{
+				stageId: "stage-f",
+				name: "Logo",
+				order: 0,
+				status: "active" as const,
+				required: true,
+				brief: "",
+				tasks: [],
+				parallel: false,
+				intensity: "low",
+				dueAt: "2026-12-02",
+				costCents: null,
+				unitPriceCents: null,
+			}],
+		}),
+		[fixed],
+		undefined,
+		"t-fixed",
+		Date.parse("2026-08-31T12:00:00Z"),
+	);
+	assertEquals(card.stages[0].intensity, "high");
+	assertEquals(card.budgetCents, 50_000);
+	assertEquals(card.workload, 2);
+	assertEquals(card.dueDate, "2026-12-02");
 });
 
 Deno.test("an unpriced ticket reports null, never zero", () => {

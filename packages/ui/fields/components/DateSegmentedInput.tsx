@@ -3,6 +3,7 @@ import { useRef } from "preact/hooks";
 import {
 	adjacentSegment,
 	type DateParts,
+	type DateRange,
 	type DateSegmentKind,
 	type DateSegmentPart,
 	isComplete,
@@ -39,6 +40,13 @@ export interface DateSegmentedInputProps {
 	required?: boolean;
 	/** The segments name a whole date the calendar refuses (out of range, or explicitly disabled). */
 	outOfRange?: boolean;
+	/** The picker's selectable window. ArrowUp / ArrowDown on the year stay inside its years. */
+	range?: DateRange;
+	/**
+	 * The day the calendar is on — what an EMPTY segment starts from when it is stepped, so the first
+	 * ArrowUp lands on the month in view rather than on today. Read at the keystroke; absent → today.
+	 */
+	anchor?: () => Date;
 	"aria-label"?: string;
 	"aria-describedby"?: string;
 	"aria-invalid"?: boolean | undefined;
@@ -111,6 +119,8 @@ export function DateSegmentedInput(props: DateSegmentedInputProps): JSX.Element 
 		readOnly,
 		required,
 		outOfRange,
+		range,
+		anchor,
 		onEdit,
 		onBuffer,
 		onActivate,
@@ -204,7 +214,16 @@ export function DateSegmentedInput(props: DateSegmentedInputProps): JSX.Element 
 				// started nudging one, and leaving `0` in the buffer would make the next digit extend a
 				// value that is no longer on screen.
 				onBuffer(kind, "");
-				onEdit(stepSegment(parts, kind, e.key === "ArrowUp" ? 1 : -1), kind);
+				onEdit(
+					stepSegment(
+						parts,
+						kind,
+						e.key === "ArrowUp" ? 1 : -1,
+						anchor?.() ?? new Date(),
+						range,
+					),
+					kind,
+				);
 				return;
 			case "Backspace":
 			case "Delete":
@@ -253,7 +272,7 @@ export function DateSegmentedInput(props: DateSegmentedInputProps): JSX.Element 
 
 	// #region Render
 	const renderSegment = (kind: DateSegmentKind, index: number): JSX.Element => {
-		const bounds = segmentBounds(kind, parts);
+		const bounds = segmentBounds(kind, parts, range);
 		const value = parts[kind];
 		const editing = buffers[kind] !== "";
 		const text = segmentText(kind, value, buffers[kind], editing);

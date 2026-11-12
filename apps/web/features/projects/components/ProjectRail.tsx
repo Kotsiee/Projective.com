@@ -40,13 +40,22 @@ export interface ProjectRailProps {
 	links: readonly ProjectViewLink[];
 	/** Expand the lane back out (dispatched to the splitter). */
 	onExpand: () => void;
-	/** Client-only: open the Create New Stage modal. */
-	onCreateStage: () => void;
+	/** Whether the viewer authors stages here (`BoardAccess.canAddStage`, Decision #421). */
+	canCreateStage: boolean;
+	/** Open the Create stage popover on the pressed button. */
+	onCreateStage: (event: JSX.TargetedMouseEvent<HTMLButtonElement>) => void;
 }
 
 export function ProjectRail(
-	{ detail, currentPath, sessionKind = "none", links: topLinks, onExpand, onCreateStage }:
-		ProjectRailProps,
+	{
+		detail,
+		currentPath,
+		sessionKind = "none",
+		links: topLinks,
+		onExpand,
+		canCreateStage,
+		onCreateStage,
+	}: ProjectRailProps,
 ): JSX.Element {
 	const base = `/projects/${detail.slug}`;
 	const isSession = sessionKind === "normal" || sessionKind === "group";
@@ -55,7 +64,7 @@ export function ProjectRail(
 
 	// A Task is held to one stage (`fn_enforce_structure_variation`), so offering it "Add stage" would be
 	// a control whose every use the database refuses.
-	const canAddStage = detail.viewerIsClient && !isSession && !isTaskDetail(detail);
+	const canAddStage = canCreateStage && !isSession && !isTaskDetail(detail);
 
 	const hrefFor = (seg: string) => (seg ? `${base}/${seg}` : base);
 

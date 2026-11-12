@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "@web/features/projects/styles/fx-toolbar.css";
 import { Button, InputText, MultiSelect, SelectButton } from "@projective/ui/fields";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { Icon } from "@projective/ui/icons";
 import type { LedgerKind } from "../types/wallet-types.ts";
 import {
@@ -44,6 +45,8 @@ export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
 	const { filters } = props;
 	const draft = useSignal(filters.q);
 	const rest = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	const commitSearch = (q: string) => {
 		if (rest.current) clearTimeout(rest.current);
@@ -58,7 +61,7 @@ export function LedgerFilters(props: LedgerFiltersProps): JSX.Element {
 
 	return (
 		<div class="fx-toolbar wlt-filters" role="search" aria-label="Filter transactions">
-			<div class="fx-toolbar__search">
+			<div class="fx-toolbar__search" ref={searchRef}>
 				<InputText
 					type="search"
 					variant="bare"

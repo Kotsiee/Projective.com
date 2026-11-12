@@ -201,7 +201,7 @@ SELECT pg_temp.check((SELECT count(*) FROM comms.dm_messages m
 SELECT pg_temp.check((SELECT count(*) FROM comms.dm_messages m
                        WHERE m.thread_id = pg_temp.channel('studiofern', 'general') AND m.auto_response_id IS NOT NULL) = 0,
                      'a two-person channel never fires the other member''s auto-reply');
-SELECT set_config('probe.dm', comms.get_or_create_dm_thread(pg_temp.uid('saoirsebyrne'))::text, true);
+SELECT set_config('probe.dm', comms.get_or_create_dm_thread(pg_temp.uid('saoirsebyrne')) ->> 'thread_id', true);
 SELECT pg_temp.check((SELECT t.kind FROM comms.dm_threads t
                        WHERE t.id = current_setting('probe.dm')::uuid) IN ('dm', 'service_inquiry'),
                      'two co-members'' DM is never their channel');

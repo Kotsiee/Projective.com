@@ -2199,10 +2199,11 @@ cookie → `LocalKeys.A11Y_PREFERENCES` (a pre-paint script restores a cleared c
 written in statements of their own, never beside the display currency, so a database that predates
 them degrades Appearance to "this device only" instead of breaking the currency switcher.
 
-**Keyboard.** `/` focuses the settings search (modal and lane) unless the target is editable
-(`shell/core/shortcuts.ts` `isFocusSearchShortcut`); Enter in the search opens the best match and
-moves focus INTO it; the tree is `TreeNav` (one tab stop, arrows, Home/End). `Cmd/Ctrl+K` is left to
-the command palette.
+**Keyboard.** `/` focuses the modal's settings search and the hub's on the console root, unless the
+target is editable; the `/settings` lane's search answers Ctrl/Cmd+Shift+/ like every lane's
+(`features/shortcuts/core/shortcut-host.ts`, Decision #418); Enter in the search opens the best
+match and moves focus INTO it; the tree is `TreeNav` (one tab stop, arrows, Home/End). `Cmd/Ctrl+K`
+is left to the command palette.
 
 ### Sessions & Google OAuth
 
@@ -3060,6 +3061,12 @@ Three key namespaces share the table (Decision #125): a caller's attempt key for
 also names the Stripe PaymentIntent, `projective:payment_intent:<payment id>`), and
 `stripe:<evt_id>` (scope `stripe.webhook`) for every processed Stripe event, claimed in the same
 transaction as the event's effects so a delivery that failed half-way is simply processed again.
+
+**Retention** (FINANCE_AUDIT L8): `finance.fn_sweep_idempotency_keys` (pg_cron
+`finance-sweep-idempotency-keys`, daily at 04:27) deletes a key 30 days after its `expires_at`. It
+never deletes a Stripe event claim: those guard replays and carry the reconciliation outcomes
+`finance.v_ops_unledgered_payments` reads, and they follow the webhook delivery ledger's own
+retention (`finance-model.md` §17, not built yet).
 
 ---
 

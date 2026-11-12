@@ -166,6 +166,12 @@ export interface CalendarEvent {
 	ghost?: boolean;
 	/** On its way off the calendar: it fades, and whoever owns the list then takes it away. */
 	leaving?: boolean;
+	/**
+	 * The host cannot keep a move of this entry — someone else's, or one whose time moves only by
+	 * agreement. A drag on it stays a click, exactly as it does where the host passes no
+	 * {@link CalendarProps.onMoveEvent}, so a rearrangement is never offered and then thrown away.
+	 */
+	fixed?: boolean;
 }
 
 /** One host/participant face on a card's avatar stack. */
@@ -328,6 +334,12 @@ export interface CalendarProps {
 	renderSource?: (source: string) => VNode | null;
 	/** When true, empty-cell click + drag-to-select open the creation flow. */
 	canCreate?: boolean;
+	/**
+	 * The span {@link events} were read over, epoch ms, `[start, end)`. While the period on screen is
+	 * not wholly inside it the view says "Not loaded" rather than drawing unread time as free, and the
+	 * host reads the next span. Absent: the host holds everything, and nothing is ever unloaded.
+	 */
+	loaded?: { start: number; end: number } | null;
 	/** Hide the left panel (mini-map + availability) — e.g. inside a compact booking modal. */
 	hideSidePanel?: boolean;
 	/**

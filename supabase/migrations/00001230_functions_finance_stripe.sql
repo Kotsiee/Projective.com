@@ -327,10 +327,11 @@ BEGIN
             END IF;
         ELSIF p_ticket_id IS NOT NULL THEN
             -- ONE ticket (Decision #166): projects.fund_ticket's gates, evaluated now so nobody is charged
-            -- for a hold that could not be made — and again at settlement. Its own price, else its stage's.
+            -- for a hold that could not be made — and again at settlement. Its price in the stage, by the
+            -- one rule the hold uses (projects.fn_ticket_stage_price, Decision #414).
             SELECT tk.text_description, tk.payment_status::text AS payment_status,
                    tk.current_assignee_id AS assignee, ps.status::text AS stage_status,
-                   COALESCE(tk.unit_price_cents, ps.unit_price_cents) AS amount
+                   projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) AS amount
               INTO v_ticket
               FROM projects.tickets tk
               JOIN projects.project_stages ps ON ps.id = tk.current_stage_id

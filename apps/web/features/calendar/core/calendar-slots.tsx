@@ -12,6 +12,7 @@ import AvailabilityLane from "../islands/AvailabilityLane.island.tsx";
 import AvailabilityFooter from "../islands/AvailabilityFooter.island.tsx";
 import AvailabilityPanel from "../islands/AvailabilityPanel.island.tsx";
 import { calendarModeOf, presetSlugOf } from "./availability-view.ts";
+import { type CalendarAddress, readCalendarAddress } from "./calendar-address.ts";
 import { resolvePersonalCalendar } from "./calendar-ssr.ts";
 import { EVENT_PARAM, invitationsFiltered, ROUTINE_PARAM } from "./event-deep-link.ts";
 
@@ -42,12 +43,20 @@ function isAvailability(url: URL): boolean {
 	return calendarModeOf(url) === "availability";
 }
 
-/** The reader's agenda, read once per request through the shared request memo. */
+/**
+ * What the address asks the agenda to show (Decision #413). The page controller has already answered
+ * a non-canonical address with a 303, so every region here reads the same, canonical one.
+ */
+function addressOf(url: URL): CalendarAddress {
+	return readCalendarAddress(url, "personal").address;
+}
+
+/** The reader's agenda around the addressed day, read once per request through the request memo. */
 function resolveOnce(url: URL, actor: ReadActor): Promise<SchedulePage | null> {
 	return once(
 		url,
 		`calendar|agenda|${actor.userId}|${actor.contextId}`,
-		() => resolvePersonalCalendar(actor).then((r) => r.page),
+		() => resolvePersonalCalendar(actor, addressOf(url).date).then((r) => r.page),
 	);
 }
 
@@ -80,6 +89,7 @@ export async function calendarLaneFor(
 		<CalendarLane
 			initial={await resolveOnce(url, actor)}
 			invitations={invitationsFiltered(url.search)}
+			address={addressOf(url)}
 		/>
 	);
 }
@@ -102,7 +112,13 @@ export async function calendarHeaderFor(
 			/>
 		);
 	}
-	return <CalendarHeaderBand mode="agenda" initial={await resolveOnce(url, actor)} />;
+	return (
+		<CalendarHeaderBand
+			mode="agenda"
+			initial={await resolveOnce(url, actor)}
+			address={addressOf(url)}
+		/>
+	);
 }
 
 /** The right panel: the agenda's event and month navigator, or the template's settings and rules. */
@@ -126,6 +142,7 @@ export async function calendarPanelFor(
 			initial={await resolveOnce(url, actor)}
 			linkedEventId={url.searchParams.get(EVENT_PARAM)}
 			linkedRoutineSlug={url.searchParams.get(ROUTINE_PARAM)}
+			address={addressOf(url)}
 		/>
 	);
 }
@@ -141,7 +158,13 @@ export async function calendarFooterFor(
 	// A same-origin PATH, not a URL: the consent's `returnTo` is validated server-side and an
 	// absolute one is refused, because an attacker-chosen return target turns a consent screen into
 	// an open redirect wearing this domain's credibility.
-	return <CalendarFooterRig initial={await resolveOnce(url, actor)} returnTo="/calendar" />;
+	return (
+		<CalendarFooterRig
+			initial={await resolveOnce(url, actor)}
+			returnTo="/calendar"
+			address={addressOf(url)}
+		/>
+	);
 }
 
 /**

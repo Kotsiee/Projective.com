@@ -114,6 +114,34 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
   back to the default (`scheduling.archive_availability_preset`, `PRODUCT_MANAGEMENT.md` §3.5).
   The retired `catalogue.listing_availability` weekly table is gone.
 
+### 1.5 A Pipeline's intensity terms (catalogue workspace) — BUILT (Decision #417)
+
+- **Where:** the Offer section's Stages group of a Pipeline (`components/edit/offer/PipelineOffer.tsx`,
+  each stage a `StageRow.tsx`; the copy and the price lines in `core/offer-model.ts`). One
+  service-level switch, **Tiered intensity pricing** (off by default, its meaning behind "?"), and per
+  stage an intensity `SelectButton` (Low · Standard · High) under the price.
+- **Off — one fixed intensity and price per stage.** The stage's intensity is the tier every ticket
+  in it runs at, and its ticket price is THE price; the line under the price reads "Buyers pay £X a
+  ticket, at High intensity". "Add to projects" copies the stages **locked**
+  (`project_stages.intensity_locked`), so a client cannot change either on a ticket.
+- **On — tiered.** The price field becomes the **Standard price**, the intensity becomes the
+  **default** tier a client's pick starts at, and two optional money fields, **Low price** and **High
+  price**, appear; blank means the platform's tier multiple of the Standard price (the placeholder
+  shows it). A Low price above the stage's price, a High price below it, or Low above High holds the
+  save with that sentence under the two fields (`tierPriceProblem`, `@projective/types/catalogue`), and
+  `catalogue.save_listing` refuses the same (`22023`). The instantiated stages are unlocked and carry
+  the seller's own prices as `low_price_cents` / `high_price_cents`.
+- **Written:** `PipelineOffer.allowTieredIntensity` → `service_blueprints.allow_tiered_intensity`;
+  each stage's `intensity` / `lowPriceCents` / `highPriceCents` inside `stage_template`, through
+  `offer-columns.ts` and `POST /api/catalogue/update`. The workspace's "How buyers see it" preview
+  quotes a fixed stage at its one price and a tiered one at its Low–High span (`stagePriceSpan`).
+- **Frozen once instantiated:** on a project with a `source_blueprint_id` no client statement may move
+  a stage's intensity terms (`trg_stage_intensity_terms`), as the revision allotment is frozen. A
+  stage the client adds themselves stays unlocked with no tier prices of its own.
+- **Not yet on the buyer pages:** `/view`'s price lane and stage track and the discovery card still
+  quote every Pipeline as a tier range (Decision #417, flag (a)). One-Off milestones take no
+  intensity control: nothing instantiates a One-Off's milestones into stages (flag (b)).
+
 ## 2. What the BUYER-side services write (already shaped, stub-first)
 
 | Flow                                   | Write                                                                                                           | Live status                                                                                                                                  |

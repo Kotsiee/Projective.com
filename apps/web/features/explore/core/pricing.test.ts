@@ -7,13 +7,21 @@ function service(over: Partial<ServiceItem>): ServiceItem {
 	return { type: "services", price: "", serviceType: "One-Off", ...over } as ServiceItem;
 }
 
-Deno.test("a Pipeline starts at its Low-intensity ticket price, in its own currency", () => {
+Deno.test("a tiered Pipeline starts at its Low-intensity ticket price, in its own currency", () => {
+	const p = serviceStartingPrice(
+		service({ serviceType: "Pipeline", ticketPrice: 240, tieredIntensity: true, currency: "GBP" }),
+	);
+	assertEquals(p.amount, { minor: 18000, currency: "GBP" });
+	assertEquals(p.unit, "ticket");
+	assertEquals(p.isFloor, true);
+});
+
+Deno.test("a Pipeline sold at one fixed intensity is quoted at its one price, never a floor", () => {
 	const p = serviceStartingPrice(
 		service({ serviceType: "Pipeline", ticketPrice: 240, currency: "GBP" }),
 	);
-	assertEquals(p.amount, { minor: 12000, currency: "GBP" });
-	assertEquals(p.unit, "ticket");
-	assertEquals(p.isFloor, true);
+	assertEquals(p.amount, { minor: 24000, currency: "GBP" });
+	assertEquals(p.isFloor, false);
 });
 
 Deno.test("a One-Off quotes its whole price, never a floor", () => {

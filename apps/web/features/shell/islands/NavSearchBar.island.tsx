@@ -4,8 +4,7 @@ import "@web/features/shell/styles/user-shell.css";
 import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
 import { ScopeSelect } from "@features/explore/components/ScopeSelect.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
-import { isFocusHeaderSearchShortcut } from "@web/features/shell/core/shortcuts.ts";
-import { useSearchShortcut } from "@web/features/shell/hooks/useSearchShortcut.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { Icon } from "@projective/ui/icons";
 import { DEFAULT_SEARCH_SCOPE, type SearchScope } from "@features/marketing/core/landing-data.ts";
 
@@ -15,7 +14,8 @@ import { DEFAULT_SEARCH_SCOPE, type SearchScope } from "@features/marketing/core
  * on the bar's midline in the signed-in shell (Decision #369): a faint tint and one hairline at rest, a decorative glyph, the static "Search
  * Projective…" placeholder and the shared ghost `ScopeSelect` at its end; focused or holding a query
  * it widens and lifts onto the solid surface. The field is the shared `SearchSuggest` typeahead over
- * the picked scope, focused from anywhere by Ctrl+/ (Cmd+/ on macOS); Enter is a real navigation to
+ * the picked scope, focused from anywhere by Ctrl+/ (Cmd+/ on macOS), and by `/` on a page with no
+ * search of its own (Decision #418); Enter is a real navigation to
  * `/explore?q=` (+ `&category=` off "All"), so the server renders the results layout. Dumb island —
  * routes only, no data access.
  */
@@ -24,12 +24,7 @@ export default function NavSearchBar() {
 	const scope = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({
-		scopeRef: formRef,
-		matches: isFocusHeaderSearchShortcut,
-		shortcut: "focus-header-search",
-		fromFields: true,
-	});
+	useSearchTarget({ role: "header", scopeRef: formRef });
 
 	/** Navigate to `/explore` with the query and scope (neither lands on the feed). */
 	function go(q: string) {

@@ -43,6 +43,7 @@ const OFFERS: Readonly<Record<ListingOffer["archetype"], ListingOffer>> = {
 			{ ...newMilestone(1, "Stage"), priceCents: 40_000, deliverables: ["Brief", ""] },
 			{ ...newMilestone(2, "Stage"), startTrigger: "fixed_offset", lagDays: 3 },
 		],
+		allowTieredIntensity: false,
 		teamRoles: [],
 	},
 	session: {
@@ -133,7 +134,7 @@ function blank(archetype: ListingOffer["archetype"]): ListingOffer {
 		case "one_off":
 			return { archetype, milestones: [], turnaroundDays: null, scope: [], teamRoles: [] };
 		case "pipeline":
-			return { archetype, stages: [], teamRoles: [] };
+			return { archetype, stages: [], allowTieredIntensity: false, teamRoles: [] };
 		case "session":
 			return { archetype, minutes: 60, count: 1, meetingProvider: null, plan: [], rolling: false };
 		case "cohort":

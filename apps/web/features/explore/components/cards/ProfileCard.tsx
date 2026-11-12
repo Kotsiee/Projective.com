@@ -9,7 +9,7 @@ import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
 import { CardReveal, NewFact } from "../CardReveal.tsx";
 import { isNew, languageSummary, profileMetrics, profileSignals } from "../../core/card-signals.ts";
-import { itemHref } from "../../core/routing.ts";
+import { cardMenuFacts } from "../../core/card-menu.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProfileItem } from "../../types/explore-types.ts";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
@@ -69,13 +69,7 @@ export function ProfileCard(
 			style={vars({ "--ex-accent": cardAccent(item.id) })}
 		>
 			<CardLink item={item} ctx={ctx} onSelect={onSelect} label={`${item.title} — ${item.craft}`} />
-			<CardActions
-				title={item.title}
-				href={itemHref(item, ctx)}
-				id={item.id}
-				type={item.type}
-				authed={authed}
-			/>
+			<CardActions facts={cardMenuFacts(item, ctx)} authed={authed} />
 
 			<div class="ex-pcard__banner">
 				<ProgressiveImage

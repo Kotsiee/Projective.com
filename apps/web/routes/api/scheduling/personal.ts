@@ -1,12 +1,14 @@
 import { define } from "@web/utils/state.ts";
-import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
+import { PersonalCalendarParamsSchema } from "@projective/types/scheduling";
+import { toFieldErrors, toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
- * `GET /api/scheduling/personal` — the acting account's own agenda for the `/calendar` hub. Thin:
- * resolve WHO IS ASKING from the session, then delegate to the fat
- * {@link ScheduleBackendService.personalCalendar} and map the result.
+ * `GET /api/scheduling/personal?around=` — the acting account's own agenda for the `/calendar` hub.
+ * Thin: resolve WHO IS ASKING from the session, Zod-validate `around` (the `YYYY-MM-DD` the read is
+ * centred on; `422` otherwise), then delegate to the fat {@link ScheduleBackendService.personalCalendar}
+ * and map the result.
  *
  * It takes NO scope parameter, deliberately. "Whose calendar" is answered by the session and can
  * never be answered by the caller — a `?handle=` here would be a way to read somebody else's week,
@@ -31,6 +33,17 @@ export const handler = define.handlers({
 				status: 401,
 			});
 		}
-		return toSchedulingResponse(await ScheduleBackendService.personalCalendar(readActor(ctx)));
+		const parsed = PersonalCalendarParamsSchema.safeParse({
+			around: ctx.url.searchParams.get("around") ?? undefined,
+		});
+		if (!parsed.success) {
+			return Response.json(
+				{ ok: false, message: "That day is not a date.", errors: toFieldErrors(parsed.error) },
+				{ status: 422 },
+			);
+		}
+		return toSchedulingResponse(
+			await ScheduleBackendService.personalCalendar(readActor(ctx), parsed.data),
+		);
 	},
 });

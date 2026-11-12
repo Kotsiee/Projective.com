@@ -15,9 +15,11 @@ Technical architecture and system directives for Projective, and the index of th
 ## Audits and work orders
 
 **Evaluation and work orders, not binding.** Each domain has one audit and at most one build-prompts
-file. Every finding carries a Status derived from the audits' banners, the run orders, the
-questionnaire's Part C and commit messages, not re-verified in code. Rulings are never restated
-here: their full text is the decision row named in the last column (`reference/decisions/`).
+file. Every finding carries a Status. On 2026-11-12 every build prompt, and each audit's P0/P1 rows
+and the rows tied to a built prompt, were re-verified in code at `8a3fd595` (Decision #412). Each
+audit's banner names the rows checked; a row no pass reached keeps the status derived from documents
+and commit messages (#410). Rulings are never restated here: their full text is the decision row
+named in the last column (`reference/decisions/`).
 
 | Domain                                                                                                                                                                                            | Audit                                                                                                | Work orders                                                        | Decision   |
 | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------- | :--------- |
@@ -29,6 +31,30 @@ here: their full text is the decision row named in the last column (`reference/d
 | Messaging, notifications, assets & discovery search                                                                                                                                               | [`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`](COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md)                     | [`COMMS_BUILD_PROMPTS.md`](COMMS_BUILD_PROMPTS.md)                 | #339       |
 | Security, moderation & the AI pipeline, and the safety node (its runbook and node prompts are the prompts file's §8)                                                                              | [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md)                           | [`TRUST_SAFETY_BUILD_PROMPTS.md`](TRUST_SAFETY_BUILD_PROMPTS.md)   | #340, #345 |
 | Redundancy, `@projective/ui` adoption, caching and doctrine (sign-off questions Q1–Q17), and modals and overlays (§9)                                                                             | [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md) | [`OPTIMIZATION_BUILD_PROMPTS.md`](OPTIMIZATION_BUILD_PROMPTS.md)   | #341, #404 |
+
+### Progress at `8a3fd595` (re-verified in code 2026-11-12, Decision #412)
+
+Each prompts file's §0 holds the per-prompt status line and its evidence. The execution batches,
+with what may run in parallel, are [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) §B.5.
+
+| Prompts file                 | Prompts | Done | Partly | Not started | Runnable now (every wait met; §B.5 orders them)              |
+| :--------------------------- | :------ | :--- | :----- | :---------- | :----------------------------------------------------------- |
+| FBP · finance                | 39      | 9    | 4      | 26          | DB2 (running 2026-11-12) → DB3 → DB6 · DB16 · DB12 · UI1     |
+| SBP · subscriptions          | 12      | 1    | 2      | 9           | S1 · X1 → X2                                                 |
+| PMBP · projects              | 14      | 0    | 2      | 12          | WP1 · D7a and WP8 once the open stage-intensity change lands |
+| SCHBP · scheduling           | 11      | 6    | 1      | 4           | WP7 (stops at step 6) → WP9 · WP10                           |
+| IBP · identity               | 20      | 2    | 0      | 18          | HK1 (after #410 (c)) · SSO1 → LOW1 · MFA1 → MIN1             |
+| COMMS · messaging, search    | 15      | 2    | 4      | 9           | MS2 · NT2 (stops at #410 (g)) · SR1                          |
+| TRUST · trust & safety       | 20      | 2    | 0      | 18          | R1 (after #148 (g)) → R4 → R5 ∥ P1d → R3 → P2d               |
+| OPT · optimisation           | 19      | 2    | 0      | 17          | WP17 · Q9 · WP10b · Q12 (stops at step 3)                    |
+| **Architecture total**       | 150     | 24   | 13     | 113         |                                                              |
+| Catalogue rebuild (`flows/`) | 18      | 18   | 0      | 0           | —                                                            |
+| Public routes (`flows/`)     | 16      | 16   | 0      | 0           | — (L1–L4 partly superseded by #349)                          |
+
+Built without being marked until this check: SCH-WP3, WP4a, WP4b, WP5 and WP8 (`ac19de8f`), COMMS
+NT3's mail transport (`527b4cd6`), and parts of PM-WP4b, PM-WP8, SCH-WP10 and F·UI6. The trust
+track's safety-node repo (`Projective-Safety`, §8) is not on this machine, so its N0–N6 are
+unverified.
 
 ### Short names and IDs
 
@@ -91,6 +117,16 @@ erasure nulling vs deleting query logs and (c) HK1's RESTRICT on `enterprise_mem
 the `styleVars` guardrail (PMA §13); (e) the `inbox_tails` signature (RED §6); (f) showcase video
 bytes and (g) where the notification dispatcher runs (CAS §10); (h) screening public copy before
 publication (SEC §10).
+
+The re-verification in code (2026-11-12) adds six more, logged as **Decision #412** flags (a)–(f)
+and not resolved:
+
+- (a) #391's guest mail never reads the comms suppression list.
+- (b) #391's 30-day guest retention is hard-coded, against ruling I1's dials.
+- (c) #396's inert markup and sanitised SVG are missing from TRUST SN2 and SN3.
+- (d) COMMS SR2's `pa-` key rule conflicts with the shipped T·W1.
+- (e) The catalogue prompts' focus ring conflicts with the no-focus-ring convention.
+- (f) TRUST P2a's refusal format conflicts with the catalogue doors' DETAIL field.
 
 ### Retired and merged files
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TicketIntensity } from "../projects/board.ts";
 
 /**
  * explore.stored — the Zod SSOT for the seller-authored JSON DOCUMENTS the discovery tables carry.
@@ -50,6 +51,19 @@ export const BlueprintStageSchema = z.object({
 	lagDays: z.number().int().min(0).max(90).default(0),
 	/** Whether finishing this stage starts its dependants automatically (`project_stages.chain_reaction`). */
 	chainReaction: z.boolean().default(true),
+	/**
+	 * The stage's intensity tier (`project_stages.default_intensity`). Under a fixed-intensity service
+	 * (`service_blueprints.allow_tiered_intensity = false`) every ticket runs at it, priced at
+	 * {@link priceCents}; under a tiered one it is the client's starting pick.
+	 */
+	intensity: TicketIntensity.default("standard"),
+	/**
+	 * The seller's own Low-tier price in minor units, read only under tiered intensity. Absent or `null`
+	 * prices Low at the platform's tier multiple of {@link priceCents}.
+	 */
+	lowPriceCents: z.number().int().min(0).nullable().optional(),
+	/** The seller's own High-tier price; see {@link lowPriceCents}. */
+	highPriceCents: z.number().int().min(0).nullable().optional(),
 });
 export type BlueprintStage = z.infer<typeof BlueprintStageSchema>;
 

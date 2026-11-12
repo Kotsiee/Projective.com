@@ -3,11 +3,13 @@
 > **Evaluation, not binding.** Consolidated 2026-11-11 from
 > `PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md` (2026-10-29) and `PROJECT_MANAGEMENT_DECISION_LOG.md`
 > (DL, 2026-10-29); the decision log was deleted, and §16 maps its old sections and IDs (DL §n is
-> §n+8). Pre-merge text: `git show 08296359:documentation/architecture/<file>`. Status is
+> §n+8). Pre-merge text: `git show 08296359:documentation/architecture/<file>`. Status was
 > doc-derived (the audit's Fixed banner, `PM_BUILD_PROMPTS.md` §0.1 and its run order,
-> FOUNDER_QUESTIONNAIRE Part C, `git log`), not re-verified in code. Rulings: Decision #338
-> (`reference/decisions/decisions-122-126.md`); the ghosting auto-approve is ruled on #337 (FDD D-9
-> (a)); the build-prompt contradictions are #344.
+> FOUNDER_QUESTIONNAIRE Part C, `git log`). On 2026-11-12 it was re-verified in code at `8a3fd595`
+> for the §8 remediation map and every row whose Status names a PM-… prompt or a Wave 0 fix (§0,
+> §1, §2.1–§2.4, §3–§7, §9–§12); §2.5's design-gate rows, `Open (no prompt)` rows and `Unverified`
+> rows were not re-checked. Rulings: Decision #338 (`reference/decisions/decisions-122-126.md`); the
+> ghosting auto-approve is ruled on #337 (FDD D-9 (a)); the build-prompt contradictions are #344.
 >
 > Read-only evaluation of the project-management and execution domain: the three project types (Task
 > · One-off · Pipeline), stages, tickets, the claim protocol, Workload Intensity ($W_i$), the Chain
@@ -79,7 +81,7 @@ reporting and three of four assignment modes unreachable; uuid addresses and boa
 signals; and every SQL money rule verified only by manual probes. It put sixteen decisions (§12) and
 fourteen flags (#338 (a)–(n)) to a human.
 
-**What changed since (to 2026-11-11).** The same day, the ruling-free P0 pass closed X3, X12, X9 and
+**What changed since (to 2026-11-12).** The same day, the ruling-free P0 pass closed X3, X12, X9 and
 the Submit and Add Files half of §3.2. Wave 0 closed the seat lock and capacity (X4, X8, W7), the
 constraints (§5.1, X17, C4, S6), one-transaction writes and stale moves (S4, S7–S9), the Zod row
 schemas (§5.5), the design-gate log (§2.5, mostly) and gave the probes a runner (§6, no CI). Wave
@@ -87,10 +89,13 @@ schemas (§5.5), the design-gate log (§2.5, mostly) and gave the probes a runne
 recommendation on D5 and D7 (build now, not Planned or presentation-only) and rejected D9 (P4: $W_i$
 stays difficulty alone, a data-based measure extends the Reliability Index). Wave 1.2 wrote PMBP and
 registered the claim-TTL job **paused** (`e18489d4`, merged `817dbbd1`). **No P-track Wave 2 prompt
-has merged**: PM-WP1, D7a, WP4a, WP4b, P6, GH1, WP5a, WP5b, S3, D7b, WP6, WP8, WP9 and Z1 are open,
-and the money exits (WP4a, WP4b, P6, GH1) wait for F·DB3 and F·DB6, which `FINANCE_BUILD_PROMPTS.md`
-§0 does not mark done. Eight 🧑 questions stop the prompts (PMBP §0.5); its three new contradictions
-are logged on #344 ((d), (e)) or partly resolved there (#8; §13).
+has merged** (re-verified in code at `8a3fd595`, 2026-11-12): PM-WP1, D7a, WP4a, WP4b, P6, GH1,
+WP5a, WP5b, S3, D7b, WP6, WP8, WP9 and Z1 are open, and the money exits (WP4a, WP4b, P6, GH1) wait
+for F·DB3 and F·DB6, which have not landed (no release door refuses an open dispute). The board work
+of #409 (`8a3fd595`) brought two precursors: a Delete ticket offered only for a pristine ticket,
+gated in TypeScript in front of an unchanged `delete_ticket` (WP4b), and a board context menu that
+copies `?tkv=tkt-…` (WP8 step 3). Eight 🧑 questions stop the prompts (PMBP §0.5); its three new
+contradictions are logged on #344 ((d), (e)) or partly resolved there (#8; §13).
 
 ## 0. Premise corrections
 
@@ -154,7 +159,7 @@ Legend: ✅ compliant · ⚠️ partial / drift · ❌ missing / violates · —
 | X12 | Writes to an unclaimed ticket's assignee go through the assignment door                                                              | ❌ the guard returns early when `OLD.current_assignee_id IS NULL` (F1110:281). Review authority can PATCH an unclaimed ticket's assignee and status straight to `claimed`, skipping capacity, the adult gate (#190), payout readiness and `open_pull`, with no `ticket_history` row. The escrow gate (X1) still holds **(I)**                                                                                                                                                                                                  | —                                                        | —                                                             | —                                                                                             | ❌                                                                              | Fixed (P0 pass, `660c9658`; #338 (i))                                                                                                                                   |
 | X13 | Chain Reaction (#210)                                                                                                                | ✅ `force_complete_stage` releases, advances, then holds the next stage or marks Needs funding / Draft (F1130:644-768). ⚠️ The next stage id is read from unvalidated `required_stages` jsonb, so it may name another project's stage; no capacity check runs at the next stage; the hold is priced `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` (F1200:384), so a ticket price overrides every stage in its chain                                                                                              | ✅                                                       | ✅ fees in SQL; TS only maps (`svc/live-settlement.ts:172`)   | ✅                                                                                            | ✅ · ⚠️ edges                                                                   | The route: Open → PM-D7a · the price: Ruled → P6 (per stage), Open → PM-P6 (🧑 #344 (e)) · next-stage capacity: Open (no prompt)                                        |
 | X14 | Fair Exit (`finance-model.md` §3, #198)                                                                                              | ⚠️ the client picks a 25/50/75 % tier of principal, the fee falls on the earned share only, and an unclaimed prepaid ticket is refunded whole (F1150:1124-1225; F1200:914-953). The time bands are not wired (`finance-model.md:124-131`, #198 (f))                                                                                                                                                                                                                                                                            | ✅                                                       | ✅                                                            | ✅ reviewer-only, against a server-computed preview (`F/components/FairExitDialog.tsx:73,95`) | ⚠️ spec ≠ build (DL D2)                                                         | Ruled → P1 (D2); Open → PM-WP4a                                                                                                                                         |
-| X15 | Ticket deletion (PS §Deletion Protocol)                                                                                              | ⚠️ `delete_ticket` releases a claimed ticket's escrow in full, then **hard-deletes** the row (F1120:56-84). `ticket_history` and `ticket_workload_reports` CASCADE away (T15:480,1043); escrows keep a NULL `ticket_id` (`00000017:85`). A ticket with any submission cannot be deleted at all: `stage_submissions.ticket_id` has no ON DELETE (T15:589), so the call fails `23503`                                                                                                                                            | —                                                        | —                                                             | —                                                                                             | ⚠️ contradicts PM §5.4 (DL D4)                                                  | Ruled → P2 (a), (b) (D3, D4); Open → PM-WP4b                                                                                                                            |
+| X15 | Ticket deletion (PS §Deletion Protocol)                                                                                              | ⚠️ `delete_ticket` releases a claimed ticket's escrow in full, then **hard-deletes** the row (F1120:56-84). `ticket_history` and `ticket_workload_reports` CASCADE away (T15:480,1043); escrows keep a NULL `ticket_id` (`00000017:85`). A ticket with any submission cannot be deleted at all: `stage_submissions.ticket_id` has no ON DELETE (T15:589), so the call fails `23503`                                                                                                                                            | —                                                        | —                                                             | —                                                                                             | ⚠️ contradicts PM §5.4 (DL D4)                                                  | Ruled → P2 (a), (b) (D3, D4); Partly fixed (the product deletes only a pristine ticket, `8a3fd595`, #409 (F)); Open → PM-WP4b                                           |
 | X16 | Stage deletion (PS §Stage Management 3)                                                                                              | ⚠️ `delete_stage` (F1130:365-445): step 5 raises when any escrow history exists, with no handler, so the earlier releases roll back (the comment "funds are still released" is wrong). Step 2 nulls `current_stage_id` but leaves status and assignee, so a ticket can sit `in_progress` with no stage                                                                                                                                                                                                                         | —                                                        | ✅ called by the stage reconcile                              | —                                                                                             | ⚠️                                                                              | Open → PM-WP4b (step 4; = S5)                                                                                                                                           |
 | X17 | Stage reordering (PS:2226-2228, 2354-2358)                                                                                           | ⚠️ `fn_stage_reorder_lock` (F1130:10-29) freezes started, claimed and assigned stages ✅. `reorder_stages` (F1130:603-622) accepts a partial permutation and skips foreign ids, and `sort_order` has no unique index, so duplicate positions are storable                                                                                                                                                                                                                                                                      | —                                                        | ✅                                                            | ✅                                                                                            | ⚠️                                                                              | Fixed (PM-WP3, `3fcf2d54`: a full permutation of live stages; deferrable UNIQUE (`project_id`, `sort_order`))                                                           |
 | X18 | Workload Intensity report (PS §Dispute Mechanism, #290)                                                                              | ⚠️ the engine is complete in SQL (F1140:7-190)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | ❌ no schema                                             | ❌ no service, no route                                       | ❌ no control                                                                                 | ❌ unreachable (§11)                                                            | Ruled → P3: Build now (D5); Open → PM-WP5a                                                                                                                              |
@@ -196,8 +201,10 @@ Open (no prompt).
   reads `?ticket=`, the value is the row uuid rather than the `tkt-` slug
   (`types/board.ts:597-607`), and `/board` is not a destination on a Task or a One-off. The shared
   link opens a board with no ticket. ❌ #88, #95, gate §3.11. The builder already exists:
-  `withTicketParam` (`F/core/ticket-link.ts:48-59`). **Status:** Ruled → P7; Open → PM-WP8 (step 3;
-  the open remainder of #338 (m)).
+  `withTicketParam` (`F/core/ticket-link.ts:48-59`). **Status:** Ruled → P7; Partly fixed: the
+  board's context menu (#409, `8a3fd595`) copies `?tkv=tkt-…` through it
+  (`F/core/board-menus.ts:68`), but `TicketMenu` still builds `?ticket={uuid}`
+  (`TicketView.tsx:856`): Open → PM-WP8 (step 3; the open remainder of #338 (m)).
 - **`?tkv=` works.** `TicketDeepLinkHost` shape-checks with `isTicketSlug` (`ticket-link.ts:36-38`),
   offers the slug to a registered board or timeline first, else fetches
   `/api/projects/ticket?slug=`, which shape-checks and RLS-gates through
@@ -503,7 +510,7 @@ items that no backlog line carried. Fix text lives in the finding rows.
 | 4  | X9; X8; `assign_ticket_manual` seat check                                                  | P0              | P0 pass; PM-WP2                                  | Fixed (`660c9658`; `3fcf2d54`)                                                           |
 | 5  | §3.2 (Submit, Add Files, Delete Submission)                                                | P0              | P0 pass                                          | Partly fixed (Submit, Add Files; `660c9658`); Delete Submission: Open (no prompt)        |
 | 6  | §1.2, §2.1, D11                                                                            | P1              | PM-WP8                                           | Open → PM-WP8                                                                            |
-| 7  | §2.2 Copy link, #338 (m)                                                                   | P1              | PM-WP8                                           | Open → PM-WP8                                                                            |
+| 7  | §2.2 Copy link, #338 (m)                                                                   | P1              | PM-WP8                                           | Partly fixed (the board menu copies `?tkv=tkt-…`, `8a3fd595`); TicketView: Open → PM-WP8 |
 | 8  | §3.2 integrity, §5.3 "Insert own submissions"                                              | P1              | PM-WP9                                           | Open → PM-WP9                                                                            |
 | 9  | X16, S5                                                                                    | P1              | PM-WP4b                                          | Open → PM-WP4b                                                                           |
 | 10 | §5.1, X4, F1                                                                               | P1              | PM-WP3 (+ PM-WP2 for `stage_assignments.status`) | Fixed (`3fcf2d54`)                                                                       |
@@ -518,7 +525,7 @@ items that no backlog line carried. Fix text lives in the finding rows.
 | —  | C1, C2, C5, C6, S11 (route half), X13                                                      | not ranked (DL) | PM-D7a                                           | Open → PM-D7a (🧑 #344 (d))                                                              |
 | —  | C3, D7                                                                                     | not ranked (DL) | PM-D7b                                           | Open → PM-D7b (🧑 PMBP §0.5 #7)                                                          |
 | —  | X14, D2, D3 (the ticket-level door), D16-c                                                 | not ranked (DL) | PM-WP4a                                          | Open → PM-WP4a (🧑 PMBP §0.5 #3)                                                         |
-| —  | X15, D3, D4, S13                                                                           | not ranked (DL) | PM-WP4b                                          | Open → PM-WP4b                                                                           |
+| —  | X15, D3, D4, S13                                                                           | not ranked (DL) | PM-WP4b                                          | Partly fixed (the product deletes only a pristine ticket, `8a3fd595`); Open → PM-WP4b    |
 | —  | S11 (price half), #338 (k)                                                                 | not ranked (DL) | PM-P6                                            | Open → PM-P6 (🧑 #344 (e))                                                               |
 | —  | ghosting (FCA N16 = FDD X16, D-9 (a); §12.3)                                               | P1 (FCA N16)    | PM-GH1                                           | Open → PM-GH1                                                                            |
 | —  | W1–W6, W10, S10                                                                            | not ranked (DL) | PM-WP5a                                          | Open → PM-WP5a (🧑 PMBP §0.5 #5)                                                         |
@@ -684,7 +691,7 @@ Every D item was put to the owner on 2026-10-30 (FQ Part C); the OWNER RULINGS t
 | D1 = (a)    | Turn on the claim-TTL and workload-report sweeps | Q0.3 ⭐ A: register the claim-TTL sweep, hardened; the workload-report sweep follows with PM-WP5a's fixes | #338              | Partly fixed (row paused, `e18489d4`); Open → PM-WP1, PM-WP5a |
 | D2 = (b)    | What Fair Exit pays                              | P1 ⭐ B now, A once deadlines are reliable; ⭐ the no-deadline fallback                                   | #338              | Open → PM-WP4a (🧑 PMBP §0.5 #3)                              |
 | D3 = (c)    | Removal and deletion pay the freelancer 100 %    | P2 (a) ⭐ B + C                                                                                           | #338              | Open → PM-WP4a (the door), PM-WP4b                            |
-| D4 = (d)    | Hard deletes against "nothing is hard-deleted"   | P2 (b) ⭐ hard-delete only untouched rows, archive the rest                                               | #338              | Open → PM-WP4b                                                |
+| D4 = (d)    | Hard deletes against "nothing is hard-deleted"   | P2 (b) ⭐ hard-delete only untouched rows, archive the rest                                               | #338              | Partly fixed (pristine-only, `8a3fd595`); Open → PM-WP4b      |
 | D5 = (e)    | Workload reporting: ship or Planned              | P3 ✎ Build now                                                                                            | #338              | Open → PM-WP5a                                                |
 | D6 = (f)    | Assignment routing in the MVP                    | P3 ⭐ Planned; `open_pull` plus manual ship                                                               | #338              | Ruled → P3: Planned (roadmap, no prompt)                      |
 | D7 = (g)    | Do stage dependencies drive anything?            | P3 ✎ Build the engine (D7 (A)), after the guard                                                           | #338              | Open → PM-D7a, PM-D7b                                         |
@@ -791,8 +798,10 @@ ticket-level Fair Exit door. **Status:** Open → PM-WP4a (the door) → PM-WP4b
 **Ruled:** P2 (b) ⭐ (Decision #338, flag (d)): hard-delete only a ticket or stage never claimed,
 funded or submitted against, archive everything else (`tickets.archived_at`, no project DELETE
 policy, no stage hard-DELETE, calendar events archived too), which resolves the contradiction.
-**Status:** Open → PM-WP4b (step 8, the calendar half, defers to SCHEDULING C·WP10 if it owns
-`scheduling.events`).
+**Status:** Partly fixed: the product's Delete ticket refuses a ticket that is not pristine
+(`ticketDeletable`, #409 (F), `8a3fd595`), but `delete_ticket` still pays and hard-deletes when
+called directly. Calendar events already archive (`scheduling.events.archived_at` and its readers,
+`a80ce2f5`, #328 (a)); only the events FOR ALL policy's DELETE is left. The rest: Open → PM-WP4b.
 
 #### D5 — Workload reporting: ship it, or mark it Planned
 
@@ -1023,9 +1032,9 @@ S11, ruling P6 · (l) = D11 · (m) = §3.2 controls, §2.2 Copy link · (n) = D8
 
 ## 15. Not checked / limits
 
-- Status is doc-derived (the Fixed banner, PMBP §0.1, FQ Part C, `git log` to `08296359`) and was
-  not re-verified in code. A P-track prompt merged after `08296359` would make an "Open → PM-…" cell
-  stale.
+- Status was doc-derived (the Fixed banner, PMBP §0.1, FQ Part C, `git log` to `08296359`). The
+  rows the header names were re-verified in code at `8a3fd595` on 2026-11-12; a P-track prompt
+  merged after `8a3fd595` would make an "Open → PM-…" cell stale.
 - A finding marked **(I)** was inferred from reading, not executed (§7).
 - `members.css:58` and `message-interactions.css:39` were not checked against the pinned-bar
   `backdrop-filter` exception (§2.5).

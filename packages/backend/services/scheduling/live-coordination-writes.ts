@@ -2,6 +2,7 @@ import type { SupabaseClient } from "supabaseClient";
 import type {
 	EventAttendee,
 	EventReschedule,
+	RescheduleRefusalReason,
 	RsvpInput,
 	RsvpResponse,
 } from "@projective/types/scheduling";
@@ -179,6 +180,37 @@ export async function writeRsvp(
  */
 const ROUND_NOT_OPEN = "55000";
 
+/**
+ * The refusals `fn_cap_reschedule_proposals` (`00001510`) raises as 23514, each naming the planner's
+ * reason in its HINT, with the status the planner answers that reason with. `ck_proposal_span`'s
+ * ceiling has no hint and is told apart by its constraint's name.
+ */
+const PROPOSAL_CHECKS: Readonly<
+	Record<string, { status: number; reason: RescheduleRefusalReason }>
+> = {
+	duration_changed: { status: 422, reason: "duration_changed" },
+	ballot_full: { status: 409, reason: "ballot_full" },
+	proposer_quota: { status: 409, reason: "proposer_quota" },
+};
+
+/** The refusal a 23514 on a proposal insert stands for, or `null` for a check this module cannot name. */
+function proposalCheckRefusal(
+	error: { hint?: string | null; message?: string },
+): PlanRefusal | null {
+	const named = error.hint ? PROPOSAL_CHECKS[error.hint] : undefined;
+	const check = named ??
+		(error.message?.includes("ck_proposal_span")
+			? { status: 422, reason: "slot_too_long" as const }
+			: undefined);
+	if (!check) return null;
+	return {
+		ok: false,
+		status: check.status,
+		reason: check.reason,
+		message: RESCHEDULE_REFUSAL_COPY[check.reason],
+	};
+}
+
 /** Update the round, conditioned on the status the plan was made against. */
 async function updateRound(
 	roundId: string,
@@ -338,14 +370,10 @@ export async function writeReschedule(
 			}
 			// `fn_cap_reschedule_proposals` counts under a lock on the round, so this is the race the
 			// planner could not see: two offers made against the same eleven-slot round, one of which took
-			// the last place first.
+			// the last place first, or an attendee's fourth waiting slot landing beside their third.
 			if (inserted.error?.code === "23514") {
-				return {
-					ok: false,
-					status: 409,
-					reason: "ballot_full",
-					message: RESCHEDULE_REFUSAL_COPY.ballot_full,
-				};
+				return proposalCheckRefusal(inserted.error) ??
+					failed("recording a proposal", inserted.error.message);
 			}
 			if (inserted.error?.code === ROUND_NOT_OPEN) return conflict();
 			if (inserted.error || !inserted.data) {

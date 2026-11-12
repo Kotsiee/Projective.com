@@ -25,8 +25,14 @@ import { TimelineService } from "../core/TimelineService.ts";
 import { TicketView } from "../components/ticket/TicketView.tsx";
 import { TicketFileFrame } from "../components/ticket/TicketFileFrame.tsx";
 import { TicketPickerFrame } from "../components/ticket/TicketPickerFrame.tsx";
-import { CreateStageModal } from "../components/CreateStageModal.tsx";
-import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
+import { lastCreatedStage, stagesCreatedEpoch, withCreatedStage } from "../core/stage-events.ts";
+import {
+	newTicketCard,
+	patchStageDue,
+	reconcileCard,
+	ticketCommitPayload,
+	ticketDueMode,
+} from "../core/ticket-model.ts";
 import {
 	registerTicketFileHost,
 	type TicketMode,
@@ -48,7 +54,6 @@ import {
 	restoreTimelineZoom,
 	setTimelineZoom,
 	timelineCommands,
-	timelineCreateStage,
 	timelineCreateTicket,
 	timelineTier,
 	timelineZoom,
@@ -93,7 +98,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	const loading = useSignal(false);
 	const composing = useSignal<BoardCard | null>(null);
 	const savingId = useSignal<string | null>(null);
-	const stageModalOpen = useSignal(false);
+	const seenStageEpoch = useRef(stagesCreatedEpoch.peek());
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
 
@@ -107,13 +112,20 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	const ssrBaseline = {
 		viewerIsClient: initial?.viewerIsClient ?? false,
 		sessionKind: resolveSessionKind(initial?.format ?? "pipeline", null),
+		engagementKind: initial?.board.engagementKind ?? "project",
+		viewerSeated: (initial?.board.viewerStageIds.length ?? 0) > 0,
 	};
 	const access = useSignal<BoardAccess>(resolveBoardAccess(ssrBaseline, null));
 	useEffect(() => {
 		const apply = () => (access.value = resolveBoardAccess(ssrBaseline, readDevSeam()));
 		apply();
 		return watchDevSeam(apply);
-	}, [ssrBaseline.viewerIsClient, ssrBaseline.sessionKind]);
+	}, [
+		ssrBaseline.viewerIsClient,
+		ssrBaseline.sessionKind,
+		ssrBaseline.engagementKind,
+		ssrBaseline.viewerSeated,
+	]);
 
 	useEffect(() => {
 		restoreTimelineZoom();
@@ -142,13 +154,26 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	useSignalEffect(() => {
 		const a = access.value;
 		const p = page.value;
+		const b = board.value;
 		publishTimelineCaps({
 			isClient: a.isClient,
+			canAddStage: a.canAddStage,
 			isProjectScope: scope === "project",
 			hasTickets: a.hasTickets,
 			hasRange: !!p?.range,
 			undatedCount: p?.undatedCount ?? 0,
+			projectId: props.projectId,
+			stageCurrency: b && !b.cards.some((c) => c.personal === true) ? b.currency : null,
 		});
+	});
+	useSignalEffect(() => {
+		const epoch = stagesCreatedEpoch.value;
+		if (epoch <= seenStageEpoch.current) return;
+		seenStageEpoch.current = epoch;
+		const created = lastCreatedStage.peek();
+		if (created && created.projectId === props.projectId) {
+			patchBoard((b) => ({ ...b, stages: withCreatedStage(b.stages, created.stage) }));
+		}
 	});
 
 	// Footer intents.
@@ -157,11 +182,6 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		timelineCreateTicket.value = false;
 		const a = access.peek();
 		if (a.isClient && a.hasTickets) openCompose(scopedStageId(), null);
-	});
-	useSignalEffect(() => {
-		if (!timelineCreateStage.value) return;
-		timelineCreateStage.value = false;
-		if (access.peek().isClient && scope === "project") stageModalOpen.value = true;
 	});
 
 	// A seat that loses the right to compose closes the composer it can no longer submit from.
@@ -173,7 +193,6 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			composing.value = null;
 			if (ticketStack.top.value?.input?.ticketId === id) ticketStack.close();
 		}
-		if (stageModalOpen.value) stageModalOpen.value = false;
 	});
 	// #endregion
 
@@ -298,27 +317,6 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		}
 		toast(res.message ?? "That ticket could not be saved.");
 	}
-
-	/**
-	 * Persist a new stage, then add the SERVER's stage to the timeline's board model — its `stg-…`
-	 * slug and order as a reload reads them, so the lane's "open this stage" jump resolves at once. Not
-	 * optimistic; a refusal is returned to the modal, which keeps the draft open and shows it.
-	 */
-	async function onCreateStage(
-		stage: { name: string; description: string },
-	): Promise<string | null> {
-		const res = await BoardService.createStage(props.projectId, stage);
-		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
-		const saved = res.data.stage;
-		patchBoard((b) => ({
-			...b,
-			stages: [...b.stages.filter((s) => s.id !== saved.id), saved].sort((a, z) =>
-				a.order - z.order
-			),
-		}));
-		stageModalOpen.value = false;
-		return null;
-	}
 	// #endregion
 
 	// #region Gantt gestures
@@ -334,16 +332,22 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	}
 
 	/**
-	 * A bar dragged to a new range moves the ticket's DUE DATE and nothing else. The claim instant is
-	 * a fact the system recorded when the work was picked up, not a plan the client may redraw — so a
-	 * claimed ticket's bar keeps its start and takes the new end.
+	 * A bar dragged to a new range moves a DUE DATE and nothing else. The claim instant is a fact the
+	 * system recorded when the work was picked up, not a plan the client may redraw — so a claimed
+	 * ticket's bar keeps its start and takes the new end. A ticket's item for one stage moves that
+	 * stage's date; a one-stage ticket's own item moves its stage's, which is the ticket's.
 	 */
 	function onMoveItem(item: GanttItem, range: GanttRange): void {
 		const wire = timelineItemOf(item);
 		if (!wire || wire.subject !== "ticket" || !wire.ticketId) return;
 		const card = cardsOf().find((c) => c.id === wire.ticketId);
 		if (!card) return;
-		void commitTicket({ ...card, dueDate: new Date(range.end).toISOString() });
+		const due = new Date(range.end).toISOString().slice(0, 10);
+		const stageId = wire.dueStageId ??
+			(ticketDueMode(card) === "stage" ? card.stages[0].stageId : null);
+		void commitTicket(
+			stageId ? patchStageDue(card, stageId, due, stagesOf()) : { ...card, dueDate: due },
+		);
 	}
 
 	/** Open the thing an item stands for: a ticket in the modal, a stage on its own timeline. */
@@ -503,12 +507,6 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			{frame?.kind === "picker" && !frame.input?.standalone
 				? <TicketPickerFrame key={frame.uid} uid={frame.uid} />
 				: null}
-
-			<CreateStageModal
-				open={stageModalOpen}
-				onClose={() => (stageModalOpen.value = false)}
-				onCreate={onCreateStage}
-			/>
 
 			{notice.value ? <div class="tl-notice" role="status">{notice.value}</div> : null}
 		</div>

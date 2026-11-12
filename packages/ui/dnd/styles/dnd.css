@@ -35,7 +35,7 @@
 /* The floating ghost — lifted, non-interactive, tracks the pointer 1:1 (positioned via .ui-anchored). */
 .ui-drag-overlay {
 	pointer-events: none;
-	z-index: var(--z-overlay);
+	z-index: var(--z-draggable);
 	filter: drop-shadow(var(--elevation-high));
 	transform: rotate(1.5deg) scale(1.02);
 	opacity: 0.97;

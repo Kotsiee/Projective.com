@@ -70,7 +70,7 @@ Deno.test("the scheduled formats book in page and carry no secondary at all", ()
 		assertEquals(rig.secondary, null, `${format} secondary`);
 	}
 	const full = resolveCta({ ...base, format: "cohort", seatsRemaining: 0 });
-	assertEquals(full.primary.disabled, true);
+	assertEquals(full.primary.kind, "join_waitlist");
 	assertEquals(full.secondary, null);
 });
 
@@ -91,20 +91,20 @@ Deno.test("a cohort's primary is Reserve seat, and its name counts the seats lef
 	);
 });
 
-Deno.test("a group session with no enrolling cohort is refused as not open, not as full", () => {
+Deno.test("a group session with no enrolling cohort offers the waitlist, said as not open", () => {
 	const rig = resolveCta({ ...base, format: "cohort", seatsRemaining: 0, cohortOpen: false });
-	assertEquals(rig.primary.disabled, true);
-	assertEquals(rig.primary.label, "No cohort open");
-	assertEquals((rig.primary.disabledReason ?? "").length > 0, true);
+	assertEquals(rig.primary.kind, "join_waitlist");
+	assertEquals(rig.primary.disabled, false);
+	assertEquals(rig.primary.label, "Notify me when a cohort opens");
+	assertEquals(rig.primary.note, "No cohort is enrolling yet.");
 });
 
-Deno.test("a full cohort is REFUSED with a reason, not hidden", () => {
+Deno.test("a full cohort offers the waitlist with its reason, never a disabled dead end", () => {
 	const rig = resolveCta({ ...base, format: "cohort", seatsRemaining: 0 });
-	assertEquals(rig.primary.disabled, true);
-	assertEquals(rig.primary.label, "Cohort full");
-	// The reason is the difference between a reader leaving and a reader looking at the next cohort.
-	assertEquals(typeof rig.primary.disabledReason, "string");
-	assertEquals((rig.primary.disabledReason ?? "").length > 0, true);
+	assertEquals(rig.primary.kind, "join_waitlist");
+	assertEquals(rig.primary.disabled, false);
+	assertEquals(rig.primary.label, "Join the waitlist");
+	assertEquals(rig.primary.note, "Every seat in this cohort is taken.");
 });
 
 Deno.test("a provider taking no bookings refuses the session primary with a reason", () => {

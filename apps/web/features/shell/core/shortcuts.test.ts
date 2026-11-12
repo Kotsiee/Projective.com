@@ -2,12 +2,17 @@ import { assertEquals } from "@std/assert";
 import {
 	bareLetterOf,
 	FEEDBACK_SEQUENCE_WINDOW_MS,
+	findInThreadShortcutLabel,
 	headerSearchShortcutLabel,
+	isAppleDevice,
 	isEditableTarget,
+	isFindInThreadShortcut,
 	isFocusHeaderSearchShortcut,
+	isFocusLaneSearchShortcut,
 	isFocusSearchShortcut,
 	isOpenFeedbackShortcut,
 	isToggleSidebarShortcut,
+	laneSearchShortcutLabel,
 	type ShortcutKey,
 	type ShortcutPress,
 	type ShortcutTarget,
@@ -109,7 +114,16 @@ Deno.test("isFocusHeaderSearchShortcut — Ctrl+/ or Cmd+/ focuses the header se
 		press({ key: "/", code: "Slash", ctrlKey: false, ...patch });
 	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true })), true);
 	assertEquals(isFocusHeaderSearchShortcut(slash({ metaKey: true })), true);
-	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true, shiftKey: true })), true);
+	assertEquals(
+		isFocusHeaderSearchShortcut(slash({ code: "Digit7", ctrlKey: true, shiftKey: true })),
+		true,
+	);
+});
+
+Deno.test("isFocusHeaderSearchShortcut — Shift on the Slash key is the lane's chord, not the header's", () => {
+	const chord = press({ key: "/", code: "Slash", ctrlKey: true, shiftKey: true });
+	assertEquals(isFocusHeaderSearchShortcut(chord), false);
+	assertEquals(isFocusLaneSearchShortcut(chord), true);
 });
 
 Deno.test("isFocusHeaderSearchShortcut — a bare slash, both modifiers, Alt or another key does not", () => {
@@ -133,6 +147,72 @@ Deno.test("headerSearchShortcutLabel — ⌘ on Apple devices, Ctrl everywhere e
 	assertEquals(headerSearchShortcutLabel(ipad), "⌘ /");
 	assertEquals(headerSearchShortcutLabel(windows), "Ctrl /");
 	assertEquals(headerSearchShortcutLabel(""), "Ctrl /");
+});
+
+Deno.test("isAppleDevice — Mac and iOS platforms or user agents only", () => {
+	assertEquals(isAppleDevice("MacIntel"), true);
+	assertEquals(isAppleDevice("iPhone"), true);
+	assertEquals(isAppleDevice("Win32"), false);
+	assertEquals(isAppleDevice("Linux x86_64"), false);
+	assertEquals(isAppleDevice(""), false);
+});
+// #endregion
+
+// #region The lane search
+Deno.test("isFocusLaneSearchShortcut — Ctrl+Shift+/ or Cmd+Shift+/, however the layout reports it", () => {
+	const chord = (patch: Partial<ShortcutKey>) =>
+		press({ key: "?", code: "Slash", ctrlKey: true, shiftKey: true, ...patch });
+	assertEquals(isFocusLaneSearchShortcut(chord({})), true);
+	assertEquals(isFocusLaneSearchShortcut(chord({ ctrlKey: false, metaKey: true })), true);
+	assertEquals(isFocusLaneSearchShortcut(chord({ key: "/" })), true);
+	assertEquals(isFocusLaneSearchShortcut(chord({ code: "Minus" })), true);
+});
+
+Deno.test("isFocusLaneSearchShortcut — no Shift, both modifiers, Alt, a held or taken key does not", () => {
+	const chord = (patch: Partial<ShortcutKey>) =>
+		press({ key: "?", code: "Slash", ctrlKey: true, shiftKey: true, ...patch });
+	assertEquals(isFocusLaneSearchShortcut(chord({ shiftKey: false, key: "/" })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ ctrlKey: false })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ metaKey: true })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ altKey: true })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ repeat: true })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ defaultPrevented: true })), false);
+	assertEquals(isFocusLaneSearchShortcut(chord({ key: "/", code: "Digit7" })), false);
+});
+
+Deno.test("laneSearchShortcutLabel — ⇧⌘/ on Apple devices, Ctrl ⇧ / elsewhere", () => {
+	assertEquals(laneSearchShortcutLabel(true), "⇧⌘/");
+	assertEquals(laneSearchShortcutLabel(false), "Ctrl ⇧ /");
+});
+// #endregion
+
+// #region The message finder
+Deno.test("isFindInThreadShortcut — ⌘F on Apple platforms, Ctrl+F elsewhere", () => {
+	const f = (patch: Partial<ShortcutKey>) =>
+		press({ key: "f", code: "KeyF", ctrlKey: false, ...patch });
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true }), false), true);
+	assertEquals(isFindInThreadShortcut(f({ metaKey: true }), true), true);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, key: "F" }), false), true);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, key: "а" }), false), true);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, repeat: true }), false), true);
+});
+
+Deno.test("isFindInThreadShortcut — the other platform's modifier, Shift, Alt or a taken key does not", () => {
+	const f = (patch: Partial<ShortcutKey>) =>
+		press({ key: "f", code: "KeyF", ctrlKey: false, ...patch });
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true }), true), false);
+	assertEquals(isFindInThreadShortcut(f({ metaKey: true }), false), false);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, metaKey: true }), false), false);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, shiftKey: true }), false), false);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, altKey: true }), false), false);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, defaultPrevented: true }), false), false);
+	assertEquals(isFindInThreadShortcut(f({}), false), false);
+	assertEquals(isFindInThreadShortcut(f({ ctrlKey: true, key: "g", code: "KeyG" }), false), false);
+});
+
+Deno.test("findInThreadShortcutLabel — ⌘F or Ctrl+F", () => {
+	assertEquals(findInThreadShortcutLabel(true), "⌘F");
+	assertEquals(findInThreadShortcutLabel(false), "Ctrl+F");
 });
 // #endregion
 

@@ -24,6 +24,11 @@ import { commitOrSimulate, simulating } from "./simulation.ts";
  */
 
 // #region Commits
+/** Queue the buyer on a group-session listing's waitlist (Decision #424). */
+export function commitWaitlist(subjectId: string) {
+	return commitOrSimulate({ kind: "join_waitlist" }, () => BookingService.joinWaitlist({ subjectId }));
+}
+
 /** Add a pipeline listing to the buyer's projects as a draft. */
 export function commitPipeline(input: InstantiateServiceRequest) {
 	return commitOrSimulate(

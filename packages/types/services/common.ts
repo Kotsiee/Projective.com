@@ -85,11 +85,16 @@ export const BookingActionKind = z.enum([
 	/** Open the scope/funding + brief composer. */
 	"open_scope",
 	/**
-	 * Hold a seat on the cohort (`POST /api/sessions/reserve`) and open instant checkout on the held
-	 * line (Decision #171) — a cohort's sittings are fixed, so there is no time to pick.
+	 * Open the seat panel: the cohort's fixed sittings and a seat count, whose commit holds the seats
+	 * (Decision #171) and continues to checkout (Decision #424) — there is no time to pick.
 	 */
 	"reserve_seat",
-	/** Rendered, but refuses — a full cohort. The label carries the reason. */
+	/**
+	 * Queue the buyer on the listing's waitlist (`projects.waitlists`, Decision #424) — the enabled
+	 * answer to a group session with no enrolling cohort or a full one, never a disabled dead end.
+	 */
+	"join_waitlist",
+	/** Rendered, but refuses — a provider taking no bookings. The label carries the reason. */
 	"unavailable",
 ]);
 export type BookingActionKind = z.infer<typeof BookingActionKind>;
@@ -114,6 +119,8 @@ export const BookingCtaSchema = z.object({
 	disabled: z.boolean(),
 	/** Why it is refused. `null` whenever `disabled` is false. */
 	disabledReason: z.string().max(200).nullable(),
+	/** The state an ENABLED control answers, printed beside it — why the cohort is on a waitlist. */
+	note: z.string().max(200).nullable().optional(),
 });
 /**
  * The lane's complete action rig for one listing.
@@ -191,10 +198,9 @@ export interface CtaInput {
  * at where the button was rather than at what it now says. Removal is a secondary control behind an
  * explicit confirmation (root CLAUDE.md §3).
  *
- * **A full cohort is `disabled` with a reason, not hidden.** "Cohort full" is information a buyer
- * came for; an absent control makes them wonder whether the page is broken. That is the opposite of
- * the Contact-menu rule, and deliberately so — there the capability does not exist, here it exists
- * and is exhausted, and those are different facts.
+ * **A full cohort, or none enrolling, is a waitlist, not a dead end (Decision #424).** The primary
+ * stays enabled as `join_waitlist` and its `note` states which of the two facts holds, because "no
+ * cohort yet" and "this cohort is full" are different reasons to wait.
  */
 export function resolveCta(input: CtaInput): ServiceCtaRig {
 	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, cohortOpen = true } =
@@ -288,16 +294,21 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 
 		case "cohort": {
 			const left = seatsRemaining ?? 0;
-			const full = left <= 0;
-			if (!cohortOpen) {
+			if (!cohortOpen || left <= 0) {
 				return {
 					format,
 					primary: {
-						kind: "unavailable",
-						label: "No cohort open",
+						kind: "join_waitlist",
+						label: cohortOpen ? "Join the waitlist" : "Notify me when a cohort opens",
+						ariaLabel: cohortOpen
+							? "This cohort is full — join the waitlist for the next one"
+							: "No cohort is enrolling — get notified when the next one opens",
 						href: null,
-						disabled: true,
-						disabledReason: "This listing has no cohort taking bookings yet.",
+						disabled: false,
+						disabledReason: null,
+						note: cohortOpen
+							? "Every seat in this cohort is taken."
+							: "No cohort is enrolling yet.",
 					},
 					secondary: null,
 				};
@@ -305,14 +316,12 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 			return {
 				format,
 				primary: {
-					kind: full ? "unavailable" : "reserve_seat",
-					label: full ? "Cohort full" : "Reserve seat",
-					ariaLabel: full
-						? "This cohort is full"
-						: `Reserve a seat — ${left} ${plural(left, "seat")} remaining`,
+					kind: "reserve_seat",
+					label: "Reserve seat",
+					ariaLabel: `Reserve a seat — ${left} ${plural(left, "seat")} remaining`,
 					href: null,
-					disabled: full,
-					disabledReason: full ? "Every seat in this cohort is taken." : null,
+					disabled: false,
+					disabledReason: null,
 				},
 				secondary: null,
 			};

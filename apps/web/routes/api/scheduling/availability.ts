@@ -1,13 +1,15 @@
 import { define } from "@web/utils/state.ts";
-import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
+import { AvailabilityParamsSchema } from "@projective/types/scheduling";
+import { toFieldErrors, toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { restrictBooking } from "@features/calendar/core/booking-gate.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
- * `GET /api/scheduling/availability?handle=` — a `@handle`'s availability schedule. Thin: guard the
- * required `handle`, resolve WHO IS ASKING from the session (never from the query string), then
+ * `GET /api/scheduling/availability?handle=&around=` — a `@handle`'s availability schedule. Thin: guard
+ * the required `handle`, Zod-validate the params (`around` is the `YYYY-MM-DD` the read is centred on;
+ * `422` otherwise), resolve WHO IS ASKING from the session (never from the query string), then
  * delegate to the fat {@link ScheduleBackendService.availability} (which rejects reserved handles)
  * and map the result.
  *
@@ -22,7 +24,21 @@ export const handler = define.handlers({
 		if (!handle) {
 			return Response.json({ ok: false, message: "Missing handle." }, { status: 400 });
 		}
-		const res = await ScheduleBackendService.availability({ handle }, viewerFromState(ctx.state));
+		const parsed = AvailabilityParamsSchema.safeParse({
+			handle,
+			around: ctx.url.searchParams.get("around") ?? undefined,
+		});
+		if (!parsed.success) {
+			return Response.json(
+				{
+					ok: false,
+					message: "That schedule address is not valid.",
+					errors: toFieldErrors(parsed.error),
+				},
+				{ status: 422 },
+			);
+		}
+		const res = await ScheduleBackendService.availability(parsed.data, viewerFromState(ctx.state));
 		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		return toSchedulingResponse(
 			res.ok && res.data

@@ -156,10 +156,14 @@ import {
 	composeWorkspace,
 	type DeleteTicket,
 	isSelfClaimable,
+	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectWorkspace,
+	SERVICE_STAGE_REFUSAL_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	TICKET_MANAGER_ROLES,
 	ticketDeletable,
+	ticketDueFromStages,
+	ticketLeavesStage,
 	ticketTermsLocked,
 	ticketWorkLocked,
 	type WorkspaceViewer,
@@ -709,14 +713,19 @@ function draftStageRef(id: string, input: CreateStageInput, order: number): Boar
 		status: "draft",
 		locked: false,
 		description: input.description,
-		unitPriceCents: null,
+		unitPriceCents: input.unitPriceCents,
 		categoryWeight: 1,
+		createCategory: input.createCategory,
 		members: [],
 		ticketCount: 0,
 		funding: null,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
 		chainReaction: true,
+		defaultIntensity: "standard",
+		intensityLocked: false,
+		lowPriceCents: null,
+		highPriceCents: null,
 		startAt: null,
 		endAt: null,
 		dependsOnStageId: null,
@@ -953,8 +962,8 @@ function refusedInvitation(handle: string, message: string | undefined): Created
  * Stages copy the blueprint's: name, brief, required skills, and the stage's STANDARD per-ticket
  * price in minor units (`BlueprintStage.priceCents`, else the listing's `ticket_price_cents`, else
  * unpriced) — the figure `marketplace.instantiate_service_blueprint` copies, so the stub and the live
- * draft price the same board. Not the page's range floor: that is the 0.5× workload-intensity end of
- * the band the card prints, and escrowing it would hold half the seller's price.
+ * draft price the same board. Not the page's range floor: that is the Low (0.75×) end of the intensity
+ * price band the card prints, and escrowing it would hold three quarters of the seller's price.
  */
 function buildInstantiatedSetup(
 	item: ServiceItem,
@@ -2083,6 +2092,13 @@ export class ProjectBackendService {
 		if (current.archivedAt) {
 			return fail(409, { message: "This project is archived — no stage can be added to it." });
 		}
+		// `create_stage`'s authorship rule (Decision #421): a service's client adds no stage.
+		if (current.kind === "service" && current.viewerIsClient) {
+			return fail(403, {
+				message: SERVICE_STAGE_REFUSAL_MESSAGE,
+				errors: { name: "not_permitted" },
+			});
+		}
 		// What the BOARD held before the write, which is what "the new stage" is measured against — a
 		// fixture's setup list and its board list are not always the same ids (Decision #139 flag (d)).
 		const prior = await this.board({ projectId: slug, channelId: null, view: "stages" }, actor);
@@ -2097,6 +2113,8 @@ export class ProjectBackendService {
 				{
 					name: input.name,
 					description: input.description ? plainTextToHtml(input.description) : "",
+					// A personal project carries no money, as `trg_stages_personal_money_guard` rules live.
+					unitPriceCents: current.personal ? null : input.unitPriceCents,
 				},
 			],
 		};
@@ -2104,8 +2122,12 @@ export class ProjectBackendService {
 		invalidateProjects(actor);
 		const read = await this.createdBoardStage(slug, actor, (s) => !before.has(s.id));
 		const stage = read ?? draftStageRef(mintStageId(), input, current.stages.length);
-		// The board card prints the plain brief; the stored copy is the setup surface's rich text.
-		return ok({ stage: { ...stage, description: input.description } }, { message, status: 201 });
+		// The board card prints the plain brief; the stored copy is the setup surface's rich text. The
+		// stub's setup store holds no CREATE category, so the answer carries the one this create named.
+		return ok(
+			{ stage: { ...stage, description: input.description, createCategory: input.createCategory } },
+			{ message, status: 201 },
+		);
 	}
 
 	/** The project board's stage that `match` selects, or `null` when the re-read could not find it. */
@@ -2987,9 +3009,10 @@ export class ProjectBackendService {
 		const setup = base ? overlaySetup(base, actor) : null;
 
 		// `fn_enforce_ticket_due_date` RAISES when a due date is set on a project that has not agreed
-		// to deadline bonus terms. Refusing with the reason is the difference between a form the owner
-		// can correct and a save that aborts with nothing to act on.
-		if (input.dueDate && setup && !setup.rules.allowDeadlineBonuses) {
+		// to deadline bonus terms — the ticket's own, or the latest of its stages'. Refusing with the
+		// reason is the difference between a form the owner can correct and a save that aborts with
+		// nothing to act on.
+		if ((ticketDueFromStages(input.stages) ?? input.dueDate) && setup && !setup.rules.allowDeadlineBonuses) {
 			return fail(422, {
 				message: "Turn on deadline bonuses for this project before setting a ticket due date.",
 				errors: { dueDate: "deadline_bonuses_disabled" },
@@ -3102,6 +3125,15 @@ export class ProjectBackendService {
 		}
 		const unfunded = needsFunding<{ card: BoardCard }>(current.status, input.status, current.escrowHeld);
 		if (unfunded) return unfunded;
+		// `move_ticket`'s New lane (Decision #421): claimed work keeps its stage.
+		const leavesStage = input.status === "backlog" && input.stageId === null &&
+			current.stageId !== null;
+		if (leavesStage && !ticketLeavesStage(current)) {
+			return fail(422, {
+				message: NEW_LANE_REFUSAL_MESSAGE,
+				errors: { status: "not_allowed" },
+			});
+		}
 
 		const card = movedStubCard(current, input, Date.now());
 		putTicketCard(owner, input.projectId, card);

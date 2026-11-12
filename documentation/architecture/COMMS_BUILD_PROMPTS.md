@@ -19,8 +19,10 @@
 > `UNIQUE (thread_id, user_id)`), M10 (`comms.mark_dm_read`) and M24 (no fixtures behind the live
 > gate). `supabase/probes/trust_p1_comms_search.sql` replays them. SEC E1–E5 and E7 were closed
 > earlier (`supabase/probes/trust_p0.sql`), so CAS §2.5 step 1 ("close SEC E3/G1/G2 first") holds.
-> RED WP3 is `92c7941f` (D-09, QW-8, QW-9), without cross-isolate invalidation. Everything below is
-> still open in the tree at `94d22e84`.
+> RED WP3 is `92c7941f` (D-09, QW-8, QW-9); its cross-isolate invalidation came later, as WP3b
+> (`0c1e474f`) on O·WP10a's KV version keys (`7f6b43d5`). **Re-verified in code 2026-11-12 at
+> `8a3fd595`:** NT1 is done (`2f9a9bb6`); MS3 step 2, NT3 step 1, SR1 step 4 and SR2 step 4 landed
+> through other work (§0); MS1 landed after it (`bbcf3506`); every other step below is still open.
 >
 > **A prompt marked 🧑 DECISION stops** and puts the named question to a human before it changes
 > behaviour, with the options and a recommendation; §0 lists every stop. Migrations are **edited in
@@ -35,14 +37,26 @@
 
 ## 0. Run order & dependencies
 
-| Phase                        | Prompts                     | Why this order                                                                                                                                                                                                                                  |
-| :--------------------------- | :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — The N1 schema window** | MS1                         | One window lands the `cht-` thread ref, the inbox read model (RED WP12) and project-stamped DMs, as ruled (Decision #339, ruling N1). MS2–MS5 build on it, and so do the trust track's Tier 1 and P2 hardening.                                 |
-| **2 — One door, then live**  | MS2 → MS3                   | MS2 makes the single send door and the `cht-` addresses. MS3's long-poll addresses a chat by those refs, and the door bumps its version keys (ruling N2).                                                                                       |
-| **3 — Notifications**        | NT1 → NT2 → NT3 → NT4 → NT5 | CAS §2.5's order: fix the engine, then the dispatcher, then email, web push and SMS (ruling N3). NT2 and NT3 each stop for a 🧑 ruling first.                                                                                                   |
-| **3b — Chat on the engine**  | MS4 → MS5                   | MS4 emits `message.*` into the fixed engine, with `cht-` links (⏳ MS1 and NT1). MS5 makes every chat control persist, mute first (ruling N3 (d)).                                                                                              |
-| **4 — Search**               | SR1 → SR2; SR3; SR4         | SR1 restores recall (ruling N4) before anything adds signal (CAS §6.5). SR3 needs MS3's version keys and stops for its weight. SR4 waits for the projects track's efficiency measure and stops for its coefficients (Decision #338, ruling P4). |
-| **Last**                     | Z1                          | Docs sweep, the end-to-end encryption roadmap marker and the CAS status column.                                                                                                                                                                 |
+**Re-verified in code 2026-11-12 at `8a3fd595`:** NT1 is done (`2f9a9bb6`), and MS1 landed after it
+(`bbcf3506`: the `cht-` ref, the thread summary, `comms.inbox_tails` and project-stamped DMs). Four
+steps landed through other work: MS3 step 2 (O·WP10a's `bumpCacheVersion`, `cacheVersion` and
+`cacheVersionTag` in `packages/backend/core/kv.ts`, `7f6b43d5`), NT3 step 1 (the Resend
+`MailTransport` in `services/mail/transport.ts`, `527b4cd6`), SR1 step 4 (T·E8 deleted the two
+definers, `dd4206d3`) and SR2 step 4 (T·W1's Voyage pin, `bc805dff`). 🧑 2 is settled: the owner's
+ruling (4) on Decision #391 chose Resend. Nothing else has started: there is no single send door,
+`cht-` route, `/api/messaging/since`, `message.*` emitter, dispatcher claim, VAPID, Twilio transport
+or `hnsw.ef_search`. Waits now met: NT2's jobs merge (`e18489d4`), O·RED WP3's invalidation half
+(WP3b, `0c1e474f`), and MS1 for MS2, MS4 and the trust track's P2 hardening. Runnable today: MS2
+(app lane), NT2 (stops at 🧑 1) and SR1's remainder, serial on `00002510`.
+
+| Phase                        | Prompts                                               | Why this order                                                                                                                                                                                                                                  |
+| :--------------------------- | :---------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — The N1 schema window** | ✅ MS1                                                | One window lands the `cht-` thread ref, the inbox read model (RED WP12) and project-stamped DMs, as ruled (Decision #339, ruling N1). MS2–MS5 build on it, and so do the trust track's Tier 1 and P2 hardening.                                 |
+| **2 — One door, then live**  | MS2 → MS3 (partly: step 2)                            | MS2 makes the single send door and the `cht-` addresses. MS3's long-poll addresses a chat by those refs, and the door bumps its version keys (ruling N2).                                                                                       |
+| **3 — Notifications**        | ✅ NT1 → NT2 → NT3 (partly: step 1) → NT4 → NT5       | CAS §2.5's order: fix the engine, then the dispatcher, then email, web push and SMS (ruling N3). NT2 and NT3 each stop for a 🧑 ruling first.                                                                                                   |
+| **3b — Chat on the engine**  | MS4 → MS5                                             | MS4 emits `message.*` into the fixed engine, with `cht-` links (both waits, MS1 and NT1, are met). MS5 makes every chat control persist, mute first (ruling N3 (d)).                                                                            |
+| **4 — Search**               | SR1 (partly: step 4) → SR2 (partly: step 4); SR3; SR4 | SR1 restores recall (ruling N4) before anything adds signal (CAS §6.5). SR3 needs MS3's version keys and stops for its weight. SR4 waits for the projects track's efficiency measure and stops for its coefficients (Decision #338, ruling P4). |
+| **Last**                     | Z1                                                    | Docs sweep, the end-to-end encryption roadmap marker and the CAS status column.                                                                                                                                                                 |
 
 **The SQL lane.** Every prompt except MS2 and NT4 edits `supabase/migrations`. Each of them
 therefore counts against Part B §B.0's cap of two SQL sessions on the one local DB, a cap shared
@@ -63,10 +77,10 @@ with every other track.
 | SR3    | `00001400`, `00002510`, `00005050`                                                               |
 | SR4    | `00005050`                                                                                       |
 
-Recommended serial order inside the track: MS1 → ✅ NT1 → SR1 → MS3 → NT2 → MS4 → NT3 → MS5 → NT5 →
-SR2 → SR3 → SR4. MS2 and NT4 run in the app lane as soon as their predecessor has merged. These
-pairs have disjoint files and may share the two slots: MS1 ∥ NT1, SR1 ∥ MS3, NT2 ∥ MS4, NT5 ∥ SR2
-and SR3 ∥ NT5.
+Recommended serial order inside the track: ✅ MS1 → ✅ NT1 → SR1 (partly: step 4) → MS3 (partly:
+step 2) → NT2 → MS4 → NT3 (partly: step 1) → MS5 → NT5 → SR2 (partly: step 4) → SR3 → SR4. MS2 and
+NT4 run in the app lane as soon as their predecessor has merged. These pairs have disjoint files and
+may share the two slots: MS1 ∥ NT1, SR1 ∥ MS3, NT2 ∥ MS4, NT5 ∥ SR2 and SR3 ∥ NT5.
 
 These cannot run in parallel because they edit the same files:
 
@@ -132,8 +146,8 @@ These cannot run in parallel because they edit the same files:
 - T·Tier 1 pre-filter ⏳ **MS2**. MS2 gives it one insertion point instead of two (SEC §2.3):
   `MessagingBackendService.sendMessage(actor, ref, input)`, between the authorisation and the
   insert.
-- T·P2 hardening (`00001300`) ⏳ MS1, and never beside MS4 or MS5. T·P2b (a new `comms.dm_threads`
-  column) ⏳ MS1 and MS2.
+- T·P2 hardening (`00001300`): its MS1 wait is met (`bbcf3506`); it never runs beside MS4 or MS5.
+  T·P2b (a new `comms.dm_threads` column) ⏳ MS2; its MS1 wait is met.
 - O·RED WP3's invalidation half (D-14, the catalogue version bump) ⏳ the KV version keys (MS3 or
   O·WP10a, whichever lands first). O·RED WP13 (D-08, the chrome endpoint, which folds in
   `/api/notifications/summary`'s 30 s poll) ⏳ **MS3**'s long-poll. This file builds neither.
@@ -405,6 +419,20 @@ ACCEPTANCE (comms_thread_refs.sql, BEGIN … ROLLBACK):
   - slug.contract.test.ts is green with the thread entity.
 ```
 
+> **Status 2026-11-12:** Done — `bbcf3506` (branch `feat/comms-ms1-thread-refs`, on `dd3986e5`).
+> `comms.dm_threads` gains `ref` (`cht-`, always minted by `security.fn_ref_guard`, `23514` on any
+> change) and the derived `last_message_at` / `last_message_id` (`comms.tg_dm_thread_summary`,
+> never backwards, guarded by `trg_dm_threads_derived`); `authenticated` loses `INSERT` / `UPDATE`
+> on the table. `comms.inbox_tails` is the invoker preview read; `comms.tg_bind_dm_project` settles
+> `dm_messages.project_id` before the mask, and `idx_dm_messages_project` serves the project's DM
+> group. Three readings MS2 inherits: `get_or_create_dm_thread` answers jsonb
+> `{ thread_id, thread_ref }` (the two TS callers parse `OpenedDmThreadSchema`) and
+> `send_request_message` adds `thread_ref`; an entity-channel message carries no project; `ref`,
+> `lastMessageAt` and `lastMessageId` are optional on `ConversationSummary` / `ConversationDetail`
+> until MS2's live read fills them. `ChatRef` is in `@projective/types/messaging` (`send.ts`).
+> Proof: `supabase/probes/comms_thread_refs.sql`; `test:probes:fresh` 133/133 on the shared DB and
+> 129/129 on main + MS1 alone.
+
 ### MS2 — One send door, `cht-` addresses, and the project's DM group
 
 ```text
@@ -502,6 +530,12 @@ ACCEPTANCE:
 ```
 
 ### MS3 — Live updates: an ETag long-poll, KV version keys, comms out of Realtime
+
+> **Status 2026-11-12:** Partly done — step 2 landed as O·WP10a's version keys in
+> `packages/backend/core/kv.ts` (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag`, with the
+> `["messaging", userId]` scope already under test; `7f6b43d5`), so `cache-version.ts` is not
+> created; steps 1 and 3–6 remain (`00002600` still publishes the five comms tables, and there is no
+> `since` route). ⏳ MS2.
 
 ```text
 PROMPT MS3: Live updates — an ETag long-poll, KV version keys, and comms out of Realtime
@@ -756,6 +790,12 @@ ACCEPTANCE:
 
 ### NT1 — The engine obeys its rules: quiet hours, escalation, digests, collapse
 
+> **Status 2026-11-12:** Done — `2f9a9bb6`: every handler of `fn_notify`, `fn_notify_many` and
+> `fn_enqueue` warns with the type key and SQLSTATE; `fn_resolve_channels` drops push and SMS for a
+> mandatory type inside quiet hours unless `overrides_quiet_hours`; the collapse takes the advisory
+> lock; escalation honours the per-type mute and the category; category digests are built;
+> `supabase/probes/notify_engine.sql`. The `cron:run` acceptance line was not re-run here.
+
 ```text
 PROMPT NT1: The notification engine obeys its rules — quiet hours, escalation, digests, collapse
 
@@ -938,6 +978,13 @@ ACCEPTANCE:
 ```
 
 ### NT3 — 🧑 DECISION · Transactional email: one provider; a hard bounce blocks the address
+
+> **Status 2026-11-12:** Partly done — step 1's transport landed in `527b4cd6`: `MailTransport`,
+> `resendTransport` and `configuredTransport()` (a `re_…` key and `MAIL_FROM`; the placeholder
+> counts as absent) live in `services/mail/transport.ts`, not a separate `transport-resend.ts`, and
+> `deliverMail` serves the verification and guest mailers. The 🧑 stop is settled: Decision #391,
+> ruling (4), chose Resend. The Idempotency-Key, List-Unsubscribe, the email registration in
+> `dispatch-transports.ts` and steps 2–5 remain. ⏳ NT2.
 
 ```text
 PROMPT NT3: Transactional email — one provider, signed bounces; a hard bounce blocks the address
@@ -1208,6 +1255,12 @@ ACCEPTANCE:
 
 ### SR1 — Nearest-neighbour recall at scale, and the dead search definers deleted
 
+> **Status 2026-11-12:** Partly done — step 4's deletion of `search.fn_search_entities` and
+> `fn_search_global` landed with T·E8 (`dd4206d3`). `search.fn_norm` (no caller left, still granted
+> in `00002510`) and steps 1–3 remain: both nearest functions still pin
+> `search_path = search, public` with no `hnsw.*` setting, and `fn_set_embedding` checks
+> dimensions only.
+
 ```text
 PROMPT SR1: Nearest-neighbour recall at scale, and the dead search definers deleted
 
@@ -1271,6 +1324,12 @@ HNSW index is used at probe scale):
 ```
 
 ### SR2 — Bounded search input, a per-client embedding budget, a scheduled backfill, Voyage pinned
+
+> **Status 2026-11-12:** Partly done — step 4 landed with T·W1 (`bc805dff`): every call goes to
+> `api.voyageai.com`, `privacy.ts` and EPI §1.1 name Voyage, and EPI §11 carries the no-training
+> line. W1 pins the host whatever the key looks like, so the `pa-` key check was not built. Steps
+> 1–3 and 5 remain (`ExploreParamsSchema` is unbounded, no client limiter, no cron route or job
+> row, no `semantic.contract.test.ts`).
 
 ```text
 PROMPT SR2: Bounded search input, a per-client embedding budget, a backfill job, Voyage pinned

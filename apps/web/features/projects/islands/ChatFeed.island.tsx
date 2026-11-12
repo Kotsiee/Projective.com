@@ -29,6 +29,9 @@ import {
 	type ChatPreviewRequest,
 } from "../components/ChatAttachmentPreview.tsx";
 import { useMessageSelection } from "../hooks/useMessageSelection.ts";
+import { useChatFind } from "../hooks/useChatFind.ts";
+import { ChatFindBar } from "../components/ChatFindBar.tsx";
+import { useFindTarget } from "@features/shortcuts/hooks/useFindTarget.ts";
 import { chatFeedScope } from "../core/chat-attachments.ts";
 import { messageAnchorOf, withoutMessageAnchor } from "../core/chat-context.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
@@ -55,6 +58,9 @@ import { toggleMessagePin } from "@features/messaging/core/message-pins.ts";
  * and the long-press reaction bubble. A reply is handed to the footer composer on
  * `MESSAGE_REPLY_EVENT`, and a reply's quote jumps to its original — loading earlier pages first when
  * the original is above the loaded window.
+ *
+ * Ctrl/Cmd+F, or the channel header's Find, opens the thread's message finder ({@link useChatFind},
+ * Decision #418) in place of the browser's find, which cannot see rows the virtualizer has not drawn.
  *
  * An address carrying `?m=<messageId>` (or a legacy `#m-` fragment) opens on that message instead of
  * the newest. A bubble's attachment tile opens the file preview over the feed
@@ -346,6 +352,18 @@ export default function ChatFeed(
 	});
 	// #endregion
 
+	// #region Message finder (Ctrl/Cmd+F)
+	const find = useChatFind({
+		messages,
+		hasMore,
+		loadOlder: () => loadOlder(),
+		jumpTo: (id) => void jumpTo(id),
+		viewportRef,
+		status: sel.status,
+	});
+	useFindTarget({ scopeRef: rootRef, open: find.show });
+	// #endregion
+
 	// #region Message actions (optimistic, immutable)
 	function updateMessage(id: string, fn: (m: ChatMessage) => ChatMessage): void {
 		messages.value = messages.value.map((m) => (m.id === id ? fn(m) : m));
@@ -487,7 +505,8 @@ export default function ChatFeed(
 	 */
 	if (messages.value.length === 0 && !hasMore.value) {
 		return (
-			<div class="chat-feed chat-feed--empty">
+			<div class="chat-feed chat-feed--empty" ref={rootRef}>
+				{find.open.value && <ChatFindBar find={find} />}
 				<ChatEmptyState />
 			</div>
 		);
@@ -539,6 +558,8 @@ export default function ChatFeed(
 				onJump={(id) => void jumpTo(id)}
 				onUnpin={(id) => void togglePin(id)}
 			/>
+
+			{find.open.value && <ChatFindBar find={find} />}
 
 			<MessageSelectionBar
 				selection={sel}

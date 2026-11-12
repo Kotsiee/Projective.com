@@ -399,28 +399,58 @@ door is `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` and
 locks the call first through `fn_lock_call`, which refuses a stranger and a missing call alike
 (`call_not_found`), so an id cannot be probed. A refusal is `Discovery call refused: <code>`.
 `fn_enforce_call_transition` stays the legality authority and stamps everything derived, and
-`trg_log_call_event` writes the audit line, now including a move on a call still `proposed`. Each door
-tells the other party (`call.confirmed`, `call.declined`, `call.time_proposed`, `call.cancelled`,
-`call.no_show`) through `fn_notify_call`, and withdraws the call's queued reminders.
+`trg_log_call_event` writes the audit line, now including a move on a call still `proposed`. Each
+door tells the other party (`call.confirmed`, `call.declined`, `call.time_proposed`,
+`call.cancelled`, `call.no_show`) through `fn_notify_call`, and withdraws the call's queued
+reminders.
 
-| Door                                        | Who                                         | From → to                   | Refusals                                                                      |
-| :------------------------------------------ | :------------------------------------------ | :-------------------------- | :---------------------------------------------------------------------------- |
-| `confirm_discovery_call(call)`              | The counterparty of the last proposal       | `proposed → confirmed`      | `not_open` · `not_your_move` · `slot_passed`                                  |
-| `decline_discovery_call(call, reason?)`     | The host, at any time                       | `proposed → declined`       | `not_open` · `not_your_move`                                                  |
-| `propose_call_time(call, start, end)`       | Either party                                | `proposed` or `confirmed` → `proposed` | `not_open` · `inside_lockout` · `duration_mismatch` · any gate refusal |
-| `cancel_discovery_call(call, reason?)`      | Either party; a requester may also withdraw | `confirmed` or `proposed` → `cancelled` | `not_open` · `slot_passed`                                         |
-| `mark_call_no_show(call, party)`            | Either party, naming the other              | `confirmed → no_show`       | `not_open` · `not_your_move` · `too_early` · `attendance_contradicts`         |
+| Door                                    | Who                                                                     | From → to                               | Refusals                                                               |
+| :-------------------------------------- | :---------------------------------------------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------- |
+| `confirm_discovery_call(call)`          | The counterparty of the last proposal                                   | `proposed → confirmed`                  | `not_open` · `not_your_move` · `slot_passed`                           |
+| `decline_discovery_call(call, reason?)` | The host, at any time                                                   | `proposed → declined`                   | `not_open` · `not_your_move`                                           |
+| `propose_call_time(call, start, end)`   | Either party                                                            | `proposed` or `confirmed` → `proposed`  | `not_open` · `inside_lockout` · `duration_mismatch` · any gate refusal |
+| `cancel_discovery_call(call, reason?)`  | Either party; a requester may also withdraw                             | `confirmed` or `proposed` → `cancelled` | `not_open` · `slot_passed`                                             |
+| `mark_call_no_show(call, party)`        | Either party, naming the other; a verified courtesy mark costs Standing | `confirmed → no_show`                   | `not_open` · `not_your_move` · `too_early` · `attendance_contradicts`  |
 
-**Who accepts** (Decision #383, SCH-WP3): `discovery_calls.proposed_by` names who made the proposal on
-the table, and its counterparty accepts it, so a host cannot confirm their own new time.
+**Who accepts** (Decision #383, SCH-WP3): `discovery_calls.proposed_by` names who made the proposal
+on the table, and its counterparty accepts it, so a host cannot confirm their own new time.
 
 **A move** keeps the call's length, must clear the 12-hour lockout at both the current and the new
 start (the courtesy lockout, pinned to `RESCHEDULE_LOCKOUT_HOURS` by
 `coordination.contract.test.ts`), takes the schedule row lock, and passes `fn_call_request_refusal`
 again with the call itself excluded. A confirmed call returns to `proposed`, which frees its old span.
 
-**A no-show** opens `session_presence_minutes` after `confirmed_start`. Where `call_attendance` shows
-the named party in the room by then, the mark is refused (`attendance_contradicts`).
+**A no-show** opens `session_presence_minutes` after `confirmed_start`. Where `call_attendance`
+shows the named party in the room by then, the mark is refused (`attendance_contradicts`). A
+courtesy mark the room verified is then charged to the absent person's Standing
+(`fn_charge_call_no_show`, below), and their `call.no_show` notice says so.
+
+### `scheduling.fn_charge_call_no_show(call row, marker, marked, window_closes) → uuid`
+
+Courtesy-call reliability in Standing (Decision #343, ruling C6 D7; audit S-17). The weight is
+Decision #419's: two points that lapse after 90 days. `mark_call_no_show` calls it after the move,
+and it writes one `security.penalties` row only when all of these hold:
+
+- the call is a **courtesy** call (a paid call's no-show is answered by money, never by this);
+- `call_attendance` shows the **marker** in the room by `window_closes`, the call's start plus
+  `session_presence_minutes`. The marked person's own join by then has already refused the mark, so
+  a mark no presence backs (an untracked room, a manual link, a marker who arrived late) costs
+  nothing;
+- no `no_show` penalty on a discovery call between the same two people names the marked person in
+  the last `call_no_show_pair_window_days` (30), checked under a transaction advisory lock on the
+  pair, so retaliation is capped at one mark a month.
+
+The row is `penalty_type = 'trust_score'`, `source_type = 'no_show'`, `source_id` = the call,
+`severity = call_no_show_penalty_points` (2), `expires_at = now() + call_no_show_penalty_days` (90),
+with `subject_type` `freelancer` when the marked person has a freelancer profile and `user`
+otherwise. It then refreshes the subject's cached `org.entity_standing.penalty_severity` (the sum of
+their active, unexpired penalties) and calls `org.fn_recompute_standing`, which records the
+`components.penalty` term and any rung change. Both happen only when the subject already has a
+Standing row, so a client with none keeps the penalty on record. Until trust-track R5's expiry sweep
+exists, a lapsed penalty leaves the cached term at that subject's next refresh, not on the day it
+lapses. Returns the penalty id, or `NULL` when none was written. `SECURITY DEFINER`,
+`search_path = ''`; `EXECUTE` revoked from `public` · `anon` · `authenticated` (`00002510`). Probe:
+`supabase/probes/coordination_rules.sql` §3.
 
 Paid calls: the decline refund and completion through a sitting are SCH-WP6's. Probe:
 `supabase/probes/discovery_call_doors.sql`.
@@ -883,42 +913,41 @@ below).
 
 ### `scheduling.fn_cap_reschedule_proposals()` → trigger (`trg_cap_reschedule_proposals`)
 
-`BEFORE INSERT` on `reschedule_proposals` (trigger in `00001860`). A round holds at most **twelve**
-slots, approved or not — `RESCHEDULE_PROPOSALS_MAX` in `@projective/types/scheduling`, which
-`coordination.contract.test.ts` pins to the SQL literal. The thirteenth raises `23514`
-(`check_violation`), which the write path answers as a 409 `ballot_full`.
+`BEFORE INSERT` on `reschedule_proposals` (trigger in `00001860`). Three bounds on what one round
+may hold, each the planner's rule in `@projective/types/scheduling`, with its literal pinned by
+`coordination.contract.test.ts`. Each raises `23514` (`check_violation`) with the planner's reason
+as its `HINT`, which the write path maps back to that reason:
 
-The same cap is enforced three times on purpose: the Zod `proposals` array, the planner's
-`ballot_full` refusal (asked before the duplicate-slot check, so a full round is full whatever is
-offered), and this trigger. The trigger is what makes it true of the TABLE rather than of one code
-path: before it existed a thirteenth slot was stored, dropped by the read's twelve-slot bound, and
-then answered "already proposed" when offered again — a time nobody could see and nobody could
-offer.
+| Bound                                                                                                                              | Rule (TS)                                              | Reason · status          |
+| :--------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------- | :----------------------- |
+| A replacement keeps the event's length (`ends_at − starts_at` equals the event's), whoever offers it (Decision #343, ruling C6 D8) | `slotRefusal`                                          | `duration_changed` · 422 |
+| At most **twelve** slots on the round, approved or not                                                                             | `RESCHEDULE_PROPOSALS_MAX`, `roundHasRoom`             | `ballot_full` · 409      |
+| At most **three** unapproved slots from one attendee; the host's slots are outside the quota (ruling C6 D8)                        | `RESCHEDULE_ATTENDEE_PROPOSALS_MAX`, `proposerHasRoom` | `proposer_quota` · 409   |
 
-The count runs under `SELECT … FOR UPDATE` on the parent `event_reschedules` row, so two offers
-made against an eleven-slot round at once cannot both count eleven: the second waits for the first
-to commit and its count (a fresh snapshot under `READ COMMITTED`) then includes it. `SECURITY
-DEFINER` with `search_path = ''`, so the lock does not depend on the writer holding `UPDATE` on the
-parent; it only reads and locks. `EXECUTE` revoked from `public` · `anon` · `authenticated`
-(`00002510`) — a trigger function is never called directly.
+`ck_proposal_span` backs up the length rule with a 24-hour ceiling (`RESCHEDULE_SLOT_MAX_HOURS`,
+`slot_too_long` · 422, mapped by the constraint's name), so an event longer than a day cannot be
+moved by proposing a time. The planner asks the length first, then the round cap, then the attendee
+quota, then whether the slot is a duplicate, so a full round is full whatever is offered. The
+attendee quota counts `proposed_by_role = 'attendee' AND NOT approved` rows by the same
+`proposed_by_user_id`; once the host approves one, that attendee may offer another. The planner
+counts the viewer's own waiting slots by `RescheduleProposal.proposedByViewer`, which the read
+resolves from `proposed_by_user_id`.
+
+The trigger is what makes these true of the TABLE rather than of one code path. Before the round cap
+existed a thirteenth slot was stored, dropped by the read's twelve-slot bound, and then answered
+"already proposed" when offered again. Before the quota, one attendee could fill all twelve places
+and leave the host's own `propose` answering `ballot_full`; before the length rule, a 45-minute sync
+could be moved to a slot ending in 9999 (audit S-15).
+
+The counts run under `SELECT … FOR UPDATE` on the parent `event_reschedules` row, so two offers made
+against an eleven-slot round at once cannot both count eleven: the second waits for the first to
+commit and its count (a fresh snapshot under `READ COMMITTED`) then includes it. `SECURITY DEFINER`
+with `search_path = ''`, so the lock does not depend on the writer holding `UPDATE` on the parent;
+it only reads and locks. `EXECUTE` revoked from `public` · `anon` · `authenticated` (`00002510`) — a
+trigger function is never called directly.
 
 A closed round is not capped by this: the next `propose` opens round `n + 1` with an empty ballot.
-
-> ⚠️ **Still open (2026-09-28): the cap is shared, and a slot's length is unbounded.**
->
-> - **One attendee can fill the twelve.** The count — here and in the planner's `roundHasRoom`
->   (`coordination-plan.ts`) — treats approved and unapproved slots alike, with no per-proposer or
->   per-role quota, so a single attendee offering twelve slots the host never approves leaves the
->   host's own `propose` answering `ballot_full`. The only way out is `withdraw`, after which the
->   same attendee can refill round `n + 1`.
-> - **No maximum slot length.** `ck_proposal_span` asks only `ends_at > starts_at`, and the only
->   other bound is the latest instant the route's Zod accepts (`SLOT_EPOCH_MAX_MS`), so a 45-minute
->   sync can be offered — and, if accepted, moved to — a slot ending in 9999. Once moved it sits in
->   every project-calendar window indefinitely and, on a schedule event, blocks the owner's
->   free/busy. No documented cap is broken; it is a missing one.
->
-> Neither is decided here: both are product rules (who may use how much of a ballot; how long a
-> replacement meeting may be) to settle before they are written into the planner and this trigger.
+Probe: `supabase/probes/coordination_rules.sql` §2.
 
 ### `scheduling.fn_vote_deadline(round, also?) → timestamptz`
 

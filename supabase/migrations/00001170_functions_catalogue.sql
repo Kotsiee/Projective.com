@@ -126,6 +126,21 @@ AS $$
     END
 $$;
 
+-- Is a stage's own tier price absent, JSON null, or a whole non-negative number of minor units?
+CREATE OR REPLACE FUNCTION catalogue.fn_tier_price_ok(p_price jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_price IS NULL OR pg_catalog.jsonb_typeof(p_price) = 'null' THEN RETURN true; END IF;
+    IF pg_catalog.jsonb_typeof(p_price) IS DISTINCT FROM 'number' THEN RETURN false; END IF;
+    RETURN (p_price #>> '{}')::numeric >= 0
+        AND (p_price #>> '{}')::numeric = pg_catalog.trunc((p_price #>> '{}')::numeric);
+END;
+$$;
+
 -- Is one `stage_template` element readable by every consumer? The Zod SSOT (`MilestoneSchema`) owns
 -- the full shape; this refuses only what `instantiate_service_blueprint` and the /view showcase could
 -- not interpret. Sequential IFs rather than one OR chain, because PL/pgSQL does not promise to
@@ -162,6 +177,35 @@ BEGIN
         IF pg_catalog.jsonb_typeof(p_stage -> 'priceCents') IS DISTINCT FROM 'number' THEN RETURN false; END IF;
         IF (p_stage ->> 'priceCents')::numeric < 0 THEN RETURN false; END IF;
     END IF;
+    IF p_stage ? 'intensity'
+       AND COALESCE(p_stage ->> 'intensity', '') NOT IN ('low', 'standard', 'high') THEN
+        RETURN false;
+    END IF;
+    IF NOT catalogue.fn_tier_price_ok(p_stage -> 'lowPriceCents') THEN RETURN false; END IF;
+    IF NOT catalogue.fn_tier_price_ok(p_stage -> 'highPriceCents') THEN RETURN false; END IF;
+    RETURN true;
+END;
+$$;
+
+-- Do a tiered stage's own prices keep their order? Low never above the stage's price and High never
+-- below it, each compared only where both figures are set.
+CREATE OR REPLACE FUNCTION catalogue.fn_tier_prices_ordered(p_stage jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_low numeric := CASE WHEN pg_catalog.jsonb_typeof(p_stage -> 'lowPriceCents') = 'number'
+        THEN (p_stage ->> 'lowPriceCents')::numeric END;
+    v_high numeric := CASE WHEN pg_catalog.jsonb_typeof(p_stage -> 'highPriceCents') = 'number'
+        THEN (p_stage ->> 'highPriceCents')::numeric END;
+    v_standard numeric := CASE WHEN pg_catalog.jsonb_typeof(p_stage -> 'priceCents') = 'number'
+        THEN (p_stage ->> 'priceCents')::numeric END;
+BEGIN
+    IF v_low IS NOT NULL AND v_high IS NOT NULL AND v_low > v_high THEN RETURN false; END IF;
+    IF v_low IS NOT NULL AND v_standard IS NOT NULL AND v_low > v_standard THEN RETURN false; END IF;
+    IF v_high IS NOT NULL AND v_standard IS NOT NULL AND v_high < v_standard THEN RETURN false; END IF;
     RETURN true;
 END;
 $$;
@@ -223,7 +267,7 @@ $$;
 --              free_revisions · extra_revision_price_cents · seo_title · seo_description ·
 --              create_category · currency (until first published)
 --   service    delivery_model (while a draft) · intake (ids and kinds fixed once first published) ·
---              stage_template · team_roles · deliverables ·
+--              stage_template · allow_tiered_intensity · team_roles · deliverables ·
 --              turnaround_days · session_minutes · session_count · session_plan · session_rolling ·
 --              meeting_provider · max_seats_per_cohort · allow_continuous_enrollment
 --   product    format · licence · attribution_required · file_manifest
@@ -256,6 +300,7 @@ DECLARE
     v_ord bigint;
     v_name text;
     v_collection uuid;
+    v_tiered boolean;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to edit a listing' USING ERRCODE = '42501';
@@ -311,6 +356,7 @@ BEGIN
               ('one_off', 'scope', 'deliverables'),
               ('one_off', 'teamRoles', 'team_roles'),
               ('pipeline', 'stages', 'stage_template'),
+              ('pipeline', 'allowTieredIntensity', 'allow_tiered_intensity'),
               ('pipeline', 'teamRoles', 'team_roles'),
               ('session', 'minutes', 'session_minutes'),
               ('session', 'count', 'session_count'),
@@ -357,7 +403,8 @@ BEGIN
     END IF;
 
     IF v_row.kind = 'product' AND (
-        v_patch ?| ARRAY['delivery_model', 'intake', 'stage_template', 'team_roles', 'deliverables', 'turnaround_days',
+        v_patch ?| ARRAY['delivery_model', 'intake', 'stage_template', 'allow_tiered_intensity', 'team_roles',
+                         'deliverables', 'turnaround_days',
                          'session_minutes', 'session_count', 'session_plan', 'session_rolling',
                          'meeting_provider', 'max_seats_per_cohort', 'allow_continuous_enrollment']
     ) THEN
@@ -421,10 +468,35 @@ BEGIN
         END IF;
         FOR v_item, v_ord IN SELECT s.value, s.ordinality FROM pg_catalog.jsonb_array_elements(v_doc) WITH ORDINALITY AS s LOOP
             IF NOT catalogue.fn_stage_shape_ok(v_item) THEN
-                RAISE EXCEPTION 'Stage % needs a name (up to 80 characters), at most 12 deliverables and a known start trigger', v_ord
+                RAISE EXCEPTION 'Stage % needs a name (up to 80 characters), at most 12 deliverables, a known start trigger and intensity, and whole prices', v_ord
                     USING ERRCODE = '22023', DETAIL = 'stage_template.' || (v_ord - 1);
             END IF;
         END LOOP;
+    END IF;
+
+    IF v_patch ? 'allow_tiered_intensity'
+       AND pg_catalog.jsonb_typeof(v_patch -> 'allow_tiered_intensity') IS DISTINCT FROM 'boolean' THEN
+        RAISE EXCEPTION 'Tiered intensity pricing is on or off' USING ERRCODE = '22023', DETAIL = 'allow_tiered_intensity';
+    END IF;
+
+    -- A tiered stage's own prices keep their order (Decision #417), judged on the template the save
+    -- leaves stored whenever it leaves the listing tiered. A fixed listing keeps them unread.
+    IF v_row.kind = 'service' AND v_patch ?| ARRAY['stage_template', 'allow_tiered_intensity'] THEN
+        SELECT CASE WHEN v_patch ? 'allow_tiered_intensity'
+                    THEN (v_patch ->> 'allow_tiered_intensity')::boolean ELSE b.allow_tiered_intensity END,
+               CASE WHEN v_patch ? 'stage_template'
+                    THEN COALESCE(v_patch -> 'stage_template', '[]'::jsonb) ELSE b.stage_template END
+          INTO v_tiered, v_doc
+          FROM marketplace.service_blueprints b
+         WHERE b.id = v_row.service_blueprint_id;
+        IF v_tiered THEN
+            FOR v_item, v_ord IN SELECT s.value, s.ordinality FROM pg_catalog.jsonb_array_elements(v_doc) WITH ORDINALITY AS s LOOP
+                IF NOT catalogue.fn_tier_prices_ordered(v_item) THEN
+                    RAISE EXCEPTION 'Stage %''s Low price cannot be above its price, nor its High price below it', v_ord
+                        USING ERRCODE = '22023', DETAIL = 'stage_template.' || (v_ord - 1);
+                END IF;
+            END LOOP;
+        END IF;
     END IF;
 
     IF v_patch ? 'team_roles' THEN
@@ -573,6 +645,10 @@ BEGIN
             intake_fields = CASE WHEN v_patch ? 'intake' THEN COALESCE(v_patch -> 'intake', '[]'::jsonb) ELSE b.intake_fields END,
             stage_template = CASE WHEN v_patch ? 'stage_template'
                 THEN COALESCE(v_patch -> 'stage_template', '[]'::jsonb) ELSE b.stage_template END,
+            allow_tiered_intensity = CASE
+                WHEN pg_catalog.jsonb_typeof(v_patch -> 'allow_tiered_intensity') = 'boolean'
+                THEN (v_patch ->> 'allow_tiered_intensity')::boolean
+                ELSE b.allow_tiered_intensity END,
             team_roles = CASE WHEN v_patch ? 'team_roles'
                 THEN COALESCE(v_patch -> 'team_roles', '[]'::jsonb) ELSE b.team_roles END,
             deliverables = CASE WHEN v_patch ? 'deliverables'

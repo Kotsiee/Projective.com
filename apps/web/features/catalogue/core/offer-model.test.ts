@@ -84,15 +84,43 @@ Deno.test("offerProblem names an unnamed milestone, stage or role in its own wor
 	const pipeline: PipelineOffer = {
 		archetype: "pipeline",
 		stages: [newMilestone(1, "Stage")],
+		allowTieredIntensity: false,
 		teamRoles: [{ ...newTeamRole(1), name: "" }],
 	};
 	assertEquals(offerProblem(pipeline)?.path, "teamRoles.0.name");
 	assertEquals(offerProblem(ONE_OFF), null);
 });
 
-Deno.test("problemRow places a problem on its row", () => {
+Deno.test("offerProblem holds a tiered stage whose own prices are out of order, and only a tiered one", () => {
+	const inverted = { ...newMilestone(1, "Stage"), priceCents: 10_000, lowPriceCents: 12_000 };
+	const tiered: PipelineOffer = {
+		archetype: "pipeline",
+		stages: [newMilestone(1, "Stage"), inverted],
+		allowTieredIntensity: true,
+		teamRoles: [],
+	};
+	assertEquals(offerProblem(tiered), {
+		path: "stages.1.tierPrices",
+		message: "The Low price cannot be above the stage's price.",
+	});
+	assertEquals(offerProblem({ ...tiered, allowTieredIntensity: false }), null);
+	const ordered = { ...inverted, lowPriceCents: 7_500, highPriceCents: 15_000 };
+	assertEquals(offerProblem({ ...tiered, stages: [ordered] }), null);
+});
+
+Deno.test("problemRow places a problem on its row and names the field", () => {
 	const problem = { path: "milestones.1.name", message: "Name milestone 2." };
-	assertEquals(problemRow(problem, "milestones"), { index: 1, message: "Name milestone 2." });
+	assertEquals(problemRow(problem, "milestones"), {
+		index: 1,
+		message: "Name milestone 2.",
+		field: "name",
+	});
+	assertEquals(problemRow({ path: "stages.3", message: "Row" }, "stages"), {
+		index: 3,
+		message: "Row",
+		field: null,
+	});
+	assertEquals(problemRow({ path: "stages.3x", message: "Row" }, "stages"), null);
 	assertEquals(problemRow(problem, "teamRoles"), null);
 	assertEquals(problemRow(null, "milestones"), null);
 });
@@ -116,7 +144,10 @@ Deno.test("deliveryLabel follows the offer and stays silent where the offer deci
 		}),
 		"45-minute session",
 	);
-	assertEquals(deliveryLabel({ archetype: "pipeline", stages: [], teamRoles: [] }), null);
+	assertEquals(
+		deliveryLabel({ archetype: "pipeline", stages: [], allowTieredIntensity: false, teamRoles: [] }),
+		null,
+	);
 });
 
 Deno.test("switchSessionFormat keeps the sitting and the plan, and adds or drops the cohort facts", () => {

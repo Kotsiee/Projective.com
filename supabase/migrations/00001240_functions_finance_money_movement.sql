@@ -13,6 +13,7 @@
 --   5. The Income Smoother  — enrolment, gated on earning history, at the platform's fee.
 --   6. Verification status  — one read of the caller's KYC and the KYB of the businesses they manage.
 --   7. The pending window   — earned credits held for `pending_release_days`, then swept to Available.
+--   8. Key retention        — the daily sweep of expired attempt keys (never the Stripe event claims).
 --
 -- The same two-door split as 00001230: USER doors (EXECUTE → authenticated) authorise the caller
 -- through auth.uid() and can never report that money arrived or left; PROCESSOR doors (EXECUTE →
@@ -401,8 +402,8 @@ BEGIN
         RAISE EXCEPTION 'verification: verify your identity and set up payouts before withdrawing money you earned'
             USING ERRCODE = 'PK403';
     END IF;
-    IF v_wallet.owner_type = 'business' AND NOT finance.fn_business_kyb_verified(v_wallet.owner_id) THEN
-        RAISE EXCEPTION 'verification: this business must be verified (KYB) before its vault can pay out'
+    IF finance.fn_kyb_missing(v_wallet.owner_type, v_wallet.owner_id) THEN
+        RAISE EXCEPTION 'verification: this % must be verified (KYB) before its vault can pay out', v_wallet.owner_type
             USING ERRCODE = 'PK403';
     END IF;
     v_destination := finance.fn_payout_destination(v_wallet);
@@ -2229,6 +2230,47 @@ to its wallet with the ledger row of its original reason, earmarks that credit i
 
 -- Scheduled hourly at :05 as `finance-mature-pending-releases` by the job registry
 -- (`ops.scheduled_jobs`, 00005060).
+-- #endregion
+
+-- #region 8. Idempotency key retention (FINANCE_AUDIT L8)
+-- The key sweep (the scheduler's `finance-sweep-idempotency-keys`, daily at 04:27, which 00005060
+-- registers by this name): deletes the attempt keys whose `expires_at` passed more than 30 days ago,
+-- in batches of `p_limit`, so finance.idempotency_keys stops growing for ever. Every door that writes a
+-- key sets `expires_at` past the longest retry it protects, so a key this old answers no retry anybody
+-- will send. A key with no `expires_at` is never swept.
+--
+-- KEPT: scope `stripe.webhook`, the Stripe event claims. They are the webhook's replay guard — Stripe
+-- redelivers for days and an operator can resend an old event from the Dashboard, and an event whose
+-- claim is gone would move its money a second time — and they hold the outcomes
+-- finance.v_ops_unledgered_payments reads (`settlement_mismatch`, `business_archived`) until a human
+-- settles them. Their retention is the webhook delivery ledger's (finance-model.md §17, **Not built
+-- yet**), not this sweep's. Returns how many keys were deleted. Service role and scheduler only.
+CREATE OR REPLACE FUNCTION finance.fn_sweep_idempotency_keys(p_limit integer DEFAULT 10000)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_count integer;
+BEGIN
+    WITH due AS (
+        SELECT k.key
+          FROM finance.idempotency_keys k
+         WHERE k.expires_at < pg_catalog.now() - interval '30 days'
+           AND k.scope <> 'stripe.webhook'
+         ORDER BY k.expires_at
+         LIMIT GREATEST(COALESCE(p_limit, 10000), 1)
+           FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM finance.idempotency_keys k
+     USING due
+     WHERE k.key = due.key;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$;
 -- #endregion
 
 -- #region 9. Pots — earmarks inside the wallet (Decision #337, ruling M6)

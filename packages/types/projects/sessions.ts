@@ -123,6 +123,33 @@ export const ReserveSeatInputSchema = z.object({
 });
 export type ReserveSeatInput = z.infer<typeof ReserveSeatInputSchema>;
 
+/** `projects.waitlist_status` — a waitlist place's lifecycle, mirrored 1:1. */
+export const WaitlistStatusSchema = z.enum(["waiting", "invited", "expired", "converted"]);
+export type WaitlistStatus = z.infer<typeof WaitlistStatusSchema>;
+
+/** One `projects.waitlists` row (Decision #424): a buyer queued on a group-session listing. */
+export const WaitlistRowSchema = z.object({
+	id: uuid,
+	service_blueprint_id: uuid,
+	user_id: uuid,
+	status: WaitlistStatusSchema,
+	created_at: iso,
+});
+export type WaitlistRow = z.infer<typeof WaitlistRowSchema>;
+
+/** `POST /api/services/waitlist` — queue the caller on a listing's waitlist. The server resolves it. */
+export const JoinWaitlistInputSchema = z.object({
+	subjectId: z.string().min(1).max(160),
+});
+export type JoinWaitlistInput = z.infer<typeof JoinWaitlistInputSchema>;
+
+/** The caller's place after a join — `already` when the place existed before this call. */
+export const WaitlistPlaceSchema = z.object({
+	status: WaitlistStatusSchema,
+	already: z.boolean(),
+});
+export type WaitlistPlace = z.infer<typeof WaitlistPlaceSchema>;
+
 /** A placed hold — what the Buy Now hand-off carries onto the basket line (`metadata.holdId`). */
 export const SeatHoldSchema = z.object({
 	holdId: uuid,

@@ -75,6 +75,39 @@ export function applyOffer(offer: ServiceBookingOffer): void {
 }
 // #endregion
 
+// #region Contact request
+/** A mounted Contact control, as an `?intent=contact` arrival addresses it. */
+export interface ContactControl {
+	/** Whether its trigger is laid out — the lane and the buy bar hide each other by `display`. */
+	visible: () => boolean;
+	/** Open its menu. */
+	open: () => void;
+}
+
+const contactControls: ContactControl[] = [];
+
+/** Register a mounted Contact control. Returns the de-registration callback an effect cleanup runs. */
+export function registerContactControl(control: ContactControl): () => void {
+	contactControls.push(control);
+	return () => {
+		const at = contactControls.indexOf(control);
+		if (at >= 0) contactControls.splice(at, 1);
+	};
+}
+
+/** Open the Contact menu whose trigger is on screen. Returns whether one was there to open. */
+export function requestContact(): boolean {
+	const control = contactControls.find((c) => c.visible());
+	control?.open();
+	return !!control;
+}
+// #endregion
+
+// #region Waitlist
+/** Whether the buyer has joined this listing's waitlist in this page load — both regions flip together. */
+export const waitlistJoined = signal(false);
+// #endregion
+
 // #region Status line
 /**
  * The last thing that happened, for the shared `role="status"` line.

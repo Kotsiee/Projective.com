@@ -1,6 +1,11 @@
 import type { JSX } from "preact";
 import { Icon, type IconName } from "@projective/ui/icons";
-import type { BoardCard, TicketPaymentKind } from "../../../types/projects-types.ts";
+import type {
+	BoardCard,
+	BoardStageRef,
+	TicketCostLine,
+	TicketPaymentKind,
+} from "../../../types/projects-types.ts";
 import {
 	formatTicketMoney,
 	TICKET_INTENSITY_LABEL,
@@ -14,10 +19,9 @@ import { multiplierLabel } from "../../../core/ticket-view.ts";
  * TicketFinanceTab — where the ticket's price comes from, and where the money has actually gone.
  *
  * Two sections that answer two different questions and are never merged. The **breakdown** shows the
- * arithmetic: each stage's base rate, the multiplier the chosen intensity resolves to, and the
- * product. This is the ONE place in the product a multiplier appears as a number — everywhere else
- * intensity is Low/Standard/High, because a badge reading "High ×2" states a conclusion the reader
- * cannot check, whereas a row reading `$300 × 2 = $600` is the check.
+ * arithmetic: each stage's base rate, how the chosen intensity prices it — the price multiplier, the
+ * provider's own tier price, or a fixed price — and the result, so a row reading `$300 × 1.5 = $450`
+ * is the check a control's `High (1.5×)` label points to.
  *
  * The **movements** section is the audit history: what has been held, adjusted, charged and
  * released. An unpriced stage renders as "No rate", never as $0 — a price nobody has set and a price
@@ -28,11 +32,20 @@ import { multiplierLabel } from "../../../core/ticket-view.ts";
  */
 export interface TicketFinanceTabProps {
 	card: BoardCard;
+	/** The engagement's stages — their pricing terms (fixed, or the provider's tier prices). */
+	stages: BoardStageRef[];
 	/**
 	 * The ticket's funding line (`FundingStatus`) with its one action, built by the host so the tab and
 	 * the footer share one instance's handlers. While this tab is open it is the line's only home.
 	 */
 	funding?: JSX.Element | null;
+}
+
+/** The multiplier column: the arithmetic, or what stands in for it. */
+function basisLabel(line: TicketCostLine): string {
+	if (line.basis === "fixed") return "Fixed";
+	if (line.basis === "seller_tier") return "Provider's price";
+	return multiplierLabel(line.multiplier);
 }
 
 const MOVEMENT_ICON: Record<TicketPaymentKind, IconName> = {
@@ -51,7 +64,7 @@ function signedMoney(cents: number, currency: string): string {
 
 export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 	const { card } = props;
-	const lines = ticketCostLines(card.stages);
+	const lines = ticketCostLines(card.stages, props.stages);
 	const unpriced = lines.filter((l) => l.costCents === null).length;
 
 	return (
@@ -68,7 +81,7 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 				<h3 class="tkv-h">
 					How this price is made
 					<span class="tkv-h__note">
-						Base stage rate × the intensity chosen for that stage
+						Base stage rate × the intensity's price multiplier, unless the provider set the price
 					</span>
 				</h3>
 
@@ -94,17 +107,13 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 								{lines.map((l) => (
 									<tr key={l.stageId}>
 										<th scope="row" class="tkv-table__name">{l.name}</th>
-										<td>
-											<span class="tkv-chip" data-level={l.intensity}>
-												{TICKET_INTENSITY_LABEL[l.intensity]}
-											</span>
-										</td>
+										<td>{TICKET_INTENSITY_LABEL[l.intensity]}</td>
 										<td class="tkv-table__num">
 											{l.baseCents === null
 												? <span class="tkv-table__none">No rate</span>
 												: formatTicketMoney(l.baseCents, card.currency)}
 										</td>
-										<td class="tkv-table__num tkv-table__mult">{multiplierLabel(l.multiplier)}</td>
+										<td class="tkv-table__num tkv-table__mult">{basisLabel(l)}</td>
 										<td class="tkv-table__num tkv-table__total">
 											{l.costCents === null
 												? <span class="tkv-table__none">—</span>

@@ -8,6 +8,7 @@ import type {
 	CalendarPage,
 	CalendarParams,
 	CalendarPrefs,
+	CalendarWindow,
 	CallSide,
 	CallStatus,
 	EventAttendee,
@@ -63,6 +64,7 @@ import { ITEM_COLUMNS, type ItemRow, toAssetItem } from "../files/asset-row.ts";
 import { applyOwnDetails, type OwnEventDetails } from "./connected-details.ts";
 import { ROUTINE_COLUMNS, routineOf, type RoutineRow } from "./live-routines.ts";
 import { emptyReschedule } from "./coordination-plan.ts";
+import { calendarWindow } from "./calendar-window.ts";
 import {
 	ENTITY_CALENDAR_CONCURRENCY,
 	type EntityCalendarParams,
@@ -275,8 +277,6 @@ interface ProjectRef {
 // #endregion
 
 // #region Constants
-const DAY_MS = 86_400_000;
-
 /** The zone a page falls back to when the reader has published none. The platform's home zone. */
 const FALLBACK_TZ = "Europe/London";
 
@@ -893,6 +893,7 @@ function toReschedule(
 		proposedAt: ms(p.proposed_at) ?? 0,
 		approved: p.approved,
 		note: p.note ? clamp(p.note, 280) : null,
+		proposedByViewer: !!p.proposed_by_user_id && p.proposed_by_user_id === ctx.actorId,
 		votes: votes
 			.filter((v) => v.proposal_id === p.id)
 			.map((v) => {
@@ -1177,11 +1178,13 @@ async function assemble(
  * An engagement's calendar (or one of its channels'), as the reader sees it.
  *
  * `null` when the reader may not see the project, or names a channel that is not one of its rooms.
+ * Its meetings are read over `window` ({@link calendarWindow}, around `params.around`).
  */
 export async function readProjectCalendar(
 	actor: ReadActor & { accessToken: string },
 	params: CalendarParams,
 	now: number,
+	window: CalendarWindow = calendarWindow("project", now, params.around),
 ): Promise<CalendarPage | null> {
 	const project = await resolveProjectRef<ProjectRef>(
 		db(actor, "projects"),
@@ -1216,8 +1219,8 @@ export async function readProjectCalendar(
 			let q = db(actor, "scheduling").from("events")
 				.select(EVENT_COLUMNS)
 				.eq("project_id", project.id)
-				.gte("ends_at", new Date(now - 180 * DAY_MS).toISOString())
-				.lte("starts_at", new Date(now + 365 * DAY_MS).toISOString());
+				.gte("ends_at", new Date(window.from).toISOString())
+				.lt("starts_at", new Date(window.to).toISOString());
 			if (channelId) q = q.eq("channel_id", channelId);
 			return q.order("starts_at", { ascending: true }).order("id");
 		}, "scheduling.events"),
@@ -1286,8 +1289,11 @@ export async function readProjectCalendar(
 		title: clampOr(project.title, 160, "Project"),
 		timezone: tz,
 		viewerIsClient: board.viewerIsClient,
-		canCreate: true,
+		// An engagement's calendar has no entry write door yet: its meetings are arranged through the
+		// stage and moved through their negotiation (Decision #343, ruling C7 (a)).
+		canCreate: false,
 		events,
+		window,
 		now,
 	};
 }
@@ -1388,9 +1394,10 @@ async function paged(build: () => Pageable, what: string): Promise<{ data: unkno
 export async function readPersonalCalendar(
 	actor: ReadActor & { accessToken: string },
 	now: number,
+	window: CalendarWindow = calendarWindow("personal", now),
 ): Promise<SchedulePage> {
-	const from = new Date(now - 60 * DAY_MS).toISOString();
-	const to = new Date(now + 180 * DAY_MS).toISOString();
+	const from = new Date(window.from).toISOString();
+	const to = new Date(window.to).toISOString();
 	const sched = db(actor, "scheduling");
 	const projects = db(actor, "projects");
 
@@ -1682,6 +1689,7 @@ export async function readPersonalCalendar(
 		events,
 		prefs,
 		routines: ((routines.data ?? []) as unknown as RoutineRow[]).map(routineOf),
+		window,
 		now,
 	};
 }

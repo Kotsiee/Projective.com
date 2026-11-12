@@ -13,7 +13,9 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
  * body (the `ProjectTimeline` island, which owns the Gantt + the ticket modal). They are separate
  * hydration boundaries, so — exactly like the board's `board-state.ts` — they coordinate through
  * module-level signals: the footer publishes intents and the zoom, the body publishes what it can do
- * and what the scale is currently divided into. Reset on unmount so a later navigation starts clean.
+ * and what the scale is currently divided into. Create stage's popover stands on the rig's own button
+ * and its write is announced through `stage-events.ts`. Reset on unmount so a later navigation starts
+ * clean.
  */
 
 // #region Zoom (persisted)
@@ -51,8 +53,6 @@ export function setTimelineZoom(pxPerDay: number): void {
 export const timelineCommands = signal<GanttCommand | null>(null);
 /** Open the ticket-creation modal (footer Create Ticket). Consumed + reset by the body. */
 export const timelineCreateTicket = signal<boolean>(false);
-/** Open the Create-Stage modal (footer Create Stage — project scope only). Consumed + reset by the body. */
-export const timelineCreateStage = signal<boolean>(false);
 
 export function requestTimelineToday(): void {
 	timelineCommands.value = { kind: "today" };
@@ -63,16 +63,15 @@ export function requestTimelineFit(): void {
 export function requestTimelineCreateTicket(): void {
 	timelineCreateTicket.value = true;
 }
-export function requestTimelineCreateStage(): void {
-	timelineCreateStage.value = true;
-}
 // #endregion
 
 // #region Body → footer capabilities
 /** What the footer needs to know to render the right controls, published by the body. */
 export interface TimelineCaps {
-	/** The acting user is the client — gates Create Ticket / Create Stage. */
+	/** The acting user is the client — gates Create Ticket. */
 	isClient: boolean;
+	/** May add a stage (`BoardAccess.canAddStage`, Decision #421): gates Create Stage alone. */
+	canAddStage: boolean;
 	/** The whole-engagement timeline (vs one stage's) — gates Create Stage. */
 	isProjectScope: boolean;
 	/** Whether this engagement has tickets at all (a session is booked, not ticketed). */
@@ -81,14 +80,21 @@ export interface TimelineCaps {
 	hasRange: boolean;
 	/** Tickets carrying no date, drawn nowhere — the rig says so rather than leaving them missing. */
 	undatedCount: number;
+	/** The project's route slug — what the rig's Create stage popover writes to. */
+	projectId: string;
+	/** The currency a stage's rate is typed in; `null` withholds the rate (a personal project). */
+	stageCurrency: string | null;
 }
 
 const EMPTY_CAPS: TimelineCaps = {
 	isClient: false,
+	canAddStage: false,
 	isProjectScope: true,
 	hasTickets: true,
 	hasRange: false,
 	undatedCount: 0,
+	projectId: "",
+	stageCurrency: null,
 };
 
 export const timelineCaps = signal<TimelineCaps>(EMPTY_CAPS);
@@ -107,7 +113,6 @@ export const timelineTier = signal<string>("");
 export function resetTimelineState(): void {
 	timelineCommands.value = null;
 	timelineCreateTicket.value = false;
-	timelineCreateStage.value = false;
 	timelineCaps.value = EMPTY_CAPS;
 	timelineTier.value = "";
 }

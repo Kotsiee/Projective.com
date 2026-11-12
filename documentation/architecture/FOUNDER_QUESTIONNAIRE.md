@@ -939,6 +939,10 @@ now clean.
 
 > **Status 2026-10-31:** batch 1 is merged (`f5955b7c`): T·E8, M·NT1, F·SV2, O·WP10a and T·W1. Batch
 > 2 is merged (`7e476d6e`): F·DB10, I·OWN1, F·SV6, F·SV3 and O·WP3b.
+>
+> **Status 2026-11-12 (re-verified in code, Decision #412):** also merged are F·DB11, F·SV4,
+> I·OWN2 and SCH-WP2 (`def078c2`), and SCH-WP3, WP4a, WP4b, WP5 and WP8 (`ac19de8f`, unmarked
+> until now). The next batches are §B.5, which wins where it differs from the table below.
 
 Run about **one SQL track step and two or three app/UI steps at a time**. Arrows are serial inside a
 track. "⏳ X" means wait for step X in another track.
@@ -960,6 +964,76 @@ track. "⏳ X" means wait for step X in another track.
 - Every track's Z1 docs sweep.
 - Then one final cross-domain docs sweep: PRODUCT_SPEC, PRODUCT_MANAGEMENT, ROUTING and
   SYSTEM_ARCHITECTURE, plus a status column on every audit file.
+
+## B.5 Next batches (re-verified in code 2026-11-12, Decision #412)
+
+> Where B.3 and this section differ, this section wins. Waves 0 and 1 are done; Wave 2 has landed 24
+> of the 150 architecture prompts, with 13 partly built ([`README.md`](README.md) has the progress
+> table; each prompts file's §0 has the evidence). Track names are B.3's; a prompt ID keeps its
+> file's prefix (F·, S·, PM-, SCH-, I·, M·, T·, O·).
+
+**Live on 2026-11-12.** Three SQL sessions opened, one over B.0 (1)'s cap: F·DB2 (`00000017`,
+`00001230`, `00001240`, its own block in `00002510`), M·MS1 (slot B's head) and an unprompted
+stage-intensity / create-stage change (`00000014`, `00000015`, `00001130`, `00001170`, `00001175`,
+`00001850`, `00002510`, the board and pricing TypeScript). No new SQL session starts until two of
+them land. M·MS1 has landed (`bbcf3506`, after a clean shared `db:reset`: 133/133 probes), and so
+has F·DB2 (`dd3986e5`).
+
+**The `00002510` assumption (owner to confirm).** B.0 (2) gives each hot file one writer at a time,
+and nearly every SQL prompt writes `00002510`, so under that rule the SQL lane is one session wide.
+This plan assumes the practice F·DB2 follows: a session adds its own grant block and edits no other
+hunk, and a prompt that must change an existing grant line holds the file alone. Under strict B.0,
+slot B takes only prompts that leave `00002510` alone: PM-D7a, I·HK1, O·Q9, I·MIN1 and T·R5.
+
+### B.5.1 Start now: app and docs sessions (no SQL slot needed)
+
+| Session | Prompts, in order                                      | Writes                                                                     | Never beside                                                 |
+| :------ | :----------------------------------------------------- | :------------------------------------------------------------------------- | :----------------------------------------------------------- |
+| App 1   | SCH-WP10 (calendar URL state, authoring hidden, Month) | `features/calendar`, `packages/ui/calendar`, DESIGN_SYSTEM, ROUTING        | PM-WP8 (ROUTING), SCH-WP9 (`EventModal`)                     |
+| App 2   | I·SSO1 → I·LOW1                                        | `features/auth`, `env.ts`, devtools + `dev-seam.ts` (SSO1), ROUTING        | another devtools writer (SCH-WP7, I·MFA1, S·S4, S·S6, F·UI3) |
+| App 3   | F·UI1 (wallet stylesheet gates)                        | the wallet stylesheets, DESIGN_SYSTEM                                      | F·UI2, F·UI4, O·WP8 (they follow it)                         |
+| Docs    | O·WP17 → S·X1 → S·X2                                   | SYSTEM_ARCHITECTURE; PRODUCT_SPEC §7, `finance-model.md`, one decision row | O·Q9, O·WP10b, O·Q12 (SYSTEM_ARCHITECTURE)                   |
+
+**For the owner, in parallel.** Each item unblocks a step below; a prompt reaching an unanswered one
+skips it.
+
+- #148 (g), the report reason vocabulary: T·R1 stops before step 1 without it.
+- #410 (c), RESTRICT on `enterprise_members.user_id`: I·HK1 runs without that one FK if it is
+  refused.
+- #344 (f): SCH-WP7 step 6. PM §0.5 #3 (how a Fair Exit contest holds money): PM-WP4a step 6.
+- #410 (g), where the notification dispatcher runs: M·NT2's entry point.
+- Clone `Projective-Safety` beside this repo and finish TRUST §8.3 H1–H2: every T·SN prompt waits on
+  the node.
+- `deno task test:e2e` names `landing-hero.spec.ts`, deleted in `21309eeb`: a one-line fix with no
+  prompt.
+
+### B.5.2 The two SQL slots, as they free
+
+| Slot         | Order (serial inside the slot)                                                                                                                                    | Rules                                                                                                                                                                                                                                                                                                                     |
+| :----------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A · money    | F·DB2 (live) → DB12 → DB3 → DB6 → DB16 → PM-WP4a → PM-WP4b → PM-P6 → PM-GH1 → SV8 → DB4 → DB5 → DB14 → DB15 → DB13 → DB20 → DB8 → DB9 → DB17 → DB18 → DB19 → DB21 | The PM money exits sit here: they hold `00001200` / `00001240` and wait only on DB3 + DB6. DB16 lands first so they prove conservation. DB14 never beside PM-D7a, PM-S3 or PM-WP9 (`00001110`, `00001850`).                                                                                                               |
+| B · the rest | ✅ M·MS1 → SCH-WP7 → S·S1 → PM-WP1 → T·R1 → I·HK1 → SCH-WP9 → PM-D7a → PM-S3 → T·R4 → T·P1d → T·R5 → T·R3 → S·S2 → SCH-WP6 → M·NT2 → M·SR1 → O·Q9 → I·MIN1        | M·MS1 has landed (`bbcf3506`); the next step starts once the stage-intensity change lands too. SCH-WP7, WP9 and WP6 never beside DB3 or DB15 (`00001155`); SCH-WP6 never beside DB13 or DB19 (`00001210`). I·HK1 never beside a slot-A writer of `00000017`. A step whose ruling is not in yet is skipped, not waited on. |
+
+Slot A departs from FBP §0.1 on purpose: F·DB2 is already live, and DB3 + DB6 unblock four PM
+prompts (WP4a, WP4b, P6, GH1), so the dispute chain runs before DB16. Slot B leads with M·MS1
+because six prompts in three tracks wait on it (M·MS2, M·MS4, T·P1d, T·P2a–c), the leakage guard
+among them. SCH-WP7 comes next because SCH-WP6, paid consultations, now waits on it alone.
+
+### B.5.3 App sessions that open as their waits clear
+
+| When this merges                | Start (app lane, at most three at once, file-disjoint)                      |
+| :------------------------------ | :-------------------------------------------------------------------------- |
+| The stage-intensity change      | PM-WP8 (after SCH-WP10: ROUTING) · O·WP10b · O·WP5a                         |
+| ✅ M·MS1 (`bbcf3506`)           | M·MS2 → M·MS3; then M·MS4 (SQL, slot B) → M·MS5                             |
+| I·SSO1, I·LOW1                  | I·MFA1 (stops at step 5)                                                    |
+| F·UI1                           | F·UI2 → F·UI4 · O·WP8                                                       |
+| S·S1 (+ S·S2 for annual prices) | S·S3 → S·S5 ∥ S·S6 → S·S7 → S·S8 (S·S4 also needs F·DB2; never beside S·S6) |
+| PM-WP8                          | PM-WP9 (SQL, slot B)                                                        |
+
+**Further out (no action yet):** the T·SN chain and H1 (the node, then H3); I·ERA1–ERA4 → ARC1 →
+MFA2 → MFA3, MIN2 and RLS1 (after I·HK1 and the F, P and C SQL steps); O·WP2, WP11, WP4, WP7, WP9,
+WP16, WP13, Q15, WP5b and WP6 (behind F·SV5, F·UI2/UI3/UI5, PM-WP6 and M·MS3); F·UI3, UI5, SV5,
+SV7, E1–E3; and every track's Z1, then B.4.
 
 ---
 

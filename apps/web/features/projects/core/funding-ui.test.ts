@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { FundingStatus } from "@projective/types/finance";
 import {
+	draftStep,
 	fundingAction,
 	fundingRollup,
 	fundingSentence,
@@ -170,4 +171,12 @@ Deno.test("a session seat speaks its own lifecycle: reserved → confirmed → r
 		}),
 		"Confirmed, join link opens 5 min before.",
 	);
+});
+
+Deno.test("a Draft ticket offers its next step; a payable, prepaid or later one offers none", () => {
+	assertEquals(draftStep(f({ state: "draft", nextAction: "describe" })), "describe");
+	assertEquals(draftStep(f({ state: "draft", nextAction: "set_price" })), "price");
+	assertEquals(draftStep(f({ state: "draft", nextAction: "fund" })), null);
+	assertEquals(draftStep(f({ state: "draft", nextAction: "none" })), null);
+	assertEquals(draftStep(f({ state: "needs_funding", nextAction: "fund" })), null);
 });

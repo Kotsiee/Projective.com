@@ -4,7 +4,7 @@ import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { publishedLabel } from "../../core/card-signals.ts";
-import { itemHref } from "../../core/routing.ts";
+import { cardMenuFacts } from "../../core/card-menu.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ArticleItem, ExploreItem } from "../../types/explore-types.ts";
 
@@ -46,13 +46,7 @@ export function ArticleCard(
 			data-item-type={item.type}
 		>
 			<CardLink item={item} ctx={ctx} label={item.title} />
-			<CardActions
-				title={item.title}
-				href={itemHref(item, ctx)}
-				id={item.id}
-				type={item.type}
-				authed={authed}
-			/>
+			<CardActions facts={cardMenuFacts(item, ctx)} authed={authed} />
 			<div class="ex-art__frame">
 				<div class="ex-media ex-art__media">
 					<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />

@@ -9,6 +9,7 @@ import type {
 } from "@projective/types/scheduling";
 import {
 	ANONYMOUS_VIEWER,
+	RESCHEDULE_ATTENDEE_PROPOSALS_MAX,
 	RESCHEDULE_PROPOSALS_MAX,
 	voteResolvesAt,
 } from "@projective/types/scheduling";
@@ -338,6 +339,72 @@ Deno.test("reschedule — a full round refuses every further slot; a closed one 
 	assert(closedRound.ok);
 	assertEquals(closedRound.next.round, 1);
 	assertEquals(closedRound.next.proposals.length, 1);
+});
+
+Deno.test("reschedule — an attendee's fourth waiting slot is refused; the host's still lands", () => {
+	// Decision #343, ruling C6 D8: one attendee cannot fill the ballot with times waiting on the host.
+	const waiting = Array.from(
+		{ length: RESCHEDULE_ATTENDEE_PROPOSALS_MAX },
+		(_, i) => ({
+			...proposal(`a${i}`, 96 + i * 24, { approved: false, role: "attendee" }),
+			proposedByViewer: true,
+		}),
+	);
+	const round: EventReschedule = {
+		...emptyReschedule("vote"),
+		status: "collecting",
+		proposals: waiting,
+	};
+	const fourth = input("propose", { start: NOW + 400 * HOUR, end: NOW + 401 * HOUR });
+
+	const r = refused(
+		planReschedule(event({ roster: groupRoster("a2"), reschedule: round }), fourth, NOW, MEMBER),
+	);
+	assertEquals(r.reason, "proposer_quota");
+	assertEquals(r.status, 409);
+
+	// Read by the host the same slots are somebody else's, and the host's own are outside the quota.
+	const hostRead: EventReschedule = {
+		...round,
+		proposals: waiting.map((p) => ({ ...p, proposedByViewer: false })),
+	};
+	const host = planReschedule(
+		event({ roster: groupRoster("h"), asHost: true, reschedule: hostRead }),
+		fourth,
+		NOW,
+		MEMBER,
+	);
+	assert(host.ok);
+	assertEquals(host.next.proposals.length, RESCHEDULE_ATTENDEE_PROPOSALS_MAX + 1);
+
+	// Another attendee has a quota of their own.
+	assert(
+		planReschedule(event({ roster: groupRoster("a3"), reschedule: hostRead }), fourth, NOW, MEMBER)
+			.ok,
+	);
+});
+
+Deno.test("reschedule — a replacement keeps the meeting's length", () => {
+	const longer = input("propose", { start: NOW + 96 * HOUR, end: NOW + 98 * HOUR });
+	const r = refused(planReschedule(event({ roster: groupRoster("a1") }), longer, NOW, MEMBER));
+	assertEquals(r.reason, "duration_changed");
+	assertEquals(r.status, 422);
+	// Asked of the host too: a move is a move, whoever offers it.
+	assertEquals(
+		refused(
+			planReschedule(event({ roster: groupRoster("h"), asHost: true }), longer, NOW, MEMBER),
+		).reason,
+		"duration_changed",
+	);
+
+	const same = planReschedule(
+		event({ roster: groupRoster("a1") }),
+		input("propose", { start: NOW + 96 * HOUR, end: NOW + 97 * HOUR }),
+		NOW,
+		MEMBER,
+	);
+	assert(same.ok);
+	assertEquals(same.next.proposals[0].proposedByViewer, true);
 });
 // #endregion
 

@@ -40,8 +40,8 @@ Deno.test("the fixed fee reads 0 as unpriced and clears back to 0", () => {
 	assertEquals(withAskedPrice(PRICING, "sessionPrice", 80).sessionPrice, 80);
 });
 
-Deno.test("the pipeline range is half to double the ticket", () => {
-	assertEquals(ticketRange(40_000), { low: 20_000, high: 80_000 });
+Deno.test("the pipeline range runs from the Low to the High price multiplier of the ticket", () => {
+	assertEquals(ticketRange(40_000), { low: 30_000, high: 60_000 });
 });
 
 Deno.test("a picked currency is stored as its upper-case ISO code, or refused", () => {

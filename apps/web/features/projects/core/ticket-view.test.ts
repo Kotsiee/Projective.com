@@ -4,17 +4,23 @@ import type { AssetItem } from "../types/projects-types.ts";
 import { FILE_FRAME_TRIGGER, fileFrameSeed } from "./file-frame.ts";
 import {
 	addressingFrame,
+	multiplierLabel,
 	openTicketFile,
+	panelFor,
 	pushTicketPicker,
 	registerTicketFileHost,
+	stagesInPane,
 	TICKET_LIBRARY_TRIGGER,
 	TICKET_PICKER_ID,
 	ticketFileHosted,
 	ticketFileInput,
 	type TicketFrameInput,
 	type TicketFrameKind,
+	ticketMetrics,
 	ticketStack,
+	ticketTabs,
 } from "./ticket-view.ts";
+import { newTicketCard } from "./ticket-model.ts";
 
 function frame(
 	uid: number,
@@ -167,3 +173,36 @@ Deno.test("openTicketFile: pushes over the ticket only when a host renders file 
 	release();
 	ticketStack.close();
 });
+
+// #region Panels and tabs by posture
+Deno.test("a saved ticket reads activity beside Details and the selected stage beside Stages", () => {
+	assertEquals(panelFor("details", "view", true), "activity");
+	assertEquals(panelFor("stages", "view", true), "stage");
+	assertEquals(panelFor("finances", "view", true), null);
+});
+
+Deno.test("a ticket being created composes its stages beside Details, with no Stages tab", () => {
+	const card = newTicketCard(null, [], "USD");
+	assertEquals(panelFor("details", "create", true), "composer");
+	assert(stagesInPane("create", true));
+	assertFalse(ticketTabs(card, "create", true, true).some((t) => t.key === "stages"));
+	assertEquals(ticketMetrics(card, "create", true).find((m) => m.key === "stages")?.target, null);
+});
+
+Deno.test("without room for a panel the stages are worked in the Stages tab, on both postures", () => {
+	const card = newTicketCard(null, [], "USD");
+	assertEquals(panelFor("details", "create", false), null);
+	assertEquals(panelFor("stages", "view", false), null);
+	assert(ticketTabs(card, "create", true, false).some((t) => t.key === "stages"));
+	assertEquals(
+		ticketMetrics(card, "create", false).find((m) => m.key === "stages")?.target,
+		"stages",
+	);
+});
+
+Deno.test("the price multiplier prints as arithmetic, two places where it needs them", () => {
+	assertEquals(multiplierLabel(0.75), "×0.75");
+	assertEquals(multiplierLabel(1.5), "×1.5");
+	assertEquals(multiplierLabel(1), "×1");
+});
+// #endregion

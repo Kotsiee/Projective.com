@@ -13,8 +13,7 @@ import { SittingRoomLink } from "../components/SittingRoomLink.tsx";
 import { previewDisputes } from "../core/dispute-view.ts";
 import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
-import { CreateStageModal } from "../components/CreateStageModal.tsx";
-import { BoardService } from "../core/BoardService.ts";
+import { CreateStagePopover, type StageAnchor } from "../components/CreateStagePopover.tsx";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
 import {
@@ -54,6 +53,7 @@ import { projectSidebarProjection } from "../core/sidebar-overlay.ts";
 import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
+import { resolveBoardAccess } from "../core/board-access.ts";
 import { isOwnerRole, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { currentNavView } from "../core/nav-activity-model.ts";
@@ -159,6 +159,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// persisted preference is layered in after hydration (below) to avoid a mismatch.
 	const openGroups = useSignal<Record<string, boolean>>({ ...DEFAULT_GROUPS });
 	const createStageOpen = useSignal<boolean>(false);
+	const stageAnchor = useSignal<StageAnchor | null>(null);
 	const currentPath = useSignal<string>(props.path);
 	// Active channel-tree quick-filters (OR-combined); empty = show the whole tree.
 	const filters = useSignal<ChannelFilterKey[]>([]);
@@ -331,7 +332,14 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		writeStored("local", LocalKeys.PROJECT_CHANNEL_GROUPS, JSON.stringify(next));
 	}
 
-	function openCreateStage(): void {
+	function openCreateStage(event: JSX.TargetedMouseEvent<HTMLButtonElement>): void {
+		const element = event.currentTarget;
+		const same = stageAnchor.value?.kind === "element" && stageAnchor.value.element === element;
+		if (createStageOpen.value && same) {
+			createStageOpen.value = false;
+			return;
+		}
+		stageAnchor.value = { kind: "element", element };
 		createStageOpen.value = true;
 	}
 
@@ -383,23 +391,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		globalThis.location.href = "/projects";
 	}
 
-	/**
-	 * Persist a new stage through `BoardService.createStage`. On success the service announces it
-	 * (`stagesCreatedEpoch`), which is what re-reads the engagement below — the lane learns the stage
-	 * and its freshly provisioned room from the server, exactly as a reload would. A refusal is
-	 * returned to the modal, which keeps the draft open and shows it.
-	 */
-	async function onCreateStage(
-		stage: { name: string; description: string },
-	): Promise<string | null> {
-		const slug = (liveDetail.peek() ?? detail)?.slug;
-		if (!slug) return "This project could not be found.";
-		const res = await BoardService.createStage(slug, stage);
-		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
-		createStageOpen.value = false;
-		return null;
-	}
-
 	/** Best-effort client navigation (the Propose-Time / continuation actions route to the calendar). */
 	function go(href: string): void {
 		try {
@@ -428,6 +419,12 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		setupBaseline.value,
 	);
 	const view = projection.detail;
+	const addsStage = resolveBoardAccess({
+		viewerIsClient: view.viewerIsClient,
+		sessionKind,
+		engagementKind: view.kind,
+		viewerSeated: view.viewerRole === "freelancer",
+	}, seam.value).canAddStage;
 
 	// The session projection recomputes when the archetype or the dev seam changes (both signals). It
 	// derives from the immutable `slug`, so folding the draft in cannot shuffle it as the owner types.
@@ -472,6 +469,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				sessionKind={activeKind}
 				links={views}
 				onExpand={() => setLaneCollapsed(false)}
+				canCreateStage={addsStage}
 				onCreateStage={openCreateStage}
 			/>
 
@@ -523,6 +521,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 									general={general}
 									openGroups={openGroups.value}
 									onToggleGroup={toggleGroup}
+									canCreateStage={addsStage}
 									onCreateStage={openCreateStage}
 									filters={filters.value}
 									activeChannelId={activeChannelIdOf(currentPath.value)}
@@ -578,10 +577,11 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				</LaneFooter>
 			</div>
 
-			<CreateStageModal
+			<CreateStagePopover
 				open={createStageOpen}
-				onClose={() => (createStageOpen.value = false)}
-				onCreate={onCreateStage}
+				projectId={view.slug}
+				currency={view.personal ? null : view.currency ?? null}
+				anchor={stageAnchor.value}
 			/>
 
 			<ArchiveProjectDialog

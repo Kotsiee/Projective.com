@@ -134,6 +134,12 @@ export interface EventModalProps {
 	createKinds: { value: CalendarEventKind; label: string; instant?: boolean }[];
 	/** Whether a bookable slot can be booked from here. */
 	canBook: boolean;
+	/**
+	 * Whether this surface keeps an edit to an existing entry (`authoringFor`; default yes). A body with
+	 * no write door — an engagement's calendar, a public schedule — opens every entry read-only, even
+	 * one its reader hosts (Decision #343, ruling C7 (a)).
+	 */
+	editable?: boolean;
 	onClose: () => void;
 	/**
 	 * Fold this surface back into the calendar's lightweight composer, carrying what has been entered.
@@ -283,7 +289,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const nowMs = useEventClock(props.nowMs);
 
 	const dirty = eventFingerprint(event) !== baseline.value;
-	const canEdit = creating || entryEditable(event);
+	const canEdit = creating || (props.editable !== false && entryEditable(event));
 	const seat = viewerSeat(event);
 	const party = isEventPartyView(event);
 	const live = eventLiveStatus(nowMs, event.start, event.end);

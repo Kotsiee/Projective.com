@@ -675,6 +675,11 @@ function emitNegotiation(
 
 	const proposalIds: string[] = [];
 	r.proposals.forEach((p, i) => {
+		if (p.minutes !== m.minutes) {
+			throw new Error(
+				`schedules: "${m.key}" proposes a ${p.minutes}-minute slot for a ${m.minutes}-minute meeting; a replacement keeps the meeting's length (fn_cap_reschedule_proposals)`,
+			);
+		}
 		const by = persona(world, p.by);
 		const role = p.by === m.host ? "host" : "attendee";
 		const proposalId = uuidFor("reschedule_proposal", `${m.key}:0:${i}`);

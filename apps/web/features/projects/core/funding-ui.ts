@@ -208,6 +208,21 @@ export function fundingSentence(
 	}
 }
 
+/** The client's way out of §3.6 `Draft`: write the brief, or price the stages, that make it payable. */
+export type DraftStep = "describe" | "price";
+
+/**
+ * The step that moves a Draft ticket forward (Decision #421), or `null` when it is not in Draft or
+ * nothing the client can do here moves it (paid ahead, or past Draft). A described, priced ticket
+ * nobody bought is not Draft to the client: its line already offers Buy now.
+ */
+export function draftStep(f: FundingFacts): DraftStep | null {
+	if (f.state !== "draft") return null;
+	if (f.nextAction === "describe") return "describe";
+	if (f.nextAction === "set_price") return "price";
+	return null;
+}
+
 /** The control the line offers. `start-blocked` is Start work rendered disabled with its reason. */
 export type FundingAction = "fund" | "review" | "retry" | "start" | "start-blocked" | null;
 

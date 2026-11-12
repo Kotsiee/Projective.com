@@ -208,7 +208,7 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
 | **Dispute** (Decision #212) | `open → awaiting_response → under_review → resolved_release` / `resolved_refund` / `resolved_split`; never deleted, terminal once resolved — the full machine is §3.8 | `dispute_status` · `finance.disputes` · `database/finance/Functions.md` § Platform disputes |
-| **Spend approval**         | `pending → approved → consumed` · `pending → rejected` (the TypeScript projection reads it as `declined`) · `pending → expired` · `pending → withdrawn`. **consumed** is the terminal spent state. It is DERIVED from `consumed_at` + `consumed_ref_*`, which `finance.fn_redeem_spend_approval` stamps in the charging transaction, and is shown as "Used" on the Spend module. It is not an enum value: `finance.approval_status` stays pending · approved · rejected · expired · withdrawn. Filed by `finance.request_spend_approval` only when the spend genuinely needs one (over the per-transaction ceiling, over the remaining cap, or at/above the business threshold — the wallet's own, else the platform's, `finance.fn_business_threshold`), with the wallet's currency and **`expires_at = now() + 7 days`** set by the server; decided by a member holding **`approve_spend`** who is not the requester; **withdrawn** only by its requester while `pending` (`finance.withdraw_spend_approval`, Decision #246 — terminal, `decided_at` stamped, no approver, nothing moves; a lapsed one is marked `expired` instead). Business wallets only, one open request per ref; what a request is bound to and how an approved one is spent once are `finance-model.md` §14 (Approval thresholds). A consumed, rejected, expired or withdrawn request is never re-decided, and only an approved, unconsumed, unexpired one is ever spent. `expired` is applied lazily — when a decision, a withdrawal, a new request for the same ref or the auto-fund drain meets a `pending` row past `expires_at` — and an approved-but-unspent request past `expires_at` can no longer be spent. At a business checkout a waiting or approved request bears on Pay exactly as `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #5 ("A purchase that needs a sign-off…") says; RLS shows a member only their own requests, so filing while another member's waits is refused `PC409` (Decision #243) | `finance.approval_status` · `finance.spend_approvals.consumed_at` · `database/finance/Functions.md` § Workspace money governance · `finance-model.md` §14 |
+| **Spend approval**         | `pending → approved → consumed` · `pending → rejected` (the TypeScript projection reads it as `declined`) · `pending → expired` · `pending → withdrawn`. **consumed** is the terminal spent state. It is DERIVED from `consumed_at` + `consumed_ref_*`, which `finance.fn_redeem_spend_approval` stamps in the charging transaction, and is shown as "Used" on the Spend module. It is not an enum value: `finance.approval_status` stays pending · approved · rejected · expired · withdrawn. Filed by `finance.request_spend_approval` only when the spend genuinely needs one (over the per-transaction ceiling, over the remaining cap, or at/above the business threshold — the wallet's own, else the platform's, `finance.fn_business_threshold`), with the wallet's currency and **`expires_at = now() + 7 days`** set by the server; decided by a member holding **`approve_spend`** who is not the requester; **withdrawn** only by its requester while `pending` (`finance.withdraw_spend_approval`, Decision #246 — terminal, `decided_at` stamped, no approver, nothing moves; a lapsed one is marked `expired` instead). Business wallets only, one open request per ref; what a request is bound to and how an approved one is spent once are `finance-model.md` §14 (Approval thresholds). A consumed, rejected, expired or withdrawn request is never re-decided, and only an approved, unconsumed, unexpired one is ever spent. `pending → expired` is written by the hourly sweep `finance.fn_expire_spend_approvals` (job `finance-expire-spend-approvals`, FINANCE_AUDIT A16) for every `pending` row past `expires_at`, and in between by any decision, withdrawal, new request for the same ref or auto-fund drain that meets one first; an approved-but-unspent request past `expires_at` can no longer be spent. At a business checkout a waiting or approved request bears on Pay exactly as `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #5 ("A purchase that needs a sign-off…") says; RLS shows a member only their own requests, so filing while another member's waits is refused `PC409` (Decision #243) | `finance.approval_status` · `finance.spend_approvals.consumed_at` · `database/finance/Functions.md` § Workspace money governance · `finance-model.md` §14 |
 | **Workspace membership** (team / business seat) | `active → left`. A departure is a status with `left_at`, never a `DELETE`; a former member is **reactivated** by accepting a new invitation, never inserted twice. Exactly **one** active owner per entity, who can never leave or be removed — ownership moves only by **transfer** (`org.transfer_workspace_ownership`) to another active member — for a team, one who is a freelancer account and payout-ready (Decisions #196, #228 (A)), since the team's withdrawer and verification follow the owner — after which the former owner holds the Admin preset or, in the same act, leaves. A business's **managers** — admins and holders of `manage_projects`, pending invitations to such a role included — are capped by its plan's `business_managers` (2 free / 15 Pro): inviting, accepting, a role change or grant that would pass it is refused `PK402` while `business_plan_gates_enforced` is on (Decision #230 (b), (e)); a downgrade removes nobody. An invitation is **not** a member state (the former `invited` member status is gone) | `org.team_members` / `org.business_members` `status` (`CHECK IN ('active','left')`) · `packages/types/workspace` `MembershipState` · `database/org/Tables.md` § Workspace membership |
 | **Workspace invitation**   | `pending → accepted` / `declined` (the invitee) / `revoked` (the inviting side). Each has its own timestamp (`responded_at` / `revoked_at`), pinned by `ck_org_invitation_lifecycle`. **14-day expiry, DERIVED from `expires_at`, never a stored status** — a lapsed `pending` row stays in the queue and **resend renews** it (a fresh token and `expires_at = now() + 14 days`); an answered row cannot be resent or revoked. At most one pending invitation per entity per person or per address; up to ten are issued per send, each at its own role (Decision #318). An invitation still names one person or one address — somebody holding the entity's invite link ASKS instead (Workspace join request, below; the 2026-09-28 cut of links and requests is reversed by #318). Accepting a TEAM invitation needs the invitee payout-ready, as does creating a team (Decision #196); before then the roster shows a pending invitee's readiness, and the refusal stays at accept (Decision #337, ruling M4 — the roster half **Not built yet**) | `org.org_invitations.status` · `packages/types/workspace` `WorkspaceInvite` · `database/org/Functions.md` §12 |
 | **Workspace invite link** | `active → revoked` (**terminal**). At most one `active` link per team or business, naming the role a request asks for (changeable while active); a reset revokes it and mints a replacement in one transaction, so the old URL stops working first. Redeeming files a pending join request and never seats anyone; refused on an archived entity. Nothing is deleted | `org.org_invite_links.status` · `packages/types/workspace/invite-links.ts` (`OrgInviteLinkState`) · `PRODUCT_SPEC.md` §Teams · Decision #318 |
@@ -337,7 +337,7 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > group sitting is never put to a round: `projects.schedule_sitting` mirrors it with no roster, and
 > `trg_sitting_round_guard` refuses one at the table. A 1-1 sitting is still agreed 1-on-1.
 >
-> **Four named caps govern it, and they are policy, not implementation details** (pinned by unit
+> **Five named caps govern it, and they are policy, not implementation details** (pinned by unit
 > test in `coordination_test.ts`): `RESCHEDULE_LOCKOUT_HOURS = 12` — inside it nothing moves, because
 > the other party has arranged their day around the slot; `VOTE_RESOLUTION_LEAD_HOURS = 12` — a vote
 > closes that far before the EARLIEST slot on the ballot, so a ballot can never elect a time that has
@@ -346,13 +346,21 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > let a round sit `voting` past the meeting and then move a session that had already happened);
 > `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote;
 > `RESCHEDULE_PROPOSALS_MAX = 12` — a round holds at most twelve slots, approved or not, and a
-> thirteenth is refused (`ballot_full`) until the round closes. The last is also held by the database
-> (`scheduling.fn_cap_reschedule_proposals`, pinned to the constant by `coordination.contract.test.ts`),
-> because a cap the table did not hold let a slot be stored that no reader would show.
+> thirteenth is refused (`ballot_full`) until the round closes;
+> `RESCHEDULE_ATTENDEE_PROPOSALS_MAX = 3` — one attendee may have at most three slots waiting on the
+> host's approval, and a fourth is refused (`proposer_quota`) until the host answers one; the host's
+> own slots are outside it (Decision #343, ruling C6 D8). The last two are also held by the database
+> (`scheduling.fn_cap_reschedule_proposals`, pinned to the constants by
+> `coordination.contract.test.ts`), because a cap the table did not hold let a slot be stored that
+> no reader would show. A replacement also keeps the event's length (`duration_changed`), and
+> `ck_proposal_span` backs that rule with a 24-hour ceiling (`RESCHEDULE_SLOT_MAX_HOURS`,
+> `slot_too_long`).
 >
-> **A change of time needs a MAJORITY, not a plurality** (`PRODUCT_SPEC.md` §The Proactive Calendar).
-> The threshold is strictly more than half of everyone ENTITLED to vote — the roster minus the host,
-> who authored the options — never more than half of those who happened to answer. Abstaining is
+> **A change of time needs a MAJORITY, not a plurality** (`PRODUCT_SPEC.md` §The Proactive
+> Calendar). The threshold is strictly more than half of everyone ENTITLED to vote — the roster
+> minus the host, who authored the options, with optional seats counted and guests not (a guest
+> cannot reach a ballot) — never more than half of those who happened to answer. The session
+> workspace counts the same seats (`eligibleVoterCount`; Decision #343, ruling C6 D5). Abstaining is
 > therefore a vote against moving, deliberately: the default outcome of an unanswered question is
 > that nothing changes. A vote that closes without one **lapses** and the original time stands;
 > `lapsed` is a separate state from `resolved` precisely so that "decided" can never be read off a
@@ -502,6 +510,16 @@ never locked out — its drop is the claim, which is the lock trigger. While suc
 refusing columns read locked with the reason (`KanbanBoard`'s `itemDropRefusal`); the Dev Context
 Switcher's **Funding state** axis drives it.
 
+**New lane (Decision #421)** — the board's New bookend is the stage-less backlog, and a move there
+takes the ticket out of its stage (`projects.move_ticket`'s `p_clear_stage`). Only a ticket nobody
+has claimed or delivered against (`ticketLeavesStage`) may make that move, whatever its funding — a
+`full` purchase stays paid there and a `per_stage` one reads unpaid (the funding-scope row above);
+for claimed work New reads locked like a work column without a hold. It is a placement rule, not a
+state: the payment lifecycle does not move, the status becomes `backlog`, and the ticket can be
+dragged back into any stage. The drop refusals as a whole (`boardDropRefusal`: the column lock,
+the client-only Done and project board, the claim-only In Progress, Review reached by a submission,
+and this lane) are read while the card is in flight, and `move_ticket` re-checks each on the write.
+
 **Auto-funding** (Decision #172, `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #4): on a business
 project in `from_wallet` mode a ticket entering Needs funding joins the auto-fund queue, and the
 **system** moves it on the next wallet credit that covers it — held as the project owner (a spend
@@ -557,7 +575,9 @@ permission (a narrowing of rule (8)'s "the client"), and the board drags nothing
 #338, rulings P5 (a), (b)) — **Not built yet**: today any participant moves an unclaimed ticket, any
 review authority moves a claimed one, and every card is draggable. (11) **After a claim, a ticket's
 due date changes only by agreement**: one side proposes, the other accepts (ruling P5 (c)) — **Not
-built yet**: today either party may still edit it. (12) **Removing the payee, or deleting the
+built yet**: today either party may still edit a ticket's own date, while a ticket dated stage by
+stage (`required_stages[].due_at`, whose latest date IS its due date — Decision #414) is frozen with
+its other terms by the claim (Decision #291), so its dates do not move at all. (12) **Removing the payee, or deleting the
 ticket, before `in_progress` refunds the client in full**, as the claim TTL does; from
 `in_progress`, the Fair Exit split applies to that ticket alone (ruling P2 (a)) — **Not built yet**:
 today both pay the payee 100%.
@@ -714,7 +734,10 @@ $$W_i = \text{Difficulty multiplier}$$
   category no longer weights it — in the product or here. A build Story may still carry the category
   that best describes it as a label (a new component = _Create_; a refactor/infra = _Run_; a
   spike/audit = _Test_; docs/enablement = _Empower_).
-- **Difficulty multiplier:** Low 0.5× · Standard 1.0× · High 2.0×.
+- **Difficulty multiplier:** Low 0.5× · Standard 1.0× · High 2.0×. This is the bandwidth scale only;
+  a ticket's PRICE reads the same intensity on its own scale (Low 0.75× · Standard 1.0× · High 1.5×,
+  or a seller's tier prices — PRODUCT_SPEC §The Weighting Engine, Decision #414), and an estimate in
+  $W_i$ never moves a price.
 - **Caps:** a contributor's summed active $W_i$ is bounded per-initiative and globally, exactly as
   `projects.check_ticket_capacity` bounds a freelancer. Exceeding a cap blocks new claims until
   current work submits — no silent overload.

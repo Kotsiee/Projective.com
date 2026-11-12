@@ -10,13 +10,19 @@ import { stagePreviewOf } from "../../../core/stage-preview.ts";
  * second place to edit it.
  */
 export function StageFlowPreview(
-	props: { stages: readonly Milestone[]; currency: string; baselineMinor: number | null },
+	props: {
+		stages: readonly Milestone[];
+		currency: string;
+		baselineMinor: number | null;
+		/** Whether the stages sell at tiered intensity (a price span) or one fixed price each. */
+		tiered: boolean;
+	},
 ): JSX.Element | null {
 	if (props.stages.length === 0) return null;
 	return (
 		<div class="cat-offer__preview" aria-label="How buyers see these stages" role="group">
 			<StageProgressLedger
-				stages={stagePreviewOf(props.stages, props.currency, props.baselineMinor)}
+				stages={stagePreviewOf(props.stages, props.currency, props.baselineMinor, props.tiered)}
 				currency={props.currency}
 			/>
 		</div>

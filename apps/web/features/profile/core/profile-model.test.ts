@@ -526,14 +526,15 @@ Deno.test("estimatedSpendFor is the cheapest structured floor and its unit", () 
 		service({
 			id: "b",
 			serviceType: "Pipeline",
-			ticketPrice: 240,
-			priceMinor: 24_000,
+			ticketPrice: 200,
+			tieredIntensity: true,
+			priceMinor: 20_000,
 			currency: "USD",
 		}),
 		service({ id: "c", serviceType: "Session", sessionPrice: 180, currency: "USD" }),
 	]);
-	// The pipeline's floor is 0.5× its ticket price → $120 / ticket, the cheapest start.
-	assertEquals(spend, { amount: { minor: 12_000, currency: "USD" }, unit: "ticket" });
+	// The pipeline's floor is the Low price, 0.75× its ticket → $150 / ticket, the cheapest start.
+	assertEquals(spend, { amount: { minor: 15_000, currency: "USD" }, unit: "ticket" });
 });
 
 Deno.test("estimatedSpendFor invents nothing for an unpriced catalogue", () => {

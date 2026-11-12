@@ -38,13 +38,15 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 	const ask = priceAsk(archetype);
 	const asked = askedPrice(listing.pricing, ask.field);
 	const minor = minorOf(asked, listing.currency);
+	const tiered = listing.offer.archetype === "pipeline" && listing.offer.allowTieredIntensity;
 	const display = resolveListingPricing({
 		kind: listing.kind,
 		serviceType: listing.serviceType,
 		pricing: listing.pricing,
 		currency: listing.currency,
+		tieredIntensity: tiered,
 	});
-	const range = ask.field === "ticketPrice" && minor !== null ? ticketRange(minor) : null;
+	const range = tiered && ask.field === "ticketPrice" && minor !== null ? ticketRange(minor) : null;
 	const currencyFixed = hasBeenPublished(listing);
 
 	return (

@@ -51,7 +51,7 @@ export const SessionKeys = {
 	 */
 	DEV_CONTEXT_OVERRIDES: "pj.session.dev.contextOverrides",
 	/**
-	 * DEV-ONLY. The Context Switcher's Theme knobs (`{ seed, accentSeed, radiusScale, shadowIntensity }`
+	 * DEV-ONLY. The Context Switcher's Theme knobs (`{ seed, radiusScale, shadowIntensity }`
 	 * JSON), present only while one differs from `DEFAULT_CONFIG`. Session-scoped for the same reason
 	 * as {@link SessionKeys.DEV_CONTEXT_OVERRIDES}: a tweak survives navigation in this tab, never a
 	 * new one. Read/written only by `apps/web/features/devtools/*`.

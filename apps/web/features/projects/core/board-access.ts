@@ -1,4 +1,5 @@
 import type { DevSeamState } from "@web/utils/dev-seam.ts";
+import { canAddStage, type EngagementKind } from "@projective/types/projects";
 import { readDevSeam, resolveViewer, watchDevSeam } from "./submission-access.ts";
 import { liveSessionKind, type SessionKind } from "./session-model.ts";
 
@@ -54,6 +55,21 @@ export interface BoardAccess {
 	stageAssigned: boolean;
 	/** Whether an override is active — the board reads the seam's answer instead of the server's list. */
 	simulated: boolean;
+	/**
+	 * May add a stage ({@link canAddStage}, Decision #421): the client side on a client project, a
+	 * freelancer seated on it on a service the client bought. Every Add stage control reads this.
+	 */
+	canAddStage: boolean;
+}
+
+/** The server's answers the access set is resolved from. */
+export interface BoardAccessBaseline {
+	viewerIsClient: boolean;
+	sessionKind: SessionKind;
+	/** Who architected the engagement (`BoardPage.engagementKind`). */
+	engagementKind: EngagementKind;
+	/** Whether the server onboarded this viewer to any stage (`BoardPage.viewerStageIds`). */
+	viewerSeated: boolean;
 }
 // #endregion
 
@@ -67,12 +83,21 @@ export interface BoardAccess {
  * ownership/admin decides the edit right.
  */
 export function resolveBoardAccess(
-	args: { viewerIsClient: boolean; sessionKind: SessionKind },
+	args: BoardAccessBaseline,
 	seam: DevSeamState | null,
 ): BoardAccess {
 	const viewer = resolveViewer(args.viewerIsClient, seam);
 	const kind = liveSessionKind(args.sessionKind, seam);
 	const hasTickets = kind === "none";
+	const engagementKind = seam && seam.engagementOrigin !== "auto"
+		? seam.engagementOrigin
+		: args.engagementKind;
+	const stageAuthor = canAddStage({
+		kind: engagementKind,
+		viewerIsClient: viewer.isReviewer,
+		viewerIsSeatedProvider: viewer.isFreelancer &&
+			(seam ? viewer.stageAssigned : args.viewerSeated),
+	});
 
 	if (!seam) {
 		return {
@@ -82,6 +107,7 @@ export function resolveBoardAccess(
 			hasTickets,
 			stageAssigned: viewer.stageAssigned,
 			simulated: false,
+			canAddStage: stageAuthor,
 		};
 	}
 
@@ -95,6 +121,7 @@ export function resolveBoardAccess(
 		hasTickets,
 		stageAssigned: viewer.stageAssigned,
 		simulated: true,
+		canAddStage: stageAuthor,
 	};
 }
 // #endregion

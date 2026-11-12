@@ -78,21 +78,6 @@ const HC_DELTA = 12;
  * Do not re-map either token inside a mode branch, and do not "fix" the pair by widening it: any
  * alternate tone mapping is exactly the drift these constants exist to prevent.
  */
-
-/**
- * Default seed of the amber accent pair (`--accent` / `--on-accent`) — the terminal financial and
- * conversion commit (DESIGN_SYSTEM.md §A.1.2, Decision #157). Only its `a1` palette is read.
- */
-export const ACCENT_SEED = "#D98216";
-
-const ACCENT_FILL_TONE = { light: 62, dark: 66 } as const;
-
-const ACCENT_INK_TONE = { light: 10, dark: 4 } as const;
-
-interface AccentTones {
-	fill: number;
-	ink: number;
-}
 // #endregion
 
 // #region Helpers
@@ -178,13 +163,6 @@ function focusShadow(halo: string, ring: string, glow: string, hc: boolean, inse
 	// An inset ring has no outside to glow into, so it is composed without one.
 	return inset ? ringLayers : `${ringLayers}, 0 0 5px ${edge}px ${glow}`;
 }
-
-function accentTones(dark: boolean, hc: boolean): AccentTones {
-	const fill = dark ? ACCENT_FILL_TONE.dark : ACCENT_FILL_TONE.light;
-	const ink = dark ? ACCENT_INK_TONE.dark : ACCENT_INK_TONE.light;
-	if (!hc) return { fill, ink };
-	return { fill: dark ? Math.min(100, fill + HC_DELTA) : fill, ink: Math.max(0, ink - HC_DELTA) };
-}
 // #endregion
 
 // #region Public API
@@ -193,7 +171,7 @@ function accentTones(dark: boolean, hc: boolean): AccentTones {
  * run at request time in `_app.tsx` to inject a first-paint `<style>` with no flash.
  */
 export function buildScheme(
-	{ seed, accentSeed = ACCENT_SEED, dark, highContrast = false }: ThemeInput,
+	{ seed, dark, highContrast = false }: ThemeInput,
 ): Record<string, string> {
 	const core = CorePalette.of(argbFromHex(seed));
 	const hc = highContrast;
@@ -246,11 +224,11 @@ export function buildScheme(
 			"--on-secondary": hx(core.a2.tone(on(20))),
 			"--tertiary": hx(core.a3.tone(fg(80))),
 			"--on-tertiary": hx(core.a3.tone(on(20))),
-			"--bg": hx(core.n1.tone(4)),
-			"--surface": hx(core.n1.tone(5)),
-			"--surface-1": hx(core.n1.tone(7)),
-			"--surface-2": hx(core.n1.tone(9)),
-			"--surface-3": hx(core.n1.tone(10)),
+			"--bg": hx(core.n1.tone(6)),
+			"--surface": hx(core.n1.tone(8)),
+			"--surface-1": hx(core.n1.tone(10)),
+			"--surface-2": hx(core.n1.tone(11)),
+			"--surface-3": hx(core.n1.tone(12)),
 			// Scrollbar thumb. A thumb is a graphical UI control, so WCAG 2.2 SC 1.4.11 asks for 3:1
 			// against what it abuts — and what it abuts is the TRACK, which is not one color: the track is
 			// scoped to whatever surface the scroller sits on (`--scrollbar-track`, `styles/index.css`), so
@@ -329,9 +307,9 @@ export function buildScheme(
 		vars[`--on-${name}`] = hx(sc.a1.tone(dark ? on(filled ? 10 : 20) : on(100)));
 	}
 
-	const accent = accentTones(dark, hc);
-	vars["--accent"] = hx(CorePalette.of(argbFromHex(accentSeed)).a1.tone(accent.fill));
-	vars["--on-accent"] = hx(core.n1.tone(accent.ink));
+	// Tier 1 is the monochrome inversion (§A.1.2, Decision #424): the page's ink as the fill.
+	vars["--accent"] = vars["--on-surface"];
+	vars["--on-accent"] = vars["--surface"];
 
 	return vars;
 }

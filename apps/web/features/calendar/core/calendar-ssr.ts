@@ -1,6 +1,11 @@
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
-import type { CalendarPage, SchedulePage, SchedulingViewer } from "@projective/types/scheduling";
+import type {
+	CalendarPage,
+	IsoDate,
+	SchedulePage,
+	SchedulingViewer,
+} from "@projective/types/scheduling";
 import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 
 /**
@@ -18,6 +23,9 @@ import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
  *
  * A private read that fails (no session, a project the reader may not see, the database unreachable)
  * resolves to `page: null`, and the island renders its own empty or unavailable state from that.
+ *
+ * `around` is the address's `?date=` (Decision #413): each read is the window around that day, so the
+ * first byte paints the asked-for period rather than today's window.
  */
 
 export interface CalendarBootstrap {
@@ -32,9 +40,10 @@ export async function resolveCalendarPage(
 	projectId: string,
 	channelId: string | null | undefined,
 	actor: ReadActor,
+	around?: IsoDate,
 ): Promise<CalendarBootstrap> {
 	const res = await ScheduleBackendService.projectCalendar(
-		{ projectId, channelId: channelId ?? null },
+		{ projectId, channelId: channelId ?? null, around },
 		actor,
 	);
 	return { page: res.ok && res.data ? res.data.page : null };
@@ -46,8 +55,11 @@ export async function resolveCalendarPage(
  * `null` means the agenda could not be read at all (no session, the database unreachable) — never
  * that the account has nothing on: an empty week is a page with no events in it.
  */
-export async function resolvePersonalCalendar(actor: ReadActor): Promise<ScheduleBootstrap> {
-	const res = await ScheduleBackendService.personalCalendar(actor);
+export async function resolvePersonalCalendar(
+	actor: ReadActor,
+	around?: IsoDate,
+): Promise<ScheduleBootstrap> {
+	const res = await ScheduleBackendService.personalCalendar(actor, { around });
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 
@@ -55,8 +67,9 @@ export async function resolvePersonalCalendar(actor: ReadActor): Promise<Schedul
 export async function resolveAvailabilityPage(
 	handle: string,
 	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	around?: IsoDate,
 ): Promise<ScheduleBootstrap> {
-	const res = await ScheduleBackendService.availability({ handle }, viewer);
+	const res = await ScheduleBackendService.availability({ handle, around }, viewer);
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 

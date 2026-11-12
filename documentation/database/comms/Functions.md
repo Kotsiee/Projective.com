@@ -194,21 +194,28 @@ zone degrades to UTC instead of aborting the run for every other user.
 
 ## Triggers
 
-| Trigger                                      | Table                 | Function                           |
-| :------------------------------------------- | :-------------------- | :--------------------------------- |
-| `on_users_public_created_notification_prefs` | `org.users_public`    | `comms.seed_notification_prefs()`  |
-| `on_notification_created_dispatch`           | `comms.notifications` | `comms.fn_dispatch_notification()` |
-| `trg_*_touch`                                | every engine table    | `comms.fn_touch_updated_at()`      |
-| `trg_mask_message_pii`                       | `comms.project_messages` | `comms.tg_mask_message_pii()`   |
-| `trg_project_messages_guard_reply`           | `comms.project_messages` | `comms.tg_guard_message_reply()` |
-| `trg_dm_messages_mask_pii`                   | `comms.dm_messages`   | `comms.tg_mask_dm_message_pii()`   |
-| `trg_dm_messages_promote_on_reply`           | `comms.dm_messages`   | `comms.fn_promote_thread_on_reply()` |
-| `trg_dm_messages_guard_reply`                | `comms.dm_messages`   | `comms.tg_guard_dm_message_reply()` |
+| Trigger                                      | Table                    | Function                                                                  |
+| :------------------------------------------- | :----------------------- | :------------------------------------------------------------------------ |
+| `on_users_public_created_notification_prefs` | `org.users_public`       | `comms.seed_notification_prefs()`                                         |
+| `on_notification_created_dispatch`           | `comms.notifications`    | `comms.fn_dispatch_notification()`                                        |
+| `trg_*_touch`                                | every engine table       | `comms.fn_touch_updated_at()`                                             |
+| `trg_mask_message_pii`                       | `comms.project_messages` | `comms.tg_mask_message_pii()`                                             |
+| `trg_project_messages_guard_reply`           | `comms.project_messages` | `comms.tg_guard_message_reply()`                                          |
+| `trg_dm_messages_mask_pii`                   | `comms.dm_messages`      | `comms.tg_mask_dm_message_pii()`                                          |
+| `trg_dm_messages_promote_on_reply`           | `comms.dm_messages`      | `comms.fn_promote_thread_on_reply()`                                      |
+| `trg_dm_messages_guard_reply`                | `comms.dm_messages`      | `comms.tg_guard_dm_message_reply()`                                       |
+| `trg_dm_messages_bind_project`               | `comms.dm_messages`      | `comms.tg_bind_dm_project()`                                              |
+| `trg_dm_messages_thread_summary` (AFTER)     | `comms.dm_messages`      | `comms.tg_dm_thread_summary()`                                            |
+| `trg_dm_threads_derived`                     | `comms.dm_threads`       | `security.fn_guard_derived_columns('last_message_at', 'last_message_id')` |
+| `trg_dm_threads_ref` (`00001890`)            | `comms.dm_threads`       | `security.fn_ref_guard('cht')`                                            |
 
-Every message trigger is `BEFORE` (`00001840`). The mask and promotion triggers fire on `INSERT`
-and are documented under §Inbox folders, hiring requests & the DM contact filter below; the two
-reply guards fire on `INSERT` and on `UPDATE OF reply_to_id` plus the room column, and are documented
-under §Replies stay in their room.
+Every message trigger is `BEFORE` (`00001840`) except `trg_dm_messages_thread_summary` and the
+auto-reply, which run `AFTER INSERT`. The mask and promotion triggers fire on `INSERT` and are
+documented under §Inbox folders, hiring requests & the DM contact filter below; the two reply guards
+fire on `INSERT` and on `UPDATE OF reply_to_id` plus the room column, and are documented under
+§Replies stay in their room; the project stamp, the thread summary and the ref under §The inbox read
+model and project-stamped DMs. Triggers of one timing fire in name order, which is why
+`trg_dm_messages_bind_project` sorts before `trg_dm_messages_mask_pii`.
 
 `seed_notification_prefs` mirrors `org.seed_user_preferences` (Decision #47) — a focused
 `AFTER INSERT` trigger under a **separate name**, so the existing `on_users_public_created` trigger
@@ -246,7 +253,7 @@ block or roll back the transaction that emitted the notification.
 | `comms.has_channel_access(uuid)`           | 0311      | Channel membership predicate used by RLS. |
 | `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage. Skips an archived stage or room and never provisions a Session's stage rooms (Decision #163). |
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
-| `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). Takes the pair lock (`comms.fn_lock_dm_pair`, CAS M5) before the lookup, so two first messages racing each other find one thread instead of minting two; refuses `42501` with no acting user and `22023 recipient: invalid` for oneself (a self-DM would be one participant row twice, which `dm_participants_thread_user_key` refuses). |
+| `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). Takes the pair lock (`comms.fn_lock_dm_pair`, CAS M5) before the lookup, so two first messages racing each other find one thread instead of minting two; refuses `42501` with no acting user and `22023 recipient: invalid` for oneself (a self-DM would be one participant row twice, which `dm_participants_thread_user_key` refuses). **Returns `jsonb` `{ thread_id, thread_ref }`** (Decision #339, ruling N1): the thread and its `cht-` address, so a caller builds the conversation's URL without a second read. Zod: `OpenedDmThreadSchema`; the backend reads it through `openedThreadId` (`services/messaging/live-writes.ts`). |
 
 ## Group conversations (`00001300`, Decision #102)
 
@@ -325,8 +332,10 @@ characters. It finds the pair's non-group thread or creates one — under the sa
 recipient had deleted, and — only when the request OPENS the thread (created, empty, or restored
 from the recipient's deletion) — files it: the recipient's row in `requests` unless the two follow
 each other (`org.profile_follows` both ways), the sender's in `primary`. An existing conversation is
-never re-filed. The message is inserted with `project_id`, so the contact filter applies to it.
-Returns `{ thread_id, message_id, opened, routed_to }`.
+never re-filed. The message is inserted with `project_id`, so the contact filter applies to it; the
+project stamp keeps it, because a pending invitee or applicant is a party to the project.
+Returns `{ thread_id, thread_ref, message_id, opened, routed_to }` (`thread_ref` is the thread's
+`cht-` address, Decision #339 ruling N1).
 
 ### `comms.fn_promote_thread_on_reply()` — trigger
 
@@ -524,6 +533,55 @@ transaction end. `comms.get_or_create_dm_thread` and `comms.send_request_message
 their select-then-insert, so two first messages between the same two people serialise and the second
 finds the first one's thread; unrelated pairs never contend. No client `EXECUTE`. The row-level half
 is `dm_participants_thread_user_key UNIQUE (thread_id, user_id)` ([Tables.md](Tables.md)).
+
+## The inbox read model and project-stamped DMs (`00001300` / `00001840` / `00001890`, Decision #339 ruling N1)
+
+One conversation per pair, drawn the same in the inbox and in its project (CAS §6.1). The two
+message stores stay separate; what unifies them is the thread's `cht-` address (`dm_threads.ref`), a
+summary of each thread's newest message that the inbox reads instead of every thread's messages (RED
+D-04), and the project a DM is about, written on the message. Proven by
+`supabase/probes/comms_thread_refs.sql`.
+
+### `comms.inbox_tails(p_thread_ids uuid[], p_k integer DEFAULT 1) → TABLE (thread_id, id, sender_user_id, body, has_attachments, is_audio, created_at)`
+
+`SECURITY INVOKER`, `STABLE`, `EXECUTE` to `authenticated` only (`00002510`). The newest `p_k`
+undeleted messages of each listed thread, newest first by `(created_at, id)`, threads in the order
+given; RLS on `dm_threads` / `dm_messages` is the guard, so a thread the caller is not in returns
+nothing. `p_k` is clamped to 1..20, the list to its first 200 ids, and a repeated id is read once.
+With `p_k = 1` it reads through `dm_threads.last_message_id` (a primary-key lookup), falling back to
+the thread's own newest message when that one has been deleted since; a larger `p_k` walks
+`idx_dm_messages_thread_recent`. Zod: `InboxTailRowSchema` (`@projective/types/messaging`).
+
+### `comms.tg_dm_thread_summary()` — trigger
+
+`AFTER INSERT ON comms.dm_messages` (`trg_dm_messages_thread_summary`). Points the thread's
+`last_message_at` / `last_message_id` at the new message when `(created_at, id)` is newer than the
+recorded pair, so seeds and out-of-order inserts never move it back; a message inserted already
+deleted is skipped. `SECURITY DEFINER`, `search_path = ''`: the sender's role holds no `UPDATE` on
+`comms.dm_threads` and `trg_dm_threads_derived` refuses it these columns, and the owner passes both.
+One extra row update per message, on the thread's own row.
+
+### `comms.tg_bind_dm_project()` — trigger
+
+`BEFORE INSERT ON comms.dm_messages` (`trg_dm_messages_bind_project`, sorting before
+`trg_dm_messages_mask_pii` so the mask reads the project settled here). A supplied `project_id` is
+kept only when the sender **and every other undeleted participant** are parties to it
+(`projects.fn_engaged_projects`, the predicate `comms.fn_dm_protected_project` derives with).
+Otherwise it is derived with `comms.fn_dm_protected_project(thread, sender, NULL)`, a protected
+project the sender and another member share, else left `NULL`, so no client can file a DM under a
+project it is not on. An entity-channel message carries none: a channel is its entity's room, not a
+project's conversation. `SECURITY DEFINER`, `search_path = ''`; neither lookup it makes is
+client-executable. The mask functions are unchanged; a forged id now reaches them already replaced.
+
+### `security.fn_ref_guard()` — trigger (`00001001`)
+
+`trg_dm_threads_ref` (`00001890`): `BEFORE INSERT OR UPDATE ON comms.dm_threads` with
+`TG_ARGV[0] = 'cht'`. `security.fn_slug_guard`'s contract on a column named `ref`, with one
+difference: the insert **always** mints (`security.mint_slug`) and replaces a supplied value, so no
+caller chooses a conversation's address; an update that moves it raises `23514`. `SECURITY DEFINER`
+for the slug guard's reason (it calls the revoked `mint_slug`), revoked from `PUBLIC`. A second
+small function rather than a column-name argument to the shared guard, whose closed body is what
+makes it safe as a definer.
 
 ## Message favourites and pins (Decision #180)
 

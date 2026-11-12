@@ -86,6 +86,7 @@ export type SimulatedCommit =
 	| { kind: "configure"; wholeEngagement: boolean }
 	| { kind: "custom_quote" }
 	| { kind: "ask_question" }
+	| { kind: "join_waitlist" }
 	| { kind: "save" }
 	| { kind: "collection" }
 	| { kind: "share" };
@@ -137,6 +138,8 @@ export function simulatedOutcomeFor(commit: SimulatedCommit, facts: SimulationFa
 			return `${facts.sellerName} would now receive this scope and reply with a price. Nothing is committed.`;
 		case "ask_question":
 			return `A buyer would now open a conversation with ${facts.sellerName} in Messages.`;
+		case "join_waitlist":
+			return `A buyer would now join the waitlist for ${facts.title}. Nothing is paid or held.`;
 		case "save":
 			return `A buyer would now save ${facts.title} to their saved items.`;
 		case "collection":

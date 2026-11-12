@@ -78,3 +78,11 @@ DROP TRIGGER IF EXISTS trg_routines_slug ON scheduling.routines;
 CREATE TRIGGER trg_routines_slug
     BEFORE INSERT OR UPDATE ON scheduling.routines
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('rtn');
+
+-- A conversation's address (`/messages/cht-…`, Decision #339 ruling N1). It lives in `ref` because an
+-- entity channel's `#` name already holds `slug` (Decision #306), so its guard is fn_ref_guard: the
+-- same fill-and-pin, except that the insert always mints and no caller chooses a thread's address.
+DROP TRIGGER IF EXISTS trg_dm_threads_ref ON comms.dm_threads;
+CREATE TRIGGER trg_dm_threads_ref
+    BEFORE INSERT OR UPDATE ON comms.dm_threads
+    FOR EACH ROW EXECUTE FUNCTION security.fn_ref_guard('cht');

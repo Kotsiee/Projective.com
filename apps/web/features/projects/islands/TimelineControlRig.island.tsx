@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/board-rig.css";
@@ -7,8 +7,8 @@ import { Tooltip } from "@projective/ui/feedback";
 import { ZoomSlider } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { PX_PER_DAY_MAX, PX_PER_DAY_MIN } from "@projective/ui/gantt";
+import { CreateStagePopover } from "../components/CreateStagePopover.tsx";
 import {
-	requestTimelineCreateStage,
 	requestTimelineCreateTicket,
 	requestTimelineFit,
 	requestTimelineToday,
@@ -23,10 +23,12 @@ import { PlusIcon, StagesToggleIcon } from "../components/board-glyphs.tsx";
 /**
  * TimelineControlRig — the Gantt's action rig, mounted in the middle-nav FOOTER band via
  * {@link timelineFooterFor}. Icon-first (§B.6): Today · Fit · the time-scale zoom slider (with the
- * unit the scale is currently divided into) · the primary client actions (Create Ticket · Create
- * Stage). It is a DUMB island — it drives the shared timeline signals ({@link timelineZoom}, the
- * engine command channel, the create intents) and reads the body's published capabilities
- * ({@link timelineCaps}); the body reacts. No data access.
+ * unit the scale is currently divided into) · the primary actions (the client's Create Ticket, and
+ * Create Stage for whoever authors stages here — Decision #421). It is a DUMB island — it drives
+ * the shared timeline signals ({@link timelineZoom}, the engine command channel, the ticket intent)
+ * and reads the body's published capabilities
+ * ({@link timelineCaps}); the body reacts. Create stage opens its popover on the rig's own button and
+ * writes through `BoardService`, whose announcement the body hears.
  *
  * It composes the SAME `.brd-rig` control set the board's rig uses, so the two footers read as one
  * vocabulary rather than two lookalikes; only the zoom slider and the tier word are its own.
@@ -49,12 +51,14 @@ export default function TimelineControlRig(): JSX.Element {
 	// The slider's own position, kept in step with the shared zoom in BOTH directions: a wheel zoom
 	// on the canvas moves the handle, and the handle moves the canvas.
 	const slider = useSignal(fracOf(timelineZoom.peek()));
+	const stageOpen = useSignal(false);
 	useSignalEffect(() => {
 		const frac = fracOf(timelineZoom.value);
 		if (Math.abs(frac - slider.peek()) > 1e-4) slider.value = frac;
 	});
 
 	const caps = timelineCaps.value;
+	const addsStage = caps.canAddStage && caps.isProjectScope && caps.hasTickets;
 	const tier = timelineTier.value;
 
 	return (
@@ -117,23 +121,45 @@ export default function TimelineControlRig(): JSX.Element {
 				? <p class="brd-rig__note">Sessions are booked, not ticketed.</p>
 				: null}
 
-			{caps.isClient && caps.hasTickets
+			{(caps.isClient && caps.hasTickets) || addsStage
 				? (
 					<div class="brd-rig__actions">
-						<button type="button" class="brd-rig__action" onClick={requestTimelineCreateTicket}>
-							<PlusIcon size={16} />
-							<span>Ticket</span>
-						</button>
-						{caps.isProjectScope
+						{caps.isClient && caps.hasTickets
 							? (
 								<button
 									type="button"
 									class="brd-rig__action"
-									onClick={requestTimelineCreateStage}
+									aria-label="Create ticket"
+									onClick={requestTimelineCreateTicket}
 								>
-									<StagesToggleIcon size={16} />
-									<span>Stage</span>
+									<PlusIcon size={18} />
+									<span>Ticket</span>
 								</button>
+							)
+							: null}
+						{addsStage
+							? (
+								<CreateStagePopover
+									open={stageOpen}
+									projectId={caps.projectId}
+									currency={caps.stageCurrency}
+									placement="top-end"
+									trigger={(api) => (
+										<button
+											ref={api.ref as RefObject<HTMLButtonElement>}
+											type="button"
+											class="brd-rig__action"
+											aria-label="Create stage"
+											aria-haspopup="dialog"
+											aria-expanded={api.expanded}
+											aria-controls={api.expanded ? api.panelId : undefined}
+											onClick={api.toggle}
+										>
+											<StagesToggleIcon size={18} />
+											<span>Stage</span>
+										</button>
+									)}
+								/>
 							)
 							: null}
 					</div>

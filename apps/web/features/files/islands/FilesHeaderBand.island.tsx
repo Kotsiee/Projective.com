@@ -8,6 +8,8 @@ import { Icon } from "@projective/ui/icons";
 import { useMediaQuery } from "@projective/ui/navigation";
 import { isApplePlatform } from "@features/projects/core/chat-keyboard.ts";
 import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
+import { isReachable } from "@features/shortcuts/core/shortcut-host.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { CONTEXT_PANEL_INFLOW_QUERY } from "@web/features/shell/core/context-panel-state.ts";
 import { FilesFilterPanel } from "../components/FilesFilterPanel.tsx";
 import { detailsShown, toggleDetailsPanel } from "../core/details-panel.ts";
@@ -98,6 +100,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 	const filterOpen = useSignal(false);
 	const searchOpen = useSignal(false);
 	const band = useRef<HTMLDivElement>(null);
+	const inlineSearch = useRef<HTMLSpanElement>(null);
 	const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	// #region Intent
@@ -155,6 +158,13 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 			field?.select();
 		}, 0);
 	}
+
+	useSearchTarget({
+		role: "page",
+		scopeRef: inlineSearch,
+		available: () => isReachable(band.current),
+		activate: focusSearch,
+	});
 
 	useEffect(() => {
 		filesSearchFocus.value = focusSearch;
@@ -261,7 +271,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 				</Tooltip>
 			</span>
 
-			<span class="fh-headerband__search">{searchField()}</span>
+			<span class="fh-headerband__search" ref={inlineSearch}>{searchField()}</span>
 
 			<span class="fh-headerband__controls">
 				<span class="fh-headerband__searchtoggle">

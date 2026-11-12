@@ -11,11 +11,11 @@ import {
 	LaneFooterActions,
 	LaneHead,
 	LaneList,
-	LaneSearch,
 	type MenuItem,
 	TreeNav,
 	type TreeNavNode,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
@@ -406,7 +406,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 			<div class="fh-lane">
 				<LaneHead class="fh-lane__head">
 					<LaneBar>
-						<LaneSearch
+						<LaneSearchField
 							value={query.value}
 							placeholder="Find a folder"
 							label="Find a folder in this library"

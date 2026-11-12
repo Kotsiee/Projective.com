@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX, RefObject } from "preact";
 import { useRef } from "preact/hooks";
 import { type Signal, useComputed } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
+import { ICON_PATHS } from "../../icons/core/paths.tsx";
 import { useDraggable } from "../../dnd/hooks/useDraggable.ts";
 import { useDroppable } from "../../dnd/hooks/useDroppable.ts";
 import { KanbanCard } from "./KanbanCard.tsx";
@@ -111,7 +112,25 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 				)}
 			</header>
 
-			{refusal !== null ? <p class="ui-kanban__col-lock">{refusal}</p> : null}
+			{refusal !== null
+				? (
+					<p class="ui-kanban__col-lock">
+						<svg
+							class="ui-kanban__col-lock-mark"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+							focusable="false"
+						>
+							{ICON_PATHS.lock()}
+						</svg>
+						<span>{refusal}</span>
+					</p>
+				)
+				: null}
 
 			<div
 				// deno-lint-ignore no-explicit-any

@@ -85,8 +85,9 @@ export interface DatePickerProps extends BaseFieldProps {
 	delimiter?: DateDelimiter;
 	/**
 	 * Turn the wheel over the calendar to step it: a plain wheel moves one month, Ctrl/Cmd + wheel
-	 * one year. Default `true` in popup mode and `false` inline, where the calendar sits in page flow
-	 * and a wheel over it is usually the page being scrolled.
+	 * one year — scrolling down goes forward in time, scrolling up goes back. Default `true` in popup
+	 * mode and `false` inline, where the calendar sits in page flow and a wheel over it is usually the
+	 * page being scrolled.
 	 */
 	wheelNavigation?: boolean;
 	/**
@@ -267,7 +268,7 @@ function emptyBuffers(): Record<DateSegmentKind, string> {
  * | Key            | A segment has focus       | The grid has focus       |
  * | :------------- | :------------------------ | :----------------------- |
  * | Left / Right   | previous / next segment   | previous / next day      |
- * | Up / Down      | step this segment's value | previous / next week     |
+ * | Up / Down      | step this segment's value (day and month wrap; the year stays inside `minDate`/`maxDate`) | previous / next week |
  * | Enter          | open the calendar while the date is INCOMPLETE; a complete date leaves Enter to the form (implicit submission, a wizard's next-field rule); close while open | select the focused day   |
  * | Space          | open the calendar         | select the focused day   |
  * | Backspace      | clear THIS segment only   | —                        |
@@ -276,7 +277,8 @@ function emptyBuffers(): Record<DateSegmentKind, string> {
  *
  * While the calendar is open, period shortcuts work from either half (Cmd replaces Ctrl on macOS):
  * Ctrl + Left / Right steps one month, Ctrl + Up / Down one year, Ctrl + Shift + Up / Down five.
- * Over the panel a wheel notch steps one month, Ctrl + wheel one year — see `core/calendar-nav.ts`.
+ * Over the panel a wheel notch steps one month, Ctrl + wheel one year: down is later, up is earlier —
+ * see `core/calendar-nav.ts`.
  * A step that would leave no selectable day in view is refused, as the chevrons are.
  *
  * A click anywhere on the field opens the calendar and puts focus in the field (the first empty
@@ -674,7 +676,9 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		if (date) {
 			const refused = isDisabledDate(date);
 			outOfRange.value = refused;
-			if (!refused) ctrl.set(withTime(date));
+			if (refused) return;
+			const value = withTime(date);
+			if (toDates(ctrl.get())[0]?.getTime() !== value.getTime()) ctrl.set(value);
 			return;
 		}
 		outOfRange.value = false;
@@ -698,6 +702,13 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		const target = (empty && root.querySelector<HTMLElement>(`[data-segment="${empty}"]`)) ||
 			root.querySelector<HTMLElement>(".ui-datepicker__entry");
 		target?.focus();
+	};
+
+	const segmentAnchor = (): Date => {
+		const view = viewDate.peek();
+		const year = view.getFullYear();
+		const month = view.getMonth();
+		return new Date(year, month, clampDayToMonth(year, month, focusedDate.peek().getDate()));
 	};
 
 	/** The day the calendar rests on: the committed value, else whatever the segments name so far. */
@@ -1091,6 +1102,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 							readOnly={readOnly}
 							required={required}
 							outOfRange={outOfRange.value}
+							range={{ min: minDate, max: maxDate }}
+							anchor={segmentAnchor}
 							aria-label={ariaLabel}
 							aria-describedby={ariaDescribedby}
 							aria-invalid={ariaInvalid(status)}

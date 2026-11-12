@@ -338,6 +338,8 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 		// Every corpus row is one of the viewer's OWN engagements (the feed is "my projects"), so the
 		// stub path has no stranger to resolve: the client side is the owner, everyone else is on it.
 		viewerAccess: accessOf(viewerIsClient(row), true),
+		// The corpus prices every engagement in dollars, as its boards do (`board-fixtures.ts`).
+		currency: "USD",
 		scopeType: row.scopeType,
 		scopeLabel: row.scopeLabel,
 		starred: row.starred,

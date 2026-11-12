@@ -15,6 +15,8 @@ import ProjectApplyModal from "../islands/ProjectApplyModal.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
+import ViewIntentHost from "../islands/ViewIntentHost.island.tsx";
+import { honouredIntent, type ViewIntent } from "../core/view-intent.ts";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
@@ -28,7 +30,6 @@ import {
 	MetaLine,
 	PermissionLedger,
 	ScopeChecklist,
-	SeatMeter,
 	Section,
 	SellerLine,
 	SpecLedger,
@@ -52,58 +53,35 @@ import {
 /**
  * EntityViewPage — the polymorphic controller for `/view/[entity]` and `/[handle]/view/[item]`.
  *
- * It resolves the archetype ONCE (`resolveArchetype`) and renders one four-track frame for it:
+ * It resolves the archetype ONCE (`resolveArchetype`) and renders one two-track frame for it:
  *
- *   nav strip · media column · hero · conversion lane
+ *   the editorial column (back · header · media · body) · the purchase card
  *
  * # One frame, six bodies
  *
- * Every commerce archetype AND a project render through this frame. A project used to have its
- * own template — a profile-page banner as a hero, boxed stage cards, a lane resolved into the
- * SHELL's navigation slot — so the two pages a reader most often opens back to back were two
- * design systems. Now a project is one more branch of this controller: it has no media column, so
- * its hero spans the two content tracks, its lane is `ProjectLane` in the frame's END column, and its
- * body is composed from the same unboxed primitives as everything else. What differs between a brief
- * and a service is the DATA each shows; the containers, registers, rhythm and gates are shared.
+ * Every commerce archetype AND a project render through this frame. What differs between a brief and
+ * a service is the DATA each shows; the containers, registers, rhythm and gates are shared. A project
+ * has no media and its card is `ProjectLane`; a Session or Group Session wears the Pipeline / One-Off
+ * body with one track node per sitting (Decision #411), and books in the dialog its card opens.
  *
- * A Session or Group Session wears exactly the Pipeline / One-Off frame (Decision #411): the media
- * column, the hero, the lane, and a body whose primary block is the same timeline track — one node
- * per sitting instead of per stage. Booking happens in the slot picker the lane's primary opens, so
- * the page carries no calendar of its own.
+ * # One editorial column (Decision #424)
  *
- * # The Gutenberg reading gravity
+ * The listing reads as one column capped at `--evp-measure-wide` (820px): the category and format
+ * line, the display-register title and the byline — the ONLY place the creator is named — then the
+ * full-width 16:10 media with its thumbnail strip, then the body sections (What you get · Stages &
+ * scope · the reviews and rails). The old media-beside-hero split squeezed the text into a ~450px
+ * column on a 1440px screen; stacking gives both the full measure.
  *
- * The frame is read top-left to bottom-right: the hero's title and identifiers are the primary
- * optical area (leading the DOM, and top-left wherever no media column precedes it); the lane's
- * identity band and price are the strong follow area at the top-right; the archetype body is the
- * weak follow through the centre; and the lane's PINNED footer carries the CTA as the terminal
- * area at the bottom-right — on screen at the moment the reader decides, not at the moment they
- * happen to have scrolled back to the top.
+ * # The purchase card is IN the page
  *
- * # The lane is IN the page
+ * It is the frame's END column for everyone — a signed-in buyer and a guest see one card in one
+ * place — sticky beside the column and bounded so it never scrolls on its own. It carries the price,
+ * the stage or seat summary, the key terms and the one action stack, and no identity.
  *
- * It used to be resolved into the shell's navigation slot, which meant two different presentations
- * of one panel — a drag-resizable middle-nav lane on the page's start edge for a signed-in buyer, a
- * floating glass aside on the same edge for a guest. It is now the frame's END column for everyone,
- * so the transaction sits in one place regardless of who is looking at it, and `viewLaneFor`
- * declines the shell slot for every archetype but an article.
+ * # The canvas carries no price and no purchase control on desktop (§D.7.3)
  *
- * # The canvas still carries no price and no purchase control on desktop (§D.7.3)
- *
- * The offer has exactly one home. An offer stated twice on one screen is an offer that can disagree
- * with itself, and a buyer who sees two prices has been given a reason to distrust both. Below the
- * frame breakpoint the lane is not rendered at all and the transaction is re-homed into the
- * archetype's body-side block — moved, never duplicated (§D.7.4).
- *
- * # Where the media sits, and the one gate this deviates from
- *
- * §D.7.8 asks for a content-first canvas: structured information leading, media trailing, reversed
- * in the DOM. The requested layout puts the media column BEFORE the hero, which the letter of that
- * rule forbids. It is honoured where it does the work: the DOM order here is still nav → hero → media,
- * and the frame's `grid-template-areas` place the media in the earlier visual column. So a keyboard
- * or screen-reader user still reaches the title of the thing they are being asked to buy before a
- * strip of thumbnails, which is the consequence §D.7.8 exists to prevent; only the left-right
- * assignment differs, and grid placement — not `order`, and not `direction` — is what does it.
+ * The offer has exactly one home. Below 1024px of content the card is not rendered and the
+ * transaction is re-homed into the body-side buy bar — moved, never duplicated (§D.7.4).
  *
  * Articles keep their own editorial template (Decision #43): an editorial read is not a purchase,
  * and its lane is a table of contents rather than a transaction.
@@ -146,6 +124,11 @@ export interface EntityViewPageProps {
 	 * listings, and a card pressed inside the framed preview would navigate the frame away from it.
 	 */
 	simulation?: boolean;
+	/**
+	 * The `?intent=` the route read (Decision #422). The page opens it only where it renders that
+	 * control enabled (`honouredIntent`).
+	 */
+	intent?: ViewIntent | null;
 }
 
 export function EntityViewPage(
@@ -159,6 +142,7 @@ export function EntityViewPage(
 		editHref,
 		restricted = false,
 		simulation = false,
+		intent = null,
 	}: EntityViewPageProps,
 ): JSX.Element {
 	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} simulation={simulation} />;
@@ -175,11 +159,10 @@ export function EntityViewPage(
 	const project = archetype === "project" ? view.project : undefined;
 	const isProject = !!project;
 	const meta = inlineMetaFor(view, archetype);
-	const capacity = seatCapacityFor(view, archetype);
 	const rating = item.rating?.asHelper ?? item.rating?.asClient ?? null;
 	const price = headlinePriceFor(view);
 	/*
-	 * A frame with no media column: the hero takes both content tracks. Only a project has no gallery —
+	 * A frame with no media row. Only a project has no gallery —
 	 * its identity is the client's banner strip inside the hero.
 	 */
 	const noMedia = isProject;
@@ -195,6 +178,13 @@ export function EntityViewPage(
 	// The simulation's facts, resolved once and handed to every transactional island, which seed the
 	// commit gate from them (they are separate hydration roots and cannot share a prop).
 	const sim = simulation ? simulationFactsFor(view, offer) : undefined;
+	const opening = honouredIntent(intent, {
+		archetype,
+		offer,
+		authed,
+		blocked,
+		inert: preview || simulation,
+	});
 
 	return (
 		<div
@@ -203,6 +193,7 @@ export function EntityViewPage(
 			data-simulation={simulation ? "true" : undefined}
 		>
 			<ViewStyleAnchor />
+			{intent && <ViewIntentHost intent={opening} />}
 
 			<div class={noMedia ? "evp-frame evp-frame--nomedia" : "evp-frame"}>
 				{
@@ -229,8 +220,7 @@ export function EntityViewPage(
 					/*
 				  ---- The HERO: the structured overview ----
 
-				  It leads in the DOM and sits in the frame's third visual column; see the component
-				  docblock for why those two are allowed to differ here and what keeps that safe.
+				  It leads the editorial column in the DOM and on screen: Meta line, title, byline, summary.
 				*/
 				}
 				<div class="evp-hero">
@@ -244,19 +234,17 @@ export function EntityViewPage(
 						)
 						: (
 							<div class="evp-overview">
-								<h1 class="evp-overview__title">{item.title}</h1>
-
 								{
 									/*
-								  Metadata as ONE muted middot-separated line (§B.11.2). This replaced a row
-								  of up to nine pills, none of which could be clicked — containment is a
-								  promise of interactivity, and offering nine affordances that all refuse is
-								  worse than offering none.
+								  The editorial header (Decision #424): the category and format as ONE muted
+								  middot line above the title (§B.11.2 — never pills), the title in the
+								  display register, then the byline — the ONLY place on the page the creator
+								  is named, so the purchase card never repeats it.
 								*/
 								}
 								<MetaLine items={meta} />
 
-								<p class="evp-overview__summary">{item.summary}</p>
+								<h1 class="evp-overview__title">{item.title}</h1>
 
 								<SellerLine
 									item={item}
@@ -266,7 +254,7 @@ export function EntityViewPage(
 									reviewsHref={rails ? "#evp-reviews" : undefined}
 								/>
 
-								{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}
+								<p class="evp-overview__summary">{item.summary}</p>
 							</div>
 						)}
 
@@ -276,7 +264,7 @@ export function EntityViewPage(
 
 				{
 					/*
-				  ---- The MEDIA column ----
+				  ---- The MEDIA stage — full width under the header ----
 
 				  Every commerce archetype has one. A project has none: `--nomedia` collapses the track
 				  and the hero takes the width.
@@ -294,10 +282,10 @@ export function EntityViewPage(
 
 				{
 					/*
-				  ---- The END column: the conversion lane ----
+				  ---- The END column: the purchase card ----
 
 				  Rendered here rather than resolved into the shell, so both shells show one panel in one
-				  place. It is `display: none` below the frame breakpoint, where the archetype's
+				  place. It is `display: none` below 1024px of content, where the archetype's
 				  body-side block takes the duty.
 				*/
 				}
@@ -436,7 +424,7 @@ export function EntityViewPage(
 			  ---- Reviews: OUTSIDE the frame, and that placement is doing two jobs ----
 
 			  It is a sibling of `.evp-frame`, not a row inside it, so the review list gets the page's
-			  whole content width instead of the ~876px `main` is left with after the conversion lane.
+			  composition width instead of the 820px editorial column.
 
 			  It is also what bounds the lane. A sticky box is constrained by its containing block, and
 			  MEASURED in Chrome that is the grid CONTAINER's content box for a grid item — not the item's
@@ -496,12 +484,17 @@ function ArchetypeBody(
 		? view.item.currency
 		: undefined;
 
-	// ---- Pipeline / One-Off: the continuous timeline track (§D.8.1 / §D.8.2) ----
+	// ---- Pipeline / One-Off: what you get, then the continuous timeline track (§D.8.1 / §D.8.2) ----
 	if (showsStageLedger(archetype, view)) {
 		const stages = view.service!.stages;
 		return (
 			<>
-				<Section title={heading}>
+				{deliverables.length > 0 && (
+					<Section title="What you get">
+						<ScopeChecklist items={deliverables} />
+					</Section>
+				)}
+				<Section title="Stages & scope" id="evp-stages">
 					<StageProgressLedger
 						stages={stages}
 						hideOrdinals={archetype === "one_off" && stages.length === 1}
@@ -509,11 +502,6 @@ function ArchetypeBody(
 						currency={currency}
 					/>
 				</Section>
-				{deliverables.length > 0 && (
-					<Section title="Included in every engagement">
-						<ScopeChecklist items={deliverables} />
-					</Section>
-				)}
 				<TeamRoles view={view} />
 			</>
 		);

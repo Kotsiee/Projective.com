@@ -119,7 +119,8 @@ aligned on time and location.
   rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
-  move is a move, never an extension. **Not built yet** (Decision #343, ruling C6 D8).
+  move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer
+  than a day is not moved by proposing a time (Decision #343, ruling C6 D8).
 
 ###### B. Verification: The Digital Handshake
 
@@ -596,6 +597,23 @@ need a 4-week SEO Audit"), but the freelancer provides the template. The client 
 service, and the corresponding Kanban, Timeline, or Calendar is automatically instantiated based on
 the freelancer’s pre-set workflow.
 
+**The seller decides how intensity sells (Decision #417).** Every stage of a Pipeline service states
+its intensity — Low, Standard or High (§The Weighting Engine) — and the service sells it one of two
+ways. **Fixed**, the default for a productised service: each stage sells at its one intensity and its
+one price, and the stages a client instantiates arrive with both locked, so no ticket can change
+either. **Tiered**: the client picks the intensity per ticket, priced at the Standard price scaled by
+the platform's tier multiples, or at the Low and High prices the seller set for that stage — a Low
+price never above the stage's price, a High price never below it. Either way the terms are the
+seller's commitment once the service is instantiated: like the revision allotment, they are frozen on
+the client's copy.
+
+**Who adds a stage (Decision #421).** On a project the client architected, the client adds stages to
+it. Once the client has added a freelancer's service, its stages are the seller's template, so only a
+freelancer working the engagement — one holding a seat on one of its stages — adds a stage, and the
+client does not; every Add stage control is withheld from the client there. The freelancer prices
+the stage they add, and the client still decides whether to fund any ticket in it. Adding a stage
+gives its author no seat on it: a seat still comes only from an accepted invitation or application.
+
 ##### Extension Logic
 
 For both Projects and Services, the "End" is non-binding. If a client and freelancer agree to
@@ -630,13 +648,40 @@ is public**; an unlisted or private engagement is never named. The project owner
 at `/projects/[slug]/preview` — the same page without the recommendation rails, without reviews, and
 with the applicant's actions described rather than offered.
 
-**The transaction has exactly one home.** The contextual navigation lane carries the identity line,
-the price, the primary and secondary actions and the summary ledger; the main canvas carries only
-evaluation material. This is a product rule and not merely a layout preference: an offer stated
-twice on one screen is an offer that can disagree with itself, and a buyer who sees two prices has
-been given a reason to distrust both. Below the mobile breakpoint the lane is not rendered at all
-and the transaction is re-homed into the body — moved, never duplicated. The full render contract is
+**The page reads as one editorial column beside one purchase card (Decision #424).** The column, at
+a reading width, leads with the category and format as one quiet line, the title, and the byline —
+the only place the creator is named — then the full-width media, then what the buyer gets, the
+stages and scope, the reviews and related work. The purchase card sits beside it and stays in view as
+the reader scrolls: the price, the stage or seat summary, the key terms (delivery, revisions, escrow
+protection) and the actions, in that order, never cut off and never behind a scrollbar of its own.
+
+**The transaction has exactly one home.** The purchase card carries the price, the actions and the
+key terms; the editorial column carries only evaluation material. This is a product rule and not
+merely a layout preference: an offer stated twice on one screen is an offer that can disagree with
+itself, and a buyer who sees two prices has been given a reason to distrust both. Below the desktop
+breakpoint the card is not rendered at all and the transaction is re-homed into the body — moved,
+never duplicated. The card holds **one** filled commit — the listing's own verb (Buy now · Book
+session · Reserve seat · Continue) — with Add to basket as a quieter outlined alternative and one
+quiet route to ask the seller a question. The full render contract is
 [`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md) §D.7–§D.8.
+
+**Configuring an order happens in one two-column dialog (Decision #424).** Scoping a One-Off,
+writing a brief, booking a session and reserving cohort seats all open the same dialog the public
+profile uses for a listing (§The Public Profile): the buyer's inputs on the left in a fixed order —
+the commitment (what to fund now, the date and time, or the seats), what they need, then the
+seller's own questions — and, on the right, the order as it stands: the listing's cover, title and
+seller, a line per stage, time or seat, and the total the buyer will be charged, updating as they
+choose. The footer states the order in words and offers Cancel beside one commit, **Continue to
+checkout**; nothing is charged until checkout. A failure says what went wrong with a Try again
+beside it, and a provider with no open times says so and offers the next fortnight — the picker is
+never silently absent. On a phone the dialog is a bottom sheet with the order summary and the commit
+pinned.
+
+**A cohort is never a dead end.** When a group session has no cohort enrolling, or the open one is
+full, the buyer can **join its waitlist** in one press — recorded against the listing so the seller
+can see the demand — or ask for **a private cohort for their team**, which opens a scoped request to
+the seller. A disabled "No cohort open" button tells a motivated buyer nothing; a waitlist keeps
+them.
 
 **What every archetype must disclose before purchase.** These are business requirements, not
 presentation:
@@ -651,7 +696,9 @@ presentation:
   Product the **licence permissions in full**. A licence abbreviated to a label is not disclosed: a
   buyer who cannot tell whether commercial use is included has not been told what they are buying.
 - **Where the money sits** — for every archetype that escrows, the escrow notice is part of the
-  offer, because "funds held in escrow" is the protection the platform charges for.
+  offer — on the purchase card and in the order dialog — because "funds held in escrow" is the
+  protection the platform charges for. It is never shown for a format that does not escrow at
+  checkout: a protection claim the platform has not made is not a disclosure.
 - **Remaining capacity, where capacity is finite** — open seats on a cohort, open seats or roles on
   a Pipeline stage. Stated as a number in words, so it survives being read aloud.
 
@@ -951,7 +998,7 @@ team members.
   Business on Business Free walks four steps, never held at 80% by one it could not finish) ·
   **Publish**. Each step offers a control only to a member who may act on it, and the setup band
   carries ONE filled control — the viewer's next step; when that is **Add money**, the act that
-  starts a financial flow, it is the amber one and opens the wallet's top-up. **Publishing is not
+  starts a financial flow, it is the tier-1 commit and opens the wallet's top-up. **Publishing is not
   held behind the earlier steps** — KYB waits on reviewers and a top-up on the payment processor —
   so a member who may publish (`manage_settings`) publishes a draft from the Overview at any time:
   the band's fill when it is their first open step, a quieter control otherwise. A draft Business
@@ -2154,9 +2201,12 @@ holding its time.
 
 - A **courtesy** call carries **no financial consequence**, because there is no money in it. A late
   cancel (inside the platform cancellation window) or a no-show is recorded as a **reliability
-  signal only**. That signal feeds Standing at a low weight, and only from a **presence-verified**
-  no-show — never a self-reported mark — with at most one mark per counterparty every 30 days, so it
-  cannot be used for retaliation (Decision #343, ruling C6 D7). **Not built yet.**
+  signal only**. A no-show feeds Standing at a low weight, two points that lapse after 90 days
+  (`finance-model.md` §16.3; Decision #419), and only when it is **presence-verified**: the room
+  recorded the person who marked it there inside the presence window, and the absent person not. A
+  self-reported mark never does, and neither does a late cancel. At most one mark per counterparty
+  every 30 days counts, so it cannot be used for retaliation (Decision #343, ruling C6 D7). The
+  absent person is told the mark costs them Standing.
 - A **paid** consultation follows the Session cancellation rules: a late cancellation forfeits 100%
   (Decision #343, ruling C2 (a), which settles the old conflict with `finance-model.md` §4), and the
   reschedule lockout and the late-booking grace of §Stage Formats 2C apply through the session rail.
@@ -2203,6 +2253,15 @@ The financial structure of a hire adapts to the workflow of the project type.
 | **One-Off**   | **Per Stage**   | Full negotiation (Counter-offers allowed).                      |
 | **Pipelines** | **Per Ticket**  | Negotiation on the "Unit Price" for all tickets in that stage.  |
 | **Sessions**  | **Per Session** | **Fixed Price:** Set by the Freelancer/Service. No negotiation. |
+
+##### A Pipeline ticket's price follows its intensity
+
+A Pipeline stage's Unit Price is its **Standard** per-ticket price. A ticket's price in each stage is
+that Unit Price at the intensity the ticket runs at there — **Low 0.75× · Standard 1.0× · High
+1.5×** (§The Weighting Engine, Intensity pricing). A stage instantiated from a service follows the
+service's terms instead: one fixed intensity and price, or tiered prices the seller may set
+themselves (§Productised Services). The price that funds and escrows a ticket is the same figure
+the composer quotes, computed by the database (`projects.fn_ticket_stage_price`, Decision #414).
 
 ##### Why Sessions are Fixed
 
@@ -2338,6 +2397,30 @@ Clients can refine the intensity of a specific ticket using Difficulty Multiplie
 
 > **Formula:** $W_{ticket} = \text{DifficultyMultiplier}$
 
+##### Intensity pricing — the same choice, on its own scale
+
+Intensity is one choice read on two separate scales (Decision #414). The **Difficulty Multiplier**
+above is **bandwidth**: it is what $W_i$ and the caps measure, and it never prices anything. The
+**price** of a ticket in a stage scales on a gentler curve of its own, applied to the stage's
+Standard per-ticket price:
+
+| Intensity    | Bandwidth ($W_i$) | Price                              |
+| :----------- | :---------------- | :--------------------------------- |
+| **Low**      | 0.5×              | 0.75× (or the seller's Low price)  |
+| **Standard** | 1.0×              | 1.0×                               |
+| **High**     | 2.0×              | 1.5× (or the seller's High price)  |
+
+So a High ticket draws two units of a freelancer's capacity and costs one and a half times the
+stage rate. The choice is made per stage of the ticket, defaulting to the ticket's own. Where the
+stage was instantiated from a service, the seller's terms govern (§Productised Services): a service
+sold at **one fixed intensity** (the default) holds every ticket in that stage to the seller's
+intensity and price — the client reads them and cannot change them — while a service sold at
+**tiered intensity** lets the client pick Low, Standard or High per ticket, at the seller's own Low
+and High prices where set, else at 0.75× and 1.5× of the stage's price. On a client-architected
+project every stage is tiered at the platform multipliers. The composer quotes, and every funding
+path holds, the same per-stage price (`projects.fn_ticket_stage_price`). A workload report that ends
+with the client raising a ticket's $W_i$ moves bandwidth only, never the price.
+
 How efficiently a freelancer actually works — the time they take against the time they said, the
 deadlines they meet, how far they slow down when several projects run at once — is a separate,
 measured number: the Reliability Index (§Reputation & Discovery 1). Search ranking weighs both
@@ -2403,6 +2486,17 @@ are built.
 - **Purchasing Gate:** A ticket cannot be purchased through any channel until a **Description** has
   been added. A title-only ticket is a draft placeholder — it is visible for planning but not yet
   sellable.
+
+##### Due dates, stage by stage
+
+A ticket may carry its own **due date in each stage** it runs through, set in that stage's settings
+on the ticket; the ticket is due on the **latest** of them (Decision #414). A one-stage ticket is due
+when its stage is; a ticket whose stages carry no dates keeps its own single date. The database
+derives the ticket's date from its stages' (`fn_enforce_ticket_due_date`), so the two never
+disagree, and the Timeline draws the ticket stage by stage — each stage's work from the step before
+it falls due (or the claim) to its own date. A stage date is a due date like the ticket's: it needs
+the project's deadline bonus terms (§1 One-Off Projects, Soft Deadline), and once the ticket is
+claimed its stage dates are frozen with its other terms (Decision #291).
 
 ##### Payment Tracking (Installments)
 
@@ -2502,7 +2596,11 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   delivering — until the work is handed back for review, or the ticket is reassigned or reset. This
   applies to the Admin/Owner seat whether or not freelancers have been onboarded to the project:
   before a claim the client moves freely, and payment state is a badge for the client, never a
-  barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.) On the
+  barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.) An
+  unclaimed ticket — funded or not — goes to any column, the **New** backlog and **Completed**
+  included. New is the stage-less backlog, so claimed work never returns there: its hold, its price
+  and its delivery are reckoned against the stage it sits in. While a ticket is being dragged, every
+  column it may not enter reads locked and says why (Decision #421). On the
   client's side, an unclaimed ticket is moved by the project's review authority and the ticket
   managers it granted (below) — nobody else on the project (Decision #338, ruling P5 (a)). **Not
   built yet:** today any participant can move an unclaimed ticket.
@@ -4271,13 +4369,16 @@ Hex values define the base visual target.
   active states and core workflow commits (DESIGN_SYSTEM §B.8.1, §B.4.2).
 - **Success (#268C66):** Used for "Complete" status and approved submissions.
 - **Warning (#D98216):** Used for "In Progress" status and time-sensitive alerts. _(Drift: the
-  engine's warning seed is #F19C13 — #ca8100 light, #ed990d dark — so warning and Accent Amber are
-  not one colour in code; #D98216 now belongs to the accent. Pending a ruling, Decision #157 (c).)_
+  engine's warning seed is #F19C13 — #ca8100 light, #ed990d dark. #D98216 seeded the old amber
+  accent until Decision #424 retired it. Pending a ruling, Decision #157 (c).)_
 - **Danger (#D94141):** Used for "Incomplete" status, errors, and no-show claims.
-- **Accent Amber (#D98216):** Terminal financial / conversion commits only — a commit inside a
-  financial or conversion flow, or the act that starts one: every checkout commit (Pay / Place
-  Order), a listing's Buy now / Book / Reserve, Fund Escrow (DESIGN_SYSTEM §B.8.1 tier 1; scope
-  open as Decision #157 (j)). The profile's Hire is teal by owner direction (Decision #183).
+- **Conversion Accent — monochrome (#191C1D fill, white ink):** Terminal financial / conversion
+  commits only — a commit inside a financial or conversion flow, or the act that starts one: every
+  checkout commit (Pay / Place Order), a listing's Buy now / Book / Reserve and its dialogs'
+  Continue to checkout, Fund Escrow (DESIGN_SYSTEM §B.8.1 tier 1; scope open as Decision #157 (j)).
+  It is the page's own ink inverted — never a hue, so a commit can never be mistaken for a warning
+  or a delete (Decision #424, replacing Accent Amber). The profile's Hire is teal by owner direction
+  (Decision #183).
 
 #### 2. Typography & Contrast
 
@@ -4292,8 +4393,8 @@ Hex values define the base visual target.
 - **Surface Layer (#212121):** Elevated cards and navigation bars.
 - **Text Main (#FFFFFF):** Maximum readability for dark backgrounds.
 - **Text Secondary (#B3B3B3):** Muted contrast for secondary information.
-- **Accent Amber (#E58A18):** The tonal lift of the accent for dark mode, still carrying dark ink
-  (fixed polarity — DESIGN_SYSTEM §A.1.2).\
+- **Conversion Accent (#E0E3E3 fill, near-black ink):** The accent in dark mode — the inversion
+  flips with the theme (DESIGN_SYSTEM §A.1.2, Decision #424).\
 
 ### Geometry & Elevation
 

@@ -3,6 +3,7 @@ import "../styles/lane.css";
 import { cx } from "../../core/cx.ts";
 import { Icon } from "../../icons/mod.ts";
 import { Tooltip } from "../../feedback/islands/Tooltip.tsx";
+import { Kbd } from "../../utils/components/Kbd.tsx";
 import { TabStrip } from "./TabStrip.tsx";
 
 /**
@@ -226,18 +227,30 @@ export interface LaneSearchProps {
 	/** The leading magnifier glyph — supplied by the consumer so the package carries no icon set. */
 	icon: VNode;
 	onInput: (value: string) => void;
+	/**
+	 * The field's ref, for a host that focuses it from a keyboard shortcut. Named (not `ref`) for the
+	 * same reason as {@link LaneIconButtonProps.triggerRef}.
+	 */
+	inputRef?: RefObject<HTMLInputElement>;
+	/**
+	 * A key hint drawn as a trailing {@link Kbd} chip for the eye only (the host names the keys with
+	 * `aria-keyshortcuts`). Hidden while the field is focused or holds text, and on touch devices.
+	 */
+	hint?: string;
 }
 
 /**
  * LaneSearch — the lane's `sm` search field (`--fld-h-sm`, `--fld-r-sm`) with a leading,
- * pointer-transparent glyph; every {@link LaneIconButton} beside it in a {@link LaneBar} shares its
- * block size. The full border on focus is permitted: this is an interactive control (§B.4).
+ * pointer-transparent glyph and an optional trailing key hint; every {@link LaneIconButton} beside it
+ * in a {@link LaneBar} shares its block size. The full border on focus is permitted: this is an
+ * interactive control (§B.4).
  */
 export function LaneSearch(props: LaneSearchProps): JSX.Element {
 	return (
 		<div class="ui-lane-search">
 			<span class="ui-lane-search__icon" aria-hidden="true">{props.icon}</span>
 			<input
+				ref={props.inputRef}
 				class="ui-lane-search__input"
 				type="search"
 				placeholder={props.placeholder}
@@ -245,6 +258,11 @@ export function LaneSearch(props: LaneSearchProps): JSX.Element {
 				value={props.value}
 				onInput={(e) => props.onInput((e.target as HTMLInputElement).value)}
 			/>
+			{props.hint && (
+				<span class="ui-lane-search__hint" aria-hidden="true">
+					<Kbd size="sm">{props.hint}</Kbd>
+				</span>
+			)}
 		</div>
 	);
 }

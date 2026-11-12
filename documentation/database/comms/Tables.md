@@ -283,10 +283,18 @@ Containers for 1:1 or group conversations separate from project work.
 | `emoji`              | text                     | An entity channel's emoji mark (Decision #308), drawn in place of the `#`; ≤ 16 code units (`ck_dm_threads_channel_emoji`; TS twin `CHANNEL_EMOJI_MAX`). NULL on every other kind (`ck_dm_threads_entity_channel`). |
 | `is_default`         | boolean                  | The `general` channel every entity is created with (`comms.tg_entity_default_channel`). One per entity (`uq_dm_threads_channel_default`), never archivable (`ck_dm_threads_default_live`, and `comms.archive_entity_channel` refuses it). |
 | `archived_at`        | timestamptz              | A retired channel (nothing is hard-deleted): out of the console list, refuses new messages (`send_dm_messages_if_participant`); history and participants stay. |
+| `ref`                | text NOT NULL            | **Decision #339, ruling N1.** The conversation's route address: `cht-` + 10 symbols, opaque, prefixed and permanent (Decision #88). In `ref`, not `slug`, because `slug` holds an entity channel's `#` name (#306). `trg_dm_threads_ref` (`00001890`) → `security.fn_ref_guard('cht')` **always** mints it on insert (a supplied value is replaced, so no caller chooses an address) and refuses any change (`23514`). `ck_dm_threads_ref_shape` = the `@projective/types/slugs` pattern (`SLUG_PREFIXES.thread`), pinned by `slug.contract.test.ts`; `dm_threads_ref_key UNIQUE (ref)`. No DEFAULT. Zod: `ThreadRefSchema`, `DmThreadSummaryRowSchema` (`@projective/types/messaging`). |
+| `last_message_at`    | timestamptz              | **Derived** (CAS §6.1.1): the thread's newest undeleted message's `created_at`; NULL until the first message. Advanced by `comms.tg_dm_thread_summary` (`trg_dm_messages_thread_summary`, AFTER INSERT on `dm_messages`) only when `(created_at, id)` is newer than the recorded pair, so seeds and out-of-order inserts never move it back. A client write is refused (`trg_dm_threads_derived` → `security.fn_guard_derived_columns`; `authenticated` holds no `INSERT`/`UPDATE` on the table, `00002520`). |
+| `last_message_id`    | uuid                     | **Derived**, with `last_message_at`: that message's id. **No FK** (the pointer is derived, and `dm_messages` already references this table). An empty thread is `last_message_id IS NULL`; `ck_dm_threads_last_message_pair` keeps the two NULL together. `comms.inbox_tails(…, 1)` reads through it. |
 
 `ck_dm_threads_entity_channel`: `owner_type`, `owner_entity_id` and `slug` are set **exactly when**
 `kind = 'entity_channel'`, and every other kind carries no topic, no default flag and no archive
 stamp, and no emoji (Decision #308).
+
+**No client write** (`00002520`): every thread is opened, renamed, photographed and archived by a
+definer door (`00001300`) and there is no `INSERT`/`UPDATE` policy, so `authenticated` holds neither
+privilege on the table and a client write naming any column is refused (`42501`). There is no
+`message_count`: nothing reads one, and an empty thread is `last_message_id IS NULL`.
 
 #### Entity channels (Decision #306)
 
@@ -359,7 +367,7 @@ The individual message entries for DMs.
 | :---------------- | :------ | :-------------------------- |
 | `thread_id`       | uuid    | FK → `comms.dm_threads.id`. |
 | `sender_user_id`  | uuid    | FK → `org.users_public.user_id`. |
-| `project_id`      | uuid    | The project a request message is about (`comms.send_request_message`); read by the PII filter. |
+| `project_id`      | uuid    | The project the DM is about (Decision #339, ruling N1), so the project's Private Messages group draws the same thread the inbox opens. **Settled by `comms.tg_bind_dm_project`** (`trg_dm_messages_bind_project`, BEFORE INSERT, sorting before the PII mask): a supplied id is kept only when the sender and every other undeleted participant are parties to it (`projects.fn_engaged_projects`); otherwise it is derived (`comms.fn_dm_protected_project(thread, sender, NULL)`, a protected project the sender and another member share) or NULL. An entity-channel message carries none. A hiring request keeps its project (a pending invitee or applicant is a party). No FK. Read by the PII filter. |
 | `body`            | text    | Message content — stored masked while the pair's engagement is protected. The one source of words: search, previews and the PII mask read it. |
 | `body_delta`      | jsonb   | NULL, or the body's inline formatting as a Quill Delta (`MessageDeltaSchema` in `packages/types/projects/message-rich.ts`: runs of text with Bold · Italic · Underline · Strikethrough). Its runs, joined, spell `body` exactly — see [`comms.project_messages`](#commsproject_messages). `dm_messages_body_delta_object`: `NULL` or a JSON object. Nulled by `comms.tg_mask_dm_message_pii` when it rewrites the body, and on every write where it does not spell the body (`comms.fn_delta_text`, SEC L2). |
 | `reply_to_id`     | uuid    | NULL, or the message this one answers. **Self-FK** `dm_messages_reply_to_id_fkey` → `comms.dm_messages.id` `ON DELETE SET NULL`; must be in the same **thread** (`comms.tg_guard_dm_message_reply`). |
@@ -370,8 +378,14 @@ The individual message entries for DMs.
 | `auto_response_id` | uuid  | **Decision #156.** Set only on a message `comms.tg_dm_auto_reply` sent for its author: the rule that fired it. Stops an auto-reply answering an auto-reply, dedupes a rule per thread per day and keeps an automatic message from accepting a request. No FK (a deleted rule leaves its past messages marked). A client write may not set it (`trg_dm_messages_derived` → `security.fn_guard_derived_columns`). |
 
 Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
-of a thread and its preview row; `idx_dm_messages_reply_to (reply_to_id) WHERE reply_to_id IS NOT
-NULL` — the replies to a message, and the self-FK's `ON DELETE SET NULL` lookup.
+of a thread, its preview row and `comms.inbox_tails`' k > 1 walk; `idx_dm_messages_reply_to
+(reply_to_id) WHERE reply_to_id IS NOT NULL` — the replies to a message, and the self-FK's `ON DELETE
+SET NULL` lookup; `idx_dm_messages_project (project_id, thread_id) WHERE project_id IS NOT NULL` — a
+project's Private Messages group (the threads holding a message stamped with it).
+
+Triggers (`00001840`) besides the mask, reply guard, promotion, shield and auto-reply:
+`trg_dm_messages_bind_project` (BEFORE INSERT, `project_id` above) and
+`trg_dm_messages_thread_summary` (AFTER INSERT, the thread's `last_message_at` / `last_message_id`).
 
 ---
 

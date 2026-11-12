@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -9,8 +9,6 @@ import type { SettingsSectionKey } from "@projective/types/settings";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { useEffectiveContext } from "@features/shell/core/effective-context.ts";
-import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { shortcutOn } from "@features/shortcuts/core/shortcut-registry.ts";
 import { entryByAnchor, settingsHref, visibleSections } from "../core/settings-registry.ts";
 import { requestSettingsFocus } from "../core/settings-bridge.ts";
 import type { AttentionTone } from "../core/attention-model.ts";
@@ -27,8 +25,8 @@ import "../styles/settings-lane.css";
  * uses), each section marked when it needs attention, and the shell's collapse to an icon rail.
  *
  * Choosing a section NAVIGATES to its page; choosing an entry of the section already open asks the
- * page body to bring it into view (the two are separate islands). `/` focuses the search unless the
- * person is typing.
+ * page body to bring it into view (the two are separate islands). Ctrl/Cmd+Shift+/ focuses the search,
+ * as it does every lane's (Decision #418).
  */
 
 export interface SettingsLaneProps {
@@ -43,7 +41,6 @@ export default function SettingsLane(props: SettingsLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
 	const query = useSignal("");
 	const anchor = useSignal<string | null>(null);
-	const searchRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		try {
@@ -56,20 +53,7 @@ export default function SettingsLane(props: SettingsLaneProps): JSX.Element {
 		};
 		readHash();
 		globalThis.addEventListener("hashchange", readHash);
-		const onKey = (event: KeyboardEvent) => {
-			if (!isFocusSearchShortcut(event) || isEditableTarget(event.target as Element | null)) return;
-			if (!shortcutOn("focus-search") || document.querySelector(".ui-dialog")) return;
-			const input = searchRef.current?.querySelector<HTMLInputElement>("input");
-			if (!input || input.offsetParent === null) return;
-			event.preventDefault();
-			input.focus();
-			input.select();
-		};
-		document.addEventListener("keydown", onKey);
-		return () => {
-			globalThis.removeEventListener("hashchange", readHash);
-			document.removeEventListener("keydown", onKey);
-		};
+		return () => globalThis.removeEventListener("hashchange", readHash);
 	}, []);
 
 	const setCollapsed = (next: boolean) => {
@@ -154,7 +138,6 @@ export default function SettingsLane(props: SettingsLaneProps): JSX.Element {
 							selected={selected}
 							query={query}
 							marks={props.marks}
-							searchRef={searchRef}
 							onSelect={select}
 						/>
 					</div>

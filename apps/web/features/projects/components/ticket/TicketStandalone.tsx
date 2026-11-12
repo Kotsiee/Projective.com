@@ -59,6 +59,8 @@ export function TicketStandalone(props: TicketStandaloneProps): JSX.Element {
 	const baseline = {
 		viewerIsClient: page.viewerIsClient,
 		sessionKind: resolveSessionKind(page.format, null),
+		engagementKind: page.engagementKind,
+		viewerSeated: page.viewerStageIds.length > 0,
 	};
 	const access = useSignal<BoardAccess>(resolveBoardAccess(baseline, null));
 	useEffect(() => {

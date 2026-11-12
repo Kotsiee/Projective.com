@@ -104,8 +104,8 @@ function toItem(event: CalendarEvent): GanttItem {
 		progress: null,
 		meta: masked ? undefined : (event.meta ?? event.location ?? undefined),
 		status,
-		// A masked block is somebody else's commitment; it is not the viewer's to drag.
-		movable: !masked,
+		// A masked block is somebody else's commitment, and a fixed one a move the host cannot keep.
+		movable: !masked && event.fixed !== true,
 		href: masked ? undefined : event.href,
 		data: event,
 	};

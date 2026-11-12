@@ -232,7 +232,7 @@ role after those rules have run (`live-coordination-writes.ts`).
 | `id`           | uuid                       | PK — the key a vote and a per-attendee write address.                                           |
 | `event_id`     | uuid                       | → `events` (CASCADE).                                                                           |
 | `user_id`      | uuid                       | → `org.users_public` (SET NULL). Nullable, so an invitee with no account is still a seat.       |
-| `role`         | `scheduling.attendee_role` | `host` · `participant` · `optional`.                                                            |
+| `role`         | `scheduling.attendee_role` | `host` · `participant` · `optional`. `optional` changes the RSVP, never the vote: a reschedule's majority is counted over every seat with an account except the host's, optional seats included (`eligibleVoterCount`, `fn_event_has_voters`, `get_session_workspace`; Decision #343, ruling C6 D5). |
 | `response`     | `scheduling.rsvp_response` | `pending` is a real answer ("has not replied"), not the absence of one.                         |
 | `responded_at` | timestamptz                | `ck_attendee_pending_unanswered`: `pending` ⇒ `NULL`, so clearing an answer clears its instant. |
 | `note`         | text                       | ≤ 280.                                                                                          |
@@ -299,20 +299,18 @@ single-column key would prove the winner is _a_ proposal; the composite one prov
 ### `scheduling.reschedule_proposals`
 
 A slot offered on a round. `ck_proposal_span` (`ends_at > starts_at`, strict — a replacement meeting
-is not an instant), `ck_proposal_role` (`host` · `attendee`), `ck_proposal_host_preapproved` (a
-host's own slot is on the ballot on arrival; an attendee's waits for the host's approval),
-`uq_proposal_slot` (the same slot twice would split the vote), and
-`uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs point at. At most
-twelve rows per round (`RESCHEDULE_PROPOSALS_MAX`), enforced by the `trg_cap_reschedule_proposals`
-trigger ([Functions §9](Functions.md)) — a CHECK cannot count sibling rows. A row is written, or
-approved, only while its round is open (`trg_guard_reschedule_proposal_write`), and on a live vote
-the same statement re-stamps the round's `resolves_at` (`fn_vote_deadline`). An attendee's slot the
-host ACCEPTED on a 1-on-1 is marked approved as the round closes on it.
-
-> ⚠️ **Still open (2026-09-28):** the twelve slots are shared by every proposer, approved or not, so
-> one attendee can fill a round with unapproved slots and leave the host `ballot_full`; and
-> `ck_proposal_span` asks only `ends_at > starts_at`, so nothing bounds a slot's LENGTH but the
-> latest instant the route accepts (`SLOT_EPOCH_MAX_MS`). See [Functions.md](Functions.md) §9.
+is not an instant — and at most 24 hours long, `RESCHEDULE_SLOT_MAX_HOURS`), `ck_proposal_role`
+(`host` · `attendee`), `ck_proposal_host_preapproved` (a host's own slot is on the ballot on
+arrival; an attendee's waits for the host's approval), `uq_proposal_slot` (the same slot twice would
+split the vote), and `uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs
+point at. The `trg_cap_reschedule_proposals` trigger ([Functions §9](Functions.md)) holds what a
+CHECK cannot, because it has to read the event and count sibling rows (Decision #343, ruling C6 D8):
+a slot keeps its event's length, a round holds at most twelve rows (`RESCHEDULE_PROPOSALS_MAX`), and
+one attendee has at most three unapproved rows on it (`RESCHEDULE_ATTENDEE_PROPOSALS_MAX`; the
+host's are outside the quota). A row is written, or approved, only while its round is open
+(`trg_guard_reschedule_proposal_write`), and on a live vote the same statement re-stamps the round's
+`resolves_at` (`fn_vote_deadline`). An attendee's slot the host ACCEPTED on a 1-on-1 is marked
+approved as the round closes on it.
 
 ### `scheduling.proposal_votes`
 

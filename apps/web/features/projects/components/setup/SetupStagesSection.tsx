@@ -291,10 +291,19 @@ export function StageListSection(
 				</ul>
 			</DndContext>
 
-			<button type="button" class="psu-add" onClick={add}>
-				<Icon name="plus" />
-				Add {itemLabel}
-			</button>
+			{setup.kind === "service"
+				? (
+					<Note>
+						This project runs on a freelancer's service, so new {itemLabel}s are added by the
+						freelancer working it.
+					</Note>
+				)
+				: (
+					<button type="button" class="psu-add" onClick={add}>
+						<Icon name="plus" />
+						Add {itemLabel}
+					</button>
+				)}
 		</Section>
 	);
 }

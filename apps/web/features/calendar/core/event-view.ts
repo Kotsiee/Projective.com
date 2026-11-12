@@ -2,6 +2,7 @@ import { calendarTime } from "@projective/ui/calendar";
 import { createModalStack } from "@projective/ui/overlay";
 import type { IconName } from "@projective/ui/icons";
 import type { MoneyView } from "@projective/types/finance";
+import { entryEditable } from "./calendar-authoring.ts";
 import type {
 	CalendarEvent,
 	CalendarEventKind,
@@ -25,17 +26,21 @@ import {
 	isRescheduleClosed,
 	leadingProposal,
 	majorityProposal,
+	proposerHasRoom,
 	RESCHEDULE_REFUSAL_COPY,
 	rescheduleLockoutAt,
 	rescheduleModeFor,
 	roundHasRoom,
 	settleVote,
+	slotRefusal,
 	viewerAttendee,
 	voteIsOpen,
 	voteOf,
 	voteQuorum,
 } from "@projective/types/scheduling";
 import type { EventAccess } from "./event-access.ts";
+
+export { entryEditable, timesMovable } from "./calendar-authoring.ts";
 
 /**
  * event-view — the pure model behind the Event Modal: its modal-stack instance, its tab vocabulary,
@@ -223,15 +228,6 @@ export function viewerSeat(event: CalendarEvent) {
 }
 
 /**
- * Whether the viewer may change this entry from a calendar. The host's alone, and not a discovery call,
- * which changes only through its own doors, nor an engagement's event on an aggregate page, which moves
- * only through its negotiation (`hostRefusal`): offering either a Save would offer a certain refusal.
- */
-export function entryEditable(event: CalendarEvent): boolean {
-	return event.viewerIsHost === true && !event.callId && !event.projectId;
-}
-
-/**
  * Whether the composer treats an entry as a moment — a Reminder or a deadline, one instant with no end
  * to move — by its kind and by what it was opened as, never by its current span: read from the span,
  * an end set onto the start turned an Event into a Reminder and took its End picker away.
@@ -246,14 +242,6 @@ export function composesAsMoment(
 		return kinds.some((k) => k.value === draft.kind && k.instant === true);
 	}
 	return entryClassOf(opened) === "reminder";
-}
-
-/**
- * Once somebody who can vote is on an entry its time moves only by agreement
- * (`trg_guard_rostered_event`). A guest cannot vote, so a host with only guests moves it, and they are told.
- */
-export function timesMovable(event: CalendarEvent): boolean {
-	return entryEditable(event) && eligibleVoterCount(event.roster ?? []) === 0;
 }
 
 /**
@@ -559,8 +547,18 @@ export function rescheduleView(
 		 * offered is a second question, because the server applies the lockout twice — once to the
 		 * event being moved and again to the slot being offered — so the candidate is judged by
 		 * {@link proposalGate} at the point the surface actually has one.
+		 *
+		 * "At all" includes the planner's ceilings, in its order: an event longer than the slot ceiling
+		 * has no slot that may replace it, a full round takes no slot, and an attendee whose own slots
+		 * fill their quota offers no more until the host answers one.
 		 */
-		propose: gate(() => negotiation && !roundHasRoom(negotiation) ? no("ballot_full") : OK),
+		propose: gate(() => {
+			const ceiling = slotRefusal(event.start, event.end, event.start, event.end);
+			if (ceiling) return no(ceiling);
+			if (!negotiation) return OK;
+			if (!roundHasRoom(negotiation)) return no("ballot_full");
+			return proposerHasRoom(negotiation, isHost) ? OK : no("proposer_quota");
+		}),
 
 		open: gate(() => {
 			if (closed) return no("vote_closed");

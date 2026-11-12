@@ -461,3 +461,77 @@ Deno.test("accents are token NAMES, never colours", () => {
 	for (const token of all) assert(/^--[a-z-]+$/.test(token), token);
 });
 // #endregion
+
+// #region Stage due dates
+const dueDay = (days: number) => at(days).slice(0, 10);
+
+Deno.test("project scope: a ticket dated stage by stage is drawn on each stage it is due in", () => {
+	const dated = card({
+		id: "t1",
+		stageId: "s1",
+		status: "in_progress",
+		claimed: true,
+		claimedAt: at(-6),
+		dueDate: dueDay(9),
+		stages: [
+			{ ...ref("s1", "Design", 0, "active"), dueAt: dueDay(2) },
+			{ ...ref("s2", "Build", 1, "draft"), dueAt: dueDay(9) },
+		],
+	});
+	const page = buildProjectTimeline(
+		board({ stages: [stage({ id: "s1", order: 0 }), stage({ id: "s2", order: 1 })], cards: [dated] }),
+		{ nowMs: NOW },
+	);
+	const mine = page.items.filter((i) => i.ticketId === "t1");
+	assertEquals(mine.map((i) => [i.laneId, i.dueStageId, i.kind]), [
+		["stage:s1", "s1", "bar"],
+		["stage:s2", "s2", "bar"],
+	]);
+	// The second step starts where the first falls due; the first starts at the claim.
+	assertEquals(mine[0].start, at(-6));
+	assertEquals(mine[1].start, mine[0].end);
+	assertEquals(mine.map((i) => i.status), ["In progress", "Upcoming"]);
+	assertFalse(page.items.some((i) => i.id === "ticket-item:t1"), "no second, whole-ticket item");
+});
+
+Deno.test("a stage the ticket is not dated in draws nothing; an unclaimed first step is a milestone", () => {
+	const dated = card({
+		id: "t2",
+		stages: [
+			{ ...ref("s1", "Design", 0, "active"), dueAt: dueDay(3) },
+			ref("s2", "Build", 1, "draft"),
+		],
+	});
+	const page = buildProjectTimeline(
+		board({ stages: [stage({ id: "s1", order: 0 }), stage({ id: "s2", order: 1 })], cards: [dated] }),
+		{ nowMs: NOW },
+	);
+	const mine = page.items.filter((i) => i.ticketId === "t2");
+	assertEquals(mine.length, 1);
+	assertEquals(mine[0].kind, "milestone");
+	assertEquals(mine[0].laneId, "stage:s1");
+});
+
+Deno.test("the ticket modal's timeline links the ticket's own steps, not the stage windows", () => {
+	const dated = card({
+		id: "t3",
+		stages: [
+			{ ...ref("s1", "Design", 0, "active"), dueAt: dueDay(2) },
+			{ ...ref("s2", "Build", 1, "draft"), dueAt: dueDay(6) },
+		],
+	});
+	const run = buildTicketTimeline(
+		dated,
+		[
+			stage({ id: "s1", order: 0, startAt: at(-1), endAt: at(4) }),
+			stage({ id: "s2", order: 1, startAt: at(4), endAt: at(8) }),
+		],
+		{ nowMs: NOW },
+	);
+	const windows = run.items.filter((i) => i.subject === "stage");
+	assert(windows.every((i) => i.dependsOn.length === 0));
+	const steps = run.items.filter((i) => i.dueStageId);
+	assertEquals(steps.map((i) => i.dependsOn), [[], ["ticket-stage-item:t3:s1"]]);
+	assert(steps.every((i) => i.movable === false));
+});
+// #endregion

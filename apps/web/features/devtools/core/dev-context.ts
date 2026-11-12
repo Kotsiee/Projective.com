@@ -58,6 +58,7 @@ import {
 	type DevFundingState,
 	type DevLayoutDirection,
 	type DevLowBalance,
+	type DevEngagementOrigin,
 	type DevMemberClient,
 	type DevMemberRole,
 	type DevMessagingRole,
@@ -132,6 +133,7 @@ export type {
 	DevFundingState,
 	DevLayoutDirection,
 	DevLowBalance,
+	DevEngagementOrigin,
 	DevMemberClient,
 	DevMemberRole,
 	DevMessagingRole,
@@ -266,6 +268,12 @@ export interface DevOverrides {
 	 * the only runtime route to the row action that grants it. `auto` defers to the server.
 	 */
 	memberClient: DevMemberClient;
+	/**
+	 * Whether the open engagement is a client project or a service the client bought (Decision #421).
+	 * On a service only the freelancer working it adds stages, so every Add stage control follows it.
+	 * The fixtures carry no service, so `service` is the only runtime route to that rule on dev:mock.
+	 */
+	engagementOrigin: DevEngagementOrigin;
 	/**
 	 * Simulated `/messages` inbox view (task §4) — a NEW axis selecting which advanced-filter set the
 	 * inbox sidebar shows (provider-side vs buyer-side) and whether auto-responses are offered. Consumed
@@ -533,6 +541,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	hasPendingInvites: true,
 	hasPendingRequests: true,
 	memberClient: "auto",
+	engagementOrigin: "auto",
 	messagingRole: "freelancer",
 	micPermission: "auto",
 	layoutDirection: "ltr",
@@ -690,6 +699,13 @@ export const DEV_MEMBER_CLIENTS: ReadonlyArray<DevOption<DevMemberClient>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "business", label: "Business" },
 	{ value: "individual", label: "Individual" },
+];
+
+/** Engagement origin options (Decision #421): a client project, or a service its freelancer extends. */
+export const DEV_ENGAGEMENT_ORIGINS: ReadonlyArray<DevOption<DevEngagementOrigin>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "project", label: "Client project" },
+	{ value: "service", label: "Service" },
 ];
 
 /** Members-tab acting-role options in display order (task §4). */
@@ -1143,6 +1159,8 @@ function reflect(next: DevOverrides): void {
 		// Absent = `auto` on the seam, like `projectOnboarding` above.
 		if (next.memberClient !== "auto") root.dataset.devMemberClient = next.memberClient;
 		else delete root.dataset.devMemberClient;
+		if (next.engagementOrigin !== "auto") root.dataset.devEngagementOrigin = next.engagementOrigin;
+		else delete root.dataset.devEngagementOrigin;
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
 		// Absent = `auto` on the seam, like `projectOnboarding` above.
@@ -1263,6 +1281,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
 		delete root.dataset.devMemberClient;
+		delete root.dataset.devEngagementOrigin;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devProfileSetup;

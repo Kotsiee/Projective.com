@@ -107,6 +107,11 @@ export const TimelineItemSchema = z.object({
 	stageId: z.string().max(80).nullable().default(null),
 	/** The ticket the item IS; `null` for a stage item. */
 	ticketId: z.string().max(120).nullable().default(null),
+	/**
+	 * Set on a ticket's item for ONE of its stages: the stage whose due date it draws, so moving the
+	 * item moves that stage's date. Absent on a ticket's own claim-to-due item and on a stage window.
+	 */
+	dueStageId: z.string().max(80).nullable().optional(),
 });
 export type TimelineItem = z.infer<typeof TimelineItemSchema>;
 // #endregion
@@ -237,7 +242,14 @@ const STAGE_LANE = (id: string) => `stage:${id}`;
 const TICKET_LANE = (id: string) => `ticket:${id}`;
 const STAGE_ITEM = (id: string) => `stage-item:${id}`;
 const TICKET_ITEM = (id: string) => `ticket-item:${id}`;
+const TICKET_STAGE_ITEM = (ticketId: string, stageId: string) =>
+	`ticket-stage-item:${ticketId}:${stageId}`;
 const BACKLOG_LANE = "backlog";
+
+/** Whether a ticket carries a due date in any of its stages — then it is drawn stage by stage. */
+function hasStageDates(card: BoardCard): boolean {
+	return card.stages.some((s) => !!s.dueAt);
+}
 
 function plural(n: number, one: string, many = `${one}s`): string {
 	return `${n} ${n === 1 ? one : many}`;
@@ -363,6 +375,101 @@ function ticketItem(
 	};
 }
 
+/** Where one of a ticket's stages stands against the ticket's own position in its run. */
+type StagePhase = "done" | "current" | "upcoming";
+
+function stagePhases(card: BoardCard): Map<string, StagePhase> {
+	const bands = executionBands([...card.stages].sort((a, b) => a.order - b.order));
+	const current = card.status === "completed"
+		? bands.length
+		: card.stageId === null
+		? -1
+		: bands.findIndex((band) => band.some((s) => s.stageId === card.stageId));
+	const phases = new Map<string, StagePhase>();
+	bands.forEach((band, i) => {
+		const phase: StagePhase = current >= 0 && i < current
+			? "done"
+			: i === current
+			? "current"
+			: "upcoming";
+		for (const s of band) phases.set(s.stageId, phase);
+	});
+	return phases;
+}
+
+/**
+ * A ticket's due dates stage by stage, each as an item on its stage's lane.
+ *
+ * A stage's work runs from the step before it falls due — the claim, for the first step — to its own
+ * due date: a bar where both ends are known, a milestone at the date where only the date is. A stage
+ * with no date of its own draws nothing, and is never given one. `laneFor` returning `null` skips a
+ * stage that has no lane here; `linked` ties each step's items to the step before.
+ */
+function ticketStageItems(
+	card: BoardCard,
+	laneFor: (stageId: string) => string | null,
+	nowMs: number,
+	movable: boolean,
+	linked: boolean,
+): TimelineItem[] {
+	const bands = executionBands([...card.stages].sort((a, b) => a.order - b.order));
+	const phases = stagePhases(card);
+	const out: TimelineItem[] = [];
+	let from = msOf(card.claimedAt);
+	let previous: string[] = [];
+	for (const band of bands) {
+		const bandIds: string[] = [];
+		let bandEnd: number | null = null;
+		for (const ref of band) {
+			const due = msOf(ref.dueAt ?? null);
+			if (due === null) continue;
+			bandEnd = bandEnd === null ? due : Math.max(bandEnd, due);
+			const laneId = laneFor(ref.stageId);
+			if (laneId === null) continue;
+			const phase = phases.get(ref.stageId) ?? "upcoming";
+			const overdue = phase !== "done" && due < nowMs && card.status !== "cancelled";
+			const status = overdue
+				? "Overdue"
+				: phase === "done"
+				? "Done"
+				: phase === "current"
+				? TICKET_STATUS_WORD[card.status]
+				: "Upcoming";
+			const accent = overdue
+				? "--warning"
+				: phase === "done"
+				? "--success"
+				: phase === "current"
+				? ticketAccentFor(card.status)
+				: "--tertiary";
+			const start = from !== null && from < due ? from : due;
+			const id = TICKET_STAGE_ITEM(card.id, ref.stageId);
+			out.push({
+				id,
+				laneId,
+				label: card.title,
+				kind: start < due ? "bar" : "milestone",
+				subject: "ticket",
+				start: iso(start),
+				end: iso(due),
+				accent,
+				progress: null,
+				dependsOn: linked ? previous : [],
+				status,
+				meta: `Due in ${ref.name}`,
+				movable,
+				stageId: ref.stageId,
+				ticketId: card.id,
+				dueStageId: ref.stageId,
+			});
+			bandIds.push(id);
+		}
+		if (bandEnd !== null) from = bandEnd;
+		if (bandIds.length > 0) previous = bandIds;
+	}
+	return out;
+}
+
 /** The overall extent of a set of items. */
 function rangeOf(items: readonly TimelineItem[]): TimelinePage["range"] {
 	let start = Infinity;
@@ -442,9 +549,24 @@ export function buildProjectTimeline(board: BoardPage, opts: TimelineBuildOption
 			);
 			if (si) items.push(si);
 			for (const card of inStage) {
+				if (hasStageDates(card)) continue;
 				const ti = ticketItem(card, laneId, nowMs, movable);
 				if (ti) items.push(ti);
 			}
+		}
+		// A ticket dated stage by stage is drawn on each stage it is due in, wherever it sits now.
+		const laneStageIds = new Set(stages.map((s) => s.id));
+		for (const card of board.cards) {
+			if (!hasStageDates(card)) continue;
+			items.push(
+				...ticketStageItems(
+					card,
+					(stageId) => (laneStageIds.has(stageId) ? STAGE_LANE(stageId) : null),
+					nowMs,
+					movable,
+					false,
+				),
+			);
 		}
 		const backlog = board.cards.filter((c) => c.stageId === null);
 		const backlogUndated = backlog.filter((c) => !c.dueDate && !c.claimedAt).length;
@@ -465,6 +587,7 @@ export function buildProjectTimeline(board: BoardPage, opts: TimelineBuildOption
 			creatable: movable,
 		});
 		for (const card of backlog) {
+			if (hasStageDates(card)) continue;
 			const ti = ticketItem(card, BACKLOG_LANE, nowMs, movable);
 			if (ti) items.push(ti);
 		}
@@ -509,6 +632,20 @@ export function buildProjectTimeline(board: BoardPage, opts: TimelineBuildOption
 				ticketId: card.id,
 				creatable: false,
 			});
+			// On a stage's own timeline, a ticket dated in this stage is drawn at that date.
+			const inThisStage = stage
+				? ticketStageItems(
+					card,
+					(stageId) => (stageId === stage.id ? laneId : null),
+					nowMs,
+					movable,
+					false,
+				)
+				: [];
+			if (inThisStage.length > 0) {
+				items.push(...inThisStage);
+				continue;
+			}
 			const ti = ticketItem(card, laneId, nowMs, movable);
 			if (ti) items.push(ti);
 		}
@@ -543,9 +680,11 @@ export interface TicketTimeline {
  *
  * A lane per stage the ticket requires, in the ticket's own order, with the step number derived
  * from {@link executionBands} so two stages that start together read as one step. Each lane carries
- * the LIVE stage's scheduled window (when it has one) — the ticket's per-stage timing is not a
- * recorded fact and is not invented here — and the bands become dependency links, so the run reads
- * left to right. A trailing "This ticket" lane carries the ticket's own claim→due item.
+ * the LIVE stage's scheduled window (when it has one) and, where the ticket is due in that stage,
+ * the ticket's own item for it — from the step before it falls due (the claim, for the first step)
+ * to that date. The ticket's per-stage items are linked step to step when it has any; otherwise the
+ * stage windows are, so the run reads left to right. A trailing "This ticket" lane carries the
+ * ticket's own claim→due item.
  */
 export function buildTicketTimeline(
 	card: BoardCard,
@@ -558,6 +697,7 @@ export function buildTicketTimeline(
 	const items: TimelineItem[] = [];
 	const ordered = [...card.stages].sort((a, b) => a.order - b.order);
 	const bands = executionBands(ordered);
+	const stageDated = hasStageDates(card);
 	// Links run band to band: every stage in a band starts after every stage in the band before it.
 	let previousBandItems: string[] = [];
 	bands.forEach((band, bandIndex) => {
@@ -582,11 +722,14 @@ export function buildTicketTimeline(
 			if (!live) continue;
 			const item = stageItem(live, laneId, null, nowMs, new Set());
 			if (!item) continue;
-			items.push({ ...item, dependsOn: previousBandItems });
+			items.push({ ...item, dependsOn: stageDated ? [] : previousBandItems });
 			bandItems.push(item.id);
 		}
 		if (bandItems.length > 0) previousBandItems = bandItems;
 	});
+	if (stageDated) {
+		items.push(...ticketStageItems(card, (stageId) => STAGE_LANE(stageId), nowMs, false, true));
+	}
 
 	const ownLane = TICKET_LANE(card.id);
 	lanes.push({

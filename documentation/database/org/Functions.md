@@ -672,14 +672,19 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
   and by the `finance.wallets` insert trigger (`finance.fn_sync_vault_on_wallet`), so a wallet
   opened in a new currency is governed from birth. It is the ONLY writer of
   `finance.vault_permissions`.
-- **`fn_trg_sync_vault_member()` / `fn_trg_sync_vault_role()`** — the backstop (Decision #226 (e)),
-  four `AFTER … FOR EACH ROW` triggers bound in `00001895`, so a write path that forgets the
-  explicit call cannot leave a stale grant (a revoked `withdraw_funds` still projecting `withdraw`):
+- **`fn_trg_sync_vault_member()` / `fn_trg_sync_vault_role()` / `fn_trg_sync_vault_owner()`** — the
+  backstop (Decision #226 (e); the owner half FINANCE_AUDIT V2), six `AFTER … FOR EACH ROW` triggers
+  bound in `00001895`, so a write path that forgets the explicit call cannot leave a stale grant (a
+  revoked `withdraw_funds` still projecting `withdraw`, or a former owner keeping `manage_members`):
   - `trg_team_members_sync_vault` / `trg_business_members_sync_vault` — on `INSERT`, and on an
     `UPDATE OF` `role_id`, `status`, `granted_capabilities` or `revoked_capabilities`, of the member
     table; re-projects that member.
   - `trg_team_roles_sync_vault` / `trg_business_roles_sync_vault` — on an `UPDATE OF` `capabilities`
     or `base_preset` of the role table; re-projects every ACTIVE holder of the role.
+  - `trg_teams_sync_vault_owner` / `trg_business_profiles_sync_vault_owner` — on an `UPDATE OF`
+    `owner_user_id` of `org.teams` / `org.business_profiles` that changes it; re-projects every member,
+    since `manage_members` and `manage_billing` follow the owner (the ownership transfer also syncs
+    explicitly). Probe: `supabase/probes/finance_doors.sql` §6.
 
   The RPCs keep their explicit calls; a trigger that finds the projection already matching writes
   nothing (the upsert's `IS DISTINCT FROM` guard). A member who leaves is rewritten to `'{}'`, never

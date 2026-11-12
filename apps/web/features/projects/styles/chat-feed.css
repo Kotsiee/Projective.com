@@ -1155,6 +1155,59 @@ button.msg-quote:focus-visible {
 
 /* #endregion */
 
+/* #region Message finder */
+.chat-find {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+	z-index: calc(var(--z-sticky) + 1);
+	align-self: stretch;
+	block-size: 0;
+}
+
+.chat-find__bar {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: var(--chat-measure);
+	margin-inline: auto;
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+	border-end-start-radius: var(--radius-md);
+	border-end-end-radius: var(--radius-md);
+}
+
+.chat-find__field {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.chat-find__count {
+	flex: none;
+	min-inline-size: 4.5em;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	text-align: end;
+	white-space: nowrap;
+}
+
+::highlight(chat-find) {
+	text-decoration-line: underline;
+	text-decoration-thickness: 2px;
+	text-decoration-color: currentColor;
+}
+
+::highlight(chat-find-current) {
+	color: var(--on-accent);
+	background-color: var(--accent);
+}
+
+/* #endregion */
+
 /* #region Jump-to highlight */
 .chat-feed__row[data-highlight="true"] .msg-bubble,
 .pop-chat__row[data-highlight="true"] .msg-bubble {

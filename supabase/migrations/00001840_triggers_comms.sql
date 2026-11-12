@@ -115,3 +115,23 @@ CREATE TRIGGER trg_business_default_channel
     AFTER INSERT ON org.business_profiles
     FOR EACH ROW EXECUTE FUNCTION comms.tg_entity_default_channel('business');
 -- #endregion
+
+-- #region The inbox read model and project-stamped DMs (Decision #339 ruling N1, 00001300)
+-- BEFORE INSERT, and named to sort before trg_dm_messages_mask_pii: triggers of one timing fire in name
+-- order, and the mask must read the project this one settles.
+CREATE TRIGGER trg_dm_messages_bind_project
+    BEFORE INSERT ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.tg_bind_dm_project();
+
+CREATE TRIGGER trg_dm_messages_thread_summary
+    AFTER INSERT ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.tg_dm_thread_summary();
+
+-- Only comms.tg_dm_thread_summary moves a thread's summary; a client write may not.
+CREATE TRIGGER trg_dm_threads_derived
+    BEFORE INSERT OR UPDATE ON comms.dm_threads
+    FOR EACH ROW
+    EXECUTE FUNCTION security.fn_guard_derived_columns('last_message_at', 'last_message_id');
+-- #endregion

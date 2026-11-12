@@ -33,14 +33,16 @@ BEGIN
     IF v_bp.id IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no published freelancer pipeline in the seed'; END IF;
 
     SELECT sb.id INTO v_other FROM marketplace.service_blueprints sb
-    WHERE sb.delivery_model = 'pipeline' AND sb.is_published AND sb.id <> v_bp.id ORDER BY sb.slug LIMIT 1;
+    WHERE sb.delivery_model = 'pipeline' AND sb.is_published AND sb.id <> v_bp.id
+        AND jsonb_array_length(sb.stage_template) > 0
+    ORDER BY sb.slug LIMIT 1;
     SELECT sb.id INTO v_flat FROM marketplace.service_blueprints sb
     WHERE sb.delivery_model <> 'pipeline' AND sb.is_published ORDER BY sb.slug LIMIT 1;
 
     SELECT u.user_id INTO v_buyer FROM org.users_public u
     WHERE u.user_id <> v_bp.seller
         AND NOT org.fn_is_minor(u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = u.user_id AND p.source_blueprint_id = v_bp.id)
+        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = u.user_id AND p.source_blueprint_id IN (v_bp.id, v_other))
         AND NOT EXISTS (
             SELECT 1 FROM org.team_members tm JOIN marketplace.service_blueprints sb ON sb.owner_team_id = tm.team_id
             WHERE tm.user_id = u.user_id AND sb.id IN (v_bp.id, v_other)
@@ -63,6 +65,17 @@ BEGIN
     PERFORM set_config('probe.projects_before', (SELECT count(*) FROM projects.projects)::text, true);
     RAISE NOTICE 'fixture bp=% seller=% other=% flat=% buyer=% stranger=%', v_bp.id, v_bp.seller, v_other, v_flat, v_buyer, v_stranger;
 END $$;
+
+-- Intensity terms (Decision #417): the first listing sells every stage at one fixed intensity, its
+-- first at High; the second is tiered, with the seller's own Low and High prices on its first stage.
+UPDATE marketplace.service_blueprints
+   SET allow_tiered_intensity = false,
+       stage_template = jsonb_set(stage_template, '{0,intensity}', '"high"')
+ WHERE id = current_setting('probe.bp')::uuid;
+UPDATE marketplace.service_blueprints
+   SET allow_tiered_intensity = true,
+       stage_template = jsonb_set(jsonb_set(stage_template, '{0,lowPriceCents}', '700'), '{0,highPriceCents}', '2600')
+ WHERE id = current_setting('probe.other')::uuid;
 
 DO $$
 BEGIN
@@ -265,6 +278,12 @@ BEGIN
         IF v_stage.file_revisions_allowed IS DISTINCT FROM v_bp.free_revisions THEN
             RAISE EXCEPTION 'FAIL stage % revision terms % vs blueprint %', v_stage.ord, v_stage.file_revisions_allowed, v_bp.free_revisions;
         END IF;
+        IF v_stage.default_intensity IS DISTINCT FROM COALESCE(v_stage.tpl->>'intensity', 'standard')
+            OR NOT v_stage.intensity_locked
+            OR v_stage.low_price_cents IS NOT NULL OR v_stage.high_price_cents IS NOT NULL THEN
+            RAISE EXCEPTION 'FAIL stage % intensity terms: % locked=% low=% high=%', v_stage.ord,
+                v_stage.default_intensity, v_stage.intensity_locked, v_stage.low_price_cents, v_stage.high_price_cents;
+        END IF;
         IF EXISTS (SELECT 1 FROM projects.tickets t WHERE t.current_stage_id = v_stage.id) THEN
             RAISE EXCEPTION 'FAIL stage % was given a ticket: the client creates them (Decision #409)', v_stage.ord;
         END IF;
@@ -277,6 +296,11 @@ BEGIN
         RAISE EXCEPTION 'FAIL the draft holds tickets nobody created';
     END IF;
     RAISE NOTICE 'PASS % stages, each with its price, brief, checklist, revision terms and a room, and no tickets', v_n;
+    IF NOT EXISTS (SELECT 1 FROM projects.project_stages ps
+                   WHERE ps.project_id = v_project.id AND ps.sort_order = 0 AND ps.default_intensity = 'high') THEN
+        RAISE EXCEPTION 'FAIL the first stage lost the seller''s High intensity';
+    END IF;
+    RAISE NOTICE 'PASS a fixed-intensity listing locks every stage at its own intensity, with no tier prices';
 
     IF NOT EXISTS (SELECT 1 FROM comms.project_channels c WHERE c.project_id = v_project.id AND c.stage_id IS NULL) THEN
         RAISE EXCEPTION 'FAIL no Discussion room';
@@ -295,6 +319,50 @@ BEGIN
         RAISE EXCEPTION 'FAIL instantiation row: %', row_to_json(v_si);
     END IF;
     RAISE NOTICE 'PASS the request row keeps the key, the listing''s currency and only the answers it asks';
+END $$;
+-- #endregion
+
+-- #region 3b. A tiered listing — unlocked stages carrying the seller's own tier prices (Decision #417)
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.buyer'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_draft jsonb;
+BEGIN
+    v_draft := marketplace.instantiate_service_blueprint(current_setting('probe.other')::uuid, '{}', NULL, 'probe-key-tier');
+    IF NOT (v_draft->>'created')::boolean THEN RAISE EXCEPTION 'FAIL tiered draft not created: %', v_draft; END IF;
+    PERFORM set_config('probe.tiered_project', v_draft->>'project_id', true);
+END $$;
+RESET ROLE;
+
+DO $$
+DECLARE
+    v_bp marketplace.service_blueprints%ROWTYPE;
+    v_stage record;
+BEGIN
+    SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = current_setting('probe.other')::uuid;
+    FOR v_stage IN
+        SELECT ps.*, t.value AS tpl, t.ord
+        FROM projects.project_stages ps
+        JOIN jsonb_array_elements(v_bp.stage_template) WITH ORDINALITY AS t (value, ord) ON t.ord - 1 = ps.sort_order
+        WHERE ps.project_id = current_setting('probe.tiered_project')::uuid
+        ORDER BY ps.sort_order
+    LOOP
+        IF v_stage.intensity_locked
+            OR v_stage.default_intensity IS DISTINCT FROM COALESCE(v_stage.tpl->>'intensity', 'standard')
+            OR v_stage.low_price_cents IS DISTINCT FROM (v_stage.tpl->>'lowPriceCents')::bigint
+            OR v_stage.high_price_cents IS DISTINCT FROM (v_stage.tpl->>'highPriceCents')::bigint THEN
+            RAISE EXCEPTION 'FAIL tiered stage % terms: % locked=% low=% high=%', v_stage.ord,
+                v_stage.default_intensity, v_stage.intensity_locked, v_stage.low_price_cents, v_stage.high_price_cents;
+        END IF;
+    END LOOP;
+    IF NOT EXISTS (SELECT 1 FROM projects.project_stages ps
+                   WHERE ps.project_id = current_setting('probe.tiered_project')::uuid
+                     AND ps.sort_order = 0 AND ps.low_price_cents = 700 AND ps.high_price_cents = 2600) THEN
+        RAISE EXCEPTION 'FAIL the first tiered stage lost the seller''s own tier prices';
+    END IF;
+    RAISE NOTICE 'PASS a tiered listing leaves every stage unlocked, with the seller''s own Low and High prices where set';
 END $$;
 -- #endregion
 

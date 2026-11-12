@@ -6,18 +6,38 @@
 -- #endregion
 
 -- #region 4. Conditional Due Date Rule Enforcement
+-- A ticket may carry a due date in each stage it runs through (`required_stages[].due_at`, Decision
+-- #414); when any does, the ticket's own `due_date` IS the latest of them, derived here so no writer
+-- can leave the two disagreeing. A `due_at` that is not a calendar date is refused (22007). Either
+-- way the date is a due date, and needs the project's deadline bonus terms — judged when a date is
+-- set or moves, so an edit that leaves an existing date where it was is never refused for it.
 CREATE OR REPLACE FUNCTION projects.fn_enforce_ticket_due_date()
 RETURNS TRIGGER AS $$
 DECLARE
     v_allow_deadlines boolean;
+    v_stage_due date;
 BEGIN
+    SELECT max((elem->>'due_at')::date) INTO v_stage_due
+      FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(NEW.required_stages) = 'array' THEN NEW.required_stages
+                    ELSE '[]'::jsonb END) elem
+     WHERE NULLIF(elem->>'due_at', '') IS NOT NULL;
+    IF v_stage_due IS NOT NULL THEN
+        NEW.due_date := v_stage_due::timestamp AT TIME ZONE 'UTC';
+    END IF;
+
+    IF NEW.due_date IS NULL
+        OR (TG_OP = 'UPDATE' AND NEW.due_date IS NOT DISTINCT FROM OLD.due_date) THEN
+        RETURN NEW;
+    END IF;
+
     -- Query the finance configuration on the parent project
-    SELECT allow_deadline_bonuses INTO v_allow_deadlines 
-    FROM projects.projects 
+    SELECT allow_deadline_bonuses INTO v_allow_deadlines
+    FROM projects.projects
     WHERE id = NEW.project_id;
 
     -- If a due date is specified but the project finance settings forbid it, raise an error
-    IF NEW.due_date IS NOT NULL AND (v_allow_deadlines IS NULL OR NOT v_allow_deadlines) THEN
+    IF v_allow_deadlines IS NULL OR NOT v_allow_deadlines THEN
         RAISE EXCEPTION 'Due dates can only be set if the client has agreed to deadline bonus terms under project finance settings.';
     END IF;
 

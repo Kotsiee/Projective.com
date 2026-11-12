@@ -92,6 +92,11 @@ export const SLUG_PREFIXES = {
 	room: "rom",
 	/** A routine on a person's calendar (`scheduling.routines`, Decision #389). */
 	routine: "rtn",
+	/**
+	 * A conversation's address (`comms.dm_threads.ref`, Decision #339 ruling N1). Its column is `ref`,
+	 * not `slug`, which holds an entity channel's `#` name (Decision #306).
+	 */
+	thread: "cht",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

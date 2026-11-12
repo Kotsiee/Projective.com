@@ -46,14 +46,17 @@
 	--evp-seat-gap: var(--space-px);
 
 	/*
-	* THE THREE-TRACK FRAME: media · hero · conversion lane (the back control is the frame's first ROW).
+	* THE TWO-TRACK FRAME: the editorial column · the purchase card (Decision #424).
 	*
 	* The lane is no longer a shell slot, so its width is stated HERE rather than passed to a
 	* splitter — one number for both shells, which is the point of moving it into the page.
 	*/
 	--evp-lane-pad: var(--space-5);
-	--evp-lane-w: 22rem;
+	--evp-lane-w: 23.75rem;
 	--evp-frame-gap: var(--space-5);
+	--evp-frame-col-gap: var(--space-7);
+	--evp-measure-wide: 51.25rem;
+	--evp-composition-w: calc(var(--evp-measure-wide) + var(--evp-frame-col-gap) + var(--evp-lane-w));
 	/*
 	* The lead-in above the archetype body — the space between the hero row and the Stages section.
 	*
@@ -112,9 +115,9 @@
 	* carries zero literal colours; marks that sit over photography take `--on-scrim`, the ink the
 	* design system already pairs with `--scrim`.
 	*
-	* The commerce rig (`BookingCtaRig`) ranks by hue instead (§B.8.1, Decision #183): its money verb
-	* is the amber `accent` tone on `--on-accent`, and Add to basket the monochrome `mono` tone — the
-	* one sanctioned two-fill pair. Teal + white stays the default tone for every other CtaButton.
+	* The commerce rig (`BookingCtaRig`) ranks by fill instead (§B.8.1, Decision #424): its money verb
+	* is the ONE filled control — the tier-1 `accent` pill, the monochrome inversion — and Add to basket
+	* the tier-4 neutral outlined pill. Teal + white stays the default tone for every other CtaButton.
 	*/
 	--evp-cta-h: 2.25rem;
 	--evp-cta-fs: var(--text-sm);
@@ -124,8 +127,6 @@
 	--evp-cta-brand-ink: var(--primary-ink);
 	--evp-cta-accent-fill: var(--accent);
 	--evp-cta-accent-ink: var(--on-accent);
-	--evp-cta-mono-fill: var(--on-surface);
-	--evp-cta-mono-ink: var(--surface);
 
 	/* The migrated sticky header. Its height is the band's, so the two cannot disagree. */
 	--evp-stickyhead-h: var(--shell-midnav-header-h);
@@ -262,14 +263,11 @@
  *
  * ── THE NUMBER ──
  *
- *   352 lane + 2 gutters (48) = 400   ->  400 + 640 = 1040
+ *   380 card + 48 column gap  = 428   ->  428 + 596 = 1024
  *
- * where 640px is what the media + hero pair needs before either is starved. It used to be 1112,
- * because the frame paid a fourth track — a 48px start strip plus its 24px gutter — for a single
- * circular back glyph. That strip is gone: the back control is a labelled link in the frame's own
- * first row (see below) and migrates into the sticky header band on scroll, so the frame pays for
- * three tracks in both shells and the threshold is the three-track arithmetic. The number is a
- * literal because a container-query condition cannot read a custom property.
+ * where ~600px is the narrowest the editorial column reads well at — the 16:10 stage is still taller
+ * than the card at that width, and the body keeps its measure. The number is a literal because a
+ * container-query condition cannot read a custom property (Decision #424).
  *
  * ── THE BACK LINK ──
  *
@@ -281,13 +279,13 @@
  */
 
 /* ============================================================================
- * THE THREE-TRACK FRAME
+ * THE TWO-TRACK FRAME (Decision #424)
  *
- *   media column · hero · conversion lane — under a first ROW that holds the back control
+ *   the editorial column (back · hero · media · main) · the purchase card
  *
- * Mobile-first: ONE column, in reading order — back link, hero, media, body. The lane is not
- * rendered at all below `--bp-md` (its duty transfers to `EntityBuyBar`), so the phone layout is the
- * base case and the desktop tracks are the addition rather than the other way round.
+ * Mobile-first: ONE column capped at the editorial measure, in reading order. The card is not
+ * rendered below 1024px of content (its duty transfers to `EntityBuyBar`), so the phone layout is
+ * the base case and the card track is the addition.
  * ========================================================================== */
 .evp-frame {
 	display: grid;
@@ -298,7 +296,10 @@
 		"media"
 		"main";
 	gap: var(--evp-frame-gap);
+	inline-size: 100%;
+	max-inline-size: var(--evp-measure-wide);
 	min-inline-size: 0;
+	margin-inline: auto;
 }
 
 .evp-frame > .evp__back {
@@ -336,7 +337,10 @@
  * number restored on top of it.
  */
 .evp-reviewsrow {
+	inline-size: 100%;
+	max-inline-size: var(--evp-composition-w);
 	min-inline-size: 0;
+	margin-inline: auto;
 }
 
 /*
@@ -354,45 +358,21 @@
 	transition: none;
 }
 
-/*
- * ---- THE FRAME: the three tracks, and the ONE place this deviates from §D.7.8 ----
- *
- * §D.7.8 asks for a content-first canvas — structured information leading, media trailing, reversed
- * in the DOM, "never with `order`/`direction`". The requested layout puts the media column BEFORE the
- * hero, so the visual assignment here is the opposite of what that gate describes.
- *
- * What the gate exists to prevent is preserved exactly: its stated reason is that a keyboard or
- * screen-reader user would otherwise traverse a strip of thumbnails before reaching the title of the
- * thing they are being asked to buy. The DOM order in `EntityViewPage` is still hero → media, so that
- * traversal is unchanged; only the column each lands in differs, and named grid AREAS do it — not
- * `order`, which the gate names, and not `direction`, which would also flip the lane and the rail.
- *
- * The tracks are near-even with a slight lean to the hero, which carries the title, the meta line, the
- * summary and the seller. Below the container threshold the frame collapses to one column and the two
- * stack, rather than splitting a track that would starve both — see the note on the inline back link
- * for why the threshold is a CONTAINER width and not a viewport one.
- */
-@container evp-body (min-width: 1040px) {
-	/*
-	 * The back link is the frame's FIRST row, spanning the two content tracks; the lane spans every
-	 * row from the first, so its pinned top and the back link's top sit on one line at rest.
-	 */
+@container evp-body (min-width: 1024px) {
 	.evp-frame {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) var(--evp-lane-w);
+		grid-template-columns: minmax(0, var(--evp-measure-wide)) var(--evp-lane-w);
 		grid-template-areas:
-			"back  back lane"
-			"media hero lane"
-			"main  main lane";
+			"back  lane"
+			"hero  lane"
+			"media lane"
+			"main  lane";
+		column-gap: var(--evp-frame-col-gap);
+		justify-content: center;
 		align-items: start;
+		max-inline-size: none;
 	}
 
-	/*
-	 * No media column: the hero takes both content tracks. A session's artefact is the full-width
-	 * scheduler stage below the hero, and a project has no gallery at all — its identity is the
-	 * seller line inside the hero (the banner strip was removed by Decision #142).
-	 */
 	.evp-frame--nomedia {
-		grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
 		grid-template-areas:
 			"back lane"
 			"hero lane"
@@ -485,7 +465,7 @@
 .evp-canvas__stage {
 	position: relative;
 	flex: none;
-	aspect-ratio: 4 / 3;
+	aspect-ratio: 16 / 10;
 	inline-size: 100%;
 	/*
 	* `0`, not `auto`. A flex item's automatic minimum is its min-content size, and the image inside
@@ -1562,16 +1542,14 @@
 	* place either way — subtracting only from one would push the lane's bottom off the viewport by
 	* exactly the band's height the moment it revealed.
 	*/
-	block-size: calc(var(--evp-col-h) - var(--evp-band-offset));
+	block-size: auto;
 	min-inline-size: 0;
 	/*
 	* Matched to `.pf-stickyhead`'s own reveal (`--dur-medium` / `--spring-standard`) so the band
 	* growing and the lane stepping down are read as one movement rather than two. `--spring-standard`
 	* is critically damped (`cubic-bezier(0.22, 1, 0.36, 1)`) — no overshoot, per §B.5.
 	*/
-	transition:
-		inset-block-start var(--dur-medium) var(--spring-standard),
-		block-size var(--dur-medium) var(--spring-standard);
+	transition: inset-block-start var(--dur-medium) var(--spring-standard);
 	/*
 	* One step above the pinned header bands, which are `--z-sticky`.
 	*
@@ -1584,7 +1562,7 @@
 	z-index: calc(var(--z-sticky) + 1);
 }
 
-@container evp-body (min-width: 1040px) {
+@container evp-body (min-width: 1024px) {
 	.evp-laneslot {
 		display: block;
 	}
@@ -1603,6 +1581,70 @@
  */
 .ui-page-canvas__body .evp-laneslot {
 	z-index: var(--z-raised);
+}
+
+.evp-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--space-5);
+	border-radius: var(--radius-xl);
+	background: var(--surface-1);
+}
+
+.evp-card__head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.evp-card .evp-lane__ledger {
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.evp-stages__more {
+	align-self: flex-start;
+	padding: var(--space-1) 0;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	cursor: pointer;
+}
+
+.evp-stages__more:hover {
+	color: var(--on-surface);
+}
+
+.evp-stages__more:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.evp-cta__inline {
+	display: inline;
+	padding: 0;
+	border: none;
+	background: transparent;
+	font: inherit;
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	cursor: pointer;
+}
+
+.evp-cta__inline:hover {
+	text-decoration-thickness: 2px;
+}
+
+.evp-cta__inline:focus-visible {
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -1630,7 +1672,7 @@
 	min-block-size: 0;
 }
 
-@container evp-body (min-width: 1040px) {
+@container evp-body (min-width: 1024px) {
 	.evp[data-archetype="project"] .evp-laneslot {
 		display: flex;
 	}
@@ -1930,34 +1972,15 @@ a.evp-cta__btn--inverted {
 	--btn-mix-hover: 88%;
 }
 
-/*
- * The commerce rig's hue-ranked pair (§B.8.1 tiers 1 and 2): the amber money verb and the monochrome
- * basket. Each carries its own tonal ramp toward a pole away from its ink, so hover and press raise
- * label contrast; the brand severity's border-channel hover is withdrawn, as the fill now moves.
- */
-.ui-button.evp-cta__btn--accent,
 a.evp-cta__btn--accent {
 	--btn-accent: var(--evp-cta-accent-fill);
-	--btn-ink: var(--evp-cta-accent-fill);
 	--btn-on: var(--evp-cta-accent-ink);
-	--btn-shade: var(--on-scrim);
-	--btn-mix-hover: 92%;
-	--btn-mix-active: 88%;
+	--btn-shade: var(--evp-cta-accent-fill);
+	--btn-mix-hover: 100%;
 }
 
-.ui-button.evp-cta__btn--mono,
-a.evp-cta__btn--mono {
-	--btn-accent: var(--evp-cta-mono-fill);
-	--btn-ink: var(--evp-cta-mono-fill);
-	--btn-on: var(--evp-cta-mono-ink);
-	--btn-shade: var(--surface);
-	--btn-mix-hover: 88%;
-	--btn-mix-active: 80%;
-}
-
-.ui-button.evp-cta__btn--accent:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link),
-.ui-button.evp-cta__btn--mono:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
-	border-color: transparent;
+a.evp-cta__btn--accent:hover {
+	box-shadow: inset 0 0 0 var(--fld-bw) color-mix(in srgb, var(--btn-on) 60%, transparent);
 }
 
 /*
@@ -1986,12 +2009,12 @@ a.evp-cta__btn--mono {
  * class is always emitted by `Button`, so it is a reliable hook even though the package ships no rule
  * of its own for it.
  */
-.ui-button.evp-cta__btn.ui-button--filled:not(:disabled):hover {
+.ui-button.evp-cta__btn.ui-button--filled:not(.ui-button--accent):not(:disabled):hover {
 	filter: none;
 	background: color-mix(in srgb, var(--btn-accent) 88%, var(--bg));
 }
 
-.ui-button.evp-cta__btn.ui-button--filled:not(:disabled):active {
+.ui-button.evp-cta__btn.ui-button--filled:not(.ui-button--accent):not(:disabled):active {
 	filter: none;
 	background: color-mix(in srgb, var(--btn-accent) 80%, var(--bg));
 }
@@ -2325,7 +2348,7 @@ a.evp-cta__btn--mono {
 /*
  * The stage's own price. It WRAPS, because a range of two figures has no bounded width.
  *
- * A pipeline stage quotes a per-ticket RANGE (the 0.5x–2.0x workload band), and how wide that renders
+ * A pipeline stage quotes a per-ticket RANGE (the 0.75x–1.5x intensity price band), and how wide that renders
  * depends on the viewer's currency: measured in the 328px lane, `£78.74 – £314.96` is 133px of a 194px
  * column and the same stage in JPY (`JP¥15,118 – JP¥60,472`) is 152px. Both fit today, and neither has
  * much headroom — a six-figure stage, a longer symbol, or a narrower lane closes it. Without
@@ -2525,7 +2548,7 @@ a.evp-cta__btn--mono {
  * on the element EXISTING rather than on it being displayed. The gate is therefore a viewport
  * approximation of the container threshold, translated through the chrome the guest shell spends first:
  *
- *   guest   1040 container + 48 page gutter  → crossover ≈ 1088 viewport
+ *   guest   1024 container + 48 page gutter  → crossover ≈ 1072 viewport
  *
  * Biased LOW, deliberately, because the two possible mismatches are not symmetric:
  *
@@ -2537,11 +2560,12 @@ a.evp-cta__btn--mono {
  * reason the bias runs this way. The number also sits well above the mobile band, which is only ~358px
  * wide and would be crushed to nothing by a 376px reservation.
  */
-@media (min-width: 1075px) {
+@media (min-width: 1060px) {
 	.guest-shell:has(.evp-laneslot) .guest-shell__subheader {
-		inset-inline-start: var(--space-5);
+		--evp-composition-margin: max(0px, (100vw - 2 * var(--space-5) - var(--evp-composition-w)) / 2);
+		inset-inline-start: calc(var(--space-5) + var(--evp-composition-margin));
 		inset-inline-end: calc(
-			var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
+			var(--space-5) + var(--evp-composition-margin) + var(--evp-lane-w) + var(--evp-frame-col-gap)
 		);
 	}
 }
@@ -2811,7 +2835,7 @@ a.evp-cta__btn--mono {
 	border-block: var(--hairline);
 }
 
-@container evp-body (min-width: 1040px) {
+@container evp-body (min-width: 1024px) {
 	.evp-buybar {
 		display: none;
 	}

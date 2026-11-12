@@ -5,19 +5,28 @@ import {
 	NumberInput,
 	NumberStepper,
 	Select,
+	SelectButton,
 	Textarea,
 	ToggleSwitch,
 } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
 import { formatMoney, toMajorUnits, toMinorUnits } from "@projective/types/finance";
-import { StartTrigger } from "@projective/types/catalogue";
+import { StartTrigger, tierPriceProblem } from "@projective/types/catalogue";
+import { TicketIntensity } from "@projective/types/projects";
 import type { Milestone } from "../../../types/catalogue-types.ts";
-import { STAGE_LIST_MAX, TRIGGER_OPTIONS } from "../../../core/offer-model.ts";
-import { ticketRange } from "../../../core/pricing-model.ts";
+import {
+	defaultTierPrice,
+	INTENSITY_CHOICES,
+	STAGE_LIST_MAX,
+	stageIntensityHint,
+	stagePriceLine,
+	tierPriceLine,
+	TRIGGER_OPTIONS,
+} from "../../../core/offer-model.ts";
 import { ScopeChecklist } from "./ScopeChecklist.tsx";
 import { SkillTags } from "./SkillTags.tsx";
-import { ToggleHint } from "../FieldHead.tsx";
+import { FieldHead, ToggleHint } from "../FieldHead.tsx";
 
 /** The drag id of stage `index`. */
 export const stageDragId = (index: number) => `stage:${index}`;
@@ -29,6 +38,8 @@ export interface StageRowProps {
 	currency: string;
 	/** The listing's baseline ticket, in minor units, that an unpriced stage is sold at. */
 	baselineMinor: number | null;
+	/** Whether the stages sell at tiered intensity, or each at one fixed intensity and price. */
+	tiered: boolean;
 	problem: string | null;
 	onPatch: (patch: Partial<Milestone>) => void;
 	onRemove: () => void;
@@ -38,12 +49,13 @@ const TRIGGERS = TRIGGER_OPTIONS.map((o) => ({ label: o.label, value: o.value })
 
 /**
  * StageRow — one Pipeline stage as the seller defines it: its name and description, what it hands
- * over, its ticket price (the baseline unless set, with the range buyers see), the skills it needs,
- * when it starts, and whether arriving tickets are funded at once (the Chain Reaction, #210). The
- * first stage always starts with the project, so it asks neither when nor whether to fund on arrival.
+ * over, its price and intensity (one fixed pair, or under tiered pricing the Standard price, the
+ * default tier and optional Low and High prices of its own), the skills it needs, when it starts,
+ * and whether arriving tickets are funded at once (the Chain Reaction, #210). The first stage always
+ * starts with the project, so it asks neither when nor whether to fund on arrival.
  */
 export function StageRow(props: StageRowProps): JSX.Element {
-	const { index, stage, currency } = props;
+	const { index, stage, currency, tiered } = props;
 	const sortable = useSortable({
 		id: stageDragId(index),
 		data: { type: "stage", accepts: ["stage"] },
@@ -51,9 +63,12 @@ export function StageRow(props: StageRowProps): JSX.Element {
 	});
 	const base = `cat-offer-stage-${index}`;
 	const label = stage.name.trim() || `Stage ${index + 1}`;
-	const priced = stage.priceCents ?? props.baselineMinor;
-	const range = priced === null ? null : ticketRange(priced);
 	const first = index === 0;
+	const tierProblem = tiered ? tierPriceProblem(stage) : null;
+	const tierPlaceholder = (tier: "low" | "high") => {
+		const minor = defaultTierPrice(stage, tier, props.baselineMinor);
+		return minor === null ? "Not priced" : formatMoney(minor, currency);
+	};
 
 	return (
 		<div
@@ -122,7 +137,9 @@ export function StageRow(props: StageRowProps): JSX.Element {
 
 			<div class="cat-offer__row">
 				<div class="cat-sec__field">
-					<label class="cat-sec__label" for={`${base}-price`}>Ticket price</label>
+					<label class="cat-sec__label" for={`${base}-price`}>
+						{tiered ? "Standard price" : "Ticket price"}
+					</label>
 					<NumberInput
 						{...MONEY_FIELD}
 						{...moneyDigits(currency)}
@@ -136,11 +153,7 @@ export function StageRow(props: StageRowProps): JSX.Element {
 						aria-describedby={`${base}-price-hint`}
 					/>
 					<p class="cat-sec__hint" id={`${base}-price-hint`}>
-						{range
-							? `${stage.priceCents === undefined ? "The baseline ticket. " : ""}Buyers see ${
-								formatMoney(range.low, currency)
-							} – ${formatMoney(range.high, currency)}, by workload.`
-							: "Set a baseline ticket in Pricing, or price this stage."}
+						{stagePriceLine(stage, tiered, props.baselineMinor, currency)}
 					</p>
 				</div>
 				<div class="cat-sec__field">
@@ -154,6 +167,67 @@ export function StageRow(props: StageRowProps): JSX.Element {
 					/>
 				</div>
 			</div>
+
+			<div class="cat-sec__field">
+				<FieldHead
+					label={tiered ? "Default intensity" : "Intensity"}
+					decorative
+					hint={stageIntensityHint(tiered)}
+					hintId={`${base}-intensity-hint`}
+				/>
+				<SelectButton
+					options={INTENSITY_CHOICES}
+					value={stage.intensity}
+					onValueChange={(v) => {
+						const parsed = TicketIntensity.safeParse(v);
+						if (parsed.success) props.onPatch({ intensity: parsed.data });
+					}}
+					aria-label={`${label} ${tiered ? "default intensity" : "intensity"}`}
+					aria-describedby={`${base}-intensity-hint`}
+				/>
+			</div>
+
+			{tiered && (
+				<>
+					<div class="cat-offer__row">
+						<div class="cat-sec__field">
+							<label class="cat-sec__label" for={`${base}-low`}>Low price</label>
+							<NumberInput
+								{...MONEY_FIELD}
+								{...moneyDigits(currency)}
+								id={`${base}-low`}
+								value={toMajorUnits(stage.lowPriceCents ?? null, currency)}
+								onValueChange={(next: number | null) =>
+									props.onPatch({ lowPriceCents: toMinorUnits(next, currency) })}
+								placeholder={tierPlaceholder("low")}
+								status={tierProblem ? "invalid" : "default"}
+								aria-describedby={`${base}-tier-hint`}
+							/>
+						</div>
+						<div class="cat-sec__field">
+							<label class="cat-sec__label" for={`${base}-high`}>High price</label>
+							<NumberInput
+								{...MONEY_FIELD}
+								{...moneyDigits(currency)}
+								id={`${base}-high`}
+								value={toMajorUnits(stage.highPriceCents ?? null, currency)}
+								onValueChange={(next: number | null) =>
+									props.onPatch({ highPriceCents: toMinorUnits(next, currency) })}
+								placeholder={tierPlaceholder("high")}
+								status={tierProblem ? "invalid" : "default"}
+								aria-describedby={`${base}-tier-hint`}
+							/>
+						</div>
+					</div>
+					<p
+						class={tierProblem ? "cat-offer__problem" : "cat-sec__hint"}
+						id={`${base}-tier-hint`}
+						role={tierProblem ? "alert" : undefined}
+					>
+						{tierPriceLine(stage)}
+					</p>
+				</>
+			)}
 
 			<div class="cat-sec__field">
 				<label class="cat-sec__label" for={`${base}-skills`}>Skills</label>

@@ -61,6 +61,12 @@ export interface SegmentBounds {
 	max: number;
 }
 
+/** The picker's selectable window (`minDate` / `maxDate`); either end may be open. */
+export interface DateRange {
+	min?: Date;
+	max?: Date;
+}
+
 // #endregion
 
 // #region Constants
@@ -254,8 +260,16 @@ export function normalizeYear(typed: number): number {
  *
  * These are the bounds for STEPPING and for `aria-valuemax`. Typing has a different ceiling — see
  * {@link typingBounds}.
+ *
+ * The YEAR narrows to the picker's `range`, the way a native date field's year does: stepping it
+ * cannot leave the years `minDate` / `maxDate` allow. The day and the month keep their own cycles —
+ * a day outside the window inside an allowed year is marked out of range, as a typed one is.
  */
-export function segmentBounds(kind: DateSegmentKind, parts: DateParts): SegmentBounds {
+export function segmentBounds(
+	kind: DateSegmentKind,
+	parts: DateParts,
+	range: DateRange = {},
+): SegmentBounds {
 	switch (kind) {
 		case "day": {
 			// With no month chosen yet, 31 is the honest ceiling: every day the reader might reach is
@@ -267,8 +281,11 @@ export function segmentBounds(kind: DateSegmentKind, parts: DateParts): SegmentB
 		}
 		case "month":
 			return { min: 1, max: 12 };
-		case "year":
-			return YEAR_BOUNDS;
+		case "year": {
+			const min = Math.max(YEAR_BOUNDS.min, range.min?.getFullYear() ?? YEAR_BOUNDS.min);
+			const max = Math.min(YEAR_BOUNDS.max, range.max?.getFullYear() ?? YEAR_BOUNDS.max);
+			return max < min ? { min, max: min } : { min, max };
+		}
 	}
 }
 
@@ -431,18 +448,20 @@ export function segmentText(
  *
  * Wrapping rather than stopping: a spinbutton that refuses to go past December is a spinbutton the
  * reader has to abandon and re-enter to reach January, and every native date field wraps. The YEAR
- * does not wrap — it has no cycle to wrap around — it clamps.
+ * does not wrap — it has no cycle to wrap around — it clamps, to the years `range` allows.
  *
  * An empty segment starts from `anchor` rather than from zero, so the first ArrowDown on a blank
- * field lands somewhere the reader recognises instead of in the year 1.
+ * field lands somewhere the reader recognises instead of in the year 1. An anchor year outside
+ * `range` is clamped into it.
  */
 export function stepSegment(
 	parts: DateParts,
 	kind: DateSegmentKind,
 	delta: number,
 	anchor: Date = new Date(),
+	range: DateRange = {},
 ): DateParts {
-	const bounds = segmentBounds(kind, parts);
+	const bounds = segmentBounds(kind, parts, range);
 	const current = parts[kind];
 
 	let next: number;
@@ -451,7 +470,7 @@ export function stepSegment(
 			? anchor.getMonth()
 			: kind === "day"
 			? anchor.getDate()
-			: anchor.getFullYear();
+			: clampToRange(anchor.getFullYear(), bounds.min, bounds.max);
 	} else if (kind === "year") {
 		next = clampToRange(current + delta, bounds.min, bounds.max);
 	} else {

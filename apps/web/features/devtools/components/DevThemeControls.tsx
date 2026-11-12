@@ -11,7 +11,7 @@ import {
 	resetDevTheme,
 } from "../core/dev-theme.ts";
 
-type ColourKey = "seed" | "accentSeed";
+type ColourKey = "seed";
 
 function ColourRow(props: { knob: ColourKey; label: string; value: string }): JSX.Element {
 	const id = `dev-theme-${props.knob}`;
@@ -61,8 +61,8 @@ function ScaleRow(props: { knob: DevThemeScaleKey; label: string }): JSX.Element
 }
 
 /**
- * DevThemeControls — the Context Switcher's Theme group: live brand and accent seeds, radius scale
- * and shadow intensity, each written through `updateConfig`, plus a Reset to `DEFAULT_CONFIG`.
+ * DevThemeControls — the Context Switcher's Theme group: the live brand seed, radius scale and
+ * shadow intensity, each written through `updateConfig`, plus a Reset to `DEFAULT_CONFIG`.
  * Independent of the simulation master switch.
  */
 export function DevThemeControls(): JSX.Element {
@@ -71,7 +71,6 @@ export function DevThemeControls(): JSX.Element {
 		<div class="dev-ctx__group">
 			<div class="dev-ctx__grouphead">Theme</div>
 			<ColourRow knob="seed" label="Primary seed" value={knobs.seed} />
-			<ColourRow knob="accentSeed" label="Accent seed" value={knobs.accentSeed} />
 			<ScaleRow knob="radiusScale" label="Radius scale" />
 			<ScaleRow knob="shadowIntensity" label="Shadow intensity" />
 			<div class="dev-ctx__actions">

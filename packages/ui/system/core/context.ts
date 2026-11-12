@@ -13,13 +13,12 @@
 import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import { effect, type Signal, signal } from "@preact/signals";
-import { ACCENT_SEED, applyScheme, buildScheme } from "./theme-engine.ts";
+import { applyScheme, buildScheme } from "./theme-engine.ts";
 import type { CvdMode, DesignSystemConfig, ThemeMode, ThemePreference } from "../types/mod.ts";
 
 // #region Store
 export const DEFAULT_CONFIG: DesignSystemConfig = {
 	seed: "#288690",
-	accentSeed: ACCENT_SEED,
 	mode: "light",
 	radiusScale: 1,
 	shadowIntensity: 1,
@@ -116,10 +115,6 @@ export function cycleThemePreference(): ThemePreference {
 export function setSeed(seed: string): void {
 	updateConfig({ seed });
 }
-
-export function setAccentSeed(accentSeed: string): void {
-	updateConfig({ accentSeed });
-}
 // #endregion
 
 // #region DOM application
@@ -129,7 +124,6 @@ export function applyConfig(el: HTMLElement, cfg: DesignSystemConfig): void {
 		el,
 		buildScheme({
 			seed: cfg.seed,
-			accentSeed: cfg.accentSeed,
 			dark: cfg.mode === "dark",
 			highContrast: cfg.highContrast,
 		}),

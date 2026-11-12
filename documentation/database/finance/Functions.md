@@ -66,13 +66,14 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 - **`finance.fn_assert_business_spend(wallet, actor, amount, ref_table, ref_id, count_envelope =
   true)`** → void (`00001210`, BUSINESSES_AUDIT BF21 / BF22 / §4.2) — **the one business spend
   gate**, called in the transaction that moves the money by `place_wallet_order` (and so
-  `place_on_account_order`), `transfer_funds` (business source), `projects.fund_stage`,
+  `place_on_account_order`), `transfer_funds` (business or enterprise source), `projects.fund_stage`,
   `projects.fund_ticket`, `projects.fund_paid_revision`, the card escrow lock
-  (`begin_card_payment`, as a check) and the two escrow holds. A wallet that is not a business's
-  returns at once — team and personal spending keep their own rules. Otherwise:
+  (`begin_card_payment`, as a check) and the two escrow holds. An **enterprise** vault is held to (b)
+  only (FINANCE_AUDIT K4): its envelope stays its door's own check. Any other wallet returns at once —
+  team and personal spending keep their own rules. A business:
   (a) the business is `active` — `org.fn_assert_business_active`, else `55000`
   `business_not_active: …` (BB5; asserted on every call, counted or not);
-  (b) KYB — `fn_business_kyb_verified`, else `PK403` `kyb_required: …`;
+  (b) KYB — `fn_kyb_missing`, else `PK403` `kyb_required: …` (`DETAIL` names `<owner_type>_id`);
   (c) the **actor's** envelope — `fn_check_spending_limit(wallet, actor, amount)`, never the project
   owner's; over the cap or the per-transaction ceiling, an approved request for this ref may still
   carry it (finance-model §14) — it is redeemed and the spend counted past the cap — else `PA403`
@@ -141,7 +142,11 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 ## Escrow lifecycle (migrations `0009`, `0305`, `0310`)
 
 - **`finance.fn_hold_ticket_escrow(ticket_id)`** → escrow id — holds escrow when a lock trigger
-  fires (debits the payer wallet; prefers an accepted team assignment as payee). **A hold that cannot
+  fires (debits the payer wallet; prefers an accepted team assignment as payee). The amount is the
+  ticket's price in its current stage, `projects.fn_ticket_stage_price` — the stage rate at the
+  ticket's intensity there (0.75 / 1 / 1.5×, a seller's tier price, or a fixed stage's one price;
+  Decision #414) — the same figure `place_wallet_order`'s ticket lines, `begin_card_payment`'s ticket
+  and stage intents and the auto-fund queue and drain read. **A hold that cannot
   be made is refused, never skipped (Decision #165):** `PF402`, a "Needs funding — …" message, and
   `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
   · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
@@ -199,13 +204,22 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `approve_stage` calls, or `complete_ticket` racing `approve_stage`) both paid the payee.
   **Unbound (Decision #197):** a held escrow with no payee — prepaid, never claimed — is refunded to
   its payer (`fn_refund_ticket_escrow`, under the ticket lock) instead, so a completed, removed or
-  cancelled ticket nobody claimed never pays out to nobody.
+  cancelled ticket nobody claimed never pays out to nobody. **Open dispute (FINANCE_AUDIT L9):** a
+  held escrow with a live dispute (`fn_escrow_has_open_dispute`) is not released — `PD409`
+  `dispute_open`, through `fn_assert_no_open_dispute` — so every caller (approval, completion, the
+  ghosting auto-approve to come) waits for the ruling.
+- **`finance.fn_assert_no_open_dispute(escrow_id)`** → void (`00001200`, internal, no grant) — raises
+  `PD409` `dispute_open: …` (`DETAIL {escrow_id}`) while `fn_escrow_has_open_dispute` is true. Asked by
+  `fn_release_ticket_escrow`, `fn_fair_exit_release` and the forfeit of
+  `projects.cancel_cohort_membership`; a dispute's own ruling pays through the seat primitives,
+  which do not ask.
 - **`finance.fn_refund_ticket_escrow(ticket_id)`** (`0310`) — refunds held escrow to the payer (used
   by claim-TTL "parking" auto-release); no fee is applied to a refund. Locked and guarded as
   `fn_release_ticket_escrow` (#188): a refund racing a release, or a second refund, returns nothing.
 - **`finance.fn_fair_exit_release(ticket_id, bp)`** (`0305`) — the 25/50/75 fair-exit split: pays
   the payee `bp` basis-points of the principal (net of fee), refunds the remainder to the client.
-  Locked and guarded as `fn_release_ticket_escrow` (#188). An unbound (prepaid, unclaimed) escrow
+  Locked and guarded as `fn_release_ticket_escrow` (#188), and refused the same way while a dispute
+  is open (`PD409`). An unbound (prepaid, unclaimed) escrow
   earned nothing and is refunded in full (Decision #197). Its arithmetic is
   **`finance.fn_fair_exit_split(amount_cents bigint, bp integer, fee_bp integer)`** (`00001200`,
   `IMMUTABLE`, internal) → `(share_cents, fee_cents, payout_cents, refund_cents)`: share = amount ×
@@ -274,6 +288,12 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `fn_assert_payout_ready` (below, Decision #196).
 - **`finance.fn_business_kyb_verified(business_id)`** → boolean — true when the business is
   KYB-`verified` (required to operate the pooled Business Wallet).
+- **`finance.fn_kyb_missing(owner_type, owner_id)`** → boolean (`00001210`, FINANCE_AUDIT K4) — the
+  one KYB predicate the money doors ask: TRUE for a `business` that is not `fn_business_kyb_verified`
+  and for an `enterprise` whose `org.enterprises.verification_level` is not `verified` (a missing row
+  reads as unverified); FALSE for every other owner type. Asked by `fn_assert_business_spend`,
+  `place_wallet_order`, `transfer_funds` (through the gate) and `begin_payout`. Service role only,
+  like the pair above.
 
 > **Two kinds of predicate, two grants.** The visibility and capability predicates answer a
 > question about the CALLER and are what the RLS policies are made of, so `authenticated` must hold
@@ -414,7 +434,9 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   `place_wallet_order` charges it on every product line, for the product's owning team or person
   (Decision #337, ruling M1), and `get_seller_commission` reads it for the seller.
 - **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) → integer`** — negotiated rate →
-  `security.platform_params.platform_fee_bp` → `0`. The PAYER's rate, which escrow fees are charged
+  `security.platform_params.platform_fee_bp`; with neither it **raises** `PX500`
+  `platform_fee_not_configured` (FINANCE_AUDIT S4) rather than return 0 and waive the fee, and so
+  does `fn_escrow_fee_bp` and every release that asks it. The PAYER's rate, which escrow fees are charged
   at (Decision #187); a product sale pays the seller's commission instead. The 5% project service
   fee does **not** taper with Standing and is not bundled with any plan; the only sanctioned flex is
   an admin-approved `finance.negotiated_rates` row for an Enterprise, Business or Agency volume
@@ -788,8 +810,8 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `missing_permission: purchase`, BB2 — `finance.place_on_account_order` asks the same right after its
    own `fn_can_manage_basket`), since vault `spend` says whose money may move, not who may buy; a
    business payer must be `active` (`55000 business_not_active`, BB5); a business or
-   enterprise payer must be KYB-verified (`PK403`) — refused before re-pricing; the spend gate in
-   step 6 re-asserts both.
+   enterprise payer must be KYB-verified (`fn_kyb_missing`, `PK403`) — refused before re-pricing; the
+   spend gate in step 6 re-asserts both for a business.
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
    call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
 4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**
@@ -971,10 +993,13 @@ Moves money between two of the caller's **own** wallets — their personal walle
 belong to — so a transfer can never be a payment to somebody else. Both rows are locked in id order
 (two crossing transfers cannot deadlock). Money leaves a personal wallet only for its owner and a vault
 only for a member holding `withdraw`; it lands only in the caller's own personal wallet or a vault they
-are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
-business source passes `fn_assert_business_spend(…, 'transfers', to_wallet)` — a published business
-(`55000`, BB5), KYB (`PK403`), the mover's envelope and the approval threshold (`PA403`); a team or enterprise vault source clears the
-member's spending limit (`PA403`); the source must hold the amount (`PF402`). Money landing in a
+are a member of (`fn_owner_visible`), and paying into a team, business or enterprise vault needs its
+`add_funds` (`PK403 missing_permission: add_funds`, FINANCE_AUDIT V4). Same currency only (`PX409` — a
+transfer is not a conversion). A business source passes `fn_assert_business_spend(…, 'transfers',
+to_wallet)` — a published business (`55000`, BB5), KYB (`PK403`), the mover's envelope and the
+approval threshold (`PA403`); an enterprise source passes the same gate's KYB (`PK403`, K4); a team or
+enterprise vault source clears the member's spending limit (`PA403`); the source must hold the amount
+(`PF402`). Money landing in a
 business wallet is a contribution, refused when the business is **archived** (`55000
 business_not_active`, `org.fn_assert_business_not_archived`, checked after the landing check —
 Decision #248 (k)); a draft's still lands. The ledger lines are `transfer_out` / `transfer_in`, each
@@ -1251,6 +1276,15 @@ not retracted (Decision #246 flag). Granted to `authenticated` only. Backs `POST
 | `42501`  | not signed in (`auth:`), or not the member who filed it (`request:`) |
 | `PB404`  | no such request (`request: not found`)                               |
 | `PC409`  | already withdrawn, or already decided / expired                      |
+
+### `finance.fn_expire_spend_approvals(p_limit DEFAULT 5000)` → integer (scheduler)
+
+The expiry sweep (FINANCE_AUDIT A16): every `pending` request past `expires_at` becomes `expired`, in
+batches of `p_limit` under `FOR UPDATE SKIP LOCKED`, so a request an approver is deciding right now is
+left for the next run. A lapse names no approver and stamps no `decided_at`, exactly as the doors that
+meet an expired request write it. Moves no money and notifies nobody. Returns the count. Registered by
+name as the hourly job `finance-expire-spend-approvals` (`00005060`, one signature, so
+`to_regproc` finds it). Service role and scheduler only. Probe: `supabase/probes/finance_doors.sql` §3.
 
 ### `finance.fn_spend_ref(p_ref_table, p_ref_id)` → `jsonb` (internal)
 
@@ -1681,7 +1715,8 @@ open by #191: only the payer's own wallet is recovered from).
   missing, `42501`; an inactive one `PA403`) and is recorded on the payout, hashed into the attempt key
   and stamped on the transfer; the verified Connect account is recorded as `destination_account`; a
   caller under 18 is `PM403` (`org.fn_assert_adult`, Decision #190); a person wallet is self-only, a vault needs `withdraw`; a freelancer wallet needs
-  `fn_freelancer_payout_ready`, a business vault `fn_business_kyb_verified` (`PK403`); a verified
+  `fn_freelancer_payout_ready`, a business or enterprise vault its KYB (`fn_kyb_missing`, `PK403`,
+  FINANCE_AUDIT K4); a verified
   payout account (`PA403`); enough Available balance (`PF402` — money still in the pending window is
   not in `balance_cents`, so it can never be withdrawn early). Inserts a `pending` payout and DEBITS the wallet
   (`payout`) at once. Idempotent on the attempt key (scope `payout:<uid>`). No Instant fee is charged
@@ -1883,6 +1918,18 @@ the fee yet.
 | `PF402`  | the wallet does not hold enough, or the spend would reach money earmarked in pots (`earmarked:`) |
 | `PK403`  | an earning gate (KYC / KYB) or the Income Smoother's eligibility |
 
+### Key retention (`00001240` §8, FINANCE_AUDIT L8)
+
+- `finance.fn_sweep_idempotency_keys(p_limit DEFAULT 10000)` → integer (scheduler) — deletes
+  `finance.idempotency_keys` rows whose `expires_at` passed more than 30 days ago, in batches under
+  `SKIP LOCKED`; a key with no `expires_at` is never swept. **Never** scope `stripe.webhook`: the
+  Stripe event claims are the webhook's replay guard (Stripe redelivers for days, and an old event can
+  be resent from the Dashboard; a missing claim would move its money again) and hold the outcomes
+  `finance.v_ops_unledgered_payments` reads (`settlement_mismatch`, `business_archived`) until a human
+  settles them. Their retention is the webhook delivery ledger's (`finance-model.md` §17, **Not built
+  yet**). Registered by name as the daily job `finance-sweep-idempotency-keys` (`00005060`). Service role
+  and scheduler only. Probe: `supabase/probes/finance_doors.sql` §7.
+
 ### Pots — earmarks inside the wallet (`00001240` §9, Decision #337, ruling M6)
 
 A pot labels part of its wallet's own balance; the wallet's `balance_cents` stays the total and
@@ -1941,7 +1988,7 @@ case past it stays held — the sweep writes an `ops.log_entries` `warn` row and
 
 | Function | Door | What it does |
 | :-- | :-- | :-- |
-| `finance.fn_escrow_has_open_dispute(p_escrow_id)` → boolean | internal | THE live-dispute predicate (`open` · `awaiting_response` · `under_review`). Every release path asks it before paying out (`auto_release_session_escrow`'s three paths, the claim, the workspace's `claim_open`). |
+| `finance.fn_escrow_has_open_dispute(p_escrow_id)` → boolean | internal | THE live-dispute predicate (`open` · `awaiting_response` · `under_review`). Every release path asks it before paying out (`auto_release_session_escrow`'s three paths, the claim, the workspace's `claim_open`, and through `fn_assert_no_open_dispute` the ticket release, the fair-exit split and the seat forfeit — FINANCE_AUDIT L9). |
 | `finance.fn_dispute_context(p_dispute_id)` → TABLE | internal | The escrow's project, slug, owner (the respondent of record), the claimant and the sitting's title. |
 | `finance.fn_dispute_party(p_dispute_id, p_user_id)` → text | internal | `claimant` (the opener), `respondent` (`projects.fn_is_session_host` — the owner or an active member of the owning team) or NULL. An operator is not a party. |
 | `finance.fn_dispute_review_by(p_from)` → timestamptz | internal | The review SLA a case gets as it enters `under_review`: `p_from + dispute_review_hours` (72). Called by `respond_to_dispute`, `escalate_dispute` and the sweep, so `ck_disputes_review_deadline` holds. Executable by no client role. |

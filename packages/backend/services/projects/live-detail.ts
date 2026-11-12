@@ -968,6 +968,7 @@ export async function fetchProjectDetail(
 		viewerIsClient,
 		viewerCanConfigure,
 		personal: detailRow?.is_personal === true,
+		currency,
 		// Review authority is the client side too: a member of the paying business owns the configuration.
 		viewerAccess: resolveViewerAccess(
 			viewerIsClient || viewerCanConfigure,

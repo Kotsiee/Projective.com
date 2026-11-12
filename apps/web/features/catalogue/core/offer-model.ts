@@ -12,8 +12,17 @@ import {
 	type ServiceType,
 	STAGES_MAX,
 	type StartTrigger,
+	stagePriceSpan,
 	type TeamRole,
+	tierPriceProblem,
 } from "@projective/types/catalogue";
+import { formatMoney } from "@projective/types/finance";
+import {
+	INTENSITY_PRICE_MULTIPLIER,
+	stageCostCents,
+	TICKET_INTENSITY_LABEL,
+	TicketIntensity,
+} from "@projective/types/projects";
 
 /**
  * offer-model — the pure rules under the Edit tab's Offer section: list editing with caps, the
@@ -119,6 +128,7 @@ export function newMilestone(position: number, noun: "Milestone" | "Stage"): Mil
 		startTrigger: "after_previous",
 		lagDays: 0,
 		chainReaction: true,
+		intensity: "standard",
 	};
 }
 
@@ -193,13 +203,28 @@ function unnamed(
 	return index < 0 ? null : { path: `${key}.${index}.name`, message: `Name ${noun} ${index + 1}.` };
 }
 
+/** A problem placed on one row of a list: the row, the sentence, and the row's field it is about. */
+export interface ProblemRow {
+	index: number;
+	message: string;
+	/** The field within the row (`name` for `stages.1.name`), or `null` for the row as a whole. */
+	field: string | null;
+}
+
 /** The row of list `key` a problem is about (`milestones.1.name` → row 1), or `null`. */
-export function problemRow(
-	problem: OfferProblem | null,
-	key: string,
-): { index: number; message: string } | null {
-	const match = problem?.path.match(new RegExp(`^${key}\\.(\\d+)(\\.|$)`));
-	return problem && match ? { index: Number(match[1]), message: problem.message } : null;
+export function problemRow(problem: OfferProblem | null, key: string): ProblemRow | null {
+	const match = problem?.path.match(new RegExp(`^${key}\\.(\\d+)(?:$|\\.(\\w+))`));
+	return problem && match
+		? { index: Number(match[1]), message: problem.message, field: match[2] ?? null }
+		: null;
+}
+
+function tierProblem(stages: readonly Milestone[]): OfferProblem | null {
+	for (const [index, stage] of stages.entries()) {
+		const message = tierPriceProblem(stage);
+		if (message) return { path: `stages.${index}.tierPrices`, message };
+	}
+	return null;
 }
 
 /**
@@ -215,7 +240,8 @@ export function offerProblem(offer: ListingOffer): OfferProblem | null {
 	}
 	if (clean.archetype === "pipeline") {
 		const problem = unnamed("stage", clean.stages, "stages") ??
-			unnamed("role", clean.teamRoles, "teamRoles");
+			unnamed("role", clean.teamRoles, "teamRoles") ??
+			(clean.allowTieredIntensity ? tierProblem(clean.stages) : null);
 		if (problem) return problem;
 	}
 	const parsed = ListingOfferSchema.safeParse(clean);
@@ -306,6 +332,65 @@ export const TRIGGER_OPTIONS: readonly { value: StartTrigger; label: string }[] 
 	{ value: "after_previous", label: "After the previous stage" },
 	{ value: "fixed_offset", label: "N days after the previous stage" },
 ];
+
+/** A stage's intensity choices, in the order they read. */
+export const INTENSITY_CHOICES: { label: string; value: TicketIntensity }[] = TicketIntensity.options
+	.map((value) => ({ label: TICKET_INTENSITY_LABEL[value], value }));
+
+function tierMultiple(tier: TicketIntensity): string {
+	return `${INTENSITY_PRICE_MULTIPLIER[tier]}×`;
+}
+
+/** What the Tiered intensity pricing switch decides, behind its "?" (Decision #417). */
+export const TIERED_INTENSITY_HINT = `Off, each stage sells at the one intensity and price you set, and ` +
+	`clients cannot change either on a ticket. On, clients pick Low, Standard or High for each ticket, ` +
+	`priced at ${tierMultiple("low")}, ${tierMultiple("standard")} and ${tierMultiple("high")} of the ` +
+	`stage's price unless you set your own Low and High prices.`;
+
+/** What a stage's intensity means, behind its "?", under each way the stages sell. */
+export function stageIntensityHint(tiered: boolean): string {
+	return tiered
+		? "Where a client's pick starts on a new ticket in this stage. They can change it per ticket."
+		: "How demanding this stage's work is. Every ticket here runs at it and costs the ticket price; clients cannot change either.";
+}
+
+/**
+ * The live line under a stage's price: what one ticket costs a buyer — one price when the stages
+ * sell at a fixed intensity, the Low–High span when they are tiered.
+ */
+export function stagePriceLine(
+	stage: Milestone,
+	tiered: boolean,
+	baselineMinor: number | null,
+	currency: string,
+): string {
+	const span = stagePriceSpan(stage, tiered, baselineMinor);
+	if (!span) return "Set a baseline ticket in Pricing, or price this stage.";
+	const lead = stage.priceCents === undefined ? "The baseline ticket. " : "";
+	if (!tiered) {
+		return `${lead}Buyers pay ${formatMoney(span.low, currency)} a ticket, at ${
+			TICKET_INTENSITY_LABEL[stage.intensity]
+		} intensity.`;
+	}
+	return `${lead}Buyers see ${formatMoney(span.low, currency)} – ${
+		formatMoney(span.high, currency)
+	}, by intensity.`;
+}
+
+/** The tier a blank Low or High price falls back to: the stage price at the tier's multiple. */
+export function defaultTierPrice(
+	stage: Milestone,
+	tier: "low" | "high",
+	baselineMinor: number | null,
+): number | null {
+	return stageCostCents(stage.priceCents ?? baselineMinor, tier);
+}
+
+/** The live line under a tiered stage's own prices: what is wrong with them, or what a blank means. */
+export function tierPriceLine(stage: Milestone): string {
+	return tierPriceProblem(stage) ??
+		`Leave either blank to charge ${tierMultiple("low")} or ${tierMultiple("high")} of the stage's price.`;
+}
 
 /** The turnaround stops the slider offers, in days. */
 export const TURNAROUND_STOPS = [1, 2, 3, 5, 7, 10, 14, 21, 30] as const;

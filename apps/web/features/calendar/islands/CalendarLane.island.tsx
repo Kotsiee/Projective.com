@@ -34,6 +34,7 @@ import {
 	calendarFocus,
 	calendarPage,
 	calendarQuery,
+	hiddenClassesAt,
 	importedEvents,
 	invitationsOnly,
 	laneSpotlight,
@@ -46,6 +47,8 @@ import {
 	selectedEventId,
 	visibleEvents,
 } from "../core/calendar-state.ts";
+import type { CalendarAddress } from "../core/calendar-address.ts";
+import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 import { repeatSentence } from "../core/event-recurrence.ts";
 import { listRows } from "../core/event-series.ts";
 import { entryOrganisable } from "../core/routine-actions.ts";
@@ -98,9 +101,12 @@ export interface CalendarLaneProps {
 	initial: SchedulePage | null;
 	/** The address asks for invitations alone, so the first byte is already narrowed. */
 	invitations?: boolean;
+	/** What the agenda's URL asks to be shown (Decision #413), so `?kind=` narrows the first byte. */
+	address?: CalendarAddress;
 }
 
 export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
+	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const collapsed = useSignal(false);
 	const laneRef = useRef<HTMLDivElement>(null);
 	/** The row being dragged, for the ghost that follows the pointer. */
@@ -133,7 +139,11 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const invitesOn = settled.value ? invitationsOnly.value : props.invitations === true;
 	const invites = pendingInvitations(all, now).length;
 	const leaving = leavingEvents.value;
-	const listed = listRows(visibleEvents(all, invitesOn), now, selected);
+	const listed = listRows(
+		visibleEvents(all, invitesOn, hiddenClassesAt(props.address)),
+		now,
+		selected,
+	);
 	const { groups, loose } = groupByRoutine(listed, routines);
 
 	/**
@@ -249,6 +259,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						invitationsOn={invitesOn}
 						invitations={invites}
 						path="/calendar"
+						address={props.address}
 					/>
 				</LaneHead>
 
@@ -261,7 +272,8 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 					<RoutineSection
 						groups={groups}
 						selected={selected}
-						narrowed={activeFilterCount() > 0 || calendarQuery.value.trim() !== "" || invitesOn}
+						narrowed={activeFilterCount(props.address) > 0 ||
+							calendarQuery.value.trim() !== "" || invitesOn}
 						renderRow={rowFor}
 					/>
 					<LooseEntries>

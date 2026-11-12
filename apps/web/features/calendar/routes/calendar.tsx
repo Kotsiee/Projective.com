@@ -4,12 +4,17 @@ import { readActor } from "@web/utils/api-session.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { calendarAgendaFor, calendarPresetsFor } from "../core/calendar-slots.tsx";
 import { calendarModeOf, presetSlugOf } from "../core/availability-view.ts";
+import { readCalendarAddress } from "../core/calendar-address.ts";
 import CalendarWorkspace from "../islands/CalendarWorkspace.island.tsx";
 import AvailabilityStudio from "../islands/AvailabilityStudio.island.tsx";
 
 /**
  * `/calendar` — the acting account's own agenda, and with `?view=availability` its availability
  * templates on a full page (Decision #376).
+ *
+ * The agenda's view is addressed as `?view=&date=&zoom=&kind=` (Decision #413): read here, so the
+ * first byte paints the asked-for period, and a value the agenda does not answer is a 303 to the
+ * canonical address with it dropped.
  *
  * The BODY is the grid, or the scheduler, and nothing else. The lane, the header band (identity and
  * the Agenda ⇄ Availability switch), the footer band and the panel are resolved per-URL in
@@ -23,6 +28,8 @@ import AvailabilityStudio from "../islands/AvailabilityStudio.island.tsx";
  */
 export const handler = define.handlers({
 	async GET(ctx) {
+		const { address, redirect } = readCalendarAddress(ctx.url, "personal");
+		if (redirect) return new Response(null, { status: 303, headers: { location: redirect } });
 		const actor = readActor(ctx);
 		if (calendarModeOf(ctx.url) === "availability") {
 			if (isRestrictedRequest(ctx.req, ctx.state.userContext)) {
@@ -40,7 +47,7 @@ export const handler = define.handlers({
 		}
 		const agenda = await calendarAgendaFor(ctx.url, actor);
 		ctx.state.title = "Calendar · Projective";
-		return page({ mode: "agenda" as const, agenda });
+		return page({ mode: "agenda" as const, agenda, address });
 	},
 });
 
@@ -54,5 +61,5 @@ export default define.page<typeof handler>(function CalendarPage({ data }) {
 				owner={data.owner}
 			/>
 		)
-		: <CalendarWorkspace initial={data.agenda} />;
+		: <CalendarWorkspace initial={data.agenda} address={data.address} />;
 });

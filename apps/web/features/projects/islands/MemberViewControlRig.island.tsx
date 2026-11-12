@@ -35,7 +35,6 @@ export default function MemberViewControlRig(): JSX.Element {
 				? (
 					<Tooltip content="Invite people to this project" placement="top">
 						<Button
-							size="sm"
 							class="mem-rig__invite"
 							icon={<UserPlusIcon />}
 							label="Invite"

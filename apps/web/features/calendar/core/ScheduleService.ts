@@ -29,24 +29,34 @@ import type { CalendarResult } from "../types/results.ts";
  * own user, so there is no parameter a caller could set to read or act as somebody else.
  */
 export const ScheduleService = {
-	/** The project (or channel) calendar page. */
+	/** The project (or channel) calendar page, read around `around` (`YYYY-MM-DD`) when given. */
 	calendar(
 		projectId: string,
 		channelId?: string | null,
+		around?: string | null,
 	): Promise<CalendarResult<{ page: CalendarPage }>> {
 		const qs = new URLSearchParams({ projectId });
 		if (channelId) qs.set("channelId", channelId);
+		if (around) qs.set("around", around);
 		return getScheduling<{ page: CalendarPage }>(`/api/scheduling/calendar?${qs.toString()}`);
 	},
 
-	/** The acting account's own agenda (`/calendar`). Scope comes from the session, never a param. */
-	personal(): Promise<CalendarResult<{ page: SchedulePage }>> {
-		return getScheduling<{ page: SchedulePage }>("/api/scheduling/personal");
+	/**
+	 * The acting account's own agenda (`/calendar`), read around `around` when given. Scope comes from
+	 * the session, never a param.
+	 */
+	personal(around?: string | null): Promise<CalendarResult<{ page: SchedulePage }>> {
+		const qs = around ? `?${new URLSearchParams({ around }).toString()}` : "";
+		return getScheduling<{ page: SchedulePage }>(`/api/scheduling/personal${qs}`);
 	},
 
-	/** A `@handle`'s availability schedule page. */
-	availability(handle: string): Promise<CalendarResult<{ page: SchedulePage }>> {
+	/** A `@handle`'s availability schedule page, read around `around` when given. */
+	availability(
+		handle: string,
+		around?: string | null,
+	): Promise<CalendarResult<{ page: SchedulePage }>> {
 		const qs = new URLSearchParams({ handle });
+		if (around) qs.set("around", around);
 		return getScheduling<{ page: SchedulePage }>(`/api/scheduling/availability?${qs.toString()}`);
 	},
 

@@ -1096,3 +1096,219 @@
         --sbk-slot-h: 2.75rem;
     }
 }
+
+/* #region Conversion dialog (Decision #424) */
+.sbk-split .ui-dialog__body {
+    padding-block-end: var(--space-6);
+}
+
+.sbk-split .pf-split__grid {
+    gap: var(--space-6);
+}
+
+.sbk-split .pf-split__preview {
+    position: sticky;
+    inset-block-start: 0;
+    padding: var(--space-5);
+    border: 0;
+    border-radius: var(--radius-xl);
+    background: var(--surface-1);
+}
+
+@container (max-width: 40rem) {
+    .sbk-split .pf-split__preview {
+        position: static;
+        padding: var(--space-5);
+        border: 0;
+    }
+}
+
+.sbk__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sbk-gap-section);
+}
+
+.sbk__form > .sbk__section:focus {
+    outline: none;
+}
+
+.sbk__notice {
+    padding-inline: 0;
+    padding-block: var(--space-2);
+}
+
+.sbk__notice .ui-inline-notice__icon {
+    color: var(--danger);
+}
+
+.sbk__summarytotal {
+    display: none;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767.98px) {
+    .sbk__summarytotal {
+        display: inline;
+    }
+}
+
+.sbk__sittings {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sbk__sitting {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding-block: var(--space-3);
+    border-block-end: var(--hairline);
+}
+
+.sbk__sitting:last-child {
+    border-block-end: 0;
+}
+
+.sbk__sittingtitle {
+    font-size: var(--text-sm);
+    color: var(--on-surface);
+}
+
+.sbk__sittingwhen {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk__seatsfield {
+    inline-size: 10rem;
+}
+
+.sbk-ledger {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.sbk-ledger__cover {
+    aspect-ratio: 16 / 10;
+    overflow: clip;
+    border-radius: var(--radius-lg);
+    background: var(--surface-2);
+}
+
+.sbk-ledger__img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+}
+
+.sbk-ledger__head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.sbk-ledger__title {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+}
+
+.sbk-ledger__seller {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.sbk-ledger__lines,
+.sbk-ledger__terms {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.sbk-ledger__lines {
+    padding-block-start: var(--space-4);
+    border-block-start: var(--hairline);
+}
+
+.sbk-ledger__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.sbk-ledger__row dt {
+    min-inline-size: 0;
+    color: var(--text-secondary);
+}
+
+.sbk-ledger__row dd {
+    margin: 0;
+    text-align: end;
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk-ledger__from {
+    color: var(--text-secondary);
+}
+
+.sbk-ledger__total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    padding-block-start: var(--space-3);
+    border-block-start: var(--hairline);
+}
+
+.sbk-ledger__totallabel {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.sbk-ledger__money {
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk-ledger__note {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+}
+
+.sbk-ledger__escrow {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+}
+
+.sbk-ledger__escrow > .ui-icon {
+    flex: none;
+    color: var(--success);
+}
+/* #endregion */

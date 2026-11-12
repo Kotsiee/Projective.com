@@ -17,6 +17,7 @@ import type {
 	ServiceBriefInput,
 	SessionBookingInput,
 } from "@projective/types/services";
+import type { JoinWaitlistInput, WaitlistPlace } from "@projective/types/projects";
 
 /**
  * BookingService — the THIN client service every conversion CTA on a listing page talks to.
@@ -107,5 +108,10 @@ export const BookingService = {
 	/** Soft-archive a draft pipeline. Never a delete — nothing here is hard-deleted. */
 	archiveDraft(input: ArchiveDraftInput): Promise<BookingResult<{ draft: PipelineDraft }>> {
 		return postBooking<{ draft: PipelineDraft }>("/api/services/archive-draft", input);
+	},
+
+	/** Queue the buyer on a group-session listing's waitlist (Decision #424). Idempotent. */
+	joinWaitlist(input: JoinWaitlistInput): Promise<BookingResult<WaitlistPlace>> {
+		return postBooking<WaitlistPlace>("/api/services/waitlist", input);
 	},
 };

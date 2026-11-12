@@ -38,6 +38,14 @@ CREATE INDEX IF NOT EXISTS idx_dm_participants_folder
 CREATE INDEX IF NOT EXISTS idx_dm_messages_thread_recent
     ON comms.dm_messages (thread_id, created_at DESC);
 
+-- A thread's `cht-` address resolves through the index of UNIQUE dm_threads_ref_key (00000016), and
+-- comms.inbox_tails' k = 1 read through the summary's primary-key lookup, so neither needs one here.
+-- A project's Private Messages group: the threads holding a message stamped with that project
+-- (comms.tg_bind_dm_project). Most DMs carry none, so only stamped rows are indexed.
+CREATE INDEX IF NOT EXISTS idx_dm_messages_project
+    ON comms.dm_messages (project_id, thread_id)
+    WHERE project_id IS NOT NULL;
+
 -- Replies, looked up from the ORIGINAL's side. A reply's quote resolves its original by primary key,
 -- so the feed needs nothing new; these serve the other direction — the self-FK's ON DELETE SET NULL,
 -- which must find every reply pointing at a purged original and would otherwise scan the whole table

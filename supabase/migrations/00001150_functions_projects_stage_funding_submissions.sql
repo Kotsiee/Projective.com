@@ -706,9 +706,9 @@ $$;
 -- #region Decision #197 — what funding a stage takes, and the client's quote for it.
 -- THE definition projects.fund_stage holds by and finance.begin_card_payment charges by, so a card
 -- payment can never settle into a stage that then refuses it: every ticket in the stage that is unpaid
--- or needs funding, is not finished, and has no held escrow — claimed or not — at its own price, else
--- the stage's. `unpriced_count` > 0 means the stage cannot be funded until those tickets are priced.
--- Internal: the callers have already checked who may fund.
+-- or needs funding, is not finished, and has no held escrow — claimed or not — at its own price in the
+-- stage (projects.fn_ticket_stage_price, Decision #414). `unpriced_count` > 0 means the stage cannot
+-- be funded until those tickets are priced. Internal: the callers have already checked who may fund.
 CREATE OR REPLACE FUNCTION projects.fn_stage_funding_need(p_stage_id uuid)
 RETURNS jsonb
 LANGUAGE sql
@@ -718,9 +718,10 @@ SET search_path = ''
 AS $$
     SELECT pg_catalog.jsonb_build_object(
         'ticket_count', count(*),
-        'unpriced_count', count(*) FILTER (WHERE COALESCE(t.unit_price_cents, ps.unit_price_cents, 0) <= 0),
-        'amount_cents', COALESCE(sum(COALESCE(t.unit_price_cents, ps.unit_price_cents))
-            FILTER (WHERE COALESCE(t.unit_price_cents, ps.unit_price_cents, 0) > 0), 0)
+        'unpriced_count', count(*) FILTER (
+            WHERE COALESCE(projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps), 0) <= 0),
+        'amount_cents', COALESCE(sum(projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps))
+            FILTER (WHERE COALESCE(projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps), 0) > 0), 0)
     )
       FROM projects.tickets t
       JOIN projects.project_stages ps ON ps.id = t.current_stage_id
@@ -953,7 +954,8 @@ BEGIN
 
     SELECT tk.title, tk.text_description, tk.payment_status::text AS payment_status,
            tk.current_stage_id AS stage_id, tk.current_assignee_id AS assignee,
-           COALESCE(tk.unit_price_cents, ps.unit_price_cents) AS amount, ps.status::text AS stage_status
+           projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) AS amount,
+           ps.status::text AS stage_status
       INTO t
       FROM projects.tickets tk
       LEFT JOIN projects.project_stages ps ON ps.id = tk.current_stage_id
@@ -1337,7 +1339,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
         'ticket_id', tk.id,
         'title', tk.title,
-        'amount_cents', COALESCE(tk.unit_price_cents, ps2.unit_price_cents),
+        'amount_cents', projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps2),
         'payment_status', tk.payment_status,
         'assignee_id', tk.current_assignee_id
     ) ORDER BY tk.sort_order NULLS LAST, tk.created_at), '[]'::jsonb)

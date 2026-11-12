@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { timestamp, uuid } from "../comms/common.ts";
 import { InboxFolder } from "./folders.ts";
+import { ThreadRefSchema } from "./send.ts";
 
 /**
  * messaging.conversations — the Zod SSOT for the global inbox (`/messages`) READ projections: the
@@ -98,6 +100,11 @@ export const CONVERSATION_PICTURE_FALLBACK_URL = "/test_images/banner_5.jpg";
 export const ConversationSummarySchema = z.object({
 	/** Route param + unified thread id (e.g. `dm-mara`, `grp-northwind`). */
 	id: z.string().min(1).max(80),
+	/**
+	 * The thread's `cht-` address (`comms.dm_threads.ref`, Decision #339 ruling N1). Absent where the
+	 * conversation has no thread row: a fixture, or a `dm-{handle}` nobody has written in yet.
+	 */
+	ref: ThreadRefSchema.optional(),
 	kind: ConversationKind,
 	relation: ConversationRelation,
 	/** Group name, or the DM counterparty's name. */
@@ -117,6 +124,12 @@ export const ConversationSummarySchema = z.object({
 	lastActivityShort: z.string().max(8),
 	/** ISO last-activity timestamp — the default `recent` sort key. */
 	updatedAt: z.string(),
+	/**
+	 * The thread summary (`comms.dm_threads.last_message_at` / `last_message_id`): its newest message,
+	 * both null while it holds none. Absent where there is no thread row, as for {@link ref}.
+	 */
+	lastMessageAt: timestamp.nullable().optional(),
+	lastMessageId: uuid.nullable().optional(),
 	/** Unseen activity — a pulsing dot, never a count (DESIGN_SYSTEM.md Part D). */
 	unread: z.boolean(),
 	/** Whether the viewer starred (favourited) this conversation. */
@@ -150,12 +163,17 @@ export type ConversationSummary = z.infer<typeof ConversationSummarySchema>;
  */
 export const ConversationDetailSchema = z.object({
 	id: z.string().min(1).max(80),
+	/** The thread's `cht-` address; absent where there is no thread row (see the summary's `ref`). */
+	ref: ThreadRefSchema.optional(),
 	kind: ConversationKind,
 	relation: ConversationRelation,
 	title: z.string().min(1).max(160),
 	avatar: z.string().max(400).nullable(),
 	/** A short sub-line under the title (e.g. the party's handle, or "5 members"). */
 	sub: z.string().max(160),
+	/** The thread summary's newest message, both null while it holds none (see the summary's). */
+	lastMessageAt: timestamp.nullable().optional(),
+	lastMessageId: uuid.nullable().optional(),
 	participants: z.array(ConversationParticipantSchema),
 	starred: z.boolean(),
 	muted: z.boolean(),
@@ -171,6 +189,41 @@ export const ConversationDetailSchema = z.object({
 	serviceName: z.string().max(120).nullable(),
 });
 export type ConversationDetail = z.infer<typeof ConversationDetailSchema>;
+// #endregion
+
+// #region Thread rows (comms.dm_threads and its RPCs)
+/**
+ * `comms.dm_threads`' address and summary columns, as a participant reads them (Decision #339 ruling
+ * N1): the `cht-` ref the conversation routes by, and its newest message, which the inbox sorts and
+ * previews by. An empty thread is `last_message_id === null`.
+ */
+export const DmThreadSummaryRowSchema = z.object({
+	id: uuid,
+	kind: ConversationKind,
+	ref: ThreadRefSchema,
+	last_message_at: timestamp.nullable(),
+	last_message_id: uuid.nullable(),
+});
+export type DmThreadSummaryRow = z.infer<typeof DmThreadSummaryRowSchema>;
+
+/** One row of `comms.inbox_tails` (00001300), column for column: a preview message of one thread. */
+export const InboxTailRowSchema = z.object({
+	thread_id: uuid,
+	id: uuid,
+	sender_user_id: uuid,
+	body: z.string(),
+	has_attachments: z.boolean(),
+	is_audio: z.boolean(),
+	created_at: timestamp,
+});
+export type InboxTailRow = z.infer<typeof InboxTailRowSchema>;
+
+/** What `comms.get_or_create_dm_thread` answers: the pair's thread and its `cht-` address. */
+export const OpenedDmThreadSchema = z.object({
+	thread_id: uuid,
+	thread_ref: ThreadRefSchema,
+});
+export type OpenedDmThread = z.infer<typeof OpenedDmThreadSchema>;
 // #endregion
 
 // #region List page + params

@@ -1,7 +1,8 @@
 import type { JSX } from "preact";
-import type { Signal } from "@preact/signals";
-import type { BoardStageRef } from "../../../types/projects-types.ts";
+import type { BoardStageRef, TicketIntensity } from "../../../types/projects-types.ts";
 import type { TicketStageView } from "../../../core/ticket-view.ts";
+import type { PipelineDrop } from "../../../core/stage-pipeline.ts";
+import type { PipelineLocks } from "../../../core/stage-menu.ts";
 import { StagePipeline } from "../StagePipeline.tsx";
 
 // The pipeline diagram, its inspector and the task list are `.tkc-*` — see the note in `TicketView`.
@@ -11,27 +12,32 @@ import "../../../styles/ticket-pipeline.css";
  * TicketStagesTab — the ticket's pipeline: which stages it runs through, in what order, and which of
  * them run at the same time.
  *
- * It is the SAME surface whether the ticket is being created or read. That is the point of the
- * merge: a client who composed a pipeline and a freelancer who came to understand one are looking at
- * the same diagram, and only the grips, the joins and the "stages not in this ticket" list appear or
- * disappear with the right to change it.
+ * It is the SAME surface on every posture: the Stages tab of a saved ticket, the stage pane beside a
+ * ticket being created, and the Stages tab of either where the modal is too narrow for a pane. A
+ * client who composed a pipeline and a freelancer who came to understand one are looking at the same
+ * cards; only the drag, the menus and the available zone appear or disappear with the right to change
+ * it.
  *
- * Selecting a stage does not expand it here. It opens in the MODAL's right-hand panel — one place a
- * stage is read in full, one place it is configured, and the diagram stays legible while you work on
- * a row of it.
+ * Selecting a stage does not expand it here. It opens in the modal's inspector — one place a stage is
+ * read in full, one place it is configured.
  */
 export interface TicketStagesTabProps {
 	stageViews: TicketStageView[];
 	/** Stages of the engagement this ticket does not currently include. */
 	available: BoardStageRef[];
-	/** The stage open in the modal's side panel. Shared, because the panel lives outside this tab. */
-	selected: Signal<string | null>;
+	/** The stage open in the modal's inspector, or `null`. */
+	selectedStageId: string | null;
 	/** Whether the viewer may change the ticket's composition. */
 	editable: boolean;
 	/** The engagement's currency (`BoardCard.currency`). */
 	currency: string;
-	onToggle: (stageId: string) => void;
-	onMove: (from: number, to: number) => void;
+	/** The ticket's intensity — what an added stage starts at. */
+	intensity: TicketIntensity;
+	locks: PipelineLocks;
+	title?: string;
+	onSelect: (stageId: string) => void;
+	onPlace: (stageId: string, drop: PipelineDrop) => void;
+	onSwap: (stageId: string, direction: -1 | 1) => void;
 	onParallel: (stageId: string, parallel: boolean) => void;
 }
 
@@ -40,12 +46,15 @@ export function TicketStagesTab(props: TicketStagesTabProps): JSX.Element {
 		<StagePipeline
 			resolved={props.stageViews}
 			available={props.available}
-			selectedStageId={props.selected.value}
+			selectedStageId={props.selectedStageId}
 			editable={props.editable}
 			currency={props.currency}
-			onSelect={(id) => (props.selected.value = id)}
-			onToggle={props.onToggle}
-			onMove={props.onMove}
+			intensity={props.intensity}
+			locks={props.locks}
+			title={props.title}
+			onSelect={props.onSelect}
+			onPlace={props.onPlace}
+			onSwap={props.onSwap}
 			onParallel={props.onParallel}
 		/>
 	);

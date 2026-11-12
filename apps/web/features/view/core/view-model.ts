@@ -99,12 +99,12 @@ export function backLabelFor(ctx: HrefContext): string {
 }
 
 /** The direct-message deep link for the "Message" CTA (canonical DM namespace). */
-export function messageHrefFor(item: ExploreItem): string {
+export function messageHrefFor(item: { owner: Pick<ExploreItem["owner"], "handle"> }): string {
 	return `/messages/dm-${item.owner.handle.replace(/^@/, "")}`;
 }
 
 /** The sign-in bounce that returns to the current item after auth. */
-export function signInHref(item: ExploreItem, ctx: HrefContext): string {
+export function signInHref(item: Pick<ExploreItem, "id" | "type">, ctx: HrefContext): string {
 	const target = ctx.scope === "profile"
 		? `/${ctx.handle}/view/${item.id}?type=${item.type}`
 		: `/view/${item.id}?type=${item.type}`;

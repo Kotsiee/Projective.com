@@ -12,29 +12,43 @@
 > `packages/ui/styles/index.css`, the shell shortcuts, and decisions #13, #43, #92/#157, #96,
 > #147/#148 and #171. Where the brief collides with a source document, the prompt **stops and asks**
 > (§0.1) instead of choosing a side. That is root `CLAUDE.md` §8.
+>
+> **Status 2026-11-12 (re-verified in code at `8a3fd595`):** P0–P8 are done (merged in
+> `73550174`, 2026-10-18). L0–L6 are done too (merged in `362e0655`, 2026-10-20), but Decision #349
+> (`c82008df`) and `21309eeb` later rebuilt `/` as the guest Explore Home. That deleted the landing
+> hero, background, rails and numbers, and moved the demo stage, Payment protection, Pricing and
+> the FAQ to `/features`.
 
 ---
 
 ## 0. Run order, decisions and repo facts
 
-| #  | Prompt                                        | Depends on | Why this order                                                                                                                                        |
-| :- | :-------------------------------------------- | :--------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P0 | Shared editorial foundation                   | —          | The document reader, table of contents, reading progress, print sheet, SEO helpers, reserved handles and static images are used by P1, P2, P5 and P6. |
-| P1 | `/legal` hub + `/legal/[slug]`                | P0         | The footer's Privacy and Terms links point at `/help` today, and that gap blocks a launch.                                                            |
-| P2 | `/help` hub + `/help/[...path]`               | P0         | Replaces the `PagePlaceholder` that sits there now.                                                                                                   |
-| P3 | `/contact`                                    | P0         | Needs the intake table and a file dropzone.                                                                                                           |
-| P4 | `/about`                                      | P0         | Needs a live-metrics read.                                                                                                                            |
-| P5 | `/changelog` + RSS                            | P0         | —                                                                                                                                                     |
-| P6 | `/articles` + `/articles/[slug]`              | P0         | Read §0.1 (b) first.                                                                                                                                  |
-| P7 | `/feedback` + global `?feedback=open` overlay | P0         | New schema, moderation and the shell overlay.                                                                                                         |
-| P8 | Integration sweep                             | P1–P7      | Sitemap, robots, footer and megamenu, docs, Playwright smoke.                                                                                         |
-| L0 | Landing: art direction & decisions            | P0         | Choose the layout, style, background and visualizers; log the design-system exemption. Nothing is built until it lands.                               |
-| L1 | Landing: decoupled shell, theme, background   | L0         | Full-bleed route, scoped `lp-` theme, performance budget, WebGL background with fallbacks.                                                            |
-| L2 | Landing: hero + Explore search                | L1         | **The one hard requirement**: the hero searches Explore.                                                                                              |
-| L3 | Landing: visualizer engine + first demos      | L2         | One tabbed stage that swaps simulations, so the page never shows ten widgets at once.                                                                 |
-| L4 | Landing: remaining sections                   | L3, P4     | Comparison, how it works, ways to work, payment protection, live numbers (P4's metrics service), pricing, FAQ, final CTA.                             |
-| L5 | `/features` extension page                    | L3         | The full visualizer catalogue the landing page links into, so the home page stays light.                                                              |
-| L6 | Landing: QA & launch gate                     | L1–L5      | Performance, accessibility, honesty (claims table), leak check, SEO, Playwright.                                                                      |
+Re-verified in code 2026-11-12 at `8a3fd595`: every prompt below has landed (✅).
+`/legal`, `/help`, `/contact`, `/about`, `/changelog`, `/articles` and `/feedback` are live under
+`routes/(public)/`, and since `def078c2` only legal copy has changed. Decision #349 (`c82008df`,
+2026-11-01) and `21309eeb` (2026-11-02) then rebuilt `/` as the guest Explore Home, so L1–L4 are
+partly superseded (see their status lines). `deno task test:e2e` still names
+`apps/web/tests/e2e/landing-hero.spec.ts`, which `21309eeb` deleted. Two premises are history:
+§0.2's `PagePlaceholder` note and P8's "Pricing → `/help`".
+
+| #  | Prompt                                                                   | Depends on | Why this order                                                                                                                                        |
+| :- | :----------------------------------------------------------------------- | :--------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 | Shared editorial foundation ✅                                           | —          | The document reader, table of contents, reading progress, print sheet, SEO helpers, reserved handles and static images are used by P1, P2, P5 and P6. |
+| P1 | `/legal` hub + `/legal/[slug]` ✅                                        | P0         | The footer's Privacy and Terms links point at `/help` today, and that gap blocks a launch.                                                            |
+| P2 | `/help` hub + `/help/[...path]` ✅                                       | P0         | Replaces the `PagePlaceholder` that sits there now.                                                                                                   |
+| P3 | `/contact` ✅                                                            | P0         | Needs the intake table and a file dropzone.                                                                                                           |
+| P4 | `/about` ✅                                                              | P0         | Needs a live-metrics read.                                                                                                                            |
+| P5 | `/changelog` + RSS ✅                                                    | P0         | —                                                                                                                                                     |
+| P6 | `/articles` + `/articles/[slug]` ✅                                      | P0         | Read §0.1 (b) first.                                                                                                                                  |
+| P7 | `/feedback` + global `?feedback=open` overlay ✅                         | P0         | New schema, moderation and the shell overlay.                                                                                                         |
+| P8 | Integration sweep ✅                                                     | P1–P7      | Sitemap, robots, footer and megamenu, docs, Playwright smoke.                                                                                         |
+| L0 | Landing: art direction & decisions ✅                                    | P0         | Choose the layout, style, background and visualizers; log the design-system exemption. Nothing is built until it lands.                               |
+| L1 | Landing: decoupled shell, theme, background ✅, partly superseded (#349) | L0         | Full-bleed route, scoped `lp-` theme, performance budget, WebGL background with fallbacks.                                                            |
+| L2 | Landing: hero + Explore search ✅, superseded (#349, #350)               | L1         | **The one hard requirement**: the hero searches Explore.                                                                                              |
+| L3 | Landing: visualizer engine + first demos ✅, partly superseded (#349)    | L2         | One tabbed stage that swaps simulations, so the page never shows ten widgets at once.                                                                 |
+| L4 | Landing: remaining sections ✅, partly superseded (#349)                 | L3, P4     | Comparison, how it works, ways to work, payment protection, live numbers (P4's metrics service), pricing, FAQ, final CTA.                             |
+| L5 | `/features` extension page ✅                                            | L3         | The full visualizer catalogue the landing page links into, so the home page stays light.                                                              |
+| L6 | Landing: QA & launch gate ✅                                             | L1–L5      | Performance, accessibility, honesty (claims table), leak check, SEO, Playwright.                                                                      |
 
 ### 0.1 Decisions you must make (the relevant prompt stops for each)
 
@@ -183,6 +197,8 @@ Commit on a new branch; do not open a PR unless I ask.
 
 ## P0 · Shared editorial foundation
 
+> **Status 2026-11-12:** Done in `e23e531c` (with the F schemas, `03d0e693`; merged in `73550174`).
+
 ```text
 TASK: Build the shared primitives that /legal, /help, /changelog and /articles all use, so those
 prompts compose instead of duplicating.
@@ -260,6 +276,9 @@ prompts compose instead of duplicating.
 ---
 
 ## P1 · Legal & compliance hub — `/legal`, `/legal/[slug]`
+
+> **Status 2026-11-12:** Done in `e4f7c870` and `4ebc1c83` (#270). The IP workspace is at
+> `(dashboard)/legal/workspace`.
 
 ```text
 TASK: Build the public legal hub and its child documents.
@@ -361,6 +380,8 @@ update the PRODUCT_SPEC sitemap and ROUTING.md accordingly.
 ---
 
 ## P2 · Help Center & knowledge base — `/help`, `/help/[...path]`
+
+> **Status 2026-11-12:** Done in `c2614589`, `f8758dd0` and `b9cf2d7b` (#275).
 
 ```text
 TASK: Replace the PagePlaceholder at apps/web/routes/(public)/help/[...path].tsx with a real help
@@ -472,6 +493,8 @@ if you think the brief's "Contributor"/"Squad" should be introduced; that would 
 
 ## P3 · Contact & enterprise routing — `/contact`
 
+> **Status 2026-11-12:** Done in `0f1b3c93`, `0c2dbac3` and `6de0a9c6` (#276).
+
 ```text
 TASK: Build a multi-intent contact page with a real intake pipeline.
 
@@ -565,6 +588,8 @@ TASK: Build a multi-intent contact page with a real intake pipeline.
 
 ## P4 · About & platform mission — `/about`
 
+> **Status 2026-11-12:** Done in `54d8cf94` and `c20d5dea` (#277; `PublicMetricsService`).
+
 ```text
 TASK: Replace the PagePlaceholder at apps/web/routes/(public)/about.tsx with the editorial
 manifesto page.
@@ -643,6 +668,8 @@ Decision #96's editorial single-column language):
 ---
 
 ## P5 · Changelog & velocity feed — `/changelog`
+
+> **Status 2026-11-12:** Done in `30218f8b` and `2e05e1a1` (#278).
 
 ```text
 TASK: Build the public changelog with RSS and deep-linkable releases.
@@ -725,6 +752,8 @@ TASK: Build the public changelog with RSS and deep-linkable releases.
 ---
 
 ## P6 · Articles & insights — `/articles`, `/articles/[slug]`
+
+> **Status 2026-11-12:** Done in `a26a2bef` and `36c95984` (#271).
 
 ```text
 TASK: Build the editorial index and reader.
@@ -817,6 +846,8 @@ ROUTING.md.
 ---
 
 ## P7 · Community feedback & roadmap — `/feedback` + global `?feedback=open`
+
+> **Status 2026-11-12:** Done in `3c2f9048` and `2be232ba` (#272).
 
 ```text
 TASK: Build the feedback board as a standalone route AND a global overlay.
@@ -942,6 +973,9 @@ decision and add the "Feedback idea" lifecycle to PRODUCT_MANAGEMENT.md.
 ---
 
 ## P8 · Integration sweep
+
+> **Status 2026-11-12:** Done in `9d5bc074`, `4ef2bc32` and `ce5bdfbc` (#279; `test:e2e:public`).
+> `c82008df` later pointed Pricing at `/features#pricing`.
 
 ```text
 TASK: Tie P1–P7 together and prove them.
@@ -1215,6 +1249,8 @@ Every visualizer's caption is under 15 words.
 
 ## L0 · Landing — art direction & decisions
 
+> **Status 2026-11-12:** Done in `f0f6e96c` (`flows/LANDING.md`, the claims table, #280–#285).
+
 ```text
 TASK: Choose the landing page's direction and record it before anything is built. Produce a written
 direction, not code.
@@ -1254,6 +1290,9 @@ No code in this prompt.
 ---
 
 ## L1 · Landing — decoupled shell, scoped theme, background
+
+> **Status 2026-11-12:** Done in `a1584b87`, then partly superseded by #349 (`c82008df`). The WebGL
+> background is gone; `LandingShell` and the `lp-` theme now serve `/features` only.
 
 ```text
 TASK: Make `/` a full-bleed, off-system surface with its own theme and the chosen background,
@@ -1317,6 +1356,10 @@ without touching the rest of the app.
 ---
 
 ## L2 · Landing — hero + Explore search (the hard requirement)
+
+> **Status 2026-11-12:** Done in `f91f1faf` and `3da982a9` (#288), then superseded by #349 and #350.
+> `c82008df` and `21309eeb` deleted the hero, the theatre and `HeroSearchForm`. `/` is now the guest
+> Explore Home, and its own hero search meets the requirement.
 
 ```text
 TASK: Build the hero, whose core is a search bar that searches Explore.
@@ -1397,6 +1440,9 @@ TASK: Build the hero, whose core is a search bar that searches Explore.
 
 ## L3 · Landing — visualizer engine + first demos
 
+> **Status 2026-11-12:** Done in `b6934b5b`, then partly superseded by #349 (`c82008df`). The demo
+> stage moved to `/features`, and the money-flow stage was deleted.
+
 ```text
 TASK: Build the single tabbed "see it in action" stage and the demos chosen in L0 (default V1 Live
 board, V2 Payment protection, V4 Booking, V5 Team splits).
@@ -1463,6 +1509,10 @@ board, V2 Payment protection, V4 Booking, V5 Team splits).
 ---
 
 ## L4 · Landing — remaining sections
+
+> **Status 2026-11-12:** Done in `48304ff2`, then partly superseded by #349 (`c82008df`). Payment
+> protection, Pricing, the FAQ and the final CTA moved to `/features`. Why-different, ways to work,
+> live numbers, the rails and the teams section were deleted.
 
 ```text
 TASK: Build the sections around the hero and the demo stage, per LANDING.md and §2.1.
@@ -1536,6 +1586,9 @@ TASK: Build the sections around the hero and the demo stage, per LANDING.md and 
 
 ## L5 · `/features` — the extension page
 
+> **Status 2026-11-12:** Done in `b61605fa`. Since #349 it also holds the demo stage, Payment
+> protection, Pricing and the FAQ.
+
 ```text
 TASK: Build /features, the "everything Projective does" page that the landing page links into, so
 the home page stays light.
@@ -1579,6 +1632,9 @@ the home page stays light.
 ---
 
 ## L6 · Landing — QA & launch gate
+
+> **Status 2026-11-12:** Done in `b45c6d0e` (#303). `21309eeb` deleted its
+> `tests/e2e/landing-hero.spec.ts`, but `deno task test:e2e` still names that file.
 
 ```text
 TASK: Prove the landing track is fast, accessible, honest and leak-free, and fix what fails.

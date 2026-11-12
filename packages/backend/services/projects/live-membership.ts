@@ -50,7 +50,11 @@ export interface MintedStage {
 	stageId: string;
 }
 
-/** Append one stage through `projects.create_stage`. */
+/**
+ * Append one stage through `projects.create_stage`. The baseline rate is its named `p_unit_price_cents`
+ * argument; the CREATE category rides the settings bag (`create_category`), the function's one channel
+ * for optional stage fields, so its signature and grants stay as they are.
+ */
 export async function createStageRow(
 	actor: LiveActor,
 	slug: string,
@@ -65,6 +69,8 @@ export async function createStageRow(
 		// The rich-text column's shape (`{ html }`) and its flattened twin, as the setup save writes them.
 		p_description: { html: text ? plainTextToHtml(text) : "" },
 		p_description_text: text,
+		p_unit_price_cents: input.unitPriceCents,
+		p_payload: input.createCategory ? { create_category: input.createCategory } : {},
 	});
 	if (error) return { refusal: refusalFrom(error.message, "name") };
 	const stageId = typeof data === "string" ? data : null;

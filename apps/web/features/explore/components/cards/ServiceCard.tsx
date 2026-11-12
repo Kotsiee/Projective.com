@@ -11,7 +11,7 @@ import { cardAccent } from "../../core/accent.ts";
 import { CardReveal, NewFact } from "../CardReveal.tsx";
 import { isNew, ratingSignals, serviceTypeLabel } from "../../core/card-signals.ts";
 import { serviceStartingPrice } from "../../core/pricing.ts";
-import { itemHref } from "../../core/routing.ts";
+import { cardMenuFacts } from "../../core/card-menu.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ServiceItem } from "../../types/explore-types.ts";
 
@@ -64,13 +64,7 @@ export function ServiceCard(
 				onSelect={onSelect}
 				label={`${item.title} by ${item.owner.name} — ${item.price}`}
 			/>
-			<CardActions
-				title={item.title}
-				href={itemHref(item, ctx)}
-				id={item.id}
-				type={item.type}
-				authed={authed}
-			/>
+			<CardActions facts={cardMenuFacts(item, ctx)} authed={authed} />
 
 			<div class="ex-media ex-media--16x10">
 				<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />

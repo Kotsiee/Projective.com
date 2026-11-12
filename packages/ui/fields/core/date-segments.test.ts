@@ -381,6 +381,89 @@ Deno.test("stepSegment — an empty segment starts from the anchor, not from zer
 	assertEquals(stepSegment(emptyParts(), "day", -1, anchor).day, 1);
 });
 
+Deno.test("stepSegment — the day wraps inside the month the other segments name", () => {
+	assertEquals(stepSegment({ day: 30, month: 3, year: 2026 }, "day", 1).day, 1, "30 April → 1");
+	assertEquals(stepSegment({ day: 1, month: 3, year: 2026 }, "day", -1).day, 30, "1 April → 30");
+	assertEquals(
+		stepSegment({ day: 30, month: 3, year: null }, "day", 1).day,
+		1,
+		"with no year the ceiling is still the month's own",
+	);
+});
+
+Deno.test("stepSegment — the month wraps 12 ↔ 1 and clamps a day the new month lacks", () => {
+	assertEquals(stepSegment({ day: 31, month: 11, year: 2026 }, "month", 1), {
+		day: 31,
+		month: 0,
+		year: 2026,
+	});
+	assertEquals(stepSegment({ day: 31, month: 2, year: 2026 }, "month", -1), {
+		day: 28,
+		month: 1,
+		year: 2026,
+	});
+	assertEquals(stepSegment({ day: 31, month: 2, year: 2024 }, "month", -1), {
+		day: 29,
+		month: 1,
+		year: 2024,
+	});
+});
+
+Deno.test("stepSegment — the year stays inside the picker's minDate / maxDate years", () => {
+	const range = { min: new Date(2020, 5, 15), max: new Date(2026, 10, 12) };
+	const at = (year: number): DateParts => ({ day: 10, month: 4, year });
+	assertEquals(stepSegment(at(2026), "year", 1, new Date(), range).year, 2026, "no year past max");
+	assertEquals(
+		stepSegment(at(2020), "year", -1, new Date(), range).year,
+		2020,
+		"no year before min",
+	);
+	assertEquals(stepSegment(at(2023), "year", 1, new Date(), range).year, 2024);
+	assertEquals(
+		stepSegment(at(2099), "year", -1, new Date(), range).year,
+		2026,
+		"a typed year outside the window steps to its nearest edge",
+	);
+	assertEquals(
+		stepSegment(emptyParts(), "year", 1, new Date(2031, 0, 1), range).year,
+		2026,
+		"an empty year seeds from the anchor, clamped into the window",
+	);
+	assertEquals(
+		stepSegment(at(9999), "year", 1, new Date(), { min: range.min }).year,
+		9999,
+		"an open end leaves the absolute bound in charge",
+	);
+});
+
+Deno.test("stepSegment — stepping the year off a leap day under a range still clamps the day", () => {
+	const range = { max: new Date(2025, 11, 31) };
+	assertEquals(stepSegment({ day: 29, month: 1, year: 2024 }, "year", 1, new Date(), range), {
+		day: 28,
+		month: 1,
+		year: 2025,
+	});
+});
+
+Deno.test("segmentBounds — the year spinbutton announces the picker's window", () => {
+	const parts: DateParts = { day: 1, month: 0, year: 2024 };
+	assertEquals(segmentBounds("year", parts), { min: 1, max: 9999 });
+	assertEquals(
+		segmentBounds("year", parts, { min: new Date(1926, 0, 1), max: new Date(2026, 10, 12) }),
+		{ min: 1926, max: 2026 },
+	);
+	assertEquals(
+		segmentBounds("year", parts, { min: new Date(2030, 0, 1), max: new Date(2020, 0, 1) }),
+		{ min: 2030, max: 2030 },
+		"an inverted window never yields an empty range",
+	);
+	assertEquals(
+		segmentBounds("month", parts, { max: new Date(2024, 2, 1) }),
+		{ min: 1, max: 12 },
+		"the month keeps its own cycle whatever the window",
+	);
+});
+
 // #endregion
 
 // #region Resolution

@@ -1254,59 +1254,6 @@
 
 /* #endregion */
 
-/* #region Create-Stage modal */
-/*
- * The modal SURFACE — scrim, panel, elevation, title, focus trap, Escape and backdrop dismissal — is
- * the shared `Dialog`'s (`packages/ui/feedback/islands/Dialog.tsx`); `.proj-stage-modal` is only a
- * scoping class on its panel, and the controls are the shared `Button` / `InputText` / `Textarea`.
- * What used to live here was a second, divergent implementation of all of it, carrying three defects
- * the shared components do not have: a scrim mixed from `--on-surface` (near-WHITE in dark mode, so
- * the page brightened behind the modal instead of dimming) at half the canonical blur; a heading at
- * `font-weight: 700`, which §A.4 forbids; and `:focus-visible { outline: none; box-shadow: none }` on
- * the buttons, i.e. no keyboard focus indicator at all.
- */
-.proj-stage-modal__form {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	margin-block-start: var(--space-4);
-}
-
-.proj-stage-modal__field {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
-
-.proj-stage-modal__label {
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fw-medium);
-	color: var(--text-secondary);
-}
-
-.proj-stage-modal__hint {
-	font-weight: var(--fw-normal);
-	text-transform: none;
-	color: var(--text-secondary);
-	opacity: 0.8;
-}
-
-/* The server's refusal, inline under the fields it concerns — the lane has no toast host. */
-.proj-stage-modal__error {
-	margin: 0;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	color: var(--danger);
-}
-
-.proj-stage-modal__actions {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-
-/* #endregion */
-
 /* #region Empty / missing state */
 .proj-detail--empty {
 	gap: var(--space-4);

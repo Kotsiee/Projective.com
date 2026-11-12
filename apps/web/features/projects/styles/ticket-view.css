@@ -149,7 +149,7 @@
 
 .tkv__titlefield .ui-field__input {
 	font-size: var(--text-lg);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
@@ -260,6 +260,18 @@
 }
 .tkv-meta__v[data-overdue="true"] {
 	color: var(--danger);
+}
+
+.tkv-meta__v--fixed {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	border-radius: var(--radius-sm);
+}
+
+.tkv-meta__v--fixed:focus-visible {
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -442,15 +454,16 @@
 	block-size: 1.125rem;
 	padding-inline: 5px;
 	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-1);
 	font-size: var(--text-2xs);
 	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 
 .tkv-tabs__tab[aria-selected="true"] .tkv-tabs__count {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	color: var(--primary-ink);
+	background: var(--surface-2);
+	color: var(--on-surface);
 }
 
 /* Unread on the History trigger is a DOT, not a count — the count itself is a footer metric the
@@ -498,10 +511,17 @@
 	box-shadow: none;
 }
 
-/* The side panel is told apart by one hairline and a tonal step. No box. */
+/* The side panel is told apart by one hairline. No box, no tonal step. */
 .tkv__side {
 	border-inline-start: var(--hairline);
-	background: var(--surface-1);
+	background: transparent;
+}
+
+.tkv-pane {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding: var(--space-4);
 }
 /* #endregion */
 
@@ -595,110 +615,31 @@
 	color: var(--text-secondary);
 }
 
-/*
- * The Details tab's stage MEMBERSHIP picker.
- *
- * A container that toggles is a control, which is exactly what earns one (§B.11) — these are not
- * metadata pills. It answers only "does this ticket cover that stage", because that is the question
- * the footer's total depends on; order, concurrency and per-stage briefs are the Stages tab's
- * pipeline diagram, and both write the same field through the same reducer.
- */
-.tkv-stagepick {
+.tkv-stagesum {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2);
+	align-items: baseline;
+	column-gap: var(--space-2);
+	row-gap: var(--space-1);
 	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-/*
- * The border is declared at full width on every state and only ever RECOLOURED, so selecting and
- * hovering move paint and never geometry (§B.12.3).
- */
-.tkv-stagepick__opt {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-block-size: var(--fld-h-sm);
-	padding-inline: var(--space-3);
-	border: 1px solid var(--outline);
-	border-radius: var(--radius-full);
-	background: transparent;
-	font: inherit;
-	font-size: var(--text-xs);
-	color: var(--on-surface);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.tkv-stagepick__opt:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.tkv-stagepick__opt[aria-pressed="true"] {
-	border-color: var(--primary);
-	background: var(--primary);
-	color: var(--on-primary);
-}
-
-/*
- * The selected pill hovers on its BORDER, not its fill. `--primary` is mode-invariant and carries
- * almost no headroom against its own ink, so a tonal step in either direction spends contrast this
- * pair cannot pay (§B.12.4 · Decision #92) — the border channel costs it nothing.
- */
-.tkv-stagepick__opt[aria-pressed="true"]:hover {
-	background: var(--primary);
-	border-color: var(--on-primary);
-}
-
-/* Press feedback (§B.12): compression only, on `transform`, moving no box-model property. */
-.tkv-stagepick__opt:active {
-	transform: scale(var(--btn-press-scale));
-	transition-duration: var(--dur-press);
-}
-
-/*
- * BOTH reduced-motion channels, and by `transform: none` rather than a zero duration: the token
- * layer already zeroes every `--dur-*`, which removes the animation and leaves the compression.
- */
-@media (prefers-reduced-motion: reduce) {
-	.tkv-stagepick__opt,
-	.tkv-stagepick__opt:active {
-		transform: none !important;
-	}
-}
-
-:root[data-motion="reduced"] .tkv-stagepick__opt,
-:root[data-motion="reduced"] .tkv-stagepick__opt:active {
-	transform: none !important;
-}
-
-.tkv-stagepick__mark {
-	flex: none;
-}
-
-.tkv-stagepick__name {
-	max-inline-size: 16rem;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.tkv-stagepick__rate {
-	font-size: var(--text-2xs);
-	font-variant-numeric: tabular-nums;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
 	color: var(--text-secondary);
 }
 
-/* On the filled pill the rate takes the full `--on-primary`; a de-emphasising alpha would drop the
-   pair's 5.13:1 under AA. */
-.tkv-stagepick__opt[aria-pressed="true"] .tkv-stagepick__rate {
-	color: inherit;
+.tkv-stagesum__item {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.tkv-stagesum__name {
+	color: var(--on-surface);
+}
+
+.tkv-stagesum__price {
+	font-variant-numeric: tabular-nums;
 }
 
 .tkv-chip {
@@ -903,15 +844,12 @@
 	border-radius: var(--radius-sm);
 }
 
-.tkv-live__int {
+.tkv-live__meta {
 	margin-inline-start: auto;
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
-}
-
-.tkv-live__int[data-level="high"] {
-	color: var(--warning);
+	white-space: nowrap;
 }
 
 .tkv-live__tasktitle {
@@ -1407,10 +1345,27 @@
 	flex: none;
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: var(--space-4);
 	padding: var(--space-3) var(--space-4);
 	border-block-start: var(--hairline);
-	background: var(--surface-1);
+}
+
+.tkv__lead {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.tkv__trail {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-4);
+	min-inline-size: 0;
 }
 
 /*
@@ -1486,18 +1441,13 @@
 }
 
 .tkv__gate {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-inline-size: 0;
 	margin: 0;
 	font-size: var(--text-2xs);
 	line-height: var(--leading-snug);
 	text-align: end;
 	color: var(--text-secondary);
-}
-
-/* Holds the actions against the end of the row on a ticket with nothing pending to say. */
-.tkv__gate--spacer {
-	display: block;
 }
 
 .tkv-metric {
@@ -1576,18 +1526,15 @@
 		row-gap: var(--space-2);
 	}
 
+	.tkv__trail {
+		flex-wrap: wrap;
+		row-gap: var(--space-2);
+	}
+
 	.tkv__gate {
-		order: 4;
+		order: 2;
 		flex-basis: 100%;
 		text-align: start;
-	}
-
-	.tkv__gate--spacer {
-		display: none;
-	}
-
-	.tkv__footacts {
-		margin-inline-start: auto;
 	}
 }
 

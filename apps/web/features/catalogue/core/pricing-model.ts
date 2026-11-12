@@ -1,5 +1,6 @@
 import { toMinorUnits } from "@projective/types/finance";
 import type { FormArchetype, ListingPricing } from "@projective/types/catalogue";
+import { INTENSITY_PRICE_MULTIPLIER } from "@projective/types/projects";
 
 /**
  * pricing-model — the pure rules under the Pricing section and the revision fields. A listing's
@@ -42,7 +43,7 @@ export function priceAsk(archetype: FormArchetype): PriceAsk {
 			return {
 				field: "ticketPrice",
 				label: "Baseline ticket price",
-				hint: "The standard price of one ticket. Buyers see half to double it, by workload.",
+				hint: "The price of one ticket. With tiered intensity it is the Standard price, and buyers pick Low (0.75×) to High (1.5×).",
 			};
 		case "session":
 			return { field: "sessionPrice", label: "Price per session", hint: "What one sitting costs." };
@@ -73,9 +74,12 @@ export function withAskedPrice(
 	return { ...pricing, [field]: whole };
 }
 
-/** The Pipeline range buyers see around a ticket price, in minor units: half to double. */
+/** The Pipeline range buyers see around a ticket price, in minor units: the Low to High multiplier. */
 export function ticketRange(minor: number): { low: number; high: number } {
-	return { low: Math.round(minor * 0.5), high: Math.round(minor * 2) };
+	return {
+		low: Math.round(minor * INTENSITY_PRICE_MULTIPLIER.low),
+		high: Math.round(minor * INTENSITY_PRICE_MULTIPLIER.high),
+	};
 }
 // #endregion
 

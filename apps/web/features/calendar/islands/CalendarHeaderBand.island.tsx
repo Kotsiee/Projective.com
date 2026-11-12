@@ -7,6 +7,7 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { TabStrip, useMediaQuery } from "@projective/ui/navigation";
 import type { PresetListResult, SchedulePage } from "@projective/types/scheduling";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { CalendarFilterFacets } from "../components/CalendarFilterFacets.tsx";
 import { fallbackZone, pageValueOf } from "../components/AvailabilityPageParts.tsx";
 import { type CalendarMode, calendarModeHref } from "../core/availability-view.ts";
@@ -32,7 +33,6 @@ import {
 	calendarPresent,
 	calendarQuery,
 	type CalendarSurface,
-	calendarView,
 	filtersEngaged,
 	focusedAt,
 	importedEvents,
@@ -40,7 +40,10 @@ import {
 	resetFilters,
 	setCalendarMode,
 	shiftedFocus,
+	viewAt,
 } from "../core/calendar-state.ts";
+import type { CalendarAddress } from "../core/calendar-address.ts";
+import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 
 /**
  * CalendarHeaderBand — the middle-nav HEADER band on `/calendar`, ONE structure on both of its pages
@@ -88,6 +91,8 @@ export interface CalendarHeaderBandProps {
 	presetSlug?: string | null;
 	/** The viewer's `org.user_preferences.locale`, so the shared availability store is made alike. */
 	locale?: string;
+	/** What the agenda's URL asks to be shown (Decision #413), so the period paints in the first byte. */
+	address?: CalendarAddress;
 }
 
 const MODE_TABS = [
@@ -119,6 +124,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 				initial={props.initial}
 				surface={props.surface ?? "personal"}
 				title={props.title}
+				address={props.address}
 			/>
 		);
 }
@@ -222,26 +228,35 @@ function BandFrame(props: BandFrameProps): JSX.Element {
 
 // #region Events
 function AgendaBand(
-	props: { initial: SchedulePage | null; surface: CalendarSurface; title?: string },
+	props: {
+		initial: SchedulePage | null;
+		surface: CalendarSurface;
+		title?: string;
+		address?: CalendarAddress;
+	},
 ): JSX.Element {
+	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const entity = props.surface === "entity";
 	const filterOpen = useSignal(false);
 	const filterRef = useRef<HTMLButtonElement>(null);
+	const searchRef = useRef<HTMLLabelElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 	const page = calendarPage.value ?? props.initial;
 	const events = [...(page?.events ?? []), ...importedEvents.value];
 	const tz = page?.timezone ?? "UTC";
-	const view = calendarView.value;
+	const view = viewAt(props.address);
 	const timeline = view === "timeline";
+	const focus = focusedAt(page, props.address);
 
 	return (
 		<BandFrame
 			mode="agenda"
 			view={view}
-			// From the page's own clock, so the period is right in the FIRST byte rather than flipping on
-			// hydration to a value the grid published.
-			focus={focusedAt(page)}
+			// From the address, else the page's own clock, so the period is right in the FIRST byte rather
+			// than flipping on hydration to a value the grid published.
+			focus={focus}
 			tz={tz}
-			onStep={(delta) => (calendarFocus.value = shiftedFocus(view, focusedAt(page), delta, tz))}
+			onStep={(delta) => (calendarFocus.value = shiftedFocus(view, focus, delta, tz))}
 			onNow={() => {
 				calendarFocus.value = Date.now();
 				calendarPresent.value += 1;
@@ -251,7 +266,7 @@ function AgendaBand(
 			tabs={!entity}
 			title={props.title}
 		>
-			<label class="cal-band__search">
+			<label class="cal-band__search" ref={searchRef}>
 				<Icon name="search" size="xs" class="cal-band__searchglyph" aria-hidden="true" />
 				<input
 					class="cal-band__searchinput"
@@ -267,7 +282,7 @@ function AgendaBand(
 					type="button"
 					ref={filterRef}
 					class="cal-band__iconbtn cal-band__iconbtn--mobile"
-					data-on={filtersEngaged() ? "true" : undefined}
+					data-on={filtersEngaged(props.address) ? "true" : undefined}
 					aria-label="Filter what is shown"
 					aria-haspopup="dialog"
 					aria-expanded={filterOpen.value ? "true" : "false"}
@@ -284,7 +299,7 @@ function AgendaBand(
 				<div class="ui-lane-filter">
 					<header class="ui-lane-filter__head">
 						<span class="ui-lane-filter__title">Filters</span>
-						{activeFilterCount() > 0
+						{activeFilterCount(props.address) > 0
 							? (
 								<button type="button" class="ui-lane-filter__reset" onClick={resetFilters}>
 									Reset

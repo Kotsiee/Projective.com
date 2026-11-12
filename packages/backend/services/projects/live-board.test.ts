@@ -588,6 +588,47 @@ Deno.test("fetchBoardPage: a nameless ticket is titled, and a card in an unreada
 	});
 });
 
+Deno.test("fetchBoardPage reads each stage's intensity and due date, a fixed stage at its seller's", async () => {
+	const FIXED = stage(S3, {
+		name: "Handover",
+		sort_order: 2,
+		unit_price_cents: 30000,
+		default_intensity: "high",
+		intensity_locked: true,
+	});
+	const dated = ticket(T1, {
+		current_stage_id: S1,
+		required_stages: [
+			{ stage_id: S1, order: 0, intensity: "high", due_at: "2026-11-20" },
+			{ stage_id: S2, order: 1, intensity: "low", due_at: "2026-11-28" },
+			{ stage_id: S3, order: 2, intensity: "low", due_at: "not a date" },
+		],
+		due_date: "2026-11-28T00:00:00+00:00",
+	});
+	const routes = boardRoutes({
+		"projects.project_stages": (req: FakeRequest) =>
+			req.query.get("select")?.includes("slug")
+				? [STAGES[0], STAGES[1], FIXED]
+				: [STAGES[0], STAGES[1], FIXED].map((s) => ({ project_id: PROJECT_UUID, status: s.status })),
+		"projects.tickets": [dated],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(OWNER, { projectId: SLUG });
+		assert(page);
+		const card = page.cards.find((c) => c.id === T1);
+		assert(card);
+		assertEquals(card.stages.map((s) => [s.intensity, s.dueAt]), [
+			["high", "2026-11-20"],
+			["low", "2026-11-28"],
+			["high", null],
+		]);
+		// Price scale: 10,000 × 1.5 · 20,000 × 0.75 · the fixed stage's one price.
+		assertEquals(card.stages.map((s) => s.costCents), [15000, 15000, 30000]);
+		assertEquals(card.intensity, "standard");
+		assertEquals(card.funding?.amountMinor ?? null, 15000);
+	});
+});
+
 Deno.test("fetchBoardPage applies query and priority filters after counting the full load", async () => {
 	await withPostgrest(boardRoutes(), async () => {
 		const page = await fetchBoardPage(OWNER, { projectId: SLUG, query: "AUDIT" });

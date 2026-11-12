@@ -324,7 +324,33 @@ $$;
 COMMENT ON FUNCTION security.fn_slug_guard() IS
 'BEFORE INSERT OR UPDATE trigger for any table with a slug column. On insert, mints one when none was supplied (running before NOT NULL is checked); on update, refuses any change to an existing slug, which is what makes a slug a permanent address rather than a convention.';
 
--- Neither is callable over PostgREST. `security` is an exposed schema and CREATE FUNCTION grants
+-- fn_slug_guard's contract on a column named `ref` (comms.dm_threads, Decision #339 ruling N1), with
+-- one difference: the insert ALWAYS mints and discards any supplied value, so no caller can choose a
+-- conversation's address. A second small function rather than a column-name argument to the shared
+-- guard, whose closed body is what makes it safe as a definer: a dynamic column would let whoever
+-- writes the CREATE TRIGGER aim it at any column. Definer for the reason stated above.
+CREATE OR REPLACE FUNCTION security.fn_ref_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        NEW.ref := security.mint_slug(TG_ARGV[0]);
+    ELSIF NEW.ref IS DISTINCT FROM OLD.ref THEN
+        RAISE EXCEPTION
+            'A % ref is permanent and cannot be changed (% -> %).', TG_ARGV[0], OLD.ref, NEW.ref
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION security.fn_ref_guard() IS
+'BEFORE INSERT OR UPDATE trigger for a table addressed by a ref column (comms.dm_threads). On insert, always mints one with the prefix in TG_ARGV[0], replacing any supplied value; on update, refuses any change (23514).';
+
+-- None of these is callable over PostgREST. `security` is an exposed schema and CREATE FUNCTION grants
 -- EXECUTE to PUBLIC by default, so without this a signed-out caller could mint slugs at will —
 -- harmless in itself, but surface with no purpose.
 --
@@ -334,6 +360,7 @@ COMMENT ON FUNCTION security.fn_slug_guard() IS
 -- removes. The cause is a slug caller running as the invoker; make that caller a definer instead.
 REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;
+REVOKE ALL ON FUNCTION security.fn_ref_guard() FROM PUBLIC;
 
 -- #endregion
 

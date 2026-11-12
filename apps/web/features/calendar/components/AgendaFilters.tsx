@@ -3,11 +3,11 @@ import { useSignal } from "@preact/signals";
 import {
 	LaneBar,
 	LaneFilterPopover,
-	LaneSearch,
 	type LaneToggleOption,
 	LaneToggleRow,
 	NavItem,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { Icon, type IconName } from "@projective/ui/icons";
 import {
 	type CalendarEvent,
@@ -20,11 +20,13 @@ import {
 	activeFilterCount,
 	calendarQuery,
 	classesOnPage,
+	hiddenClassesAt,
 	resetFilters,
 	setInvitationsOnly,
 	showOnlyClass,
 	soleVisibleClass,
 } from "../core/calendar-state.ts";
+import type { CalendarAddress } from "../core/calendar-address.ts";
 
 /** The registry glyph each class is drawn with in the quick row. */
 const CLASS_ICON: Record<EntryClass, IconName> = { event: "calendar", reminder: "flag" };
@@ -42,6 +44,8 @@ export interface AgendaFiltersProps {
 	path: string;
 	/** The search field's placeholder and name (default "Search your calendar"). */
 	searchLabel?: string;
+	/** What the URL asks to be shown (Decision #413), so `?kind=` presses its row in the first byte. */
+	address?: CalendarAddress;
 }
 
 /**
@@ -66,14 +70,14 @@ export function AgendaFilters(props: AgendaFiltersProps): JSX.Element {
 		label: ENTRY_CLASS_PLURAL[entry],
 		icon: <Icon name={CLASS_ICON[entry]} />,
 	}));
-	const solo = soleVisibleClass(present);
+	const solo = soleVisibleClass(present, hiddenClassesAt(props.address));
 	const { invitationsOn, invitations } = props;
 	const searchLabel = props.searchLabel ?? "Search your calendar";
 
 	return (
 		<>
 			<LaneBar>
-				<LaneSearch
+				<LaneSearchField
 					value={calendarQuery.value}
 					placeholder={searchLabel}
 					label={searchLabel}
@@ -82,7 +86,7 @@ export function AgendaFilters(props: AgendaFiltersProps): JSX.Element {
 				/>
 				<LaneFilterPopover
 					open={filterOpen}
-					active={activeFilterCount()}
+					active={activeFilterCount(props.address)}
 					icon={<Icon name="filter" />}
 					onReset={resetFilters}
 				>

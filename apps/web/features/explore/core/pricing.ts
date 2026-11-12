@@ -1,5 +1,5 @@
 import { toMinorUnits } from "@projective/types/finance";
-import { INTENSITY_MULTIPLIER } from "@projective/types/projects";
+import { pipelineTicketSpan } from "@projective/types/explore";
 import type { ProfileItem, ProjectItem, ServiceItem } from "../types/explore-types.ts";
 
 /**
@@ -65,8 +65,9 @@ export function projectBudgetAmount(item: ProjectItem): PriceAmount | null {
 /**
  * A service's price resolved by engagement model, as STRUCTURED amounts:
  *
- * - **Pipeline** — billed per ticket at the client's chosen intensity (PRODUCT_SPEC §The Architect's
- *   Override), so `from` is the Low-intensity price and `to` the High-intensity one, unit `ticket`.
+ * - **Pipeline** — billed per ticket. Sold at tiered intensity, `from` is the Low-intensity price and
+ *   `to` the High-intensity one (PRODUCT_SPEC §The Weighting Engine); sold at one fixed intensity,
+ *   `from` is its one price and there is no `to`. Unit `ticket` either way.
  * - **Session** — a per-session price, unit `session`.
  * - **Group Session** — a per-attendee price, unit `seat`.
  * - **One-Off / Direct Deliverable** — the fixed `priceMinor`, no `to`.
@@ -82,10 +83,11 @@ export function servicePriceParts(
 	// `× 100`) is what keeps a yen or a dinar price from being a hundredfold or tenfold wrong.
 	const minor = (major: number): number => toMinorUnits(major, currency) ?? 0;
 
-	if (item.serviceType === "Pipeline" && item.ticketPrice) {
+	const span = item.serviceType === "Pipeline" && item.ticketPrice ? pipelineTicketSpan(item) : null;
+	if (span) {
 		return {
-			from: { minor: minor(item.ticketPrice * INTENSITY_MULTIPLIER.low), currency },
-			to: { minor: minor(item.ticketPrice * INTENSITY_MULTIPLIER.high), currency },
+			from: { minor: minor(span.low), currency },
+			to: span.high > span.low ? { minor: minor(span.high), currency } : null,
 			unit: "ticket",
 		};
 	}

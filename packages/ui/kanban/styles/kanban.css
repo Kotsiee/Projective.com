@@ -39,6 +39,7 @@
 
 /* #region Column */
 .ui-kanban__column {
+	position: relative;
 	flex: 0 0 var(--kanban-col-w, 17rem);
 	inline-size: var(--kanban-col-w, 17rem);
 	min-block-size: 0;
@@ -59,23 +60,41 @@
 }
 
 /* A column that refuses the card in flight (`itemDropRefusal`): it steps down the surface ramp
-   instead of taking the drop tint, its cards recede, and the reason sits under its header. */
+   instead of taking the drop tint, its header and cards recede, the reason sits under its header
+   with a lock, and the pointer reads not-allowed over it. */
 .ui-kanban__column[data-locked="true"],
 .ui-kanban__column[data-locked="true"][data-over="true"] {
 	background: var(--surface-2);
 	cursor: not-allowed;
 }
 
+:root[data-dnd-dragging] .ui-kanban__column[data-locked="true"],
+:root[data-dnd-dragging] .ui-kanban__column[data-locked="true"] * {
+	cursor: not-allowed !important;
+}
+
+.ui-kanban__column[data-locked="true"] .ui-kanban__col-header,
 .ui-kanban__column[data-locked="true"] .ui-kanban__col-body {
 	opacity: 0.5;
 }
 
 .ui-kanban__col-lock {
 	flex: none;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-1);
 	margin: 0;
 	padding: var(--space-2) var(--space-3) 0;
 	font-size: 0.75rem;
 	color: var(--text-secondary);
+}
+
+.ui-kanban__col-lock-mark {
+	flex: none;
+	inline-size: 1em;
+	block-size: 1em;
+	margin-block-start: 0.1em;
+	stroke-width: var(--icon-stroke);
 }
 
 .ui-kanban__col-header {
@@ -136,16 +155,22 @@
 }
 
 .ui-kanban__col-empty {
-	flex: 1 1 auto;
-	min-block-size: 3rem;
+	position: absolute;
+	inset: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: var(--space-2);
+	padding: var(--space-3);
 	text-align: center;
 	color: var(--text-secondary);
 	font-size: 0.75rem;
+	pointer-events: none;
+}
+
+.ui-kanban__col-empty > * {
+	pointer-events: auto;
 }
 
 .ui-kanban__col-footer {

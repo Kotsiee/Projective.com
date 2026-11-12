@@ -260,8 +260,10 @@ export interface ChannelTreeProps {
 	/** Which groups are expanded (keyed `discussion|teams|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
-	/** Client-only: open the Create New Stage modal. */
-	onCreateStage: () => void;
+	/** Whether the viewer authors stages here (`BoardAccess.canAddStage`, Decision #421). */
+	canCreateStage: boolean;
+	/** Open the Create stage popover on the pressed button. */
+	onCreateStage: (event: JSX.TargetedMouseEvent<HTMLButtonElement>) => void;
 	/** Active quick-filter facets (OR-combined); empty → show everything. */
 	filters: ChannelFilterKey[];
 	/** The open channel's route segment — highlights its row; re-derived on Partial navigation. */
@@ -274,8 +276,17 @@ const anyUnread = (chans: { unread: boolean }[]) => chans.some((c) => c.unread);
 const stageUnread = (row: SidebarStageRow) => row.channel?.channel.unread ?? false;
 
 export function ChannelTree(
-	{ detail, stages, general, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
-		ChannelTreeProps,
+	{
+		detail,
+		stages,
+		general,
+		openGroups,
+		onToggleGroup,
+		canCreateStage,
+		onCreateStage,
+		filters,
+		activeChannelId,
+	}: ChannelTreeProps,
 ): JSX.Element {
 	const { teams, dms } = conditionalChannelGroups(detail.channels);
 	const slug = detail.slug;
@@ -339,7 +350,7 @@ export function ChannelTree(
 					open={groupOpen("discussion")}
 					onToggle={() => onToggleGroup("discussion")}
 					hasUnread={(general?.status ?? null) !== null || stages.some(stageUnread)}
-					action={!filtering && detail.viewerIsClient
+					action={!filtering && canCreateStage
 						? (
 							<button
 								type="button"

@@ -6,11 +6,11 @@ import { Icon } from "@projective/ui/icons";
 import type { CtaPhase } from "../core/cta-feedback.ts";
 
 /**
- * A conversion control's fill ramp: `inverted` is the default teal + white primary (§D.7.7), `brand`
- * the teal secondary, and `accent` (amber money verb) + `mono` (monochrome basket) the commerce rig's
- * hue-ranked pair (§B.8.1).
+ * A conversion control's tier (§B.8.1): `inverted` is the default teal + white primary (§D.7.7),
+ * `brand` the teal secondary, `accent` the tier-1 money verb (the monochrome inverted pill, filled) and
+ * `neutral` the tier-4 outlined pill the commerce rig's Add to basket takes (Decision #424).
  */
-export type CtaTone = "inverted" | "brand" | "accent" | "mono";
+export type CtaTone = "inverted" | "brand" | "accent" | "neutral";
 
 /**
  * CtaButton — a conversion control with the platform's calm positive-feedback cycle.
@@ -50,14 +50,7 @@ export interface CtaButtonProps {
 	icon?: JSX.Element;
 	/** The fill ramp: {@link CtaTone}. */
 	tone?: CtaTone;
-	/**
-	 * The `Button` variant.
-	 *
-	 * Exposed because the secondary is `outlined` while the primary is `filled`, and that is a
-	 * STRUCTURAL difference rather than a colour one — `outlined` drops the background entirely, which
-	 * no amount of `--btn-accent` juggling can express. Defaults to `filled`, so every existing caller
-	 * is unchanged.
-	 */
+	/** The `Button` variant for the teal tones. `accent` is always filled and `neutral` always outlined. */
 	variant?: "filled" | "outlined";
 	fluid?: boolean;
 	class?: string;
@@ -94,24 +87,29 @@ export function CtaButton(props: CtaButtonProps): JSX.Element {
 		? <Icon name="check" size="sm" class="evp-cta__check" aria-hidden />
 		: icon;
 
+	const shared = {
+		label: settled ? settledLabel : label,
+		"aria-label": settled ? settledLabel : ariaLabel,
+		size: "sm",
+		fluid,
+		rounded: true,
+		icon: leading,
+		// A settled control is momentarily inert on purpose: the write has landed, and a second press in
+		// that window is a buyer who did not see the first one land.
+		disabled: disabled || pending || settled,
+		"aria-busy": pending ? "true" : undefined,
+		onClick,
+		"data-phase": phase,
+		class: cls("evp-cta__btn", `evp-cta__btn--${tone}`, className),
+	} as const;
+
 	return (
 		<Ripple disabled={disabled || pending} class="evp-cta__ripple">
-			<Button
-				label={settled ? settledLabel : label}
-				aria-label={settled ? settledLabel : ariaLabel}
-				size="sm"
-				variant={variant}
-				fluid={fluid}
-				rounded
-				icon={leading}
-				// A settled control is momentarily inert on purpose: the write has landed, and a second
-				// press in that window is a buyer who did not see the first one land.
-				disabled={disabled || pending || settled}
-				aria-busy={pending ? "true" : undefined}
-				onClick={onClick}
-				data-phase={phase}
-				class={cls("evp-cta__btn", `evp-cta__btn--${tone}`, className)}
-			/>
+			{tone === "accent"
+				? <Button {...shared} severity="accent" variant="filled" />
+				: tone === "neutral"
+				? <Button {...shared} severity="neutral" variant="outlined" />
+				: <Button {...shared} variant={variant} />}
 		</Ripple>
 	);
 }

@@ -45,7 +45,8 @@ const CORPUS: ExploreItem[] = [
 	service("svc-bbbbbbbbbb", 250_000, "2-week delivery"),
 	service("svc-cccccccccc", 480_000, "10-day delivery", {
 		serviceType: "Pipeline",
-		ticketPrice: 240,
+		ticketPrice: 220,
+		tieredIntensity: true,
 		category: "motion",
 		skills: [{ label: "Motion design", category: "motion" }],
 	}),
@@ -89,7 +90,7 @@ Deno.test("a price pair bounds both ends and the legacy single value still means
 
 Deno.test("a pipeline sorts by its low-intensity floor, a session by its per-session price", () => {
 	const sorted = getResults(CORPUS, { ...params({}), sort: "price_asc" }).map((it) => it.id);
-	// Pipeline floor = 240 × 0.5 = 120 < session 180 < one-offs 900 / 2500.
+	// Pipeline floor = 220 × 0.75 = 165 < session 180 < one-offs 900 / 2500; its standard 220 would not lead.
 	assertEquals(sorted, ["svc-cccccccccc", "svc-dddddddddd", "svc-aaaaaaaaaa", "svc-bbbbbbbbbb"]);
 });
 

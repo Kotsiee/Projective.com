@@ -2,11 +2,13 @@ import { z } from "zod";
 import { FileCategory } from "../files/categories.ts";
 import {
 	StageAssignmentMode,
+	TicketIntensity,
 	TicketPriority,
 	TicketStatus,
 	TicketUnitPriceCents,
 	TicketWorkloadIntensity,
 } from "./board.ts";
+import { CreateCategory } from "../org/standing.ts";
 import { IpOwnershipMode } from "./create.ts";
 import { StageAssignmentStatus, StageCapacity } from "./setup.ts";
 
@@ -121,6 +123,13 @@ export const ProjectStageRowSchema = z
 		allowedFileCategories: z.array(FileCategory).nullable(),
 		allowedFileExtensions: z.array(z.string()),
 		unitPriceCents: priceCents.nullable(),
+		/** The tier a ticket starts at; on a locked stage the one it runs at (Decision #417). */
+		defaultIntensity: TicketIntensity,
+		/** The intensity and price are a fixed-intensity service's terms (Decision #417). */
+		intensityLocked: z.boolean(),
+		lowPriceCents: priceCents.nullable(),
+		highPriceCents: priceCents.nullable(),
+		createCategory: CreateCategory.nullable(),
 		milestone: z.string(),
 		startTriggerType: StageStartTrigger,
 		fixedStartDate: timestamp.nullable(),

@@ -1,8 +1,8 @@
 /**
  * dev-theme.ts — the DEVELOPMENT-ONLY live theme knobs of the Context Switcher.
  *
- * Four `dsConfig` fields — the brand seed, the accent seed, the radius scale and the shadow
- * intensity — written through `updateConfig`, so the root binding's `applyConfig` repaints `:root`
+ * Three `dsConfig` fields — the brand seed, the radius scale and the shadow intensity — written
+ * through `updateConfig`, so the root binding's `applyConfig` repaints `:root`
  * in the same frame (the scheme tokens plus `--radius-scale` / `--shadow-intensity` as inline
  * properties, readable in the element inspector).
  *
@@ -21,8 +21,6 @@ import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/s
 export interface DevThemeKnobs {
 	/** Brand seed (`dsConfig.seed`) — the primary and neutral palettes. */
 	seed: string;
-	/** Accent seed (`dsConfig.accentSeed`) — the `--accent` fill. */
-	accentSeed: string;
 	/** Multiplier behind every `--radius-*` token. */
 	radiusScale: number;
 	/** Multiplier behind every `--elevation-*` shadow. */
@@ -44,7 +42,6 @@ export type DevThemeScaleKey = "radiusScale" | "shadowIntensity";
 /** The shipping values, read from `DEFAULT_CONFIG` so Reset can never drift from it. */
 export const DEV_THEME_DEFAULTS: Readonly<DevThemeKnobs> = {
 	seed: DEFAULT_CONFIG.seed,
-	accentSeed: DEFAULT_CONFIG.accentSeed,
 	radiusScale: DEFAULT_CONFIG.radiusScale,
 	shadowIntensity: DEFAULT_CONFIG.shadowIntensity,
 };
@@ -64,16 +61,14 @@ export function devThemeKnobs(): DevThemeKnobs {
 	const cfg = dsConfig.value;
 	return {
 		seed: cfg.seed,
-		accentSeed: cfg.accentSeed,
 		radiusScale: cfg.radiusScale,
 		shadowIntensity: cfg.shadowIntensity,
 	};
 }
 
-/** Whether every knob sits at its shipping value (seeds compared case-insensitively). */
+/** Whether every knob sits at its shipping value (the seed compared case-insensitively). */
 export function isDevThemeDefault(knobs: DevThemeKnobs): boolean {
 	return knobs.seed.toLowerCase() === DEV_THEME_DEFAULTS.seed.toLowerCase() &&
-		knobs.accentSeed.toLowerCase() === DEV_THEME_DEFAULTS.accentSeed.toLowerCase() &&
 		knobs.radiusScale === DEV_THEME_DEFAULTS.radiusScale &&
 		knobs.shadowIntensity === DEV_THEME_DEFAULTS.shadowIntensity;
 }
@@ -95,9 +90,6 @@ function sanitize(value: unknown): Partial<DevThemeKnobs> {
 	const blob = value as Record<string, unknown>;
 	const knobs: Partial<DevThemeKnobs> = {};
 	if (typeof blob.seed === "string" && HEX_COLOUR.test(blob.seed)) knobs.seed = blob.seed;
-	if (typeof blob.accentSeed === "string" && HEX_COLOUR.test(blob.accentSeed)) {
-		knobs.accentSeed = blob.accentSeed;
-	}
 	for (const key of ["radiusScale", "shadowIntensity"] as const) {
 		const raw = blob[key];
 		if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -113,7 +105,7 @@ export function patchDevTheme(patch: Partial<DevThemeKnobs>): void {
 	persist();
 }
 
-/** Restore the four shipping values and drop the session copy. */
+/** Restore the three shipping values and drop the session copy. */
 export function resetDevTheme(): void {
 	updateConfig({ ...DEV_THEME_DEFAULTS });
 	removeStored("session", SessionKeys.DEV_THEME_OVERRIDES);

@@ -133,6 +133,28 @@ AS $$
     ), false);
 $$;
 
+-- The one KYB predicate a money door asks (FINANCE_AUDIT K4): TRUE for a business or an enterprise that
+-- is not verified — a business by its Connect onboarding (fn_business_kyb_verified), an enterprise by
+-- `org.enterprises.verification_level` — so its pooled money is neither spent, moved nor paid out.
+-- FALSE for every other owner type, which needs no KYB. A missing row reads as not verified.
+CREATE OR REPLACE FUNCTION finance.fn_kyb_missing(p_owner_type text, p_owner_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE p_owner_type
+        WHEN 'business' THEN NOT finance.fn_business_kyb_verified(p_owner_id)
+        WHEN 'enterprise' THEN NOT COALESCE((
+            SELECT o.verification_level = 'verified'::org.enterprise_verification_level
+              FROM org.enterprises o
+             WHERE o.id = p_owner_id
+        ), false)
+        ELSE false
+    END;
+$$;
+
 -- #region Business spend gate (BUSINESSES_AUDIT BF19, BF21, BF22)
 -- The approval threshold that governs ONE vault: its own `approval_threshold_cents`, else the platform's
 -- `vault_approval_threshold_cents` in the vault's currency (finance.fn_param_minor, Decision #337,
@@ -156,8 +178,9 @@ $$;
 
 -- The ONE gate every door that moves a business's pooled money calls, in the transaction that moves it:
 -- the basket, paying on account, a transfer out, fund_stage / fund_ticket / fund_paid_revision, the card
--- escrow lock, and the escrow holds themselves. A wallet that is not a business's returns at once (team
--- and personal spending keep their own rules). Otherwise, in order:
+-- escrow lock, and the escrow holds themselves. An enterprise vault is held to (b) alone (FINANCE_AUDIT
+-- K4): its envelope stays its door's own check, as place_wallet_order and transfer_funds make it. Any
+-- other wallet returns at once (team and personal spending keep their own rules). A business, in order:
 --   (a) the business is published — org.fn_assert_business_active, else 55000 `business_not_active:`
 --       (BB5): a draft or archived business spends nothing, on any door, counted or not.
 --   (b) KYB — the business is verified, else PK403 `kyb_required:`.
@@ -204,17 +227,22 @@ DECLARE
     v_detail text;
 BEGIN
     SELECT * INTO v_wallet FROM finance.wallets w WHERE w.id = p_wallet;
-    IF NOT FOUND OR v_wallet.owner_type <> 'business' OR p_amount IS NULL OR p_amount <= 0 THEN
+    IF NOT FOUND OR v_wallet.owner_type NOT IN ('business', 'enterprise') OR p_amount IS NULL OR p_amount <= 0 THEN
         RETURN;
     END IF;
 
-    PERFORM org.fn_assert_business_active(v_wallet.owner_id);
+    IF v_wallet.owner_type = 'business' THEN
+        PERFORM org.fn_assert_business_active(v_wallet.owner_id);
+    END IF;
 
-    IF NOT finance.fn_business_kyb_verified(v_wallet.owner_id) THEN
+    IF finance.fn_kyb_missing(v_wallet.owner_type, v_wallet.owner_id) THEN
         RAISE EXCEPTION USING
             ERRCODE = 'PK403',
             MESSAGE = 'kyb_required: complete business verification (KYB) before spending from this account',
-            DETAIL = pg_catalog.jsonb_build_object('wallet_id', p_wallet, 'business_id', v_wallet.owner_id)::text;
+            DETAIL = pg_catalog.jsonb_build_object('wallet_id', p_wallet, v_wallet.owner_type || '_id', v_wallet.owner_id)::text;
+    END IF;
+    IF v_wallet.owner_type = 'enterprise' THEN
+        RETURN;
     END IF;
 
     v_threshold := finance.fn_business_threshold(p_wallet);
@@ -283,8 +311,9 @@ $$;
 COMMENT ON FUNCTION finance.fn_assert_business_spend(uuid, uuid, bigint, text, uuid, boolean) IS
 'The business spend gate: KYB (PK403 kyb_required), the ACTOR''s envelope counted once per transaction
 (PA403 over_limit unless an approval for the ref carries it) and the approval threshold with the platform
-fallback (PA403 needs_approval unless an approval for the ref is redeemed). No-op for a non-business
-wallet. p_count_envelope = false checks KYB and the threshold only, counting and consuming nothing.
+fallback (PA403 needs_approval unless an approval for the ref is redeemed). An enterprise vault is held
+to KYB only (finance.fn_kyb_missing); any other wallet is a no-op. p_count_envelope = false checks KYB
+and the threshold only, counting and consuming nothing.
 Internal — called by the money doors and the escrow holds; not executable by clients.';
 
 -- Close what a basket or stage door left of its cover on one wallet, once its holds are made: the
@@ -1361,14 +1390,7 @@ BEGIN
     IF v_basket.owner_type = 'business' THEN
         PERFORM org.fn_assert_business_active (v_basket.owner_id);
     END IF;
-    IF v_basket.owner_type = 'business' AND NOT finance.fn_business_kyb_verified (v_basket.owner_id) THEN
-        RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'
-            USING ERRCODE = 'PK403';
-    END IF;
-    IF v_basket.owner_type = 'enterprise' AND NOT EXISTS (
-        SELECT 1 FROM org.enterprises o
-        WHERE o.id = v_basket.owner_id AND o.verification_level = 'verified'
-    ) THEN
+    IF finance.fn_kyb_missing (v_basket.owner_type, v_basket.owner_id) THEN
         RAISE EXCEPTION 'Complete business verification (KYB) to pay from this account'
             USING ERRCODE = 'PK403';
     END IF;
@@ -1400,7 +1422,7 @@ BEGIN
                p.owner_user_id, p.owner_team_id, p.licence, p.format::text AS format, p.file_manifest,
                bi.ticket_id, bi.stage_id AS line_stage_id, tk.project_id AS ticket_project_id,
                tk.title AS ticket_title, tk.current_stage_id AS ticket_stage_id,
-               COALESCE(tk.unit_price_cents, ts.unit_price_cents) AS ticket_price,
+               projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ts) AS ticket_price,
                pr.currency AS project_currency, pr.client_business_id, pr.owner_user_id AS project_owner,
                bi.seats, bi.metadata, bi.scheduled_at, bi.timezone
           FROM finance.basket_items bi
@@ -2126,6 +2148,14 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
     END IF;
+    -- Paying into a shared wallet is the vault's `add_funds`, which a member holds only through the
+    -- workspace's contribute_funds (FINANCE_AUDIT V4); belonging to it is not enough.
+    IF v_to.owner_type IN ('team', 'business', 'enterprise')
+       AND NOT finance.fn_has_vault_capability (v_to.id, v_uid, 'add_funds'::finance.vault_capability) THEN
+        RAISE EXCEPTION 'missing_permission: add_funds'
+            USING ERRCODE = 'PK403',
+                  HINT = 'Ask the owner or an admin for permission to add funds to this account.';
+    END IF;
     -- Money landing in a business wallet is a contribution: a draft takes it, an archived business
     -- takes nothing in (Decision #248 (k)).
     IF v_to.owner_type = 'business' THEN
@@ -2136,11 +2166,12 @@ BEGIN
             USING ERRCODE = 'PX409';
     END IF;
     -- Money leaving a pooled business wallet passes the spend gate (BB3): KYB (finance-model.md §KYC/KYB
-    -- Gating), the mover's envelope and the threshold, an approval bound to the destination wallet. A
-    -- team or enterprise vault keeps its envelope only.
-    IF v_from.owner_type = 'business' THEN
+    -- Gating), the mover's envelope and the threshold, an approval bound to the destination wallet. An
+    -- enterprise vault passes the gate's KYB (FINANCE_AUDIT K4) and, like a team vault, its envelope.
+    IF v_from.owner_type IN ('business', 'enterprise') THEN
         PERFORM finance.fn_assert_business_spend (v_from.id, v_uid, p_amount, 'transfers', v_to.id);
-    ELSIF v_from.owner_type IN ('team', 'enterprise')
+    END IF;
+    IF v_from.owner_type IN ('team', 'enterprise')
        AND NOT finance.fn_check_spending_limit (v_from.id, v_uid, p_amount) THEN
         RAISE EXCEPTION 'That is over your spending limit on this account' USING ERRCODE = 'PA403';
     END IF;
@@ -2179,10 +2210,11 @@ COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
 'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
 to), same currency only. Leaving a vault needs the withdraw capability and the member''s spending limit;
 leaving a business wallet passes finance.fn_assert_business_spend (KYB, the envelope, the approval
-threshold). Landing needs membership, and never lands in an archived business''s wallet. Idempotent on
-the attempt key. Refusals: 42501 not allowed · 22023 bad input or key · PB404 wallet gone · PX409
-different currencies · 55000 business_not_active (an archived destination, or a source the spend gate
-refuses) · PK403 KYB · PA403 spending limit or approval · PF402 not enough.';
+threshold), and leaving an enterprise vault its KYB. Landing in a vault needs its add_funds capability,
+and never lands in an archived business''s wallet. Idempotent on the attempt key. Refusals: 42501 not
+allowed · 22023 bad input or key · PB404 wallet gone · PX409 different currencies · 55000
+business_not_active (an archived destination, or a source the spend gate refuses) · PK403 KYB, or
+missing_permission: add_funds · PA403 spending limit or approval · PF402 not enough.';
 
 -- Distribute part of a TEAM vault to its members by their agreed stakes
 -- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the
@@ -3216,6 +3248,40 @@ COMMENT ON FUNCTION finance.withdraw_spend_approval(uuid) IS
 'The requester takes back their own pending spend request: status withdrawn, decided_at stamped, no
 approver (a lapsed one is marked expired instead). Audited; moves no money. Refusals: 42501 sign in /
 not the requester · PB404 not found · PC409 already withdrawn or decided.';
+
+-- The expiry sweep (FINANCE_AUDIT A16; the scheduler's `finance-expire-spend-approvals`, hourly, which
+-- 00005060 registers by this name): every `pending` request past its `expires_at` becomes `expired`, so
+-- a stale request stops waiting on an approver and stops blocking a new one for the same ref. A lapse
+-- names no approver and stamps nothing (00000017), exactly as the doors that met an expired request one
+-- at a time already wrote it. Batches of `p_limit`; a row a decision holds is skipped and left for the
+-- next run. Moves no money. Returns how many expired. Service role and scheduler only.
+CREATE OR REPLACE FUNCTION finance.fn_expire_spend_approvals(p_limit integer DEFAULT 5000)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_count integer;
+BEGIN
+    WITH due AS (
+        SELECT a.id
+          FROM finance.spend_approvals a
+         WHERE a.status = 'pending'::finance.approval_status
+           AND a.expires_at IS NOT NULL AND a.expires_at <= pg_catalog.now()
+         ORDER BY a.expires_at
+         LIMIT GREATEST(COALESCE(p_limit, 5000), 1)
+           FOR UPDATE SKIP LOCKED
+    )
+    UPDATE finance.spend_approvals a
+       SET status = 'expired'::finance.approval_status
+      FROM due
+     WHERE a.id = due.id;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$;
 
 -- What a spend request is for, as the Spend module names it (BU2, Decision #246): the row its ref points
 -- at, read here so the console's one read answers it. `opens` is whether the CALLER may open that thing —

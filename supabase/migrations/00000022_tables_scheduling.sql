@@ -414,8 +414,14 @@ CREATE TABLE scheduling.reschedule_proposals (
     note text CHECK (char_length(note) <= 280),
     -- Strict `>`, unlike ck_event_span's `>=`. That relaxation exists so a DEADLINE — a point in time
     -- with no duration — is storable; a slot offered as a replacement MEETING is not that, and a
-    -- zero-length one could be voted onto the calendar as an unattendable instant.
-    CONSTRAINT ck_proposal_span CHECK (ends_at > starts_at),
+    -- zero-length one could be voted onto the calendar as an unattendable instant. The ceiling backs
+    -- up the rule fn_cap_reschedule_proposals enforces (a replacement keeps the event's length): no
+    -- slot longer than RESCHEDULE_SLOT_MAX_HOURS is stored, whatever wrote it (Decision #343, ruling
+    -- C6 D8; pinned by coordination.contract.test.ts).
+    CONSTRAINT ck_proposal_span CHECK (
+        ends_at > starts_at
+        AND ends_at - starts_at <= interval '24 hours'
+    ),
     CONSTRAINT ck_proposal_role CHECK (proposed_by_role IN ('host', 'attendee')),
     -- Removes the second way of saying the same thing: isProposalOnBallot already treats a host's
     -- slot as on the ballot regardless, so an unapproved host row is a state with no meaning that a

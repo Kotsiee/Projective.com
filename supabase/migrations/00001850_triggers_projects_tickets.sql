@@ -2,7 +2,7 @@
 -- Trigger functions live in 00001110/00001130/00001140; tables in 00000015.
 
 CREATE OR REPLACE TRIGGER trg_enforce_ticket_due_date
-    BEFORE INSERT OR UPDATE OF due_date ON projects.tickets
+    BEFORE INSERT OR UPDATE OF due_date, required_stages ON projects.tickets
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_enforce_ticket_due_date();
 
@@ -95,6 +95,12 @@ CREATE OR REPLACE TRIGGER trg_stage_revision_terms
     BEFORE INSERT OR UPDATE OF file_revisions_allowed, extra_revision_price_cents ON projects.project_stages
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_stage_revision_terms();
+
+CREATE OR REPLACE TRIGGER trg_stage_intensity_terms
+    BEFORE INSERT OR UPDATE OF default_intensity, intensity_locked, low_price_cents, high_price_cents
+    ON projects.project_stages
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_stage_intensity_terms();
 
 CREATE OR REPLACE TRIGGER trg_open_workload_report
     AFTER INSERT ON projects.ticket_workload_reports

@@ -5,9 +5,15 @@ import { Button } from "@projective/ui/fields";
 import { CtaButton, CtaLink } from "./CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
-import { announce, applyOffer, currentOffer, openBookingPanel } from "../core/booking-state.ts";
+import {
+	announce,
+	applyOffer,
+	currentOffer,
+	openBookingPanel,
+	waitlistJoined,
+} from "../core/booking-state.ts";
 import ContactPopover from "../islands/ContactPopover.island.tsx";
-import { commitArchiveDraft, commitPipeline } from "../core/booking-commits.ts";
+import { commitArchiveDraft, commitPipeline, commitWaitlist } from "../core/booking-commits.ts";
 import { SIMULATED_SETTLED_LABEL, simulating } from "../core/simulation.ts";
 import { SimulationOutcome } from "./SimulationNotices.tsx";
 import type { BookingActionKind, ServiceBookingOffer } from "@projective/types/services";
@@ -99,6 +105,29 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				openBookingPanel("scope");
 				return false;
 
+			case "reserve_seat":
+				if (bouncedGuest()) return false;
+				openBookingPanel("scheduler");
+				return false;
+
+			case "join_waitlist": {
+				if (bouncedGuest()) return false;
+				const out = await commitWaitlist(offer.value.subjectId);
+				if (out.simulated) return true;
+				const res = out.value;
+				if (!res.ok || !res.data) {
+					error.value = res.message ?? "Could not join the waitlist.";
+					return false;
+				}
+				waitlistJoined.value = true;
+				announce(
+					res.data.already
+						? "You were already on the waitlist for this listing."
+						: "You're on the waitlist for the next cohort.",
+				);
+				return true;
+			}
+
 			case "instantiate_pipeline": {
 				if (bouncedGuest()) return false;
 				const out = await commitPipeline({
@@ -171,6 +200,8 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 	}
 
 	const draft = offer.value.draft;
+	const waitlist = cta.primary.kind === "join_waitlist";
+	const joined = waitlist && waitlistJoined.value;
 
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
@@ -186,28 +217,44 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				)
 				: (
 					<CtaButton
-						label={cta.primary.label}
-						ariaLabel={cta.primary.ariaLabel}
+						label={joined ? "On the waitlist" : cta.primary.label}
+						ariaLabel={joined ? "You're on the waitlist for the next cohort" : cta.primary.ariaLabel}
 						settledLabel={simulating.value
 							? SIMULATED_SETTLED_LABEL
 							: settledLabelFor(cta.primary.kind)}
 						phase={primary.phase}
-						tone="accent"
-						disabled={cta.primary.disabled}
-						icon={<Icon name={primaryGlyph(cta.primary.kind)} size="sm" aria-hidden />}
+						tone={waitlist ? "neutral" : "accent"}
+						disabled={cta.primary.disabled || joined}
+						icon={<Icon name={joined ? "check" : primaryGlyph(cta.primary.kind)} size="sm" aria-hidden />}
 						onClick={() => void primary.run(runPrimary)}
 					/>
 				)}
 
 			{
 				/*
-			  A refused primary states its reason NEXT TO ITSELF rather than in a `title` or a tooltip.
-			  "Cohort full" with no explanation reads as a bug; the sentence is the difference between a
-			  reader leaving and a reader looking at the next available cohort.
+			  A refused primary states its reason NEXT TO ITSELF rather than in a `title` or a tooltip, and
+			  so does the state a waitlist answers. A cohort's note carries the one alternative path — a
+			  private cohort is a scoped request, so it opens the quote composer, never a second button.
 			*/
 			}
 			{cta.primary.disabled && cta.primary.disabledReason && (
 				<p class="evp-cta__reason">{cta.primary.disabledReason}</p>
+			)}
+			{!cta.primary.disabled && cta.primary.note && (
+				<p class="evp-cta__reason">
+					{cta.primary.note}{" "}
+					{waitlist && (
+						<button
+							type="button"
+							class="evp-cta__inline"
+							onClick={() => {
+								if (!bouncedGuest()) openBookingPanel("quote");
+							}}
+						>
+							Request a private cohort for your team
+						</button>
+					)}
+				</p>
 			)}
 
 			{/* The SECONDARY: the basket line — a write, with its own pending/settled cycle and handler. */}
@@ -215,7 +262,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				<CtaButton
 					label={inBasket ? "In basket" : cta.secondary.label}
 					settledLabel={simulating.value ? SIMULATED_SETTLED_LABEL : "Added"}
-					tone="mono"
+					tone="neutral"
 					phase={secondary.phase}
 					icon={<Icon name={inBasket ? "check" : "basket"} size="sm" aria-hidden />}
 					onClick={() =>
@@ -286,10 +333,14 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 /** The glyph a primary carries at rest, per action kind. */
 function primaryGlyph(
 	kind: BookingActionKind,
-): "calendar" | "basket" | "plus" | "arrow-right" | "close" {
+): "calendar" | "basket" | "plus" | "arrow-right" | "close" | "ticket" | "bell" {
 	switch (kind) {
 		case "open_scheduler":
 			return "calendar";
+		case "reserve_seat":
+			return "ticket";
+		case "join_waitlist":
+			return "bell";
 		case "instantiate_pipeline":
 			return "plus";
 		case "open_scope":
@@ -314,6 +365,8 @@ function settledLabelFor(kind: BookingActionKind): string {
 			return "Added";
 		case "add_to_basket":
 			return "In basket";
+		case "join_waitlist":
+			return "On the waitlist";
 		default:
 			return "Done";
 	}

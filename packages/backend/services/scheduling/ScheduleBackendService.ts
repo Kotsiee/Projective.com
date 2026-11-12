@@ -12,6 +12,7 @@ import type {
 	EventClashVerdict,
 	InviteInput,
 	OrganiseEntryInput,
+	PersonalCalendarParams,
 	RemoveEntryInput,
 	Routine,
 	SetEntryRemindersInput,
@@ -38,6 +39,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { buildGrid, type GridRequest, judgeCustomStart } from "./slot-grid.ts";
 import { type BandKind, readGridSource, type ScheduleOwner } from "./live-slots.ts";
 import { readSchedulePage } from "./live-schedule-page.ts";
+import { calendarWindow } from "./calendar-window.ts";
 import {
 	readCalendarEvent,
 	readEntityCalendar,
@@ -265,15 +267,21 @@ export class ScheduleBackendService {
 	 * The acting account's OWN agenda (`/calendar`): their working hours, call windows and leave, the
 	 * entries on their own schedule, the meetings they are on, their calls, and the due dates of the
 	 * work they are on. There is no 404: a signed-in account always has a calendar, and an empty week
-	 * is an empty week rather than a missing resource.
+	 * is an empty week rather than a missing resource. Read over a window around `params.around`
+	 * (`calendarWindow`), which the page reports as `window`.
 	 */
 	static async personalCalendar(
 		actor: ReadActor,
+		params: PersonalCalendarParams = {},
 		now: number = Date.now(),
 	): Promise<ServiceResult<{ page: SchedulePage }>> {
 		if (!canReadLive(actor)) return signInRequired("view your calendar");
 		try {
-			const page = await readPersonalCalendar(actor, now);
+			const page = await readPersonalCalendar(
+				actor,
+				now,
+				calendarWindow("personal", now, params.around),
+			);
 			// Here alone: this is the one page that IS the reader's time (`CalendarEvent.clashCount`).
 			const stamped = { ...page, events: withClashCounts(page.events) };
 			return ok({ page: projectPage(stamped, viewerOf(actor)) });
@@ -307,7 +315,7 @@ export class ScheduleBackendService {
 			ownerHandle: `@${handle}`,
 			viewerCanBook: false,
 			now,
-		}, pageWindow(now));
+		}, calendarWindow("public", now, params.around));
 		if (page === undefined) return scheduleUnavailable();
 		if (!page) return fail(404, { message: `@${handle} has not published their availability.` });
 		// A slot opens a booking only where there is something to book: a discovery call.
@@ -749,12 +757,6 @@ function gridWindow(query: SlotQuery, now: number): { from: number; to: number }
 	return { from: start - 2 * DAY, to: start + (query.days + 3) * DAY };
 }
 
-/** A public schedule page's window: a fortnight back (recent context) and three months ahead. */
-function pageWindow(now: number): { from: number; to: number } {
-	const DAY = 86_400_000;
-	return { from: now - 14 * DAY, to: now + 90 * DAY };
-}
-
 /**
  * The owner a `@handle` names, through `org.get_profile_owner` (a private profile resolves to nobody).
  * `undefined` when the database could not answer.
@@ -806,7 +808,7 @@ async function listingSchedulePage(
 		// A listing is bought from its lane (gate 10), never from a slot on this page.
 		viewerCanBook: false,
 		now,
-	}, pageWindow(now));
+	}, calendarWindow("public", now));
 	if (page === undefined) return scheduleUnavailable();
 	if (!page) {
 		return fail(404, {

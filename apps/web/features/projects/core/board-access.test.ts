@@ -72,6 +72,7 @@ function seam(over: Partial<DevSeamState> = {}): DevSeamState {
 		pendingInvites: false,
 		pendingRequests: false,
 		memberClient: "auto",
+		engagementOrigin: "auto",
 		messagingRole: "client",
 		micPermission: "auto",
 		layoutDirection: "auto",
@@ -87,7 +88,9 @@ const access = (
 	viewerIsClient: boolean,
 	s: DevSeamState | null,
 	sessionKind: SessionKind = "none",
-) => resolveBoardAccess({ viewerIsClient, sessionKind }, s);
+	engagementKind: "project" | "service" = "project",
+	viewerSeated = false,
+) => resolveBoardAccess({ viewerIsClient, sessionKind, engagementKind, viewerSeated }, s);
 
 /** The seat-shaped part of the answer (everything but the engagement-shaped `hasTickets`). */
 const seat = (a: BoardAccess) => ({
@@ -106,6 +109,7 @@ Deno.test("without an override the client side owns the board outright", () => {
 		hasTickets: true,
 		stageAssigned: true,
 		simulated: false,
+		canAddStage: true,
 	});
 });
 
@@ -118,6 +122,7 @@ Deno.test("without an override the provider side composes and edits nothing", ()
 		hasTickets: true,
 		stageAssigned: true,
 		simulated: false,
+		canAddStage: false,
 	});
 });
 
@@ -216,5 +221,29 @@ Deno.test("fails OPEN (pinned, reported): an unrecognised persona is seated as t
 	assertEquals(seat(worker), { isClient: true, isFreelancer: false, canEditTicket: false });
 	const admin = access(false, seam({ persona: stray, role: "admin" }));
 	assertEquals(seat(admin), { isClient: true, isFreelancer: false, canEditTicket: true });
+});
+// #endregion
+
+// #region Stage authorship (Decision #421)
+Deno.test("a client project takes its stages from the client side, never a freelancer", () => {
+	assertEquals(access(true, null).canAddStage, true);
+	assertEquals(access(false, null, "none", "project", true).canAddStage, false);
+});
+
+Deno.test("a service takes its stages from a seated freelancer, never the client", () => {
+	assertEquals(access(true, null, "none", "service").canAddStage, false);
+	assertEquals(access(false, null, "none", "service", true).canAddStage, true);
+	assertEquals(access(false, null, "none", "service", false).canAddStage, false);
+});
+
+Deno.test("a simulated origin replaces the server's; a simulated seat decides the freelancer", () => {
+	const service = { engagementOrigin: "service" as const };
+	const freelancer = (stageAssignment: "assigned" | "unassigned") =>
+		access(false, seam({ ...service, persona: "freelancer", stageAssignment }));
+	assertEquals(access(true, seam({ ...service, persona: "client" })).canAddStage, false);
+	assertEquals(freelancer("assigned").canAddStage, true);
+	assertEquals(freelancer("unassigned").canAddStage, false);
+	const project = seam({ engagementOrigin: "project", persona: "client" });
+	assertEquals(access(true, project, "none", "service").canAddStage, true);
 });
 // #endregion

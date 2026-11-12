@@ -153,6 +153,21 @@ VALUES (
         'Hours a proposed (unanswered) discovery call stays live before it is swept to expired.'
     ),
     (
+        'call_no_show_penalty_points',
+        '2'::jsonb,
+        'Standing points one presence-verified courtesy-call no-show costs the absent person (scheduling.fn_charge_call_no_show; Decision #343, ruling C6 D7; weight per Decision #419). finance-model.md §16.3.'
+    ),
+    (
+        'call_no_show_penalty_days',
+        '90'::jsonb,
+        'Days a courtesy-call no-show penalty stays active before it lapses (Decision #419). finance-model.md §16.3.'
+    ),
+    (
+        'call_no_show_pair_window_days',
+        '30'::jsonb,
+        'At most one courtesy-call no-show penalty per marker and marked person in this many days, which caps retaliation (Decision #343, ruling C6 D7).'
+    ),
+    (
         'session_review_hold_days',
         '7'::jsonb,
         'Days after a sitting with no attendance record ends before an unanswered review opens an operator case (Decision #383, ruling R6).'

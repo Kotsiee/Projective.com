@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { ContextType } from "../auth/mod.ts";
+import { CreateCategory } from "../org/standing.ts";
 import { FundingRollupSchema, FundingStatusSchema } from "../finance/funding.ts";
 import { currencyExponent } from "../finance/wallet.ts";
-import { ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
+import { EngagementKind, ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
 import { ProjectStructure } from "./setup.ts";
 import { StageActivity } from "./detail.ts";
 import { FileItemSchema } from "./files.ts";
@@ -97,22 +98,37 @@ export type TicketPriority = z.infer<typeof TicketPriority>;
 
 // #region Workload intensity (the Architect's Override)
 /**
- * The client-set **Difficulty Multiplier** (PRODUCT_SPEC §The Weighting Engine) — the only half of
- * Workload Intensity a human chooses. The other half, the stage's CREATE-category baseline weight,
- * is a property of the work itself and arrives on {@link BoardStageRef.categoryWeight}.
- *
- * $W_{ticket} = \text{CategoryWeight} \times \text{DifficultyMultiplier}$, and the ticket's money
- * scales on the same axis — which is why this control replaced the free-text budget field: a client
- * declares how hard the work is, and the price follows from the stage's own rate.
+ * A ticket's **intensity** in one stage (PRODUCT_SPEC §The Weighting Engine): one choice, read on two
+ * separate axes. Its **capacity** draw is the Difficulty Multiplier ({@link WORKLOAD_MULTIPLIER}) —
+ * $W_{ticket} = \text{DifficultyMultiplier}$, the CREATE category playing no part (Decision #338,
+ * ruling P4). Its **price** is the stage's tier price ({@link stageCostCents}): the Standard rate
+ * scaled by {@link INTENSITY_PRICE_MULTIPLIER}, or the seller's own tier price. The client picks it per
+ * stage, unless the stage came from a service sold at one fixed intensity
+ * ({@link BoardStageRef.intensityLocked}).
  */
 export const TicketIntensity = z.enum(["low", "standard", "high"]);
 export type TicketIntensity = z.infer<typeof TicketIntensity>;
 
-/** The multipliers, verbatim from PRODUCT_SPEC §The Architect's Override. */
-export const INTENSITY_MULTIPLIER: Record<TicketIntensity, number> = {
+/**
+ * The capacity multipliers — the $W_i$ one ticket draws in a stage at each intensity, verbatim from
+ * PRODUCT_SPEC §The Architect's Override. What the caps are summed on; never a price.
+ */
+export const WORKLOAD_MULTIPLIER: Record<TicketIntensity, number> = {
 	low: 0.5,
 	standard: 1,
 	high: 2,
+};
+
+/**
+ * The price multipliers — what one ticket costs at each intensity, as a share of the stage's
+ * Standard rate (PRODUCT_SPEC §The Weighting Engine, Intensity pricing). A seller selling tiered
+ * intensity may set their own Low and High prices instead ({@link BoardStageRef.lowPriceCents}).
+ * Mirrored in SQL by `projects.fn_intensity_price_multiplier`.
+ */
+export const INTENSITY_PRICE_MULTIPLIER: Record<TicketIntensity, number> = {
+	low: 0.75,
+	standard: 1,
+	high: 1.5,
 };
 
 /** Human labels for the three multipliers. */
@@ -127,27 +143,49 @@ export const TICKET_INTENSITY_LABEL: Record<TicketIntensity, string> = {
  * control, because the choice moves both the freelancer's capacity ledger and the ticket's price.
  */
 export const TICKET_INTENSITY_HINT: Record<TicketIntensity, string> = {
-	low: "A quick pass. Half a standard unit of a freelancer's capacity, at half the stage rate.",
-	standard: "The stage's normal unit of work, at its listed rate.",
-	high: "Demanding work. Two units of capacity, at twice the stage rate.",
+	low: "A lighter pass: half a standard unit of a freelancer's capacity, at the stage's Low price.",
+	standard: "The stage's normal unit of work and capacity, at its Standard price.",
+	high: "Demanding work: two units of a freelancer's capacity, at the stage's High price.",
 };
+
+/** Why an intensity and its price read as text: the seller sells this stage at one fixed intensity. */
+export const LOCKED_INTENSITY_HINT =
+	"Fixed by the service provider: this stage is sold at one intensity and price, so a ticket cannot change either.";
 
 /** The derived $W_i$ a ticket consumes in one stage — the figure the capacity caps are summed on. */
 export function workloadIntensity(categoryWeight: number, intensity: TicketIntensity): number {
-	return Math.round(categoryWeight * INTENSITY_MULTIPLIER[intensity] * 100) / 100;
+	return Math.round(categoryWeight * WORKLOAD_MULTIPLIER[intensity] * 100) / 100;
+}
+
+/** The seller's pricing terms for one stage, as {@link stageCostCents} reads them. */
+export interface StageTierTerms {
+	/** The stage is sold at one fixed intensity and price ({@link BoardStageRef.intensityLocked}). */
+	intensityLocked?: boolean;
+	lowPriceCents?: number | null;
+	highPriceCents?: number | null;
 }
 
 /**
- * What one stage of a ticket costs: the stage's per-ticket unit price scaled by the difficulty
- * multiplier. `null` unit price (a stage that has not priced its tickets) yields `null`, never 0 —
- * an unknown price and a free stage are different facts and the footer must not conflate them.
+ * What one stage of a ticket costs at an intensity, in minor units — the ONE price rule, mirrored in
+ * SQL by `projects.fn_ticket_stage_price` so the composer quotes what an escrow holds.
+ *
+ *  - A **locked** stage costs its rate exactly: the seller sold it at one intensity and price.
+ *  - Otherwise the seller's own Low / High price wins where set, and the rate (the Standard price)
+ *    scaled by {@link INTENSITY_PRICE_MULTIPLIER} answers the rest.
+ *
+ * `null` (a stage that has not priced its tickets) is never 0 — an unknown price and a free stage are
+ * different facts and the footer must not conflate them.
  */
 export function stageCostCents(
 	unitPriceCents: number | null,
 	intensity: TicketIntensity,
+	terms?: StageTierTerms | null,
 ): number | null {
+	if (terms?.intensityLocked === true) return unitPriceCents;
+	if (intensity === "low" && typeof terms?.lowPriceCents === "number") return terms.lowPriceCents;
+	if (intensity === "high" && typeof terms?.highPriceCents === "number") return terms.highPriceCents;
 	if (unitPriceCents === null) return null;
-	return Math.round(unitPriceCents * INTENSITY_MULTIPLIER[intensity]);
+	return Math.round(unitPriceCents * INTENSITY_PRICE_MULTIPLIER[intensity]);
 }
 
 /**
@@ -489,6 +527,25 @@ export function providerScopedPage<
 // #endregion
 
 // #region Ticket ↔ stage requirement
+/**
+ * A ticket's due date in one stage: an ISO calendar date, optionally carrying a time
+ * (`2026-11-30`, `2026-11-30T00:00:00+00:00`). Only the calendar day is meaningful.
+ */
+export const TicketStageDueAt = z.string().max(40).regex(/^\d{4}-\d{2}-\d{2}/, "Use a YYYY-MM-DD date.");
+
+/**
+ * The ticket's own due date, derived from its stages: the LATEST stage due date, as `YYYY-MM-DD`, or
+ * `null` when no stage carries one (the ticket then keeps its own, single date).
+ */
+export function ticketDueFromStages(stages: readonly { dueAt?: string | null }[]): string | null {
+	let latest: string | null = null;
+	for (const s of stages) {
+		const day = s.dueAt ? s.dueAt.slice(0, 10) : null;
+		if (day && (latest === null || day > latest)) latest = day;
+	}
+	return latest;
+}
+
 /** One stage a ticket requires, in the ticket's own order (multi-stage tickets). */
 export const TicketStageRefSchema = z.object({
 	stageId: z.string().min(1).max(80),
@@ -511,6 +568,12 @@ export const TicketStageRefSchema = z.object({
 	 * one execution band that starts together rather than in sequence.
 	 */
 	parallel: z.boolean().default(false),
+	/**
+	 * When THIS ticket's work in this stage is due (`YYYY-MM-DD`), or `null` when undated. Stored on the
+	 * `required_stages` element as `due_at`; the ticket's own due date is the latest of these
+	 * ({@link ticketDueFromStages}).
+	 */
+	dueAt: TicketStageDueAt.nullable().optional(),
 	/** The resolved cost of this stage for this ticket, in minor units; `null` = the stage is unpriced. */
 	costCents: z.number().int().min(0).nullable().default(null),
 	/**
@@ -568,44 +631,64 @@ export function isSharedWorkspace(kind: ContextType): boolean {
 // #endregion
 
 // #region Finance derivation (the itemised breakdown)
-/** One priced line of a ticket: the stage, its base rate, the chosen multiplier, and the result. */
+/** How a line's price was reached — the arithmetic the Finances tab shows beside it. */
+export type TicketCostBasis = "multiplier" | "seller_tier" | "fixed";
+
+/** One priced line of a ticket: the stage, its base rate, how the price was reached, and the result. */
 export interface TicketCostLine {
 	stageId: string;
 	name: string;
 	order: number;
 	intensity: TicketIntensity;
-	/** The multiplier the intensity resolves to — shown as arithmetic, never as a badge label. */
+	/** The price multiplier the intensity resolves to; meaningful only on a `multiplier` basis. */
 	multiplier: number;
+	/**
+	 * `multiplier` — the rate × {@link INTENSITY_PRICE_MULTIPLIER}; `seller_tier` — the seller's own
+	 * Low / High price; `fixed` — a stage sold at one intensity and price.
+	 */
+	basis: TicketCostBasis;
 	/** The stage's base per-ticket rate at capture; `null` = the stage was never priced. */
 	baseCents: number | null;
-	/** `baseCents × multiplier`, or `null` when the stage is unpriced. */
+	/** The resolved price ({@link stageCostCents}), or `null` when the stage is unpriced. */
 	costCents: number | null;
 }
 
 /**
  * The Finances tab's line items, in the ticket's own execution order.
  *
- * Re-derives `costCents` from the captured base rate and the captured intensity rather than trusting
- * the stored figure — the breakdown's job is to SHOW the arithmetic, so it must be the arithmetic. A
- * stage that has a stored cost but no captured base rate (an older ticket) falls back to the stored
- * figure, because a blank line would be a worse answer than an unexplained one.
+ * Re-derives `costCents` from the captured base rate, the captured intensity and the stage's pricing
+ * terms rather than trusting the stored figure — the breakdown's job is to SHOW the arithmetic, so it
+ * must be the arithmetic. A stage that has a stored cost but no captured base rate (an older ticket)
+ * falls back to the stored figure, because a blank line would be a worse answer than an unexplained one.
  */
 export function ticketCostLines(
 	stages: readonly TicketStageRef[],
+	terms: readonly (StageTierTerms & { id: string })[] = [],
 ): TicketCostLine[] {
+	const termsById = new Map(terms.map((t) => [t.id, t]));
 	return [...stages]
 		.sort((a, b) => a.order - b.order)
-		.map((s) => ({
-			stageId: s.stageId,
-			name: s.name,
-			order: s.order,
-			intensity: s.intensity,
-			multiplier: INTENSITY_MULTIPLIER[s.intensity],
-			baseCents: s.unitPriceCents,
-			costCents: s.unitPriceCents === null
-				? s.costCents
-				: stageCostCents(s.unitPriceCents, s.intensity),
-		}));
+		.map((s) => {
+			const t = termsById.get(s.stageId) ?? null;
+			const basis: TicketCostBasis = t?.intensityLocked === true
+				? "fixed"
+				: (s.intensity === "low" && typeof t?.lowPriceCents === "number") ||
+						(s.intensity === "high" && typeof t?.highPriceCents === "number")
+				? "seller_tier"
+				: "multiplier";
+			return {
+				stageId: s.stageId,
+				name: s.name,
+				order: s.order,
+				intensity: s.intensity,
+				multiplier: INTENSITY_PRICE_MULTIPLIER[s.intensity],
+				basis,
+				baseCents: s.unitPriceCents,
+				costCents: s.unitPriceCents === null && basis === "multiplier"
+					? s.costCents
+					: stageCostCents(s.unitPriceCents, s.intensity, t),
+			};
+		});
 }
 
 /**
@@ -850,6 +933,12 @@ export const BoardStageRefSchema = z.object({
 	unitPriceCents: z.number().int().min(0).nullable(),
 	/** The CREATE-category baseline weight this stage's work carries (PRODUCT_SPEC §Baseline Weights). */
 	categoryWeight: z.number().min(0).max(10),
+	/**
+	 * The stage's CREATE category (`project_stages.create_category`, PRODUCT_SPEC §The CREATE
+	 * Framework), or `null` while untyped. A label of the work, never a weight on $W_i$ (Decision #338,
+	 * ruling P4). Absent reads as `null`.
+	 */
+	createCategory: CreateCategory.nullable().optional(),
 	/** The freelancers assigned to this stage — the composer's cascading avatar stack. */
 	members: z.array(ProjectPartySchema).max(50),
 	/** Live ticket count already routed through this stage (the inspector's load figure). */
@@ -869,6 +958,27 @@ export const BoardStageRefSchema = z.object({
 	 */
 	chainReaction: z.boolean().default(true),
 	/**
+	 * The difficulty a ticket starts at in this stage (`project_stages.default_intensity`). On a stage
+	 * instantiated from a service it is the seller's stated intensity for that stage. Absent reads as
+	 * `standard` ({@link stageDefaultIntensity}).
+	 */
+	defaultIntensity: TicketIntensity.optional(),
+	/**
+	 * Whether the intensity and price here are the seller's fixed terms rather than the client's
+	 * choice (`project_stages.intensity_locked`): set on a stage instantiated from a service sold at a
+	 * single fixed intensity (`allow_tiered_intensity = false`). A ticket in a locked stage runs at
+	 * {@link defaultIntensity} and costs {@link unitPriceCents} exactly; the ticket modal reads both
+	 * rather than offering them. Absent reads as `false`.
+	 */
+	intensityLocked: z.boolean().optional(),
+	/**
+	 * The seller's own Low-tier price for one ticket here (`project_stages.low_price_cents`), in minor
+	 * units. `null` or absent: {@link INTENSITY_PRICE_MULTIPLIER} × {@link unitPriceCents}.
+	 */
+	lowPriceCents: z.number().int().min(0).nullable().optional(),
+	/** The seller's own High-tier price (`project_stages.high_price_cents`); see {@link lowPriceCents}. */
+	highPriceCents: z.number().int().min(0).nullable().optional(),
+	/**
 	 * ISO instant the stage is scheduled to START, or `null` when nothing schedules it.
 	 *
 	 * Resolved from `project_stages.fixed_start_date`, or from the predecessor named by
@@ -886,6 +996,20 @@ export const BoardStageRefSchema = z.object({
 	dependsOnStageId: z.string().max(80).nullable().default(null),
 });
 export type BoardStageRef = z.infer<typeof BoardStageRefSchema>;
+
+/** The intensity a ticket starts at in a stage — its stated default, else `standard`. */
+export function stageDefaultIntensity(
+	stage: Pick<BoardStageRef, "defaultIntensity"> | null | undefined,
+): TicketIntensity {
+	return stage?.defaultIntensity ?? "standard";
+}
+
+/** Whether a stage's intensity is the seller's term, which no ticket may override. */
+export function stageIntensityLocked(
+	stage: Pick<BoardStageRef, "intensityLocked"> | null | undefined,
+): boolean {
+	return stage?.intensityLocked === true;
+}
 // #endregion
 
 // #region Board kind / view / scope
@@ -940,6 +1064,11 @@ export const BoardPageSchema = z.object({
 	view: BoardView,
 	/** Whether the acting user is the client — gates ticket moves, stage reorder + the create actions. */
 	viewerIsClient: z.boolean(),
+	/**
+	 * Who architected the engagement (Decision #421): a client `project`, or a `service` the client
+	 * bought, whose stages only the freelancer working it adds ({@link canAddStage}).
+	 */
+	engagementKind: EngagementKind.default("project"),
 	/**
 	 * The stages the acting viewer has been ONBOARDED to as a provider (`projects.stage_assignments`,
 	 * plus any stage whose ticket they currently hold). Empty for the client side, which is not
@@ -997,6 +1126,8 @@ export const CreateTicketStageSchema = z.object({
 	tasks: z.array(TicketTaskSchema).max(60).default([]),
 	/** Whether this stage starts simultaneously with the stage before it in the ticket's order. */
 	parallel: z.boolean().default(false),
+	/** When this ticket's work in this stage is due; `null` = undated. */
+	dueAt: TicketStageDueAt.nullable().default(null),
 });
 export type CreateTicketStage = z.infer<typeof CreateTicketStageSchema>;
 
@@ -1226,6 +1357,12 @@ export type MoveTicket = z.infer<typeof MoveTicketSchema>;
 export const STALE_MOVE_MESSAGE = "This ticket changed since your board loaded it. Refresh and try again.";
 
 /**
+ * The refusal sentence for a move into the stage-less New lane of a ticket that fails
+ * {@link ticketLeavesStage} (Decision #421) — `move_ticket`'s 422, the stub's, and the board's lock.
+ */
+export const NEW_LANE_REFUSAL_MESSAGE = "Only a ticket nobody has claimed goes back to New.";
+
+/**
  * A freelancer's self-claim of one `open_pull` ticket (`projects.claim_ticket`). There is no assignee
  * field: the claimant is always the session's own user, so a payload cannot name anyone else.
  */
@@ -1274,6 +1411,18 @@ export function ticketDeletable(
 }
 
 /**
+ * Whether a ticket may leave its stage for the stage-less New backlog (Decision #421): nobody has
+ * claimed it or delivered against it. Funding is no bar — a fully paid ticket stays Paid in New and a
+ * per-stage one reads Unpaid there ({@link ticketPaidForStage}) — but claimed work is held, priced and
+ * delivered against the stage it sits in, so it keeps that stage (`projects.move_ticket` refuses).
+ */
+export function ticketLeavesStage(
+	card: Pick<BoardCard, "claimed" | "claimedAt" | "submissions" | "frozen">,
+): boolean {
+	return !card.frozen && !card.claimed && card.claimedAt === null && card.submissions.length === 0;
+}
+
+/**
  * Whether a ticket is open for a self-claim: Ready (`todo`), unclaimed, described (the purchasing
  * gate), not on a personal project (only its owner holds those) and on a stage whose routing is an
  * open pull. Capacity, funding and payout readiness are the server's to answer, so they are not
@@ -1292,20 +1441,57 @@ export function isSelfClaimable(
 // #region Create stage (write)
 /**
  * `POST /api/projects/[id]/stages` — append one stage to a project from the Board, the Timeline or the
- * lane's Stages group. The project is the route segment, never the body, so a payload cannot aim the
- * write at a different engagement than the URL names.
+ * lane's Discussion group. The project is the route segment, never the body, so a payload cannot aim
+ * the write at a different engagement than the URL names.
  *
- * Deliberately the modal's two fields and nothing else: a stage's rate, roster, schedule and file
- * policy are each a separate decision the setup surface owns, and the stage is born with the
- * database's own defaults for them (`status = 'open'`, appended after the last `sort_order`, its
- * General room provisioned in the same transaction by `projects.create_stage`).
+ * The Create stage popover's three fields: a name, and optionally the stage's CREATE category and its
+ * baseline rate. Its roster, schedule and file policy are each a separate decision the setup surface
+ * owns, and the stage is born with the database's own defaults for them (`status = 'open'`, appended
+ * after the last `sort_order`, its General room provisioned in the same transaction by
+ * `projects.create_stage`).
  */
 export const CreateStageInputSchema = z.object({
 	name: z.string().trim().min(1, "Name the stage.").max(120),
-	/** Plain text; stored as the stage's escaped rich-text brief and its `description_text`. */
+	/**
+	 * Plain text; stored as the stage's escaped rich-text brief and its `description_text`. The
+	 * popover sends none — a stage's brief is written on its details page — but the API keeps it.
+	 */
 	description: z.string().trim().max(2000).default(""),
+	/** The stage's CREATE category (`project_stages.create_category`); `null` leaves it untyped. */
+	createCategory: CreateCategory.nullable().default(null),
+	/**
+	 * The stage's baseline rate in minor units (`project_stages.unit_price_cents`): per standard ticket
+	 * on a pipeline, the whole fee on a one-off. `null` leaves the stage unpriced.
+	 */
+	unitPriceCents: z.number().int().min(0).nullable().default(null),
 });
 export type CreateStageInput = z.infer<typeof CreateStageInputSchema>;
+
+/** Who is asking to add a stage, as far as the authorship rule reads it. */
+export interface StageAuthorInput {
+	/** A client-architected project, or a service the client bought (`source_blueprint_id` set). */
+	kind: EngagementKind;
+	/** A client-side seat with review authority (the owner or the paying business). */
+	viewerIsClient: boolean;
+	/** A freelancer holding a live seat on one of the engagement's stages. */
+	viewerIsSeatedProvider: boolean;
+}
+
+/**
+ * Whether this viewer may add a stage to the engagement (Decision #421; `projects.create_stage`).
+ *
+ * A client-architected project takes its stages from its client side. Once the client has added a
+ * freelancer's service, the stages are the seller's template (PRODUCT_SPEC §Productised Services: the
+ * freelancer is the Lead Architect), so only a freelancer working the engagement adds one and the
+ * client never does.
+ */
+export function canAddStage(input: StageAuthorInput): boolean {
+	return input.kind === "service" ? input.viewerIsSeatedProvider : input.viewerIsClient;
+}
+
+/** The refusal sentence for a stage asked of a service by anyone but its seated freelancer. */
+export const SERVICE_STAGE_REFUSAL_MESSAGE =
+	"This project runs on a freelancer's service, so its stages are added by the freelancer working it.";
 
 /** What a created stage answers with — the persisted stage as the board itself projects it. */
 export const CreatedStageSchema = z.object({ stage: BoardStageRefSchema });

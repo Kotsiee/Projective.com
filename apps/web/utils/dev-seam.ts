@@ -70,6 +70,11 @@ export type DevMemberRole =
  */
 export type DevMemberClient = "auto" | "business" | "individual";
 /**
+ * Who architected the open engagement (Decision #421): a client `project`, or a `service` the client
+ * bought — on a service only the freelancer working it adds stages. `auto` defers to the server.
+ */
+export type DevEngagementOrigin = "auto" | "project" | "service";
+/**
  * The acting inbox view the Context Switcher can simulate for `/messages` (task §4) — selects which
  * advanced-filter SET the sidebar shows and whether auto-responses are offered: a `freelancer` sees
  * provider-side filters (Service · Product · Client · Co-Freelancers · Teams · Team Members) and
@@ -540,6 +545,8 @@ export interface DevSeamState {
 	pendingRequests: boolean;
 	/** Whether the Members tab's engagement is billed to a business (ticket delegation, #294). */
 	memberClient: DevMemberClient;
+	/** Whether the open engagement is a client project or a bought service (stage authorship, #421). */
+	engagementOrigin: DevEngagementOrigin;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
@@ -694,6 +701,7 @@ const MEMBER_ROLES: readonly DevMemberRole[] = [
 	"freelancer_unassigned",
 ];
 const MEMBER_CLIENTS: readonly DevMemberClient[] = ["auto", "business", "individual"];
+const ENGAGEMENT_ORIGINS: readonly DevEngagementOrigin[] = ["auto", "project", "service"];
 const STAGE_ASSIGNMENTS: readonly DevStageAssignment[] = ["assigned", "unassigned"];
 const MESSAGING_ROLES: readonly DevMessagingRole[] = ["freelancer", "client", "business"];
 const MIC_PERMISSIONS: readonly DevMicPermission[] = [
@@ -901,6 +909,7 @@ export function readDevSeam(): DevSeamState | null {
 		pendingRequests: ds.devPendingRequests !== "false",
 		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
 		memberClient: coerce(ds.devMemberClient, MEMBER_CLIENTS, "auto"),
+		engagementOrigin: coerce(ds.devEngagementOrigin, ENGAGEMENT_ORIGINS, "auto"),
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),

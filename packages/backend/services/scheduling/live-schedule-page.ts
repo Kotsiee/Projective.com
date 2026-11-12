@@ -147,6 +147,7 @@ export async function readSchedulePage(
 			},
 			events,
 			callOffer: callOffer ?? undefined,
+			window: { from: window.from, to: window.to },
 			now: meta.now,
 		};
 	} catch {

@@ -1,4 +1,5 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
+import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/board-rig.css";
 import { Tooltip } from "@projective/ui/feedback";
@@ -7,12 +8,12 @@ import {
 	boardGrouping,
 	boardViewMode,
 	requestCheckout,
-	requestCreateStage,
 	requestCreateTicket,
 	restoreBoardView,
 	setBoardGrouping,
 	setBoardViewMode,
 } from "../core/board-state.ts";
+import { CreateStagePopover } from "../components/CreateStagePopover.tsx";
 import { ListIcon } from "../components/file-glyphs.tsx";
 import {
 	BasketIcon,
@@ -26,17 +27,21 @@ import {
 /**
  * BoardViewControlRig — the Kanban board's action rig, mounted in the middle-nav FOOTER band via
  * {@link boardFooterFor}. Icon-first (§B.6): the Kanban⁄List view switch · (project board) the
- * Stages⁄Status grouping switch · the primary client actions (Create Ticket · Create Stage · Add to
- * Basket / Checkout). It is a DUMB island — it drives the shared board signals ({@link boardViewMode} /
- * {@link boardGrouping} + the create/checkout intents) and reads the body's published capabilities
- * ({@link boardCaps}); the body reacts. No data access.
+ * Stages⁄Status grouping switch · the primary actions (the client's Create Ticket · Add to
+ * Basket / Checkout, and Create Stage for whoever authors stages here — Decision #421), at the
+ * `md` control height. It is a DUMB island — it drives the shared board
+ * signals ({@link boardViewMode} / {@link boardGrouping} + the ticket/checkout intents) and reads the
+ * body's published capabilities ({@link boardCaps}); the body reacts. Create stage opens its popover on
+ * the rig's own button and writes through `BoardService`, as the files rig's New folder does.
  */
 export default function BoardViewControlRig(): JSX.Element {
 	useEffect(() => restoreBoardView(), []);
+	const stageOpen = useSignal(false);
 
 	const vm = boardViewMode.value;
 	const grouping = boardGrouping.value;
 	const caps = boardCaps.value;
+	const addsStage = caps.canAddStage && caps.isProjectBoard && caps.hasTickets;
 
 	return (
 		<div class="brd-rig">
@@ -49,7 +54,7 @@ export default function BoardViewControlRig(): JSX.Element {
 						aria-label="Kanban board"
 						onClick={() => setBoardViewMode("kanban")}
 					>
-						<KanbanIcon size={17} />
+						<KanbanIcon size={18} />
 					</button>
 				</Tooltip>
 				<Tooltip content="List view" density="compact">
@@ -60,7 +65,7 @@ export default function BoardViewControlRig(): JSX.Element {
 						aria-label="List view"
 						onClick={() => setBoardViewMode("list")}
 					>
-						<ListIcon size={17} />
+						<ListIcon size={18} />
 					</button>
 				</Tooltip>
 			</div>
@@ -76,7 +81,7 @@ export default function BoardViewControlRig(): JSX.Element {
 								aria-label="Group columns by stage"
 								onClick={() => setBoardGrouping("stages")}
 							>
-								<StagesToggleIcon size={17} />
+								<StagesToggleIcon size={18} />
 							</button>
 						</Tooltip>
 						<Tooltip content="Columns by status" density="compact">
@@ -87,7 +92,7 @@ export default function BoardViewControlRig(): JSX.Element {
 								aria-label="Group columns by status"
 								onClick={() => setBoardGrouping("statuses")}
 							>
-								<StatusToggleIcon size={17} />
+								<StatusToggleIcon size={18} />
 							</button>
 						</Tooltip>
 					</div>
@@ -109,35 +114,64 @@ export default function BoardViewControlRig(): JSX.Element {
 				? <p class="brd-rig__note">Sessions are booked, not ticketed.</p>
 				: null}
 
-			{caps.isClient && caps.hasTickets
+			{(caps.isClient && caps.hasTickets) || addsStage
 				? (
 					<div class="brd-rig__actions">
-						<button type="button" class="brd-rig__action" onClick={requestCreateTicket}>
-							<PlusIcon size={16} />
-							<span>Ticket</span>
-						</button>
-						{caps.isProjectBoard
+						{caps.isClient && caps.hasTickets
 							? (
-								<button type="button" class="brd-rig__action" onClick={requestCreateStage}>
-									<StagesToggleIcon size={16} />
-									<span>Stage</span>
+								<button
+									type="button"
+									class="brd-rig__action"
+									aria-label="Create ticket"
+									onClick={requestCreateTicket}
+								>
+									<PlusIcon size={18} />
+									<span>Ticket</span>
 								</button>
 							)
 							: null}
-						{caps.basketCount > 0
+						{addsStage
+							? (
+								<CreateStagePopover
+									open={stageOpen}
+									projectId={caps.projectId}
+									currency={caps.stageCurrency}
+									placement="top-end"
+									trigger={(api) => (
+										<button
+											ref={api.ref as RefObject<HTMLButtonElement>}
+											type="button"
+											class="brd-rig__action"
+											aria-label="Create stage"
+											aria-haspopup="dialog"
+											aria-expanded={api.expanded}
+											aria-controls={api.expanded ? api.panelId : undefined}
+											onClick={api.toggle}
+										>
+											<StagesToggleIcon size={18} />
+											<span>Stage</span>
+										</button>
+									)}
+								/>
+							)
+							: null}
+						{!caps.isClient || !caps.hasTickets
+							? null
+							: caps.basketCount > 0
 							? (
 								<button
 									type="button"
 									class="brd-rig__action brd-rig__action--accent"
+									aria-label={`Checkout ${caps.basketCount} ${caps.basketCount === 1 ? "ticket" : "tickets"}`}
 									onClick={requestCheckout}
 								>
-									<CheckoutIcon size={16} />
+									<CheckoutIcon size={18} />
 									<span>Checkout {caps.basketCount}</span>
 								</button>
 							)
 							: (
 								<span class="brd-rig__basket" aria-hidden="true">
-									<BasketIcon size={16} />
+									<BasketIcon size={18} />
 								</span>
 							)}
 					</div>

@@ -50,6 +50,7 @@ import {
 	weekDays,
 } from "../core/time.ts";
 import { CALENDAR_KIND_LABEL } from "../core/kinds.ts";
+import { spanLoaded, viewSpan } from "../core/coverage.ts";
 import { useNowTick } from "../hooks/useNowTick.ts";
 import { MiniMonth } from "../components/MiniMonth.tsx";
 import { AvailabilityPanel } from "../components/AvailabilityPanel.tsx";
@@ -742,6 +743,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		: fmtMonthYear(focusMs.value, tz);
 
 	const presentKinds = Array.from(new Set(props.events.map((e) => e.kind)));
+	const unloaded = !spanLoaded(viewSpan(v, focusMs.value, tz), props.loaded);
 	// #endregion
 
 	return (
@@ -932,6 +934,13 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								}}
 							/>
 						)}
+					<div
+						class={cx("cal__unloaded", unloaded && "cal__unloaded--shown")}
+						role="status"
+						aria-live="polite"
+					>
+						{unloaded ? <p class="cal__unloaded-text">Not loaded</p> : null}
+					</div>
 				</div>
 			</div>
 

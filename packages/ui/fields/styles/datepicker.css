@@ -52,12 +52,19 @@
 /* #endregion */
 
 /* #region Segmented input */
+@property --dp-seg-ch {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
 /*
  * The `DD` / `MM` / `YYYY` typing surface. It replaces the read-only display for a single-date
  * picker, so it has to behave like `.ui-field__input` did — fill the row, inherit the field's ink,
  * and add no furniture of its own — while being three focusable boxes rather than one.
  */
 .ui-datepicker__segments {
+	--dp-seg-ch: 1ch;
 	display: flex;
 	flex: 1 1 auto;
 	align-items: center;
@@ -75,11 +82,16 @@
 	outline: none;
 	background: transparent;
 	color: inherit;
+	caret-color: transparent;
 	font: inherit;
 	font-variant-numeric: tabular-nums;
 	text-align: center;
-	border-radius: var(--radius-xs);
 	cursor: text;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+.ui-datepicker__seg::selection {
+	background-color: transparent;
+	color: currentcolor;
 }
 
 /* An empty segment is a placeholder, and reads as one — the same ink `::placeholder` uses, so an
@@ -91,27 +103,23 @@
 /*
  * Sized in `ch` against TABULAR figures, so a box is exactly as wide as the digits it can hold and
  * no segment shifts as its value changes — the §A.4 rule for a changing figure, which a date being
- * typed into is the most literal case of. One character wider than the digit count, because the
- * empty state prints `DD` / `YYYY` and letters are wider than the digits `ch` measures.
+ * typed into is the most literal case of. Wider than the digit count, because the empty state
+ * prints `DD` / `MM` / `YYYY` and letters are wider than the digits `ch` measures.
  */
 .ui-datepicker__seg[data-segment="day"],
 .ui-datepicker__seg[data-segment="month"] {
-	inline-size: 3ch;
+	inline-size: calc(3.5 * var(--dp-seg-ch, 1ch));
 }
 .ui-datepicker__seg[data-segment="year"] {
-	inline-size: 5ch;
+	inline-size: calc(5 * var(--dp-seg-ch, 1ch));
 }
 
-/*
- * The focused segment is tinted rather than ringed. A focus RING on one of three adjacent boxes
- * inside a field that already draws its own focus border would be two rings nested a pixel apart;
- * the tint says the same thing in the space available, and the field's own `--focused` border is
- * what says the control has focus at all.
- */
-.ui-datepicker__seg:focus-visible {
-	outline: none;
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+.ui-datepicker__segments:focus-within .ui-datepicker__seg {
+	color: var(--text-secondary);
+}
+.ui-datepicker__segments:focus-within .ui-datepicker__seg:focus {
 	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
 }
 
 /*
@@ -122,7 +130,8 @@
  * Colour PLUS the `aria-invalid` the first segment carries, never hue alone (§A.5): the same two
  * channels `.ui-field--invalid` spends, at the one place inside the field that is actually wrong.
  */
-.ui-datepicker__segments[data-out-of-range] .ui-datepicker__seg {
+.ui-datepicker__segments[data-out-of-range] .ui-datepicker__seg,
+.ui-datepicker__segments[data-out-of-range]:focus-within .ui-datepicker__seg:focus {
 	color: var(--fld-invalid-bd);
 }
 

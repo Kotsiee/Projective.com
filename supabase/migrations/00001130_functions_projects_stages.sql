@@ -81,6 +81,46 @@ BEGIN
 END;
 $$;
 
+-- A stage's intensity terms (Decision #417) — `default_intensity`, `intensity_locked` and the tier
+-- prices. On a project instantiated from a service they are the SELLER's: copied in by
+-- `marketplace.instantiate_service_blueprint`, and no client statement may move them afterwards.
+-- Anywhere else a stage is the client's own: never locked, never tier-priced, its default free to set.
+-- INVOKER on purpose, as fn_ticket_immutability_guard is: inside a SECURITY DEFINER door `current_user`
+-- is its owner, so the instantiation passes and only a statement PostgREST runs as anon/authenticated
+-- is judged.
+CREATE OR REPLACE FUNCTION projects.fn_stage_intensity_terms()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user NOT IN ('anon', 'authenticated') THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE'
+        AND NEW.default_intensity IS NOT DISTINCT FROM OLD.default_intensity
+        AND NEW.intensity_locked IS NOT DISTINCT FROM OLD.intensity_locked
+        AND NEW.low_price_cents IS NOT DISTINCT FROM OLD.low_price_cents
+        AND NEW.high_price_cents IS NOT DISTINCT FROM OLD.high_price_cents THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' AND EXISTS (
+        SELECT 1 FROM projects.projects p
+         WHERE p.id = NEW.project_id AND p.source_blueprint_id IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'This stage''s intensity and price are the service provider''s terms and cannot be changed.';
+    END IF;
+    IF NEW.intensity_locked OR NEW.low_price_cents IS NOT NULL OR NEW.high_price_cents IS NOT NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'Only the service a stage came from fixes its intensity or prices its tiers.';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- Deleting a stage releases held escrow for its active tickets, scrubs the stage id from any other
 -- ticket that lists it as a required prerequisite, and detaches every sibling stage that waited on it
 -- (audit C4). The last step is what lets a direct DELETE of a depended-on stage succeed rather than
@@ -356,8 +396,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- in caller and somebody else's pipeline, and it is deliberately the first thing the body does.
 --
 -- WHY `p_payload` AND NOT TEN MORE NAMED PARAMETERS. A stage now carries a dozen configurable
--- fields — its task template, skills, seat cap, parallelism, NDA override, file policy and timing —
--- and every one added as a named argument is another signature this function can never again be
+-- fields — its task template, skills, seat cap, parallelism, NDA override, file policy, timing and
+-- CREATE category (`create_category`, the board's Create stage popover, Decision #416) — and every
+-- one added as a named argument is another signature this function can never again be
 -- changed without. One jsonb bag keeps the signature stable while the stage grows, and it is the
 -- SAME shape `projects.create_project` already reads a stage out of, so the create path and the
 -- add-a-stage path cannot come to disagree about what a field is called. Everything in it is
@@ -408,8 +449,22 @@ BEGIN
 
   v_name := COALESCE(NULLIF(btrim(p_name), ''), NULLIF(btrim(COALESCE(v_bag->>'name', '')), ''), 'Untitled stage');
 
-  -- Review authority: the owner, or an active member of the paying client business.
-  IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
+  -- Who authors a stage (Decision #421). A client-architected project takes them from review
+  -- authority: the owner, or an active member of the paying client business. A service the client
+  -- bought (`source_blueprint_id` set) is the seller's template, so only a freelancer holding a live
+  -- seat on one of its stages adds one, and its client never does.
+  IF EXISTS (
+    SELECT 1 FROM projects.projects p
+    WHERE p.id = p_project_id AND p.source_blueprint_id IS NOT NULL
+  ) THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM projects.project_stages ps
+      WHERE ps.project_id = p_project_id AND projects.fn_holds_live_seat(ps.id, v_actor)
+    ) THEN
+      RAISE EXCEPTION 'This project runs on a freelancer''s service, so its stages are added by the freelancer working it.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  ELSIF NOT projects.can_review_project(p_project_id) THEN
     RAISE EXCEPTION 'Only the project owner or its client business may add a stage.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -447,7 +502,7 @@ BEGIN
     start_trigger_type, fixed_start_date, start_dependency_stage_id, start_dependency_lag_days,
     hire_trigger_active, file_revisions_allowed,
     file_duration_mode, file_duration_days, file_due_date,
-    ip_ownership_override, ip_mode
+    ip_ownership_override, ip_mode, create_category
   )
   VALUES (
     p_project_id,
@@ -483,18 +538,25 @@ BEGIN
     NULLIF(v_bag->>'file_duration_days', '')::integer,
     NULLIF(v_bag->>'file_due_date', '')::timestamptz,
     v_ip_override,
-    COALESCE(NULLIF(v_bag->>'ip_mode', '')::ip_option_mode, v_ip_override, 'exclusive_transfer'::ip_option_mode)
+    COALESCE(NULLIF(v_bag->>'ip_mode', '')::ip_option_mode, v_ip_override, 'exclusive_transfer'::ip_option_mode),
+    -- A label of the work, never a weight on W_i (Decision #338, ruling P4). Absent leaves it untyped.
+    NULLIF(v_bag->>'create_category', '')::org.create_category
   )
   RETURNING id INTO v_stage;
 
-  PERFORM comms.get_or_create_project_channel(p_project_id, v_stage, v_name);
+  -- The room is opened for the STAGE, not for its author, who was authorised above and may hold no
+  -- seat on the stage they just added — a freelancer on a service (Decision #421) is seated only by
+  -- an accepted invitation or application. comms.get_or_create_project_channel checks its caller's
+  -- access to the room, which that freelancer does not have yet, so the row is written here.
+  INSERT INTO comms.project_channels (project_id, stage_id, name, visibility)
+  VALUES (p_project_id, v_stage, v_name, 'stage_all');
 
   RETURN v_stage;
 END;
 $$;
 
 COMMENT ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, jsonb) IS
-'Appends a stage to a project the caller owns and opens its General channel, so the new stage is immediately visible in the channel tree. p_payload carries the stage''s optional settings (tasks, skills, seat cap, parallelism, NDA override, file policy, timing, IP terms) in the same shape projects.create_project reads a stage from. Returns the new stage id.';
+'Appends a stage to a project and opens its General channel, so the new stage is immediately visible in the channel tree. A client project takes stages from its review authority; a service (source_blueprint_id set) only from a freelancer holding a live seat on it (Decision #421). p_payload carries the stage''s optional settings (tasks, skills, seat cap, parallelism, NDA override, file policy, timing, IP terms, CREATE category) in the same shape projects.create_project reads a stage from. Returns the new stage id.';
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.delete_stage(p_project_id, p_stage_id)

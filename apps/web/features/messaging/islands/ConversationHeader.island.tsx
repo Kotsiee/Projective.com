@@ -27,6 +27,7 @@ import {
 } from "@web/features/shell/core/context-panel-state.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
+import { ChatFindButton } from "@web/features/projects/components/ChatFindButton.tsx";
 import type { ConversationDetail, GroupPhotoInput } from "../types/messaging-types.ts";
 
 /**
@@ -203,6 +204,8 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 				>
 					<MessagingIcon name="star" />
 				</button>
+
+				{activeTab === "chat" && <ChatFindButton />}
 
 				{hasDetails && (
 					<Tooltip content="Details" placement="bottom">

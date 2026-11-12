@@ -1,12 +1,13 @@
-import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
+import { parsePriceMajor } from "./pricing.ts";
 import { peekCatalog } from "./live-catalog.ts";
 import { byScore } from "./ranking.ts";
 import { toMajorUnits } from "@projective/types/finance";
-import type {
-	ExploreEntity,
-	ExploreItem,
-	ExploreParams,
-	ResultGroup,
+import {
+	type ExploreEntity,
+	type ExploreItem,
+	type ExploreParams,
+	pipelineTicketSpan,
+	type ResultGroup,
 } from "@projective/types/explore";
 
 /**
@@ -83,9 +84,12 @@ export function rankRecommended<T extends ExploreItem>(
 /** Parse a leading price out of a formatted string / derived floor for the "price" sort. */
 function priceValue(item: ExploreItem): number {
 	if (item.type === "services") {
-		// Sort a pipeline by its low-intensity ticket floor (0.5×) and a session by its per-session
-		// price, so the range/unit pricing shown on the card orders consistently.
-		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * PIPELINE_LOW;
+		// Sort a pipeline by the figure its card leads with — its Low-intensity floor when sold at tiered
+		// intensity, its one price when sold fixed — and a session by its per-session price, so the
+		// range/unit pricing shown on the card orders consistently.
+		if (item.serviceType === "Pipeline" && item.ticketPrice) {
+			return pipelineTicketSpan(item)?.low ?? item.ticketPrice;
+		}
 		if (
 			(item.serviceType === "Session" || item.serviceType === "Group Session") && item.sessionPrice
 		) return item.sessionPrice;

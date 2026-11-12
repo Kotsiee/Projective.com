@@ -3,14 +3,9 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
-import {
-	Calendar,
-	type CalendarContextTarget,
-	type CalendarRange,
-	EventPopoverLayer,
-} from "@projective/ui/calendar";
+import { Calendar, type CalendarContextTarget, EventPopoverLayer } from "@projective/ui/calendar";
 import { ConfirmDialog, Message } from "@projective/ui/feedback";
-import { ActionMenu, type MenuItem } from "@projective/ui/navigation";
+import { ActionMenu } from "@projective/ui/navigation";
 import {
 	awaitsAnswer,
 	type CalendarEvent,
@@ -39,8 +34,16 @@ import {
 } from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
+import type { CalendarAddress } from "../core/calendar-address.ts";
+import { kindOfHidden } from "../core/calendar-address.ts";
+import { agendaRows, authoringFor, timesMovable } from "../core/calendar-authoring.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import { useCalendarViewMemory } from "../hooks/useCalendarViewMemory.ts";
+import {
+	useCalendarAddress,
+	useCalendarAddressWriter,
+	useCalendarWindowReader,
+} from "../hooks/useCalendarAddress.ts";
 import {
 	agendaReload,
 	calendarFocus,
@@ -57,7 +60,8 @@ import {
 	eventReread,
 	focusedAt,
 	gridSpotlight,
-	importedEvents,
+	hiddenClasses,
+	hiddenClassesAt,
 	inspectInPanel,
 	inspectPopover,
 	inspectRoutine,
@@ -65,6 +69,7 @@ import {
 	leavingEvents,
 	openEventModal,
 	organiseRequest,
+	releaseCalendarAddress,
 	remindersRequest,
 	removeRequest,
 	routineDialogOpen,
@@ -74,6 +79,7 @@ import {
 	sourceIsVisible,
 	timelineZoom,
 	updateRequest,
+	viewAt,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 
@@ -122,47 +128,8 @@ function accessFor(event: CalendarEvent | null, seam: DevSeamState | null): Even
 	return { isClient: false, isFreelancer: false };
 }
 
-/** What the agenda's right-click rows do; the island supplies them. */
-interface AgendaMenuActions {
-	create: (range: CalendarRange) => void;
-	createBlank: () => void;
-	open: (event: CalendarEvent) => void;
-	edit: (event: CalendarEvent) => void;
-	remove: (event: CalendarEvent) => void;
-}
-
-/**
- * The agenda's right-click rows for what the grid reported. An entry the viewer hosts can be edited
- * and deleted; anyone else's opens read-only, as its summary does. Empty time offers New event on
- * that slot, and anywhere the grid can't place (a header, the timeline) a blank one at the focus.
- */
-function agendaRows(
-	target: CalendarContextTarget | null,
-	tz: string,
-	act: AgendaMenuActions,
-): MenuItem[] {
-	const ev = target?.event as CalendarEvent | null | undefined;
-	if (ev) {
-		if (ev.viewerIsHost !== true) {
-			return [{ key: "open", label: "Open details", command: () => act.open(ev) }];
-		}
-		return [
-			{ key: "edit", label: "Edit event", command: () => act.edit(ev) },
-			{ separator: true },
-			{ key: "delete", label: "Delete event", danger: true, command: () => act.remove(ev) },
-		];
-	}
-	const range = target?.range;
-	if (!range) return [{ key: "new", label: "New event", command: act.createBlank }];
-	const when = new Intl.DateTimeFormat("en-GB", {
-		timeZone: tz,
-		weekday: "short",
-		day: "numeric",
-		month: "short",
-		...(range.allDay ? {} : { hour: "2-digit", minute: "2-digit" }),
-	}).format(range.start);
-	return [{ key: "new", label: "New event", hint: when, command: () => act.create(range) }];
-}
+/** What `/calendar` authors: its host's own entries, through the event door (C7 (a)). */
+const AUTHORING = authoringFor("personal");
 
 /**
  * Where a popover points when the view hands over no rect: the card that took the press, which holds
@@ -198,12 +165,20 @@ function focusedAnchor(surface: HTMLElement | null) {
  * `directOpen`, or in a popover, which is the engine's own in the views that paint one and the layer
  * mounted here for a lane row or a Month card. The inspector is another hydration root, so its in-place
  * edits come back here to be written, on the same handshake as its Delete.
+ *
+ * It authors only what the event door keeps ({@link AUTHORING}): the host's own entries, created from
+ * a drag, a click, a touch or the keyboard, and moved or deleted while their time is the host's to
+ * move. It owns the address (`?view=&date=&zoom=&kind=`, Decision #413) and the read window (S-29):
+ * the body writes the one and reads the next as the reader moves.
  */
 export interface CalendarWorkspaceProps {
 	initial: SchedulePage | null;
+	/** What the URL asked to be shown; the reader's stored defaults answer the rest. */
+	address?: CalendarAddress;
 }
 
 export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.Element {
+	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const page = useSignal<SchedulePage | null>(props.initial);
 	/** The developer persona override, tracked so a flip moves the surface without a reload. */
 	const seam = useSignal<DevSeamState | null>(null);
@@ -309,28 +284,57 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 
 	function remove(id: string): void {
 		composer.remove(id);
-		importedEvents.value = importedEvents.peek().filter((e) => e.id !== id);
 		if (selectedEventId.peek() === id) deselectEvent();
 	}
 
+	/** The day the window on screen was read around; `null` is the page's own `now`. */
+	const readAround = useRef<string | null>(props.address?.date ?? null);
+
 	/**
-	 * A failure is SURFACED rather than dropped: a stale agenda left on screen with no word of the
-	 * failure reads as the current one.
+	 * Read the agenda around `around`. A failure is SURFACED rather than dropped: a stale agenda left
+	 * on screen with no word of the failure reads as the current one.
 	 */
-	async function load(): Promise<void> {
-		const res = await ScheduleService.personal();
+	async function read(around: string | null): Promise<SchedulePage | null> {
+		const res = await ScheduleService.personal(around);
 		if (res.ok && res.data) {
 			loadError.value = null;
-			publish(res.data.page);
-		} else {
-			loadError.value = res.message ?? "This calendar couldn’t be refreshed.";
+			readAround.current = around;
+			return res.data.page;
 		}
+		loadError.value = res.message ?? "This calendar couldn’t be refreshed.";
+		return null;
+	}
+
+	/** Read the window on screen again. */
+	async function load(): Promise<void> {
+		const next = await read(readAround.current);
+		if (next) publish(next);
 	}
 
 	// The view and zoom are the APP's to remember here (the control lives in the footer band, so the
 	// engine is driven rather than deciding) — restored after mount, never at module scope, because this
-	// module is also imported during SSR where storage does not exist.
-	useCalendarViewMemory();
+	// module is also imported during SSR where storage does not exist. The address outranks them.
+	useCalendarViewMemory(props.address);
+
+	useCalendarAddressWriter({
+		surface: "personal",
+		state: () => ({
+			view: calendarView.value,
+			focus: focusedAt(page.value, props.address),
+			timelineScale: timelineZoom.value,
+			kind: kindOfHidden(hiddenClasses.value),
+		}),
+		tz: () => page.peek()?.timezone ?? null,
+	});
+
+	useCalendarWindowReader<SchedulePage>({
+		window: () => page.value?.window,
+		view: () => calendarView.value,
+		focus: () => focusedAt(page.value, props.address),
+		tz: () => page.value?.timezone ?? null,
+		read,
+		apply: publish,
+	});
 
 	useEffect(() => {
 		invitationsOnly.value = invitationsFiltered(globalThis.location?.search ?? "");
@@ -370,6 +374,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		routineDialogOpen.value = false;
 		inspectPopover.value = null;
 		eventStack.close();
+		releaseCalendarAddress();
 		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
 	}, []);
 
@@ -398,22 +403,22 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		);
 	}
 
-	/*
-	 * Imported `.ics` entries sit alongside the fetched ones rather than being merged into them: they
-	 * are client-side only until the write path lands, and folding them into `events` would let the
-	 * next refetch silently drop entries the reader watched arrive.
-	 */
-	const all = [...events.value, ...importedEvents.value];
 	const leaving = leavingEvents.value;
-	// The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words.
-	const shown = visibleEvents(all).map((e) =>
-		awaitsAnswer(e) || leaving.includes(e.id)
-			? { ...e, ghost: awaitsAnswer(e), leaving: leaving.includes(e.id) }
-			: e
-	);
+	/*
+	 * The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words; and
+	 * nothing of the door, so an entry whose move the door would refuse is marked `fixed` and its drag
+	 * stays a click.
+	 */
+	const shown = visibleEvents(events.value, invitationsOnly.value, hiddenClassesAt(props.address))
+		.map((e) => {
+			const ghost = awaitsAnswer(e);
+			const gone = leaving.includes(e.id);
+			const fixed = !timesMovable(e);
+			return ghost || gone || fixed ? { ...e, ghost, leaving: gone, fixed } : e;
+		});
 
 	const open = eventStack.top.value;
-	const framed = composer.resolve(open, importedEvents.value);
+	const framed = composer.resolve(open);
 
 	/*
 	 * A withdrawn calendar leaves no trace: an entry another calendar still holds up survives, but it
@@ -437,7 +442,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 			doomed.value = ev;
 			confirmDelete.value = true;
 		},
-	});
+	}, AUTHORING);
 
 	return (
 		<div
@@ -471,29 +476,31 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				directOpen={inspectMode === "panel"}
 				renderEventActions={renderInspectActions}
 				timezone={p.timezone}
-				view={calendarView.value}
+				view={viewAt(props.address)}
 				zoom={calendarZoom}
 				timelineZoom={timelineZoom}
 				snapZoom={calendarSnapZoom.value}
-				focus={focusedAt(p)}
+				focus={focusedAt(p, props.address)}
+				loaded={p.window ? { start: p.window.from, end: p.window.to } : null}
 				hideSidePanel
 				hideHeader
-				canCreate
+				canCreate={AUTHORING.has("create")}
 				renderSource={renderSource}
 				storageKey={LocalKeys.CALENDAR_DENSITY}
 				onViewChange={(v) => (calendarView.value = v)}
 				onFocusChange={(ms) => (calendarFocus.value = ms)}
 				compose={composer.compose}
 				/*
-				 * `onSelectRange` no longer opens the full modal, and that is the whole shape of the
-				 * flow: a drag on the grid — or a click or a drag across Month cells — leaves a DRAFT
-				 * and a lightweight composer beside it, and the full surface is one deliberate press
-				 * away (`onExpandCreate`).
+				 * A drag on the grid, a click, a touch or the keyboard's create — or a drag across Month
+				 * cells — leaves a DRAFT and the lightweight composer beside it, and the full surface is
+				 * one deliberate press away (`onExpandCreate`). The engine routes all of them there
+				 * itself, so there is no `onSelectRange` to be told.
 				 */
-				onSelectRange={() => {}}
 				onQuickCreate={composer.quickCreate}
 				onExpandCreate={composer.expandCreate}
-				onMoveEvent={(ev, range) => composer.moveEvent(ev as CalendarEvent, range)}
+				onMoveEvent={AUTHORING.has("move")
+					? (ev, range) => composer.moveEvent(ev as CalendarEvent, range)
+					: undefined}
 				// Month is the one view with no popover of its own, and from the others this is the
 				// popover's title asking for more, which is the panel.
 				onOpenEvent={(ev) =>

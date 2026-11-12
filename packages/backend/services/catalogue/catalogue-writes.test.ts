@@ -271,7 +271,10 @@ const EDITED: Record<string, (offer: ListingOffer) => ListingOffer> = {
 					startTrigger: "after_previous",
 					lagDays: 0,
 					chainReaction: true,
+					intensity: "low",
+					lowPriceCents: 40_000,
 				}],
+				allowTieredIntensity: !o.allowTieredIntensity,
 			}
 			: o,
 	one_off: (o) =>

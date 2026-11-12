@@ -10,16 +10,17 @@ import { buildIcsCalendar, calendarLinksFor } from "@projective/types/finance";
 import { normalizeLink } from "@projective/types/links";
 import type { CalendarEvent as ScheduleEvent } from "@projective/types/scheduling";
 import { inspectInPanel, openEventModal } from "../core/calendar-state.ts";
-import { entryEditable, eventStack } from "../core/event-view.ts";
+import { entryEditable } from "../core/event-view.ts";
 
 /**
  * EventPopoverActions — the action header the calendar engine's event popover asks a consumer for.
  *
  * It lives in the APP rather than in `@projective/ui/calendar` because everything on it is a route
- * or a product decision: where an entry opens, which third-party calendars this product hands off
- * to, and what "archive" means here. The engine holds no route table and no vendor list, which is
- * why {@link EventPopoverActionContext} is a SLOT — and a slot a host cannot fill is drawn not at
- * all, never offered and then refused.
+ * or a product decision: where an entry opens, and which third-party calendars this product hands
+ * off to. The engine holds no route table and no vendor list, which is why
+ * {@link EventPopoverActionContext} is a SLOT — and a slot a host cannot fill is drawn not at all,
+ * never offered and then refused. It carries no Archive or Hide: an entry leaves the calendar only
+ * through the event door's Delete, in the inspector and the modal.
  *
  * ## Every handoff goes through the platform's one iCalendar implementation
  *
@@ -182,55 +183,12 @@ function whenLabelFor(event: CalendarEvent): string {
 }
 // #endregion
 
-// #region The action header
-/**
- * The destructive-ish verbs a HOST can honour, if it has somewhere to write them.
- *
- * They are handlers rather than built-in behaviour because this module has nowhere to persist an
- * answer: the scheduling backend gate is off, and `calendar-state` holds narrowing axes (kinds,
- * source layers) but no per-entry set. A surface that CAN honour one passes it and the item appears;
- * a surface that cannot passes nothing and the item is absent. Both are honest; a control that
- * accepted the press and changed nothing is not.
- *
- * **There is no `onDelete`, and that is the decision, not an omission.** Nothing is hard-deleted in
- * this product (root CLAUDE.md §5 — use Archived), so a "Delete" control could only ever be Archive
- * wearing a name that promises more than it does, and the one thing a reader must be able to trust
- * about a destructive verb is that it means what it says. Archive is the real verb and it is the one
- * offered.
- */
-export interface EventActionHandlers {
-	/** Move the entry out of the active calendar. Optimistic until the scheduling backend lands. */
-	onArchive?: (event: CalendarEvent) => void;
-	/** Drop the entry from THIS reader's view only — chrome, not a change to the event. */
-	onHide?: (event: CalendarEvent) => void;
-}
-
-/**
- * Build the popover's action-header slot, optionally wired to a host that can honour Archive/Hide.
- *
- * A factory rather than a plain function so a surface with somewhere to write those verbs can supply
- * it, while the default stays useful for the surfaces that have not got one yet.
- */
-export function eventPopoverActions(
-	handlers?: EventActionHandlers,
-): (ctx: EventPopoverActionContext) => VNode | null {
-	return (ctx) => <EventActionHeader ctx={ctx} handlers={handlers} />;
-}
-
-/**
- * The zero-configuration slot: everything that can be honoured with no host wiring at all.
- *
- * This is the value a surface passes to `Calendar`'s `renderEventActions` unless it has an Archive or
- * a Hide to offer.
- */
-export function renderEventPopoverActions(ctx: EventPopoverActionContext): VNode | null {
-	return <EventActionHeader ctx={ctx} />;
-}
-
+// #region The inspect header
 /**
  * The header of the compact popover `/calendar` opens when its reader chose `popover` (Decision #388),
- * and of a cluster's detail either way: the engine's own pane draws the facts, and this adds the Join
- * and the two ways up, to the inspector and to the modal. Editing belongs to those two.
+ * and of a cluster's detail either way: the engine's own pane draws the facts, and this adds the Join,
+ * the handoff to another calendar, and the two ways up, to the inspector and to the modal. Editing
+ * belongs to those two.
  */
 export function renderInspectActions(ctx: EventPopoverActionContext): VNode | null {
 	return <InspectActions ctx={ctx} />;
@@ -254,6 +212,7 @@ function InspectActions({ ctx }: { ctx: EventPopoverActionContext }): JSX.Elemen
 					/>
 				)
 				: null}
+			{event.masked ? null : <AddToCalendar event={ctx.event} />}
 			<Tooltip content="Open in Panel" density="compact">
 				<Button
 					variant="text"
@@ -286,212 +245,82 @@ function InspectActions({ ctx }: { ctx: EventPopoverActionContext }): JSX.Elemen
 	);
 }
 
+const ICON_BUTTON =
+	"ui-button ui-button--secondary ui-button--text ui-button--size-sm ui-button--icon-only";
+
 /**
- * The header itself, as a real component rather than inline JSX inside the slot function.
+ * Add to a calendar: Google, Outlook, an `.ics` file (Apple Calendar and anything else that reads
+ * iCalendar) or a copy by email — one entry's handoff, and until calendar sync reaches an attendee's
+ * own calendar (S-39), the one route there is.
  *
- * Load-bearing: the menus and the status line are hook state, and hooks called from a render-prop
- * body run in whichever component happened to invoke it — so the first popover to open would own
- * state the second one then reads. A component gives the header its own identity, and closing the
- * popover unmounts it, which is also what clears a stale notice.
+ * A component of its own because its open state and its status line are hook state. The trigger is a
+ * NATIVE button carrying `api.ref`, because `Button` does not forward a ref and its panel would anchor
+ * at the origin; and it sits inside the engine popover's panel, so the overlay registry reads a press
+ * in this panel as a press inside that one.
  */
-function EventActionHeader(
-	{ ctx, handlers }: { ctx: EventPopoverActionContext; handlers?: EventActionHandlers },
-): JSX.Element | null {
-	const event: CalendarEvent = ctx.event;
-	const addOpen = useSignal(false);
-	const menuOpen = useSignal(false);
-	/** The one thing this header has to say back. Empty until an action has something to report. */
+function AddToCalendar({ event }: { event: CalendarEvent }): JSX.Element {
+	const open = useSignal(false);
+	/** The one thing this control has to say back. Empty until a download has something to report. */
 	const notice = useSignal("");
-
-	// A masked block has nothing to hand over and nothing to open — see the module note.
-	if (event.masked) return null;
-
-	const when = whenLabelFor(event);
 	// `calendarLinksFor` also returns an `ics` value, which is simply the path it was handed. There is
 	// no such endpoint here, so the empty string is passed and the value is not read: the file is
 	// built client-side by `downloadIcs` instead. Passing a plausible-looking route would be worse —
 	// it would put a 404 behind a link that says "Apple Calendar".
 	const links = calendarLinksFor(icsInputFor(event), "");
+	const done = () => (open.value = false);
 
 	function exportOne(): void {
+		done();
 		const result = downloadIcs([event], `${slugFor(event.title)}.ics`);
 		notice.value = result.ok ? "Downloaded." : "The file couldn’t be written.";
 	}
 
-	function quickEdit(): void {
-		// The existing full surface, not a second editor. It opens in `view` mode because that mode
-		// edits in place — a separate "edit" mode would be the same fields behind a switch, and the
-		// reader would lose their place every time they toggled it.
-		ctx.close();
-		eventStack.open("event", event.id, { mode: "view" });
-	}
-
-	function run(action: ((event: CalendarEvent) => void) | undefined, said: string): void {
-		if (!action) return;
-		action(event);
-		menuOpen.value = false;
-		notice.value = said;
-	}
-
-	const hasMenuVerb = Boolean(handlers?.onArchive || handlers?.onHide);
-
 	return (
-		<div class="cal-act">
-			{event.href
-				? (
-					<Tooltip content="Open the full entry" density="compact">
-						<a
-							class="ui-button ui-button--secondary ui-button--text ui-button--size-sm ui-button--icon-only"
-							href={event.href}
-							aria-label={`Open ${event.title}`}
-						>
-							<span class="ui-button__icon">
-								<Icon name="external-link" size="sm" />
-							</span>
-						</a>
-					</Tooltip>
-				)
-				: null}
-
+		<>
 			<Popover
-				open={addOpen}
+				open={open}
 				placement="bottom-end"
-				class="cal-act__menu"
+				label="Add to a calendar"
 				trigger={(api) => (
 					<Tooltip content="Add to a calendar" density="compact">
-						<Button
+						<button
+							type="button"
 							ref={api.ref as RefObject<HTMLButtonElement>}
-							variant="text"
-							severity="secondary"
-							size="sm"
-							iconOnly
-							icon={<Icon name="calendar-plus" size="sm" />}
+							class={ICON_BUTTON}
 							aria-label="Add to a calendar"
-							aria-haspopup="menu"
+							aria-haspopup="dialog"
 							aria-expanded={api.expanded ? "true" : "false"}
 							aria-controls={api.panelId}
 							onClick={api.toggle}
-						/>
+						>
+							<span class="ui-button__icon">
+								<Icon name="calendar-plus" size="sm" />
+							</span>
+						</button>
 					</Tooltip>
 				)}
 			>
-				<div role="menu" aria-label="Add to a calendar">
+				<div role="group" aria-label="Add to a calendar">
+					<MenuLink href={links.google} icon="calendar" label="Google Calendar" onDone={done} />
+					<MenuLink href={links.outlook} icon="calendar" label="Outlook" onDone={done} />
+					<MenuButton icon="download" label="Apple Calendar (.ics)" onSelect={exportOne} />
 					<MenuLink
-						href={links.google}
-						icon="calendar"
-						label="Google Calendar"
-						onDone={() => (addOpen.value = false)}
-					/>
-					<MenuLink
-						href={links.outlook}
-						icon="calendar"
-						label="Outlook"
-						onDone={() => (addOpen.value = false)}
-					/>
-					<MenuButton
-						icon="download"
-						label="Download .ics"
-						hint="Apple Calendar, and anything else that reads iCalendar"
-						onSelect={() => {
-							addOpen.value = false;
-							exportOne();
-						}}
-					/>
-					<MenuLink
-						href={mailtoFor(event, when)}
+						href={mailtoFor(event, whenLabelFor(event))}
 						icon="mail"
 						label="Email a copy"
 						external={false}
-						onDone={() => (addOpen.value = false)}
+						onDone={done}
 					/>
 				</div>
 			</Popover>
-
-			<Tooltip content="Edit this entry" density="compact">
-				<Button
-					variant="text"
-					severity="secondary"
-					size="sm"
-					iconOnly
-					icon={<Icon name="edit" size="sm" />}
-					aria-label={`Edit ${event.title}`}
-					onClick={quickEdit}
-				/>
-			</Tooltip>
-
-			<Popover
-				open={menuOpen}
-				placement="bottom-end"
-				class="cal-act__menu"
-				trigger={(api) => (
-					<Tooltip content="More actions" density="compact">
-						<Button
-							ref={api.ref as RefObject<HTMLButtonElement>}
-							variant="text"
-							severity="secondary"
-							size="sm"
-							iconOnly
-							icon={<Icon name="kebab" size="sm" />}
-							aria-label="More actions"
-							aria-haspopup="menu"
-							aria-expanded={api.expanded ? "true" : "false"}
-							aria-controls={api.panelId}
-							onClick={api.toggle}
-						/>
-					</Tooltip>
-				)}
-			>
-				<div role="menu" aria-label="Entry actions">
-					{handlers?.onArchive
-						? (
-							<MenuButton
-								icon="archive-box"
-								label="Archive"
-								hint="Moves it out of the active calendar. Nothing is deleted."
-								onSelect={() => run(handlers?.onArchive, "Archived.")}
-							/>
-						)
-						: null}
-					{handlers?.onHide
-						? (
-							<MenuButton
-								icon="eye-off"
-								label="Hide from my calendar"
-								hint="Only changes what you see."
-								onSelect={() => run(handlers?.onHide, "Hidden from your calendar.")}
-							/>
-						)
-						: null}
-					<MenuButton icon="close" label="Close" onSelect={ctx.close} />
-					{
-						/*
-						 * Stated where the verbs are, not in a docstring nobody reading the menu can see.
-						 * Archive and Hide are optimistic while `PROJECTS_BACKEND_LIVE` / the scheduling
-						 * gate are off — the established pattern for every sibling write on this surface —
-						 * and a reader deciding whether to press one is entitled to know that.
-						 */
-					}
-					{hasMenuVerb
-						? <p class="cal-act__note">Changes stay on this device until sync lands.</p>
-						: null}
-				</div>
-			</Popover>
-
 			{
 				/*
-				 * `role="status"` rather than `alert`: everything this line reports is the outcome of a
-				 * press the reader just made, and an assertive interruption for "Downloaded." talks over
-				 * whatever they were reading.
-				 *
-				 * The element is rendered UNCONDITIONALLY, empty until there is something to say. A live
-				 * region has to be in the accessibility tree BEFORE its text changes — one that arrives
-				 * already carrying its message is, to most screen readers, an ordinary insertion and is
-				 * announced late or not at all. `:empty` collapses it visually, so the resting header is
-				 * unchanged.
+				 * `role="status"`, rendered unconditionally and empty until there is something to say: a
+				 * live region has to be in the tree BEFORE its text changes to be announced on time.
 				 */
 			}
-			<p class="cal-act__note" role="status">{notice.value}</p>
-		</div>
+			<span class="ui-visually-hidden" role="status">{notice.value}</span>
+		</>
 	);
 }
 
@@ -502,55 +331,42 @@ function slugFor(title: string): string {
 }
 
 /**
- * One menu row that navigates.
+ * One row that navigates.
  *
  * A real anchor rather than a button calling `open()`, so middle-click, "copy link address" and a
  * screen reader's link list all behave — and `rel="noopener noreferrer"` because the target is a
  * third-party origin. A `mailto:` is NOT opened in a new tab: some clients leave a blank tab behind.
  */
 function MenuLink(
-	{ href, icon, label, hint, external = true, onDone }: {
+	{ href, icon, label, external = true, onDone }: {
 		href: string;
 		icon: IconName;
 		label: string;
-		hint?: string;
 		external?: boolean;
 		onDone: () => void;
 	},
 ): JSX.Element {
 	return (
 		<a
-			class="ui-menu-item cal-act__item"
-			role="menuitem"
+			class="ui-menu-item"
 			href={href}
 			{...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
 			onClick={onDone}
 		>
 			<Icon name={icon} size="sm" class="ui-menu-item__icon" />
-			<span class="cal-act__itemtext">
-				{label}
-				{hint ? <span class="cal-act__hint">{hint}</span> : null}
-			</span>
+			{label}
 		</a>
 	);
 }
 
-/** One menu row that acts. */
+/** One row that acts. */
 function MenuButton(
-	{ icon, label, hint, onSelect }: {
-		icon: IconName;
-		label: string;
-		hint?: string;
-		onSelect: () => void;
-	},
+	{ icon, label, onSelect }: { icon: IconName; label: string; onSelect: () => void },
 ): JSX.Element {
 	return (
-		<button type="button" class="ui-menu-item cal-act__item" role="menuitem" onClick={onSelect}>
+		<button type="button" class="ui-menu-item" onClick={onSelect}>
 			<Icon name={icon} size="sm" class="ui-menu-item__icon" />
-			<span class="cal-act__itemtext">
-				{label}
-				{hint ? <span class="cal-act__hint">{hint}</span> : null}
-			</span>
+			{label}
 		</button>
 	);
 }

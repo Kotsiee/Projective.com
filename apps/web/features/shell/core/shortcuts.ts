@@ -49,7 +49,7 @@ export function isToggleSidebarShortcut(event: ShortcutKey): boolean {
 }
 
 /**
- * A bare `/` — "focus this surface's search" (the settings console and modal). Shift is allowed
+ * A bare `/` — "focus this page's search", or the header's where the page has none. Shift is allowed
  * because some layouts type `/` with it; any command modifier is not, so `Cmd+/` and friends stay
  * free, and `Cmd+K` remains reserved for the platform command palette. The caller must still skip
  * {@link isEditableTarget} targets: a `/` typed into a field is text.
@@ -62,14 +62,52 @@ export function isFocusSearchShortcut(event: ShortcutKey): boolean {
 
 /**
  * Ctrl+/ or Cmd+/ (exactly one) — "focus the site header's search" from anywhere, a field included:
- * the command modifier means it is never text. Shift is allowed for layouts that type `/` with it.
+ * the command modifier means it is never text. Shift is allowed for layouts that type `/` with it
+ * (`Shift+7`), but not on the Slash key itself, where Shift is {@link isFocusLaneSearchShortcut}.
  * Matched by the produced `/` only, never by key position, so a layout whose Slash key is `-` keeps
  * Ctrl+- as zoom out.
  */
 export function isFocusHeaderSearchShortcut(event: ShortcutKey): boolean {
 	if (event.defaultPrevented || event.repeat || event.altKey) return false;
 	if (event.ctrlKey === event.metaKey) return false;
+	if (event.shiftKey && event.code === "Slash") return false;
 	return event.key === "/";
+}
+
+/**
+ * Ctrl+Shift+/ or Cmd+Shift+/ (exactly one command modifier) — "focus the side lane's search", from
+ * anywhere, a field included. Most layouts report the chord as `?`, which is how a layout with `?`
+ * elsewhere (`Shift+ß`) reaches it; a browser that reports the unshifted `/` on the Slash key is
+ * matched too. Never with Alt, never a held key.
+ */
+export function isFocusLaneSearchShortcut(event: ShortcutKey): boolean {
+	if (event.defaultPrevented || event.repeat || event.altKey || !event.shiftKey) return false;
+	if (event.ctrlKey === event.metaKey) return false;
+	return event.key === "?" || (event.key === "/" && event.code === "Slash");
+}
+
+/**
+ * ⌘F on Apple platforms and Ctrl+F elsewhere, never both, never with Shift or Alt — "find in this
+ * conversation". Ctrl+F stays the caret's step forward in macOS fields. A held key still matches, so
+ * holding the chord never falls through to the browser's find. Matched by position on a non-Latin
+ * layout.
+ */
+export function isFindInThreadShortcut(event: ShortcutKey, apple: boolean): boolean {
+	if (event.defaultPrevented || event.shiftKey || event.altKey) return false;
+	const modifier = apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+	if (!modifier) return false;
+	const key = event.key.toLowerCase();
+	return key === "f" || (!/^[a-z]$/.test(key) && event.code === "KeyF");
+}
+
+/** The hint for {@link isFocusLaneSearchShortcut}: `⇧⌘/` on an Apple device, `Ctrl ⇧ /` elsewhere. */
+export function laneSearchShortcutLabel(apple: boolean): string {
+	return apple ? "⇧⌘/" : "Ctrl ⇧ /";
+}
+
+/** The hint for {@link isFindInThreadShortcut}, as the composer spells its keys: `⌘F` or `Ctrl+F`. */
+export function findInThreadShortcutLabel(apple: boolean): string {
+	return apple ? "⌘F" : "Ctrl+F";
 }
 
 /**
@@ -77,7 +115,12 @@ export function isFocusHeaderSearchShortcut(event: ShortcutKey): boolean {
  * device, `Ctrl /` elsewhere. Read from the user agent once hydrated; the server renders `Ctrl /`.
  */
 export function headerSearchShortcutLabel(userAgent: string): string {
-	return /Mac|iPhone|iPad|iPod/.test(userAgent) ? "⌘ /" : "Ctrl /";
+	return isAppleDevice(userAgent) ? "⌘ /" : "Ctrl /";
+}
+
+/** Whether a user agent or `navigator.platform` names an Apple device, where a shortcut takes ⌘. */
+export function isAppleDevice(platformOrUserAgent: string): boolean {
+	return /Mac|iPhone|iPad|iPod/.test(platformOrUserAgent);
 }
 
 // #region The feedback sequence — "g" then "f" (Decision #272)

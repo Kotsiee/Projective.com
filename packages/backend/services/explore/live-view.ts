@@ -1,6 +1,6 @@
 import { getAnonClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
-import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
+import { stagePriceSpan } from "@projective/types/catalogue";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { BlueprintRow, Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
@@ -24,6 +24,7 @@ import {
 	licenceTerms,
 	parseSessionPlan,
 	parseStoredList,
+	pipelineTicketSpan,
 	type ProductFile,
 	type ProductFormat,
 	ProductManifestEntrySchema,
@@ -137,20 +138,28 @@ function galleryOf(catalog: Catalog, item: ExploreItem): EntityMedia[] {
 
 /**
  * The lane's price block — the same shape the card helper (`pricing.servicePricing`) prints, so the
- * page agrees with the card that linked to it: a Pipeline as a `0.5×–2.0×` per-ticket range, a Session
- * per session, a Group Session per seat, everything else its fixed price.
+ * page agrees with the card that linked to it: a Pipeline sold at tiered intensity as a `0.75×–1.5×`
+ * per-ticket price range and one sold at a fixed intensity at its one price, a Session per session,
+ * a Group Session per seat, everything else its fixed price.
  */
 function pricingFor(item: ExploreItem): EntityPricing {
 	switch (item.type) {
 		case "services": {
 			const currency = item.currency ?? "USD";
-			if (item.serviceType === "Pipeline" && item.ticketPrice) {
-				const min = Math.round(item.ticketPrice * PIPELINE_LOW);
-				const max = Math.round(item.ticketPrice * PIPELINE_HIGH);
+			const span = item.serviceType === "Pipeline" && item.ticketPrice
+				? pipelineTicketSpan(item)
+				: null;
+			if (span) {
+				const min = Math.round(span.low);
+				const max = Math.round(span.high);
 				return {
 					mode: "pipeline",
-					display: `${displayMajor(min, currency)} – ${displayMajor(max, currency)}`,
-					caption: "Per ticket · scales with workload intensity",
+					display: min === max
+						? `${displayMajor(min, currency)} / ticket`
+						: `${displayMajor(min, currency)} – ${displayMajor(max, currency)}`,
+					caption: min === max
+						? "Per ticket · one fixed intensity and price"
+						: "Per ticket · priced by the intensity you choose",
 					min,
 					max,
 				};
@@ -597,13 +606,15 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 	const currency = item.currency ?? "USD";
 
 	const template = parseStoredList(BlueprintStageSchema, bp.stage_template);
+	const tiered = bp.allow_tiered_intensity === true;
 	const stages: ProjectStage[] = showcaseStages
 		? template.map((st, i) => {
 			const standard = majorOf(st.priceCents, currency);
+			const span = isPipeline ? stagePriceSpan(st, tiered, null) : null;
 			const price = st.priceCents === undefined
 				? { min: 0, max: 0, label: "Priced on scope" }
-				: isPipeline
-				? ticketPrice(standard * PIPELINE_LOW, standard * PIPELINE_HIGH, currency)
+				: span
+				? ticketPrice(majorOf(span.low, currency), majorOf(span.high, currency), currency)
 				: ticketPrice(standard, standard, currency, "");
 			const revisions = revisionsOf(item, price.min);
 			return {

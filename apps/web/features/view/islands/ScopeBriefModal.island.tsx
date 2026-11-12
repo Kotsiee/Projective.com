@@ -1,13 +1,18 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Dialog } from "@projective/ui/feedback";
+import { Button, FormControl, Textarea } from "@projective/ui/fields";
+import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
+import "@features/profile/styles/profile-hire.css";
 import "../styles/service-booking.css";
 import { CtaButton } from "../components/CtaButton.tsx";
+import { OfferLedger } from "../components/OfferLedger.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { commitConfigure } from "../core/booking-commits.ts";
+import { flatLedger, stageLedger } from "../core/conversion-ledger.ts";
+import type { OfferSummary } from "../core/offer-summary.ts";
 import {
 	clearSimulationOutcome,
 	SIMULATED_COMMIT_LABEL,
@@ -16,100 +21,104 @@ import {
 } from "../core/simulation.ts";
 import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
-import type { IntakeField, ServiceBookingOffer, StageFundingScope } from "@projective/types/services";
+import type {
+	IntakeField,
+	ServiceBookingOffer,
+	StageFundingScope,
+} from "@projective/types/services";
 import type { ProjectStage } from "@projective/types/explore";
-import { toMinorUnits } from "@projective/types/finance";
-import { ResizeFrame } from "@projective/ui/fields";
 import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
+import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx";
 import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 
 /**
- * ScopeBriefModal — the **Continue** panel for the two scoped formats.
+ * ScopeBriefModal — the **Continue** dialog for the two scoped formats, in the shared two-column
+ * conversion frame (`SplitModal`, Decision #424).
  *
- * A **One-Off** gets the full surface: a funding-scope selector (fund the whole engagement, or just
- * stage 1), the stage list it resolves to, the requirements brief and optional attachments. A
- * **Single Task** gets the lightweight half: brief and attachments only, because it has one
- * deliverable and no stages to scope.
- *
- * One component rather than two because they differ only in which fields render. Two would mean two
- * requirements validators, two attachment flows and two places for the maximum length to drift — and
- * the Single Task one, being the smaller and less-visited of the pair, is the one that would drift.
+ * LEFT, in the fixed order every `/view` conversion dialog keeps: the commitment (a One-Off's funding
+ * scope — stage 1, or the whole engagement), the buyer's specification (the required brief), the
+ * seller's own intake questions, then reference files. RIGHT, the live offer ledger: the stages the
+ * scope funds and their total, re-derived on every change. FOOTER, the state in words and the one
+ * tier-1 commit.
  *
  * # Why the brief is required
  *
  * It is the specification the engagement is delivered against. A stage funded against a scope nobody
- * wrote down is a dispute waiting for a trigger, and the platform's whole escrow model rests on both
- * sides agreeing what "done" means before any money moves. So Continue is refused until there is one,
- * with the reason shown beside the field rather than in a tooltip.
+ * wrote down is a dispute waiting for a trigger, so Continue refuses until there is one, and says so
+ * on the field rather than in a tooltip.
  *
  * # Attachments are staged by name
  *
- * The file list is real, the sizes are real, and nothing is uploaded: the asset pipeline lands with
- * `FILES_BACKEND_LIVE`. That is stated in the interface rather than implied, because a buyer who
- * believes they have attached a specification and has not is worse off than one who was told.
- *
- * # The seller's questions are asked here too
- *
- * The brief is prose; the listing's intake (`ServiceView.intake`) is structured, and the server holds
- * the staged line to it, so a required question is asked beside the brief through the profile's
- * `IntakeFields` and checked by the same `intakeRefusal` before Continue commits.
+ * The file list is real and nothing is uploaded until the asset pipeline lands (`FILES_BACKEND_LIVE`);
+ * the dialog says so rather than implying it.
  */
 export interface ScopeBriefModalProps {
 	offer: ServiceBookingOffer;
 	/** The listing's stages, for the One-Off funding selector. Empty for a Single Task. */
 	stages?: readonly ProjectStage[];
-	/**
-	 * The listing's own currency, threaded so this modal and the body's stage ledger scale one figure
-	 * the same way. `TicketPrice` carries major units and no currency of its own.
-	 */
+	/** The listing's own currency, so every figure scales the way the body's stage ledger does. */
 	currency?: string;
 	/** The listing's own intake questions (`ServiceView.intake`), asked beside the brief. */
 	intake?: readonly IntakeField[];
+	/** The listing as the page names it — the offer column's cover, title, seller and price. */
+	summary: OfferSummary;
 }
 
+const BRIEF_MAX = 8000;
+const FILES_MAX = 10;
+
 export default function ScopeBriefModal(
-	{ offer: ssrOffer, stages = [], currency, intake = [] }: ScopeBriefModalProps,
+	{ offer: ssrOffer, stages = [], currency, intake = [], summary }: ScopeBriefModalProps,
 ): JSX.Element {
 	const offer = useComputed(() => currentOffer.value ?? ssrOffer);
 	const open = useComputed(() => openPanel.value === "scope");
 	const isOneOff = useComputed(() => offer.value.format === "one_off" && stages.length > 0);
 
 	const requirements = useSignal("");
+	const briefRefused = useSignal(false);
 	const scope = useSignal<StageFundingScope>("first_stage");
 	const files = useSignal<readonly File[]>([]);
+	const fileNote = useSignal<string | null>(null);
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
 	const bodyRef = useRef<HTMLDivElement>(null);
+	const firstRef = useRef<HTMLDivElement>(null);
+	const briefRef = useRef<HTMLDivElement>(null);
 	const intakeState = useIntakeAnswers(intake, bodyRef);
 
-	// Reset on close, so re-opening is a fresh brief rather than a half-written one from an abandoned
-	// attempt. A draft that survives is a feature this surface deliberately does not have: the brief is
-	// short, and resurrecting one written for a different funding scope is worse than retyping it.
 	useEffect(() => {
 		if (open.value) {
 			clearSimulationOutcome();
 			return;
 		}
 		requirements.value = "";
+		briefRefused.value = false;
 		scope.value = "first_stage";
 		files.value = [];
+		fileNote.value = null;
 		error.value = null;
 		intakeState.reset();
 		cta.reset();
 	}, [open.value]);
 
-	/** The stages the current scope resolves to — what the ledger below the selector lists. */
 	const funded = useComputed<readonly ProjectStage[]>(() =>
 		!isOneOff.value ? [] : scope.value === "whole_project" ? stages : stages.slice(0, 1)
 	);
 
+	const ledger = useComputed(() =>
+		isOneOff.value
+			? stageLedger(funded.value, currency ?? summary.price.amount?.currency ?? "USD")
+			: flatLedger(summary.price, "One fixed-scope deliverable")
+	);
+
 	async function submit(): Promise<boolean> {
 		const brief = requirements.value.trim();
+		error.value = null;
 		if (!brief) {
-			error.value = "Describe what you need — this is what the work is delivered against.";
+			briefRefused.value = true;
+			briefRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
 			return false;
 		}
-		error.value = null;
 		if (!intakeState.check()) return false;
 
 		const out = await commitConfigure({
@@ -122,18 +131,15 @@ export default function ScopeBriefModal(
 				name: f.name,
 				sizeBytes: f.size,
 				mimeType: f.type || undefined,
-				// Staged by name only until the asset pipeline lands. `null` says so structurally rather
-				// than through an empty string that could be mistaken for an id.
 				assetId: null,
 			})),
 			answers: intakeState.answers.value,
 		});
-		// A simulated brief is staged nowhere and goes nowhere: the modal stays on its outcome.
 		if (out.simulated) return true;
 		const res = out.value;
 		if (!res.ok || !res.data) {
 			if (intakeState.fromServer(res.message, res.errors)) return false;
-			error.value = res.message ?? "Could not stage that. Please try again.";
+			error.value = res.message ?? "We couldn't stage that just now.";
 			return false;
 		}
 		announce(res.data.outcome.summary);
@@ -148,180 +154,184 @@ export default function ScopeBriefModal(
 
 	function addFiles(list: FileList | null): void {
 		if (!list) return;
-		// Capped at ten, matching the schema. The excess is dropped WITH a message rather than silently:
-		// a composer that quietly discards attachments is the failure flagged on the chat composer, and
-		// repeating it here would be repeating a known defect on purpose.
 		const next = [...files.value, ...Array.from(list)];
-		if (next.length > 10) {
-			error.value = "Up to 10 attachments. The extras were not added.";
-		}
-		files.value = next.slice(0, 10);
+		fileNote.value = next.length > FILES_MAX
+			? `Up to ${FILES_MAX} files. The extras were not added.`
+			: null;
+		files.value = next.slice(0, FILES_MAX);
 	}
 
-	return (
-		<Dialog
-			visible={open}
-			onVisibleChange={(next) => {
-				if (!next) closeBookingPanel();
-			}}
-			header={isOneOff.value ? `Scope ${offer.value.subjectTitle}` : `Brief for ${offer.value.subjectTitle}`}
-			width="min(42rem, 94vw)"
-			class="sbk sbk--scope"
-			footer={
-				<div class="sbk__footer">
-					<div class="sbk__summary">
-						<span class="sbk__summarymain">
-							{isOneOff.value
-								? `Funding ${funded.value.length} of ${stages.length} ${
-									stages.length === 1 ? "stage" : "stages"
-								}`
-								: "One fixed-scope deliverable"}
-						</span>
-						<span class="sbk__summarynote">You review everything at checkout before paying.</span>
+	const total = ledger.value.total;
+	const stageCount = stages.length;
+
+	const left = (
+		<div class="sbk__form">
+			{isOneOff.value && (
+				<section
+					class="sbk__section"
+					aria-labelledby="sbk-scope-label"
+					ref={firstRef}
+					tabIndex={-1}
+				>
+					<h3 class="sbk__sectiontitle" id="sbk-scope-label">What to fund now</h3>
+					<div class="sbk__scope" role="radiogroup" aria-labelledby="sbk-scope-label">
+						<ScopeOption
+							label="Stage 1 only"
+							hint="Fund the first stage. The rest follow as the work does."
+							checked={scope.value === "first_stage"}
+							onSelect={() => (scope.value = "first_stage")}
+						/>
+						<ScopeOption
+							label="The whole engagement"
+							hint={`Fund all ${stageCount} stages up front.`}
+							checked={scope.value === "whole_project"}
+							onSelect={() => (scope.value = "whole_project")}
+						/>
 					</div>
+				</section>
+			)}
+
+			<section class="sbk__section" ref={isOneOff.value ? undefined : firstRef} tabIndex={-1}>
+				<div ref={briefRef}>
+					<FormControl
+						label="What do you need?"
+						hint="This is the specification the work is delivered against — the clearer it is, the faster the first submission lands."
+						error={briefRefused.value && !requirements.value.trim()
+							? "Describe what you need — this is what the work is delivered against."
+							: undefined}
+						status={briefRefused.value && !requirements.value.trim() ? "invalid" : "default"}
+						required
+					>
+						{(a) => (
+							<Textarea
+								id="sbk-scope-brief"
+								aria-describedby={a.describedBy}
+								status={a.status}
+								required
+								value={requirements}
+								rows={5}
+								maxRows={12}
+								autoResize
+								maxLength={BRIEF_MAX}
+								fluid
+							/>
+						)}
+					</FormControl>
+				</div>
+			</section>
+
+			{intake.length > 0 && (
+				<section class="sbk__section" aria-labelledby="sbk-scope-intake-label">
+					<h3 class="sbk__sectiontitle" id="sbk-scope-intake-label">
+						{offer.value.contact.sellerName} asks
+					</h3>
+					<IntakeFields
+						fields={intake}
+						answers={intakeState.answers}
+						refusal={intakeState.refusal()}
+						idPrefix="sbk-scope-intake"
+					/>
+				</section>
+			)}
+
+			<section class="sbk__section" aria-labelledby="sbk-scope-files-label">
+				<h3 class="sbk__sectiontitle" id="sbk-scope-files-label">Reference files</h3>
+				<label class="sbk__filepick">
+					<Icon name="attachment" size="sm" aria-hidden />
+					<span>Add reference files</span>
+					<input
+						class="ui-visually-hidden"
+						type="file"
+						multiple
+						onChange={(e) => addFiles((e.target as HTMLInputElement).files)}
+					/>
+				</label>
+				{files.value.length > 0 && (
+					<ul class="sbk__files">
+						{files.value.map((f, i) => (
+							<li class="sbk__file" key={`${f.name}-${i}`}>
+								<span class="sbk__filename">{f.name}</span>
+								<span class="sbk__filesize">{prettyBytes(f.size)}</span>
+								<button
+									type="button"
+									class="sbk__fileremove"
+									aria-label={`Remove ${f.name}`}
+									onClick={() => (files.value = files.value.filter((_, at) => at !== i))}
+								>
+									<Icon name="close" size="xs" aria-hidden />
+								</button>
+							</li>
+						))}
+					</ul>
+				)}
+				<p class="sbk__filenote">
+					{fileNote.value ?? "Files are attached to the brief when you check out."}
+				</p>
+			</section>
+
+			{error.value && (
+				<InlineNotice
+					assertive
+					align="start"
+					class="sbk__notice"
+					icon={<Icon name="error" size="xs" />}
+					text={error.value}
+					actionLabel="Try again"
+					busy={cta.phase === "pending"}
+					onAction={() => void cta.run(submit)}
+				/>
+			)}
+			{simulating.value && <SimulationOutcome />}
+		</div>
+	);
+
+	return (
+		<SplitModal
+			open={open}
+			title={isOneOff.value
+				? `Scope ${offer.value.subjectTitle}`
+				: `Brief for ${offer.value.subjectTitle}`}
+			subtitle={isOneOff.value ? "One-off engagement" : "Fixed-scope deliverable"}
+			left={left}
+			right={<OfferLedger summary={summary} ledger={ledger.value} escrows={offer.value.escrows} />}
+			asideLabel="Your order"
+			summary={
+				<>
+					<span class="sbk__summarymain">
+						{isOneOff.value
+							? `Funding ${funded.value.length} of ${stageCount} ${
+								stageCount === 1 ? "stage" : "stages"
+							}`
+							: "One fixed-scope deliverable"}
+						{total && (
+							<span class="sbk__summarytotal">
+								{" · "}
+								<MoneyView minor={total.amount.minor} currency={total.amount.currency} hideOrigin />
+							</span>
+						)}
+					</span>
+					<span class="sbk__summarynote">You review everything at checkout before paying.</span>
+				</>
+			}
+			actions={
+				<>
+					<Button variant="text" severity="secondary" label="Cancel" onClick={closeBookingPanel} />
 					<CtaButton
-						label={simulating.value ? SIMULATED_COMMIT_LABEL : "Continue"}
+						label={simulating.value ? SIMULATED_COMMIT_LABEL : "Continue to checkout"}
 						settledLabel={simulating.value ? SIMULATED_SETTLED_LABEL : "Staged"}
 						phase={cta.phase}
-						disabled={!requirements.value.trim()}
+						tone="accent"
 						icon={<Icon name="arrow-right" size="sm" aria-hidden />}
 						fluid={false}
 						onClick={() => void cta.run(submit)}
 					/>
-				</div>
+				</>
 			}
-		>
-			<div class="sbk__body" ref={bodyRef}>
-				{isOneOff.value && (
-					<section class="sbk__section">
-						<h3 class="sbk__sectiontitle">What to fund now</h3>
-						<div class="sbk__scope" role="radiogroup" aria-label="Funding scope">
-							<ScopeOption
-								label="Stage 1 only"
-								hint="Fund the first stage. The rest follow as the work does."
-								checked={scope.value === "first_stage"}
-								onSelect={() => (scope.value = "first_stage")}
-							/>
-							<ScopeOption
-								label="The whole engagement"
-								hint={`Fund all ${stages.length} stages up front.`}
-								checked={scope.value === "whole_project"}
-								onSelect={() => (scope.value = "whole_project")}
-							/>
-						</div>
-
-						{
-							/*
-						  The stage ledger — hairline rows, never cards (§B.9.7). It is static content
-						  describing what the selection above resolves to, and boxing it would put a border
-						  around a list that is already separated by its own rhythm.
-						*/
-						}
-						<dl class="sbk__stages">
-							{stages.map((stage) => {
-								const included = funded.value.some((s) => s.id === stage.id);
-								return (
-									<div
-										class="sbk__stagerow"
-										key={stage.id}
-										data-included={included ? "true" : undefined}
-									>
-										<dt class="sbk__stagename">
-											<span class="sbk__stagenum">{stage.index}</span>
-											<span>{stage.name}</span>
-										</dt>
-										<dd class="sbk__stagevalue">
-											{included
-												? <StagePrice stage={stage} currency={currency} />
-												: <span class="sbk__stagelater">Later</span>}
-										</dd>
-									</div>
-								);
-							})}
-						</dl>
-					</section>
-				)}
-
-				<section class="sbk__section">
-					<label class="sbk__note">
-						<span class="sbk__notelabel">
-							What do you need? <span class="sbk__req" aria-hidden="true">*</span>
-						</span>
-						<span class="sbk__notehint">
-							This is the specification the work is delivered against — the clearer it is, the
-							faster the first submission lands.
-						</span>
-						<ResizeFrame>
-							<textarea
-								class="sbk__notefield"
-								rows={6}
-								required
-								value={requirements.value}
-								maxLength={8000}
-								aria-describedby="sbk-req-hint"
-								onInput={(e) => (requirements.value = (e.target as HTMLTextAreaElement).value)}
-							/>
-						</ResizeFrame>
-					</label>
-					<p id="sbk-req-hint" class="ui-visually-hidden">
-						Required. Up to 8000 characters.
-					</p>
-				</section>
-
-				{intake.length > 0 && (
-					<section class="sbk__section" aria-labelledby="sbk-scope-intake-label">
-						<h3 class="sbk__sectiontitle" id="sbk-scope-intake-label">
-							{offer.value.contact.sellerName} asks
-						</h3>
-						<IntakeFields
-							fields={intake}
-							answers={intakeState.answers}
-							refusal={intakeState.refusal()}
-							idPrefix="sbk-scope-intake"
-						/>
-					</section>
-				)}
-
-				<section class="sbk__section">
-					<h3 class="sbk__sectiontitle">Attachments</h3>
-					<label class="sbk__filepick">
-						<Icon name="attachment" size="sm" aria-hidden />
-						<span>Add reference files</span>
-						<input
-							class="ui-visually-hidden"
-							type="file"
-							multiple
-							onChange={(e) => addFiles((e.target as HTMLInputElement).files)}
-						/>
-					</label>
-					{files.value.length > 0 && (
-						<ul class="sbk__files">
-							{files.value.map((f, i) => (
-								<li class="sbk__file" key={`${f.name}-${i}`}>
-									<span class="sbk__filename">{f.name}</span>
-									<span class="sbk__filesize">{prettyBytes(f.size)}</span>
-									<button
-										type="button"
-										class="sbk__fileremove"
-										aria-label={`Remove ${f.name}`}
-										onClick={() =>
-											(files.value = files.value.filter((_, at) => at !== i))}
-									>
-										<Icon name="close" size="xs" aria-hidden />
-									</button>
-								</li>
-							))}
-						</ul>
-					)}
-					<p class="sbk__filenote">
-						Files are attached to the brief when you check out.
-					</p>
-				</section>
-
-				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}
-				{simulating.value && <SimulationOutcome />}
-			</div>
-		</Dialog>
+			initialFocusRef={firstRef}
+			bodyRef={bodyRef}
+			onClose={closeBookingPanel}
+			class="sbk-split"
+		/>
 	);
 }
 
@@ -342,29 +352,6 @@ function ScopeOption(
 			<span class="sbk__scopelabel">{props.label}</span>
 			<span class="sbk__scopehint">{props.hint}</span>
 		</button>
-	);
-}
-
-/**
- * A stage's price.
- *
- * `toMinorUnits(min, currency)` and the threaded currency, matching `StageProgressLedger` exactly — the
- * listing body and this modal describe the same stages, and two conversions of one figure is how they
- * come to quote different numbers on one screen. `TicketPrice` carries major units and no currency of
- * its own (it is a display shape, not a money shape), so the currency has to come from the listing and
- * the scaling has to be identical wherever it is done.
- *
- * A range shows only its floor here. The full span belongs in the ledger, where there is room to
- * explain what moves it; a funding selector needs one comparable number per row.
- */
-function StagePrice({ stage, currency }: { stage: ProjectStage; currency?: string }): JSX.Element {
-	return (
-		<MoneyView
-			minor={toMinorUnits(stage.price.min, currency ?? "USD") ?? 0}
-			currency={currency ?? "USD"}
-			size="micro"
-			hideOrigin
-		/>
 	);
 }
 

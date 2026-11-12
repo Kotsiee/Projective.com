@@ -25,8 +25,10 @@ import {
 	ticketColumnStatus,
 	type TicketHistoryEntry,
 	type TicketHistoryKind,
+	TicketIntensity,
 	type TicketPaymentScope,
 	type TicketPriority,
+	TicketStageDueAt,
 	type TicketStageRef,
 	type TicketStatus,
 	type TicketTask,
@@ -46,6 +48,7 @@ import {
 	toTicketStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
+import { STAGE_TERM_COLUMNS, type StageTermRow, stageTermsOf } from "./stage-terms.ts";
 import { isSlug } from "@projective/types/slugs";
 import {
 	deriveFundingState,
@@ -111,9 +114,9 @@ import {
  * Several fields on this projection have no storage anywhere in the exposed schemas. None is
  * synthesised from something adjacent, because a plausible number is worse than an absent one on a
  * surface whose whole job is to price work: {@link NEUTRAL_CATEGORY_WEIGHT},
- * {@link NEUTRAL_INTENSITY}, {@link NO_PAYMENT_TRAIL}, {@link NO_TICKET_ATTACHMENTS},
- * {@link NO_SUBMISSION_TREE}, {@link NO_ACTIVITY_SIGNAL} and {@link NO_COMMENT_COUNT} each carry
- * their evidence at the point of use.
+ * {@link NO_PAYMENT_TRAIL}, {@link NO_TICKET_ATTACHMENTS}, {@link NO_SUBMISSION_TREE},
+ * {@link NO_ACTIVITY_SIGNAL} and {@link NO_COMMENT_COUNT} each carry their evidence at the point of
+ * use. A ticket's intensity and due date per stage ARE stored, on its `required_stages` elements.
  */
 
 // #region Caps
@@ -177,25 +180,14 @@ const HISTORY_PER_TICKET = 24;
 const NEUTRAL_CATEGORY_WEIGHT = 1;
 
 /**
- * The difficulty multiplier every ticket and every stage ref is reported at.
- *
- * The enum is not stored. `projects.tickets` has `workload_intensity numeric(4,2)`, which is the
- * RESULT of the multiplier rather than the multiplier — `projects.check_ticket_capacity` sums
- * that column directly — and with {@link NEUTRAL_CATEGORY_WEIGHT} unknown the two factors cannot be
- * separated back out of their product.
- *
- * `standard` is the only safe reading, and not merely because it is the schema default: it is the
- * IDENTITY multiplier (x1), and both effects of the client's original choice are already baked into
- * what is stored. `projects.tickets.unit_price_cents` is the AGREED per-ticket price — which is why
- * `projects.fn_ticket_cost_breakdown` prices a required stage as
- * `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` with no multiplier applied — and
- * `workload_intensity` is the agreed capacity. Reporting `high` here would scale an already-scaled
- * figure a second time and quote the client double.
- *
- * The visible cost is that a High ticket's badge reads "Standard". A wrong word beside a right
- * number is recoverable; a right word beside a doubled price is not.
+ * A ticket's own default intensity, read from its stages: the one intensity every stage it runs
+ * through shares, else `standard`. Nothing stores a ticket-level figure — each `required_stages`
+ * element carries its stage's, and `projects.fn_ticket_stage_price` prices each from it.
  */
-const NEUTRAL_INTENSITY = "standard" as const;
+function ticketIntensityOf(stages: readonly TicketStageRef[]): TicketIntensity {
+	const first = stages[0]?.intensity;
+	return first && stages.every((s) => s.intensity === first) ? first : "standard";
+}
 
 /**
  * Why {@link BoardCard.payments} is always empty.
@@ -293,6 +285,7 @@ const STAGE_COLUMNS = [
 	"file_duration_mode",
 	"file_duration_days",
 	"file_due_date",
+	...STAGE_TERM_COLUMNS,
 ].join(", ");
 
 /** The `projects.tickets` columns one {@link BoardCard} needs. */
@@ -339,7 +332,7 @@ const HISTORY_COLUMNS = [
 // #region Row shapes
 
 /** One `projects.project_stages` row as selected by {@link STAGE_COLUMNS}. */
-interface StageRow {
+interface StageRow extends StageTermRow {
 	id: string;
 	/** The stage's `stg-…` route address — what a channel-scoped board's segment carries. */
 	slug: string;
@@ -753,6 +746,7 @@ function toStageRef(stage: StageRow, ctx: StageContext): BoardStageRef {
 		maxConcurrentIntensity: toCapacityCap(stage.max_concurrent_intensity),
 		// The column's own default when a row says nothing: the stage chains.
 		chainReaction: stage.chain_reaction ?? true,
+		...stageTermsOf(stage),
 		startAt: ctx.windows.get(stage.id)?.startAt ?? null,
 		endAt: ctx.windows.get(stage.id)?.endAt ?? null,
 		dependsOnStageId: stage.start_dependency_stage_id
@@ -825,18 +819,17 @@ function taskCompleterIds(raw: unknown): string[] {
 /**
  * `projects.tickets.required_stages` (jsonb) onto the ticket's {@link TicketStageRef} list.
  *
- * The stored element is `{"stage_id", "order"}` and nothing else — verified against every reader
- * and writer in the migrations (`fn_ticket_cost_breakdown`, `fn_advance_stage`,
- * `fn_stage_delete_cascade`). So four fields on the projection have no storage and take neutral
- * values rather than borrowed ones:
+ * The stored element is `{"stage_id", "order", "intensity", "due_at"}` — the last two optional, so an
+ * element written before them reads as Standard and undated. `intensity` is the ticket's choice in
+ * that stage, unless the stage is sold at one fixed intensity, which then reads as the seller's; it
+ * prices the stage through the same rule `projects.fn_ticket_stage_price` holds an escrow by. Three
+ * fields on the projection have no storage and take neutral values rather than borrowed ones:
  *
  *  - **`brief`** is `""`. The tempting fill is `project_stages.description_text`, but that is the
  *    STAGE's standing brief, which the composer already shows separately as
  *    {@link BoardStageRef.description}. Copying it in would make every ticket appear to carry a
  *    per-ticket brief that nobody wrote for it, and an edit would then read as a change to the
  *    stage.
- *  - **`intensity`** is {@link NEUTRAL_INTENSITY}, which keeps `costCents` an identity over the
- *    agreed rate. See that constant for the double-charging this avoids.
  *  - **`tasks`** is `[]`. There is no per-ticket-per-stage checklist column:
  *    `project_stages.default_tasks` is the stage TEMPLATE and `tickets.tasks` is the ticket's own
  *    single list; neither is this.
@@ -845,9 +838,10 @@ function taskCompleterIds(raw: unknown): string[] {
  *    when it runs together only understates the pace, where the reverse promises a schedule the
  *    pipeline cannot keep.
  *
- * `unitPriceCents` is `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)`, matching
- * `projects.fn_ticket_cost_breakdown` exactly, so the board's total and the database's own cost
- * RPC cannot disagree about what a ticket costs.
+ * `unitPriceCents` is `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` — the Standard
+ * rate — and `costCents` that rate at the stage's intensity terms, matching
+ * `projects.fn_ticket_stage_price` exactly, so the board's total and the escrow cannot disagree
+ * about what a ticket costs.
  */
 function toStageRefs(
 	ticket: TicketRow,
@@ -869,6 +863,14 @@ function toStageRefs(
 		// The ticket's own agreed rate wins over the stage's list rate, because it is what this
 		// ticket was priced at; the stage's is only the default it was priced FROM.
 		const unitPriceCents = ticketRate ?? intAtLeastZero(stage?.unit_price_cents);
+		const terms = stage ? stageTermsOf(stage) : null;
+		const stored = TicketIntensity.safeParse(row.intensity);
+		const intensity = terms?.intensityLocked
+			? terms.defaultIntensity
+			: stored.success
+			? stored.data
+			: "standard";
+		const due = TicketStageDueAt.safeParse(row.due_at);
 		refs.push({
 			stageId: clamp(stageId, 80),
 			// A required stage the viewer cannot read is a real state: `projects.tickets` lets an
@@ -880,10 +882,11 @@ function toStageRefs(
 			// The column IS the required list, so membership is the requirement.
 			required: true,
 			brief: "",
-			intensity: NEUTRAL_INTENSITY,
+			intensity,
 			tasks: [],
 			parallel: false,
-			costCents: stageCostCents(unitPriceCents, NEUTRAL_INTENSITY),
+			dueAt: due.success ? due.data.slice(0, 10) : null,
+			costCents: stageCostCents(unitPriceCents, intensity, terms),
 			unitPriceCents,
 		});
 	});
@@ -1263,13 +1266,17 @@ interface CardContext {
  *
  * `workload` is read straight from `projects.tickets.workload_intensity`, the figure
  * `projects.fn_check_workload_capacity` sums against a freelancer's caps. It is deliberately NOT
- * recomputed from category weight and multiplier here: both of those are neutral
- * ({@link NEUTRAL_CATEGORY_WEIGHT}, {@link NEUTRAL_INTENSITY}), so a recomputation would return the
- * stage count and overwrite the only authoritative number on the card.
+ * recomputed from the stages here: a client raising $W_i$ in answer to a workload report writes the
+ * column alone, so it is the only authoritative number on the card.
+ *
+ * The funding line's amount is the current stage's resolved price — what
+ * `finance.fn_hold_ticket_escrow` holds through `projects.fn_ticket_stage_price` — so "needs £X to
+ * start" is the figure the hold will take.
  */
 function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 	const stages = toStageRefs(ticket, ctx.stagesById);
 	const budgetCents = ticketTotalCents(stages);
+	const currentPrice = stages.find((s) => s.stageId === ticket.current_stage_id)?.costCents ?? null;
 	const description = clamp(ticket.text_description, 4000).trim();
 	const history = ctx.history.get(ticket.id) ?? [];
 	const tasks = toTasks(ticket.tasks, ctx.parties, ticket.id);
@@ -1317,7 +1324,11 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		personal: ctx.personal,
 		funding: ctx.personal ? null : withBillingFacts(
 			deriveFundingState(
-				fundingTicketOf(ticket, ctx.stagesById.get(ticket.current_stage_id ?? "")?.unit_price_cents, ctx.currency),
+				fundingTicketOf(
+					currentPrice === null ? ticket : { ...ticket, unit_price_cents: currentPrice },
+					ctx.stagesById.get(ticket.current_stage_id ?? "")?.unit_price_cents,
+					ctx.currency,
+				),
 				null,
 				// A payment naming this ticket (#166), else its stage's — which locks every unfunded ticket in
 				// the stage, claimed or not (#197).
@@ -1331,7 +1342,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 			},
 		),
 		priority: toPriority(ticket.priority),
-		intensity: NEUTRAL_INTENSITY,
+		intensity: ticketIntensityOf(stages),
 		workload: Math.max(0, num(ticket.workload_intensity) ?? 0),
 		dueDate: ticket.due_date,
 		dueLabel: dueLabelOf(ticket.due_date, ctx.nowMs),
@@ -1868,6 +1879,7 @@ export async function fetchBoardPage(
 		currency,
 		view,
 		viewerIsClient,
+		engagementKind: summary.kind,
 		viewerStageIds,
 		columns,
 		cards,

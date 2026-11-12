@@ -803,6 +803,26 @@ BEGIN
 END;
 $$;
 
+-- The owner moved (FINANCE_AUDIT V2): re-project every member's vault grants, because the owner's
+-- manage_members and manage_billing follow `owner_user_id` (org.fn_vault_capabilities_for). The
+-- ownership transfer syncs explicitly; this covers any other write. A no-op when the owner did not
+-- change. Bound in 00001895 on org.teams and org.business_profiles.
+CREATE OR REPLACE FUNCTION org.fn_trg_sync_vault_owner()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id THEN
+        PERFORM org.fn_sync_vault_permissions(
+            CASE TG_TABLE_NAME WHEN 'teams' THEN 'team' ELSE 'business' END, NEW.id
+        );
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
 -- Move a member's workspace override so their EFFECTIVE set does (p_want) or does not hold a
 -- capability, recording it as the smallest honest override: a grant only when the role lacks it, a
 -- revocation only when the role has it. The Spend-policy editor and the member drawer both write

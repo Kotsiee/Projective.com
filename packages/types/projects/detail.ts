@@ -274,6 +274,11 @@ export const ProjectDetailSchema = z.object({
 	 * hiring and money control. Absent reads as `false`.
 	 */
 	personal: z.boolean().optional(),
+	/**
+	 * The engagement's ISO-4217 currency (`projects.projects.currency`) — what a stage created from the
+	 * lane is priced in. Absent when the read could not resolve it; a price is then not offered.
+	 */
+	currency: z.string().length(3).optional(),
 	scopeType: ContextType,
 	scopeLabel: z.string().min(1).max(120),
 	/** Whether the actor starred this engagement (drives the header Star toggle). */

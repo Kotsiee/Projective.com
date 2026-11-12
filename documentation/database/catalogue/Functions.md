@@ -29,6 +29,7 @@ count and raises rather than letting a save update the listing but not its produ
 | `fn_listing_engagements(p_listing)`                              | DEFINER  | Internal (granted to `service_role` only). The number of buyer-held rows against the listing or its subject: inquiry threads (`dm_threads.subject_listing_id`), and for a service quote requests, discovery calls, instantiated projects, `service_instantiations`, waitlist places, service-kind basket and order lines, `service_blueprint` reviews and paid placements; for a product its `digital_product` basket and order lines, reviews and placements. |
 | `fn_listing_file_ok(p_file, p_team, p_mime_prefix?)`              | INVOKER  | May the caller put this file on a listing? Live, `status = 'uploaded'` (never quarantined), of the given MIME family, and the caller's own — or the listing team's while they are an active member. |
 | `fn_form_archetype(kind, delivery_model)`, `fn_stage_shape_ok(jsonb)`, `fn_team_role_shape_ok(jsonb)` | INVOKER, IMMUTABLE | Pure helpers: the form archetype (`formArchetypeOf`, Decision #217(a)) and the element checks `save_listing` applies to `stage_template` and `team_roles`. |
+| `fn_tier_price_ok(jsonb)`, `fn_tier_prices_ordered(jsonb)` | INVOKER, IMMUTABLE | Pure helpers (Decision #417): a stage's own tier price is absent, JSON `null` or a whole non-negative number; and on a tiered listing a stage's `lowPriceCents` is not above its `priceCents` nor its `highPriceCents` below it, nor Low above High, each compared only where both are set (`tierPriceProblem` in `@projective/types/catalogue`). |
 | `get_listing_sales(p_listing_ids uuid[], p_since timestamptz?)`   | DEFINER  | Per listing, per currency, per week: completed (`confirmed` / `invoiced`) order lines and their gross. A definer because the order lines are the BUYERS' rows, which the seller's policies cannot read — and it answers only for listings the caller owns or whose owning team they actively belong to, so it discloses nothing about any other seller. `p_since` NULL is all time. |
 | `get_listing_rollups(p_listing_ids uuid[], p_from date, p_to date)` | INVOKER  | `TABLE(day, metric, subject_id, dimensions, value, sample_count)`: the `subject_kind = 'listing'` rows of `analytics.daily_rollups` for those listings over `[p_from, p_to]` (nothing when the range exceeds 800 days), ordered for paging. The Analytics view and tab read the rollups through it because `analytics` is not a PostgREST-exposed schema; INVOKER, so the table's own policy (`fn_subject_visible('listing')`: the owner, or a `publish_listings` holder on the owning team) still decides each row. |
 
@@ -47,7 +48,11 @@ Recognised `save_listing` keys (Decision #217):
   stored `intake_fields`, else `22023` DETAIL `intake`; wording and options may change,
   `ServiceCreation.md` §1.1) · `stage_template`
   (≤ 12; each element a name of 1–80, ≤ 12 deliverables, `startTrigger` ∈ `on_project_start` ·
-  `after_previous` · `fixed_offset`, `lagDays` an integer 0–90, `chainReaction` boolean) ·
+  `after_previous` · `fixed_offset`, `lagDays` an integer 0–90, `chainReaction` boolean, `intensity`
+  ∈ `low` · `standard` · `high`, and `lowPriceCents` / `highPriceCents` whole non-negative numbers or
+  `null`; on a listing the save leaves tiered, a Low price above the stage's price or a High price
+  below it is `22023` DETAIL `stage_template.<i>`, Decision #417) · `allow_tiered_intensity` (a
+  boolean, else `22023`; the Pipeline offer's `allowTieredIntensity`) ·
   `team_roles` (≤ 12, a name and a headcount of 1–20) · `deliverables` (≤ 24 lines of ≤ 140) ·
   `turnaround_days` · `session_minutes` · `session_count` · `session_plan` (≤ 52 objects, each an
   optional `title` string of ≤ 80 and `description` of ≤ 600, else `22023` DETAIL `session_plan.<i>`) ·

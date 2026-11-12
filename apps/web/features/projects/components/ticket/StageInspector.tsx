@@ -1,15 +1,19 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Select } from "@projective/ui/fields";
+import { DatePicker, Select } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
-import { Tooltip } from "@projective/ui/feedback";
+import { HintPopover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { sanitizeRichText } from "@projective/types/richtext";
 import {
 	ASSIGNMENT_MODE_LABEL,
 	type BoardCard,
+	type BoardStageRef,
 	formatTicketMoney,
+	INTENSITY_PRICE_MULTIPLIER,
+	LOCKED_INTENSITY_HINT,
 	type ProjectStatus,
+	stageIntensityLocked,
 	TICKET_INTENSITY_HINT,
 	TICKET_INTENSITY_LABEL,
 	type TicketIntensity,
@@ -17,7 +21,13 @@ import {
 	type TicketTask,
 } from "../../types/projects-types.ts";
 import { statusLabel, statusTone } from "../../core/board-model.ts";
-import { INTENSITY_OPTIONS } from "../../core/ticket-model.ts";
+import {
+	formatDueDate,
+	fromDateInput,
+	priceMultiplierText,
+	stageIntensityOptions,
+	toDateInput,
+} from "../../core/ticket-model.ts";
 import type { TicketStageView } from "../../core/ticket-view.ts";
 import { TaskListEditor } from "./TaskListEditor.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -37,6 +47,9 @@ import { fundingRollup } from "../../core/funding-ui.ts";
  * operating settings. None of that is editable here, because changing a stage is a different act from
  * configuring a ticket, and conflating the two is how a client edits the pipeline while believing
  * they are editing one ticket.
+ *
+ * A stage sold at one fixed intensity (the seller's term, {@link BoardStageRef.intensityLocked}) reads
+ * its intensity and price as Meta text rather than offering them: a client cannot discount it.
  */
 export interface StageInspectorProps {
 	item: TicketStageView;
@@ -45,6 +58,11 @@ export interface StageInspectorProps {
 	editable: boolean;
 	/** The engagement's currency (`BoardCard.currency`). */
 	currency: string;
+	/**
+	 * `close` in the side panel beside the stage list; `back` where the inspector REPLACES the list
+	 * (the create pane, the narrow Stages tab), so leaving it returns to the stages.
+	 */
+	nav?: "close" | "back";
 	onClose: () => void;
 	onPatch: (patch: Partial<TicketStageRef>) => void;
 	/**
@@ -52,6 +70,37 @@ export interface StageInspectorProps {
 	 * the footer owns the action, so the panel never offers it a second time.
 	 */
 	funding?: JSX.Element | null;
+}
+
+/** How this ticket's price in a stage was reached, in words, beside the figure. */
+function priceBasis(
+	ref: TicketStageRef,
+	stage: BoardStageRef | null,
+	baseCents: number | null,
+	currency: string,
+): string {
+	const label = TICKET_INTENSITY_LABEL[ref.intensity];
+	if (stageIntensityLocked(stage)) return `Fixed price · ${label} intensity`;
+	const own = (ref.intensity === "low" && typeof stage?.lowPriceCents === "number") ||
+		(ref.intensity === "high" && typeof stage?.highPriceCents === "number");
+	if (own) return `The provider's ${label} price`;
+	if (baseCents === null) return "This stage has no ticket rate yet";
+	return `${formatTicketMoney(baseCents, currency)} base · ${label} intensity (${
+		priceMultiplierText(INTENSITY_PRICE_MULTIPLIER[ref.intensity])
+	})`;
+}
+
+/** The stage's intensity pricing, as the overview's operating settings state it. */
+function pricingTerms(stage: BoardStageRef, currency: string): string {
+	if (stageIntensityLocked(stage)) return "One fixed intensity and price, set by the provider";
+	const tiers: string[] = [];
+	if (typeof stage.lowPriceCents === "number") {
+		tiers.push(`Low ${formatTicketMoney(stage.lowPriceCents, currency)}`);
+	}
+	if (typeof stage.highPriceCents === "number") {
+		tiers.push(`High ${formatTicketMoney(stage.highPriceCents, currency)}`);
+	}
+	return tiers.length > 0 ? `Tiered · ${tiers.join(" · ")}` : "Tiered · 0.75× · 1.0× · 1.5×";
 }
 
 /** A stage's lifecycle reads in the client's words, not the enum's. */
@@ -92,35 +141,52 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 	const panelId = (t: string) => `tkc-insp-panel-${t}`;
 	const baseCents = ref.unitPriceCents ?? stage?.unitPriceCents ?? null;
 	const owed = fundingRollup(stageTickets);
+	const fixed = stageIntensityLocked(stage);
+	const back = props.nav === "back";
 
 	return (
-		<aside class="tkc-insp" aria-label={`${ref.name} details`}>
+		<aside
+			class="tkc-insp"
+			data-stage-id={ref.stageId}
+			aria-label={`${ref.name} details`}
+			tabIndex={-1}
+		>
 			<header class="tkc-insp__head">
+				{back
+					? (
+						<Tooltip content="All stages">
+							<button
+								type="button"
+								class="tkc-insp__close"
+								aria-label="Back to all stages"
+								onClick={props.onClose}
+							>
+								<Icon name="arrow-left" size="sm" />
+							</button>
+						</Tooltip>
+					)
+					: null}
 				<div class="tkc-insp__ident">
 					<span class="tkc-insp__eyebrow">Step {item.band + 1}</span>
 					<h3 class="tkc-insp__title">{ref.name}</h3>
 				</div>
-				<button
-					type="button"
-					class="tkc-insp__close"
-					aria-label="Close stage details"
-					onClick={props.onClose}
-				>
-					<Icon name="close" size="sm" />
-				</button>
+				{back ? null : (
+					<button
+						type="button"
+						class="tkc-insp__close"
+						aria-label="Close stage details"
+						onClick={props.onClose}
+					>
+						<Icon name="close" size="sm" />
+					</button>
+				)}
 			</header>
 
 			<div class="tkc-insp__price">
 				<span class="tkc-insp__amount">
 					{costCents === null ? "Not priced" : formatTicketMoney(costCents, currency)}
 				</span>
-				<span class="tkc-insp__amountsub">
-					{baseCents === null
-						? "This stage has no ticket rate yet"
-						: `${formatTicketMoney(baseCents, currency)} base · ${
-							TICKET_INTENSITY_LABEL[ref.intensity]
-						} intensity`}
-				</span>
+				<span class="tkc-insp__amountsub">{priceBasis(ref, stage, baseCents, currency)}</span>
 			</div>
 			{props.funding ? <div class="tkc-insp__funding">{props.funding}</div> : null}
 
@@ -190,14 +256,14 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 								)}
 						</div>
 
-						{editable
+						{editable && !fixed
 							? (
 								<div class="tkc-field">
 									<span class="tkc-label" id="tkc-stageint-label">Intensity in this stage</span>
 									<Select
 										size="sm"
 										value={ref.intensity}
-										options={INTENSITY_OPTIONS}
+										options={stageIntensityOptions(stage, baseCents, currency)}
 										aria-labelledby="tkc-stageint-label"
 										onValueChange={(v) => {
 											if (v) props.onPatch({ intensity: v as TicketIntensity });
@@ -208,7 +274,49 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 							)
 							: (
 								<dl class="tkc-facts">
-									<Fact label="Intensity">{TICKET_INTENSITY_LABEL[ref.intensity]}</Fact>
+									<Fact label="Intensity">
+										{fixed
+											? (
+												<Tooltip content={LOCKED_INTENSITY_HINT}>
+													<span class="tkc-fact__fixed" tabIndex={0}>
+														<Icon name="lock" size="2xs" />
+														{TICKET_INTENSITY_LABEL[ref.intensity]} · fixed by the provider
+													</span>
+												</Tooltip>
+											)
+											: TICKET_INTENSITY_LABEL[ref.intensity]}
+									</Fact>
+								</dl>
+							)}
+
+						{editable
+							? (
+								<div class="tkc-field">
+									<span class="tkc-label tkc-label--hint">
+										Due date
+										<HintPopover label="About stage due dates">
+											The ticket is due on the latest of its stage dates. A due date needs the
+											project's deadline bonus terms switched on.
+										</HintPopover>
+									</span>
+									<DatePicker
+										class="tkc-due"
+										size="sm"
+										value={toDateInput(ref.dueAt ?? null)}
+										placeholder="No date"
+										aria-label={`Due date in ${ref.name}`}
+										dateFormat="M d, yy"
+										showButtonBar
+										onValueChange={(v) =>
+											props.onPatch({
+												dueAt: fromDateInput(Array.isArray(v) ? v[0] ?? null : v),
+											})}
+									/>
+								</div>
+							)
+							: (
+								<dl class="tkc-facts">
+									<Fact label="Due">{formatDueDate(ref.dueAt ?? null) ?? "No date"}</Fact>
 								</dl>
 							)}
 
@@ -312,10 +420,11 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 											<Fact label="Ticket rate">
 												{stage.unitPriceCents === null
 													? "Not set"
-													: `${
-														formatTicketMoney(stage.unitPriceCents, currency)
-													} per standard ticket`}
+													: `${formatTicketMoney(stage.unitPriceCents, currency)} per ${
+														fixed ? "ticket" : "standard ticket"
+													}`}
 											</Fact>
+											<Fact label="Intensity pricing">{pricingTerms(stage, currency)}</Fact>
 											<Fact label="Routing">{ASSIGNMENT_MODE_LABEL[stage.assignmentMode]}</Fact>
 											<Fact label="Capacity cap">
 												{stage.maxConcurrentIntensity === null

@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import "../styles/file-card.css";
 import "../styles/attachment-modal.css";
 import { InputText, MultiSelect } from "@projective/ui/fields";
@@ -36,6 +38,8 @@ export default function ProjectAttachments(
 	const kinds = useSignal<string[]>([]);
 	const openId = useSignal<string | null>(null);
 	const viewerId = initial?.viewerId ?? "";
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	const needle = query.value.trim().toLowerCase();
 	const shown = items.value.filter((file) =>
@@ -54,7 +58,7 @@ export default function ProjectAttachments(
 	return (
 		<div class="pjd-files">
 			<div class="fx-toolbar pjd-files__toolbar">
-				<div class="fx-toolbar__search">
+				<div class="fx-toolbar__search" ref={searchRef}>
 					<InputText
 						type="search"
 						variant="bare"

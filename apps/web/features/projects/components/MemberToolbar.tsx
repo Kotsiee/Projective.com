@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import { InputText, MultiSelect, Select, SortControl } from "@projective/ui/fields";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import type { MemberStageRef } from "../types/projects-types.ts";
 import { ROLE_FILTER_OPTIONS } from "../core/member-model.ts";
 import { SearchIcon } from "./file-glyphs.tsx";
@@ -33,9 +35,11 @@ export interface MemberToolbarProps {
 
 export function MemberToolbar(props: MemberToolbarProps): JSX.Element {
 	const { stages = [], stageFilter, sortKey, sortDir, sortOptions } = props;
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 	return (
 		<div class="fx-toolbar">
-			<div class="fx-toolbar__search">
+			<div class="fx-toolbar__search" ref={searchRef}>
 				<InputText
 					type="search"
 					variant="bare"

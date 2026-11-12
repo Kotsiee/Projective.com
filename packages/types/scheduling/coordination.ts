@@ -87,6 +87,27 @@ export const MIN_VOTE_PROPOSALS = 2;
  * for a time nobody could see.
  */
 export const RESCHEDULE_PROPOSALS_MAX = 12;
+
+/**
+ * The most slots one attendee may have waiting on the host's approval in one round (Decision #343,
+ * ruling C6 D8). Without it one attendee could fill {@link RESCHEDULE_PROPOSALS_MAX} alone and leave
+ * the host no room to offer a time. The host's own slots are outside it: they arrive approved.
+ *
+ * Enforced twice: the planner's `proposer_quota` refusal ({@link proposerHasRoom}) and
+ * `scheduling.fn_cap_reschedule_proposals` (`00001510`), which counts under the round's lock.
+ * `coordination.contract.test.ts` pins the SQL literal to this constant.
+ */
+export const RESCHEDULE_ATTENDEE_PROPOSALS_MAX = 3;
+
+/**
+ * The longest a replacement slot may run. A replacement already keeps the event's own length
+ * ({@link slotRefusal}); this is the database's backstop to that rule (`ck_proposal_span` in
+ * `00000022`, pinned by `coordination.contract.test.ts`), so an event longer than this cannot be
+ * moved by proposing a time at all.
+ */
+export const RESCHEDULE_SLOT_MAX_HOURS = 24;
+/** {@link RESCHEDULE_SLOT_MAX_HOURS} in milliseconds. */
+export const RESCHEDULE_SLOT_MAX_MS = RESCHEDULE_SLOT_MAX_HOURS * HOUR_MS;
 // #endregion
 
 // #region Party identity
@@ -239,6 +260,12 @@ export const RescheduleProposalSchema = z.object({
 	approved: z.boolean(),
 	note: z.string().max(280).nullable(),
 	votes: z.array(ProposalVoteSchema).max(200).default([]),
+	/**
+	 * True on a slot the acting viewer offered. Server-resolved, like
+	 * {@link EventAttendeeSchema.isViewer}: a proposer's name is not an identity, and the planner
+	 * counts a proposer's own waiting slots by it ({@link proposerHasRoom}).
+	 */
+	proposedByViewer: z.boolean().optional(),
 });
 export type RescheduleProposal = z.infer<typeof RescheduleProposalSchema>;
 
@@ -316,6 +343,27 @@ export function roundHasRoom(reschedule: EventReschedule): boolean {
 		reschedule.proposals.length < RESCHEDULE_PROPOSALS_MAX;
 }
 
+/** How many of the viewer's own slots on this round are still waiting for the host's approval. */
+export function pendingProposalsOf(proposals: readonly RescheduleProposal[]): number {
+	let n = 0;
+	for (const p of proposals) {
+		if (p.proposedByViewer && p.proposedByRole === "attendee" && !p.approved) n++;
+	}
+	return n;
+}
+
+/**
+ * May the viewer offer one more slot on this round ({@link RESCHEDULE_ATTENDEE_PROPOSALS_MAX})?
+ *
+ * The host always may: their slots arrive approved, and {@link roundHasRoom} already bounds them. A
+ * closed round always has room, because the slot opens the next round. Pass the SETTLED negotiation,
+ * for the reason {@link roundHasRoom} gives. The planner and the Event Modal both call this.
+ */
+export function proposerHasRoom(reschedule: EventReschedule, viewerIsHost: boolean): boolean {
+	if (viewerIsHost || isRescheduleClosed(reschedule.status)) return true;
+	return pendingProposalsOf(reschedule.proposals) < RESCHEDULE_ATTENDEE_PROPOSALS_MAX;
+}
+
 /** The open (or most recent) attempt to move an event. */
 export const EventRescheduleSchema = z.object({
 	mode: RescheduleMode,
@@ -379,6 +427,9 @@ export const RescheduleRefusalReason = z.enum([
 	"ballot_full",
 	"not_offered",
 	"slot_inside_lockout",
+	"proposer_quota",
+	"duration_changed",
+	"slot_too_long",
 ]);
 export type RescheduleRefusalReason = z.infer<typeof RescheduleRefusalReason>;
 
@@ -400,6 +451,12 @@ export const RESCHEDULE_REFUSAL_COPY: Record<RescheduleRefusalReason, string> = 
 	not_offered: "The host hasn't put this time to you yet.",
 	slot_inside_lockout:
 		`That time is now less than ${RESCHEDULE_LOCKOUT_HOURS} hours away, so it can no longer be agreed.`,
+	proposer_quota:
+		`You already have ${RESCHEDULE_ATTENDEE_PROPOSALS_MAX} times waiting on the host. Once one is answered, you can offer another.`,
+	duration_changed:
+		"A new time keeps the meeting's length. It moves the meeting, it doesn't make it longer or shorter.",
+	slot_too_long:
+		`This runs longer than ${RESCHEDULE_SLOT_MAX_HOURS} hours, so it can't be moved by offering a new time.`,
 };
 // #endregion
 
@@ -473,6 +530,25 @@ export function rescheduleLockoutAt(eventStartMs: number): number {
  */
 export function canReschedule(nowMs: number, eventStartMs: number): boolean {
 	return eventStartMs - nowMs >= RESCHEDULE_LOCKOUT_MS;
+}
+
+/**
+ * Why this slot may not replace an event running `eventStartMs`–`eventEndMs`, or `null` when it may.
+ *
+ * A replacement keeps the event's length (Decision #343, ruling C6 D8): a move is a move, never an
+ * extension, and a session's length is the listing's anyway. No slot runs longer than
+ * {@link RESCHEDULE_SLOT_MAX_HOURS}, so an event longer than that has no slot that may replace it.
+ * `scheduling.fn_cap_reschedule_proposals` and `ck_proposal_span` hold the same two rules.
+ */
+export function slotRefusal(
+	eventStartMs: number,
+	eventEndMs: number,
+	start: number,
+	end: number,
+): RescheduleRefusalReason | null {
+	if (end - start !== eventEndMs - eventStartMs) return "duration_changed";
+	if (end - start > RESCHEDULE_SLOT_MAX_MS) return "slot_too_long";
+	return null;
 }
 
 /**
@@ -668,6 +744,9 @@ export function viewerAttendee(roster: readonly EventAttendee[]): EventAttendee 
  * `optional` attendees DO count: they were invited, and a time they cannot make is a time that
  * excludes them. A guest does not: they have no way to reach a ballot, so counting them would turn an
  * abstention nobody can avoid into a vote against moving (`scheduling.fn_event_has_voters`).
+ *
+ * This is the one denominator (Decision #343, ruling C6 D5): the session workspace's `voters` count
+ * (`projects.get_session_workspace`) counts the same seats, pinned by `coordination.contract.test.ts`.
  */
 export function eligibleVoterCount(roster: readonly EventAttendee[]): number {
 	let n = 0;

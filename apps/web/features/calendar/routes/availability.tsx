@@ -2,6 +2,7 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { restrictBooking } from "../core/booking-gate.ts";
+import { readCalendarAddress } from "../core/calendar-address.ts";
 import { resolveAvailabilityPage } from "../core/calendar-ssr.ts";
 import { viewerFromState } from "../core/viewer.ts";
 import ScheduleView from "../islands/ScheduleView.island.tsx";
@@ -13,20 +14,25 @@ import ScheduleView from "../islands/ScheduleView.island.tsx";
  * over the dynamic tab segment. Resolves the schedule server-side (the fat
  * {@link ScheduleBackendService.availability}, no HTTP hop) and hands it to the {@link ScheduleView} island;
  * the profile chrome (header · tabs) comes from the shared `[handle]/_layout.tsx`.
+ *
+ * The view is addressed as `?view=&date=&zoom=` (Decision #413), read here so the first byte paints
+ * the asked-for period; a value this calendar does not answer is a 303 to the canonical address.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
+		const { address, redirect } = readCalendarAddress(ctx.url, "schedule");
+		if (redirect) return new Response(null, { status: 303, headers: { location: redirect } });
 		const profile = ctx.state.profile;
 		ctx.state.title = profile
 			? `Availability · ${profile.name} · Projective`
 			: "Availability · Projective";
 		// Read live in the handler: the schedule comes from Postgres, and a page component cannot await.
 		const { page: resolved } = profile
-			? await resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state))
+			? await resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state), address.date)
 			: { page: null };
 		// An under-18 viewer books nothing with anyone (Decision #208).
 		const schedule = restrictBooking(resolved, isRestrictedRequest(ctx.req, ctx.state.userContext));
-		return page({ schedule });
+		return page({ schedule, address });
 	},
 });
 
@@ -40,6 +46,7 @@ export default define.page<typeof handler>(function ProfileAvailabilityPage(ctx)
 			sellerName={profile.name}
 			authed={!!ctx.state.isAuthenticated}
 			initial={ctx.data.schedule}
+			address={ctx.data.address}
 			fullPage
 		/>
 	);

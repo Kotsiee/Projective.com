@@ -3,6 +3,7 @@ import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { MediaDimensionsSchema, showcaseAspectOf } from "../files/aspect.ts";
 import type { ShowcaseAspect } from "../files/aspect.ts";
 import { VerificationStampSchema } from "../org/standing.ts";
+import { INTENSITY_PRICE_MULTIPLIER } from "../projects/board.ts";
 
 /**
  * explore.items — the Zod SSOT for the discovery domain shapes (freelancers, teams, users,
@@ -205,11 +206,18 @@ export const ServiceItemSchema = z.object({
 	category: z.string(),
 	serviceType: ServiceType,
 	/**
-	 * Pipeline services only — the standard per-ticket price. A pipeline is billed per ticket at the
-	 * client's chosen intensity (PRODUCT_SPEC §The Architect's Override: Low 0.5× · Standard 1× ·
-	 * High 2×), so the card and the search drawer quote its Low-intensity FLOOR ("From …").
+	 * Pipeline services only — the standard per-ticket price. A pipeline sold at tiered intensity is
+	 * billed per ticket at the client's chosen intensity (PRODUCT_SPEC §The Weighting Engine, intensity
+	 * pricing: Low 0.75× · Standard 1× · High 1.5×), so the card and the search drawer quote its
+	 * Low-intensity FLOOR ("From …"); one sold at a single fixed intensity quotes this one price.
 	 */
 	ticketPrice: z.number().optional(),
+	/**
+	 * Pipeline services only — whether a client picks Low / Standard / High per ticket
+	 * (`service_blueprints.allow_tiered_intensity`). Absent or `false`: sold at one fixed intensity
+	 * and price, so it is quoted at {@link ticketPrice} alone ({@link pipelineTicketSpan}).
+	 */
+	tieredIntensity: z.boolean().optional(),
 	/**
 	 * Session / Group Session services only — the per-slot price. A **Session** shows it as `$X /
 	 * session`; a **Group Session** shows it as `$X / seat` (billed per attendee seat).
@@ -252,6 +260,22 @@ export const ServiceItemSchema = z.object({
 	currency: z.string().min(3).max(3).optional(),
 });
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
+
+/**
+ * A Pipeline listing's per-ticket price as buyers see it, in the item's major units, unrounded: the
+ * Low–High span at the platform's price multipliers when it sells tiered intensity, else its one
+ * price. `null` when the listing carries no ticket price.
+ */
+export function pipelineTicketSpan(
+	item: Pick<ServiceItem, "ticketPrice" | "tieredIntensity">,
+): { low: number; high: number } | null {
+	if (item.ticketPrice === undefined) return null;
+	if (item.tieredIntensity !== true) return { low: item.ticketPrice, high: item.ticketPrice };
+	return {
+		low: item.ticketPrice * INTENSITY_PRICE_MULTIPLIER.low,
+		high: item.ticketPrice * INTENSITY_PRICE_MULTIPLIER.high,
+	};
+}
 
 /**
  * A project's engagement classification — a staged **Pipeline** (multiple sequential stages, each

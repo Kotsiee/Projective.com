@@ -5,8 +5,7 @@ import { Icon } from "@projective/ui/icons";
 import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
 import { ScopeSelect } from "@features/explore/components/ScopeSelect.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
-import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
-import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import {
 	DEFAULT_SEARCH_SCOPE,
 	SEARCH_SCOPES,
@@ -98,12 +97,7 @@ export default function SearchBar({
 	const typed = useSignal("");
 	const formRef = useRef<HTMLFormElement>(null);
 
-	useSearchShortcut({
-		scopeRef: formRef,
-		matches: isFocusSearchShortcut,
-		shortcut: "focus-search",
-		enabled: slashFocus,
-	});
+	useSearchTarget({ role: "page", scopeRef: formRef, enabled: slashFocus });
 
 	// #region Typewriter placeholder
 	// Retype/erase the phrases for the active category; restarts when the category flips.

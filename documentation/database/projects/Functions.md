@@ -399,10 +399,31 @@ flags; it gates nothing.
 
 ### `projects.get_ticket_finance(p_ticket_id uuid) → TABLE (total_cost_cents bigint, paid_to_date_cents bigint, locked_escrow_cents bigint, remaining_cents bigint, currency text, installments jsonb)`
 
-`00001120` §2a. The ticket modal's Installment Monitor; prices mirror `finance.fn_hold_ticket_escrow`.
+`00001120` §2a. The ticket modal's Installment Monitor; each installment is priced by
+`fn_ticket_stage_price`, as `finance.fn_hold_ticket_escrow` holds it.
 `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `service_role`
 only — no client grant. Unknown ticket → `P0001`; then `has_project_access(ticket's project)` →
 `42501`.
+
+### `projects.fn_ticket_stage_price(p_required_stages jsonb, p_ticket_price bigint, p_stage projects.project_stages) → bigint`
+
+`00001120` §Intensity pricing (Decision #414). What one ticket costs in one stage — the one price rule
+every money path reads (`fn_hold_ticket_escrow`, `fund_ticket`, `fn_stage_funding_need` and so
+`fund_stage` and the card intent, `get_stage_finance`, `get_ticket_finance`, `place_wallet_order`'s
+ticket lines, the auto-fund queue and drain). The rate is `COALESCE(p_ticket_price,
+p_stage.unit_price_cents)`; a stage with `intensity_locked` costs that rate; otherwise the stage's
+`low_price_cents` / `high_price_cents` answer a Low / High ticket where set, and the rate ×
+`fn_intensity_price_multiplier` the rest, rounded. The intensity is the ticket's `required_stages`
+element for the stage (absent = `standard`, so every ticket written before it priced as it did).
+`NULL` stage row → `p_ticket_price`; an unpriced stage → `NULL`. Mirrors `stageCostCents`
+(`@projective/types/projects`). `IMMUTABLE`, `search_path = ''`; `EXECUTE` revoked from every role
+(read inside definer doors only).
+
+### `projects.fn_intensity_price_multiplier(p_intensity text) → numeric`
+
+`00001120` (Decision #414). The PRICE multiplier: `low` 0.75 · `standard` 1.00 · `high` 1.50
+(anything else 1.00) — never the $W_i$ scale (0.5 / 1 / 2). `IMMUTABLE`, `search_path = ''`;
+`EXECUTE` revoked from every role.
 
 ### `projects.get_ticket_timeline(p_ticket_id uuid) → TABLE (id uuid, action_type text, previous_stage_id uuid, new_stage_id uuid, previous_status text, new_status text, changes jsonb, created_at timestamptz, actor_id uuid, actor_name text, actor_avatar_file_id uuid)`
 
@@ -466,13 +487,30 @@ now()`. `EXECUTE` moot (a trigger).
 Appends a stage to a project and **provisions its channel in the same transaction**. Returns the new
 stage id.
 
+**Who authors a stage (Decision #421).** A client-architected project takes stages from review
+authority (`projects.can_review_project`: the owner, or an active member of the paying business),
+else `42501` "Only the project owner or its client business may add a stage." A service the client
+bought (`projects.source_blueprint_id` set) is the seller's template, so only a freelancer holding a
+live seat on one of its stages (`projects.fn_holds_live_seat`) adds one, and its client never does —
+else `42501` "This project runs on a freelancer's service, so its stages are added by the freelancer
+working it." (the app's `canAddStage`, a `403`). The author is given no seat on the new stage — a seat
+still comes only from an accepted invitation or application — so the stage's General room is written
+here directly rather than through `comms.get_or_create_project_channel`, which checks its caller's
+access to the room.
+
 **`p_payload` carries the stage's optional settings** — `milestone`, `default_tasks`, `skills`,
 `seat_limit`, `parallel`, `nda_override`, `allowed_file_categories`, `allowed_file_extensions`, the
 timing fields (`start_trigger_type`, `fixed_start_date`, `start_dependency_stage_id`,
 `start_dependency_lag_days`, `file_duration_mode`, `file_duration_days`, `file_due_date`),
-`hire_trigger_active`, `file_revisions_allowed` and the IP terms — **in the same shape
+`hire_trigger_active`, `file_revisions_allowed`, the IP terms and the stage's CREATE category
+(`create_category` → `project_stages.create_category`; `''` leaves it untyped, an unknown value is
+refused by the `org.create_category` cast with `22P02`) — **in the same shape
 `projects.create_project` reads a stage out of**, so the create path and the add-a-stage path cannot
 come to disagree about what a field is called.
+
+The board's Create stage popover (Decision #416) sends the stage's name, its baseline rate as
+`p_unit_price_cents` and its CREATE category in the bag; on a personal project
+`trg_stages_personal_money_guard` still drops the rate. Probe: `supabase/probes/create_stage_terms.sql`.
 
 One jsonb bag rather than a dozen more named parameters: every argument added is another signature
 this function can never again be changed without, and the bag keeps the signature stable while the
@@ -690,9 +728,12 @@ because the invoker batch calls it as the caller.
 
 ## Tickets
 
-### `projects.move_ticket(p_ticket_id uuid, p_to_status ticket_status, p_to_stage_id uuid DEFAULT NULL, p_sort_order integer DEFAULT NULL, p_expected_updated_at timestamptz DEFAULT NULL) → jsonb`
+### `projects.move_ticket(p_ticket_id uuid, p_to_status ticket_status, p_to_stage_id uuid DEFAULT NULL, p_sort_order integer DEFAULT NULL, p_expected_updated_at timestamptz DEFAULT NULL, p_clear_stage boolean DEFAULT false) → jsonb`
 
-The guarded column transition the board calls. Returns the updated ticket row as `jsonb`.
+The guarded column transition the board calls. Returns the updated ticket row as `jsonb`. A move that
+names no stage keeps the ticket in the one it has; `p_clear_stage` is the board's New lane, the
+stage-less backlog (Decision #421). The five-argument form is dropped by name in the migration and
+every existing call resolves against this one.
 
 | Guard               | Rule                                                    |
 | :------------------ | :------------------------------------------------------ |
@@ -700,6 +741,7 @@ The guarded column transition the board calls. Returns the updated ticket row as
 | Stale board         | when `p_expected_updated_at` is given, it must equal the row's `updated_at` to the millisecond, else `PS409` (DL S8) |
 | → `completed`       | **additionally** `projects.can_review_project(project)` |
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
+| `p_clear_stage`     | only with `p_to_status = 'backlog'`, else `23514` "Only the New backlog takes a ticket out of its stage." Checked after the move authority below, it is open only to a ticket nobody has claimed or delivered against — no assignee, no `claimed_at`, no submission — else `23514` "Only a ticket nobody has claimed goes back to New." (the app's `ticketLeavesStage`, a `422`). Funding is no bar: a fully paid ticket stays paid in New and a per-stage one reads unpaid there |
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
 | Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
 | Any move of a claimed ticket | `projects.fn_assert_ticket_move` (below, Decision #293): only its assignee or review authority; the assignee only between `todo` / `in_progress` / `in_review` (and out of `claimed`); review authority not while it is `claimed` / `in_progress` (#94); nobody into `claimed`, `cancelled` or `reported_hidden` |
@@ -804,8 +846,11 @@ user is `false`. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = ''
 
 ### `projects.fn_enforce_ticket_due_date() → trigger`
 
-`trg_enforce_ticket_due_date` — `BEFORE INSERT OR UPDATE OF due_date`. Refuses (`P0001`) a non-null
-`due_date` unless the project's `allow_deadline_bonuses` is true. `SECURITY INVOKER`.
+`trg_enforce_ticket_due_date` — `BEFORE INSERT OR UPDATE OF due_date, required_stages`. When any
+`required_stages` element carries a `due_at`, sets `due_date` to the latest of them (midnight UTC;
+a `due_at` that is not a date raises `22007`) — Decision #414. Then refuses (`P0001`) a `due_date`
+that is set or moves unless the project's `allow_deadline_bonuses` is true; an update that leaves
+the date where it was passes. `SECURITY INVOKER`.
 
 ### `projects.fn_ticket_touch_updated_at() → trigger`
 
@@ -1337,6 +1382,15 @@ function (`00001130`).
   with a `source_blueprint_id`, INSERT copies `free_revisions` / `extra_revision_price_cents` from the
   blueprint (else its newest published listing; once either is declared, free defaults to 0 and price
   to the stage's `unit_price_cents`; neither → `NULL`, unlimited); UPDATE keeps the old values.
+- **`fn_stage_intensity_terms() → trigger`** (`trg_stage_intensity_terms`, `00001850`; Decision #417)
+  — guards a stage's `default_intensity`, `intensity_locked`, `low_price_cents` and
+  `high_price_cents`. INVOKER, judging only a statement run as `anon` / `authenticated` (inside a
+  SECURITY DEFINER door `current_user` is its owner, so `marketplace.instantiate_service_blueprint`,
+  which writes them, passes). A client UPDATE that moves any of the four on a project with a
+  `source_blueprint_id` is refused `42501`; elsewhere a client may set `default_intensity`, but an
+  INSERT or UPDATE that locks a stage or gives it a tier price is refused `42501`. An UPDATE leaving
+  all four untouched (a rename) passes. `EXECUTE`: nobody (a trigger function). Probe:
+  `supabase/probes/stage_intensity_terms.sql`.
   Owner-authored stages pass through. `EXECUTE` moot (a trigger).
 
 ### `projects.review_submission(...)` / `projects.fund_stage(...)`
@@ -1395,7 +1449,8 @@ Funds ONE ticket's escrow — the single-ticket Buy Now and a basket ticket line
 predicate as `fund_stage` (`PK403 not_funder`), then the PRODUCT_SPEC §5 purchasing gate and the hold's prerequisites, in
 order: ticket not in the project `P0002`; no description `PU422`; already paid (`payment_status` not
 `unpaid`/`needs_funding`, or a held escrow) `PC409`; not in a stage, or the stage `approved`/`paid`/
-`cancelled` `PC409`; no price (own, else the stage's) `PC409`; an individual owner's wallet short of
+`cancelled` `PC409`; no price (`fn_ticket_stage_price` — its intensity price in the stage,
+Decision #414) `PC409`; an individual owner's wallet short of
 the price `PF402`; a business payer passes `finance.fn_assert_business_spend(…, 'tickets', ticket)`
 as the funder (BB3 — inside a basket the basket's cover passes it). A ticket nobody has claimed is held PREPAID and bound at its claim (Decision #197;
 before it, `PU422` "Nobody can be paid … yet"). Then exactly one
@@ -1408,8 +1463,8 @@ projects, finance, comms, org, auth`), `EXECUTE`: `authenticated`, `service_role
 
 What funding a stage takes: `{ticket_count, unpriced_count, amount_cents}` over every ticket in the
 stage that is `unpaid`/`needs_funding`, not `completed`/`cancelled`/`reported_hidden`, with no held
-base escrow — claimed or not — at `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)`;
-`amount_cents` sums the priced ones. THE definition `fund_stage` holds by and
+base escrow — claimed or not — at its price in the stage, `fn_ticket_stage_price` (the rate at the
+ticket's intensity there, Decision #414); `amount_cents` sums the priced ones. THE definition `fund_stage` holds by and
 `finance.begin_card_payment` charges by, so a card payment can never settle into a stage that then
 refuses it. `SQL STABLE SECURITY DEFINER`, `search_path = ''`; internal (`EXECUTE` revoked from
 `PUBLIC`, `anon`, `authenticated`).
@@ -2037,6 +2092,7 @@ pricing, roles, rules and publish rungs), `ProjectWorkspace.personal` and `Board
 | `projects.set_sitting_link(event, url) → void` | `authenticated` (the sitting's host) | A link the host adds to a sitting with no room (Decision #383, rulings R2 and R7). The room becomes `custom`, and nothing reports from it, so the sitting reads `untracked` and its payout holds for review. |
 | `projects.answer_session_review(event, happened) → jsonb` | `authenticated` (the attendee with money held on it) | Decision #383, ruling R6. On a completed sitting reading `untracked`: a yes writes a `confirmed` attendance row, which the sweep releases on, so the door moves no money; a no is `claim_session_no_show`. A host's own word is not evidence. |
 | `projects.claim_session_no_show(event, reason) → jsonb` | `authenticated` (a seated attendee) | Once the sitting has started, opens a `finance.disputes` row on the escrow that pays for THIS sitting (its own per-sitting escrow, else the seat's whole-cohort escrow) naming `session_event_id`, tells the owner (`dispute.opened`) and runs `finance.fn_advance_dispute` — after the sitting has ended the attendance audit rules at once. Idempotent: a live claim on the escrow, or a settled one on the same sitting, is returned; `uq_disputes_escrow_live` makes racing claims one. Returns `{dispute_id, escrow_id, status}`. The lifecycle and its doors are `database/finance/Functions.md` § Platform disputes. |
+| `projects.get_session_workspace(project) → jsonb` (reschedule key) | `authenticated` | `reschedule` describes the next sitting's open round: `mode`, `status`, `opened_by_host`, `votes` cast and `voters`. `voters` counts what `eligibleVoterCount` counts: every live seat with an account except the host's, optional seats included (Decision #343, ruling C6 D5; pinned by `coordination.contract.test.ts`). |
 | `projects.get_session_workspace(project) → jsonb` (dispute keys) | `authenticated` | `membership.escrow.claim_open` reads `finance.fn_escrow_has_open_dispute`; `disputes` lists the claims the caller is party to (their own; every claim on the engagement for the host) — `id`, `status`, `session_event_id`, `respond_by`, `opened_at`, `resolved_at`, `mine`; `claimable_sitting_id` is the latest started sitting an attendee may report now (its escrow held, no claim on it) — exactly what the claim would accept. |
 
 ## Sessions — 1-1 settlement (`00001155`, Decision #211)
@@ -2051,7 +2107,7 @@ it holds **one escrow per sitting** (`finance.escrows.session_event_id`). Probe:
 | `projects.fn_session_engagement_for(blueprint) → (o_project_id, o_stage_id)` | Internal | ONE engagement per 1-1 listing (`format = 'session'`, `session_kind = 'normal'`, `unlisted`, `active`, one "Sessions" stage), made on the first booking under an advisory lock keyed to the listing. |
 | `projects.fn_session_host_schedule(project) → uuid` | Internal | The team's schedule for a team-owned engagement, else the owner's (freelancer first); `NULL` when none is published. |
 | `projects.fn_settle_membership_state(membership, now)` | Internal (also called by the dispute settlement) | Ends an `active` seat once nothing is left held on it: `completed` if any of its escrows was released, else `cancelled`. |
-| `projects.cancel_cohort_membership(membership) → jsonb` | `authenticated` (attendee or host) | PRODUCT_SPEC §Session-Based C. A cohort seat's one escrow is judged against the cohort's first sitting; a 1-1 seat's escrows **per sitting** against each one's own start — host cancel refunds every sitting not yet started, the client's refunds those more than the notice away and forfeits the rest. A started sitting is left to settle. Cancelled sittings become `cancelled_by_freelancer` / `cancelled_by_client`, leave the calendar, have their open round withdrawn; the one-seat cohort is cancelled. Returns `{outcome: refunded \| forfeited \| partial, amount_minor, refunded_minor, forfeited_minor, currency}`; `PS409` when every sitting has started. |
+| `projects.cancel_cohort_membership(membership) → jsonb` | `authenticated` (attendee or host) | PRODUCT_SPEC §Session-Based C. A cohort seat's one escrow is judged against the cohort's first sitting; a 1-1 seat's escrows **per sitting** against each one's own start — host cancel refunds every sitting not yet started, the client's refunds those more than the notice away and forfeits the rest. A forfeit of an escrow with an open dispute is refused (`PD409 dispute_open`, `finance.fn_assert_no_open_dispute`, FINANCE_AUDIT L9): the ruling settles it. A started sitting is left to settle. Cancelled sittings become `cancelled_by_freelancer` / `cancelled_by_client`, leave the calendar, have their open round withdrawn; the one-seat cohort is cancelled. Returns `{outcome: refunded \| forfeited \| partial, amount_minor, refunded_minor, forfeited_minor, currency}`; `PS409` when every sitting has started. |
 | `finance.auto_release_session_escrow(now) → jsonb` | pg_cron (`auto-release-session-escrow`), `service_role` | Holds a sitting with no evidence instead of releasing it (ruling C5 (a)): it asks the attendee once when the review window ends (`session.review_requested`, `review_asked_at`), and after `session_review_hold_days` of silence opens a case with that attendee as nominal claimant. Completes ended sittings; refunds the escrow behind any tracked sitting with a provider no-show, at any age; releases each escrow with no open dispute (`finance.fn_escrow_has_open_dispute`) `session_payout_hours` after its sitting — a 1-1 sitting's own end, a cohort seat's last sitting. |
 | `projects.fn_lapse_session_handshakes(now) → jsonb` | pg_cron (`session-scheduling-handshakes`), `service_role` | Reminds a provider once (`session.scheduling_reminder`) 24h before their booking's earliest open deadline, then lapses each open `counterparty` round on a scheduled sitting past `resolves_at` through `scheduling.close_reschedule_round` — the pencilled-in time stands — and tells both people (`session.scheduling_lapsed`). Returns `{reminded, lapsed}`. |
 | `projects.trg_sitting_follows_calendar()` | AFTER UPDATE OF `starts_at`, `ends_at` on `scheduling.events` (`00001860`) | A sitting's calendar mirror that moved (a round carried) moves the `scheduled` sitting with it — the join window, presence rule and payout clock read the sitting. |

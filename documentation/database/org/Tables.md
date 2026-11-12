@@ -779,7 +779,7 @@ Client Trust Score.
 | `dispute_rate`                          | numeric(5,4) | 0–1.                                                                |
 | `workload_reliability`                  | numeric(5,4) | Delivering at capacity without dropping tickets — the $W_i$ signal. |
 | `tenure_days`                           | integer      | —                                                                   |
-| `penalty_severity`                      | numeric(6,2) | Active `security.penalties` aggregate, subtracted at recompute.     |
+| `penalty_severity`                      | numeric(6,2) | Active `security.penalties` aggregate, subtracted at recompute. Written by the seed's first sweep and, for the person it marks, by `scheduling.fn_charge_call_no_show` (Decision #343, ruling C6 D7); no other penalty refreshes it until trust-track R5. |
 | `components`                            | jsonb        | Per-component contribution, for the "why am I this rung" surface.   |
 | `active_adornments`                     | text[]       | The earned trust signals — at most one slug per dimension (below). Default `'{}'`. |
 | `verification_stamp`                    | text         | `none` · `id_verified` · `vault_verified` · `corporate_verified`. Default `none`. |

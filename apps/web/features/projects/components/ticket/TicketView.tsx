@@ -15,20 +15,29 @@ import { useEffect, useRef } from "preact/hooks";
  * sheets they mount.
  */
 import "../../styles/ticket-view.css";
+import { useSignal } from "@preact/signals";
 import { Backdrop, BodyPortal, useFrameScroll, useFrameState } from "@projective/ui/overlay";
-import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
+import { useDismiss, useFocusTrap, useMediaQuery, useOverlayStack } from "@projective/ui/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { Button, InlineEdit, InputText } from "@projective/ui/fields";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { ConfirmDialog, Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { ContextType } from "@projective/types/auth";
-import type { BoardCard, BoardStageRef, ProjectParty } from "../../types/projects-types.ts";
-import { isSharedWorkspace } from "../../types/projects-types.ts";
+import type {
+	BoardCard,
+	BoardStageRef,
+	ProjectParty,
+	TicketStageRef,
+} from "../../types/projects-types.ts";
+import { isSharedWorkspace, stageIntensityLocked } from "../../types/projects-types.ts";
 import { statusLabel, statusTone } from "../../core/board-model.ts";
 import {
 	applyTicketIntensity,
+	blankStageRef,
+	patchStageDue,
 	reconcileCard,
 	stageOps,
+	ticketDueMode,
 	ticketFingerprint,
 	ticketGate,
 	ticketTotals,
@@ -41,12 +50,16 @@ import {
 	type TicketMode,
 	ticketMoney,
 	ticketStack,
+	type TicketStageView,
 	type TicketTab,
 	ticketTabs,
 } from "../../core/ticket-view.ts";
 import { FILE_FRAME_TRIGGER } from "../../core/file-frame.ts";
+import { type PipelineDrop, placeStage, swapStage } from "../../core/stage-pipeline.ts";
+import { inclusionRefusal, pipelineLocks, removalRefusal } from "../../core/stage-menu.ts";
 import { TicketMetaBar } from "./TicketMetaBar.tsx";
 import { TicketActivityPanel } from "./TicketActivityPanel.tsx";
+import { TicketFooter } from "./TicketFooter.tsx";
 import { StageInspector } from "./StageInspector.tsx";
 import { TicketDetailsTab } from "./tabs/TicketDetailsTab.tsx";
 import { TicketStagesTab } from "./tabs/TicketStagesTab.tsx";
@@ -57,7 +70,13 @@ import { TicketSubmissionsTab } from "./tabs/TicketSubmissionsTab.tsx";
 import { TicketTimelineTab } from "./tabs/TicketTimelineTab.tsx";
 import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 import { FundingStatus } from "../FundingStatus.tsx";
-import { fundingAction, fundingDateLabel } from "../../core/funding-ui.ts";
+import {
+	draftStep,
+	fundingAction,
+	fundingDateLabel,
+	previewFunding,
+} from "../../core/funding-ui.ts";
+import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 
 /**
  * TicketView — the ONE ticket surface. Creating, reading and editing a ticket are the same modal.
@@ -72,18 +91,20 @@ import { fundingAction, fundingDateLabel } from "../../core/funding-ui.ts";
  * Three region rules govern the layout, and none of them is decoration:
  *
  *  - **The left area answers, the right area orients.** Tabs hold content; the side panel holds
- *    context — recent activity while you read the brief, the selected stage while you compose the
- *    pipeline. It appears on exactly the two tabs that have a second question worth answering, and
- *    nowhere else, because a column that is usually empty teaches the reader to ignore that side.
+ *    context — recent activity while you read a saved ticket's brief, the selected stage while you
+ *    work its pipeline, and while a ticket is being CREATED its stages themselves (which ones, and
+ *    each one's settings) beside the brief they are priced against. Where the modal is too narrow
+ *    for a panel, the stages are worked in the Stages tab, the inspector replacing the list.
  *  - **Separation is spacing, tone and a single hairline** — never a box inside a box (§B.4). The
  *    only full borders in here belong to interactive controls.
- *  - **Intensity is never a number.** Low/Standard/High is what a client chose; the multiplier that
- *    turns it into money is arithmetic, and arithmetic belongs on the Finances tab where it can be
- *    shown working rather than asserted on a badge.
+ *  - **Intensity names its price, never a badge.** Low/Standard/High is what a client chose; its
+ *    controls state the price multiplier (`Low (0.75×)`) or the stage's tier price, and the Finances
+ *    tab shows the arithmetic. A stage sold at one fixed intensity reads it as text.
  *
  * Edits are STAGED, not live. The working copy diverges from the ticket the modal was opened on, the
  * footer grows a Save the moment it does, and nothing reaches the board until it is pressed — so a
  * half-typed brief is never something a freelancer can read, and Discard is always a real option.
+ * Escape, the scrim and the close control ask before throwing unsaved work away.
  *
  * Mounted through {@link BodyPortal} so its `position: fixed` resolves against the viewport rather
  * than the glass-blurred shell that opened it. Its live UI state — working copy, tab, panel, scroll,
@@ -157,14 +178,20 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const stack = useOverlayStack({ active: true, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
+	const wide = !useMediaQuery("(max-width: 900px)");
+	const confirmingClose = useSignal(false);
+	const forcedFunding = useSignal(readDevSeam()?.fundingState);
+	useEffect(() =>
+		subscribeDevSeam((seam) => {
+			forcedFunding.value = seam?.fundingState;
+		}), []);
 	useFocusTrap({ active: true, containerRef: panelRef });
-	// A ticket being composed can be dismissed, but not by a stray click on the backdrop — there is
-	// unsaved work in it by definition. Escape and Cancel still close it. The backdrop is the only
-	// outside-click channel, so a click there can only ever belong to this modal.
+	// The backdrop is the only outside-click channel (§B.10.6 #4), so a press there can only ever
+	// belong to this modal; it and Escape both go through the unsaved-work guard.
 	useDismiss({
 		open: true,
 		enabled: stack.isTop,
-		onDismiss: onClose,
+		onDismiss: () => requestClose(),
 		panelRef,
 		closeOnOutside: false,
 	});
@@ -195,7 +222,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		ticketFingerprint(props.card),
 	);
 	const tab = useFrameState<TicketTab>(ticketStack, uid, "tab", "details");
-	const showActivity = useFrameState<boolean>(ticketStack, uid, "panel", true);
+	const showPanel = useFrameState<boolean>(ticketStack, uid, "panel", true);
 	const selectedStage = useFrameState<string | null>(ticketStack, uid, "stage", null);
 	// Keyed PER TAB, not per modal. The tabs share one scroll container, so a single key would let a
 	// glance at Finances overwrite where the reader had got to in a long History — the offset belongs
@@ -211,25 +238,29 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 
 	const card = draft.value;
 	const hasTimeline = props.hasTimeline !== false;
-	const tabs = ticketTabs(card, mode, hasTimeline);
+	const tabs = ticketTabs(card, mode, hasTimeline, wide);
+	const current: TicketTab = tabs.some((t) => t.key === tab.value) ? tab.value : "details";
 	const totals = ticketTotals(card);
 	const gate = ticketGate(card, totals);
 	const money = ticketMoney(card);
-	const metrics = ticketMetrics(card, mode);
+	const metrics = ticketMetrics(card, mode, wide);
 	const stageViews = resolveTicketStages(card, stages);
 	const active = activeStagesFor(card);
 	const chosen = new Set(card.stages.map((s) => s.stageId));
 	const available = stages.filter((s) => !chosen.has(s.id));
+	const locks = pipelineLocks(card);
 	const sharedWorkspace = isSharedWorkspace(props.workspaceKind) && props.clientMembers.length > 0;
 	const dirty = ticketFingerprint(card) !== baseline.value;
+	const intensityFixed = stageViews.length > 0 &&
+		stageViews.every((v) => stageIntensityLocked(v.stage));
 
-	const panelKind = panelFor(tab.value);
-	const inspected = panelKind === "stage"
-		? stageViews.find((v) => v.ref.stageId === selectedStage.value) ?? null
-		: null;
-	const sidePanel = panelKind === "activity" && showActivity.value
+	const panelKind = panelFor(current, mode, wide);
+	const inspected = stageViews.find((v) => v.ref.stageId === selectedStage.value) ?? null;
+	const sidePanel = panelKind === "activity" && showPanel.value
 		? "activity"
-		: inspected
+		: panelKind === "composer" && showPanel.value
+		? "composer"
+		: panelKind === "stage" && inspected
 		? "stage"
 		: null;
 
@@ -294,26 +325,81 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		draft.value = updated;
 	}
 
-	/** Jump to a stage: the Stages tab is where a stage is read and configured, so that is where it goes. */
-	function openStage(stageId: string): void {
-		selectedStage.value = stageId;
-		tab.value = "stages";
+	function requestClose(): void {
+		if (dirty) confirmingClose.value = true;
+		else onClose();
 	}
 
-	/**
-	 * Add or remove a stage from the ticket — the ONE implementation, shared by the Details tab's
-	 * membership picker and the Stages tab's pipeline.
-	 *
-	 * Two controls over one field is only safe while they are the same reducer over the same working
-	 * copy; a second copy of this is how a checkbox and a diagram come to disagree about what the
-	 * ticket covers. Removing the stage currently open in the side panel closes it, because the panel
-	 * would otherwise be inspecting something the ticket no longer includes.
-	 */
-	function toggleStage(stageId: string): void {
+	function focusSoon(selector: string): void {
+		setTimeout(() => panelRef.current?.querySelector<HTMLElement>(selector)?.focus(), 0);
+	}
+
+	function focusWhenMounted(selector: string, tries = 20): void {
+		const el = panelRef.current?.querySelector<HTMLElement>(selector);
+		if (el) el.focus();
+		else if (tries > 0) setTimeout(() => focusWhenMounted(selector, tries - 1), 50);
+	}
+
+	function startDescribing(): void {
+		tab.value = "details";
+		setTimeout(() => focusWhenMounted('.tkv-doc__sec[aria-label="Description"] .ql-editor'), 0);
+	}
+
+	function priceStages(): void {
+		globalThis.location.assign(`/projects/${encodeURIComponent(props.projectId)}/details#psu-stages`);
+	}
+
+	function selectStage(stageId: string): void {
+		selectedStage.value = stageId;
+		focusSoon(`.tkc-insp[data-stage-id="${stageId}"]`);
+	}
+
+	function closeInspector(): void {
+		const stageId = selectedStage.value;
+		selectedStage.value = null;
+		if (stageId) focusSoon(`.tkc-stage[data-stage-id="${stageId}"] .tkc-stage__surface`);
+	}
+
+	function openStage(stageId: string): void {
+		const inPane = mode === "create" && wide;
+		tab.value = inPane ? "details" : "stages";
+		if (inPane) showPanel.value = true;
+		selectStage(stageId);
+	}
+
+	function patchStage(stageId: string, sp: Partial<TicketStageRef>): void {
+		if ("dueAt" in sp) {
+			draft.value = patchStageDue(draft.value, stageId, sp.dueAt ?? null, stages);
+			return;
+		}
+		patch({ stages: stageOps.patch(card.stages, stageId, sp, stages) });
+	}
+
+	function patchDue(dueDate: string | null): void {
+		const dueMode = ticketDueMode(card);
+		if (dueMode === "ticket") patch({ dueDate });
+		else if (dueMode === "stage") patchStage(card.stages[0].stageId, { dueAt: dueDate });
+	}
+
+	function placeInPipeline(stageId: string, drop: PipelineDrop): void {
+		const existing = card.stages.find((s) => s.stageId === stageId);
+		const lock = locks.stages.get(stageId) ?? null;
+		const refused = drop.kind === "exclude"
+			? !existing || removalRefusal(card.stages.length, lock) !== null
+			: existing
+			? lock !== null
+			: inclusionRefusal(card.stages.length, locks.ticket) !== null;
+		if (refused) return;
 		const stage = stages.find((s) => s.id === stageId);
-		if (!stage) return;
-		patch({ stages: stageOps.toggle(card.stages, stage, stages, card.intensity) });
-		if (selectedStage.value === stageId) selectedStage.value = null;
+		const moved = existing ?? (stage ? blankStageRef(stage, card.stages.length, card.intensity) : null);
+		const next = moved ? placeStage(card.stages, moved, drop) : null;
+		if (!next) return;
+		patch({ stages: next });
+		if (drop.kind === "exclude" && selectedStage.value === stageId) selectedStage.value = null;
+	}
+
+	function reshapePipeline(stageId: string, next: TicketStageRef[] | null): void {
+		if (next && !locks.stages.has(stageId)) patch({ stages: next });
 	}
 
 	function commit(): void {
@@ -343,10 +429,125 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 			?.focus();
 	}
 
+	function pipeline(title?: string): JSX.Element {
+		return (
+			<TicketStagesTab
+				stageViews={stageViews}
+				available={available}
+				selectedStageId={selectedStage.value}
+				editable={canEdit}
+				currency={card.currency}
+				intensity={card.intensity}
+				locks={locks}
+				title={title}
+				onSelect={selectStage}
+				onPlace={placeInPipeline}
+				onSwap={(id, direction) => reshapePipeline(id, swapStage(card.stages, id, direction))}
+				onParallel={(id, parallel) =>
+					reshapePipeline(id, stageOps.patch(card.stages, id, { parallel }, stages))}
+			/>
+		);
+	}
+
+	function inspectorFor(view: TicketStageView, nav: "close" | "back"): JSX.Element {
+		return (
+			<StageInspector
+				key={view.ref.stageId}
+				item={view}
+				nav={nav}
+				stageTickets={props.cards.filter(
+					(c) => c.stageId === view.ref.stageId && c.id !== card.id,
+				)}
+				editable={canEdit}
+				currency={card.currency}
+				funding={view.ref.stageId === server.stageId ? fundingLine(undefined, false) : null}
+				onClose={closeInspector}
+				onPatch={(sp) => patchStage(view.ref.stageId, sp)}
+			/>
+		);
+	}
+
+	function footerActions(): JSX.Element | null {
+		const claim = props.onClaim && !creating && !dirty
+			? (
+				<Button
+					variant="filled"
+					size="sm"
+					loading={props.claimBusy}
+					onClick={() => props.onClaim?.(server)}
+				>
+					Claim ticket
+				</Button>
+			)
+			: null;
+		// No hold, no work (#165): a submission comes after Start work, never instead of it.
+		const submit = isFreelancer && !creating && !dirty && active.length > 0 && !startPending
+			? (
+				<Button
+					variant="filled"
+					size="sm"
+					onClick={() => props.onCreateSubmission(active[0].stageId)}
+				>
+					Create submission
+				</Button>
+			)
+			: null;
+		const step = isClient && canEdit && funding
+			? draftStep(previewFunding(funding, forcedFunding.value))
+			: null;
+		const advance = step === "describe"
+			? (
+				<Button variant="filled" size="sm" onClick={startDescribing}>
+					Add description
+				</Button>
+			)
+			: step === "price"
+			? (
+				<Button variant="filled" size="sm" onClick={priceStages}>
+					Price stages
+				</Button>
+			)
+			: null;
+		const commitPair = creating
+			? (
+				<>
+					<Button variant="text" size="sm" onClick={onClose}>Cancel</Button>
+					<Button
+						variant="filled"
+						structural
+						size="sm"
+						disabled={!gate.canSave || !canEdit}
+						onClick={commit}
+					>
+						Create ticket
+					</Button>
+				</>
+			)
+			: dirty
+			? (
+				<>
+					<Button variant="text" size="sm" onClick={discard}>Discard changes</Button>
+					<Button variant="filled" size="sm" disabled={!gate.canSave} onClick={commit}>
+						Save changes
+					</Button>
+				</>
+			)
+			: null;
+		if (!claim && !submit && !advance && !commitPair) return null;
+		return (
+			<>
+				{claim}
+				{submit}
+				{advance}
+				{commitPair}
+			</>
+		);
+	}
+
 	return (
 		<BodyPortal>
 			<div class="tkv" data-state="open" style={`--z-portal:${stack.zIndex}`}>
-				<Backdrop visible onClick={creating ? undefined : onClose} />
+				<Backdrop visible onClick={() => requestClose()} />
 				<div
 					ref={panelRef}
 					class="tkv__panel"
@@ -451,35 +652,35 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 								: null}
 							{
 								/*
-								 * The panel toggle governs the activity feed, and only the Details tab has one. On
-								 * the Stages tab the panel follows the selection instead — a toggle there would be
-								 * a second, competing way to open the same column.
+								 * The panel toggle governs the Details tab's panel: the activity feed of a saved
+								 * ticket, the stages of one being created. On the Stages tab the panel follows the
+								 * selection instead — a toggle there would be a second, competing way to open it.
 								 */
 							}
-							{panelKind === "activity"
-								? (
-									<Tooltip
-										content={showActivity.value ? "Hide recent activity" : "Show recent activity"}
-									>
-										<button
-											type="button"
-											class="tkv__act"
-											aria-label={showActivity.value
-												? "Hide recent activity"
-												: "Show recent activity"}
-											aria-pressed={showActivity.value}
-											onClick={() => (showActivity.value = !showActivity.value)}
-										>
-											<Icon name="panel-right" size="sm" />
-										</button>
-									</Tooltip>
-								)
+							{panelKind === "activity" || panelKind === "composer"
+								? (() => {
+									const what = panelKind === "activity" ? "recent activity" : "stages";
+									const label = `${showPanel.value ? "Hide" : "Show"} ${what}`;
+									return (
+										<Tooltip content={label}>
+											<button
+												type="button"
+												class="tkv__act"
+												aria-label={label}
+												aria-pressed={showPanel.value}
+												onClick={() => (showPanel.value = !showPanel.value)}
+											>
+												<Icon name="panel-right" size="sm" />
+											</button>
+										</Tooltip>
+									);
+								})()
 								: null}
 							<button
 								type="button"
 								class="tkv__act tkv__act--close"
 								aria-label="Close"
-								onClick={onClose}
+								onClick={() => requestClose()}
 							>
 								<Icon name="close" size="sm" />
 							</button>
@@ -496,7 +697,10 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 							sharedWorkspace={sharedWorkspace}
 							workspaceLabel={props.workspaceLabel}
 							clientMembers={props.clientMembers}
+							intensityFixed={intensityFixed}
+							dueMode={ticketDueMode(card)}
 							onPatch={patch}
+							onDue={patchDue}
 						/>
 
 						<div class="tkv-tabs" role="tablist" aria-label="Ticket views">
@@ -509,7 +713,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 										role="tab"
 										class="tkv-tabs__tab"
 										data-icononly={t.iconOnly ? "true" : undefined}
-										aria-selected={tab.value === t.key}
+										aria-selected={current === t.key}
 										aria-controls={panelId(t.key)}
 										// Always named, not only when icon-only: below 640px the labels collapse to
 										// their glyphs so every tab fits without a hidden horizontal scroller, and a tab
@@ -517,7 +721,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 										// identical to the visible label, so "label in name" (WCAG 2.5.3) holds in
 										// both presentations.
 										aria-label={t.label}
-										tabIndex={tab.value === t.key ? 0 : -1}
+										tabIndex={current === t.key ? 0 : -1}
 										onKeyDown={(e) => onTabKey(e, i)}
 										onClick={() => (tab.value = t.key)}
 									>
@@ -552,26 +756,25 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 								<div
 									ref={bodyRef}
 									class="tkv__body"
-									id={panelId(tab.value)}
+									id={panelId(current)}
 									role="tabpanel"
-									aria-labelledby={tabId(tab.value)}
+									aria-labelledby={tabId(current)}
 									tabIndex={0}
 								>
-									{tab.value === "details"
+									{current === "details"
 										? (
 											<TicketDetailsTab
 												card={card}
 												stageViews={stageViews}
-												projectStages={stages}
 												canEdit={canEdit}
 												creating={creating}
+												showStageSummary={sidePanel !== "composer"}
 												onPatch={patch}
-												onToggleStage={toggleStage}
 												onOpenStage={openStage}
 											/>
 										)
 										: null}
-									{tab.value === "submissions"
+									{current === "submissions"
 										? (
 											<TicketSubmissionsTab
 												card={card}
@@ -583,25 +786,10 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											/>
 										)
 										: null}
-									{tab.value === "stages"
-										? (
-											<TicketStagesTab
-												stageViews={stageViews}
-												available={available}
-												selected={selectedStage}
-												editable={canEdit}
-												currency={card.currency}
-												onToggle={toggleStage}
-												onMove={(from, to) =>
-													patch({ stages: stageOps.move(card.stages, from, to, stages) })}
-												onParallel={(id, parallel) =>
-													patch({
-														stages: stageOps.patch(card.stages, id, { parallel }, stages),
-													})}
-											/>
-										)
+									{current === "stages"
+										? (!wide && inspected ? inspectorFor(inspected, "back") : pipeline())
 										: null}
-									{tab.value === "timeline" && hasTimeline
+									{current === "timeline" && hasTimeline
 										? (
 											<TicketTimelineTab
 												card={card}
@@ -611,10 +799,10 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											/>
 										)
 										: null}
-									{tab.value === "finances"
-										? <TicketFinanceTab card={card} funding={fundingLine()} />
+									{current === "finances"
+										? <TicketFinanceTab card={card} stages={stages} funding={fundingLine()} />
 										: null}
-									{tab.value === "attachments"
+									{current === "attachments"
 										? (
 											<TicketAttachmentsTab
 												card={card}
@@ -625,7 +813,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											/>
 										)
 										: null}
-									{tab.value === "history"
+									{current === "history"
 										? (
 											<TicketHistoryTab
 												card={card}
@@ -658,31 +846,12 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 													}}
 												/>
 											)
+											: sidePanel === "composer"
+											? (inspected
+												? inspectorFor(inspected, "back")
+												: <div class="tkv-pane">{pipeline("Stages")}</div>)
 											: inspected
-											? (
-												<StageInspector
-													key={inspected.ref.stageId}
-													item={inspected}
-													stageTickets={props.cards.filter(
-														(c) => c.stageId === inspected.ref.stageId && c.id !== card.id,
-													)}
-													editable={canEdit}
-													currency={card.currency}
-													funding={inspected.ref.stageId === server.stageId
-														? fundingLine(undefined, false)
-														: null}
-													onClose={() => (selectedStage.value = null)}
-													onPatch={(sp) =>
-														patch({
-															stages: stageOps.patch(
-																card.stages,
-																inspected.ref.stageId,
-																sp,
-																stages,
-															),
-														})}
-												/>
-											)
+											? inspectorFor(inspected, "close")
 											: null}
 									</SplitterPanel>
 								)
@@ -692,150 +861,32 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					{/* #endregion */}
 
 					{/* #region Footer — the money first, then what it is made of, then what to do next */}
-					<footer class="tkv__foot">
-						<div class="tkv-money">
-							<span class="tkv-money__fig" data-role="total">
-								<span class="tkv-money__k">Ticket cost</span>
-								<span
-									class="tkv-money__v"
-									data-unpriced={money.totalLabel ? undefined : "true"}
-								>
-									{money.totalLabel ?? "Not priced"}
-								</span>
-							</span>
-							{
-								/*
-								 * Spent is what has genuinely left the client — settled releases and fees, never a
-								 * held escrow, which is their own money ring-fenced against work nobody has
-								 * accepted. It is omitted while creating, where the honest figure is "none yet"
-								 * and a £0 beside a price would read as a discount.
-								 */
-							}
-							{!creating
-								? (
-									<Tooltip content="Released to the freelancer and paid in platform fees. Escrow held against unaccepted work is not spent.">
-										<span class="tkv-money__fig" data-role="spent" tabIndex={0}>
-											<span class="tkv-money__k">Spent</span>
-											<span class="tkv-money__v">{money.spentLabel}</span>
-										</span>
-									</Tooltip>
-								)
-								: null}
-						</div>
-
-						<ul class="tkv-metrics" aria-label="Ticket summary">
-							{metrics.map((m) => {
-								const content = (
-									<>
-										<Icon name={m.icon} size="xs" class="tkv-metric__mark" />
-										<span class="tkv-metric__value">{m.value}</span>
-									</>
-								);
-								return (
-									<li key={m.key}>
-										<Tooltip content={m.label}>
-											{m.target
-												? (
-													<button
-														type="button"
-														class="tkv-metric"
-														data-active={m.active ? "true" : undefined}
-														aria-label={`${m.label}. Open the ${m.target} view.`}
-														onClick={() => (tab.value = m.target as TicketTab)}
-													>
-														{content}
-													</button>
-												)
-												: (
-													<span
-														class="tkv-metric"
-														data-static="true"
-														aria-label={m.label}
-														tabIndex={0}
-													>
-														{content}
-													</span>
-												)}
-										</Tooltip>
-									</li>
-								);
-							})}
-						</ul>
-
-						{
-							/*
-							 * The readiness line speaks only when something is pending. On a saved ticket nobody
-							 * is editing, "Ready to purchase once saved" is a sentence about a decision already
-							 * made — permanent status text that never changes stops being read.
-							 */
-						}
-						{creating || dirty
+					<TicketFooter
+						money={money}
+						creating={creating}
+						metrics={metrics}
+						onOpenTab={(t) => (tab.value = t)}
+						status={creating || dirty
 							? <p class="tkv__gate" role="status">{gate.message}</p>
-							: funding && tab.value !== "finances"
+							: funding && current !== "finances"
 							? fundingLine("tkv__fund")
-							: <span class="tkv__gate tkv__gate--spacer" />}
-
-						<div class="tkv__footacts">
-							{
-								/* No hold, no work (#165): a submission comes after Start work, never instead of it. */
-							}
-							{props.onClaim && !creating && !dirty
-								? (
-									<Button
-										variant="filled"
-										size="sm"
-										loading={props.claimBusy}
-										onClick={() => props.onClaim?.(server)}
-									>
-										Claim ticket
-									</Button>
-								)
-								: null}
-							{isFreelancer && !creating && !dirty && active.length > 0 && !startPending
-								? (
-									<Button
-										variant="filled"
-										size="sm"
-										onClick={() => props.onCreateSubmission(active[0].stageId)}
-									>
-										Create submission
-									</Button>
-								)
-								: null}
-							{creating
-								? (
-									<>
-										<Button variant="text" size="sm" onClick={onClose}>Cancel</Button>
-										<Button
-											variant="filled"
-											size="sm"
-											disabled={!gate.canSave || !canEdit}
-											onClick={commit}
-										>
-											Create ticket
-										</Button>
-									</>
-								)
-								: dirty
-								? (
-									<>
-										<Button variant="text" size="sm" onClick={discard}>Discard changes</Button>
-										<Button
-											variant="filled"
-											size="sm"
-											disabled={!gate.canSave}
-											onClick={commit}
-										>
-											Save changes
-										</Button>
-									</>
-								)
-								: null}
-						</div>
-					</footer>
+							: null}
+						actions={footerActions()}
+					/>
 					{/* #endregion */}
 				</div>
 			</div>
+			<ConfirmDialog
+				visible={confirmingClose}
+				header={creating ? "Discard this ticket?" : "Discard your changes?"}
+				message={creating
+					? "It has not been created yet, so closing now throws away what you have written."
+					: "Closing now throws away the changes you have not saved."}
+				acceptLabel={creating ? "Discard ticket" : "Discard changes"}
+				rejectLabel="Keep editing"
+				acceptSeverity="danger"
+				onAccept={onClose}
+			/>
 		</BodyPortal>
 	);
 }

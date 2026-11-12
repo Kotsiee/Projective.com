@@ -16,10 +16,15 @@ import {
 	leadingProposal,
 	majorityProposal,
 	MIN_VOTE_PROPOSALS,
+	pendingProposalsOf,
 	type ProposalVote,
+	proposerHasRoom,
+	RESCHEDULE_ATTENDEE_PROPOSALS_MAX,
 	RESCHEDULE_LOCKOUT_HOURS,
 	RESCHEDULE_LOCKOUT_MS,
 	RESCHEDULE_PROPOSALS_MAX,
+	RESCHEDULE_SLOT_MAX_HOURS,
+	RESCHEDULE_SLOT_MAX_MS,
 	rescheduleLockoutAt,
 	type RescheduleProposal,
 	roundHasRoom,
@@ -27,6 +32,7 @@ import {
 	rsvpTally,
 	type SchedulingParty,
 	settleVote,
+	slotRefusal,
 	startsInPast,
 	viewerAttendee,
 	VOTE_RESOLUTION_LEAD_HOURS,
@@ -443,6 +449,20 @@ Deno.test("eligibleVoterCount — everyone but the host, optional seats included
 	assertStrictEquals(eligibleVoterCount([]), 0);
 });
 
+Deno.test("eligibleVoterCount — the one denominator: host out, optional in, a guest out", () => {
+	// Decision #343, ruling C6 D5. A host, two participants and one optional seat is three voters, and
+	// a guest beside them changes nothing: a guest cannot reach a ballot.
+	const roster = [
+		host("ada"),
+		attendee("grace", "accepted"),
+		attendee("edsger", "pending"),
+		{ ...attendee("alan", "pending"), role: "optional" as const },
+		{ ...attendee("guest", "accepted"), isGuest: true },
+	];
+	assertStrictEquals(eligibleVoterCount(roster), 3);
+	assertStrictEquals(voteQuorum(eligibleVoterCount(roster)), 2);
+});
+
 Deno.test("voteQuorum — strictly more than half, so a tie never carries", () => {
 	// Even electorates are the case a "half or more" reading gets wrong: 2 of 4 is a tie, not a win.
 	assertStrictEquals(voteQuorum(4), 3);
@@ -644,6 +664,80 @@ Deno.test("roundHasRoom — read on the SETTLED round, a full vote past its dead
 		roundHasRoom(settleVote(deadline, full, 4, FAR)),
 		"at the deadline it lapses, and has room",
 	);
+});
+// #endregion
+
+// #region Ballot hygiene (Decision #343, ruling C6 D8)
+Deno.test("ballot hygiene figures are the ruled ones", () => {
+	assertStrictEquals(RESCHEDULE_ATTENDEE_PROPOSALS_MAX, 3);
+	assertStrictEquals(RESCHEDULE_SLOT_MAX_HOURS, 24);
+	assertStrictEquals(RESCHEDULE_SLOT_MAX_MS, 24 * HOUR);
+});
+
+/** `n` slots the viewer offered as an attendee, none approved yet. */
+function mine(n: number, from = 0): RescheduleProposal[] {
+	return Array.from({ length: n }, (_, i) =>
+		proposal({
+			id: `m${from + i}`,
+			start: NOW + (48 + (from + i) * 24) * HOUR,
+			proposedByRole: "attendee",
+			approved: false,
+			proposedByViewer: true,
+		}));
+}
+
+Deno.test("pendingProposalsOf — only the viewer's own attendee slots still waiting count", () => {
+	const theirs = proposal({
+		id: "t",
+		start: NOW + 200 * HOUR,
+		proposedByRole: "attendee",
+		approved: false,
+	});
+	const approved = { ...mine(1, 5)[0], approved: true };
+	const hosts = proposal({ id: "h", start: NOW + 300 * HOUR });
+	assertStrictEquals(pendingProposalsOf([...mine(2), theirs, approved, hosts]), 2);
+	assertStrictEquals(pendingProposalsOf([]), 0);
+});
+
+Deno.test("proposerHasRoom — an attendee holds three waiting slots and not four", () => {
+	const round = (ps: RescheduleProposal[]): EventReschedule => ({
+		...voting(ps),
+		status: "collecting",
+	});
+	assert(proposerHasRoom(round(mine(RESCHEDULE_ATTENDEE_PROPOSALS_MAX - 1)), false));
+	assertFalse(proposerHasRoom(round(mine(RESCHEDULE_ATTENDEE_PROPOSALS_MAX)), false));
+	// One answered frees a place: the quota is on slots WAITING on the host, not on slots ever offered.
+	const answered = mine(RESCHEDULE_ATTENDEE_PROPOSALS_MAX).map((p, i) =>
+		i === 0 ? { ...p, approved: true } : p
+	);
+	assert(proposerHasRoom(round(answered), false));
+});
+
+Deno.test("proposerHasRoom — the host is outside the quota, and a closed round starts afresh", () => {
+	const full = {
+		...voting(mine(RESCHEDULE_ATTENDEE_PROPOSALS_MAX)),
+		status: "collecting" as const,
+	};
+	assert(proposerHasRoom(full, true));
+	assert(proposerHasRoom({ ...full, status: "withdrawn" }, false));
+	assert(proposerHasRoom({ ...full, status: "lapsed" }, false));
+});
+
+Deno.test("slotRefusal — a replacement keeps the event's length; nothing runs past the ceiling", () => {
+	const start = NOW + 48 * HOUR;
+	const end = start + HOUR;
+	assertStrictEquals(slotRefusal(start, end, start + 24 * HOUR, end + 24 * HOUR), null);
+	assertStrictEquals(slotRefusal(start, end, start, end + MINUTE), "duration_changed");
+	assertStrictEquals(slotRefusal(start, end, start, end - MINUTE), "duration_changed");
+	// A day-long event moves; one a minute longer has no slot that may replace it.
+	const day = start + RESCHEDULE_SLOT_MAX_MS;
+	assertStrictEquals(slotRefusal(start, day, start + HOUR, day + HOUR), null);
+	assertStrictEquals(
+		slotRefusal(start, day + MINUTE, start + HOUR, day + MINUTE + HOUR),
+		"slot_too_long",
+	);
+	// A changed length is the reason given first, so the person offering it is told what to fix.
+	assertStrictEquals(slotRefusal(start, end, start, start + 3 * 24 * HOUR), "duration_changed");
 });
 // #endregion
 

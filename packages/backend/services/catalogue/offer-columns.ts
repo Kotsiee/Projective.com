@@ -25,6 +25,8 @@ import { MeetingProvider } from "@projective/types/scheduling";
 /** The blueprint columns an offer is read from. */
 export interface OfferBlueprintColumns {
 	stage_template: unknown;
+	/** Optional so a row read before the column existed reads as the column default, fixed. */
+	allow_tiered_intensity?: boolean | null;
 	team_roles: unknown;
 	deliverables: string[] | null;
 	turnaround_days: number | null;
@@ -81,7 +83,12 @@ export function offerFromBlueprint(
 	const teamRoles = parseStoredList(TeamRoleSchema, bp.team_roles);
 	switch (archetype) {
 		case "pipeline":
-			return { archetype, stages, teamRoles };
+			return {
+				archetype,
+				stages,
+				allowTieredIntensity: bp.allow_tiered_intensity === true,
+				teamRoles,
+			};
 		case "session":
 			return { archetype, ...sessionFields(bp), rolling: bp.session_rolling ?? false };
 		case "cohort":
@@ -138,7 +145,11 @@ export function offerColumns(offer: ListingOffer, current: FormArchetype): Recor
 				team_roles: offer.teamRoles,
 			};
 		case "pipeline":
-			return { stage_template: offer.stages, team_roles: offer.teamRoles };
+			return {
+				stage_template: offer.stages,
+				allow_tiered_intensity: offer.allowTieredIntensity,
+				team_roles: offer.teamRoles,
+			};
 		case "session":
 		case "cohort": {
 			const rolling = offer.archetype === "session" && offer.rolling;

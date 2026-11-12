@@ -25,10 +25,13 @@ $$;
 -- OPENS then becomes a `service_inquiry` about that listing; an existing service inquiry without a
 -- subject gains it. A thread already under way between the pair keeps its kind — unified messaging
 -- keeps one record per pair, and a DM cannot carry a subject (`ck_dm_threads_subject_inquiry`).
+--
+-- Answers `{ thread_id, thread_ref }`: the thread and its `cht-` address (Decision #339, ruling N1),
+-- so a caller builds the conversation's URL without a second read.
 CREATE OR REPLACE FUNCTION comms.get_or_create_dm_thread(
     target_user_id uuid,
     p_subject_listing uuid DEFAULT NULL
-) RETURNS uuid
+) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, comms, org, auth
@@ -36,6 +39,7 @@ AS $$
 DECLARE
     v_current_user_id uuid := auth.uid();
     v_thread_id uuid;
+    v_ref text;
 BEGIN
     IF v_current_user_id IS NULL THEN
         RAISE EXCEPTION 'get_or_create_dm_thread: no acting user' USING ERRCODE = '42501';
@@ -61,7 +65,7 @@ BEGIN
     -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
     -- thread (unified messaging, one record per pair); a group and an entity channel are not.
     PERFORM comms.fn_lock_dm_pair(v_current_user_id, target_user_id);
-    SELECT t.id INTO v_thread_id
+    SELECT t.id, t.ref INTO v_thread_id, v_ref
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_current_user_id
     JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = target_user_id
@@ -75,7 +79,7 @@ BEGIN
                SET subject_listing_id = p_subject_listing
              WHERE t.id = v_thread_id AND t.kind = 'service_inquiry' AND t.subject_listing_id IS NULL;
         END IF;
-        RETURN v_thread_id;
+        RETURN jsonb_build_object('thread_id', v_thread_id, 'thread_ref', v_ref);
     END IF;
 
     INSERT INTO comms.dm_threads (created_by_user_id, kind, subject_listing_id)
@@ -84,13 +88,13 @@ BEGIN
         CASE WHEN p_subject_listing IS NULL THEN 'dm' ELSE 'service_inquiry' END::comms.conversation_kind,
         p_subject_listing
     )
-    RETURNING id INTO v_thread_id;
+    RETURNING id, ref INTO v_thread_id, v_ref;
 
     
     INSERT INTO comms.dm_participants (thread_id, user_id)
     VALUES (v_thread_id, v_current_user_id), (v_thread_id, target_user_id);
 
-    RETURN v_thread_id;
+    RETURN jsonb_build_object('thread_id', v_thread_id, 'thread_ref', v_ref);
 END;
 $$;
 
@@ -1177,6 +1181,7 @@ DECLARE
     v_me       uuid := auth.uid();
     v_body     text := btrim(COALESCE(p_body, ''));
     v_thread   uuid;
+    v_ref      text;
     v_opens    boolean := false;
     v_restored integer := 0;
     v_mutual   boolean;
@@ -1215,7 +1220,7 @@ BEGIN
 
     -- The same pair lock as comms.get_or_create_dm_thread: the two doors open the same thread.
     PERFORM comms.fn_lock_dm_pair(v_me, p_recipient);
-    SELECT t.id INTO v_thread
+    SELECT t.id, t.ref INTO v_thread, v_ref
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_me
     JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = p_recipient
@@ -1226,7 +1231,7 @@ BEGIN
     IF v_thread IS NULL THEN
         INSERT INTO comms.dm_threads (created_by_user_id)
         VALUES (v_me)
-        RETURNING id INTO v_thread;
+        RETURNING id, ref INTO v_thread, v_ref;
 
         INSERT INTO comms.dm_participants (thread_id, user_id)
         VALUES (v_thread, v_me), (v_thread, p_recipient);
@@ -1282,6 +1287,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'thread_id', v_thread,
+        'thread_ref', v_ref,
         'message_id', v_message,
         'opened', v_opens,
         'routed_to', v_routed
@@ -1928,4 +1934,179 @@ COMMENT ON FUNCTION comms.create_entity_channel(text, uuid, text, text) IS
 
 COMMENT ON FUNCTION comms.archive_entity_channel(uuid) IS
 'Archive an entity channel (archived_at; never deleted). The creator or a manage_settings holder; the default channel is refused (55000); a channel the caller cannot see is P0002. SECURITY DEFINER because dm_threads carries no client UPDATE policy (Decision #306).';
+-- #endregion
+
+-- #region The inbox read model and project-stamped DMs (Decision #339, ruling N1)
+-- One conversation per pair, drawn the same in the inbox and in its project (CAS §6.1). The two message
+-- stores stay separate; what unifies them is the thread's `cht-` address (dm_threads.ref, 00001890), a
+-- summary of each thread's newest message that the inbox reads instead of every thread's messages,
+-- and the project a DM is about, written on the message itself.
+
+-- AFTER INSERT on comms.dm_messages: point the thread's summary at this message when it is newer than
+-- the one recorded, by (created_at, id), the order every reader of a thread sorts by, so a seed or any
+-- out-of-order insert never moves it back. A message inserted already deleted is never a tail.
+-- SECURITY DEFINER because the sender's role holds no UPDATE on comms.dm_threads (00002520) and
+-- trg_dm_threads_derived refuses it these columns; the owner passes both.
+CREATE OR REPLACE FUNCTION comms.tg_dm_thread_summary()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.deleted_at IS NULL THEN
+        UPDATE comms.dm_threads t
+           SET last_message_at = NEW.created_at,
+               last_message_id = NEW.id
+         WHERE t.id = NEW.thread_id
+           AND (t.last_message_at IS NULL
+                OR (NEW.created_at, NEW.id) > (t.last_message_at, t.last_message_id));
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.tg_dm_thread_summary() IS
+'AFTER INSERT trigger on comms.dm_messages: advances comms.dm_threads.last_message_at / last_message_id to the new message when (created_at, id) is newer than the recorded pair, never backwards. Skips a message inserted already deleted.';
+
+-- BEFORE INSERT on comms.dm_messages: the project a DM is about, so the project's Private Messages
+-- group draws the same thread the inbox opens (CAS M1). A supplied project_id is kept only when the
+-- sender and every other undeleted participant are parties to it (projects.fn_engaged_projects, the
+-- predicate comms.fn_dm_protected_project derives with). Otherwise it is derived, a protected project
+-- the sender and another member share, or left NULL, so no client can file a DM under a project it
+-- is not on. An entity channel is its entity's room, never a project's conversation, and carries
+-- none. Its trigger sorts before trg_dm_messages_mask_pii (00001840), so the mask reads the project
+-- settled here.
+CREATE OR REPLACE FUNCTION comms.tg_bind_dm_project()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM comms.dm_threads t
+         WHERE t.id = NEW.thread_id AND t.kind = 'entity_channel'
+    ) THEN
+        NEW.project_id := NULL;
+        RETURN NEW;
+    END IF;
+
+    IF NEW.project_id IS NOT NULL AND NOT (
+        EXISTS (
+            SELECT 1 FROM projects.fn_engaged_projects(NEW.sender_user_id) e
+             WHERE e.project_id = NEW.project_id
+        )
+        AND EXISTS (
+            SELECT 1 FROM comms.dm_participants o
+             WHERE o.thread_id = NEW.thread_id
+               AND o.user_id <> NEW.sender_user_id
+               AND o.deleted_at IS NULL
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM comms.dm_participants o
+             WHERE o.thread_id = NEW.thread_id
+               AND o.user_id <> NEW.sender_user_id
+               AND o.deleted_at IS NULL
+               AND NOT EXISTS (
+                   SELECT 1 FROM projects.fn_engaged_projects(o.user_id) e
+                    WHERE e.project_id = NEW.project_id
+               )
+        )
+    ) THEN
+        NEW.project_id := NULL;
+    END IF;
+
+    IF NEW.project_id IS NULL THEN
+        NEW.project_id := comms.fn_dm_protected_project(NEW.thread_id, NEW.sender_user_id, NULL);
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.tg_bind_dm_project() IS
+'BEFORE INSERT trigger on comms.dm_messages: keeps a supplied project_id only when the sender and every other undeleted participant are parties to that project, else derives one with comms.fn_dm_protected_project(thread, sender, NULL), else NULL. An entity-channel message carries none. Fires before trg_dm_messages_mask_pii.';
+
+-- The inbox's previews in one round trip (RED D-04, CAS §6.1.1): the newest p_k messages of each listed
+-- thread, newest first, threads in the order given. SECURITY INVOKER, so the dm_threads and dm_messages
+-- read policies are the guard and a thread the caller is not in returns nothing. k = 1 reads through
+-- the thread summary (dm_threads.last_message_id), falling back to the thread's own newest message
+-- when that one has been deleted since; k > 1 walks idx_dm_messages_thread_recent. p_k is held to
+-- 1..20, the list to its first 200 ids, and a repeated id is read once.
+CREATE OR REPLACE FUNCTION comms.inbox_tails(p_thread_ids uuid[], p_k integer DEFAULT 1)
+RETURNS TABLE (
+    thread_id uuid,
+    id uuid,
+    sender_user_id uuid,
+    body text,
+    has_attachments boolean,
+    is_audio boolean,
+    created_at timestamptz
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_k integer := LEAST(GREATEST(COALESCE(p_k, 1), 1), 20);
+    v_ids uuid[];
+BEGIN
+    v_ids := ARRAY(
+        SELECT u.tid
+          FROM unnest(p_thread_ids[1:200]) WITH ORDINALITY AS u(tid, ord)
+         WHERE u.tid IS NOT NULL
+         GROUP BY u.tid
+         ORDER BY min(u.ord)
+    );
+
+    IF v_k = 1 THEN
+        RETURN QUERY
+        SELECT tail.thread_id, tail.id, tail.sender_user_id, tail.body, tail.has_attachments,
+               tail.is_audio, tail.created_at
+          FROM unnest(v_ids) WITH ORDINALITY AS u(tid, ord)
+          JOIN comms.dm_threads t ON t.id = u.tid
+          CROSS JOIN LATERAL (
+              SELECT m.thread_id, m.id, m.sender_user_id, m.body, m.has_attachments, m.is_audio,
+                     m.created_at
+                FROM comms.dm_messages m
+               WHERE m.id = t.last_message_id AND m.deleted_at IS NULL
+              UNION ALL
+              SELECT f.thread_id, f.id, f.sender_user_id, f.body, f.has_attachments, f.is_audio,
+                     f.created_at
+                FROM (
+                    SELECT m.thread_id, m.id, m.sender_user_id, m.body, m.has_attachments,
+                           m.is_audio, m.created_at
+                      FROM comms.dm_messages m
+                     WHERE m.thread_id = t.id AND m.deleted_at IS NULL
+                     ORDER BY m.created_at DESC, m.id DESC
+                     LIMIT 1
+                ) f
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM comms.dm_messages p
+                    WHERE p.id = t.last_message_id AND p.deleted_at IS NULL
+               )
+          ) tail
+         ORDER BY u.ord;
+        RETURN;
+    END IF;
+
+    RETURN QUERY
+    SELECT m.thread_id, m.id, m.sender_user_id, m.body, m.has_attachments, m.is_audio, m.created_at
+      FROM unnest(v_ids) WITH ORDINALITY AS u(tid, ord)
+      CROSS JOIN LATERAL (
+          SELECT d.thread_id, d.id, d.sender_user_id, d.body, d.has_attachments, d.is_audio,
+                 d.created_at
+            FROM comms.dm_messages d
+           WHERE d.thread_id = u.tid AND d.deleted_at IS NULL
+           ORDER BY d.created_at DESC, d.id DESC
+           LIMIT v_k
+      ) m
+     ORDER BY u.ord, m.created_at DESC, m.id DESC;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.inbox_tails(uuid[], integer) IS
+'The newest p_k (1..20) undeleted messages of each listed thread (first 200 ids), newest first, threads in the order given. SECURITY INVOKER: RLS on dm_threads / dm_messages is the guard, so a non-participant gets no rows. k = 1 reads through dm_threads.last_message_id.';
 -- #endregion

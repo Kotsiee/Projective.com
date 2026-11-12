@@ -74,7 +74,7 @@ GRANT EXECUTE ON FUNCTION projects.delete_stage (uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.reorder_stages (uuid, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.set_project_status (uuid, public.project_status, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.sanitize_single_room_topology (uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION projects.move_ticket (uuid, public.ticket_status, uuid, integer, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.move_ticket (uuid, public.ticket_status, uuid, integer, timestamptz, boolean) TO authenticated;
 -- The transactional write batch (DL S7) is SECURITY INVOKER: every statement it runs meets the
 -- caller's own RLS and grants, and every RPC it calls is one of the doors above. Its reference
 -- resolver is pure and is called by it as the caller, so the caller needs it too.
@@ -164,6 +164,8 @@ GRANT EXECUTE ON FUNCTION comms.is_dm_participant (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.can_read_message (text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.get_or_create_dm_thread (uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.dm_thread_roster (uuid[]) TO authenticated;
+-- The inbox's previews (Decision #339, ruling N1). SECURITY INVOKER: RLS answers for the caller.
+GRANT EXECUTE ON FUNCTION comms.inbox_tails (uuid[], integer) TO authenticated;
 -- community.fn_feedback_idea_screen (INVOKER) masks a feedback idea through it; it reads no table.
 GRANT EXECUTE ON FUNCTION comms.mask_pii (text) TO authenticated;
 -- #endregion
@@ -1278,6 +1280,15 @@ REVOKE ALL ON FUNCTION finance.fn_apply_pot_allocations (uuid, bigint, text, tex
 REVOKE ALL ON FUNCTION finance.fn_can_manage_pots (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_pot_movements_append_only () FROM PUBLIC, anon, authenticated, service_role;
 
+-- FINANCE_BUILD_PROMPTS DB3: the scheduler's two sweeps (registered by name in 00005060), the one KYB
+-- predicate (any subject's verification, so never a client's to ask) and the open-dispute refusal.
+REVOKE ALL ON FUNCTION finance.fn_expire_spend_approvals (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_expire_spend_approvals (integer) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_sweep_idempotency_keys (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_sweep_idempotency_keys (integer) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_kyb_missing (text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_assert_no_open_dispute (uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 
 -- --- files: asset management ---
 -- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
@@ -1437,6 +1448,10 @@ REVOKE ALL ON FUNCTION projects.fund_paid_revision (uuid) FROM PUBLIC, anon, aut
 GRANT EXECUTE ON FUNCTION projects.fund_paid_revision (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fn_notify_revision (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_stage_intensity_terms () FROM PUBLIC, anon, authenticated, service_role;
+-- Intensity pricing (00001120, Decision #414): read only inside the definer money doors.
+REVOKE ALL ON FUNCTION projects.fn_intensity_price_multiplier (text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_ticket_stage_price (jsonb, bigint, projects.project_stages) FROM PUBLIC, anon, authenticated, service_role;
 
 -- --- membership doors (00001135) ---
 
@@ -1786,6 +1801,9 @@ EXECUTE ON FUNCTION scheduling.fn_expire_discovery_calls (integer) TO service_ro
 REVOKE ALL ON FUNCTION scheduling.fn_lock_call (uuid) FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.fn_notify_call (scheduling.discovery_calls, uuid, text, text, text)
+FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION scheduling.fn_charge_call_no_show (scheduling.discovery_calls, uuid, uuid, timestamptz)
 FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.confirm_discovery_call (uuid) FROM public, anon;

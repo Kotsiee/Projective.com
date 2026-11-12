@@ -7,7 +7,7 @@ import {
 	type ProjectCreateFormat,
 	ProjectVisibility,
 } from "./create.ts";
-import { ProjectFormat, ProjectStatus } from "./summary.ts";
+import { EngagementKind, ProjectFormat, ProjectStatus } from "./summary.ts";
 import { hasRichTextProse } from "../richtext/plain-text.ts";
 import { AutoFundMode } from "../finance/billing.ts";
 
@@ -756,6 +756,12 @@ export const ProjectSetupSchema = z.object({
 	onboardedCount: z.number().int().min(0).default(0),
 	/** Re-derived server-side; never trusted from the client (root CLAUDE.md §6). */
 	viewerIsClient: z.boolean(),
+	/**
+	 * A client `project`, or a `service` the client bought (`source_blueprint_id` set) — read-only.
+	 * On a service the client adds no stage (Decision #421, `canAddStage`), so the stage list offers
+	 * none. Ignored on a patch, like `onboardedCount`.
+	 */
+	kind: EngagementKind.default("project"),
 	/**
 	 * A personal management project (`projects.projects.is_personal`, Decision #192) — what an
 	 * under-18 account creates: one person, no money, never listed. Its form has no pricing, hiring or
@@ -1657,6 +1663,7 @@ export function reconcileSetup(
 		// below it exist to refuse.
 		onboardedCount: base.onboardedCount ?? 0,
 		viewerIsClient: patch.viewerIsClient ?? base.viewerIsClient ?? false,
+		kind: base.kind ?? "project",
 		// From the BASE alone: it is the paying business's setting, not something the form edits.
 		autoFundInherited: base.autoFundInherited ?? null,
 		// From the BASE alone, like `viewerIsClient`'s authority: a fact about the row a patch cannot assert.

@@ -22,6 +22,7 @@ import {
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_EMBEDDINGS,
 	DEV_FILE_ACCESSES,
+	DEV_ENGAGEMENT_ORIGINS,
 	DEV_FUNDING_STATES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
@@ -659,6 +660,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.fundingState}
 						disabled={!o.enabled}
 						onChange={(fundingState) => patchDevContext({ fundingState })}
+					/>
+				</Field>
+
+				{
+					/* Who authors stages (Decision #421): a client project's client, or a service's seated
+				    freelancer. No fixture is a service, so `Service` is the only runtime route to the rule;
+				    the server still refuses from the real `source_blueprint_id`. */
+				}
+				<Field label="Engagement origin" hint="Add stage · board, timeline, lane">
+					<Segment
+						name="Engagement origin"
+						options={DEV_ENGAGEMENT_ORIGINS}
+						value={o.engagementOrigin}
+						disabled={!o.enabled}
+						onChange={(engagementOrigin) => patchDevContext({ engagementOrigin })}
 					/>
 				</Field>
 

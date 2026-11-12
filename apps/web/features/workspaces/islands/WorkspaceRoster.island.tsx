@@ -34,6 +34,7 @@ import {
 } from "../core/workspace-state.ts";
 import { displayZoom, gridColWidth, workspaceZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import {
 	filterRoster,
 	isFiltered,
@@ -390,6 +391,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #endregion
 
 	const bodyRef = useRef<HTMLDivElement>(null);
+	const searchRef = useRef<HTMLDivElement>(null);
+	useSearchTarget({ role: "page", scopeRef: searchRef });
 
 	// `Ctrl`+wheel / pinch over the collection scales it, the same gesture the File Explorer answers —
 	// so the reader reaches the density without travelling to the footer band at all.
@@ -437,7 +440,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 								aria-label={`${copy.Plural} controls`}
 								aria-controls={BODY_ID}
 							>
-								<div class="fx-toolbar__search">
+								<div class="fx-toolbar__search" ref={searchRef}>
 									<InputText
 										id={SEARCH_ID}
 										value={search}

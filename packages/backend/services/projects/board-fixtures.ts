@@ -42,7 +42,9 @@ import {
 	type TicketPaymentScope,
 } from "@projective/types/projects";
 import type { FundingStatus } from "@projective/types/finance";
+import type { CreateCategory } from "@projective/types/org";
 import { deriveFundingState, rollupFundingState } from "../finance/funding-state.ts";
+import { CLIENT_STAGE_TERMS, type StageTerms } from "./stage-terms.ts";
 
 /**
  * The stub path's `deriveFundingState`, read off the card's own facts: the corpus has no
@@ -246,6 +248,34 @@ function stageEconomics(stage: StageChannel): {
 	};
 }
 
+const TIERED_SERVICE_SLUGS: ReadonlySet<string> = new Set(["prj-xmvjo9wga8"]);
+
+const LOCKED_INTENSITIES: readonly TicketIntensity[] = ["standard", "high", "standard", "low"];
+
+const CREATE_CATEGORIES: readonly (CreateCategory | null)[] = ["advise", "create", "create", "test", null];
+
+function fixtureStageTerms(detail: ProjectDetail, stage: StageChannel): StageTerms {
+	const createCategory = CREATE_CATEGORIES[stage.order % CREATE_CATEGORIES.length];
+	if (detail.kind !== "service" || detail.format !== "pipeline") {
+		return { ...CLIENT_STAGE_TERMS, createCategory };
+	}
+	if (TIERED_SERVICE_SLUGS.has(detail.slug)) {
+		const unit = stageEconomics(stage).unitPriceCents;
+		return {
+			...CLIENT_STAGE_TERMS,
+			highPriceCents: stage.order === 1 && unit !== null ? Math.round(unit * 1.8) : null,
+			createCategory,
+		};
+	}
+	return {
+		defaultIntensity: LOCKED_INTENSITIES[stage.order % LOCKED_INTENSITIES.length],
+		intensityLocked: true,
+		lowPriceCents: null,
+		highPriceCents: null,
+		createCategory,
+	};
+}
+
 /** One stage's scheduled window, in the shape {@link BoardStageRef} carries. */
 interface StageWindow {
 	startAt: string | null;
@@ -356,6 +386,7 @@ function completeUpTo(
 /** The stages a ticket requires, from `startOrder` onward, capped — feeds the composer's pipeline. */
 function stageRefs(
 	stages: StageChannel[],
+	terms: ReadonlyMap<string, StageTerms>,
 	startOrder: number,
 	count: number,
 	intensity: TicketIntensity,
@@ -366,6 +397,8 @@ function stageRefs(
 	const chosen = slice.length > 0 ? slice : stages.slice(0, 1);
 	return chosen.map((s, i) => {
 		const econ = stageEconomics(s);
+		const term = terms.get(s.id) ?? CLIENT_STAGE_TERMS;
+		const own = term.intensityLocked ? term.defaultIntensity : intensity;
 		// A middle stage occasionally runs alongside the one before it, so the composer's execution
 		// bands (and the detail modal's "at the same time" line) have a real case to render.
 		const parallel = i > 0 && hash(`${ticketId}:${s.id}:par`) % 5 === 0;
@@ -376,10 +409,10 @@ function stageRefs(
 			status: s.status,
 			required: true,
 			brief: econ.description,
-			intensity,
+			intensity: own,
 			tasks: taskList(seed + i, 2 + ((seed >>> (i + 1)) % 2), 0, `${ticketId}-s${i}`),
 			parallel,
-			costCents: stageCostCents(econ.unitPriceCents, intensity),
+			costCents: stageCostCents(econ.unitPriceCents, own, term),
 			unitPriceCents: econ.unitPriceCents,
 		};
 	});
@@ -964,6 +997,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 	let n = 0;
 	const nextId = () => `${detail.slug}-t${++n}`;
 	const intensityOf = (h: number): TicketIntensity => INTENSITIES[h % INTENSITIES.length];
+	const terms = new Map(stages.map((s) => [s.id, fixtureStageTerms(detail, s)]));
 
 	// 1) Project backlog pool (the New bookend) — some are title-only drafts (the purchasing gate demo).
 	const backlogCount = 3 + (seed % 3);
@@ -983,7 +1017,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 			intensity,
 			client,
 			owner: ownerOf(h),
-			stages: stageRefs(stages, 0, 1 + (h % 3), intensity, h, id),
+			stages: stageRefs(stages, terms, 0, 1 + (h % 3), intensity, h, id),
 		}));
 	}
 	// A frozen (reported_hidden) workload-report card, resting in New.
@@ -1002,7 +1036,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 			intensity: "high",
 			client,
 			owner: ownerOf(h),
-			stages: stageRefs(stages, 0, 1, "high", h, id),
+			stages: stageRefs(stages, terms, 0, 1, "high", h, id),
 			frozen: true,
 		}));
 	}
@@ -1029,7 +1063,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 					intensity,
 					client,
 					owner: ownerOf(h),
-					stages: stageRefs(stages, stage.order, span, intensity, h, id),
+					stages: stageRefs(stages, terms, stage.order, span, intensity, h, id),
 				}));
 			}
 			continue;
@@ -1056,7 +1090,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 				intensity,
 				client,
 				owner: ownerOf(h),
-				stages: stageRefs(stages, stage.order, span, intensity, h, id),
+				stages: stageRefs(stages, terms, stage.order, span, intensity, h, id),
 				revision: status === "in_review" && h % 4 === 0,
 			}));
 		}
@@ -1081,7 +1115,7 @@ function buildCards(detail: ProjectDetail): BoardCard[] {
 				intensity,
 				client,
 				owner: ownerOf(h),
-				stages: stageRefs(stages, last.order, 1, intensity, h, id),
+				stages: stageRefs(stages, terms, last.order, 1, intensity, h, id),
 			}));
 		}
 	}
@@ -1192,6 +1226,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 			assignmentMode: econ.assignmentMode,
 			maxConcurrentIntensity: econ.maxConcurrentIntensity,
 			chainReaction: true,
+			...fixtureStageTerms(detail, s),
 			startAt: window.startAt,
 			endAt: window.endAt,
 			dependsOnStageId: window.dependsOnStageId,
@@ -1210,6 +1245,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		currency: "USD",
 		view,
 		viewerIsClient: detail.viewerIsClient,
+		engagementKind: detail.kind,
 		viewerStageIds,
 		columns,
 		cards,

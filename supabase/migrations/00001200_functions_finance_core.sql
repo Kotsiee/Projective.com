@@ -465,8 +465,9 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects;
 -- also when a concurrent hold commits first (uq_escrows_ticket_base_held, #189: nothing is debited). The
 -- payer is the project's client business or, when the project has none, its owner as an INDIVIDUAL
 -- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
--- escrow row is written: fn_wallet_debit is a silent no-op on a missing wallet, so inserting first
--- minted held money nobody paid. On success the payee and the client are told (`escrow.funded`).
+-- escrow row is written, so a missing or short wallet is a PF402 refusal rather than fn_wallet_debit's
+-- PW404 or a negative balance after an escrow row nobody paid for. On success the payee and the client
+-- are told (`escrow.funded`).
 CREATE OR REPLACE FUNCTION finance.fn_hold_ticket_escrow(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -491,7 +492,7 @@ BEGIN
     SELECT
         t.current_stage_id AS stage_id,
         t.current_assignee_id AS payee_id,
-        COALESCE(t.unit_price_cents, ps.unit_price_cents) AS amount,
+        projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) AS amount,
         p.client_business_id AS payer,
         p.owner_user_id AS spender,
         p.currency AS currency,
@@ -786,8 +787,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 
 -- The platform fee rate that governs ONE escrow: its payer's active negotiated rate, else
 -- `security.platform_params.platform_fee_bp` (5%, Decision #2) — via finance.fn_effective_platform_fee_bp,
--- so a release and a fair-exit split charge the same rate. plpgsql, not sql: the resolver it calls is
--- declared in a later file (00001220), and a sql body is validated at CREATE.
+-- so a release and a fair-exit split charge the same rate, and an unset fee raises (PX500) rather than
+-- releasing fee-free. plpgsql, not sql: the resolver it calls is declared in a later file (00001220),
+-- and a sql body is validated at CREATE.
 CREATE OR REPLACE FUNCTION finance.fn_escrow_fee_bp(p_payer_business_id uuid, p_payer_user_id uuid)
 RETURNS integer
 LANGUAGE plpgsql
@@ -796,20 +798,38 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-    RETURN COALESCE(
-        CASE WHEN p_payer_business_id IS NOT NULL
-             THEN finance.fn_effective_platform_fee_bp('business', p_payer_business_id)
-             ELSE finance.fn_effective_platform_fee_bp('user', p_payer_user_id)
-        END,
-        0
-    );
+    RETURN CASE WHEN p_payer_business_id IS NOT NULL
+                THEN finance.fn_effective_platform_fee_bp('business', p_payer_business_id)
+                ELSE finance.fn_effective_platform_fee_bp('user', p_payer_user_id)
+           END;
+END;
+$$;
+
+-- Refuse to pay out an escrow while a dispute stands against it (PD409 `dispute_open`): the one check
+-- every release path makes through finance.fn_escrow_has_open_dispute (00001260, Decision #212), so a
+-- release, a fair-exit split or a forfeit waits for the ruling (FINANCE_AUDIT L9). The dispute's own
+-- ruling pays through the seat primitives, which do not ask. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_assert_no_open_dispute(p_escrow_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF finance.fn_escrow_has_open_dispute(p_escrow_id) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PD409',
+            MESSAGE = 'dispute_open: this payment is held while a dispute about it is open; it is paid or refunded by the ruling',
+            DETAIL = pg_catalog.jsonb_build_object('escrow_id', p_escrow_id)::text;
+    END IF;
 END;
 $$;
 
 -- Release all held escrow for a ticket to its recorded payee (fee + bonus applied, splits for teams).
 -- An individual payee is credited to the person wallet they actually hold (fn_person_wallet_type),
--- created if missing: a hardcoded 'freelancer' credit onto a person who holds only a 'user' wallet was
--- a silent no-op in fn_wallet_credit, and the released money vanished.
+-- created if missing, because fn_wallet_credit raises PW404 for a wallet that does not exist.
+-- An escrow with an open dispute is not released (PD409 `dispute_open`, fn_assert_no_open_dispute).
 -- Idempotent under concurrency (Decision #188): the ticket row, then each held escrow, is locked, and
 -- the flip to 'released' is conditional on the row still being 'held'. A second caller racing on the
 -- same ticket waits on the lock, then finds nothing held and credits nothing.
@@ -839,6 +859,7 @@ BEGIN
         ORDER BY id
         FOR UPDATE
     LOOP
+        PERFORM finance.fn_assert_no_open_dispute(r.id);
         v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
         v_fee := (r.amount_cents * v_fee_bp) / 10000;
         v_payout := r.amount_cents + COALESCE(r.deadline_bonus_cents, 0) - v_fee;
@@ -1031,7 +1052,8 @@ $$;
 
 -- Pays the payee p_bp basis-points of each held escrow's principal (net of the platform fee) and
 -- refunds the unearned remainder to the client (payer) business wallet. Locked and guarded exactly as
--- fn_release_ticket_escrow (Decision #188), so a racing release or second split settles nothing.
+-- fn_release_ticket_escrow (Decision #188), so a racing release or second split settles nothing, and
+-- refused the same way while a dispute is open (PD409, fn_assert_no_open_dispute).
 CREATE OR REPLACE FUNCTION finance.fn_fair_exit_release(p_ticket_id uuid, p_bp integer)
 RETURNS void AS $$
 DECLARE
@@ -1058,6 +1080,7 @@ BEGIN
         ORDER BY id
         FOR UPDATE
     LOOP
+        PERFORM finance.fn_assert_no_open_dispute(r.id);
         SELECT s.fee_cents, s.payout_cents, s.refund_cents INTO v_fee, v_payout, v_refund
           FROM finance.fn_fair_exit_split(
                    r.amount_cents, p_bp, finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id)) s;

@@ -14,6 +14,8 @@ import {
 	type SeatHold,
 	seatCount,
 	type SessionWorkspace,
+	type WaitlistPlace,
+	WaitlistStatusSchema,
 } from "@projective/types/projects";
 import type { DisputeStatus } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
@@ -170,6 +172,32 @@ export class SessionBackendService {
 			},
 			firstStartsAt: offer.firstStartsAt,
 		}, { status: 201 });
+	}
+
+	/**
+	 * Queue the caller on a group-session listing's waitlist (`projects.waitlists`, Decision #424).
+	 *
+	 * Written under the caller's JWT, so the "Join waitlist" policy (`user_id = auth.uid()`) is the gate.
+	 * Idempotent: the `(blueprint, user)` unique key turns a repeat into a read of the existing place,
+	 * reported as `already` with whatever status it has reached.
+	 */
+	static async joinWaitlist(blueprintId: string, actor: ReadActor): Promise<ServiceResult<WaitlistPlace>> {
+		if (!actor.accessToken || !actor.userId) return signedOut();
+		if (!isProjectsBackendLive()) {
+			return fail(503, { message: "Joining a waitlist needs the live database." });
+		}
+		const waitlists = getUserClient(actor.accessToken).schema("projects").from("waitlists");
+		const { error } = await waitlists.insert({ service_blueprint_id: blueprintId, user_id: actor.userId });
+		if (!error) return ok({ status: "waiting", already: false }, { status: 201 });
+		if (error.code !== "23505") return refusal(error);
+		const { data, error: readError } = await waitlists
+			.select("status")
+			.eq("service_blueprint_id", blueprintId)
+			.eq("user_id", actor.userId)
+			.maybeSingle();
+		if (readError) return refusal(readError);
+		const status = WaitlistStatusSchema.safeParse(data?.status);
+		return ok({ status: status.success ? status.data : "waiting", already: true });
 	}
 
 	/**

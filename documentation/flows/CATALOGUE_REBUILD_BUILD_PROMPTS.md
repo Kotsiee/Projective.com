@@ -10,31 +10,49 @@
 > prompt whose flag you ruled differently must follow your ruling, not the text written here.
 > **Ruled 2026-10-14:** #217 is RESOLVED, and every flag was accepted except **m**, where charts
 > escalate SVG → Canvas2D by density. C9 has been updated to match.
+>
+> **Status 2026-11-12 (re-verified in code at `8a3fd595`):** all 18 prompts are done. They landed
+> on 2026-10-14 and 2026-10-15 in `648e1b99`, `a5004e9d`, `5bff7663` and `d70c417a`. Later
+> decisions reshaped parts of the result (#220, #221, #309, #329), so re-running a prompt now would
+> redo or break shipped work.
 
 ---
 
 ## 0. Run order
 
+Re-verified in code 2026-11-12 at `8a3fd595`: every prompt below has landed (✅). Three divergences
+since then:
+
+- C11 never split out `listing-table.css`. The table view (`components/listings/ListingsTable.tsx`)
+  is styled from `console.css`.
+- C10's `AvailabilityScheduler` now backs the shared availability modal and studio in
+  `features/calendar` (Decision #329).
+- #221 added a hard delete beside archive.
+
+Stale premise: the standard header's `:focus-visible` ring rule and C17 step 4.8's ring assertion
+contradict the no-focus-ring convention. The owner removed focus rings product-wide in `152a27a9`
+(2026-09-08), before these prompts were written.
+
 | # | Prompt | Depends on | Layer |
 | :-- | :-- | :-- | :-- |
-| C0 | Decision #217, docs scaffolding, rulings | — | docs |
-| C1 | Catalogue Zod contracts (URL, archetype, media, offer, SEO, analytics, clients, batch) | C0 | types |
-| C2 | Scheduling recurrence engine (RRULE, evaluator, describe, templates) | C0 | types |
-| C3 | Catalogue, comms and search schema, in place | C1 | db |
-| C4 | Scheduling presets, occurrences and gate branch, in place | C2, C3 | db |
-| C5 | Analytics rollups, view events and the client-pipeline RPC | C3 | db |
-| C6 | `CatalogueBackendService` extension + shared card adapter | C3 | backend |
-| C7 | `ScheduleBackendService` presets, compile and horizon cron | C4 | backend |
-| C8 | Analytics and clients services and routes | C5, C6 | backend |
-| C9 | `@projective/ui`: `ShowcaseGrid`, charts, `MoneyInput`, `NumberStepper`, `DurationPicker`, `TagCombobox`; profile migration | C1 | ui |
-| C10 | `@projective/ui/calendar`: `AvailabilityScheduler` compound | C2 | ui |
-| C11 | Teardown + console (`/catalogue`): slots, views, grid, batch, quick-create | C6, C9 | web |
-| C12 | Workspace shell + Edit part 1 (media, basics, SEO, inspector) | C11 | web |
-| C13 | Edit part 2: archetype offers, pricing, intake, availability | C7, C10, C12 | web |
-| C14 | Preview tab + `/catalogue/[id]/simulate` | C12 | web |
-| C15 | Analytics views (console + item) | C8, C9, C12 | web |
-| C16 | Client pipeline + `MiddleNavPanel` client drawer | C8, C12 | web |
-| C17 | Dev Context Switcher axes, integration sweep, Playwright, retire leftovers | all | sweep |
+| C0 ✅ | Decision #217, docs scaffolding, rulings | — | docs |
+| C1 ✅ | Catalogue Zod contracts (URL, archetype, media, offer, SEO, analytics, clients, batch) | C0 | types |
+| C2 ✅ | Scheduling recurrence engine (RRULE, evaluator, describe, templates) | C0 | types |
+| C3 ✅ | Catalogue, comms and search schema, in place | C1 | db |
+| C4 ✅ | Scheduling presets, occurrences and gate branch, in place | C2, C3 | db |
+| C5 ✅ | Analytics rollups, view events and the client-pipeline RPC | C3 | db |
+| C6 ✅ | `CatalogueBackendService` extension + shared card adapter | C3 | backend |
+| C7 ✅ | `ScheduleBackendService` presets, compile and horizon cron | C4 | backend |
+| C8 ✅ | Analytics and clients services and routes | C5, C6 | backend |
+| C9 ✅ | `@projective/ui`: `ShowcaseGrid`, charts, `MoneyInput`, `NumberStepper`, `DurationPicker`, `TagCombobox`; profile migration | C1 | ui |
+| C10 ✅ | `@projective/ui/calendar`: `AvailabilityScheduler` compound | C2 | ui |
+| C11 ✅ | Teardown + console (`/catalogue`): slots, views, grid, batch, quick-create | C6, C9 | web |
+| C12 ✅ | Workspace shell + Edit part 1 (media, basics, SEO, inspector) | C11 | web |
+| C13 ✅ | Edit part 2: archetype offers, pricing, intake, availability | C7, C10, C12 | web |
+| C14 ✅ | Preview tab + `/catalogue/[id]/simulate` | C12 | web |
+| C15 ✅ | Analytics views (console + item) | C8, C9, C12 | web |
+| C16 ✅ | Client pipeline + `MiddleNavPanel` client drawer | C8, C12 | web |
+| C17 ✅ | Dev Context Switcher axes, integration sweep, Playwright, retire leftovers | all | sweep |
 
 C1 and C2 can run in parallel, as can C9 and C10. Everything else is sequential.
 
@@ -78,6 +96,9 @@ row to the newest decisions-*.md + the index, and ask.
 
 ## C0 — Decision #217, docs scaffolding, rulings
 
+> **Status 2026-11-12:** Done in `8009f85d` (plan and prompts) and `648e1b99` (the #217 row,
+> RESOLVED 2026-10-14).
+
 **Goal.** Log the plan's collisions so no later prompt has to pick a side silently. Write no code.
 
 **Do:**
@@ -113,6 +134,9 @@ open with the prompt that will stop on it), and the plan reflects the rulings.
 ---
 
 ## C1 — Catalogue Zod contracts
+
+> **Status 2026-11-12:** Done in `648e1b99` (`packages/types/catalogue/{url,archetype,media,offer,
+> seo,analytics,clients,batch}.ts`; `ListingAvailabilitySchema` is gone).
 
 **Goal.** Build every pure contract the catalogue rebuild consumes, so later prompts never invent
 shapes.
@@ -192,6 +216,9 @@ shapes.
 ---
 
 ## C2 — Scheduling recurrence engine (pure)
+
+> **Status 2026-11-12:** Done in `648e1b99` (`packages/types/scheduling/{rrule,evaluate,describe,
+> templates,presets}.ts`, `rrule.golden.test.ts`).
 
 **Goal.** Build the single, dependency-free availability evaluator (plan §5.2–§5.3).
 
@@ -276,6 +303,8 @@ shapes.
 
 ## C3 — Catalogue, comms and search schema (in place)
 
+> **Status 2026-11-12:** Done in `648e1b99` (probe `supabase/probes/catalogue_rebuild.sql`).
+
 **Goal.** Make the catalogue tables able to store what the workspace edits (plan §8, catalogue
 rows).
 
@@ -350,6 +379,8 @@ only in `live-catalogue.ts` / `live-catalog.ts` lines that C6 owns, listed in th
 
 ## C4 — Scheduling presets, occurrences and gate branch (in place)
 
+> **Status 2026-11-12:** Done in `648e1b99` (probe `supabase/probes/scheduling_presets.sql`).
+
 **Goal.** Store presets and rules, store compiled occurrences, and make the booking gate honour
 them (plan §5.6, §8).
 
@@ -413,6 +444,9 @@ horizon.
 
 ## C5 — Analytics rollups, view events and the client-pipeline RPC
 
+> **Status 2026-11-12:** Done in `648e1b99` (probe `supabase/probes/listing_analytics.sql`;
+> Decision #218).
+
 **Goal.** Make the analytics truthful: a writer for `daily_rollups`, recorded views, and a single
 client-pipeline read.
 
@@ -469,6 +503,9 @@ never queried" rows; quote their ids).
 
 ## C6 — `CatalogueBackendService` extension + shared card adapter
 
+> **Status 2026-11-12:** Done in `648e1b99` (`packages/types/explore/listing-card.ts`,
+> `services/media/showcase-rendition.ts`, `catalogue-stub-client.ts`).
+
 **Goal.** A fat catalogue service over the new schema, and structural preview fidelity (plan §4.6,
 §9.1).
 
@@ -515,6 +552,9 @@ never queried" rows; quote their ids).
 
 ## C7 — `ScheduleBackendService` presets, compile and horizon cron
 
+> **Status 2026-11-12:** Done in `a5004e9d` (`/api/scheduling/presets`,
+> `/api/scheduling/cron/horizon`).
+
 **Goal.** The service layer for presets (plan §5.6, §9.2).
 
 **Read:** `packages/backend/services/scheduling/*` (especially `live-owner-availability.ts`,
@@ -559,6 +599,9 @@ pattern), and Decision #203.
 
 ## C8 — Analytics and clients services and routes
 
+> **Status 2026-11-12:** Done in `a5004e9d` (`CatalogueAnalyticsBackendService`,
+> `CatalogueClientsBackendService`, `/api/catalogue/analytics`, `/api/catalogue/clients`).
+
 **Goal.** Read models for the Analytics and Clients tabs and views (plan §4.7, §9.2).
 
 **Do:**
@@ -598,6 +641,9 @@ order; `client()` refuses a handle with no engagement in scope (404); route cont
 ---
 
 ## C9 — `@projective/ui` primitives + profile migration
+
+> **Status 2026-11-12:** Done in `a5004e9d` (`ShowcaseGrid`, `display/charts`, `MoneyInput`,
+> `NumberStepper`, `DurationPicker`, `TagCombobox`).
 
 **Goal.** Shared primitives the workspace composes, each with a roster row.
 
@@ -662,6 +708,10 @@ de-DE and ja-JP; `TagCombobox` key handling as a pure reducer test.
 
 ## C10 — `AvailabilityScheduler` compound component
 
+> **Status 2026-11-12:** Done in `a5004e9d`
+> (`packages/ui/calendar/islands/availability-scheduler/`). It now backs the shared availability
+> modal (Decision #329; `4b2e69d6`, `08296359`).
+
 **Goal.** The isolated, accessible, direct-manipulation scheduler (plan §5.4), in
 `packages/ui/calendar/islands/availability-scheduler/`.
 
@@ -710,6 +760,10 @@ reuse it).
 ---
 
 ## C11 — Teardown + console (`/catalogue`)
+
+> **Status 2026-11-12:** Done in `a5004e9d` (`CatalogueConsole.island.tsx`, `console-store.ts`,
+> `catalogue-new.contract.test.ts`). It diverged in one place: there is no `listing-table.css`, and
+> `ListingsTable.tsx` is styled from `console.css`.
 
 **Goal.** Replace the console with the plan §3.1 / §4.1 architecture, and keep the Quick-Init
 create.
@@ -776,6 +830,9 @@ the Projects Quick-Init files (`ProjectCreateModal`, `ProjectsLane`) and Decisio
 
 ## C12 — Workspace shell + Edit part 1
 
+> **Status 2026-11-12:** Done in `a5004e9d` (`ListingWorkspace.island.tsx`, `workspace-store.ts`;
+> `ListingEditor.island.tsx` and `catalogue.css` removed).
+
 **Goal.** Build the `/catalogue/[id]` tabbed workspace and the first Edit sections: media, basics
 and SEO, plus the inspector panel with the live card.
 
@@ -839,6 +896,8 @@ and SEO, plus the inspector panel with the live card.
 ---
 
 ## C13 — Edit part 2: archetype offers, pricing, intake, availability
+
+> **Status 2026-11-12:** Done in `a5004e9d` (`core/scheduler-engine.ts`, `offer.css`, `intake.css`).
 
 **Goal.** The dynamic, archetype-aware form body (plan §4.3) and the scheduler integration.
 
@@ -907,6 +966,9 @@ the `SchedulerEngine` type and one end-to-end evaluate.
 
 ## C14 — Preview tab + `/catalogue/[id]/simulate`
 
+> **Status 2026-11-12:** Done in `5bff7663`, with `edd9218c`, `faf625a4` and `de549d06` (Decision
+> #219).
+
 **Goal.** A 1:1 buyer simulation without leaving the workspace (plan §4.6 item 3; flag j).
 
 **Read:** `apps/web/features/view/components/EntityViewPage.tsx`, `islands/EntityLane.island.tsx`,
@@ -949,6 +1011,8 @@ and sets `frame-ancestors 'self'`; the scale computation is a pure function.
 
 ## C15 — Analytics views (console + item)
 
+> **Status 2026-11-12:** Done in `d70c417a` (`components/analytics/AnalyticsCanvas.tsx`).
+
 **Goal.** Dual-scope analytics (plan §4.7).
 
 **Do:**
@@ -979,6 +1043,8 @@ definition agreement.
 ---
 
 ## C16 — Client pipeline + `MiddleNavPanel` client drawer
+
+> **Status 2026-11-12:** Done in `d70c417a` (`ClientPipelineBoard.tsx`, `ClientDrawer.island.tsx`).
 
 **Goal.** A grouped client hub with the contextual drawer (plan §3, §4.1, §9.2).
 
@@ -1021,6 +1087,10 @@ focus-target helper); the inquiry opener passes the listing.
 ---
 
 ## C17 — Dev axes, integration sweep, Playwright, retire leftovers
+
+> **Status 2026-11-12:** Done in `d70c417a` (`catalogueAnalytics`, `clientPipeline` and
+> `availabilityConflict` in `dev-seam.ts`; `tests/e2e/catalogue.spec.ts`). The retire grep matches
+> only `.impeccable/` history.
 
 **Goal.** Close every same-change obligation and prove the flow end to end.
 

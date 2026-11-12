@@ -2,11 +2,11 @@ import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
-import { ActionMenu, linkActionItems, linkOpenItem } from "@projective/ui/navigation";
-import type { ExploreEntity } from "@projective/types/explore";
+import { ActionMenu } from "@projective/ui/navigation";
 import { Button } from "@ui/fields/components/Button.tsx";
 import { requestShare, shareAnchor } from "@web/features/share/core/share-request.ts";
 import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
+import { cardMenu, type CardMenuFacts } from "../core/card-menu.ts";
 
 /**
  * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Save**, as one
@@ -23,25 +23,20 @@ import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-s
  * with no backend and are gone (UI gate 11, as Decision #140); hiring into a project lives on the
  * profile's own Add-to-project flow.
  *
- * The cluster is revealed on card hover/focus via CSS. Right-clicking anywhere on the card opens the
- * split Open row (it unfolds Open · Open in new tab · Open in new window) over Copy link · Share ·
- * Save (Decisions #222, #373); there is no kebab, so the menu has no trigger of its own. Dumb island:
- * it fetches internal routes only.
+ * The cluster is revealed on card hover/focus via CSS. Right-clicking anywhere on the card opens
+ * `cardMenu`: the split Open row over Copy link · Share · Save (Decisions #222, #373), then the item's
+ * own verbs and its creator's profile (Decision #422); there is no kebab, so the menu has no trigger
+ * of its own. Dumb island: it fetches internal routes only.
  */
 export default function CardActions(
-	{ title, href, id, type, authed = false }: {
-		/** The card's title — used in share metadata + action labels. */
-		title: string;
-		/** The card's canonical relative href — used to build the absolute share URL. */
-		href: string;
-		/** The item's id — its slug, or a profile's handle (what `/api/saved` takes as `ref`). */
-		id: string;
-		/** The item's Explore type, which decides what kind of save it is. */
-		type: ExploreEntity;
+	{ facts, authed = false }: {
+		/** The card's menu facts (`cardMenuFacts`) — title, href, id, type, service model, owner. */
+		facts: CardMenuFacts;
 		/** Whether the current visitor is signed in (gates Save). */
 		authed?: boolean;
 	},
 ) {
+	const { title, href, id, type } = facts;
 	const status = useSignal(""); // polite aria-live confirmation
 	const kind = savedTypeOf(type);
 	const saved = authed ? savedFlag(kind, id) : null;
@@ -60,19 +55,14 @@ export default function CardActions(
 	const signIn = `/login?redirectTo=${encodeURIComponent(href)}`;
 	const on = saved?.value === true;
 	const root = useRef<HTMLDivElement>(null);
-	const menu = [
-		linkOpenItem({ href, label: "Open", copy: false }),
-		...linkActionItems({
-			href,
-			title,
-			include: ["copy-link", "share", "save"],
-			onShare: () => share(),
-			save: saved ? { saved: on, onToggle: () => void save() } : undefined,
-			onCopied: (ok) => {
-				status.value = ok ? "Link copied" : "Couldn't copy the link";
-			},
-		}),
-	];
+	const menu = cardMenu(facts, {
+		authed,
+		onShare: () => share(),
+		save: saved ? { saved: on, onToggle: () => void save() } : undefined,
+		onCopied: (ok) => {
+			status.value = ok ? "Link copied" : "Couldn't copy the link";
+		},
+	});
 
 	return (
 		<div class="ex-actions" data-stop ref={root}>

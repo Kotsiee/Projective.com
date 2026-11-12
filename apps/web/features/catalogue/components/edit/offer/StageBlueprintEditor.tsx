@@ -11,6 +11,7 @@ import {
 	moveItem,
 	newMilestone,
 	patchItem,
+	type ProblemRow,
 	removeItem,
 } from "../../../core/offer-model.ts";
 import { StageRow } from "./StageRow.tsx";
@@ -21,7 +22,9 @@ export interface StageBlueprintEditorProps {
 	onChange: (stages: readonly Milestone[]) => void;
 	currency: string;
 	baselineMinor: number | null;
-	problemAt?: { index: number; message: string } | null;
+	/** Whether the stages sell at tiered intensity, or each at one fixed intensity and price. */
+	tiered: boolean;
+	problemAt?: ProblemRow | null;
 }
 
 const indexOf = (id: unknown) => Number(String(id).replace("stage:", ""));
@@ -60,7 +63,10 @@ export function StageBlueprintEditor(props: StageBlueprintEditorProps): JSX.Elem
 								stage={stages[i]}
 								currency={props.currency}
 								baselineMinor={props.baselineMinor}
-								problem={props.problemAt?.index === i ? props.problemAt.message : null}
+								tiered={props.tiered}
+								problem={props.problemAt?.index === i && props.problemAt.field !== "tierPrices"
+									? props.problemAt.message
+									: null}
 								onPatch={(patch) => onChange(patchItem(stages, i, patch))}
 								onRemove={() => onChange(removeItem(stages, i))}
 							/>

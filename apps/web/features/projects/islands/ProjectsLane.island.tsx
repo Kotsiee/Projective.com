@@ -13,8 +13,8 @@ import {
 	LaneFooterActions,
 	LaneHead,
 	LaneList,
-	LaneSearch,
 } from "@projective/ui/navigation";
+import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { type CardMenuAction, ProjectCard } from "../components/ProjectCard.tsx";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
 import { LaneTabs } from "../components/LaneTabs.tsx";
@@ -476,7 +476,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 				{canProvide && <LaneTabs view={active.view} onSelect={onSelectView} />}
 
 				<LaneBar>
-					<LaneSearch
+					<LaneSearchField
 						value={queryText.value}
 						placeholder={isServices ? "Search services & clients" : "Search projects"}
 						label="Search"

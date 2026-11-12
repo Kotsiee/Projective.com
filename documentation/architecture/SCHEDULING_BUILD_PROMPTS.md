@@ -25,16 +25,22 @@
 > - SCH-WP12 except S-38 and S-40: S-34, S-35, S-36, S-37 and S-41.
 > - Before Wave 0: S-01, S-26 and S-30.
 >
+> **Re-verified in code on 2026-11-12 at `8a3fd595`** (§0 has the evidence): SCH-WP2 landed in
+> `6882e0be`, and SCH-WP3, SCH-WP4a, SCH-WP4b, SCH-WP5 and SCH-WP8 in `ac19de8f` ("Calendar
+> changes"), as §0.4 amends them, with Decision #392's paid-room guard in `4c15a1b4`. None of the
+> room, sync or presence build has run on a live Microsoft or Zoom account or a real Meet room
+> (#386, #392).
+>
 > **Not done, and placed below:**
 >
 > - SCH-WP1's app half. Nothing calls the two sitting doors, and a seat-holder cannot see a group
->   sitting (SCH-WP7).
-> - S-16's signed-in half (SCH-WP3).
-> - S-38 and S-40 (SCH-WP10).
->
-> `scheduling.fn_expire_discovery_calls`, `scheduling.fn_settle_votes`, the `paid_unavailable`
-> refusal and a reminder producer do not exist yet. The jobs set seeded a dormant job row for each
-> of the first two, and each row registers itself on the first reset after its function exists.
+>   sitting (SCH-WP7, not started).
+> - `scheduling.fn_settle_votes`, so the dormant `scheduling-settle-votes` row is still unregistered
+>   (SCH-WP7). The other dormant row, `scheduling-expire-discovery-calls`, registered with SCH-WP2.
+> - Paid consultations (SCH-WP6, not started: `PAID_CALLS_LIVE` is still `false`).
+> - SCH-WP10's two residues: `.ics` import stays undrawn until a door keeps a file's worth of entries
+>   (C7 (a)), and a team's or business's console calendar keeps its view out of the address, because
+>   the console owns `?view=` (Decision #413). S-40 is superseded by Decision #411.
 >
 > **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file it
 > edits, never a new "fix" file.
@@ -43,15 +49,22 @@
 
 ## 0. Run order & dependencies
 
-| Phase                        | Prompts                       | Why this order                                                                                                                                                                                                                                                                                              |
-| :--------------------------- | :---------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — Containment (P0)**     | ✅ SCH-WP2                    | Paid calls are bookable with no payment (S-02), so they are turned off. Unanswered requests squat free/busy (S-11), so they expire.                                                                                                                                                                         |
-| **2 — The call lifecycle**   | SCH-WP3                       | C3's door matrix makes a discovery call usable end to end (S-10, S-27), with its notices and reminders (S-18). SCH-WP6 and SCH-WP9 build on its doors.                                                                                                                                                      |
-| **3 — Runtime and evidence** | SCH-WP4a → SCH-WP4b → SCH-WP5 | C4. First the token vault and the Fresh + pg_cron runtime (4a). Then rooms on the host's account and calendar sync (4b). Then presence matched by each person's own link (5). This is the evidence SCH-WP8 and SCH-WP9 judge (S-03, S-04, S-19). WP4 is two prompts because each half is a session of work. |
-| **4 — Money rules**          | SCH-WP8 → SCH-WP7 → SCH-WP6   | C5's settlement rules come first, on evidence that now exists (8). Then C2's windows, which route money through the cancel and sweep paths 8 corrected and lift SCH-WP1's group-sitting freeze (7). Then C1's paid consultations, which inherit both through the session rail (6; SDG §4 step 5).           |
-| **5 — Coordination**         | SCH-WP9                       | C6. D5 and D8 stand alone. D7 needs SCH-WP3's no-show door and SCH-WP5's call presence.                                                                                                                                                                                                                     |
-| **6 — Calendar UI**          | SCH-WP10                      | C7, P7 and the rest of SCH-WP12 (S-38, S-40). It is app-only, and it runs last because SCH-WP3 and SCH-WP9 also edit `EventModal`.                                                                                                                                                                          |
-| **Last**                     | SCH-Z1                        | The docs sweep and the audit's status column.                                                                                                                                                                                                                                                               |
+**Re-verified in code 2026-11-12 at `8a3fd595`:** SCH-WP3, SCH-WP4a, SCH-WP4b, SCH-WP5 and SCH-WP8
+landed in `ac19de8f` as §0.4 amends them, with #392's paid-room guard in `4c15a1b4` (each prompt's
+status line names its evidence). SCH-WP10 is built (2026-11-12, Decision #413) as `8851d4dc` on
+branch `claude/sch-wp10-calendar`, which is not yet merged into main; steps 5 and 8 had landed in
+`ac19de8f`, and step 6 was superseded by #411 in `8a3fd595`. SCH-WP9 is built (2026-11-12, Decision #419, which also records D7's ruled weight). SCH-WP7 and
+SCH-WP6 are not started. Runnable now: SCH-WP7 (🧑 at step 6); SCH-WP6 waits on SCH-WP7. None of it has run on a live Microsoft or Zoom account (#386, #392).
+
+| Phase                        | Prompts                                | Why this order                                                                                                                                                                                                                                                                                              |
+| :--------------------------- | :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Containment (P0)**     | ✅ SCH-WP2                             | Paid calls are bookable with no payment (S-02), so they are turned off. Unanswered requests squat free/busy (S-11), so they expire.                                                                                                                                                                         |
+| **2 — The call lifecycle**   | ✅ SCH-WP3                             | C3's door matrix makes a discovery call usable end to end (S-10, S-27), with its notices and reminders (S-18). SCH-WP6 and SCH-WP9 build on its doors.                                                                                                                                                      |
+| **3 — Runtime and evidence** | ✅ SCH-WP4a → ✅ SCH-WP4b → ✅ SCH-WP5 | C4. First the token vault and the Fresh + pg_cron runtime (4a). Then rooms on the host's account and calendar sync (4b). Then presence matched by each person's own link (5). This is the evidence SCH-WP8 and SCH-WP9 judge (S-03, S-04, S-19). WP4 is two prompts because each half is a session of work. |
+| **4 — Money rules**          | ✅ SCH-WP8 → SCH-WP7 → SCH-WP6         | C5's settlement rules come first, on evidence that now exists (8). Then C2's windows, which route money through the cancel and sweep paths 8 corrected and lift SCH-WP1's group-sitting freeze (7). Then C1's paid consultations, which inherit both through the session rail (6; SDG §4 step 5).           |
+| **5 — Coordination**         | ✅ SCH-WP9                             | C6. D5 and D8 stand alone. D7 needs SCH-WP3's no-show door and SCH-WP5's call presence.                                                                                                                                                                                                                     |
+| **6 — Calendar UI**          | ✅ SCH-WP10                            | C7, P7 and the rest of SCH-WP12 (S-38, S-40). It is app-only, and it runs last because SCH-WP3 and SCH-WP9 also edit `EventModal`.                                                                                                                                                                          |
+| **Last**                     | SCH-Z1                                 | The docs sweep and the audit's status column.                                                                                                                                                                                                                                                               |
 
 **Every SQL step is serial** (SCH-WP2 → SCH-WP9). They share `00001155` (sessions, a §B.0 hot file
 whose only writer is this track), `00001510` and `00001520` (scheduling) and the one local database.
@@ -107,12 +120,13 @@ Shared files that are not on the §B.0 list:
 | SCH-WP7                  | the Wave 1.3 jobs set (`e18489d4`)                                                                                                                                                                                                | Its dormant row `scheduling-settle-votes` registers once `scheduling.fn_settle_votes` exists.                                     |
 | SCH-WP6                  | F·DB7 (Wave 0; done except the per-user promo cap and the refunded and cancelled writers) and F·SV4 (`place_wallet_order`'s callers, `p_expected_minor`, checkout blockers). Better after F's M8 prompt and F's payout gate (M4). | A paid call is a checkout line, and a declined call's refund is an order-line refund.                                             |
 | SCH-WP9 (D7 only)        | none, but never beside T's step that reworks penalty aggregation                                                                                                                                                                  | They write the same table, `security.penalties`.                                                                                  |
-| Other tracks on this one | T·P2 hardening ⏳ SCH-WP10 (triggers on event text). I·IW-M13 ⏳ every SCH SQL step. P·WP8 and SCH-WP10 both write calendar URL rules into `ROUTING.md` (P7), so they do not run together.                                        | Part B §B.3                                                                                                                       |
+| Other tracks on this one | T·P2 hardening ⏳ SCH-WP10 (triggers on event text): built as `8851d4dc`, so T·P2 can start once that branch merges. I·IW-M13 ⏳ every SCH SQL step. SCH-WP10 has written the calendar URL rules into `ROUTING.md` (P7, Decision #413), so P·WP8 builds on them rather than writing its own.                                        | Part B §B.3                                                                                                                       |
 
 ### 0.3 Open decisions (🧑) and new contradictions
 
 Each stop below was open when written, and this file decides none of them. Items 1, 2, 3 and 5 have
-since been ruled on Decision #383 (§0.4); the others stay open. The prompt named first asks it.
+since been ruled on Decision #383 (§0.4), and item 6 on Decision #419; the others stay open. The
+prompt named first asks it.
 
 1. **SCH-WP3: who accepts a re-proposed call time.** C3 says the host confirms. For a new time the
    host proposes, the literal reading lets the host confirm their own move. Recommendation: the
@@ -138,12 +152,15 @@ since been ruled on Decision #383 (§0.4); the others stay open. The prompt name
    goes to the operator desk. A host attestation alone is not evidence.
 6. **SCH-WP9: D7's weight.** "Low weight" has no number. Recommendation: each mark is a
    `security.penalties` row of severity 2 that lapses after 90 days, both dials in
-   `finance-model.md` §16.3.
+   `finance-model.md` §16.3. **Ruled 2026-11-12 as recommended (Decision #419).** Because nothing
+   refreshes Standing's cached penalty term yet (trust-track R5), the owner also ruled that the
+   no-show door refreshes the marked person's own Standing.
 7. **SCH-WP10: the unmerged calendar write path.** `refs/heads/claude/dreamy-hamilton-026625`
    (`a80ce2f5`, Decision #328 (a), an event write door) and `refs/heads/claude/modest-mendel-ae6318`
    (`d3768133`, the agenda sanitiser; `83cb1720`) were verified on 2026-10-25 and never merged. On
    main, #328 (a) is still open. Whether they merge decides what C7 (a) hides. Recommendation: merge
-   them first. **Merged 2026-11-03**: #328 (a) and #72 (a) are resolved on main.
+   them first. **Merged 2026-11-03**: #328 (a) and #72 (a) are resolved on main, so SCH-WP10 ran on
+   Option A: C7 (a) hid only what the door does not cover (2026-11-12, Decision #413).
 
 Also found, already decided, for SCH-Z1 to align:
 
@@ -292,6 +309,10 @@ Commit on the branch you were given with a clear message; do not open a PR unles
 
 ### SCH-WP2 — Paid calls off, unanswered requests expire (P0)
 
+> **Status 2026-11-12:** Done in `6882e0be`: `request_discovery_call` refuses `paid_unavailable`
+> (00001520), `scheduling.fn_expire_discovery_calls` (00001510) with its dormant job row
+> registered, `PAID_CALLS_LIVE = false` (`calls.ts`) and probe `discovery_call_expiry.sql`.
+
 ```text
 PROMPT SCH-WP2: Paid discovery calls are refused, and an unanswered request expires
 
@@ -394,6 +415,15 @@ ACCEPTANCE:
 ## 3. Phase 2 — The call lifecycle
 
 ### SCH-WP3 — The discovery-call doors, notices and reminders
+
+> **Status 2026-11-12:** Done in `ac19de8f`: the five doors, `get_own_call_settings` and
+> `fn_enqueue_due_reminders` (00001510; `proposed_by` in 00000022, Option A), the courtesy-call
+> completion branch, the `call.*` catalog rows, the `scheduling-reminders` job (00005060),
+> `authenticated`'s column grant on `call_settings` (00002520), `CallActionInputSchema`,
+> `BookingBackendService.callAction` behind `POST /api/scheduling/calls`, `CallActionBar` in
+> `EventModal`, the `discoveryCall` axis and probe `discovery_call_doors.sql`. Email and push still
+> wait on M's notify engine (N8–N12). The call lockout is the literal 12 h that SCH-WP7 turns into
+> a parameter.
 
 ```text
 PROMPT SCH-WP3: A discovery call can be confirmed, declined, moved, cancelled and marked a no-show
@@ -544,6 +574,16 @@ ACCEPTANCE:
 
 ### SCH-WP4a — The token vault and the integration runtime
 
+> **Status 2026-11-12:** Done in `ac19de8f`: `token-vault.ts` seals under the `ENCRYPTION_KEY`
+> envelope (a wrapped DEK, a nonce per ciphertext, `key_id`, `ck_secret_nonces` in 00000020) and
+> refuses to boot without a real key; the claim, refresh, renewal and revoke definers (00001500);
+> one webhook route claiming `integrations.webhook_deliveries` (`fn_claim_webhook_delivery`), which
+> the old presence path re-exports; the cron routes and the `integrations-refresh-tokens`,
+> `-renew-channels` and `-consent-sweep` jobs (00005060); `auth_config` seeded (00005050); probe
+> `integrations_runtime.sql`. #386 then shipped `google`, `outlook` and `zoom` on and gave
+> `db:reset` the cron Vault secrets. Proved on a real Google consent; Zoom only against a loopback
+> fake.
+
 ```text
 PROMPT SCH-WP4a: The token vault keys on ENCRYPTION_KEY, and the handshake, refresh and webhooks run
 as Fresh routes plus pg_cron http jobs
@@ -660,6 +700,16 @@ ACCEPTANCE:
 ```
 
 ### SCH-WP4b — Rooms on the host's account, and inbound calendar sync
+
+> **Status 2026-11-12:** Done in `ac19de8f`, as §0.4 amends it: one `scheduling.rooms` row per
+> room, minted on the host's connection by `RoomBackendService` (Zoom `/users/me/meetings`, Meet
+> `spaces`, Teams `createOrGet`; Zoom's `start_url` read at join, never stored); inbound busy sync
+> in `CalendarSyncBackendService` (Google `syncToken`, Graph `calendarView/delta`,
+> `integrations.fn_apply_busy_sync`) and outbound copies (`scheduling.event_mirrors`); the
+> `integrations-mint-rooms`, `-calendar-sync` and `-outbound-sync` jobs; `/meet/[roomSlug]` over
+> `scheduling.room_join`; pickers gated on a connection; the `conferencingConnection` axis; probes
+> `rooms.sql` and `calendar_sync.sql`. #386 added `fn_queue_waiting_rooms`, #387
+> `connected_event_details`. Not run on a real Microsoft or Zoom consent or a real Meet room (#386).
 
 ```text
 PROMPT SCH-WP4b: Choosing a provider location creates the meeting, and a connected calendar blocks
@@ -785,6 +835,15 @@ ACCEPTANCE:
 
 ### SCH-WP5 — Presence matched by each person's own link
 
+> **Status 2026-11-12:** Done in `ac19de8f`, as §0.4 amends it, with #392's paid-room rules in
+> `4c15a1b4`: the append-only `scheduling.presence_events` ledger, `room_registrants` keyed on
+> `rooms`, one `scheduling.record_presence` door (the host by provider account, then the
+> registrant, then a flagged email match never used for a person who holds a registrant link;
+> `projects.record_presence` is gone), `fn_room_presence`, `call_attendance` written from the
+> ledger, Zoom `supports_webhooks = true` (00005050), the `integrations-presence-reconcile` job for
+> Meet and Teams, and probes `presence_ledger.sql` and `paid_rooms.sql`. Zoom registrant links are
+> made at first join (#385 (d)). Not run on a live provider account (#392).
+
 ```text
 PROMPT SCH-WP5: Presence is matched by each person's own join link, and calls get a Digital
 Handshake
@@ -876,6 +935,15 @@ ACCEPTANCE:
 ## 5. Phase 4 — Money rules
 
 ### SCH-WP8 — No evidence, no automatic release
+
+> **Status 2026-11-12:** Done in `ac19de8f` (Option A, #383 R6), with #392 amending the refund
+> path in `4c15a1b4`: an `untracked` sitting holds, its attendee answers through
+> `projects.answer_session_review` (`POST /api/sessions/sittings/[eventId]/review`), and silence
+> for `session_review_hold_days` opens a desk case; `fn_session_presence` reads `provider_no_show`
+> only on provider-confirmed absence plus attendee evidence; `fn_seated_on` keys S-09's predicates
+> on the held escrow; `fn_dispute_attendance_audit` dismisses strictly above the threshold, over
+> `fn_room_presence`; the `held_for_review` value; probe `session_settlement_edges.sql`. One
+> residue: 00001260's header diagram (:10) still says "≥ 80 %".
 
 ```text
 PROMPT SCH-WP8: A sitting with no evidence is held, and the attendance audit applies the spec's
@@ -975,6 +1043,12 @@ ACCEPTANCE:
 ```
 
 ### SCH-WP7 — Windows: the money window, the grace and the provider's move
+
+> **Status 2026-11-12:** Not started, and runnable (SCH-WP8 is done); the 🧑 at step 6 is still
+> open (#344 (f)). Nothing defines `fn_settle_votes`, `fn_event_is_money_bearing`,
+> `session_late_booking_grace_minutes` or `sessionCancelWindow`, and `cancelSeat` has no caller.
+> Stale premise: the TS majority now leaves out guests (`eligibleVoterCount`,
+> `scheduling.fn_event_has_voters`, #391), so step 7's SQL twin must too.
 
 ```text
 PROMPT SCH-WP7: Money-bearing events lock at the money window, a late booking gets a grace, and a
@@ -1122,6 +1196,14 @@ ACCEPTANCE:
 
 ### SCH-WP6 — Paid consultations on the host's hidden Consultations engagement
 
+> **Status 2026-11-12:** Not started; blocked on SCH-WP7. F·DB7 and F·SV4 are marked done in
+> `FINANCE_BUILD_PROMPTS.md`, and `place_wallet_order` takes `p_expected_minor`. Stale premises:
+> step 3 prices from `call_settings`, but #408 added a per-rule call price that
+> `scheduling.fn_resolved_slot_fee(schedule, starts_at)` answers (nothing calls it yet, #408 (c));
+> deleting `PAID_CALLS_LIVE` also shows #408's rule **Call price** field, never tested in a browser
+> (#408 (i)); `fn_book_session_slot` and `place_wallet_order` now carry #411's `p_later_starts`;
+> a paid consultation's room is guarded under #392.
+
 ```text
 PROMPT SCH-WP6: A paid consultation is paid at request and held on the host's hidden Consultations
 engagement
@@ -1240,6 +1322,22 @@ ACCEPTANCE:
 
 ### SCH-WP9 — One denominator, a bounded ballot, courtesy no-shows in Standing
 
+> **Status 2026-11-12:** Done (Decision #419, with the owner's D7 ruling, §0.3 stop 6). D5:
+> `get_session_workspace` counts the live seats with an account except the host's, as
+> `eligibleVoterCount` and `fn_event_has_voters` do (guests out, #391), and the `attendee_role`
+> comment says optional seats count. D8: `RESCHEDULE_ATTENDEE_PROPOSALS_MAX = 3` and
+> `RESCHEDULE_SLOT_MAX_HOURS = 24`; the planner refuses `duration_changed`, `slot_too_long` and
+> `proposer_quota` (`slotRefusal`, `proposerHasRoom`, a server-resolved
+> `RescheduleProposal.proposedByViewer`); `fn_cap_reschedule_proposals` refuses the same under the
+> round lock and names the reason in its HINT; `ck_proposal_span` gains the 24-hour ceiling. D7:
+> `scheduling.fn_charge_call_no_show` behind `mark_call_no_show`, with the dials
+> `call_no_show_penalty_points`, `call_no_show_penalty_days` and `call_no_show_pair_window_days`
+> (00005001). Probe `coordination_rules.sql`; the literals are pinned in
+> `coordination.contract.test.ts`. Premise corrections: Standing subtracts the cached
+> `org.entity_standing.penalty_severity`, which only the seed wrote, so a lapsed mark leaves it only
+> at that person's next refresh until R5's expiry sweep exists; and the seed has no session
+> engagement, so the probe builds one.
+
 ```text
 PROMPT SCH-WP9: One majority denominator, a bounded ballot, and courtesy no-shows in Standing
 
@@ -1334,6 +1432,51 @@ ACCEPTANCE:
 ## 7. Phase 6 — Calendar UI
 
 ### SCH-WP10 — Authoring hidden, Month as built, view state in the URL
+
+> **Status 2026-11-12: Built** (Decision #413) as `8851d4dc` on branch `claude/sch-wp10-calendar`,
+> based on `dd3986e5` and not yet merged into main (it merges cleanly onto `bc35b27b`). The 🧑 stop
+> was moot: both branches had merged on 2026-11-03, so Option A applied. Two contradictions it found
+> were ruled by the owner and recorded as #413: one `?view=` for #376's page and P7's grid views, and
+> `kind` as #388's Event · Reminder rather than `CalendarEventKind`.
+>
+> - **Step 2 (C7 (a), S-25, S-28, S-33).** `core/calendar-authoring.ts` decides what each body
+>   authors, and its test lists every action with its door. `/calendar` keeps create, move, edit and
+>   delete of the host's own entries; `entryEditable` now also refuses connected entries, the right-
+>   click rows follow it, and a rostered or voted entry is `fixed`, so its drag stays a click. The
+>   project calendars and `/[handle]/availability` author nothing: no composer, no drag-move, and
+>   the modal is read-only (`EventModal` `editable`). `readProjectCalendar` answers
+>   `canCreate: false`. `.ics` Import is not mounted. The engine opens its draft composer from the
+>   Week keyboard create and a touch tap, and the hosts' `onSelectRange={() => {}}` is gone.
+> - **Step 3 (P7, S-31).** `core/calendar-address.ts` (tested) reads and writes
+>   `?view=&date=&zoom=&kind=`. The three controllers 303 an invalid value to the canonical
+>   address. Every `/calendar` region installs the address on the first client render, and the
+>   body writes it back with `replaceState`. `localStorage` answers only what the address leaves
+>   unnamed.
+> - **Step 4 (S-29).** `calendarWindow` (backend, tested) centres each read on `?around=`, and
+>   `page.window` reports it. The islands read the next window ahead of the edge
+>   (`core/window-reach.ts`). The engine's `loaded` prop shows "Not loaded" over a period outside it.
+> - **Step 5 (S-39).** The inspector header carries Add to a calendar (Google · Outlook · `.ics` ·
+>   email). The uncalled `EventActionHeader`, with its session-local Archive and Hide, is deleted,
+>   and the four stale gate comments are corrected.
+> - **Step 7 (C7 (b), S-38).** DESIGN_SYSTEM describes the continuous Month, and §C.1 gains
+>   `TimelineView`, `loaded` and `fixed`. Step 8 had landed in `ac19de8f`, and step 6 is superseded
+>   by #411.
+>
+> **Verified** on the branch alone, in a detached worktree: `deno task check` and `deno task lint` are
+> clean, and `deno task test:unit` runs 7470 passed and 11 failed, the same 11 that fail on
+> `dd3986e5` (theme engine, landing contrast, business hue, two CSS gates). Live on `deno task dev`
+> as `marisdelacroix`, 27 of 27 probe checks passed: `/calendar?view=month&date=2027-09-01` paints
+> September 2027 in the first byte; every non-canonical address 303s; the API returns 422 for an
+> impossible `around`; a view change rewrites the URL with no history entry and a reload keeps it;
+> the keyboard create opens the composer; "Not loaded" shows past the window; and neither the
+> project calendar nor `@juno`'s schedule offers a create. Screenshots were taken at 1440, 900 and
+> 390 px in light, dark, `data-contrast="high"` and `data-motion="reduced"`, with no horizontal
+> overflow. The "Not loaded" text measures at least 6.17:1 in every mode.
+>
+> Not done: an `.ics` import door; the console calendars' address (`/teams/:h/calendar`, whose
+> `?view=` the console owns). #413's FLAGS (a)–(d) carry both and two pre-existing reads. This status
+> block and the audit's SCH-WP10 rows sit on #412's uncommitted re-verification, so they land with
+> it, not with `8851d4dc`.
 
 ```text
 PROMPT SCH-WP10: The calendar shows only what it can save, documents Month as built, and keeps its

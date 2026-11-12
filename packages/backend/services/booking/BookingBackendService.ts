@@ -46,7 +46,13 @@ import type { BasketQuery } from "../finance/basket-query.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { SessionBackendService } from "../sessions/SessionBackendService.ts";
-import type { CohortOffer, ReserveSeatInput, SeatHold } from "@projective/types/projects";
+import type {
+	CohortOffer,
+	JoinWaitlistInput,
+	ReserveSeatInput,
+	SeatHold,
+	WaitlistPlace,
+} from "@projective/types/projects";
 
 /**
  * BookingBackendService — the FAT service behind every conversion CTA on a listing page.
@@ -790,6 +796,30 @@ export class BookingBackendService {
 		const line = write.data.basket.items.find((l) => l.itemId === item.id && l.metadata.holdId === hold.holdId) ??
 			null;
 		return ok({ hold, basketItemId: line?.id ?? null, firstStartsAt }, { status: 201 });
+	}
+
+	/**
+	 * Queue the buyer on a group-session listing's waitlist (Decision #424) — the answer the lane gives
+	 * when no cohort is enrolling or the open one is full, in place of a disabled control.
+	 */
+	static async joinWaitlist(
+		input: JoinWaitlistInput,
+		actor: BookingActor = ANONYMOUS_ACTOR,
+	): Promise<ServiceResult<WaitlistPlace>> {
+		if (!actor.userId) return fail(401, { message: "Sign in to join the waitlist." });
+		const listing = await listingOf<WaitlistPlace>(input.subjectId);
+		if (!isListing(listing)) return listing;
+		const { view, owner } = listing;
+		if (!owner.blueprintId) {
+			return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+		}
+		if (formatOf(view) !== "cohort") {
+			return fail(422, {
+				message: "Only a group session has a waitlist.",
+				errors: { subjectId: "not_seated" },
+			});
+		}
+		return await SessionBackendService.joinWaitlist(owner.blueprintId, readerOf(actor));
 	}
 
 	/**

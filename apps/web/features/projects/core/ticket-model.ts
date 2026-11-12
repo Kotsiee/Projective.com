@@ -4,17 +4,22 @@ import {
 	type CommitTicket,
 	executionBands,
 	formatTicketMoney,
+	INTENSITY_PRICE_MULTIPLIER,
 	type ProjectParty,
 	stageCostCents,
+	stageDefaultIntensity,
+	stageIntensityLocked,
 	TICKET_INTENSITY_LABEL,
 	TICKET_MAX_STAGES,
 	type TicketIntensity,
+	ticketDueFromStages,
 	type TicketStageRef,
 	type TicketTask,
 	ticketTotalCents,
 	workloadIntensity,
 } from "../types/projects-types.ts";
 import { hasRichTextProse } from "@projective/types/richtext";
+import { withoutStage } from "./stage-pipeline.ts";
 
 /**
  * ticket-model — the pure, DOM-free model behind the ONE ticket modal.
@@ -156,12 +161,19 @@ export function newTicketCard(
  *
  * The stage's rate is CAPTURED here rather than looked up later: the Finances tab has to show the
  * arithmetic, and a stage re-rated tomorrow must not silently restate what this ticket was agreed at.
+ *
+ * `intensity` is the TICKET's difficulty when one is passed: a stage added to a High ticket is High
+ * work until the client says otherwise. Without one the stage's own default seeds it, and a stage
+ * sold at one fixed intensity always takes that.
  */
 export function blankStageRef(
 	stage: BoardStageRef,
 	order: number,
-	intensity: TicketIntensity = "standard",
+	intensity?: TicketIntensity,
 ): TicketStageRef {
+	const at = stageIntensityLocked(stage) || intensity === undefined
+		? stageDefaultIntensity(stage)
+		: intensity;
 	return {
 		stageId: stage.id,
 		name: stage.name,
@@ -169,13 +181,11 @@ export function blankStageRef(
 		status: stage.status,
 		required: true,
 		brief: "",
-		// Seeded from the TICKET's difficulty, not from "standard". A stage added to a High ticket is
-		// High work until the client says otherwise; defaulting it to standard would price the ticket
-		// below what its own difficulty setting says it is.
-		intensity,
+		intensity: at,
 		tasks: [],
 		parallel: false,
-		costCents: stageCostCents(stage.unitPriceCents, intensity),
+		dueAt: null,
+		costCents: stageCostCents(stage.unitPriceCents, at, stage),
 		unitPriceCents: stage.unitPriceCents,
 	};
 }
@@ -208,6 +218,8 @@ export function reconcileCard(card: BoardCard, stages: readonly BoardStageRef[])
 			0,
 		) * 100,
 	) / 100;
+	// The latest stage due date IS the ticket's; a ticket whose stages carry none keeps its own.
+	const dueDate = ticketDueFromStages(refs) ?? card.dueDate;
 
 	return {
 		...card,
@@ -216,7 +228,8 @@ export function reconcileCard(card: BoardCard, stages: readonly BoardStageRef[])
 		workload,
 		budgetCents: totalCents,
 		budgetLabel: totalCents === null ? null : formatTicketMoney(totalCents, card.currency),
-		dueLabel: formatDueDate(card.dueDate),
+		dueDate,
+		dueLabel: formatDueDate(dueDate),
 		checklistDone: card.tasks.filter((t) => t.done).length,
 		checklistTotal: card.tasks.length,
 	};
@@ -233,6 +246,9 @@ export function reconcileCard(card: BoardCard, stages: readonly BoardStageRef[])
  * A stage the ticket references but the engagement no longer has keeps its captured name and rate —
  * it is dropped from nothing. A ticket priced against a deleted stage is a real condition, and
  * silently removing it would leave an unexplained figure in the total.
+ *
+ * A stage sold at one fixed intensity holds every ref to that intensity, so no path through the
+ * composer — a cascade, a stale working copy — can price it at another.
  */
 export function normaliseStages(
 	refs: readonly TicketStageRef[],
@@ -241,14 +257,16 @@ export function normaliseStages(
 	return refs.map((ref, i) => {
 		const live = stages.find((s) => s.id === ref.stageId) ?? null;
 		const unitPriceCents = live ? live.unitPriceCents : ref.unitPriceCents;
+		const intensity = live && stageIntensityLocked(live) ? stageDefaultIntensity(live) : ref.intensity;
 		return {
 			...ref,
 			name: live?.name ?? ref.name,
 			status: live?.status ?? ref.status,
 			order: i,
 			parallel: i === 0 ? false : ref.parallel,
+			intensity,
 			unitPriceCents,
-			costCents: stageCostCents(unitPriceCents, ref.intensity),
+			costCents: stageCostCents(unitPriceCents, intensity, live),
 		};
 	});
 }
@@ -270,7 +288,7 @@ export const stageOps = {
 	): TicketStageRef[] {
 		const present = refs.some((s) => s.stageId === stage.id);
 		const next = present
-			? refs.filter((s) => s.stageId !== stage.id)
+			? withoutStage(refs, stage.id)
 			: [...refs, blankStageRef(stage, refs.length, intensity)];
 		return normaliseStages(next, stages);
 	},
@@ -315,7 +333,8 @@ export const stageOps = {
  * It cascades to stages whose intensity matches the ticket's PREVIOUS value — the ones that were
  * tracking the default — and leaves alone any stage a client deliberately set to something else in
  * the inspector. That is precisely what "default" means, and it is why the cascade cannot be done in
- * {@link reconcileCard}, which has no memory of what the value was a moment ago.
+ * {@link reconcileCard}, which has no memory of what the value was a moment ago. A stage sold at one
+ * fixed intensity is never moved: {@link normaliseStages} holds it.
  */
 export function applyTicketIntensity(
 	card: BoardCard,
@@ -414,7 +433,8 @@ export function ticketFingerprint(card: BoardCard): string {
 		card.stageId ?? "",
 		tasks(card.tasks),
 		card.stages.map((s) =>
-			[s.stageId, s.order, s.intensity, s.parallel ? 1 : 0, s.brief, tasks(s.tasks)].join("~")
+			[s.stageId, s.order, s.intensity, s.parallel ? 1 : 0, s.dueAt ?? "", s.brief, tasks(s.tasks)]
+				.join("~")
 		),
 		card.attachments.map((a) => a.id),
 	]);
@@ -496,16 +516,75 @@ export function fromDateInput(date: Date | null): string | null {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** `0.75×` / `1.0×` / `1.5×` — a price multiplier as the intensity controls print it. */
+export function priceMultiplierText(multiplier: number): string {
+	return `${Number.isInteger(multiplier) ? multiplier.toFixed(1) : String(multiplier)}×`;
+}
+
+/** One intensity option as a Select renders it. */
+export interface IntensityOption {
+	value: TicketIntensity;
+	label: string;
+}
+
+const INTENSITY_ORDER: readonly TicketIntensity[] = ["low", "standard", "high"];
+
 /**
- * Intensity as options for a Select — the three multipliers, named, never numbered. A control
- * reading "High ×2" would state a conclusion the reader cannot check; the arithmetic lives on the
- * Finances tab, where it is shown working.
+ * The ticket's default intensity as Select options, each with the price multiplier it applies to
+ * every stage that follows it: `Low (0.75×)` · `Standard (1.0×)` · `High (1.5×)`.
  */
-export const INTENSITY_OPTIONS: { value: TicketIntensity; label: string }[] = [
-	{ value: "low", label: TICKET_INTENSITY_LABEL.low },
-	{ value: "standard", label: TICKET_INTENSITY_LABEL.standard },
-	{ value: "high", label: TICKET_INTENSITY_LABEL.high },
-];
+export const INTENSITY_OPTIONS: IntensityOption[] = INTENSITY_ORDER.map((value) => ({
+	value,
+	label: `${TICKET_INTENSITY_LABEL[value]} (${priceMultiplierText(INTENSITY_PRICE_MULTIPLIER[value])})`,
+}));
+
+/**
+ * One stage's intensity options, each naming the price it sets for this ticket in this stage — the
+ * seller's own tier price where they set one, else the multiplier over the stage rate. An unpriced
+ * stage names the multiplier alone.
+ */
+export function stageIntensityOptions(
+	stage: BoardStageRef | null,
+	unitPriceCents: number | null,
+	currency: string,
+): IntensityOption[] {
+	return INTENSITY_ORDER.map((value) => {
+		const price = stageCostCents(unitPriceCents, value, stage);
+		const own = (value === "low" && typeof stage?.lowPriceCents === "number") ||
+			(value === "high" && typeof stage?.highPriceCents === "number");
+		const basis = own ? "" : ` (${priceMultiplierText(INTENSITY_PRICE_MULTIPLIER[value])})`;
+		const priced = price === null ? "" : ` · ${formatTicketMoney(price, currency)}`;
+		return { value, label: `${TICKET_INTENSITY_LABEL[value]}${basis}${priced}` };
+	});
+}
+// #endregion
+
+// #region Due dates
+/**
+ * How the ticket's own due date is set, by how many stages it runs through: with none it is the
+ * ticket's own date; with one it IS that stage's date; with more it is the latest stage date and is
+ * set stage by stage.
+ */
+export type TicketDueMode = "ticket" | "stage" | "derived";
+
+export function ticketDueMode(card: Pick<BoardCard, "stages">): TicketDueMode {
+	if (card.stages.length === 0) return "ticket";
+	return card.stages.length === 1 ? "stage" : "derived";
+}
+
+/**
+ * Set one stage's due date and re-derive the ticket's from the result. Clearing the last stage date
+ * clears the ticket's too: once stages carry dates, the ticket's is theirs.
+ */
+export function patchStageDue(
+	card: BoardCard,
+	stageId: string,
+	dueAt: string | null,
+	stages: readonly BoardStageRef[],
+): BoardCard {
+	const refs = stageOps.patch(card.stages, stageId, { dueAt }, stages);
+	return reconcileCard({ ...card, stages: refs, dueDate: ticketDueFromStages(refs) }, stages);
+}
 // #endregion
 
 // #region Commit payload
@@ -529,7 +608,7 @@ export function ticketCommitPayload(
 		stageId: card.stageId,
 		priority: card.priority,
 		intensity: card.intensity,
-		dueDate: card.dueDate,
+		dueDate: ticketDueFromStages(card.stages) ?? card.dueDate,
 		// A party carries a handle, not an id — the handle IS the identifier a member is addressed by
 		// across this product (Decision #3), and the server maps it back to the seat.
 		ownerId: card.owner?.handle ?? null,

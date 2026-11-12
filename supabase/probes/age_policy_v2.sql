@@ -172,7 +172,7 @@ BEGIN
     END;
     INSERT INTO org.profile_follows (follower_user_id, target_entity_type, target_entity_id)
     VALUES (v_teen, 'user', v_adult), (v_adult, 'user', v_teen);
-    v_thread := comms.get_or_create_dm_thread(v_adult);
+    v_thread := (comms.get_or_create_dm_thread(v_adult) ->> 'thread_id')::uuid;
     INSERT INTO comms.dm_messages (thread_id, sender_user_id, body)
     VALUES (v_thread, v_teen, 'hi');
     RAISE NOTICE 'PASS mutual follows may message';
