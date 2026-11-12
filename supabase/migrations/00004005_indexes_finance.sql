@@ -64,6 +64,12 @@ CREATE INDEX IF NOT EXISTS idx_deposit_rules_wallet ON finance.deposit_rules (wa
 CREATE INDEX IF NOT EXISTS idx_deposit_rules_due ON finance.deposit_rules (next_run_at) WHERE active;
 CREATE INDEX IF NOT EXISTS idx_payout_schedules_owner ON finance.payout_schedules (owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_pots_wallet ON finance.wallet_pots (wallet_id);
+CREATE INDEX IF NOT EXISTS idx_pot_movements_pot ON finance.pot_movements (pot_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pot_movements_wallet ON finance.pot_movements (wallet_id, created_at);
+-- One allocation per pot per ledger credit, so a second earmark of the same matured income is a no-op
+-- (the ON CONFLICT target of finance.fn_apply_pot_allocations).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pot_movements_allocation ON finance.pot_movements (pot_id, ref_id)
+    WHERE reason = 'allocation';
 
 CREATE INDEX IF NOT EXISTS idx_vault_permissions_wallet ON finance.vault_permissions (wallet_id);
 CREATE INDEX IF NOT EXISTS idx_vault_permissions_member ON finance.vault_permissions (member_user_id);

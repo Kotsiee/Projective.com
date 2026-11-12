@@ -1,6 +1,10 @@
 -- Views: finance reconciliation + integrations connections + analytics drift
 -- (from 20260723094000, 20260724101000, 20260724110000)
 
+-- Each wallet's cached balance against its ledger, and its pots (FINANCE_AUDIT L7): `earmarked_cents`
+-- is what its active pots earmark, never more than `balance_cents`; `pot_drift_cents` is its pots'
+-- balances minus their finance.pot_movements (Σ in − Σ out), 0 while every pot change went through a
+-- door. Read by finance.fn_reconcile_wallets; service role only.
 CREATE OR REPLACE VIEW finance.v_wallet_reconciliation AS
 SELECT
     w.id AS wallet_id,
@@ -9,7 +13,12 @@ SELECT
     w.currency,
     w.balance_cents,
     COALESCE(SUM(CASE t.direction WHEN 'credit' THEN t.amount_cents ELSE -t.amount_cents END), 0) AS ledger_sum_cents,
-    w.balance_cents - COALESCE(SUM(CASE t.direction WHEN 'credit' THEN t.amount_cents ELSE -t.amount_cents END), 0) AS drift_cents
+    w.balance_cents - COALESCE(SUM(CASE t.direction WHEN 'credit' THEN t.amount_cents ELSE -t.amount_cents END), 0) AS drift_cents,
+    (SELECT COALESCE(SUM(p.balance_cents), 0) FROM finance.wallet_pots p
+      WHERE p.wallet_id = w.id AND p.active) AS earmarked_cents,
+    (SELECT COALESCE(SUM(p.balance_cents), 0) FROM finance.wallet_pots p WHERE p.wallet_id = w.id)
+      - (SELECT COALESCE(SUM(CASE m.direction WHEN 'in' THEN m.amount_cents ELSE -m.amount_cents END), 0)
+           FROM finance.pot_movements m WHERE m.wallet_id = w.id) AS pot_drift_cents
 FROM finance.wallets w
 LEFT JOIN finance.transactions t ON t.wallet_id = w.id
 GROUP BY w.id, w.owner_type, w.owner_id, w.currency, w.balance_cents;

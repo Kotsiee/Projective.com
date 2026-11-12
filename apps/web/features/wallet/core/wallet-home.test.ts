@@ -77,6 +77,7 @@ function overview(patch: Partial<WalletOverview> = {}): WalletOverview {
 		unavailable: [],
 		locks: [],
 		recurringActions: [],
+		potActions: [],
 		capabilities: ["view"],
 		verification: {
 			subject: "freelancer",

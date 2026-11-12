@@ -658,10 +658,12 @@ BEGIN
             RAISE EXCEPTION 'Not authorised to move funds out of this wallet.' USING ERRCODE = '42501';
         END IF;
 
-        IF v_from.balance_cents < p_amount_minor THEN
+        -- The simulator writes the balance itself, so it keeps earmarked money out of reach exactly
+        -- as finance.fn_wallet_debit does (Decision #337, ruling M6).
+        IF finance.fn_available_cents(v_from.id) < p_amount_minor THEN
             RAISE EXCEPTION
                 'Insufficient balance: % available, % requested.',
-                v_from.balance_cents, p_amount_minor USING ERRCODE = '23514';
+                finance.fn_available_cents(v_from.id), p_amount_minor USING ERRCODE = '23514';
         END IF;
     END IF;
 

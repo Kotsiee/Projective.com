@@ -886,7 +886,8 @@ AS $$
     END;
 $$;
 
--- What a schedule's run pays out of its wallet: the whole of Available. The one place that amount is
+-- What a schedule's run pays out of its wallet: the whole of Available, the balance minus what its
+-- pots earmark (finance.fn_available_cents, Decision #337, ruling M6). The one place that amount is
 -- worked out, so the threshold test and the amount paid can never disagree. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_payout_schedule_available(p_wallet finance.wallets)
 RETURNS bigint
@@ -894,7 +895,7 @@ LANGUAGE sql
 STABLE
 SET search_path = ''
 AS $$
-    SELECT GREATEST(COALESCE(p_wallet.balance_cents, 0), 0);
+    SELECT GREATEST(COALESCE(finance.fn_available_cents(p_wallet.id), 0), 0);
 $$;
 
 -- Count one refused run against a schedule (internal): its reason is kept as a sentence in
@@ -2071,12 +2072,15 @@ $$;
 -- each team share / finder fee / vault cut of one, a fair-exit payout, a seat release and a product sale
 -- are credited through finance.fn_wallet_credit_pending, which writes a finance.pending_releases row
 -- instead of moving the balance. Top-ups, refunds, transfers and returned payouts are the payer's own
--- money and stay immediate. `balance_cents` is therefore the Available balance, and every spend path
--- and finance.begin_payout — which all debit it — can only use Available money.
+-- money and stay immediate. `balance_cents` therefore holds only cleared money, and what a wallet may
+-- spend is that minus its pots (region 9): every spend path and finance.begin_payout debit through
+-- finance.fn_wallet_debit, which refuses earmarked money. Income is earmarked into pots as it clears.
 
 -- The pending twin of finance.fn_wallet_credit, with the same arguments so a door swaps one name.
 -- Holds `p_amount` for `pending_release_days` against its source (`escrows` or `orders`); a window of
--- 0 days credits at once. A missing wallet raises PW404, as the primitive does. Internal.
+-- 0 days credits at once and earmarks it into the wallet's pots, as the sweep does. Only an earned
+-- reason (finance.fn_is_income_reason) is accepted. A missing wallet raises PW404, as the primitive
+-- does. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_wallet_credit_pending(
     p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
     p_reason text, p_ref_table text, p_ref_id uuid
@@ -2090,12 +2094,17 @@ AS $$
 DECLARE
     v_wallet finance.wallets;
     v_days integer;
+    v_tx uuid;
 BEGIN
     IF p_amount IS NULL OR p_amount <= 0 THEN
         RETURN;
     END IF;
     IF p_ref_table NOT IN ('escrows', 'orders') OR p_ref_id IS NULL THEN
         RAISE EXCEPTION 'pending: an earned credit is keyed to an escrow or an order, not %', COALESCE(p_ref_table, 'nothing')
+            USING ERRCODE = '22023';
+    END IF;
+    IF NOT finance.fn_is_income_reason(p_reason) THEN
+        RAISE EXCEPTION 'pending: % is not an earned-credit reason; add it to finance.fn_is_income_reason', COALESCE(p_reason, 'nothing')
             USING ERRCODE = '22023';
     END IF;
     SELECT * INTO v_wallet FROM finance.wallets
@@ -2109,6 +2118,11 @@ BEGIN
     ), 7), 0);
     IF v_days = 0 THEN
         PERFORM finance.fn_wallet_credit(p_owner_id, p_owner_type, p_currency, p_amount, p_reason, p_ref_table, p_ref_id);
+        SELECT t.id INTO v_tx FROM finance.transactions t
+         WHERE t.wallet_id = v_wallet.id AND t.direction = 'credit' AND t.reason = p_reason
+           AND t.ref_table = p_ref_table AND t.ref_id = p_ref_id
+         ORDER BY t.created_at DESC, t.id DESC LIMIT 1;
+        PERFORM finance.fn_apply_pot_allocations(v_wallet.id, p_amount, p_reason, 'transactions', v_tx);
         RETURN;
     END IF;
 
@@ -2157,7 +2171,8 @@ END;
 $$;
 
 -- The sweep: credit every row whose window has passed to its wallet, with the ledger row the immediate
--- credit used to write (same reason, same escrow / order reference), and close it. A batch of at most
+-- credit used to write (same reason, same escrow / order reference), earmark that credit into the
+-- wallet's pots (fn_apply_pot_allocations, once per credit), and close it. A batch of at most
 -- `p_limit` rows, claimed FOR UPDATE SKIP LOCKED so overlapping runs never take the same row and a
 -- replay credits nothing twice. Returns how many rows matured. Service role / pg_cron only.
 CREATE OR REPLACE FUNCTION finance.fn_mature_pending_releases(p_limit integer DEFAULT 1000)
@@ -2194,6 +2209,9 @@ BEGIN
              WHERE t.wallet_id = r.wallet_id AND t.direction = 'credit' AND t.reason = r.reason
                AND t.ref_table = v_ref_table AND t.ref_id = v_ref_id
              ORDER BY t.created_at DESC, t.id DESC LIMIT 1;
+            IF finance.fn_is_income_reason(r.reason) THEN
+                PERFORM finance.fn_apply_pot_allocations(r.wallet_id, v_amount, r.reason, 'transactions', v_tx);
+            END IF;
         END IF;
         UPDATE finance.pending_releases
            SET state = 'available', matured_at = pg_catalog.now(), transaction_id = v_tx
@@ -2206,9 +2224,320 @@ $$;
 
 COMMENT ON FUNCTION finance.fn_mature_pending_releases(integer) IS
 'The pending-window sweep (Decision #191): credits each finance.pending_releases row past available_at
-to its wallet with the ledger row of its original reason, and closes it. SKIP LOCKED batches;
-idempotent. Service role / pg_cron only.';
+to its wallet with the ledger row of its original reason, earmarks that credit into the wallet''s pots
+(Decision #337, ruling M6), and closes it. SKIP LOCKED batches; idempotent. Service role / pg_cron only.';
 
 -- Scheduled hourly at :05 as `finance-mature-pending-releases` by the job registry
 -- (`ops.scheduled_jobs`, 00005060).
+-- #endregion
+
+-- #region 9. Pots — earmarks inside the wallet (Decision #337, ruling M6)
+-- A pot labels part of its wallet's own balance (finance.wallet_pots): `finance.wallets.balance_cents`
+-- stays the total, and the wallet's Available to spend is that balance minus its active pots. Nothing
+-- here moves money between wallets or writes finance.transactions; every change of a pot's balance is
+-- a finance.pot_movements row. What a wallet may spend is finance.fn_available_cents, and the earmark is
+-- enforced in one place, finance.fn_wallet_debit (both 00001200).
+
+-- The reasons earned money is credited under: every finance.pending_releases row carries one, and only
+-- these are earmarked into pots as they mature. fn_wallet_credit_pending refuses any other, so a new
+-- earning path has to be added here. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_is_income_reason(p_reason text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(p_reason IN (
+        'escrow_release', 'team_split', 'team_finder_fee', 'fair_exit_release', 'product_sale',
+        'escrow_release_vault_retention', 'fair_exit_release_vault_retention'
+    ), false);
+$$;
+
+-- Earmark income that has just become Available: each active pot with auto_allocate_bp > 0 takes
+-- ⌊p_amount × bp / 10000⌋, in created_at order, and the dust stays Available. Income reasons only. Keyed
+-- to the credit it earmarks (`transactions`, the finance.transactions row), so a second call for the
+-- same credit earmarks nothing (uq_pot_movements_allocation). Returns the total earmarked. Called by
+-- fn_mature_pending_releases and by fn_wallet_credit_pending's zero-day branch; never on a top-up,
+-- refund or transfer. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_apply_pot_allocations(
+    p_wallet uuid, p_amount bigint, p_reason text, p_ref_table text, p_ref_id uuid
+)
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r finance.wallet_pots;
+    v_take bigint;
+    v_total bigint := 0;
+    v_id uuid;
+BEGIN
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RETURN 0;
+    END IF;
+    IF NOT finance.fn_is_income_reason(p_reason) THEN
+        RAISE EXCEPTION 'pots: % is not income; only matured earnings are set aside', COALESCE(p_reason, 'nothing')
+            USING ERRCODE = '22023';
+    END IF;
+    IF p_ref_table IS DISTINCT FROM 'transactions' OR p_ref_id IS NULL THEN
+        RAISE EXCEPTION 'pots: an allocation is keyed to the ledger credit it sets aside' USING ERRCODE = '22023';
+    END IF;
+
+    FOR r IN
+        SELECT * FROM finance.wallet_pots
+         WHERE wallet_id = p_wallet AND active AND auto_allocate_bp > 0
+         ORDER BY created_at, id
+           FOR UPDATE
+    LOOP
+        v_take := pg_catalog.floor(p_amount::numeric * r.auto_allocate_bp / 10000)::bigint;
+        CONTINUE WHEN v_take <= 0;
+        v_id := NULL;
+        INSERT INTO finance.pot_movements (
+            pot_id, wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents
+        ) VALUES (
+            r.id, r.wallet_id, 'in', v_take, r.currency, 'allocation', p_ref_table, p_ref_id, r.balance_cents + v_take
+        )
+        ON CONFLICT (pot_id, ref_id) WHERE reason = 'allocation' DO NOTHING
+        RETURNING id INTO v_id;
+        CONTINUE WHEN v_id IS NULL;
+        UPDATE finance.wallet_pots SET balance_cents = balance_cents + v_take WHERE id = r.id;
+        v_total := v_total + v_take;
+    END LOOP;
+    RETURN v_total;
+END;
+$$;
+
+-- May the caller name, weight, archive or move money in this wallet's pots? The owner of a personal
+-- wallet; on a shared one `distribute` (workspace manage finances), because a pot steers where the
+-- vault's income is set aside as a split steers where it goes. Internal: save_wallet_pot and
+-- move_pot_funds ask it, and the wallet service mirrors it only to decide what to offer.
+CREATE OR REPLACE FUNCTION finance.fn_can_manage_pots(p_wallet uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM finance.wallets w
+         WHERE w.id = p_wallet
+           AND (
+               (w.owner_type IN ('user', 'freelancer') AND w.owner_id = auth.uid ())
+               OR (
+                   w.owner_type IN ('business', 'team', 'enterprise')
+                   AND finance.fn_has_vault_capability (w.id, auth.uid (), 'distribute'::finance.vault_capability)
+               )
+           )
+    );
+$$;
+
+-- Create (p_id NULL) or change one of a wallet's pots, or archive it (p_archive). Authority:
+-- fn_can_manage_pots. A wallet's active pots together set aside at most 100% of income
+-- (Σ auto_allocate_bp ≤ 10000), checked under the wallet's pots lock so two saves cannot both fit. A
+-- share left NULL keeps a pot's own, and on a new pot defaults to `tax_pot_default_bp` for a tax pot
+-- (fitted into what the other pots leave), else 0. A wallet holds at most 40 active pots, the most the
+-- wallet read lists. Archiving needs an empty pot; an archived pot stays, inactive, and is never
+-- changed again. Never deletes. Returns the pot.
+CREATE OR REPLACE FUNCTION finance.save_wallet_pot(
+    p_wallet uuid,
+    p_id uuid,
+    p_purpose finance.pot_purpose,
+    p_name text,
+    p_auto_allocate_bp integer,
+    p_goal_cents bigint,
+    p_archive boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_wallet finance.wallets;
+    v_pot finance.wallet_pots;
+    v_name text := pg_catalog.btrim(COALESCE(p_name, ''));
+    v_bp integer;
+    v_others bigint;
+    v_default integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to change pots' USING ERRCODE = '42501';
+    END IF;
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('pots:' || COALESCE(p_wallet::text, '')));
+    SELECT * INTO v_wallet FROM finance.wallets WHERE id = p_wallet FOR UPDATE;
+    IF NOT FOUND OR NOT finance.fn_can_manage_pots(p_wallet) THEN
+        RAISE EXCEPTION 'walletId: you can''t change the pots on this wallet' USING ERRCODE = '42501';
+    END IF;
+
+    IF p_id IS NOT NULL THEN
+        SELECT * INTO v_pot FROM finance.wallet_pots WHERE id = p_id AND wallet_id = p_wallet FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'potId: that pot isn''t on this wallet' USING ERRCODE = 'P0002';
+        END IF;
+        IF NOT v_pot.active THEN
+            RAISE EXCEPTION 'potId: that pot is archived' USING ERRCODE = 'PC409';
+        END IF;
+    END IF;
+
+    IF COALESCE(p_archive, false) THEN
+        IF p_id IS NULL THEN
+            RAISE EXCEPTION 'potId: choose the pot to archive' USING ERRCODE = '22023';
+        END IF;
+        IF v_pot.balance_cents > 0 THEN
+            RAISE EXCEPTION 'potId: move the % % in this pot out before archiving it',
+                finance.fn_minor_units_text(v_pot.balance_cents, v_pot.currency), v_pot.currency
+                USING ERRCODE = 'PC409';
+        END IF;
+        UPDATE finance.wallet_pots SET active = false, archived_at = pg_catalog.now()
+         WHERE id = p_id RETURNING * INTO v_pot;
+        RETURN pg_catalog.to_jsonb(v_pot);
+    END IF;
+
+    IF p_purpose IS NULL THEN
+        RAISE EXCEPTION 'purpose: choose what the pot is for' USING ERRCODE = '22023';
+    END IF;
+    IF v_name = '' OR pg_catalog.length(v_name) > 120 THEN
+        RAISE EXCEPTION 'name: give the pot a name of up to 120 characters' USING ERRCODE = '22023';
+    END IF;
+    IF p_goal_cents IS NOT NULL AND p_goal_cents <= 0 THEN
+        RAISE EXCEPTION 'goalMinor: a goal is an amount above zero' USING ERRCODE = '22023';
+    END IF;
+    IF p_auto_allocate_bp IS NOT NULL AND (p_auto_allocate_bp < 0 OR p_auto_allocate_bp > 10000) THEN
+        RAISE EXCEPTION 'autoAllocateBp: a pot sets aside between 0%% and 100%% of income' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT COALESCE(pg_catalog.sum(p.auto_allocate_bp), 0) INTO v_others
+      FROM finance.wallet_pots p
+     WHERE p.wallet_id = p_wallet AND p.active AND p.id IS DISTINCT FROM p_id;
+
+    IF p_auto_allocate_bp IS NOT NULL THEN
+        v_bp := p_auto_allocate_bp;
+    ELSIF p_id IS NOT NULL THEN
+        v_bp := v_pot.auto_allocate_bp;
+    ELSIF p_purpose = 'tax' THEN
+        v_default := LEAST(GREATEST(COALESCE((
+            SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp WHERE pp.key = 'tax_pot_default_bp'
+        ), 0), 0), 10000);
+        v_bp := LEAST(v_default, GREATEST(10000 - v_others, 0))::integer;
+    ELSE
+        v_bp := 0;
+    END IF;
+
+    IF v_others + v_bp > 10000 THEN
+        RAISE EXCEPTION 'autoAllocateBp: this wallet''s other pots already set aside % of income, so this one can take at most %',
+            pg_catalog.trim_scale(v_others / 100.0)::text || '%',
+            pg_catalog.trim_scale(GREATEST(10000 - v_others, 0) / 100.0)::text || '%'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_id IS NULL THEN
+        IF (SELECT pg_catalog.count(*) FROM finance.wallet_pots p WHERE p.wallet_id = p_wallet AND p.active) >= 40 THEN
+            RAISE EXCEPTION 'pots: a wallet holds at most 40 pots; archive one first' USING ERRCODE = 'PC409';
+        END IF;
+        INSERT INTO finance.wallet_pots (wallet_id, purpose, name, currency, auto_allocate_bp, goal_cents)
+        VALUES (p_wallet, p_purpose, v_name, v_wallet.currency, v_bp, p_goal_cents)
+        RETURNING * INTO v_pot;
+    ELSE
+        UPDATE finance.wallet_pots
+           SET purpose = p_purpose, name = v_name, auto_allocate_bp = v_bp, goal_cents = p_goal_cents
+         WHERE id = p_id
+        RETURNING * INTO v_pot;
+    END IF;
+    RETURN pg_catalog.to_jsonb(v_pot);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.save_wallet_pot(uuid, uuid, finance.pot_purpose, text, integer, bigint, boolean) IS
+'Create, change or archive a wallet pot (Decision #337, ruling M6): the owner of a personal wallet,
+`distribute` on a shared one; Σ auto_allocate_bp over the active pots ≤ 10000 under the wallet''s pots
+lock; archive only at a zero balance; never deletes.';
+
+-- Earmark Available money into a pot (`in`) or release a pot's money back to Available (`out`). The
+-- wallet's balance does not change, only how much of it is earmarked. `in` needs that much Available
+-- (the balance minus every active pot), `out` that much in the pot. Authority: fn_can_manage_pots. One
+-- finance.pot_movements row. Returns the pot's balance and the wallet's Available after.
+CREATE OR REPLACE FUNCTION finance.move_pot_funds(p_pot uuid, p_amount bigint, p_direction text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_wallet_id uuid;
+    v_wallet finance.wallets;
+    v_pot finance.wallet_pots;
+    v_available bigint;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to move money in a pot' USING ERRCODE = '42501';
+    END IF;
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'amountMinor: move an amount above zero' USING ERRCODE = '22023';
+    END IF;
+    IF p_direction IS NULL OR p_direction NOT IN ('in', 'out') THEN
+        RAISE EXCEPTION 'direction: money moves into a pot (in) or out of it (out)' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT wallet_id INTO v_wallet_id FROM finance.wallet_pots WHERE id = p_pot;
+    IF v_wallet_id IS NOT NULL THEN
+        SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_wallet_id FOR UPDATE;
+        SELECT * INTO v_pot FROM finance.wallet_pots WHERE id = p_pot FOR UPDATE;
+    END IF;
+    IF v_wallet_id IS NULL OR NOT finance.fn_can_manage_pots(v_wallet_id) THEN
+        RAISE EXCEPTION 'potId: you can''t move money in this pot' USING ERRCODE = '42501';
+    END IF;
+    IF NOT v_pot.active THEN
+        RAISE EXCEPTION 'potId: that pot is archived' USING ERRCODE = 'PC409';
+    END IF;
+
+    IF p_direction = 'in' THEN
+        v_available := finance.fn_available_cents(v_wallet.id);
+        IF v_available < p_amount THEN
+            RAISE EXCEPTION 'amountMinor: only % % is available to set aside', finance.fn_minor_units_text(GREATEST(v_available, 0), v_wallet.currency), v_wallet.currency
+                USING ERRCODE = 'PF402';
+        END IF;
+        UPDATE finance.wallet_pots SET balance_cents = balance_cents + p_amount WHERE id = p_pot RETURNING * INTO v_pot;
+    ELSE
+        IF v_pot.balance_cents < p_amount THEN
+            RAISE EXCEPTION 'amountMinor: this pot holds % %', finance.fn_minor_units_text(v_pot.balance_cents, v_pot.currency), v_pot.currency
+                USING ERRCODE = 'PF402';
+        END IF;
+        UPDATE finance.wallet_pots SET balance_cents = balance_cents - p_amount WHERE id = p_pot RETURNING * INTO v_pot;
+    END IF;
+
+    INSERT INTO finance.pot_movements (
+        pot_id, wallet_id, direction, amount_cents, currency, reason, balance_after_cents, actor_user_id
+    ) VALUES (
+        v_pot.id, v_pot.wallet_id, p_direction, p_amount, v_pot.currency,
+        CASE p_direction WHEN 'in' THEN 'move_in' ELSE 'move_out' END, v_pot.balance_cents, v_uid
+    );
+    RETURN pg_catalog.jsonb_build_object(
+        'pot_id', v_pot.id,
+        'balance_cents', v_pot.balance_cents,
+        'available_cents', finance.fn_available_cents(v_pot.wallet_id)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION finance.move_pot_funds(uuid, bigint, text) IS
+'Earmark Available money into a pot or release it (Decision #337, ruling M6). Moves no money between
+wallets; one finance.pot_movements row. Same authority as finance.save_wallet_pot.';
+
+-- finance.pot_movements is a pot's ledger: never rewritten or removed, by any role.
+CREATE OR REPLACE FUNCTION finance.fn_pot_movements_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'ledger: finance.pot_movements is append-only — % refused; post a compensating movement', TG_OP
+        USING ERRCODE = 'PL403';
+END;
+$$;
 -- #endregion

@@ -1265,6 +1265,19 @@ REVOKE ALL ON FUNCTION finance.fn_minor_units_text (bigint, text) FROM PUBLIC, a
 REVOKE ALL ON FUNCTION finance.fn_escrow_payer_wallet_type (uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_escrow_fee_bp (uuid, uuid) FROM PUBLIC, anon, authenticated;
 
+-- Pots (Decision #337, ruling M6; FINANCE_BUILD_PROMPTS DB5): the two USER doors check their caller
+-- inside (fn_can_manage_pots). The Available calculator, the income list, the allocation, the
+-- authority predicate and the append-only guard are called only from inside the doors.
+REVOKE ALL ON FUNCTION finance.save_wallet_pot (uuid, uuid, finance.pot_purpose, text, integer, bigint, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.save_wallet_pot (uuid, uuid, finance.pot_purpose, text, integer, bigint, boolean) TO authenticated;
+REVOKE ALL ON FUNCTION finance.move_pot_funds (uuid, bigint, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.move_pot_funds (uuid, bigint, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fn_available_cents (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_is_income_reason (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_apply_pot_allocations (uuid, bigint, text, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_can_manage_pots (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_pot_movements_append_only () FROM PUBLIC, anon, authenticated, service_role;
+
 
 -- --- files: asset management ---
 -- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on

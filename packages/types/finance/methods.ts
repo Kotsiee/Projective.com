@@ -11,7 +11,7 @@ import {
 
 /**
  * finance methods & money-movement — payment methods (spend vs earn), recurring deposits, payout
- * schedules, the Income Smoother, and sub-wallet pots. Mirrors migration 20260723092000.
+ * schedules, the Income Smoother, and wallet pots (earmarks). Mirrors migration 20260723092000.
  *
  * ⚠️ Card data is Stripe-owned and NEVER stored — only an opaque `externalRef` + safe display
  * fragments (`brand`, `last4`). finance-model.md §Payment Methods / §Money-Movement Rules.
@@ -138,14 +138,18 @@ export const IncomeSmoothingSchema = z.object({
 export type IncomeSmoothing = z.infer<typeof IncomeSmoothingSchema>;
 // #endregion
 
-// #region Wallet pots (sub-wallets / tax set-aside)
+// #region Wallet pots (earmarks / tax set-aside)
 /** `finance.pot_purpose`. */
 export const PotPurpose = z.enum(["tax", "savings", "goal", "general"]);
 export type PotPurpose = z.infer<typeof PotPurpose>;
 
 /**
- * A row of `finance.wallet_pots` — a named sub-balance carved from a wallet. `autoAllocateBp > 0`
- * skims that fraction of each inbound payout (the tax-pot auto-set-aside).
+ * A row of `finance.wallet_pots` — an earmark of part of its wallet's own balance, never a
+ * separate balance (Decision #337, ruling M6): the wallet may spend its balance minus its active
+ * pots. `autoAllocateBp > 0` earmarks that share of each matured income credit (the tax-pot
+ * auto-set-aside), and a wallet's active pots take at most 10000 together. An empty pot is archived
+ * (`active: false`, `archivedAt`), never deleted. Written only by `finance.save_wallet_pot` and
+ * `finance.move_pot_funds`.
  */
 export const WalletPotSchema = z.object({
 	id: uuid,
@@ -155,7 +159,44 @@ export const WalletPotSchema = z.object({
 	balanceCents: minorUnitsNonNeg,
 	currency,
 	autoAllocateBp: basisPoints,
+	/** What the owner is saving towards; `null` is no target. It never caps the pot. */
+	goalCents: minorUnitsPositive.nullable(),
+	active: z.boolean(),
+	archivedAt: timestamp.nullable(),
 	createdAt: timestamp,
 });
 export type WalletPot = z.infer<typeof WalletPotSchema>;
+
+/** Which way a `finance.pot_movements` row moves a pot's earmark. */
+export const PotMovementDirection = z.enum(["in", "out"]);
+export type PotMovementDirection = z.infer<typeof PotMovementDirection>;
+
+/**
+ * Why a pot's earmark changed: `allocation` (matured income, keyed to its ledger credit),
+ * `move_in` / `move_out` (`finance.move_pot_funds`, by its author) and `recovery` (a chargeback
+ * or refund debit took earmarked money, keyed to that debit).
+ */
+export const PotMovementReason = z.enum(["allocation", "move_in", "move_out", "recovery"]);
+export type PotMovementReason = z.infer<typeof PotMovementReason>;
+
+/**
+ * A row of `finance.pot_movements` — a pot's append-only ledger. An earmark moves no money
+ * between wallets: Σ in − Σ out over a pot's rows is its balance, and `balanceAfterCents` is that
+ * balance after the row.
+ */
+export const PotMovementSchema = z.object({
+	id: uuid,
+	potId: uuid,
+	walletId: uuid,
+	direction: PotMovementDirection,
+	amountCents: minorUnitsPositive,
+	currency,
+	reason: PotMovementReason,
+	refTable: z.string().max(40).nullable(),
+	refId: uuid.nullable(),
+	balanceAfterCents: minorUnitsNonNeg,
+	actorUserId: uuid.nullable(),
+	createdAt: timestamp,
+});
+export type PotMovement = z.infer<typeof PotMovementSchema>;
 // #endregion

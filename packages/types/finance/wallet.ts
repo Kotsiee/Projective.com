@@ -12,7 +12,7 @@ import {
 import { TransactionDirection, WalletBalancesSchema } from "./ledger.ts";
 import { type ConvertedAmount, DEFAULT_LOCALE, DISPLAY_CURRENCIES } from "./fx.ts";
 import { KycStatus, VerificationTier } from "./verification.ts";
-import { DepositInterval, MethodRole, PayoutMode, PotPurpose } from "./methods.ts";
+import { DepositInterval, MethodRole, PayoutMode, PotMovementDirection, PotPurpose } from "./methods.ts";
 import {
 	ApprovalStatus,
 	SpendingLimitInterval,
@@ -135,6 +135,15 @@ export const RecurringRuleAction = z.enum([
 	"archive_recurring",
 ]);
 export type RecurringRuleAction = z.infer<typeof RecurringRuleAction>;
+
+/**
+ * What a viewer may do to a wallet's pots (Decision #337, ruling M6): save one (create, rename,
+ * re-weight, set a goal or archive it, `finance.save_wallet_pot`) and move money into or out of one
+ * (`finance.move_pot_funds`). Offered to whom the doors accept: the owner of a personal wallet, a
+ * `distribute` holder on a vault. Neither is a quick action: the Pots dialog carries them.
+ */
+export const PotAction = z.enum(["save_pot", "move_pot"]);
+export type PotAction = z.infer<typeof PotAction>;
 
 /**
  * Why an automation control is locked until its engine runs (Decision #337, ruling M6), in the order
@@ -404,13 +413,18 @@ export const IncomeSmootherStateSchema = z.object({
 });
 export type IncomeSmootherState = z.infer<typeof IncomeSmootherStateSchema>;
 
-/** A named sub-wallet pot (the freelancer tax set-aside). */
+/**
+ * An active pot: the part of the wallet's balance it earmarks (the freelancer tax set-aside, a
+ * savings goal), the share of matured income it takes, and what it is saving towards (`null`: no
+ * target).
+ */
 export const WalletPotViewSchema = z.object({
 	id: z.string().max(64),
 	purpose: PotPurpose,
 	name: z.string().max(120),
 	balance: MoneyViewSchema,
 	autoAllocateBp: basisPoints,
+	goal: MoneyViewSchema.nullable(),
 });
 export type WalletPotView = z.infer<typeof WalletPotViewSchema>;
 
@@ -814,6 +828,11 @@ export const WalletOverviewSchema = z.object({
 	 * `finance.update_deposit_rule` accepts from them (the wallet's owner, or `add_funds` on a vault).
 	 */
 	recurringActions: z.array(RecurringRuleAction).max(4).default([]),
+	/**
+	 * The pot actions this viewer may take on the wallet: those `finance.save_wallet_pot` and
+	 * `finance.move_pot_funds` accept from them (the wallet's owner, or `distribute` on a vault).
+	 */
+	potActions: z.array(PotAction).max(2).default([]),
 	capabilities: z.array(VaultCapability),
 	verification: WalletVerificationSchema,
 	/**
@@ -1418,6 +1437,37 @@ export const RecurringAmountInputSchema = RecurringRuleInputSchema.extend({
 export type RecurringAmountInput = z.infer<typeof RecurringAmountInputSchema>;
 
 /**
+ * Save one of the target wallet's pots through `finance.save_wallet_pot`: a new one
+ * (`potId: null`) or a change to an active one. `autoAllocateBp: null` keeps a pot's share, and on
+ * a new tax pot takes the platform's suggested default; `archive: true` archives an empty pot.
+ * `currency` names the wallet the pot is on.
+ */
+export const SavePotInputSchema = z.object({
+	...targetShape,
+	currency,
+	potId: uuid.nullable(),
+	purpose: PotPurpose,
+	name: z.string().trim().min(1).max(120),
+	autoAllocateBp: basisPoints.nullable(),
+	goalMinor: minorUnitsPositive.nullable(),
+	archive: z.boolean().optional(),
+});
+export type SavePotInput = z.infer<typeof SavePotInputSchema>;
+
+/**
+ * Earmark Available money into a pot (`in`) or release it to Available (`out`) through
+ * `finance.move_pot_funds`, in the pot's own currency. Moves no money between wallets.
+ */
+export const MovePotInputSchema = z.object({
+	...targetShape,
+	potId: uuid,
+	direction: PotMovementDirection,
+	amountMinor: minorUnitsPositive,
+	currency,
+});
+export type MovePotInput = z.infer<typeof MovePotInputSchema>;
+
+/**
  * The `POST /api/wallet/action` body: one of the mutation payloads above, discriminated by `action`.
  * Each member's field errors keep the same paths as its own schema.
  */
@@ -1437,6 +1487,8 @@ export const WalletActionRequestSchema = z.discriminatedUnion("action", [
 	RecurringRuleInputSchema.extend({ action: z.literal("resume_recurring") }),
 	RecurringAmountInputSchema.extend({ action: z.literal("edit_recurring") }),
 	RecurringRuleInputSchema.extend({ action: z.literal("archive_recurring") }),
+	SavePotInputSchema.extend({ action: z.literal("save_pot") }),
+	MovePotInputSchema.extend({ action: z.literal("move_pot") }),
 ]);
 export type WalletActionRequest = z.infer<typeof WalletActionRequestSchema>;
 

@@ -41,7 +41,7 @@ lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide wha
 | 2    | ✅ DB11 seller commission (P0)                                                                              | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
 | 3    | DB16 conservation identity                                                                                  | UI2 island and money-verb tiers (after SV2, UI1)                                         |
 | 4    | DB12 bonus refused → ✅ DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout (after SV3) | UI6 checkout gates (after SV4, UI2)                                                      |
-| 5    | ✅ DB4 payout schedules → DB5 pots                                                                          | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
+| 5    | ✅ DB4 payout schedules → ✅ DB5 pots                                                                          | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
 | 6    | DB14 ticket and funding gates → DB15 payout-ready gate                                                      | SV7 seller-side refusals (after DB15)                                                    |
 | 7    | DB13 bonus held → DB20 team splits                                                                          | —                                                                                        |
 | 8    | DB8 currency integrity → DB9 settlement and entity currency → DB17 FX feed → DB18 conversion                | SV5 currency honesty (after DB9) → UI5 estimates and MoneyView                           |
@@ -611,6 +611,27 @@ HOT: 00001240, 00002510, 00005060, live-wallet.ts.
 ```
 
 ### DB5 — Pots: the earmark engine (M6, second in the build order)
+
+> **Status 2026-11-12:** Done (A2, A3's doors and Σbp cap, L7), awaiting the coordinator's
+> re-verification. `00001240` §9: `fn_is_income_reason`, `fn_apply_pot_allocations`,
+> `fn_can_manage_pots`, `save_wallet_pot`, `move_pot_funds`, called from `fn_mature_pending_releases`
+> and `fn_wallet_credit_pending`'s zero-day branch. `00001200`: `fn_available_cents`, the earmark rule
+> in `fn_wallet_debit` (voluntary and involuntary reasons listed; any other raises) and pots in
+> `fn_reconcile_wallets`. `00000017` + `00001830`: `wallet_pots` gains `goal_cents`, `active`,
+> `archived_at` (`created_at` now `clock_timestamp()`), and `finance.pot_movements` is new and
+> append-only. `00003004`: `v_wallet_reconciliation.earmarked_cents` / `pot_drift_cents`. Step 6 is
+> DB4's `fn_payout_schedule_available`, now Available minus earmarks. Seeds: the two seeded pots open
+> with a `move_in` each. Probes: `wallet_pots.sql` (new), `finance_invariants.sql` §4 (a pot's
+> balance is its movements). Built differently from the text below: (a) the income set adds
+> `escrow_release_vault_retention` and `fair_exit_release_vault_retention`, because finance-model §13
+> earmarks "each inbound payout as it matures" and a team vault's only earned income is its cut;
+> `fn_wallet_credit_pending` now refuses any reason outside the set. (b) `save_wallet_pot` takes
+> `p_archive DEFAULT false`, and caps a wallet at 40 active pots (the read's bound). (c) The dev
+> simulator (`simulate_wallet_transaction`, which writes the balance itself) checks Available minus
+> earmarks too. (d) The pot doors accept a direct request: the engine runs, so only the surface
+> keeps SV3's `pots_not_running` lock, with new copy, until UI3. `00005001` is unchanged: the param's
+> description already says what `save_wallet_pot` reads. Not run: `conservation_identity.sql`
+> (DB16 has not landed). An earmark moves no money, so DB16 adds no pot term.
 
 ```text
 PROMPT DB5: Pots are earmarks: the engine, its doors and the allocation on matured income
@@ -1221,6 +1242,11 @@ HOT: 00001155 and 00001510 (no SCH work package running; SCH-WP2's interim merge
 
 ### DB16 — The conservation identity, checked nightly, with an ops reader (M2)
 
+> **Input from DB5 (2026-11-12):** pots are earmarks inside `wallets.balance_cents`, so
+> `finance.pot_movements` is not a money term: the identity counts wallet balances whole. Σ pots ≤
+> balance and "a pot's balance is its movements" are `finance_invariants.sql` §2 and §4, and
+> `fn_reconcile_wallets` logs either breach.
+
 ```text
 PROMPT DB16: The money is all accounted for: a per-currency conservation identity, checked nightly
 
@@ -1334,6 +1360,10 @@ HOT: 00005060 (after the jobs session), 00002510.
 ```
 
 ### DB18 — Conversion between one's own wallets at a disclosed margin (M5 (c), (d)) — 🧑 margin
+
+> **Input from DB5 (2026-11-12):** `finance.fn_wallet_debit` raises `22023` for a debit reason in
+> neither of its lists. The conversion's debit reason joins the voluntary list, so a conversion never
+> reaches earmarked money ("an earmarked amount refuses" in the acceptance below is that rule).
 
 ```text
 PROMPT DB18: Convert between your own wallets at a disclosed margin
@@ -2004,6 +2034,19 @@ this prompt.
 ```
 
 ### UI3 — Recurring rules, pots and locked automation in the wallet (M6)
+
+> **Inputs from DB5 (2026-11-12):** `POST /api/wallet/action` takes `save_pot` (`SavePotInputSchema`:
+> create, rename, re-weight, goal, `archive`) and `move_pot` (`MovePotInputSchema`: `in` / `out`).
+> `WalletOverview.potActions` lists the ones the viewer may take, and `WalletPotView.goal` carries the
+> goal; archived pots are not read. The doors already accept both; only the surface keeps
+> `pots_not_running` (copy: "Pots set money aside as income clears, but they can't be changed here
+> yet."), so lifting it is `actionsFor`'s `locked.push("pots_not_running")` line plus the copy.
+> **Also yours (the read was left as it was):** the wallet read's Available is still the whole
+> balance (`wallet-scope.ts` `availableOf`, the hero, the switcher, the allocation meter). It must
+> become balance − Σ active pots, with an Earmarked figure beside it, and capital must still sum.
+> Checkout's "wallet covers" (`commerce-owner.ts`) also reads the whole balance: a covered order whose
+> pots hold the difference is refused `PF402` `earmarked` at the door. Until UI3 ships, only the
+> seeded pots exist.
 
 ```text
 PROMPT UI3: Upcoming rows act; pots become real; locked automation says why

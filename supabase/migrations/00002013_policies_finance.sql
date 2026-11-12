@@ -78,10 +78,16 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 CREATE POLICY "View own wallet pots" ON finance.wallet_pots FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 
--- No write policy on purpose. Allocating a wallet into pots is a move of funds, and a pot's
--- `auto_allocate_bp` decides where future income goes, so pots are written by definer doors only
--- (none is built yet — FINANCE_COMPLETENESS_AUDIT A2/A3). A client write keyed on `spend` let any
--- spender re-weight a shared vault's pots (A4; supabase/probes/finance_invariants.sql).
+-- No write policy on purpose. A pot earmarks part of the wallet's money and its `auto_allocate_bp`
+-- decides where future income goes, so pots are written by definer doors only: finance.save_wallet_pot
+-- and finance.move_pot_funds (the owner of a personal wallet, `distribute` on a shared one), the
+-- allocation on matured income and the recovery in finance.fn_wallet_debit (Decision #337, ruling M6).
+-- A client write keyed on `spend` let any spender re-weight a shared vault's pots (A4;
+-- supabase/probes/wallet_pot_authority.sql).
+
+-- A pot's ledger is read with its wallet and written only by the same doors.
+CREATE POLICY "View own pot movements" ON finance.pot_movements FOR
+SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 
 
 -- --- from 20260723093000_finance_vault_governance.sql ---

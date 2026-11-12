@@ -369,6 +369,8 @@ ALTER TABLE finance.income_smoothing ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.wallet_pots ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE finance.pot_movements ENABLE ROW LEVEL SECURITY;
+
 
 -- --- from 20260723093000_finance_vault_governance.sql ---
 

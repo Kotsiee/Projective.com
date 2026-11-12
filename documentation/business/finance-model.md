@@ -488,12 +488,20 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
   needs a `PRODUCT_SPEC.md` entry and a disbursement design before its engine is built, and
   enrolment is locked meanwhile.
 - **Pots** (`finance.wallet_pots`) are **earmarks inside the wallet**, never a separate balance
-  (Decision #337, ruling M6): named (`tax` / `savings` / `goal` / `general`), each labels part of
-  the wallet's own money. A pot with `auto_allocate_bp > 0` earmarks that % of each inbound payout
-  as it matures — the **tax-pot auto-set-aside** (suggested default `tax_pot_default_bp`, opt-in,
-  `0` by default) — and a wallet's pots together earmark at most 100% (Σ bp ≤ 10000). **Not built
-  yet**: neither auto-allocation nor any pot movement runs, so the control is locked until they do
-  (second in the build order). Clients read pots and never write them.
+  (Decision #337, ruling M6): named (`tax` / `savings` / `goal` / `general`, with an optional goal
+  amount), each labels part of the wallet's own money, so the wallet's balance stays the total and
+  **Available to spend = balance − Σ active pots**. A pot with `auto_allocate_bp > 0` earmarks that
+  share, floored, of each income credit as it matures (an escrow release, a team share or finder
+  fee, a vault cut, a fair-exit payout, a product sale; never a top-up, refund or transfer), and the
+  dust stays Available — the **tax-pot auto-set-aside** (a new tax pot's suggested share is
+  `tax_pot_default_bp`, opt-in, `0` by default). A wallet's active pots together earmark at most 100%
+  (Σ bp ≤ 10000). The owner of a personal wallet, or a `distribute` holder on a shared one, saves
+  pots and moves Available money into or out of them; a pot is archived only when empty, never
+  deleted. A spend, payout, transfer or distribution never reaches earmarked money; a chargeback or
+  refund recovery can, and then shrinks the pots newest first. An earmark moves no money, so the
+  conservation identity is unchanged. **Not built yet** (Decision #337, ruling M6): the wallet's pot
+  controls stay locked (`pots_not_running`) until the Pots dialog ships. Clients read pots and write
+  them only through the doors.
 - **Deadline bonus** (Decision #337, ruling M7): a client may offer a bonus for delivery by a
   stage's deadline, on one-off and pipeline projects alike, of **+10%** of the stage price
   (`DEADLINE_BONUS_RATE = 0.1`, the starting dial). It is held with the escrow at funding; release

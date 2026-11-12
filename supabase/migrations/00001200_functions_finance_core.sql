@@ -31,29 +31,108 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
+-- The one place a wallet's pots are enforced (finance.wallet_pots, Decision #337, ruling M6). Every
+-- debit reason is in exactly one of two lists, and a reason in neither raises, so a new writer has to
+-- choose. A VOLUNTARY spend (an escrow hold, a checkout or invoice payment, a transfer or distribution
+-- out, a payout) may not reach earmarked money: it is refused PF402 `earmarked` when the balance
+-- covers it but the balance minus the active pots does not. An INVOLUNTARY recovery (a lost
+-- chargeback, a card refund) takes what the wallet holds and then shrinks its pots newest first, each
+-- with a finance.pot_movements row, so the pots never earmark more than the wallet holds.
 CREATE OR REPLACE FUNCTION finance.fn_wallet_debit(
     p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
     p_reason text, p_ref_table text, p_ref_id uuid
 ) RETURNS void AS $$
 DECLARE
-    v_wallet uuid;
+    v_voluntary CONSTANT text[] := ARRAY[
+        'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout'
+    ];
+    v_involuntary CONSTANT text[] := ARRAY['chargeback', 'refund'];
+    v_wallet finance.wallets;
     v_balance bigint;
+    v_earmarked bigint;
+    v_tx uuid;
+    v_excess bigint;
+    v_take bigint;
+    r finance.wallet_pots;
 BEGIN
     IF p_amount IS NULL OR p_amount <= 0 THEN RETURN; END IF;
-    SELECT id INTO v_wallet FROM finance.wallets
-    WHERE owner_type = p_owner_type AND owner_id = p_owner_id AND currency = p_currency;
-    IF v_wallet IS NULL THEN
+    IF p_reason IS NULL OR NOT (p_reason = ANY (v_voluntary) OR p_reason = ANY (v_involuntary)) THEN
+        RAISE EXCEPTION 'wallet: % is not a debit reason finance.fn_wallet_debit knows; add it to its voluntary or involuntary list',
+            COALESCE(p_reason, 'nothing') USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO v_wallet FROM finance.wallets
+    WHERE owner_type = p_owner_type AND owner_id = p_owner_id AND currency = p_currency
+    FOR UPDATE;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'wallet: % has no % wallet in % to debit', p_owner_id, p_owner_type, p_currency
             USING ERRCODE = 'PW404';
     END IF;
 
+    SELECT COALESCE(pg_catalog.sum(p.balance_cents), 0)::bigint INTO v_earmarked
+      FROM finance.wallet_pots p WHERE p.wallet_id = v_wallet.id AND p.active;
+    IF p_reason = ANY (v_voluntary) AND v_wallet.balance_cents >= p_amount
+       AND v_wallet.balance_cents - v_earmarked < p_amount THEN
+        RAISE EXCEPTION 'earmarked: % % of this wallet is set aside in pots, so % % is available. Move money out of a pot to spend it',
+            finance.fn_minor_units_text(v_earmarked, v_wallet.currency), v_wallet.currency,
+            finance.fn_minor_units_text(GREATEST(v_wallet.balance_cents - v_earmarked, 0), v_wallet.currency), v_wallet.currency
+            USING ERRCODE = 'PF402',
+                  DETAIL = pg_catalog.jsonb_build_object(
+                      'wallet_id', v_wallet.id,
+                      'amount_minor', p_amount,
+                      'earmarked_minor', v_earmarked,
+                      'available_minor', GREATEST(v_wallet.balance_cents - v_earmarked, 0)
+                  )::text;
+    END IF;
+
     UPDATE finance.wallets SET balance_cents = balance_cents - p_amount
-    WHERE id = v_wallet RETURNING balance_cents INTO v_balance;
+    WHERE id = v_wallet.id RETURNING balance_cents INTO v_balance;
 
     INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents)
-    VALUES (v_wallet, 'debit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance);
+    VALUES (v_wallet.id, 'debit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance)
+    RETURNING id INTO v_tx;
+
+    v_excess := v_earmarked - v_balance;
+    IF v_excess > 0 THEN
+        FOR r IN
+            SELECT * FROM finance.wallet_pots p
+             WHERE p.wallet_id = v_wallet.id AND p.active AND p.balance_cents > 0
+             ORDER BY p.created_at DESC, p.id DESC
+               FOR UPDATE
+        LOOP
+            EXIT WHEN v_excess <= 0;
+            v_take := LEAST(v_excess, r.balance_cents);
+            UPDATE finance.wallet_pots SET balance_cents = balance_cents - v_take WHERE id = r.id;
+            INSERT INTO finance.pot_movements (
+                pot_id, wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id,
+                balance_after_cents, actor_user_id
+            ) VALUES (
+                r.id, v_wallet.id, 'out', v_take, r.currency, 'recovery', 'transactions', v_tx,
+                r.balance_cents - v_take, auth.uid ()
+            );
+            v_excess := v_excess - v_take;
+        END LOOP;
+    END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
+
+-- What a wallet may spend: its balance minus what its active pots earmark (finance.wallet_pots,
+-- Decision #337, ruling M6). NULL for a wallet that does not exist. Here, beside the debit that enforces
+-- it, because SQL functions in later files read it when they are created (the payout-schedule claim's
+-- fn_payout_schedule_available, 00001240). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_available_cents(p_wallet uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT w.balance_cents - COALESCE((
+               SELECT pg_catalog.sum(p.balance_cents) FROM finance.wallet_pots p
+                WHERE p.wallet_id = w.id AND p.active
+           ), 0)::bigint
+      FROM finance.wallets w
+     WHERE w.id = p_wallet;
+$$;
 
 -- A person's own wallet type. People hold `freelancer` wallets when they sell and `user` wallets when
 -- they only buy; the money functions must credit the one the person actually has. An existing wallet
@@ -1070,8 +1149,9 @@ $$;
 
 -- finance.wallets.balance_cents is a cache written beside the ledger, so it can drift from it. Compares
 -- every wallet's cached balance with the SUM of its signed ledger rows (finance.v_wallet_reconciliation,
--- 00003004) and with its newest row's balance_after_cents, in ONE statement so a movement committing
--- mid-run is seen whole or not at all.
+-- 00003004) and with its newest row's balance_after_cents, and its pots with their movements and with
+-- its balance (FINANCE_AUDIT L7), in ONE statement so a movement committing mid-run is seen whole or
+-- not at all.
 -- Each drifted wallet becomes an `error` row in ops.log_entries (scope `finance.reconcile_wallets`,
 -- the figures in `data`) and the run raises a WARNING; returns the number of drifted wallets.
 -- Read-only on finance: drift is reported for a human, never auto-corrected.
@@ -1088,7 +1168,7 @@ DECLARE
 BEGIN
     WITH drift AS (
         SELECT r.wallet_id AS id, r.owner_type, r.owner_id, r.currency, r.balance_cents,
-               r.ledger_sum_cents,
+               r.ledger_sum_cents, r.earmarked_cents, r.pot_drift_cents,
                latest.balance_after_cents AS latest_balance_after_cents
           FROM finance.v_wallet_reconciliation r
           LEFT JOIN LATERAL (
@@ -1100,12 +1180,15 @@ BEGIN
           ) latest ON true
          WHERE r.drift_cents <> 0
             OR r.balance_cents <> COALESCE(latest.balance_after_cents, 0)
+            OR r.pot_drift_cents <> 0
+            OR r.earmarked_cents > r.balance_cents
     ), logged AS (
         INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
         SELECT 'reconcile:' || v_run::text,
                'error',
-               pg_catalog.format('Wallet %s drifted from its ledger: cached %s, ledger sum %s, latest balance_after %s',
-                   d.id, d.balance_cents, d.ledger_sum_cents, COALESCE(d.latest_balance_after_cents::text, 'none')),
+               pg_catalog.format('Wallet %s drifted from its ledger: cached %s, ledger sum %s, latest balance_after %s, pots earmark %s (pot drift %s)',
+                   d.id, d.balance_cents, d.ledger_sum_cents, COALESCE(d.latest_balance_after_cents::text, 'none'),
+                   d.earmarked_cents, d.pot_drift_cents),
                pg_catalog.now(),
                'server',
                'finance.reconcile_wallets',
@@ -1117,7 +1200,9 @@ BEGIN
                    'currency', d.currency,
                    'balance_cents', d.balance_cents,
                    'ledger_sum_cents', d.ledger_sum_cents,
-                   'latest_balance_after_cents', d.latest_balance_after_cents
+                   'latest_balance_after_cents', d.latest_balance_after_cents,
+                   'earmarked_cents', d.earmarked_cents,
+                   'pot_drift_cents', d.pot_drift_cents
                )
           FROM drift d
         RETURNING 1
@@ -1133,8 +1218,8 @@ $$;
 
 COMMENT ON FUNCTION finance.fn_reconcile_wallets() IS
 'Nightly ledger reconciliation: flags every wallet whose balance_cents differs from the sum of its
-ledger rows or from its newest balance_after_cents into ops.log_entries. Read-only on finance;
-service role / pg_cron only.';
+ledger rows or from its newest balance_after_cents, or whose pots drift from their movements or
+earmark more than it holds, into ops.log_entries. Read-only on finance; service role / pg_cron only.';
 
 -- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
 -- job registry (`ops.scheduled_jobs`, 00005060).

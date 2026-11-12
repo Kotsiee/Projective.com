@@ -1564,8 +1564,11 @@ Designed for collaborator groups (Virtual Agencies).
 ##### Automation that does not run yet is locked
 
 Pots and the **Income Smoother** are shown with a lock and the reason until each one's engine runs —
-payout schedules first (built), then pots, then the smoother; none of them saves a setting nothing
-acts on. A **pot** is an earmark inside the wallet, never a separate balance. The Income Smoother is
+payout schedules first (built), then pots (engine built), then the smoother; none of them saves a
+setting nothing acts on. A **pot** is an earmark inside the wallet, never a separate balance: the
+wallet may spend its balance minus its pots, a pot's share of each income credit is set aside as the
+credit clears, and only a chargeback or refund can reach earmarked money (`finance-model.md` §13).
+Its controls stay locked until the Pots dialog ships (**Not built yet**). The Income Smoother is
 **Planned** and gets its own entry here before it is built (Decision #337, ruling M6). A **payout
 schedule** runs: weekly, monthly or at a balance threshold, each run withdraws everything Available
 as the member who set it up, through the same checks as a manual withdrawal, and three refused runs

@@ -47,6 +47,7 @@ import {
 	currencyExponent,
 	incomeSmootherFeeMinor,
 	paramMinor,
+	PotAction,
 	RecurringRuleAction,
 	walletVariant,
 } from "@projective/types/finance";
@@ -139,7 +140,7 @@ export const PROCESSOR_REASON: Readonly<Partial<Record<WalletAction, string>>> =
  * message of the refusal a locked control's action answers with.
  */
 export const LOCK_REASON: Readonly<Record<WalletLockCode, string>> = {
-	pots_not_running: "Pots don't set money aside yet, so they can't be changed for now.",
+	pots_not_running: "Pots set money aside as income clears, but they can't be changed here yet.",
 	smoother_planned:
 		"The Income Smoother is planned but doesn't run yet, so you can't enrol for now.",
 };
@@ -391,6 +392,7 @@ export interface OfferedActions {
 	unavailable: { action: WalletAction; reason: string }[];
 	locks: { code: WalletLockCode; reason: string }[];
 	recurring: RecurringRuleAction[];
+	pots: PotAction[];
 }
 
 /**
@@ -470,7 +472,9 @@ export function actionsFor(
 	// `finance.update_deposit_rule` takes the owner of a personal wallet (who holds every capability
 	// there) or an `add_funds` holder on a vault.
 	const recurring = caps.includes("add_funds") ? [...RecurringRuleAction.options] : [];
-	return { offered, unavailable, locks, recurring };
+	// `finance.fn_can_manage_pots`: a personal wallet's owner, or a `distribute` holder on a vault.
+	const pots = personal || caps.includes("distribute") ? [...PotAction.options] : [];
+	return { offered, unavailable, locks, recurring, pots };
 }
 // #endregion
 
@@ -611,14 +615,15 @@ async function smootherFor(
 	return smootherState(ctx.money, row, row?.currency ?? own ?? ctx.money.display, rows, params);
 }
 
-/** Every pot on the account's wallets, oldest first, each in its own currency. */
+/** Every active pot on the account's wallets, oldest first, each in its own currency. */
 async function potsOf(ctx: WalletContext, account: WalletAccount): Promise<WalletPotView[]> {
 	const ids = walletIds(account);
 	if (ids.length === 0) return [];
 	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("finance")
 		.from("wallet_pots")
-		.select("id, purpose, name, balance_cents, currency, auto_allocate_bp")
+		.select("id, purpose, name, balance_cents, currency, auto_allocate_bp, goal_cents")
 		.in("wallet_id", ids)
+		.eq("active", true)
 		.order("created_at", { ascending: true })
 		.order("id", { ascending: true })
 		.limit(40);
@@ -630,12 +635,14 @@ async function potsOf(ctx: WalletContext, account: WalletAccount): Promise<Walle
 		balance_cents: number | string;
 		currency: string;
 		auto_allocate_bp: number;
+		goal_cents: number | string | null;
 	}[]).map((pot) => ({
 		id: pot.id,
 		purpose: pot.purpose,
 		name: clip(pot.name, 120),
 		balance: money(ctx, Number(pot.balance_cents) || 0, pot.currency),
 		autoAllocateBp: Number(pot.auto_allocate_bp) || 0,
+		goal: pot.goal_cents === null ? null : money(ctx, Number(pot.goal_cents), pot.currency),
 	}));
 }
 
@@ -1119,7 +1126,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	const verification = verificationFor(ctx, account, variant);
 	const vaultHolds = account.rows.some((r) => r.balance_cents > 0);
 	const splitAgreed = (team?.members.length ?? 0) > 0 && team?.splitRule.label !== "No split agreed yet";
-	const { offered, unavailable, locks, recurring } = actionsFor(
+	const { offered, unavailable, locks, recurring, pots } = actionsFor(
 		variant,
 		account,
 		ctx.accounts,
@@ -1166,6 +1173,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		unavailable: unavailable.slice(0, 10),
 		locks,
 		recurringActions: recurring,
+		potActions: pots,
 		capabilities: account.capabilities,
 		verification,
 		standing,
@@ -1214,6 +1222,7 @@ async function aggregateOverview(ctx: WalletContext): Promise<WalletOverview> {
 		unavailable: [],
 		locks: [],
 		recurringActions: [],
+		potActions: [],
 		capabilities: ["view"],
 		verification: personal ? verificationFor(ctx, personal, "personal") : verificationFor(ctx, ctx.accounts[0], "personal"),
 		standing: null,

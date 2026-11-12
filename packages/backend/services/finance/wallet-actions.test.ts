@@ -10,6 +10,7 @@ import {
 	payoutScheduleArgs,
 	payoutScheduleRefusal,
 	recurringChange,
+	savePotArgs,
 	setPayout,
 } from "./wallet-actions.ts";
 import type { WalletAccount, WalletContext } from "./wallet-scope.ts";
@@ -269,3 +270,45 @@ Deno.test("a resume or a new amount says the charge now runs on the editor's aut
 	);
 });
 // #endregion
+
+Deno.test("a pot save asks the door for exactly the pot named, on the wallet resolved", () => {
+	const args = savePotArgs({
+		scope: "personal",
+		contextId: "",
+		currency: "USD",
+		potId: null,
+		purpose: "tax",
+		name: "Tax set-aside",
+		autoAllocateBp: null,
+		goalMinor: null,
+	}, "w-own");
+	assertEquals(args, {
+		p_wallet: "w-own",
+		p_id: null,
+		p_purpose: "tax",
+		p_name: "Tax set-aside",
+		p_auto_allocate_bp: null,
+		p_goal_cents: null,
+		p_archive: false,
+	}, "a null share lets the door apply the tax default");
+	const archive = savePotArgs({
+		scope: "team",
+		contextId: "t-1",
+		currency: "GBP",
+		potId: "6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+		purpose: "savings",
+		name: "Reserve",
+		autoAllocateBp: 1500,
+		goalMinor: 500_000,
+		archive: true,
+	}, "w-vault");
+	assertEquals(
+		[archive.p_id, archive.p_auto_allocate_bp, archive.p_goal_cents, archive.p_archive],
+		[
+			"6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+			1500,
+			500_000,
+			true,
+		],
+	);
+});

@@ -30,8 +30,15 @@ governance, statements, and idempotency.
   `finance.fund_state`. **Earned money never enters `balance_cents` until it clears** (Decision #191):
   escrow releases, team shares, fair-exit and seat payouts and product sales write a
   `pending_releases` row, and `finance.fn_mature_pending_releases` credits the wallet (with its ledger
-  line) when the window passes. So `balance_cents` is the Available balance, the only money any spend
-  path or `begin_payout` can debit, and it still equals the ledger sum.
+  line) when the window passes. So `balance_cents` holds only cleared money, and it still equals the
+  ledger sum.
+- **Pots are earmarks, not balances** (Decision #337, ruling M6). A `finance.wallet_pots` row labels
+  part of its wallet's own `balance_cents`, which stays the total: **Available to spend =
+  `balance_cents` − Σ active pots** (`finance.fn_available_cents`). `finance.fn_wallet_debit` is the
+  one place that is enforced, by reason: a voluntary spend (escrow hold, checkout or invoice payment,
+  transfer or distribution out, payout) is refused `PF402` `earmarked`; an involuntary recovery
+  (chargeback, card refund) may take earmarked money and shrinks the pots newest first. An earmark
+  moves no money and writes no `finance.transactions` line; its own ledger is `finance.pot_movements`.
 - **Hidden-ledger posture.** Most `finance.*` tables are **definer-only** (RLS enabled, no policy,
   no `authenticated` grant) — reachable only through `SECURITY DEFINER` RPCs
   (the `projects.*` stage wrappers, the workspace console's `finance.save_team_split` /
@@ -239,7 +246,8 @@ fragments (`brand`, `last4`).
 | `finance.deposit_rules`    | Recurring deposit / standing instruction: `wallet_id`, `source_method_id`, `amount_cents`+`currency`, `interval` (weekly/monthly/below_floor), `next_run_at`, `active`, `failure_count`, `last_error`, `created_by` (who authorised the charge), `archived_at` (set once by `update_deposit_rule(p_archive)`; CHECK an archived rule is inactive). Never deleted. Wallet, currency, card and interval never change (`trg_deposit_rules_immutable`). |
 | `finance.payout_schedules` | A standing withdrawal per owner and currency (`(owner, currency)` UNIQUE): `owner_type`/`owner_id`, `mode` (manual/scheduled_weekly/scheduled_monthly/threshold; CHECK a threshold schedule has `threshold_cents`), `threshold_cents`, `destination_method_id`, `next_run_at` (the next Monday or 1st, 00:00 UTC; NULL for manual and threshold), `active`, `created_by` (the author every run withdraws as; re-stamped on each save), `last_run_at`, `last_error`, `failure_count` (refusals in a row; the third sets `active` false). `instant` is reserved: Instant Payouts are **Planned** (Decision #337, ruling P3) and the door refuses it. Written only by `finance.save_payout_schedule` and the scheduler (`fn_claim_due_payout_schedules`); never deleted (manual is the off switch). |
 | `finance.income_smoothing` | AI "Income Smoother" enrolment: `user_id`, `enrolled`, `target_monthly_cents`, `fee_bp` (~0.5%), `eligibility_met`. `(user, currency)` UNIQUE. Eligibility numbers in `finance-model.md` §Money-Movement Rules.                                                                 |
-| `finance.wallet_pots`      | Sub-wallets / pots: `wallet_id`, `purpose` (tax/savings/goal/general), `name`, `balance_cents`, `auto_allocate_bp` (skim % of inbound payouts — the tax-pot auto-set-aside).                                                                                                    |
+| `finance.wallet_pots`      | An **earmark** inside a wallet (Decision #337, ruling M6): `wallet_id`, `purpose` (tax/savings/goal/general), `name`, `balance_cents` (the part of the wallet's balance it earmarks), `currency` (the wallet's), `auto_allocate_bp` (the share of each matured income credit it earmarks — the tax-pot auto-set-aside; Σ over a wallet's active pots ≤ 10000, `finance.save_wallet_pot`), `goal_cents` (optional target, `> 0`; never a cap), `active` + `archived_at` (archived once, only empty: `ck_wallet_pots_archived`, `ck_wallet_pots_archived_empty`), `created_at` (`clock_timestamp()`: a recovery shrinks pots newest first). Never deleted. Written only by the pot doors (`00001240` §9) and `fn_wallet_debit`'s recovery. |
+| `finance.pot_movements`    | A pot's **append-only ledger** (`trg_pot_movements_append_only` / `_no_truncate`, `PL403`): `pot_id`, `wallet_id`, `direction` (`in`/`out`), `amount_cents` (> 0), `currency`, `reason` (`allocation` · `move_in` · `move_out` · `recovery`; `ck_pot_movements_direction` ties each to its direction), `ref_table`/`ref_id` (`transactions` + the matured credit for an allocation, the chargeback or refund debit for a recovery — `ck_pot_movements_ref`), `balance_after_cents` (the pot's balance after the row), `actor_user_id` (who moved it; `NULL` for the engine's rows; `ON DELETE RESTRICT`), `created_at` (`clock_timestamp()`). Σ in − Σ out = the pot's balance (`finance_invariants.sql` §4). `uq_pot_movements_allocation (pot_id, ref_id) WHERE reason = 'allocation'`: one earmark per pot per credit. Clients read it with the wallet (`fn_can_view_wallet`) and never write it. |
 
 ---
 

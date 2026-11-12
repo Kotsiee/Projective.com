@@ -90,7 +90,7 @@ BEGIN
     IF p_target > w.balance_cents THEN
         PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, p_target - w.balance_cents, 'topup', 'probe', NULL);
     ELSIF p_target < w.balance_cents THEN
-        PERFORM finance.fn_wallet_debit(w.owner_id, w.owner_type, w.currency, w.balance_cents - p_target, 'adjustment', 'probe', NULL);
+        PERFORM finance.fn_wallet_debit(w.owner_id, w.owner_type, w.currency, w.balance_cents - p_target, 'transfer_out', 'probe', NULL);
     END IF;
 END $$;
 

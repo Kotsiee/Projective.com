@@ -4,8 +4,10 @@ import type {
 	DistributeInput,
 	FundEscrowInput,
 	IncomeSmootherEnrolInput,
+	MovePotInput,
 	PayoutScheduleInput,
 	RecurringRuleAction,
+	SavePotInput,
 	SpendDecisionInput,
 	SpendRequestInput,
 	TopUpInput,
@@ -79,6 +81,11 @@ function messageFor(error: { code?: string; message: string }): string {
 	if (isAgeRestricted(error)) return AGE_RESTRICTED.message;
 	if (error.code === "23514" && /balance_cents/.test(error.message)) {
 		return "That wallet doesn't hold enough for this.";
+	}
+	// `earmarked: …` (finance.fn_wallet_debit): the spend would reach money set aside in pots.
+	const earmarked = /^earmarked:\s*([\s\S]+)$/.exec(error.message.trim());
+	if (error.code === "PF402" && earmarked) {
+		return `${earmarked[1].replace(/\s+/g, " ").trim()}.`.slice(0, 200);
 	}
 	return error.message.replace(/\s+/g, " ").trim().slice(0, 200) || "That didn't go through.";
 }
@@ -694,5 +701,122 @@ export async function changeRecurring(
 		}) as Result;
 	}
 	return after(query, actor, account.key, change.message);
+}
+// #endregion
+// #region Pots
+/** The request fields a pot door names in its `<field>: <reason>` refusals. */
+const POT_FIELDS: ReadonlySet<string> = new Set([
+	"potId",
+	"purpose",
+	"name",
+	"autoAllocateBp",
+	"goalMinor",
+	"amountMinor",
+	"direction",
+]);
+
+/** A pot door's refusal, its field named where the door named one. */
+function potRefusal(
+	error: { code?: string; message: string; details?: string | null },
+	label: string,
+): Result {
+	const refusal = refusalOf(error, label);
+	const field = /^([A-Za-z]+):/.exec(error.message.trim())?.[1];
+	const errors = refusal.errors ??
+		(field && POT_FIELDS.has(field) ? { [field]: refusal.message } : undefined);
+	return fail(refusal.status, {
+		message: refusal.message,
+		errors,
+		details: refusal.details,
+	}) as Result;
+}
+
+/**
+ * The `finance.save_wallet_pot` arguments for a save on the wallet `walletId`: a null share keeps
+ * the pot's own (a new tax pot takes the platform's suggested default), a null goal clears it.
+ */
+export function savePotArgs(input: SavePotInput, walletId: string): {
+	p_wallet: string;
+	p_id: string | null;
+	p_purpose: SavePotInput["purpose"];
+	p_name: string;
+	p_auto_allocate_bp: number | null;
+	p_goal_cents: number | null;
+	p_archive: boolean;
+} {
+	return {
+		p_wallet: walletId,
+		p_id: input.potId,
+		p_purpose: input.purpose,
+		p_name: input.name,
+		p_auto_allocate_bp: input.autoAllocateBp,
+		p_goal_cents: input.goalMinor,
+		p_archive: input.archive === true,
+	};
+}
+
+/**
+ * Save one of the wallet's pots through `finance.save_wallet_pot`, the only door that writes one:
+ * it takes the owner of a personal wallet or a `distribute` holder on a vault, and keeps the
+ * wallet's pots at most 100% of income. The pot is saved on the account's wallet in `currency`.
+ */
+export async function savePot(
+	input: SavePotInput,
+	query: WalletQuery,
+	actor: ReadActor,
+): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { ctx, account } = resolved;
+	const row = rowIn(account, input.currency);
+	if (!row) return refuse(404, `This wallet holds no ${input.currency.toUpperCase()}.`);
+	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance")
+		.rpc("save_wallet_pot", savePotArgs(input, row.id));
+	if (error) return potRefusal(error, "save_wallet_pot");
+	const message = input.archive === true
+		? "Pot archived."
+		: input.potId
+		? "Pot saved."
+		: "Pot created.";
+	return after(query, actor, account.key, message);
+}
+
+/**
+ * Earmark Available money into a pot, or release it, through `finance.move_pot_funds` (same
+ * authority as a save). The pot must be on the wallet the action names, and the amount in the pot's
+ * own currency.
+ */
+export async function movePot(
+	input: MovePotInput,
+	query: WalletQuery,
+	actor: ReadActor,
+): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { ctx, account } = resolved;
+	const db = getUserClient(ctx.actor.accessToken).schema("finance");
+	const { data, error: readError } = await db.from("wallet_pots")
+		.select("wallet_id, currency").eq("id", input.potId).maybeSingle();
+	if (readError) throw new Error(`finance.wallet_pots read failed: ${readError.message}`);
+	const pot = data as { wallet_id: string; currency: string } | null;
+	if (!pot || !account.rows.some((row) => row.id === pot.wallet_id)) {
+		return refuse(404, "That pot isn't on this wallet.");
+	}
+	const held = pot.currency.toUpperCase();
+	if (input.currency.toUpperCase() !== held) {
+		return refuse(409, `This pot is in ${held}. Enter the amount in ${held}.`);
+	}
+	const { error } = await db.rpc("move_pot_funds", {
+		p_pot: input.potId,
+		p_amount: input.amountMinor,
+		p_direction: input.direction,
+	});
+	if (error) return potRefusal(error, "move_pot_funds");
+	return after(
+		query,
+		actor,
+		account.key,
+		input.direction === "in" ? "Money set aside in the pot." : "Money moved back to Available.",
+	);
 }
 // #endregion

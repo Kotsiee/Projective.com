@@ -35,6 +35,7 @@ import {
 	IncomeSmoothingSchema,
 	PaymentMethodSchema,
 	PayoutScheduleSchema,
+	PotMovementSchema,
 	WalletPotSchema,
 } from "./methods.ts";
 import { InboundPaymentSchema, PayoutAccountSchema, PayoutSchema } from "./payments.ts";
@@ -84,6 +85,7 @@ const ROWS: Readonly<Record<string, RowContract>> = {
 	"finance.payout_schedules": { schema: PayoutScheduleSchema },
 	"finance.income_smoothing": { schema: IncomeSmoothingSchema },
 	"finance.wallet_pots": { schema: WalletPotSchema },
+	"finance.pot_movements": { schema: PotMovementSchema },
 	"finance.vault_permissions": { schema: VaultPermissionSchema },
 	"finance.split_rules": { schema: SplitRuleSchema },
 	"finance.spend_approvals": { schema: SpendApprovalSchema },

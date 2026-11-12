@@ -25,7 +25,17 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   may be the first to pay an owner runs `fn_ensure_wallet` first. A non-positive amount is still a
   no-op.
 - **`finance.fn_wallet_debit(...)`** — the debit counterpart (the `balance_cents >= 0` CHECK
-  enforces sufficient funds; a missing wallet raises `PW404`).
+  enforces sufficient funds; a missing wallet raises `PW404`), and **the one place a wallet's pots
+  are enforced** (Decision #337, ruling M6; signature unchanged). It locks the wallet row and sorts
+  every reason into one of two lists; a reason in neither raises `22023`, so a new writer must choose.
+  **Voluntary** (`escrow_hold`, `order_payment`, `invoice_payment`, `transfer_out`,
+  `team_distribution`, `payout`): when the balance covers the amount but the balance minus the active
+  pots does not, it raises `PF402` `earmarked: <earmarked> of this wallet is set aside in pots, so
+  <available> is available…` with `DETAIL` `{wallet_id, amount_minor, earmarked_minor,
+  available_minor}`. **Involuntary** (`chargeback`, `refund`): it debits as before and, if the pots
+  now earmark more than the wallet holds, shrinks them newest first (`created_at DESC, id DESC`) by the
+  excess, each by a `recovery` `finance.pot_movements` row keyed to the debit (`transactions`). A new
+  money flow that debits (DB18's conversion, for one) adds its reason to one list.
 - **`finance.fn_check_spending_limit(wallet_id, member, amount)`** → boolean — enforces a member's
   `finance.spending_limits` envelope and counts the spend against it, **atomically** (rewritten
   2026-09-28, signed off by the product owner): the row is locked `FOR UPDATE`, the period is rolled
@@ -278,7 +288,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 ### Views
 
 - **`finance.v_wallet_reconciliation`** (`20260723094000`) — internal ledger self-consistency
-  (`balance_cents` vs the running ledger sum → `drift_cents`, expected 0). `service_role`-only.
+  (`balance_cents` vs the running ledger sum → `drift_cents`, expected 0), and the wallet's pots
+  (FINANCE_AUDIT L7): `earmarked_cents` (Σ active pots, never above `balance_cents`) and
+  `pot_drift_cents` (Σ pot balances − Σ signed `pot_movements`, expected 0). `service_role`-only.
   Read nightly by `fn_reconcile_wallets` (below).
 
 ### Ledger integrity (Decision #186)
@@ -291,6 +303,8 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   `finance.transactions` `BEFORE UPDATE OR DELETE` per row (`trg_transactions_append_only`) and
   `BEFORE TRUNCATE` per statement (`trg_transactions_no_truncate`, since TRUNCATE skips row triggers)
   in `00001830`. No function updates or deletes ledger rows; corrections are compensating rows.
+- **`finance.fn_pot_movements_append_only()`** → trigger — the same rule for a pot's ledger
+  (`finance.pot_movements`, `trg_pot_movements_append_only` / `trg_pot_movements_no_truncate`).
 - **`finance.fn_reconcile_wallets()`** → integer — for every wallet, compares `balance_cents` with
   the ledger sum (`v_wallet_reconciliation.drift_cents`) **and** with its newest row's
   `balance_after_cents` (ordered `created_at DESC, id DESC`, as `list_ledger` pages), in one
@@ -298,7 +312,9 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   one `ops.log_entries` row (`level = 'error'`, `source = 'server'`,
   `scope = 'finance.reconcile_wallets'`, `client_id = 'reconcile:<run id>'`, `data` = `run_id`,
   `wallet_id`, `owner_type`, `owner_id`, `currency`, `balance_cents`, `ledger_sum_cents`,
-  `latest_balance_after_cents`); the run raises a `WARNING` and returns the number of drifted
+  `latest_balance_after_cents`, `earmarked_cents`, `pot_drift_cents`). A wallet whose pots drift from
+  their movements or earmark more than it holds is flagged the same way. The run raises a `WARNING`
+  and returns the number of drifted
   wallets. Read-only on `finance`: drift is reported for a human, never auto-corrected. Service role
   only (`00002510`). Scheduled nightly at 03:40 UTC as `finance-reconcile-wallets`, a row of the job
   registry (`ops.scheduled_jobs`, Decision #203); `deno task cron:run finance-reconcile-wallets` runs it
@@ -339,7 +355,7 @@ funder's own envelope and the approval threshold.
 The additive foundation defines the **data + gates** for these flows; the `SECURITY DEFINER` write
 RPCs that operate them are the live-path TODO (behind the eventual `FINANCE_BACKEND_LIVE`-style
 gate): recurring-deposit runner, payout-schedule runner + Instant Payout, Income-Smoother
-allocation, tax-pot auto-set-aside, the pending-release (7-day-window) sweep, monthly statement
+allocation, the pending-release (7-day-window) sweep, monthly statement
 generation, and the FX-rate ingestion job. (The spend-approval decision landed as
 `finance.decide_spend_approval` — see [§ Wallet movements](#-wallet-movements-00001210-12); vault-
 permission grant/revoke is no longer a separate RPC — the grants are a projection of the workspace
@@ -662,7 +678,9 @@ unexplainable.
 environment where the switch was flipped on can therefore be **audited**, not merely suspected.
 
 Insufficient funds are checked explicitly (`23514` with the two figures in the message) rather than
-left to the `balance_cents >= 0` CHECK, so the caller gets a legible refusal.
+left to the `balance_cents >= 0` CHECK, so the caller gets a legible refusal. The figure checked is
+`finance.fn_available_cents` — the balance minus the source wallet's pots — because the simulator
+writes the balance itself and must keep earmarked money out of reach as `fn_wallet_debit` does.
 
 **Return shape** (`jsonb`; `from`/`to` are `null` when that side was not touched):
 
@@ -1749,17 +1767,20 @@ stay immediate; pending money can be neither spent nor withdrawn.
 - `finance.fn_wallet_credit_pending(owner_id, owner_type, currency, amount, reason, ref_table, ref_id)`
   (internal) — the pending twin of `fn_wallet_credit`, same arguments: writes a
   `finance.pending_releases` row keyed to its source (`ref_table` must be `escrows` or `orders`,
-  else `22023`) with `available_at = now() + pending_release_days`, and no ledger line. A missing
-  wallet is `PW404`; a 0-day window credits at once. Called by `fn_release_ticket_escrow`
+  else `22023`) with `available_at = now() + pending_release_days`, and no ledger line. Only an earned
+  reason is accepted (`finance.fn_is_income_reason`, else `22023`). A missing wallet is `PW404`; a
+  0-day window credits at once and earmarks the credit into the wallet's pots
+  (`fn_apply_pot_allocations`). Called by `fn_release_ticket_escrow`
   (`escrow_release`), `fn_fair_exit_release` (`fair_exit_release`), `fn_split_team_payout`
   (`team_split` · `team_finder_fee` · `<reason>_vault_retention`), `fn_release_seat_escrow`
   (its `p_reason`) and `place_wallet_order` (`product_sale`).
 - `finance.fn_mature_pending_releases(p_limit = 1000)` → integer (service role / pg_cron
   `finance-mature-pending-releases`, hourly at :05) — credits every row past `available_at` through
   `fn_wallet_credit` with its original `reason` and source reference, so a matured release reads in
-  the ledger exactly as an immediate credit did; sets `state = 'available'`, `matured_at`,
-  `transaction_id`. Claims rows `FOR UPDATE SKIP LOCKED`; a replay credits nothing twice. Returns the
-  rows matured.
+  the ledger exactly as an immediate credit did, earmarks that credit into the wallet's pots
+  (`fn_apply_pot_allocations`, once per credit); sets `state = 'available'`, `matured_at`,
+  `transaction_id`. Claims rows `FOR UPDATE SKIP LOCKED`; a replay credits and earmarks nothing twice.
+  Returns the rows matured.
 - `finance.fn_recover_from_pending(wallet_id, amount)` → bigint (internal) — takes up to `amount` from
   the wallet's pending rows, soonest-to-clear first, into `recovered_cents`; an emptied row closes with
   no credit. Used by the lost-dispute recovery above.
@@ -1859,8 +1880,49 @@ the fee yet.
 | SQLSTATE | Meaning (added by `00001240`)                                   |
 | :------- | :-------------------------------------------------------------- |
 | `PA403`  | no verified payout account for this wallet                      |
-| `PF402`  | the wallet does not hold enough                                 |
+| `PF402`  | the wallet does not hold enough, or the spend would reach money earmarked in pots (`earmarked:`) |
 | `PK403`  | an earning gate (KYC / KYB) or the Income Smoother's eligibility |
+
+### Pots — earmarks inside the wallet (`00001240` §9, Decision #337, ruling M6)
+
+A pot labels part of its wallet's own balance; the wallet's `balance_cents` stays the total and
+nothing here writes `finance.transactions` or moves money between wallets. Every change of a pot's
+balance is a `finance.pot_movements` row. Probe: `supabase/probes/wallet_pots.sql`.
+
+- `finance.save_wallet_pot(p_wallet, p_id, p_purpose, p_name, p_auto_allocate_bp, p_goal_cents,
+  p_archive DEFAULT false)` → jsonb (the pot row; user) — creates a pot (`p_id` NULL) or changes an
+  active one, or archives it. Authority: `fn_can_manage_pots` (the owner of a personal wallet,
+  `distribute` on a shared one), else `42501`. Under `pg_advisory_xact_lock(hashtext('pots:' ||
+  wallet))` and the wallet row lock, Σ `auto_allocate_bp` over the wallet's other active pots plus
+  this one must stay ≤ 10000 (`22023` `autoAllocateBp:` naming what is left). A NULL share keeps a
+  pot's own; on a new tax pot it defaults to `security.platform_params.tax_pot_default_bp`, fitted into
+  what the other pots leave, else 0. `name` 1–120 characters, `goal_cents` NULL or > 0, at most 40
+  active pots per wallet (`PC409`). An unknown pot is `P0002`; an archived one `PC409`. Archive
+  (`p_archive`): only at a zero balance (`PC409` naming what to move out first); sets
+  `active = false`, `archived_at`; never deletes.
+- `finance.move_pot_funds(p_pot, p_amount, p_direction)` → `{pot_id, balance_cents, available_cents}`
+  (user) — `in` earmarks Available money (needs `fn_available_cents ≥ p_amount`, else `PF402`), `out`
+  releases it (needs the pot's balance, else `PF402`). Same authority as a save (a stranger and an
+  unknown pot both answer `42501`); an archived pot `PC409`; a non-positive amount or another
+  direction `22023`. Locks the wallet, then the pot. One `move_in` / `move_out` movement by the caller.
+- `finance.fn_available_cents(p_wallet)` → bigint (internal; in `00001200` beside `fn_wallet_debit`,
+  because SQL functions created later read it) — the balance minus the active pots; NULL for no wallet. Read by `fn_wallet_debit`'s earmark rule, `move_pot_funds`, the simulator and
+  the payout-schedule claim's Available (`fn_payout_schedule_available`).
+- `finance.fn_is_income_reason(p_reason)` → boolean (internal, IMMUTABLE) — the earned-credit
+  reasons: `escrow_release`, `team_split`, `team_finder_fee`, `fair_exit_release`, `product_sale`,
+  `escrow_release_vault_retention`, `fair_exit_release_vault_retention`. The pending door refuses any
+  other.
+- `finance.fn_apply_pot_allocations(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id)` → bigint
+  (internal) — each active pot with `auto_allocate_bp > 0`, in `created_at` order, earmarks
+  ⌊`p_amount` × bp / 10000⌋ of a credit that has just become Available; the dust stays Available, a
+  zero amount writes nothing. Income reasons only (`22023`), keyed to the credit
+  (`p_ref_table = 'transactions'`), so a second call for the same credit earmarks nothing (`ON
+  CONFLICT` on `uq_pot_movements_allocation`). Returns the total earmarked. Called only by
+  `fn_mature_pending_releases` and `fn_wallet_credit_pending`'s zero-day branch.
+- `finance.fn_can_manage_pots(p_wallet)` → boolean (internal) — the doors' authority predicate. The
+  wallet service mirrors it only to decide what it offers (`potActions`).
+
+The recovery half lives in `fn_wallet_debit` ([Ledger primitives](#ledger-primitives-migration-0009)).
 
 ## ⚖️ Platform disputes (`00001260`, Decision #212)
 

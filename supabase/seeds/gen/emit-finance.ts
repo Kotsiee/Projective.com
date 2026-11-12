@@ -1343,30 +1343,53 @@ export function emitFinance(world: World): string {
 			"(user_id, currency)",
 		),
 	);
+	// A pot is an earmark of the wallet's own balance (Decision #337, ruling M6), and its balance is the
+	// sum of its finance.pot_movements: each seeded pot opens with the owner's move_in of what it holds.
+	const pots = [
+		{ key: "maris:tax", purpose: "tax", name: "Tax set-aside", cents: 180000, bp: 2000, goal: null },
+		{ key: "maris:gear", purpose: "goal", name: "New display", cents: 45000, bp: 500, goal: 150000 },
+	] as const;
 	out.push(
 		insert(
 			"finance.wallet_pots",
-			["id", "wallet_id", "purpose", "name", "balance_cents", "currency", "auto_allocate_bp"],
+			["id", "wallet_id", "purpose", "name", "balance_cents", "currency", "auto_allocate_bp", "goal_cents"],
+			pots.map((pot) => [
+				id(uuidFor("pot", pot.key)),
+				id(walletOf("maris").id),
+				q(pot.purpose),
+				q(pot.name),
+				String(pot.cents),
+				"'USD'",
+				String(pot.bp),
+				pot.goal === null ? "NULL" : String(pot.goal),
+			]),
+		),
+	);
+	out.push(
+		insert(
+			"finance.pot_movements",
 			[
-				[
-					id(uuidFor("pot", "maris:tax")),
-					id(walletOf("maris").id),
-					"'tax'",
-					"'Tax set-aside'",
-					"180000",
-					"'USD'",
-					"2000",
-				],
-				[
-					id(uuidFor("pot", "maris:gear")),
-					id(walletOf("maris").id),
-					"'goal'",
-					"'New display'",
-					"45000",
-					"'USD'",
-					"500",
-				],
+				"id",
+				"pot_id",
+				"wallet_id",
+				"direction",
+				"amount_cents",
+				"currency",
+				"reason",
+				"balance_after_cents",
+				"actor_user_id",
 			],
+			pots.map((pot) => [
+				id(uuidFor("pot-movement", `${pot.key}:open`)),
+				id(uuidFor("pot", pot.key)),
+				id(walletOf("maris").id),
+				"'in'",
+				String(pot.cents),
+				"'USD'",
+				"'move_in'",
+				String(pot.cents),
+				id(persona(world, "maris").userId),
+			]),
 		),
 	);
 	// The vault audit trail is DERIVED from the ledger: every top-up of a shared wallet is an

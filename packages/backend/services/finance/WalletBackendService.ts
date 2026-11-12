@@ -10,8 +10,10 @@ import type {
 	IncomeSmootherEnrolInput,
 	InvoicesView,
 	MethodsView,
+	MovePotInput,
 	PayoutScheduleInput,
 	PayoutsView,
+	SavePotInput,
 	SpendDecisionInput,
 	SpendRequestInput,
 	TopUpInput,
@@ -255,6 +257,14 @@ export class WalletBackendService {
 		return write("recurring-change", () => actions.changeRecurring(input, query, actor));
 	}
 
+	static savePot(input: SavePotInput, query: WalletQuery, actor: ReadActor) {
+		return write("pot-save", () => actions.savePot(input, query, actor));
+	}
+
+	static movePot(input: MovePotInput, query: WalletQuery, actor: ReadActor) {
+		return write("pot-move", () => actions.movePot(input, query, actor));
+	}
+
 	/** Perform one validated {@link WalletActionRequest} — the single dispatch behind `POST /api/wallet/action`. */
 	static perform(
 		input: WalletActionRequest,
@@ -289,6 +299,10 @@ export class WalletBackendService {
 			case "edit_recurring":
 			case "archive_recurring":
 				return WalletBackendService.changeRecurring(input, query, actor);
+			case "save_pot":
+				return WalletBackendService.savePot(input, query, actor);
+			case "move_pot":
+				return WalletBackendService.movePot(input, query, actor);
 		}
 	}
 	// #endregion

@@ -8,6 +8,9 @@
 --   3. A pending release still `pending` / `on_hold` has not been credited yet: no ledger credit on its
 --      wallet carries its reason and its source (the escrow or order), which is exactly the row the
 --      maturity sweep writes when it matures it. A credit here means the money was paid twice.
+--   4. A pot's balance is its ledger: it equals the signed sum of its finance.pot_movements and the
+--      `balance_after_cents` of its newest one (0 for a pot with none), and an archived pot holds
+--      nothing (Decision #337, ruling M6).
 --
 -- Read-only: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated (seeded or
 -- live) DB after any SQL change, and in every finance SQL prompt's acceptance:
@@ -96,6 +99,39 @@ BEGIN
     IF v_n = 0 THEN
         RAISE NOTICE 'ok  3 no pending / on-hold release has been credited (% unmatured)',
             (SELECT count(*) FROM finance.pending_releases WHERE state IN ('pending', 'on_hold'));
+    END IF;
+    v_fail := v_fail + v_n;
+    -- #endregion
+
+    -- #region 4. A pot's balance = Σ its movements = newest balance_after
+    v_n := 0;
+    FOR r IN
+        SELECT p.id, p.active, p.balance_cents,
+               COALESCE(s.moved, 0) AS moved,
+               COALESCE(latest.balance_after_cents, 0) AS latest_after
+          FROM finance.wallet_pots p
+          LEFT JOIN LATERAL (
+                SELECT SUM(CASE m.direction WHEN 'in' THEN m.amount_cents ELSE -m.amount_cents END) AS moved
+                  FROM finance.pot_movements m WHERE m.pot_id = p.id
+          ) s ON true
+          LEFT JOIN LATERAL (
+                SELECT m.balance_after_cents
+                  FROM finance.pot_movements m
+                 WHERE m.pot_id = p.id
+                 ORDER BY m.created_at DESC, m.id DESC
+                 LIMIT 1
+          ) latest ON true
+         WHERE p.balance_cents <> COALESCE(s.moved, 0)
+            OR p.balance_cents <> COALESCE(latest.balance_after_cents, 0)
+            OR (NOT p.active AND p.balance_cents <> 0)
+    LOOP
+        v_n := v_n + 1;
+        RAISE WARNING 'pot % (active %): balance %, movements sum %, newest balance_after %',
+            r.id, r.active, r.balance_cents, r.moved, r.latest_after;
+    END LOOP;
+    IF v_n = 0 THEN
+        RAISE NOTICE 'ok  4 every pot''s balance equals its movements (% movements)',
+            (SELECT count(*) FROM finance.pot_movements);
     END IF;
     v_fail := v_fail + v_n;
     -- #endregion

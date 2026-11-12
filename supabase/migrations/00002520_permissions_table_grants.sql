@@ -238,6 +238,11 @@ GRANT SELECT ON TABLE finance.wallet_pots TO authenticated;
 
 GRANT ALL ON TABLE finance.wallet_pots TO service_role;
 
+-- Read only, append-only for every role (00001830): written by the pot doors.
+GRANT SELECT ON TABLE finance.pot_movements TO authenticated;
+
+GRANT ALL ON TABLE finance.pot_movements TO service_role;
+
 
 -- --- from 20260723093000_finance_vault_governance.sql ---
 

@@ -291,10 +291,16 @@ VALUES
   ('88fcd6e1-e587-4448-ab2b-b43feb773006', 'c7173d3f-8b15-4876-afbf-499d17513a44', false, NULL, 'USD', 50, true, NULL)
 ON CONFLICT (user_id, currency) DO NOTHING;
 
-INSERT INTO finance.wallet_pots (id, wallet_id, purpose, name, balance_cents, currency, auto_allocate_bp)
+INSERT INTO finance.wallet_pots (id, wallet_id, purpose, name, balance_cents, currency, auto_allocate_bp, goal_cents)
 VALUES
-  ('e93b5f11-00fd-44b2-a8d3-896b850e2dec', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'tax', 'Tax set-aside', 180000, 'USD', 2000),
-  ('a05f0ed7-46b7-4486-a79a-36952ceca9a4', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'goal', 'New display', 45000, 'USD', 500)
+  ('e93b5f11-00fd-44b2-a8d3-896b850e2dec', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'tax', 'Tax set-aside', 180000, 'USD', 2000, NULL),
+  ('a05f0ed7-46b7-4486-a79a-36952ceca9a4', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'goal', 'New display', 45000, 'USD', 500, 150000)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO finance.pot_movements (id, pot_id, wallet_id, direction, amount_cents, currency, reason, balance_after_cents, actor_user_id)
+VALUES
+  ('3275fd9b-0c3b-4b78-aca0-e29dfed6d932', 'e93b5f11-00fd-44b2-a8d3-896b850e2dec', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'in', 180000, 'USD', 'move_in', 180000, '6ce1906f-caab-4708-a19e-df3d8960666e'),
+  ('241cb67d-8b56-45ac-ab29-c5db7596392a', 'a05f0ed7-46b7-4486-a79a-36952ceca9a4', 'ef814c58-b670-4eb9-a349-1cde0ca3405f', 'in', 45000, 'USD', 'move_in', 45000, '6ce1906f-caab-4708-a19e-df3d8960666e')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO finance.ledger_audit (id, wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata, created_at)

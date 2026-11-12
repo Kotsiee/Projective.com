@@ -140,6 +140,24 @@ Deno.test("actionsFor: a member holding nothing is offered nothing, so nothing i
 	assertEquals([out.offered, out.unavailable, out.locks, out.recurring], [[], [], [], []]);
 });
 
+Deno.test("actionsFor: the pot actions are offered to whom the pot doors accept", () => {
+	const both = ["save_pot", "move_pot"];
+	assertEquals(
+		actionsFor("personal", SELLER, [SELLER], null, [], true, false).pots,
+		both,
+		"the owner",
+	);
+	const pots = (caps: string[]) =>
+		actionsFor("team", account("team", caps), [SELLER], null, [], true, true).pots;
+	assertEquals(pots(["view", "distribute"]), both, "a distribute holder on a vault");
+	assertEquals(
+		pots(["view", "spend", "withdraw", "add_funds"]),
+		[],
+		"no other capability saves a pot",
+	);
+	assertEquals(pots(["view"]), []);
+});
+
 Deno.test("actionsFor: each lock follows the control it locks", () => {
 	const lockOf = (caps: string[]) =>
 		actionsFor("team", account("team", caps), [SELLER], null, [], true, true).locks.map((l) =>

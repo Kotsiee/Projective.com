@@ -474,6 +474,12 @@ CREATE TABLE finance.income_smoothing (
     CONSTRAINT uq_income_smoothing_user UNIQUE (user_id, currency)
 );
 
+-- A pot is an EARMARK inside its wallet, never a separate balance (Decision #337, ruling M6): its
+-- `balance_cents` labels part of the wallet's own `balance_cents`, which stays the total, so what the
+-- wallet may spend is its balance minus its active pots (finance.fn_available_cents). Written by
+-- definer doors only (00001240 region 9, and the involuntary-recovery branch of
+-- finance.fn_wallet_debit); every change of `balance_cents` is a finance.pot_movements row. Never
+-- deleted: an empty pot is archived (`active = false`, `archived_at`) and is then never changed again.
 CREATE TABLE finance.wallet_pots (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
@@ -481,8 +487,44 @@ CREATE TABLE finance.wallet_pots (
     name text NOT NULL,
     balance_cents bigint NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
     currency char(3) NOT NULL,
-    auto_allocate_bp integer NOT NULL DEFAULT 0 CHECK (auto_allocate_bp BETWEEN 0 AND 10000),  -- % of inbound payouts skimmed
-    created_at timestamptz NOT NULL DEFAULT now()
+    -- The share of each matured income credit earmarked into the pot (the tax-pot auto-set-aside); a
+    -- wallet's active pots together take at most 10000 (finance.save_wallet_pot).
+    auto_allocate_bp integer NOT NULL DEFAULT 0 CHECK (auto_allocate_bp BETWEEN 0 AND 10000),
+    -- What the owner is saving towards, shown as progress. NULL is no target; it never caps the pot.
+    goal_cents bigint CHECK (goal_cents IS NULL OR goal_cents > 0),
+    active boolean NOT NULL DEFAULT true,
+    archived_at timestamptz,
+    -- clock_timestamp(): a recovery shrinks pots newest first, so creation order must be exact even for
+    -- two pots saved in one transaction.
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT ck_wallet_pots_archived CHECK (active = (archived_at IS NULL)),
+    CONSTRAINT ck_wallet_pots_archived_empty CHECK (active OR balance_cents = 0)
+);
+
+-- A pot's ledger: one row per change of its earmark, append-only like finance.transactions
+-- (trg_pot_movements_append_only, 00001830). An earmark moves no money between wallets, so nothing here
+-- touches finance.transactions or the conservation identity; Σ in − Σ out over a pot's rows is its
+-- `balance_cents`, and `balance_after_cents` is that balance after the row. `reason`: `allocation`
+-- (finance.fn_apply_pot_allocations; ref = the matured income's credit in finance.transactions),
+-- `move_in` / `move_out` (finance.move_pot_funds, by `actor_user_id`), `recovery`
+-- (finance.fn_wallet_debit; ref = the chargeback or refund debit that took earmarked money).
+CREATE TABLE finance.pot_movements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    pot_id uuid NOT NULL REFERENCES finance.wallet_pots (id) ON DELETE RESTRICT,
+    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    direction text NOT NULL CHECK (direction IN ('in', 'out')),
+    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    reason text NOT NULL CHECK (reason IN ('allocation', 'move_in', 'move_out', 'recovery')),
+    ref_table text,
+    ref_id uuid,
+    balance_after_cents bigint NOT NULL CHECK (balance_after_cents >= 0),
+    actor_user_id uuid REFERENCES auth.users (id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT ck_pot_movements_direction CHECK ((reason IN ('allocation', 'move_in')) = (direction = 'in')),
+    CONSTRAINT ck_pot_movements_ref CHECK (
+        reason NOT IN ('allocation', 'recovery') OR (ref_table = 'transactions' AND ref_id IS NOT NULL)
+    )
 );
 -- #endregion
 

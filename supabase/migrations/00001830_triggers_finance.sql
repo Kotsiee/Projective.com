@@ -110,6 +110,17 @@ CREATE TRIGGER trg_transactions_no_truncate
     BEFORE TRUNCATE ON finance.transactions
     FOR EACH STATEMENT
     EXECUTE FUNCTION finance.fn_transactions_append_only ();
+
+-- A pot's earmark history (finance.pot_movements, Decision #337, ruling M6) is its ledger: the same rule.
+CREATE TRIGGER trg_pot_movements_append_only
+    BEFORE UPDATE OR DELETE ON finance.pot_movements
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_pot_movements_append_only ();
+
+CREATE TRIGGER trg_pot_movements_no_truncate
+    BEFORE TRUNCATE ON finance.pot_movements
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_pot_movements_append_only ();
 -- #endregion
 
 -- #region Disputes — never deleted, terminal once resolved, evidence append-only (00001260, Decision #212)
