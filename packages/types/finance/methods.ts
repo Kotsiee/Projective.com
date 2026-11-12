@@ -92,7 +92,13 @@ export type UpdateDepositRule = z.infer<typeof UpdateDepositRuleSchema>;
 export const PayoutMode = z.enum(["manual", "scheduled_weekly", "scheduled_monthly", "threshold"]);
 export type PayoutMode = z.infer<typeof PayoutMode>;
 
-/** A row of `finance.payout_schedules`. `instant` opts into the Instant Payout fee (finance-model.md §1.4). */
+/**
+ * A row of `finance.payout_schedules`: an owner's standing withdrawal in one currency, written only by
+ * `finance.save_payout_schedule` and run by `finance.fn_claim_due_payout_schedules` as `createdBy`.
+ * `nextRunAt` is a weekly or monthly schedule's next slot (00:00 UTC); `failureCount` counts refusals
+ * in a row, and the third sets `active` false. `instant` is reserved: Instant Payouts are Planned
+ * (Decision #337, ruling P3).
+ */
 export const PayoutScheduleSchema = z.object({
 	id: uuid,
 	ownerType: FinanceOwnerType,
@@ -105,6 +111,10 @@ export const PayoutScheduleSchema = z.object({
 	instant: z.boolean(),
 	active: z.boolean(),
 	createdAt: timestamp,
+	createdBy: uuid.nullable(),
+	lastRunAt: timestamp.nullable(),
+	lastError: z.string().max(400).nullable(),
+	failureCount: z.number().int().min(0),
 });
 export type PayoutSchedule = z.infer<typeof PayoutScheduleSchema>;
 // #endregion

@@ -432,6 +432,9 @@ CREATE TABLE finance.deposit_rules (
     CHECK (archived_at IS NULL OR NOT active)
 );
 
+-- Written only by finance.save_payout_schedule and run only by finance.fn_claim_due_payout_schedules
+-- (00001240): clients hold SELECT. A run withdraws AS `created_by` through finance.begin_payout, so a
+-- schedule nobody authorised, or whose author lost `withdraw`, pays nothing out.
 CREATE TABLE finance.payout_schedules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'enterprise')),
@@ -440,11 +443,19 @@ CREATE TABLE finance.payout_schedules (
     destination_method_id uuid REFERENCES finance.payment_methods (id) ON DELETE SET NULL,
     threshold_cents bigint CHECK (threshold_cents IS NULL OR threshold_cents > 0),  -- for mode='threshold'
     currency char(3) NOT NULL,
+    -- The next calendar slot a weekly / monthly schedule runs at (UTC); NULL for manual and threshold.
     next_run_at timestamptz,
-    instant boolean NOT NULL DEFAULT false,   -- opt-in to the Instant Payout fee (finance-model.md §1.4)
+    -- Reserved: Instant Payouts are Planned (Decision #337, ruling P3) and the door refuses `true`.
+    instant boolean NOT NULL DEFAULT false,
     active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT uq_payout_schedule_owner UNIQUE (owner_type, owner_id, currency)
+    -- Who authorised the schedule; every run withdraws as them. Re-stamped on each save.
+    created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+    last_run_at timestamptz,                    -- the last run: paid, skipped below the minimum or refused
+    last_error text,                            -- the last refusal's sentence; NULL after a paid run
+    failure_count integer NOT NULL DEFAULT 0 CHECK (failure_count >= 0),  -- refusals in a row; 3 pauses
+    CONSTRAINT uq_payout_schedule_owner UNIQUE (owner_type, owner_id, currency),
+    CONSTRAINT payout_schedules_threshold_mode CHECK (mode <> 'threshold' OR threshold_cents IS NOT NULL)
 );
 
 CREATE TABLE finance.income_smoothing (

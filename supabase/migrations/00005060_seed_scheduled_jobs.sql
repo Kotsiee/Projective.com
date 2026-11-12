@@ -75,6 +75,18 @@ SELECT 'finance-sweep-stale-payouts', 'http', '*/10 * * * *', NULL, '/api/financ
  WHERE pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 
+-- Payout schedules (Decision #337, ruling M6): every due weekly, monthly or threshold schedule is paid
+-- out as its author through finance.begin_payout, then sent as a Stripe Transfer. An http job on the
+-- same secret, registered only where its claim function exists, beside its route
+-- (`POST /api/finance/cron/payout-schedules`). Weekly and monthly slots fall at 00:00 UTC, so the
+-- first sweep after midnight takes them; a threshold is checked on every sweep.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'finance-payout-schedules', 'http', '3,18,33,48 * * * *', NULL, '/api/finance/cron/payout-schedules?limit=50',
+       'FINANCE_CRON_SECRET',
+       'Runs every due payout schedule as a withdrawal by its author and sends its Stripe Transfer (PaymentBackendService.runPayoutSchedules).'
+ WHERE pg_catalog.to_regprocedure('finance.fn_claim_due_payout_schedules(integer)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
 -- 1-1 sessions (Decision #211). The handshake sweep reminds a provider once, a day before their block's
 -- earliest scheduling deadline, and lapses every set-session scheduling round still open at its
 -- deadline, so the pencilled-in time stands. Offset from the quarter hours the escrow sweep runs on.

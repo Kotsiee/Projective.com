@@ -139,7 +139,7 @@ Finance-relevant keys:
 | `pending_release_days`             | `7`     | **Additive.** Length of the post-release safety ("Pending") window.                |
 | `min_withdrawal_minor`             | object  | Smallest withdrawal per currency, in its minor units, with a `default` (Decision #202; figures in `finance-model.md` §13). |
 | `payout_stale_minutes`             | `15`    | Minutes a withdrawal may sit `pending` before the stale-payout sweep reconciles it (Decision #202). |
-| `instant_payout_fee_bp`            | `0`     | **Additive.** Fee for an Instant Payout (magnitude pending pricing sign-off).      |
+| `instant_payout_fee_bp`            | `null`  | **Planned**; unset until priced (Decision #337, ruling P3). A `0` would read as free. |
 | `income_smoother_fee_bp`           | `50`    | **Additive.** Income Smoother micro-fee (~0.5%).                                   |
 | `income_smoother_min_months`       | `3`     | **Additive.** Minimum earnings-history months for smoother eligibility.            |
 | `income_smoother_min_volume_cents` | `0`     | **Additive.** Minimum lifetime earnings volume for eligibility (pending sign-off). |

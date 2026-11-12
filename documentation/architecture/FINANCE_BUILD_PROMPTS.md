@@ -41,7 +41,7 @@ lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide wha
 | 2    | ✅ DB11 seller commission (P0)                                                                              | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
 | 3    | DB16 conservation identity                                                                                  | UI2 island and money-verb tiers (after SV2, UI1)                                         |
 | 4    | DB12 bonus refused → ✅ DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout (after SV3) | UI6 checkout gates (after SV4, UI2)                                                      |
-| 5    | DB4 payout schedules → DB5 pots                                                                             | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
+| 5    | ✅ DB4 payout schedules → DB5 pots                                                                          | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
 | 6    | DB14 ticket and funding gates → DB15 payout-ready gate                                                      | SV7 seller-side refusals (after DB15)                                                    |
 | 7    | DB13 bonus held → DB20 team splits                                                                          | —                                                                                        |
 | 8    | DB8 currency integrity → DB9 settlement and entity currency → DB17 FX feed → DB18 conversion                | SV5 currency honesty (after DB9) → UI5 estimates and MoneyView                           |
@@ -507,6 +507,39 @@ owns both rows.
 ```
 
 ### DB4 — Payout schedules run (M6, first in the build order)
+
+> **Status 2026-11-12:** Done (A14, X17 / D-10's schedule half), awaiting the coordinator's
+> re-verification. `payout_schedules` gains `created_by`, `last_run_at`, `last_error`,
+> `failure_count` and a threshold CHECK (`00000017`); `finance.save_payout_schedule` and
+> `finance.fn_claim_due_payout_schedules`, with `fn_payout_schedule_strike`, `_next_run` and
+> `_available` internal (`00001240` §2); the FOR ALL policy and the INSERT / UPDATE grant are gone;
+> `instant_payout_fee_bp` is JSON null; `payout.schedule_paused` in the catalogue; the job
+> `finance-payout-schedules` (:03 / :18 / :33 / :48) and `POST /api/finance/cron/payout-schedules`;
+> `runPayoutSchedules` + `payout-schedules.ts`; `setPayout` calls the door; `schedule_not_running`
+> is gone from `WalletLockCode`, `LOCK_REASON` and `actionsFor`. Probes `payout_schedules.sql` and
+> `payout_schedule_race.sql`. Built differently from the text below:
+>
+> - **The claim begins the payout** in its own transaction (steps 2 and 3 in one door): for each due
+>   schedule it calls `finance.begin_payout` itself with `request.jwt.claim.sub` set to the author
+>   (as `fn_deposit_charge_target` re-checks a deposit's author), so a second sweep, or a spend between
+>   claim and transfer, can neither pay one Available twice nor turn a run into a false refusal. The
+>   service then sends each Transfer through the send a manual withdrawal now shares
+>   (`sendPayoutTransfer`). `begin_payout` itself is unchanged.
+> - **The Stripe idempotency key stays the payout's** (`payout_transfer:<payout id>`).
+>   `payout_schedule:<schedule>:<run_at>` is the run's attempt key in `finance.idempotency_keys`,
+>   one-to-one with its payout. A Stripe key of its own would differ from the one the stale-payout
+>   sweep re-sends under, and could make a second Transfer.
+> - **Slots are calendar slots:** weekly runs each Monday and monthly on the 1st, both 00:00 UTC, so
+>   they never drift. A Stripe refusal of a scheduled Transfer counts through `fail_payout`, once per
+>   payout. A threshold below the currency's minimum is refused at save.
+> - **The race is its own probe** (`payout_schedule_race.sql`): `scripts/probes.ts` skips a whole
+>   file that carries the `:{?disposable}` marker, which would have kept the rolled-back checks out of
+>   every `test:probes` run.
+> - The seeds' schedules carry their owner as author and `instant = false`
+>   (`supabase/seeds/gen/emit-finance.ts`, `07_finance.sql`).
+>
+> Not done here: `WalletDialogs.tsx`'s Save sends no `currency`, so a multi-currency account is still
+> refused 422 until the dialog names one (UI2 / UI3).
 
 ```text
 PROMPT DB4: Scheduled payouts execute through begin_payout, and the lock lifts

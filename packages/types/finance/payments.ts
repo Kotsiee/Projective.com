@@ -661,6 +661,67 @@ export const StalePayoutSweepSchema = z.object({
 export type StalePayoutSweep = z.infer<typeof StalePayoutSweepSchema>;
 
 /**
+ * What `finance.fn_claim_due_payout_schedules` did with one due schedule (Decision #337, ruling M6):
+ * `begun` (the whole of Available was debited as the schedule's author through `begin_payout`; the
+ * Transfer is still to send), `skipped` (Available was below the currency's minimum withdrawal), or
+ * `refused` (a gate refused the author; nothing moved and the refusal counts against the schedule).
+ */
+export const PayoutScheduleRunOutcome = z.enum(["begun", "skipped", "refused"]);
+export type PayoutScheduleRunOutcome = z.infer<typeof PayoutScheduleRunOutcome>;
+
+/** One run the payout-schedule claim returned. `payout` and `destination` are set only when `begun`. */
+export const PayoutScheduleRunSchema = z.object({
+	scheduleId: uuid,
+	runAt: timestamp,
+	outcome: PayoutScheduleRunOutcome,
+	amountCents: minorUnitsNonNeg,
+	currency,
+	payout: PayoutSchema.nullable(),
+	destination: z.string().max(255).nullable(),
+	replayed: z.boolean(),
+	/** `below_minimum` for a skip, the refusal's sentence for a refusal, else `null`. */
+	detail: z.string().max(400).nullable(),
+	/** A refusal's SQLSTATE. */
+	code: z.string().max(5).nullable(),
+	/** Whether this refusal was the third in a row, which paused the schedule. */
+	paused: z.boolean(),
+});
+export type PayoutScheduleRun = z.infer<typeof PayoutScheduleRunSchema>;
+
+/**
+ * What the payout-schedule sweep did with one run (`POST /api/finance/cron/payout-schedules`):
+ * `sent` (the Transfer exists and the payout is paid), `pending` (Stripe's answer was lost; the payout
+ * stays pending with the money held and the stale-payout sweep closes it), `failed` (Stripe refused;
+ * the money is back in the wallet and the refusal counts against the schedule), or the claim's own
+ * `skipped` / `refused`.
+ */
+export const PayoutScheduleSweepOutcome = z.enum([
+	"sent",
+	"pending",
+	"failed",
+	"skipped",
+	"refused",
+]);
+export type PayoutScheduleSweepOutcome = z.infer<typeof PayoutScheduleSweepOutcome>;
+
+/** One payout-schedule sweep's answer. */
+export const PayoutScheduleSweepSchema = z.object({
+	claimed: z.number().int().min(0),
+	sent: z.number().int().min(0),
+	pending: z.number().int().min(0),
+	failed: z.number().int().min(0),
+	skipped: z.number().int().min(0),
+	refused: z.number().int().min(0),
+	results: z.array(z.object({
+		scheduleId: uuid,
+		outcome: PayoutScheduleSweepOutcome,
+		payoutId: uuid.nullable(),
+		detail: z.string().max(400).nullable(),
+	})).max(200),
+});
+export type PayoutScheduleSweep = z.infer<typeof PayoutScheduleSweepSchema>;
+
+/**
  * What the card-payment recovery sweep did with one payment still unsettled after its grace period
  * (`POST /api/finance/cron/card-payments`, FINANCE_COMPLETENESS_AUDIT N1): `settled` (Stripe holds a
  * succeeded intent for it and `finance.settle_card_payment` credited it, or held it for

@@ -337,7 +337,7 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 			kind: "payout",
 			title: `${MODE_LABEL[schedule.mode]} payout`,
 			meta: schedule.destinationLabel ? `To ${schedule.destinationLabel}` : null,
-			when: locked.has("schedule_not_running") ? "Not running yet" : schedule.nextRunLabel,
+			when: schedule.nextRunLabel,
 			amount: schedule.mode === "threshold" ? schedule.threshold : null,
 			progress: null,
 			href: null,

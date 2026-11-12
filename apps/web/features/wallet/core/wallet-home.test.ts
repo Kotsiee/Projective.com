@@ -342,7 +342,7 @@ Deno.test("a recurring row carries the rule actions offered, and a paused rule s
 	);
 });
 
-Deno.test("automation the server reports locked never reads as running (Decision #337, ruling M6)", () => {
+Deno.test("a running payout schedule says when it next pays, and the smoother's lock still holds (Decision #337, ruling M6)", () => {
 	const schedule = {
 		mode: "scheduled_monthly" as const,
 		destinationLabel: "Monzo ·· 4410",
@@ -367,13 +367,19 @@ Deno.test("automation the server reports locked never reads as running (Decision
 		spentThisMonth: null,
 		fundable: [],
 	};
-	const locks = [
-		{ code: "schedule_not_running" as const, reason: "Scheduled payouts don't run yet." },
-		{ code: "smoother_planned" as const, reason: "The smoother is planned." },
-	];
+	const locks = [{ code: "smoother_planned" as const, reason: "The smoother is planned." }];
 	const [payout, smoother] = upcomingItems({ overview: overview({ personal, locks }), schedule });
-	assertEquals([payout.kind, payout.when], ["payout", "Not running yet"]);
+	assertEquals([payout.kind, payout.when], ["payout", "Next run Wed 1 Oct"]);
 	assertEquals([smoother.meta, smoother.when], ["Enrolled · not paying out yet", null]);
+	const paused = upcomingItems({
+		overview: overview({ personal, locks }),
+		schedule: { ...schedule, nextRunLabel: "Paused after three failed runs" },
+	})[0];
+	assertEquals(
+		paused.when,
+		"Paused after three failed runs",
+		"a paused schedule never reads as running",
+	);
 	const [runs, pays] = upcomingItems({ overview: overview({ personal }), schedule });
 	assertEquals([runs.when, pays.when], ["Next run Wed 1 Oct", "Monthly"], "once the engines run");
 });

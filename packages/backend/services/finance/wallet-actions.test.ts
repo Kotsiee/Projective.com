@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 import type { PayoutScheduleInput, WalletQuery } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import { LOCK_REASON } from "./live-wallet.ts";
@@ -7,7 +7,8 @@ import {
 	addMethod,
 	distribute,
 	enrolSmoother,
-	payoutScheduleRow,
+	payoutScheduleArgs,
+	payoutScheduleRefusal,
 	recurringChange,
 	setPayout,
 } from "./wallet-actions.ts";
@@ -111,16 +112,45 @@ const SCHEDULE: PayoutScheduleInput = {
 	instant: false,
 };
 
-Deno.test("a scheduled payout mode is refused with its lock, before any wallet is read", async () => {
+Deno.test("every payout mode reaches the wallet: no mode is locked now that schedules run", async () => {
+	assertFalse("schedule_not_running" in LOCK_REASON, "the schedule lock is gone (DB4)");
 	for (const mode of ["scheduled_weekly", "scheduled_monthly", "threshold"] as const) {
-		const out = await setPayout({ ...SCHEDULE, mode, thresholdMinor: 50_000 }, QUERY, ACTOR);
-		assertEquals(
-			[out.ok, out.status, out.message],
-			[false, 409, LOCK_REASON.schedule_not_running],
-			mode,
+		const out = await setPayout(
+			{ ...SCHEDULE, scope: "team", mode, thresholdMinor: 50_000 },
+			QUERY,
+			ACTOR,
 		);
-		assertEquals(out.details, { reason: "schedule_not_running" });
+		// The vault scope with no id is refused before any read, which proves no lock answered first.
+		assertEquals([out.ok, out.status, out.message], [false, 422, "Choose a wallet."], mode);
 	}
+});
+
+Deno.test("the save door's refusals: Instant is planned, authority and a field are worded", () => {
+	const instant = payoutScheduleRefusal({
+		code: "0A000",
+		message: "instant_payout_planned: Instant payouts are planned and not available yet",
+	});
+	assertEquals([instant.status, instant.details], [409, { reason: "instant_payout_planned" }]);
+	const spender = payoutScheduleRefusal({
+		code: "42501",
+		message: "auth: only a member who may withdraw can change payouts",
+	});
+	assertEquals([spender.status, spender.message], [
+		403,
+		"Only a member who may withdraw can change payouts.",
+	]);
+	const threshold = payoutScheduleRefusal({
+		code: "22023",
+		message: "thresholdMinor: the smallest payout is 10.00 USD",
+	});
+	assertEquals([threshold.status, threshold.errors], [422, {
+		thresholdMinor: "The smallest payout is 10.00 USD.",
+	}]);
+	const destination = payoutScheduleRefusal({
+		code: "PA403",
+		message: "destinationId: that payout account can't receive payouts — choose another",
+	});
+	assertEquals(Object.keys(destination.errors ?? {}), ["destinationId"]);
 });
 
 Deno.test("enrolling in the smoother is locked while it is planned; leaving it never is", async () => {
@@ -146,32 +176,45 @@ const TWO_CURRENCIES: WalletAccount = {
 	],
 };
 
-/** The row a save would write; a refusal fails the test. */
+/** The arguments a save would send the door; a refusal fails the test. */
 function scheduleOf(account: WalletAccount, input: PayoutScheduleInput) {
-	const out = payoutScheduleRow(account, input);
+	const out = payoutScheduleArgs(account, input);
 	assert(!("ok" in out), `refused: ${"message" in out ? out.message : ""}`);
 	return out;
 }
 
 Deno.test("a multi-currency account saves the schedule in the currency it named", () => {
-	assertEquals(scheduleOf(TWO_CURRENCIES, { ...SCHEDULE, currency: "eur" }).currency, "EUR");
-	assertEquals(scheduleOf(TWO_CURRENCIES, { ...SCHEDULE, currency: "GBP" }), {
-		owner_type: "user",
-		owner_id: "u-1",
-		currency: "GBP",
-		mode: "manual",
-		threshold_cents: null,
-		destination_method_id: null,
-		instant: false,
-		active: true,
-	});
-	const absent = payoutScheduleRow(TWO_CURRENCIES, { ...SCHEDULE, currency: "USD" });
+	assertEquals(scheduleOf(TWO_CURRENCIES, { ...SCHEDULE, currency: "eur" }).p_currency, "EUR");
+	assertEquals(
+		scheduleOf(TWO_CURRENCIES, {
+			...SCHEDULE,
+			currency: "GBP",
+			mode: "threshold",
+			thresholdMinor: 25_000,
+		}),
+		{
+			p_owner_type: "user",
+			p_owner_id: "u-1",
+			p_currency: "GBP",
+			p_mode: "threshold",
+			p_threshold_cents: 25_000,
+			p_destination_method_id: null,
+			p_instant: false,
+		},
+	);
+	assertEquals(
+		scheduleOf(PERSONAL, { ...SCHEDULE, mode: "scheduled_weekly", thresholdMinor: 25_000 })
+			.p_threshold_cents,
+		null,
+		"only a threshold schedule carries a threshold",
+	);
+	const absent = payoutScheduleArgs(TWO_CURRENCIES, { ...SCHEDULE, currency: "USD" });
 	assertEquals(["ok" in absent && absent.ok, "status" in absent && absent.status], [false, 409]);
 });
 
 Deno.test("a missing currency is the wallet's only one, and on a multi-currency wallet fails closed", () => {
-	assertEquals(scheduleOf(PERSONAL, SCHEDULE).currency, "USD", "one currency: nothing to guess");
-	const unnamed = payoutScheduleRow(TWO_CURRENCIES, SCHEDULE);
+	assertEquals(scheduleOf(PERSONAL, SCHEDULE).p_currency, "USD", "one currency: nothing to guess");
+	const unnamed = payoutScheduleArgs(TWO_CURRENCIES, SCHEDULE);
 	assert("ok" in unnamed && !unnamed.ok, "two currencies: refused, never a guess");
 	assertEquals(unnamed.status, 422);
 	assertEquals(

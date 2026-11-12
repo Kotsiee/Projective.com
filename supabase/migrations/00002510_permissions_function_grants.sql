@@ -1222,6 +1222,9 @@ REVOKE ALL ON FUNCTION finance.my_verification_status () FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.my_verification_status () TO authenticated;
 REVOKE ALL ON FUNCTION finance.ensure_purchase_wallet (text, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.ensure_purchase_wallet (text, uuid, text) TO authenticated;
+-- A payout schedule is a standing withdrawal: saved with a withdrawal's authority, checked inside.
+REVOKE ALL ON FUNCTION finance.save_payout_schedule (text, uuid, text, finance.payout_mode, bigint, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.save_payout_schedule (text, uuid, text, finance.payout_mode, bigint, uuid, boolean) TO authenticated;
 
 -- PROCESSOR doors: service_role only (a client who could call them could announce their own payout
 -- sent, their own chargeback won, or a card saved against somebody else's billing profile).
@@ -1245,6 +1248,13 @@ REVOKE ALL ON FUNCTION finance.claim_due_deposit_rules (integer) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION finance.claim_due_deposit_rules (integer) TO service_role;
 REVOKE ALL ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) TO service_role;
+-- The payout-schedule sweep (FINANCE_BUILD_PROMPTS DB4): each due run withdraws as its author through
+-- begin_payout. Its strike and its two calculators are called only from inside the doors.
+REVOKE ALL ON FUNCTION finance.fn_claim_due_payout_schedules (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_claim_due_payout_schedules (integer) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_payout_schedule_strike (uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_payout_schedule_next_run (finance.payout_mode, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_payout_schedule_available (finance.wallets) FROM PUBLIC, anon, authenticated, service_role;
 
 -- Internal helpers.
 REVOKE ALL ON FUNCTION finance.fn_payout_destination (finance.wallets) FROM PUBLIC, anon, authenticated, service_role;

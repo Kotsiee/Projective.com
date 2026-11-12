@@ -466,13 +466,20 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
   - **Stuck payouts:** one still `pending` after `payout_stale_minutes` (**15**) is reconciled by a
     sweep every 10 minutes: completed from its Stripe transfer, re-sent under the same idempotency key
     within 23 hours, or returned to the wallet after that.
-- **Payout schedules** (`finance.payout_schedules`): `manual` · `scheduled_weekly` ·
-  `scheduled_monthly` · `threshold` (pay out when Available ≥ `threshold_cents`). **Not built yet**
-  (Decision #337, ruling M6): no engine runs a schedule, so the control is locked behind a
-  `LockedDialog` reason until one does — first in the build order (schedules → pots → Income
-  Smoother). **Instant Payout** (`instant = true`) charges
+- **Payout schedules** (`finance.payout_schedules`, Decision #337, ruling M6): a standing withdrawal
+  per owner and currency — `manual` · `scheduled_weekly` (each Monday, 00:00 UTC) ·
+  `scheduled_monthly` (the 1st, 00:00 UTC) · `threshold` (whenever Available ≥ `threshold_cents`,
+  which must be at least the currency's minimum). Saving one takes a withdrawal's authority (the
+  owner, or `withdraw` on that currency's vault), and the saver becomes its **author**. Each due run
+  pays out the **whole of Available** as a withdrawal by the author — the same gates, minimum and
+  debit as a manual one, re-checked at the run — and a run below the minimum is skipped. A missed
+  slot is skipped, never paid in a burst. A run that is refused (the author can no longer withdraw,
+  is not payout-ready, the business is not verified, Stripe refused the transfer) moves nothing;
+  **three in a row pause the schedule** and tell the author, and it runs again once somebody saves
+  it. No retry loop. **Instant Payout** (`instant = true`) would charge
   `security.platform_params.instant_payout_fee_bp` to bypass the standard Stripe clearing window
-  (§1.4) — **Planned** (ruling P3): the fee stays unset until priced.
+  (§1.4) — **Planned** (ruling P3): the fee is unset (`null`) until priced, and a schedule cannot
+  opt in.
 - **Income Smoother** (`finance.income_smoothing`): buffers earning peaks and tops up troughs into a
   salary-like monthly figure. **Fee ~0.5%** (`income_smoother_fee_bp = 50`). **Eligibility gate:**
   `income_smoother_min_months = 3` months of earnings history **and** ≥

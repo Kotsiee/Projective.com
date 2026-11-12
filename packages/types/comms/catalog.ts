@@ -40,6 +40,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"payout.paid",
 	"payout.reversed",
 	"payout.method_required",
+	"payout.schedule_paused",
 	"wallet.topup_succeeded",
 	"wallet.topup_failed",
 	"wallet.low_balance",

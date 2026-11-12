@@ -4,6 +4,7 @@ import {
 	actionsFor,
 	decidableBy,
 	LOCK_REASON,
+	payoutRunLabel,
 	pendingByState,
 	type SmootherRow,
 	smootherRowFor,
@@ -94,11 +95,7 @@ Deno.test("actionsFor: a holder is offered every automation, locked with its rea
 	const out = actionsFor("personal", SELLER, [SELLER], ELIGIBLE, [], true, false);
 	assert(out.offered.includes("set_payout"), "a manual payout stays offered");
 	assert(out.offered.includes("enrol_smoother"), "a locked enrolment is still drawn");
-	assertEquals(out.locks.map((l) => l.code), [
-		"schedule_not_running",
-		"pots_not_running",
-		"smoother_planned",
-	]);
+	assertEquals(out.locks.map((l) => l.code), ["pots_not_running", "smoother_planned"]);
 	assertEquals(out.locks.map((l) => l.reason), out.locks.map((l) => LOCK_REASON[l.code]));
 	assertEquals(
 		out.unavailable.find((u) => u.action === "enrol_smoother")?.reason,
@@ -107,9 +104,34 @@ Deno.test("actionsFor: a holder is offered every automation, locked with its rea
 	);
 	assertFalse(
 		out.unavailable.some((u) => u.action === "set_payout"),
-		"only the scheduled modes are locked; a manual payout saves",
+		"payout schedules run (DB4): every mode saves",
 	);
 	assertEquals(out.recurring, ALL_RULE_ACTIONS, "the owner of a personal wallet changes its rules");
+});
+
+Deno.test("payoutRunLabel: a schedule says when it next pays, and a paused one never reads as running", () => {
+	const weekly = { mode: "scheduled_weekly" as const, active: true };
+	assertEquals(
+		payoutRunLabel(weekly, { kind: "waiting", nextRunAt: new Date("2026-11-16T00:00:00Z") }),
+		"Next run Mon 16 Nov",
+	);
+	assertEquals(
+		payoutRunLabel(weekly, { kind: "pay", amountMinor: 5_000, nextRunAt: null }),
+		"Paying out at the next run",
+	);
+	assertEquals(
+		payoutRunLabel(weekly, { kind: "skip", nextRunAt: null }),
+		"Due, but below the minimum payout",
+	);
+	assertEquals(
+		payoutRunLabel({ mode: "scheduled_weekly", active: false }, { kind: "off" }),
+		"Paused after three failed runs",
+	);
+	assertEquals(
+		payoutRunLabel({ mode: "threshold", active: true }, { kind: "waiting", nextRunAt: null }),
+		"When your available balance reaches it",
+	);
+	assertEquals(payoutRunLabel({ mode: "manual", active: true }, { kind: "off" }), null);
 });
 
 Deno.test("actionsFor: a member holding nothing is offered nothing, so nothing is locked", () => {
@@ -123,11 +145,7 @@ Deno.test("actionsFor: each lock follows the control it locks", () => {
 		actionsFor("team", account("team", caps), [SELLER], null, [], true, true).locks.map((l) =>
 			l.code
 		);
-	assertEquals(
-		lockOf(["view", "withdraw"]),
-		["schedule_not_running"],
-		"set_payout's scheduled modes",
-	);
+	assertEquals(lockOf(["view", "withdraw"]), [], "set_payout runs every mode: nothing locks it");
 	assertEquals(
 		lockOf(["view", "distribute"]),
 		["pots_not_running"],

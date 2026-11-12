@@ -162,17 +162,17 @@ VALUES
   ('643c4e0f-b145-47e2-aa78-44610fbc9474', 'freelancer', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'stripe', 'acct_seed_samuelnkemelu', 'verified', now() - interval '1200 hours')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO finance.payout_schedules (id, owner_type, owner_id, mode, destination_method_id, threshold_cents, currency, next_run_at, instant, active)
+INSERT INTO finance.payout_schedules (id, owner_type, owner_id, mode, destination_method_id, threshold_cents, currency, next_run_at, instant, active, created_by)
 VALUES
-  ('1773f0e6-cea0-461f-ad67-0a68325b4cd1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 'scheduled_monthly', '5c730de3-b0c7-4610-a3e9-23894311560e', NULL, 'USD', now() + interval '288 hours', false, true),
-  ('d46cf34f-d3d3-4128-afce-fb2981f01372', 'freelancer', 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57', 'manual', 'dea1bdac-db61-472f-a993-25026a17202d', NULL, 'USD', NULL, false, true),
-  ('c1a0f055-963f-43dc-a9f2-fc5f423a8a0e', 'freelancer', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'manual', '1de25004-5b13-4c9d-ac01-d45e6d6df097', NULL, 'USD', NULL, false, true),
-  ('c3a84c7c-2637-404f-a366-91561d1b84d1', 'freelancer', 'c7173d3f-8b15-4876-afbf-499d17513a44', 'threshold', 'b4c0c286-66b5-4471-a1c7-1594921f969f', 250000, 'USD', NULL, true, true),
-  ('aa5356eb-1fcc-43b6-a8a8-92cd242f0d20', 'freelancer', 'c859a726-490c-4f6d-a184-8984de3994d3', 'manual', '6cf3eae9-b6c0-45ce-a670-deb71ef4ef54', NULL, 'USD', NULL, false, true),
-  ('82f981a7-2ac0-4814-ae86-fb19b868af2e', 'freelancer', '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'manual', '5c7b8f2b-a964-4c8e-a9e1-94d1762541a4', NULL, 'USD', NULL, false, true),
-  ('f85af18a-d6d5-4c6b-a368-b5a0c05aec61', 'freelancer', '2e4274fb-e76b-4640-ad31-c66d7fbea842', 'manual', '16118033-84bc-42ee-aaa0-4e910d84d1bc', NULL, 'USD', NULL, false, true),
-  ('d9024023-0784-4df2-af4f-f8a922ab7ae0', 'freelancer', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'manual', 'd2094e6d-fdba-4e50-a37d-393f52c05682', NULL, 'USD', NULL, false, true),
-  ('694a5e55-b64e-46f6-a3fd-645323618b14', 'freelancer', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'manual', 'c4be712c-a06e-467d-a8ed-307a3976768b', NULL, 'USD', NULL, false, true)
+  ('1773f0e6-cea0-461f-ad67-0a68325b4cd1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 'scheduled_monthly', '5c730de3-b0c7-4610-a3e9-23894311560e', NULL, 'USD', now() + interval '288 hours', false, true, '6ce1906f-caab-4708-a19e-df3d8960666e'),
+  ('d46cf34f-d3d3-4128-afce-fb2981f01372', 'freelancer', 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57', 'manual', 'dea1bdac-db61-472f-a993-25026a17202d', NULL, 'USD', NULL, false, true, 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57'),
+  ('c1a0f055-963f-43dc-a9f2-fc5f423a8a0e', 'freelancer', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'manual', '1de25004-5b13-4c9d-ac01-d45e6d6df097', NULL, 'USD', NULL, false, true, '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d'),
+  ('c3a84c7c-2637-404f-a366-91561d1b84d1', 'freelancer', 'c7173d3f-8b15-4876-afbf-499d17513a44', 'threshold', 'b4c0c286-66b5-4471-a1c7-1594921f969f', 250000, 'USD', NULL, false, true, 'c7173d3f-8b15-4876-afbf-499d17513a44'),
+  ('aa5356eb-1fcc-43b6-a8a8-92cd242f0d20', 'freelancer', 'c859a726-490c-4f6d-a184-8984de3994d3', 'manual', '6cf3eae9-b6c0-45ce-a670-deb71ef4ef54', NULL, 'USD', NULL, false, true, 'c859a726-490c-4f6d-a184-8984de3994d3'),
+  ('82f981a7-2ac0-4814-ae86-fb19b868af2e', 'freelancer', '3fc3da04-549b-4239-aca3-fa82f713dbaf', 'manual', '5c7b8f2b-a964-4c8e-a9e1-94d1762541a4', NULL, 'USD', NULL, false, true, '3fc3da04-549b-4239-aca3-fa82f713dbaf'),
+  ('f85af18a-d6d5-4c6b-a368-b5a0c05aec61', 'freelancer', '2e4274fb-e76b-4640-ad31-c66d7fbea842', 'manual', '16118033-84bc-42ee-aaa0-4e910d84d1bc', NULL, 'USD', NULL, false, true, '2e4274fb-e76b-4640-ad31-c66d7fbea842'),
+  ('d9024023-0784-4df2-af4f-f8a922ab7ae0', 'freelancer', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'manual', 'd2094e6d-fdba-4e50-a37d-393f52c05682', NULL, 'USD', NULL, false, true, '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb'),
+  ('694a5e55-b64e-46f6-a3fd-645323618b14', 'freelancer', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'manual', 'c4be712c-a06e-467d-a8ed-307a3976768b', NULL, 'USD', NULL, false, true, '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO finance.payouts (id, wallet_id, destination_method_id, amount_cents, currency, status, instant, provider, provider_ref, transaction_id, initiated_at, settled_at)

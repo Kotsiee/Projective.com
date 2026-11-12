@@ -46,10 +46,12 @@ import {
 	allocationSlices,
 	currencyExponent,
 	incomeSmootherFeeMinor,
+	paramMinor,
 	RecurringRuleAction,
 	walletVariant,
 } from "@projective/types/finance";
 import type { MoneyProjector } from "./commerce-money.ts";
+import { type PayoutRunPlan, planPayoutRun } from "./payout-schedules.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import {
@@ -137,8 +139,6 @@ export const PROCESSOR_REASON: Readonly<Partial<Record<WalletAction, string>>> =
  * message of the refusal a locked control's action answers with.
  */
 export const LOCK_REASON: Readonly<Record<WalletLockCode, string>> = {
-	schedule_not_running:
-		"Weekly, monthly and threshold payouts don't run yet, so payouts stay manual for now.",
 	pots_not_running: "Pots don't set money aside yet, so they can't be changed for now.",
 	smoother_planned:
 		"The Income Smoother is planned but doesn't run yet, so you can't enrol for now.",
@@ -460,9 +460,8 @@ export function actionsFor(
 		}
 	}
 
-	// Built in this order: payout schedules (DB4), pots (DB5, UI3), then the Income Smoother.
+	// Built in this order: payout schedules (DB4, running), pots (DB5, UI3), then the Income Smoother.
 	const locked: WalletLockCode[] = [];
-	if (offered.includes("set_payout")) locked.push("schedule_not_running");
 	// A pot is saved by the owner of a personal wallet, or by a `distribute` holder on a vault.
 	if (personal || caps.includes("distribute")) locked.push("pots_not_running");
 	if (smoother) locked.push("smoother_planned");
@@ -1750,6 +1749,41 @@ export async function fundingOf(ctx: WalletContext): Promise<FundingView> {
 	return { sources, rules, balance: availableOf(ctx.money, account) };
 }
 
+/**
+ * When a payout schedule next pays, as the Upcoming row and the schedule editor say it, from the claim
+ * maths ({@link planPayoutRun}). `null` for a manual schedule.
+ */
+export function payoutRunLabel(
+	schedule: { mode: PayoutsView["schedule"]["mode"]; active: boolean },
+	plan: PayoutRunPlan,
+): string | null {
+	if (schedule.mode === "manual") return null;
+	switch (plan.kind) {
+		case "off":
+			return "Paused after three failed runs";
+		case "pay":
+			return "Paying out at the next run";
+		case "skip":
+			return "Due, but below the minimum payout";
+		case "waiting":
+			return plan.nextRunAt
+				? clip(
+					`Next run ${
+						plan.nextRunAt.toLocaleDateString("en-GB", {
+							weekday: "short",
+							day: "numeric",
+							month: "short",
+							timeZone: "UTC",
+						})
+					}`,
+					60,
+				)
+				: schedule.mode === "threshold"
+				? "When your available balance reaches it"
+				: null;
+	}
+}
+
 export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 	if (ctx.target === "aggregate") {
 		const personal = ctx.accounts.find((a) => a.scope === "personal") ?? ctx.accounts[0];
@@ -1770,7 +1804,7 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 	const ownerId = account.scope === "personal" ? ctx.viewer.userId : account.id;
 	const scheduleCurrency = primaryCurrency(account) ?? ctx.money.display;
 	const seller = variant === "personal" && ctx.viewer.isFreelancer;
-	const [methods, scheduleRes, historyRes, incomeSmoother] = await Promise.all([
+	const [methods, scheduleRes, historyRes, incomeSmoother, minimumRes] = await Promise.all([
 		methodsFor(ctx, account),
 		// One schedule per owner per currency (`uq_payout_schedule_owner`): the wallet's own currency's.
 		db.from("payout_schedules")
@@ -1791,8 +1825,15 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 			? readLedger(ctx, walletIds(account), { limit: LEDGER_WINDOW })
 				.then((rows) => smootherFor(ctx, account, rows))
 			: Promise.resolve(null),
+		getUserClient(ctx.actor.accessToken).schema("security").from("platform_params")
+			.select("value").eq("key", "min_withdrawal_minor").maybeSingle(),
 	]);
-	if (scheduleRes.error) throw new Error(`finance.payout_schedules read failed: ${scheduleRes.error.message}`);
+	if (scheduleRes.error) {
+		throw new Error(`finance.payout_schedules read failed: ${scheduleRes.error.message}`);
+	}
+	if (minimumRes.error) {
+		throw new Error(`security.platform_params read failed: ${minimumRes.error.message}`);
+	}
 	if (historyRes.error) throw new Error(`finance.payouts read failed: ${historyRes.error.message}`);
 
 	const destinations = methods.filter((m) => m.method_role !== "funding").map((m) => ({
@@ -1838,8 +1879,25 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 			destinationLabel: destination?.label ?? null,
 			threshold: schedule?.threshold_cents ? money(ctx, Number(schedule.threshold_cents), schedule.currency ?? walletCurrency) : null,
 			instant: schedule?.instant ?? false,
-			nextRunLabel: schedule && schedule.mode !== "manual" && schedule.next_run_at
-				? clip(`Next run ${new Date(schedule.next_run_at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}`, 60)
+			nextRunLabel: schedule
+				? payoutRunLabel(
+					schedule,
+					planPayoutRun(
+						{
+							mode: schedule.mode,
+							active: schedule.active,
+							nextRunAt: schedule.next_run_at ? new Date(schedule.next_run_at) : null,
+							thresholdMinor: schedule.threshold_cents === null
+								? null
+								: Number(schedule.threshold_cents),
+						},
+						account.rows.find((r) => r.currency.toUpperCase() === scheduleCurrency.toUpperCase())
+							?.balance_cents ?? 0,
+						paramMinor((minimumRes.data as { value?: unknown } | null)?.value, scheduleCurrency) ??
+							0,
+						new Date(),
+					),
+				)
 				: null,
 		},
 		destinations,

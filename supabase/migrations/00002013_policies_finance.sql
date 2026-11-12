@@ -63,11 +63,11 @@ SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 CREATE POLICY "View own payout schedule" ON finance.payout_schedules FOR
 SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
 
--- A payout schedule decides when money leaves the vault and where it goes: `withdraw`, not
--- membership. Before this any active member of a team could re-point the team's payouts.
-CREATE POLICY "Manage own payout schedule" ON finance.payout_schedules FOR ALL TO authenticated
-USING (finance.fn_owner_capability (owner_type, owner_id, 'withdraw'::finance.vault_capability))
-WITH CHECK (finance.fn_owner_capability (owner_type, owner_id, 'withdraw'::finance.vault_capability));
+-- No write policy on purpose. A schedule is a standing withdrawal that runs AS its author
+-- (`created_by`), so it is written only by its doors: finance.save_payout_schedule (a withdrawal's
+-- authority; it stamps the author and refuses Instant Payouts) and the scheduler. The FOR ALL policy it
+-- replaces let a client write `created_by`, `next_run_at` and `failure_count` directly
+-- (FINANCE_AUDIT A14; supabase/probes/payout_schedules.sql).
 
 -- READ only. Enrolment is an eligibility decision — earning history, the fee it costs — so it is
 -- made server-side, never written directly: a client write let a user set `eligibility_met` and

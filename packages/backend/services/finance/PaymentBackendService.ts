@@ -22,9 +22,11 @@ import {
 	type KybOnboardingInput,
 	type OnboardingReturn,
 	type PaymentFundingPoll,
+	type Payout,
 	type PayoutAccountScope,
 	payoutAccountStatusFor,
 	type PayoutResult,
+	type PayoutScheduleSweep,
 	type SavedCardResult,
 	type StalePayoutOutcome,
 	type StalePayoutSweep,
@@ -59,6 +61,7 @@ import {
 	bindScheduledPayment,
 	cardOwnerFor,
 	claimDueDepositRules,
+	claimDuePayoutSchedules,
 	claimStalePayouts,
 	claimUnsettledCardPayments,
 	completePayout,
@@ -101,6 +104,11 @@ import {
 } from "./stripe-rails.ts";
 import { applyStripePlan, planStripeEvent, requireLedgerRow, syncConnectAccount } from "./stripe-webhook.ts";
 import { planStalePayout } from "./payout-sweep.ts";
+import {
+	payoutScheduleSweepOf,
+	type PayoutTransferSend,
+	sendScheduledRun,
+} from "./payout-schedules.ts";
 import { chargeScheduledDeposit } from "./scheduled-deposits.ts";
 import { paymentFundingState } from "./funding-state.ts";
 
@@ -131,6 +139,41 @@ import { paymentFundingState } from "./funding-state.ts";
 type Result<T> = ServiceResult<T>;
 
 // #region Plumbing
+/**
+ * Send a begun payout's Stripe Transfer and close it: the ONE send a manual withdrawal and a scheduled
+ * run share. The Transfer is idempotent on the payout (`payout_transfer:<payout id>`). A definitive
+ * refusal returns the money (`finance.fail_payout`, which also counts it against the schedule that
+ * made the payout); an unknown answer leaves the payout pending with the money held, for the
+ * `transfer.created` webhook or the stale-payout sweep to close.
+ */
+async function sendPayoutTransfer(
+	stripe: Stripe,
+	payout: Payout,
+	destination: string,
+): Promise<PayoutTransferSend> {
+	let transferId: string;
+	try {
+		transferId = (await createTransfer(stripe, {
+			payoutId: payout.id,
+			amountMinor: payout.amountCents,
+			currency: payout.currency,
+			destination,
+			walletId: payout.walletId,
+			destinationMethodId: payout.destinationMethodId,
+		})).id;
+	} catch (error) {
+		const failure = classifyStripeError(error);
+		if (failure.kind === "refused") {
+			await failPayout(payout.id, failure.code ?? "refused by the processor");
+			console.error("[payments:payout]", failure.code ?? "", failure.message);
+			return { kind: "refused", code: failure.code ?? null };
+		}
+		console.error("[payments:payout]", failure.kind, failure.message);
+		return { kind: "unknown", message: failure.message };
+	}
+	return { kind: "sent", payout: await completePayout(payout.id, transferId) };
+}
+
 /** Close one leased stale payout: complete it, re-send it, return it, or leave it for the next sweep. */
 async function settleStalePayout(
 	stripe: Stripe,
@@ -940,33 +983,46 @@ export class PaymentBackendService {
 			return ok({ payout, destination, replayed }, { status: 200 });
 		}
 
-		let transferId: string;
-		try {
-			transferId = (await createTransfer(getStripe(), {
-				payoutId: payout.id,
-				amountMinor: payout.amountCents,
-				currency: payout.currency,
-				destination,
-				walletId: payout.walletId,
-				destinationMethodId: payout.destinationMethodId,
-			})).id;
-		} catch (error) {
-			const failure = classifyStripeError(error);
-			if (failure.kind === "refused") {
-				await failPayout(payout.id, failure.code ?? "refused by the processor");
-				console.error("[payments:payout]", failure.code ?? "", failure.message);
-				return fail(422, {
-					message: "Stripe couldn't send this payout. The money is back in your wallet.",
-				});
-			}
-			console.error("[payments:payout]", failure.kind, failure.message);
+		const sent = await sendPayoutTransfer(getStripe(), payout, destination);
+		if (sent.kind === "refused") {
+			return fail(422, {
+				message: "Stripe couldn't send this payout. The money is back in your wallet.",
+			});
+		}
+		if (sent.kind === "unknown") {
 			return ok({ payout, destination, replayed }, {
 				status: 202,
 				message: "Your payout is on its way; its confirmation is still arriving.",
 			});
 		}
-		const paid = await completePayout(payout.id, transferId);
-		return ok({ payout: paid, destination, replayed }, { status: replayed ? 200 : 201 });
+		return ok({ payout: sent.payout, destination, replayed }, { status: replayed ? 200 : 201 });
+	}
+	// #endregion
+
+	// #region Payout schedules
+	/**
+	 * Run every due payout schedule — run by the scheduler (`POST /api/finance/cron/payout-schedules`,
+	 * Decision #337, ruling M6). `finance.fn_claim_due_payout_schedules` claims each due weekly, monthly
+	 * or threshold schedule and, in its own transaction, withdraws the whole of Available as the
+	 * schedule's author through `finance.begin_payout` — the gates, the minimum and the debit of a
+	 * manual withdrawal — or skips it below the minimum, or records the refusal (three in a row pause it
+	 * and tell the author). Each begun payout's Transfer then goes out through the send a manual
+	 * withdrawal uses ({@link sendScheduledRun}). Gated like the other sweeps: nothing is claimed, so
+	 * nothing is debited, where the processor is not connected.
+	 */
+	static async runPayoutSchedules(limit = 50): Promise<Result<PayoutScheduleSweep>> {
+		if (!liveSettings()) {
+			return notConnected("Scheduled payouts aren't connected in this environment.");
+		}
+		const runs = await claimDuePayoutSchedules(limit);
+		const stripe = getStripe();
+		const deps = {
+			send: (payout: Payout, destination: string) =>
+				sendPayoutTransfer(stripe, payout, destination),
+		};
+		const results = [];
+		for (const run of runs) results.push(await sendScheduledRun(run, deps));
+		return ok(payoutScheduleSweepOf(results));
 	}
 	// #endregion
 

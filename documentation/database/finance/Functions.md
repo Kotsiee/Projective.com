@@ -1671,7 +1671,9 @@ open by #191: only the payer's own wallet is recovered from).
 - `finance.complete_payout(p_payout_id, p_transfer_ref)` (processor) — the Transfer exists: `paid`.
 - `finance.fail_payout(p_payout_id, p_reason)` (processor) — Stripe definitively refused, or the stale
   sweep found no transfer: `failed`, a `payout_reversal` credit returns the money, and a person owner is
-  told (`payout.failed`). Only a `pending` payout can fail.
+  told (`payout.failed`). Only a `pending` payout can fail. A payout a schedule made (`schedule_id`)
+  counts once against that schedule (`fn_payout_schedule_strike`, "Stripe couldn't send the payout
+  (<reason>)."); a replay counts nothing.
 - `finance.record_transfer_reversed(p_event_id, p_transfer_ref, p_destination, p_amount, p_amount_reversed, p_currency, p_payout_id, p_livemode)`
   (processor, Decision #202) — `transfer.reversed`. Finds the payout by its bound transfer, else the
   metadata id; the transfer must agree with it as in `record_transfer_created`. Credits only what is
@@ -1698,6 +1700,45 @@ open by #191: only the payer's own wallet is recovered from).
   `default`, else 0. `finance.fn_minor_units_text(p_amount, p_currency)` (internal) — the minimum in
   major units for the refusal sentence.
 - `finance.fn_payout_destination(wallet)` (internal) — the owner's verified Connect account.
+
+### Payout schedules (`00001240` §2, Decision #337, ruling M6)
+
+A schedule is a standing withdrawal. Clients only read `finance.payout_schedules`; every run is a
+withdrawal made BY the schedule's author through `begin_payout` itself.
+
+- `finance.save_payout_schedule(p_owner_type, p_owner_id, p_currency, p_mode, p_threshold_cents DEFAULT NULL, p_destination_method_id DEFAULT NULL, p_instant DEFAULT false)`
+  → `finance.payout_schedules` (user) — signed in (`42501`), an adult (`PM403`), a wallet of the owner
+  in that currency (`P0002`, or `42501` to a caller with no `withdraw` on the owner), and a
+  withdrawal's authority on it: the owner of a person wallet, `withdraw` on a vault (`42501 auth:`).
+  A destination is one of the owner's own methods (`42501`) that is an ACTIVE `payout`/`both` one
+  (`PA403`); a threshold is required for `threshold` and at least `fn_min_withdrawal_minor` (`22023
+  thresholdMinor:`); `p_instant = true` is `0A000 instant_payout_planned:` (ruling P3). Upserts the
+  one row per (owner, currency): `active`, `failure_count = 0`, `last_error = NULL`, `instant = false`,
+  `next_run_at = fn_payout_schedule_next_run(mode, now())`, and `created_by` = the caller. Writes a
+  `payout_schedule.saved` `security.audit_logs` row (mode, threshold, destination and author, from →
+  to).
+- `finance.fn_claim_due_payout_schedules(p_limit DEFAULT 50)` → jsonb (service role, the scheduler) —
+  claims up to `p_limit` (≤ 200) active schedules that are due — weekly / monthly at `next_run_at <=
+  now()`, threshold at `fn_payout_schedule_available(wallet) >= threshold_cents` — oldest first,
+  `FOR UPDATE SKIP LOCKED`. Per schedule, in the claim's own transaction: advances `next_run_at` to the
+  slot after now (missed slots are skipped, never paid in a burst) and `last_run_at`; below the
+  currency's minimum it is `skipped` (no strike); otherwise it sets `request.jwt.claim.sub` to
+  `created_by` and calls `begin_payout(wallet, Available, currency, false, 'payout_schedule:<schedule>:<run_at YYYYMMDDHH24MISS>', destination)`,
+  tags the payout (`payouts.schedule_id`) and clears the failure count (`begun`). A refusal (no
+  author, a lost `withdraw`, payout readiness, KYB, a payout account) is undone with its
+  subtransaction and struck (`refused`, with the SQLSTATE and the sentence); an unexpected SQLSTATE
+  also writes an `ops.log_entries` error. Returns one entry per claimed schedule (`schedule_id`,
+  `run_at`, `outcome`, `amount_cents`, `currency`, and for `begun` the `payout` and its `destination`;
+  for `refused` the `code`, `detail` and whether it `paused`). `PaymentBackendService.runPayoutSchedules`
+  then sends each begun payout's Transfer exactly as a manual withdrawal's.
+- `finance.fn_payout_schedule_strike(p_schedule, p_reason)` (internal) — one refusal: `failure_count +
+  1`, `last_error` the reason as a sentence; the third in a row sets `active = false` and tells the
+  author (`payout.schedule_paused`). No retry: the next slot (a threshold's next sweep) is the next
+  attempt, and a paused schedule runs again only once it is saved.
+- `finance.fn_payout_schedule_next_run(p_mode, p_after)` (internal, IMMUTABLE) — the next Monday 00:00
+  UTC (weekly) or the next 1st 00:00 UTC (monthly), strictly after `p_after`; NULL otherwise.
+- `finance.fn_payout_schedule_available(p_wallet)` (internal) — what a run pays: the wallet's whole
+  Available (`balance_cents`). The one place the threshold test and the amount are worked out.
 
 ### The pending window (`00001240` §7, Decision #191)
 

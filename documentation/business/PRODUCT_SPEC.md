@@ -1563,11 +1563,13 @@ Designed for collaborator groups (Virtual Agencies).
 
 ##### Automation that does not run yet is locked
 
-Payout schedules, pots and the **Income Smoother** are shown with a lock and the reason until each
-one's engine runs — payout schedules first, then pots, then the smoother; none of them saves a
-setting nothing acts on. A **pot** is an earmark inside the wallet, never a separate balance. The
-Income Smoother is **Planned** and gets its own entry here before it is built (Decision #337, ruling
-M6). **Not built yet:** today these controls save settings.
+Pots and the **Income Smoother** are shown with a lock and the reason until each one's engine runs —
+payout schedules first (built), then pots, then the smoother; none of them saves a setting nothing
+acts on. A **pot** is an earmark inside the wallet, never a separate balance. The Income Smoother is
+**Planned** and gets its own entry here before it is built (Decision #337, ruling M6). A **payout
+schedule** runs: weekly, monthly or at a balance threshold, each run withdraws everything Available
+as the member who set it up, through the same checks as a manual withdrawal, and three refused runs
+in a row pause it and tell that member (`finance-model.md` §13).
 
 #### 2. Escrow Lifetimes by Project Type
 

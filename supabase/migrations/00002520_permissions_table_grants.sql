@@ -223,7 +223,8 @@ GRANT SELECT ON TABLE finance.deposit_rules TO authenticated;
 
 GRANT ALL ON TABLE finance.deposit_rules TO service_role;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE finance.payout_schedules TO authenticated;
+-- Read only: a schedule is written through finance.save_payout_schedule and the scheduler (00002013).
+GRANT SELECT ON TABLE finance.payout_schedules TO authenticated;
 
 GRANT ALL ON TABLE finance.payout_schedules TO service_role;
 

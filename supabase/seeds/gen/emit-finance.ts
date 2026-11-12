@@ -858,8 +858,11 @@ export function emitFinance(world: World): string {
 			p.key === "kwame" ? "250000" : "NULL",
 			"'USD'",
 			p.key === "maris" ? ahead(12) : "NULL",
-			String(p.key === "kwame"),
+			// Instant Payouts are Planned (Decision #337, ruling P3); the door refuses them.
+			"false",
 			"true",
+			// The author every run withdraws as: the freelancer who owns the wallet.
+			id(p.userId),
 		]);
 	}
 	out.push(
@@ -926,6 +929,7 @@ export function emitFinance(world: World): string {
 				"next_run_at",
 				"instant",
 				"active",
+				"created_by",
 			],
 			payoutScheduleRows,
 		),

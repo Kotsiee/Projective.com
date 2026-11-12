@@ -60,8 +60,8 @@ ON CONFLICT (key) DO NOTHING;
 
 -- from 20260723092000
 INSERT INTO security.platform_params (key, value, description) VALUES
-    ('instant_payout_fee_bp', '0'::jsonb,
-        'Fee in basis points for an Instant Payout (bypassing the standard Stripe clearing window). Magnitude in finance-model.md §1.4; default 0 pending pricing sign-off.'),
+    ('instant_payout_fee_bp', 'null'::jsonb,
+        'Planned; unset until priced (Decision #337, ruling P3). The fee in basis points for an Instant Payout (bypassing the standard Stripe clearing window), finance-model.md §1.4. A 0 would read as free.'),
     ('income_smoother_fee_bp', '50'::jsonb,
         'Income Smoother micro-fee in basis points (~0.5%). finance-model.md §1.4.'),
     ('income_smoother_min_months', '3'::jsonb,

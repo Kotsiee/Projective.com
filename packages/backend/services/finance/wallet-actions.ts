@@ -36,7 +36,7 @@ import { resolveWalletContext, type WalletAccount, type WalletContext, type Wall
  *
  * The movements that need no external processor move real money through definer functions that
  * authorise the caller themselves (`finance.transfer_funds`, `finance.distribute_vault`,
- * `projects.fund_stage`, `finance.request_spend_approval`); the payout schedule writes through RLS.
+ * `projects.fund_stage`, `finance.request_spend_approval`, `finance.save_payout_schedule`).
  * The processor-backed ones go through the Stripe fiat rails (Decision #126): a top-up answers with a
  * PaymentIntent for the Payment Element (the wallet is credited by the signed webhook, never here), a
  * withdrawal debits the wallet and sends a Stripe Transfer, adding a card answers with a SetupIntent,
@@ -462,11 +462,11 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 
 // #region Settings
 /**
- * The `finance.payout_schedules` row a save writes, or its refusal: the schedule of the currency the
- * action names (FCA N17); with none named, the wallet's only currency. A wallet holding several is
- * never guessed at: the save is refused until the action names one.
+ * The `finance.save_payout_schedule` arguments a save sends, or its refusal: the schedule of the
+ * currency the action names (FCA N17); with none named, the wallet's only currency. A wallet holding
+ * several is never guessed at: the save is refused until the action names one.
  */
-export function payoutScheduleRow(account: WalletAccount, input: PayoutScheduleInput) {
+export function payoutScheduleArgs(account: WalletAccount, input: PayoutScheduleInput) {
 	if (!input.currency && account.rows.length > 1) {
 		const message =
 			"This account holds more than one currency. Choose which one these payouts are for.";
@@ -482,39 +482,64 @@ export function payoutScheduleRow(account: WalletAccount, input: PayoutScheduleI
 		);
 	}
 	return {
-		owner_type: row.owner_type,
-		owner_id: row.owner_id,
-		currency: row.currency,
-		mode: input.mode,
-		threshold_cents: input.mode === "threshold" ? input.thresholdMinor : null,
-		destination_method_id: input.destinationId,
-		instant: input.instant,
-		active: true,
+		p_owner_type: row.owner_type,
+		p_owner_id: row.owner_id,
+		p_currency: row.currency.toUpperCase(),
+		p_mode: input.mode,
+		p_threshold_cents: input.mode === "threshold" ? input.thresholdMinor : null,
+		p_destination_method_id: input.destinationId,
+		p_instant: input.instant,
 	};
 }
 
 /**
- * Set the wallet's payout schedule. Saved through RLS (`Manage own payout schedule` — the withdraw
- * capability). Only a manual schedule saves while no engine runs the others (Decision #337, ruling M6).
+ * A refusal from `finance.save_payout_schedule`: Instant Payouts are Planned (`instant_payout_planned`,
+ * Decision #337, ruling P3, a 409 naming its reason); otherwise the door's `<field>: <reason>`.
+ */
+export function payoutScheduleRefusal(error: { code?: string; message: string }): Result {
+	if (error.message.trim().startsWith("instant_payout_planned")) {
+		return fail(409, {
+			message: "Instant payouts are planned and not available yet.",
+			details: { reason: "instant_payout_planned" },
+		}) as Result;
+	}
+	if (error.code === "42501" && /^auth:\s*only a member/.test(error.message.trim())) {
+		return refuse(403, "Only a member who may withdraw can change payouts.");
+	}
+	if (error.code === "PA403") return governedRefusal({ ...error, code: "22023" });
+	return governedRefusal(error);
+}
+
+/** The sentence a saved schedule answers with. */
+function savedSentence(mode: PayoutScheduleInput["mode"]): string {
+	switch (mode) {
+		case "scheduled_weekly":
+			return "Payouts now run every Monday.";
+		case "scheduled_monthly":
+			return "Payouts now run on the 1st of each month.";
+		case "threshold":
+			return "Payouts now run whenever your available balance reaches the threshold.";
+		default:
+			return "Payouts are manual.";
+	}
+}
+
+/**
+ * Set the wallet's payout schedule through `finance.save_payout_schedule`, which takes a withdrawal's
+ * authority (the owner, or `withdraw` on that currency's vault), checks the destination and the
+ * threshold, and makes the caller the author every run withdraws as (Decision #337, ruling M6).
  */
 export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
-	if (input.mode !== "manual") return locked("schedule_not_running");
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
 	if (isResult(resolved)) return resolved;
 	const { ctx, account } = resolved;
-	const schedule = payoutScheduleRow(account, input);
-	if (isResult(schedule)) return schedule;
+	const args = payoutScheduleArgs(account, input);
+	if (isResult(args)) return args;
 
-	const db = getUserClient(ctx.actor.accessToken).schema("finance");
-	const { error } = await db.from("payout_schedules")
-		.upsert(schedule, { onConflict: "owner_type,owner_id,currency" });
-	if (error) {
-		return refuse(
-			error.code === "42501" ? 403 : 422,
-			error.code === "42501" ? "Only a member who may withdraw can change payouts." : messageFor(error),
-		);
-	}
-	return after(query, actor, account.key, "Payout schedule saved.");
+	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance")
+		.rpc("save_payout_schedule", args);
+	if (error) return payoutScheduleRefusal(error);
+	return after(query, actor, account.key, savedSentence(input.mode));
 }
 
 /**

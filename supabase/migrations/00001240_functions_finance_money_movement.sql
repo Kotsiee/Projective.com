@@ -5,7 +5,8 @@
 --   1. Dispute resolution   — `charge.dispute.closed`: won unfreezes, lost claws back.
 --   2. Withdrawals          — a payout debits the wallet, then leaves as a Stripe Transfer to the
 --                             owner's Connect account (Separate Charges & Transfers); a reversal,
---                             the bank payout's outcome and the stale-pending sweep (Decision #202).
+--                             the bank payout's outcome and the stale-pending sweep (Decision #202);
+--                             the payout schedules that withdraw on their author's behalf (M6).
 --   3. Saved cards          — the Stripe Customer an owner's cards attach to, and the processor door
 --                             that records a card a SetupIntent confirmed.
 --   4. Recurring deposits   — a standing top-up rule and the scheduler door that charges it off-session.
@@ -517,7 +518,8 @@ $$;
 -- The processor definitively refused the transfer, or the stale-payout sweep found none to complete it
 -- with (processor door): return the debited money to the wallet (reason `payout_reversal`), record the
 -- reason and tell a person owner. Only a still-pending payout can fail — a paid one is reversed
--- through the processor (record_transfer_reversed), never here. Idempotent.
+-- through the processor (record_transfer_reversed), never here. A payout a schedule made counts once
+-- against that schedule (finance.fn_payout_schedule_strike). Idempotent.
 CREATE OR REPLACE FUNCTION finance.fail_payout(p_payout_id uuid, p_reason text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -551,6 +553,12 @@ BEGIN
            failure_reason = NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_reason, '')), 400), '')
      WHERE id = v_payout.id
     RETURNING * INTO v_payout;
+    IF v_payout.schedule_id IS NOT NULL THEN
+        PERFORM finance.fn_payout_schedule_strike(
+            v_payout.schedule_id,
+            'Stripe couldn''t send the payout' || COALESCE(' (' || v_payout.failure_reason || ')', '') || '.'
+        );
+    END IF;
     IF v_wallet.owner_type IN ('user', 'freelancer') THEN
         PERFORM comms.fn_notify(
             v_wallet.owner_id, 'payout.failed', 'Your withdrawal couldn''t be sent',
@@ -853,6 +861,339 @@ BEGIN
       FROM claimed c
       JOIN finance.wallets w ON w.id = c.wallet_id;
     RETURN v_rows;
+END;
+$$;
+
+-- ── Payout schedules (Decision #337, ruling M6; FINANCE_AUDIT A14) ──────────────────────────────
+-- A schedule is the owner's standing withdrawal in one currency: weekly (each Monday, 00:00 UTC),
+-- monthly (the 1st, 00:00 UTC) or threshold (whenever Available reaches `threshold_cents`). Clients
+-- only read finance.payout_schedules; save_payout_schedule writes it and the scheduler runs it, every
+-- run a withdrawal made BY the schedule's author through finance.begin_payout itself.
+
+-- The calendar slot after `p_after` at which a weekly or monthly schedule next runs (UTC); NULL for
+-- manual and threshold. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_payout_schedule_next_run(p_mode finance.payout_mode, p_after timestamptz)
+RETURNS timestamptz
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE p_mode
+        WHEN 'scheduled_weekly'::finance.payout_mode
+            THEN (pg_catalog.date_trunc('week', p_after AT TIME ZONE 'UTC') + interval '1 week') AT TIME ZONE 'UTC'
+        WHEN 'scheduled_monthly'::finance.payout_mode
+            THEN (pg_catalog.date_trunc('month', p_after AT TIME ZONE 'UTC') + interval '1 month') AT TIME ZONE 'UTC'
+    END;
+$$;
+
+-- What a schedule's run pays out of its wallet: the whole of Available. The one place that amount is
+-- worked out, so the threshold test and the amount paid can never disagree. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_payout_schedule_available(p_wallet finance.wallets)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT GREATEST(COALESCE(p_wallet.balance_cents, 0), 0);
+$$;
+
+-- Count one refused run against a schedule (internal): its reason is kept as a sentence in
+-- `last_error`, and the third refusal in a row pauses the schedule (`active = false`) and tells its
+-- author. Nothing retries: the next slot (for a threshold, the next sweep) is the next attempt, and a
+-- paused schedule runs again only once somebody saves it.
+CREATE OR REPLACE FUNCTION finance.fn_payout_schedule_strike(p_schedule uuid, p_reason text)
+RETURNS finance.payout_schedules
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_reason text := pg_catalog.btrim(pg_catalog.regexp_replace(COALESCE(p_reason, ''), '^[A-Za-z_]+:\s*', ''));
+    v_was_active boolean;
+    v_row finance.payout_schedules;
+BEGIN
+    IF v_reason = '' THEN
+        v_reason := 'The payout could not be sent.';
+    ELSE
+        v_reason := pg_catalog.upper(pg_catalog.left(v_reason, 1)) || pg_catalog.substr(v_reason, 2);
+        IF v_reason !~ '[.!?]$' THEN
+            v_reason := v_reason || '.';
+        END IF;
+    END IF;
+    SELECT s.active INTO v_was_active FROM finance.payout_schedules s WHERE s.id = p_schedule FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'schedule: not found' USING ERRCODE = 'P0002';
+    END IF;
+    UPDATE finance.payout_schedules s
+       SET failure_count = s.failure_count + 1,
+           last_error = pg_catalog.left(v_reason, 400),
+           active = s.active AND s.failure_count + 1 < 3
+     WHERE s.id = p_schedule
+    RETURNING * INTO v_row;
+    IF v_was_active AND NOT v_row.active AND v_row.created_by IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v_row.created_by, 'payout.schedule_paused', 'Scheduled payouts paused',
+            'Three scheduled payouts in a row couldn''t be sent, so payouts are manual until you save the schedule again. '
+                || v_row.last_error,
+            'payout_schedules', v_row.id,
+            pg_catalog.jsonb_build_object(
+                'currency', v_row.currency, 'mode', v_row.mode, 'failure_count', v_row.failure_count
+            )
+        );
+    END IF;
+    RETURN v_row;
+END;
+$$;
+
+-- Save the owner's payout schedule for one currency (user door). A schedule IS a standing withdrawal,
+-- so it takes a withdrawal's authority (as begin_payout checks it): the owner of a personal wallet,
+-- `withdraw` on that currency's shared wallet. A destination must be one of the owner's own ACTIVE
+-- payout methods, and a threshold at least the currency's minimum withdrawal. Instant Payouts are
+-- Planned (Decision #337, ruling P3), so `p_instant = true` is refused `instant_payout_planned`. The
+-- caller becomes the schedule's author (`created_by`), whom every later run withdraws as. A save starts
+-- the schedule clean (active, no failures, the next slot of its mode); `manual` is the off switch, and
+-- a schedule is never deleted. One row per (owner, currency); writes one security.audit_logs row.
+CREATE OR REPLACE FUNCTION finance.save_payout_schedule(
+    p_owner_type text,
+    p_owner_id uuid,
+    p_currency text,
+    p_mode finance.payout_mode,
+    p_threshold_cents bigint DEFAULT NULL,
+    p_destination_method_id uuid DEFAULT NULL,
+    p_instant boolean DEFAULT false
+)
+RETURNS finance.payout_schedules
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_wallet finance.wallets;
+    v_method finance.payment_methods;
+    v_min bigint;
+    v_before finance.payout_schedules;
+    v_row finance.payout_schedules;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to change payouts' USING ERRCODE = '42501';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF p_mode IS NULL THEN
+        RAISE EXCEPTION 'mode: choose how payouts run' USING ERRCODE = '22023';
+    END IF;
+    IF COALESCE(p_instant, false) THEN
+        RAISE EXCEPTION 'instant_payout_planned: Instant payouts are planned and not available yet'
+            USING ERRCODE = '0A000';
+    END IF;
+    IF v_currency !~ '^[A-Z]{3}$' THEN
+        RAISE EXCEPTION 'currency: expected a three-letter currency code' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_wallet FROM finance.wallets w
+     WHERE w.owner_type = p_owner_type AND w.owner_id = p_owner_id
+       AND pg_catalog.upper(w.currency) = v_currency;
+    IF NOT FOUND THEN
+        IF finance.fn_owner_capability(p_owner_type, p_owner_id, 'withdraw'::finance.vault_capability) THEN
+            RAISE EXCEPTION 'currency: this account holds no %', v_currency USING ERRCODE = 'P0002';
+        END IF;
+        RAISE EXCEPTION 'auth: only a member who may withdraw can change payouts' USING ERRCODE = '42501';
+    END IF;
+    IF NOT (
+        (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = v_uid)
+        OR (
+            v_wallet.owner_type IN ('team', 'business', 'enterprise')
+            AND finance.fn_has_vault_capability(v_wallet.id, v_uid, 'withdraw'::finance.vault_capability)
+        )
+    ) THEN
+        RAISE EXCEPTION 'auth: only a member who may withdraw can change payouts' USING ERRCODE = '42501';
+    END IF;
+    IF p_destination_method_id IS NOT NULL THEN
+        SELECT * INTO v_method FROM finance.payment_methods m
+         WHERE m.id = p_destination_method_id
+           AND m.owner_id = v_wallet.owner_id
+           AND (
+                m.owner_type = v_wallet.owner_type
+                OR (v_wallet.owner_type IN ('user', 'freelancer') AND m.owner_type IN ('user', 'freelancer'))
+           );
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'destinationId: choose one of this wallet''s payout accounts' USING ERRCODE = '42501';
+        END IF;
+        IF v_method.method_role NOT IN ('payout', 'both') OR v_method.status <> 'active' THEN
+            RAISE EXCEPTION 'destinationId: that payout account can''t receive payouts — choose another'
+                USING ERRCODE = 'PA403';
+        END IF;
+    END IF;
+    IF p_mode = 'threshold' THEN
+        IF p_threshold_cents IS NULL OR p_threshold_cents <= 0 THEN
+            RAISE EXCEPTION 'thresholdMinor: enter the balance that triggers a payout' USING ERRCODE = '22023';
+        END IF;
+        v_min := finance.fn_min_withdrawal_minor(v_currency);
+        IF p_threshold_cents < v_min THEN
+            RAISE EXCEPTION 'thresholdMinor: the smallest payout is % %', finance.fn_minor_units_text(v_min, v_currency), v_currency
+                USING ERRCODE = '22023';
+        END IF;
+    END IF;
+
+    SELECT * INTO v_before FROM finance.payout_schedules s
+     WHERE s.owner_type = v_wallet.owner_type AND s.owner_id = v_wallet.owner_id AND s.currency = v_wallet.currency
+       FOR UPDATE;
+    INSERT INTO finance.payout_schedules AS s (
+        owner_type, owner_id, currency, mode, threshold_cents, destination_method_id, instant, active,
+        next_run_at, created_by, failure_count, last_error
+    ) VALUES (
+        v_wallet.owner_type, v_wallet.owner_id, v_wallet.currency, p_mode,
+        CASE WHEN p_mode = 'threshold' THEN p_threshold_cents END,
+        p_destination_method_id, false, true,
+        finance.fn_payout_schedule_next_run(p_mode, pg_catalog.now()), v_uid, 0, NULL
+    )
+    ON CONFLICT (owner_type, owner_id, currency) DO UPDATE
+       SET mode = EXCLUDED.mode,
+           threshold_cents = EXCLUDED.threshold_cents,
+           destination_method_id = EXCLUDED.destination_method_id,
+           instant = false,
+           active = true,
+           next_run_at = EXCLUDED.next_run_at,
+           created_by = EXCLUDED.created_by,
+           failure_count = 0,
+           last_error = NULL
+    RETURNING * INTO v_row;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (
+        v_uid, 'payout_schedule.saved', 'finance.payout_schedules', v_row.id,
+        pg_catalog.jsonb_build_object(
+            'currency', v_row.currency,
+            'mode', pg_catalog.jsonb_build_object('from', v_before.mode, 'to', v_row.mode),
+            'threshold_cents', pg_catalog.jsonb_build_object('from', v_before.threshold_cents, 'to', v_row.threshold_cents),
+            'destination_method_id', pg_catalog.jsonb_build_object(
+                'from', v_before.destination_method_id, 'to', v_row.destination_method_id
+            ),
+            'created_by', pg_catalog.jsonb_build_object('from', v_before.created_by, 'to', v_row.created_by)
+        )
+    );
+    RETURN v_row;
+END;
+$$;
+
+-- Run the payout schedules that are due (processor door, the scheduler's): each active weekly or
+-- monthly schedule whose slot has come (`next_run_at <= now()`) and each active threshold schedule
+-- whose Available has reached `threshold_cents`, oldest first, at most `p_limit` (capped at 200), under
+-- FOR UPDATE SKIP LOCKED so two sweeps never run one schedule. In this ONE transaction each one:
+--   1. advances — `next_run_at` to the next slot after now() (a missed slot is skipped, never paid in a
+--      burst: the run pays everything Available) and `last_run_at` to now;
+--   2. is skipped (`skipped`, no strike) while Available is below the currency's minimum withdrawal;
+--   3. otherwise withdraws the whole of Available AS ITS AUTHOR through finance.begin_payout — adulthood
+--      and `withdraw` re-checked now, payout readiness, KYB, a verified payout account, the destination,
+--      the minimum, the debit — on the attempt key `payout_schedule:<schedule>:<run_at>`, and tags the
+--      payout with the schedule (`payouts.schedule_id`); a paid run clears its failure count;
+--   4. on a refusal moves no money and counts it against the schedule (fn_payout_schedule_strike).
+-- Returns one entry per schedule claimed; a `begun` entry carries the debited payout and its Connect
+-- destination, which the fat service sends as a Stripe Transfer exactly as it sends a manual
+-- withdrawal's. The debit is taken in the claim's own transaction, so neither a second sweep nor a
+-- spend between the claim and the transfer can pay the same Available twice or turn a run into a
+-- refusal.
+CREATE OR REPLACE FUNCTION finance.fn_claim_due_payout_schedules(p_limit integer DEFAULT 50)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    s finance.payout_schedules;
+    v_wallet finance.wallets;
+    v_available bigint;
+    v_min bigint;
+    v_run_at timestamptz;
+    v_key text;
+    v_prev_sub text;
+    v_begun jsonb;
+    v_state text;
+    v_message text;
+    v_struck finance.payout_schedules;
+    v_out jsonb := '[]'::jsonb;
+BEGIN
+    FOR s IN
+        SELECT p.*
+          FROM finance.payout_schedules p
+          JOIN finance.wallets w
+            ON w.owner_type = p.owner_type AND w.owner_id = p.owner_id AND w.currency = p.currency
+         WHERE p.active
+           AND (
+                (p.mode IN ('scheduled_weekly', 'scheduled_monthly') AND p.next_run_at <= pg_catalog.now())
+                OR (p.mode = 'threshold' AND finance.fn_payout_schedule_available(w) >= p.threshold_cents)
+           )
+         ORDER BY COALESCE(p.next_run_at, p.last_run_at, p.created_at), p.id
+         LIMIT GREATEST(LEAST(COALESCE(p_limit, 50), 200), 1)
+           FOR UPDATE OF p SKIP LOCKED
+    LOOP
+        SELECT * INTO v_wallet FROM finance.wallets w
+         WHERE w.owner_type = s.owner_type AND w.owner_id = s.owner_id AND w.currency = s.currency
+           FOR UPDATE;
+        v_run_at := CASE
+            WHEN s.mode = 'threshold' THEN pg_catalog.date_trunc('second', pg_catalog.now())
+            ELSE s.next_run_at
+        END;
+        UPDATE finance.payout_schedules
+           SET next_run_at = finance.fn_payout_schedule_next_run(s.mode, pg_catalog.now()),
+               last_run_at = pg_catalog.now()
+         WHERE id = s.id;
+
+        v_available := finance.fn_payout_schedule_available(v_wallet);
+        v_min := GREATEST(finance.fn_min_withdrawal_minor(s.currency), 1);
+        IF v_available < v_min THEN
+            v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+                'schedule_id', s.id, 'run_at', v_run_at, 'outcome', 'skipped', 'detail', 'below_minimum',
+                'amount_cents', v_available, 'currency', s.currency
+            ));
+            CONTINUE;
+        END IF;
+
+        v_key := 'payout_schedule:' || s.id::text || ':'
+            || pg_catalog.to_char(v_run_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISS');
+        v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
+        BEGIN
+            IF s.created_by IS NULL THEN
+                RAISE EXCEPTION 'auth: the person who set up these payouts is no longer available'
+                    USING ERRCODE = '42501';
+            END IF;
+            PERFORM pg_catalog.set_config('request.jwt.claim.sub', s.created_by::text, true);
+            v_begun := finance.begin_payout(v_wallet.id, v_available, s.currency, false, v_key, s.destination_method_id);
+            PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
+            UPDATE finance.payouts SET schedule_id = s.id WHERE id = (v_begun ->> 'id')::uuid;
+            UPDATE finance.payout_schedules SET failure_count = 0, last_error = NULL WHERE id = s.id;
+            v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+                'schedule_id', s.id, 'run_at', v_run_at, 'outcome', 'begun',
+                'amount_cents', v_available, 'currency', s.currency,
+                'payout', (v_begun - 'destination' - 'replayed') || pg_catalog.jsonb_build_object('schedule_id', s.id),
+                'destination', v_begun -> 'destination',
+                'replayed', COALESCE((v_begun ->> 'replayed')::boolean, false)
+            ));
+        EXCEPTION WHEN OTHERS THEN
+            -- The block's subtransaction is undone: no payout, no debit, and the claims are the sweep's again.
+            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
+            v_struck := finance.fn_payout_schedule_strike(s.id, v_message);
+            IF v_state NOT IN ('42501', 'PK403', 'PA403', 'PM403', 'PF402', '22023', 'P0002', '55000') THEN
+                INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+                VALUES (
+                    'payout_schedule:' || s.id::text, 'error',
+                    pg_catalog.format('Payout schedule %s failed unexpectedly (%s): %s', s.id, v_state, v_message),
+                    pg_catalog.now(), 'server', 'finance.fn_claim_due_payout_schedules',
+                    pg_catalog.jsonb_build_object('schedule_id', s.id, 'sqlstate', v_state, 'run_at', v_run_at)
+                );
+            END IF;
+            v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+                'schedule_id', s.id, 'run_at', v_run_at, 'outcome', 'refused',
+                'detail', v_struck.last_error, 'code', v_state, 'paused', NOT v_struck.active,
+                'amount_cents', v_available, 'currency', s.currency
+            ));
+        END;
+    END LOOP;
+    RETURN v_out;
 END;
 $$;
 -- #endregion

@@ -12,6 +12,8 @@ import {
 	type PayoutAccountScope,
 	type PayoutAccountStatus,
 	payoutEntityId,
+	type PayoutScheduleRun,
+	PayoutScheduleRunSchema,
 	PayoutSchema,
 	type SavedCardResult,
 	SavedCardResultSchema,
@@ -1117,6 +1119,40 @@ export async function claimStalePayouts(limit: number): Promise<StalePayout[]> {
 		initiatedAt: String(row.initiated_at),
 		sweepAttempts: num(row.sweep_attempts) ?? 0,
 	}));
+}
+
+/** Map one run `finance.fn_claim_due_payout_schedules` returned onto the SSOT shape. */
+export function payoutScheduleRunOf(row: Row): PayoutScheduleRun {
+	return PayoutScheduleRunSchema.parse({
+		scheduleId: row.schedule_id,
+		runAt: row.run_at,
+		outcome: row.outcome,
+		amountCents: num(row.amount_cents) ?? 0,
+		currency: String(row.currency ?? "").toUpperCase(),
+		payout: row.payout && typeof row.payout === "object" ? payoutOf(row.payout as Row) : null,
+		destination: typeof row.destination === "string" ? row.destination : null,
+		replayed: row.replayed === true,
+		detail: typeof row.detail === "string" ? row.detail.slice(0, 400) : null,
+		code: typeof row.code === "string" ? row.code : null,
+		paused: row.paused === true,
+	});
+}
+
+/**
+ * Run every due payout schedule (`finance.fn_claim_due_payout_schedules`): each claimed run is already
+ * debited as its author through `finance.begin_payout`, skipped below the minimum, or refused.
+ */
+export async function claimDuePayoutSchedules(limit: number): Promise<PayoutScheduleRun[]> {
+	const { data, error } = await getServiceClient().schema("finance").rpc(
+		"fn_claim_due_payout_schedules",
+		{ p_limit: limit },
+	);
+	if (error) {
+		throw new Error(
+			`finance.fn_claim_due_payout_schedules failed (${error.code ?? "no code"}): ${error.message}`,
+		);
+	}
+	return (Array.isArray(data) ? data as Row[] : []).map(payoutScheduleRunOf);
 }
 
 /** Record a card a confirmed SetupIntent saved (`finance.record_saved_card`). */
