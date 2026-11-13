@@ -636,7 +636,7 @@ BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
     SELECT rv.status, rv.reason, rv.requested_by, rv.submission_id, rv.ticket_id, rv.project_stage_id,
            rv.request_type, rv.price_cents, ps.extra_revision_price_cents AS stage_price,
-           ps.project_id, p.client_business_id AS payer, p.owner_user_id AS owner, ss.status AS submission_status,
+           ps.project_id, p.client_business_id AS payer, COALESCE(p.client_user_id, p.owner_user_id) AS owner, ss.status AS submission_status,
            upper(COALESCE(p.currency, 'USD')) AS currency
       INTO v
       FROM projects.stage_revision_requests rv
@@ -731,7 +731,8 @@ AS $$
                             'reported_hidden'::public.ticket_status)
        AND NOT EXISTS (
            SELECT 1 FROM finance.escrows e
-            WHERE e.ticket_id = t.id AND e.status = 'held' AND e.revision_id IS NULL
+            WHERE e.ticket_id = t.id AND e.revision_id IS NULL
+              AND (e.status = 'held' OR (e.status = 'reserved' AND e.project_stage_id = t.current_stage_id))
        );
 $$;
 
@@ -755,7 +756,8 @@ BEGIN
         RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
             USING ERRCODE = 'PK403';
     END IF;
-    SELECT p.client_business_id, p.owner_user_id, upper(COALESCE(p.currency, 'USD'))
+    -- `v_owner` is the CLIENT PERSON: the owner, or a seller-owned service's buyer (Decision #427).
+    SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), upper(COALESCE(p.currency, 'USD'))
       INTO v_payer, v_owner, v_currency
       FROM projects.projects p WHERE p.id = p_project_id;
 
@@ -777,6 +779,150 @@ BEGIN
         'stage_status', v_status::text,
         'fundable', v_status IN ('open'::stage_status, 'assigned'::stage_status, 'in_progress'::stage_status),
         'currency', v_currency,
+        'payer_scope', CASE WHEN v_payer IS NOT NULL THEN 'business' ELSE 'personal' END,
+        'payer_id', COALESCE(v_payer, v_owner),
+        'wallet_balance_cents', COALESCE(v_balance, 0)
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
+
+-- One ticket's funding quote (Decisions #428, #430), read before Buy now / Add to basket: every stage it
+-- runs through at its own price in order — its funding stage (fn_ticket_funding_stage) `now`
+-- (`funded` once held), those before it `done`, those after it `later`, or `prepaid` once reserved —
+-- each `fundable` by fn_ticket_stage_fundable while no ticket gate stands; why nothing can be funded
+-- (`blocked`: fund_ticket's ticket gates in order, then `stage_finished` · `unpriced` · `paid`); the
+-- prepaid refund window; and the paying wallet. Read-only; fund_ticket, place_wallet_order and
+-- begin_card_payment re-check everything at the commit.
+CREATE OR REPLACE FUNCTION projects.get_ticket_funding_quote(p_project_id uuid, p_ticket_id uuid)
+RETURNS jsonb AS $$
+DECLARE
+    v_payer uuid;
+    v_owner uuid;
+    v_currency text;
+    v_blueprint uuid;
+    v_wallet_type text;
+    v_balance bigint;
+    t record;
+    v_held boolean;
+    v_amount bigint;
+    v_stage_name text;
+    v_stage_status text;
+    v_stages jsonb;
+    v_blocked text;
+    v_ticket_block text;
+    v_any_fundable boolean;
+    v_any_unpriced boolean;
+BEGIN
+    IF NOT projects.fn_can_fund_project(p_project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this ticket'
+            USING ERRCODE = 'PK403';
+    END IF;
+    SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), upper(COALESCE(p.currency, 'USD')),
+           p.source_blueprint_id
+      INTO v_payer, v_owner, v_currency, v_blueprint
+      FROM projects.projects p WHERE p.id = p_project_id;
+
+    SELECT tk.id, tk.title, tk.slug, tk.text_description, tk.payment_status::text AS payment_status,
+           tk.status::text AS ticket_status, tk.required_stages, tk.unit_price_cents,
+           tk.current_assignee_id AS assignee,
+           projects.fn_ticket_funding_stage(tk.id) AS funding_stage_id
+      INTO t
+      FROM projects.tickets tk
+     WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ticket not found for this project.' USING ERRCODE = 'no_data_found';
+    END IF;
+
+    v_held := EXISTS (SELECT 1 FROM finance.escrows e
+                       WHERE e.ticket_id = p_ticket_id AND e.status = 'held' AND e.revision_id IS NULL);
+
+    SELECT projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps), ps.name, ps.status::text
+      INTO v_amount, v_stage_name, v_stage_status
+      FROM projects.project_stages ps WHERE ps.id = t.funding_stage_id;
+
+    -- The gates on the whole ticket, in fund_ticket's order; each stage's own is fn_ticket_stage_fundable.
+    v_ticket_block := CASE
+        WHEN btrim(t.text_description) = '' THEN 'description'
+        WHEN t.ticket_status IN ('completed', 'cancelled', 'reported_hidden') THEN 'finished'
+        WHEN t.funding_stage_id IS NULL THEN 'no_stage'
+    END;
+
+    WITH listed AS (
+        SELECT ps.id, ps.slug, ps.name, ps.status::text AS stage_status, x.i,
+               COALESCE((x.e->>'order')::int, 0) AS ord,
+               projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) AS amount,
+               projects.fn_ticket_stage_fundable(p_ticket_id, ps.id) AS refusal
+          FROM jsonb_array_elements(
+                   CASE WHEN jsonb_typeof(t.required_stages) = 'array' THEN t.required_stages
+                        ELSE '[]'::jsonb END) WITH ORDINALITY AS x(e, i)
+          JOIN projects.project_stages ps ON ps.id::text = x.e->>'stage_id' AND ps.project_id = p_project_id
+        UNION ALL
+        -- A ticket sitting in a stage it does not list (one listing none, #421) is funded there too.
+        SELECT ps.id, ps.slug, ps.name, ps.status::text, 0::bigint, -2147483648,
+               projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps),
+               projects.fn_ticket_stage_fundable(p_ticket_id, ps.id)
+          FROM projects.project_stages ps
+         WHERE ps.id = t.funding_stage_id
+           AND NOT EXISTS (
+               SELECT 1 FROM jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(t.required_stages) = 'array' THEN t.required_stages
+                             ELSE '[]'::jsonb END) x
+                WHERE x->>'stage_id' = ps.id::text)
+    ), ranked AS (
+        SELECT l.*, row_number() OVER (ORDER BY l.ord, l.i) AS pos FROM listed l
+    ), here AS (
+        SELECT r.pos FROM ranked r WHERE r.id = t.funding_stage_id
+    )
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+               'stage_id', r.id,
+               'slug', r.slug,
+               'name', r.name,
+               'order', r.pos - 1,
+               'stage_status', r.stage_status,
+               'amount_cents', r.amount,
+               'phase', CASE
+                   WHEN r.id = t.funding_stage_id THEN CASE
+                       WHEN v_held OR r.refusal = 'held' THEN 'funded'
+                       WHEN r.refusal = 'prepaid' THEN 'prepaid'
+                       ELSE 'now' END
+                   WHEN r.pos < (SELECT h.pos FROM here h) THEN 'done'
+                   WHEN r.refusal = 'prepaid' THEN 'prepaid'
+                   ELSE 'later' END,
+               'fundable', v_ticket_block IS NULL AND r.refusal IS NULL
+           ) ORDER BY r.pos), '[]'::jsonb),
+           COALESCE(bool_or(r.refusal IS NULL), false),
+           COALESCE(bool_or(r.refusal = 'unpriced'), false)
+      INTO v_stages, v_any_fundable, v_any_unpriced
+      FROM ranked r;
+
+    v_blocked := CASE
+        WHEN v_ticket_block IS NOT NULL THEN v_ticket_block
+        WHEN v_any_fundable THEN NULL
+        WHEN v_stage_status IN ('approved', 'paid', 'cancelled') THEN 'stage_finished'
+        WHEN v_any_unpriced THEN 'unpriced'
+        ELSE 'paid'
+    END;
+
+    v_wallet_type := finance.fn_escrow_payer_wallet_type(v_payer, CASE WHEN v_payer IS NULL THEN v_owner END);
+    SELECT w.balance_cents INTO v_balance
+      FROM finance.wallets w
+     WHERE w.owner_type = v_wallet_type AND w.owner_id = COALESCE(v_payer, v_owner) AND w.currency = v_currency;
+
+    RETURN jsonb_build_object(
+        'project_id', p_project_id,
+        'ticket_id', t.id,
+        'ticket_slug', t.slug,
+        'ticket_title', t.title,
+        'funding_stage_id', t.funding_stage_id,
+        'funding_stage_name', v_stage_name,
+        'amount_cents', GREATEST(COALESCE(v_amount, 0), 0),
+        'currency', v_currency,
+        'blocked', v_blocked,
+        'stages', v_stages,
+        'engagement', CASE WHEN v_blueprint IS NOT NULL THEN 'service' ELSE 'project' END,
+        'ttl_hours', finance.fn_prepaid_escrow_ttl_hours(p_project_id),
+        -- Held with no payee (the refund clock runs) when nobody would be paid at the hold.
+        'prepaid', (SELECT tp.payee_id IS NULL FROM finance.fn_ticket_payee(t.funding_stage_id, t.assignee) tp),
         'payer_scope', CASE WHEN v_payer IS NOT NULL THEN 'business' ELSE 'personal' END,
         'payer_id', COALESCE(v_payer, v_owner),
         'wallet_balance_cents', COALESCE(v_balance, 0)
@@ -814,7 +960,8 @@ BEGIN
         RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
             USING ERRCODE = 'PK403';
     END IF;
-    SELECT p.client_business_id, p.owner_user_id INTO v_payer, v_owner
+    -- `v_owner` is the CLIENT PERSON: the owner, or a seller-owned service's buyer (Decision #427).
+    SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id) INTO v_payer, v_owner
       FROM projects.projects p WHERE p.id = p_project_id;
 
     SELECT ps.status, ps.name, p.currency
@@ -904,6 +1051,20 @@ BEGIN
         RAISE EXCEPTION 'Nothing in this stage is waiting for funding.' USING ERRCODE = 'PC409';
     END IF;
 
+    -- A funded ticket still in New is Ready now, on the stage's freelancers' boards (Decision #428).
+    WITH promoted AS (
+        UPDATE projects.tickets tk
+           SET status = 'todo'::ticket_status, updated_at = now()
+         WHERE tk.id = ANY (v_tickets)
+           AND tk.status = 'backlog'::ticket_status
+           AND tk.payment_status = 'escrow_funded'::payment_status
+        RETURNING tk.id
+    )
+    INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, previous_status, new_status, changes)
+    SELECT pr.id, COALESCE(auth.uid(), v_owner), 'status_changed', 'backlog'::ticket_status, 'todo'::ticket_status,
+           jsonb_build_object('from_status', 'backlog', 'to_status', 'todo', 'reason', 'funded')
+      FROM promoted pr;
+
     SELECT COALESCE(SUM(amount_cents), 0) INTO v_total
     FROM finance.escrows
     WHERE project_stage_id = p_stage_id AND status = 'held';
@@ -924,15 +1085,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, comms, org, auth;
 
--- #region Decision #166 — Fund ONE ticket's escrow (single-ticket Buy now, a basket ticket line).
+-- #region Decisions #166, #430 — Fund ONE ticket (single-ticket Buy now, a basket ticket line).
 -- The same payer rule as fund_stage, then the PRODUCT_SPEC §5 purchasing gate (no description, not
--- purchasable), then exactly one hold at that ticket's own price through fn_hold_ticket_escrow. The
--- stage's status is NOT moved: its other tickets are still unfunded, so the stage stays partially
--- funded and fund_stage remains the separate whole-stage action. Called as the payer by
--- finance.place_wallet_order (a basket ticket line) and finance.settle_card_payment (a card lock that
--- names a ticket). A ticket nobody has claimed is held PREPAID, its payee bound at the claim
--- (Decision #197) — #166(B)'s prepayment, held as escrow rather than left in the wallet.
-CREATE OR REPLACE FUNCTION projects.fund_ticket(p_project_id uuid, p_ticket_id uuid)
+-- purchasable), then the stages the payer chose: `p_stage_ids`, absent or empty for the stage the ticket
+-- is funded in (fn_ticket_funding_stage). Every one must pass projects.fn_ticket_stage_fundable, and the
+-- whole selection is checked against an individual's wallet and the business spend gate ONCE, so it is
+-- bought all or nothing. The funding stage is held at the ticket's own price there through
+-- fn_hold_ticket_escrow; each later stage is prepaid through fn_reserve_ticket_stage_escrow and held
+-- when the ticket arrives (Decision #430). The stage's status is NOT moved: its other tickets are still
+-- unfunded, so the stage stays partially funded and fund_stage remains the separate whole-stage action.
+-- Called as the payer by finance.place_wallet_order (one stage per basket ticket line) and
+-- finance.settle_card_payment (a card lock that names a ticket: its funding stage). A ticket nobody has
+-- claimed is held PREPAID, its payee bound at the claim (Decision #197).
+CREATE OR REPLACE FUNCTION projects.fund_ticket(p_project_id uuid, p_ticket_id uuid, p_stage_ids uuid[] DEFAULT NULL)
 RETURNS jsonb AS $$
 DECLARE
     v_payer uuid;
@@ -942,23 +1107,32 @@ DECLARE
     v_balance bigint;
     v_escrow uuid;
     v_wallet uuid;
+    v_new_status text;
+    v_selection uuid[];
+    v_stage uuid;
+    v_refusal text;
+    v_price bigint;
+    v_total bigint := 0;
+    v_hold boolean := false;
+    v_reservation uuid;
+    v_reserved uuid[] := '{}'::uuid[];
 BEGIN
     PERFORM org.fn_assert_adult(auth.uid());
     IF NOT projects.fn_can_fund_project(p_project_id) THEN
         RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this ticket'
             USING ERRCODE = 'PK403';
     END IF;
-    SELECT p.client_business_id, p.owner_user_id, upper(COALESCE(p.currency, 'USD'))
+    -- `v_owner` is the CLIENT PERSON: the owner, or a seller-owned service's buyer (Decision #427).
+    SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), upper(COALESCE(p.currency, 'USD'))
       INTO v_payer, v_owner, v_currency
       FROM projects.projects p WHERE p.id = p_project_id;
 
+    -- The stage it is funded in: where it sits, else the first stage a New ticket runs through (#428).
     SELECT tk.title, tk.text_description, tk.payment_status::text AS payment_status,
-           tk.current_stage_id AS stage_id, tk.current_assignee_id AS assignee,
-           projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) AS amount,
-           ps.status::text AS stage_status
+           projects.fn_ticket_funding_stage(tk.id) AS stage_id, tk.current_stage_id AS placed_stage_id,
+           tk.status::text AS ticket_status, tk.required_stages, tk.unit_price_cents
       INTO t
       FROM projects.tickets tk
-      LEFT JOIN projects.project_stages ps ON ps.id = tk.current_stage_id
      WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id
        FOR UPDATE OF tk;
     IF NOT FOUND THEN
@@ -967,20 +1141,38 @@ BEGIN
     IF btrim(t.text_description) = '' THEN
         RAISE EXCEPTION '"%" needs a description before it can be bought.', t.title USING ERRCODE = 'PU422';
     END IF;
-    -- Text, so the gate reads the same before and after #165's `needs_funding` member exists.
-    IF t.payment_status NOT IN ('unpaid', 'needs_funding')
-       OR EXISTS (SELECT 1 FROM finance.escrows e WHERE e.ticket_id = p_ticket_id AND e.status = 'held') THEN
-        RAISE EXCEPTION '"%" is already paid for.', t.title USING ERRCODE = 'PC409';
+    IF t.ticket_status IN ('completed', 'cancelled', 'reported_hidden') THEN
+        RAISE EXCEPTION '"%" is finished, so there is nothing left to fund.', t.title USING ERRCODE = 'PC409';
     END IF;
     IF t.stage_id IS NULL THEN
         RAISE EXCEPTION 'Move "%" into a stage before buying it.', t.title USING ERRCODE = 'PC409';
     END IF;
-    IF t.stage_status IN ('approved', 'paid', 'cancelled') THEN
-        RAISE EXCEPTION 'The stage "%" sits in has finished.', t.title USING ERRCODE = 'PC409';
-    END IF;
-    IF t.amount IS NULL OR t.amount <= 0 THEN
-        RAISE EXCEPTION '"%" has no price yet.', t.title USING ERRCODE = 'PC409';
-    END IF;
+
+    -- The selection, each stage once: the funding stage when none is named.
+    v_selection := ARRAY(
+        SELECT DISTINCT s FROM unnest(COALESCE(NULLIF(p_stage_ids, '{}'::uuid[]), ARRAY[t.stage_id])) s
+    );
+    FOREACH v_stage IN ARRAY v_selection LOOP
+        v_refusal := projects.fn_ticket_stage_fundable(p_ticket_id, v_stage);
+        IF v_refusal IS NOT NULL THEN
+            RAISE EXCEPTION '%', CASE
+                WHEN v_refusal = 'held' THEN format('"%s" is already paid for.', t.title)
+                WHEN v_refusal = 'prepaid' THEN format('That stage of "%s" is already paid for.', t.title)
+                WHEN v_refusal = 'passed' THEN format('"%s" has already moved past that stage.', t.title)
+                WHEN v_refusal = 'stage_finished' AND v_stage = t.stage_id
+                    THEN format('The stage "%s" sits in has finished.', t.title)
+                WHEN v_refusal = 'stage_finished' THEN format('That stage of "%s" has finished.', t.title)
+                WHEN v_refusal = 'unpriced' AND v_stage = t.stage_id THEN format('"%s" has no price yet.', t.title)
+                WHEN v_refusal = 'unpriced' THEN format('"%s" has no price in that stage yet.', t.title)
+                ELSE format('"%s" doesn''t run through that stage.', t.title)
+            END USING ERRCODE = 'PC409';
+        END IF;
+        SELECT projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) INTO v_price
+          FROM projects.project_stages ps WHERE ps.id = v_stage;
+        v_total := v_total + v_price;
+        v_hold := v_hold OR v_stage = t.stage_id;
+    END LOOP;
+
     -- An individual is checked up front, as fund_stage does, so the refusal says what to do next.
     IF v_payer IS NULL THEN
         SELECT w.balance_cents INTO v_balance
@@ -988,30 +1180,66 @@ BEGIN
          WHERE w.owner_id = v_owner
            AND w.owner_type = finance.fn_person_wallet_type(v_owner)
            AND w.currency = v_currency;
-        IF COALESCE(v_balance, 0) < t.amount THEN
+        IF COALESCE(v_balance, 0) < v_total THEN
             RAISE EXCEPTION 'Your wallet does not hold enough to fund "%" — pay by card instead.', t.title
                 USING ERRCODE = 'PF402';
         END IF;
     ELSE
-        -- The business spend gate, for the funder (BB3). Inside a basket the basket already counted this
-        -- line and its cover passes it; on its own (Buy now, a card lock) this is the earliest door.
+        -- The business spend gate, for the funder (BB3), counted once for the whole selection. Inside a
+        -- basket the basket already counted this line and its cover passes it; on its own (a card lock)
+        -- this is the earliest door. The hold below draws on this count; a reservation never re-asks.
         SELECT w.id INTO v_wallet FROM finance.wallets w
          WHERE w.owner_type = 'business' AND w.owner_id = v_payer AND w.currency = v_currency;
-        PERFORM finance.fn_assert_business_spend(v_wallet, auth.uid(), t.amount, 'tickets', p_ticket_id);
+        PERFORM finance.fn_assert_business_spend(v_wallet, auth.uid(), v_total, 'tickets', p_ticket_id);
     END IF;
 
-    v_escrow := finance.fn_hold_ticket_escrow(p_ticket_id);
-    IF v_escrow IS NULL THEN
-        RAISE EXCEPTION 'The escrow for "%" could not be held.', t.title USING ERRCODE = 'PF402';
+    -- Funded from New (Decision #428): placed in its funding stage and Ready there, so the hold below
+    -- puts it on that stage's freelancers' boards. A refused hold rolls the placement back with it.
+    IF v_hold AND (t.placed_stage_id IS NULL OR t.ticket_status = 'backlog') THEN
+        UPDATE projects.tickets
+           SET current_stage_id = t.stage_id,
+               status = CASE WHEN status = 'backlog'::ticket_status THEN 'todo'::ticket_status ELSE status END,
+               updated_at = now()
+         WHERE id = p_ticket_id
+        RETURNING status::text INTO v_new_status;
+        INSERT INTO projects.ticket_history
+            (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
+        VALUES
+            (p_ticket_id, COALESCE(auth.uid(), v_owner),
+             CASE WHEN t.placed_stage_id IS NULL THEN 'stage_moved' ELSE 'status_changed' END,
+             t.placed_stage_id, t.stage_id, t.ticket_status::ticket_status, v_new_status::ticket_status,
+             jsonb_build_object('from_status', t.ticket_status, 'to_status', v_new_status, 'reason', 'funded'));
     END IF;
+
+    IF v_hold THEN
+        v_escrow := finance.fn_hold_ticket_escrow(p_ticket_id);
+        IF v_escrow IS NULL THEN
+            RAISE EXCEPTION 'The escrow for "%" could not be held.', t.title USING ERRCODE = 'PF402';
+        END IF;
+    END IF;
+
+    -- Each later stage chosen, prepaid now and held when the ticket gets there (Decision #430).
+    FOREACH v_stage IN ARRAY v_selection LOOP
+        CONTINUE WHEN v_stage = t.stage_id;
+        v_reservation := finance.fn_reserve_ticket_stage_escrow(p_ticket_id, v_stage);
+        IF v_reservation IS NULL THEN
+            RAISE EXCEPTION 'That stage of "%" is already paid for.', t.title USING ERRCODE = 'PC409';
+        END IF;
+        v_reserved := v_reserved || v_stage;
+        v_escrow := COALESCE(v_escrow, v_reservation);
+    END LOOP;
 
     RETURN jsonb_build_object(
         'ticket_id', p_ticket_id,
         'escrow_id', v_escrow,
         'stage_id', t.stage_id,
-        'amount_cents', t.amount,
+        'amount_cents', v_total,
         'currency', v_currency,
-        'prepaid', EXISTS (SELECT 1 FROM finance.escrows e WHERE e.id = v_escrow AND e.payee_id IS NULL)
+        'held', v_hold,
+        'reserved_stage_ids', to_jsonb(v_reserved),
+        'prepaid', v_hold AND EXISTS (SELECT 1 FROM finance.escrows e WHERE e.id = v_escrow AND e.payee_id IS NULL),
+        'placed', v_hold AND t.placed_stage_id IS NULL,
+        'status', COALESCE(v_new_status, t.ticket_status)
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, comms, org, auth;
@@ -1171,7 +1399,7 @@ BEGIN
     END IF;
     v_bp := p_tier * 100;   -- percent -> basis points
 
-    SELECT ps.name, ps.status, upper(COALESCE(p.currency, 'USD')), p.slug, p.owner_user_id
+    SELECT ps.name, ps.status, upper(COALESCE(p.currency, 'USD')), p.slug, COALESCE(p.client_user_id, p.owner_user_id)
       INTO v_stage_name, v_stage_status, v_currency, v_slug, v_owner
       FROM projects.project_stages ps
       JOIN projects.projects p ON p.id = ps.project_id
@@ -1635,7 +1863,7 @@ BEGIN
     SET status = 'paid'::stage_status, completed_at = now()
     WHERE id = p_stage_id;
 
-    SELECT p.slug, p.owner_user_id INTO v_slug, v_owner FROM projects.projects p WHERE p.id = p_project_id;
+    SELECT p.slug, COALESCE(p.client_user_id, p.owner_user_id) INTO v_slug, v_owner FROM projects.projects p WHERE p.id = p_project_id;
 
     -- Everyone this approval paid (individual payees and every team-split recipient), plus the stage's
     -- assignees as they stood before settlement, whom an earlier acceptance may already have paid.
@@ -1693,6 +1921,9 @@ BEGIN
                 WHERE pc.project_id = p_project_id
                 UNION
                 SELECT p.owner_user_id FROM projects.projects p WHERE p.id = p_project_id
+                UNION
+                SELECT p.client_user_id FROM projects.projects p
+                 WHERE p.id = p_project_id AND p.client_user_id IS NOT NULL
             LOOP
                 PERFORM comms.fn_notify(
                     a.uid, 'project_handover', 'Projective Unlock',

@@ -93,8 +93,13 @@ export interface State {
 		title: string;
 		access: ProjectAccess;
 		status: ProjectStatus;
-		/** Review authority (`viewerCanConfigure`) — may open `/details` and `/preview`. */
+		/**
+		 * The configuring side (`viewerCanConfigure`) — may open `/details` and `/preview`. Review
+		 * authority, except on a service, whose seller alone configures it (Decision #427).
+		 */
 		canConfigure: boolean;
+		/** Whether the engagement runs on a freelancer's service (`kind === "service"`). */
+		service: boolean;
 		/** Whether the engagement has its discussion room (`discussionOf`), so a band may link it. */
 		discussion: boolean;
 		/**

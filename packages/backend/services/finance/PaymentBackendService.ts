@@ -28,6 +28,7 @@ import {
 	type PayoutResult,
 	type PayoutScheduleSweep,
 	type SavedCardResult,
+	stageSelectionRefusal,
 	type StalePayoutOutcome,
 	type StalePayoutSweep,
 	type StripeWebhookOutcome,
@@ -554,12 +555,18 @@ export class PaymentBackendService {
 	 * database computes the amount (the sum the escrow hold will take) and refuses if it differs from
 	 * what the payer was shown. On `payment_intent.succeeded` the money is credited to the paying
 	 * business's wallet and the stage is funded from it, as the payer, re-authorised at that moment.
-	 * With `ticketId` (Decision #166) only that ticket is funded, at its own price.
+	 * With `ticketId` (Decision #166) only that ticket is funded, at its own price. A confirmed
+	 * `stageIds` selection (Decision #428) must be that one stage: a later stage is held on arrival, so
+	 * naming one is refused (409) before any intent exists.
 	 */
 	static createEscrowLockIntent(
 		input: CreateEscrowLockIntent,
 		actor: ReadActor,
 	): Promise<Result<CardPaymentHandoff>> {
+		const refusal = stageSelectionRefusal([input.stageId], input.stageIds);
+		if (refusal) {
+			return Promise.resolve(fail(409, { message: refusal, errors: { stageIds: "not_fundable" } }));
+		}
 		return cardPayment(actor, {
 			purpose: "escrow_lock",
 			walletId: null,

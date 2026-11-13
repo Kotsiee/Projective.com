@@ -404,6 +404,41 @@ export function notifyBasketChanged(): void {
 	}
 }
 
+/**
+ * The board tickets the open basket holds a live line for (Decision #428) — what turns a ticket's Add to
+ * basket into In basket. Parked lines are not in the basket being checked out, so they do not count.
+ */
+export const basketTicketIds = computed<ReadonlySet<string>>(() =>
+	new Set(
+		(basket.value?.items ?? []).flatMap((item) =>
+			item.ticketId && !item.savedForLater ? [item.ticketId] : []
+		),
+	)
+);
+
+/** Whether the shell's basket drawer is open — shared so any island can open it. */
+export const basketDrawerOpen = signal<boolean>(false);
+
+let basketDrawerHosts = 0;
+
+/** Declare a mounted basket drawer. Returns the release an effect cleanup runs. */
+export function registerBasketDrawerHost(): () => void {
+	basketDrawerHosts++;
+	let live = true;
+	return () => {
+		if (!live) return;
+		live = false;
+		basketDrawerHosts--;
+	};
+}
+
+/** Open the shell's basket drawer; `false` (and nothing opens) when no drawer is mounted. */
+export function openBasketDrawer(): boolean {
+	if (basketDrawerHosts === 0) return false;
+	basketDrawerOpen.value = true;
+	return true;
+}
+
 /*
  * The `CHECKOUT_SUBMIT_EVENT` bridge that used to live here is gone with the footer band on the two
  * focus steps. It existed so a rig that held the Pay control could ask the body — which owns the

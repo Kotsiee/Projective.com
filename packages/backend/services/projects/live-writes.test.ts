@@ -26,6 +26,7 @@ import {
 	refusalFrom,
 	stageTermsPatch,
 	submissionRefusalFrom,
+	ticketDescriptionJson,
 	touchesLockableFields,
 } from "./live-writes.ts";
 
@@ -502,5 +503,17 @@ Deno.test("refusalFrom: who may move a claimed ticket is a 403 in the database's
 		assertEquals(refusal.message, message);
 		assertEquals(refusal.errors, { status: "not_permitted" });
 	}
+});
+// #endregion
+
+// #region Ticket description column
+Deno.test("ticketDescriptionJson: an empty body is the NOT NULL column's own {}, never null", () => {
+	for (const html of ["", "<p></p>", "<p><br></p>", "   "]) {
+		assertEquals(ticketDescriptionJson(html), {});
+	}
+});
+
+Deno.test("ticketDescriptionJson: a body with text keeps its html", () => {
+	assertEquals(ticketDescriptionJson("<p>Ship the logo.</p>"), { html: "<p>Ship the logo.</p>" });
 });
 // #endregion

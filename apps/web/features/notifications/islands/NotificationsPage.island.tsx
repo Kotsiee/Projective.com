@@ -1,68 +1,89 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import "../styles/notifications.css";
 import type { NotificationInboxItem } from "@projective/types/comms";
-import { Button, Checkbox, SelectButton } from "@projective/ui/fields";
+import { Checkbox } from "@projective/ui/fields";
 import {
 	emptyCopy,
-	INBOX_VIEWS,
+	type InboxFilter,
 	inboxHref,
-	type InboxTab,
-	type InboxView,
 	TAB_LABEL,
 	tabUnread,
 	VIEW_LABEL,
 } from "../core/notification-model.ts";
 import { inboxSummary } from "../core/notification-state.ts";
+import { inboxFilter } from "../core/inbox-filter-state.ts";
 import { useNotificationFeed } from "../core/useNotificationFeed.ts";
-import { NotificationTabs } from "../components/NotificationTabs.tsx";
 import { NotificationList } from "../components/NotificationList.tsx";
+import { InboxFilterBar } from "../components/InboxFilterBar.tsx";
+import { NotificationsPageHeader } from "../components/NotificationsPageHeader.tsx";
 
 /** Props for {@link NotificationsPage}. */
 export interface NotificationsPageProps {
-	/** The tab and view decoded from `?category=&view=`. */
-	initialTab: InboxTab;
-	initialView: InboxView;
+	/** The filter decoded from `?category=&view=&q=`. */
+	initial: InboxFilter;
 }
 
-const PANEL_ID = "ntf-page-panel";
+function panelLabel(filter: InboxFilter): string {
+	const scope = filter.tab === "all"
+		? "All notifications"
+		: `${TAB_LABEL[filter.tab]} notifications`;
+	const view = filter.view === "all" ? "" : `, ${VIEW_LABEL[filter.view].toLowerCase()}`;
+	const query = filter.query ? `, matching “${filter.query}”` : "";
+	return `${scope}${view}${query}`;
+}
 
 /**
- * NotificationsPage — `/notifications` (DESIGN_SYSTEM §D.9): the drawer's tabs and rows at page scale,
- * plus the All · Unread · Archived views, keyset "Load more", bulk select (mark read · archive), and a
- * link to Settings → Notifications. The tab and view live in the URL (`?category=&view=`, replaced in
- * place so the address is always a deep link to what is on screen). Live arrivals come from the
- * header's shared `/summary` poller.
+ * NotificationsPage — the `/notifications` body (DESIGN_SYSTEM §D.9.2). The filter lives in the
+ * middle-nav lane (and, below `--bp-md`, the phone filter bar), shared through `inboxFilter`; this
+ * island seeds it from the URL it was rendered for and keeps the address on it (`?category=&view=&q=`,
+ * replaced in place), so whatever is on screen is a deep link. The body is the header — title,
+ * unread figure, bulk or mark-all actions, Notification settings — then the rows, keyset "Load more"
+ * and bulk select. Live arrivals come from the header's shared `/summary` poller.
  */
 export default function NotificationsPage(props: NotificationsPageProps): JSX.Element {
-	const tab = useSignal<InboxTab>(props.initialTab);
-	const view = useSignal<InboxView>(props.initialView);
+	const filter = useComputed(() => inboxFilter.value ?? props.initial);
+	const tab = useComputed(() => filter.value.tab);
+	const view = useComputed(() => filter.value.view);
+	const query = useComputed(() => filter.value.query);
 	const active = useSignal(true);
-	const feed = useNotificationFeed({ tab, view, active });
+	const feed = useNotificationFeed({ tab, view, query, active });
 	const selected = useSignal<ReadonlySet<string>>(new Set());
 
-	// Keep the address on what is shown, and drop a selection that belonged to another slice.
+	useEffect(() => {
+		inboxFilter.value = props.initial;
+		return () => {
+			inboxFilter.value = null;
+		};
+	}, []);
+
 	useSignalEffect(() => {
-		const href = inboxHref(tab.value, view.value);
+		const { tab: t, view: v, query: q } = filter.value;
+		const href = inboxHref(t, v, q);
 		selected.value = new Set();
 		if (globalThis.location && location.pathname + location.search !== href) {
 			history.replaceState(history.state, "", href);
 		}
 	});
 
-	// A selected row that left the list (archived, or a reload) is no longer selected.
 	useSignalEffect(() => {
 		const ids = new Set(feed.items.value.map((i) => i.id));
 		const kept = [...selected.peek()].filter((id) => ids.has(id));
 		if (kept.length !== selected.peek().size) selected.value = new Set(kept);
 	});
 
+	const current = filter.value;
 	const items = feed.items.value;
 	const chosen = selected.value;
-	const archivedView = view.value === "archived";
-	const unread = tabUnread(inboxSummary.value, tab.value);
-	const empty = emptyCopy(tab.value, view.value);
+	const selectable = current.view !== "archived";
+	const unread = tabUnread(inboxSummary.value, current.tab);
+	const empty = emptyCopy(current.tab, current.view, current.query);
 	const allChosen = items.length > 0 && chosen.size === items.length;
+	const allTicked = useSignal(allChosen);
+	useEffect(() => {
+		allTicked.value = allChosen;
+	}, [allChosen]);
 
 	const toggle = (item: NotificationInboxItem, on: boolean) => {
 		const next = new Set(chosen);
@@ -78,85 +99,43 @@ export default function NotificationsPage(props: NotificationsPageProps): JSX.El
 
 	return (
 		<div class="ntf-page">
-			<header class="ntf-page__head">
-				<h1 class="ntf-page__title">Notifications</h1>
-				<a class="ntf-page__settings" href="/settings/notifications">Notification settings</a>
-			</header>
+			<NotificationsPageHeader
+				tab={current.tab}
+				unread={inboxSummary.value ? unread : null}
+				selectedCount={selectable ? chosen.size : 0}
+				canMarkAll={selectable}
+				onMarkAll={() => void feed.markAllRead()}
+				onMarkSelected={() => bulk((ids) => feed.markRead(ids))}
+				onArchiveSelected={() => bulk(feed.archive)}
+			/>
 
-			<NotificationTabs tab={tab} panelId={PANEL_ID} class="ntf-tabs" />
+			<InboxFilterBar filter={current} summary={inboxSummary.value} />
 
-			<div class="ntf-page__bar">
-				<SelectButton
-					aria-label="Show"
-					size="sm"
-					options={INBOX_VIEWS.map((v) => ({ value: v, label: VIEW_LABEL[v] }))}
-					value={view.value}
-					onValueChange={(v) => (view.value = v as InboxView)}
-				/>
-				{archivedView ? null : (
-					<div class="ntf-page__bulk">
-						{items.length > 0
-							? (
-								<Checkbox
-									label={chosen.size > 0 ? `${chosen.size} selected` : "Select all"}
-									value={allChosen}
-									indeterminate={chosen.size > 0 && !allChosen}
-									onValueChange={(on) =>
-										selected.value = on ? new Set(items.map((i) => i.id)) : new Set()}
-								/>
-							)
-							: null}
-						{chosen.size > 0
-							? (
-								<>
-									<Button
-										variant="text"
-										size="sm"
-										label="Mark read"
-										onClick={() => bulk((ids) => feed.markRead(ids))}
-									/>
-									<Button
-										variant="text"
-										size="sm"
-										label="Archive"
-										onClick={() => bulk(feed.archive)}
-									/>
-								</>
-							)
-							: (
-								<Button
-									variant="text"
-									size="sm"
-									label="Mark all as read"
-									aria-label={tab.value === "all"
-										? "Mark all as read"
-										: `Mark all ${TAB_LABEL[tab.value]} notifications as read`}
-									disabled={unread === 0}
-									onClick={() => void feed.markAllRead()}
-								/>
-							)}
+			{selectable && items.length > 0 && feed.phase.value === "ready"
+				? (
+					<div class="ntf-page__listhead">
+						<Checkbox
+							label={chosen.size > 0 ? `${chosen.size} selected` : "Select all"}
+							value={allTicked}
+							indeterminate={chosen.size > 0 && !allChosen}
+							onValueChange={(on) =>
+								selected.value = on ? new Set(items.map((i) => i.id)) : new Set()}
+						/>
 					</div>
-				)}
-			</div>
+				)
+				: null}
 
-			<div
-				class="ntf-panel"
-				role="tabpanel"
-				id={PANEL_ID}
-				aria-label={`${TAB_LABEL[tab.value]} notifications${
-					view.value === "all" ? "" : `, ${VIEW_LABEL[view.value].toLowerCase()}`
-				}`}
-			>
+			<section class="ntf-panel" aria-label={panelLabel(current)}>
 				<NotificationList
 					feed={feed}
 					now={Date.now()}
 					emptyTitle={empty.title}
 					emptyDescription={empty.description}
-					archivable={!archivedView}
-					selected={archivedView ? undefined : chosen}
-					onSelect={archivedView ? undefined : toggle}
+					archivable={selectable}
+					selected={selectable ? chosen : undefined}
+					onSelect={selectable ? toggle : undefined}
 				/>
-			</div>
+			</section>
 		</div>
 	);
 }

@@ -30,16 +30,36 @@ function typeMark(detail: ProjectDetail): {
 	};
 }
 
+/** The identity the lane leads with, and the word that says how it stands to the viewer. */
+export interface LeadParty {
+	lead: ProjectDetail["owner"];
+	/** "By" before a service's provider, "For" before its client; `null` on a project. */
+	relation: "By" | "For" | null;
+}
+
+/**
+ * Who the lane names, read from the viewer's side of the table (Decision #427). A project leads
+ * with its owner. A service is owned by its provider, so its client is shown who provides it, and
+ * the provider — or anyone delivering it — is shown the client it is delivered for. Falls back to
+ * the owner so the header always has an identity, even for a client-less draft.
+ */
+export function leadParty(detail: ProjectDetail): LeadParty {
+	if (detail.kind !== "service") return { lead: detail.owner, relation: null };
+	if (detail.viewerIsClient || !detail.client) return { lead: detail.owner, relation: "By" };
+	return { lead: detail.client, relation: "For" };
+}
+
 /**
  * ProjectContextCard — the card-LESS identity header of the Project Details sidebar. It no longer sits
  * inside a tonal box; the elements rest directly on the lane surface and are set off from the channel
  * tree below by a single hairline divider (rendered by the island), keeping the region borderless per
  * the §B.4 separation hierarchy.
  *
- * Layout: the leading party's LARGE avatar on the left (a **project** leads with its owner, a
- * **service** with the client it's delivered for), the engagement's name + a single clickable
- * owner/client name stacked to its right. The engagement type (Pipeline · One-off · Session · Task) is
- * named in an uppercase meta line above the name, and its glyph sits as a small filled badge on the
+ * Layout: the leading party's LARGE avatar on the left ({@link leadParty}: a **project** leads with
+ * its owner; a **service** shows its client the provider and its provider the client), the
+ * engagement's name + a single clickable party name, after its relation word, stacked to its right.
+ * The engagement type (Pipeline · One-off · Session · Task) is named in an uppercase meta line above
+ * the name, and its glyph sits as a small filled badge on the
  * avatar's bottom-right corner, tinted by the type's role pair. Beneath sits the description, clamped
  * to three lines with an in-place **Show details** disclosure.
  *
@@ -57,10 +77,7 @@ export interface ProjectContextCardProps {
 }
 
 export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Element {
-	const isService = detail.kind === "service";
-	// A project leads with its owner; a service leads with the client. Fall back to the owner so the
-	// header always has an identity even for a client-less internal draft.
-	const lead = (isService ? detail.client : detail.owner) ?? detail.owner;
+	const { lead, relation } = leadParty(detail);
 	const board = typeMark(detail);
 	const typeTip = board.label;
 
@@ -96,21 +113,24 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 				<div class="proj-ctx__idblock">
 					<p class="proj-ctx__kind">{typeTip}</p>
 					<p class="proj-ctx__title">{detail.title}</p>
-					{lead.handle
-						? (
-							<a
-								class="proj-ctx__owner-name"
-								href={profileHref(lead.handle)}
-								aria-label={`View ${lead.name}'s profile`}
-							>
-								{lead.name}
-							</a>
-						)
-						: (
-							<span class="proj-ctx__owner-name proj-ctx__owner-name--static">
-								{lead.name}
-							</span>
-						)}
+					<p class="proj-ctx__party">
+						{relation && <span class="proj-ctx__relation">{relation}</span>}
+						{lead.handle
+							? (
+								<a
+									class="proj-ctx__owner-name"
+									href={profileHref(lead.handle)}
+									aria-label={`View ${lead.name}'s profile`}
+								>
+									{lead.name}
+								</a>
+							)
+							: (
+								<span class="proj-ctx__owner-name proj-ctx__owner-name--static">
+									{lead.name}
+								</span>
+							)}
+					</p>
 				</div>
 			</div>
 

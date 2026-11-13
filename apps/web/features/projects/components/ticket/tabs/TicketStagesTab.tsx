@@ -19,7 +19,7 @@ import "../../../styles/ticket-pipeline.css";
  * it.
  *
  * Selecting a stage does not expand it here. It opens in the modal's inspector — one place a stage is
- * read in full, one place it is configured.
+ * read in full, one place it is configured — whether or not the ticket runs through it yet.
  */
 export interface TicketStagesTabProps {
 	stageViews: TicketStageView[];
@@ -38,7 +38,9 @@ export interface TicketStagesTabProps {
 	onSelect: (stageId: string) => void;
 	onPlace: (stageId: string, drop: PipelineDrop) => void;
 	onSwap: (stageId: string, direction: -1 | 1) => void;
-	onParallel: (stageId: string, parallel: boolean) => void;
+	/** Bring `peerId` into `stageId`'s step, running in parallel with it. */
+	onGroup: (stageId: string, peerId: string) => void;
+	onSequential: (stageId: string) => void;
 }
 
 export function TicketStagesTab(props: TicketStagesTabProps): JSX.Element {
@@ -55,7 +57,8 @@ export function TicketStagesTab(props: TicketStagesTabProps): JSX.Element {
 			onSelect={props.onSelect}
 			onPlace={props.onPlace}
 			onSwap={props.onSwap}
-			onParallel={props.onParallel}
+			onGroup={props.onGroup}
+			onSequential={props.onSequential}
 		/>
 	);
 }

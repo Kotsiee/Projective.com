@@ -32,7 +32,7 @@ BEGIN
     SELECT u.user_id INTO v_buyer FROM org.users_public u
     WHERE u.user_id <> v_bp.seller
         AND NOT org.fn_is_minor(u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = u.user_id AND p.source_blueprint_id = v_bp.id)
+        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.client_user_id = u.user_id AND p.source_blueprint_id = v_bp.id)
     ORDER BY u.user_id LIMIT 1;
 
     SELECT p.id, p.owner_user_id AS owner INTO v_own
@@ -54,6 +54,7 @@ BEGIN
 
     PERFORM set_config('probe.bp', v_bp.id::text, true);
     PERFORM set_config('probe.buyer', v_buyer::text, true);
+    PERFORM set_config('probe.seller', v_bp.seller::text, true);
     PERFORM set_config('probe.own_project', v_own.id::text, true);
     PERFORM set_config('probe.owner', v_own.owner::text, true);
     RAISE NOTICE 'fixture bp=% buyer=% own_project=% owner=%', v_bp.id, v_buyer, v_own.id, v_own.owner;
@@ -82,7 +83,10 @@ BEGIN
 END $$;
 -- #endregion
 
--- #region 2. The buyer may not move a seller's terms — and may still edit the rest of the stage
+-- #region 2. Nobody moves a seller's terms — the seller, who owns the engagement (Decision #427), still
+-- edits the rest of the stage; its buyer edits none of it
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.seller'), 'role', 'authenticated')::text, true);
 DO $$
 DECLARE
     v_stage uuid := current_setting('probe.stage')::uuid;
@@ -96,33 +100,51 @@ BEGIN
     ] LOOP
         BEGIN
             EXECUTE v_sql;
-            RAISE EXCEPTION 'FAIL the buyer moved a seller''s term: %', v_sql;
+            RAISE EXCEPTION 'FAIL the seller moved a frozen term: %', v_sql;
         EXCEPTION WHEN insufficient_privilege THEN
             RAISE NOTICE 'PASS refused 42501: %', v_sql;
         END;
     END LOOP;
 
     UPDATE projects.project_stages SET name = 'Probe renamed' WHERE id = v_stage;
-    IF NOT FOUND THEN RAISE EXCEPTION 'FAIL the buyer could not rename their own stage'; END IF;
-    RAISE NOTICE 'PASS the buyer still renames the stage (its terms untouched)';
+    IF NOT FOUND THEN RAISE EXCEPTION 'FAIL the seller could not rename their own stage'; END IF;
+    RAISE NOTICE 'PASS the seller still renames the stage (its terms untouched)';
 
     BEGIN
         INSERT INTO projects.project_stages (project_id, name, sort_order, intensity_locked)
         VALUES (current_setting('probe.project')::uuid, 'Probe locked', 90, true);
-        RAISE EXCEPTION 'FAIL the buyer created a locked stage';
+        RAISE EXCEPTION 'FAIL a locked stage was created through the API';
     EXCEPTION WHEN insufficient_privilege THEN
-        RAISE NOTICE 'PASS a client cannot create a locked stage';
+        RAISE NOTICE 'PASS no API write creates a locked stage';
     END;
 
     INSERT INTO projects.project_stages (project_id, name, sort_order, default_intensity)
     VALUES (current_setting('probe.project')::uuid, 'Probe extra', 91, 'high');
-    RAISE NOTICE 'PASS the buyer adds their own stage to the service project, unlocked';
+    RAISE NOTICE 'PASS the seller adds a stage to their service, unlocked';
     BEGIN
         UPDATE projects.project_stages SET default_intensity = 'low'
          WHERE project_id = current_setting('probe.project')::uuid AND name = 'Probe extra';
         RAISE EXCEPTION 'FAIL a stage term moved on an instantiated project';
     EXCEPTION WHEN insufficient_privilege THEN
         RAISE NOTICE 'PASS every stage of an instantiated project keeps its terms';
+    END;
+END $$;
+
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.buyer'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_rows int;
+BEGIN
+    UPDATE projects.project_stages SET name = 'Buyer renamed' WHERE id = current_setting('probe.stage')::uuid;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL the buyer renamed the seller''s stage'; END IF;
+    BEGIN
+        INSERT INTO projects.project_stages (project_id, name, sort_order)
+        VALUES (current_setting('probe.project')::uuid, 'Buyer stage', 95);
+        RAISE EXCEPTION 'FAIL the buyer added a stage to the seller''s service';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS the buyer neither renames nor adds stages (RLS, Decision #427)';
     END;
 END $$;
 RESET ROLE;
@@ -138,9 +160,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM projects.project_stages ps
                    WHERE ps.project_id = current_setting('probe.project')::uuid AND ps.name = 'Probe extra'
                      AND NOT ps.intensity_locked AND ps.default_intensity = 'high') THEN
-        RAISE EXCEPTION 'FAIL the client-created stage';
+        RAISE EXCEPTION 'FAIL the seller-created stage';
     END IF;
-    RAISE NOTICE 'PASS what was written: the rename only, and an unlocked client stage';
+    RAISE NOTICE 'PASS what was written: the seller''s rename only, and an unlocked seller stage';
 END $$;
 -- #endregion
 

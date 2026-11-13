@@ -37,6 +37,24 @@ Deno.test("a participant lands on the Overview in every status, the draft includ
 	}
 });
 
+Deno.test("a service lands on its Overview for its client and its seller, even as a draft (Decision #427)", () => {
+	const client = { configures: false, service: true };
+	const seller = { configures: true, service: true };
+	for (const status of STATUSES) {
+		assertEquals(landingFor("owner", status, client), { kind: "overview", viewer: "owner" }, status);
+		assertEquals(landingFor("participant", status, seller), { kind: "overview", viewer: "participant" });
+	}
+	assertEquals(landingFor("prospect", "draft", client), { kind: "missing" });
+});
+
+Deno.test("an owner-side viewer who cannot configure is never sent to the configuration", () => {
+	assertEquals(landingFor("owner", "draft", { configures: false, service: false }), {
+		kind: "overview",
+		viewer: "owner",
+	});
+	assertEquals(landingFor("owner", "draft", { configures: true, service: false }), { kind: "details" });
+});
+
 Deno.test("a prospect is sent to the listing, or told a draft does not exist", () => {
 	assertEquals(landingFor("prospect", "draft"), { kind: "missing" });
 	for (const status of PUBLISHED) {

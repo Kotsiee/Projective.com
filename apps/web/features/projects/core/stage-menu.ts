@@ -98,6 +98,14 @@ export function inclusionRefusal(includedCount: number, ticketLock: string | nul
 // #endregion
 
 // #region Menu
+/** Another included stage, as the "Run in parallel with" submenu lists it. */
+export interface StageMenuPeer {
+	stageId: string;
+	name: string;
+	/** Whether it already runs in the same step as the card's stage. */
+	sameBand: boolean;
+}
+
 /** What the pipeline knows about one stage card. */
 export type StageMenuFacts =
 	| {
@@ -105,8 +113,8 @@ export type StageMenuFacts =
 		/** Position in the ticket's order, and how many stages the ticket includes. */
 		index: number;
 		count: number;
-		/** Whether it runs alongside the stage before it. */
-		parallel: boolean;
+		/** The other included stages, in pipeline order. */
+		peers: readonly StageMenuPeer[];
 		/** This stage's lock reason, or `null`. */
 		lock: string | null;
 	}
@@ -121,10 +129,15 @@ export type StageMenuFacts =
 export interface StageMenuActions {
 	configure: () => void;
 	move: (direction: -1 | 1) => void;
-	parallel: (parallel: boolean) => void;
+	/** Bring `peerId` into this stage's step, beside it. */
+	groupWith: (peerId: string) => void;
+	/** Take this stage out of its step's group into a step of its own. */
+	sequential: () => void;
 	include: () => void;
 	remove: () => void;
 }
+
+const ALREADY_PARALLEL = "Already runs in this step.";
 
 const refused = (reason: string | null): Pick<MenuItem, "disabled" | "disabledReason"> =>
 	reason ? { disabled: true, disabledReason: reason } : {};
@@ -141,7 +154,7 @@ export function stageMenuModel(facts: StageMenuFacts, run: StageMenuActions): Me
 		}];
 	}
 
-	const { index, count, parallel, lock } = facts;
+	const { index, count, peers, lock } = facts;
 	const rows: MenuItem[] = [
 		{ key: "stage-configure", label: "Configure stage", icon: "settings", command: run.configure },
 	];
@@ -165,26 +178,35 @@ export function stageMenuModel(facts: StageMenuFacts, run: StageMenuActions): Me
 			...refused(lock),
 		});
 	}
-	if (index > 0) {
-		order.push(
-			parallel
-				? {
-					key: "stage-sequential",
-					label: "Make sequential",
-					icon: "arrow-down",
-					command: () => run.parallel(false),
-					...refused(lock),
-				}
-				: {
-					key: "stage-parallel",
-					label: "Run concurrently with previous",
-					icon: "switch",
-					command: () => run.parallel(true),
-					...refused(lock),
-				},
-		);
-	}
 	if (order.length > 0) rows.push({ separator: true, key: "stage-sep-order" }, ...order);
+
+	const concurrency: MenuItem[] = [];
+	if (peers.length > 0) {
+		concurrency.push({
+			key: "stage-parallel",
+			label: "Run in parallel with",
+			icon: "switch",
+			...refused(lock),
+			items: lock ? undefined : peers.map((peer) => ({
+				key: `stage-parallel-${peer.stageId}`,
+				label: peer.name,
+				command: () => run.groupWith(peer.stageId),
+				...refused(peer.sameBand ? ALREADY_PARALLEL : null),
+			})),
+		});
+	}
+	if (peers.some((p) => p.sameBand)) {
+		concurrency.push({
+			key: "stage-sequential",
+			label: "Run sequentially",
+			icon: "arrow-down",
+			command: run.sequential,
+			...refused(lock),
+		});
+	}
+	if (concurrency.length > 0) {
+		rows.push({ separator: true, key: "stage-sep-parallel" }, ...concurrency);
+	}
 
 	rows.push(
 		{ separator: true, key: "stage-sep-remove" },

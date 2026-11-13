@@ -217,10 +217,10 @@ BEGIN
     VALUES (v_project, v_stage, 'Probe F1', '{"t":"x"}', 'A description.') RETURNING id INTO v_t1;
     INSERT INTO projects.tickets (project_id, current_stage_id, title, description, text_description)
     VALUES (v_project, v_stage, 'Probe F2', '{"t":"x"}', 'A description.') RETURNING id INTO v_t2;
-    SELECT status INTO v_status2 FROM projects.tickets WHERE id = v_t2;
-
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
     v_out := projects.fund_stage(v_project, v_stage);
+    -- After funding: a funded New ticket is promoted to Ready (Decision #428); approval must keep that.
+    SELECT status INTO v_status2 FROM projects.tickets WHERE id = v_t2;
     PERFORM pg_temp.check((v_out ->> 'awaiting_claim_count')::int = 2, 'F fixture: open stage prepaid, 2 escrows awaiting a claim');
 
     -- F1. Nobody hired: refused, nothing moves.

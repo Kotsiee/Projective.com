@@ -506,6 +506,17 @@ export const AddBasketItemSchema = z.object({
 	 * against it.
 	 */
 	ticketId: reference.nullable().optional(),
+	/**
+	 * With `ticketId`: the stages to buy, one line each (Decision #430). Absent or empty buys the stage
+	 * the ticket is funded in; every id must be a stage its quote marks `fundable`, else the add is
+	 * refused whole.
+	 */
+	stageIds: z.array(reference).max(20).optional(),
+	/**
+	 * With `ticketId`: the ticket's live lines in this basket become exactly `stageIds` — the Buy now
+	 * stage picker's write. Lines for other stages are removed; an empty `stageIds` removes them all.
+	 */
+	replaceStages: z.boolean().optional(),
 	quantity: z.number().int().min(1).max(999).optional(),
 	destinationEmail: destinationEmail.nullable().optional(),
 	scheduledAt: timestamp.nullable().optional(),

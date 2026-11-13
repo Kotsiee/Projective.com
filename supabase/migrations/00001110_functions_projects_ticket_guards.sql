@@ -257,11 +257,12 @@ BEGIN
                     || 'somebody directly.';
         END IF;
 
-        -- Neither the owner nor the ticket's own assignee: admitted only as a ticket manager.
+        -- Neither the client person (the owner, or a seller-owned service's buyer — Decision #427) nor
+        -- the ticket's own assignee: admitted only as a ticket manager.
         IF v_uid IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM projects.projects p
-                WHERE p.id = NEW.project_id AND p.owner_user_id = v_uid
+                WHERE p.id = NEW.project_id AND COALESCE(p.client_user_id, p.owner_user_id) = v_uid
             )
             AND (CASE WHEN TG_OP = 'INSERT' THEN NEW.current_assignee_id
                       ELSE OLD.current_assignee_id END) IS DISTINCT FROM v_uid THEN
@@ -424,14 +425,64 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
 
+-- Prepaid later stages follow the ticket (Decision #430). Arriving in a stage holds what was prepaid
+-- there (finance.fn_activate_ticket_reservation), however the stage was reached: the Chain Reaction, a
+-- move, a funding placement. A stage taken off the ticket gives its prepayment back, and a ticket that
+-- ends (completed or cancelled) gives back every stage it never reached. AFTER the escrow sync, so a
+-- completion's release has run; its own writes touch no column it fires on. A personal project carries
+-- no money.
+CREATE OR REPLACE FUNCTION projects.fn_ticket_prepay_sync()
+RETURNS TRIGGER AS $$
+DECLARE
+    r record;
+BEGIN
+    IF projects.fn_is_personal_project(NEW.project_id) THEN
+        RETURN NULL;
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status
+        AND NEW.status IN ('completed'::ticket_status, 'cancelled'::ticket_status) THEN
+        PERFORM finance.fn_refund_ticket_reservations(
+            NEW.id, NULL,
+            CASE WHEN NEW.status = 'completed'::ticket_status THEN 'ticket_completed' ELSE 'ticket_cancelled' END
+        );
+        RETURN NULL;
+    END IF;
+
+    IF NEW.required_stages IS DISTINCT FROM OLD.required_stages THEN
+        FOR r IN
+            SELECT DISTINCT e.project_stage_id
+              FROM finance.escrows e
+             WHERE e.ticket_id = NEW.id AND e.status = 'reserved'
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM jsonb_array_elements(
+                              CASE WHEN jsonb_typeof(NEW.required_stages) = 'array' THEN NEW.required_stages
+                                   ELSE '[]'::jsonb END) x
+                    WHERE x->>'stage_id' = e.project_stage_id::text
+               )
+        LOOP
+            PERFORM finance.fn_refund_ticket_reservations(NEW.id, r.project_stage_id, 'stage_removed');
+        END LOOP;
+    END IF;
+
+    IF NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id AND NEW.current_stage_id IS NOT NULL THEN
+        PERFORM finance.fn_activate_ticket_reservation(NEW.id);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
+
 -- Deletion protocol: unclaimed -> delete freely; claimed -> release escrowed funds first, then delete
--- (prevents further client charges). Releasing before the row is removed keeps the ledger intact.
+-- (prevents further client charges). Releasing before the row is removed keeps the ledger intact. The
+-- stages the client prepaid ahead go back to them first (Decision #430): nobody worked them.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_delete_protocol()
 RETURNS TRIGGER AS $$
 BEGIN
     IF projects.fn_is_personal_project(OLD.project_id) THEN
         RETURN OLD;
     END IF;
+    PERFORM finance.fn_refund_ticket_reservations(OLD.id, NULL, 'ticket_deleted');
     IF OLD.current_assignee_id IS NOT NULL
         OR EXISTS (
             SELECT 1 FROM finance.escrows e

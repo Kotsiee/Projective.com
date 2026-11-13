@@ -13,6 +13,14 @@ CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
 -- base escrow, and a seat's escrow has no ticket.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_ticket_base_held ON finance.escrows (ticket_id)
     WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL;
+-- One reservation per ticket stage (Decision #430): a later stage prepaid twice would debit the payer
+-- twice for one hold. fn_reserve_ticket_stage_escrow reads its violation as "already prepaid".
+CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_ticket_stage_reserved
+    ON finance.escrows (ticket_id, project_stage_id)
+    WHERE status = 'reserved';
+-- The prepaid-escrow TTL sweep's queue (Decision #428): unclaimed holds with a refund deadline.
+CREATE INDEX IF NOT EXISTS idx_escrows_prepaid_expiry ON finance.escrows (expires_at)
+    WHERE status = 'held' AND payee_id IS NULL AND expires_at IS NOT NULL;
 -- A paid revision round is paid for once, whatever became of its escrow.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_revision ON finance.escrows (revision_id)
     WHERE revision_id IS NOT NULL;
@@ -122,10 +130,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_default_per_owner
 CREATE INDEX IF NOT EXISTS idx_basket_items_basket ON finance.basket_items (basket_id);
 -- Answers "is this listing already in one of my baskets?" without scanning every line.
 CREATE INDEX IF NOT EXISTS idx_basket_items_item ON finance.basket_items (item_type, item_id);
--- The dedupe key for a ticket line (Decision #166): one LIVE line per ticket per basket, parked or not.
--- Adding a ticket already in the basket re-selects that line instead of a second charge for one hold.
+-- The dedupe key for a ticket line (Decisions #166, #430): one LIVE line per ticket STAGE per basket,
+-- parked or not — a stage is one hold, so adding it again re-selects that line instead of charging
+-- twice. NULLS NOT DISTINCT keeps a stage-less line to one per ticket as well.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_items_live_ticket
-    ON finance.basket_items (basket_id, ticket_id)
+    ON finance.basket_items (basket_id, ticket_id, stage_id) NULLS NOT DISTINCT
     WHERE ticket_id IS NOT NULL AND removed_at IS NULL AND purchased_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_saved_cards_owner ON finance.saved_cards (owner_type, owner_id);

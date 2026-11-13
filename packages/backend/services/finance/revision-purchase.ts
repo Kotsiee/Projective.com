@@ -28,6 +28,8 @@ export interface RevisionProjectFact {
 	currency: string;
 	client_business_id: string | null;
 	owner_user_id: string;
+	/** The buyer of a seller-owned service (Decision #427), who pays in place of its owner. */
+	client_user_id?: string | null;
 }
 
 /** A paid revision round as `projects.stage_revision_requests` stores it. */
@@ -56,14 +58,17 @@ interface Price {
 	currency: string;
 }
 
-/** Whether this owner is the project's client — its business, else its owner as an individual. */
+/**
+ * Whether this owner is the project's client — its business, else its client person as an individual:
+ * a seller-owned service's buyer (Decision #427), else its owner.
+ */
 export function paysFor(
-	project: Pick<RevisionProjectFact, "client_business_id" | "owner_user_id">,
+	project: Pick<RevisionProjectFact, "client_business_id" | "owner_user_id" | "client_user_id">,
 	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
 ): boolean {
 	return owner.isEntity
 		? owner.ownerType === "business" && project.client_business_id === owner.ownerId
-		: !project.client_business_id && project.owner_user_id === owner.ownerId;
+		: !project.client_business_id && (project.client_user_id || project.owner_user_id) === owner.ownerId;
 }
 
 function minorOf(value: number | string | null): number | null {
@@ -79,7 +84,7 @@ function minorOf(value: number | string | null): number | null {
  */
 export function revisionPurchase(
 	revision: Pick<RevisionFact, "status" | "price_cents">,
-	project: Pick<RevisionProjectFact, "client_business_id" | "owner_user_id" | "currency">,
+	project: Pick<RevisionProjectFact, "client_business_id" | "owner_user_id" | "client_user_id" | "currency">,
 	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
 ): { price: Price | null; closed: string | null } {
 	const minor = minorOf(revision.price_cents);
@@ -192,7 +197,7 @@ async function readFundingFacts(
 	if (!stage) return null;
 
 	const projectRead = await db.from("projects")
-		.select("id, slug, currency, client_business_id, owner_user_id")
+		.select("id, slug, currency, client_business_id, owner_user_id, client_user_id")
 		.eq("id", stage.project_id).maybeSingle();
 	if (projectRead.error) throw new Error(`projects.projects read failed: ${projectRead.error.message}`);
 	const project = projectRead.data as RevisionProjectFact | null;

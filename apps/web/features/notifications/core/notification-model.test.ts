@@ -9,6 +9,8 @@ import {
 	listQuery,
 	mergeHead,
 	metaLine,
+	parseFilter,
+	parseQuery,
 	parseTab,
 	parseView,
 	tabUnread,
@@ -27,6 +29,13 @@ Deno.test("deep links decode, and marketing never becomes a tab", () => {
 		listQuery("all", "archived", "2026-01-01", 5),
 		"limit=5&archived=true&before=2026-01-01",
 	);
+	assertEquals(inboxHref("money", "all", "payout"), "/notifications?category=money&q=payout");
+	assertEquals(listQuery("all", "unread", null, 20, "brand"), "limit=20&unreadOnly=true&q=brand");
+	assertEquals(
+		parseFilter(new URLSearchParams("category=marketing&view=unread&q=%20brand%20")),
+		{ tab: "all", view: "unread", query: "brand" },
+	);
+	assertEquals(parseQuery("x".repeat(140)).length, 100);
 });
 
 Deno.test("tab counts read the sparse summary", () => {
@@ -37,10 +46,10 @@ Deno.test("tab counts read the sparse summary", () => {
 	assertEquals(tabUnread(null, "all"), 0);
 });
 
-Deno.test("the meta line is time · context · group", () => {
+Deno.test("the meta line is category · context · time · group", () => {
 	const now = Date.parse(c.createdAt) + 3 * 3_600_000;
-	assertEquals(metaLine(c, now), "3h ago · Messages · 3 updates");
-	assertEquals(metaLine(b, Date.parse(b.createdAt) + 60_000), "1m ago · Brand system");
+	assertEquals(metaLine(c, now), "Messages · 3h ago · 3 updates");
+	assertEquals(metaLine(b, Date.parse(b.createdAt) + 60_000), "Work · Brand system · 1m ago");
 });
 
 Deno.test("a live merge prepends only newer unknown rows and refreshes known ones", () => {

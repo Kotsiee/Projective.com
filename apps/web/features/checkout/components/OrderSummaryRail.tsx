@@ -1,12 +1,8 @@
 import type { ComponentChildren, JSX } from "preact";
 import type { Signal } from "@preact/signals";
-import { itemKindMeta } from "@projective/types/finance";
-import { Icon } from "@projective/ui/icons";
-import { itemKindLabel } from "../core/basket-model.ts";
-import { feeDisclosure } from "../core/checkout-model.ts";
-import { Amount } from "./Amount.tsx";
+import { OrderLines } from "./OrderLines.tsx";
+import { OrderTotals } from "./OrderTotals.tsx";
 import { ProcessingContribution } from "./ProcessingContribution.tsx";
-import { groupIconName } from "./checkout-glyphs.tsx";
 import type {
 	BasketItem,
 	CheckoutSessionContext,
@@ -53,26 +49,6 @@ import type {
  * frozen animation clock in a background tab can never leave an amount stating something untrue.
  */
 
-// #region Line details
-/**
- * The one detail line beneath a basket row: WHICH instance of the purchasable this is.
- *
- * A session's booked slot, a ticket's routed stage and a product's licence are the same fact at this
- * scale, so one resolution order covers all three and falls back to the kind's own noun rather than
- * to an empty row. Both halves are strings the server already formatted — nothing is derived.
- *
- * **It carries no price.** The row shows exactly one figure, the line total, which is what the buyer
- * is charged for that line. A per-unit price beside it was a second money figure for the same row,
- * and a reader who cannot see the multiplication cannot check it — so the quantity is stated in words
- * and the money is stated once.
- */
-function detailOf(item: BasketItem): string {
-	const base = item.scheduledLabel ?? item.stageLabel ?? item.subtitle ?? itemKindLabel(item);
-	const seats = item.seats !== null && item.seats > 1 ? ` · ${item.seats} seats` : "";
-	return `${base}${seats}`;
-}
-// #endregion
-
 // #region Props
 /** Props for {@link OrderSummaryRail}. */
 export interface OrderSummaryRailProps {
@@ -103,24 +79,6 @@ export interface OrderSummaryRailProps {
 /** The composition, the arithmetic, and the step's commitment. */
 export function OrderSummaryRail(props: OrderSummaryRailProps): JSX.Element {
 	const { view, items } = props;
-	const { totals } = view;
-
-	const fee = feeDisclosure(totals);
-	const hasTax = totals.taxes.minor > 0 || totals.taxNote !== null;
-	/*
-	 * The contribution row appears exactly when the SERVER has actually added one to the total.
-	 *
-	 * Keyed on the figure rather than on the checkbox for two reasons. It cannot show a £0.00
-	 * "Processing fee" in the window between a tick and the recomputed session landing — a row that
-	 * says the buyer is paying nothing for something is worse than no row. And it cannot disagree with
-	 * the Order Total beneath it, because it is reading the same number that total was computed from.
-	 * Unticked, the server adds nothing and the row is absent entirely.
-	 */
-	const showsContribution = totals.processingContribution.minor > 0;
-	/** The processor charge, and whether it is in a currency other than the one the rail reads in. */
-	const charge = view.charge;
-	const converted = charge !== null && charge.currency !== view.currency;
-
 	return (
 		<section class="cko-rail" aria-labelledby="cko-rail-head">
 			<div class="cko-rail__headrow">
@@ -146,55 +104,7 @@ export function OrderSummaryRail(props: OrderSummaryRailProps): JSX.Element {
 				aria-labelledby="cko-rail-head"
 				tabIndex={0}
 			>
-				{items.length === 0
-					? (
-						<p class="cko-rail__empty" role="status">
-							Nothing is selected for this payment yet.
-						</p>
-					)
-					: (
-						<ul class="cko-rail__items">
-							{items.map((item) => (
-								<li key={item.id} class="cko-rail__item">
-									<span class="cko-rail__thumb" aria-hidden="true">
-										{item.thumbnail
-											? (
-												<img
-													class="cko-rail__thumbimg"
-													src={item.thumbnail}
-													alt=""
-													loading="lazy"
-												/>
-											)
-											: <Icon name={groupIconName(itemKindMeta(item.itemType).group)} />}
-									</span>
-
-									<span class="cko-rail__itembody">
-										<span class="cko-rail__itemtitle">{item.title}</span>
-										<span class="cko-rail__itemmeta">
-											<span class="cko-rail__slotlabel">{detailOf(item)}</span>
-											{
-												/*
-												 * The quantity is stated only when there IS one to state. A line of one
-												 * needs no multiplier, and the platform's purchasables are overwhelmingly
-												 * single-quantity — but a corpus line that genuinely carries two must not
-												 * show one price with no explanation of what it covers.
-												 */
-											}
-											{item.quantity > 1 && (
-												<span class="cko-rail__qty">{`× ${item.quantity}`}</span>
-											)}
-										</span>
-									</span>
-
-									{/* The line's ONE figure: what this line costs. */}
-									<span class="cko-rail__linetotal">
-										<Amount value={item.lineTotal} size="body" hideOrigin />
-									</span>
-								</li>
-							))}
-						</ul>
-					)}
+				<OrderLines items={items} empty="Nothing is selected for this payment yet." />
 			</div>
 
 			{props.contribution && (
@@ -206,142 +116,7 @@ export function OrderSummaryRail(props: OrderSummaryRailProps): JSX.Element {
 				/>
 			)}
 
-			{
-				/*
-				 * The arithmetic, as a polite live region: a promo landing or a contribution being accepted
-				 * changes what the buyer will be charged, and a total that changes silently is a total
-				 * nobody re-reads. `#cko-summary` is also where a `price_changed` refusal points.
-				 */
-			}
-			<div class="cko-rail__totals" id="cko-summary" role="status" aria-live="polite">
-				<dl class="cko-rail__rows">
-					<div class="cko-rail__row">
-						<dt class="cko-rail__label">Items</dt>
-						<dd class="cko-rail__value">
-							<Amount value={totals.subtotal} hideOrigin />
-						</dd>
-					</div>
-
-					{totals.creatorDiscounts.minor > 0 && (
-						<div class="cko-rail__row" data-kind="discount">
-							<dt class="cko-rail__label">Seller discounts</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.creatorDiscounts} tone="credit" sign="−" hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{view.promo?.valid && (
-						<div class="cko-rail__row" data-kind="discount">
-							<dt class="cko-rail__label">{view.promo.label}</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.promoDiscount} tone="credit" sign="−" hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{
-						/*
-						 * The one line that can be presented dishonestly. Under the platform's documented
-						 * default the fee comes out of the seller's release, so showing it as an addition
-						 * would overstate what the buyer pays by exactly the fee. `feeDisclosure` owns the
-						 * branch; the note says in words what the tone says in colour.
-						 */
-					}
-					<div class="cko-rail__row" data-kind="fee" data-charged={fee.charged ? "true" : "false"}>
-						<dt class="cko-rail__label">
-							{fee.label}
-							<span class="cko-rail__note">{fee.note}</span>
-						</dt>
-						<dd class="cko-rail__value">
-							<Amount
-								value={totals.platformFee}
-								tone={fee.charged ? "default" : "muted"}
-								hideOrigin
-								srLabel={fee.charged
-									? undefined
-									: `${totals.platformFee.display}, paid by the seller, not added to your total`}
-							/>
-						</dd>
-					</div>
-
-					{hasTax && (
-						<div class="cko-rail__row" data-kind="tax">
-							<dt class="cko-rail__label">
-								Tax
-								{totals.taxNote && <span class="cko-rail__note">{totals.taxNote}</span>}
-							</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.taxes} hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{showsContribution && (
-						<div class="cko-rail__row" data-kind="contribution">
-							<dt class="cko-rail__label">Processing fee</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.processingContribution} hideOrigin />
-							</dd>
-						</div>
-					)}
-				</dl>
-
-				{
-					/*
-					 * The payable figure, with its ISO code stated beside it.
-					 *
-					 * The symbol alone is ambiguous across a dozen currencies that share one — "$" is eight
-					 * different currencies on this platform's own offerable list — and this is the number the
-					 * buyer authorises. The code is `aria-hidden` because `MoneyView` already speaks the
-					 * full amount including its currency, and hearing "GBP" twice is noise.
-					 */
-				}
-				<p class="cko-rail__grand">
-					<span class="cko-rail__grand-label">Order Total</span>
-					<span class="cko-rail__grand-figure">
-						<Amount value={totals.total} size="hero" />
-						<span class="cko-rail__grand-code" aria-hidden="true">
-							{view.settlement.currency}
-						</span>
-					</span>
-				</p>
-
-				{
-					/*
-					 * The dual display (Decision #153). A card or express payment is charged in the currency
-					 * the sellers priced in, so when that is not the buyer's currency the rail states the
-					 * amount that will be taken, in that currency, directly under the total:
-					 * `AED 840.27 AED (~US$229.00 USD charged)`.
-					 *
-					 * The tilde is the platform's ONE estimate grammar (`MoneyView`'s `£78.50 (~€90.00 EUR)`):
-					 * it marks the pair as a conversion, and — exactly as there — the accessible sentence says
-					 * which side is exact. Here that is the charge: the processor takes precisely this figure,
-					 * and the buyer's bank, not this platform, converts it on their statement. The charge is
-					 * `pinned` so it prints in its own currency instead of being re-projected into the
-					 * viewer's. The rate is the one the shown figures were priced at, read off the settlement
-					 * rather than resolved again.
-					 */
-				}
-				{converted && charge && (
-					<p class="cko-rail__charge">
-						<span class="ui-visually-hidden">
-							{`Your card or wallet is charged exactly ${charge.display} ${charge.currency}; the ${view.currency} total above is an estimate.`}
-						</span>
-						<span class="cko-rail__charge-figure" aria-hidden="true">
-							(~<Amount value={charge} size="body" hideOrigin pinned /> {charge.currency} charged)
-						</span>
-						{view.settlement.rateLabel && (
-							<span class="cko-rail__charge-rate">
-								{view.settlement.rateLabel}
-								{view.settlement.asOfLabel ? ` · locked ${view.settlement.asOfLabel}` : ""}. Your
-								bank converts the charge at its own rate.
-							</span>
-						)}
-					</p>
-				)}
-			</div>
-
+			<OrderTotals view={view} />
 			{props.children}
 		</section>
 	);

@@ -169,6 +169,33 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		isProtected: true,
 	},
 	{
+		id: "board-new-ticket",
+		category: "Project board",
+		label: "New ticket",
+		description:
+			"Opens a new ticket on a board you can add tickets to. Never while you type in a field. Ctrl+N or ⌘N does the same only where the browser lets the page have it; most keep it for a new window.",
+		keys: ["N"],
+		isProtected: false,
+	},
+	{
+		id: "ticket-switch-tab",
+		category: "Project board",
+		label: "Go to a ticket tab",
+		description:
+			"In an open ticket, a number from 1 to 9 opens the tab at that place, counting from the left. Works from inside a field.",
+		keys: ["Mod", "1–9"],
+		isProtected: false,
+	},
+	{
+		id: "ticket-cycle-tabs",
+		category: "Project board",
+		label: "Next or previous ticket tab",
+		description:
+			"In an open ticket, steps to the tab on the left or right, wrapping round at either end. Never while you type in a field.",
+		keys: ["Mod", "← →"],
+		isProtected: false,
+	},
+	{
 		id: "files-move-focus",
 		category: "Files",
 		label: "Move between files",
@@ -287,7 +314,8 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 		id: "save",
 		category: "General",
 		label: "Save",
-		description: "Saves the project or stage you're editing.",
+		description:
+			"Saves the project, stage or ticket you're editing. In a new ticket, it creates the ticket.",
 		keys: ["Mod", "S"],
 		isProtected: false,
 	},

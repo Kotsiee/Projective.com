@@ -258,6 +258,17 @@ export function fundingDateLabel(
 	}
 	return null;
 }
+
+/**
+ * The sentence naming a ticket's prepaid later stages (Decision #430), or `null` when none is:
+ * "Design is prepaid." · "Design and Build are prepaid." · "Design, Build and QA are prepaid."
+ */
+export function prepaidSentence(names: readonly string[]): string | null {
+	if (names.length === 0) return null;
+	if (names.length === 1) return `${names[0]} is prepaid.`;
+	const head = names.slice(0, -1).join(", ");
+	return `${head} and ${names[names.length - 1]} are prepaid.`;
+}
 // #endregion
 
 // #region Dev preview
@@ -294,6 +305,20 @@ export function previewFunding(
 			? f.reason
 			: "Your card was declined.",
 	};
+}
+
+/**
+ * The Dev Context Switcher's prepaid-stage preview over the real ids — display only: `none` shows no
+ * prepaid stage, `later` shows every stage after the one the ticket is funded in as prepaid.
+ */
+export function previewPrepaidStages(
+	real: readonly string[] | undefined,
+	mode: "auto" | "none" | "later" | undefined,
+	laterStageIds: readonly string[],
+): string[] {
+	if (mode === "none") return [];
+	if (mode === "later") return [...laterStageIds];
+	return [...(real ?? [])];
 }
 // #endregion
 

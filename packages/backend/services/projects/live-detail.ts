@@ -25,7 +25,7 @@ import {
 	orgDb,
 	partyOf,
 	projectsDb,
-	resolveReviewAuthority,
+	resolveConfigureAuthority,
 	toMemberRole,
 	toProjectStructure,
 	toStageProjectStatus,
@@ -101,6 +101,8 @@ import {
 /** The `projects.projects` columns this projection needs BEYOND the ones the summary already carries. */
 interface DetailRow {
 	owner_user_id: string;
+	/** The buyer of a seller-owned service (Decision #427); null when the owner is the client side. */
+	client_user_id: string | null;
 	description_text: string | null;
 	client_business_id: string | null;
 	structure_variation: string | null;
@@ -262,14 +264,23 @@ function typeLabelFor(summary: ProjectSummary): string {
  * client-side too, and answering that needs an `org.business_members` read this projection does not
  * otherwise perform. Such a viewer reads as `false` here — under-granting a create affordance, which
  * is the direction a capability flag should be wrong in.
+ *
+ * A seller-owned service (`clientUserId` set, Decision #427) names its client in a column, so the
+ * owner is the PROVIDER there: the buyer is the client side, and so is an explicit `client` seat, but
+ * an `admin` or `manager` the seller appointed is the seller's delegate, never the client's.
  */
 function resolveViewerIsClient(
 	actor: ReadActor,
 	ownerUserId: string,
+	clientUserId: string | null,
 	participants: readonly ParticipantRow[],
 ): boolean {
-	if (actor.userId.length > 0 && actor.userId === ownerUserId) return true;
 	const own = participants.find((row) => row.profile_id === actor.userId);
+	if (clientUserId) {
+		if (actor.userId.length > 0 && actor.userId === clientUserId) return true;
+		return own?.role.trim().toLowerCase() === "client";
+	}
+	if (actor.userId.length > 0 && actor.userId === ownerUserId) return true;
 	return isClientSideRole(own?.role);
 }
 
@@ -512,7 +523,7 @@ async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<D
 	const { data, error } = await db
 		.from("projects")
 		.select(
-			"owner_user_id, description_text, client_business_id, structure_variation, session_kind, currency, is_personal",
+			"owner_user_id, client_user_id, description_text, client_business_id, structure_variation, session_kind, currency, is_personal",
 		)
 		.eq("slug", projectKey)
 		.maybeSingle();
@@ -800,6 +811,7 @@ function clientPartyOf(
 function buildMembers(
 	summary: ProjectSummary,
 	ownerUserId: string,
+	clientUserId: string | null,
 	participants: readonly ParticipantRow[],
 	parties: ReadonlyMap<string, PartyRow>,
 	businesses: ReadonlyMap<string, BusinessRow>,
@@ -811,6 +823,10 @@ function buildMembers(
 	if (ownerUserId) {
 		out.push({ id: clamp(ownerUserId, 80), party: summary.owner, role: "owner" });
 		seen.add(ownerUserId);
+	}
+	if (clientUserId && !seen.has(clientUserId)) {
+		out.push({ id: clamp(clientUserId, 80), party: partyOf(parties.get(clientUserId)), role: "client" });
+		seen.add(clientUserId);
 	}
 
 	for (const row of participants) {
@@ -872,13 +888,12 @@ function buildMembers(
  * ## Two fields whose live meaning differs from the fixtures', stated rather than smoothed over
  *
  * - **`owner`** is the party behind `projects.projects.owner_user_id`, which the summary already
- *   resolves. The schema calls that field the provider side; the column is the seat that CREATED the
- *   engagement, and for a service instantiated by a buyer those are opposite sides. This module
- *   inherits the summary's answer rather than introducing a second, disagreeing one — the divergence
- *   belongs to `toSummary`, and resolving it in two places would be how the two stop agreeing.
- * - **`client`** is the paying business (`client_business_id`), or `null`. It is not "the other side of
- *   the hire" in general: a project with an individual client has no row that names them apart from
- *   the owner, and naming the owner twice would assert a counterparty that does not exist.
+ *   resolves. On a service that is its seller — the provider side the schema names — since
+ *   instantiation makes the seller the owner (Decision #427).
+ * - **`client`** is the buyer of a seller-owned service (`client_user_id`), else the paying business
+ *   (`client_business_id`), else `null`. A hand-built project with an individual client has no row that
+ *   names them apart from the owner, and naming the owner twice would assert a counterparty that does
+ *   not exist.
  */
 export async function fetchProjectDetail(
 	actor: ReadActor & { accessToken: string },
@@ -913,6 +928,7 @@ export async function fetchProjectDetail(
 	});
 
 	const clientBusinessId = detailRow?.client_business_id ?? null;
+	const clientUserId = detailRow?.client_user_id ?? null;
 
 	const [teams, businesses, parties] = await Promise.all([
 		fetchTeams(actor, [...hired.keys()]),
@@ -920,10 +936,10 @@ export async function fetchProjectDetail(
 			clientBusinessId ?? "",
 			...participants.filter((row) => row.profile_type === "business").map((r) => r.profile_id),
 		]),
-		fetchParties(
-			actor,
-			participants.filter((row) => row.profile_type !== "business").map((r) => r.profile_id),
-		),
+		fetchParties(actor, [
+			...participants.filter((row) => row.profile_type !== "business").map((r) => r.profile_id),
+			...(clientUserId ? [clientUserId] : []),
+		]),
 	]);
 
 	// A third wave, and only when a team or a business has a mark to resolve.
@@ -933,8 +949,11 @@ export async function fetchProjectDetail(
 	for (const [id, row] of teams) if (row.name) teamNames.set(id, row.name);
 
 	const ownerUserId = detailRow?.owner_user_id ?? "";
-	const viewerIsClient = resolveViewerIsClient(actor, ownerUserId, participants);
-	const viewerCanConfigure = await resolveReviewAuthority(actor, ownerUserId, clientBusinessId);
+	const viewerIsClient = resolveViewerIsClient(actor, ownerUserId, clientUserId, participants);
+	const viewerCanConfigure = await resolveConfigureAuthority(actor, ownerUserId, clientUserId, clientBusinessId);
+	// Configuring a hand-built project is client-side authority; configuring a seller-owned service is
+	// the provider's (Decision #427), which is the other side of the table.
+	const clientSide = viewerIsClient || (viewerCanConfigure && !clientUserId);
 
 	// The client side rolls up every ticket; a provider only the ones they hold, so an unpaid ticket's
 	// price never reaches a seat the board would withhold it from.
@@ -942,7 +961,7 @@ export async function fetchProjectDetail(
 	const currency = detailRow?.currency?.trim().toUpperCase() || "USD";
 	const funding = rollupFundingState(
 		fundingRows
-			.filter((row) => viewerIsClient || viewerCanConfigure || row.current_assignee_id === actor.userId)
+			.filter((row) => clientSide || row.current_assignee_id === actor.userId)
 			.map((row) =>
 				deriveFundingState(fundingTicketOf(row, stagePrices.get(row.current_stage_id ?? ""), currency))
 			),
@@ -970,8 +989,9 @@ export async function fetchProjectDetail(
 		personal: detailRow?.is_personal === true,
 		currency,
 		// Review authority is the client side too: a member of the paying business owns the configuration.
+		// A service's seller configures it from the provider side, so they are a participant here.
 		viewerAccess: resolveViewerAccess(
-			viewerIsClient || viewerCanConfigure,
+			clientSide,
 			hasAccess,
 			actor,
 			participants,
@@ -982,9 +1002,11 @@ export async function fetchProjectDetail(
 		scopeLabel: summary.scopeLabel,
 		starred: summary.starred,
 		owner: summary.owner,
-		client: clientPartyOf(clientBusinessId, businesses, marks),
+		client: clientUserId
+			? partyOf(parties.get(clientUserId))
+			: clientPartyOf(clientBusinessId, businesses, marks),
 		bannerImage: null,
-		members: buildMembers(summary, ownerUserId, participants, parties, businesses, marks),
+		members: buildMembers(summary, ownerUserId, clientUserId, participants, parties, businesses, marks),
 		channels: withChannelStars({
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),

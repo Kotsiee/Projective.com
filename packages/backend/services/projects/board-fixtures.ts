@@ -40,6 +40,7 @@ import {
 	providerVisibleCards,
 	ticketPaidHere,
 	type TicketPaymentScope,
+	ticketStartCents,
 } from "@projective/types/projects";
 import type { FundingStatus } from "@projective/types/finance";
 import type { CreateCategory } from "@projective/types/org";
@@ -49,7 +50,8 @@ import { CLIENT_STAGE_TERMS, type StageTerms } from "./stage-terms.ts";
 /**
  * The stub path's `deriveFundingState`, read off the card's own facts: the corpus has no
  * `payment_status`, so held escrow stands for `escrow_funded` and a completed ticket for `released`.
- * The amount is the current stage's cost, which is what the live hold takes.
+ * The amount is the current stage's cost, which is what the live hold takes — or, in the New lane,
+ * the first stage's, as the live read quotes it.
  */
 export function fixtureFunding(
 	card: Pick<
@@ -61,7 +63,7 @@ export function fixtureFunding(
 		status: card.status,
 		paymentStatus: card.status === "completed" ? "released" : card.escrowHeld ? "escrow_funded" : "unpaid",
 		hasDescription: card.hasDescription,
-		amountMinor: card.stages.find((s) => s.stageId === card.stageId)?.costCents ?? card.budgetCents,
+		amountMinor: ticketStartCents(card.stages, card.stageId) ?? card.budgetCents,
 		currency: "USD",
 		// The corpus carries purchases made ahead of a claim — a prepaid escrow on the live path (#197).
 		paidAhead: ticketPaidHere(card),
@@ -1241,6 +1243,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		channelId,
 		format: detail.format,
 		structure: detail.structure,
+		dueDatesEnabled: true,
 		title: boardTitle(detail, kind),
 		currency: "USD",
 		view,

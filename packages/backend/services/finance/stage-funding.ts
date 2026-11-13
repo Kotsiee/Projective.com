@@ -1,8 +1,14 @@
-import type { StageFundingQuote, StageFundingQuoteQuery } from "@projective/types/finance";
+import type {
+	StageFundingQuote,
+	StageFundingQuoteQuery,
+	TicketFundingQuote,
+} from "@projective/types/finance";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { ProjectBackendService } from "../projects/ProjectBackendService.ts";
 import { type DbResult, refusalOf } from "./live-payments.ts";
+import { fixtureTicketQuote, readTicketFundingQuote, resolveTicketRefs } from "./ticket-funding.ts";
 
 /**
  * stage-funding — what funding one stage takes, read before anything commits (Decision #197).
@@ -108,6 +114,46 @@ export class StageFundingBackendService {
 			console.error("[stage-funding:quote]", error instanceof Error ? error.message : error);
 			return fail(503, {
 				message: "We couldn't read this stage's funding just now. Try again in a moment.",
+			});
+		}
+	}
+
+	/**
+	 * The payer's quote for one ticket (Decision #428): its stages in order at its own prices, the one
+	 * paid now, the prepaid refund window and the paying wallet. 401 signed out, 404 for a project or
+	 * ticket the caller cannot see, 403 for someone who may not fund it. Without a live finance backend
+	 * it answers the dev fixture from the stub board.
+	 */
+	static async quoteTicket(
+		query: { project: string; ticket: string },
+		actor: ReadActor,
+	): Promise<ServiceResult<{ quote: TicketFundingQuote }>> {
+		if (!actor.userId) return fail(401, { message: "Sign in to fund this ticket." });
+		if (!isFinanceBackendLive()) {
+			const read = await ProjectBackendService.ticket(query.ticket, actor);
+			if (!read.ok || !read.data) {
+				return fail(read.status === 401 ? 401 : 404, { message: "That ticket wasn't found." });
+			}
+			const { page, card } = read.data;
+			const engagement = page.engagementKind === "service" ? "service" : "project";
+			return ok({ quote: fixtureTicketQuote(card, engagement, page.projectId) });
+		}
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to fund this ticket." });
+		try {
+			const refs = await resolveTicketRefs(actor.accessToken, query.project, query.ticket);
+			if (!refs) return fail(404, { message: "That ticket wasn't found." });
+			const quoted = await readTicketFundingQuote(actor.accessToken, refs.projectId, refs.ticketId);
+			if (!quoted.ok) {
+				return fail(quoted.refusal.status, {
+					message: quoted.refusal.message,
+					details: quoted.refusal.details,
+				});
+			}
+			return ok({ quote: quoted.value });
+		} catch (error) {
+			console.error("[stage-funding:quote-ticket]", error instanceof Error ? error.message : error);
+			return fail(503, {
+				message: "We couldn't read this ticket's funding just now. Try again in a moment.",
 			});
 		}
 	}

@@ -23,6 +23,11 @@ export interface DndContextValue {
 	beginKeyboard: (source: DndDragSource) => void;
 	/** Whether a keyboard drag is currently in flight (the sensor owns Arrow/Enter/Escape while true). */
 	keyboardActive: () => boolean;
+	/**
+	 * Re-run hit-testing at the pointer's last position and emit the move, for a container that scrolled
+	 * under a pointer that did not move. A no-op unless a pointer drag is in flight.
+	 */
+	resample: () => void;
 }
 
 export const DndCtx = createContext<DndContextValue | null>(null);

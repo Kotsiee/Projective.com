@@ -72,6 +72,13 @@
 	gap: var(--space-3);
 }
 
+.tkv__badges {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
 /* The status chip is the one place a tone is allowed to carry meaning alone, because it also
    carries its own word — the hue is reinforcement, not the channel. */
 .tkv__status {
@@ -1551,6 +1558,15 @@
 
 	.tkv__who {
 		display: none;
+	}
+
+	.tkv__ident:has(.tkv__fund-tag) {
+		flex-wrap: wrap;
+		row-gap: var(--space-2);
+	}
+
+	.tkv__ident:has(.tkv__fund-tag) .tkv__title {
+		flex-basis: 100%;
 	}
 
 	/* Six labelled tabs need ~590px and the strip has ~343px, so it became a hidden horizontal

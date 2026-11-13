@@ -597,6 +597,16 @@ need a 4-week SEO Audit"), but the freelancer provides the template. The client 
 service, and the corresponding Kanban, Timeline, or Calendar is automatically instantiated based on
 the freelancer’s pre-set workflow.
 
+**The seller owns the engagement; the buyer is its client (Decision #427).** Instantiating a service
+makes the freelancer (or their team) the project's owner and records the buyer as its client — the
+same shape a session engagement has always had. The seller is seated on every stage, edits the
+project's details, adds stages and staffs it; the client reads those details and never edits them,
+and keeps every commercial act: creating tickets, funding them from their own wallet or card,
+reviewing and approving the work, paying for revisions, and completing, cancelling or archiving the
+engagement. The workspace opens on its **Overview** for both sides — for the client, the service's
+scope, its provider, its status and each stage's deliverables — and names the other party from the
+viewer's side: the client sees who provides it, the provider who it is delivered for.
+
 **The seller decides how intensity sells (Decision #417).** Every stage of a Pipeline service states
 its intensity — Low, Standard or High (§The Weighting Engine) — and the service sells it one of two
 ways. **Fixed**, the default for a productised service: each stage sells at its one intensity and its
@@ -605,14 +615,16 @@ either. **Tiered**: the client picks the intensity per ticket, priced at the Sta
 the platform's tier multiples, or at the Low and High prices the seller set for that stage — a Low
 price never above the stage's price, a High price never below it. Either way the terms are the
 seller's commitment once the service is instantiated: like the revision allotment, they are frozen on
-the client's copy.
+the engagement, for its seller as much as its client.
 
 **Who adds a stage (Decision #421).** On a project the client architected, the client adds stages to
 it. Once the client has added a freelancer's service, its stages are the seller's template, so only a
 freelancer working the engagement — one holding a seat on one of its stages — adds a stage, and the
 client does not; every Add stage control is withheld from the client there. The freelancer prices
 the stage they add, and the client still decides whether to fund any ticket in it. Adding a stage
-gives its author no seat on it: a seat still comes only from an accepted invitation or application.
+gives its author no seat on it: a seat still comes only from an accepted invitation or application —
+except that the service's seller, who owns the engagement, is seated on every stage of it (Decision
+#427).
 
 ##### Extension Logic
 
@@ -2529,11 +2541,19 @@ for them (Decision #337, ruling P3).
     signed webhook then settles, as for any order), and the wallet directly. A ticket line is never
     discounted by a promo code, and only the project's own client (its business, or its owner as an
     individual) can pay for it. The **Purchasing Gate** (§5) is enforced at every one of them.
-  - **Not built yet — flagged.** A payee today means the ticket is claimed or its stage holds an
-    accepted **team** seat; a single freelancer's stage seat is not yet a payee. A ticket with no
-    payee is refused at payment with "it can be bought once it's claimed" rather than prepaid: the
-    prepayment path above needs a stored funding scope that does not exist yet (Decision #165 flag
-    (a), #166 flag (a)). The basket says so on the line before Pay.
+  - **Superseded by prepaid escrow (Decision #197, the basket line Decision #428).** A ticket with no
+    payee is bought prepaid on every path — Buy Now, the basket and the wallet: its escrow is held
+    with no payee and the claim names one (§Escrow Lifecycle for Tickets). The basket's last
+    "it can be bought once it's claimed" refusal was removed with Decision #428.
+  - **Several stages (Decisions #428, #430).** A ticket that runs through more than one stage is
+    bought stage by stage: Buy now and Add to basket both list every stage at the ticket's own price
+    there, and the client ticks the stages they want (or all of them). The stage the ticket is in —
+    or, for a ticket in New, the first stage it runs through — is held in escrow at once; each later
+    stage ticked is **prepaid**: its money leaves the client's wallet now and is held in escrow the
+    moment the ticket reaches that stage, with no second charge. A later stage left unticked is held
+    by the Chain Reaction on arrival, as before. A basket carries one line per ticket stage. Stages
+    already paid for, stages the ticket has moved past and finished stages cannot be bought. A business
+    client's selection passes the spend gate as one spend, never stage by stage.
 - **Paid revisions (Decision #167).** A client may buy one revision round at a time against an
   open revision request on a ticket, only after the free rounds the listing promised
   (`free_revisions`) are used. The price is the project's source blueprint's
@@ -2577,6 +2597,34 @@ full — approval never completes a ticket it has nobody to pay (Decision #213).
 stage cannot be funded as a whole while any of its tickets has no price — the card checkout refuses
 it before anything is charged, so a card payment can never land in the wallet unheld.
 
+**A prepaid escrow nobody claims comes back (Decision #428).** Prepaid money waits a fixed window for
+a claim, then returns whole to the payer's wallet, with no fee, and the client is told: a shorter
+window on a productised service — the seller's own engagement, which they are expected to pick up at
+once — and a longer one on a client's own project, where hiring takes longer (5 and 7 days today;
+`finance-model.md` §8 holds the figures). The
+window is the hold's: it runs for the stage the ticket is in, from the moment it is held, and stops
+for good at the claim or assignment, after which an unstarted claim is the Claim Expiry rule's
+(§Resource Allocation). A later stage's hold, made by the Chain Reaction when the ticket arrives,
+starts its own window only if it too has nobody to pay. The client sees the window before paying
+("Held in escrow · Auto-refunded to your wallet if unclaimed after 7 days"). The ticket stays where
+it is, unpaid, ready to be funded again.
+
+**Prepaid later stages (Decision #430).** A later stage the client prepaid is reserved for the
+ticket: it is paid for, but nobody is bound to it and no refund window runs, because the work cannot
+start there yet. When the ticket arrives in that stage — by the Chain Reaction, a move or an
+approval — the prepayment becomes the stage's held escrow, under the same payee rule as any hold
+(the continuing freelancer or a team seat, else prepaid until a claim, with the window starting
+then), and work carries on even where the stage's Chain Reaction is off, since its money is already
+in escrow. A prepaid stage the ticket never reaches comes back to the client whole, with no fee:
+when the ticket is completed, cancelled or deleted, when the client takes that stage off the
+ticket, and when the stage it is at is refunded unclaimed by the window above (nothing later can
+start either). Releasing the stage at work never touches the stages prepaid after it.
+
+**Funding from New (Decision #428).** A ticket can be funded straight from the **New** backlog,
+before anyone is hired: one sitting in a stage is funded there, and one in the stage-less New lane is
+funded in the first stage it runs through and placed in it. Either way a funded New ticket moves to
+**Ready** at once, which puts it on the boards of the freelancers hired for that stage.
+
 > **Note on existing terminology:** The "Escrow Lifetimes by Project Type" table (under "Escrow,
 > Wallets & Finance" §2) describes the Pipeline lock trigger as "when a freelancer moves a ticket to
 > 'In Progress.'" In practice a freelancer claims and begins a ticket in the same action, so these
@@ -2598,7 +2646,9 @@ A claim whose escrow cannot be held is refused and the ticket moves to **Needs f
   before a claim the client moves freely, and payment state is a badge for the client, never a
   barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.) An
   unclaimed ticket — funded or not — goes to any column, the **New** backlog and **Completed**
-  included. New is the stage-less backlog, so claimed work never returns there: its hold, its price
+  included, but only into the stages it runs through: a stage the ticket does not include is closed
+  to it until the stage is added to the ticket (Decision #428; a ticket that lists no stages goes
+  anywhere). New is the stage-less backlog, so claimed work never returns there: its hold, its price
   and its delivery are reckoned against the stage it sits in. While a ticket is being dragged, every
   column it may not enter reads locked and says why (Decision #421). On the
   client's side, an unclaimed ticket is moved by the project's review authority and the ticket

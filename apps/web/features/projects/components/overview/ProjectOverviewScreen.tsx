@@ -23,6 +23,7 @@ import {
 	NextActionsBlock,
 	OverviewNotice,
 	PeopleBlock,
+	ProviderBlock,
 	ReadyBlock,
 	StageRunBlock,
 } from "./OverviewBlocks.tsx";
@@ -112,8 +113,13 @@ export function ProjectOverviewScreen(
 		task,
 		readiness,
 		personal,
+		service,
+		configures,
+		staffs,
 	} = workspace;
 	const participant = viewer === "participant";
+	// A service's client reads it as what they bought, so its provider leads the aside (#427).
+	const showProvider = service && viewer === "owner";
 	const hasRun = stages.length > 0;
 	// The run already states stage progress, and a Task has no stages to report — its one stage IS it.
 	const showStageMeter = !hasRun && !task;
@@ -135,7 +141,13 @@ export function ProjectOverviewScreen(
 						<MetaFacts items={hero.meta} />
 					</div>
 
-					<OverviewNotice status={hero.status} viewer={viewer} slug={slug} />
+					<OverviewNotice
+						status={hero.status}
+						viewer={viewer}
+						slug={slug}
+						service={service}
+						configures={configures}
+					/>
 				</header>
 
 				<div class="pjd__layout">
@@ -150,6 +162,7 @@ export function ProjectOverviewScreen(
 						<UpdatesBlock updates={updates} />
 					</div>
 					<div class="pjd__aside">
+						{showProvider && <ProviderBlock provider={hero.owner} handle={hero.handle} />}
 						{participant && <SubmissionsBlock submissions={submissions} slug={slug} />}
 						{participant && <ClaimableBlock claimable={claimable} />}
 						{participant && (
@@ -163,7 +176,7 @@ export function ProjectOverviewScreen(
 						{showMessages && <MessagesBlock channels={channels} />}
 						{brief && !personal && <TermsBlock brief={brief} />}
 						{people && !personal && (
-							<PeopleBlock people={people} roster={roster} slug={slug} viewer={viewer} />
+							<PeopleBlock people={people} roster={roster} slug={slug} staffs={staffs} />
 						)}
 					</div>
 				</div>

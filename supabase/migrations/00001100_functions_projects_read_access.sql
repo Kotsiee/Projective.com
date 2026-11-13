@@ -589,7 +589,7 @@ BEGIN
           SELECT tm.team_id FROM org.team_members tm WHERE tm.user_id = v_user_id AND tm.status = 'active'
       ))
     WHERE 
-      (p.owner_user_id = v_user_id OR pp.profile_id IN (SELECT bp.id FROM org.business_profiles bp WHERE bp.owner_user_id = v_user_id) OR (pp.profile_type = 'freelancer' AND pp.profile_id = v_user_id))
+      (p.owner_user_id = v_user_id OR p.client_user_id = v_user_id OR pp.profile_id IN (SELECT bp.id FROM org.business_profiles bp WHERE bp.owner_user_id = v_user_id) OR (pp.profile_type = 'freelancer' AND pp.profile_id = v_user_id))
       AND (p_category <> 'team' OR (EXISTS (SELECT 1 FROM projects.stage_assignments sa_team WHERE sa_team.project_stage_id IN (SELECT ps.id FROM projects.project_stages ps WHERE ps.project_id = p.id) AND sa_team.assignee_type = 'team' AND sa_team.team_id = p_category_id)))
       AND (p_category <> 'service' OR (EXISTS (SELECT 1 FROM projects.project_required_skills prs JOIN org.skills s ON s.id = prs.skill_id WHERE prs.project_id = p.id AND s.id = p_category_id)))
   ),
@@ -649,7 +649,7 @@ BEGIN
   SELECT ps.status::text INTO v_stage_status FROM projects.project_stages ps WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Stage not found or access denied'; END IF;
 
-  SELECT CASE WHEN p.owner_user_id = v_user_id OR EXISTS(SELECT 1 FROM org.business_profiles bp WHERE bp.id = p.client_business_id AND bp.owner_user_id = v_user_id) THEN 'owner' WHEN sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = v_user_id THEN 'assignee' WHEN sa.assignee_type = 'team' AND sa.team_id IN (SELECT tm.team_id FROM org.team_members tm WHERE tm.user_id = v_user_id AND tm.status = 'active') THEN 'assignee' ELSE 'viewer' END INTO v_user_role FROM projects.projects p LEFT JOIN projects.stage_assignments sa ON sa.project_stage_id = p_stage_id AND sa.status = 'accepted' WHERE p.id = p_project_id;
+  SELECT CASE WHEN COALESCE(p.client_user_id, p.owner_user_id) = v_user_id OR EXISTS(SELECT 1 FROM org.business_profiles bp WHERE bp.id = p.client_business_id AND bp.owner_user_id = v_user_id) THEN 'owner' WHEN sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = v_user_id THEN 'assignee' WHEN sa.assignee_type = 'team' AND sa.team_id IN (SELECT tm.team_id FROM org.team_members tm WHERE tm.user_id = v_user_id AND tm.status = 'active') THEN 'assignee' ELSE 'viewer' END INTO v_user_role FROM projects.projects p LEFT JOIN projects.stage_assignments sa ON sa.project_stage_id = p_stage_id AND sa.status = 'accepted' WHERE p.id = p_project_id;
 
   RETURN QUERY
   SELECT
@@ -676,7 +676,7 @@ BEGIN
   
   IF EXISTS (
     SELECT 1 FROM projects.projects
-    WHERE id = _project_id AND owner_user_id = auth.uid()
+    WHERE id = _project_id AND (owner_user_id = auth.uid() OR client_user_id = auth.uid())
   ) THEN
     RETURN true;
   END IF;
@@ -930,8 +930,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, org, fi
 -- #endregion
 
 -- #region 2. Review-authority RBAC helper
--- TRUE when the caller is the project owner or belongs to the paying client business. This is the
--- "client viewer" authority the spec requires for approving deliverables and confirming milestones.
+-- TRUE when the caller is the CLIENT PERSON — the project owner, or on a seller-owned service the buyer
+-- in `client_user_id` (Decision #427), never its seller — or belongs to the paying client business. This
+-- is the "client viewer" authority the spec requires for approving deliverables and confirming
+-- milestones, so a seller can never approve their own work.
 CREATE OR REPLACE FUNCTION projects.can_review_project(_project_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -943,14 +945,39 @@ AS $$
         SELECT 1 FROM projects.projects p
         WHERE p.id = _project_id
             AND (
-                p.owner_user_id = auth.uid()
+                COALESCE(p.client_user_id, p.owner_user_id) = auth.uid()
                 OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id))
             )
     );
 $$;
 
--- TRUE when the caller may staff the project: review authority, or a person-participant the owner
--- made an `admin` or `manager` (`set_member_role`). This is the authority behind inviting, answering
+-- TRUE when the caller may edit the engagement's own details — its brief, settings, stages, roles and
+-- reference files. On a seller-owned service (`client_user_id` set, Decision #427) that is its owner,
+-- the provider, alone: the client reads a service and never configures it. Everywhere else it is review
+-- authority, unchanged.
+CREATE OR REPLACE FUNCTION projects.can_edit_project_details(_project_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM projects.projects p
+        WHERE p.id = _project_id
+            AND (
+                (p.client_user_id IS NOT NULL AND p.owner_user_id = auth.uid())
+                OR (p.client_user_id IS NULL AND (
+                    p.owner_user_id = auth.uid()
+                    OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id))
+                ))
+            )
+    );
+$$;
+
+-- TRUE when the caller may staff the project: the configuring side (`can_edit_project_details` —
+-- review authority, or a seller-owned service's provider, Decision #427), or a person-participant the
+-- owner made an `admin` or `manager` (`set_member_role`). This is the authority behind inviting, answering
 -- requests, cancelling or dismissing invitations and managing a stage's invite link (Decision #145).
 -- Granting the `admin`/`manager` roles themselves stays review authority: each issuing door checks
 -- that separately, so a delegate can never appoint a peer.
@@ -961,7 +988,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, projects, org, auth
 AS $$
-    SELECT projects.can_review_project(_project_id)
+    SELECT projects.can_edit_project_details(_project_id)
         OR EXISTS (
             SELECT 1 FROM projects.project_participants pp
             WHERE pp.project_id = _project_id
@@ -1038,7 +1065,7 @@ AS $$
         SELECT 1 FROM projects.projects p
         WHERE p.id = p_project
             AND (
-                p.owner_user_id = auth.uid()
+                COALESCE(p.client_user_id, p.owner_user_id) = auth.uid()
                 OR (p.client_business_id IS NOT NULL
                     AND org.fn_member_can('business', p.client_business_id, p_cap))
             )
@@ -1097,7 +1124,8 @@ END;
 $$;
 
 -- May the caller move the CLIENT's money into this project's escrow? A personal project is paid for
--- by its owner from their own wallet (PRODUCT_SPEC §Escrow, Wallets & Finance #5), so only the owner.
+-- by its client person from their own wallet (PRODUCT_SPEC §Escrow, Wallets & Finance #5): the owner,
+-- or the buyer of a seller-owned service (`client_user_id`, Decision #427) — never the seller.
 -- A business project is paid for from the business wallet in the project's currency, so the caller
 -- must hold vault `spend` on that wallet — the same grant the business checkout asks for; owning the
 -- project is not a licence to spend the business's money. Before the business has a wallet in that
@@ -1121,7 +1149,7 @@ BEGIN
     IF auth.uid() IS NULL THEN
         RETURN false;
     END IF;
-    SELECT p.owner_user_id, p.client_business_id, upper(COALESCE(p.currency, 'USD'))
+    SELECT COALESCE(p.client_user_id, p.owner_user_id), p.client_business_id, upper(COALESCE(p.currency, 'USD'))
       INTO v_owner, v_business, v_currency
       FROM projects.projects p WHERE p.id = p_project;
     IF NOT FOUND THEN
@@ -1184,9 +1212,15 @@ BEGIN
         RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
     END IF;
 
-    -- Only review authority (the owner, or an active member of the paying client business) may
-    -- drive lifecycle transitions.
-    IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
+    -- Review authority (the client person, or an active member of the paying client business) drives
+    -- every transition. On a seller-owned service (Decision #427) its provider configures the
+    -- engagement, so it may also publish it and put it on or off hold; completing, cancelling and
+    -- archiving stay the client's, whose money the escrow holds. Elsewhere the two predicates agree.
+    IF v_actor IS NULL OR NOT (
+        projects.can_review_project(p_project_id)
+        OR (p_to_status IN ('active'::project_status, 'on_hold'::project_status)
+            AND projects.can_edit_project_details(p_project_id))
+    ) THEN
         RAISE WARNING '[PROJECT_LIFECYCLE_RPC] denied actor=% has no review authority owner=% project=%',
             v_actor, v_owner, p_project_id;
         RAISE EXCEPTION 'Only the project owner or its client business may change the project status.'
@@ -1243,7 +1277,7 @@ BEGIN
         SELECT count(*) INTO v_held_escrow
         FROM finance.escrows e
         JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-        WHERE ps.project_id = p_project_id AND e.status = 'held';
+        WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved');
         IF v_held_escrow > 0 THEN
             RAISE EXCEPTION 'Cannot complete: % escrow hold(s) are unsettled. Release or refund them first.', v_held_escrow
                 USING ERRCODE = 'check_violation';
@@ -1372,12 +1406,12 @@ BEGIN
             JOIN projects.project_stages ps ON ps.id = ss.project_stage_id
             WHERE ps.project_id = p.id AND ss.status = 'pending_review'
         ),
-        -- Escrow still locked (unsettled money) on the project.
+        -- Escrow still locked (unsettled money) on the project, prepaid later stages included (#430).
         'held_escrows', (
             SELECT count(*)
             FROM finance.escrows e
             JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-            WHERE ps.project_id = p.id AND e.status = 'held'
+            WHERE ps.project_id = p.id AND e.status IN ('held', 'reserved')
         ),
         -- Nearest upcoming milestone deadline (ticket due dates + stage file due dates).
         'next_milestone_at', (
@@ -1528,7 +1562,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, projects, org
 AS $$
-    SELECT p.id FROM projects.projects p WHERE p.owner_user_id = p_user_id
+    SELECT p.id FROM projects.projects p WHERE p.owner_user_id = p_user_id OR p.client_user_id = p_user_id
     UNION
     SELECT pp.project_id FROM projects.project_participants pp
      WHERE pp.profile_type = 'freelancer' AND pp.profile_id = p_user_id

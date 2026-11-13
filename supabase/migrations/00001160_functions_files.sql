@@ -1560,7 +1560,7 @@ AS $$
         WHERE m.user_id = auth.uid () AND m.status = 'active' AND b.status <> 'archived'
     ),
     project_roads AS (
-        SELECT p.id FROM projects.projects p WHERE p.owner_user_id = auth.uid ()
+        SELECT p.id FROM projects.projects p WHERE p.owner_user_id = auth.uid () OR p.client_user_id = auth.uid ()
         UNION
         SELECT pp.project_id
         FROM projects.project_participants pp

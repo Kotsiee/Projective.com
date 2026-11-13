@@ -54,7 +54,7 @@ import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import { resolveBoardAccess } from "../core/board-access.ts";
-import { isOwnerRole, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
+import { canArchiveEngagement, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { currentNavView } from "../core/nav-activity-model.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
@@ -480,7 +480,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					title={view.title}
 					starred={starred.value}
 					onToggleStar={toggleStar}
-					canArchive={isOwnerRole(view.viewerRole)}
+					canArchive={canArchiveEngagement(view.kind, view.viewerRole)}
 					onMenuAction={onMenuAction}
 				/>
 

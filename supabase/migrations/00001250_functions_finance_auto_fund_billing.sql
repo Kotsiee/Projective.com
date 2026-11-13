@@ -125,7 +125,7 @@ DECLARE
 BEGIN
     SELECT t.id, t.title, t.current_stage_id, t.project_id,
            projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) AS amount,
-           p.client_business_id, p.owner_user_id, pg_catalog.upper(COALESCE(p.currency, 'USD')) AS currency,
+           p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id) AS owner_user_id, pg_catalog.upper(COALESCE(p.currency, 'USD')) AS currency,
            p.format::text AS format, p.structure_variation::text AS structure_variation,
            ps.name AS stage_name
       INTO v

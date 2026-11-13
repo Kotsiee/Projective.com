@@ -22,8 +22,10 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 >
 > **Status (2026-10-13) — pipeline instantiation is a real transaction (Decision #209).** "Add to
 > Projects" is one `marketplace.instantiate_service_blueprint` call
-> ([`../database/marketplace/Functions.md`](../database/marketplace/Functions.md)): project, one
-> stage per `stage_template` entry at its standard price, every room and the request record — and
+> ([`../database/marketplace/Functions.md`](../database/marketplace/Functions.md)): project — owned
+> by the seller, with the buyer as its `client_user_id` (Decision #427) — one stage per
+> `stage_template` entry at its standard price with the seller seated on each, every room and the
+> request record — and
 > no tickets: the client creates them (Decision #409, amending #209), idempotent on the client's key and on the buyer's live draft. The
 > listing's CTA reads `marketplace.get_service_draft`, and "Remove draft" is
 > `marketplace.archive_service_draft`. Both services now resolve the listing they act on through
@@ -176,8 +178,9 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
    refused (`PC409`), not converted — whether a buyer may instantiate a seller's pipeline in another
    currency, and who carries the FX, is a business call. (b) Required intake answers are stored but
    not enforced at instantiation: the `/view` CTA collects none, and the draft commits nobody — decide
-   whether the funding step (or the hire) should enforce them. (c) The seller cannot read the
-   instantiation's answers yet (`service_instantiations` RLS is owner-only). (d) A team or business
+   whether the funding step (or the hire) should enforce them. (c) ~~The seller cannot read the
+   instantiation's answers~~ — closed by Decision #427: the seller owns the engagement and reads its
+   request (`"Engagement owners view their service requests"`). (d) A team or business
    workspace is refused (`workspaceId` → 422); only a personal workspace instantiates.
 5. **The listing's room provider is not read at booking (Decision #217, §1.4).** A seller can pick a
    provider per Session listing and it is stored, but the session room is still created on the

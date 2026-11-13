@@ -24,6 +24,7 @@ import {
 	DEV_FILE_ACCESSES,
 	DEV_ENGAGEMENT_ORIGINS,
 	DEV_FUNDING_STATES,
+	DEV_PREPAID_STAGES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
 	DEV_MEMBER_CLIENTS,
@@ -660,6 +661,15 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.fundingState}
 						disabled={!o.enabled}
 						onChange={(fundingState) => patchDevContext({ fundingState })}
+					/>
+				</Field>
+				<Field label="Prepaid stages" hint="ticket funding line · Buy now · basket stages">
+					<Segment
+						name="Prepaid stages"
+						options={DEV_PREPAID_STAGES}
+						value={o.prepaidStages}
+						disabled={!o.enabled}
+						onChange={(prepaidStages) => patchDevContext({ prepaidStages })}
 					/>
 				</Field>
 

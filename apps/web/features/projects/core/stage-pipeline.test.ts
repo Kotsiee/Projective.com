@@ -1,9 +1,14 @@
 import { assertEquals } from "@std/assert";
 import {
+	bandDropAt,
+	bandMates,
 	cardDropZone,
+	neighbourOf,
 	type PipelineSlot,
 	placeStage,
 	seamAt,
+	sequentialStage,
+	setBandMates,
 	swapStage,
 	withoutStage,
 } from "./stage-pipeline.ts";
@@ -101,4 +106,47 @@ Deno.test("swapStage — neighbours trade places and the bands keep their shape"
 	assertEquals(spec(swapStage(list, "a", 1)), "b +a c");
 	assertEquals(swapStage(list, "a", -1), null);
 	assertEquals(swapStage(list, "c", 1), null);
+});
+
+Deno.test("bandMates — the other stages of a step, empty for a stage that runs alone", () => {
+	assertEquals(bandMates(slots("a +b +c d"), "b"), ["a", "c"]);
+	assertEquals(bandMates(slots("a +b +c d"), "d"), []);
+	assertEquals(bandMates(slots("a b"), "x"), []);
+});
+
+Deno.test("sequentialStage — the stage leaves its step and its partners stay together", () => {
+	assertEquals(spec(sequentialStage(slots("a +b +c d"), "b")), "a +c b d");
+	assertEquals(spec(sequentialStage(slots("a +b +c d"), "a")), "a b +c d");
+	assertEquals(spec(sequentialStage(slots("x a +b"), "b")), "x a b");
+	assertEquals(sequentialStage(slots("a b"), "b"), null);
+});
+
+Deno.test("setBandMates — joins the named stages and releases the rest beside the step", () => {
+	assertEquals(spec(setBandMates(slots("a b c d"), "a", ["c"])), "a +c b d");
+	assertEquals(spec(setBandMates(slots("a b c d"), "b", ["c", "d"])), "a b +c +d");
+	assertEquals(spec(setBandMates(slots("a +b +c d"), "a", ["b"])), "a +b c d");
+	assertEquals(spec(setBandMates(slots("a +b c +d"), "a", ["d"])), "a +d b c");
+	assertEquals(spec(setBandMates(slots("a +b c"), "b", [])), "a b c");
+	assertEquals(setBandMates(slots("a +b c"), "a", ["b"]), null);
+	assertEquals(setBandMates(slots("a b"), "a", ["x"]), null);
+});
+
+Deno.test("neighbourOf — the stage before, else the one after", () => {
+	assertEquals(neighbourOf(slots("a b c"), "b"), "a");
+	assertEquals(neighbourOf(slots("a b c"), "a"), "b");
+	assertEquals(neighbourOf(slots("a"), "a"), null);
+});
+
+Deno.test("bandDropAt — a row's edges are its seams and its middle joins its band", () => {
+	const rows = [
+		{ first: 0, last: 0, opener: "a", top: 0, height: 100 },
+		{ first: 1, last: 2, opener: "b", top: 110, height: 100 },
+	];
+	assertEquals(bandDropAt(10, rows), { kind: "seam", before: 0 });
+	assertEquals(bandDropAt(150, rows), { kind: "join", stageId: "b" });
+	assertEquals(bandDropAt(200, rows), { kind: "seam", before: 3 });
+	assertEquals(bandDropAt(105, rows), { kind: "seam", before: 1 });
+	assertEquals(bandDropAt(-40, rows), { kind: "seam", before: 0 });
+	assertEquals(bandDropAt(900, rows), { kind: "seam", before: 3 });
+	assertEquals(bandDropAt(5, []), { kind: "seam", before: 0 });
 });

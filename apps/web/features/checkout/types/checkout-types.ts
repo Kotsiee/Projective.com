@@ -99,6 +99,8 @@ export interface CheckoutContext {
 	projectId?: string | null;
 	/** `?service_id=` narrowing — a checkout scoped to one service's lines. */
 	serviceId?: string | null;
+	/** `?ticket_id=` narrowing (Decision #430) — a checkout scoped to one ticket's stage lines. */
+	ticketId?: string | null;
 	/**
 	 * The payment route the buyer has selected, when they have. Read server-side only to decide
 	 * whether the gateway-contribution offer applies — a wallet or invoice payment touches no card

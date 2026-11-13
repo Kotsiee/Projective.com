@@ -134,9 +134,39 @@ export const BasketService = {
 		ticketId: string,
 		projectId: string,
 		ctx: CheckoutContext,
+		stageIds?: readonly string[],
 	): Promise<CheckoutResponse<BasketPayload>> {
 		return BasketService.addItem(
-			{ basketId: null, itemType: "project_ticket", itemId: projectId, ticketId },
+			{
+				basketId: null,
+				itemType: "project_ticket",
+				itemId: projectId,
+				ticketId,
+				...(stageIds && stageIds.length > 0 ? { stageIds: [...stageIds] } : {}),
+			},
+			ctx,
+		);
+	},
+
+	/**
+	 * Make one ticket's lines in the basket exactly `stageIds`, one line per stage (Decision #430) — the
+	 * Buy now stage picker's write. An empty selection removes them all.
+	 */
+	setTicketStages(
+		ticketId: string,
+		projectId: string,
+		ctx: CheckoutContext,
+		stageIds: readonly string[],
+	): Promise<CheckoutResponse<BasketPayload>> {
+		return BasketService.addItem(
+			{
+				basketId: null,
+				itemType: "project_ticket",
+				itemId: projectId,
+				ticketId,
+				stageIds: [...stageIds],
+				replaceStages: true,
+			},
 			ctx,
 		);
 	},

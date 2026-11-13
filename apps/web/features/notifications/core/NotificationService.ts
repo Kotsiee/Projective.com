@@ -69,17 +69,18 @@ export const NotificationService = {
 		return sim() === "burst";
 	},
 
-	/** One page of a tab and view, newest first; `before` is the previous page's `nextCursor`. */
+	/** One page of a filter slice, newest first; `before` is the previous page's `nextCursor`. */
 	async list(
 		tab: InboxTab,
 		view: InboxView,
 		before: string | null = null,
 		limit = 20,
+		query = "",
 	): Promise<InboxResult<NotificationPage>> {
 		const mode = sim();
-		if (mode) return { ok: true, data: simList(mode, tab, view, before, limit) };
+		if (mode) return { ok: true, data: simList(mode, tab, view, before, limit, query) };
 		try {
-			const res = await fetch(`/api/notifications?${listQuery(tab, view, before, limit)}`, {
+			const res = await fetch(`/api/notifications?${listQuery(tab, view, before, limit, query)}`, {
 				headers: { accept: "application/json" },
 			});
 			const body = await res.json().catch(() => null);

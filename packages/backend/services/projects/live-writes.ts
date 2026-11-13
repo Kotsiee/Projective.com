@@ -12,6 +12,7 @@ import {
 	FIELD_LOCKED_POST_ONBOARDING,
 	NEW_LANE_REFUSAL_MESSAGE,
 	SERVICE_STAGE_REFUSAL_MESSAGE,
+	STAGE_NOT_INCLUDED_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	isSingleRoomEngagement,
 	isTaskProject,
@@ -67,7 +68,7 @@ import {
 	filesDb,
 	orgDb,
 	projectsDb,
-	resolveReviewAuthority,
+	resolveConfigureAuthority,
 	senderOf,
 	toSubmissionStatus,
 } from "./live-support.ts";
@@ -184,6 +185,8 @@ interface SetupProjectRow {
 	location_restriction: string[] | null;
 	language_requirement: string[] | null;
 	owner_user_id: string;
+	/** The buyer of a seller-owned service (Decision #427); null when the owner is the client side. */
+	client_user_id?: string | null;
 	client_business_id: string | null;
 	archived_at: string | null;
 	auto_fund_override?: string | null;
@@ -266,6 +269,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"location_restriction",
 	"language_requirement",
 	"owner_user_id",
+	"client_user_id",
 	"client_business_id",
 	"archived_at",
 	"auto_fund_override",
@@ -606,9 +610,10 @@ function toSetup(
 		// its form renders no stage list, so a figure derived from the stages this projection happens to
 		// carry would read zero on a fully staffed engagement — see `ProjectSetupSchema.onboardedCount`.
 		onboardedCount: onboarded.total,
-		// The setup surface is review authority's — the owner, or an active member of the paying
-		// business — the same predicate `create_stage`, `reorder_stages` and the write policies use, so
-		// the controls drawn are exactly the ones the database accepts.
+		// The setup surface is the configuring side's — review authority (the owner, or an active member
+		// of the paying business), or a seller-owned service's provider (Decision #427) — the same
+		// predicate `reorder_stages` and the write policies use (`can_edit_project_details`), so the
+		// controls drawn are exactly the ones the database accepts.
 		viewerIsClient: viewerCanConfigure,
 		kind: row.source_blueprint_id ? "service" : "project",
 		autoFundInherited,
@@ -835,7 +840,7 @@ async function composeSetup(
 		fetchStaffingRoles(actor, stageIds),
 		fetchProjectAttachments(actor, row.id),
 		fetchOnboardedCounts(actor, stageIds),
-		resolveReviewAuthority(actor, row.owner_user_id, row.client_business_id),
+		resolveConfigureAuthority(actor, row.owner_user_id, row.client_user_id, row.client_business_id),
 		inheritedAutoFund(actor, row.client_business_id),
 	]);
 	return toSetup(row, stages, roles, attachments, viewerCanConfigure, onboarded, autoFundInherited);
@@ -946,6 +951,8 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		message.includes("A seat a freelancer has taken") ||
 		// `move_ticket`'s New lane (Decision #421): only a pristine ticket leaves its stage.
 		message.includes(NEW_LANE_REFUSAL_MESSAGE) ||
+		// `move_ticket`'s stage list (Decision #428): a ticket enters only the stages it lists.
+		message.includes(STAGE_NOT_INCLUDED_MESSAGE) ||
 		message.includes("still open") ||
 		message.includes("unsettled") ||
 		// `comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`: a reply whose original is not
@@ -2293,11 +2300,12 @@ async function resolveTicketOwner(
 		.eq("project_id", projectRowId)
 		.eq("profile_id", found.user_id)
 		.maybeSingle();
+	// The owner, or a seller-owned service's buyer (Decision #427), who creates its tickets.
 	const { data: owned } = await projectsDb(actor)
 		.from("projects")
 		.select("id")
 		.eq("id", projectRowId)
-		.eq("owner_user_id", found.user_id)
+		.or(`owner_user_id.eq.${found.user_id},client_user_id.eq.${found.user_id}`)
 		.maybeSingle();
 	if (!participant && !owned) {
 		return {
@@ -2394,6 +2402,14 @@ async function resolveTicketStages(
 }
 
 /**
+ * The `tickets.description` value for an editor body: the NOT NULL column's own empty `{}` when the
+ * body has no text, so `fn_enforce_ticket_checkout_desc` still reads it as empty, else `{ html }`.
+ */
+export function ticketDescriptionJson(html: string): { html: string } | Record<string, never> {
+	return flattenRichText(html).trim().length === 0 ? {} : { html };
+}
+
+/**
  * Create or update one ticket, and return its id.
  *
  * The id rather than a card: composing a {@link BoardCard} needs the ticket's history, submissions,
@@ -2433,8 +2449,8 @@ export async function commitTicketRow(
 	// The purchasing gate (PRODUCT_SPEC §Creation & Purchasing Gate). `fn_enforce_ticket_checkout_desc`
 	// enforces it, but only fires when `description IS NULL OR = '{}'` — and writing `{"html": ""}`, as
 	// this did, satisfies neither, so the trigger never saw an empty description and a ticket could be
-	// bought with none. Refused here with the reason, and the empty case is written as a real NULL
-	// below so the database's own guard is armed rather than bypassed.
+	// bought with none. Refused here with the reason, and the empty case is written as the column's own
+	// empty value, `{}`, so the database's own guard is armed rather than bypassed.
 	const html = clamp(input.description, RICH_TEXT_MAX);
 	const descriptionText = flattenRichText(html);
 	if (input.status !== "backlog" && descriptionText.trim().length === 0) {
@@ -2456,8 +2472,7 @@ export async function commitTicketRow(
 	const db = projectsDb(actor);
 	const columns: Record<string, unknown> = {
 		title: clamp(input.title, 200),
-		// NULL rather than `{"html": ""}` when there is nothing in it — see the gate above.
-		description: descriptionText.trim().length === 0 ? null : { html },
+		description: ticketDescriptionJson(html),
 		text_description: descriptionText,
 		current_stage_id: input.stageId,
 		owner_user_id: owner.id,

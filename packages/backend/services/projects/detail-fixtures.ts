@@ -303,14 +303,23 @@ function membersOf(row: ProjectSummary): ProjectMember[] {
 
 // #region Viewer capability
 /**
- * Whether the acting user is the client/creator — gates the client-only "Create New Stage" action.
- * The owner is the client side on every engagement (an instantiated service is the buyer's own); a
- * **project** also counts its admin and client seats, a **service** only an explicit `client` seat.
- * The live board's `viewerIsClientOf` applies the same rule.
+ * Whether the acting user is on the client side. An `owner` is the client of an engagement they
+ * posted; a **project** also counts its admin and client seats, a **service** only its `client` seat —
+ * its seller owns it and works it from the provider side (Decision #427). The live board's
+ * `viewerIsClientOf` applies the same rule.
  */
 function viewerIsClient(row: ProjectSummary): boolean {
 	if (row.viewerRole === "owner" || row.viewerRole === "client") return true;
 	return row.kind === "project" && row.viewerRole === "admin";
+}
+
+/**
+ * Whether the acting user configures the engagement (`projects.can_edit_project_details`). A service is
+ * configured by its seller — the corpus's `freelancer` seat, which owns every service row — and only
+ * read by its client (Decision #427); everything else is configured by its client side.
+ */
+function viewerCanConfigure(row: ProjectSummary): boolean {
+	return row.kind === "service" ? row.viewerRole === "freelancer" : viewerIsClient(row);
 }
 // #endregion
 
@@ -334,7 +343,7 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 		viewerRole: row.viewerRole,
 		viewerIsClient: viewerIsClient(row),
 		// The corpus's admin and client seats stand in for members of the paying business.
-		viewerCanConfigure: viewerIsClient(row),
+		viewerCanConfigure: viewerCanConfigure(row),
 		// Every corpus row is one of the viewer's OWN engagements (the feed is "my projects"), so the
 		// stub path has no stranger to resolve: the client side is the owner, everyone else is on it.
 		viewerAccess: accessOf(viewerIsClient(row), true),

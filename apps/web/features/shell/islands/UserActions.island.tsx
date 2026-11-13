@@ -30,8 +30,17 @@ import { WorkspaceService } from "@web/features/workspaces/core/WorkspaceService
 import { useContextSwitch } from "@web/features/workspaces/core/useContextSwitch.ts";
 import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx";
 import NotificationDrawer from "@web/features/notifications/islands/NotificationDrawer.island.tsx";
-import { inboxSummary } from "@web/features/notifications/core/notification-state.ts";
-import { basketCount } from "@web/features/checkout/core/basket-state.ts";
+import {
+	inboxSummary,
+	startInboxPolling,
+} from "@web/features/notifications/core/notification-state.ts";
+import { preloadNotificationDrawer } from "@web/features/notifications/core/notification-drawer-lazy.ts";
+import { preloadBasketDrawer } from "@web/features/checkout/core/basket-drawer-lazy.ts";
+import {
+	basketCount,
+	basketDrawerOpen,
+	registerBasketDrawerHost,
+} from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
 import { presenceAt, setupStepHref, simulatedSetup } from "@web/features/shell/core/account-setup.ts";
@@ -135,7 +144,8 @@ export default function UserActions(
 	const createOpen = useSignal(false);
 	const profileOpen = useSignal(false);
 	const notifOpen = useSignal(false);
-	const basketOpen = useSignal(false);
+	// Shared, so a ticket's In basket control elsewhere on the page opens this same drawer.
+	const basketOpen = basketDrawerOpen;
 	// Mobile-only account side-sheet (the avatar's tap target below --bp-md, replacing the desktop
 	// Popover — see Part D.3 "Mobile User").
 	const accountOpen = useSignal(false);
@@ -144,6 +154,7 @@ export default function UserActions(
 	// The desktop popover's first focus: the Acting-as row, so the presence link (whose tooltip opens on
 	// focus) is never focused programmatically on every open.
 	const actingRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => startInboxPolling(), []);
 
 	// The account popover's active sub-view, and whether the setup checklist is unfolded.
 	const view = useSignal<AccountView>("main");
@@ -250,6 +261,7 @@ export default function UserActions(
 	const isClient = roleKey === "client";
 	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192).
 	const restricted = effCtx.restricted;
+	useEffect(() => (restricted ? undefined : registerBasketDrawerHost()), [restricted]);
 
 	// The PERSON's handle. In an entity context `UserContext.handle` is the entity's slug, so only the
 	// setup read (or a personal context) can name the person.
@@ -982,6 +994,8 @@ export default function UserActions(
 				class="shell-util__btn"
 				aria-label={hasUnseen ? "Notifications — new updates" : "Notifications"}
 				aria-haspopup="dialog"
+				onPointerEnter={preloadNotificationDrawer}
+				onFocus={preloadNotificationDrawer}
 				onClick={() => (notifOpen.value = true)}
 			>
 				<NavIcon name="notifications" />
@@ -1010,6 +1024,8 @@ export default function UserActions(
 						: "Basket"}
 					aria-current={onBasketFlow ? "page" : undefined}
 					aria-haspopup="dialog"
+					onPointerEnter={preloadBasketDrawer}
+					onFocus={preloadBasketDrawer}
 					onClick={() => (basketOpen.value = true)}
 				>
 					<NavIcon name="basket" />
@@ -1074,7 +1090,7 @@ export default function UserActions(
 				</div>
 			</Drawer>
 
-			{/* The real inbox (DESIGN_SYSTEM §D.9); mounted always, as it runs the dot's poller. */}
+			{/* The real inbox (DESIGN_SYSTEM §D.9); a light host whose feed UI loads on intent or open. */}
 			<NotificationDrawer open={notifOpen} />
 
 			{
@@ -1083,7 +1099,7 @@ export default function UserActions(
 			  used to sit inline here and drew three hard-coded rows with hard-coded prices that belonged
 			  to nothing anyone could pay for. Mounted unconditionally (not behind `basketOpen`) because
 			  it is what reads the count the control above indicates, and because its stylesheet reaches
-			  the page only through this island's client bundle.
+			  the page only through this island's client bundle. Its panel loads on intent or open.
 			*/
 			}
 			<BasketDrawer open={basketOpen} owner={basketOwner} />

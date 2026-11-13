@@ -6,7 +6,7 @@ import type {
 	ScopeOption,
 	ServiceOption,
 } from "@projective/types/projects";
-import { defaultProjectSortDir, matchesInvolvement } from "@projective/types/projects";
+import { defaultProjectSortDir, feedViewOf, matchesInvolvement } from "@projective/types/projects";
 import { allProjects, allScopes, allServices } from "./fixtures.ts";
 import { matchesProjectKey } from "./project-identity.ts";
 
@@ -28,7 +28,7 @@ const SCOPE_ORDER: Record<string, number> = {
 // #region View
 /** Map the top-level view tab to the engagement kind it shows. */
 function matchesView(row: ProjectSummary, view: ProjectView): boolean {
-	return view === "engagements" ? row.kind === "service" : row.kind === "project";
+	return feedViewOf(row) === view;
 }
 // #endregion
 

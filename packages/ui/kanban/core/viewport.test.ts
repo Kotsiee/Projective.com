@@ -1,6 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import {
 	boardWheelDelta,
+	EDGE_MAX_SPEED,
+	edgeScrollVelocity,
+	settleTarget,
 	snapTarget,
 	WHEEL_LINE_PX,
 	wheelPixels,
@@ -55,4 +58,55 @@ Deno.test("no snap at an edge, without overflow, or on the target already", () =
 Deno.test("a snap past the last reachable offset is clamped to it", () => {
 	assertEquals(snapTarget(860, [0, 284, 568, 852, 1136], 0, 900), 852);
 	assertEquals(snapTarget(-300, [0, -284, -568], -700, 0), -284);
+});
+
+/** Four 272px columns with a 12px gap: starts 0 · 284 · 568 · 852, viewed 700px wide. */
+const COLS = [0, 284, 568, 852].map((leftAt) => ({ leftAt, width: 272 }));
+
+Deno.test("settling after a leftward scroll brings the leftmost column in view flush left", () => {
+	assertEquals(settleTarget(400, COLS, 700, 0, 424, -1), 284);
+	assertEquals(settleTarget(100, COLS, 700, 0, 424, -1), 0);
+});
+
+Deno.test("settling after a rightward scroll brings the rightmost column in view flush right", () => {
+	// Viewport 300…1000 shows the fourth column partly (852…1124): its right edge lands on 1000+.
+	assertEquals(settleTarget(300, COLS, 700, 0, 424, 1), 424);
+	// Viewport 50…750 shows the third column partly (568…840): its end goes flush right.
+	assertEquals(settleTarget(50, COLS, 700, 0, 424, 1), 140);
+});
+
+Deno.test("a settle in a gap aligns the neighbouring column, never past the bounds", () => {
+	assertEquals(settleTarget(278, COLS, 700, 0, 424, -1), 284);
+	assertEquals(settleTarget(130, COLS, 700, 0, 135, 1), 135);
+});
+
+Deno.test("no direction falls back to the nearest start; edges and no overflow do nothing", () => {
+	assertEquals(settleTarget(300, COLS, 700, 0, 424, 0), 284);
+	assertEquals(settleTarget(0, COLS, 700, 0, 424, -1), null);
+	assertEquals(settleTarget(424, COLS, 700, 0, 424, 1), null);
+	assertEquals(settleTarget(10, COLS, 700, 0, 0.5, 1), null);
+	assertEquals(settleTarget(284, COLS, 700, 0, 424, -1), null);
+});
+
+Deno.test("a right-to-left board settles in the same physical terms", () => {
+	// The same layout with `scrollLeft` running -424…0, the start column flush right at 0.
+	const rtl = COLS.map((c) => ({ leftAt: c.leftAt - 424, width: c.width }));
+	assertEquals(settleTarget(-24, rtl, 700, -424, 0, -1), -140);
+	assertEquals(settleTarget(-374, rtl, 700, -424, 0, 1), -284);
+});
+
+Deno.test("edge auto-scroll is zero mid-board and rises linearly to full speed at the edge", () => {
+	assertEquals(edgeScrollVelocity(500, 0, 1000), 0);
+	assertEquals(edgeScrollVelocity(0, 0, 1000), -EDGE_MAX_SPEED);
+	assertEquals(edgeScrollVelocity(1000, 0, 1000), EDGE_MAX_SPEED);
+	assertEquals(edgeScrollVelocity(40, 0, 1000), -EDGE_MAX_SPEED / 2);
+	assertEquals(edgeScrollVelocity(960, 0, 1000), EDGE_MAX_SPEED / 2);
+	assertEquals(edgeScrollVelocity(-50, 0, 1000), -EDGE_MAX_SPEED);
+	assertEquals(edgeScrollVelocity(80, 0, 1000), 0);
+});
+
+Deno.test("a narrow board shrinks its edge zones so they never meet", () => {
+	assertEquals(edgeScrollVelocity(150, 0, 300), 0);
+	assert(edgeScrollVelocity(70, 0, 300) < 0);
+	assertEquals(edgeScrollVelocity(0, 0, 0), 0);
 });

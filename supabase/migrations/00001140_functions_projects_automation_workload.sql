@@ -146,7 +146,7 @@ BEGIN
     v_sev := COALESCE(v_sev, 0);
 
     FOR r IN
-        SELECT wr.id AS report_id, wr.ticket_id, p.owner_user_id, p.client_business_id
+        SELECT wr.id AS report_id, wr.ticket_id, COALESCE(p.client_user_id, p.owner_user_id) AS owner_user_id, p.client_business_id
         FROM projects.ticket_workload_reports wr
         JOIN projects.tickets t ON t.id = wr.ticket_id
         JOIN projects.projects p ON p.id = t.project_id
@@ -406,7 +406,8 @@ BEGIN
         v_auto := finance.fn_auto_fund_on_needs_funding(p_ticket_id);
     END IF;
 
-    SELECT t.title, t.slug AS ticket_slug, p.id AS project_id, p.slug AS project_slug, p.owner_user_id
+    SELECT t.title, t.slug AS ticket_slug, p.id AS project_id, p.slug AS project_slug,
+           COALESCE(p.client_user_id, p.owner_user_id) AS owner_user_id
     INTO v
     FROM projects.tickets t JOIN projects.projects p ON p.id = t.project_id
     WHERE t.id = p_ticket_id;

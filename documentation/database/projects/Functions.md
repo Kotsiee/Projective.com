@@ -26,7 +26,8 @@ The four `SECURITY DEFINER` helpers every policy and RPC in this domain leans on
 
 ### `projects.has_project_access(_project_id uuid) → boolean`
 
-Defined in `00001100`. True for, in order: the project's owner (`owner_user_id`); a freelancer
+Defined in `00001100`. True for, in order: the project's owner (`owner_user_id`) or, on a
+seller-owned service, its buyer (`client_user_id`, Decision #427); a freelancer
 participant (`project_participants`, `profile_type = 'freelancer'`); the owner of a participating
 business (`profile_type = 'business'`); a freelancer holding a stage assignment on the project; an
 active member (`org.team_members.status = 'active'`) of a team holding a stage assignment.
@@ -47,9 +48,11 @@ caller check of its own — it answers for `auth.uid()`, so a guest gets `false`
 
 ### `projects.can_review_project(_project_id uuid) → boolean`
 
-`00001100` §2. The "client viewer" authority: `p.owner_user_id = auth.uid() OR
-(p.client_business_id IS NOT NULL AND org.is_active_business_member(p.client_business_id))`.
-Deliberately **not** true for an assignee. It gates reads (`/details`, `/preview`, the client side of
+`00001100` §2. The "client viewer" authority: `COALESCE(p.client_user_id, p.owner_user_id) =
+auth.uid() OR (p.client_business_id IS NOT NULL AND org.is_active_business_member(p.client_business_id))`
+— the **client person** is the buyer of a seller-owned service (`client_user_id`, Decision #427), else
+the owner, so a service's seller can never approve or settle their own work. Deliberately **not** true
+for an assignee. It gates reads (`/details`, `/preview`, the client side of
 the board — Decision #163), comments and the client-side configuration doors, and is the FIRST check
 of every adjudicating door; on a business project the doors that commit the business additionally
 ask a capability ([Business authority](#business-authority-one-capability-per-act-bb2)), so a plain
@@ -59,15 +62,28 @@ BB2 deliberately did not narrow this predicate.
 `anon`, `authenticated`, `service_role` (it is a policy predicate, so it must run as the invoking
 role). An unknown id and a guest both answer `false`.
 
+### `projects.can_edit_project_details(_project_id uuid) → boolean`
+
+`00001100` §2 (Decision #427). **The configuring side**: on a seller-owned service (`client_user_id`
+set) its owner — the provider — alone; on every other engagement exactly `can_review_project`. The
+gate on editing the engagement's own details: the `projects.projects` UPDATE policy, the
+`project_stages` and `stage_staffing_roles` write policies, the `project_attachments` writes,
+`delete_stage`, `reorder_stages`, `sanitize_single_room_topology`, `create_stage_open_seat`,
+`set_member_role` and offering `admin` / `manager`. A service's client reads its details and never
+writes them, at the database as in the UI. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`,
+`search_path = public, projects, org, auth`; `EXECUTE`: `anon`, `authenticated`, `service_role` (a
+policy predicate). TS mirror: `resolveConfigureAuthority` (`live-support.ts`).
+
 ### `projects.can_manage_project_members(_project_id uuid) → boolean`
 
-`00001100` §2 (Decision #145). **Staffing authority**: `can_review_project(_project_id)`, or the caller
+`00001100` §2 (Decision #145; #427). **Staffing authority**: `can_edit_project_details(_project_id)` —
+review authority, or a seller-owned service's provider — or the caller
 holds a person-participant row on the project whose `role` is `admin` or `manager` (written by
 `set_member_role` or an accepted invitation). The gate on inviting, answering requests, cancelling or
 dismissing invitations and managing a stage's invite link, and the SELECT arm on
 `project_invitations`, `project_applications`, `project_application_targets` and
 `stage_invite_links`. Appointing an admin or manager is NOT covered — each issuing door re-checks
-`can_review_project` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`:
+`can_edit_project_details` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`:
 `anon`, `authenticated`, `service_role` (a policy predicate, so it must run as the invoking role).
 Unchanged by BB2 (it still answers the SELECT arms); on a business project the staffing WRITE doors
 additionally require `hire` or a delegate role through `fn_assert_business_actor(…, 'hire', true)`.
@@ -90,7 +106,8 @@ the acts that commit the business. Those ask three predicates, each answering on
 `auth.uid()`; a personal project keeps its owner-only behaviour.
 
 - **`projects.fn_business_actor_can(p_project uuid, p_cap org.workspace_capability) → boolean`** —
-  the project's `owner_user_id`, or the project is billed to a business on which the caller holds
+  the project's client person (`COALESCE(client_user_id, owner_user_id)`, Decision #427), or the
+  project is billed to a business on which the caller holds
   `p_cap` (`org.fn_member_can`: role ∪ granted − revoked). The project's owner keeps the authority
   they created it with whatever they hold on the business. `LANGUAGE sql`, `STABLE`, `SECURITY
   DEFINER`, `search_path = ''`; `EXECUTE`: `authenticated`.
@@ -105,7 +122,11 @@ the acts that commit the business. Those ask three predicates, each answering on
   door calls it AFTER its own authority check, so a stranger still gets that door's wording. plpgsql,
   `STABLE`, `SECURITY DEFINER`, `search_path = ''`; internal (`EXECUTE` revoked from client roles).
 - **`projects.fn_can_fund_project(p_project uuid) → boolean`** — the funder predicate. A personal
-  project: its owner. A business project: vault `spend` on the business wallet in the project's
+  project: its client person — its owner, or on a seller-owned service its buyer (`client_user_id`),
+  never its seller (Decision #427). Every escrow door's payer wallet follows the same person
+  (`fund_stage`, `fund_ticket`, `fund_paid_revision`, the quote, `fn_hold_ticket_escrow`,
+  `fn_hold_revision_escrow`, `begin_card_payment`, `place_wallet_order`'s ticket and revision lines).
+  A business project: vault `spend` on the business wallet in the project's
   currency (`finance.fn_has_vault_capability`), or `spend_funds` (`org.fn_member_can`) before that
   wallet exists. **Owning a business project is not a licence to spend the business's money** — a
   spend-less project owner is refused. `has_project_access` is not consulted (a read predicate granted
@@ -121,7 +142,7 @@ the acts that commit the business. Those ask three predicates, each answering on
 | `review_submission` with `accept`, `approve_stage`, `force_complete_stage`, `cancel_stage_fair_exit` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | Any ticket entering `completed`, or a delete that settles a claimed/funded ticket (`fn_ticket_settlement_guard` — covers `complete_ticket`, `move_ticket`, `delete_ticket` and the table path) | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | `create_project` with `client_business_id`; re-pointing `client_business_id` (`fn_guard_project_ownership`) | `manage_projects` on that business | `PK403 missing_permission: manage_projects`; `create_project` also `55000 business_not_active` (draft / archived business, BB5) |
-| `fund_stage`, `fund_ticket`, `fund_paid_revision`, `get_stage_funding_quote`, `finance.begin_card_payment` (`escrow_lock`) | `fn_can_fund_project` | `PK403 not_funder: …` |
+| `fund_stage`, `fund_ticket`, `fund_paid_revision`, `get_stage_funding_quote`, `get_ticket_funding_quote`, `finance.begin_card_payment` (`escrow_lock`) | `fn_can_fund_project` | `PK403 not_funder: …` |
 | `finance.place_wallet_order`, `finance.place_on_account_order` (business basket) | `purchase` on top of vault `spend` | `PK403 missing_permission: purchase` |
 
 Unchanged: `review_submission` with `request_revision` (moves no money), every read, and
@@ -400,7 +421,8 @@ flags; it gates nothing.
 ### `projects.get_ticket_finance(p_ticket_id uuid) → TABLE (total_cost_cents bigint, paid_to_date_cents bigint, locked_escrow_cents bigint, remaining_cents bigint, currency text, installments jsonb)`
 
 `00001120` §2a. The ticket modal's Installment Monitor; each installment is priced by
-`fn_ticket_stage_price`, as `finance.fn_hold_ticket_escrow` holds it.
+`fn_ticket_stage_price`, as `finance.fn_hold_ticket_escrow` holds it. A stage prepaid ahead (a
+`reserved` escrow, Decision #430) reads `escrowed` and counts in `locked_escrow_cents`, as a held one does.
 `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `service_role`
 only — no client grant. Unknown ticket → `P0001`; then `has_project_access(ticket's project)` →
 `42501`.
@@ -418,6 +440,31 @@ element for the stage (absent = `standard`, so every ticket written before it pr
 `NULL` stage row → `p_ticket_price`; an unpriced stage → `NULL`. Mirrors `stageCostCents`
 (`@projective/types/projects`). `IMMUTABLE`, `search_path = ''`; `EXECUTE` revoked from every role
 (read inside definer doors only).
+
+### `projects.fn_ticket_funding_stage(p_ticket_id uuid) → uuid`
+
+`00001120` (Decision #428). The stage a ticket is funded in: the stage it sits in, else — for a ticket
+in the stage-less New lane (Decision #421) — the first stage it lists, by its `required_stages`
+`order` (ties by list position), and only a stage of its own project. `NULL`: it sits in no stage and
+lists none. The one rule `fund_ticket`, `finance.begin_card_payment`'s ticket path,
+`finance.place_wallet_order`'s ticket lines and `get_ticket_funding_quote` share; mirrored by
+`fundingStageOf` (`@projective/types/finance`) for the basket's line projection. `LANGUAGE sql`,
+`STABLE`, `SECURITY DEFINER`, `search_path = ''`; `EXECUTE` revoked from `PUBLIC`, `anon`,
+`authenticated` (read inside definer doors only).
+
+### `projects.fn_ticket_stage_fundable(p_ticket_id uuid, p_stage_id uuid) → text`
+
+`00001120` (Decision #430). Whether ONE stage of a ticket can be bought now: `NULL` when it can, else
+the refusal its door words — `not_listed` (not one of the ticket's `required_stages`; the stage it is
+funded in always counts, a ticket listing none sits somewhere, #421) · `passed` (before the funding
+stage in the ticket's order) · `stage_finished` (`approved` / `paid` / `cancelled`) · `prepaid` (a
+`reserved` escrow already pays for it) · `held` (it is the funding stage and that is paid:
+`payment_status` past `unpaid`/`needs_funding`, or a held base escrow) · `unpriced`
+(`fn_ticket_stage_price` ≤ 0). A fundable funding stage is held at payment, a later one reserved. The
+ONE rule `fund_ticket`, `get_ticket_funding_quote`, `finance.fn_reserve_ticket_stage_escrow` and
+`finance.place_wallet_order`'s ticket lines share; mirrored by `ticketStageRefusal` (live basket) for
+the line before Pay. `plpgsql`, `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `EXECUTE` revoked
+from `PUBLIC`, `anon`, `authenticated`.
 
 ### `projects.fn_intensity_price_multiplier(p_intensity text) → numeric`
 
@@ -496,7 +543,9 @@ else `42501` "This project runs on a freelancer's service, so its stages are add
 working it." (the app's `canAddStage`, a `403`). The author is given no seat on the new stage — a seat
 still comes only from an accepted invitation or application — so the stage's General room is written
 here directly rather than through `comms.get_or_create_project_channel`, which checks its caller's
-access to the room.
+access to the room. **One exception (Decision #427):** a seller-owned service (`client_user_id` set)
+seats its PROVIDER on every stage, so the new stage gets the owner's `accepted` freelancer seat (the
+owning team's on a team listing) and moves to `assigned`, as the stages the listing brought did.
 
 **`p_payload` carries the stage's optional settings** — `milestone`, `default_tasks`, `skills`,
 `seat_limit`, `parallel`, `nda_override`, `allowed_file_categories`, `allowed_file_extensions`, the
@@ -732,7 +781,9 @@ because the invoker batch calls it as the caller.
 
 The guarded column transition the board calls. Returns the updated ticket row as `jsonb`. A move that
 names no stage keeps the ticket in the one it has; `p_clear_stage` is the board's New lane, the
-stage-less backlog (Decision #421). The five-argument form is dropped by name in the migration and
+stage-less backlog (Decision #421). It writes one `ticket_history` row (`stage_moved` when the stage
+changes, else `status_changed`) only when the status or the stage changes: the ticket save path
+re-asserts the lane on every edit, and a move to where the ticket already is records nothing. The five-argument form is dropped by name in the migration and
 every existing call resolves against this one.
 
 | Guard               | Rule                                                    |
@@ -745,6 +796,7 @@ every existing call resolves against this one.
 | → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
 | Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
 | Any move of a claimed ticket | `projects.fn_assert_ticket_move` (below, Decision #293): only its assignee or review authority; the assignee only between `todo` / `in_progress` / `in_review` (and out of `claimed`); review authority not while it is `claimed` / `in_progress` (#94); nobody into `claimed`, `cancelled` or `reported_hidden` |
+| A stage the ticket does not list | `p_to_stage_id` other than the stage it sits in must appear in its `required_stages`, else `23514` "This ticket doesn't include this stage." (Decision #428; the app's `ticketIncludesStage` / `STAGE_NOT_INCLUDED_MESSAGE`, a `422`). A ticket listing none goes anywhere. Asked AFTER the write so every authority refusal above — the function's and the ticket guards' — answers first; the refusal rolls the write back |
 
 ⚠️ **`status` is a money-moving column.** `trg_ticket_escrow_sync` releases escrow on entering
 `completed` and holds it on claim, which is why only the client/owner may drop a card into Done — a
@@ -937,10 +989,23 @@ from any other status without a `held` escrow raises `PF402` "Needs funding — 
 `search_path = public, projects, finance, org, auth`. Money-moving: on the table path its authority
 is the _Manage tickets_ policy plus `trg_ticket_authority_guard`.
 
+### `projects.fn_ticket_prepay_sync() → trigger`
+
+`trg_ticket_prepay_sync` — `AFTER UPDATE OF current_stage_id, required_stages, status` (Decision
+#430), named to fire after `trg_ticket_escrow_sync`. A ticket entering `completed` or `cancelled`
+gives back every stage it prepaid and never reached (`finance.fn_refund_ticket_reservations`, reason
+`ticket_completed` / `ticket_cancelled`); a `required_stages` edit gives back the reservation of each
+stage it drops (`stage_removed`); a `current_stage_id` change holds the reservation of the stage it
+arrives in (`finance.fn_activate_ticket_reservation`) — so the Chain Reaction, a move and a funding
+placement all hold what was prepaid there. A personal project is skipped. `SECURITY DEFINER`,
+`search_path = public, projects, finance, org, auth`; `EXECUTE` revoked from every client role.
+
 ### `projects.fn_ticket_delete_protocol() → trigger`
 
-`trg_ticket_delete_protocol` — `BEFORE DELETE`. Releases escrow (`fn_release_ticket_escrow`) when the
-ticket has an assignee or a `held` escrow, then lets the delete proceed. `SECURITY DEFINER`,
+`trg_ticket_delete_protocol` — `BEFORE DELETE`. Refunds the stages the ticket prepaid
+(`finance.fn_refund_ticket_reservations`, reason `ticket_deleted`, Decision #430), then releases escrow
+(`fn_release_ticket_escrow`) when the ticket has an assignee or a `held` escrow, then lets the delete
+proceed. `SECURITY DEFINER`,
 `search_path = public, projects, finance, org, auth`; gated on the table path by
 `trg_ticket_authority_guard`.
 
@@ -1024,9 +1089,12 @@ subtransaction, from the paying wallet's live balance: when that hold is refused
 #165) the approval still stands and the installment already earned is still released, but the ticket
 waits in the next stage as `todo`, `needs_funding` (`fn_mark_needs_funding`, its DETAIL tagged
 `trigger: chain_reaction`), instead of `in_progress` on unheld money. Off, it moves the ticket there
-`todo` / `unpaid` (Draft) without a hold, for `fund_ticket` / `fund_stage` to fund later. Each outcome
-writes one `ticket_history` row — `chain_held` · `chain_needs_funding` · `chain_off` — and a wait
-(refused or off) tells the assignee `ticket.awaiting_funding`. Probe: `supabase/probes/chain_reaction.sql`.
+`todo` / `unpaid` (Draft) without a hold, for `fund_ticket` / `fund_stage` to fund later. A next
+stage the client prepaid (a `reserved` escrow, Decision #430) takes the On path whatever
+`chain_reaction` says: arriving there holds its reservation (`trg_ticket_prepay_sync`) with no second
+debit, so the hold below finds it held. Each outcome writes one `ticket_history` row — `chain_held` ·
+`chain_needs_funding` · `chain_off` — and a wait (refused or off) tells the assignee
+`ticket.awaiting_funding`. Probes: `supabase/probes/chain_reaction.sql`, `stage_prepay.sql`.
 
 **Settlement completes the ticket (Decision #194).** `approve_stage` and `review_submission('accept')`
 settle each ticket through `projects.fn_settle_ticket_stage(p_ticket_id, p_stage_id, p_reason) → uuid[]`:
@@ -1433,7 +1501,10 @@ through without counting again, and `fn_close_spend_cover` closes it after the h
 own hold refusal (`PF402`, Decision #165) aborts the whole stage; nothing fundable `PC409`. Fundable means in the stage, `unpaid` or
 `needs_funding`, not `completed`/`cancelled`/`reported_hidden`, **claimed or not** — priced by
 `projects.fn_stage_funding_need`, the definition `finance.begin_card_payment` charges by. A ticket
-nobody has claimed is held PREPAID (no payee) and bound at its claim. On success an `assigned` stage
+nobody has claimed is held PREPAID (no payee, its refund clock running — Decision #428) and bound at
+its claim. Every funded ticket still in New (`backlog`) is promoted to Ready (`todo`), one
+`ticket_history` `status_changed` row each (`changes.reason = 'funded'`, Decision #428), so it reaches
+the stage's freelancers' boards. On success an `assigned` stage
 moves to `in_progress` (an open or in-progress stage keeps its status) and the answer carries
 `awaiting_claim_count`; each hold notifies its assignee and the
 client itself (`escrow.funded`), so `fund_stage` sends no `stage_funded` of its own. **Concurrency
@@ -1443,27 +1514,40 @@ on the same tickets waits, re-reads them as `escrow_funded` once the first commi
 (`PC409`, nothing fundable). Ticket locks are always taken before a hold touches the payer's wallet row,
 so the doors never deadlock on each other. `finance.uq_escrows_ticket_base_held` is the backstop.
 
-### `projects.fund_ticket(p_project_id uuid, p_ticket_id uuid)` → jsonb (Decision #166)
+### `projects.fund_ticket(p_project_id uuid, p_ticket_id uuid, p_stage_ids uuid[] DEFAULT NULL)` → jsonb (Decisions #166, #430)
 
-Funds ONE ticket's escrow — the single-ticket Buy Now and a basket ticket line. The same funder
-predicate as `fund_stage` (`PK403 not_funder`), then the PRODUCT_SPEC §5 purchasing gate and the hold's prerequisites, in
-order: ticket not in the project `P0002`; no description `PU422`; already paid (`payment_status` not
-`unpaid`/`needs_funding`, or a held escrow) `PC409`; not in a stage, or the stage `approved`/`paid`/
-`cancelled` `PC409`; no price (`fn_ticket_stage_price` — its intensity price in the stage,
-Decision #414) `PC409`; an individual owner's wallet short of
-the price `PF402`; a business payer passes `finance.fn_assert_business_spend(…, 'tickets', ticket)`
-as the funder (BB3 — inside a basket the basket's cover passes it). A ticket nobody has claimed is held PREPAID and bound at its claim (Decision #197;
-before it, `PU422` "Nobody can be paid … yet"). Then exactly one
-`finance.fn_hold_ticket_escrow`. **The stage's status is not moved** — its other tickets are still
-unfunded, so it stays partially funded; `fund_stage` remains the whole-stage action. Returns
-`{ticket_id, escrow_id, stage_id, amount_cents, currency, prepaid}`. `SECURITY DEFINER` (`search_path = public,
-projects, finance, comms, org, auth`), `EXECUTE`: `authenticated`, `service_role` (`00002510`).
+Funds ONE ticket — the single-ticket Buy Now and a basket ticket line — in the stages the payer
+chose: `p_stage_ids`, absent or empty for the stage it is funded in (`fn_ticket_funding_stage`:
+where it sits, else a New ticket's first listed stage — Decision #428). The same funder predicate as
+`fund_stage` (`PK403 not_funder`), then in order: ticket not in the project `P0002`; no description
+`PU422`; finished (`completed`/`cancelled`/`reported_hidden`) `PC409` (Decision #428, as
+`fn_stage_funding_need` already excluded); no stage to fund it in `PC409`; then each chosen stage, once,
+through `fn_ticket_stage_fundable` — `held` "is already paid for" · `prepaid` "That stage … is already
+paid for" · `passed` "has already moved past that stage" · `stage_finished` · `unpriced` (the funding
+stage keeps its older sentences) · `not_listed` "doesn't run through that stage", each `PC409`, so one
+refused stage refuses the whole call. The **whole selection** is then checked once: an individual
+owner's wallet short of its sum `PF402`; a business payer passes
+`finance.fn_assert_business_spend(…, total, 'tickets', ticket)` as the funder, counting its envelope and
+judging its threshold on the sum (BB3 — inside a basket the basket's cover passes it). A ticket nobody
+has claimed is held PREPAID and bound at its claim (Decision #197; before it, `PU422` "Nobody can be
+paid … yet"). **The funding stage**, when chosen, is held: a stage-less ticket is placed in it and a
+`backlog` one becomes Ready (`todo`) first — one `ticket_history` row (`stage_moved` from no stage,
+else `status_changed`; `changes.reason = 'funded'`) — and a refused hold rolls the placement back with
+it; then exactly one `finance.fn_hold_ticket_escrow`, which draws on the gate's count. **Each later
+stage** chosen is prepaid (Decision #430): `finance.fn_reserve_ticket_stage_escrow`, a `reserved`
+escrow held when the ticket gets there; a concurrent reservation of it → `PC409`. Choosing only later
+stages leaves the ticket where it is (a New ticket stays in New). **The stage's status is not moved**
+— its other tickets are still unfunded, so it stays partially funded; `fund_stage` remains the
+whole-stage action. Returns `{ticket_id, escrow_id (the hold, else the first reservation), stage_id
+(the funding stage), amount_cents (the sum), currency, held, reserved_stage_ids, prepaid, placed,
+status}`. `SECURITY DEFINER` (`search_path = public, projects, finance, comms, org, auth`), `EXECUTE`:
+`authenticated`, `service_role` (`00002510`). Probe: `supabase/probes/stage_prepay.sql`.
 
 ### `projects.fn_stage_funding_need(p_stage_id uuid)` → jsonb (Decision #197)
 
 What funding a stage takes: `{ticket_count, unpriced_count, amount_cents}` over every ticket in the
 stage that is `unpaid`/`needs_funding`, not `completed`/`cancelled`/`reported_hidden`, with no held
-base escrow — claimed or not — at its price in the stage, `fn_ticket_stage_price` (the rate at the
+base escrow and no reservation on that stage (Decision #430) — claimed or not — at its price in the stage, `fn_ticket_stage_price` (the rate at the
 ticket's intensity there, Decision #414); `amount_cents` sums the priced ones. THE definition `fund_stage` holds by and
 `finance.begin_card_payment` charges by, so a card payment can never settle into a stage that then
 refuses it. `SQL STABLE SECURITY DEFINER`, `search_path = ''`; internal (`EXECUTE` revoked from
@@ -1478,6 +1562,27 @@ wallet_balance_cents}`. `fund_stage`'s funder predicate (`PK403 not_funder`, BB2
 Read-only; the doors re-check everything. `STABLE SECURITY DEFINER`; `EXECUTE`: `authenticated`.
 Called as the payer by `finance.place_wallet_order` (a ticket line) and `finance.settle_card_payment` (a card lock
 naming a ticket). Proven by `supabase/probes/single_ticket_purchase.sql`.
+
+### `projects.get_ticket_funding_quote(p_project_id uuid, p_ticket_id uuid)` → jsonb (Decision #428)
+
+The payer's read before funding ONE ticket (Buy now's and Add to basket's stage pickers, `GET /api/finance/escrow/quote?ticket=`):
+`{project_id, ticket_id, ticket_slug, ticket_title, funding_stage_id, funding_stage_name, amount_cents,
+currency, blocked, stages, engagement ('service' | 'project'), ttl_hours, prepaid, payer_scope, payer_id,
+wallet_balance_cents}`. `stages` is every stage the ticket lists, in its own order, each `{stage_id,
+name, order, stage_status, amount_cents (fn_ticket_stage_price there, NULL unpriced), phase,
+fundable}` with `phase` `now` (its funding stage, unpaid) · `funded` (that stage, held) · `done` (before
+it) · `later` (after it, unpaid — prepaid if chosen, else held by the Chain Reaction on arrival, #210)
+· `prepaid` (a `reserved` escrow pays for it, Decision #430); a ticket sitting in a stage it does not
+list (#421) carries that stage first. `fundable` is `fn_ticket_stage_fundable`'s NULL while no
+ticket gate stands. Any fundable stage can be bought: the funding stage is held, a later one
+reserved, and one held base escrow per ticket (#189) is unchanged. `blocked` says why NOTHING can be
+bought: `fund_ticket`'s ticket gates (`description` · `finished` · `no_stage`), else, with no
+fundable stage, `stage_finished` (the funding stage has finished) · `unpriced` · `paid`; `NULL`
+while any stage can be bought. `ttl_hours` is `finance.fn_prepaid_escrow_ttl_hours`; `prepaid` is whether the hold would
+have no payee (`finance.fn_ticket_payee` of the funding stage and the assignee), i.e. whether the
+refund clock would run. `fund_stage`'s funder predicate (`PK403 not_funder`); a foreign ticket `P0002`.
+Read-only. `STABLE SECURITY DEFINER`; `EXECUTE`: `authenticated`. Proven by
+`supabase/probes/prepaid_escrow_ttl.sql` and `stage_prepay.sql`.
 
 ### `projects.fn_serialize_submission(p_submission_id uuid) → jsonb`
 
@@ -1517,6 +1622,12 @@ Publishing (`draft → active`) settles the staged seats: every `stage_assignmen
 `pending_funding` becomes `assigned` and an `open` stage holding one becomes `assigned` — except on a
 blueprint-instantiated draft (`source_blueprint_id` set), whose seats stay parked until funded
 (Decision #139).
+
+**Who may transition (Decision #427).** Review authority drives every transition. On a seller-owned
+service (`client_user_id` set) its provider configures the engagement, so `can_edit_project_details`
+also admits the moves to `active` and `on_hold` (publishing it, holding it, resuming it); completing,
+cancelling and archiving stay the client's, whose money the escrow holds. On every other engagement the
+two predicates agree, so nothing changed there.
 
 ### `projects.fn_project_shape_lock() → trigger`
 

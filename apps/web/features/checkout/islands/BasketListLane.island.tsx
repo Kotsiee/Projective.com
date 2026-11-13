@@ -17,7 +17,7 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { Amount } from "../components/Amount.tsx";
-import { NewListDialog } from "../components/NewListDialog.tsx";
+import { NewListPopover } from "../components/NewListPopover.tsx";
 import { CollapseGlyph } from "../components/checkout-glyphs.tsx";
 import { BasketService } from "../core/BasketService.ts";
 import { basketHref } from "../core/basket-model.ts";
@@ -91,8 +91,6 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 	const sessionsOpen = useSignal(true);
 	const railSwitchOpen = useSignal(false);
 	const createOpen = useSignal(false);
-	const createName = useSignal("");
-	const creating = useSignal(false);
 
 	// The lane renders shared state but owns no fetch: the body is the single reader, so a passive
 	// mirror keeps the two from racing for the same basket.
@@ -151,18 +149,13 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 		namedShown.length === 0 && ticketsShown.length === 0 && sessionsShown.length === 0;
 
 	/** Create a further named list, then open it — a list nobody lands in is a list nobody uses. */
-	const createList = async (): Promise<void> => {
-		const name = createName.value.trim();
-		if (name === "" || creating.value) return;
-		creating.value = true;
+	const createList = async (name: string): Promise<string | null> => {
 		const res = await BasketService.createBasket({ name }, currentCheckoutContext());
 		const ok = applyResponse(res, applyBasket);
-		creating.value = false;
-		if (!ok || !res.data) return;
+		if (!ok || !res.data) return res.message ?? "We couldn't create that list just now.";
 		basketsSignal.value = res.data.baskets;
-		createOpen.value = false;
-		createName.value = "";
 		globalThis.location.assign(basketHref(res.data.basket.id, props.owner));
+		return null;
 	};
 
 	return (
@@ -225,10 +218,20 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 										open={listsOpen.value}
 										onToggle={() => (listsOpen.value = !listsOpen.value)}
 										action={
-											<LaneIconButton
-												icon={<Icon name="plus" />}
-												label="New list"
-												onClick={() => (createOpen.value = true)}
+											<NewListPopover
+												open={createOpen}
+												onCreate={createList}
+												trigger={(api) => (
+													<LaneIconButton
+														icon={<Icon name="plus" />}
+														label="New list"
+														triggerRef={api.ref}
+														ariaHasPopup="dialog"
+														ariaExpanded={api.expanded}
+														ariaControls={api.panelId}
+														onClick={api.toggle}
+													/>
+												)}
 											/>
 										}
 									>
@@ -466,13 +469,6 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 					/>
 				</div>
 			</div>
-
-			<NewListDialog
-				visible={createOpen}
-				name={createName}
-				creating={creating.value}
-				onCreate={() => void createList()}
-			/>
 		</div>
 	);
 }

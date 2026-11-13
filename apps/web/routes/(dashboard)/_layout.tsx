@@ -68,6 +68,7 @@ import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHos
 import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx";
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
 import { settingsLaneFor } from "@web/features/settings/core/settings-slots.tsx";
+import { notificationsLaneFor } from "@web/features/notifications/core/notifications-lane.tsx";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -261,6 +262,9 @@ async function laneFor(
 	if (url.pathname === "/settings" || url.pathname.startsWith("/settings/")) {
 		return await settingsLaneFor(url, context, actor, state);
 	}
+
+	const notificationsLane = notificationsLaneFor(url);
+	if (notificationsLane) return notificationsLane;
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();
 

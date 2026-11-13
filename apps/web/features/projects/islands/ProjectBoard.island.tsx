@@ -100,7 +100,13 @@ import {
 import { resolveSessionKind } from "../core/session-model.ts";
 import { checkoutStepHref } from "@web/features/checkout/core/basket-model.ts";
 import { BasketService } from "@web/features/checkout/core/BasketService.ts";
-import { currentCheckoutContext } from "@web/features/checkout/core/basket-state.ts";
+import {
+	applyBasket,
+	basketTicketIds,
+	currentCheckoutContext,
+	notifyBasketChanged,
+	openBasketDrawer,
+} from "@web/features/checkout/core/basket-state.ts";
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { InlineNotice } from "@projective/ui/feedback";
@@ -108,6 +114,7 @@ import { fundingRollup, previewFunding } from "../core/funding-ui.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
 import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
 import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
+import { useNewTicketShortcut } from "../hooks/useTicketShortcuts.ts";
 
 /**
  * ProjectBoard — the single island the Kanban board routes mount, for the project pipeline
@@ -397,6 +404,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			if (access.value.isClient && access.value.hasTickets) openCompose(boardStageId);
 		}
 	});
+	useNewTicketShortcut({
+		canCreate: () =>
+			access.peek().isClient && access.peek().hasTickets && !ticketStack.top.peek(),
+		onCreate: () => openCompose(boardStageId),
+	});
 	useSignalEffect(() => {
 		const epoch = stagesCreatedEpoch.value;
 		if (epoch <= seenStageEpoch.current) return;
@@ -582,16 +594,35 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			title: card.title,
 			sellerName: card.assignee?.name ?? null,
 			signInHref: "/login",
-			ticket: { ticketId: card.id, projectId: props.projectId, onSettled: () => void reread(card) },
+			ticket: {
+				ticketId: card.id,
+				ref: card.slug ?? card.id,
+				projectId: props.projectId,
+				onSettled: () => void reread(card),
+			},
 		}, true);
 		pushTicketBuy();
 	}
 
-	async function basketTicket(card: BoardCard): Promise<void> {
-		const res = await BasketService.addTicket(card.id, props.projectId, currentCheckoutContext());
+	/** Add a ticket's stage lines; `true` once they landed, so the control settles and reads In basket. */
+	async function basketTicket(card: BoardCard, stageIds?: readonly string[]): Promise<boolean> {
+		const res = await BasketService.addTicket(card.id, props.projectId, currentCheckoutContext(), stageIds);
+		if (res.ok && res.data) {
+			applyBasket(res.data);
+			notifyBasketChanged();
+		}
 		toast(
 			res.ok ? `${card.title} is in your basket.` : res.message ?? "That ticket couldn't be added.",
 		);
+		return res.ok;
+	}
+
+	/** In basket: close the ticket chain (one overlay at a time) and open the basket. */
+	function openBasket(): void {
+		ticketStack.close();
+		if (!openBasketDrawer()) {
+			globalThis.location.assign(checkoutStepHref("basket", null, null, { projectId: props.projectId }));
+		}
 	}
 
 	/** Replace one card with the server's current reading of it (its funding state included). */
@@ -1296,6 +1327,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						clientMembers={initial?.clientMembers ?? []}
 						projectId={props.projectId}
 						hasTimeline={initial ? boardHasTimeline(initial) : true}
+						dueDates={initial?.dueDatesEnabled ?? true}
 						onClose={() => {
 							composing.value = null;
 							ticketStack.close();
@@ -1303,8 +1335,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						onSubmit={commitTicket}
 						onOpenSubmission={(path) => openSubmission(viewing.id, path)}
 						onCreateSubmission={onCreateSubmission}
-						onBuyNow={buyTicket}
-						onAddToBasket={(c) => void basketTicket(c)}
+						onBuyNow={(c) => buyTicket(c)}
+						onAddToBasket={(c, stageIds) => basketTicket(c, stageIds)}
+						inBasket={basketTicketIds.value.has(viewing.slug ?? viewing.id) ||
+							basketTicketIds.value.has(viewing.id)}
+						onOpenBasket={openBasket}
 						onStartWork={(c) => void startWork(c)}
 						fundingBusy={starting.value}
 						onClaim={viewerCanClaim(viewing, stages.value, providerStageIds, access.value.isClient)

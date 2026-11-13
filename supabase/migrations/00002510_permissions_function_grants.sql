@@ -50,6 +50,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA projects TO service_role;
 GRANT EXECUTE ON FUNCTION projects.has_project_access (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.has_stage_access (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.can_edit_project_details (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_ticket_manager (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
@@ -1143,9 +1144,9 @@ GRANT EXECUTE ON FUNCTION finance.public_metrics () TO service_role;
 -- money received, an account payable or an identity verified.
 REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid) TO authenticated;
--- Single-ticket funding (Decision #166): a signed-in payer's door, never anon's.
-REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid) TO authenticated;
+-- Single-ticket funding (Decisions #166, #430): a signed-in payer's door, never anon's.
+REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) TO authenticated;
 -- Stage funding (Decision #197): the quote is the payer's read; the need, the payee rule and the bind
 -- run only inside the guarded doors (fund_stage, begin_card_payment, the claim trigger).
 REVOKE ALL ON FUNCTION projects.get_stage_funding_quote (uuid, uuid) FROM PUBLIC, anon;
@@ -1153,6 +1154,21 @@ GRANT EXECUTE ON FUNCTION projects.get_stage_funding_quote (uuid, uuid) TO authe
 REVOKE ALL ON FUNCTION projects.fn_stage_funding_need (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_ticket_payee (uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_bind_ticket_escrow (uuid) FROM PUBLIC, anon, authenticated;
+-- Prepaid escrow TTL and ticket funding (Decision #428): the ticket quote is the payer's read; the
+-- funding-stage rule and the TTL run inside the doors; the sweep is the scheduler's alone.
+REVOKE ALL ON FUNCTION projects.get_ticket_funding_quote (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_ticket_funding_quote (uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_ticket_funding_stage (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_prepaid_escrow_ttl_hours (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_sweep_expired_prepaid_escrows (timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_sweep_expired_prepaid_escrows (timestamptz, integer) TO service_role;
+-- Prepaid later stages (Decision #430): the stage rule, the reservation, its activation and its refund run
+-- only inside fund_ticket, the holds and the ticket triggers.
+REVOKE ALL ON FUNCTION projects.fn_ticket_stage_fundable (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_reserve_ticket_stage_escrow (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_activate_ticket_reservation (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_refund_ticket_reservations (uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_ticket_prepay_sync () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.attach_card_payment (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.attach_card_payment (uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION finance.abandon_card_payment (uuid, text) FROM PUBLIC, anon;

@@ -117,9 +117,11 @@ export type Transaction = z.infer<typeof TransactionSchema>;
 /**
  * Escrow lifecycle status. The engine writes `held` on hold and `released`/`refunded` on settle;
  * `disputed` parks funds in the Dispute Lockbox; `funded` is the table default (rarely persisted, as
- * the hold path writes `held` directly). Text in the DB (not a PG enum) — this enum documents the set.
+ * the hold path writes `held` directly); `reserved` is a later ticket stage paid for ahead (Decision
+ * #430): debited, unbound, held when the ticket reaches that stage and refunded if it never does. Text in
+ * the DB (not a PG enum) — this enum documents the set.
  */
-export const EscrowStatus = z.enum(["funded", "held", "released", "refunded", "disputed"]);
+export const EscrowStatus = z.enum(["funded", "held", "reserved", "released", "refunded", "disputed"]);
 export type EscrowStatus = z.infer<typeof EscrowStatus>;
 
 /** Who an escrow pays out to — an individual freelancer or a team (`assignment_type`). */
@@ -164,6 +166,11 @@ export const EscrowSchema = z.object({
 	createdAt: timestamp,
 	/** When it was released to the payee — what a consolidated invoice selects its period by. */
 	releasedAt: timestamp.nullable(),
+	/**
+	 * When an unclaimed PREPAID escrow is refunded to its payer (Decision #428): stamped at the hold,
+	 * cleared by the claim's bind, never set on a bound escrow (`ck_escrows_expiry_unbound`).
+	 */
+	expiresAt: timestamp.nullable(),
 	/** Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. */
 	autoFunded: z.boolean(),
 });

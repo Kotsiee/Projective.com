@@ -156,9 +156,13 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   approval. The gate's `55000 business_not_active` is not a funding refusal: it is re-raised
   unchanged). A missing
   stage is not a funding problem → `check_violation`; a missing payee is a **prepaid** hold (Decision
-  #197): the escrow is written with `payee_type`/`payee_id` NULL, only the client is told ("It is
-  paid to whoever claims it."), and the claim binds it. The payee is `finance.fn_ticket_payee`. Already held (a held escrow with no
-  `revision_id`) → `NULL`, the one early return. **Concurrent holds (Decision #189):** the check
+  #197): the escrow is written with `payee_type`/`payee_id` NULL and `expires_at` = `now()` +
+  `finance.fn_prepaid_escrow_ttl_hours` (Decision #428 — the hold is on the ticket's current stage by
+  construction, so the clock is that stage's), only the client is told ("It is paid to whoever claims
+  it, and comes back to your wallet if nobody does within 7 days."), and the claim binds it. The payee is `finance.fn_ticket_payee`. Already held (a held escrow with no
+  `revision_id`) → `NULL`, the one early return. **A prepaid stage (Decision #430):** before it would
+  debit, it asks `finance.fn_activate_ticket_reservation` — a `reserved` escrow on the stage the
+  ticket is at becomes the hold, with no second debit and nothing to refuse. **Concurrent holds (Decision #189):** the check
   cannot see a sibling transaction's uncommitted hold, so the INSERT is the arbiter —
   `uq_escrows_ticket_base_held` makes the later one wait, and once the first commits it gets
   `unique_violation`, which the function reads as "already held": `NULL`, nothing debited, no notice.
@@ -179,8 +183,50 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 - **`finance.fn_bind_ticket_escrow(ticket_id)`** → escrow id or `NULL` (Decision #197) — names the
   payee of a PREPAID held escrow when a claim or assignment gives its ticket one. Called by
   `projects.fn_ticket_escrow_sync` before it would hold; `NULL` (nothing unbound, or still no payee)
-  lets the ordinary hold run. Debits nothing; tells the new payee "Funded — you can start"
-  (`escrow.funded`). Internal, revoked as above.
+  lets the ordinary hold run. Debits nothing; clears `expires_at` (Decision #428 — from here an
+  unstarted claim is the claim TTL's, `claim_ttl_minutes`); tells the new payee "Funded — you can
+  start" (`escrow.funded`). Internal, revoked as above. A `reserved` escrow is never bound here: it
+  has no stage at work yet (Decision #430).
+- **`finance.fn_reserve_ticket_stage_escrow(ticket_id, stage_id)`** → escrow id or `NULL` (Decision
+  #430) — prepays ONE later stage: refuses (`check_violation`) the stage the ticket is funded in (that
+  one is held, never reserved) and any stage `projects.fn_ticket_stage_fundable` refuses (`prepaid` →
+  `NULL`, `unpriced` → the hold's `PF402 no_price`); prices it with `projects.fn_ticket_stage_price`;
+  the hold's payer, wallet and `PF402` `no_wallet` / `insufficient_funds` refusals (`DETAIL` adds
+  `stage_id`); inserts a `reserved` row (no payee, no `expires_at`) and debits `escrow_hold`
+  (`fn_wallet_debit`, so a pot's earmark refuses it like any voluntary debit). It does **not** ask the
+  business spend gate: its one door, `projects.fund_ticket`, counted the whole selection once. A
+  concurrent reservation of the same stage loses on `uq_escrows_ticket_stage_reserved` → `NULL`. One
+  `ticket_history` row `stage_prepaid` (`new_stage_id` = the stage; amount, currency). Internal.
+- **`finance.fn_activate_ticket_reservation(ticket_id)`** → escrow id or `NULL` (Decision #430) — the
+  ticket's current stage's reservation becomes its held escrow under the hold's payee rule
+  (`fn_ticket_payee`): bound to the continuing payee or a team seat, else prepaid with `expires_at`
+  starting now. `NULL` with no stage, a base escrow already held (`uq_escrows_ticket_base_held`, also
+  on a concurrent hold), or no reservation there. Sets `payment_status = 'escrow_funded'`, writes
+  `prepaid_stage_held` and tells a present assignee "Funded — you can start". Called by
+  `fn_hold_ticket_escrow` and `projects.fn_ticket_prepay_sync`. Internal.
+- **`finance.fn_refund_ticket_reservations(ticket_id, stage_id DEFAULT NULL, reason DEFAULT
+  'ticket_ended')`** → integer refunded (Decision #430) — every reservation of the ticket, or one
+  stage's, back to its payer whole (`escrow_refund`, no fee), each flip conditional on still being
+  `reserved` under the ticket's row lock (Decision #188), each logged `prepaid_stage_refunded`
+  (`changes.reason`: `ticket_completed` · `ticket_cancelled` · `ticket_deleted` · `stage_removed` ·
+  `prepaid_ttl_expired`; actor `auth.uid()`, else the client person). Internal.
+- **`finance.fn_prepaid_escrow_ttl_hours(project_id)`** → integer (Decision #428, `LANGUAGE sql`,
+  STABLE, definer) — the prepaid refund window: `security.platform_params`
+  `prepaid_service_ttl_hours` (default 120) when `projects.projects.source_blueprint_id` is set (a
+  productised service), else `prepaid_project_ttl_hours` (default 168); never below 1. Internal.
+- **`finance.fn_sweep_expired_prepaid_escrows(p_now timestamptz DEFAULT now(), p_limit integer
+  DEFAULT 200)`** → integer refunded (Decision #428; job `finance-sweep-expired-prepaid-escrows`,
+  :04 / :19 / :34 / :49). Every `held` escrow with no payee and `expires_at <= p_now`, earliest first:
+  its ticket row is locked `FOR UPDATE SKIP LOCKED` (the claim's and the refund's own lock order, so a
+  claim binding it concurrently either wins or is skipped this run), the escrow is re-read under the
+  lock, a ticket somebody holds is left to the claim TTL, and `fn_refund_ticket_escrow` returns it
+  whole to the payer's wallet (no fee; `payment_status = 'unpaid'`; the ticket keeps its column). One
+  `ticket_history` row `prepaid_ttl_expired` (actor the client person,
+  `COALESCE(client_user_id, owner_user_id)`; `changes` = escrow, stage, amount, currency, the deadline,
+  `prepaid_stages_refunded`) and one mandatory `escrow.refunded` to the client person with a `?tkv=`
+  link. The ticket's reservations go back with it (`fn_refund_ticket_reservations`, reason
+  `prepaid_ttl_expired`, Decision #430): nobody claimed the work, so nothing later can start.
+  `service_role` only.
 - **`finance.fn_hold_revision_escrow(revision_id)`** → escrow id (Decision #167) — one MORE held
   escrow on a paid revision round's ticket, at the round's `price_cents`, beside the one already held
   for the work. The row names its round (`revision_id`), so it is never taken for the base escrow and
@@ -861,15 +907,22 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
 currency the wallet actually moved, never re-converted.
 
-**Ticket lines (Decision #166).** A `project_ticket` / `one_off_project` / `one_off_task` line that
-carries `ticket_id` is not a sale. It is priced from the ticket NOW (`COALESCE(ticket.unit_price_cents,
-stage.unit_price_cents)`, compared with `p_units` like any line), its ticket must still belong to the
-line's project and stage (`PC409` "moved"), and the basket's owner must be the project's client — its
-business, or its owner as an individual (`PU422`). It settles by **`projects.fund_ticket`** in step 7:
-that one ticket's escrow is held from the same wallet (`escrow_hold`), so the `order_payment` debit is
+**Ticket lines (Decisions #166, #430).** A `project_ticket` / `one_off_project` / `one_off_task` line
+that carries `ticket_id` is not a sale: it buys ONE stage of the ticket, the line's `stage_id` (a
+legacy stage-less line: the stage it is funded in, `projects.fn_ticket_funding_stage`, #428). It is
+priced from the ticket in that stage NOW (`projects.fn_ticket_stage_price`, compared with `p_units`
+like any line); its ticket must still belong to the line's project and the stage must pass
+`projects.fn_ticket_stage_fundable` — `passed` / `not_listed` → `PC409` "moved since you added it",
+`held` / `prepaid` → `PC409` "already paid for in that stage", `stage_finished` → `PC409` — and the
+basket's owner must be the project's client — its business, or its owner as an individual (`PU422`).
+It settles by **`projects.fund_ticket(item_id, ticket_id, ARRAY[stage_id])`** in step 7: the funding
+stage is held, a later one reserved, from the same wallet (`escrow_hold`), so the `order_payment` debit is
 only the products' share (`v_net − v_escrow_total`) and no seller is credited and no fee is taken (the
 fee is charged at release). Its `order_lines` row is `fulfilment = 'engagement'` with `stage_id` and
-`ticket_id`. `fund_ticket`'s gates (description, unpaid, payee, wallet) refuse the whole order. A promo
+`ticket_id`, subtitled `Escrow held` for a hold and `Stage prepaid` for a reservation (#430).
+`fund_ticket`'s gates (description, unfinished, the stage fundable, wallet) refuse the whole order;
+nobody need hold the ticket (#197). Two lines may buy two stages of one ticket in one order, in
+either order: the funding stage's line holds (placing a New ticket), the later one reserves. A promo
 on an order with a ticket line is `PC409` — an escrow is the freelancer's whole price. A card checkout
 reaches here through the #153 webhook exactly as a product order does.
 
@@ -1426,9 +1479,12 @@ nobody for money the business cannot take in.
   `fund_ticket` / `fund_paid_revision` run the real gate as the payer.
 - **`escrow_lock` with `p_ticket_id`** (Decision #166) — funds ONE ticket instead: the amount is that
   ticket's `COALESCE(unit_price_cents, stage.unit_price_cents)`, and `projects.fund_ticket`'s gates are
-  checked now (the ticket sits in `p_stage_id`, has a description, is `unpaid`/`needs_funding` with no
-  held escrow, and the stage is not finished; each `PC409` — an unclaimed ticket is held prepaid, #197), so
-  nobody is charged for a hold that cannot be made. The stage may be in any unfinished status. The row
+  checked now (`p_stage_id` is the stage the ticket is funded in — `projects.fn_ticket_funding_stage`:
+  where it sits, else a New ticket's first stage, Decision #428 — else `P0002`; it has a description, is
+  `unpaid`/`needs_funding` with no held escrow and no reservation on that stage (#430), and the stage
+  is not finished; each `PC409` — an unclaimed ticket is held prepaid, #197), so nobody is charged for
+  a hold that cannot be made. A card lock funds the funding stage only; prepaying later stages is the
+  basket's (Decision #430). The stage may be in any unfinished status. The row
   records `ticket_id`; the stage path above is unchanged. `p_ticket_id` is part of the request hash
   (NULLs are skipped, so an older stage or top-up attempt key hashes as before).
 - **`escrow_lock` with `p_revision_id`** (Decision #199) — pays for ONE paid revision round instead:

@@ -2,9 +2,11 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { BoardPageSchema } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import {
+	chainSummary,
 	fetchBoardPage,
 	fetchTicketLocation,
 	STAGE_WINDOW_COLUMNS,
+	stageMoveSummary,
 	type StageWindowRow,
 	stageWindows,
 	viewerIsClientOf,
@@ -524,9 +526,9 @@ Deno.test("fetchBoardPage: Chain Reaction history rows read as funding entries n
 		const card = page?.cards.find((c) => c.id === T1);
 		assert(card);
 		assertEquals(card.history.map((h) => [h.kind, h.summary]), [
-			["funding", "moved it on to the Delivery stage, to be funded there"],
-			["funding", "moved it on to the Delivery stage, where its escrow couldn't be held"],
-			["funding", "held its escrow for the Delivery stage on approval"],
+			["funding", "moved it on to Delivery, to be funded there"],
+			["funding", "moved it on to Delivery, where its escrow couldn't be held"],
+			["funding", "held its escrow for Delivery on approval"],
 		]);
 	});
 });
@@ -569,7 +571,7 @@ Deno.test("fetchBoardPage card mapping: stages, funding, freeze, checklist, hist
 		assertEquals([card.checklistDone, card.checklistTotal], [1, 2]);
 
 		assertEquals(card.history.map((h) => [h.kind, h.summary]), [
-			["stage", "moved it to the Delivery stage"],
+			["stage", "moved it to Delivery"],
 			["created", "created this ticket"],
 		]);
 		// Oldest contributor first.
@@ -864,5 +866,33 @@ Deno.test("the owner of an instantiated pipeline service is its client side", ()
 	assertEquals(viewerIsClientOf("service", "freelancer"), false);
 	assertEquals(viewerIsClientOf("project", "admin"), true);
 	assertEquals(viewerIsClientOf("project", "member"), false);
+});
+// #endregion
+
+// #region Activity copy
+Deno.test("stageMoveSummary names the stage as the board does, never 'the … stage'", () => {
+	assertEquals(
+		stageMoveSummary({ toStageId: "s", toStageName: "Another stage", toStatus: "todo" }),
+		"moved it to Another stage",
+	);
+	assertEquals(
+		stageMoveSummary({ toStageId: "s", toStageName: null, toStatus: "todo" }),
+		"moved it to another stage",
+	);
+	assertEquals(
+		stageMoveSummary({ toStageId: null, toStageName: null, toStatus: "backlog" }),
+		"moved it to New",
+	);
+	assertEquals(
+		stageMoveSummary({ toStageId: null, toStageName: null, toStatus: "todo" }),
+		"moved it to a stage since removed",
+	);
+});
+
+Deno.test("chainSummary names the next stage, or says 'the next stage' when it cannot", () => {
+	assertEquals(chainSummary("chain_held", "Build"), "held its escrow for Build on approval");
+	assertEquals(chainSummary("chain_held", null), "held its escrow for the next stage on approval");
+	assertEquals(chainSummary("chain_off", "Build"), "moved it on to Build, to be funded there");
+	assertEquals(chainSummary("chain_needs_funding", null), "moved it on, where its escrow couldn't be held");
 });
 // #endregion

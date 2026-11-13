@@ -34,11 +34,23 @@ import {
 	ticketDueMode,
 } from "../core/ticket-model.ts";
 import {
+	pushTicketBuy,
 	registerTicketFileHost,
 	type TicketMode,
 	ticketStack,
 	ticketSubmissionHref,
 } from "../core/ticket-view.ts";
+import { checkoutStepHref } from "@web/features/checkout/core/basket-model.ts";
+import { BasketService } from "@web/features/checkout/core/BasketService.ts";
+import {
+	applyBasket,
+	basketTicketIds,
+	currentCheckoutContext,
+	notifyBasketChanged,
+	openBasketDrawer,
+} from "@web/features/checkout/core/basket-state.ts";
+import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
+import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { registerTicketSurface } from "../core/ticket-link.ts";
 import {
 	type BoardAccess,
@@ -194,6 +206,11 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			if (ticketStack.top.value?.input?.ticketId === id) ticketStack.close();
 		}
 	});
+	// Buy Now closed over a ticket: restore the ticket it replaced, as the board does.
+	useSignalEffect(() => {
+		const open = buyNowOpen.value;
+		if (!open && ticketStack.top.value?.kind === "buy") ticketStack.back();
+	});
 	// #endregion
 
 	// #region Helpers
@@ -249,6 +266,53 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		// same); a card the board does not hold, or one without an address yet, opens unaddressed.
 		const slug = cardsOf().find((c) => c.id === ticketId)?.slug;
 		ticketStack.open("ticket", ticketId, { ticketId, slug });
+	}
+
+	/** Buy Now on one ticket, replacing it in the chain; a settled payment re-reads the card. */
+	function buyTicket(card: BoardCard): void {
+		requestBuyNow({
+			itemId: props.projectId,
+			itemType: "project_ticket",
+			title: card.title,
+			sellerName: card.assignee?.name ?? null,
+			signInHref: "/login",
+			ticket: {
+				ticketId: card.id,
+				ref: card.slug ?? card.id,
+				projectId: props.projectId,
+				onSettled: () => void reread(card),
+			},
+		}, true);
+		pushTicketBuy();
+	}
+
+	/** Add a ticket's stage lines; `true` once they landed. */
+	async function basketTicket(card: BoardCard, stageIds?: readonly string[]): Promise<boolean> {
+		const res = await BasketService.addTicket(card.id, props.projectId, currentCheckoutContext(), stageIds);
+		if (res.ok && res.data) {
+			applyBasket(res.data);
+			notifyBasketChanged();
+		}
+		toast(res.ok ? `${card.title} is in your basket.` : res.message ?? "That ticket couldn't be added.");
+		return res.ok;
+	}
+
+	/** In basket: close the ticket chain and open the basket. */
+	function openBasket(): void {
+		ticketStack.close();
+		if (!openBasketDrawer()) {
+			globalThis.location.assign(checkoutStepHref("basket", null, null, { projectId: props.projectId }));
+		}
+	}
+
+	/** Replace one card with the server's current reading of it. */
+	async function reread(card: BoardCard): Promise<void> {
+		if (!card.slug) return;
+		const res = await BoardService.ticket(card.slug);
+		if (res.ok && res.data) {
+			const fresh = res.data.card;
+			patchBoard((b) => ({ ...b, cards: b.cards.map((c) => (c.id === fresh.id ? fresh : c)) }));
+		}
 	}
 
 	/** Start composing a ticket in `stageId` (or the backlog), optionally already dated. */
@@ -474,6 +538,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 						clientMembers={board.value?.clientMembers ?? []}
 						projectId={props.projectId}
 						now={nowMs.value}
+						dueDates={board.value?.dueDatesEnabled ?? true}
 						onClose={() => {
 							composing.value = null;
 							ticketStack.close();
@@ -489,9 +554,16 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 						onCreateSubmission={(stageId) => {
 							globalThis.location.href = ticketSubmissionHref(props.projectId, [stageId]);
 						}}
+						onBuyNow={(c) => buyTicket(c)}
+						onAddToBasket={(c, stageIds) => basketTicket(c, stageIds)}
+						inBasket={basketTicketIds.value.has(viewing.slug ?? viewing.id) ||
+							basketTicketIds.value.has(viewing.id)}
+						onOpenBasket={openBasket}
 					/>
 				)
 				: null}
+
+			<BuyNowModal host="body" />
 
 			{frame?.kind === "file" && !frame.input?.standalone
 				? (

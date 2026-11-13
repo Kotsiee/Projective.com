@@ -1,10 +1,14 @@
 import type { RefObject } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { effect, type Signal, useSignal } from "@preact/signals";
+import { effect, type ReadonlySignal, type Signal, useSignal } from "@preact/signals";
 import { createSpring, SPRING_STANDARD } from "../../core/motion.ts";
+import type { DndActive, DndPoint } from "../../dnd/core/types.ts";
 import {
 	boardWheelDelta,
+	edgeScrollVelocity,
 	PAN_THRESHOLD_PX,
+	type SettleColumn,
+	settleTarget,
 	SNAP_IDLE_MS,
 	snapTarget,
 	wheelStaysInColumn,
@@ -13,12 +17,23 @@ import {
 const COLUMN = ".ui-kanban__column";
 const COLUMN_BODY = ".ui-kanban__col-body";
 
+/** The drag the board auto-scrolls under — read from the enclosing `DndContext`. */
+export interface BoardViewportDrag {
+	active: ReadonlySignal<DndActive | null>;
+	/** The live pointer, client coordinates. */
+	pointer: ReadonlySignal<DndPoint>;
+	/** Re-run the drop hit-test after the board scrolled under a still pointer. */
+	resample: () => void;
+}
+
 /** Options for {@link useBoardViewport}. */
 export interface BoardViewportOptions {
 	/** The horizontal scroller — `.ui-kanban__board`. */
 	scrollerRef: RefObject<HTMLElement>;
 	/** Whether a card or column drag is in flight; the board never settles under one. */
 	isDragging: () => boolean;
+	/** The drag to auto-scroll under; absent, a drag held at an edge does not scroll the board. */
+	drag?: BoardViewportDrag;
 }
 
 /** What {@link useBoardViewport} exposes to the board's markup. */
@@ -37,10 +52,16 @@ export interface BoardViewport {
  *   vertically. The press is taken before a card sees it, so a pan never starts a card drag, and a
  *   pan that travelled swallows the click that follows. The middle button is the browser's own:
  *   its autoscroll runs untouched.
- * - **Settle** — only after the reader lets go: the wheel idle for {@link SNAP_IDLE_MS}, a pan or
- *   scrollbar released, a touch fling run out. The board springs to the nearest column start on
- *   `SPRING_STANDARD`; under either reduced-motion channel it lands there at once. Any new input
- *   stops a settle in flight, and so does any scroll the settle did not write (an autoscroll, a key).
+ * - **Edge auto-scroll** — a pointer drag held within `EDGE_ZONE_PX` of the board's left or
+ *   right edge scrolls it that way, faster the nearer the edge, on a frame loop; each step re-runs the
+ *   drop hit-test so the target follows the columns passing under the still pointer.
+ * - **Settle** — only after the reader lets go: the wheel idle for {@link SNAP_IDLE_MS}, a pan,
+ *   scrollbar or drag released, a touch fling run out; never while a drag is in flight. After
+ *   leftward travel the leftmost column in view springs flush to the left edge, after rightward
+ *   travel the rightmost one flush to the right ({@link settleTarget}); with no travel to read, the
+ *   nearest column start. `SPRING_STANDARD`; under either reduced-motion channel it lands at once.
+ *   Any new input stops a settle in flight, and so does any scroll the settle did not write (an
+ *   autoscroll, a key).
  */
 export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 	const panning = useSignal(false);
@@ -58,6 +79,8 @@ export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 		let scrolledWhileHeld = false;
 		let endPan: (() => void) | null = null;
 		let lastWritten = el.scrollLeft;
+		let prevLeft = el.scrollLeft;
+		let direction: -1 | 0 | 1 = 0;
 
 		const stopWrite = effect(() => {
 			const v = spring.value.value;
@@ -88,6 +111,21 @@ export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 			});
 		};
 
+		const measure = (): { columns: SettleColumn[]; view: number } => {
+			const box = el.getBoundingClientRect();
+			const style = getComputedStyle(el);
+			const padLeft = parseFloat(style.paddingLeft) || 0;
+			const padRight = parseFloat(style.paddingRight) || 0;
+			const contentLeft = box.left + el.clientLeft + padLeft;
+			const columns = Array.from(el.querySelectorAll<HTMLElement>(`:scope > ${COLUMN}`)).map(
+				(col) => {
+					const r = col.getBoundingClientRect();
+					return { leftAt: el.scrollLeft + (r.left - contentLeft), width: r.width };
+				},
+			);
+			return { columns, view: el.clientWidth - padLeft - padRight };
+		};
+
 		const stopSettle = () => {
 			if (timer !== undefined) clearTimeout(timer);
 			timer = undefined;
@@ -101,7 +139,12 @@ export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 			timer = undefined;
 			if (held || endPan || live.current.isDragging()) return;
 			const { min, max } = bounds();
-			const target = snapTarget(el.scrollLeft, columnStarts(), min, max);
+			let target: number | null;
+			if (direction === 0) target = snapTarget(el.scrollLeft, columnStarts(), min, max);
+			else {
+				const { columns, view } = measure();
+				target = settleTarget(el.scrollLeft, columns, view, min, max, direction);
+			}
 			if (target === null) return;
 			spring.jump(el.scrollLeft);
 			settling = true;
@@ -220,15 +263,67 @@ export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 			if (scrolledWhileHeld) scheduleSettle(SNAP_IDLE_MS);
 		};
 		const onScroll = () => {
-			if (held) scrolledWhileHeld = true;
+			const travelled = el.scrollLeft - prevLeft;
+			prevLeft = el.scrollLeft;
 			if (settling) {
 				if (Math.abs(el.scrollLeft - lastWritten) <= 1) return;
 				spring.stop();
 				settling = false;
 			}
+			if (Math.abs(travelled) >= 0.5) direction = travelled > 0 ? 1 : -1;
+			if (held) scrolledWhileHeld = true;
 			if (held || endPan || live.current.isDragging()) return;
 			scheduleSettle(SNAP_IDLE_MS);
 		};
+		// #endregion
+
+		// #region Edge auto-scroll
+		const drag = live.current.drag;
+		let frame = 0;
+		let lastFrame = 0;
+		let carry = 0;
+
+		const step = (now: number) => {
+			frame = 0;
+			const active = drag?.active.peek();
+			if (!drag || !active || active.sensor !== "pointer") return;
+			const dt = lastFrame ? Math.min(50, now - lastFrame) : 16;
+			lastFrame = now;
+			const p = drag.pointer.peek();
+			const box = el.getBoundingClientRect();
+			const v = p.y >= box.top && p.y <= box.bottom
+				? edgeScrollVelocity(p.x, box.left, box.right)
+				: 0;
+			if (v === 0) carry = 0;
+			else {
+				carry += (v * dt) / 1000;
+				const whole = Math.trunc(carry);
+				if (whole !== 0) {
+					carry -= whole;
+					const before = el.scrollLeft;
+					el.scrollLeft = before + whole;
+					if (el.scrollLeft !== before) drag.resample();
+				}
+			}
+			frame = requestAnimationFrame(step);
+		};
+
+		const stopAutoScroll = drag
+			? effect(() => {
+				const active = drag.active.value;
+				if (active?.sensor === "pointer") {
+					stopSettle();
+					if (!frame) {
+						lastFrame = 0;
+						carry = 0;
+						frame = requestAnimationFrame(step);
+					}
+				} else if (frame) {
+					cancelAnimationFrame(frame);
+					frame = 0;
+				}
+			})
+			: () => {};
 		// #endregion
 
 		el.addEventListener("wheel", onWheel, { passive: false });
@@ -251,6 +346,8 @@ export function useBoardViewport(opts: BoardViewportOptions): BoardViewport {
 			globalThis.removeEventListener("pointerup", onPointerUp);
 			endPan?.();
 			if (timer !== undefined) clearTimeout(timer);
+			stopAutoScroll();
+			if (frame) cancelAnimationFrame(frame);
 			stopWrite();
 			spring.dispose();
 		};

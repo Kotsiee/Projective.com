@@ -5,7 +5,7 @@ import { NotificationListParamsSchema } from "@projective/types/comms";
 import { NotificationInboxBackendService } from "@server/services/comms/NotificationInboxBackendService.ts";
 
 /**
- * `GET /api/notifications?category=&contextType=&contextId=&unreadOnly=true&archived=true&before=&limit=` — thin
+ * `GET /api/notifications?category=&contextType=&contextId=&unreadOnly=true&archived=true&q=&before=&limit=` — thin
  * route: one page of the caller's in-app inbox plus the badge summary
  * ({@link NotificationInboxBackendService.list}). The actor comes from the session; the service
  * answers 401 for a guest.
@@ -19,6 +19,7 @@ export const handler = define.handlers({
 			contextId: q.get("contextId") ?? undefined,
 			unreadOnly: q.has("unreadOnly") ? q.get("unreadOnly") === "true" : undefined,
 			archived: q.has("archived") ? q.get("archived") === "true" : undefined,
+			q: q.get("q")?.trim() || undefined,
 			before: q.get("before") ?? undefined,
 			limit: q.has("limit") ? Number(q.get("limit")) : undefined,
 		});

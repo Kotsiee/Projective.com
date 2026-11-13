@@ -551,6 +551,22 @@ BEGIN
   INSERT INTO comms.project_channels (project_id, stage_id, name, visibility)
   VALUES (p_project_id, v_stage, v_name, 'stage_all');
 
+  -- A seller-owned service (Decision #427) seats its provider on every stage of it — the owner's
+  -- freelancer seat, or the owning team's — so a stage added to it is staffed like the ones the
+  -- listing brought, and its tickets are claimable by the people the client bought from.
+  INSERT INTO projects.stage_assignments (
+    project_stage_id, assignee_type, freelancer_profile_id, team_id, assigned_by, is_client_managed, status
+  )
+  SELECT v_stage,
+         CASE WHEN p.owner_team_id IS NULL THEN 'freelancer' ELSE 'team' END::assignment_type,
+         CASE WHEN p.owner_team_id IS NULL THEN p.owner_user_id END,
+         p.owner_team_id, p.owner_user_id, false, 'accepted'
+    FROM projects.projects p
+   WHERE p.id = p_project_id AND p.client_user_id IS NOT NULL;
+  IF FOUND THEN
+    UPDATE projects.project_stages SET status = 'assigned'::stage_status WHERE id = v_stage;
+  END IF;
+
   RETURN v_stage;
 END;
 $$;
@@ -587,8 +603,8 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to delete a stage.' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NOT projects.can_review_project(p_project_id) THEN
-    RAISE EXCEPTION 'Only the project owner or its client business may delete a stage.'
+  IF NOT projects.can_edit_project_details(p_project_id) THEN
+    RAISE EXCEPTION 'Only the side that configures this project may delete a stage.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
@@ -721,8 +737,8 @@ DECLARE
   v_deleted_rooms   integer := 0;
   v_archived_rooms  integer := 0;
 BEGIN
-  IF auth.uid() IS NULL OR NOT projects.can_review_project(p_project_id) THEN
-    RAISE EXCEPTION 'Only the project owner or its client business may reshape the project.'
+  IF auth.uid() IS NULL OR NOT projects.can_edit_project_details(p_project_id) THEN
+    RAISE EXCEPTION 'Only the side that configures this project may reshape it.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
@@ -825,8 +841,8 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to reorder stages.' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NOT projects.can_review_project(p_project_id) THEN
-    RAISE EXCEPTION 'Only the project owner or its client business may reorder its stages.'
+  IF NOT projects.can_edit_project_details(p_project_id) THEN
+    RAISE EXCEPTION 'Only the side that configures this project may reorder its stages.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
@@ -934,8 +950,14 @@ BEGIN
 
     SELECT ps.chain_reaction, ps.name INTO v_chain, v_next_name
       FROM projects.project_stages ps WHERE ps.id = v_next;
+    -- A next stage the client prepaid (Decision #430) carries on as the Chain Reaction does whatever its
+    -- setting: its money is already in escrow, and arriving there holds it (fn_ticket_prepay_sync).
+    v_chain := COALESCE(v_chain, true) OR EXISTS (
+        SELECT 1 FROM finance.escrows e
+         WHERE e.ticket_id = p_ticket_id AND e.project_stage_id = v_next AND e.status = 'reserved'
+    );
 
-    IF COALESCE(v_chain, true) THEN
+    IF v_chain THEN
         -- Chain Reaction: carry on in the next stage on a fresh hold. A move between work states is
         -- not an entry into work, so the gate on trg_ticket_escrow_sync lets the write through and the
         -- hold below decides whether the work really continues.
@@ -1086,8 +1108,9 @@ BEGIN
         RAISE EXCEPTION 'Stage % not found.', p_stage_id USING ERRCODE = 'no_data_found';
     END IF;
 
-    -- Only the paying side (owner or client-business member) may define seats on the stage.
-    IF NOT projects.can_review_project(v_project) THEN
+    -- Only the configuring side may define seats on the stage: review authority, or a seller-owned
+    -- service's provider (Decision #427), who staffs their own service.
+    IF NOT projects.can_edit_project_details(v_project) THEN
         RAISE EXCEPTION 'Only the project owner may define open seats.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
@@ -2204,14 +2227,15 @@ BEGIN
     IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — nobody can be invited to it.' USING ERRCODE = 'check_violation';
     END IF;
-    IF p_target_user_id = v_actor OR p_target_user_id = v_project.owner_user_id THEN
+    IF p_target_user_id = v_actor OR p_target_user_id = v_project.owner_user_id
+        OR p_target_user_id IS NOT DISTINCT FROM v_project.client_user_id THEN
         RAISE EXCEPTION 'You are already on this project.' USING ERRCODE = 'check_violation';
     END IF;
     IF p_role IS NULL OR p_role NOT IN ('admin', 'manager', 'freelancer', 'member', 'guest') THEN
         RAISE EXCEPTION 'That is not a role an invitation can grant.' USING ERRCODE = 'check_violation';
     END IF;
     -- A delegate staffs the project; appointing another delegate is the owner's call.
-    IF p_role IN ('admin', 'manager') AND NOT projects.can_review_project(p_project_id) THEN
+    IF p_role IN ('admin', 'manager') AND NOT projects.can_edit_project_details(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may invite an admin or a manager.' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF p_role IN ('admin', 'manager') THEN

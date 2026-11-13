@@ -5,22 +5,35 @@ import "../styles/checkout.css";
 import { Icon } from "@projective/ui/icons";
 import { Dialog, Message } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
-import { PaymentCard } from "@projective/ui/display";
-import { isCheckoutEligible, resolveCardArt } from "@projective/types/finance";
+import { isCheckoutEligible, type TicketFundingQuote } from "@projective/types/finance";
 import { BasketService } from "../core/BasketService.ts";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { checkoutHref } from "../core/basket-model.ts";
 import { gatedSentence, refusalLines } from "../core/business-gate.ts";
-import { CardChooser } from "../components/PaymentChoice.tsx";
+import {
+	basketStagesOf,
+	initialStageSelection,
+	type PrepaidPreview,
+	previewQuote,
+} from "../core/stage-picker.ts";
+import { PaymentMethodChooser } from "../components/PaymentChoice.tsx";
+import { Amount } from "../components/Amount.tsx";
+import { CheckoutBlockers } from "../components/CheckoutBlockers.tsx";
+import { OrderLines } from "../components/OrderLines.tsx";
+import { OrderTotals } from "../components/OrderTotals.tsx";
+import { StagePicker } from "../components/StagePicker.tsx";
+import AddPaymentMethodModal from "./AddPaymentMethodModal.island.tsx";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { loadStripe } from "@features/payments/core/stripe-js.ts";
+import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import {
 	activeBasketId,
 	activeOwner,
 	applyBasket,
 	applyResponse,
 	applySession,
+	basket,
 	chosenCardId,
 	chosenProvider,
 	currentCheckoutContext,
@@ -28,6 +41,8 @@ import {
 	newAttemptKey,
 	notifyBasketChanged,
 	resetAttempt,
+	selectedMethodId,
+	selectPaymentMethod,
 	session as sessionSignal,
 	submitting,
 } from "../core/basket-state.ts";
@@ -39,32 +54,32 @@ import {
 	buyNowTarget,
 	closeBuyNow,
 	registerBuyNowHost,
+	ticketRefsOf,
 } from "../core/buy-now-state.ts";
 import type {
+	CheckoutBlocker,
 	CheckoutContext,
-	PaymentProvider,
+	CheckoutSessionContext,
 	ProviderAvailability,
 } from "../types/checkout-types.ts";
 
 /**
- * BuyNowModal — single-listing instant checkout, without leaving Explore or the entity page.
+ * BuyNowModal — one purchase, checked out without leaving the page: a listing from Explore or its
+ * entity page, or the stages of one project ticket (Decisions #166, #430).
  *
- * **How one listing gets priced on its own.** The shipped `CheckoutSessionContext` totals cover every
- * eligible line in scope, and the charge re-totals over exactly the `itemIds` submitted — so a modal
- * that added a line and then charged only that line while quoting the whole basket's total would be
- * refused with `price_changed` every time. Two ways out existed: silently de-select the buyer's other
- * lines (destructive, and it edits a basket they did not open), or read a NARROWED session. This takes
- * the second: the line is added carrying the `metadata.serviceId` narrowing token, and both the session
- * read and the charge are scoped by `?service_id=`. The client still computes nothing — it submits the
- * exact line set the server priced and quotes the exact total the server returned, so the two agree by
- * construction rather than by arithmetic.
+ * **What is shown is what is charged.** A listing is added carrying its `serviceId` narrowing token and
+ * a ticket's stage lines are written exactly (`replaceStages`); the session is then read narrowed to
+ * that scope (`?service_id=` / `?ticket_id=`) and the charge names exactly the lines that session
+ * priced, so the figure on the button and the charge agree by construction rather than by arithmetic.
  *
- * **What is shown is what is charged.** When the buyer already holds sibling lines for the same
- * listing, the narrowing keeps them and the modal LISTS them with the total. A quiet subset-charge
- * would be cheaper to build and is the one outcome a purchase surface may never produce.
+ * **A ticket's stages are chosen here.** The quote lists every stage the ticket runs through; any the
+ * server marks `fundable` can be ticked — the stage it is in is held at once, a later one is prepaid and
+ * held when the ticket reaches it. Every change rewrites the ticket's lines and re-reads the session, one
+ * write at a time and the latest selection last, so a slower answer can never paint over a newer one.
  *
- * Guests never reach here — {@link requestBuyNow} routes them to sign-in, because every checkout call
- * resolves against an acting account and a guest would arrive at an offer with nothing on it.
+ * Its parts are the checkout's own — the lines, the instrument chooser, the blockers and the totals —
+ * so the panel and `/checkout` cannot describe one purchase two ways. Guests never reach here:
+ * `requestBuyNow` routes them to sign-in.
  */
 
 // #region Props
@@ -79,18 +94,9 @@ export interface BuyNowModalProps {
 }
 // #endregion
 
-/** The human name of each payment route — the enum's own vocabulary, never re-invented per surface. */
-const PROVIDER_LABEL: Record<PaymentProvider, string> = {
-	card: "Card",
-	wallet: "Projective wallet",
-	express: "Apple Pay, Google Pay or PayPal",
-	invoice: "Invoice",
-};
-
 /**
  * The offer as THIS panel can act on it. The express wallets need Stripe's Express Checkout Element,
- * which only the full payment step mounts, so here the route is shown refused with where to find it
- * rather than offered as a choice this panel could not complete (the gate-versus-absence rule).
+ * which only the full payment step mounts, so here the route is shown refused with where to find it.
  */
 function buyNowOffer(providers: readonly ProviderAvailability[]): ProviderAvailability[] {
 	return providers.map((offer) =>
@@ -107,14 +113,22 @@ function buyNowOffer(providers: readonly ProviderAvailability[]): ProviderAvaila
 /** How far along one instant-purchase attempt is. */
 type BuyPhase = "preparing" | "ready" | "failed" | "done";
 
-/**
- * The checkout scope one attempt runs in. A listing narrows by its `serviceId` token; a TICKET narrows
- * to its project (Decision #166), so the session prices exactly the lines that fund that project.
- */
+/** The checkout scope one attempt runs in: a listing by its `serviceId`, a ticket by its own lines. */
 function scopeOf(base: CheckoutContext, target: BuyNowTarget): CheckoutContext {
 	return target.ticket
-		? { ...base, projectId: target.ticket.projectId, serviceId: null }
-		: { ...base, serviceId: target.itemId, projectId: null };
+		? { ...base, ticketId: target.ticket.ref, projectId: null, serviceId: null }
+		: { ...base, serviceId: target.itemId, projectId: null, ticketId: null };
+}
+
+/**
+ * What stands in the account's way, said once above the lines. A line's own obstacle is printed on the
+ * line, and `empty` is the panel's own sentence rather than the basket's.
+ */
+function accountBlockers(view: CheckoutSessionContext): CheckoutBlocker[] {
+	const listed = new Set(view.items.map((item) => item.id));
+	return view.blockers
+		.filter((b) => b.code !== "empty" && !(b.itemId && listed.has(b.itemId)))
+		.map((b) => ({ ...b, message: gatedSentence(b, view) }));
 }
 
 export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.Element | null {
@@ -123,71 +137,153 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 	/** A card charge is confirmed; waiting for the webhook to credit the wallet before the order. */
 	const settling = useSignal(false);
 	const confirmRef = useRef<HTMLDivElement>(null);
+	const quote = useSignal<TicketFundingQuote | null>(null);
+	const stages = useSignal<readonly string[]>([]);
+	/** A stage write or the session read after it is in flight. */
+	const syncing = useSignal(false);
+	const pendingStages = useRef<readonly string[] | null>(null);
+	const draining = useRef(false);
+	const addMethodOpen = useSignal(false);
+	const prepaidPreview = useSignal<PrepaidPreview>(readDevSeam()?.prepaidStages ?? "auto");
+
+	useEffect(() =>
+		subscribeDevSeam((seam) => {
+			prepaidPreview.value = seam?.prepaidStages ?? "auto";
+		}), []);
 
 	// #region Host election
 	useEffect(() => registerBuyNowHost(host), [host]);
 	const elected = buyNowHost.value === host;
 	// #endregion
 
+	// #region Session
+	/** Adopt an instrument the offer can complete — a carried-over choice may not be on offer here. */
+	const adoptProvider = useCallback((providers: readonly ProviderAvailability[]) => {
+		const offer = buyNowOffer(providers);
+		const held = chosenProvider.value;
+		if (!held || !offer.some((p) => p.provider === held && p.available)) {
+			chosenProvider.value =
+				offer.find((p) => p.available && (p.provider === "wallet" || p.provider === "card"))
+					?.provider ?? null;
+		}
+	}, []);
+
+	/** Re-read the narrowed session; `false` (and the reason said) when it could not be read. */
+	const readSession = useCallback(async (target: BuyNowTarget): Promise<boolean> => {
+		const read = await CheckoutService.session({
+			...scopeOf(currentCheckoutContext(), target),
+			basketId: activeBasketId.value,
+		});
+		if (pendingStages.current) return true;
+		if (!applyResponse(read, applySession)) {
+			failure.value = read.message ?? "We couldn't price that purchase just now.";
+			return false;
+		}
+		adoptProvider(read.data?.session.providers ?? []);
+		return true;
+	}, []);
+
+	/** Write one stage selection as the ticket's lines, then re-read the session priced over them. */
+	const writeStages = useCallback(async (want: readonly string[]): Promise<boolean> => {
+		const target = buyNowTarget.peek();
+		if (!target?.ticket) return false;
+		const scoped = scopeOf(currentCheckoutContext(), target);
+		const write = await BasketService.setTicketStages(
+			target.ticket.ticketId,
+			target.ticket.projectId,
+			scoped,
+			want,
+		);
+		if (!applyResponse(write, applyBasket)) {
+			failure.value = write.message ?? "We couldn't update your basket just now.";
+			return false;
+		}
+		notifyBasketChanged();
+		if (pendingStages.current) return true;
+		failure.value = null;
+		return await readSession(target);
+	}, []);
+
+	/**
+	 * Queue a selection. One write runs at a time and only the newest waiting selection is sent next,
+	 * so the basket and the panel always settle on the last thing the buyer ticked.
+	 */
+	const syncStages = useCallback(async (want: readonly string[]): Promise<boolean> => {
+		pendingStages.current = want;
+		syncing.value = true;
+		if (draining.current) return true;
+		draining.current = true;
+		let ok = true;
+		while (pendingStages.current) {
+			const next = pendingStages.current;
+			pendingStages.current = null;
+			ok = await writeStages(next);
+		}
+		draining.current = false;
+		syncing.value = false;
+		return ok;
+	}, []);
+	// #endregion
+
 	// #region Preparation
 	/**
-	 * Add the line, then read the checkout projection narrowed to it.
-	 *
-	 * Both calls carry the same `serviceId`, so the session's `items` and `totals` describe exactly the
-	 * set the confirm step will name.
+	 * A listing: add its line, then read the session narrowed to it. A ticket: read its funding quote,
+	 * open on the stages already in the basket (else the stage it is funded in), write them as its lines
+	 * and read the session narrowed to the ticket.
 	 */
 	const prepare = useCallback(async () => {
 		const target = buyNowTarget.value;
 		if (!target) return;
 		phase.value = "preparing";
 		failure.value = null;
+		quote.value = null;
 		// A previous attempt's key must never be replayed against a different purchase.
 		resetAttempt();
 
-		const scoped = scopeOf(currentCheckoutContext(), target);
-
-		const add = target.ticket
-			? await BasketService.addTicket(target.ticket.ticketId, target.ticket.projectId, scoped)
-			: await BasketService.addItem(
-				{
-					basketId: activeBasketId.value,
-					itemType: target.itemType,
-					itemId: target.itemId,
-					quantity: 1,
-					metadata: { serviceId: target.itemId },
-				},
-				scoped,
+		if (target.ticket) {
+			const read = await PaymentsService.ticketFundingQuote(
+				target.ticket.projectId,
+				target.ticket.ref,
 			);
+			if (!read.ok || !read.data) {
+				failure.value = read.message ?? "We couldn't read what this ticket needs just now.";
+				phase.value = "failed";
+				return;
+			}
+			quote.value = read.data.quote;
+			const opening = initialStageSelection(
+				read.data.quote,
+				basketStagesOf(basket.peek()?.items ?? [], ticketRefsOf(target.ticket)),
+			);
+			stages.value = opening;
+			phase.value = (await syncStages(opening)) ? "ready" : "failed";
+			return;
+		}
+
+		const scoped = scopeOf(currentCheckoutContext(), target);
+		const add = await BasketService.addItem(
+			{
+				basketId: activeBasketId.value,
+				itemType: target.itemType,
+				itemId: target.itemId,
+				quantity: 1,
+				metadata: { serviceId: target.itemId },
+			},
+			scoped,
+		);
 		if (!applyResponse(add, applyBasket)) {
 			failure.value = add.message ?? "We couldn't add that to your basket.";
 			phase.value = "failed";
 			return;
 		}
 		notifyBasketChanged();
-
-		const read = await CheckoutService.session({ ...scoped, basketId: activeBasketId.value });
-		if (!applyResponse(read, applySession)) {
-			failure.value = read.message ?? "We couldn't price that purchase just now.";
-			phase.value = "failed";
-			return;
-		}
-
-		// A provider adopted for an earlier scope may not be on offer here. `applySession` only adopts
-		// into an EMPTY choice, so an unavailable carry-over is corrected explicitly rather than left to
-		// be refused at the last step.
-		const offer = buyNowOffer(read.data?.session.providers ?? []);
-		const held = chosenProvider.value;
-		if (!held || !offer.some((p) => p.provider === held && p.available)) {
-			chosenProvider.value = offer.find((p) => p.available)?.provider ?? null;
-		}
-		phase.value = "ready";
+		phase.value = (await readSession(target)) ? "ready" : "failed";
 	}, []);
 
 	useEffect(() => {
 		if (!elected) return;
 		if (buyNowOpen.value) void prepare();
-	}, [elected, buyNowOpen.value, buyNowTarget.value?.itemId, prepare]);
-
+	}, [elected, buyNowOpen.value, buyNowTarget.value?.itemId, buyNowTarget.value?.ticket?.ref, prepare]);
 	// #endregion
 
 	const dismiss = useCallback(() => {
@@ -196,18 +292,26 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		phase.value = "preparing";
 		failure.value = null;
 		settling.value = false;
+		quote.value = null;
+		pendingStages.current = null;
 	}, []);
+
+	const chooseStages = (next: string[]) => {
+		stages.value = next;
+		resetAttempt();
+		void syncStages(next);
+	};
 
 	// #region Confirm
 	/**
 	 * Charge the purchase — or, with `override`, place the WALLET order that completes a card charge,
-	 * under the charge's own attempt key (the checkout's `finishByCard` model): a card tops the paying
-	 * wallet up, the webhook credits it, and only then is the order placed from the wallet.
+	 * under the charge's own attempt key: a card tops the paying wallet up, the webhook credits it, and
+	 * only then is the order placed from the wallet.
 	 */
 	const confirm = useCallback(async (override?: { provider: "wallet" }) => {
 		const view = sessionSignal.value;
 		const target = buyNowTarget.value;
-		if (!view || !target || submitting.value) return;
+		if (!view || !target || submitting.value || syncing.value) return;
 		const provider = override?.provider ?? chosenProvider.value;
 		if (!provider) {
 			failure.value = "Choose how you'd like to pay first.";
@@ -222,7 +326,6 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 
 		submitting.value = true;
 		failure.value = null;
-		const base = currentCheckoutContext();
 		const res = await CheckoutService.create({
 			basketId: view.basketId,
 			ownerType: view.owner.ownerType,
@@ -237,11 +340,10 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 			expectedCharge: view.charge
 				? { minor: view.charge.minor, currency: view.charge.currency }
 				: null,
-			// Buy Now never offers the voluntary gateway contribution — there is no control here to
-			// accept one with — so it is explicitly nothing.
+			// Buy Now never offers the voluntary gateway contribution, so it is explicitly nothing.
 			processingContributionMinor: 0,
 			idempotencyKey: newAttemptKey(),
-		}, scopeOf(base, target));
+		}, scopeOf(currentCheckoutContext(), target));
 		submitting.value = false;
 
 		const landed = applyResponse(res, (data) => {
@@ -312,7 +414,6 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		}
 		await confirm({ provider: "wallet" });
 	}, []);
-
 	// #endregion
 
 	if (!elected) return null;
@@ -320,11 +421,13 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 	const view = sessionSignal.value;
 	const target = buyNowTarget.value;
 	const result = lastResult.value;
-	const blockers = view?.blockers ?? [];
-	const payable = phase.value === "ready" && view !== null && blockers.length === 0 &&
+	const forTicket = !!target?.ticket;
+	const shownQuote = quote.value ? previewQuote(quote.value, prepaidPreview.value) : null;
+	const chosenNone = forTicket && stages.value.length === 0;
+	const blockers = view ? accountBlockers(view) : [];
+	const payable = phase.value === "ready" && view !== null && !syncing.value && !chosenNone &&
+		view.blockers.length === 0 && view.items.some(isCheckoutEligible) &&
 		chosenProvider.value !== null;
-	const cards = view?.savedCards ?? [];
-	const singleCard = cards.length === 1 ? cards[0] : null;
 
 	return (
 		<Dialog
@@ -333,10 +436,10 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 				if (!next) dismiss();
 			}}
 			header={phase.value === "done" ? "Purchase" : "Buy now"}
-			width="min(30rem, 94vw)"
+			width="min(32rem, 94vw)"
 			initialFocusRef={confirmRef}
 		>
-			<div class="bnow" ref={confirmRef} tabIndex={-1}>
+			<div class="bnow" ref={confirmRef} tabIndex={-1} aria-busy={syncing.value || undefined}>
 				{failure.value ? <Message severity="danger" text={failure.value} /> : null}
 
 				{phase.value === "preparing"
@@ -374,16 +477,13 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 								size="xl"
 							/>
 							<p class="bnow__result-msg">{refusalLines(result, view ?? null).headline}</p>
-							{/* Server-formatted. The client never renders a figure it computed. */}
 							{result.status === "succeeded"
-								? <p class="bnow__result-amount">{result.charged.display}</p>
+								? (
+									<p class="bnow__result-amount">
+										<Amount value={result.charged} size="hero" />
+									</p>
+								)
 								: null}
-							{
-								/*
-								 * A card nobody has entered yet is collected HERE, in Stripe's Payment Element, against the
-								 * intent the server just opened (its publishable key comes from the server's env with it).
-								 */
-							}
 							{result.status === "requires_action" && result.payment
 								? settling.value || result.payment.confirmation !== "collect"
 									? (
@@ -426,218 +526,109 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 				{phase.value === "ready" && view
 					? (
 						<>
+							{forTicket && shownQuote
+								? (
+									<section class="bnow__section" aria-labelledby="bnow-stages">
+										<h3 class="bnow__head" id="bnow-stages">Stages</h3>
+										<StagePicker
+											quote={shownQuote}
+											selected={stages}
+											onChange={chooseStages}
+											disabled={submitting.value}
+											idPrefix="bnow-stage"
+											labelledBy="bnow-stages"
+										/>
+									</section>
+								)
+								: null}
+
+							<CheckoutBlockers
+								blockers={blockers}
+								title="Before you can pay"
+								lineIdPrefix="bnow-line-"
+								id="bnow-blockers-head"
+							/>
+
 							<section class="bnow__section" aria-labelledby="bnow-items">
 								<h3 class="bnow__head" id="bnow-items">You're buying</h3>
-								<ul class="bnow__items">
-									{view.items.map((item) => (
-										<li key={item.id} class="bnow__item">
-											<span class="bnow__item-body">
-												<span class="bnow__item-title">{item.title}</span>
-												<span class="bnow__item-meta">
-													{item.subtitle ?? item.sellerName ?? ""}
-													{item.quantity > 1 ? ` · ×${item.quantity}` : ""}
-												</span>
-											</span>
-											<span class="bnow__item-price">{item.lineTotal.display}</span>
-										</li>
-									))}
-								</ul>
+								<OrderLines
+									items={view.items}
+									lineIdPrefix="bnow-line-"
+									empty={forTicket
+										? "Choose at least one stage to pay for."
+										: "There's nothing payable in this purchase right now."}
+								/>
 							</section>
 
-							{/* What stands between the reader and paying is the most useful thing on the panel. */}
-							{blockers.length > 0
+							{chosenNone ? null : (
+								<section class="bnow__section" aria-labelledby="bnow-pay">
+									<h3 class="bnow__head" id="bnow-pay">How you'll pay</h3>
+									<PaymentMethodChooser
+										providers={buyNowOffer(view.providers)}
+										wallet={view.wallet}
+										ownerName={view.owner.name}
+										cards={view.savedCards}
+										selected={selectedMethodId.value}
+										labelledBy="bnow-pay"
+										onSelect={selectPaymentMethod}
+										onAddCard={() => (addMethodOpen.value = true)}
+										canAddCard={view.cardsConnected}
+									/>
+								</section>
+							)}
+
+							{forTicket && !chosenNone
 								? (
-									<ul class="bnow__blockers" aria-label="Before you can pay">
-										{blockers.map((blocker) => (
-											<li
-												key={`${blocker.code}-${blocker.itemId ?? "account"}`}
-												class="bnow__blocker"
-											>
-												<Icon name="warning" size="sm" />
-												<span>{gatedSentence(blocker, view)}</span>
-											</li>
-										))}
-									</ul>
+									<p class="bnow__escrow">
+										<Icon name="lock" size="sm" />
+										<span>
+											{chosenProvider.value === "card"
+												? "Your card pays into your wallet first. It is held in escrow from there and released only when you approve the work."
+												: "Held in escrow from your wallet, released only when you approve the work."}
+										</span>
+									</p>
 								)
 								: null}
 
-							<section class="bnow__section" aria-labelledby="bnow-pay">
-								<h3 class="bnow__head" id="bnow-pay">How you'll pay</h3>
-								{
-									/*
-								  Every route is rendered, refused ones disabled with the server's own reason.
-								  Hiding a closed route leaves a buyer looking at a short list with no way to
-								  learn why the one they wanted is missing.
-								*/
-								}
-								{
-									/*
-									 * `role="radiogroup"` requires the radios to be its OWNED children. A `<li>` in between is
-									 * a `listitem` — neither a radio nor a generic — so the tree read radiogroup → listitem →
-									 * radio and the group lost its members. `role="none"` strips only the `<li>`'s own
-									 * semantics; the radio inside keeps all of its. It is the standard fix for a list used as
-									 * layout.
-									 */
-								}
-								<ul class="bnow__providers" role="radiogroup" aria-labelledby="bnow-pay">
-									{buyNowOffer(view.providers).map((offer) => (
-										<li key={offer.provider} role="none">
-											<label
-												class="bnow__provider"
-												data-available={offer.available ? "true" : "false"}
-											>
-												<input
-													type="radio"
-													name="bnow-provider"
-													value={offer.provider}
-													checked={chosenProvider.value === offer.provider}
-													disabled={!offer.available}
-													aria-describedby={!offer.available && offer.reason
-														? `bnow-reason-${offer.provider}`
-														: undefined}
-													onChange={() => (chosenProvider.value = offer.provider)}
-												/>
-												<span class="bnow__provider-label">
-													{PROVIDER_LABEL[offer.provider]}
-												</span>
-												{!offer.available && offer.reason
-													? (
-														<span
-															class="bnow__provider-reason"
-															id={`bnow-reason-${offer.provider}`}
-														>
-															{offer.reason}
-														</span>
-													)
-													: null}
-											</label>
-										</li>
-									))}
-								</ul>
-
-								{chosenProvider.value === "card" && singleCard
-									? (
-										<div class="bnow__card-single">
-											<PaymentCard
-												card={singleCard}
-												art={resolveCardArt({
-													brand: singleCard.brand,
-													binNumber: singleCard.binNumber,
-													isBusinessCard: singleCard.isBusinessCard,
-												})}
-												size="sm"
-											/>
-										</div>
-									)
-									: null}
-
-								{chosenProvider.value === "card" && cards.length > 1
-									? (
-										<div class="bnow__cards">
-											{
-												/*
-												 * The SAME picker `/checkout` uses, not a second copy of it. The copy this replaced
-												 * gave every option `tabIndex={-1}` until one was chosen, so a group with no default
-												 * card had no tab stop at all and could not be entered from the keyboard — the exact
-												 * trap `CardChooser` guards against, and it also carries the arrow-key model a
-												 * radiogroup is expected to have.
-												 */
-											}
-											<CardChooser
-												cards={cards}
-												chosen={chosenCardId.value}
-												onChoose={(id) => (chosenCardId.value = id)}
-											/>
-										</div>
-									)
-									: null}
-							</section>
-
-							{
-								/*
-								 * Funding a ticket states its terms and where the money comes from. The hold always debits a
-								 * wallet (Decision #125): one that covers the total pays it; otherwise a card pays the total
-								 * into the wallet first. Every figure is the server's, never a sum made here.
-								 */
-							}
-							{target?.ticket
-								? (
-									<>
-										<p class="bnow__escrow">
-											<Icon name="lock" size="sm" />
-											<span>Held in escrow, released only when you approve.</span>
-										</p>
-										<dl class="bnow__totals" aria-label="How this is paid">
-											<div class="bnow__total-row">
-												<dt>Wallet balance</dt>
-												<dd>{view.wallet.available.display}</dd>
-											</div>
-											{view.wallet.covers ? null : (
-												<div class="bnow__total-row">
-													<dt>Wallet short by</dt>
-													<dd>{view.wallet.shortfall.display}</dd>
-												</div>
-											)}
-											<div class="bnow__total-row">
-												<dt>
-													{view.wallet.covers
-														? "Paid from your wallet"
-														: "Paid by card, into your wallet"}
-												</dt>
-												<dd>{view.totals.total.display}</dd>
-											</div>
-										</dl>
-									</>
-								)
-								: null}
-
-							<dl class="bnow__totals">
-								<div class="bnow__total-row">
-									<dt>Subtotal</dt>
-									<dd>{view.totals.subtotal.display}</dd>
-								</div>
-								{view.totals.platformFeeMode === "buyer_added"
-									? (
-										<div class="bnow__total-row">
-											<dt>Service fee</dt>
-											<dd>{view.totals.platformFee.display}</dd>
-										</div>
-									)
-									: null}
-								{view.totals.taxNote
-									? (
-										<div class="bnow__total-row">
-											<dt>{view.totals.taxNote}</dt>
-											<dd>{view.totals.taxes.display}</dd>
-										</div>
-									)
-									: null}
-								<div class="bnow__total-row bnow__total-row--total">
-									<dt>Total</dt>
-									<dd>{view.totals.total.display}</dd>
-								</div>
-							</dl>
+							{chosenNone ? null : <OrderTotals view={view} id="bnow-summary" />}
 
 							<div class="bnow__foot">
 								<Button
-									fluid
+									class="cko-rail__buy"
 									severity="accent"
+									variant="filled"
+									size="lg"
+									fluid
 									rounded
 									loading={submitting.value}
 									disabled={!payable || submitting.value}
-									icon={<Icon name="lock" size="sm" />}
-									label={submitting.value ? "Paying…" : `Pay ${view.totals.total.display}`}
+									label={submitting.value
+										? "Taking payment…"
+										: chosenNone
+										? "Choose a stage to pay for"
+										: `Buy now · ${view.totals.total.display}`}
 									onClick={() => void confirm()}
 								/>
 								<a
 									class="bnow__full"
 									href={checkoutHref(view.basketId, activeOwner.value, {
-										serviceId: target?.itemId ?? null,
+										serviceId: target?.ticket ? null : target?.itemId ?? null,
+										ticketId: target?.ticket?.ref ?? null,
 									})}
 								>
 									Review on the full checkout
 								</a>
 							</div>
+
+							<AddPaymentMethodModal
+								open={addMethodOpen}
+								owner={view.owner}
+								cardsConnected={view.cardsConnected}
+								onSaved={(cardId) => {
+									selectPaymentMethod(`card:${cardId}`);
+									if (target) void readSession(target);
+								}}
+							/>
 						</>
 					)
 					: null}

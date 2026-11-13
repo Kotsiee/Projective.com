@@ -68,6 +68,104 @@ BEGIN
     RETURN round(v_base * projects.fn_intensity_price_multiplier(v_intensity))::bigint;
 END;
 $$;
+
+-- The stage a ticket is funded in (Decision #428): the stage it sits in, else — for a ticket in the
+-- stage-less New lane (Decision #421) — the first stage it runs through, by its own order. The one rule
+-- fund_ticket, begin_card_payment, the basket and the ticket funding quote share. NULL: no stage at all.
+CREATE OR REPLACE FUNCTION projects.fn_ticket_funding_stage(p_ticket_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(t.current_stage_id, (
+        SELECT ps.id
+          FROM pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(t.required_stages) = 'array' THEN t.required_stages
+                        ELSE '[]'::jsonb END) WITH ORDINALITY AS x(e, i)
+          JOIN projects.project_stages ps
+            ON ps.id::text = x.e->>'stage_id' AND ps.project_id = t.project_id
+         ORDER BY COALESCE((x.e->>'order')::int, 0), x.i
+         LIMIT 1))
+      FROM projects.tickets t
+     WHERE t.id = p_ticket_id;
+$$;
+
+-- Whether one stage of a ticket can be bought now (Decision #430): NULL when it can, else the refusal a
+-- door turns into its own sentence — `not_listed` (the ticket does not run through it; the stage it is
+-- funded in always counts, a ticket that lists none sits somewhere — #421) · `passed` (it comes before
+-- the stage the ticket is funded in) · `stage_finished` (approved, paid or cancelled) ·
+-- `prepaid` (a reservation already pays for it) · `held` (it is the funding stage, already paid for)
+-- · `unpriced` (no price for this ticket there). A fundable funding stage is held at payment, a later
+-- one reserved. The ONE rule fund_ticket, get_ticket_funding_quote and place_wallet_order's ticket
+-- lines share. Internal.
+CREATE OR REPLACE FUNCTION projects.fn_ticket_stage_fundable(p_ticket_id uuid, p_stage_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    t record;
+    v_stage projects.project_stages;
+    v_funding uuid;
+    v_pos bigint;
+    v_funding_pos bigint;
+BEGIN
+    SELECT tk.project_id, tk.required_stages, tk.unit_price_cents, tk.payment_status::text AS payment_status
+      INTO t
+      FROM projects.tickets tk
+     WHERE tk.id = p_ticket_id;
+    IF NOT FOUND THEN
+        RETURN 'not_listed';
+    END IF;
+    SELECT * INTO v_stage FROM projects.project_stages ps
+     WHERE ps.id = p_stage_id AND ps.project_id = t.project_id;
+    IF NOT FOUND THEN
+        RETURN 'not_listed';
+    END IF;
+
+    v_funding := projects.fn_ticket_funding_stage(p_ticket_id);
+    WITH ranked AS (
+        SELECT x.e->>'stage_id' AS stage_id,
+               pg_catalog.row_number() OVER (ORDER BY COALESCE((x.e->>'order')::int, 0), x.i) AS pos
+          FROM pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(t.required_stages) = 'array' THEN t.required_stages
+                        ELSE '[]'::jsonb END) WITH ORDINALITY AS x(e, i)
+    )
+    SELECT (SELECT r.pos FROM ranked r WHERE r.stage_id = p_stage_id::text ORDER BY r.pos LIMIT 1),
+           (SELECT r.pos FROM ranked r WHERE r.stage_id = v_funding::text ORDER BY r.pos LIMIT 1)
+      INTO v_pos, v_funding_pos;
+    IF p_stage_id IS DISTINCT FROM v_funding THEN
+        IF v_pos IS NULL THEN
+            RETURN 'not_listed';
+        END IF;
+        IF v_funding_pos IS NOT NULL AND v_pos < v_funding_pos THEN
+            RETURN 'passed';
+        END IF;
+    END IF;
+    IF v_stage.status::text IN ('approved', 'paid', 'cancelled') THEN
+        RETURN 'stage_finished';
+    END IF;
+    IF EXISTS (SELECT 1 FROM finance.escrows e
+                WHERE e.ticket_id = p_ticket_id AND e.project_stage_id = p_stage_id AND e.status = 'reserved') THEN
+        RETURN 'prepaid';
+    END IF;
+    IF p_stage_id = v_funding AND (
+        t.payment_status NOT IN ('unpaid', 'needs_funding')
+        OR EXISTS (SELECT 1 FROM finance.escrows e
+                    WHERE e.ticket_id = p_ticket_id AND e.status = 'held' AND e.revision_id IS NULL)
+    ) THEN
+        RETURN 'held';
+    END IF;
+    IF COALESCE(projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, v_stage), 0) <= 0 THEN
+        RETURN 'unpriced';
+    END IF;
+    RETURN NULL;
+END;
+$$;
 -- #endregion
 
 -- ---------------------------------------------------------------------------------------------
@@ -175,7 +273,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- the ticket's intensity in that stage). Returns a single row.
 --   total_cost_cents   = Σ installment amounts
 --   paid_to_date_cents = tickets.total_amount_paid (net payouts already released)
---   locked_escrow_cents= Σ finance.escrows.amount_cents currently 'held' for the ticket
+--   locked_escrow_cents= Σ finance.escrows.amount_cents currently 'held' for the ticket, or 'reserved'
+--                        for a later stage the client prepaid (Decision #430)
 --   remaining_cents    = max(total − paid − locked, 0)
 --   installments       = [{ stage_id, label, amount_cents, state: paid|escrowed|pending }]
 -- ---------------------------------------------------------------------------------------------
@@ -219,7 +318,7 @@ BEGIN
                 WHEN EXISTS (
                     SELECT 1 FROM finance.escrows e
                     WHERE e.ticket_id = tk.id AND e.project_stage_id = (elem->>'stage_id')::uuid
-                      AND e.status = 'held'
+                      AND e.status IN ('held', 'reserved')
                 ) THEN 'escrowed'
                 ELSE 'pending'
             END AS state
@@ -232,7 +331,7 @@ BEGIN
             COALESCE((SELECT total_amount_paid FROM tk), 0)::bigint AS paid,
             COALESCE((
                 SELECT SUM(e.amount_cents) FROM finance.escrows e
-                WHERE e.ticket_id = p_ticket_id AND e.status = 'held'
+                WHERE e.ticket_id = p_ticket_id AND e.status IN ('held', 'reserved')
             ), 0)::bigint AS locked
     )
     SELECT
@@ -420,7 +519,8 @@ $$;
 --                              stage, open only to a ticket nobody has claimed (Decision #421).
 --                              Without it a move that names no stage keeps the one it has.
 -- The status write cascades through the existing ticket triggers (escrow release on completed,
--- submission ledger on in_review). Every move is written to projects.ticket_history for the timeline.
+-- submission ledger on in_review). Every move that changes the status or the stage is written to
+-- projects.ticket_history for the timeline; a move to where the ticket already is writes nothing.
 --
 -- p_sort_order carries the card's new position within its destination lane, and is DEFAULTED so the
 -- three-argument call sites that predate it keep resolving to this same function. It is honoured
@@ -529,14 +629,30 @@ BEGIN
         updated_at = now()
     WHERE id = p_ticket_id;
 
-    -- Timeline entry for the move.
-    INSERT INTO projects.ticket_history
-        (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
-    VALUES
-        (p_ticket_id, v_actor,
-         CASE WHEN v_from_stage IS DISTINCT FROM v_to_stage THEN 'stage_moved' ELSE 'status_changed' END,
-         v_from_stage, v_to_stage, v_from_status, p_to_status,
-         jsonb_build_object('from_status', v_from_status, 'to_status', p_to_status));
+    -- Who may move it is settled above and by the ticket guards the write just fired; then where. A
+    -- ticket enters only the stages it lists (Decision #428, the board's lock), and this refusal rolls the
+    -- write back with it. One listing none goes anywhere; staying in its own stage is no move.
+    IF p_to_stage_id IS NOT NULL AND p_to_stage_id IS DISTINCT FROM v_from_stage AND EXISTS (
+        SELECT 1 FROM projects.tickets t
+         WHERE t.id = p_ticket_id
+           AND jsonb_typeof(t.required_stages) = 'array' AND jsonb_array_length(t.required_stages) > 0
+           AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(t.required_stages) e
+                            WHERE e->>'stage_id' = p_to_stage_id::text)
+    ) THEN
+        RAISE EXCEPTION 'This ticket doesn''t include this stage.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    -- Timeline entry for the move. A move to where the ticket already is (a save that re-asserts its
+    -- lane) records nothing, so the log never repeats "moved it to New" for a ticket that stayed put.
+    IF v_from_status IS DISTINCT FROM p_to_status OR v_from_stage IS DISTINCT FROM v_to_stage THEN
+        INSERT INTO projects.ticket_history
+            (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
+        VALUES
+            (p_ticket_id, v_actor,
+             CASE WHEN v_from_stage IS DISTINCT FROM v_to_stage THEN 'stage_moved' ELSE 'status_changed' END,
+             v_from_stage, v_to_stage, v_from_status, p_to_status,
+             jsonb_build_object('from_status', v_from_status, 'to_status', p_to_status));
+    END IF;
 
     -- Milestone-delivery hook on Done.
     IF p_to_status = 'completed'::ticket_status THEN

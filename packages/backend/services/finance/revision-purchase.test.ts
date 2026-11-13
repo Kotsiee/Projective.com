@@ -35,6 +35,17 @@ Deno.test("only the account that owns the project can pay for its round", () => 
 	assertEquals(revisionPurchase(ROUND, businessProject, OWNER).closed !== null, true);
 });
 
+Deno.test("a seller-owned service's round is its buyer's to pay, never its seller's (Decision #427)", () => {
+	const service = { ...PROJECT, owner_user_id: "seller", client_user_id: "buyer" };
+	const buyer = { ...OWNER, ownerId: "buyer" };
+	const seller = { ...OWNER, ownerId: "seller" };
+	assertEquals(revisionPurchase(ROUND, service, buyer).closed, null);
+	assertEquals(
+		revisionPurchase(ROUND, service, seller).closed,
+		"Pay for this revision from the account that owns its project.",
+	);
+});
+
 Deno.test("a round already open, resolved or cancelled is not for sale", () => {
 	for (const status of ["open", "resolved", "cancelled"]) {
 		assertEquals(

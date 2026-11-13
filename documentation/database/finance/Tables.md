@@ -127,9 +127,10 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `platform_fee_cents`           | bigint               | Fee applied at release (0 while held).            |
 | `deadline_bonus_cents`         | bigint               | `NOT NULL DEFAULT 0`. **Refused unless 0** (`ck_escrows_bonus_unfunded`) until a bonus is held with its escrow; see below. |
 | `currency`                     | text                 | Origin currency.                                  |
-| `status`                       | text                 | `held`/`released`/`refunded`/`disputed`/`funded` (`EscrowStatus`; no CHECK). |
+| `status`                       | text                 | `held`/`reserved`/`released`/`refunded`/`disputed`/`funded` (`EscrowStatus`; no value CHECK). `reserved` (Decision #430) is a later ticket stage prepaid: debited, unbound, no `expires_at` (`ck_escrows_reserved_shape`), turned `held` by `finance.fn_activate_ticket_reservation` when the ticket reaches the stage, else `refunded` by `finance.fn_refund_ticket_reservations`. |
 | `created_at`                   | timestamptz          | `NOT NULL DEFAULT now()`.                         |
 | `released_at`                  | timestamptz          | When it was released to the payee: what a consolidated invoice selects its period by. |
+| `expires_at`                   | timestamptz          | Nullable. When an unclaimed PREPAID escrow is refunded to its payer (Decision #428): stamped by `finance.fn_hold_ticket_escrow` on an unbound hold (`now()` + `prepaid_service_ttl_hours` 120 for a productised service, `prepaid_project_ttl_hours` 168 for a client project — `finance.fn_prepaid_escrow_ttl_hours`), cleared by `finance.fn_bind_ticket_escrow` at the claim, swept by `finance.fn_sweep_expired_prepaid_escrows`. `ck_escrows_expiry_unbound`: never set on a bound escrow. Kept on a refunded row as the deadline it met. |
 | `auto_funded`                  | boolean              | `NOT NULL DEFAULT false`. Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. |
 | `fx_rate`,`fx_base`,`fx_as_of` | —                    | **Additive** FX snapshot (`20260723090000`).      |
 
@@ -143,6 +144,26 @@ twice. A paid revision round's escrow (`revision_id` set) sits beside the base e
 escrow (`cohort_membership_id`) has no ticket, so neither collides. `uq_escrows_revision` (UNIQUE
 `(revision_id) WHERE revision_id IS NOT NULL`) holds a round once, whatever became of its escrow.
 `idx_escrows_ticket` stays for the all-status reads. Probe: `supabase/probes/escrow_uniqueness.sql`.
+
+**Prepaid later stages (Decision #430).** A later stage bought ahead is a `reserved` escrow on that
+stage, never a second `held` one, so the index above still allows one held base escrow per ticket and
+every door that releases, binds, sweeps or settles (they read `held` only) leaves it alone.
+`uq_escrows_ticket_stage_reserved` is a partial UNIQUE index on `(ticket_id, project_stage_id) WHERE
+status = 'reserved'` — a stage is prepaid once. `ck_escrows_reserved_shape CHECK (status <> 'reserved'
+OR (ticket_id IS NOT NULL AND payee_id IS NULL AND expires_at IS NULL AND revision_id IS NULL AND
+cohort_membership_id IS NULL))`: a reservation is a ticket's base escrow for a stage it has not
+reached, bound to nobody and on no refund clock, both of which it takes on only when it is held.
+`ck_escrows_unbound` admits an unbound `reserved` row beside an unbound `held` one. Readers that ask
+"what money is committed" count it (business archive blockers and committed balance, account closure,
+project completion and its unsettled count, the public "value protected" figure, the wallet's locked
+capital); readers that ask "what is the work escrow" do not. Probe: `supabase/probes/stage_prepay.sql`.
+
+**The prepaid refund window (Decision #428).** `idx_escrows_prepaid_expiry` is a partial index on
+`(expires_at) WHERE status = 'held' AND payee_id IS NULL AND expires_at IS NOT NULL` — the sweep's
+queue. A hold is always on its ticket's CURRENT stage, so the clock runs only for the stage the ticket
+is in; the Chain Reaction's hold into the next stage stamps its own clock only if it is unbound (in
+practice it binds to the continuing payee, whose unstarted claim is then the claim TTL's). Probe:
+`supabase/probes/prepaid_escrow_ttl.sql`.
 
 **No unfunded deadline bonus (Decision #337, ruling M7, step C).** A release pays
 `amount_cents + deadline_bonus_cents − platform_fee_cents`, and no hold debits the bonus from the
@@ -454,12 +475,14 @@ graph.
 The discount CHECK is what makes a basket total structurally unable to go negative: a discount can
 never exceed the line it discounts.
 
-**Ticket lines (Decision #166).** A line with `ticket_id` buys that one ticket: the basket prices it
-from the ticket (its own `unit_price_cents`, else its stage's) and checkout settles it by holding that
-ticket's escrow (`projects.fund_ticket` via `finance.place_wallet_order`). The dedupe key is the
-partial UNIQUE index `uq_basket_items_live_ticket (basket_id, ticket_id) WHERE ticket_id IS NOT NULL
-AND removed_at IS NULL AND purchased_at IS NULL` — one live line per ticket per basket, parked or not;
-adding it again re-selects that line. The PRODUCT_SPEC §5 purchasing gate (no description, not
+**Ticket lines (Decisions #166, #430).** A line with `ticket_id` buys ONE stage of that ticket
+(`stage_id`; a legacy stage-less line buys the stage it is funded in): the basket prices it from the
+ticket in that stage (`projects.fn_ticket_stage_price`'s rule, its intensity included) and checkout
+settles it through `projects.fund_ticket(…, ARRAY[stage_id])` via `finance.place_wallet_order` — a
+hold for the stage the ticket is funded in, a reservation for a later one. The dedupe key is the
+partial UNIQUE index `uq_basket_items_live_ticket (basket_id, ticket_id, stage_id) NULLS NOT DISTINCT
+WHERE ticket_id IS NOT NULL AND removed_at IS NULL AND purchased_at IS NULL` — one live line per
+ticket stage per basket, parked or not; adding a stage again re-selects and re-prices that line. The PRODUCT_SPEC §5 purchasing gate (no description, not
 purchasable) is enforced where money moves (`fund_ticket`, `begin_card_payment`) and said on the line
 before Pay. The order line it becomes carries the same ticket: `finance.order_lines.ticket_id` (NULL,
 FK → `projects.tickets`, `SET NULL` so the receipt outlives the ticket), with `fulfilment =
@@ -726,8 +749,9 @@ freelancer's `payout_ready` is recomputed from the payout account, never set by 
   one (`finance.fn_bind_ticket_escrow`, from `projects.fn_ticket_escrow_sync`) without a second debit.
   `ck_escrows_payee_pair CHECK (num_nulls(payee_type, payee_id) IN (0, 2))`;
   `ck_escrows_unbound CHECK (payee_id IS NOT NULL OR (revision_id IS NULL AND cohort_membership_id IS
-  NULL AND (status = 'refunded' OR (status = 'held' AND ticket_id IS NOT NULL))))` — an unbound escrow
-  is only ever a held base ticket escrow or a refunded one, so it can never be released to nobody.
+  NULL AND (status = 'refunded' OR (status IN ('held', 'reserved') AND ticket_id IS NOT NULL))))` — an
+  unbound escrow is only ever a held or reserved (Decision #430) base ticket escrow or a refunded one,
+  so it can never be released to nobody.
   `uq_escrows_ticket_base_held` (#189) still allows one held base escrow per ticket, bound or not.
   Every payee reader filters by equality (`payee_id = …`), so an unbound row matches no payee and the
   payee's RLS policy shows it only to the payer.

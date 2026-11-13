@@ -652,9 +652,14 @@ export async function latestLockPayments(
 	return out;
 }
 
-/** What `withBillingFacts` reads for a board: each ticket's newest escrow and the open billing period. */
+/**
+ * What `withBillingFacts` reads for a board: each ticket's newest working escrow, the later stages it
+ * prepaid (`reserved`, Decision #430) and the open billing period.
+ */
 export interface TicketBillingFacts {
 	escrows: Map<string, { autoFunded: boolean; releasedAt: string | null }>;
+	/** Ticket id → the stage ids it prepaid, still waiting for the ticket to arrive. */
+	prepaid: Map<string, string[]>;
 	/** The client business's open billing period, when it settles on a monthly invoice. */
 	invoicePeriod: { start: Date; end: Date } | null;
 }
@@ -671,11 +676,11 @@ export async function ticketBillingFacts(
 	clientBusinessId: string | null,
 	now: Date = new Date(),
 ): Promise<TicketBillingFacts> {
-	const out: TicketBillingFacts = { escrows: new Map(), invoicePeriod: null };
+	const out: TicketBillingFacts = { escrows: new Map(), prepaid: new Map(), invoicePeriod: null };
 	if (ticketIds.length === 0) return out;
 	const finance = getUserClient(accessToken).schema("finance");
 	const [escrows, settings] = await Promise.all([
-		finance.from("escrows").select("ticket_id, auto_funded, released_at")
+		finance.from("escrows").select("ticket_id, project_stage_id, status, auto_funded, released_at")
 			.in("ticket_id", ticketIds as string[])
 			.order("created_at", { ascending: false })
 			.limit(500),
@@ -685,6 +690,10 @@ export async function ticketBillingFacts(
 	]);
 	for (const row of ((escrows.error ? [] : escrows.data) ?? []) as Row[]) {
 		const id = String(row.ticket_id);
+		if (row.status === "reserved") {
+			out.prepaid.set(id, [...(out.prepaid.get(id) ?? []), String(row.project_stage_id)]);
+			continue;
+		}
 		if (out.escrows.has(id)) continue;
 		out.escrows.set(id, {
 			autoFunded: row.auto_funded === true,

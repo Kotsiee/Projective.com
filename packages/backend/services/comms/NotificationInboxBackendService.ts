@@ -122,6 +122,22 @@ function stamp(
 	return hit.length;
 }
 
+/**
+ * A search term safe to splice into a PostgREST `or=(…)` tree: its delimiters (`,` `(` `)`), quoting
+ * and both wildcard spellings (`%` `_` `*`) become spaces, so a typed character can neither widen the
+ * match nor break the filter. `null` when nothing searchable is left.
+ */
+export function inboxSearchTerm(q: string | undefined): string | null {
+	const term = (q ?? "").replace(/[%_*,()"'\\]/g, " ").replace(/\s+/g, " ").trim();
+	return term === "" ? null : term;
+}
+
+function matchesSearch(row: FixtureRow, term: string | null): boolean {
+	if (term === null) return true;
+	const needle = term.toLowerCase();
+	return row.title.toLowerCase().includes(needle) || row.body.toLowerCase().includes(needle);
+}
+
 function withoutArchived(row: FixtureRow): NotificationInboxItem {
 	const { archivedAt: _, ...item } = row;
 	return item;
@@ -136,7 +152,8 @@ export interface InboxWriteResult {
 export class NotificationInboxBackendService {
 	/**
 	 * One page of the caller's inbox, newest first, plus the badge summary. Filters: `category`,
-	 * `contextType` / `contextId`, `unreadOnly`, or `archived` for the dismissed rows instead. Keyset
+	 * `contextType` / `contextId`, `unreadOnly`, `q` (title or body, case-insensitive, via
+	 * {@link inboxSearchTerm}), or `archived` for the dismissed rows instead. Keyset
 	 * paging on `created_at` via `before`; `nextCursor` is `null` on the last page. Each row carries
 	 * its actor's party card (`null` for the platform, or when the card read fails).
 	 */
@@ -153,6 +170,7 @@ export class NotificationInboxBackendService {
 			});
 		}
 		const limit = params.limit ?? DEFAULT_LIMIT;
+		const term = inboxSearchTerm(params.q);
 
 		if (!isAuthBackendLive()) {
 			const rows = fixtureInbox(actor.userId);
@@ -163,6 +181,7 @@ export class NotificationInboxBackendService {
 				(!params.contextType || r.contextType === params.contextType) &&
 				(!params.contextId || r.contextId === params.contextId) &&
 				(params.archived || !params.unreadOnly || r.readAt === null) &&
+				matchesSearch(r, term) &&
 				Date.parse(r.createdAt) < before
 			).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 			const items = matched.slice(0, limit).map(withoutArchived);
@@ -192,6 +211,7 @@ export class NotificationInboxBackendService {
 			if (params.contextType) query = query.eq("context_type", params.contextType);
 			if (params.contextId) query = query.eq("context_id", params.contextId);
 			if (params.unreadOnly && !params.archived) query = query.is("read_at", null);
+			if (term) query = query.or(`title.ilike.*${term}*,body.ilike.*${term}*`);
 			if (params.before) query = query.lt("created_at", params.before);
 
 			const [page, summary] = await Promise.all([query, db.rpc("get_notification_summary")]);

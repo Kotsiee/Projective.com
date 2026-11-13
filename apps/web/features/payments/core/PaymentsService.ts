@@ -14,6 +14,7 @@ import type {
 	PaymentFundingPoll,
 	SavedCardResult,
 	StageFundingQuote,
+	TicketFundingQuote,
 	VerificationStatus,
 } from "@projective/types/finance";
 import { isSettledPaymentStatus } from "@projective/types/finance";
@@ -84,6 +85,21 @@ export const PaymentsService = {
 		return send(
 			`/api/finance/escrow/quote?project=${encodeURIComponent(project)}&stage=${
 				encodeURIComponent(stage)
+			}`,
+		);
+	},
+
+	/**
+	 * What funding one ticket takes for the caller (Decision #428): every stage it runs through at its
+	 * own price, the one paid now, the prepaid refund window and the paying wallet.
+	 */
+	ticketFundingQuote(
+		project: string,
+		ticket: string,
+	): Promise<PaymentsResponse<{ quote: TicketFundingQuote }>> {
+		return send(
+			`/api/finance/escrow/quote?project=${encodeURIComponent(project)}&ticket=${
+				encodeURIComponent(ticket)
 			}`,
 		);
 	},

@@ -313,10 +313,36 @@ export function senderOf(userId: string, row: PartyRow | undefined | null): {
 }
 
 /**
+ * The CLIENT PERSON of an engagement (Decision #427): the buyer of a seller-owned service
+ * (`client_user_id`), else its owner. The payer, the reviewer and the ticket author, and what to pass
+ * as {@link resolveReviewAuthority}'s `ownerUserId`.
+ */
+export function clientPersonOf(ownerUserId: string, clientUserId: string | null | undefined): string {
+	return clientUserId && clientUserId.length > 0 ? clientUserId : ownerUserId;
+}
+
+/**
+ * Whether the acting user may edit the engagement's own details — the TypeScript mirror of
+ * `projects.can_edit_project_details` (Decision #427). On a seller-owned service (`clientUserId`
+ * set) that is its owner, the provider, alone; the client reads it. Everywhere else it is
+ * {@link resolveReviewAuthority}, unchanged. Fails CLOSED like it.
+ */
+export async function resolveConfigureAuthority(
+	actor: ReadActor & { accessToken: string },
+	ownerUserId: string,
+	clientUserId: string | null | undefined,
+	clientBusinessId: string | null,
+): Promise<boolean> {
+	if (clientUserId) return actor.userId.length > 0 && actor.userId === ownerUserId;
+	return await resolveReviewAuthority(actor, ownerUserId, clientBusinessId);
+}
+
+/**
  * Whether the acting user holds review authority — the TypeScript mirror of
- * `projects.can_review_project`, both clauses: the owner, or an active member of the paying client
- * business. Asked as a column read rather than the RPC, which no migration grants `EXECUTE` on. Fails
- * CLOSED: a failed membership lookup withholds the configuration rather than offering one RLS refuses.
+ * `projects.can_review_project`, both clauses: the client person (see {@link clientPersonOf}, which
+ * callers pass as `ownerUserId`), or an active member of the paying client business. Asked as a
+ * column read rather than the RPC, which no migration grants `EXECUTE` on. Fails CLOSED: a failed
+ * membership lookup withholds the configuration rather than offering one RLS refuses.
  */
 export async function resolveReviewAuthority(
 	actor: ReadActor & { accessToken: string },

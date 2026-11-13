@@ -43,6 +43,13 @@ CREATE OR REPLACE TRIGGER trg_ticket_escrow_sync
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_ticket_escrow_sync();
 
+-- Prepaid later stages (Decision #430): held on arrival, refunded when the ticket ends or drops the
+-- stage. Named to fire after trg_ticket_escrow_sync, so a completion's release runs first.
+CREATE OR REPLACE TRIGGER trg_ticket_prepay_sync
+    AFTER UPDATE OF current_stage_id, required_stages, status ON projects.tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_ticket_prepay_sync();
+
 CREATE OR REPLACE TRIGGER trg_ticket_delete_protocol
     BEFORE DELETE ON projects.tickets
     FOR EACH ROW

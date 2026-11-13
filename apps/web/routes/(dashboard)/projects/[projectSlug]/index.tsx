@@ -64,7 +64,10 @@ export const handler = define.handlers({
 		const resolved = await resolveProjectAccess(ctx, slug);
 		if (!resolved) return seeOther(projectsNoticeHref("project-not-found"));
 
-		const landing = landingFor(resolved.access, resolved.status);
+		const landing = landingFor(resolved.access, resolved.status, {
+			configures: resolved.canConfigure,
+			service: resolved.service,
+		});
 		if (landing.kind !== "overview") {
 			return seeOther(landingHref(landing, slug) ?? projectsNoticeHref("project-not-found"));
 		}

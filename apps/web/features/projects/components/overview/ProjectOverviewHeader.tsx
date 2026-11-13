@@ -24,7 +24,10 @@ import { projectDetailsHref, projectHref } from "../../core/project-access.ts";
 export interface ProjectOverviewHeaderProps {
 	slug: string;
 	title: string;
-	/** Whether the viewer owns the engagement — only they configure and preview it. */
+	/**
+	 * Whether the viewer configures the engagement — only they reach Details and Preview. On a
+	 * service that is its seller, never its client (Decision #427).
+	 */
 	owner: boolean;
 	/** Whether Preview is open to the owner right now. */
 	canPreview: boolean;

@@ -151,15 +151,20 @@ export class BasketBackendService {
 	}
 
 	/**
-	 * Add ONE board ticket (`tkt-…` or its uuid) — the board's Buy now / Checkout hand-off (Decision
-	 * #166). The kind, project, stage and price come from the ticket, and a ticket already in the basket
-	 * is re-selected rather than added twice. `basketId`/`itemId` are optional context from the caller.
+	 * Add a board ticket's stages (`tkt-…` or its uuid), one line each — the board's Buy now / Add to
+	 * basket hand-off (Decisions #166, #430). The kind, project, stages and prices come from the ticket,
+	 * and a stage already in the basket is re-selected and re-priced rather than added twice. `stageIds`
+	 * names the stages (absent: the one it is funded in); `replaceStages` makes them the ticket's only
+	 * lines. `basketId`/`itemId` are optional context from the caller.
 	 */
 	static addTicket(
 		ticketId: string,
 		query: BasketQuery,
 		actor: ReadActor,
-		input: Pick<AddBasketItem, "basketId" | "itemId"> = { basketId: null, itemId: "" },
+		input: Pick<AddBasketItem, "basketId" | "itemId" | "stageIds" | "replaceStages"> = {
+			basketId: null,
+			itemId: "",
+		},
 	): Promise<ServiceResult<BasketWritePayload>> {
 		return settle(() => live.addTicket(ticketId, input, query, actor), payloadOf);
 	}

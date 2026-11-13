@@ -111,6 +111,7 @@ export function checkoutStepHref(
 		owner: ownerParamOf(owner),
 		project_id: preselect?.projectId ?? null,
 		service_id: preselect?.serviceId ?? null,
+		ticket_id: preselect?.ticketId ?? null,
 		// Only the confirmation step reads it, but carrying it here keeps one href builder rather than
 		// a second one that exists solely to append a query param.
 		order: step === "confirmation" ? orderId ?? null : null,
@@ -282,11 +283,12 @@ export function defaultOwnerParam(context: UserContext): string {
 // #endregion
 
 // #region URL ⇄ context
-/** The `?project_id=` / `?service_id=` narrowing a URL carries, in either spelling. */
+/** The `?project_id=` / `?service_id=` / `?ticket_id=` narrowing a URL carries, in either spelling. */
 export function preselectFrom(sp: URLSearchParams): CheckoutPreselect {
 	return {
 		projectId: sp.get("project_id") ?? sp.get("projectId"),
 		serviceId: sp.get("service_id") ?? sp.get("serviceId"),
+		ticketId: sp.get("ticket_id") ?? sp.get("ticketId"),
 	};
 }
 
@@ -303,6 +305,7 @@ export function contextFrom(sp: URLSearchParams, context: UserContext): Checkout
 		display: sp.get("display"),
 		projectId: preselect.projectId,
 		serviceId: preselect.serviceId,
+		ticketId: preselect.ticketId ?? null,
 	};
 }
 
@@ -322,6 +325,7 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	if (ctx.display) qs.set("display", ctx.display);
 	if (ctx.projectId) qs.set("project_id", ctx.projectId);
 	if (ctx.serviceId) qs.set("service_id", ctx.serviceId);
+	if (ctx.ticketId) qs.set("ticket_id", ctx.ticketId);
 	if (ctx.provider) qs.set("provider", ctx.provider);
 	if (ctx.contribute !== undefined) qs.set("contribute", ctx.contribute ? "1" : "0");
 	return qs.toString();

@@ -12,7 +12,7 @@ import {
 } from "@projective/ui/navigation";
 import { StatusIcon } from "./StatusIcon.tsx";
 import { KebabIcon, OwnerRoleIcon, StarIcon, WorkerRoleIcon } from "./glyphs.tsx";
-import { isOwnerRole } from "../types/projects-types.ts";
+import { canArchiveEngagement, isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -95,7 +95,13 @@ export function ProjectCard(
 	// everyone else contributes work to it. A muted icon on the secondary line, labelled on hover — it
 	// informs without competing with the title (§B.6 icon-first, keep the header uncluttered).
 	const isOwner = isOwnerRole(item.viewerRole);
-	const roleLabel = isOwner ? "You own this project" : "You contribute to this project";
+	// A service is its seller's, so its client is told they bought it and its seller that they
+	// deliver it, rather than either being told they own it (Decision #427).
+	const serviceLabel = item.viewerRole === "client"
+		? "You're the client of this service"
+		: "You deliver this service";
+	const ownLabel = isOwner ? "You own this project" : "You contribute to this project";
+	const roleLabel = item.kind === "service" ? serviceLabel : ownLabel;
 
 	// Row 2 metadata is format-driven: one-off → a finite progress bar; session → the next session.
 	const isOneOff = item.format === "one_off";
@@ -110,7 +116,7 @@ export function ProjectCard(
 	const isShared = item.scopeType !== "personal";
 	const hasFooter = isShared || Boolean(item.activity);
 
-	const ownerRows: MenuItem[] = isOwner
+	const ownerRows: MenuItem[] = canArchiveEngagement(item.kind, item.viewerRole)
 		? [{
 			key: "archive",
 			label: "Archive project",

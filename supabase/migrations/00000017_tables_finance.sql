@@ -95,7 +95,8 @@ CREATE TABLE finance.escrows (
     session_event_id uuid REFERENCES projects.session_events (id) ON DELETE RESTRICT,
     -- The paid revision round this escrow pays for (Decision #167), written by fn_hold_revision_escrow.
     -- A round's escrow sits beside its ticket's base escrow, and this is what tells the two apart: NULL
-    -- is the base escrow, of which a ticket holds at most one (uq_escrows_ticket_base_held, #189).
+    -- is the base escrow, of which a ticket holds at most one (uq_escrows_ticket_base_held, #189), plus
+    -- at most one `reserved` per later stage it is prepaid for (uq_escrows_ticket_stage_reserved, #430).
     -- RESTRICT: a round with money behind it is never removed.
     revision_id uuid REFERENCES projects.stage_revision_requests (id) ON DELETE RESTRICT,
     -- The payer is EITHER a client business OR an individual client (a project with no
@@ -117,10 +118,19 @@ CREATE TABLE finance.escrows (
     deadline_bonus_cents bigint NOT NULL DEFAULT 0
         CONSTRAINT ck_escrows_bonus_unfunded CHECK (deadline_bonus_cents = 0),
     currency text NOT NULL,
+    -- held · released · refunded · disputed (`funded` is the unused default), and `reserved` (Decision
+    -- #430): a later ticket stage paid for ahead — debited from the payer's wallet, bound to nobody, with
+    -- no refund clock, held by finance.fn_activate_ticket_reservation when the ticket reaches that stage
+    -- and refunded by finance.fn_refund_ticket_reservations if it never does. Every door that releases,
+    -- binds, sweeps or settles reads `held` only, so a reservation waits untouched beside the stage at work.
     status text NOT NULL DEFAULT 'funded',
     created_at timestamptz NOT NULL DEFAULT now(),
     -- When it was released to the payee — what a consolidated invoice selects its period by.
     released_at timestamptz,
+    -- When an unclaimed PREPAID escrow on its ticket's current stage is refunded to its payer
+    -- (Decision #428): stamped by fn_hold_ticket_escrow, cleared by fn_bind_ticket_escrow, swept by
+    -- fn_sweep_expired_prepaid_escrows. Never set on a bound escrow (ck_escrows_expiry_unbound).
+    expires_at timestamptz,
     -- Held by the From-wallet auto-fund queue (finance.fn_auto_fund_drain) rather than by a person.
     auto_funded boolean NOT NULL DEFAULT false,
     -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
@@ -136,8 +146,16 @@ CREATE TABLE finance.escrows (
         payee_id IS NOT NULL
         OR (
             revision_id IS NULL AND cohort_membership_id IS NULL
-            AND (status = 'refunded' OR (status = 'held' AND ticket_id IS NOT NULL))
+            AND (status = 'refunded' OR (status IN ('held', 'reserved') AND ticket_id IS NOT NULL))
         )
+    ),
+    CONSTRAINT ck_escrows_expiry_unbound CHECK (expires_at IS NULL OR payee_id IS NULL),
+    -- A reservation (Decision #430) is a ticket's base escrow for a stage it has not reached: unbound and
+    -- without a refund clock, both of which it takes on only when the stage's hold activates it.
+    CONSTRAINT ck_escrows_reserved_shape CHECK (
+        status <> 'reserved'
+        OR (ticket_id IS NOT NULL AND payee_id IS NULL AND expires_at IS NULL
+            AND revision_id IS NULL AND cohort_membership_id IS NULL)
     )
 );
 
@@ -960,8 +978,9 @@ CREATE TABLE finance.basket_items (
     stage_id uuid REFERENCES projects.project_stages (id) ON DELETE CASCADE,
     -- The ONE ticket this line buys (Decision #166) — a board ticket's Buy now / Checkout. NULL for a
     -- line that buys a whole project, a listing or a session. CASCADE for the same reason as stage_id:
-    -- a ticket that no longer exists is not purchasable. One live line per ticket per basket
-    -- (uq_basket_items_live_ticket, cat 4) — a ticket is bought once, never in quantity.
+    -- a ticket that no longer exists is not purchasable. One live line per ticket STAGE per basket
+    -- (uq_basket_items_live_ticket, cat 4, Decision #430) — each stage is one hold, never a quantity:
+    -- the stage the ticket is funded in is held at payment, a later one is prepaid (`reserved`).
     ticket_id uuid REFERENCES projects.tickets (id) ON DELETE CASCADE,
     -- The paid revision round this line buys (Decision #167): a client-requested round on a ticket,
     -- raised `awaiting_payment` by projects.request_paid_revision and opened when its escrow is held.

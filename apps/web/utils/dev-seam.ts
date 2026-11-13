@@ -159,6 +159,14 @@ export type DevTrustAdornments = "auto" | "none" | "earned" | "top";
 export type DevFundingState = "auto" | FundingState;
 
 /**
+ * The simulated prepaid later stages of a ticket (Decision #430): `auto` shows the server's `reserved`
+ * escrows; `none` shows no stage prepaid; `later` shows every stage after the one the ticket is funded in
+ * as prepaid, on the funding line and in the stage pickers. Its own axis because a prepaid stage is a
+ * real escrow no page control reaches without moving money. Display only.
+ */
+export type DevPrepaidStages = "auto" | "none" | "later";
+
+/**
  * The simulated revision allotment on the submission review (Decision #167): `auto` shows the stage's
  * real terms; `exhausted` uses up the free rounds so "Request revision" becomes "Buy a revision · price";
  * `paid` puts a funded paid round on the active unit, so the freelancer sees "Paid revision, funded, you
@@ -573,6 +581,8 @@ export interface DevSeamState {
 	trustAdornments?: DevTrustAdornments;
 	/** The simulated ticket funding state. Optional like `walletAurora`; absent reads as `auto`. */
 	fundingState?: DevFundingState;
+	/** The simulated prepaid later stages. Optional like `walletAurora`; absent reads as `auto`. */
+	prepaidStages?: DevPrepaidStages;
 	/** The simulated revision allotment. Optional like `walletAurora`; absent reads as `auto`. */
 	revisionAllotment?: DevRevisionAllotment;
 	/** The simulated business auto-fund mode. Optional like `walletAurora`; absent reads as `auto`. */
@@ -799,6 +809,7 @@ const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"resolved_split",
 ];
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
+const PREPAID_STAGES: readonly DevPrepaidStages[] = ["auto", "none", "later"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
 const BUSINESS_KYBS: readonly DevBusinessKyb[] = [
 	"auto",
@@ -923,6 +934,7 @@ export function readDevSeam(): DevSeamState | null {
 		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
 		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),
 		fundingState: coerce(ds.devFundingState, FUNDING_STATES, "auto"),
+		prepaidStages: coerce(ds.devPrepaidStages, PREPAID_STAGES, "auto"),
 		revisionAllotment: coerce(ds.devRevisionAllotment, REVISION_ALLOTMENTS, "auto"),
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),

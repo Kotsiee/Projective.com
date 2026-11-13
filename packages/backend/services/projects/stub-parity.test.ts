@@ -3,8 +3,10 @@ import {
 	type BoardCard,
 	type CommitTicket,
 	NEW_LANE_REFUSAL_MESSAGE,
+	STAGE_NOT_INCLUDED_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	ticketDeletable,
+	ticketIncludesStage,
 	ticketLeavesStage,
 } from "@projective/types/projects";
 import { ProjectBackendService } from "./ProjectBackendService.ts";
@@ -169,6 +171,32 @@ Deno.test("moveTicket (stub): claimed work keeps its stage; a funded unclaimed t
 		422,
 		NEW_LANE_REFUSAL_MESSAGE,
 		{ status: "not_allowed" },
+	]);
+});
+
+Deno.test("moveTicket (stub): a ticket enters only the stages it lists (Decision #428)", async () => {
+	resetWriteStore();
+	const board = await ProjectBackendService.board({ projectId: PROJECT, view: "stages" }, ALICE);
+	const page = board.data?.page;
+	assert(page, "the fixture board reads");
+	const listed = page.cards.find((c) =>
+		!c.claimed && c.stages.length > 0 &&
+		page.stages.some((s) => !c.stages.some((own) => own.stageId === s.id))
+	);
+	assert(listed, "the fixture board has an unclaimed ticket that leaves some stage out");
+	const outside = page.stages.find((s) => !listed.stages.some((own) => own.stageId === s.id));
+	assert(outside && !ticketIncludesStage(listed, outside.id));
+	const refused = await ProjectBackendService.moveTicket({
+		projectId: PROJECT,
+		ticketId: listed.id,
+		status: "todo",
+		stageId: outside.id,
+		sortOrder: null,
+	}, ALICE);
+	assertEquals([refused.status, refused.message, refused.errors], [
+		422,
+		STAGE_NOT_INCLUDED_MESSAGE,
+		{ stageId: "not_allowed" },
 	]);
 });
 // #endregion

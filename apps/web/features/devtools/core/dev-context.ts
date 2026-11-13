@@ -59,6 +59,7 @@ import {
 	type DevLayoutDirection,
 	type DevLowBalance,
 	type DevEngagementOrigin,
+	type DevPrepaidStages,
 	type DevMemberClient,
 	type DevMemberRole,
 	type DevMessagingRole,
@@ -134,6 +135,7 @@ export type {
 	DevLayoutDirection,
 	DevLowBalance,
 	DevEngagementOrigin,
+	DevPrepaidStages,
 	DevMemberClient,
 	DevMemberRole,
 	DevMessagingRole,
@@ -336,6 +338,12 @@ export interface DevOverrides {
 	 * axis because a hold, a refused hold and a pending card payment move money to reach.
 	 */
 	fundingState: DevFundingState;
+	/**
+	 * A ticket's prepaid later stages (Decision #430): `auto` shows the server's `reserved` escrows, `none`
+	 * none, `later` every stage after the one the ticket is funded in — on the funding line and in the
+	 * stage pickers. Display only; the server still answers from the real escrows.
+	 */
+	prepaidStages: DevPrepaidStages;
 	/**
 	 * The submission review's revision allotment (Decision #167): `auto` shows the stage's real terms,
 	 * `exhausted` uses the free rounds up (Buy a revision), `paid` opens a funded paid round on the
@@ -553,6 +561,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	verificationStamp: "auto",
 	trustAdornments: "auto",
 	fundingState: "auto",
+	prepaidStages: "auto",
 	revisionAllotment: "auto",
 	autoFundMode: "auto",
 	lowBalance: "auto",
@@ -824,6 +833,13 @@ export const DEV_FUNDING_STATES: ReadonlyArray<DevOption<DevFundingState>> = [
 	{ value: "in_review", label: "In review" },
 	{ value: "released", label: "Released" },
 	{ value: "refunded", label: "Refunded" },
+];
+
+/** Prepaid-stage options (Decision #430). */
+export const DEV_PREPAID_STAGES: ReadonlyArray<DevOption<DevPrepaidStages>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "later", label: "All later" },
 ];
 
 /** Revision-allotment options (Decision #167). */
@@ -1184,6 +1200,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devTrustAdornments;
 		if (next.fundingState !== "auto") root.dataset.devFundingState = next.fundingState;
 		else delete root.dataset.devFundingState;
+		if (next.prepaidStages !== "auto") root.dataset.devPrepaidStages = next.prepaidStages;
+		else delete root.dataset.devPrepaidStages;
 		if (next.revisionAllotment !== "auto") {
 			root.dataset.devRevisionAllotment = next.revisionAllotment;
 		} else delete root.dataset.devRevisionAllotment;

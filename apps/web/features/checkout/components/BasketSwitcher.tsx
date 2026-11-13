@@ -1,9 +1,10 @@
-import type { JSX } from "preact";
+import type { JSX, Ref } from "preact";
 import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { type Option, type OptionGroup, Select } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Amount } from "./Amount.tsx";
+import { NewListPopover } from "./NewListPopover.tsx";
 import type { BasketOwnerSummary, BasketSummary } from "../types/checkout-types.ts";
 
 /**
@@ -11,8 +12,9 @@ import type { BasketOwnerSummary, BasketSummary } from "../types/checkout-types.
  *
  * Grouped by owner — Personal, then each team, business and enterprise the buyer can spend from —
  * each listing that owner's baskets and named lists with their item count and selected subtotal. The
- * last row is "New list". Shared by the header basket drawer and the `/checkout` header band below
- * `--bp-md`, where the list lane is not rendered, so a phone switches lists with the same control.
+ * last row is "New list", which opens the {@link NewListPopover} anchored under the switcher — never a
+ * dialog stacked over the drawer. Shared by the header basket drawer and the `/checkout` header band
+ * below `--bp-md`, where the list lane is not rendered, so a phone switches lists with the same control.
  *
  * Every subtotal renders through {@link Amount}, so the rows follow a currency switch like every other
  * figure (Decision #70(D)).
@@ -29,8 +31,11 @@ export interface BasketSwitcherProps {
 	basketId: string | null;
 	/** Open another owner's basket or list. */
 	onSwitch: (owner: string, basketId: string) => void;
-	/** Start a new list; omitted, the row is not offered. */
-	onNewList?: () => void;
+	/**
+	 * Create a list named by the buyer and open it; resolves to `null` on success or to the sentence to
+	 * show when it could not be made. Omitted, the "New list" row is not offered.
+	 */
+	onCreateList?: (name: string) => Promise<string | null>;
 	/**
 	 * Icon-only trigger (the open basket's name stays in the accessible name) — for the checkout header
 	 * band below `--bp-md`, where a named trigger would crowd out the step trail. The panel is unchanged.
@@ -58,7 +63,8 @@ function countLabel(count: number): string {
 }
 
 export function BasketSwitcher(props: BasketSwitcherProps): JSX.Element {
-	const { owners, owner, basketId, onSwitch, onNewList } = props;
+	const { owners, owner, basketId, onSwitch, onCreateList } = props;
+	const createOpen = useSignal(false);
 
 	const byValue = new Map<string, { owner: BasketOwnerSummary; basket: BasketSummary }>();
 	for (const entry of owners) {
@@ -85,7 +91,7 @@ export function BasketSwitcher(props: BasketSwitcherProps): JSX.Element {
 			description: countLabel(basket.itemCount),
 		})),
 	}));
-	if (onNewList) options.push({ label: "", items: [{ label: "New list", value: NEW_LIST }] });
+	if (onCreateList) options.push({ label: "", items: [{ label: "New list", value: NEW_LIST }] });
 
 	const row = (opt: Option): JSX.Element => {
 		if (opt.value === NEW_LIST) {
@@ -128,7 +134,7 @@ export function BasketSwitcher(props: BasketSwitcherProps): JSX.Element {
 		);
 	};
 
-	return (
+	const select = (
 		<Select
 			class={[
 				"bsk-switch",
@@ -147,12 +153,25 @@ export function BasketSwitcher(props: BasketSwitcherProps): JSX.Element {
 			onValueChange={(next) => {
 				if (next === NEW_LIST) {
 					value.value = current;
-					onNewList?.();
+					setTimeout(() => (createOpen.value = true), 0);
 					return;
 				}
 				const hit = byValue.get(next);
 				if (hit && next !== current) onSwitch(hit.owner.owner, hit.basket.id);
 			}}
+		/>
+	);
+
+	if (!onCreateList) return select;
+	return (
+		<NewListPopover
+			open={createOpen}
+			onCreate={onCreateList}
+			trigger={(api) => (
+				<span class="bsk-switch__anchor" ref={api.ref as Ref<HTMLSpanElement>}>
+					{select}
+				</span>
+			)}
 		/>
 	);
 }

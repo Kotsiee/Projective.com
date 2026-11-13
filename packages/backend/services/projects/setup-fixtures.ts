@@ -450,7 +450,8 @@ export function findProjectSetup(projectKey: string): ProjectSetup | null {
 		onboardedCount: hasOnboarded(row)
 			? (board?.stages ?? []).reduce((n, stage) => n + stage.members.length, 0)
 			: 0,
-		viewerIsClient: detail.viewerIsClient,
+		// The setup surface is the configuring side's — on a service, its seller (Decision #427).
+		viewerIsClient: detail.viewerCanConfigure,
 	});
 }
 // #endregion

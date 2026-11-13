@@ -12,6 +12,7 @@ import {
 	MessagePageSchema,
 	normalizeMessageDelta,
 	type SendProjectMessage,
+	ticketIncludesStage,
 } from "@projective/types/projects";
 
 /**
@@ -169,7 +170,9 @@ Deno.test("a committed ticket's description and stage briefs are stored sanitise
 Deno.test("a moved ticket keeps its new column across a fresh board read", async () => {
 	resetWriteStore();
 	const board = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);
-	const target = board.data!.page.cards.find((c) => c.status === "backlog")!;
+	const target = board.data!.page.cards.find((c) =>
+		c.status === "backlog" && ticketIncludesStage(c, "stage-1")
+	)!;
 
 	const moved = await ProjectBackendService.moveTicket({
 		projectId: SLUG,
@@ -209,7 +212,9 @@ Deno.test("a move applies sortOrder only in the backlog lane, mirroring the orde
 	// that reordered anyway would accept a drag that the database refuses the day the gate flips.
 	resetWriteStore();
 	const board = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);
-	const target = board.data!.page.cards.find((c) => c.status === "backlog")!;
+	const target = board.data!.page.cards.find((c) =>
+		c.status === "backlog" && ticketIncludesStage(c, "stage-1")
+	)!;
 
 	const outside = await ProjectBackendService.moveTicket({
 		projectId: SLUG,

@@ -84,7 +84,7 @@ otherwise discard the table.
 | _Public can view active published…_    | `SELECT` | `status = 'active' AND visibility = 'public'`                              |
 | _Participants can view their…_         | `SELECT` | `projects.has_project_access(id)`                                          |
 | _Users can create projects_            | `INSERT` | `auth.uid() = owner_user_id`                                               |
-| _Reviewers can update their projects_  | `UPDATE` | `USING` **and** `WITH CHECK` both `projects.can_review_project(id)`        |
+| _Reviewers can update their projects_  | `UPDATE` | `USING` **and** `WITH CHECK` both `projects.can_edit_project_details(id)` — review authority, except on a seller-owned service, whose provider alone configures it and whose client only reads it (Decision #427) |
 | _Users can delete own projects_        | `DELETE` | `auth.uid() = owner_user_id`                                               |
 
 _Participants can view their projects_ and _Reviewers can view their projects_ are `TO
@@ -146,7 +146,7 @@ active member of the paying client business; owner only before Decision #163).
 | :------------------------------------------ | :------- | :---------------------------------------------------------------- |
 | _Users can view stages of visible projects_ | `SELECT` | Project owner, or project `status = 'active' AND visibility = 'public'`. |
 | _Participants can view stages_              | `SELECT` | `projects.has_project_access(project_stages.project_id)`          |
-| _Users can manage stages of own projects_   | `ALL`    | `projects.can_review_project(project_id)` (`USING` only; reused as the check). |
+| _Users can manage stages of own projects_   | `ALL`    | `projects.can_edit_project_details(project_id)` (`USING` only; reused as the check). A service's client reads its stages and writes none (Decision #427). |
 
 An archived stage (`archived_at`, Decision #163) is still readable under these policies — it is
 history; the product reads filter it ([Tables.md](Tables.md)).
@@ -163,7 +163,7 @@ every ticket still in the stage ([Functions.md](Functions.md#projectsfn_stage_de
 | Policy           | Command  | Rule                                                                                         |
 | :--------------- | :------- | :------------------------------------------------------------------------------------------- |
 | _View tickets_   | `SELECT` | Assignee · owner · project access or public-active — the latter two minus `reported_hidden`. |
-| _Manage tickets_ | `ALL`    | `current_assignee_id = auth.uid()` or project owner, on **both** arms.                       |
+| _Manage tickets_ | `ALL`    | `current_assignee_id = auth.uid()` or the project's client person (`COALESCE(client_user_id, owner_user_id)` — a seller-owned service's buyer, never its seller, Decision #427), on **both** arms. |
 | _Ticket managers compose tickets_ | `INSERT` (`authenticated`) | `projects.is_ticket_manager(project_id)` (Decision #294). |
 | _Ticket managers edit tickets_ | `UPDATE` (`authenticated`) | `projects.is_ticket_manager(project_id)`, on **both** arms. |
 
@@ -326,7 +326,8 @@ the definer doors in `00001135` §4 (Decision #145).
 
 | Policy                                     | Command  | Rule                          |
 | :----------------------------------------- | :------- | :---------------------------- |
-| _Owners view their service instantiations_ | `SELECT` | `owner_user_id = auth.uid()`. |
+| _Owners view their service instantiations_ | `SELECT` | `owner_user_id = auth.uid()` — the buyer who made the request. |
+| _Engagement owners view their service requests_ | `SELECT` | The owner of the project the request made — its seller (Decision #427), whose brief the intake answers are; closes #209 flag (c). |
 
 The idempotency key and the intake answers are the buyer's alone; the seller does not read them
 here (Decision #209 flag). No write policy: the only writer is
@@ -385,8 +386,8 @@ predicate (see Findings).
 | Policy                              | Command                       | Rule                                                                         |
 | :---------------------------------- | :---------------------------- | :--------------------------------------------------------------------------- |
 | _View project attachments_          | `SELECT` (`TO authenticated`) | `projects.has_project_access(project_id) OR projects.can_review_project(project_id)` |
-| _Owner attaches project references_ | `INSERT` (`TO authenticated`) | `WITH CHECK` `projects.can_review_project(project_id)`                       |
-| _Owner detaches project references_ | `DELETE` (`TO authenticated`) | `projects.can_review_project(project_id)`                                    |
+| _Owner attaches project references_ | `INSERT` (`TO authenticated`) | `WITH CHECK` `projects.can_edit_project_details(project_id)` (Decision #427) |
+| _Owner detaches project references_ | `DELETE` (`TO authenticated`) | `projects.can_edit_project_details(project_id)` (Decision #427)              |
 
 Scoped to project access rather than to the uploader, because an attachment is project context — it
 is what the brief refers to — and a freelancer who cannot open the reference a stage description

@@ -6,7 +6,9 @@ import {
 	fundingRollup,
 	fundingSentence,
 	fundingTagState,
+	prepaidSentence,
 	previewFunding,
+	previewPrepaidStages,
 } from "./funding-ui.ts";
 
 /*
@@ -179,4 +181,18 @@ Deno.test("a Draft ticket offers its next step; a payable, prepaid or later one 
 	assertEquals(draftStep(f({ state: "draft", nextAction: "fund" })), null);
 	assertEquals(draftStep(f({ state: "draft", nextAction: "none" })), null);
 	assertEquals(draftStep(f({ state: "needs_funding", nextAction: "fund" })), null);
+});
+
+Deno.test("prepaid later stages are named in one sentence (Decision #430)", () => {
+	assertEquals(prepaidSentence([]), null);
+	assertEquals(prepaidSentence(["Design"]), "Design is prepaid.");
+	assertEquals(prepaidSentence(["Design", "Build"]), "Design and Build are prepaid.");
+	assertEquals(prepaidSentence(["Design", "Build", "QA"]), "Design, Build and QA are prepaid.");
+});
+
+Deno.test("the prepaid-stage preview replaces the real ids only when forced", () => {
+	assertEquals(previewPrepaidStages(["b"], "auto", ["b", "c"]), ["b"]);
+	assertEquals(previewPrepaidStages(undefined, undefined, ["b"]), []);
+	assertEquals(previewPrepaidStages(["b"], "none", ["b", "c"]), []);
+	assertEquals(previewPrepaidStages([], "later", ["b", "c"]), ["b", "c"]);
 });

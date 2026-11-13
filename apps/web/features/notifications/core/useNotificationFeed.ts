@@ -12,19 +12,23 @@ export type FeedPhase = "loading" | "ready" | "error";
 export interface NotificationFeedOptions {
 	tab: ReadonlySignal<InboxTab>;
 	view: ReadonlySignal<InboxView>;
+	/** The search; omitted, the slice is unsearched. */
+	query?: ReadonlySignal<string>;
 	/** Whether the list is on screen (the drawer is open; the page always is). Reads wait for it. */
 	active: ReadonlySignal<boolean>;
 	pageSize?: number;
 }
 
 /**
- * useNotificationFeed — one tab-and-view slice of the inbox for the drawer and the page alike: the
+ * useNotificationFeed — one category, view and search slice of the inbox for the drawer and the page alike: the
  * first page on open or on a tab change, keyset "load more", the live head merge on every arrival
  * pulse (announced politely, rate-limited), and optimistic read / archive / mark-all writes that roll
  * back with an error notice when the server refuses. Opening the list, and every arrival it shows,
  * marks the inbox seen — that is what turns the header dot off.
  */
-export function useNotificationFeed({ tab, view, active, pageSize = 20 }: NotificationFeedOptions) {
+export function useNotificationFeed(
+	{ tab, view, query, active, pageSize = 20 }: NotificationFeedOptions,
+) {
 	const items = useSignal<NotificationInboxItem[]>([]);
 	const phase = useSignal<FeedPhase>("loading");
 	const failure = useSignal<string | null>(null);
@@ -39,11 +43,13 @@ export function useNotificationFeed({ tab, view, active, pageSize = 20 }: Notifi
 	const generation = useRef(0);
 	const lastPulse = useRef(inboxArrivals.peek());
 	const seen = () => void NotificationService.markSeen().then(refreshSummary);
+	const q = () => query?.peek() ?? "";
 
 	async function load(): Promise<void> {
 		const mine = ++generation.current;
 		phase.value = "loading";
-		const res = await NotificationService.list(tab.peek(), view.peek(), null, pageSize);
+		loadingMore.value = false;
+		const res = await NotificationService.list(tab.peek(), view.peek(), null, pageSize, q());
 		if (mine !== generation.current) return;
 		if (!res.ok) {
 			failure.value = res.message;
@@ -61,8 +67,16 @@ export function useNotificationFeed({ tab, view, active, pageSize = 20 }: Notifi
 	async function loadMore(): Promise<void> {
 		if (!cursor.value || loadingMore.value) return;
 		loadingMore.value = true;
-		const res = await NotificationService.list(tab.peek(), view.peek(), cursor.value, pageSize);
+		const mine = generation.current;
+		const res = await NotificationService.list(
+			tab.peek(),
+			view.peek(),
+			cursor.value,
+			pageSize,
+			q(),
+		);
 		loadingMore.value = false;
+		if (mine !== generation.current) return;
 		if (!res.ok) {
 			failure.value = res.message;
 			return;
@@ -73,7 +87,7 @@ export function useNotificationFeed({ tab, view, active, pageSize = 20 }: Notifi
 	}
 
 	async function refreshHead(): Promise<void> {
-		const res = await NotificationService.list(tab.peek(), view.peek(), null, pageSize);
+		const res = await NotificationService.list(tab.peek(), view.peek(), null, pageSize, q());
 		if (!res.ok || phase.peek() !== "ready") return;
 		const merged = mergeHead(items.peek(), res.data.items);
 		items.value = merged.items;
@@ -85,7 +99,7 @@ export function useNotificationFeed({ tab, view, active, pageSize = 20 }: Notifi
 
 	// First page whenever the list becomes visible or its slice changes.
 	useSignalEffect(() => {
-		void [tab.value, view.value, inboxEpoch.value];
+		void [tab.value, view.value, query?.value, inboxEpoch.value];
 		if (active.value) void load();
 	});
 

@@ -93,6 +93,24 @@ export function isOwnerRole(role: ProjectViewerRole): boolean {
 	return OWNER_VIEWER_ROLES.includes(role);
 }
 
+/**
+ * Which feed view a row belongs to, from the viewer's side (Decision #427). `engagements` (Services) is
+ * the provider's: the services they deliver. A service the viewer BOUGHT is work they commissioned,
+ * so it sits under `projects` with the rest of it — a client-only account has no Services tab at all.
+ */
+export function feedViewOf(row: Pick<ProjectSummary, "kind" | "viewerRole">): ProjectView {
+	return row.kind === "service" && row.viewerRole !== "client" ? "engagements" : "projects";
+}
+
+/**
+ * Whether the lane and feed offer this viewer "Archive project". Never on a freelancer's service
+ * (Decision #427): its client reads it and leaves through the listing's Remove draft, and its seller
+ * may not archive what the client's money is held in (`set_project_status`).
+ */
+export function canArchiveEngagement(kind: EngagementKind, role: ProjectViewerRole): boolean {
+	return kind !== "service" && isOwnerRole(role);
+}
+
 /** Whether a viewer role satisfies the chosen {@link ProjectInvolvement} axis (`all` always passes). */
 export function matchesInvolvement(
 	role: ProjectViewerRole,

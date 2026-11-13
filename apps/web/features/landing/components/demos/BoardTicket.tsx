@@ -102,6 +102,7 @@ export function stillDnd(): DndContextValue {
 		armPointer: () => {},
 		beginKeyboard: () => {},
 		keyboardActive: () => false,
+		resample: () => {},
 	};
 }
 

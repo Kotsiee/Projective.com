@@ -42,7 +42,7 @@ BEGIN
     SELECT u.user_id INTO v_buyer FROM org.users_public u
     WHERE u.user_id <> v_bp.seller
         AND NOT org.fn_is_minor(u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = u.user_id AND p.source_blueprint_id IN (v_bp.id, v_other))
+        AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.client_user_id = u.user_id AND p.source_blueprint_id IN (v_bp.id, v_other))
         AND NOT EXISTS (
             SELECT 1 FROM org.team_members tm JOIN marketplace.service_blueprints sb ON sb.owner_team_id = tm.team_id
             WHERE tm.user_id = u.user_id AND sb.id IN (v_bp.id, v_other)
@@ -245,14 +245,15 @@ BEGIN
     SELECT * INTO v_project FROM projects.projects WHERE id = current_setting('probe.project')::uuid;
     v_template_len := jsonb_array_length(v_bp.stage_template);
 
-    IF v_project.owner_user_id <> current_setting('probe.buyer')::uuid
+    IF v_project.owner_user_id <> v_bp.freelancer_profile_id
+        OR v_project.client_user_id IS DISTINCT FROM current_setting('probe.buyer')::uuid
         OR v_project.status <> 'draft' OR v_project.visibility <> 'unlisted'
         OR v_project.format <> 'pipeline' OR v_project.source_blueprint_id <> v_bp.id
         OR v_project.currency <> upper(v_bp.currency) OR v_project.title <> v_bp.title
         OR v_project.owner_team_id IS NOT NULL OR v_project.client_business_id IS NOT NULL THEN
         RAISE EXCEPTION 'FAIL project row: %', row_to_json(v_project);
     END IF;
-    RAISE NOTICE 'PASS project: draft · unlisted · pipeline · personal · listing currency · source_blueprint_id';
+    RAISE NOTICE 'PASS project: owned by the seller, the buyer its client (Decision #427) · draft · unlisted · pipeline · listing currency';
 
     IF (SELECT count(*) FROM projects.projects) <> current_setting('probe.projects_before')::int + 1 THEN
         RAISE EXCEPTION 'FAIL expected exactly one new project';
@@ -307,11 +308,22 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS the project-wide Discussion room';
 
-    IF EXISTS (SELECT 1 FROM projects.stage_assignments sa JOIN projects.project_stages ps ON ps.id = sa.project_stage_id WHERE ps.project_id = v_project.id)
-        OR EXISTS (SELECT 1 FROM finance.escrows e JOIN projects.project_stages ps ON ps.id = e.project_stage_id WHERE ps.project_id = v_project.id) THEN
-        RAISE EXCEPTION 'FAIL instantiation minted a seat or an escrow';
+    IF EXISTS (
+        SELECT 1 FROM projects.project_stages ps
+        WHERE ps.project_id = v_project.id
+            AND (ps.status <> 'assigned'::stage_status OR NOT EXISTS (
+                SELECT 1 FROM projects.stage_assignments sa
+                WHERE sa.project_stage_id = ps.id AND sa.assignee_type = 'freelancer'
+                    AND sa.freelancer_profile_id = v_bp.freelancer_profile_id AND sa.status = 'accepted'
+            ))
+    ) OR (SELECT count(*) FROM projects.stage_assignments sa JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+          WHERE ps.project_id = v_project.id) <> v_template_len THEN
+        RAISE EXCEPTION 'FAIL every stage should hold exactly the seller''s accepted seat';
     END IF;
-    RAISE NOTICE 'PASS no seat, no escrow';
+    IF EXISTS (SELECT 1 FROM finance.escrows e JOIN projects.project_stages ps ON ps.id = e.project_stage_id WHERE ps.project_id = v_project.id) THEN
+        RAISE EXCEPTION 'FAIL instantiation minted an escrow';
+    END IF;
+    RAISE NOTICE 'PASS the seller holds an accepted seat on every stage; no escrow';
 
     SELECT * INTO v_si FROM projects.service_instantiations WHERE project_id = v_project.id;
     IF v_si.idempotency_key <> 'probe-key-0001' OR v_si.intake_answers <> '{"depth": "deep"}'::jsonb
@@ -320,6 +332,89 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS the request row keeps the key, the listing''s currency and only the answers it asks';
 END $$;
+-- #endregion
+
+-- #region 3a. Who does what on a seller-owned service (Decision #427)
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.buyer'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_project uuid := current_setting('probe.project')::uuid;
+    v_rows int;
+BEGIN
+    IF NOT projects.has_project_access(v_project) OR NOT projects.can_review_project(v_project)
+        OR NOT projects.fn_can_fund_project(v_project) OR projects.can_edit_project_details(v_project)
+        OR projects.can_manage_project_members(v_project) THEN
+        RAISE EXCEPTION 'FAIL the buyer should read, review and fund, and never configure or staff';
+    END IF;
+    RAISE NOTICE 'PASS the buyer reads, reviews and funds the service, and does not configure it';
+
+    UPDATE projects.projects SET title = 'Buyer rename' WHERE id = v_project;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL the buyer edited the seller''s project details'; END IF;
+    UPDATE projects.project_stages SET name = 'Buyer stage' WHERE project_id = v_project;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL the buyer edited the seller''s stages'; END IF;
+    RAISE NOTICE 'PASS RLS keeps the buyer read-only on the project row and its stages';
+
+    BEGIN
+        PERFORM projects.reorder_stages(v_project, ARRAY(
+            SELECT ps.id FROM projects.project_stages ps WHERE ps.project_id = v_project ORDER BY ps.sort_order DESC));
+        RAISE EXCEPTION 'FAIL the buyer reordered the seller''s stages';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS the buyer cannot reorder stages';
+    END;
+    BEGIN
+        PERFORM projects.set_project_status(v_project, 'active'::project_status);
+        RAISE EXCEPTION 'probe-rollback' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN SQLSTATE 'P0001' THEN
+        IF SQLERRM <> 'probe-rollback' THEN RAISE; END IF;
+        RAISE NOTICE 'PASS the buyer (review authority) may still drive the lifecycle';
+    END;
+END $$;
+RESET ROLE;
+
+SAVEPOINT seller_edits;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.seller'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_project uuid := current_setting('probe.project')::uuid;
+    v_rows int;
+BEGIN
+    IF NOT projects.has_project_access(v_project) OR projects.can_review_project(v_project)
+        OR projects.fn_can_fund_project(v_project) OR NOT projects.can_edit_project_details(v_project)
+        OR NOT projects.can_manage_project_members(v_project) THEN
+        RAISE EXCEPTION 'FAIL the seller should configure and staff, and never review or fund';
+    END IF;
+    RAISE NOTICE 'PASS the seller configures and staffs the service, and can neither review nor fund it';
+
+    UPDATE projects.projects SET title = 'Seller rename' WHERE id = v_project;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL the seller could not edit their own project details'; END IF;
+    RAISE NOTICE 'PASS the seller edits the details';
+
+    BEGIN
+        UPDATE projects.projects SET client_user_id = current_setting('probe.stranger')::uuid WHERE id = v_project;
+        RAISE EXCEPTION 'FAIL the seller re-pointed the client';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS client_user_id is derived: the seller cannot re-point the buyer';
+    END;
+    BEGIN
+        PERFORM projects.set_project_status(v_project, 'archived'::project_status);
+        RAISE EXCEPTION 'FAIL the seller archived the client''s engagement';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS archiving stays the client''s';
+    END;
+    IF NOT EXISTS (SELECT 1 FROM projects.service_instantiations si WHERE si.project_id = v_project) THEN
+        RAISE EXCEPTION 'FAIL the seller cannot read the request that made their engagement';
+    END IF;
+    RAISE NOTICE 'PASS the seller reads the intake answers (#209 flag (c))';
+END $$;
+RESET ROLE;
+ROLLBACK TO SAVEPOINT seller_edits;
 -- #endregion
 
 -- #region 3b. A tiered listing — unlocked stages carrying the seller's own tier prices (Decision #417)

@@ -42,7 +42,8 @@
  * its `container-name: cko`. Declaring a second container here would shadow it and quietly change
  * which box every inherited breakpoint in `checkout-body.css` was asking about.
  */
-.cko-pstep {
+.cko-pstep,
+.bnow {
 	/* The one plate width this step draws an instrument at, in the picker and in the summary alike. */
 	--cko-plate-w: 115px;
 }
@@ -1025,6 +1026,24 @@
 .cko-rail__linetotal {
 	flex: none;
 	text-align: end;
+}
+
+.cko-rail__flag {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	color: var(--warning);
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+}
+
+.cko-rail__flag > svg {
+	flex: none;
+	margin-block-start: 0.15em;
+}
+
+.cko-rail__item[data-available="false"] .cko-rail__itemtitle {
+	color: var(--text-secondary);
 }
 
 /*

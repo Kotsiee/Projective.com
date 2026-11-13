@@ -1,31 +1,17 @@
 import type { JSX } from "preact";
-import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Button, Checkbox } from "@projective/ui/fields";
+import { ProgressiveImage } from "@projective/ui/display";
+import { AspectRatio } from "@projective/ui/layout";
 import { fundingNote, itemHref, itemKindLabel, sellerHref } from "../core/basket-model.ts";
 import { Amount } from "./Amount.tsx";
 import { isSelected, pendingLines } from "../core/basket-state.ts";
 import { groupIconName } from "./checkout-glyphs.tsx";
 import { itemKindMeta } from "@projective/types/finance";
 import type { BasketItem, BasketSummary } from "../types/checkout-types.ts";
-
-/**
- * BasketDrawerRow — one line of the header basket drawer.
- *
- * Every control is icon-only with a portal `Tooltip` and an `aria-label` (DESIGN_SYSTEM §B.6): the
- * drawer is a peek at ~25rem, and four labelled buttons per row would leave no room for the fact the
- * row exists to state. The row's own status — unavailable, parked, mid-write — is iconographic for the
- * same reason, with the words in the tooltip.
- *
- * **No figure on this row is computed here.** `lineTotal` and `originalPrice` are server-computed
- * `MoneyView`s rendered through {@link Amount}, so they follow a currency switch; the row never
- * multiplies a unit price by a quantity, because that is the second arithmetic path a money surface
- * cannot afford.
- *
- * A ticket or session line says what paying does with the money ({@link fundingNote}): whom it funds
- * and that it is held in escrow. Plain meta text, not a tag (§3 gate 7).
- */
 
 // #region Props
 /** Props for {@link BasketDrawerRow}. */
@@ -47,14 +33,34 @@ export interface BasketDrawerRowProps {
 }
 // #endregion
 
+/**
+ * BasketDrawerRow — one line of the header basket drawer, separated from the next by one hairline and
+ * never boxed (§B.9).
+ *
+ * The checkbox sits level with a 1:1 `AspectRatio` thumbnail — a `ProgressiveImage` whose missing or
+ * broken picture falls back to the line kind's glyph on the solid `--surface-2` ground. A parked line
+ * has no checkbox: parking and queueing for payment are exclusive server-side, so a checkbox there
+ * would silently undo itself. Every row action is an icon-only text `Button` behind a portal `Tooltip`
+ * with an `aria-label` (§B.8.5), because the drawer is a peek at `--drawer-w` and four worded buttons
+ * per row would crowd out the fact the row states. An unavailable line says so with a glyph, the
+ * reason in its tooltip and label.
+ *
+ * **No figure on this row is computed here.** `lineTotal` and `originalPrice` are server-computed
+ * `MoneyView`s rendered through {@link Amount}, so they follow a currency switch. A ticket or session
+ * line says what paying does with the money ({@link fundingNote}) as unboxed Meta-register text.
+ */
 export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 	const { line, destinations, onToggleSelected, onPark, onMove, onRemove, onNavigate } = props;
 	const moveOpen = useSignal(false);
-	const moveBtn = useRef<HTMLButtonElement>(null);
 
 	const busy = pendingLines.value.has(line.id);
 	const parked = line.savedForLater;
 	const selected = isSelected(line);
+	const ticked = useSignal(selected);
+	useEffect(() => {
+		ticked.value = selected;
+	}, [selected]);
+
 	const seller = sellerHref(line);
 	const kindLabel = itemKindLabel(line);
 	const funding = fundingNote(line);
@@ -68,30 +74,28 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 			data-busy={busy ? "true" : undefined}
 			data-parked={parked ? "true" : undefined}
 		>
-			{
-				/*
-			  A parked line has no checkbox: parking and queueing for payment are exclusive by definition
-			  server-side (`updateItem` clears `selected` whenever it parks), so a checkbox here would be
-			  a control that silently un-does itself.
-			*/
-			}
-			{parked ? <span class="bskd-line__spacer" aria-hidden="true" /> : (
-				<input
-					type="checkbox"
-					class="bskd-line__check"
-					checked={selected}
-					disabled={!line.available || busy}
-					aria-label={`Include ${line.title} in the next checkout`}
-					onChange={() => onToggleSelected(line)}
-				/>
-			)}
+			{parked
+				? <span class="bskd-line__spacer" aria-hidden="true" />
+				: (
+					<span class="bskd-line__check">
+						<Checkbox
+							size="sm"
+							value={ticked}
+							disabled={!line.available || busy}
+							aria-label={`Include ${line.title} in the next checkout`}
+							onValueChange={() => onToggleSelected(line)}
+						/>
+					</span>
+				)}
 
 			<a class="bskd-line__link" href={itemHref(line)} onClick={onNavigate}>
-				<span class="bskd-line__thumb">
-					{line.thumbnail
-						? <img src={line.thumbnail} alt="" loading="lazy" decoding="async" />
-						: <Icon name={groupIconName(itemKindMeta(line.itemType).group)} size="md" />}
-				</span>
+				<AspectRatio ratio="square" class="bskd-line__thumb">
+					<ProgressiveImage
+						src={line.thumbnail}
+						loading="lazy"
+						fallback={<Icon name={groupIconName(itemKindMeta(line.itemType).group)} size="md" />}
+					/>
+				</AspectRatio>
 				<span class="bskd-line__body">
 					<span class="bskd-line__title">{line.title}</span>
 					<span class="bskd-line__meta">
@@ -125,14 +129,6 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 						</a>
 					)
 					: null}
-
-				{
-					/*
-				  An unavailable line states itself with a glyph and puts the words in the tooltip and the
-				  label (§B.6): a 27rem panel has no room for a sentence per row, and the reason is exactly
-				  as reachable either way.
-				*/
-				}
 				{!line.available
 					? (
 						<Tooltip
@@ -155,73 +151,80 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 
 			<span class="bskd-line__actions">
 				<Tooltip content={parked ? "Move back to basket" : "Save for later"} placement="top">
-					<button
-						type="button"
+					<Button
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
 						class="bskd-line__btn"
+						icon={<Icon name={parked ? "basket" : "bookmark"} size="sm" />}
 						aria-label={parkLabel}
 						aria-pressed={parked}
 						disabled={busy}
 						onClick={() => onPark(line, !parked)}
-					>
-						<Icon name={parked ? "basket" : "bookmark"} size="sm" />
-					</button>
+					/>
 				</Tooltip>
 
 				{destinations.length > 0
 					? (
-						<>
-							<Tooltip content="Move to another list" placement="top">
-								<button
-									ref={moveBtn}
-									type="button"
-									class="bskd-line__btn"
-									aria-label={`Move ${line.title} to another list`}
-									aria-haspopup="menu"
-									aria-expanded={moveOpen.value ? "true" : "false"}
-									disabled={busy}
-								>
-									<Icon name="folder" size="sm" />
-								</button>
-							</Tooltip>
-							<Popover
-								open={moveOpen}
-								targetRef={moveBtn}
-								placement="bottom-end"
-								class="bskd-menu"
-							>
-								<ul class="bskd-menu__list" role="menu" aria-label="Move to another list">
-									{destinations.map((dest) => (
-										<li key={dest.id} role="none">
-											<button
-												type="button"
-												role="menuitem"
-												class="ui-menu-item bskd-menu__item"
-												onClick={() => {
-													moveOpen.value = false;
-													onMove(line, dest.id);
-												}}
-											>
-												<Icon name="folder" size="sm" class="ui-menu-item__icon" />
-												<span class="bskd-menu__label">{dest.name}</span>
-											</button>
-										</li>
-									))}
-								</ul>
-							</Popover>
-						</>
+						<Popover
+							open={moveOpen}
+							placement="bottom-end"
+							class="bskd-menu"
+							trigger={(api) => (
+								<Tooltip content="Move to another list" placement="top">
+									<Button
+										variant="text"
+										severity="secondary"
+										size="sm"
+										iconOnly
+										class="bskd-line__btn"
+										triggerRef={api.ref}
+										icon={<Icon name="folder" size="sm" />}
+										aria-label={`Move ${line.title} to another list`}
+										aria-haspopup="menu"
+										aria-expanded={api.expanded ? "true" : "false"}
+										aria-controls={api.panelId}
+										disabled={busy}
+										onClick={api.toggle}
+									/>
+								</Tooltip>
+							)}
+						>
+							<ul class="bskd-menu__list" role="menu" aria-label="Move to another list">
+								{destinations.map((dest) => (
+									<li key={dest.id} role="none">
+										<button
+											type="button"
+											role="menuitem"
+											class="ui-menu-item bskd-menu__item"
+											onClick={() => {
+												moveOpen.value = false;
+												onMove(line, dest.id);
+											}}
+										>
+											<Icon name="folder" size="sm" class="ui-menu-item__icon" />
+											<span class="bskd-menu__label">{dest.name}</span>
+										</button>
+									</li>
+								))}
+							</ul>
+						</Popover>
 					)
 					: null}
 
 				<Tooltip content="Remove" placement="top">
-					<button
-						type="button"
+					<Button
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
 						class="bskd-line__btn bskd-line__btn--danger"
+						icon={<Icon name="trash" size="sm" />}
 						aria-label={`Remove ${line.title} from the basket`}
 						disabled={busy}
 						onClick={() => onRemove(line)}
-					>
-						<Icon name="trash" size="sm" />
-					</button>
+					/>
 				</Tooltip>
 			</span>
 		</li>

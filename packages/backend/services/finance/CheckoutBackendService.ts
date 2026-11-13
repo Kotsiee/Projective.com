@@ -143,16 +143,21 @@ interface Resolved {
 	basketId: string;
 }
 
-/** Narrow a basket's lines to what a checkout is paying for: active lines, then the deep link. */
+/**
+ * Narrow a basket's lines to what a checkout is paying for: active lines, then the deep link. A ticket
+ * narrowing (Decision #430) keeps that ticket's stage lines, named by the line's `ticketId`.
+ */
 function narrow(
 	items: readonly BasketItem[],
 	projectId: string | null,
 	serviceId: string | null,
+	ticketId: string | null = null,
 ): BasketItem[] {
 	return items.filter((item) => {
 		if (item.savedForLater) return false;
 		if (projectId && item.metadata.projectId !== projectId) return false;
 		if (serviceId && item.metadata.serviceId !== serviceId) return false;
+		if (ticketId && item.ticketId !== ticketId) return false;
 		return true;
 	});
 }
@@ -517,7 +522,12 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 		owner: view.owner,
 		money: view.money,
 		basketId: view.basket.id,
-		items: narrow(view.basket.items, query.projectId ?? null, query.serviceId ?? null),
+		items: narrow(
+			view.basket.items,
+			query.projectId ?? null,
+			query.serviceId ?? null,
+			query.ticketId ?? null,
+		),
 		cards,
 		wallets,
 	};
@@ -810,6 +820,7 @@ export class CheckoutBackendService {
 					preselect: {
 						projectId: query.projectId ?? null,
 						serviceId: query.serviceId ?? null,
+						ticketId: query.ticketId ?? null,
 					},
 					provider: null,
 					providers,
@@ -1245,6 +1256,7 @@ export class CheckoutBackendService {
 				...basketQuery,
 				projectId: input.preselect.projectId,
 				serviceId: input.preselect.serviceId,
+				ticketId: input.preselect.ticketId ?? null,
 			}
 			: basketQuery;
 		return guarded("approval", async () => {

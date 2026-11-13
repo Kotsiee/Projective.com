@@ -18,8 +18,9 @@
 -- #region 1. set_member_role
 -- projects.set_member_role(project, participant, role) -> jsonb
 --
--- Authority is REVIEW authority (`projects.can_review_project` — the owner, or an active member of
--- the client business), the side of the engagement that hires. The owner seat is not a participant
+-- Authority is the configuring side (`projects.can_edit_project_details` — review authority: the
+-- owner, or an active member of the client business; on a seller-owned service its provider, Decision
+-- #427), the side of the engagement that staffs it. The owner seat is not a participant
 -- row (the roster seeds it from `projects.owner_user_id`), so it can never be addressed here, and an
 -- entity participant is a workspace rather than a person, so it is refused rather than relabelled.
 --
@@ -54,7 +55,7 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
     END IF;
-    IF NOT projects.can_review_project(p_project_id) THEN
+    IF NOT projects.can_edit_project_details(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may change a member''s role.' USING ERRCODE = 'insufficient_privilege';
     END IF;
     -- A role decides who staffs the project, so on a business project it is a `hire` decision.
@@ -277,7 +278,7 @@ BEGIN
     IF p_role IS NULL OR p_role NOT IN ('admin', 'manager', 'freelancer', 'member', 'guest') THEN
         RAISE EXCEPTION 'That is not a role an invitation can grant.' USING ERRCODE = 'check_violation';
     END IF;
-    IF p_role IN ('admin', 'manager') AND NOT projects.can_review_project(p_project_id) THEN
+    IF p_role IN ('admin', 'manager') AND NOT projects.can_edit_project_details(p_project_id) THEN
         RAISE EXCEPTION 'Only the project owner may invite an admin or a manager.' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF p_role IN ('admin', 'manager') THEN

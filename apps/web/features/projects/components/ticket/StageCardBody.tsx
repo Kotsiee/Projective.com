@@ -62,8 +62,8 @@ function Lock(props: { reason: string }): JSX.Element {
 
 export interface IncludedStageBodyProps {
 	item: TicketStageView;
-	/** The stage this one runs alongside, or `null` when it opens its step. */
-	alongside: string | null;
+	/** Whether the Meta line names the step — off inside a parallel step, whose label names it. */
+	showStep: boolean;
 	currency: string;
 	/** Why the stage is locked, or `null`. */
 	lock: string | null;
@@ -74,9 +74,6 @@ export function IncludedStageBody(props: IncludedStageBodyProps): JSX.Element {
 	const { ref, stage, costCents, workload, band } = props.item;
 	const dueLabel = formatDueDate(ref.dueAt ?? null);
 	const note = props.lock ?? (stage?.locked ? RUNNING_NOTE : null);
-	const step = props.alongside
-		? `Step ${band + 1}, alongside ${props.alongside}`
-		: `Step ${band + 1}`;
 	const capacity = `${TICKET_INTENSITY_LABEL[ref.intensity]} intensity · ${
 		workload.toFixed(2).replace(/\.00$/, "")
 	} units of a freelancer's capacity`;
@@ -89,8 +86,14 @@ export function IncludedStageBody(props: IncludedStageBodyProps): JSX.Element {
 			</div>
 			<div class="tkc-stage__foot">
 				<p class="tkc-stage__meta">
-					<span>{step}</span>
-					{dot}
+					{props.showStep
+						? (
+							<>
+								<span>Step {band + 1}</span>
+								{dot}
+							</>
+						)
+						: null}
 					<Intensity stage={stage} intensity={ref.intensity} />
 					{dueLabel
 						? (

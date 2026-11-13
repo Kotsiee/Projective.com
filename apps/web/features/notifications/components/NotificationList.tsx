@@ -11,7 +11,7 @@ import { NotificationRow } from "./NotificationRow.tsx";
 export interface NotificationListProps {
 	feed: NotificationFeed;
 	now: number;
-	/** The empty state's sentence for the current tab and view. */
+	/** The empty state's sentence for the current filter. */
 	emptyTitle: string;
 	emptyDescription?: string;
 	/** Whether rows can be archived (not in the Archived view). */
@@ -23,17 +23,47 @@ export interface NotificationListProps {
 	onNavigate?: () => void;
 }
 
+const FIRST_PAGE_PLACEHOLDERS = 5;
+const NEXT_PAGE_PLACEHOLDERS = 2;
+
+function PlaceholderRows({ count }: { count: number }): JSX.Element {
+	return (
+		<>
+			{Array.from(
+				{ length: count },
+				(_, i) => (
+					<li key={`ph-${i}`} class="ntf-row ntf-row--placeholder" aria-hidden="true">
+						<Skeleton shape="circle" animation="shimmer" class="ntf-row__lead-ph" />
+						<span class="ntf-row__body">
+							<span class="ntf-row__title ntf-ph__line">
+								<Skeleton shape="text" animation="shimmer" width="55%" />
+							</span>
+							<span class="ntf-row__text ntf-ph__line">
+								<Skeleton shape="text" animation="shimmer" />
+							</span>
+							<span class="ntf-row__meta ntf-ph__line">
+								<Skeleton shape="text" animation="shimmer" width="35%" />
+							</span>
+						</span>
+					</li>
+				),
+			)}
+		</>
+	);
+}
+
 /**
- * NotificationList — the inbox body shared by the drawer and the page (DESIGN_SYSTEM §D.9): loading
- * rows, the error notice with Retry, the empty state, the hairline-separated rows, keyset "Load more",
- * and the polite live region the feed's announcer writes to. It renders inside the caller's
- * `role="tabpanel"`.
+ * NotificationList — the inbox body shared by the drawer and the page (DESIGN_SYSTEM §D.9.6): shimmer
+ * placeholder rows on the first read and under the list while "Load more" reads, the error notice
+ * with Try again, the `bell` empty state, the hairline-separated rows, and the polite live region the
+ * feed's announcer writes to.
  */
 export function NotificationList(props: NotificationListProps): JSX.Element {
 	const { feed, now, emptyTitle, emptyDescription, archivable, selected, onSelect, onNavigate } =
 		props;
 	const items = feed.items.value;
 	const phase = feed.phase.value;
+	const more = feed.loadingMore.value;
 
 	const open = (item: NotificationInboxItem) => {
 		void feed.markRead([item.id], !!item.actionUrl);
@@ -44,12 +74,7 @@ export function NotificationList(props: NotificationListProps): JSX.Element {
 	if (phase === "loading") {
 		body = (
 			<ul class="ntf-list" aria-busy="true" aria-label="Loading notifications">
-				{[0, 1, 2, 3].map((i) => (
-					<li key={i} class="ntf-row ntf-row--placeholder" aria-hidden="true">
-						<Skeleton shape="circle" class="ntf-row__lead-ph" />
-						<Skeleton lines={2} class="ntf-row__body" />
-					</li>
-				))}
+				<PlaceholderRows count={FIRST_PAGE_PLACEHOLDERS} />
 			</ul>
 		);
 	} else if (phase === "error") {
@@ -72,7 +97,7 @@ export function NotificationList(props: NotificationListProps): JSX.Element {
 	} else {
 		body = (
 			<>
-				<ul class="ntf-list" role="list">
+				<ul class="ntf-list" role="list" aria-busy={more ? "true" : undefined}>
 					{items.map((item) => (
 						<NotificationRow
 							key={item.id}
@@ -84,15 +109,17 @@ export function NotificationList(props: NotificationListProps): JSX.Element {
 							onSelect={onSelect}
 						/>
 					))}
+					{more ? <PlaceholderRows count={NEXT_PAGE_PLACEHOLDERS} /> : null}
 				</ul>
 				{feed.cursor.value
 					? (
 						<div class="ntf-list__more">
 							<Button
-								variant="text"
+								variant="outlined"
+								severity="neutral"
 								size="sm"
-								label={feed.loadingMore.value ? "Loading…" : "Load more"}
-								disabled={feed.loadingMore.value}
+								label="Load more"
+								aria-busy={more ? "true" : undefined}
 								onClick={() => void feed.loadMore()}
 							/>
 						</div>

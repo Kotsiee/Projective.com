@@ -1,23 +1,35 @@
-import type {
-	NotificationCategory,
-	NotificationInboxItem,
-	NotificationSummary,
+import {
+	NOTIFICATION_QUERY_MAX,
+	type NotificationCategory,
+	type NotificationInboxItem,
+	type NotificationSummary,
 } from "@projective/types/comms";
 import { relativeAge } from "@features/explore/core/card-signals.ts";
 
 /**
- * notification-model — the pure rules the header drawer and `/notifications` share (DESIGN_SYSTEM
- * §D.9): which tabs exist, how a deep link decodes, what a row's meta line says, how a live refresh
- * merges into a loaded list, and how arrivals are announced without flooding a screen reader.
+ * notification-model — the pure rules the header drawer, the `/notifications` lane and the page share
+ * (DESIGN_SYSTEM §D.9): which categories and views exist, how a deep link decodes, what a row's meta
+ * line says, how a live refresh merges into a loaded list, and how arrivals are announced without
+ * flooding a screen reader.
  */
 
 // #region Vocabulary
-/** The inbox categories. Marketing has no tab: it lives only in Settings → Notifications. */
+/** The inbox categories. Marketing has no filter: it lives only in Settings → Notifications. */
 export type InboxCategory = Exclude<NotificationCategory, "marketing">;
-/** A tab: everything, or one category. */
+/** A category filter: everything, or one category. */
 export type InboxTab = "all" | InboxCategory;
-/** The page's views. The drawer always shows `all` (live rows, read and unread). */
+/** The status views. The drawer offers `all` and `unread`; the page adds `archived`. */
 export type InboxView = "all" | "unread" | "archived";
+
+/** What a `/notifications` URL addresses: the category, the status view and the search. */
+export interface InboxFilter {
+	tab: InboxTab;
+	view: InboxView;
+	/** The trimmed search, `""` for none. */
+	query: string;
+}
+
+export const DEFAULT_INBOX_FILTER: Readonly<InboxFilter> = { tab: "all", view: "all", query: "" };
 
 export const INBOX_TABS: readonly InboxTab[] = [
 	"all",
@@ -31,7 +43,7 @@ export const INBOX_TABS: readonly InboxTab[] = [
 ];
 
 export const TAB_LABEL: Readonly<Record<InboxTab, string>> = {
-	all: "All",
+	all: "All categories",
 	money: "Money",
 	work: "Work",
 	messages: "Messages",
@@ -43,11 +55,24 @@ export const TAB_LABEL: Readonly<Record<InboxTab, string>> = {
 
 export const INBOX_VIEWS: readonly InboxView[] = ["all", "unread", "archived"];
 
+/** The drawer's status filter: it never shows the archive, which is the page's. */
+export const DRAWER_VIEWS: readonly InboxView[] = ["all", "unread"];
+
 export const VIEW_LABEL: Readonly<Record<InboxView, string>> = {
 	all: "All",
 	unread: "Unread",
 	archived: "Archived",
 };
+
+/** The lane's row names, which stand without a control around them. */
+export const VIEW_LANE_LABEL: Readonly<Record<InboxView, string>> = {
+	all: "All notifications",
+	unread: "Unread",
+	archived: "Archived",
+};
+
+/** How long typing rests before a search is applied. */
+export const SEARCH_DEBOUNCE_MS = 250;
 
 /** How often the shell re-reads `/summary` while the page is visible (Decision #173). */
 export const POLL_MS = 30_000;
@@ -68,26 +93,43 @@ export function parseView(raw: string | null | undefined): InboxView {
 	return (INBOX_VIEWS as readonly string[]).includes(raw ?? "") ? raw as InboxView : "all";
 }
 
-/** The page's own address for a tab and view — defaults are omitted so the bare URL stays canonical. */
-export function inboxHref(tab: InboxTab, view: InboxView): string {
+/** `?q=` → the search: trimmed, and cut to the length the list endpoint accepts. */
+export function parseQuery(raw: string | null | undefined): string {
+	return (raw ?? "").trim().slice(0, NOTIFICATION_QUERY_MAX);
+}
+
+/** A `/notifications` query string → the filter it addresses. */
+export function parseFilter(params: URLSearchParams): InboxFilter {
+	return {
+		tab: parseTab(params.get("category")),
+		view: parseView(params.get("view")),
+		query: parseQuery(params.get("q")),
+	};
+}
+
+/** The page's own address for a filter — defaults are omitted so the bare URL stays canonical. */
+export function inboxHref(tab: InboxTab, view: InboxView, query = ""): string {
 	const q = new URLSearchParams();
 	if (tab !== "all") q.set("category", tab);
 	if (view !== "all") q.set("view", view);
+	if (query) q.set("q", query);
 	const s = q.toString();
 	return s ? `/notifications?${s}` : "/notifications";
 }
 
-/** The list endpoint's query for a tab, view and cursor. */
+/** The list endpoint's query for a filter slice and cursor. */
 export function listQuery(
 	tab: InboxTab,
 	view: InboxView,
 	before?: string | null,
 	limit = 20,
+	query = "",
 ): string {
 	const q = new URLSearchParams({ limit: String(limit) });
 	if (tab !== "all") q.set("category", tab);
 	if (view === "unread") q.set("unreadOnly", "true");
 	if (view === "archived") q.set("archived", "true");
+	if (query) q.set("q", query);
 	if (before) q.set("before", before);
 	return q.toString();
 }
@@ -100,13 +142,23 @@ export function tabUnread(summary: NotificationSummary | null, tab: InboxTab): n
 	return tab === "all" ? summary.unread : summary.byCategory[tab] ?? 0;
 }
 
-/** What the event belongs to: the project or stage named in the payload, else its category. */
-export function contextLabel(item: NotificationInboxItem): string {
+/** A count as a lane or option prints it: capped at `99+`. */
+export function countLabel(n: number): string {
+	return n > 99 ? "99+" : String(n);
+}
+
+/** The row's category as words; an in-app marketing row reads as the platform's own. */
+export function categoryLabel(item: NotificationInboxItem): string {
+	return item.category === "marketing" ? "Projective" : TAB_LABEL[item.category];
+}
+
+/** The project, stage or entity the payload names, or `null` when it names none. */
+export function contextLabel(item: NotificationInboxItem): string | null {
 	for (const key of ["project_title", "stage_name", "entity_name"]) {
 		const value = item.payload[key];
 		if (typeof value === "string" && value.trim()) return value.trim();
 	}
-	return item.category === "marketing" ? "Projective" : TAB_LABEL[item.category];
+	return null;
 }
 
 /** A collapsed row's count, or `null` for a single event. */
@@ -114,14 +166,25 @@ export function groupNote(item: NotificationInboxItem): string | null {
 	return item.groupCount > 1 ? `${item.groupCount} updates` : null;
 }
 
-/** The inline meta line: `3h ago · Brand system · 3 updates`. */
+/** The inline meta line: `Work · Brand system · 3h ago · 3 updates`. */
 export function metaLine(item: NotificationInboxItem, now: number): string {
 	const age = relativeAge(item.createdAt, now);
-	return [age ? `${age} ago` : "Just now", contextLabel(item), groupNote(item)]
+	return [categoryLabel(item), contextLabel(item), age ? `${age} ago` : "Just now", groupNote(item)]
 		.filter(Boolean).join(" · ");
 }
-/** The empty state's sentence for a tab and view. */
-export function emptyCopy(tab: InboxTab, view: InboxView): { title: string; description: string } {
+
+/** The empty state's sentence for a filter. */
+export function emptyCopy(
+	tab: InboxTab,
+	view: InboxView,
+	query = "",
+): { title: string; description: string } {
+	if (query) {
+		return {
+			title: `Nothing matches “${query}”`,
+			description: "Try another word, or clear the search.",
+		};
+	}
 	const scope = tab === "all" ? "" : ` in ${TAB_LABEL[tab]}`;
 	if (view === "archived") {
 		return {

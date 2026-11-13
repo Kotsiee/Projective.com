@@ -22,11 +22,12 @@ export const PUBLIC_METRICS_TTL_MS = 60 * 60 * 1000;
 
 /**
  * The escrow statuses whose principal counts as "value protected": money placed in escrow that has
- * not been handed back. `funded` / `held` are locked, `disputed` is locked under a dispute, and
- * `released` reached its payee. `refunded` is excluded — refunded money can be escrowed again, and
- * counting both would count it twice. Mirrored by `finance.public_metrics()`.
+ * not been handed back. `funded` / `held` are locked, `reserved` is a later stage prepaid (Decision
+ * #430), `disputed` is locked under a dispute, and `released` reached its payee. `refunded` is excluded
+ * — refunded money can be escrowed again, and counting both would count it twice. Mirrored by
+ * `finance.public_metrics()`.
  */
-export const PROTECTED_ESCROW_STATUSES = ["funded", "held", "disputed", "released"] as const;
+export const PROTECTED_ESCROW_STATUSES = ["funded", "held", "reserved", "disputed", "released"] as const;
 
 /**
  * The stage statuses that count as "delivered" — with money evidence (at least one escrow released to

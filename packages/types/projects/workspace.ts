@@ -135,6 +135,11 @@ export const WorkspaceStageSchema = z.object({
 	perTicket: z.boolean(),
 	/** The owner's stage that still has no price, so cannot be staffed. Always `false` otherwise. */
 	needsPrice: z.boolean(),
+	/**
+	 * What the stage delivers, on a service — the seller's listed deliverables, which instantiation
+	 * copies into the stage's default checklist (Decision #427). Empty on every other engagement.
+	 */
+	deliverables: z.array(z.string().min(1).max(160)).max(12).default([]),
 	/** The stage's room. */
 	href: z.string().min(1).max(300),
 });
@@ -288,6 +293,15 @@ export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
 	 * the People, Terms and "Ready to start?" blocks and every pricing or hiring action.
 	 */
 	personal: z.boolean().default(false),
+	/** Whether the engagement runs on a freelancer's service — its owner is then its provider. */
+	service: z.boolean().default(false),
+	/**
+	 * Whether the viewer configures the engagement (`viewerCanConfigure`): only then does the page offer
+	 * Details or ask for a price. A service's client never does (Decision #427).
+	 */
+	configures: z.boolean().default(true),
+	/** Whether the viewer staffs it (the roster's `canInvite`): invitations and applications. */
+	staffs: z.boolean().default(true),
 	nextActions: z.array(NextActionSchema).max(MAX_NEXT_ACTIONS),
 	/** The run in order. Empty for a Task (its one stage IS the Task) or when no stage is readable. */
 	stages: z.array(WorkspaceStageSchema).max(50),
@@ -396,6 +410,10 @@ function stageRun(slug: string, sources: WorkspaceSources): WorkspaceStage[] {
 	const seated = new Set(board.viewerStageIds);
 	const currency = setup?.budget.currency ?? "USD";
 	const perTicket = (setup?.format ?? board.format) === "pipeline";
+	// A service's deliverables are what its client bought, so every viewer reads them (Decision #427).
+	const service = isServiceSources(sources);
+	const setupStages = new Map((setup?.stages ?? []).map((s) => [s.id, s]));
+	const setupByName = new Map((setup?.stages ?? []).map((s) => [s.name.trim().toLowerCase(), s]));
 
 	const ordered = [...board.stages].sort((a, b) => a.order - b.order);
 	return ordered.map((stage: BoardStageRef, index) => {
@@ -406,6 +424,9 @@ function stageRun(slug: string, sources: WorkspaceSources): WorkspaceStage[] {
 			: [];
 		const setupStage = viewer === "owner"
 			? priced.find((s) => s.id === stage.id) ?? pricedByName.get(stage.name.trim().toLowerCase())
+			: undefined;
+		const scoped = service
+			? setupStages.get(stage.id) ?? setupByName.get(stage.name.trim().toLowerCase())
 			: undefined;
 		return {
 			id: stage.id,
@@ -422,9 +443,18 @@ function stageRun(slug: string, sources: WorkspaceSources): WorkspaceStage[] {
 			price: setupStage ? moneyOf(setupStage.unitPriceCents, currency) : null,
 			perTicket,
 			needsPrice: setupStage !== undefined && setupStage.unitPriceCents === null,
+			deliverables: (scoped?.tasks ?? [])
+				.map((task) => clampText(task.text.trim(), 160))
+				.filter((text) => text.length > 0)
+				.slice(0, 12),
 			href: `/projects/${slug}/${encodeURIComponent(stage.slug)}`,
 		};
 	});
+}
+
+/** Whether the sources describe an engagement on a freelancer's service (`kind === "service"`). */
+function isServiceSources(sources: WorkspaceSources): boolean {
+	return sources.setup?.kind === "service" || sources.board?.engagementKind === "service";
 }
 
 /** Funding states in which the escrow is held or has paid out — a stage that has been funded. */
@@ -439,6 +469,7 @@ export function readinessOf(
 	slug: string,
 	sources: WorkspaceSources,
 	brief: WorkspaceBrief | null,
+	configures = true,
 ): ReadyStep[] | null {
 	const { board } = sources;
 	if (sources.viewer !== "owner" || !board || !brief) return null;
@@ -451,7 +482,8 @@ export function readinessOf(
 			key: "brief",
 			label: "Brief written",
 			done: brief.description.trim() !== "",
-			href: `/projects/${slug}/details`,
+			// A service's brief is its seller's: its client reads it here and never opens Details.
+			href: configures ? `/projects/${slug}/details` : null,
 		},
 		{
 			key: "freelancer",
@@ -812,10 +844,17 @@ export function composeWorkspace(
 	const slug = base.slug;
 	const stages = stageRun(slug, sources);
 	const personal = sources.setup?.personal === true;
+	const service = isServiceSources(sources);
+	// Unread facts fail closed on a service, whose client must never be offered a configuration or a
+	// hire (Decision #427), and default to the owner's authority everywhere else, as before.
+	const configures = sources.setup ? sources.setup.viewerIsClient : sources.viewer === "owner" && !service;
+	const staffs = sources.roster ? sources.roster.viewerCaps.canInvite : sources.viewer === "owner" && !service;
 	const nextActions = (sources.viewer === "owner"
 		? ownerActions(slug, sources, stages)
 		: participantActions(slug, base, sources))
-		.filter((action) => !personal || !PERSONAL_DROPPED_ACTIONS.has(action.kind));
+		.filter((action) => !personal || !PERSONAL_DROPPED_ACTIONS.has(action.kind))
+		.filter((action) => configures || action.kind !== "set_pricing")
+		.filter((action) => staffs || action.kind !== "decide_applications");
 	const roster = sources.roster;
 	const participant = sources.viewer === "participant";
 	const task = sources.setup
@@ -826,6 +865,9 @@ export function composeWorkspace(
 		...base,
 		viewer: sources.viewer,
 		personal,
+		service,
+		configures,
+		staffs,
 		nextActions: nextActions.slice(0, MAX_NEXT_ACTIONS),
 		stages,
 		people: roster
@@ -840,7 +882,7 @@ export function composeWorkspace(
 		roster: rosterOf(roster, task),
 		submissions: participant ? submissionsOf(slug, sources.submissions) : [],
 		claimable: participant ? claimableOf(slug, base, sources.board) : [],
-		readiness: personal ? null : readinessOf(slug, sources, brief),
+		readiness: personal ? null : readinessOf(slug, sources, brief, configures),
 	};
 }
 // #endregion

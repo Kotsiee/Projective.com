@@ -106,7 +106,7 @@ import { resolveChannelRef } from "./live-support.ts";
 // #region Constants
 
 /** The `projects.projects` columns the roster envelope needs. */
-const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_business_id, created_at";
+const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_user_id, client_business_id, created_at";
 
 /** The `projects.project_participants` columns one roster row needs. */
 const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at, can_manage_tickets";
@@ -216,6 +216,8 @@ interface ProjectRow {
 	title: string;
 	format: string;
 	owner_user_id: string;
+	/** The buyer of a seller-owned service (Decision #427); null when the owner is the client side. */
+	client_user_id: string | null;
 	client_business_id: string | null;
 	created_at: string;
 }
@@ -993,6 +995,18 @@ function mergeParticipants(
 		canManageTickets: false,
 	});
 
+	// The buyer of a seller-owned service (Decision #427) is a column, not a participant row, so their
+	// seat is projected the same way the owner's is, under its own prefix.
+	if (project.client_user_id && !seats.has(project.client_user_id)) {
+		seats.set(project.client_user_id, {
+			id: `client:${project.client_user_id}`,
+			userId: project.client_user_id,
+			role: "client",
+			joinedAt: toIso(project.created_at),
+			canManageTickets: false,
+		});
+	}
+
 	for (const row of participants) {
 		// An entity participant is a workspace, not a person — module docblock. `profile_type` is
 		// tested rather than left to a party lookup that would simply miss, so the exclusion reads as a
@@ -1248,7 +1262,9 @@ export async function fetchMemberRoster(
 	// could not resolve is never promoted into an authority tier by accident.
 	const self = entries.find((entry) => entry.row.isViewer);
 	const viewerRole: MemberRole = self?.row.role ?? "guest";
-	const viewerCaps = capsFor(viewerRole);
+	// A seller-owned service is staffed by its seller (`can_manage_project_members`, Decision #427): its
+	// buyer reads the roster and manages none of it.
+	const viewerCaps = project.client_user_id && viewerRole === "client" ? capsFor("guest") : capsFor(viewerRole);
 	const viewerStages = self?.row.assignedStages ?? [];
 	// In a stage channel "assigned" means assigned to THIS stage; in project scope it means holding any
 	// stage at all. The two questions are different and a single flag would answer the wrong one on

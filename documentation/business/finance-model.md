@@ -333,6 +333,20 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
 
 ## 8. Financial Edge Cases
 
+- **Unclaimed prepaid escrow (Decision #428):** a ticket escrow held with nobody to pay waits
+  **120 hours (5 days)** on a productised service and **168 hours (7 days)** on a client project for a
+  claim, then returns whole to the payer's wallet (no fee; the refund is a wallet credit, so the money
+  stays on the platform). Tunable as `prepaid_service_ttl_hours` / `prepaid_project_ttl_hours`
+  (`security.platform_params`); swept every 15 minutes. The rule is PRODUCT_SPEC §Escrow Lifecycle for
+  Tickets.
+- **Prepaid later stages (Decision #430):** a later ticket stage bought ahead is debited from the
+  payer's wallet at purchase into a `reserved` escrow at that stage's own price, with **no fee and no
+  refund window** while it waits. The 5% stage-completion fee is taken at release only, exactly as for
+  any held stage, so prepaying changes neither the fee nor when it is charged. Its window (above)
+  starts only when the ticket reaches the stage and nobody is there to pay. Every refund of a
+  reservation is whole and fee-free, to the payer's wallet. A business selection counts once against
+  the member's envelope and the approval threshold, as one spend. The rule is PRODUCT_SPEC §Escrow
+  Lifecycle for Tickets.
 - **Stale Project (Ghosting):** if the client never approves or disputes a submission, a 14-day
   auto-approve timer triggers the standard payout flow automatically, with notices to the client at
   7 and 13 days. **Not built yet** (Decision #337, ruling P3): no timer runs today, so a held ticket

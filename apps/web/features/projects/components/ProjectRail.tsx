@@ -9,6 +9,7 @@ import { profileHref } from "../core/routing.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { leadParty } from "./ProjectContextCard.tsx";
 
 /**
  * ProjectRail — the COLLAPSED presentation of the Project Details sidebar: a single clean vertical
@@ -59,8 +60,9 @@ export function ProjectRail(
 ): JSX.Element {
 	const base = `/projects/${detail.slug}`;
 	const isSession = sessionKind === "normal" || sessionKind === "group";
-	// A project leads with its owner, a service with its client; fall back to the owner.
-	const lead = (detail.kind === "service" ? detail.client : detail.owner) ?? detail.owner;
+	// The same party, from the same side of the table, as the expanded lane's header (Decision #427).
+	const { lead, relation } = leadParty(detail);
+	const leadTip = relation ? `${relation} ${lead.name}` : lead.name;
 
 	// A Task is held to one stage (`fn_enforce_structure_variation`), so offering it "Add stage" would be
 	// a control whose every use the database refuses.
@@ -105,7 +107,7 @@ export function ProjectRail(
 
 				{lead.handle
 					? (
-						<Tooltip content={lead.name} placement="right">
+						<Tooltip content={leadTip} placement="right">
 							<a
 								class="proj-railbtn proj-railbtn--avatar"
 								href={profileHref(lead.handle)}
@@ -121,7 +123,7 @@ export function ProjectRail(
 						</Tooltip>
 					)
 					: (
-						<Tooltip content={lead.name} placement="right">
+						<Tooltip content={leadTip} placement="right">
 							<span class="proj-railbtn proj-railbtn--avatar" aria-label={lead.name}>
 								<UserAvatar
 									image={lead.avatar ?? undefined}

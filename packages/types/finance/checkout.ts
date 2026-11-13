@@ -682,6 +682,8 @@ export type CheckoutOwner = z.infer<typeof CheckoutOwnerSchema>;
 export const CheckoutPreselectSchema = z.object({
 	projectId: reference.nullable(),
 	serviceId: reference.nullable(),
+	/** `?ticket_id=` (Decision #430): one ticket's stage lines, what Buy now on a ticket pays for. */
+	ticketId: reference.nullable().optional(),
 });
 export type CheckoutPreselect = z.infer<typeof CheckoutPreselectSchema>;
 
@@ -1107,6 +1109,8 @@ export interface CheckoutQuery {
 	projectId?: string | null;
 	/** `?service_id=` narrowing. */
 	serviceId?: string | null;
+	/** `?ticket_id=` narrowing (Decision #430) — one ticket's lines, by its row id or `tkt-…` slug. */
+	ticketId?: string | null;
 }
 
 /**

@@ -30,7 +30,8 @@ import type {
  *
  * The viewport follows {@link useBoardViewport}: the wheel moves the board sideways 1:1 (a column that
  * scrolls keeps its own vertical wheel), Ctrl/Meta + drag pans it while the middle button keeps the
- * browser's autoscroll, and it settles on the nearest column only once the reader lets go. Cards and
+ * browser's autoscroll, a card or column held near either edge scrolls it that way, and it settles
+ * on a column, flush with the edge it was travelling toward, only once the reader lets go. Cards and
  * columns can each carry a right-click menu ({@link KanbanBoardProps.renderItemMenu} ·
  * {@link KanbanBoardProps.renderColumnMenu}).
  */
@@ -85,7 +86,7 @@ export interface KanbanBoardProps<T, C = unknown> {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
-	const { store } = useDnd();
+	const { store, resample } = useDnd();
 	const dropTarget = useSignal<{ columnId: string; renderIndex: number } | null>(null);
 	const columnDropIndex = useSignal<number | null>(null);
 	const announce = useSignal("");
@@ -94,6 +95,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 	const viewport = useBoardViewport({
 		scrollerRef: boardRef,
 		isDragging: () => store.active.peek() !== null,
+		drag: { active: store.active, pointer: store.pointer, resample },
 	});
 
 	// #region Per-render lookups (fresh maps; the monitor reads the latest via useDndMonitor's ref)

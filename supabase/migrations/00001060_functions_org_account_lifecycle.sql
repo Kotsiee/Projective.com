@@ -191,7 +191,7 @@ DECLARE
 BEGIN
     IF EXISTS (
         SELECT 1 FROM finance.escrows e
-         WHERE e.status = 'held'
+         WHERE e.status IN ('held', 'reserved')
            AND ((e.payee_type = 'freelancer' AND e.payee_id = p_user)
              OR (p_scope = 'account' AND e.payer_user_id = p_user))
     ) THEN
@@ -220,7 +220,7 @@ BEGIN
     IF p_scope = 'account' THEN
         IF EXISTS (
             SELECT 1 FROM projects.projects pr
-             WHERE pr.owner_user_id = p_user AND pr.status IN ('active', 'on_hold')
+             WHERE (pr.owner_user_id = p_user OR pr.client_user_id = p_user) AND pr.status IN ('active', 'on_hold')
         ) THEN
             v_out := array_append(v_out, 'active_projects');
         END IF;

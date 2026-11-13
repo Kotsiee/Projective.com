@@ -159,10 +159,12 @@ import {
 	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectWorkspace,
 	SERVICE_STAGE_REFUSAL_MESSAGE,
+	STAGE_NOT_INCLUDED_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	TICKET_MANAGER_ROLES,
 	ticketDeletable,
 	ticketDueFromStages,
+	ticketIncludesStage,
 	ticketLeavesStage,
 	ticketTermsLocked,
 	ticketWorkLocked,
@@ -548,6 +550,14 @@ async function liveRead<T>(
  */
 function invalidateProjects(actor: ReadActor): void {
 	invalidatePrefix(projectsReadCache, tenantPrefix(tenantOf(actor)));
+}
+
+/**
+ * Evict every cached read of ANOTHER person, in every workspace they read from — the seller, when a
+ * buyer's instantiation hands them a new engagement to own (Decision #427).
+ */
+function invalidateUserProjects(userId: string): void {
+	if (userId.length > 0) invalidatePrefix(projectsReadCache, `${userId}\u0000`);
 }
 
 /**
@@ -1001,7 +1011,9 @@ function buildInstantiatedSetup(
 		rules: { ...DEFAULT_PROJECT_RULES, visibility: CREATED_PUBLISH_VISIBILITY },
 		stages: stages.length > 0 ? stages : [blankStage(`${id}-stage-1`, "Stage 1", 0)],
 		roles: [],
-		viewerIsClient: true,
+		// The seller owns and configures what the buyer instantiated (Decision #427); the buyer reads it.
+		viewerIsClient: false,
+		kind: "service",
 	});
 }
 
@@ -1328,7 +1340,12 @@ export class ProjectBackendService {
 		// Scoped AFTER the overlay: the fixture read already withheld what a provider may not see, but
 		// the overlay can add stub-written cards, and those go through the same rule. Idempotent, so a
 		// second pass over an already-filtered page costs nothing and hides nothing extra.
-		return ok({ page: providerScopedPage(overlayBoardPage(page, actor)) });
+		const scoped = providerScopedPage(overlayBoardPage(page, actor));
+		// The same overlaid rule the ticket commit refuses a due date by, so the modal never offers one
+		// the save would turn down.
+		const base = findProjectSetup(params.projectId);
+		const rules = base ? overlaySetup(base, actor).rules : null;
+		return ok({ page: { ...scoped, dueDatesEnabled: rules ? rules.allowDeadlineBonuses : true } });
 	}
 
 	/**
@@ -2092,8 +2109,9 @@ export class ProjectBackendService {
 		if (current.archivedAt) {
 			return fail(409, { message: "This project is archived — no stage can be added to it." });
 		}
-		// `create_stage`'s authorship rule (Decision #421): a service's client adds no stage.
-		if (current.kind === "service" && current.viewerIsClient) {
+		// `create_stage`'s authorship rule (Decision #421): a service's client adds no stage. The setup's
+		// `viewerIsClient` is the configuring side, which on a service is its seller (Decision #427).
+		if (current.kind === "service" && !current.viewerIsClient) {
 			return fail(403, {
 				message: SERVICE_STAGE_REFUSAL_MESSAGE,
 				errors: { name: "not_permitted" },
@@ -3134,6 +3152,13 @@ export class ProjectBackendService {
 				errors: { status: "not_allowed" },
 			});
 		}
+		// `move_ticket`'s stage list (Decision #428): a ticket enters only the stages it lists.
+		if (input.stageId !== null && !ticketIncludesStage(current, input.stageId)) {
+			return fail(422, {
+				message: STAGE_NOT_INCLUDED_MESSAGE,
+				errors: { stageId: "not_allowed" },
+			});
+		}
 
 		const card = movedStubCard(current, input, Date.now());
 		putTicketCard(owner, input.projectId, card);
@@ -3634,19 +3659,20 @@ export class ProjectBackendService {
 	 * project — the write behind "Add to Projects".
 	 *
 	 * **Live** (`PROJECTS_BACKEND_LIVE`): ONE `marketplace.instantiate_service_blueprint` transaction
-	 * under the buyer's JWT (Decision #209) — the project (`status = 'draft'`, `visibility =
-	 * 'unlisted'`, `source_blueprint_id`), one stage per `stage_template` entry at the stage's standard
-	 * price, every room, and the request record — no tickets, which the client creates (Decision
-	 * #409). The door owns
-	 * every caller check (published, pipeline, not the buyer's own, adult, currency); this method owns
-	 * resolving the listing LIVE ({@link resolveListing}) and normalising the answers against its
-	 * intake. **Stub** otherwise: the draft store plus the write-store projection, as before.
+	 * under the buyer's JWT (Decision #209) — the project, OWNED BY THE SELLER with the buyer as its
+	 * `client_user_id` (Decision #427; `status = 'draft'`, `visibility = 'unlisted'`,
+	 * `source_blueprint_id`), one stage per `stage_template` entry at the stage's standard price, the
+	 * seller's seat on each, every room, and the request record — no tickets, which the client creates
+	 * (Decision #409). The door owns every caller check (published, pipeline, not the buyer's own,
+	 * adult, currency); this method owns resolving the listing LIVE ({@link resolveListing}) and
+	 * normalising the answers against its intake. **Stub** otherwise: the draft store plus the
+	 * write-store projection, as before.
 	 *
-	 * **No money moves and nothing is reserved, and no seat is minted.** That is the whole reason this
-	 * is a draft rather than a basket line: a pipeline is not bought, it is staffed and then bought
-	 * against, one ticket at a time (`PRODUCT_SPEC.md` §Creation & Purchasing Gate). A buyer must be
-	 * able to open the board and read the stages before deciding anything, which a basket line cannot
-	 * hold. The seller joins through the hire path like anyone else.
+	 * **No money moves and nothing is reserved.** That is the whole reason this is a draft rather than
+	 * a basket line: a pipeline is bought against one ticket at a time (`PRODUCT_SPEC.md` §Creation &
+	 * Purchasing Gate). A buyer must be able to open the board and read the stages before deciding
+	 * anything, which a basket line cannot hold. The seller is seated by the door, so the client's
+	 * first funded ticket is claimable with no hire step.
 	 *
 	 * Idempotent on `input.idempotencyKey`, then on the buyer's live draft of the listing: a repeat
 	 * returns the SAME draft with `created: false` rather than refusing, so a double-press or a retry
@@ -3704,7 +3730,8 @@ export class ProjectBackendService {
 					errors: { workspaceId: "unsupported" },
 				});
 			}
-			const blueprintId = catalog.blueprintBySlug.get(item.id)?.id;
+			const blueprint = catalog.blueprintBySlug.get(item.id);
+			const blueprintId = blueprint?.id;
 			if (!blueprintId) {
 				return fail(404, { message: `No service found for id "${input.serviceId}".` });
 			}
@@ -3719,7 +3746,11 @@ export class ProjectBackendService {
 				});
 				if (outcome === null) return notFound("service", input.serviceId);
 				if ("refusal" in outcome) return refused(outcome.refusal);
-				if (outcome.data.created) invalidateProjects(actor);
+				if (outcome.data.created) {
+					invalidateProjects(actor);
+					// The seller owns what was just made (Decision #427); their feed must show it.
+					invalidateUserProjects(blueprint?.freelancer_profile_id ?? "");
+				}
 				return settled(outcome.data);
 			} catch (error) {
 				// A thrown live WRITE never falls back to the stub (see {@link liveWrite}).
@@ -3749,6 +3780,7 @@ export class ProjectBackendService {
 			recordCreatedProject(
 				owner,
 				buildInstantiatedSetup(item, view, catalog.blueprintBySlug.get(item.id), result.draft),
+				{ name: item.owner.name, avatar: item.owner.avatar || null, handle: item.owner.handle || null },
 			);
 			invalidateProjects({
 				userId: actor.userId,

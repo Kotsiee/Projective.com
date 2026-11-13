@@ -1682,7 +1682,7 @@ AS $$
 
         UNION ALL
 
-        SELECT 'pipeline_project', p.id, m.id, p.owner_user_id, u.username, p.status::text,
+        SELECT 'pipeline_project', p.id, m.id, COALESCE(p.client_user_id, p.owner_user_id), u.username, p.status::text,
                p.created_at, p.last_activity_at,
                p.budget_amount_cents, pg_catalog.upper(p.currency),
                (SELECT pg_catalog.min(e.starts_at) FROM scheduling.events e
@@ -1715,8 +1715,9 @@ AS $$
                '/projects/' || p.slug
           FROM mine m
           JOIN projects.projects p ON p.source_blueprint_id = m.service_blueprint_id AND p.session_kind = 'none'
-          LEFT JOIN org.users_public u ON u.user_id = p.owner_user_id
-         WHERE p.owner_user_id <> auth.uid ()
+          -- The buyer is the client person: `client_user_id` on a seller-owned service (Decision #427).
+          LEFT JOIN org.users_public u ON u.user_id = COALESCE(p.client_user_id, p.owner_user_id)
+         WHERE COALESCE(p.client_user_id, p.owner_user_id) <> auth.uid ()
     )
     SELECT a.engagement_kind, a.engagement_id, a.listing_id, a.buyer_user_id, a.buyer_handle, a.status,
            a.opened_at, a.last_activity_at, a.amount_minor, a.currency, a.next_event_at,

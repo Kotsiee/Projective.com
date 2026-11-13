@@ -1367,7 +1367,7 @@ COMMENT ON FUNCTION org.fn_team_archive_blockers(uuid) IS
 -- Everything that would be stranded if a business were archived now, one {code, count} per kind of
 -- blocker that applies, in a fixed order — `[]` when it may be archived. The archive door refuses on the
 -- first, and the console detail lists them all before the confirm (BUSINESSES_AUDIT BF8, BF9):
---   escrow_held        held escrows the business funded
+--   escrow_held        held escrows the business funded, and later stages it prepaid (`reserved`, #430)
 --   live_projects      its projects that are active or on hold
 --   pending_approvals  spend requests on its wallets still awaiting a decision (and not lapsed)
 --   unpaid_invoices    invoices issued to it or overdue
@@ -1386,7 +1386,7 @@ DECLARE
     v_count bigint;
 BEGIN
     SELECT count(*) INTO v_count FROM finance.escrows e
-     WHERE e.payer_business_id = p_business AND e.status = 'held';
+     WHERE e.payer_business_id = p_business AND e.status IN ('held', 'reserved');
     IF v_count > 0 THEN
         v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'escrow_held', 'count', v_count));
     END IF;
@@ -3953,7 +3953,7 @@ BEGIN
                     'pending_minor', COALESCE((SELECT sum(GREATEST(pr.amount_cents - pr.recovered_cents, 0))
                         FROM finance.pending_releases pr WHERE pr.wallet_id = w.id AND pr.state = 'pending'), 0),
                     'committed_minor', COALESCE((SELECT sum(e.amount_cents) FROM finance.escrows e
-                        WHERE e.payer_business_id = v_e.id AND e.status IN ('held', 'funded')
+                        WHERE e.payer_business_id = v_e.id AND e.status IN ('held', 'funded', 'reserved')
                           AND upper(e.currency) = upper(w.currency)), 0),
                     'awaiting_approval_minor', COALESCE((SELECT sum(sa.amount_cents) FROM finance.spend_approvals sa
                         WHERE sa.wallet_id = w.id AND sa.status = 'pending'::finance.approval_status

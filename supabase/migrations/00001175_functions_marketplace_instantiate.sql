@@ -2,16 +2,17 @@
 -- 00001175 functions marketplace — service instantiation ("Add to Projects")
 --
 -- The one write behind `POST /api/services/instantiate-pipeline` on the live path. A Pipeline
--- listing's blueprint becomes a DRAFT engagement in the buyer's own workspace — the project, one
--- stage per `stage_template` entry, every stage's room and the project-wide Discussion room — in ONE
--- transaction, so a buyer can never be navigated to a project that has stages and no rooms. It
--- writes NO tickets: the seller architects the stages, and the client creates the tickets on them
--- (owner ruling, Decision #409 — AMENDS #209, which seeded one priced backlog ticket per stage).
+-- listing's blueprint becomes a DRAFT engagement OWNED BY ITS SELLER, with the buyer recorded as its
+-- client (`client_user_id`, Decision #427 — AMENDS #209, which put it in the buyer's own workspace):
+-- the project, one stage per `stage_template` entry, the seller's seat on every stage, every stage's
+-- room and the project-wide Discussion room — in ONE transaction, so a buyer can never be navigated
+-- to a project that has stages and no rooms. It writes NO tickets: the seller architects the stages,
+-- and the client creates the tickets on them (owner ruling, Decision #409).
 --
 -- No money moves and nothing is reserved (PRODUCT_SPEC.md §Creation & Purchasing Gate; Decision #80):
--- the stages wait, unstaffed and unfunded, and no seat is minted — a seat is only
--- ever created by an accepted invitation or application (PRODUCT_MANAGEMENT.md §Stage assignment).
--- The seller is hired into the draft afterwards through the ordinary hire path.
+-- the stages wait unfunded. The seller's seat is the one seat this path mints, because the seller IS
+-- the provider of what was bought — there is nobody to hire. It takes no money either: a claim still
+-- needs the client's funded escrow (the work-start gate, #165).
 --
 -- Three doors, all signed-in only (grants in 00002510): `instantiate_service_blueprint` (the write),
 -- `get_service_draft` (the listing CTA's read) and `archive_service_draft` ("Remove draft"). Each
@@ -111,7 +112,8 @@ COMMENT ON FUNCTION marketplace.fn_service_draft_json (uuid) IS
 -- The caller's own live draft of a listing — what flips the listing's primary control from "Add to
 -- Projects" to "Open project →". `NULL` when there is none.
 --
--- "Live" is `draft` or `active` in the caller's PERSONAL workspace, newest first, mirroring the
+-- "Live" is `draft` or `active`, bought by the caller as an individual (`client_user_id`, no paying
+-- business or enterprise — Decision #427), newest first, mirroring the
 -- stub's `findDraft`: an archived draft is history and must not hold the CTA on "Open project" over
 -- something the buyer can no longer work in, and a completed or cancelled engagement is not a draft.
 -- The same predicate is the pair-dedupe inside the write below, so the control and the write cannot
@@ -125,18 +127,17 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-    v_owner uuid := auth.uid();
+    v_buyer uuid := auth.uid();
     v_project uuid;
 BEGIN
-    IF v_owner IS NULL OR p_blueprint_id IS NULL THEN
+    IF v_buyer IS NULL OR p_blueprint_id IS NULL THEN
         RETURN NULL;
     END IF;
     SELECT p.id INTO v_project
     FROM projects.projects p
-    WHERE p.owner_user_id = v_owner
+    WHERE p.client_user_id = v_buyer
         AND p.source_blueprint_id = p_blueprint_id
         AND p.status IN ('draft'::public.project_status, 'active'::public.project_status)
-        AND p.owner_team_id IS NULL
         AND p.client_business_id IS NULL
         AND p.owner_enterprise_id IS NULL
     ORDER BY p.created_at DESC, p.id
@@ -149,16 +150,17 @@ END;
 $$;
 
 COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
-'The caller''s own draft/active personal project instantiated from this blueprint (newest), as the shared draft projection, or NULL.';
+'The draft/active engagement the caller bought from this blueprint as an individual (client_user_id, newest), as the shared draft projection, or NULL.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.instantiate_service_blueprint(p_blueprint_id, p_intake, p_currency,
 --                                           p_idempotency_key, p_title) -> jsonb
 --
 -- WHAT IT WRITES, in one transaction:
---   1. `projects.projects` — owner `auth.uid()`, personal workspace, `format = 'pipeline'`,
---      `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`, the listing's brief and
---      currency;
+--   1. `projects.projects` — owner the listing's seller (`freelancer_profile_id`, filed under its
+--      `owner_team_id` for a team listing), `client_user_id` = `auth.uid()` (Decision #427),
+--      `format = 'pipeline'`, `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`,
+--      the listing's brief and currency;
 --   2. one `projects.project_stages` row per `stage_template` entry, in order, each with its start
 --      trigger (`startTrigger` / `lagDays` / `chainReaction` → `start_trigger_type`, the previous stage
 --      as `start_dependency_stage_id`, `start_dependency_lag_days`, `chain_reaction`) — name, brief (as
@@ -170,6 +172,11 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --      `lowPriceCents` / `highPriceCents` as `low_price_cents` / `high_price_cents`, frozen afterwards
 --      by `trg_stage_intensity_terms`. The revision allotment arrives through
 --      `trg_stage_revision_terms`, which reads the blueprint because `source_blueprint_id` is already set;
+--   2b. the seller's `accepted` seat on every stage — a freelancer seat, or the team's for a team
+--      listing — so the seller claims the client's funded tickets with no hire step. Inserted here
+--      rather than through `invite_to_project`: the seller sells one service to many buyers at once,
+--      so the hire door's overlapping-stage refusal (`fn_assignee_slot_conflict`) does not apply,
+--      and the W_i cap still bounds what they take on at claim;
 --   3. each stage's room and the project-wide Discussion room
 --      (`comms.get_or_create_project_channel`, the same calls `projects.create_project` makes);
 --   4. `projects.service_instantiations` — the request: key, answers, currency.
@@ -181,7 +188,7 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --   a. the caller's `p_idempotency_key` already made a project → that project, `created: false`
 --      (whatever its status since — a replay returns what the request did). The same key naming a
 --      DIFFERENT listing is a client bug and is refused (22023), never silently answered;
---   b. the caller already has a live draft of this listing (`get_service_draft`'s predicate) → that
+--   b. the caller already bought a live draft of this listing (`get_service_draft`'s predicate) → that
 --      draft, `created: false` — the listing page offers "Open project" while one exists, so a second
 --      instantiation could only come from a stale tab;
 --   c. otherwise create.
@@ -194,6 +201,8 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --     an absent one to a buyer);
 --   * it is a Pipeline (22023) with at least one stage (22023);
 --   * it is not the caller's own, nor their team's (PU422 — the basket's own-listing code);
+--   * its seller is an adult (P0002 otherwise): the seller now owns the engagement, and a minor's
+--     project is forced personal and stripped of every price;
 --   * `p_currency`, when given, is the listing's currency (PC409). The seller's prices are a
 --     commitment in their currency; converting them here would put an FX decision nobody took into
 --     an escrow figure. NULL means "the listing's";
@@ -219,6 +228,8 @@ SET search_path = public, projects, marketplace, org, comms, auth
 AS $$
 DECLARE
     v_owner uuid := auth.uid();
+    v_seller uuid;
+    v_seller_team uuid;
     v_key text := NULLIF(pg_catalog.btrim(COALESCE(p_idempotency_key, '')), '');
     v_bp marketplace.service_blueprints%ROWTYPE;
     v_existing record;
@@ -301,6 +312,11 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'You can''t add your own service to your projects.' USING ERRCODE = 'PU422';
     END IF;
+    v_seller := v_bp.freelancer_profile_id;
+    v_seller_team := v_bp.owner_team_id;
+    IF org.fn_is_minor(v_seller) THEN
+        RAISE EXCEPTION 'That service is not available.' USING ERRCODE = 'P0002';
+    END IF;
 
     v_currency := pg_catalog.upper(v_bp.currency);
     IF NULLIF(pg_catalog.btrim(COALESCE(p_currency, '')), '') IS NOT NULL
@@ -328,10 +344,9 @@ BEGIN
     -- #region (b) An existing live draft of this listing
     SELECT p.id INTO v_existing
     FROM projects.projects p
-    WHERE p.owner_user_id = v_owner
+    WHERE p.client_user_id = v_owner
         AND p.source_blueprint_id = v_bp.id
         AND p.status IN ('draft'::project_status, 'active'::project_status)
-        AND p.owner_team_id IS NULL
         AND p.client_business_id IS NULL
         AND p.owner_enterprise_id IS NULL
     ORDER BY p.created_at DESC, p.id
@@ -350,11 +365,11 @@ BEGIN
     LOOP
         BEGIN
             INSERT INTO projects.projects (
-                id, owner_user_id, title, description, description_text,
+                id, owner_user_id, owner_team_id, client_user_id, title, description, description_text,
                 format, structure_variation, session_kind, status, visibility, currency,
                 budget_type, budget_amount_cents, source_blueprint_id, last_activity_at
             ) VALUES (
-                v_project_id, v_owner, v_title,
+                v_project_id, v_seller, v_seller_team, v_owner, v_title,
                 COALESCE(v_bp.description, '{}'::jsonb), COALESCE(v_bp.description_text, ''),
                 'pipeline'::project_format, 'standard'::projects.structure_variation, 'none',
                 'draft'::project_status, 'unlisted'::visibility, v_currency,
@@ -450,7 +465,7 @@ BEGIN
         END;
 
         INSERT INTO projects.project_stages (
-            id, project_id, name, description, description_text, sort_order,
+            id, project_id, name, description, description_text, sort_order, status,
             unit_price_cents, milestone, file_upload_required, default_tasks, skills,
             start_trigger_type, start_dependency_stage_id, start_dependency_lag_days, chain_reaction,
             default_intensity, intensity_locked, low_price_cents, high_price_cents
@@ -458,6 +473,8 @@ BEGIN
             v_stage_id, v_project_id, v_stage_name,
             pg_catalog.jsonb_build_object('html', v_stage_html), v_stage_text,
             (v_ord - 1)::integer,
+            -- Staffed from birth by the seller's seat below, as the hire path marks a filled stage.
+            'assigned'::stage_status,
             v_price,
             pg_catalog.left(pg_catalog.array_to_string(v_deliverables, ' · '), 400),
             -- TRUE, as every RPC-created stage is (Projects.md §4.1): a stage exists to produce a
@@ -481,6 +498,19 @@ BEGIN
             v_intensity, v_locked, v_low, v_high
         );
 
+        -- The seller's seat (2b above): `accepted`, the state a team payout split reads
+        -- (`finance.fn_ticket_payee`), so a team listing pays the team as any accepted team seat does.
+        INSERT INTO projects.stage_assignments (
+            project_stage_id, assignee_type, freelancer_profile_id, team_id, assigned_by,
+            is_client_managed, status
+        ) VALUES (
+            v_stage_id,
+            CASE WHEN v_seller_team IS NULL THEN 'freelancer' ELSE 'team' END::assignment_type,
+            CASE WHEN v_seller_team IS NULL THEN v_seller END,
+            v_seller_team,
+            v_seller, false, 'accepted'
+        );
+
         PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, v_stage_name);
         v_prev_stage_id := v_stage_id;
     END LOOP;
@@ -497,7 +527,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) IS
-'Add-to-Projects: copies a published Pipeline blueprint into the caller''s personal workspace as a draft — project, stages, every room and the instantiation record — in one transaction. No tickets: the client creates them. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow, no seat. Returns the draft projection plus created.';
+'Add-to-Projects: copies a published Pipeline blueprint into a draft engagement owned by its seller with the caller as its client (client_user_id, Decision #427) — project, stages, the seller''s accepted seat on each, every room and the instantiation record — in one transaction. No tickets: the client creates them. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow. Returns the draft projection plus created.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.archive_service_draft(p_project_slug text, p_reason text) -> jsonb
@@ -509,7 +539,8 @@ COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text
 --
 -- The archive itself is `projects.set_project_status(…, 'archived')`, so it writes the same status
 -- history and activity rows every other transition writes, and its own review-authority check runs
--- against the caller. Refusals: not signed in 28000; no such draft of the caller's (or not an
+-- against the caller (the client person, Decision #427). Refusals: not signed in 28000; no such
+-- draft the caller bought (or not an
 -- instantiated one) P0002 — a project somebody built by hand is archived from its own settings, not
 -- from a listing; funded 23514. Archiving an already-archived draft returns it unchanged.
 -- ---------------------------------------------------------------------------------------------
@@ -527,7 +558,7 @@ BEGIN
         RAISE EXCEPTION 'Sign in to manage your drafts.' USING ERRCODE = '28000';
     END IF;
     SELECT * INTO v_project FROM projects.projects p
-    WHERE p.slug = p_project_slug AND p.owner_user_id = v_owner AND p.source_blueprint_id IS NOT NULL
+    WHERE p.slug = p_project_slug AND p.client_user_id = v_owner AND p.source_blueprint_id IS NOT NULL
     FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'That draft is no longer in your projects.' USING ERRCODE = 'P0002';

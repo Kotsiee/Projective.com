@@ -605,6 +605,22 @@ export function executionBands<T extends { parallel: boolean }>(stages: readonly
 }
 
 /**
+ * The cost the ticket's work starts on, in minor units: its current stage's, or — for a ticket in the
+ * stage-less New backlog (Decision #421) — the first stage it runs through. `null` when that stage
+ * carries no price, or when the current stage is not one of the ticket's own.
+ */
+export function ticketStartCents(
+	stages: readonly { stageId: string; order: number; costCents: number | null }[],
+	currentStageId: string | null,
+): number | null {
+	if (currentStageId !== null) {
+		return stages.find((s) => s.stageId === currentStageId)?.costCents ?? null;
+	}
+	const first = [...stages].sort((a, b) => a.order - b.order)[0];
+	return first?.costCents ?? null;
+}
+
+/**
  * The ticket's total cost — the sum of every selected stage's resolved cost. Returns `null` when no
  * selected stage carries a price, so an unpriced pipeline reads as "not yet priced" rather than free.
  */
@@ -1056,6 +1072,12 @@ export const BoardPageSchema = z.object({
 	 * Read by the ticket modal, which offers no Timeline tab on a Task (`isTaskProject`).
 	 */
 	structure: ProjectStructure.default("standard"),
+	/**
+	 * Whether a ticket on this engagement may carry a due date — `projects.allow_deadline_bonuses`,
+	 * which `fn_enforce_ticket_due_date` enforces. The ticket modal withdraws both the ticket's and its
+	 * stages' due-date controls while it is off.
+	 */
+	dueDatesEnabled: z.boolean().default(true),
 	/** Pre-resolved board label (e.g. "Pipeline") so SSR + the client render identically. */
 	title: z.string().min(1).max(60),
 	/** The engagement's ISO-4217 currency — what a ticket drafted on this board is priced in. */
@@ -1363,6 +1385,12 @@ export const STALE_MOVE_MESSAGE = "This ticket changed since your board loaded i
 export const NEW_LANE_REFUSAL_MESSAGE = "Only a ticket nobody has claimed goes back to New.";
 
 /**
+ * The refusal sentence for a move into a stage the ticket does not list (Decision #428) — `move_ticket`'s
+ * 422, the stub's, and the board's column lock.
+ */
+export const STAGE_NOT_INCLUDED_MESSAGE = "This ticket doesn't include this stage.";
+
+/**
  * A freelancer's self-claim of one `open_pull` ticket (`projects.claim_ticket`). There is no assignee
  * field: the claimant is always the session's own user, so a payload cannot name anyone else.
  */
@@ -1420,6 +1448,18 @@ export function ticketLeavesStage(
 	card: Pick<BoardCard, "claimed" | "claimedAt" | "submissions" | "frozen">,
 ): boolean {
 	return !card.frozen && !card.claimed && card.claimedAt === null && card.submissions.length === 0;
+}
+
+/**
+ * Whether a ticket may enter stage `stageId` (Decision #428): it lists that stage, or it lists none, or
+ * it already sits there. Mirrors `projects.move_ticket`'s refusal ({@link STAGE_NOT_INCLUDED_MESSAGE}).
+ */
+export function ticketIncludesStage(
+	card: { stageId: string | null; stages: readonly { stageId: string }[] },
+	stageId: string,
+): boolean {
+	return card.stages.length === 0 || card.stageId === stageId ||
+		card.stages.some((s) => s.stageId === stageId);
 }
 
 /**

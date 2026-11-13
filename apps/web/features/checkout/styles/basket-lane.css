@@ -283,16 +283,6 @@
 }
 /* #endregion */
 
-/* #region New-list dialog */
-.bsk-lane__dialoglabel {
-	display: block;
-	margin-block-end: var(--space-2);
-	color: var(--on-surface);
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fw-medium);
-}
-/* #endregion */
-
 /* Motion — jump straight to the final state (DESIGN_SYSTEM.md §Motion / a11y). */
 @media (prefers-reduced-motion: reduce) {
 	.bsk-lane__row,

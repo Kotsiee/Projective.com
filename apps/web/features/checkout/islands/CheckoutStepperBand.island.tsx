@@ -7,7 +7,6 @@ import { Icon } from "@projective/ui/icons";
 import CheckoutCurrencySelect from "./CheckoutCurrencySelect.island.tsx";
 import { CheckoutStepper } from "../components/CheckoutStepper.tsx";
 import { BasketSwitcher } from "../components/BasketSwitcher.tsx";
-import { NewListDialog } from "../components/NewListDialog.tsx";
 import { BasketService } from "../core/BasketService.ts";
 import {
 	type CheckoutStep,
@@ -120,9 +119,6 @@ export interface CheckoutStepperBandProps {
 
 export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JSX.Element {
 	const findOpen = useSignal(false);
-	const createOpen = useSignal(false);
-	const createName = useSignal("");
-	const creating = useSignal(false);
 	/**
 	 * Whether the client store may be read yet.
 	 *
@@ -157,14 +153,12 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 	const switchTo = (owner: string, basketId: string) =>
 		globalThis.location.assign(checkoutStepHref("basket", basketId, owner));
 
-	const createList = async () => {
-		const name = createName.value.trim();
-		if (name === "" || creating.value) return;
-		creating.value = true;
+	const createList = async (name: string): Promise<string | null> => {
 		const res = await BasketService.createList({ name }, currentCheckoutContext());
-		creating.value = false;
 		const created = res.ok ? res.data?.lists.activeId : null;
-		if (created) switchTo(props.ownerParam, created);
+		if (!created) return res.message ?? "We couldn't create that list just now.";
+		switchTo(props.ownerParam, created);
+		return null;
 	};
 
 	/**
@@ -260,14 +254,8 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 							owner={props.ownerParam}
 							basketId={props.basketId}
 							onSwitch={switchTo}
-							onNewList={() => (createOpen.value = true)}
+							onCreateList={createList}
 							compact
-						/>
-						<NewListDialog
-							visible={createOpen}
-							name={createName}
-							creating={creating.value}
-							onCreate={() => void createList()}
 						/>
 					</span>
 				)}

@@ -1337,10 +1337,11 @@ interface Involvement {
 async function readInvolvement(actor: ReadActor & { accessToken: string }): Promise<Involvement> {
 	const projects = db(actor, "projects");
 	const [owned, participant, assignments] = await Promise.all([
-		projects.from("projects").select("id").eq("owner_user_id", actor.userId).neq(
-			"status",
-			"archived",
-		),
+		// The client side: projects the reader owns and nobody bought from them, plus the services they
+		// bought (Decision #427). A seller-owned service reaches its seller through their stage seats.
+		projects.from("projects").select("id")
+			.or(`and(owner_user_id.eq.${actor.userId},client_user_id.is.null),client_user_id.eq.${actor.userId}`)
+			.neq("status", "archived"),
 		projects.from("project_participants").select("project_id, role").eq("profile_id", actor.userId),
 		projects.from("stage_assignments")
 			.select("project_stage_id, status")

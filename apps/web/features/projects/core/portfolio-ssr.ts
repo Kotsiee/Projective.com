@@ -1,5 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
-import type { ProjectSummary } from "@projective/types/projects";
+import { feedViewOf, type ProjectSummary } from "@projective/types/projects";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { resolveProjectsFeed } from "./feed-ssr.ts";
 import { parsePortfolioFilter, PORTFOLIO_PARAM, type PortfolioFilter } from "./portfolio-model.ts";
@@ -45,7 +45,8 @@ export async function resolvePortfolio(
 		actor,
 		displayCurrency,
 	);
-	const items = feed.payload.items.filter((it) => it.kind === "project");
+	// The portfolio is the work the viewer commissioned, a service they bought included (#427).
+	const items = feed.payload.items.filter((it) => feedViewOf(it) === "projects");
 	const workspaces = new Set(items.map((it) => it.scopeId));
 	return {
 		items,

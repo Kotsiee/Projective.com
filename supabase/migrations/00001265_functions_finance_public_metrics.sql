@@ -73,7 +73,7 @@ BEGIN
     -- currencies here; the service converts for display, read-time (finance-model.md §11).
     SELECT pg_catalog.count(*)::integer INTO v_protected_count
       FROM finance.escrows e
-     WHERE e.status IN ('funded', 'held', 'disputed', 'released');
+     WHERE e.status IN ('funded', 'held', 'reserved', 'disputed', 'released');
 
     IF v_protected_count >= v_min_n THEN
         SELECT pg_catalog.jsonb_agg(
@@ -84,7 +84,7 @@ BEGIN
               SELECT pg_catalog.upper(e.currency) AS currency,
                      pg_catalog.sum(e.amount_cents)::bigint AS amount_minor
                 FROM finance.escrows e
-               WHERE e.status IN ('funded', 'held', 'disputed', 'released')
+               WHERE e.status IN ('funded', 'held', 'reserved', 'disputed', 'released')
                GROUP BY pg_catalog.upper(e.currency)
           ) c;
     ELSE

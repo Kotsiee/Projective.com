@@ -34,7 +34,7 @@ SELECT TO public USING (
             FROM projects.projects p
             WHERE
                 p.id = project_activity.project_id
-                AND p.owner_user_id = auth.uid ()
+                AND (p.owner_user_id = auth.uid () OR p.client_user_id = auth.uid ())
         )
     );
 
@@ -91,7 +91,7 @@ SELECT TO public USING (
         JOIN projects.projects p ON p.id = s.project_id
         WHERE s.id = stage_budget_rules.project_stage_id
         AND (
-            p.owner_user_id = auth.uid() 
+            p.owner_user_id = auth.uid() OR p.client_user_id = auth.uid()
             OR (p.status = 'active'::project_status AND p.visibility = 'public'::visibility)
         )
     )
@@ -158,6 +158,7 @@ SELECT TO public USING (
         WHERE p.id = project_participants.project_id
         AND (
             p.owner_user_id = auth.uid()
+            OR p.client_user_id = auth.uid()
             OR (p.status = 'active'::project_status AND p.visibility = 'public'::visibility)
         )
     )
@@ -186,14 +187,16 @@ CREATE POLICY "Users can delete own projects" ON projects.projects FOR DELETE TO
 -- strength of a missing `WITH CHECK` alone. They may each still deserve a narrower post-image
 -- predicate; they are not open by default.
 --
--- Review authority (projects.can_review_project: the owner, or an active member of the paying client
--- business) configures the engagement, so it may update the row. Reassigning `owner_user_id` or
--- `client_business_id` stays the owner's alone — projects.fn_guard_project_ownership refuses it for
--- anybody else, which a row policy cannot express (it sees the post-image, not who changed what).
+-- The configuring side (projects.can_edit_project_details: review authority — the owner, or an active
+-- member of the paying client business — except on a seller-owned service, whose provider alone
+-- configures it and whose client only reads it, Decision #427) may update the row. Reassigning
+-- `owner_user_id` or `client_business_id` stays the owner's alone — projects.fn_guard_project_ownership
+-- refuses it for anybody else, which a row policy cannot express (it sees the post-image, not who
+-- changed what) — and `client_user_id` is derived (`trg_projects_derived`), written by no client.
 CREATE POLICY "Reviewers can update their projects" ON projects.projects FOR
-UPDATE TO public USING (projects.can_review_project (id))
+UPDATE TO public USING (projects.can_edit_project_details (id))
 WITH
-    CHECK (projects.can_review_project (id));
+    CHECK (projects.can_edit_project_details (id));
 
 CREATE POLICY "Users can view own projects" ON projects.projects FOR
 SELECT TO public USING (auth.uid () = owner_user_id);
@@ -261,7 +264,7 @@ CREATE POLICY "Manage roles own" ON projects.stage_staffing_roles FOR ALL TO pub
         FROM projects.project_stages s
         WHERE
             s.id = stage_staffing_roles.project_stage_id
-            AND projects.can_review_project (s.project_id)
+            AND projects.can_edit_project_details (s.project_id)
     )
 );
 
@@ -273,14 +276,16 @@ SELECT TO public USING (
         JOIN projects.projects p ON p.id = s.project_id
         WHERE s.id = stage_staffing_roles.project_stage_id
         AND (
-            p.owner_user_id = auth.uid() 
+            p.owner_user_id = auth.uid() OR p.client_user_id = auth.uid()
             OR (p.status = 'active'::project_status AND p.visibility = 'public'::visibility)
         )
     )
 );
 
+-- The configuring side: a seller-owned service's client reads its stages and never writes them
+-- (Decision #427); the money on a stage moves through the definer doors, not this policy.
 CREATE POLICY "Users can manage stages of own projects" ON projects.project_stages FOR ALL TO public USING (
-    projects.can_review_project (project_stages.project_id)
+    projects.can_edit_project_details (project_stages.project_id)
 );
 
 CREATE POLICY "Users can view stages of visible projects" ON projects.project_stages FOR
@@ -329,7 +334,7 @@ SELECT TO public USING (
         current_assignee_id = auth.uid ()
         OR EXISTS (
             SELECT 1 FROM projects.projects p
-            WHERE p.id = project_id AND p.owner_user_id = auth.uid ()
+            WHERE p.id = project_id AND (p.owner_user_id = auth.uid () OR p.client_user_id = auth.uid ())
         )
         OR (
             (
@@ -349,9 +354,11 @@ SELECT TO public USING (
         )
     );
 
--- The assignee manages their claimed ticket; the project owner manages otherwise. Column-level
--- immutability once claimed — for the assignee as much as the owner — and the refusal of a
--- self-assigned INSERT are enforced by projects.fn_ticket_immutability_guard (Decision #291).
+-- The assignee manages their claimed ticket; the CLIENT PERSON manages otherwise — the owner, or on
+-- a seller-owned service its buyer (`client_user_id`, Decision #427), never the seller, who works
+-- tickets by claiming them. Column-level immutability once claimed — for the assignee as much as the
+-- client — and the refusal of a self-assigned INSERT are enforced by
+-- projects.fn_ticket_immutability_guard (Decision #291).
 CREATE POLICY "Manage tickets" ON projects.tickets FOR ALL TO public USING (
     current_assignee_id = auth.uid ()
     OR EXISTS (
@@ -359,7 +366,7 @@ CREATE POLICY "Manage tickets" ON projects.tickets FOR ALL TO public USING (
         FROM projects.projects p
         WHERE
             p.id = project_id
-            AND p.owner_user_id = auth.uid ()
+            AND COALESCE(p.client_user_id, p.owner_user_id) = auth.uid ()
     )
 )
 WITH
@@ -370,7 +377,7 @@ WITH
             FROM projects.projects p
             WHERE
                 p.id = project_id
-                AND p.owner_user_id = auth.uid ()
+                AND COALESCE(p.client_user_id, p.owner_user_id) = auth.uid ()
         )
     );
 
@@ -1164,8 +1171,9 @@ SELECT TO authenticated USING (
         OR projects.can_review_project (project_id)
     );
 
--- Writes are the CLIENT side's alone — review authority (projects.can_review_project:
--- the owner, or an active member of the paying business), and narrower than the read
+-- Writes are the configuring side's alone — projects.can_edit_project_details: review
+-- authority (the owner, or an active member of the paying business), or on a seller-owned
+-- service its provider, whose brief it is (Decision #427) — and narrower than the read
 -- on purpose. These files are the terms the work is judged against; a participant who
 -- could attach to the project — rather than submit through projects.stage_submissions,
 -- where a deliverable is versioned, reviewed and tied to an escrow release — would be
@@ -1180,14 +1188,14 @@ INSERT
     TO authenticated
 WITH
     CHECK (
-        projects.can_review_project (project_attachments.project_id)
+        projects.can_edit_project_details (project_attachments.project_id)
     );
 
 -- Detaching removes only the LINK. The files.items row is untouched and stays in
 -- the owner's library, so this is not the hard deletion root CLAUDE.md §5 forbids
 -- — the same reasoning as "Detach files from own submissions" above.
 CREATE POLICY "Owner detaches project references" ON projects.project_attachments FOR DELETE TO authenticated USING (
-    projects.can_review_project (project_attachments.project_id)
+    projects.can_edit_project_details (project_attachments.project_id)
 );
 
 -- --- project_required_skills: the public half ---
@@ -1214,4 +1222,14 @@ SELECT TO anon, authenticated USING (
 -- the definer `marketplace.instantiate_service_blueprint` (00001175), and the row is never edited.
 CREATE POLICY "Owners view their service instantiations" ON projects.service_instantiations FOR
 SELECT TO authenticated USING (owner_user_id = auth.uid ());
+
+-- The seller owns the engagement the request made (Decision #427), and the intake answers are their
+-- brief: the project's owner reads them too (closes #209 flag (c)).
+CREATE POLICY "Engagement owners view their service requests" ON projects.service_instantiations FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1 FROM projects.projects p
+            WHERE p.id = service_instantiations.project_id AND p.owner_user_id = auth.uid ()
+        )
+    );
 

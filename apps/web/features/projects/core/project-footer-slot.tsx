@@ -49,7 +49,8 @@ export async function projectFooterFor(
 	}
 
 	if (segs.length !== 3 || segs[2] !== "details") return null;
-	if (resolved && resolved.access !== "owner") return null;
+	// The configuring side's rig — on a service its seller's, never its client's (Decision #427).
+	if (resolved && !resolved.canConfigure) return null;
 	const { setup } = await resolveProjectSetup(slug, actor);
 	if (!setup || !setup.viewerIsClient) return null;
 	return <ProjectSetupRig setup={setup} />;

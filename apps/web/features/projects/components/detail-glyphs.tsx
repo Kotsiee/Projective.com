@@ -289,9 +289,13 @@ export function projectViewLinks(
 ): ProjectViewLink[] {
 	const archetype = projectNavArchetype(detail, sessionKind);
 	// Only where the root would SHOW the Overview: on the owner's draft it forwards to `/details`, so the
-	// link would lead straight back to the page it was pressed on (root CLAUDE.md §3 gate 11).
+	// link would lead straight back to the page it was pressed on (root CLAUDE.md §3 gate 11). A
+	// service always shows it, first — its home for both sides (Decision #427).
 	const links: ProjectViewLink[] =
-		landingFor(detail.viewerAccess, detail.status).kind === "overview"
+		landingFor(detail.viewerAccess, detail.status, {
+				configures: detail.viewerCanConfigure,
+				service: detail.kind === "service",
+			}).kind === "overview"
 			? [{
 				key: "overview",
 				label: "Overview",

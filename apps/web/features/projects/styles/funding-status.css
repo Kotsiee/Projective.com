@@ -121,6 +121,15 @@
 	color: var(--text-secondary);
 }
 
+.fst-tag.tkv__fund-tag {
+	block-size: 1.5rem;
+	padding-block: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.02em;
+}
+
 /* The stage inspector: under the stage's price, on the panel's own inset. */
 .tkc-insp__funding {
 	flex: none;

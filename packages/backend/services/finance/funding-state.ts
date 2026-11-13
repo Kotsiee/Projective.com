@@ -186,14 +186,26 @@ const HELD_STATES: ReadonlySet<FundingState> = new Set(["funded", "in_progress",
  */
 export function withBillingFacts(
 	f: FundingStatus,
-	facts: { autoFunded: boolean; releasedAt: string | null; invoicePeriod: { start: Date; end: Date } | null },
+	facts: {
+		autoFunded: boolean;
+		releasedAt: string | null;
+		invoicePeriod: { start: Date; end: Date } | null;
+		/** The later stages prepaid (`reserved` escrows, Decision #430). */
+		prepaidStageIds?: readonly string[];
+	},
 ): FundingStatus {
 	const autoFunded = facts.autoFunded && HELD_STATES.has(f.state);
 	const released = facts.releasedAt ? Date.parse(facts.releasedAt) : NaN;
 	const invoiceOn = f.state === "released" && facts.invoicePeriod && released >= facts.invoicePeriod.start.getTime()
 		? INVOICE_DATE.format(facts.invoicePeriod.end)
 		: null;
-	return autoFunded || invoiceOn ? { ...f, autoFunded, invoiceOn } : f;
+	const prepaid = facts.prepaidStageIds && facts.prepaidStageIds.length > 0 ? [...facts.prepaidStageIds] : null;
+	if (!autoFunded && !invoiceOn && !prepaid) return f;
+	return {
+		...f,
+		...(autoFunded || invoiceOn ? { autoFunded, invoiceOn } : {}),
+		...(prepaid ? { prepaidStageIds: prepaid } : {}),
+	};
 }
 
 const INVOICE_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });

@@ -6,6 +6,7 @@ import {
 	providerVisibleCards,
 	ticketPaidForStage,
 	ticketPaidHere,
+	ticketStartCents,
 	ticketWorkLocked,
 } from "./board.ts";
 
@@ -153,5 +154,22 @@ Deno.test("a card with no funding fields parses as unpaid, and a page with no vi
 		total: 0,
 	});
 	assertEquals(page.viewerStageIds, []);
+});
+// #endregion
+
+// #region Start price
+Deno.test("ticketStartCents: a ticket in New is quoted at the first stage it runs through", () => {
+	const stages = [
+		{ stageId: "s2", order: 1, costCents: 30_000 },
+		{ stageId: "s1", order: 0, costCents: 12_000 },
+	];
+	assertEquals(ticketStartCents(stages, null), 12_000);
+	assertEquals(ticketStartCents(stages, "s2"), 30_000);
+});
+
+Deno.test("ticketStartCents: an unpriced start, an unknown stage and no stages are null", () => {
+	assertEquals(ticketStartCents([{ stageId: "s1", order: 0, costCents: null }], null), null);
+	assertEquals(ticketStartCents([{ stageId: "s1", order: 0, costCents: 500 }], "gone"), null);
+	assertEquals(ticketStartCents([], null), null);
 });
 // #endregion

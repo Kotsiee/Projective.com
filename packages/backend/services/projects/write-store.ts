@@ -242,6 +242,8 @@ interface StoredProject {
 	id: string;
 	setup: ProjectSetup;
 	createdAt: number;
+	/** The seller of a service this viewer instantiated, who owns it (Decision #427); absent otherwise. */
+	provider?: ProjectParty;
 }
 
 const buckets = new Map<string, OwnerBucket>();
@@ -423,8 +425,8 @@ export function storedArchivedAt(owner: string, ...keys: (string | undefined)[])
  * fixture underneath it for a diff to be re-applied against, so the projection the service just
  * returned is the only thing that can make the next read agree with the response.
  */
-export function recordCreatedProject(owner: string, setup: ProjectSetup): void {
-	bucketFor(owner).created.set(setup.id, { id: setup.id, setup, createdAt: Date.now() });
+export function recordCreatedProject(owner: string, setup: ProjectSetup, provider?: ProjectParty): void {
+	bucketFor(owner).created.set(setup.id, { id: setup.id, setup, createdAt: Date.now(), provider });
 }
 
 /**
@@ -857,34 +859,41 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 	const record = findCreated(peekBucket(writeOwnerOf(actor)), ref);
 	if (!record) return null;
 	const setup = createdSetup(ref, actor) ?? record.setup;
+	// An instantiated service is its seller's (Decision #427): the creator is its client and reads it.
+	const provider = record.provider;
+	const you: ProjectParty = { name: "You", avatar: null, handle: null };
 
 	return {
 		id: record.id,
 		slug: setup.slug,
 		title: setup.title,
-		// A modal-created project is never a service: `kind` is derived from `source_blueprint_id`,
-		// which only an instantiated blueprint carries.
-		kind: "project",
+		// `kind` is derived from `source_blueprint_id`, which only an instantiated blueprint carries.
+		kind: provider ? "service" : "project",
 		format: setup.format,
 		structure: setup.structure,
 		sessionKind: setup.format === "session" ? setup.sessionKind : "none",
 		status: setup.status,
 		typeLabel: TYPE_LABELS[setup.format],
 		description: flattenRichText(setup.description).slice(0, 2000),
-		viewerRole: "owner",
+		viewerRole: provider ? "client" : "owner",
 		// The creator IS the client — they commissioned it. This is what routes the dispatcher to the
 		// owner's surfaces (a draft's configuration, then the Overview) rather than a prospect's listing.
 		viewerIsClient: true,
-		viewerCanConfigure: true,
+		viewerCanConfigure: !provider,
 		viewerAccess: "owner",
 		currency: setup.budget.currency,
 		scopeType: actor?.contextType ?? "personal",
 		scopeLabel: actor?.contextId ? "Workspace" : "Personal",
 		starred: false,
-		owner: { name: "You", avatar: null, handle: null },
-		client: null,
+		owner: provider ?? you,
+		client: provider ? you : null,
 		bannerImage: null,
-		members: [],
+		members: provider
+			? [
+				{ id: "provider", party: provider, role: "owner" },
+				{ id: "viewer", party: you, role: "client" },
+			]
+			: [],
 		// NO CHANNELS, and that is the honest answer rather than a missing feature.
 		//
 		// The live path opens each stage's room inside `create_project`, so a live-created project's
@@ -914,6 +923,8 @@ export function createdMemberRoster(ref: string, actor?: ReadActor): MemberRoste
 	if (!record) return null;
 	const setup = createdSetup(ref, actor) ?? record.setup;
 	const joinedAt = new Date().toISOString();
+	// A service's buyer reads its roster; its seller staffs it (Decision #427).
+	const manages = !record.provider;
 	return {
 		scope: "project",
 		projectId: setup.slug,
@@ -946,11 +957,11 @@ export function createdMemberRoster(ref: string, actor?: ReadActor): MemberRoste
 		viewerId: "viewer",
 		viewerRole: "client",
 		viewerCaps: {
-			canManage: true,
-			canInvite: true,
-			canAssign: true,
-			canEditRoles: true,
-			canRemove: true,
+			canManage: manages,
+			canInvite: manages,
+			canAssign: manages,
+			canEditRoles: manages,
+			canRemove: manages,
 		},
 		total: 1,
 	};
@@ -975,14 +986,15 @@ export function createdSummary(ref: string, actor?: ReadActor): ProjectSummary |
 		id: record.id,
 		slug: setup.slug,
 		title: setup.title,
-		kind: "project",
+		// An instantiated service is its seller's, with the viewer as its client (Decision #427).
+		kind: record.provider ? "service" : "project",
 		format: setup.format,
 		status: setup.status,
-		viewerRole: "owner",
+		viewerRole: record.provider ? "client" : "owner",
 		scopeType,
 		scopeId: (scopeType === "personal" ? actor?.userId : actor?.contextId) ?? "",
 		scopeLabel: scopeType === "personal" ? "Personal" : "Workspace",
-		owner: { name: "You", avatar: null, handle: null },
+		owner: record.provider ?? { name: "You", avatar: null, handle: null },
 		// Nobody is on the other side of a project that was named a moment ago.
 		counterparty: null,
 		// Client-architected, not instantiated from one of the actor's own services.

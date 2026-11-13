@@ -273,7 +273,7 @@ BEGIN
             RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this stage'
                 USING ERRCODE = 'PK403';
         END IF;
-        SELECT p.client_business_id, p.owner_user_id, p.currency INTO v_payer, v_owner, v_project_currency
+        SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), p.currency INTO v_payer, v_owner, v_project_currency
           FROM projects.projects p WHERE p.id = p_project_id;
         IF p_revision_id IS NOT NULL THEN
             -- ONE paid revision round (Decision #199): projects.fund_paid_revision's gates, evaluated now
@@ -334,8 +334,8 @@ BEGIN
                    projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) AS amount
               INTO v_ticket
               FROM projects.tickets tk
-              JOIN projects.project_stages ps ON ps.id = tk.current_stage_id
-             WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id AND tk.current_stage_id = p_stage_id;
+              JOIN projects.project_stages ps ON ps.id = projects.fn_ticket_funding_stage(tk.id)
+             WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id AND ps.id = p_stage_id;
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'ticketId: that ticket is not in this stage' USING ERRCODE = 'P0002';
             END IF;
@@ -343,7 +343,9 @@ BEGIN
                 RAISE EXCEPTION 'ticketId: add a description before this ticket can be bought' USING ERRCODE = 'PC409';
             END IF;
             IF v_ticket.payment_status NOT IN ('unpaid', 'needs_funding') OR EXISTS (
-                SELECT 1 FROM finance.escrows e WHERE e.ticket_id = p_ticket_id AND e.status = 'held'
+                SELECT 1 FROM finance.escrows e
+                 WHERE e.ticket_id = p_ticket_id
+                   AND (e.status = 'held' OR (e.status = 'reserved' AND e.project_stage_id = p_stage_id))
             ) THEN
                 RAISE EXCEPTION 'ticketId: this ticket is already paid for' USING ERRCODE = 'PC409';
             END IF;

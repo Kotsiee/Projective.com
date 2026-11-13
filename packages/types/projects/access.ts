@@ -69,10 +69,31 @@ export type ProjectLanding =
 	| { kind: "listing" }
 	| { kind: "missing" };
 
-/** The dispatch matrix of Decision #144 as one total function. */
-export function landingFor(access: ProjectAccess, status: ProjectStatus): ProjectLanding {
+/** The two engagement facts beside access and status that move the landing (Decision #427). */
+export interface LandingFacts {
+	/** Whether the viewer configures the engagement (`viewerCanConfigure`). */
+	configures: boolean;
+	/** Whether it runs on a freelancer's service (`kind === "service"`). */
+	service: boolean;
+}
+
+/**
+ * The dispatch matrix of Decision #144 as one total function.
+ *
+ * A service lands on its Overview for both sides (Decision #427): its scope, provider and status are
+ * what the client bought and reads, and its seller commands it from there. An owner-side viewer who
+ * cannot configure — a client seat that is not review authority — lands on the Overview too, since
+ * `/details` would only send them back.
+ */
+export function landingFor(
+	access: ProjectAccess,
+	status: ProjectStatus,
+	facts: LandingFacts = { configures: true, service: false },
+): ProjectLanding {
 	if (access === "prospect") return status === "draft" ? { kind: "missing" } : { kind: "listing" };
-	if (access === "owner" && status === "draft") return { kind: "details" };
+	if (access === "owner" && status === "draft" && facts.configures && !facts.service) {
+		return { kind: "details" };
+	}
 	return { kind: "overview", viewer: access };
 }
 

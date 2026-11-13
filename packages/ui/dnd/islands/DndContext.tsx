@@ -19,8 +19,9 @@ import type {
  * capture-phase click suppression so a completed drag never fires the card's own click) and a KEYBOARD
  * sensor (Space/Enter to pick up, Arrow keys to step between targets, Enter to drop, Escape to cancel),
  * running the collision detector on every move and emitting the drag lifecycle to any subscribed
- * {@link useDndMonitor} and to the optional handler props. It renders NO DOM wrapper — it only provides
- * context — so it never perturbs the consumer's layout.
+ * {@link useDndMonitor} and to the optional handler props. A container that scrolls under a held
+ * pointer calls the context's `resample` so the target follows it. It renders NO DOM wrapper — it only
+ * provides context — so it never perturbs the consumer's layout.
  *
  * No native HTML5 `draggable`, no external DnD dependency (root CLAUDE.md §3). Signal-first: only
  * `active`/`over`/`pointer` are reactive; registries live in plain maps. Reduced-motion is honoured by
@@ -133,13 +134,23 @@ export default function DndContext(props: DndContextProps): JSX.Element {
 			const active = store.active.value;
 			if (!active) return;
 			store.pointer.value = point;
+			movePointer(active, point);
+			e.preventDefault();
+		};
+
+		const movePointer = (active: DndActive, point: DndPoint) => {
 			const over = collide(active, point);
 			const changed = over !== store.over.value;
 			store.over.value = over;
 			const delta = { x: point.x - store.origin.value.x, y: point.y - store.origin.value.y };
 			if (changed) store.emitOver({ active, over, pointer: point });
 			store.emitMove({ active, over, pointer: point, delta });
-			e.preventDefault();
+		};
+
+		const resample = () => {
+			const active = store.active.value;
+			if (!pointerPending.current?.activated || !active || active.sensor !== "pointer") return;
+			movePointer(active, store.pointer.value);
 		};
 
 		const onPointerUp = (e: PointerEvent) => {
@@ -290,6 +301,7 @@ export default function DndContext(props: DndContextProps): JSX.Element {
 			armPointer,
 			beginKeyboard,
 			keyboardActive: () => keyboardOn.current,
+			resample,
 		};
 		// The store is stable for the lifetime of this context; the closures read fresh props via refs.
 	}, [store]);

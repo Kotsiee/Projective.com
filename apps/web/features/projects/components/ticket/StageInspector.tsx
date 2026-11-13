@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { DatePicker, Select } from "@projective/ui/fields";
+import { useMemo } from "preact/hooks";
+import { computed, useSignal } from "@preact/signals";
+import { Button, DatePicker, MultiSelect, Select, SelectButton } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
 import { HintPopover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -50,14 +51,33 @@ import { fundingRollup } from "../../core/funding-ui.ts";
  *
  * A stage sold at one fixed intensity (the seller's term, {@link BoardStageRef.intensityLocked}) reads
  * its intensity and price as Meta text rather than offering them: a client cannot discount it.
+ *
+ * A stage the ticket does not run through yet opens here too, so it can be read and configured
+ * before it is added; its settings go with it when it is, and it offers no step to run in.
  */
 export interface StageInspectorProps {
 	item: TicketStageView;
 	/** Tickets already routed through this stage — the load the client is adding to. */
 	stageTickets: BoardCard[];
 	editable: boolean;
+	/** Why this stage's place in the pipeline is locked, or `null`. */
+	lock: string | null;
 	/** The engagement's currency (`BoardCard.currency`). */
 	currency: string;
+	/** Whether the engagement lets a ticket carry a due date; off, the stage's Due date is withdrawn. */
+	dueDates: boolean;
+	/** Whether the ticket runs through this stage; `false` for an available stage being inspected. */
+	included: boolean;
+	/** The ticket's other included stages, in pipeline order. */
+	peers: readonly StageInspectorPeer[];
+	/** The stages this one runs in parallel with — its step's other members. */
+	mates: readonly string[];
+	/** Add an available stage to the ticket, with why it is refused; `null` where it cannot be. */
+	include: { refusal: string | null; run: () => void } | null;
+	/** Run the stage on its own step, or in parallel with its neighbour. */
+	onParallel: (parallel: boolean) => void;
+	/** Make the stage's step exactly it and `mates`. */
+	onRunsWith: (mates: string[]) => void;
 	/**
 	 * `close` in the side panel beside the stage list; `back` where the inspector REPLACES the list
 	 * (the create pane, the narrow Stages tab), so leaving it returns to the stages.
@@ -71,6 +91,24 @@ export interface StageInspectorProps {
 	 */
 	funding?: JSX.Element | null;
 }
+
+/** Another included stage, as the "runs in parallel with" picker lists it. */
+export interface StageInspectorPeer {
+	stageId: string;
+	name: string;
+}
+
+type RunMode = "sequential" | "parallel";
+
+const RUN_OPTIONS: { value: RunMode; label: string }[] = [
+	{ value: "sequential", label: "Sequentially" },
+	{ value: "parallel", label: "In parallel" },
+];
+
+const RUN_HINT: Record<RunMode, string> = {
+	sequential: "Runs as a step of its own, once the step before it is approved.",
+	parallel: "Starts together with the stages picked here, as one step.",
+};
 
 /** How this ticket's price in a stage was reached, in words, beside the figure. */
 function priceBasis(
@@ -132,8 +170,67 @@ function Fact({ label, children }: { label: string; children: JSX.Element | stri
 	);
 }
 
+/** A configuration field the viewer reads rather than sets, in the same label-over-value shape. */
+function Readout(
+	{ label, children }: { label: string; children: JSX.Element | string },
+): JSX.Element {
+	return (
+		<div class="tkc-field">
+			<span class="tkc-label">{label}</span>
+			<div class="tkc-readout">{children}</div>
+		</div>
+	);
+}
+
+function RunsField(props: StageInspectorProps): JSX.Element {
+	const { peers, mates, lock } = props;
+	const mode: RunMode = mates.length > 0 ? "parallel" : "sequential";
+	const matesKey = mates.join("|");
+	const modeBind = useMemo(() => computed(() => mode), [mode]);
+	const matesBind = useMemo(() => computed(() => [...mates]), [matesKey]);
+	const nameOf = (id: string) => peers.find((p) => p.stageId === id)?.name ?? "";
+
+	if (!props.editable || lock) {
+		return (
+			<Readout label="Runs">
+				{mode === "parallel"
+					? `In parallel with ${mates.map(nameOf).filter(Boolean).join(", ")}`
+					: "Sequentially"}
+			</Readout>
+		);
+	}
+
+	return (
+		<div class="tkc-field">
+			<span class="tkc-label" id="tkc-stage-runs-label">Runs</span>
+			<SelectButton
+				size="sm"
+				options={RUN_OPTIONS}
+				value={modeBind}
+				aria-labelledby="tkc-stage-runs-label"
+				onValueChange={(v) => {
+					if (v === "parallel" || v === "sequential") props.onParallel(v === "parallel");
+				}}
+			/>
+			{mode === "parallel"
+				? (
+					<MultiSelect
+						size="sm"
+						options={peers.map((p) => ({ value: p.stageId, label: p.name }))}
+						value={matesBind}
+						placeholder="Pick the stages it runs alongside"
+						aria-label={`Stages ${props.item.ref.name} runs in parallel with`}
+						onValueChange={(next) => props.onRunsWith(next)}
+					/>
+				)
+				: null}
+			<p class="tkc-hint">{RUN_HINT[mode]}</p>
+		</div>
+	);
+}
+
 export function StageInspector(props: StageInspectorProps): JSX.Element {
-	const { item, stageTickets, editable, currency } = props;
+	const { item, stageTickets, editable, currency, included } = props;
 	const { ref, stage, costCents, workload } = item;
 	const tab = useSignal<"overview" | "config">("config");
 
@@ -167,7 +264,9 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 					)
 					: null}
 				<div class="tkc-insp__ident">
-					<span class="tkc-insp__eyebrow">Step {item.band + 1}</span>
+					<span class="tkc-insp__eyebrow">
+						{included ? `Step ${item.band + 1}` : "Not in this ticket"}
+					</span>
 					<h3 class="tkc-insp__title">{ref.name}</h3>
 				</div>
 				{back ? null : (
@@ -223,6 +322,28 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 						role="tabpanel"
 						aria-labelledby={tabId("config")}
 					>
+						{props.include
+							? (
+								<div class="tkc-insp__join">
+									<p class="tkc-insp__joinnote">
+										Settings made here go with this stage when it is added to the ticket.
+									</p>
+									<Tooltip content={props.include.refusal ?? ""}>
+										<Button
+											variant="outlined"
+											severity="neutral"
+											size="sm"
+											disabled={props.include.refusal !== null}
+											icon={<Icon name="plus" size="xs" />}
+											onClick={props.include.run}
+										>
+											Add to ticket
+										</Button>
+									</Tooltip>
+								</div>
+							)
+							: null}
+
 						<div class="tkc-field">
 							<span class="tkc-label" id="tkc-stage-brief-label">What this stage delivers</span>
 							{editable
@@ -259,7 +380,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 						{editable && !fixed
 							? (
 								<div class="tkc-field">
-									<span class="tkc-label" id="tkc-stageint-label">Intensity in this stage</span>
+									<span class="tkc-label" id="tkc-stageint-label">Intensity</span>
 									<Select
 										size="sm"
 										value={ref.intensity}
@@ -273,30 +394,30 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 								</div>
 							)
 							: (
-								<dl class="tkc-facts">
-									<Fact label="Intensity">
-										{fixed
-											? (
-												<Tooltip content={LOCKED_INTENSITY_HINT}>
-													<span class="tkc-fact__fixed" tabIndex={0}>
-														<Icon name="lock" size="2xs" />
-														{TICKET_INTENSITY_LABEL[ref.intensity]} · fixed by the provider
-													</span>
-												</Tooltip>
-											)
-											: TICKET_INTENSITY_LABEL[ref.intensity]}
-									</Fact>
-								</dl>
+								<Readout label="Intensity">
+									{fixed
+										? (
+											<Tooltip content={LOCKED_INTENSITY_HINT}>
+												<span class="tkc-readout__fixed" tabIndex={0}>
+													<Icon name="lock" size="xs" class="tkc-readout__mark" />
+													<span>{TICKET_INTENSITY_LABEL[ref.intensity]}</span>
+													<span class="tkc-readout__note">· Fixed by the provider</span>
+												</span>
+											</Tooltip>
+										)
+										: TICKET_INTENSITY_LABEL[ref.intensity]}
+								</Readout>
 							)}
 
-						{editable
+						{included && props.peers.length > 0 ? <RunsField {...props} /> : null}
+
+						{!props.dueDates && !ref.dueAt ? null : editable && props.dueDates
 							? (
 								<div class="tkc-field">
 									<span class="tkc-label tkc-label--hint">
 										Due date
 										<HintPopover label="About stage due dates">
-											The ticket is due on the latest of its stage dates. A due date needs the
-											project's deadline bonus terms switched on.
+											The ticket is due on the latest of its stage dates.
 										</HintPopover>
 									</span>
 									<DatePicker
@@ -315,9 +436,9 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 								</div>
 							)
 							: (
-								<dl class="tkc-facts">
-									<Fact label="Due">{formatDueDate(ref.dueAt ?? null) ?? "No date"}</Fact>
-								</dl>
+								<Readout label="Due date">
+									{formatDueDate(ref.dueAt ?? null) ?? "No date"}
+								</Readout>
 							)}
 
 						<div class="tkc-field tkc-field--grow">

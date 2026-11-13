@@ -261,15 +261,26 @@ and its blueprint when `EXPLORE_BACKEND_LIVE` is on), normalises the intake answ
 makes **one** `marketplace.instantiate_service_blueprint` call (`00001175`, Decision #209). In one
 transaction that call writes:
 
-- the draft: personal workspace, `format = 'pipeline'`, `status = 'draft'`, `visibility =
-  'unlisted'`, `source_blueprint_id`, and the listing's brief and currency;
+- the draft, **owned by the seller** (filed under the listing's team for a team listing) with the
+  buyer recorded as its client in `client_user_id` (Decision #427): `format = 'pipeline'`,
+  `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`, and the listing's brief and
+  currency;
 - **one stage per `stage_template` entry**, priced at the stage's standard per-ticket price;
 - **no tickets** — the client creates every ticket on the board, and one created on a stage takes
   that stage's price (Decision #409, amending #209's one backlog ticket per stage);
 - every stage's room and the Discussion room;
 - the request row (`projects.service_instantiations`).
 
-It writes no escrow and no seat. The seller is hired in through §1.1's hire path. The call is
+- the seller's `accepted` seat on every stage, so the client's first funded ticket is claimable
+  with no hire step.
+
+It writes no escrow. **Who does what afterwards (Decision #427):** the seller configures the
+engagement (`projects.can_edit_project_details` — Details, stages, roles, staffing) and claims and
+delivers its tickets; the client reads its details, never edits them, and keeps every commercial act
+(`can_review_project` / `fn_can_fund_project` resolve the client person,
+`COALESCE(client_user_id, owner_user_id)`): ticket creation, funding from their own wallet, review,
+approval, paid revisions, and completing, cancelling or archiving it. Both land on the Overview, and
+the lane names the other party from the viewer's side. The call is
 idempotent on the client's key and then on the buyer's live draft of the listing. The listing's
 "Open project →" reads `marketplace.get_service_draft`, and "Remove draft" is
 `marketplace.archive_service_draft`, which is refused once a stage is funded. Refusals map by

@@ -1,5 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
-import { NotificationInboxBackendService as Inbox } from "./NotificationInboxBackendService.ts";
+import {
+	inboxSearchTerm,
+	NotificationInboxBackendService as Inbox,
+} from "./NotificationInboxBackendService.ts";
 import type { ReadActor } from "../read-actor.ts";
 
 // The fixture branch: AUTH_BACKEND_LIVE is unset under `deno task test:unit`.
@@ -24,6 +27,17 @@ Deno.test("list pages newest-first by created_at and filters", async () => {
 	const unread = await Inbox.list({ unreadOnly: true }, a);
 	assert(unread.data!.items.every((i) => i.isUnread));
 	assertEquals(unread.data!.items.length, unread.data!.summary.unread);
+});
+
+Deno.test("q matches title or body case-insensitively, and its wildcards are inert", async () => {
+	const a = actor("inbox-search");
+	const hits = (await Inbox.list({ q: "LOVELACE" }, a)).data!.items;
+	assertEquals(hits.map((i) => i.title), ["Ada Lovelace applied to Brand system"]);
+	assertEquals((await Inbox.list({ q: "zz-no-such-row" }, a)).data!.items.length, 0);
+
+	assertEquals(inboxSearchTerm("  50%_off, (now)* "), "50 off now");
+	assertEquals(inboxSearchTerm("%*,"), null);
+	assertEquals(inboxSearchTerm(undefined), null);
 });
 
 Deno.test("state writes move the summary, per user", async () => {

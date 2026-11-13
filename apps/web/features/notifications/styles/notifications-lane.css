@@ -1,0 +1,114 @@
+.ntf-lane,
+.ntf-lane__full {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+}
+
+.ntf-rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .ntf-lane__full {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .ntf-rail {
+	display: flex;
+}
+
+.ntf-lane__navlist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ntf-lane__count {
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.ui-nav-item--active .ntf-lane__count {
+	color: currentColor;
+}
+
+.ntf-rail {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-4);
+	block-size: 100%;
+	padding: var(--space-3) 0;
+	overflow-y: auto;
+}
+
+.ntf-rail__group {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ntf-rail__group + .ntf-rail__group {
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.ntf-rail__bottom {
+	margin-block-start: auto;
+}
+
+.ntf-rail__item {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	text-decoration: none;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ntf-rail__item:hover,
+.ntf-rail__item[aria-current="true"] {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.ntf-rail__item:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ntf-rail__dot {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ntf-rail__item,
+	.ntf-rail__item:active {
+		transition: none;
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ntf-rail__item,
+:root[data-motion="reduced"] .ntf-rail__item:active {
+	transition: none;
+	transform: none;
+}

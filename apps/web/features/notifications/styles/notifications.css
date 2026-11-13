@@ -1,7 +1,7 @@
 /* Notifications — the header drawer and `/notifications` (DESIGN_SYSTEM §D.9). Token-only BEM.
    Rows are separated by ONE hairline, never boxed (§B.9); metadata is one inline `--text-secondary`
    line, never pills (§B.11); an unread row sits on the next SOLID ramp step, never a translucent wash
-   (§B.4.2). The tab counts are the only containers. */
+   (§B.4.2). */
 
 /* #region List + rows */
 .ntf-list {
@@ -11,9 +11,9 @@
 }
 
 .ntf-row {
-	/* The ramp step an unread row moves to — one above the surface the list sits on. */
 	--ntf-unread-bg: var(--surface-1);
 	--ntf-row-inline: var(--space-3);
+	--ntf-lead: var(--space-6);
 
 	position: relative;
 	display: flex;
@@ -50,6 +50,21 @@
 
 .ntf-row__lead {
 	flex: 0 0 auto;
+	display: inline-flex;
+}
+
+.ntf-row__lead .ui-avatar {
+	--avatar-size: var(--ntf-lead);
+}
+
+.ntf-row__glyph {
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--ntf-lead);
+	block-size: var(--ntf-lead);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
 }
 
 .ntf-row__body {
@@ -80,7 +95,6 @@
 	color: var(--text-secondary);
 }
 
-/* The unread mark sits in the row's leading gutter, level with the title. */
 .ntf-row__mark {
 	position: absolute;
 	inset-block-start: calc(var(--space-3) + var(--space-2));
@@ -91,9 +105,25 @@
 	background: var(--primary);
 }
 
-.ntf-row__archive,
 .ntf-row__select {
 	flex: 0 0 auto;
+}
+
+.ntf-row__archive {
+	flex: 0 0 auto;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ntf-row:hover .ntf-row__archive,
+.ntf-row:focus-within .ntf-row__archive {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.ntf-row__archive {
+		opacity: 1;
+	}
 }
 
 .ntf-row--placeholder {
@@ -107,28 +137,30 @@
 }
 
 .ntf-row__lead-ph {
+	--skeleton-width: var(--ntf-lead);
+
 	flex: 0 0 auto;
-	inline-size: var(--space-6);
+}
+
+.ntf-row__body > .ntf-ph__line {
+	display: flex;
+	align-items: center;
+}
+
+.ntf-ph__line::before {
+	content: "\00a0";
+	inline-size: 0;
+	overflow: hidden;
+}
+
+.ntf-ph__line > .ui-skeleton {
+	--skeleton-height: 0.75em;
 }
 
 .ntf-list__more {
 	display: flex;
 	justify-content: center;
 	padding-block: var(--space-3);
-}
-/* #endregion */
-
-/* #region Tabs + toolbar */
-.ntf-tabs .ui-tabmenu__badge {
-	font-variant-numeric: tabular-nums;
-}
-
-.ntf-toolbar {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
-	min-block-size: var(--space-7);
 }
 /* #endregion */
 
@@ -143,33 +175,25 @@
 	--ntf-row-inline: var(--space-5);
 }
 
-.ntf-drawer__head {
+.ntf-drawer__bar {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	margin-block-end: var(--space-2);
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-end: var(--space-3);
 }
 
-/* The pinned footer slot supplies the seam and padding; the link supplies neither again. */
-.ntf-footer-link {
-	display: block;
-	padding: var(--space-2) var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-full);
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	color: var(--primary-ink);
-	text-align: center;
+.ntf-drawer__category {
+	flex: 1 1 var(--space-8);
+	min-inline-size: 0;
+}
+
+.ntf-drawer__markall {
+	margin-inline-start: auto;
+}
+
+.ntf-drawer__all {
 	text-decoration: none;
-	transition: transform var(--dur-press) var(--ease-standard);
-}
-
-.ntf-footer-link:hover {
-	background: var(--surface-1);
-}
-
-.ntf-footer-link:active {
-	transform: scale(0.98);
 }
 /* #endregion */
 
@@ -187,9 +211,17 @@
 .ntf-page__head {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: flex-end;
 	justify-content: space-between;
-	gap: var(--space-2) var(--space-4);
+	gap: var(--space-3) var(--space-4);
+}
+
+.ntf-page__titles {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+	min-inline-size: 0;
 }
 
 .ntf-page__title {
@@ -200,35 +232,33 @@
 	line-height: var(--leading-tight);
 }
 
-.ntf-page__settings {
+.ntf-page__meta {
+	margin: 0;
 	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 }
 
-.ntf-page__bar {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2) var(--space-3);
-}
-
-.ntf-page__bulk {
+.ntf-page__actions {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
 }
 
-.ntf-page__count {
-	font-size: var(--text-sm);
-	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
+.ntf-page__listhead {
+	display: flex;
+	align-items: center;
+	min-block-size: var(--fld-h-sm);
+	padding-inline: var(--space-3);
 }
 
-/* The page lists on the canvas, so its unread step is the one after the canvas's own. */
 .ntf-page .ntf-row {
 	--ntf-unread-bg: var(--surface-2);
+}
+
+.ntf-filterbar {
+	display: none;
 }
 
 @media (max-width: 767px) {
@@ -239,19 +269,31 @@
 	.ntf-page__title {
 		font-size: var(--text-2xl);
 	}
+
+	.ntf-filterbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.ntf-filterbar__select {
+		flex: 1 1 0;
+		min-inline-size: 0;
+	}
+
+	.ntf-filterbar__search {
+		flex: 1 1 100%;
+	}
 }
 /* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
-	.ntf-footer-link,
-	.ntf-footer-link:active {
+	.ntf-row__archive {
 		transition: none;
-		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .ntf-footer-link,
-:root[data-motion="reduced"] .ntf-footer-link:active {
+:root[data-motion="reduced"] .ntf-row__archive {
 	transition: none;
-	transform: none;
 }

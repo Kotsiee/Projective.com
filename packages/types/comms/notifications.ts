@@ -105,6 +105,9 @@ export const NotificationSummarySchema = z.object({
 });
 export type NotificationSummary = z.infer<typeof NotificationSummarySchema>;
 
+/** The longest inbox search the list endpoint accepts. */
+export const NOTIFICATION_QUERY_MAX = 100;
+
 /** Query params for the inbox list endpoint. */
 export const NotificationListParamsSchema = z.object({
 	category: NotificationCategory.optional(),
@@ -114,6 +117,8 @@ export const NotificationListParamsSchema = z.object({
 	unreadOnly: z.boolean().optional(),
 	/** The Archived view: dismissed rows instead of live ones (`unreadOnly` is ignored). */
 	archived: z.boolean().optional(),
+	/** Free text matched case-insensitively against each row's title and body. */
+	q: z.string().trim().min(1).max(NOTIFICATION_QUERY_MAX).optional(),
 	/** Keyset pagination — rows strictly older than this instant. */
 	before: timestamp.optional(),
 	limit: z.number().int().min(1).max(100).optional(),

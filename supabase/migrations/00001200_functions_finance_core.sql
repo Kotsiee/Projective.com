@@ -449,6 +449,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects;
 
+-- How long an unclaimed PREPAID escrow on this project's tickets stays held before it is refunded
+-- (Decision #428): a productised service (`source_blueprint_id` set) 120h, a client project 168h, both
+-- tunable in security.platform_params. Never below one hour.
+CREATE OR REPLACE FUNCTION finance.fn_prepaid_escrow_ttl_hours(p_project_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT GREATEST(1, COALESCE(
+        (SELECT (pp.value #>> '{}')::integer
+           FROM security.platform_params pp
+          WHERE pp.key = CASE WHEN p.source_blueprint_id IS NOT NULL
+                              THEN 'prepaid_service_ttl_hours' ELSE 'prepaid_project_ttl_hours' END),
+        CASE WHEN p.source_blueprint_id IS NOT NULL THEN 120 ELSE 168 END))
+      FROM projects.projects p
+     WHERE p.id = p_project_id;
+$$;
+
 -- Lock trigger -> hold funds in escrow (no hold, no work — Decision #165, PRODUCT_MANAGEMENT §3.6).
 -- A hold that cannot be made is REFUSED, never skipped: SQLSTATE PF402, a "Needs funding — …" message,
 -- and DETAIL = {state: 'needs_funding', reason, amount_minor, currency} for the caller to read. Reasons:
@@ -467,7 +487,8 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects;
 -- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
 -- escrow row is written, so a missing or short wallet is a PF402 refusal rather than fn_wallet_debit's
 -- PW404 or a negative balance after an escrow row nobody paid for. On success the payee and the client
--- are told (`escrow.funded`).
+-- are told (`escrow.funded`). A stage the client prepaid (Decision #430) is held from its reservation
+-- instead (fn_activate_ticket_reservation): nothing is debited twice and nothing can be refused.
 CREATE OR REPLACE FUNCTION finance.fn_hold_ticket_escrow(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -488,13 +509,15 @@ DECLARE
     v_gate_detail jsonb := '{}'::jsonb;
     v_href text;
     v_constraint text;
+    v_ttl_hours integer;
 BEGIN
     SELECT
         t.current_stage_id AS stage_id,
         t.current_assignee_id AS payee_id,
         projects.fn_ticket_stage_price(t.required_stages, t.unit_price_cents, ps) AS amount,
         p.client_business_id AS payer,
-        p.owner_user_id AS spender,
+        -- The client person spends (Decision #427): never a seller-owned service's seller.
+        COALESCE(p.client_user_id, p.owner_user_id) AS spender,
         p.currency AS currency,
         p.id AS project_id,
         p.slug AS project_slug,
@@ -514,6 +537,11 @@ BEGIN
     IF EXISTS (SELECT 1 FROM finance.escrows
                 WHERE ticket_id = p_ticket_id AND status = 'held' AND revision_id IS NULL) THEN
         RETURN NULL;
+    END IF;
+
+    v_escrow_id := finance.fn_activate_ticket_reservation(p_ticket_id);
+    IF v_escrow_id IS NOT NULL THEN
+        RETURN v_escrow_id;
     END IF;
 
     IF v.stage_id IS NULL THEN
@@ -571,14 +599,22 @@ BEGIN
             ))::text;
     END IF;
 
+    -- A prepaid hold is on the ticket's current stage by construction, so its refund clock starts now
+    -- (Decision #428); a bound hold has none. The Chain Reaction's hold into the next stage takes the
+    -- same rule, so a later stage's clock starts only when the ticket arrives there.
+    IF v_payee_id IS NULL THEN
+        v_ttl_hours := finance.fn_prepaid_escrow_ttl_hours(v.project_id);
+    END IF;
+
     BEGIN
         INSERT INTO finance.escrows (
             project_stage_id, ticket_id, payer_business_id, payer_user_id,
-            payee_type, payee_id, amount_cents, currency, status
+            payee_type, payee_id, amount_cents, currency, status, expires_at
         )
         VALUES (
             v.stage_id, p_ticket_id, v.payer, v_payer_user,
-            v_payee_type, v_payee_id, v_amount, v_currency, 'held'
+            v_payee_type, v_payee_id, v_amount, v_currency, 'held',
+            CASE WHEN v_ttl_hours IS NOT NULL THEN now() + make_interval(hours => v_ttl_hours) END
         )
         RETURNING id INTO v_escrow_id;
     EXCEPTION WHEN unique_violation THEN
@@ -608,7 +644,11 @@ BEGIN
         PERFORM comms.fn_notify(
             v.spender, 'escrow.funded', 'Escrow held',
             format('Escrow for "%s" is held from your wallet. %s', v.ticket_title,
-                CASE WHEN v_payee_id IS NULL THEN 'It is paid to whoever claims it.' ELSE 'Work can begin.' END),
+                CASE WHEN v_payee_id IS NULL
+                     THEN format('It is paid to whoever claims it, and comes back to your wallet if nobody does within %s.',
+                                 CASE WHEN v_ttl_hours % 24 = 0 THEN (v_ttl_hours / 24) || ' days'
+                                      ELSE v_ttl_hours || ' hours' END)
+                     ELSE 'Work can begin.' END),
             'projects.tickets', p_ticket_id,
             jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
             auth.uid(), 'project', v.project_id, NULL, v_href
@@ -622,7 +662,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 -- ticket (finance.fn_ticket_payee). projects.fn_ticket_escrow_sync calls it before it would hold: an
 -- unbound held escrow needs no debit, only a payee, and the work gate then finds it held. Returns the
 -- bound escrow, or NULL when there was nothing to bind (the hold runs instead). The new payee is told
--- they can start, as a hold tells them.
+-- they can start, as a hold tells them. Binding stops the prepaid refund clock (Decision #428): from
+-- here an unstarted claim is the claim TTL's (`claim_ttl_minutes`).
 CREATE OR REPLACE FUNCTION finance.fn_bind_ticket_escrow(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -647,7 +688,7 @@ BEGIN
     END IF;
 
     UPDATE finance.escrows e
-       SET payee_type = v_payee_type, payee_id = v_payee_id
+       SET payee_type = v_payee_type, payee_id = v_payee_id, expires_at = NULL
      WHERE e.ticket_id = p_ticket_id AND e.status = 'held' AND e.revision_id IS NULL AND e.payee_id IS NULL
     RETURNING e.id, e.amount_cents, e.currency INTO v_escrow_id, v_amount, v_currency;
     IF v_escrow_id IS NULL THEN
@@ -667,6 +708,246 @@ BEGIN
     RETURN v_escrow_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, auth;
+
+-- #region Decision #430 — prepaid later stages: a `reserved` escrow per stage, held on arrival
+-- A ticket arriving in a stage it was prepaid for: that stage's reservation becomes its held escrow with
+-- no second debit (the payer paid when it was reserved), under the hold's own payee rule
+-- (fn_ticket_payee): bound when someone holds the ticket or a team seat on the stage, else prepaid with
+-- the refund clock starting now (Decision #428). Returns the escrow, or NULL when the ticket has no
+-- stage, already holds its base escrow (#189), or holds no reservation for that stage. Called by
+-- fn_hold_ticket_escrow before it would debit and by projects.fn_ticket_prepay_sync when the ticket's
+-- stage changes, so every way into a stage (the Chain Reaction, a move, a funding placement, a claim)
+-- holds what was prepaid there. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_activate_ticket_reservation(p_ticket_id uuid)
+RETURNS uuid AS $$
+DECLARE
+    v record;
+    v_payee_type assignment_type;
+    v_payee_id uuid;
+    v_ttl_hours integer;
+    v_escrow_id uuid;
+    v_amount bigint;
+    v_currency text;
+    v_constraint text;
+BEGIN
+    SELECT t.current_stage_id AS stage_id, t.current_assignee_id AS assignee, t.title, t.slug AS ticket_slug,
+           p.id AS project_id, p.slug AS project_slug,
+           COALESCE(p.client_user_id, p.owner_user_id) AS client_person
+      INTO v
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE t.id = p_ticket_id;
+    IF v.stage_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM finance.escrows e
+                WHERE e.ticket_id = p_ticket_id AND e.status = 'held' AND e.revision_id IS NULL) THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT tp.payee_type, tp.payee_id INTO v_payee_type, v_payee_id
+      FROM finance.fn_ticket_payee(v.stage_id, v.assignee) tp;
+    IF v_payee_id IS NULL THEN
+        v_ttl_hours := finance.fn_prepaid_escrow_ttl_hours(v.project_id);
+    END IF;
+
+    BEGIN
+        UPDATE finance.escrows e
+           SET status = 'held', payee_type = v_payee_type, payee_id = v_payee_id,
+               expires_at = CASE WHEN v_ttl_hours IS NOT NULL
+                                 THEN now() + make_interval(hours => v_ttl_hours) END
+         WHERE e.ticket_id = p_ticket_id AND e.project_stage_id = v.stage_id AND e.status = 'reserved'
+        RETURNING e.id, e.amount_cents, e.currency INTO v_escrow_id, v_amount, v_currency;
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+        IF v_constraint IS DISTINCT FROM 'uq_escrows_ticket_base_held' THEN
+            RAISE;
+        END IF;
+        RETURN NULL;
+    END;
+    IF v_escrow_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    UPDATE projects.tickets SET payment_status = 'escrow_funded'::payment_status WHERE id = p_ticket_id;
+    INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, new_stage_id, changes)
+    VALUES (p_ticket_id, COALESCE(auth.uid(), v.client_person), 'prepaid_stage_held', v.stage_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency,
+                               'prepaid', v_payee_id IS NULL));
+
+    IF v.assignee IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v.assignee, 'escrow.funded', 'Funded — you can start',
+            format('Escrow is held for "%s". Work can begin.', v.title),
+            'projects.tickets', p_ticket_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
+            auth.uid(), 'project', v.project_id, NULL,
+            '/projects/' || v.project_slug || '/board?tkv=' || v.ticket_slug
+        );
+    END IF;
+    RETURN v_escrow_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, auth;
+
+-- Prepay ONE later stage of a ticket: the payer's wallet is debited now (`escrow_hold`) into a
+-- `reserved` escrow on that stage — unbound, with no refund clock — which fn_activate_ticket_reservation
+-- holds when the ticket reaches the stage and fn_refund_ticket_reservations returns if it never does. The
+-- stage must be one the ticket can be funded in now (projects.fn_ticket_stage_fundable) and not the stage
+-- it is funded in, which is held, never reserved. The payer, the wallet and the PF402 refusals are
+-- fn_hold_ticket_escrow's, so a door reads one vocabulary; the business spend gate is NOT asked here,
+-- because the one door that reserves (projects.fund_ticket) has gated the payer's whole selection once.
+-- Already reserved -> NULL (uq_escrows_ticket_stage_reserved). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_reserve_ticket_stage_escrow(p_ticket_id uuid, p_stage_id uuid)
+RETURNS uuid AS $$
+DECLARE
+    v record;
+    v_refusal text;
+    v_amount bigint;
+    v_payer_type text;
+    v_payer_id uuid;
+    v_payer_user uuid;
+    v_currency text;
+    v_wallet uuid;
+    v_balance bigint;
+    v_reason text;
+    v_escrow_id uuid;
+    v_constraint text;
+BEGIN
+    SELECT t.required_stages, t.unit_price_cents,
+           p.client_business_id AS payer, COALESCE(p.client_user_id, p.owner_user_id) AS spender,
+           p.currency AS currency
+      INTO v
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE t.id = p_ticket_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ticket not found.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF p_stage_id IS NOT DISTINCT FROM projects.fn_ticket_funding_stage(p_ticket_id) THEN
+        RAISE EXCEPTION 'The stage a ticket is funded in is held, never reserved.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    v_refusal := projects.fn_ticket_stage_fundable(p_ticket_id, p_stage_id);
+    IF v_refusal = 'prepaid' THEN
+        RETURN NULL;
+    ELSIF v_refusal = 'unpriced' THEN
+        v_reason := 'no_price';
+    ELSIF v_refusal IS NOT NULL THEN
+        RAISE EXCEPTION 'This stage can''t be prepaid on this ticket (%).', v_refusal USING ERRCODE = 'check_violation';
+    END IF;
+
+    SELECT projects.fn_ticket_stage_price(v.required_stages, v.unit_price_cents, ps) INTO v_amount
+      FROM projects.project_stages ps WHERE ps.id = p_stage_id;
+
+    v_payer_id := COALESCE(v.payer, v.spender);
+    v_payer_user := CASE WHEN v.payer IS NULL THEN v.spender END;
+    v_payer_type := finance.fn_escrow_payer_wallet_type(v.payer, v_payer_user);
+    v_currency := upper(COALESCE(v.currency, 'USD'));
+
+    IF v_reason IS NULL THEN
+        SELECT w.id, w.balance_cents INTO v_wallet, v_balance
+          FROM finance.wallets w
+         WHERE w.owner_type = v_payer_type AND w.owner_id = v_payer_id AND w.currency = v_currency;
+        IF v_wallet IS NULL THEN
+            v_reason := 'no_wallet';
+        ELSIF v_balance < v_amount THEN
+            v_reason := 'insufficient_funds';
+        END IF;
+    END IF;
+
+    IF v_reason IS NOT NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF402',
+            MESSAGE = 'Needs funding — ' || CASE v_reason
+                WHEN 'no_price' THEN 'this stage has no price for this ticket yet.'
+                WHEN 'no_wallet' THEN 'the client has no wallet in ' || v_currency || ' to prepay this stage from.'
+                ELSE 'the client''s wallet doesn''t hold enough to prepay this stage.'
+            END,
+            DETAIL = jsonb_build_object(
+                'state', 'needs_funding', 'reason', v_reason,
+                'amount_minor', v_amount, 'currency', v_currency, 'stage_id', p_stage_id
+            )::text;
+    END IF;
+
+    BEGIN
+        INSERT INTO finance.escrows (
+            project_stage_id, ticket_id, payer_business_id, payer_user_id,
+            amount_cents, currency, status
+        )
+        VALUES (p_stage_id, p_ticket_id, v.payer, v_payer_user, v_amount, v_currency, 'reserved')
+        RETURNING id INTO v_escrow_id;
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+        IF v_constraint IS DISTINCT FROM 'uq_escrows_ticket_stage_reserved' THEN
+            RAISE;
+        END IF;
+        RETURN NULL;
+    END;
+
+    PERFORM finance.fn_wallet_debit(v_payer_id, v_payer_type, v_currency, v_amount, 'escrow_hold', 'escrows', v_escrow_id);
+
+    INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, new_stage_id, changes)
+    VALUES (p_ticket_id, COALESCE(auth.uid(), v.spender), 'stage_prepaid', p_stage_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency));
+    RETURN v_escrow_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
+
+-- Return a ticket's reservations to their payer, whole and fee-free (Decision #430): every one, or one
+-- stage's. The stages a ticket never reached come back when it completes or is cancelled
+-- (projects.fn_ticket_prepay_sync), is deleted (projects.fn_ticket_delete_protocol), drops the stage
+-- (fn_ticket_prepay_sync), or has its prepaid hold swept unclaimed (fn_sweep_expired_prepaid_escrows).
+-- Locked and guarded as fn_refund_ticket_escrow (Decision #188): the ticket row, then each reservation,
+-- and the flip is conditional on it still being `reserved`, so a racing activation or second refund
+-- returns nothing twice. Each refund is logged `prepaid_stage_refunded`. Returns how many came back.
+CREATE OR REPLACE FUNCTION finance.fn_refund_ticket_reservations(
+    p_ticket_id uuid,
+    p_stage_id uuid DEFAULT NULL,
+    p_reason text DEFAULT 'ticket_ended'
+)
+RETURNS integer AS $$
+DECLARE
+    r record;
+    v_payer_wallet text;
+    v_flipped uuid;
+    v_actor uuid;
+    v_count integer := 0;
+BEGIN
+    SELECT COALESCE(auth.uid(), p.client_user_id, p.owner_user_id) INTO v_actor
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE t.id = p_ticket_id
+       FOR UPDATE OF t;
+
+    FOR r IN
+        SELECT * FROM finance.escrows
+         WHERE ticket_id = p_ticket_id AND status = 'reserved'
+           AND (p_stage_id IS NULL OR project_stage_id = p_stage_id)
+         ORDER BY id
+           FOR UPDATE
+    LOOP
+        UPDATE finance.escrows SET status = 'refunded'
+         WHERE id = r.id AND status = 'reserved'
+        RETURNING id INTO v_flipped;
+        CONTINUE WHEN v_flipped IS NULL;
+        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
+        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
+        PERFORM finance.fn_wallet_credit(
+            COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, r.amount_cents,
+            'escrow_refund', 'escrows', r.id
+        );
+        IF v_actor IS NOT NULL THEN
+            INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, new_stage_id, changes)
+            VALUES (p_ticket_id, v_actor, 'prepaid_stage_refunded', r.project_stage_id,
+                    jsonb_build_object('escrow_id', r.id, 'amount_minor', r.amount_cents,
+                                       'currency', r.currency, 'reason', p_reason));
+        END IF;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
+-- #endregion
 
 -- A paid revision round (Decision #167) -> one MORE escrow on its ticket, beside the one already held
 -- for the work, at the round's snapshotted price, naming the round (`revision_id`) so it is never taken
@@ -696,7 +977,7 @@ DECLARE
 BEGIN
     SELECT rv.id, rv.ticket_id, rv.project_stage_id AS stage_id, rv.price_cents AS amount,
            t.current_assignee_id AS assignee,
-           p.client_business_id AS payer, p.owner_user_id AS spender, p.currency
+           p.client_business_id AS payer, COALESCE(p.client_user_id, p.owner_user_id) AS spender, p.currency
       INTO v
       FROM projects.stage_revision_requests rv
       JOIN projects.tickets t ON t.id = rv.ticket_id
@@ -1153,6 +1434,79 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
+
+-- The prepaid escrow TTL (Decision #428): every unclaimed prepaid ticket escrow past `expires_at` is
+-- refunded whole to its payer's wallet (no fee), logged `prepaid_ttl_expired` and told to the client
+-- person (`escrow.refunded`, mandatory). The ticket row is locked first, in the claim's and the
+-- refund's own order, and skipped while another transaction holds it; under the lock the escrow is
+-- re-read, so a claim that bound it first wins. A ticket somebody holds is left to the claim TTL.
+-- The stages the client prepaid beyond it come back with it (Decision #430): nobody claimed the work,
+-- so nothing later can start either. `p_now` is injectable for probes. Returns how many escrows were
+-- refunded.
+CREATE OR REPLACE FUNCTION finance.fn_sweep_expired_prepaid_escrows(
+    p_now timestamptz DEFAULT now(),
+    p_limit integer DEFAULT 200
+)
+RETURNS integer AS $$
+DECLARE
+    r record;
+    v_escrow record;
+    v_count integer := 0;
+    v_prepaid integer;
+BEGIN
+    FOR r IN
+        SELECT t.id AS ticket_id, t.title, t.slug AS ticket_slug,
+               p.id AS project_id, p.slug AS project_slug,
+               COALESCE(p.client_user_id, p.owner_user_id) AS client_person
+          FROM finance.escrows e
+          JOIN projects.tickets t ON t.id = e.ticket_id
+          JOIN projects.projects p ON p.id = t.project_id
+         WHERE e.status = 'held' AND e.payee_id IS NULL
+           AND e.expires_at IS NOT NULL AND e.expires_at <= p_now
+         ORDER BY e.expires_at, e.id
+         LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+           FOR UPDATE OF t SKIP LOCKED
+    LOOP
+        SELECT e.id, e.amount_cents, e.currency, e.project_stage_id, e.expires_at
+          INTO v_escrow
+          FROM finance.escrows e
+         WHERE e.ticket_id = r.ticket_id AND e.status = 'held' AND e.revision_id IS NULL
+           AND e.payee_id IS NULL AND e.expires_at IS NOT NULL AND e.expires_at <= p_now
+           FOR UPDATE;
+        CONTINUE WHEN NOT FOUND;
+        CONTINUE WHEN EXISTS (
+            SELECT 1 FROM projects.tickets t
+             WHERE t.id = r.ticket_id AND (t.current_assignee_id IS NOT NULL OR t.claimed_at IS NOT NULL)
+        );
+
+        PERFORM finance.fn_refund_ticket_escrow(r.ticket_id);
+        CONTINUE WHEN NOT EXISTS (SELECT 1 FROM finance.escrows WHERE id = v_escrow.id AND status = 'refunded');
+        v_count := v_count + 1;
+        v_prepaid := finance.fn_refund_ticket_reservations(r.ticket_id, NULL, 'prepaid_ttl_expired');
+
+        INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, changes)
+        VALUES (r.ticket_id, r.client_person, 'prepaid_ttl_expired',
+                jsonb_build_object('escrow_id', v_escrow.id, 'stage_id', v_escrow.project_stage_id,
+                                   'amount_minor', v_escrow.amount_cents, 'currency', v_escrow.currency,
+                                   'expired_at', v_escrow.expires_at, 'prepaid_stages_refunded', v_prepaid));
+
+        PERFORM comms.fn_notify(
+            r.client_person, 'escrow.refunded', 'Prepaid escrow returned',
+            format(CASE WHEN v_prepaid > 0
+                        THEN 'Nobody claimed "%s" in time, so its escrow and the later stages you prepaid are back in your wallet. Fund it again whenever you''re ready.'
+                        ELSE 'Nobody claimed "%s" in time, so its escrow is back in your wallet. Fund it again whenever you''re ready.' END,
+                   r.title),
+            'projects.tickets', r.ticket_id,
+            jsonb_build_object('escrow_id', v_escrow.id, 'amount_minor', v_escrow.amount_cents,
+                               'currency', v_escrow.currency, 'reason', 'prepaid_ttl_expired'),
+            NULL, 'project', r.project_id, NULL,
+            '/projects/' || r.project_slug || '/board?tkv=' || r.ticket_slug
+        );
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, security, auth;
 
 -- #region Ledger integrity — append-only rows and nightly reconciliation (Decision #186)
 -- The ledger is the record; a row is never rewritten or removed. Bound BEFORE UPDATE OR DELETE (per row)

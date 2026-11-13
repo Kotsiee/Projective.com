@@ -30,6 +30,7 @@ import {
 	type TicketPriority,
 	TicketStageDueAt,
 	type TicketStageRef,
+	ticketStartCents,
 	type TicketStatus,
 	type TicketTask,
 	ticketTotalCents,
@@ -952,6 +953,10 @@ function toHistoryKind(raw: string | null | undefined): TicketHistoryKind {
 		case "chain_held":
 		case "chain_needs_funding":
 		case "chain_off":
+		case "prepaid_ttl_expired":
+		case "stage_prepaid":
+		case "prepaid_stage_held":
+		case "prepaid_stage_refunded":
 			return "funding";
 		default:
 			return "edited";
@@ -975,6 +980,75 @@ function statusWord(raw: string | null | undefined): string | null {
 }
 
 /**
+ * A stage move in the log's words. The stage is named as the board names it, never wrapped in
+ * "the … stage" — a stage is often called "Design stage", and an unnamed one read "the another stage
+ * stage". A move out of every stage into the backlog is the New lane (Decision #421); a stage id the
+ * schema has since nulled (`ON DELETE SET NULL`) on any other status is a stage since removed.
+ */
+export function stageMoveSummary(
+	move: { toStageId: string | null; toStageName: string | null; toStatus: string | null },
+): string {
+	if (move.toStageId === null) {
+		return move.toStatus === "backlog" ? "moved it to New" : "moved it to a stage since removed";
+	}
+	return move.toStageName
+		? clampOr(`moved it to ${move.toStageName}`, 200, "moved it to another stage")
+		: "moved it to another stage";
+}
+
+/** A Chain Reaction row in the log's words, naming the stage it moved on to as the board does. */
+export function chainSummary(action: string | null, stageName: string | null): string {
+	const name = stageName ? clamp(stageName, 120) : "";
+	switch (action) {
+		case "chain_held":
+			return name
+				? `held its escrow for ${name} on approval`
+				: "held its escrow for the next stage on approval";
+		case "chain_needs_funding":
+			return name
+				? `moved it on to ${name}, where its escrow couldn't be held`
+				: "moved it on, where its escrow couldn't be held";
+		default:
+			return name ? `moved it on to ${name}, to be funded there` : "moved it on, to be funded there";
+	}
+}
+
+/**
+ * A funding row: the Chain Reaction, written by `projects.force_complete_stage` as the approver; the
+ * rest by `finance.fn_auto_fund_on_needs_funding` / `fn_auto_fund_drain` as the project owner.
+ */
+function fundingSummary(action: string | null, stageName: string | null): string {
+	switch (action) {
+		case "chain_held":
+		case "chain_needs_funding":
+		case "chain_off":
+			return chainSummary(action, stageName);
+		case "auto_funded":
+			return "auto-funded this ticket from the business wallet";
+		case "auto_fund_queued":
+			return "queued this ticket to auto-fund from the business wallet";
+		case "auto_fund_basketed":
+			return "added this ticket to the business basket";
+		case "auto_fund_approval_requested":
+			return "asked for approval to auto-fund this ticket";
+		case "prepaid_ttl_expired":
+			return "got this ticket's prepaid escrow back, as nobody claimed it in time";
+		case "stage_prepaid":
+			return stageName ? clamp(`prepaid ${stageName}`, 200) : "prepaid a later stage";
+		case "prepaid_stage_held":
+			return stageName
+				? clamp(`held the prepaid escrow for ${stageName}`, 200)
+				: "held a prepaid stage's escrow";
+		case "prepaid_stage_refunded":
+			return stageName
+				? clamp(`got the prepayment for ${stageName} back`, 200)
+				: "got a prepaid stage's money back";
+		default:
+			return "reopened this ticket for claims now the wallet covers it";
+	}
+}
+
+/**
  * A one-line summary in the fixtures' voice — the verb phrase only, because the surface renders it
  * as `{actor} {summary}` and a summary that repeated the name would read "Ivy Chen Ivy Chen moved…".
  *
@@ -991,10 +1065,12 @@ function historySummary(
 			return "created this ticket";
 		case "assigned":
 			return "claimed this ticket";
-		case "stage": {
-			const to = stageName ?? "another stage";
-			return clampOr(`moved it to the ${to} stage`, 200, "moved it to another stage");
-		}
+		case "stage":
+			return stageMoveSummary({
+				toStageId: row.new_stage_id,
+				toStageName: stageName,
+				toStatus: row.new_status,
+			});
 		case "status": {
 			const word = statusWord(row.new_status);
 			return word
@@ -1011,41 +1087,8 @@ function historySummary(
 			return "changed the priority";
 		case "due":
 			return "changed the due date";
-		case "funding": {
-			// The Chain Reaction, written by projects.force_complete_stage as the approver; the rest by
-			// finance.fn_auto_fund_on_needs_funding / fn_auto_fund_drain as the project owner.
-			const next = stageName ?? "next";
-			switch (row.action_type) {
-				case "chain_held":
-					return clampOr(
-						`held its escrow for the ${next} stage on approval`,
-						200,
-						"held its escrow for the next stage on approval",
-					);
-				case "chain_needs_funding":
-					return clampOr(
-						`moved it on to the ${next} stage, where its escrow couldn't be held`,
-						200,
-						"moved it on, where its escrow couldn't be held",
-					);
-				case "chain_off":
-					return clampOr(
-						`moved it on to the ${next} stage, to be funded there`,
-						200,
-						"moved it on, to be funded there",
-					);
-				case "auto_funded":
-					return "auto-funded this ticket from the business wallet";
-				case "auto_fund_queued":
-					return "queued this ticket to auto-fund from the business wallet";
-				case "auto_fund_basketed":
-					return "added this ticket to the business basket";
-				case "auto_fund_approval_requested":
-					return "asked for approval to auto-fund this ticket";
-				default:
-					return "reopened this ticket for claims now the wallet covers it";
-			}
-		}
+		case "funding":
+			return fundingSummary(row.action_type, stageName);
 		default:
 			return "updated the ticket";
 	}
@@ -1271,12 +1314,14 @@ interface CardContext {
  *
  * The funding line's amount is the current stage's resolved price — what
  * `finance.fn_hold_ticket_escrow` holds through `projects.fn_ticket_stage_price` — so "needs £X to
- * start" is the figure the hold will take.
+ * start" is the figure the hold will take. A ticket in the stage-less New lane is quoted at the first
+ * stage it runs through ({@link ticketStartCents}); `unit_price_cents` is null on a ticket whose
+ * stages carry different rates, so falling back to it alone read every such draft as unpriced.
  */
 function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 	const stages = toStageRefs(ticket, ctx.stagesById);
 	const budgetCents = ticketTotalCents(stages);
-	const currentPrice = stages.find((s) => s.stageId === ticket.current_stage_id)?.costCents ?? null;
+	const currentPrice = ticketStartCents(stages, ticket.current_stage_id);
 	const description = clamp(ticket.text_description, 4000).trim();
 	const history = ctx.history.get(ticket.id) ?? [];
 	const tasks = toTasks(ticket.tasks, ctx.parties, ticket.id);
@@ -1339,6 +1384,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 				autoFunded: ctx.billing.escrows.get(ticket.id)?.autoFunded ?? false,
 				releasedAt: ctx.billing.escrows.get(ticket.id)?.releasedAt ?? null,
 				invoicePeriod: ctx.billing.invoicePeriod,
+				prepaidStageIds: ctx.billing.prepaid.get(ticket.id) ?? [],
 			},
 		),
 		priority: toPriority(ticket.priority),
@@ -1401,12 +1447,13 @@ function boardTitle(
 /**
  * Whether the acting viewer is on the CLIENT side of the engagement.
  *
- * The owner is the buying side on every engagement, exactly as `projects.can_review_project` and the
- * detail read's `resolveViewerIsClient` decide it: the person who instantiated a pipeline service into
- * their own workspace OWNS it, so the blueprint FK that makes it a `service` must not hand them the
- * provider surface with no create actions. Beyond ownership, a client-architected project counts its
- * admin and client seats, and a service counts only an explicit `client` seat — its admins are the
- * provider's delegates. It gates the client-only actions (ticket moves, stage reorder, create).
+ * `viewerRole` already carries the side, exactly as `projects.can_review_project` and the detail read's
+ * `resolveViewerIsClient` decide it: an `owner` is the buying side of an engagement they posted, and a
+ * seller-owned service (Decision #427) resolves its buyer as `client` and its seller as `freelancer`
+ * (`resolveSummaryRole`), so the seller works it from the provider surface. Beyond that, a
+ * client-architected project counts its admin and client seats, and a service counts only a `client`
+ * seat — its admins are the provider's delegates. It gates the client-only actions (ticket moves,
+ * create, funding).
  */
 export function viewerIsClientOf(
 	engagement: "service" | "project",
@@ -1470,6 +1517,8 @@ interface ProjectFacts {
 	clientBusinessId: string | null;
 	/** A personal project (Decision #192): no money, so no card carries a funding line. */
 	personal: boolean;
+	/** `allow_deadline_bonuses` — whether a ticket may carry a due date. */
+	dueDatesEnabled: boolean;
 }
 
 /**
@@ -1481,28 +1530,39 @@ interface ProjectFacts {
  * rather than a cosmetic one. The structure rides the same row so a Task costs no extra round trip.
  *
  * Degrades rather than throwing — `"USD"`, the column's own NOT NULL default, and `standard`, which
- * keeps every tab (see {@link toProjectStructure}). A failed lookup should cost a symbol, not a page.
+ * keeps every tab (see {@link toProjectStructure}), with due dates offered — the database still refuses
+ * one the project has not agreed to. A failed lookup should cost a symbol, not a page.
  */
 async function fetchProjectFacts(db: SupabaseClient, projectId: string): Promise<ProjectFacts> {
 	const { data, error } = await db
 		.from("projects")
-		.select("currency, structure_variation, client_business_id, is_personal")
+		.select(
+			"currency, structure_variation, client_business_id, is_personal, allow_deadline_bonuses",
+		)
 		.eq("id", projectId)
 		.maybeSingle();
 	if (error || !data) {
-		return { currency: "USD", structure: "standard", clientBusinessId: null, personal: false };
+		return {
+			currency: "USD",
+			structure: "standard",
+			clientBusinessId: null,
+			personal: false,
+			dueDatesEnabled: true,
+		};
 	}
 	const row = data as {
 		currency: string | null;
 		structure_variation: string | null;
 		client_business_id: string | null;
 		is_personal: boolean | null;
+		allow_deadline_bonuses: boolean | null;
 	};
 	return {
 		currency: row.currency && row.currency.length === 3 ? row.currency.toUpperCase() : "USD",
 		structure: toProjectStructure(row.structure_variation),
 		clientBusinessId: row.client_business_id ?? null,
 		personal: row.is_personal === true,
+		dueDatesEnabled: row.allow_deadline_bonuses === true,
 	};
 }
 
@@ -1547,7 +1607,9 @@ async function fetchTickets(db: SupabaseClient, projectId: string): Promise<Tick
 }
 
 /**
- * Raw audit rows for the given tickets, newest first.
+ * Raw audit rows for the given tickets, newest first. `created_at` is `clock_timestamp()`, so rows
+ * written by one transaction (a move and the auto-fund row its trigger writes) keep their real order;
+ * `id` breaks an exact tie so the order is the same on every read.
  *
  * A separate keyed query rather than an embed, and deliberately so: `projects.ticket_history`
  * carries TWO foreign keys to `projects.project_stages` (`previous_stage_id`, `new_stage_id`), so
@@ -1571,6 +1633,7 @@ async function fetchHistoryRows(
 		.select(HISTORY_COLUMNS)
 		.in("ticket_id", ticketIds as string[])
 		.order("created_at", { ascending: false })
+		.order("id", { ascending: false })
 		.limit(HISTORY_ROW_CAP);
 	if (error) return [];
 	return (data ?? []) as unknown as HistoryRow[];
@@ -1671,7 +1734,11 @@ export async function fetchBoardPage(
 	const db = projectsDb(actor);
 
 	// Wave 2 — everything keyed on the project id.
-	const [{ currency, structure, clientBusinessId, personal }, stageRows, ticketRows] = await Promise.all([
+	const [
+		{ currency, structure, clientBusinessId, personal, dueDatesEnabled },
+		stageRows,
+		ticketRows,
+	] = await Promise.all([
 		fetchProjectFacts(db, summary.id),
 		fetchStages(db, summary.id),
 		fetchTickets(db, summary.id),
@@ -1875,6 +1942,7 @@ export async function fetchBoardPage(
 		channelId: params.channelId ? clamp(params.channelId, 120) : null,
 		format: summary.format,
 		structure,
+		dueDatesEnabled,
 		title: boardTitle(kind, summary.format, structure),
 		currency,
 		view,

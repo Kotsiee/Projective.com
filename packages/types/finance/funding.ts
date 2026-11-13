@@ -56,6 +56,11 @@ export const FundingStatusSchema = z.object({
 	/** The held escrow was funded by the From-wallet auto-fund queue, not by a person. */
 	autoFunded: z.boolean().optional(),
 	/**
+	 * The later stages already paid for (Decision #430): `reserved` escrows the Chain Reaction holds when
+	 * the ticket reaches each one. Absent or empty when none is.
+	 */
+	prepaidStageIds: z.array(z.string().min(1).max(120)).max(50).optional(),
+	/**
 	 * When the business's monthly invoice will list this ticket's released escrow ("Nov 1"); `null` for
 	 * an individual, a business settling per transaction, or an escrow not yet released or already invoiced.
 	 */

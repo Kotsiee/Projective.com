@@ -30,16 +30,28 @@ export interface BuyNowTarget {
 	/** Where a signed-out visitor is sent, returning here afterwards. */
 	signInHref: string;
 	/**
-	 * Funding ONE project ticket (Decision #166) rather than buying a listing: the line is added by
-	 * ticket, the session is narrowed to the project, and the panel states the escrow terms. Optional,
-	 * so every listing caller is unchanged.
+	 * Funding stages of ONE project ticket (Decisions #166, #430) rather than buying a listing: the panel
+	 * lists the ticket's stages to choose from, writes the chosen ones as its lines, narrows the session
+	 * to the ticket and states the escrow terms. Optional, so every listing caller is unchanged.
 	 */
-	ticket?: {
-		ticketId: string;
-		projectId: string;
-		/** Called once the ticket's payment has settled, so the host re-reads its funding state. */
-		onSettled?: () => void;
-	};
+	ticket?: BuyNowTicket;
+}
+
+/** The ticket a Buy-Now attempt funds. */
+export interface BuyNowTicket {
+	/** The ticket's row id — what the basket write names. */
+	ticketId: string;
+	/** Its `tkt-…` slug, else its row id — what the funding quote and the session narrowing name. */
+	ref: string;
+	/** The project's `prj-…` slug. */
+	projectId: string;
+	/** Called once the ticket's payment has settled, so the host re-reads its funding state. */
+	onSettled?: () => void;
+}
+
+/** Every name a basket line may carry for this ticket: its slug and its row id. */
+export function ticketRefsOf(ticket: Pick<BuyNowTicket, "ticketId" | "ref">): string[] {
+	return ticket.ref === ticket.ticketId ? [ticket.ref] : [ticket.ref, ticket.ticketId];
 }
 
 /** Whether the Buy-Now modal is open. */

@@ -28,6 +28,13 @@ CREATE TABLE projects.projects (
 -- this schema should refuse rather than discover at read time.
 owner_team_id uuid,
 owner_enterprise_id uuid,
+
+-- The BUYING PERSON on an engagement its seller owns (Decision #427): "Add to Projects" on a Pipeline
+-- listing makes the freelancer `owner_user_id` and writes the buyer here. NULL on every engagement
+-- whose owner is the client side (a hand-built project), so "the client person" is always
+-- `COALESCE(client_user_id, owner_user_id)` — the payer, the reviewer and the ticket author. Written
+-- only by the definer doors (`trg_projects_derived`), never by a client.
+client_user_id uuid,
 title text NOT NULL,
 
 -- The CANONICAL public address. `/projects/[projectSlug]` carries this and nothing else: the row's
@@ -176,6 +183,8 @@ archived_at timestamptz,
   CONSTRAINT projects_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id),
   CONSTRAINT projects_owner_team_id_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id),
   CONSTRAINT projects_owner_enterprise_id_fkey FOREIGN KEY (owner_enterprise_id) REFERENCES org.enterprises(id),
+  CONSTRAINT projects_client_user_id_fkey FOREIGN KEY (client_user_id) REFERENCES org.users_public(user_id),
+  CONSTRAINT ck_projects_client_not_owner CHECK (client_user_id IS DISTINCT FROM owner_user_id),
   CONSTRAINT projects_slug_key UNIQUE (slug),
   CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
   CONSTRAINT projects_nda_document_id_fkey FOREIGN KEY (nda_document_id) REFERENCES files.items(id) ON DELETE SET NULL,
@@ -533,7 +542,8 @@ CREATE TABLE projects.ticket_history (
     new_status ticket_status NULL,
 
     changes jsonb NOT NULL DEFAULT '{}'::jsonb, -- Captures any other modified attributes as a diff patch
-    created_at timestamp with time zone NOT NULL DEFAULT now()
+    -- clock_timestamp(), not now(): rows one transaction writes (a move and its trigger's row) must keep their order.
+    created_at timestamp with time zone NOT NULL DEFAULT clock_timestamp()
 );
 
 

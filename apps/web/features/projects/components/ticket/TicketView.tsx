@@ -34,6 +34,7 @@ import { statusLabel, statusTone } from "../../core/board-model.ts";
 import {
 	applyTicketIntensity,
 	blankStageRef,
+	normaliseStages,
 	patchStageDue,
 	reconcileCard,
 	stageOps,
@@ -44,6 +45,7 @@ import {
 } from "../../core/ticket-model.ts";
 import {
 	activeStagesFor,
+	availableStageView,
 	panelFor,
 	resolveTicketStages,
 	ticketMetrics,
@@ -55,7 +57,15 @@ import {
 	ticketTabs,
 } from "../../core/ticket-view.ts";
 import { FILE_FRAME_TRIGGER } from "../../core/file-frame.ts";
-import { type PipelineDrop, placeStage, swapStage } from "../../core/stage-pipeline.ts";
+import {
+	bandMates,
+	neighbourOf,
+	type PipelineDrop,
+	placeStage,
+	sequentialStage,
+	setBandMates,
+	swapStage,
+} from "../../core/stage-pipeline.ts";
 import { inclusionRefusal, pipelineLocks, removalRefusal } from "../../core/stage-menu.ts";
 import { TicketMetaBar } from "./TicketMetaBar.tsx";
 import { TicketActivityPanel } from "./TicketActivityPanel.tsx";
@@ -69,14 +79,18 @@ import { TicketHistoryTab } from "./tabs/TicketHistoryTab.tsx";
 import { TicketSubmissionsTab } from "./tabs/TicketSubmissionsTab.tsx";
 import { TicketTimelineTab } from "./tabs/TicketTimelineTab.tsx";
 import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
-import { FundingStatus } from "../FundingStatus.tsx";
+import { FundingStatus, FundingTag, useLiveFunding } from "../FundingStatus.tsx";
 import {
 	draftStep,
 	fundingAction,
 	fundingDateLabel,
 	previewFunding,
+	previewPrepaidStages,
 } from "../../core/funding-ui.ts";
+import { fundingStageOf, needsStageSelector } from "@projective/types/finance";
+import { TicketBasketPicker } from "@web/features/checkout/components/TicketBasketPicker.tsx";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
+import { useTicketShortcuts } from "../../hooks/useTicketShortcuts.ts";
 
 /**
  * TicketView — the ONE ticket surface. Creating, reading and editing a ticket are the same modal.
@@ -148,6 +162,11 @@ export interface TicketViewProps {
 	 * False on a Task, whose one stage would make the tab a single bar. Absent → the tab is offered.
 	 */
 	hasTimeline?: boolean;
+	/**
+	 * Whether the engagement lets a ticket carry a due date (`BoardPage.dueDatesEnabled`). Off, the
+	 * meta bar's Due and every stage's due date are withdrawn. Absent → offered.
+	 */
+	dueDates?: boolean;
 	onClose: () => void;
 	/** Commit the working copy — creates the ticket, or saves the changes to an existing one. */
 	onSubmit: (card: BoardCard) => void;
@@ -157,8 +176,15 @@ export interface TicketViewProps {
 	onCreateSubmission: (stageId: string) => void;
 	/** Fund this ticket now — opens Buy Now. Absent where the host cannot (no Buy Now mounted). */
 	onBuyNow?: (card: BoardCard) => void;
-	/** Put this ticket in the basket. */
-	onAddToBasket?: (card: BoardCard) => void;
+	/**
+	 * Put this ticket in the basket — the chosen stages (Decision #430), else the stage it is funded in;
+	 * resolve `true` when its lines landed.
+	 */
+	onAddToBasket?: (card: BoardCard, stageIds?: readonly string[]) => Promise<boolean> | boolean;
+	/** The open basket already holds this ticket (Decision #428). */
+	inBasket?: boolean;
+	/** Open the basket — what In basket does. */
+	onOpenBasket?: () => void;
 	/** The payee starts work on a funded ticket (provider side). */
 	onStartWork?: (card: BoardCard) => void;
 	/** A funding write the host started is in flight. */
@@ -178,12 +204,15 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const stack = useOverlayStack({ active: true, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
+	const tablistRef = useRef<HTMLDivElement>(null);
 	const wide = !useMediaQuery("(max-width: 900px)");
 	const confirmingClose = useSignal(false);
 	const forcedFunding = useSignal(readDevSeam()?.fundingState);
+	const prepaidPreview = useSignal(readDevSeam()?.prepaidStages);
 	useEffect(() =>
 		subscribeDevSeam((seam) => {
 			forcedFunding.value = seam?.fundingState;
+			prepaidPreview.value = seam?.prepaidStages;
 		}), []);
 	useFocusTrap({ active: true, containerRef: panelRef });
 	// The backdrop is the only outside-click channel (§B.10.6 #4), so a press there can only ever
@@ -224,6 +253,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const tab = useFrameState<TicketTab>(ticketStack, uid, "tab", "details");
 	const showPanel = useFrameState<boolean>(ticketStack, uid, "panel", true);
 	const selectedStage = useFrameState<string | null>(ticketStack, uid, "stage", null);
+	const parked = useFrameState<Record<string, TicketStageRef>>(ticketStack, uid, "parked", {});
 	// Keyed PER TAB, not per modal. The tabs share one scroll container, so a single key would let a
 	// glance at Finances overwrite where the reader had got to in a long History — the offset belongs
 	// to the content, and the content changes with the tab.
@@ -253,9 +283,29 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const dirty = ticketFingerprint(card) !== baseline.value;
 	const intensityFixed = stageViews.length > 0 &&
 		stageViews.every((v) => stageIntensityLocked(v.stage));
+	useTicketShortcuts({
+		active: stack.isTop,
+		tabs,
+		current,
+		onTab: (key) => (tab.value = key),
+		tablistRef,
+		onSave: () => {
+			if ((creating || dirty) && !props.saving) commit();
+		},
+	});
 
+	const dueDates = props.dueDates !== false;
 	const panelKind = panelFor(current, mode, wide);
-	const inspected = stageViews.find((v) => v.ref.stageId === selectedStage.value) ?? null;
+	const parkedRef = (stage: BoardStageRef): TicketStageRef =>
+		normaliseStages(
+			[parked.value[stage.id] ?? blankStageRef(stage, card.stages.length, card.intensity)],
+			stages,
+		)[0];
+	const selectedAvailable = available.find((s) => s.id === selectedStage.value) ?? null;
+	const inspected = stageViews.find((v) => v.ref.stageId === selectedStage.value) ??
+		(selectedAvailable
+			? availableStageView(parkedRef(selectedAvailable), selectedAvailable)
+			: null);
 	const sidePanel = panelKind === "activity" && showPanel.value
 		? "activity"
 		: panelKind === "composer" && showPanel.value
@@ -271,18 +321,50 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	 * duplicated). Nothing is said about a ticket that is unsaved or mid-edit.
 	 */
 	const server = props.card;
-	const funding = !creating && !dirty ? server.funding : null;
+	const funding = useLiveFunding(!creating && !dirty ? server.funding : null, server.slug);
 	const fundingSide = isFreelancer ? "provider" : "client";
 	const startPending = isFreelancer && server.claimed && funding !== null &&
 		(fundingAction(funding, "provider") ?? "").startsWith("start");
+	const serverStages = [...server.stages].sort((a, b) => a.order - b.order);
+	const fundingStageId = fundingStageOf(
+		server.stageId,
+		serverStages.map((s) => ({ stageId: s.stageId, order: s.order })),
+	);
+	const fundingAt = serverStages.findIndex((s) => s.stageId === fundingStageId);
+	const prepaidIds = new Set(
+		previewPrepaidStages(
+			funding?.prepaidStageIds,
+			prepaidPreview.value,
+			fundingAt >= 0 ? serverStages.slice(fundingAt + 1).map((s) => s.stageId) : [],
+		),
+	);
+	const prepaidNames = serverStages.filter((s) => prepaidIds.has(s.stageId)).map((s) => s.name);
+	const addToBasket = isClient ? props.onAddToBasket : undefined;
+	const basketPicker = addToBasket && needsStageSelector(server.stages.length)
+		? (done: (landed: boolean) => void) => (
+			<TicketBasketPicker
+				project={props.projectId}
+				ticket={server.slug ?? server.id}
+				preview={prepaidPreview.value ?? "auto"}
+				onCancel={() => done(false)}
+				onConfirm={async (stageIds) => {
+					const landed = (await addToBasket(server, stageIds)) === true;
+					if (landed) done(true);
+					return landed;
+				}}
+			/>
+		)
+		: undefined;
 	const fundingLine = (extra?: string, actions = true) =>
 		funding && !actions
 			? (
 				<FundingStatus
 					funding={funding}
 					side={fundingSide}
+					tag={false}
 					freelancer={server.assignee?.name ?? null}
 					dateLabel={fundingDateLabel(server, funding)}
+					prepaidStages={prepaidNames}
 				/>
 			)
 			: funding
@@ -291,14 +373,16 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					class={extra}
 					funding={funding}
 					side={fundingSide}
+					tag={false}
 					freelancer={server.assignee?.name ?? null}
 					dateLabel={fundingDateLabel(server, funding)}
-					pollSlug={server.slug}
+					prepaidStages={prepaidNames}
 					busy={props.fundingBusy}
 					onBuyNow={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
-					onAddToBasket={isClient && props.onAddToBasket
-						? () => props.onAddToBasket?.(server)
-						: undefined}
+					onAddToBasket={addToBasket ? () => addToBasket(server) : undefined}
+					basketPicker={basketPicker}
+					inBasket={isClient && props.inBasket}
+					onOpenBasket={isClient ? props.onOpenBasket : undefined}
 					onRetry={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
 					onReview={isClient ? () => (tab.value = "submissions") : undefined}
 					onStart={isFreelancer && server.claimed && props.onStartWork
@@ -368,6 +452,11 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	}
 
 	function patchStage(stageId: string, sp: Partial<TicketStageRef>): void {
+		if (!chosen.has(stageId)) {
+			const stage = stages.find((s) => s.id === stageId);
+			if (stage) parked.value = { ...parked.value, [stageId]: { ...parkedRef(stage), ...sp } };
+			return;
+		}
 		if ("dueAt" in sp) {
 			draft.value = patchStageDue(draft.value, stageId, sp.dueAt ?? null, stages);
 			return;
@@ -391,15 +480,39 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 			: inclusionRefusal(card.stages.length, locks.ticket) !== null;
 		if (refused) return;
 		const stage = stages.find((s) => s.id === stageId);
-		const moved = existing ?? (stage ? blankStageRef(stage, card.stages.length, card.intensity) : null);
+		const moved = existing ?? (stage ? parkedRef(stage) : null);
 		const next = moved ? placeStage(card.stages, moved, drop) : null;
 		if (!next) return;
+		const { [stageId]: _held, ...rest } = parked.value;
+		parked.value = drop.kind === "exclude" && existing ? { ...rest, [stageId]: existing } : rest;
 		patch({ stages: next });
-		if (drop.kind === "exclude" && selectedStage.value === stageId) selectedStage.value = null;
 	}
 
 	function reshapePipeline(stageId: string, next: TicketStageRef[] | null): void {
 		if (next && !locks.stages.has(stageId)) patch({ stages: next });
+	}
+
+	function groupStages(stageId: string, peerId: string): void {
+		const peer = card.stages.find((s) => s.stageId === peerId);
+		if (!peer || locks.stages.has(peerId)) return;
+		reshapePipeline(stageId, placeStage(card.stages, peer, { kind: "join", stageId }));
+	}
+
+	function setRunsWith(stageId: string, mates: readonly string[]): void {
+		if (mates.some((id) => locks.stages.has(id))) return;
+		reshapePipeline(stageId, setBandMates(card.stages, stageId, mates));
+	}
+
+	function setParallel(stageId: string, parallel: boolean): void {
+		if (!parallel) {
+			reshapePipeline(stageId, sequentialStage(card.stages, stageId));
+			return;
+		}
+		const self = card.stages.find((s) => s.stageId === stageId);
+		const mate = neighbourOf(card.stages, stageId);
+		if (self && mate && !locks.stages.has(mate)) {
+			reshapePipeline(stageId, placeStage(card.stages, self, { kind: "join", stageId: mate }));
+		}
 	}
 
 	function commit(): void {
@@ -413,6 +526,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	function discard(): void {
 		draft.value = props.card;
 		baseline.value = ticketFingerprint(props.card);
+		parked.value = {};
 	}
 
 	/** Roving-tabindex arrow navigation across the strip (WAI-ARIA tabs pattern). */
@@ -443,26 +557,42 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 				onSelect={selectStage}
 				onPlace={placeInPipeline}
 				onSwap={(id, direction) => reshapePipeline(id, swapStage(card.stages, id, direction))}
-				onParallel={(id, parallel) =>
-					reshapePipeline(id, stageOps.patch(card.stages, id, { parallel }, stages))}
+				onGroup={groupStages}
+				onSequential={(id) => reshapePipeline(id, sequentialStage(card.stages, id))}
 			/>
 		);
 	}
 
 	function inspectorFor(view: TicketStageView, nav: "close" | "back"): JSX.Element {
+		const id = view.ref.stageId;
+		const included = view.index >= 0;
+		const composing = canEdit && locks.ticket === null;
 		return (
 			<StageInspector
-				key={view.ref.stageId}
+				key={id}
 				item={view}
 				nav={nav}
-				stageTickets={props.cards.filter(
-					(c) => c.stageId === view.ref.stageId && c.id !== card.id,
-				)}
+				stageTickets={props.cards.filter((c) => c.stageId === id && c.id !== card.id)}
 				editable={canEdit}
+				lock={locks.stages.get(id) ?? null}
 				currency={card.currency}
-				funding={view.ref.stageId === server.stageId ? fundingLine(undefined, false) : null}
+				dueDates={dueDates}
+				included={included}
+				peers={stageViews
+					.filter((v) => v.ref.stageId !== id)
+					.map((v) => ({ stageId: v.ref.stageId, name: v.ref.name }))}
+				mates={included ? bandMates(card.stages, id) : []}
+				funding={id === server.stageId ? fundingLine(undefined, false) : null}
+				include={!included && composing
+					? {
+						refusal: inclusionRefusal(card.stages.length, locks.ticket),
+						run: () => placeInPipeline(id, { kind: "seam", before: card.stages.length }),
+					}
+					: null}
 				onClose={closeInspector}
-				onPatch={(sp) => patchStage(view.ref.stageId, sp)}
+				onPatch={(sp) => patchStage(id, sp)}
+				onParallel={(parallel) => setParallel(id, parallel)}
+				onRunsWith={(mates) => setRunsWith(id, mates)}
 			/>
 		);
 	}
@@ -561,8 +691,11 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					{/* #region Header — identity, who is on it, and the two controls */}
 					<header class="tkv__top">
 						<div class="tkv__ident">
-							<span class="tkv__status" data-tone={creating ? "info" : statusTone(card.status)}>
-								{creating ? "New" : statusLabel(card.status)}
+							<span class="tkv__badges">
+								<span class="tkv__status" data-tone={creating ? "info" : statusTone(card.status)}>
+									{creating ? "New" : statusLabel(card.status)}
+								</span>
+								{funding ? <FundingTag funding={funding} class="tkv__fund-tag" /> : null}
 							</span>
 							{
 								/*
@@ -698,12 +831,13 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 							workspaceLabel={props.workspaceLabel}
 							clientMembers={props.clientMembers}
 							intensityFixed={intensityFixed}
+							dueDates={dueDates}
 							dueMode={ticketDueMode(card)}
 							onPatch={patch}
 							onDue={patchDue}
 						/>
 
-						<div class="tkv-tabs" role="tablist" aria-label="Ticket views">
+						<div ref={tablistRef} class="tkv-tabs" role="tablist" aria-label="Ticket views">
 							{tabs.map((t, i) => {
 								const tabButton = (
 									<button

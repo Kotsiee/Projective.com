@@ -135,6 +135,12 @@ CREATE INDEX IF NOT EXISTS idx_projects_client_business
     ON projects.projects (client_business_id)
     WHERE client_business_id IS NOT NULL;
 
+-- The buyer of a seller-owned service (Decision #427): their project list, every client-side policy
+-- arm, and "does this buyer already have a draft of this listing?" on each listing render.
+CREATE INDEX IF NOT EXISTS idx_projects_client_user
+    ON projects.projects (client_user_id, source_blueprint_id, status)
+    WHERE client_user_id IS NOT NULL;
+
 -- Every assignment of a stage, whatever its status (uq_stage_assignment_active_assignee covers
 -- only the live ones); the bench reads completed seats too.
 CREATE INDEX IF NOT EXISTS idx_stage_assignments_stage

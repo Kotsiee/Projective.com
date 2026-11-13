@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
 import { useRef } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import {
@@ -24,23 +24,27 @@ import {
 } from "../../core/stage-menu.ts";
 import {
 	parseStageDndId,
+	type PipelineFrame,
 	type PipelineTarget,
 	STAGE_DRAG,
 	usePipelineDrop,
 	ZONE_AVAILABLE,
 	ZONE_INCLUDED,
 } from "../../hooks/usePipelineDrop.ts";
-import { StageCard } from "./StageCard.tsx";
+import { StageCard, type StageCardToggle } from "./StageCard.tsx";
 import { AvailableStageBody, IncludedStageBody } from "./StageCardBody.tsx";
 
 /**
- * StagePipeline — the ticket's stages as two drop zones of Kanban-style cards.
+ * StagePipeline — the ticket's stages as two zones of Kanban-style cards split by one divider.
  *
- * **Included in this ticket** is the ordered pipeline: drag a card to a seam to reorder it (the
- * shared {@link DropIndicator} marks the landing), or onto another card's middle to run the two
- * together. **Available project stages** lists the engagement's other stages; dragging a card between
- * the zones adds it or takes it out. Each card's `…` and right-click open the same rows. A press
- * opens the stage in the modal's inspector, the one place a stage is configured.
+ * **Included in this ticket** is the ordered pipeline, one row per step; a step whose stages run in
+ * parallel is one labelled row of side-by-side cards. **Available project stages** lists the
+ * engagement's other stages. A drag lands by where it is dropped, not on what: anywhere below the
+ * divider takes the stage out, and anywhere above it lands on the step rows — a row's edge is the
+ * seam before or after it (the shared {@link DropIndicator} marks it), its middle runs the stage in
+ * parallel with that step. A press selects a stage in either zone, opening it in the modal's
+ * inspector; Shift+click, a middle click and the card's `+` / `−` add it or take it out. Each card's
+ * `…` and right-click open the same rows.
  *
  * The rules are pure (`stage-pipeline`, `stage-menu`): a ticket keeps at least one stage, and a
  * claimed ticket's stages are its terms (Decision #291), so every card of a claimed ticket is locked
@@ -61,17 +65,21 @@ export interface StagePipelineProps {
 	locks: PipelineLocks;
 	/** The list's heading — "Pipeline" on the Stages tab, "Stages" in the create pane. */
 	title?: string;
-	/** Open a stage in the inspector. */
+	/** Open a stage in the inspector — an included one or an available one. */
 	onSelect: (stageId: string) => void;
 	/** Reorder, join, add or take out a stage. */
 	onPlace: (stageId: string, drop: PipelineDrop) => void;
 	/** Swap a stage with its neighbour. */
 	onSwap: (stageId: string, direction: -1 | 1) => void;
-	onParallel: (stageId: string, parallel: boolean) => void;
+	/** Bring `peerId` into `stageId`'s step, running in parallel with it. */
+	onGroup: (stageId: string, peerId: string) => void;
+	/** Take a stage out of its parallel step into a step of its own. */
+	onSequential: (stageId: string) => void;
 }
 
 interface ZonesProps extends StagePipelineProps {
 	notice: Signal<string | null>;
+	rootRef: RefObject<HTMLDivElement>;
 	focusCard: (zone: "included" | "available", stageId: string) => void;
 }
 
@@ -85,13 +93,12 @@ function Ghost(props: { zone: "included" | "available"; children: ComponentChild
 	);
 }
 
-/** The band opener's name for each continuation stage, keyed by stage id. */
-function alongsideNames(resolved: readonly TicketStageView[]): Map<string, string> {
-	const out = new Map<string, string>();
-	let opener: string | null = null;
+/** The included stages grouped by step, in pipeline order. */
+function bandsOf(resolved: readonly TicketStageView[]): TicketStageView[][] {
+	const out: TicketStageView[][] = [];
 	for (const item of resolved) {
-		if (item.opensBand) opener = item.ref.name;
-		else if (opener) out.set(item.ref.stageId, opener);
+		if (item.opensBand || out.length === 0) out.push([item]);
+		else out[out.length - 1].push(item);
 	}
 	return out;
 }
@@ -112,7 +119,7 @@ function announcement(
 			return `${name}, position ${position} of ${total}.`;
 		}
 		case "join":
-			return `${name}, runs alongside ${nameOf(target.stageId)}.`;
+			return `${name}, runs in parallel with ${nameOf(target.stageId)}.`;
 		case "exclude":
 			return `${name}, taken out of this ticket.`;
 		case "refused":
@@ -123,18 +130,24 @@ function announcement(
 function PipelineZones(props: ZonesProps): JSX.Element {
 	const { store } = useDnd();
 	const zoneId = useId(undefined, "tkc-zone");
+	const availableRef = useRef<HTMLElement | null>(null);
 	const { resolved, available, editable, locks } = props;
 	const refs = resolved.map((v) => v.ref);
 	const ids = refs.map((r) => r.stageId);
 	const count = ids.length;
+	const bands = bandsOf(resolved);
 	const lockOf = (id: string): string | null => locks.stages.get(id) ?? null;
 	const joining = inclusionRefusal(count, locks.ticket);
+	const composing = editable && locks.ticket === null;
 	const nameOf = (id: string): string =>
 		resolved.find((v) => v.ref.stageId === id)?.ref.name ??
 			available.find((s) => s.id === id)?.name ?? "Stage";
 	const quote = (s: BoardStageRef) => blankStageRef(s, count, props.intensity);
 	const slotOf = (id: string): PipelineSlot =>
 		refs.find((r) => r.stageId === id) ?? { stageId: id, parallel: false };
+	const refuse = (reason: string): void => {
+		props.notice.value = reason;
+	};
 
 	const place = (id: string, drop: PipelineDrop, from: "included" | "available"): void => {
 		props.onPlace(id, drop);
@@ -142,13 +155,26 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 		if (to !== from) props.focusCard(to, id);
 	};
 
+	const frame = (): PipelineFrame | null => {
+		const root = props.rootRef.current;
+		const host = root?.parentElement ?? root;
+		if (!host) return null;
+		const rect = host.getBoundingClientRect();
+		const divider = availableRef.current?.isConnected
+			? availableRef.current.getBoundingClientRect().top
+			: null;
+		return { left: rect.left, right: rect.right, divider };
+	};
+
 	const target = usePipelineDrop({
 		included: ids,
+		bands: bands.map((band) => band.map((v) => v.ref.stageId)),
+		frame,
 		removalRefusal: (id) => removalRefusal(count, lockOf(id)),
 		inclusionRefusal: () => joining,
 		changes: (id, drop) => placeStage(refs, slotOf(id), drop) !== null,
 		onDrop: (id, drop) => place(id, drop, ids.includes(id) ? "included" : "available"),
-		onRefused: (reason) => (props.notice.value = reason),
+		onRefused: refuse,
 		onStart: () => (props.notice.value = null),
 	});
 
@@ -156,9 +182,13 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 	const from = active ? parseStageDndId(String(active.id)) : null;
 	const t = target.value;
 	const seam = t?.kind === "seam" ? t.before : null;
-	const joinId = t?.kind === "join" ? t.stageId : null;
-	const showAvailable = editable && locks.ticket === null &&
-		(available.length > 0 || from?.zone === "included");
+	const bandOf = (id: string): number => resolved.find((v) => v.ref.stageId === id)?.band ?? -1;
+	const joinBand = t?.kind === "join"
+		? bandOf(t.stageId)
+		: seam !== null
+		? bands.findIndex((b) => seam > b[0].index && seam <= b[b.length - 1].index)
+		: -1;
+	const showAvailable = composing && (available.length > 0 || from?.zone === "included");
 
 	const includedDrop = useDroppable({ id: ZONE_INCLUDED, data: STAGE_DRAG, disabled: !editable });
 	const availableDrop = useDroppable({
@@ -167,16 +197,28 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 		disabled: !showAvailable,
 	});
 
-	const alongside = alongsideNames(resolved);
-	const includedMenu = (item: TicketStageView, i: number): MenuItem[] | null => {
+	const includedMenu = (item: TicketStageView): MenuItem[] | null => {
 		if (!editable) return null;
 		const id = item.ref.stageId;
 		return stageMenuModel(
-			{ zone: "included", index: i, count, parallel: item.ref.parallel, lock: lockOf(id) },
+			{
+				zone: "included",
+				index: item.index,
+				count,
+				peers: resolved
+					.filter((v) => v.ref.stageId !== id)
+					.map((v) => ({
+						stageId: v.ref.stageId,
+						name: v.ref.name,
+						sameBand: v.band === item.band,
+					})),
+				lock: lockOf(id),
+			},
 			{
 				configure: () => props.onSelect(id),
 				move: (d) => props.onSwap(id, d),
-				parallel: (p) => props.onParallel(id, p),
+				groupWith: (peerId) => props.onGroup(id, peerId),
+				sequential: () => props.onSequential(id),
 				include: () => {},
 				remove: () => place(id, { kind: "exclude" }, "included"),
 			},
@@ -184,12 +226,58 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 	};
 	const availableMenu = (s: BoardStageRef): MenuItem[] =>
 		stageMenuModel({ zone: "available", count, lock: locks.ticket }, {
-			configure: () => {},
+			configure: () => props.onSelect(s.id),
 			move: () => {},
-			parallel: () => {},
+			groupWith: () => {},
+			sequential: () => {},
 			include: () => place(s.id, { kind: "seam", before: count }, "available"),
 			remove: () => {},
 		});
+
+	const excluder = (item: TicketStageView): StageCardToggle | null =>
+		composing
+			? {
+				label: `Take ${item.ref.name} out of this ticket`,
+				refusal: removalRefusal(count, lockOf(item.ref.stageId)),
+				run: () => place(item.ref.stageId, { kind: "exclude" }, "included"),
+				onRefused: refuse,
+			}
+			: null;
+	const includer = (s: BoardStageRef): StageCardToggle => ({
+		label: `Add ${s.name} to this ticket`,
+		refusal: joining,
+		run: () => place(s.id, { kind: "seam", before: count }, "available"),
+		onRefused: refuse,
+	});
+
+	const includedCard = (item: TicketStageView, band: TicketStageView[], joined: boolean) => {
+		const id = item.ref.stageId;
+		const lock = lockOf(id);
+		const mates = band.filter((v) => v.ref.stageId !== id).map((v) => v.ref.name);
+		return (
+			<StageCard
+				zone="included"
+				stageId={id}
+				label={`${item.ref.name}, step ${item.band + 1}${
+					mates.length > 0 ? `, in parallel with ${mates.join(", ")}` : ""
+				}`}
+				draggable={editable && lock === null}
+				selected={props.selectedStageId === id}
+				joinTarget={joined}
+				menu={includedMenu(item)}
+				menuLabel={`Actions for ${item.ref.name}`}
+				toggle={excluder(item)}
+				onActivate={() => props.onSelect(id)}
+			>
+				<IncludedStageBody
+					item={item}
+					showStep={band.length === 1}
+					currency={props.currency}
+					lock={lock}
+				/>
+			</StageCard>
+		);
+	};
 
 	let ghost: JSX.Element | null = null;
 	if (from?.zone === "included") {
@@ -197,12 +285,7 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 		if (item) {
 			ghost = (
 				<Ghost zone="included">
-					<IncludedStageBody
-						item={item}
-						alongside={alongside.get(item.ref.stageId) ?? null}
-						currency={props.currency}
-						lock={null}
-					/>
+					<IncludedStageBody item={item} showStep currency={props.currency} lock={null} />
 				</Ghost>
 			);
 		}
@@ -235,7 +318,9 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 				<div
 					ref={includedDrop.setNodeRef}
 					class="tkc-zone__drop"
-					data-over={from?.zone === "available" && seam !== null ? "true" : undefined}
+					data-over={from?.zone === "available" && (seam !== null || joinBand >= 0)
+						? "true"
+						: undefined}
 				>
 					{count === 0
 						? (
@@ -243,39 +328,42 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 								<Icon name="stages" size="lg" class="tkc-zone__emptymark" />
 								<p class="tkc-zone__emptytext">
 									{editable
-										? "A ticket with no stages saves as a draft. Drag one in from below, or press it to add it."
+										? "A ticket with no stages saves as a draft. Drag one in from below, or press its +."
 										: "A ticket with no stages carries no price, so nothing can be claimed against it."}
 								</p>
 							</div>
 						)
 						: (
-							<ol class="tkc-zone__list" aria-label="Stages in this ticket, in order">
-								{resolved.map((item, i) => {
-									const id = item.ref.stageId;
-									const lock = lockOf(id);
-									const menu = includedMenu(item, i);
+							<ol class="tkc-zone__list" aria-label="Steps in this ticket, in order">
+								{bands.map((band, b) => {
+									const first = band[0].index;
+									const joined = joinBand === b;
 									return (
-										<li key={id} class="tkc-zone__slot">
-											<DropIndicator active={seam === i} class="tkc-seam" />
-											<StageCard
-												zone="included"
-												stageId={id}
-												label={`${item.ref.name}, step ${item.band + 1}`}
-												draggable={editable && lock === null}
-												selected={props.selectedStageId === id}
-												joinTarget={joinId === id}
-												menu={menu}
-												menuLabel={`Actions for ${item.ref.name}`}
-												onActivate={() => props.onSelect(id)}
-											>
-												<IncludedStageBody
-													item={item}
-													alongside={alongside.get(id) ?? null}
-													currency={props.currency}
-													lock={lock}
-												/>
-											</StageCard>
-											{i === count - 1
+										<li key={band[0].ref.stageId} class="tkc-zone__slot">
+											<DropIndicator active={seam === first} class="tkc-seam" />
+											{band.length === 1 ? includedCard(band[0], band, joined) : (
+												<div
+													class="tkc-band"
+													role="group"
+													aria-label={`Step ${b + 1}, ${band.length} stages in parallel`}
+													data-join={joined ? "true" : undefined}
+												>
+													<p class="tkc-band__label" aria-hidden="true">
+														<Icon name="switch" size="2xs" class="tkc-band__mark" />
+														<span>Step {b + 1}</span>
+														<span class="tkc-stage__dot">·</span>
+														<span>In parallel</span>
+													</p>
+													<ul class="tkc-band__row">
+														{band.map((item) => (
+															<li key={item.ref.stageId} class="tkc-band__cell">
+																{includedCard(item, band, joined)}
+															</li>
+														))}
+													</ul>
+												</div>
+											)}
+											{b === bands.length - 1
 												? (
 													<DropIndicator
 														active={seam === count}
@@ -294,7 +382,10 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 			{showAvailable
 				? (
 					<section
-						ref={availableDrop.setNodeRef}
+						ref={(el: HTMLElement | null) => {
+							availableRef.current = el;
+							availableDrop.setNodeRef(el);
+						}}
 						class="tkc-zone tkc-zone--available"
 						data-zone="available"
 						data-over={t?.kind === "exclude" ? "true" : undefined}
@@ -316,14 +407,13 @@ function PipelineZones(props: ZonesProps): JSX.Element {
 												<StageCard
 													zone="available"
 													stageId={s.id}
-													label={`Add ${s.name} to this ticket`}
+													label={`${s.name}, not in this ticket`}
 													draggable={joining === null}
+													selected={props.selectedStageId === s.id}
 													menu={availableMenu(s)}
 													menuLabel={`Actions for ${s.name}`}
-													onActivate={() =>
-														joining === null
-															? place(s.id, { kind: "seam", before: count }, "available")
-															: (props.notice.value = joining)}
+													toggle={includer(s)}
+													onActivate={() => props.onSelect(s.id)}
 												>
 													<AvailableStageBody
 														stage={s}
@@ -372,7 +462,7 @@ export function StagePipeline(props: StagePipelineProps): JSX.Element {
 			: "The stages this ticket runs through, in order."
 		: count === 0
 		? "Pick the stages this ticket passes through."
-		: "Drag a stage to reorder it, onto another to run them together, or down to Available to take it out.";
+		: "Drag a stage to reorder it, onto a step to run it in parallel, or below the line to take it out. Shift+click adds or removes one.";
 
 	return (
 		<div ref={rootRef} class="tkc-pipe">
@@ -382,7 +472,7 @@ export function StagePipeline(props: StagePipelineProps): JSX.Element {
 				<p class="tkc-pipe__notice" role="status">{notice.value}</p>
 			</header>
 			<DndContext collision={pointerWithin}>
-				<PipelineZones {...props} notice={notice} focusCard={focusCard} />
+				<PipelineZones {...props} notice={notice} rootRef={rootRef} focusCard={focusCard} />
 			</DndContext>
 		</div>
 	);

@@ -114,6 +114,7 @@ const SUMMARY_COLUMNS = [
 	"owner_user_id",
 	"owner_team_id",
 	"owner_enterprise_id",
+	"client_user_id",
 	"client_business_id",
 	"source_blueprint_id",
 	"updated_at",
@@ -156,6 +157,8 @@ export interface ProjectRow {
 	owner_user_id: string;
 	owner_team_id: string | null;
 	owner_enterprise_id: string | null;
+	/** The buyer of a seller-owned service (Decision #427); null when the owner is the client side. */
+	client_user_id?: string | null;
 	client_business_id: string | null;
 	source_blueprint_id: string | null;
 	updated_at: string;
@@ -231,19 +234,31 @@ function toViewerRole(raw: string | undefined): ProjectViewerRole {
  * Ownership is checked FIRST, exactly as the detail read's `resolveViewerIsClient` and the setup
  * projection's `row.owner_user_id === viewerId` already do. This is the third implementation of one
  * question, and the two that were already correct are the precedent.
+ *
+ * A seller-owned service (`client_user_id` set, Decision #427) splits the two sides the owner column
+ * used to merge: its buyer is the `client`, and its owner is the provider, read as `freelancer` — the
+ * shape the fixture corpus has always given a service's seller.
  */
 function resolveSummaryRole(row: ProjectRow, ctx: SummaryContext): ProjectViewerRole {
-	if (ctx.viewerId.length > 0 && row.owner_user_id === ctx.viewerId) return "owner";
+	if (ctx.viewerId.length > 0 && row.client_user_id === ctx.viewerId) return "client";
+	if (ctx.viewerId.length > 0 && row.owner_user_id === ctx.viewerId) {
+		return row.client_user_id ? "freelancer" : "owner";
+	}
 	return toViewerRole(ctx.roles.get(row.id));
 }
 
 /**
- * Which workspace an engagement belongs to.
+ * Which workspace an engagement belongs to, for this viewer.
  *
  * The columns are checked most-specific first — an enterprise-owned project also carries a team,
- * and reading the team would file it under the wrong scope in the feed's grouping.
+ * and reading the team would file it under the wrong scope in the feed's grouping. The buyer of a
+ * seller-owned service files it under their own personal workspace: the seller's team or account is
+ * where the work is delivered from, not where the client keeps what they bought.
  */
-function scopeOf(row: ProjectRow): { scopeType: ContextType; scopeId: string } {
+function scopeOf(row: ProjectRow, viewerId = ""): { scopeType: ContextType; scopeId: string } {
+	if (viewerId.length > 0 && row.client_user_id === viewerId) {
+		return { scopeType: "personal", scopeId: viewerId };
+	}
 	if (row.owner_enterprise_id) {
 		return { scopeType: "enterprise", scopeId: row.owner_enterprise_id };
 	}
@@ -278,6 +293,10 @@ function partyOf(owner: OwnerRow | null): ProjectSummary["owner"] {
 	};
 }
 
+function partyIdsOf(row: ProjectRow): string[] {
+	return row.client_user_id ? [row.owner_user_id, row.client_user_id] : [row.owner_user_id];
+}
+
 /** Options for {@link toSummary} — the per-viewer facts no single project row carries. */
 export interface SummaryContext {
 	/** The viewer's role per project id, from `projects.project_participants`. */
@@ -309,7 +328,8 @@ export interface SummaryContext {
  * quiet direction; an invented one is wrong in the direction the user acts on.
  */
 export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary {
-	const { scopeType, scopeId } = scopeOf(row);
+	const { scopeType, scopeId } = scopeOf(row, ctx.viewerId);
+	const clientUserId = row.client_user_id ?? null;
 	const [completed, total] = ctx.stages.get(row.id) ?? [0, 0];
 	const isSession = row.format === "session";
 
@@ -330,9 +350,11 @@ export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary 
 		scopeLabel: ctx.scopeLabels.get(scopeId) ?? "Personal",
 		owner: partyOf(ctx.owners.get(row.owner_user_id) ?? null),
 		// The counterparty is the other side of the hire, which needs the participant graph resolved
-		// per project. The roster read owns that; the feed row leaves it null rather than guessing
-		// from the owner columns, which describe ownership rather than opposition.
-		counterparty: null,
+		// per project. The roster read owns that in general; the one opposition a column states is a
+		// seller-owned service's buyer (Decision #427), named to everyone but the buyer themselves.
+		counterparty: clientUserId && clientUserId !== ctx.viewerId
+			? partyOf(ctx.owners.get(clientUserId) ?? null)
+			: null,
 		serviceId: row.source_blueprint_id,
 		unread: false,
 		starred: ctx.starred.has(row.id),
@@ -538,11 +560,13 @@ export async function fetchProjectRows(
 		.select(SUMMARY_COLUMNS)
 		.neq("status", ARCHIVED_STATUS);
 
+	// PostgREST `or` with an `in` list. Owner, buyer OR participant — a client owns the projects they
+	// post and is `client_user_id` on a service they bought from its seller (Decision #427), a hired
+	// freelancer is neither, and all of them belong in the same feed.
+	const mine = `owner_user_id.eq.${actor.userId},client_user_id.eq.${actor.userId}`;
 	query = involvedIds.length > 0
-		// PostgREST `or` with an `in` list. Owner OR participant — a client always owns their
-		// projects, a hired freelancer never does, and both belong in the same feed.
-		? query.or(`owner_user_id.eq.${actor.userId},id.in.(${involvedIds.join(",")})`)
-		: query.eq("owner_user_id", actor.userId);
+		? query.or(`${mine},id.in.(${involvedIds.join(",")})`)
+		: query.or(mine);
 
 	const { data, error } = await query
 		.order("last_activity_at", { ascending: false })
@@ -559,14 +583,14 @@ export async function fetchProjectRows(
 	const [roles, stages, owners, names, starred] = await Promise.all([
 		fetchViewerRoles(db, actor, ids),
 		fetchStageCounts(db, ids),
-		fetchParties(actor, rows.map((r) => r.owner_user_id)),
+		fetchParties(actor, rows.flatMap(partyIdsOf)),
 		fetchScopeLabels(actor, rows),
 		fetchStarredProjectIds(db, actor, ids),
 	]);
 
 	const scopeLabels = new Map<string, string>();
 	for (const row of rows) {
-		const { scopeType, scopeId } = scopeOf(row);
+		const { scopeType, scopeId } = scopeOf(row, actor.userId);
 		if (scopeLabels.has(scopeId)) continue;
 		scopeLabels.set(scopeId, names.get(scopeId) ?? fallbackScopeLabel(scopeType));
 	}
@@ -726,10 +750,10 @@ export async function fetchProjectBySlug(
 	const [roles, stages, owners, starred] = await Promise.all([
 		fetchViewerRoles(db, actor, [row.id]),
 		fetchStageCounts(db, [row.id]),
-		fetchParties(actor, [row.owner_user_id]),
+		fetchParties(actor, partyIdsOf(row)),
 		fetchStarredProjectIds(db, actor, [row.id]),
 	]);
-	const { scopeType, scopeId } = scopeOf(row);
+	const { scopeType, scopeId } = scopeOf(row, actor.userId);
 	const names = await fetchScopeLabels(actor, [row]);
 	const scopeLabels = new Map([[scopeId, names.get(scopeId) ?? fallbackScopeLabel(scopeType)]]);
 

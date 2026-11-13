@@ -49,6 +49,8 @@ export interface TicketMetaBarProps {
 	clientMembers: ProjectParty[];
 	/** Every stage of the ticket is sold at one fixed intensity, so there is nothing to choose. */
 	intensityFixed: boolean;
+	/** Whether the engagement lets a ticket carry a due date; off, the Due item is withdrawn. */
+	dueDates: boolean;
 	/** How the due date is set — see `ticketDueMode`. */
 	dueMode: TicketDueMode;
 	onPatch: (patch: Partial<BoardCard>) => void;
@@ -284,45 +286,47 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 				/>
 			</MetaItem>
 
-			<MetaItem icon="calendar" label="Due">
-				<MetaEditor
-					editable={canEdit && props.dueMode !== "derived"}
-					label={`Change the due date. Currently ${card.dueLabel ?? "not set"}.`}
-					openSelector=".ui-datepicker__entry"
-					display={props.dueMode === "derived"
-						? (
-							<Tooltip content="The latest of this ticket's stage due dates. Each stage's date is set in its stage settings.">
-								<span
-									class="tkv-meta__v"
-									data-overdue={overdue ? "true" : undefined}
-									tabIndex={0}
-								>
+			{!props.dueDates && !card.dueDate ? null : (
+				<MetaItem icon="calendar" label="Due">
+					<MetaEditor
+						editable={canEdit && props.dueDates && props.dueMode !== "derived"}
+						label={`Change the due date. Currently ${card.dueLabel ?? "not set"}.`}
+						openSelector=".ui-datepicker__entry"
+						display={props.dueMode === "derived"
+							? (
+								<Tooltip content="The latest of this ticket's stage due dates. Each stage's date is set in its stage settings.">
+									<span
+										class="tkv-meta__v"
+										data-overdue={overdue ? "true" : undefined}
+										tabIndex={0}
+									>
+										{card.dueLabel ?? "No date"}
+									</span>
+								</Tooltip>
+							)
+							: (
+								<span class="tkv-meta__v" data-overdue={overdue ? "true" : undefined}>
 									{card.dueLabel ?? "No date"}
 								</span>
-							</Tooltip>
-						)
-						: (
-							<span class="tkv-meta__v" data-overdue={overdue ? "true" : undefined}>
-								{card.dueLabel ?? "No date"}
-							</span>
+							)}
+						control={(done) => (
+							<DatePicker
+								class="ui-field--bare tkv-meta__date"
+								size="sm"
+								value={toDateInput(card.dueDate)}
+								placeholder="No date"
+								aria-label="Due date"
+								dateFormat="M d, yy"
+								showButtonBar
+								onValueChange={(v) => {
+									props.onDue(fromDateInput(Array.isArray(v) ? v[0] ?? null : v));
+									done();
+								}}
+							/>
 						)}
-					control={(done) => (
-						<DatePicker
-							class="ui-field--bare tkv-meta__date"
-							size="sm"
-							value={toDateInput(card.dueDate)}
-							placeholder="No date"
-							aria-label="Due date"
-							dateFormat="M d, yy"
-							showButtonBar
-							onValueChange={(v) => {
-								props.onDue(fromDateInput(Array.isArray(v) ? v[0] ?? null : v));
-								done();
-							}}
-						/>
-					)}
-				/>
-			</MetaItem>
+					/>
+				</MetaItem>
+			)}
 
 			{
 				/*

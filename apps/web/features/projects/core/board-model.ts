@@ -7,8 +7,10 @@ import {
 	isSelfClaimable,
 	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectParty,
+	STAGE_NOT_INCLUDED_MESSAGE,
 	TICKET_PRIORITY_LABEL,
 	type TicketPriority,
+	ticketIncludesStage,
 	ticketLeavesStage,
 	type TicketStatus,
 	ticketWorkLocked,
@@ -175,6 +177,7 @@ export const DROP_REFUSAL = {
 	unheld: "Escrow isn't held for this ticket here yet. Fund it before work starts.",
 	claimStarts: "A freelancer starts this ticket by claiming it.",
 	submitReviews: "Work reaches Review when its freelancer submits it.",
+	stageNotIncluded: STAGE_NOT_INCLUDED_MESSAGE,
 } as const;
 
 /**
@@ -195,6 +198,9 @@ export function boardDropRefusal(
 	if (viewer.boardKind === "project" && !viewer.isClient) return DROP_REFUSAL.clientOnlyBoard;
 	if (toDone && !viewer.isClient) return DROP_REFUSAL.clientOnlyDone;
 	if (viewer.isClient && ticketWorkLocked(card)) return DROP_REFUSAL.workLocked;
+	if (to.kind === "stage" && to.stageId !== null && !ticketIncludesStage(card, to.stageId)) {
+		return DROP_REFUSAL.stageNotIncluded;
+	}
 	if (to.kind === "new" && card.stageId !== null && !ticketLeavesStage(card)) {
 		return DROP_REFUSAL.claimedToNew;
 	}

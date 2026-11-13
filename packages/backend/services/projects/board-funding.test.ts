@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import {
 	providerCanSeeCard,
+	ticketIncludesStage,
 	ticketPaidHere,
+	TicketStageRefSchema,
 	ticketWorkLocked,
 } from "@projective/types/projects";
 import { findBoardPage } from "./board-fixtures.ts";
@@ -121,13 +123,46 @@ Deno.test("dragging a per-stage ticket into an unpaid stage turns it Unpaid; dra
 	assert(first.ok && first.data);
 	const page = first.data.page;
 
-	const card = page.cards.find((c) =>
+	const found = page.cards.find((c) =>
 		c.paymentScope === "per_stage" && !c.claimed && c.stageId !== null && ticketPaidHere(c)
 	);
-	assert(card, "the corpus carries a per-stage ticket paid where it sits");
-	const paidStage = card.stageId!;
-	const unpaidStage = page.stages.find((s) => !card.paidStageIds.includes(s.id));
+	assert(found, "the corpus carries a per-stage ticket paid where it sits");
+	const paidStage = found.stageId!;
+	const unpaidStage = page.stages.find((s) => !found.paidStageIds.includes(s.id));
 	assert(unpaidStage, "and a stage nobody paid it for");
+
+	// A ticket enters only the stages it runs through (Decision #428): the client adds the stage first.
+	let card = found;
+	if (!ticketIncludesStage(card, unpaidStage.id)) {
+		const added = await ProjectBackendService.commitTicket({
+			projectId: CLIENT_SLUG,
+			clientId: card.id,
+			title: card.title,
+			description: card.description ?? "",
+			status: card.status,
+			stageId: card.stageId,
+			priority: card.priority,
+			intensity: card.intensity,
+			dueDate: null,
+			ownerId: null,
+			tasks: card.tasks,
+			stages: [
+				...card.stages,
+				TicketStageRefSchema.parse({
+					stageId: unpaidStage.id,
+					name: unpaidStage.name,
+					order: card.stages.length,
+					status: "active",
+					required: true,
+				}),
+			],
+			attachmentIds: [],
+		}, CLIENT);
+		assert(added.ok && added.data, added.message);
+		card = added.data.card;
+		assert(ticketIncludesStage(card, unpaidStage.id), "the ticket now runs through that stage");
+		assertEquals(card.paidStageIds, found.paidStageIds, "adding a stage buys nothing");
+	}
 
 	const away = await ProjectBackendService.moveTicket({
 		projectId: CLIENT_SLUG,
@@ -161,7 +196,8 @@ Deno.test("a fully paid ticket stays paid wherever it is moved", async () => {
 	const page = first.data.page;
 	const card = page.cards.find((c) => c.paymentScope === "full" && !c.claimed);
 	assert(card, "the corpus carries an unclaimed fully paid ticket");
-	for (const stage of page.stages) {
+	// Every stage it runs through (Decision #428: the others are closed to it).
+	for (const stage of page.stages.filter((s) => ticketIncludesStage(card, s.id))) {
 		const moved = await ProjectBackendService.moveTicket({
 			projectId: CLIENT_SLUG,
 			ticketId: card.id,

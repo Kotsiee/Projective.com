@@ -8,9 +8,12 @@ import {
 	COMPLETED_COLUMN_ID,
 	NEW_COLUMN_ID,
 	type ProjectStatus,
+	STAGE_NOT_INCLUDED_MESSAGE,
 	stageColumnId,
 	statusColumnId,
+	ticketIncludesStage,
 	type TicketPriority,
+	TicketStageRefSchema,
 	type TicketStatus,
 } from "@projective/types/projects";
 import {
@@ -492,6 +495,53 @@ Deno.test("the New bookend sends no stage; every other column keeps or names one
 	assertEquals(
 		columnTarget(routed, col(statusColumnId("backlog"), STATUS_LANES)),
 		{ status: "backlog", stageId: "b" },
+	);
+});
+// #endregion
+
+// #region Stage eligibility (Decision #428)
+const listing = (...ids: string[]) =>
+	ids.map((stageId, order) =>
+		TicketStageRefSchema.parse({ stageId, name: `Stage ${stageId}`, order, status: "active", required: true })
+	);
+
+Deno.test("a ticket enters only the stages it lists, with the shared sentence", () => {
+	const listed = card({ stageId: "b", status: "todo", stages: listing("a", "b") });
+	assertEquals(boardDropRefusal(listed, col(stageColumnId("a")), CLIENT_PIPELINE), null);
+	assertEquals(
+		boardDropRefusal(listed, col(stageColumnId("c")), CLIENT_PIPELINE),
+		DROP_REFUSAL.stageNotIncluded,
+	);
+	assertEquals(DROP_REFUSAL.stageNotIncluded, STAGE_NOT_INCLUDED_MESSAGE);
+});
+
+Deno.test("New and Completed are not stages, a ticket listing none goes anywhere, and its own stage never refuses", () => {
+	const listed = card({ stageId: "b", status: "todo", stages: listing("a", "b") });
+	assertEquals(boardDropRefusal(listed, col(NEW_COLUMN_ID), CLIENT_PIPELINE), null);
+	assertEquals(boardDropRefusal(listed, col(COMPLETED_COLUMN_ID), CLIENT_PIPELINE), null);
+	const unlisted = card({ stageId: "b", status: "todo" });
+	assertEquals(boardDropRefusal(unlisted, col(stageColumnId("c")), CLIENT_PIPELINE), null);
+	const stray = card({ stageId: "c", status: "todo", stages: listing("a") });
+	assert(ticketIncludesStage(stray, "c"));
+	const newLane = card({ stageId: null, status: "backlog", stages: listing("a", "b") });
+	assertEquals(
+		boardDropRefusal(newLane, col(stageColumnId("c")), CLIENT_PIPELINE),
+		DROP_REFUSAL.stageNotIncluded,
+	);
+	assertEquals(boardDropRefusal(newLane, col(stageColumnId("b")), CLIENT_PIPELINE), null);
+});
+
+Deno.test("claimed work under way keeps the work lock's reason over the stage lock's", () => {
+	const working = card({
+		stageId: "b",
+		status: "in_progress",
+		claimed: true,
+		escrowHeld: true,
+		stages: listing("b"),
+	});
+	assertEquals(
+		boardDropRefusal(working, col(stageColumnId("c")), CLIENT_PIPELINE),
+		DROP_REFUSAL.workLocked,
 	);
 });
 // #endregion

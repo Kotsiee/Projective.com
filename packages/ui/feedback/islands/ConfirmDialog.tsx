@@ -6,6 +6,7 @@ import { Button } from "../../fields/components/Button.tsx";
 import { useControllable } from "../../hooks/useControllable.ts";
 import type { Severity } from "../../fields/types/mod.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { confirmActionTarget } from "../core/confirm-keys.ts";
 
 // #region Props
 /** Props for {@link ConfirmDialog}. */
@@ -45,6 +46,8 @@ export interface ConfirmDialogProps {
  * `onReject`, never `onAccept` — there is no path where dismissing a destructive prompt could be
  * mistaken for confirming it. Initial focus is placed on the action group, whose first control is the
  * REJECT button, so a stray Enter takes the safe branch rather than the header's × or the accept.
+ * ← and → move focus between the two actions (wrapping, mirrored right-to-left; Home and End jump to
+ * either end) and Enter or Space presses the focused one, so the choice never needs Tab.
  */
 export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 	const {
@@ -72,6 +75,17 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 		ctrl.set(false);
 		onReject?.();
 	};
+	const onActionsKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+		const group = e.currentTarget;
+		const actions = [...group.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+		const index = actions.findIndex((b) => b === e.target);
+		const rtl = getComputedStyle(group).direction === "rtl";
+		const next = confirmActionTarget(e.key, index, actions.length, rtl);
+		if (next === null) return;
+		e.preventDefault();
+		actions[next].focus();
+	};
 
 	return (
 		<Dialog
@@ -85,7 +99,7 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 				if (!v) onReject?.();
 			}}
 			footer={
-				<div ref={actionsRef} class="ui-confirm__actions">
+				<div ref={actionsRef} class="ui-confirm__actions" onKeyDown={onActionsKeyDown}>
 					<Button label={rejectLabel} severity="secondary" variant="text" onClick={reject} />
 					<Button label={acceptLabel} severity={acceptSeverity} onClick={accept} />
 				</div>

@@ -291,7 +291,7 @@ export function StageListSection(
 				</ul>
 			</DndContext>
 
-			{setup.kind === "service"
+			{setup.kind === "service" && !setup.viewerIsClient
 				? (
 					<Note>
 						This project runs on a freelancer's service, so new {itemLabel}s are added by the

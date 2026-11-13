@@ -139,7 +139,7 @@ const DEFAULT_LIMIT = 60;
 
 /** The `projects.projects` columns this read needs. */
 const PROJECT_COLUMNS =
-	"id, slug, title, format, structure_variation, owner_user_id, client_business_id, currency";
+	"id, slug, title, format, structure_variation, owner_user_id, client_user_id, client_business_id, currency";
 
 /** The `projects.project_stages` columns the tree roots and the review projection need. */
 const STAGE_COLUMNS =
@@ -227,6 +227,8 @@ interface ProjectRow {
 	/** The second axis of the type — with `format`, what tells a Task from a milestone one-off. */
 	structure_variation: string | null;
 	owner_user_id: string;
+	/** The buyer of a seller-owned service (Decision #427), who reviews it in place of its owner. */
+	client_user_id: string | null;
 	client_business_id: string | null;
 	currency: string | null;
 }
@@ -724,8 +726,9 @@ async function resolveProject(
 /**
  * Whether the acting viewer is the client/reviewer for this engagement.
  *
- * A TypeScript mirror of `projects.can_review_project` — the owner, or an active member of the paying
- * client business — rather than an RPC call to it, so the answer needs no `EXECUTE` grant that no
+ * A TypeScript mirror of `projects.can_review_project` — the client person (a seller-owned service's
+ * buyer, else the owner — Decision #427), or an active member of the paying client business — rather
+ * than an RPC call to it, so the answer needs no `EXECUTE` grant that no
  * migration actually issues (only `projects.is_protected_phase` is granted; the rest rely on
  * Postgres's default PUBLIC execute, which a later revoke would remove without a compile error here).
  *
@@ -737,7 +740,7 @@ async function resolveViewerIsReviewer(
 	actor: ReadActor & { accessToken: string },
 	project: ProjectRow,
 ): Promise<boolean> {
-	if (project.owner_user_id === actor.userId) return true;
+	if ((project.client_user_id ?? project.owner_user_id) === actor.userId) return true;
 	if (!project.client_business_id) return false;
 
 	const { data, error } = await orgDb(actor)

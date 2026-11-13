@@ -22,6 +22,7 @@ and high-level metadata.
 | `owner_user_id`             | uuid                          | NOT NULL. FK → `org.users_public.user_id` (the creator).                                                |
 | `owner_team_id`             | uuid                          | FK → `org.teams.id`. Seller-side workspace the project is filed under.                                  |
 | `owner_enterprise_id`     | uuid                          | FK → `org.enterprises.id`. Buyer-side workspace. Personal scope = no workspace column set; `owner_user_id` alone answers it. |
+| `client_user_id`          | uuid                          | FK → `org.users_public.user_id`. **The buying person on an engagement its seller owns** (Decision #427): "Add to Projects" makes the freelancer `owner_user_id` and writes the buyer here. `NULL` wherever the owner is the client side (every hand-built project), so the **client person** — the payer, the reviewer, the ticket author — is always `COALESCE(client_user_id, owner_user_id)`. CHECK `ck_projects_client_not_owner`. Derived (`trg_projects_derived`): written only by `marketplace.instantiate_service_blueprint`, never by a client, so neither party can re-point the other. |
 | `title`                     | text                          | NOT NULL.                                                                                               |
 | `slug`                      | text UNIQUE                   | NOT NULL, no default. **The public address.** `prj-` + 10 symbols. Minted once, immutable.              |
 | `description`               | jsonb                         | NOT NULL `DEFAULT '{}'`. Rich-text document.                                                            |
@@ -55,7 +56,8 @@ and high-level metadata.
 | `last_activity_at`          | timestamptz                   | NOT NULL `DEFAULT now()`. Last meaningful activity — what the draft sweep measures idleness by.         |
 | `archived_at`               | timestamptz                   | Set iff `status = 'archived'` (`ck_projects_archived_at`).                                              |
 
-**Constraints:** `projects_slug_key` UNIQUE (`slug`) · `ck_projects_slug_shape` · `ck_projects_nda_document`
+**Constraints:** `projects_slug_key` UNIQUE (`slug`) · `ck_projects_slug_shape` · `ck_projects_client_not_owner`
+(`client_user_id IS DISTINCT FROM owner_user_id`) · `ck_projects_nda_document`
 (`nda_source = 'custom' OR nda_document_id IS NULL`) · `ck_projects_archived_at`
 (`(status = 'archived') = (archived_at IS NOT NULL)`) · `ck_projects_format_structure` (the shape
 is a pair, and only these pairs are storable: `one_off` + `one_off` \| `single_task` \|
@@ -64,7 +66,8 @@ is a pair, and only these pairs are storable: `one_off` + `one_off` \| `single_t
 (`source_blueprint_id, owner_user_id, status` WHERE `source_blueprint_id IS NOT NULL`) ·
 `idx_projects_stale_drafts` (`last_activity_at` WHERE `status = 'draft' AND source_blueprint_id IS NOT
 NULL`) · `idx_projects_client_business` (`client_business_id` WHERE NOT NULL — the business console
-detail, its archive blockers and the bench). **Triggers:** `trg_projects_slug`
+detail, its archive blockers and the bench) · `idx_projects_client_user` (`client_user_id, source_blueprint_id,
+status` WHERE NOT NULL — the buyer's feed, every client-person policy arm and the listing's draft read). **Triggers:** `trg_projects_slug`
 (`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
 · `trg_update_project_counts` · `trg_project_handover_on_complete` · `trg_project_shape_lock` (freezes
 `format`/`structure_variation` once a seat is taken) · `trg_enforce_structure_variation_switch`
@@ -359,14 +362,15 @@ its row, so a replay of its key still resolves. A separate table rather than two
 | `id`              | uuid        | PK, `DEFAULT gen_random_uuid()`.                                                                         |
 | `project_id`      | uuid        | NOT NULL, UNIQUE. FK → `projects.projects.id`, `ON DELETE CASCADE`.                                      |
 | `blueprint_id`    | uuid        | FK → `marketplace.service_blueprints.id`, `ON DELETE SET NULL`.                                          |
-| `owner_user_id`   | uuid        | NOT NULL. FK → `org.users_public.user_id`. Always `auth.uid()` of the caller.                            |
+| `owner_user_id`   | uuid        | NOT NULL. FK → `org.users_public.user_id`. Always `auth.uid()` of the caller — the BUYER who made the request, not the project's owner (its seller, Decision #427). |
 | `idempotency_key` | text        | NOT NULL, 8–120 chars. UNIQUE per owner (`service_instantiations_owner_key`): the client's own retry key. |
 | `intake_answers`  | jsonb       | NOT NULL `DEFAULT '{}'`, an object (`IntakeAnswersSchema`), reduced to the listing's own field ids.      |
 | `currency`        | text        | NOT NULL, `^[A-Z]{3}$` — always the listing's (a different code is refused, `PC409`).                     |
 | `created_at`      | timestamptz | NOT NULL `DEFAULT now()`.                                                                                |
 
-**RLS:** the owner reads their own rows (`"Owners view their service instantiations"`); no write
-policy — the definer door is the only writer. **Index:** `idx_service_instantiations_blueprint`
+**RLS:** the buyer reads their own rows (`"Owners view their service instantiations"`), and the
+project's owner — the seller — reads the request that made their engagement (`"Engagement owners
+view their service requests"`, Decision #427); no write policy — the definer door is the only writer. **Index:** `idx_service_instantiations_blueprint`
 (partial, `blueprint_id IS NOT NULL`) for the FK.
 
 ---
@@ -721,10 +725,10 @@ client — there is no write policy at all, deliberately. See [Policies.md](Poli
 | `previous_status`   | ticket_status |                                                                        |
 | `new_status`        | ticket_status |                                                                        |
 | `changes`           | jsonb         | NOT NULL `DEFAULT '{}'`. Any other modified attributes, as a diff.     |
-| `created_at`        | timestamptz   | NOT NULL `DEFAULT now()`.                                              |
+| `created_at`        | timestamptz   | NOT NULL `DEFAULT clock_timestamp()` — the real instant, not the transaction's start, so rows one transaction writes (a move and its trigger's auto-fund row) keep their order. |
 
 **Indexes:** `idx_ticket_history_ticket` (`ticket_id`) · `idx_ticket_history_timeline` (`ticket_id,
-created_at DESC`).
+created_at DESC`). The board reads newest first by `created_at`, then `id` for an exact tie.
 
 ### `projects.ticket_workload_reports`
 

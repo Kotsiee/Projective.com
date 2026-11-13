@@ -9,6 +9,7 @@ import {
 	STAGE_CAP_REFUSAL,
 	type StageMenuActions,
 	stageMenuModel,
+	type StageMenuPeer,
 	stagePhases,
 } from "./stage-menu.ts";
 
@@ -50,7 +51,8 @@ function ticket(over: Partial<BoardCard> = {}): BoardCard {
 const noop: StageMenuActions = {
 	configure: () => {},
 	move: () => {},
-	parallel: () => {},
+	groupWith: () => {},
+	sequential: () => {},
 	include: () => {},
 	remove: () => {},
 };
@@ -105,36 +107,48 @@ Deno.test("removalRefusal — the last stage stays, and a lock outranks the coun
 	assertEquals(removalRefusal(1, "locked"), "locked");
 });
 
-Deno.test("stageMenuModel — the first stage offers no Move up and no concurrency", () => {
+/** Peers of a stage in a three-stage ticket, `sameBand` naming who already shares its step. */
+function peers(...sameBand: string[]): StageMenuPeer[] {
+	return ["stg-a", "stg-b"].map((id) => ({
+		stageId: id,
+		name: id,
+		sameBand: sameBand.includes(id),
+	}));
+}
+
+Deno.test("stageMenuModel — the first stage offers no Move up but does offer parallel", () => {
 	const rows = stageMenuModel(
-		{ zone: "included", index: 0, count: 3, parallel: false, lock: null },
+		{ zone: "included", index: 0, count: 3, peers: peers(), lock: null },
 		noop,
 	);
-	assertEquals(keys(rows), ["stage-configure", "stage-down", "stage-remove"]);
+	assertEquals(keys(rows), ["stage-configure", "stage-down", "stage-parallel", "stage-remove"]);
+	assertEquals(row(rows, "stage-parallel")?.items?.map((i) => i.key), [
+		"stage-parallel-stg-a",
+		"stage-parallel-stg-b",
+	]);
 });
 
-Deno.test("stageMenuModel — a middle stage toggles its concurrency by its current flag", () => {
-	const seq = stageMenuModel(
-		{ zone: "included", index: 1, count: 3, parallel: false, lock: null },
+Deno.test("stageMenuModel — a grouped stage offers Run sequentially and refuses its own partner", () => {
+	const rows = stageMenuModel(
+		{ zone: "included", index: 1, count: 3, peers: peers("stg-a"), lock: null },
 		noop,
 	);
-	assertEquals(keys(seq), [
+	assertEquals(keys(rows), [
 		"stage-configure",
 		"stage-up",
 		"stage-down",
 		"stage-parallel",
+		"stage-sequential",
 		"stage-remove",
 	]);
-	const par = stageMenuModel(
-		{ zone: "included", index: 2, count: 3, parallel: true, lock: null },
-		noop,
-	);
-	assertEquals(keys(par), ["stage-configure", "stage-up", "stage-sequential", "stage-remove"]);
+	const sub = row(rows, "stage-parallel")?.items ?? [];
+	assert(sub[0].disabled);
+	assertEquals(sub[1].disabled, undefined);
 });
 
 Deno.test("stageMenuModel — the only stage keeps Remove, refused with the reason", () => {
 	const rows = stageMenuModel(
-		{ zone: "included", index: 0, count: 1, parallel: false, lock: null },
+		{ zone: "included", index: 0, count: 1, peers: [], lock: null },
 		noop,
 	);
 	assertEquals(keys(rows), ["stage-configure", "stage-remove"]);
@@ -143,13 +157,16 @@ Deno.test("stageMenuModel — the only stage keeps Remove, refused with the reas
 
 Deno.test("stageMenuModel — a locked stage keeps Configure live and refuses the rest", () => {
 	const rows = stageMenuModel(
-		{ zone: "included", index: 1, count: 3, parallel: false, lock: "locked" },
+		{ zone: "included", index: 1, count: 3, peers: peers("stg-a"), lock: "locked" },
 		noop,
 	);
 	assertEquals(row(rows, "stage-configure")?.disabled, undefined);
-	for (const key of ["stage-up", "stage-down", "stage-parallel", "stage-remove"]) {
+	for (
+		const key of ["stage-up", "stage-down", "stage-parallel", "stage-sequential", "stage-remove"]
+	) {
 		assertEquals(row(rows, key)?.disabledReason, "locked", key);
 	}
+	assertEquals(row(rows, "stage-parallel")?.items, undefined);
 });
 
 Deno.test("stageMenuModel — an available stage offers Include, refused at the cap", () => {
@@ -165,15 +182,27 @@ Deno.test("stageMenuModel — rows run their commands", () => {
 	const run: StageMenuActions = {
 		configure: () => calls.push("configure"),
 		move: (d) => calls.push(`move:${d}`),
-		parallel: (p) => calls.push(`parallel:${p}`),
+		groupWith: (id) => calls.push(`group:${id}`),
+		sequential: () => calls.push("sequential"),
 		include: () => calls.push("include"),
 		remove: () => calls.push("remove"),
 	};
 	const rows = stageMenuModel(
-		{ zone: "included", index: 1, count: 3, parallel: false, lock: null },
+		{ zone: "included", index: 1, count: 3, peers: peers("stg-a"), lock: null },
 		run,
 	);
 	const event = { item: rows[0], originalEvent: new Event("click") };
-	for (const r of rows) r.command?.(event);
-	assertEquals(calls, ["configure", "move:-1", "move:1", "parallel:true", "remove"]);
+	for (const r of rows) {
+		r.command?.(event);
+		for (const sub of r.items ?? []) sub.command?.(event);
+	}
+	assertEquals(calls, [
+		"configure",
+		"move:-1",
+		"move:1",
+		"group:stg-a",
+		"group:stg-b",
+		"sequential",
+		"remove",
+	]);
 });

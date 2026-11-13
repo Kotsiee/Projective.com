@@ -43,10 +43,12 @@ CREATE TRIGGER trg_project_participants_derived
 -- projects.tg_project_handover_on_complete under set_project_status / approve_stage, and `status`
 -- moves only through those definers and the definer sweeps, which run the settlement checks. The
 -- reviewers' UPDATE policy (00002011) still edits the brief; it can no longer lift every mask.
+-- `client_user_id` (Decision #427) is who pays and reviews a seller-owned service: only
+-- marketplace.instantiate_service_blueprint writes it, so neither party can re-point the other side.
 DROP TRIGGER IF EXISTS trg_projects_derived ON projects.projects;
 CREATE TRIGGER trg_projects_derived
     BEFORE INSERT OR UPDATE ON projects.projects
-    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('handover_unlocked_at');
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('handover_unlocked_at', 'client_user_id');
 
 DROP TRIGGER IF EXISTS trg_projects_immutable ON projects.projects;
 CREATE TRIGGER trg_projects_immutable

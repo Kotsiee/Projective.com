@@ -1336,6 +1336,7 @@ DECLARE
     v_sess_count integer;
     v_sess_unit bigint;
     v_booking jsonb;
+    v_funded jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1421,14 +1422,20 @@ BEGIN
                p.id AS product_id, p.title AS product_title, p.price_cents, p.currency AS product_currency,
                p.owner_user_id, p.owner_team_id, p.licence, p.format::text AS format, p.file_manifest,
                bi.ticket_id, bi.stage_id AS line_stage_id, tk.project_id AS ticket_project_id,
-               tk.title AS ticket_title, tk.current_stage_id AS ticket_stage_id,
+               tk.title AS ticket_title, ts.id AS ticket_stage_id,
+               CASE WHEN bi.ticket_id IS NOT NULL THEN projects.fn_ticket_stage_fundable(tk.id, ts.id) END
+                   AS ticket_stage_refusal,
                projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ts) AS ticket_price,
-               pr.currency AS project_currency, pr.client_business_id, pr.owner_user_id AS project_owner,
+               pr.currency AS project_currency, pr.client_business_id,
+               COALESCE(pr.client_user_id, pr.owner_user_id) AS project_owner,
                bi.seats, bi.metadata, bi.scheduled_at, bi.timezone
           FROM finance.basket_items bi
           LEFT JOIN catalogue.products p ON p.id = bi.item_id AND bi.item_type = 'digital_product'
           LEFT JOIN projects.tickets tk ON tk.id = bi.ticket_id
-          LEFT JOIN projects.project_stages ts ON ts.id = tk.current_stage_id
+          -- The stage a ticket line buys (Decision #430): its own, else where the ticket is funded (#428).
+          LEFT JOIN projects.project_stages ts
+            ON ts.id = CASE WHEN bi.ticket_id IS NOT NULL
+                            THEN COALESCE(bi.stage_id, projects.fn_ticket_funding_stage(tk.id)) END
           LEFT JOIN projects.projects pr ON pr.id = tk.project_id
          WHERE bi.basket_id = v_basket.id AND bi.id = ANY (v_wanted)
          ORDER BY bi.position, bi.created_at, bi.id
@@ -1437,7 +1444,7 @@ BEGIN
         -- own client, held as escrow on the ticket by projects.fund_paid_revision below.
         IF v_line.item_type = 'paid_revision' THEN
             SELECT rv.status, rv.price_cents, pr.currency AS project_currency, pr.client_business_id,
-                   pr.owner_user_id AS project_owner, ps.name AS stage_name
+                   COALESCE(pr.client_user_id, pr.owner_user_id) AS project_owner, ps.name AS stage_name
               INTO v_rev
               FROM projects.stage_revision_requests rv
               JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
@@ -1477,12 +1484,21 @@ BEGIN
             );
             CONTINUE;
         END IF;
-        -- A ticket line (Decision #166): priced from the ticket NOW and paid by the project's own client,
-        -- whose wallet the hold debits; its gates (description, unpaid, payee) are fund_ticket's below.
+        -- A ticket line (Decisions #166, #430): ONE stage of the ticket, priced there NOW and paid by the
+        -- project's own client, whose wallet the hold — or, for a later stage, the reservation — debits;
+        -- the stage passes projects.fn_ticket_stage_fundable here, and fund_ticket's gates below.
         IF v_line.ticket_id IS NOT NULL THEN
             IF v_line.ticket_project_id IS DISTINCT FROM v_line.item_id
-               OR (v_line.line_stage_id IS NOT NULL AND v_line.line_stage_id IS DISTINCT FROM v_line.ticket_stage_id) THEN
+               OR v_line.ticket_stage_refusal IN ('passed', 'not_listed') THEN
                 RAISE EXCEPTION '% moved since you added it — review your basket and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_line.ticket_stage_refusal IN ('held', 'prepaid') THEN
+                RAISE EXCEPTION '% is already paid for in that stage — remove it from your basket', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_line.ticket_stage_refusal = 'stage_finished' THEN
+                RAISE EXCEPTION 'That stage of % has finished — remove it from your basket', v_line.title
                     USING ERRCODE = 'PC409';
             END IF;
             IF NOT (
@@ -1829,13 +1845,17 @@ BEGIN
             CONTINUE;
         END IF;
         IF v_line.l ? 'ticket_id' THEN
-            PERFORM projects.fund_ticket((v_line.l ->> 'item_id')::uuid, (v_line.l ->> 'ticket_id')::uuid);
+            v_funded := projects.fund_ticket(
+                (v_line.l ->> 'item_id')::uuid, (v_line.l ->> 'ticket_id')::uuid,
+                ARRAY[(v_line.l ->> 'stage_id')::uuid]
+            );
             INSERT INTO finance.order_lines (
                 order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
                 currency, fulfilment, stage_id, ticket_id, position
             ) VALUES (
                 v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
-                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title', 'Escrow held', 1,
+                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
+                CASE WHEN COALESCE((v_funded ->> 'held')::boolean, true) THEN 'Escrow held' ELSE 'Stage prepaid' END, 1,
                 (v_line.l ->> 'gross')::bigint, v_currency, 'engagement',
                 (v_line.l ->> 'stage_id')::uuid, (v_line.l ->> 'ticket_id')::uuid, v_i - 1
             );

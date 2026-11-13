@@ -127,12 +127,15 @@ export function simList(
 	view: InboxView,
 	before: string | null,
 	limit: number,
+	query = "",
 ): NotificationPage {
+	const needle = query.toLowerCase();
 	const matched = arrived(mode)
 		.filter((r) =>
 			(view === "archived" ? r.archivedAt !== null : r.archivedAt === null) &&
 			(tab === "all" || r.category === tab) &&
 			(view !== "unread" || r.readAt === null) &&
+			(!needle || `${r.title}\n${r.body}`.toLowerCase().includes(needle)) &&
 			(!before || r.createdAt < before)
 		)
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -655,6 +655,23 @@ export function resolveTicketStages(
 }
 
 /**
+ * A stage the ticket does not run through yet, as the inspector reads it: `ref` is the configuration
+ * it would join with, priced and weighted like an included stage, with no place in the order
+ * (`index` and `band` are `-1`).
+ */
+export function availableStageView(ref: TicketStageRef, stage: BoardStageRef): TicketStageView {
+	return {
+		ref,
+		stage,
+		index: -1,
+		band: -1,
+		opensBand: true,
+		costCents: stageCostCents(ref.unitPriceCents, ref.intensity, stage),
+		workload: workloadIntensity(stage.categoryWeight ?? 1, ref.intensity),
+	};
+}
+
+/**
  * Which stages are ACTIVE for this ticket — the ones a submission would go against right now.
  *
  * The ticket's status decides it, not the stage's: a claimed ticket is being worked in the stage it

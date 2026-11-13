@@ -4,6 +4,7 @@ import { MoneyView } from "@projective/ui/display/money";
 import {
 	type NextAction,
 	type NextActionKind,
+	type ProjectParty,
 	type ProjectStatus,
 	type ReadyStep,
 	WORKSPACE_PERSON_ROLE_LABEL,
@@ -184,6 +185,16 @@ export function StageRunBlock(
 										)}
 									</span>
 								)}
+								{stage.deliverables.length > 0 && (
+									<span class="pjd-track__facts" aria-label={`${stage.name} delivers`}>
+										{stage.deliverables.map((item, i) => (
+											<span class="pjd-meta__item" key={`${i}:${item}`}>
+												{i > 0 && <span class="pjd-meta__sep" aria-hidden="true">·</span>}
+												<span>{item}</span>
+											</span>
+										))}
+									</span>
+								)}
 							</span>
 							{stage.price && (
 								<span class="pjd-track__price">
@@ -221,11 +232,12 @@ function personFacts(person: WorkspacePerson): string[] {
  * answer; applications are already in Needs you, and are not repeated here.
  */
 export function PeopleBlock(
-	{ people, roster, slug, viewer }: {
+	{ people, roster, slug, staffs }: {
 		people: WorkspacePeople;
 		roster: readonly WorkspacePerson[];
 		slug: string;
-		viewer: WorkspaceViewer;
+		/** Whether the viewer staffs the engagement — only they see invitations awaiting a reply. */
+		staffs: boolean;
 	},
 ): JSX.Element {
 	const members = projectHref(slug, "members");
@@ -272,7 +284,7 @@ export function PeopleBlock(
 						</span>
 					</a>
 				</li>
-				{viewer === "owner" && people.pendingInvitations > 0 && (
+				{staffs && people.pendingInvitations > 0 && (
 					<li>
 						<a class="pjd-row" href={`${members}?view=invitations`}>
 							<span class="pjd-row__icon" aria-hidden="true">
@@ -294,16 +306,66 @@ export function PeopleBlock(
 }
 // #endregion
 
+// #region Provider
+/**
+ * Who provides the service, for its client (Decision #427): the seller who owns the engagement,
+ * with their profile one press away. Drawn in the People block's row so the two read as one family;
+ * the row is text, not a link, when the seller has no public handle (§3 gate 11).
+ */
+export function ProviderBlock(
+	{ provider, handle }: { provider: ProjectParty; handle: string | null },
+): JSX.Element {
+	const body = (
+		<>
+			<UserAvatar image={provider.avatar ?? undefined} label={provider.name} size="sm" />
+			<span class="pjd-row__body">
+				<span class="pjd-row__title">
+					{provider.name}
+					{handle && <span class="pjd-people__handle">@{handle.replace(/^@/, "")}</span>}
+				</span>
+				<MetaFacts items={["Provides this service", "Owns its details"]} />
+			</span>
+		</>
+	);
+	return (
+		<Block title="Provided by" region="provider">
+			<ul class="pjd-list pjd-people">
+				<li>
+					{handle
+						? <a class="pjd-row" href={profileHref(handle)}>{body}</a>
+						: <div class="pjd-row">{body}</div>}
+				</li>
+			</ul>
+		</Block>
+	);
+}
+// #endregion
+
 // #region Lifecycle notice
 /**
  * One line saying what the engagement's lifecycle means for the page, or nothing while it is simply
  * running. Body register, unboxed — a fact about the page, not a card on it.
  */
 export function OverviewNotice(
-	{ status, viewer, slug }: { status: ProjectStatus; viewer: WorkspaceViewer; slug: string },
+	{ status, viewer, slug, service, configures }: {
+		status: ProjectStatus;
+		viewer: WorkspaceViewer;
+		slug: string;
+		/** Whether it runs on a freelancer's service, whose client works it from the Board. */
+		service: boolean;
+		/** Whether the viewer configures it — only they are pointed at Details. */
+		configures: boolean;
+	},
 ): JSX.Element | null {
-	const text = noticeText(status, viewer);
+	const text = noticeText(status, viewer, service, configures);
 	if (!text) return null;
+	const link = status !== "draft"
+		? null
+		: configures
+		? { href: projectDetailsHref(slug), label: "Open Details" }
+		: service && viewer === "owner"
+		? { href: projectHref(slug, "board"), label: "Open Board" }
+		: null;
 	return (
 		<p class="pjd-notice" data-status={status}>
 			<span class="pjd-notice__icon" aria-hidden="true">
@@ -311,10 +373,10 @@ export function OverviewNotice(
 			</span>
 			<span>
 				{text}
-				{viewer === "owner" && status === "draft" && (
+				{link && (
 					<>
 						{" "}
-						<a class="pjd-notice__link" href={projectDetailsHref(slug)}>Open Details</a>
+						<a class="pjd-notice__link" href={link.href}>{link.label}</a>
 					</>
 				)}
 			</span>
@@ -322,10 +384,22 @@ export function OverviewNotice(
 	);
 }
 
-function noticeText(status: ProjectStatus, viewer: WorkspaceViewer): string | null {
+function noticeText(
+	status: ProjectStatus,
+	viewer: WorkspaceViewer,
+	service: boolean,
+	configures: boolean,
+): string | null {
 	switch (status) {
 		case "draft":
-			return viewer === "owner"
+			if (service) {
+				return configures
+					? "This service hasn’t started yet. Work begins when its client funds a ticket."
+					: viewer === "owner"
+					? "Nothing has started yet. Add a ticket on the Board and fund it to start the work."
+					: "This service hasn’t started yet. Work begins when the client funds a ticket.";
+			}
+			return viewer === "owner" && configures
 				? "This project is a draft. Finish setting it up and publish it from Details."
 				: "This project isn’t published yet. Your seat is staged and takes effect when the client publishes it.";
 		case "on_hold":

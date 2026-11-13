@@ -163,11 +163,14 @@ export type InboundPayment = z.infer<typeof InboundPaymentSchema>;
  * escrow hold reads; `expectedAmountMinor` is only what the payer was SHOWN, compared with it so a
  * price that moved between showing and paying refuses instead of charging an amount nobody saw.
  * With `ticketId` (Decision #166) only that ticket is funded, at its own price; the stage stays as is.
+ * `stageIds` (Decision #428) is the stage selection the payer confirmed for that ticket: only the stage it
+ * is funded in (`stageId`) can be paid now, so naming any other is refused before anything is charged.
  */
 export const CreateEscrowLockIntentSchema = z.object({
 	projectId: uuid,
 	stageId: uuid,
 	ticketId: uuid.nullable().optional(),
+	stageIds: z.array(uuid).min(1).max(20).optional(),
 	expectedAmountMinor: minorUnitsPositive,
 	currency,
 	idempotencyKey: attemptKey,

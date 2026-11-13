@@ -63,25 +63,27 @@ export async function projectHeaderFor(
 
 	if (mode === "overview") {
 		if (!resolved || resolved.access === "prospect") return null;
-		const owner = resolved.access === "owner";
+		// The configuring side, not the client side: a service's seller configures it, its client only
+		// reads it (Decision #427).
+		const configures = resolved.canConfigure;
 		// A published engagement always previews; only a draft needs its ladder, which only the setup
 		// read carries — so the read is paid for in the one state that asks the question.
-		const ladderDone = owner && resolved.status === "draft"
+		const ladderDone = configures && resolved.status === "draft"
 			? (await resolveProjectSetup(slug, actor)).setup?.previewReady ?? false
 			: true;
 		return (
 			<ProjectOverviewHeader
 				slug={slug}
 				title={resolved.title}
-				owner={owner}
-				canPreview={owner && !resolved.personal && previewAllowed(resolved.status, ladderDone)}
+				owner={configures}
+				canPreview={configures && !resolved.personal && previewAllowed(resolved.status, ladderDone)}
 			/>
 		);
 	}
 
 	// `/preview` skips the project middleware, so `resolved` may be absent there; the setup read's own
-	// `viewerIsClient` then decides, exactly as the route's guard does.
-	if (resolved && resolved.access !== "owner") return null;
+	// `viewerIsClient` (the configuring side) then decides, exactly as the route's guard does.
+	if (resolved && !resolved.canConfigure) return null;
 	const { setup } = await resolveProjectSetup(slug, actor);
 	if (!setup || !setup.viewerIsClient) return null;
 	return <ProjectSetupHeader slug={slug} active={mode} setup={setup} />;

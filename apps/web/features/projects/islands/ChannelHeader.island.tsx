@@ -196,9 +196,10 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				...viewer,
 				// The server's answer AND the seam's, because the two constrain different things and the
 				// narrower one has to win. `canConfigure` is ownership, which the seam cannot grant;
-				// `isReviewer` is which side of the market the viewer is simulating, and a simulated
-				// freelancer must lose a tab that edits the terms they would be working under.
-				canConfigure: canConfigure && viewer.isReviewer,
+				// `isReviewer` is which side of the market the viewer is simulating, and a client simulating
+				// a freelancer must lose a tab that edits the terms they would be working under. A service's
+				// seller configures from the provider side (Decision #427), so only a real client is clamped.
+				canConfigure: canConfigure && (!viewerIsClient || viewer.isReviewer),
 				isTask: props.isTask,
 				format: props.format,
 				isDiscussion: isDiscussionRef(meta.ref),
