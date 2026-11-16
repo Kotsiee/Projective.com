@@ -276,6 +276,82 @@
 	color: var(--wlt-hero-ink-soft);
 }
 
+.wlt-currencies {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2);
+}
+
+.wlt-currencies__item {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-block-size: 2rem;
+	padding-block: var(--space-1);
+	padding-inline: var(--space-3);
+	border: 1px solid var(--wlt-glass-edge);
+	border-radius: var(--radius-full);
+	background: var(--wlt-glass-fill);
+	color: var(--wlt-hero-ink-soft);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	text-decoration: none;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-currencies__item:hover {
+	background: var(--wlt-glass-fill-hover);
+	border-color: var(--wlt-glass-edge-hover);
+	color: var(--wlt-hero-ink);
+}
+
+.wlt-currencies__item:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.wlt-currencies__item:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.wlt-currencies__item[aria-current="page"] {
+	border-color: var(--wlt-glass-edge-hover);
+	background: var(--wlt-glass-fill-hover);
+	color: var(--wlt-hero-ink);
+}
+
+.wlt-currencies__code {
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-currencies__amount .ui-money__amount {
+	color: inherit;
+	font-weight: var(--fw-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-currencies__item,
+	.wlt-currencies__item:active {
+		transition: none;
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-currencies__item,
+:root[data-motion="reduced"] .wlt-currencies__item:active {
+	transition: none;
+	transform: none;
+}
+
 .wlt-metrics {
 	display: flex;
 	flex-wrap: wrap;

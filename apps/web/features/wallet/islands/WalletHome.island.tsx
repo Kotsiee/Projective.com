@@ -173,6 +173,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 
 	const query = (): WalletContext => ({
 		wallet: data.wallet,
+		currency: data.currency,
 		display: display.value,
 		timezone: timezone.peek(),
 	});
@@ -486,7 +487,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const addMethod = o.quickActions.includes("add_method") ? resolve("add_method") : null;
 	const aggregate = o.ref.scope === "aggregate";
 	const pageHref = (target: WalletView) =>
-		walletPageHref(target, data.wallet, display.value, period.value);
+		walletPageHref(target, data.wallet, display.value, period.value, data.currency);
 
 	return (
 		<section class="wlt" data-view={view} aria-labelledby="wlt-title">
@@ -522,6 +523,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 						wallet={data.wallet}
 						display={display.value}
 						flow={period.value}
+						currency={data.currency}
 						business={o.business}
 					/>
 					<VerificationGate overview={o} />

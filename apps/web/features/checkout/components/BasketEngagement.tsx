@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
-import { Checkbox } from "@projective/ui/fields";
+import { ProgressiveImage } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
+import { Button, Checkbox } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Amount } from "./Amount.tsx";
 import { ParkAction, RemoveAction } from "./LineAction.tsx";
@@ -22,10 +24,16 @@ import type { BasketItem, PurchasableItemGroup } from "../types/checkout-types.t
  * into its own titled section, which read as four separate purchases and made the page's outline
  * describe the seller's data model rather than the buyer's order.
  *
- * So: one header naming the engagement, one flat run of ticket/session rows beneath it, one footer
- * carrying the engagement's own subtotal. The server already models it this way — a `BasketGroup` IS
- * the engagement, carrying its own `label`, `caption`, `href` and `subtotal` — so this is a
- * presentation of the projection rather than a re-grouping of it. Nothing here sums anything.
+ * So: one header naming the engagement, then one flat run of ticket/session rows beneath it. The
+ * server already models it this way — a `BasketGroup` IS the engagement, carrying its own `label`,
+ * `caption` and `href` — so this is a presentation of the projection rather than a re-grouping of it.
+ * Nothing here sums anything. The group's `subtotal` is deliberately not printed: the summary's Total
+ * and each row's own price already state it, and the lane's derived list states it per engagement.
+ *
+ * Each row is ONE line — checkbox · title and stage · actions · price. Its Save for later and Remove
+ * are icon-only ghost buttons behind portal Tooltips, shown on row hover or focus where the pointer
+ * can hover and always shown where it cannot, so a run of tickets no longer repeats two worded
+ * controls under every stage.
  *
  * ## No boxes, and no lines inside
  *
@@ -38,10 +46,10 @@ import type { BasketItem, PurchasableItemGroup } from "../types/checkout-types.t
  * ## The thumbnail rule is a fact about what exists
  *
  * A **service** has a cover image; it is the thing being sold and it is what a buyer recognises it by.
- * A **project** does not — it is the buyer's own engagement, and the corpus carries no artwork for it —
- * so the header shows the owner's identity instead. That is why the branch is on the group's family
- * rather than on whether a thumbnail happens to be non-null: a project that accidentally carried a
- * child line's artwork would show the ticket's picture as if it were the project's.
+ * A client **project** does not — it is the buyer's own engagement — so its header has no media
+ * column. A **service-backed** project does: the server stamps its lines with the cover of the
+ * listing it was instantiated from (`source_blueprint_id`), and never with anything else, so a project
+ * line's thumbnail is always the engagement's own picture and the header shows it.
  */
 
 // #region Props
@@ -107,15 +115,19 @@ export function BasketEngagement(props: BasketEngagementProps): JSX.Element {
 	const lead = section.items[0];
 	const seller = lead?.sellerName ?? null;
 	const sellerLink = lead ? sellerHref(lead) : null;
-	// A project has no artwork of its own; a service is recognised by its cover. See the class doc.
-	const showsCover = section.group !== "project";
-	const cover = showsCover ? section.items.find((i) => i.thumbnail !== null)?.thumbnail ?? null : null;
+	const cover = section.items.find((i) => i.thumbnail !== null)?.thumbnail ?? null;
+	const showsCover = section.group !== "project" || cover !== null;
 	const unavailable = section.items.filter((item) => !item.available);
 	const hidden = Math.max(0, section.itemCount - section.items.length);
 	const sessions = section.group === "session";
 
 	return (
-		<li class="bsk-eng" aria-labelledby={headId} data-family={section.group}>
+		<li
+			class="bsk-eng"
+			aria-labelledby={headId}
+			data-family={section.group}
+			data-cover={showsCover ? "true" : undefined}
+		>
 			<header class="bsk-eng__head">
 				<div class="bsk-eng__select">
 					<Checkbox
@@ -135,13 +147,11 @@ export function BasketEngagement(props: BasketEngagementProps): JSX.Element {
 				}
 				{showsCover && (
 					<span class="bsk-eng__media" aria-hidden="true">
-						{cover
-							? <img src={cover} alt="" loading="lazy" decoding="async" />
-							: (
-								<span class="bsk-eng__glyph">
-									<Icon name={groupIconName(section.group)} size="md" />
-								</span>
-							)}
+						<ProgressiveImage
+							src={cover}
+							loading="lazy"
+							fallback={<Icon name={groupIconName(section.group)} size="md" />}
+						/>
 					</span>
 				)}
 
@@ -218,23 +228,6 @@ export function BasketEngagement(props: BasketEngagementProps): JSX.Element {
 					/>
 				))}
 			</ul>
-
-			{
-				/*
-				 * The engagement's own footer figure.
-				 *
-				 * `stacked` puts the viewer's converted amount on the reading line with the price the seller
-				 * actually set beneath it. Both figures are the server's; the component prints them and
-				 * states no arithmetic between them — a rate, a multiplication or a "×0.872" would be this
-				 * surface showing its working on a number the buyer cannot check.
-				 */
-			}
-			{section.subtotal && (
-				<p class="bsk-eng__foot">
-					<span class="bsk-eng__foot-label">Subtotal</span>
-					<Amount value={section.subtotal} size="lead" stacked />
-				</p>
-			)}
 		</li>
 	);
 }
@@ -356,21 +349,35 @@ function EngagementLine(props: EngagementLineProps): JSX.Element {
 						<span>{item.unavailableReason ?? "This line can no longer be bought."}</span>
 					</p>
 				)}
+			</div>
 
-				<div class="bsk-sub__actions">
-					<RemoveAction
-						compact
-						subject={item.title}
-						disabled={busy}
-						onClick={() => props.onRemove(item)}
-					/>
-					<ParkAction
-						compact
-						subject={item.title}
+			<div class="bsk-sub__actions">
+				<Tooltip content="Save for later" placement="top">
+					<Button
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
+						class="bsk-sub__btn"
+						icon={<Icon name="bookmark" size="sm" />}
+						aria-label={`Save for later — ${item.title}`}
 						disabled={busy}
 						onClick={() => props.onPark(item, true)}
 					/>
-				</div>
+				</Tooltip>
+				<Tooltip content="Remove" placement="top">
+					<Button
+						variant="text"
+						severity="secondary"
+						size="sm"
+						iconOnly
+						class="bsk-sub__btn bsk-sub__btn--danger"
+						icon={<Icon name="trash" size="sm" />}
+						aria-label={`Remove — ${item.title}`}
+						disabled={busy}
+						onClick={() => props.onRemove(item)}
+					/>
+				</Tooltip>
 			</div>
 
 			<p class="bsk-sub__price">

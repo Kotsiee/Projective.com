@@ -1,6 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { CARD_SETUP_PAYMENT_METHOD_TYPES, type InboundPayment } from "@projective/types/finance";
+import type { Stripe } from "../../core/stripe.ts";
 import {
+	cancelSupersededIntent,
 	classifyStripeError,
 	connectAccountParams,
 	identitySessionParams,
@@ -200,4 +202,39 @@ Deno.test("Stripe failures classify by type: refused vs transient vs misconfigur
 	assertEquals(classifyStripeError({ type: "StripeConnectionError" }).kind, "transient");
 	assertEquals(classifyStripeError({ type: "StripeRateLimitError" }).kind, "transient");
 	assertEquals(classifyStripeError(new TypeError("fetch failed")).kind, "transient");
+});
+
+function intentDouble(status: string) {
+	const calls: { cancel: { id: string; reason: unknown; key: unknown }[] } = { cancel: [] };
+	const stripe = {
+		paymentIntents: {
+			retrieve: (id: string) => Promise.resolve({ id, status }),
+			cancel: (
+				id: string,
+				params: { cancellation_reason?: string },
+				options: { idempotencyKey?: string },
+			) => {
+				calls.cancel.push({ id, reason: params.cancellation_reason, key: options.idempotencyKey });
+				return Promise.resolve({ id, status: "canceled" });
+			},
+		},
+	} as unknown as Stripe;
+	return { stripe, calls };
+}
+
+Deno.test("#435: a superseded intent is cancelled only while nobody has paid it, under one idempotency key", async () => {
+	for (const status of ["requires_payment_method", "requires_confirmation", "requires_action"]) {
+		const { stripe, calls } = intentDouble(status);
+		assertEquals(await cancelSupersededIntent(stripe, "pi_old"), {
+			canceled: true,
+			status: "canceled",
+		});
+		assertEquals(calls.cancel.map((c) => c.reason), ["abandoned"], status);
+		assert(String(calls.cancel[0].key).includes("pi_old"));
+	}
+	for (const status of ["processing", "succeeded", "canceled"]) {
+		const { stripe, calls } = intentDouble(status);
+		assertEquals(await cancelSupersededIntent(stripe, "pi_old"), { canceled: false, status });
+		assertEquals(calls.cancel.length, 0, status);
+	}
 });

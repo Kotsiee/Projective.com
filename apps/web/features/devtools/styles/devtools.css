@@ -10,9 +10,17 @@
 
 .ui-speed-dial.dev-fab {
 	position: fixed;
-	inset-block-end: var(--space-5);
+	inset-block-end: calc(
+		var(--space-5) + var(--ribbon-inset, 0px) + env(safe-area-inset-bottom, 0px)
+	);
 	inset-inline-end: var(--space-5);
 	z-index: calc(var(--z-max) - 200);
+}
+
+@media (max-width: 767px) {
+	.ui-speed-dial.dev-fab {
+		inset-block-end: 40dvh;
+	}
 }
 
 .ui-draggable-popover.dev-window {

@@ -1,5 +1,6 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
+import { ProgressiveImage } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { Popover } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -74,13 +75,11 @@ export function BasketListCard(props: BasketListCardProps): JSX.Element {
 				 */
 			}
 			<a class="bsk-card__media" href={itemHref(item)} aria-hidden="true" tabIndex={-1}>
-				{item.thumbnail
-					? <img src={item.thumbnail} alt="" loading="lazy" decoding="async" />
-					: (
-						<span class="bsk-card__glyph">
-							<Icon name={groupIconName(meta.group)} size="lg" />
-						</span>
-					)}
+				<ProgressiveImage
+					src={item.thumbnail}
+					loading="lazy"
+					fallback={<Icon name={groupIconName(meta.group)} size="lg" />}
+				/>
 			</a>
 
 			<div class="bsk-card__body">

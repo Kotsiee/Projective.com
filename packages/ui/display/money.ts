@@ -11,7 +11,12 @@
  */
 
 export { MoneyView } from "./components/MoneyView.tsx";
-export type { MoneySize, MoneyTone, MoneyViewProps } from "./components/MoneyView.tsx";
+export type {
+	MoneyReference,
+	MoneySize,
+	MoneyTone,
+	MoneyViewProps,
+} from "./components/MoneyView.tsx";
 export {
 	BASE_CURRENCY,
 	BASE_LOCALE,

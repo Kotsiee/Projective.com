@@ -354,8 +354,7 @@
     min-inline-size: 0;
 }
 
-/* A project has no cover of its own, so its header simply has no media column to fill. */
-.bsk-eng[data-family="project"] .bsk-eng__head {
+.bsk-eng:not([data-cover]) .bsk-eng__head {
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas: "select ident tags";
 }
@@ -367,27 +366,12 @@
 
 .bsk-eng__media {
     grid-area: media;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     overflow: clip;
     flex: none;
     inline-size: var(--bsk-media-w);
     aspect-ratio: 1;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.bsk-eng__media img {
-    display: block;
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
-}
-
-.bsk-eng__glyph {
-    display: inline-flex;
-    color: var(--text-secondary);
+    border-radius: var(--radius-base);
 }
 
 .bsk-eng__ident {
@@ -505,20 +489,6 @@ a.bsk-eng__seller:focus-visible {
     list-style: none;
 }
 
-/* The engagement's closing figure, flush to the inline end beneath its own rows. */
-.bsk-eng__foot {
-    display: flex;
-    gap: var(--space-4);
-    align-items: baseline;
-    justify-content: flex-end;
-    margin: 0;
-}
-
-.bsk-eng__foot-label {
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-}
-
 @container bsk (max-width: 34rem) {
     .bsk-eng__head {
         grid-template-columns: auto minmax(0, 1fr);
@@ -546,9 +516,9 @@ a.bsk-eng__seller:focus-visible {
 /* #region Child row — one ticket, one booked session */
 .bsk-sub {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: var(--space-1) var(--space-3);
-    align-items: start;
+    align-items: center;
     min-inline-size: 0;
 }
 
@@ -646,11 +616,23 @@ a.bsk-eng__seller:focus-visible {
 
 .bsk-sub__actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
+    gap: var(--space-1);
     align-items: center;
-    margin-block-start: var(--space-1);
-    min-inline-size: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+@media (hover: hover) {
+    .bsk-sub:not(:hover, :focus-within) .bsk-sub__actions {
+        opacity: 0;
+    }
+}
+
+.ui-button.bsk-sub__btn {
+    flex: none;
+}
+
+.ui-button.bsk-sub__btn--danger:hover:not(:disabled) {
+    color: var(--danger);
 }
 
 .bsk-sub__price {
@@ -714,34 +696,6 @@ a.bsk-eng__seller:focus-visible {
 
 .bsk-act[disabled]:hover {
     color: var(--text-secondary);
-}
-
-/* #endregion */
-
-/* #region Subtotal — the line that closes a priced unit */
-/*
- * One hairline above it and one server figure on it. It closes whichever unit has exactly ONE server
- * total behind it — the category when the category holds a single group, each engagement otherwise —
- * so the rule is written once and placed by the markup rather than duplicated per level.
- */
-.bsk-subtotal {
-    display: flex;
-    gap: var(--space-4);
-    align-items: baseline;
-    justify-content: flex-end;
-    margin: 0;
-    padding-block-start: var(--space-3);
-    border-block-start: var(--hairline);
-}
-
-.bsk-subtotal__label {
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-}
-
-.bsk-subtotal__value {
-    color: var(--on-surface);
-    font-variant-numeric: tabular-nums;
 }
 
 /* #endregion */
@@ -833,29 +787,15 @@ a.bsk-eng__seller:focus-visible {
     overflow: clip;
     inline-size: var(--bsk-media-w);
     aspect-ratio: 1;
-    border-radius: var(--radius-sm);
-    background: var(--surface-1);
+    border-radius: var(--radius-base);
 }
 
 .bsk-row__media img {
-    display: block;
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
     transition: transform var(--dur-slow) var(--ease-emphasized);
 }
 
 .bsk-row:hover .bsk-row__media img {
     transform: scale(var(--card-media-zoom));
-}
-
-.bsk-row__glyph {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 100%;
-    block-size: 100%;
-    color: var(--text-secondary);
 }
 
 .bsk-row__main {
@@ -1393,32 +1333,20 @@ a.bsk-row__fact-value:focus-visible {
  * a different line in each card — the thing a uniform grid exists to prevent.
  */
 .bsk-card__media {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     overflow: clip;
     flex: none;
     inline-size: 100%;
     block-size: var(--bsk-shelf-media-h);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .bsk-card__media img {
-    display: block;
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
     transition: transform var(--dur-slow) var(--ease-emphasized);
 }
 
 .bsk-card:hover .bsk-card__media img {
     transform: scale(var(--card-media-zoom));
-}
-
-.bsk-card__glyph {
-    display: inline-flex;
-    color: var(--text-secondary);
 }
 
 /* The growing region: it absorbs the card's slack so the foot stays pinned to the bottom edge. */

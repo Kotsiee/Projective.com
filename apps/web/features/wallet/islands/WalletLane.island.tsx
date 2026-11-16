@@ -39,6 +39,8 @@ export interface WalletLaneProps {
 	wallet: string;
 	display: string;
 	flow: FlowPeriod | null;
+	/** The currency wallet the page is narrowed to (`?currency=`, Decision #435). */
+	currency?: string | null;
 }
 
 /**
@@ -105,7 +107,7 @@ function WalletRail(
 					<Tooltip key={view} content={viewLabel(view)} placement="right">
 						<a
 							class="wlt-rail__item"
-							href={walletPageHref(view, props.wallet, props.display, props.flow)}
+							href={walletPageHref(view, props.wallet, props.display, props.flow, props.currency)}
 							aria-label={viewLabel(view)}
 							aria-current={view === props.view ? "page" : undefined}
 						>
@@ -231,6 +233,7 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 							wallet={props.wallet}
 							display={props.display}
 							flow={flow}
+							currency={props.currency}
 							business={overview?.business ?? null}
 						/>
 					</div>

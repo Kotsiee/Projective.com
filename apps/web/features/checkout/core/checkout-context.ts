@@ -19,6 +19,8 @@ export interface CheckoutContextSeed {
 	display: string;
 	projectId?: string | null;
 	serviceId?: string | null;
+	/** The `?pay_in=` currency (Decision #435); only the payment step carries one. */
+	payIn?: string | null;
 }
 
 /**
@@ -26,10 +28,10 @@ export interface CheckoutContextSeed {
  * server-rendered scope changes, which only a navigation does.
  */
 export function useCheckoutContext(seed: CheckoutContextSeed): void {
-	const { basketId, owner, display, projectId, serviceId } = seed;
+	const { basketId, owner, display, projectId, serviceId, payIn } = seed;
 	useEffect(() => {
-		seedCheckoutContext({ basketId, owner, display, projectId, serviceId });
-	}, [basketId, owner, display, projectId, serviceId]);
+		seedCheckoutContext({ basketId, owner, display, projectId, serviceId, payIn });
+	}, [basketId, owner, display, projectId, serviceId, payIn]);
 }
 
 /**

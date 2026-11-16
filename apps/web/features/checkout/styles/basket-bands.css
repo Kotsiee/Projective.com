@@ -264,8 +264,15 @@
 /* #region Footer rig */
 .cko-rig {
     container-type: inline-size;
+    container-name: cko-rig;
     inline-size: 100%;
     padding: var(--space-2) var(--space-4);
+}
+
+@container cko-rig (min-width: 58rem) {
+    .cko-rig[data-step="basket"] .cko-rig__total {
+        display: none;
+    }
 }
 
 .cko-rig__row {

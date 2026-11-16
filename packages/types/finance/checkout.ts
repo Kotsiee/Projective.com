@@ -691,7 +691,7 @@ export type CheckoutPreselect = z.infer<typeof CheckoutPreselectSchema>;
  * The paying wallet's standing against this checkout's charge — balance, whether it covers, and by
  * how much it falls short. The paying wallet is the account's wallet in the charge currency, the one
  * `finance.place_wallet_order` debits, and these figures are in THAT currency, like the session's
- * `charge`: never converted, never totalled across wallets. When the lines mix currencies no wallet
+ * `buyerCharge`: never converted, never totalled across wallets. When the lines mix currencies no wallet
  * pays: the display currency's wallet is shown, with no shortfall and never covering.
  */
 export const CheckoutWalletSchema = z.object({
@@ -714,6 +714,11 @@ export const CheckoutBlockerCode = z.enum([
 	"insufficient_funds",
 	"verification_required",
 	"price_changed",
+	/**
+	 * The conversion quote the charge was priced on expired or was used (Decision #435): the page
+	 * re-reads the checkout for a fresh quote and the buyer confirms the new figure.
+	 */
+	"quote_expired",
 	/**
 	 * Delivery or billing details are incomplete.
 	 *
@@ -807,6 +812,71 @@ export const CheckoutBusinessAccountSchema = z.object({
 export type CheckoutBusinessAccount = z.infer<typeof CheckoutBusinessAccountSchema>;
 
 /**
+ * The locked conversion quote a buyer charge is priced on (Decision #435): what the order's total in
+ * the listings' currency costs in the buyer's, at the mid-market rate plus the disclosed margin, held
+ * for one payment until {@link expiresAt}. Every label is the server's, so the client formats nothing.
+ */
+export const CheckoutFxQuoteSchema = z.object({
+	quoteId: reference,
+	/** The currency the buyer pays in. */
+	fromCurrency: currency,
+	/** The order's currency: what the sellers priced in, and what escrow is held and paid in. */
+	toCurrency: currency,
+	/** The mid-market cost of the order's total, in the buyer's currency, truncated. */
+	principal: MoneyViewSchema,
+	/** The disclosed conversion margin on {@link principal}, truncated (Decision #187). */
+	margin: MoneyViewSchema,
+	marginBp: z.number().int().min(0).max(2000),
+	/** One {@link fromCurrency} in {@link toCurrency} at mid-market. */
+	midRate: z.number().positive(),
+	/** Pre-formatted rate statement (`1 GBP = 1.17 EUR`). */
+	rateLabel: z.string().max(80),
+	/** Pre-formatted margin statement (`1.5% conversion margin`). */
+	marginLabel: z.string().max(80),
+	/** When the rate was observed, and the stamp it prints as. */
+	asOf: timestamp,
+	asOfLabel: z.string().max(80),
+	/** When the quote stops being usable for a new payment. */
+	expiresAt: timestamp,
+});
+export type CheckoutFxQuote = z.infer<typeof CheckoutFxQuoteSchema>;
+
+/**
+ * What the buyer is charged (Decision #435), exactly, in the currency they pay in: with a
+ * {@link CheckoutFxQuoteSchema quote} when that is their billing currency and the order is priced in
+ * another, without one when they pay in the order's own currency.
+ */
+export const BuyerChargeSchema = MoneyViewSchema.extend({
+	quote: CheckoutFxQuoteSchema.nullable(),
+});
+export type BuyerCharge = z.infer<typeof BuyerChargeSchema>;
+
+/** The order's total in the listings' own currency: the sellers' figure, a reference beside the charge. */
+export const OriginTotalsSchema = z.object({
+	currency,
+	total: MoneyViewSchema,
+});
+export type OriginTotals = z.infer<typeof OriginTotalsSchema>;
+
+/**
+ * The currencies a checkout may be paid in (Decision #435 (B)): the buyer's billing currency through a
+ * locked conversion, or the order's own, with no conversion (their bank converts the card charge).
+ * `conversion` is `false` when the two are the same currency, or with {@link reason} when paying in the
+ * billing currency is not possible now.
+ */
+export const CheckoutPayInSchema = z.object({
+	/** The currency {@link CheckoutSessionContextSchema buyerCharge} is in. */
+	selected: currency,
+	/** The billing country's currency (`billingCurrencyOf`). */
+	billing: currency,
+	/** The listings' currency: the order's. */
+	order: currency,
+	conversion: z.boolean(),
+	reason: z.string().max(200).nullable(),
+});
+export type CheckoutPayIn = z.infer<typeof CheckoutPayInSchema>;
+
+/**
  * What this checkout will settle in, and — when the goods were priced elsewhere — the FX observation
  * it was priced against.
  *
@@ -880,15 +950,21 @@ export const CheckoutSessionContextSchema = z.object({
 	promo: AppliedPromoSchema.nullable(),
 	totals: CheckoutTotalsSchema,
 	/**
-	 * What a CARD or EXPRESS payment actually charges: the order total in the listings' OWN currency
-	 * (Decision #153). A processor charge is made in the currency the seller priced in, so when the
-	 * buyer reads the basket in another currency this is the figure their bank statement will show —
-	 * computed by the same arithmetic as {@link totals}, over the same lines read in that currency, so
-	 * the amount on screen and the amount charged cannot come from two calculations. Equal to
-	 * `totals.total` (same currency, same minor units) on a same-currency checkout; `null` when the
-	 * lines are priced in more than one currency and no single charge exists.
+	 * What every route charges, exactly (Decision #435): in the buyer's billing currency through a
+	 * locked conversion quote when they pay in it, else {@link originTotals}' total in the listings' own
+	 * currency. The wallet route pays it from the wallet in its currency, a card or express payment is
+	 * made for it, and `create` re-verifies it. `null` when the lines are priced in more than one
+	 * currency and no single charge exists.
 	 */
-	charge: MoneyViewSchema.nullable().default(null),
+	buyerCharge: BuyerChargeSchema.nullable().default(null),
+	/**
+	 * The order total in the listings' OWN currency — the sellers' figure, computed by the same
+	 * arithmetic as {@link totals} over the same lines read in that currency — shown beside the charge
+	 * as "Listed at". `null` with no single currency.
+	 */
+	originTotals: OriginTotalsSchema.nullable().default(null),
+	/** Which currencies this checkout may be paid in; `null` with no single order currency. */
+	payIn: CheckoutPayInSchema.nullable().default(null),
 	/** Whether any line needs a delivery address — drives the adaptive row layout. */
 	requiresEmail: z.boolean(),
 	/** Whether any line needs a booked slot. */
@@ -977,11 +1053,11 @@ export const CreateCheckoutSchema = z.object({
 	/** The display currency the buyer read the checkout in — the session's `currency`. */
 	currency,
 	/**
-	 * The charge the buyer was shown — the session's `charge`, the order total in the listings' OWN
-	 * currency — as a witness statement, not a computation. The server recomputes the charge and
-	 * refuses on any difference in amount or currency (`price_changed`), so a price that moved between
-	 * render and submit is caught rather than silently charged. The display total is never part of
-	 * this check: a rate that moved changes what the buyer reads, not what they are charged
+	 * The charge the buyer was shown — the session's `buyerCharge` — as a witness statement, not a
+	 * computation. The server recomputes the order's total and, with {@link fxQuoteId}, holds the quote
+	 * to it; it refuses any difference in amount or currency (`price_changed`), so a price that moved
+	 * between render and submit is caught rather than silently charged. The display total is never part
+	 * of this check: a rate that moved changes what the buyer reads, not what they are charged
 	 * (FINANCE_AUDIT C8).
 	 *
 	 * Optional only so that a page loaded before this field existed is answered with a refusal the
@@ -989,6 +1065,12 @@ export const CreateCheckoutSchema = z.object({
 	 * when the session had no single charge (lines in more than one currency), which is refused too.
 	 */
 	expectedCharge: z.object({ minor: minorUnitsNonNeg, currency }).nullable().optional(),
+	/**
+	 * The locked conversion quote the charge was priced on (`buyerCharge.quote.quoteId`, Decision #435);
+	 * absent or `null` when the buyer pays in the order's own currency. An expired or used quote is
+	 * refused `quote_expired`, and the page re-quotes.
+	 */
+	fxQuoteId: reference.nullable().optional(),
 	/**
 	 * The buyer's voluntary gateway contribution, echoed from the offer they accepted. No route
 	 * accepts one yet: the server refuses any amount above zero rather than charge a figure that is
@@ -1111,6 +1193,11 @@ export interface CheckoutQuery {
 	serviceId?: string | null;
 	/** `?ticket_id=` narrowing (Decision #430) — one ticket's lines, by its row id or `tkt-…` slug. */
 	ticketId?: string | null;
+	/**
+	 * `?pay_in=` — the currency to pay in (Decision #435): the billing currency, or the order's own to
+	 * decline the conversion; absent means the billing currency whenever a conversion is available.
+	 */
+	payIn?: string | null;
 }
 
 /**

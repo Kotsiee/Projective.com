@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { itemKindMeta } from "@projective/types/finance";
+import { ProgressiveImage } from "@projective/ui/display";
 import { Checkbox } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { Amount } from "./Amount.tsx";
@@ -131,13 +132,11 @@ export function BasketRow(props: BasketRowProps): JSX.Element {
 				 */
 			}
 			<a class="bsk-row__media" href={itemHref(item)} aria-hidden="true" tabIndex={-1}>
-				{item.thumbnail
-					? <img src={item.thumbnail} alt="" loading="lazy" decoding="async" />
-					: (
-						<span class="bsk-row__glyph">
-							<Icon name={groupIconName(meta.group)} size="md" />
-						</span>
-					)}
+				<ProgressiveImage
+					src={item.thumbnail}
+					loading="lazy"
+					fallback={<Icon name={groupIconName(meta.group)} size="md" />}
+				/>
 			</a>
 
 			<div class="bsk-row__main">

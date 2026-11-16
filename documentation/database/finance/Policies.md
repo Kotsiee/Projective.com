@@ -190,6 +190,8 @@ policy — except `buyer_details`, the buyer's own form.
 | `finance.wallets`                 | `fn_owner_visible(owner_type, owner_id)`                                                  | — |
 | `finance.transactions`            | `fn_can_view_wallet(wallet_id)`                                                           | — (append-only for every role: UPDATE / DELETE / TRUNCATE raise `PL403`; the service role holds SELECT + INSERT only — Decision #186) |
 | `finance.payouts`                 | `fn_can_view_wallet(wallet_id)`                                                           | — |
+| `finance.fx_quotes`               | `fn_owner_visible(owner_type, owner_id)` — `"View own FX quotes"`, `00002013` (Decision #435) | — (definer: `finance.quote_fx_conversion`; frozen but for its use, `PL403`) |
+| `finance.fx_conversions`          | `fn_owner_visible(owner_type, owner_id)` — `"View own FX conversions"` (Decision #435)    | — (append-only for every role, `PL403`; the service role holds SELECT + INSERT only) |
 | `finance.inbound_payments`        | `fn_can_view_wallet(wallet_id)` — `"View visible inbound payments"`, `00002013` (Decision #125) | — (the Stripe doors, [Functions.md § Stripe fiat rails](Functions.md#-stripe-fiat-rails-00001230-decision-125)) |
 | `finance.payout_accounts`         | `fn_owner_visible(owner_type, owner_id)`                                                  | — (`record_payout_account` / `sync_payout_account`) |
 | `finance.orders`                  | `fn_owner_visible(owner_type, owner_id)` — the buyer, or the members of the buying entity | — |

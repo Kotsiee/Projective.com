@@ -4,7 +4,15 @@ import { buyerDetailsComplete } from "@projective/types/finance";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import CheckoutPaymentScreen from "@features/checkout/islands/CheckoutPaymentScreen.island.tsx";
-import { checkoutStepHref, preselectFrom } from "@features/checkout/core/basket-model.ts";
+import {
+	carriedParams,
+	checkoutStepHref,
+	detailsEditHref,
+	payInHrefs,
+	payInRedirect,
+	preselectFrom,
+	withCarry,
+} from "@features/checkout/core/basket-model.ts";
 import { resolveCards, resolveCheckoutSession } from "@features/checkout/core/checkout-ssr.ts";
 
 /**
@@ -24,6 +32,13 @@ import { resolveCards, resolveCheckoutSession } from "@features/checkout/core/ch
  * session that may pay, and a session that may not skip it must not be shown a Pay button the server
  * is going to refuse. One predicate governs both directions.
  *
+ * ## The currency it is paid in
+ *
+ * `?pay_in=` is the buyer's choice between their billing currency, through a locked conversion, and
+ * the order's own (Decision #435). The server prices whichever it names; an address naming the billing
+ * currency, a currency the order cannot be paid in, or a lower-case code is sent to its canonical form,
+ * so one choice has one URL.
+ *
  * **A `Response` returned from a `define.page` component is dead code** — it is a render function,
  * not a handler, and a whole surface has already been lost to that mistake in this codebase. The
  * redirect below is therefore returned from `define.handlers`.
@@ -39,20 +54,34 @@ export const handler = define.handlers({
 		const actor = readActor(ctx);
 		const bootstrap = await resolveCheckoutSession(context, ctx.url, actor);
 
+		const sp = ctx.url.searchParams;
+		const basketId = bootstrap.session.basketId || sp.get("basket");
 		if (!buyerDetailsComplete(bootstrap.session.buyer)) {
-			const sp = ctx.url.searchParams;
-			const location = checkoutStepHref(
-				"details",
-				bootstrap.session.basketId || sp.get("basket"),
-				bootstrap.owner,
-				preselectFrom(sp),
+			const location = withCarry(
+				checkoutStepHref("details", basketId, bootstrap.owner, preselectFrom(sp)),
+				carriedParams(sp),
 			);
 			return new Response(null, { status: 302, headers: { location } });
 		}
+		const canonical = payInRedirect(ctx.url, bootstrap.session.payIn);
+		if (canonical) return new Response(null, { status: 302, headers: { location: canonical } });
 
 		const { cards, defaultCardId } = await resolveCards(context, ctx.url, actor);
 		ctx.state.title = "Payment · Projective";
-		return page({ bootstrap, cards, defaultCardId });
+		const detailsHref = detailsEditHref(
+			basketId,
+			bootstrap.owner,
+			preselectFrom(sp),
+			carriedParams(sp),
+		);
+		const payIn = payInHrefs(
+			bootstrap.session.payIn,
+			basketId,
+			bootstrap.owner,
+			preselectFrom(sp),
+			carriedParams(sp),
+		);
+		return page({ bootstrap, cards, defaultCardId, detailsHref, payInHrefs: payIn });
 	},
 });
 
@@ -62,6 +91,8 @@ export default define.page<typeof handler>(function CheckoutPaymentPage({ data }
 			initial={data.bootstrap}
 			cards={data.cards}
 			defaultCardId={data.defaultCardId}
+			detailsHref={data.detailsHref}
+			payInHrefs={data.payInHrefs}
 		/>
 	);
 });

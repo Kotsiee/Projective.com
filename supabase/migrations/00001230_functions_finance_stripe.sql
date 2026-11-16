@@ -147,7 +147,8 @@ CREATE OR REPLACE FUNCTION finance.begin_card_payment(
     p_currency text,
     p_idempotency_key text,
     p_ticket_id uuid DEFAULT NULL,
-    p_revision_id uuid DEFAULT NULL
+    p_revision_id uuid DEFAULT NULL,
+    p_fx_quote_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -158,6 +159,10 @@ AS $$
 DECLARE
     v_uid uuid := auth.uid();
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_quote finance.fx_quotes;
+    v_order_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_order_expected bigint := p_expected_amount;
+    v_charge bigint;
     v_scope text;
     v_hash text;
     v_prior finance.idempotency_keys;
@@ -196,7 +201,7 @@ BEGIN
     -- and p_revision_id.
     v_hash := pg_catalog.md5(pg_catalog.concat_ws('|',
         p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, v_currency, p_ticket_id,
-        p_revision_id));
+        p_revision_id, p_fx_quote_id));
 
     SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
     IF FOUND THEN
@@ -227,6 +232,10 @@ BEGIN
         IF p_project_id IS NOT NULL OR p_stage_id IS NOT NULL OR p_ticket_id IS NOT NULL
            OR p_revision_id IS NOT NULL THEN
             RAISE EXCEPTION 'stageId: a top-up does not fund a stage' USING ERRCODE = '22023';
+        END IF;
+        IF p_fx_quote_id IS NOT NULL THEN
+            RAISE EXCEPTION 'fxQuoteId: a top-up converts nothing; a checkout attaches its quote with its order'
+                USING ERRCODE = '22023';
         END IF;
         IF p_expected_amount IS NULL OR p_expected_amount <= 0 THEN
             RAISE EXCEPTION 'amountMinor: enter an amount to add' USING ERRCODE = '22023';
@@ -275,6 +284,29 @@ BEGIN
         END IF;
         SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), p.currency INTO v_payer, v_owner, v_project_currency
           FROM projects.projects p WHERE p.id = p_project_id;
+        -- Paying in the payer's own currency (Decision #435): the quote prices exactly what this lock will
+        -- hold, in the project's currency, and the card is charged the quote's amount in its currency.
+        IF p_fx_quote_id IS NOT NULL THEN
+            SELECT * INTO v_quote FROM finance.fx_quotes q WHERE q.id = p_fx_quote_id;
+            IF NOT FOUND OR v_quote.purpose <> 'escrow_lock' OR v_quote.created_by IS DISTINCT FROM v_uid
+               OR v_quote.owner_id IS DISTINCT FROM COALESCE(v_payer, v_owner)
+               OR v_quote.ref_table IS DISTINCT FROM (CASE WHEN p_revision_id IS NOT NULL THEN 'revisions'
+                                                         WHEN p_ticket_id IS NOT NULL THEN 'tickets'
+                                                         ELSE 'project_stages' END)
+               OR v_quote.ref_id IS DISTINCT FROM COALESCE(p_revision_id, p_ticket_id, p_stage_id) THEN
+                RAISE EXCEPTION 'fxQuoteId: that exchange-rate quote is not for this payment' USING ERRCODE = '22023';
+            END IF;
+            IF v_quote.consumed_at IS NOT NULL OR v_quote.expires_at <= pg_catalog.now() THEN
+                RAISE EXCEPTION 'quote_expired: the exchange-rate quote expired — review the new total and try again'
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_quote.from_currency <> v_currency OR v_quote.from_minor IS DISTINCT FROM p_expected_amount THEN
+                RAISE EXCEPTION 'expectedAmountMinor: the amount to charge is % minor units of %',
+                    v_quote.from_minor, v_quote.from_currency USING ERRCODE = 'PC409';
+            END IF;
+            v_order_currency := v_quote.to_currency;
+            v_order_expected := v_quote.to_minor;
+        END IF;
         IF p_revision_id IS NOT NULL THEN
             -- ONE paid revision round (Decision #199): projects.fund_paid_revision's gates, evaluated now
             -- so nobody is charged for a round that could not open — and again at settlement.
@@ -317,13 +349,13 @@ BEGIN
             IF v_amount <= 0 THEN
                 RAISE EXCEPTION 'revisionId: this revision isn''t priced' USING ERRCODE = 'PC409';
             END IF;
-            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
+            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_order_currency THEN
                 RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
                     USING ERRCODE = '22023';
             END IF;
-            IF p_expected_amount IS DISTINCT FROM v_amount THEN
+            IF v_order_expected IS DISTINCT FROM v_amount THEN
                 RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
-                    v_amount, v_currency USING ERRCODE = 'PC409';
+                    v_amount, v_order_currency USING ERRCODE = 'PC409';
             END IF;
         ELSIF p_ticket_id IS NOT NULL THEN
             -- ONE ticket (Decision #166): projects.fund_ticket's gates, evaluated now so nobody is charged
@@ -356,13 +388,13 @@ BEGIN
             IF v_amount <= 0 THEN
                 RAISE EXCEPTION 'ticketId: this ticket has no price yet' USING ERRCODE = 'PC409';
             END IF;
-            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
+            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_order_currency THEN
                 RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
                     USING ERRCODE = '22023';
             END IF;
-            IF p_expected_amount IS DISTINCT FROM v_amount THEN
+            IF v_order_expected IS DISTINCT FROM v_amount THEN
                 RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
-                    v_amount, v_currency USING ERRCODE = 'PC409';
+                    v_amount, v_order_currency USING ERRCODE = 'PC409';
             END IF;
         ELSE
         -- The whole stage, unchanged.
@@ -377,7 +409,7 @@ BEGIN
             RAISE EXCEPTION 'stageId: only an open, assigned or in-progress stage can be funded (this one is %)',
                 v_stage_status USING ERRCODE = 'PC409';
         END IF;
-        IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
+        IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_order_currency THEN
             RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
                 USING ERRCODE = '22023';
         END IF;
@@ -397,9 +429,9 @@ BEGIN
         IF v_amount <= 0 THEN
             RAISE EXCEPTION 'stageId: nothing in this stage is waiting for funding' USING ERRCODE = 'PC409';
         END IF;
-        IF p_expected_amount IS DISTINCT FROM v_amount THEN
+        IF v_order_expected IS DISTINCT FROM v_amount THEN
             RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
-                v_amount, v_currency USING ERRCODE = 'PC409';
+                v_amount, v_order_currency USING ERRCODE = 'PC409';
         END IF;
         END IF;
         -- The wallet the hold will debit: the paying business's — or the individual owner's own person
@@ -409,14 +441,15 @@ BEGIN
         v_wallet_id := finance.fn_ensure_wallet(
             finance.fn_escrow_payer_wallet_type(v_payer, CASE WHEN v_payer IS NULL THEN v_owner END),
             COALESCE(v_payer, v_owner),
-            COALESCE(v_project_currency, 'USD')
+            CASE WHEN p_fx_quote_id IS NOT NULL THEN v_quote.from_currency::text ELSE COALESCE(v_project_currency, 'USD') END
         );
+        v_charge := CASE WHEN p_fx_quote_id IS NOT NULL THEN v_quote.from_minor ELSE v_amount END;
         -- The business spend gate as a CHECK (BB3): nobody is charged for a lock KYB or the threshold
         -- would refuse. Nothing is counted or consumed here — the settlement's fund_stage / fund_ticket /
         -- fund_paid_revision run the real gate as the payer, and re-check all of it.
         IF v_payer IS NOT NULL THEN
             PERFORM finance.fn_assert_business_spend(
-                v_wallet_id, v_uid, v_amount,
+                v_wallet_id, v_uid, v_charge,
                 CASE WHEN p_revision_id IS NOT NULL THEN 'revisions'
                      WHEN p_ticket_id IS NOT NULL THEN 'tickets'
                      ELSE 'project_stages' END,
@@ -428,18 +461,19 @@ BEGIN
 
     INSERT INTO finance.inbound_payments (
         purpose, wallet_id, project_stage_id, ticket_id, revision_id, amount_cents, currency, lock_status,
-        idempotency_key, created_by
+        idempotency_key, created_by, fx_quote_id
     ) VALUES (
         p_purpose,
         v_wallet_id,
         CASE WHEN p_purpose = 'escrow_lock' THEN p_stage_id END,
         p_ticket_id,
         p_revision_id,
-        v_amount,
+        COALESCE(v_charge, v_amount),
         v_currency,
         CASE WHEN p_purpose = 'escrow_lock' THEN 'pending' ELSE 'not_applicable' END,
         p_idempotency_key,
-        v_uid
+        v_uid,
+        p_fx_quote_id
     )
     RETURNING * INTO v_payment;
 
@@ -562,6 +596,8 @@ DECLARE
     v_checkout jsonb;
     v_key text := p_checkout ->> 'order_key';
     v_other finance.inbound_payments;
+    v_quote finance.fx_quotes;
+    v_quote_id uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
@@ -586,7 +622,12 @@ BEGIN
     IF v_payment.purpose <> 'wallet_topup' THEN
         RAISE EXCEPTION 'payment: only a top-up can pay for a checkout' USING ERRCODE = '22023';
     END IF;
-    IF pg_catalog.upper(p_checkout ->> 'currency') <> v_payment.currency THEN
+    IF p_checkout ? 'fx_quote_id' AND pg_catalog.jsonb_typeof(p_checkout -> 'fx_quote_id') <> 'null' THEN
+        IF (p_checkout ->> 'fx_quote_id') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+            RAISE EXCEPTION 'checkout: fx_quote_id must be a quote id' USING ERRCODE = '22023';
+        END IF;
+        v_quote_id := (p_checkout ->> 'fx_quote_id')::uuid;
+    ELSIF pg_catalog.upper(p_checkout ->> 'currency') <> v_payment.currency THEN
         RAISE EXCEPTION 'checkout: the order must be in the payment''s currency' USING ERRCODE = '22023';
     END IF;
 
@@ -596,14 +637,33 @@ BEGIN
         RAISE EXCEPTION 'checkout: that basket is not one you can pay for' USING ERRCODE = '42501';
     END IF;
 
+    -- A checkout paid in the payer's own currency (Decision #435) names the quote that prices it: for this
+    -- basket and account, charging exactly this payment and delivering the order's currency.
+    IF v_quote_id IS NOT NULL THEN
+        SELECT * INTO v_quote FROM finance.fx_quotes q WHERE q.id = v_quote_id;
+        IF NOT FOUND OR v_quote.purpose <> 'checkout' OR v_quote.ref_id IS DISTINCT FROM v_basket.id
+           OR v_quote.owner_id IS DISTINCT FROM v_basket.owner_id OR v_quote.created_by IS DISTINCT FROM v_uid THEN
+            RAISE EXCEPTION 'checkout: that exchange-rate quote is not for this basket' USING ERRCODE = '22023';
+        END IF;
+        IF v_quote.from_currency <> v_payment.currency OR v_quote.from_minor <> v_payment.amount_cents
+           OR v_quote.to_currency <> pg_catalog.upper(p_checkout ->> 'currency') THEN
+            RAISE EXCEPTION 'checkout: the payment does not match its exchange-rate quote' USING ERRCODE = '22023';
+        END IF;
+        IF v_payment.checkout IS NULL AND (v_quote.consumed_at IS NOT NULL OR v_quote.expires_at <= pg_catalog.now()) THEN
+            RAISE EXCEPTION 'quote_expired: the exchange-rate quote expired — review the new total and try again'
+                USING ERRCODE = 'PC409';
+        END IF;
+    END IF;
+
     v_checkout := pg_catalog.jsonb_build_object(
         'basket_id', v_basket.id,
         'item_ids', p_checkout -> 'item_ids',
-        'currency', v_payment.currency,
+        'currency', CASE WHEN v_quote_id IS NOT NULL THEN v_quote.to_currency::text ELSE v_payment.currency::text END,
         'units', p_checkout -> 'units',
         'promo_code', NULLIF(pg_catalog.btrim(COALESCE(p_checkout ->> 'promo_code', '')), ''),
         'order_key', v_key
-    );
+    ) || CASE WHEN v_quote_id IS NOT NULL THEN pg_catalog.jsonb_build_object('fx_quote_id', v_quote_id)
+              ELSE '{}'::jsonb END;
     IF v_payment.checkout IS NOT NULL THEN
         IF v_payment.checkout = v_checkout THEN
             RETURN pg_catalog.to_jsonb(v_payment);
@@ -630,7 +690,7 @@ BEGIN
     END IF;
 
     UPDATE finance.inbound_payments
-       SET checkout = v_checkout, updated_at = pg_catalog.now()
+       SET checkout = v_checkout, fx_quote_id = v_quote_id, updated_at = pg_catalog.now()
      WHERE id = v_payment.id
     RETURNING * INTO v_payment;
     RETURN pg_catalog.to_jsonb(v_payment);
@@ -700,6 +760,8 @@ DECLARE
     v_unapplied text;
     v_reconciliation text;
     v_business_status text;
+    v_quote finance.fx_quotes;
+    v_conv finance.fx_conversions;
 BEGIN
     IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
         -- A completed claim. It is answered with the ledger row it produced; one without (an earlier
@@ -903,6 +965,15 @@ BEGIN
             v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
             BEGIN
                 PERFORM pg_catalog.set_config('request.jwt.claim.sub', v_payment.created_by::text, true);
+                -- Paid in the payer's own currency (Decision #435): the spend gate counts what leaves the
+                -- paying wallet, the bound quote converts it, and the lock below holds from the result.
+                IF v_payment.fx_quote_id IS NOT NULL THEN
+                    SELECT * INTO v_quote FROM finance.fx_quotes q WHERE q.id = v_payment.fx_quote_id;
+                    PERFORM finance.fn_assert_business_spend(v_wallet.id, v_payment.created_by, v_quote.from_minor,
+                        v_quote.ref_table, v_quote.ref_id);
+                    v_conv := finance.fn_execute_fx_quote(v_quote.id, v_wallet.id, 'inbound_payments', v_payment.id, true);
+                    PERFORM finance.fn_carry_spend_cover(v_wallet.id, v_conv.to_wallet_id, v_conv.to_minor);
+                END IF;
                 IF v_payment.revision_id IS NOT NULL THEN
                     -- One paid revision round (Decision #199): its escrow is held and the round opens.
                     v_escrows := ARRAY[(projects.fund_paid_revision(v_payment.revision_id) ->> 'escrow_id')::uuid];
@@ -918,6 +989,10 @@ BEGIN
                      WHERE e.project_stage_id = v_payment.project_stage_id
                        AND e.status = 'held'
                        AND e.created_at = pg_catalog.now();
+                END IF;
+                IF v_conv.id IS NOT NULL THEN
+                    PERFORM finance.fn_stamp_escrow_fx(v_conv.id, v_escrows);
+                    PERFORM finance.fn_close_spend_cover(v_conv.to_wallet_id);
                 END IF;
                 v_lock_status := 'locked';
             EXCEPTION WHEN OTHERS THEN
@@ -954,7 +1029,8 @@ BEGIN
                 v_payment.checkout -> 'units',
                 v_payment.checkout ->> 'promo_code',
                 v_payment.checkout ->> 'order_key',
-                v_payment.amount_cents
+                COALESCE((SELECT q.to_minor FROM finance.fx_quotes q WHERE q.id = v_payment.fx_quote_id), v_payment.amount_cents),
+                v_payment.fx_quote_id
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
             IF v_order_id IS NULL THEN

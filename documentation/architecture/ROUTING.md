@@ -321,7 +321,13 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   draw cash flow over it, the ledger lists it; set from the pinned range ruler; the pre-ruler names
   `week|month|quarter|year` still resolve; each page omits its OWN default — `1m` for the cash-flow
   pages, `all` for the ledger, `defaultPeriodFor`), and `?display=` the currency the figures are drawn
-  in. Two intents open the wallet mid-flow
+  in. `?currency=GBP` (Decision #435) narrows the overview, the ledger and the analytics to one of the
+  account's currency wallets, its figures stated exactly in that currency unless `?display=` names
+  another; the page links keep it (`walletPageHref`'s `currency`), the hero's currency tabs switch it,
+  and movements, payouts, funding, methods, invoices and access always read the whole account. A
+  lower-case code redirects to its upper-case form, and a currency the account holds no wallet in is
+  dropped by a 303 (`walletPageRedirect`'s `scope.currency`), as is any `currency` once `?w=` falls
+  back to another wallet. Two intents open the wallet mid-flow
   (`apps/web/features/wallet/core/wallet-intent.ts`, Decision #243): `?do=<action>` opens that
   action's dialog once — only an action the wallet draws for the viewer, offered or locked with its
   reason — and is stripped from the address at once (`replaceState`), so a reload does not reopen it;
@@ -579,12 +585,15 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   anchors rather than a controlled widget: the URL is already the state, and a second copy of it in
   a signal is a second thing that can be wrong. Builders: `checkoutStepHref()` / `basketHref()` /
   `checkoutHref()` in `apps/web/features/checkout/core/basket-model.ts` — never a hand-written path.
+  The trail rides the middle-nav header band on steps 1 and 4 (`basketHeaderFor`); on the two focus
+  steps it is server-rendered into the shell top bar's centre from the URL alone (`checkoutTrailFor`,
+  `features/checkout/core/checkout-trail-slot.tsx`, Decision #431), and those steps register no band.
 
   | Step | File                                    | URL                      | Chrome (Part D.6)                                      |
   | :--- | :-------------------------------------- | :----------------------- | :----------------------------------------------------- |
   | 1    | `(dashboard)/checkout/index.tsx`        | `/checkout`              | `full` — basket + the list explorer in the lane        |
-  | 2    | `(dashboard)/checkout/details.tsx`      | `/checkout/details`      | **`focus`**                                            |
-  | 3    | `(dashboard)/checkout/payment.tsx`      | `/checkout/payment`      | **`focus`**                                            |
+  | 2    | `(dashboard)/checkout/details.tsx`      | `/checkout/details`      | **`focus`** — the step trail in the top bar, no bands  |
+  | 3    | `(dashboard)/checkout/payment.tsx`      | `/checkout/payment`      | **`focus`** — the step trail in the top bar, no bands  |
   | 4    | `(dashboard)/checkout/confirmation.tsx` | `/checkout/confirmation` | `full` — restored, its job is to send the buyer onward |
 
   **`/basket` is retired to a `302`, and the file is kept.** `(dashboard)/basket/index.tsx`
@@ -609,8 +618,29 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   validated `sim*` params (`simOwnerScope` · `simProviders` · `simWalletCover` · `simCards` ·
   `simDetails` · `simBilling` · `simInvoicing` · `simSpendLimit` · `simFulfilment` ·
   `simConferencing`) and are ignored on the live path. Details' redirect keeps the whole query
-  string. The Payment step's backward `302` to Details does not yet: it rebuilds only `?basket=`,
-  `?owner=` and the preselect, so `?display=` and the `sim*` axes are dropped (FDD X23 / N26, open).
+  string. Every other link between the steps rebuilds `?basket=`, `?owner=` and the narrowing
+  (`?project_id=` · `?service_id=` · `?ticket_id=`) and carries `?display=`, `?pay_in=` and the `sim*`
+  axes (`carriedParams` + `withCarry` in `basket-model.ts`, Decision #433). That covers Payment's backward
+  `302`, the step trail, _Change Details_ and the save on Details, and closes FDD X23 / N26. One-shot
+  params (`?edit=`, `?order=`, `?pay=`, `?attempt=`, `redirect_status`) are never carried.
+
+  **`?pay_in=` is the currency the buyer pays in (Decision #435).** Absent, Payment charges the buyer's
+  billing currency through a locked conversion quote whenever the order is priced in another and the
+  quote door prices it. `?pay_in=<order currency>` pays the listing's own currency instead. The rail's
+  _Pay in {currency} instead_ link (`PayInChoice`, hrefs from `payInHrefs()`) is the only control,
+  and it navigates, so the server re-prices. Only the order's currency is ever written. Payment
+  answers `302` to the canonical address (`payInRedirect()`) for a lower-case code, the billing
+  currency, a currency the order cannot be paid in, or a choice with no conversion on offer. The
+  island's re-reads send it as `pay_in`, so a re-read quotes the same way. A shown quote is re-read
+  4 minutes before it runs out, and a payment on a quote that has run out is refused `quote_expired`,
+  re-read and confirmed again.
+
+  **A backward link to Details appends `?edit=1` (Decision #433).** The trail's completed Details
+  step and _Change Details_ on Payment are built by `detailsEditHref()`, so a buyer whose details
+  are complete reaches the form instead of being auto-skipped straight back to Payment. Payment's own
+  `302` to Details does not append it, because that bounce means the details are incomplete and the
+  form will show anyway. Saving on `/checkout/details?edit=1` returns to `/checkout/payment` with the
+  carry and without `edit=1`.
 
   **Who sets `?owner=` / `?basket=`, and where the choice lives (Decision #70(k)).** The basket
   switcher — in the header basket drawer, and in the checkout header band below `--bp-md` where the

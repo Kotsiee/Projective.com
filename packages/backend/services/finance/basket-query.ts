@@ -92,6 +92,7 @@ export function basketQueryFrom(sp: URLSearchParams, context: UserContext): Bask
 		projectId: sp.get("project_id") ?? sp.get("projectId"),
 		serviceId: sp.get("service_id") ?? sp.get("serviceId"),
 		ticketId: sp.get("ticket_id") ?? sp.get("ticketId"),
+		payIn: sp.get("pay_in") ?? sp.get("payIn"),
 		viewerCurrency: context.displayCurrency ?? null,
 		provider: sp.get("provider"),
 		processingContribution: flag(sp.get("contribute")) ?? false,
@@ -117,6 +118,7 @@ export function basketQueryFromBody(
 			"paypal",
 			"provider",
 			"contribute",
+			"payIn",
 		]
 	) {
 		const value = body[key];

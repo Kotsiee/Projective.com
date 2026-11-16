@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { displayCurrencyForRegion } from "../finance/fx.ts";
 import {
+	acceptLanguageTags,
 	firstWeekdayOf,
 	preferenceHints,
 	SUPPORTED_LOCALES,
@@ -56,6 +57,28 @@ Deno.test("preferenceHints: a bare language never picks a currency", () => {
 	assertEquals(preferenceHints(["en"]), { locale: "en-US" });
 	assertEquals(preferenceHints([]), {});
 	assertEquals(preferenceHints(["???"]), {});
+});
+
+Deno.test("acceptLanguageTags: weights order the tags, equal weights keep their written order", () => {
+	assertEquals(acceptLanguageTags("fr;q=0.5, en-US, de-DE;q=0.8, en"), [
+		"en-US",
+		"en",
+		"de-DE",
+		"fr",
+	]);
+	assertEquals(acceptLanguageTags("en-GB,en;q=0.9"), ["en-GB", "en"]);
+});
+
+Deno.test("acceptLanguageTags: q=0, the wildcard and junk weights are dropped", () => {
+	assertEquals(acceptLanguageTags("*, ar-AE;q=0, en-IN;q=abc, ja-JP;q=0.1"), ["ja-JP"]);
+	assertEquals(acceptLanguageTags(""), []);
+	assertEquals(acceptLanguageTags(null), []);
+});
+
+Deno.test("a guest's Accept-Language region prices them in its currency; a bare language does not", () => {
+	assertEquals(preferenceHints(acceptLanguageTags("en-US,en;q=0.9")).displayCurrency, "USD");
+	assertEquals(preferenceHints(acceptLanguageTags("de-DE,de;q=0.9")).displayCurrency, "EUR");
+	assertEquals(preferenceHints(acceptLanguageTags("en;q=0.9")).displayCurrency, undefined);
 });
 
 Deno.test("firstWeekdayOf: the region decides, numbered as availability_rules.weekday (0 = Sunday)", () => {

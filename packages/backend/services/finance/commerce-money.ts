@@ -136,7 +136,7 @@ export function projectorFor(display: string, table: FxRateTable): MoneyProjecto
 
 // #region Settlement
 /** `13 Aug 2026 23:38 UTC` — the FX observation instant, stated in UTC so it is unambiguous. */
-function utcStamp(isoInstant: string): string {
+export function utcStamp(isoInstant: string): string {
 	const ms = Date.parse(isoInstant);
 	if (!Number.isFinite(ms)) return isoInstant.slice(0, 80);
 	return `${

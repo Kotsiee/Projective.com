@@ -607,6 +607,12 @@ ALTER TABLE finance.wallets ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.transactions ENABLE ROW LEVEL SECURITY;
 
+-- FX quotes and conversions (Decision #435): read by their account (00002013), written only by the
+-- 00001240 doors.
+ALTER TABLE finance.fx_quotes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.fx_conversions ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.payouts ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.payout_accounts ENABLE ROW LEVEL SECURITY;

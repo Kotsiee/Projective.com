@@ -85,6 +85,14 @@ async function read<T>(
 	}
 }
 
+/**
+ * The query for a read about the whole account — its payouts, funding, methods, invoices and access —
+ * which the movement dialogs act on in any currency, so a `?currency=` view never narrows it.
+ */
+function wholeAccount(query: WalletQuery): WalletQuery {
+	return { ...query, currency: null };
+}
+
 /** Run a mutation; an unexpected failure is a 503, and nothing is reported as done. */
 async function write(
 	label: string,
@@ -145,27 +153,47 @@ export class WalletBackendService {
 
 	/** The Payouts projection. */
 	static payouts(query: WalletQuery, actor: ReadActor): Promise<Result<{ payouts: PayoutsView }>> {
-		return read("payouts", query, actor, async (ctx) => ({ payouts: await payoutsOf(ctx) }));
+		return read(
+			"payouts",
+			wholeAccount(query),
+			actor,
+			async (ctx) => ({ payouts: await payoutsOf(ctx) }),
+		);
 	}
 
 	/** The Funding projection. */
 	static funding(query: WalletQuery, actor: ReadActor): Promise<Result<{ funding: FundingView }>> {
-		return read("funding", query, actor, async (ctx) => ({ funding: await fundingOf(ctx) }));
+		return read(
+			"funding",
+			wholeAccount(query),
+			actor,
+			async (ctx) => ({ funding: await fundingOf(ctx) }),
+		);
 	}
 
 	/** The Methods projection. */
 	static methods(query: WalletQuery, actor: ReadActor): Promise<Result<{ methods: MethodsView }>> {
-		return read("methods", query, actor, async (ctx) => ({ methods: await methodsOf(ctx) }));
+		return read(
+			"methods",
+			wholeAccount(query),
+			actor,
+			async (ctx) => ({ methods: await methodsOf(ctx) }),
+		);
 	}
 
 	/** The Invoices projection (business). */
 	static invoices(query: WalletQuery, actor: ReadActor): Promise<Result<{ invoices: InvoicesView }>> {
-		return read("invoices", query, actor, async (ctx) => ({ invoices: await invoicesOf(ctx) }));
+		return read("invoices", wholeAccount(query), actor, async (ctx) => ({ invoices: await invoicesOf(ctx) }));
 	}
 
 	/** The Access projection (team/business). */
 	static access(query: WalletQuery, actor: ReadActor): Promise<Result<{ access: AccessView }>> {
-		return read("access", query, actor, async (ctx) => ({ access: await accessOf(ctx) }));
+		return read(
+			"access",
+			wholeAccount(query),
+			actor,
+			async (ctx) => ({ access: await accessOf(ctx) }),
+		);
 	}
 
 	/**

@@ -19,6 +19,8 @@ export interface WalletPageNavProps {
 	display: string;
 	/** The cash-flow window, carried to the pages that draw one. */
 	flow?: FlowPeriod | null;
+	/** The currency wallet the pages are narrowed to (`?currency=`, Decision #435), kept on every link. */
+	currency?: string | null;
 	/** The business extras of the wallet, when it is a business vault — the only wallet that is billed. */
 	business: unknown;
 	/** `lane` lists icon-led rows; `strip` is the phone's horizontal switcher at the top of the sheet. */
@@ -53,7 +55,13 @@ export function WalletPageNav(props: WalletPageNavProps): JSX.Element {
 			<ul class={props.variant === "lane" ? "wlt-pages__list" : "wlt-pagestrip__list"}>
 				{views.map((view) => {
 					const current = view === props.view;
-					const href = walletPageHref(view, props.wallet, props.display, props.flow);
+					const href = walletPageHref(
+						view,
+						props.wallet,
+						props.display,
+						props.flow,
+						props.currency,
+					);
 					return (
 						<li key={view}>
 							{props.variant === "lane"

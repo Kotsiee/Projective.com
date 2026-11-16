@@ -158,7 +158,7 @@ Why this order:
 | DB11 step 6 | Which fee an Agency's contract rate applies to: the new conflict with #187, flagged on #252 | B: an Agency contract covers its product-sale commission (and its payer fee when it buys); #187 unchanged |
 | DB13        | What "met" means for a deadline bonus, and against which deadline                           | A: per escrow, the ticket's due date; met when the work later approved was sent by it                     |
 | DB17        | The daily FX provider (it must quote all 12 display currencies, NGN and AED included)       | A: one reference-rate API that covers all 12                                                              |
-| DB18        | The conversion margin's value (Decision #337, ruling M5 (d): still open)                    | B: a per-currency map, set only after counsel answers (d) below                                           |
+| DB18        | The conversion margin's value (Decision #337, ruling M5 (d))                                | **Ruled by Decision #435 (C):** `fx_spread_bp` = `{"default": 150}`, a per-currency map, seeded but switched off (`fx_checkout_enabled`) until counsel answers (d) below |
 | DB19        | What `cancelled` means beside `refunded`                                                    | A: refunded in full before any delivery began                                                             |
 | DB21        | A product dispute raised after the sale has cleared                                         | A: allowed only while the sale is still clearing                                                          |
 | DB16 step 1 | How the nightly identity treats the simulator's `simulated_*` rows, which fit no class      | Ruled 2026-11-12 (#423 (A)): no class, so a simulated movement shows as an imbalance                      |
@@ -806,6 +806,11 @@ Q0.2 (e)). **Do not re-run this prompt.**
 
 ### DB8 — Currency integrity: CHECKs, one exponent list, reserved FX columns
 
+> **Step 4 absorbed by Decision #435 (2026-11-16):** `finance.fn_currency_exponent` holds the one list
+> (0: BIF CLP DJF GNF ISK JPY KMF KRW PYG RWF UGX UYI VND VUV XAF XOF XPF; 3: BHD IQD JOD KWD LYD OMR
+> TND), mirrored by `currencyExponent` (`packages/types/finance/wallet.ts`) and pinned by
+> `fx-conversion.test.ts`. Step 5's `escrows.fx_*` are no longer reserved: a conversion writes them.
+
 > **Input from the DB16 / DB8 / DB9 session (2026-11-12; nothing built):**
 >
 > - **Run it after DB16.** DB16's seed rework removes the five reasons no function writes (FA N35),
@@ -892,6 +897,11 @@ HOT: 00001240.
 ```
 
 ### DB9 — Settlement per currency, and an entity's currency from its owner's country (M5 (a), (b))
+
+> **Step 1 absorbed by Decision #435 (2026-11-16):** `currencyForCountry` (`packages/types/finance/fx.ts`)
+> maps a country to its currency, clamped to the nine `settlement_currencies` (#423), else GBP. It
+> decides a BUYER's billing currency today; step 2 (an entity's wallet currency at creation) is still
+> to be built on it.
 
 > **Ruled 2026-11-12 (#423 (B)), and step 0 done** (test key, read-only): the platform account is GB
 > with default `gbp`; its balance is GBP only (5,322 available, nothing pending) and it lists no
@@ -1482,6 +1492,13 @@ HOT: 00005060 (after the jobs session), 00002510.
 ```
 
 ### DB18 — Conversion between one's own wallets at a disclosed margin (M5 (c), (d)) — 🧑 margin
+
+> **Absorbed by Decision #435 (2026-11-16).** The conversion engine shipped for purchases: locked quotes
+> (`finance.fx_quotes`), the append-only `finance.fx_conversions`, `fx_conversion` / `fx_spread` legs
+> stamped with `fx_*`, pinned refunds and reconciliation views (`database/finance/Functions.md`
+> §Paying in one's own currency). The margin is ruled (`fx_spread_bp` 150, switched off). NOT built:
+> the free-standing Convert action below — a conversion exists only inside a purchase the payer
+> confirms. Revisit it as its own decision.
 
 > **Input from DB5 (2026-11-12):** `finance.fn_wallet_debit` raises `22023` for a debit reason in
 > neither of its lists. The conversion's debit reason joins the voluntary list, so a conversion never

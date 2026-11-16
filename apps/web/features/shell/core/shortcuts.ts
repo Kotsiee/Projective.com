@@ -100,11 +100,6 @@ export function isFindInThreadShortcut(event: ShortcutKey, apple: boolean): bool
 	return key === "f" || (!/^[a-z]$/.test(key) && event.code === "KeyF");
 }
 
-/** The hint for {@link isFocusLaneSearchShortcut}: `⇧⌘/` on an Apple device, `Ctrl ⇧ /` elsewhere. */
-export function laneSearchShortcutLabel(apple: boolean): string {
-	return apple ? "⇧⌘/" : "Ctrl ⇧ /";
-}
-
 /** The hint for {@link isFindInThreadShortcut}, as the composer spells its keys: `⌘F` or `Ctrl+F`. */
 export function findInThreadShortcutLabel(apple: boolean): string {
 	return apple ? "⌘F" : "Ctrl+F";

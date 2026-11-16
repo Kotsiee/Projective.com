@@ -46,10 +46,18 @@ function requestOf(
 	session: GateSession,
 	state: CheckoutSpendRequest["state"],
 ): CheckoutSpendRequest {
+	const charge = session.buyerCharge;
 	return {
 		id: DEV_REQUEST_ID,
 		state,
-		amount: session.charge ?? session.totals.total,
+		amount: charge
+			? {
+				minor: charge.minor,
+				currency: charge.currency,
+				display: charge.display,
+				origin: charge.origin,
+			}
+			: session.totals.total,
 		covers: true,
 		expiresLabel: "Expires in 7 days",
 		decidedBy: state === "pending" ? null : session.businessAccount?.approvers[0] ?? null,

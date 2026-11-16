@@ -62,6 +62,20 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'The platform''s internal base/accounting currency (ISO-4217) for system accounts, fees, and cross-currency FX bridging. Stored amounts stay in their origin currency; this is only the accounting/settlement base.')
 ON CONFLICT (key) DO NOTHING;
 
+-- Paying in one's own currency (Decision #435)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('fx_checkout_enabled', 'false'::jsonb,
+        'Whether a buyer may pay in their own currency through a locked FX quote (finance.quote_fx_conversion, Decision #435 (C)). Off until counsel answers FINANCE_BUILD_PROMPTS §0.5 (d) and a live rate feed (DB17) exists; probes switch it on inside rolled-back transactions.'),
+    ('fx_spread_bp', '{"default": 150}'::jsonb,
+        'The disclosed conversion margin in basis points, paid by whoever converts (Decision #337, ruling M5 (d); Decision #435 (C)): an object keyed by ISO code with a "default", shaped like min_withdrawal_minor, and a conversion charges the higher of its two currencies'' values. Taken on the mid-market principal and truncated (Decision #187).'),
+    ('fx_quote_ttl_minutes', '30'::jsonb,
+        'Minutes an FX quote stays usable for a new payment (finance.quote_fx_conversion). A card payment started on a quote is honoured after it expires.'),
+    ('fx_rate_max_age_hours', '24'::jsonb,
+        'The oldest rate observation a quote may use, in hours: an older rate refuses the quote (fx_rate_stale) rather than converting on it.'),
+    ('settlement_currencies', '["GBP", "USD", "EUR", "CAD", "AUD", "JPY", "SGD", "CHF", "ZAR"]'::jsonb,
+        'The currencies money settles in on the GB platform (Decision #423 (B)); AED, INR and NGN are display-only. A conversion is quoted only between two of these.')
+ON CONFLICT (key) DO NOTHING;
+
 -- from 20260723092000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('instant_payout_fee_bp', 'null'::jsonb,

@@ -5,6 +5,7 @@ CREATE INDEX IF NOT EXISTS idx_wallets_owner ON finance.wallets (owner_type, own
 -- `(created_at, id)` is the ledger's keyset (finance.list_ledger): the id breaks ties between lines
 -- written in the same instant, so a page boundary is one row, never a set of equal timestamps.
 CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactions (wallet_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_ref ON finance.transactions (ref_table, ref_id) WHERE ref_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_stage ON finance.escrows (project_stage_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
 -- One HELD base escrow per ticket (Decision #189). The hold checks, then inserts, so two concurrent holds
@@ -34,6 +35,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_session_event ON finance.escrows (s
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_business ON finance.escrows (payer_business_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_user ON finance.escrows (payer_user_id) WHERE payer_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payee ON finance.escrows (payee_type, payee_id);
+-- FX (Decision #435): quotes by their account, conversions by what they paid for or reversed, and the
+-- escrows and orders a conversion funded.
+CREATE INDEX IF NOT EXISTS idx_fx_quotes_owner ON finance.fx_quotes (owner_type, owner_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fx_conversions_ref ON finance.fx_conversions (ref_table, ref_id);
+CREATE INDEX IF NOT EXISTS idx_fx_conversions_parent ON finance.fx_conversions (parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_escrows_fx_conversion ON finance.escrows (fx_conversion_id) WHERE fx_conversion_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_fx_conversion ON finance.orders (fx_conversion_id) WHERE fx_conversion_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payout_accounts_owner ON finance.payout_accounts (owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_business ON finance.invoices (
     issue_to_business_id,

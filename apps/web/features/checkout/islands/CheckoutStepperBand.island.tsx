@@ -22,17 +22,17 @@ import {
 } from "../core/basket-state.ts";
 import { reachedStep, seedStep } from "../core/checkout-state.ts";
 import { useCheckoutContextPassive } from "../core/checkout-context.ts";
-import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
+import type { BasketSummary, CheckoutOwner, CheckoutPreselect } from "../types/checkout-types.ts";
 
 /**
- * CheckoutStepperBand — the middle-nav HEADER band on **all four** checkout steps: *how far through
- * the flow you are*, and nothing else.
+ * CheckoutStepperBand — the middle-nav HEADER band on the two full-chrome checkout steps (basket,
+ * confirmation): *how far through the flow you are*, and nothing else. The two focus steps carry the
+ * same {@link CheckoutStepper} in the shell top bar instead (`checkoutTrailFor`, §D.6).
  *
- * The band is the {@link CheckoutStepper} alone, left-aligned at the content column's own inline
- * padding, vertically centred in the fixed `--shell-midnav-header-h` strip. On the two focus steps
- * (`details`, `payment`) that is the whole band. On the basket step a small control cluster sits at
- * the far inline end — find-in-basket, the mobile basket switcher, and the display-currency selector
- * — placed there precisely so it cannot crowd the trail.
+ * The band is the {@link CheckoutStepper}, left-aligned at the content column's own inline
+ * padding, vertically centred in the fixed `--shell-midnav-header-h` strip. On the basket step a
+ * small control cluster sits at the far inline end — find-in-basket, the mobile basket switcher, and
+ * the display-currency selector — placed there precisely so it cannot crowd the trail.
  *
  * It carries **no action that moves money and no primary CTA** — those are the footer rig's — and no
  * data, which is the body's.
@@ -49,9 +49,9 @@ import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
  *   which is a stronger answer than an avatar was.
  * - **Payment** prints "Paying from …" above the card selection, beside the figure it applies to.
  *
- * The display-currency selector narrowed to the basket step for the same reason: the design shows the
- * focus steps carrying the trail alone. See the note on {@link CheckoutStepperBandProps.display} for
- * the consequence that has, which is stated rather than assumed away.
+ * The display-currency selector renders on the basket step only. See the note on
+ * {@link CheckoutStepperBandProps.display} for the consequence that has, which is stated rather than
+ * assumed away.
  *
  * ## The three mechanisms that are not obvious
  *
@@ -71,7 +71,6 @@ import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
  *    query, deliberately: it mirrors the lane's own `@media (max-width: 767px)` rule, so the two are
  *    decided by the same measurement and cannot disagree. Everything sized against the band's own
  *    width uses a container query, because that width depends on whether the lane is there.
- *    On the two focus steps there is no lane to inherit from, so there is no switcher either.
  *
  * 3. **`reached` comes from the store, not from the URL.** A buyer whose details were already saved is
  *    redirected past Details; walking back to the basket must still show Details as a step they have
@@ -114,6 +113,10 @@ export interface CheckoutStepperBandProps {
 	display: string;
 	/** The completed order, on the confirmation step; `null` elsewhere. */
 	orderId?: string | null;
+	/** The URL's narrowing, kept by every step link. */
+	preselect?: Partial<CheckoutPreselect>;
+	/** The params every step link carries from this page (`carriedParams`). */
+	carry?: Readonly<Record<string, string>>;
 }
 // #endregion
 
@@ -186,6 +189,8 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 					basketId={props.basketId}
 					owner={props.ownerParam}
 					orderId={props.orderId ?? null}
+					preselect={props.preselect}
+					carry={props.carry}
 					reached={reached}
 				/>
 			</div>

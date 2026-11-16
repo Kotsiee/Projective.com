@@ -37,6 +37,7 @@ export async function walletLaneFor(
 			display={active?.available.currency ||
 				toDisplayCurrency(query.display ?? context.displayCurrency)}
 			flow={url.searchParams.has("flow") ? toFlowPeriod(url.searchParams.get("flow")) : null}
+			currency={overview?.currencies.find((entry) => entry.selected)?.currency ?? null}
 		/>
 	);
 }

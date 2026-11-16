@@ -35,6 +35,7 @@ import type {
 	VaultCapability,
 	VaultMember,
 	WalletAction,
+	WalletCurrency,
 	WalletLockCode,
 	WalletOverview,
 	WalletPotView,
@@ -45,6 +46,8 @@ import type {
 import {
 	allocationSlices,
 	currencyExponent,
+	DEFAULT_LOCALE,
+	formatMoney,
 	incomeSmootherFeeMinor,
 	paramMinor,
 	PotAction,
@@ -1015,16 +1018,47 @@ async function businessExtras(
 // #endregion
 
 // #region Overview
+/**
+ * The account's wallets, one per currency, each stated exactly in its own currency (Decision #435) —
+ * read from every row the account holds, whichever one the page is narrowed to.
+ */
+export function currenciesOf(
+	ctx: Pick<WalletContext, "accounts" | "currency">,
+	account: WalletAccount,
+): WalletCurrency[] {
+	const whole = ctx.accounts.find((a) => a.key === account.key) ?? account;
+	return [...whole.rows]
+		.sort((a, b) => a.currency.localeCompare(b.currency))
+		.slice(0, 12)
+		.map((row) => {
+			const code = row.currency.toUpperCase();
+			return {
+				currency: code,
+				available: {
+					minor: row.balance_cents,
+					currency: code,
+					display: formatMoney(row.balance_cents, code, DEFAULT_LOCALE),
+					origin: null,
+				},
+				selected: ctx.currency === code,
+			};
+		});
+}
+
 /** The Overview hub for the target wallet, or the read-only rollup. */
 export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	if (ctx.target === "aggregate") return aggregateOverview(ctx);
 	const account = ctx.target;
 	const variant = walletVariant(account.scope);
-	const [rows, escrows, { pending, onHold: frozen }] = await Promise.all([
+	const [rows, allEscrows, { pending, onHold: frozen }] = await Promise.all([
 		readLedger(ctx, walletIds(account), { limit: LEDGER_WINDOW }),
 		escrowsFor(ctx, account),
 		pendingFor(ctx, account),
 	]);
+	// A one-currency view (Decision #435) counts only the money held in that currency.
+	const escrows = ctx.currency
+		? allEscrows.filter((e) => e.currency.toUpperCase() === ctx.currency)
+		: allEscrows;
 
 	const liveEscrows = escrows.filter(isLive);
 	const disputed = escrows.filter((e) => e.status === "disputed");
@@ -1148,6 +1182,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	return {
 		ref: refOf(ctx.money, account),
 		variant,
+		currencies: currenciesOf(ctx, account),
 		balances: {
 			currency: ctx.money.display,
 			availableCents: available.minor,
@@ -1197,6 +1232,7 @@ async function aggregateOverview(ctx: WalletContext): Promise<WalletOverview> {
 	return {
 		ref,
 		variant: "personal",
+		currencies: [],
 		balances: {
 			currency: ctx.money.display,
 			availableCents: ref.available.minor,

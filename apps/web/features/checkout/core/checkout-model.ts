@@ -3,7 +3,9 @@ import type { IconName } from "@ui/icons/core/paths.tsx";
 import type {
 	BasketItem,
 	CheckoutBlocker,
+	CheckoutFxQuote,
 	CheckoutSessionContext,
+	CheckoutSettlement,
 	CheckoutTotals,
 	MoneyView,
 	PaymentProvider,
@@ -366,7 +368,10 @@ export function routeGatesFor(
 
 	if (provider === "card") {
 		if (!cardId) {
-			return [{ code: "no_provider", message: "Choose a card to pay with.", itemId: null }];
+			const message = session.savedCards.some((entry) => !entry.isExpired)
+				? "Choose a card to pay with."
+				: "Add a card to pay by card, or choose another way to pay.";
+			return [{ code: "no_provider", message, itemId: null }];
 		}
 		const card = session.savedCards.find((entry) => entry.id === cardId);
 		if (!card) {
@@ -433,6 +438,87 @@ export function feeDisclosure(totals: CheckoutTotals): FeeDisclosure {
 			charged: false,
 		};
 }
+
+/** The FX quote fields an {@link fxBreakdownLines} breakdown reads, all server-composed strings. */
+export type FxQuote = Pick<CheckoutSettlement, "rateLabel" | "asOfLabel" | "originCurrency">;
+
+/**
+ * The sentences of a figure's FX breakdown, in reading order: the exact figure in its own currency,
+ * the locked rate when the quote converts that currency, and — for a charge — the bank-fee caveat.
+ * Every figure and rate is the server's string, printed verbatim (Decision #433).
+ */
+export function fxBreakdownLines(
+	kind: "charged" | "held",
+	exact: { currency: string; display: string },
+	quote: FxQuote,
+): string[] {
+	const lines = [
+		`${kind === "charged" ? "Charged" : "Held"} in ${exact.currency}: ${exact.display}`,
+	];
+	if (quote.rateLabel && quote.originCurrency === exact.currency) {
+		lines.push(
+			quote.asOfLabel
+				? `Rate: ${quote.rateLabel} (locked ${quote.asOfLabel})`
+				: `Rate: ${quote.rateLabel}`,
+		);
+	}
+	if (kind === "charged") lines.push("Your bank may apply its own conversion fee.");
+	return lines;
+}
+
+/** The locked quote facts a converted charge's breakdown states, all server-composed. */
+export type ConversionQuote = Pick<
+	CheckoutFxQuote,
+	"rateLabel" | "asOfLabel" | "marginLabel" | "marginBp" | "margin"
+>;
+
+/**
+ * The sentences of a charge converted into the buyer's own currency (Decision #435): the exact charge,
+ * what the order is listed at, the locked rate and the disclosed margin. No bank caveat: the card is
+ * charged in the currency the buyer pays in, so there is nothing left for their bank to convert.
+ */
+export function conversionBreakdownLines(
+	charge: { currency: string; display: string },
+	listed: { currency: string; display: string },
+	quote: ConversionQuote,
+): string[] {
+	return [
+		`Charged in ${charge.currency}: ${charge.display}`,
+		`Listed at ${listed.display} ${listed.currency}`,
+		`Rate: ${quote.rateLabel} (locked ${quote.asOfLabel})`,
+		quote.marginBp > 0 ? `${quote.marginLabel}: ${quote.margin.display}` : quote.marginLabel,
+	];
+}
+
+/**
+ * What a converted charge was listed at, and the rate between them — the secondary statement beside the
+ * exact charge (Decision #435); `null` when the charge is not a conversion.
+ */
+export function listedReference(
+	session: Pick<CheckoutSessionContext, "buyerCharge" | "originTotals">,
+): { value: MoneyView; rateLabel: string } | null {
+	const quote = session.buyerCharge?.quote;
+	const listed = session.originTotals?.total;
+	return quote && listed ? { value: listed, rateLabel: quote.rateLabel } : null;
+}
+
+/** What a payment write states it was shown: the session's charge, and the quote it was priced on. */
+export interface ChargeWitness {
+	expectedCharge: { minor: number; currency: string } | null;
+	fxQuoteId: string | null;
+}
+
+/**
+ * The charge a write echoes back for the server to re-verify — never recomputed here. With a quote,
+ * its id travels too, so the server holds the payment to the exact price the buyer confirmed.
+ */
+export function chargeWitness(session: Pick<CheckoutSessionContext, "buyerCharge">): ChargeWitness {
+	const charge = session.buyerCharge;
+	return {
+		expectedCharge: charge ? { minor: charge.minor, currency: charge.currency } : null,
+		fxQuoteId: charge?.quote?.quoteId ?? null,
+	};
+}
 // #endregion
 
 // #region Attempt identity
@@ -444,7 +530,7 @@ export function feeDisclosure(totals: CheckoutTotals): FeeDisclosure {
  * first one's stored outcome. Comparing this string is how the surface tells those two apart.
  *
  * The total is included because a price that moved is a different purchase even when the basket did
- * not change.
+ * not change — and so is the charge, which a fresh conversion quote moves while the total stands.
  */
 export function attemptFingerprint(
 	session: CheckoutSessionContext,
@@ -467,6 +553,11 @@ export function attemptFingerprint(
 		session.promo?.valid ? session.promo.code : "-",
 		session.currency,
 		String(session.totals.total.minor),
+		session.buyerCharge
+			? `${session.buyerCharge.currency}:${session.buyerCharge.minor}:${
+				session.buyerCharge.quote?.quoteId ?? "-"
+			}`
+			: "-",
 	].join("|");
 }
 // #endregion

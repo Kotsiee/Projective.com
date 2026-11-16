@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	basisPoints,
 	currency,
+	FinanceOwnerType,
 	FundState,
 	minorUnits,
 	minorUnitsNonNeg,
@@ -104,7 +105,11 @@ export const TransactionSchema = z.object({
 	balanceAfterCents: minorUnits,
 	/** Which pot of capital the amount belongs to — stored (`finance.fund_state`), filtered and sorted on. */
 	fundState: FundState,
-	/** FX rate applied to reach {@link fxBase}, when the movement was converted; else `null`. */
+	/**
+	 * On a conversion leg or a refund of escrow a conversion funded (Decision #435): one {@link fxBase}
+	 * (the currency the payer paid in) bought this many units of the pair's other currency at
+	 * mid-market, observed {@link fxAsOf}; `null` on every other row.
+	 */
 	fxRate: z.number().nullable(),
 	fxBase: currency.nullable(),
 	fxAsOf: timestamp.nullable(),
@@ -160,9 +165,17 @@ export const EscrowSchema = z.object({
 	deadlineBonusCents: z.literal(0),
 	currency,
 	status: EscrowStatus,
+	/**
+	 * The snapshot of the conversion that funded this escrow (Decision #435), all `null` on an escrow
+	 * held from a balance already in its currency: one {@link fxBase} bought {@link fxRate} of this
+	 * escrow's currency at mid-market.
+	 */
 	fxRate: z.number().nullable(),
 	fxBase: currency.nullable(),
 	fxAsOf: timestamp.nullable(),
+	fxConversionId: uuid.nullable(),
+	/** What this escrow cost in {@link fxBase}, margin included: what a refund returns, pro rata. */
+	fxSourceMinor: minorUnitsNonNeg.nullable(),
 	createdAt: timestamp,
 	/** When it was released to the payee — what a consolidated invoice selects its period by. */
 	releasedAt: timestamp.nullable(),
@@ -222,6 +235,78 @@ export const FxSnapshotSchema = z.object({
 	fxAsOf: timestamp.nullable(),
 });
 export type FxSnapshot = z.infer<typeof FxSnapshotSchema>;
+
+/** What an FX quote prices: a basket checkout, a card escrow lock, or a funding from the wallet. */
+export const FxQuotePurpose = z.enum(["checkout", "escrow_lock", "funding"]);
+export type FxQuotePurpose = z.infer<typeof FxQuotePurpose>;
+
+/**
+ * A row of `finance.fx_quotes` (Decision #435): what {@link toMinor} of {@link toCurrency} costs in
+ * {@link fromCurrency} — the mid-market {@link principalMinor} and the margin on it, both truncated —
+ * locked until {@link expiresAt} and used at most once.
+ */
+export const FxConversionQuoteSchema = z.object({
+	id: uuid,
+	ownerType: FinanceOwnerType,
+	ownerId: uuid,
+	purpose: FxQuotePurpose,
+	refTable: z.enum(["baskets", "project_stages", "tickets", "revisions"]).nullable(),
+	refId: uuid.nullable(),
+	fromCurrency: currency,
+	toCurrency: currency,
+	toMinor: minorUnitsPositive,
+	principalMinor: minorUnitsPositive,
+	spreadBp: z.number().int().min(0).max(2000),
+	spreadMinor: minorUnitsNonNeg,
+	/** What the payer is charged: principal + margin. */
+	fromMinor: minorUnitsPositive,
+	/** The platform-base rates of both currencies (`amount_quote = amount_base × rate`). */
+	fromRate: z.number().positive(),
+	toRate: z.number().positive(),
+	/** One {@link fromCurrency} buys this many {@link toCurrency} at mid-market. */
+	midRate: z.number().positive(),
+	rateAsOf: timestamp,
+	rateProvider: z.string().max(120),
+	createdBy: uuid,
+	createdAt: timestamp,
+	expiresAt: timestamp,
+	consumedAt: timestamp.nullable(),
+});
+export type FxConversionQuote = z.infer<typeof FxConversionQuoteSchema>;
+
+/** A `purchase` executes a quote; an `unwind` returns a refunded share of escrow it funded. */
+export const FxConversionKind = z.enum(["purchase", "unwind"]);
+export type FxConversionKind = z.infer<typeof FxConversionKind>;
+
+/**
+ * A row of `finance.fx_conversions` (Decision #435), append-only. {@link rateBase} and {@link midRate}
+ * state the pair the purchase's way round on both kinds; an `unwind` has no source wallet, because
+ * its money comes out of the refunded escrow ({@link refId}).
+ */
+export const FxConversionSchema = z.object({
+	id: uuid,
+	kind: FxConversionKind,
+	quoteId: uuid.nullable(),
+	parentId: uuid.nullable(),
+	ownerType: FinanceOwnerType,
+	ownerId: uuid,
+	fromWalletId: uuid.nullable(),
+	toWalletId: uuid,
+	fromCurrency: currency,
+	toCurrency: currency,
+	fromMinor: minorUnitsPositive,
+	principalMinor: minorUnitsPositive,
+	spreadBp: z.number().int().min(0),
+	spreadMinor: minorUnitsNonNeg,
+	toMinor: minorUnitsPositive,
+	rateBase: currency,
+	midRate: z.number().positive(),
+	rateAsOf: timestamp,
+	refTable: z.string().max(80).nullable(),
+	refId: uuid.nullable(),
+	createdAt: timestamp,
+});
+export type FxConversion = z.infer<typeof FxConversionSchema>;
 // #endregion
 
 // #region Balance projection (read model)

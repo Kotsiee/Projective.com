@@ -11,8 +11,9 @@ import type { MoneyView } from "../types/checkout-types.ts";
  * RequestApprovalDialog — the checkout's "Request approval" (BP2, Decision #243): say what the order
  * is for, and file a request bound to this basket.
  *
- * The amount shown is the one the server will file — the charge in the listings' own currency, which
- * is the business wallet's — and is never sent from here: the route computes it from the lines. The
+ * The amount shown is the one the server will file — the charge, in the business's billing currency
+ * when it is converted (Decision #435), else the listings' own: the currency of the wallet the spend
+ * leaves — and is never sent from here: the route computes it from the lines. The
  * reason is what the approver reads in their queue and their notification, 1–400 characters as
  * `finance.request_spend_approval` bounds it.
  *

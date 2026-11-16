@@ -105,10 +105,10 @@ export interface UserShellProps {
 	 * distraction-free mode for a linear, committing flow (checkout's Details and Payment steps).
 	 *
 	 * In `focus` the shell renders **no global sidebar, no lane, no search and no utility bar** — the
-	 * header keeps only the brand mark. It does not "hide" them: they are not constructed, so they
-	 * cost no grid track and take no part in the frame-inset accumulator. The middle-nav frame still
-	 * renders when a {@link middleNavHeader} is supplied, which is how the checkout stepper spans the
-	 * top of the canvas with nothing beside it.
+	 * header keeps the brand mark and, in its centre, the route's {@link focusTrail}. It does not
+	 * "hide" them: they are not constructed, so they cost no grid track and take no part in the
+	 * frame-inset accumulator. The middle-nav frame still renders when a band is supplied; with none,
+	 * the canvas nests directly in the shell.
 	 *
 	 * The mode is resolved per-URL by a slot resolver in the layout, exactly like the lane and the
 	 * bands — so it paints correctly in the first byte with no client flash.
@@ -117,6 +117,12 @@ export interface UserShellProps {
 	 * (j)): everything `focus` withholds, plus the top bar and both bands — only the canvas renders.
 	 */
 	chrome?: ShellChrome;
+	/**
+	 * What the top bar's centre carries in `focus` chrome, in place of the search — the checkout's step
+	 * trail on its two focus steps (§D.6). Resolved per URL by the layout, like the bands; ignored in
+	 * every other chrome.
+	 */
+	focusTrail?: ComponentChildren;
 	/**
 	 * Optional site footer for the page — the marketing `PublicFooter` on the public surfaces a
 	 * signed-in visitor can still reach (`/`, `/explore`, `/view/[id]`, `/[handle]`, the help centre and
@@ -179,6 +185,7 @@ export function UserShell(
 		middleNavPanel,
 		middleNavPanelDock,
 		chrome = "full",
+		focusTrail,
 		pageFooter,
 		children,
 	}: UserShellProps,
@@ -189,8 +196,8 @@ export function UserShell(
 	const focus = chrome === "focus" || bare;
 	const canvas = <PageCanvas footer={focus ? null : pageFooter}>{children}</PageCanvas>;
 	// In focus mode every navigational exit is withheld, so the lane is not constructed at all — but
-	// the middle-nav FRAME still renders whenever a band was registered, because the checkout stepper
-	// lives in the header band and must span the canvas with no lane beside it. The frame's grid is
+	// the middle-nav FRAME still renders whenever a band was registered, so a focus route that does
+	// register one keeps it spanning the canvas with no lane beside it. The frame's grid is
 	// `auto minmax(0, 1fr)`, so an absent lane resolves column 1 to 0px and the bands simply start at
 	// the frame's inline edge (measured: `0px 1265px`, header flush at x=0, zero overflow).
 	const activeLane = focus ? undefined : lane;
@@ -204,7 +211,7 @@ export function UserShell(
 				// The first Tab stop on every signed-in page: past the top bar, the rail and the lane.
 				skipTo={PAGE_CANVAS_MAIN_ID}
 				brand={<BrandMark />}
-				search={showSearch && !focus ? <NavSearchBar /> : undefined}
+				search={focus ? focusTrail : showSearch ? <NavSearchBar /> : undefined}
 				utilityBar={focus
 					? null
 					: (

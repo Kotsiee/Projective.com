@@ -265,7 +265,12 @@ export type { AvatarStackPerson, AvatarStackProps } from "./components/AvatarSta
 export { Chip } from "./components/Chip.tsx";
 export type { ChipProps } from "./components/Chip.tsx";
 export { MoneyView } from "./components/MoneyView.tsx";
-export type { MoneySize, MoneyTone, MoneyViewProps } from "./components/MoneyView.tsx";
+export type {
+	MoneyReference,
+	MoneySize,
+	MoneyTone,
+	MoneyViewProps,
+} from "./components/MoneyView.tsx";
 export {
 	BASE_CURRENCY,
 	BASE_LOCALE,
@@ -301,6 +306,8 @@ export type {
 	PaymentCardOptionProps,
 	PaymentCardProps,
 	PaymentCardSize,
+	PaymentCardVariant,
+	PaymentCardWalletFace,
 } from "./components/PaymentCard.tsx";
 export { List } from "./components/List.tsx";
 export type { ListOrder, ListProps } from "./components/List.tsx";

@@ -8,6 +8,7 @@ import {
 	type CheckoutSessionContext,
 	type CreateCheckout,
 	formatMoney,
+	type FxConversionQuote,
 	type MoneyView,
 	type SavedCard,
 	type SpendLimitBlock,
@@ -24,6 +25,7 @@ import {
 import type { BasketQuery } from "./basket-query.ts";
 import { type MoneyProjector, projectorFor } from "./commerce-money.ts";
 import { payingWallets, type ResolvedOwner } from "./commerce-owner.ts";
+import type { QuoteLock, QuoteRequest } from "./fx-quotes.ts";
 import { type BasketView, PROMO_NOT_APPLICABLE, promoExcludedLine } from "./live-basket.ts";
 import { PROCESSOR_ANSWERS } from "./PaymentBackendService.ts";
 
@@ -149,6 +151,12 @@ interface World {
 		replayed: boolean;
 	};
 	chargeCard?: CheckoutIo["chargeCard"];
+	/** The buyer's billing currency (default GBP). */
+	billing?: string;
+	/** What the conversion door answers; absent, paying in the billing currency is not offered. */
+	lock?: (request: QuoteRequest) => QuoteLock;
+	/** The quotes a `create` can read back by id. */
+	quotes?: FxConversionQuote[];
 }
 
 /** What a test's checkout did: each read of the basket, each standing asked for, each money call. */
@@ -157,6 +165,7 @@ interface Spy {
 	standings: string[];
 	charges: Parameters<CheckoutIo["chargeCard"]>[0][];
 	orders: { door: string; args: Record<string, unknown> }[];
+	locks: QuoteRequest[];
 }
 
 /** USD per GBP, read at the moment each basket read is made — a test moves it to move the rate. */
@@ -335,7 +344,8 @@ function handoff(
 
 /** Run `run` against a checkout reading `world`, every read and write faked; the live I/O comes back after. */
 async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Promise<void> {
-	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [] };
+	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [], locks: [] };
+	const buyer = { ...BUYER, billingCurrency: world.billing ?? "GBP" };
 	setCheckoutIoForTesting({
 		readBasket: (query) => {
 			spy.reads++;
@@ -362,8 +372,13 @@ async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Pro
 			spy.standings.push(currency);
 			return Promise.resolve(null);
 		},
-		details: () =>
-			Promise.resolve({ buyer: BUYER, billingContexts: [], invoicing: BUYER.invoicing }),
+		details: () => Promise.resolve({ buyer, billingContexts: [], invoicing: buyer.invoicing }),
+		lockQuote: (_actor, request) => {
+			spy.locks.push(request);
+			return Promise.resolve(world.lock?.(request) ?? { ok: false, reason: null });
+		},
+		readQuote: (_actor, id) =>
+			Promise.resolve(world.quotes?.find((quote) => quote.id === id) ?? null),
 		spendLimit: () => Promise.resolve(ALLOWED),
 		spendPosition: () => Promise.resolve({ spendLimit: ALLOWED, businessAccount: null }),
 		placedOrder: () => Promise.resolve(world.prior ?? null),
@@ -435,15 +450,16 @@ Deno.test("C8: a moved rate moves the display total, not the charge, and the cha
 	const world: World = { lines: [product("line-usd", 5_000, "USD")] };
 	await withCheckout(world, async (spy) => {
 		const before = await sessionOf();
-		assertEquals([before.charge?.minor, before.charge?.currency, before.totals.total.minor], [
-			5_000,
-			"USD",
-			4_000,
-		]);
+		assertEquals([
+			before.buyerCharge?.minor,
+			before.buyerCharge?.currency,
+			before.buyerCharge?.quote,
+			before.totals.total.minor,
+		], [5_000, "USD", null, 4_000]);
 		usdPerGbp = 1.4;
 		const after = await sessionOf();
 		assert(after.totals.total.minor !== before.totals.total.minor, "the display total moved");
-		assertEquals(after.charge?.minor, before.charge?.minor);
+		assertEquals(after.buyerCharge?.minor, before.buyerCharge?.minor);
 
 		const result = await create(
 			payFor(world, { expectedCharge: { minor: 5_000, currency: "USD" } }),
@@ -506,7 +522,7 @@ Deno.test("promo mismatch: a code that changed while the buyer paid is refused, 
 	const world: World = { lines: [product("line-gbp", 5_000)], promoCode: "SAVE10" };
 	await withCheckout(world, async (spy) => {
 		const session = await sessionOf();
-		assertEquals([session.promo?.valid, session.charge?.minor], [true, 4_500]);
+		assertEquals([session.promo?.valid, session.buyerCharge?.minor], [true, 4_500]);
 		const expectedCharge = { minor: 4_500, currency: "GBP" };
 
 		const dropped = await create(payFor(world, { expectedCharge, promoCode: null }));
@@ -625,7 +641,7 @@ Deno.test("lines in two currencies are refused by the session's blockers, before
 	const world: World = { lines: [product("line-gbp", 4_000), product("line-usd", 5_000, "USD")] };
 	await withCheckout(world, async (spy) => {
 		const session = await sessionOf();
-		assertEquals(session.charge, null);
+		assertEquals([session.buyerCharge, session.originTotals, session.payIn], [null, null, null]);
 		assertEquals(session.blockers.map((b) => b.code), ["no_provider"]);
 		assertStringIncludes(session.blockers[0].message, "mixes currencies");
 
@@ -711,6 +727,204 @@ Deno.test("checkoutPayment: a simulation never hides a real refusal", async () =
 			expectedCharge: { minor: 4_000, currency: "GBP" },
 		});
 		assertEquals((await create(stale, { payment: "declined" })).blockers[0]?.code, "price_changed");
+	});
+});
+// #endregion
+
+// #region Paying in one's own currency (Decision #435)
+const QUOTE_ID = "7b4e2f10-9c3d-4a5b-8e6f-1a2b3c4d5e6f";
+
+/** A GBP buyer's quote for a US$50.00 order at 1 GBP = 1.25 USD with a 1.5% margin: £40.00 + £0.60. */
+function usdQuote(over: Partial<FxConversionQuote> = {}): FxConversionQuote {
+	return {
+		id: QUOTE_ID,
+		ownerType: "user",
+		ownerId: OWNER,
+		purpose: "checkout",
+		refTable: "baskets",
+		refId: BASKET,
+		fromCurrency: "GBP",
+		toCurrency: "USD",
+		toMinor: 5_000,
+		principalMinor: 4_000,
+		spreadBp: 150,
+		spreadMinor: 60,
+		fromMinor: 4_060,
+		fromRate: 1,
+		toRate: 1.25,
+		midRate: 1.25,
+		rateAsOf: "2026-10-31T00:00:00.000Z",
+		rateProvider: "seed",
+		createdBy: OWNER,
+		createdAt: "2026-11-16T10:00:00.000Z",
+		expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+		consumedAt: null,
+		...over,
+	};
+}
+
+const usdOrder = (over: Partial<World> = {}): World => ({
+	lines: [product("line-usd", 5_000, "USD")],
+	lock: () => ({ ok: true, quote: usdQuote() }),
+	quotes: [usdQuote()],
+	...over,
+});
+
+Deno.test("#435: a GBP buyer is charged the quote in GBP, with the order listed in USD beside it", async () => {
+	await withCheckout(usdOrder(), async (spy) => {
+		const session = await sessionOf();
+		assertEquals(
+			[
+				session.buyerCharge?.minor,
+				session.buyerCharge?.currency,
+				session.buyerCharge?.quote?.quoteId,
+			],
+			[4_060, "GBP", QUOTE_ID],
+		);
+		assertEquals([session.originTotals?.currency, session.originTotals?.total.minor], [
+			"USD",
+			5_000,
+		]);
+		assertEquals(session.payIn, {
+			selected: "GBP",
+			billing: "GBP",
+			order: "USD",
+			conversion: true,
+			reason: null,
+		});
+		assertEquals(session.buyerCharge?.quote?.rateLabel, "1 GBP = 1.25 USD");
+		assertEquals(session.buyerCharge?.quote?.marginLabel, "1.5% conversion margin");
+		assertEquals(session.buyerCharge?.quote?.margin.minor, 60);
+		assertEquals(
+			spy.locks.map((
+				r,
+			) => [r.fromCurrency, r.toCurrency, r.toMinor, r.purpose, r.refTable, r.refId]),
+			[
+				["GBP", "USD", 5_000, "checkout", "baskets", BASKET],
+			],
+		);
+		assertEquals(spy.standings, ["GBP"], "the on-account standing is read in the currency charged");
+	});
+});
+
+Deno.test("#435: ?pay_in= the order's currency charges the listing price, with the conversion still on offer", async () => {
+	await withCheckout(usdOrder(), async () => {
+		const read = await CheckoutBackendService.session({ payIn: "usd" }, ACTOR);
+		assert(read.ok && read.data);
+		const session = read.data.session;
+		assertEquals([
+			session.buyerCharge?.minor,
+			session.buyerCharge?.currency,
+			session.buyerCharge?.quote,
+		], [
+			5_000,
+			"USD",
+			null,
+		]);
+		assertEquals([session.payIn?.selected, session.payIn?.conversion], ["USD", true]);
+	});
+});
+
+Deno.test("#435: a refused quote leaves the order's currency, with the door's reason or none", async () => {
+	const stale = "Today's exchange rate isn't in yet.";
+	await withCheckout(usdOrder({ lock: () => ({ ok: false, reason: stale }) }), async () => {
+		const session = await sessionOf();
+		assertEquals([session.buyerCharge?.currency, session.buyerCharge?.quote], ["USD", null]);
+		assertEquals([session.payIn?.conversion, session.payIn?.reason], [false, stale]);
+	});
+	await withCheckout(usdOrder({ lock: undefined }), async () => {
+		const session = await sessionOf();
+		assertEquals([session.payIn?.conversion, session.payIn?.reason], [false, null]);
+	});
+});
+
+Deno.test("#435: a same-currency order asks for no quote", async () => {
+	await withCheckout(usdOrder({ lines: [product("line-gbp", 4_000)] }), async (spy) => {
+		const session = await sessionOf();
+		assertEquals([session.buyerCharge?.currency, session.buyerCharge?.quote], ["GBP", null]);
+		assertEquals(session.payIn?.conversion, false);
+		assertEquals(spy.locks.length, 0);
+	});
+});
+
+Deno.test("#435: a wallet payment on the quote names it, and the order is held to its USD total", async () => {
+	const world = usdOrder();
+	await withCheckout(world, async (spy) => {
+		const result = await create(payFor(world, {
+			expectedCharge: { minor: 4_060, currency: "GBP" },
+			fxQuoteId: QUOTE_ID,
+		}));
+		assertEquals(result.status, "succeeded");
+		assertEquals(
+			spy.orders.map((
+				{ door, args },
+			) => [door, args.p_currency, args.p_expected_minor, args.p_fx_quote_id]),
+			[["place_wallet_order", "USD", 5_000, QUOTE_ID]],
+		);
+	});
+});
+
+Deno.test("#435: a card payment on the quote charges the GBP figure and binds the quote to the order", async () => {
+	const world = usdOrder({ cards: [card("card-a")] });
+	await withCheckout(world, async (spy) => {
+		const result = await create(payFor(world, {
+			provider: "card",
+			cardId: "card-a",
+			expectedCharge: { minor: 4_060, currency: "GBP" },
+			fxQuoteId: QUOTE_ID,
+		}));
+		assertEquals(result.status, "requires_action");
+		assertEquals(
+			spy.charges.map((
+				c,
+			) => [c.amountMinor, c.currency, c.checkout?.currency, c.checkout?.fxQuoteId]),
+			[[4_060, "GBP", "USD", QUOTE_ID]],
+		);
+	});
+});
+
+Deno.test("#435: an expired, used or foreign quote is quote_expired, and nothing is charged", async () => {
+	const past = new Date(Date.now() - 1_000).toISOString();
+	for (
+		const quote of [
+			usdQuote({ expiresAt: past }),
+			usdQuote({ consumedAt: "2026-11-16T10:05:00.000Z" }),
+			usdQuote({ refId: "0f0e0d0c-0b0a-4908-8706-050403020100" }),
+			usdQuote({ purpose: "funding" }),
+		]
+	) {
+		const world = usdOrder({ quotes: [quote] });
+		await withCheckout(world, async (spy) => {
+			const result = await create(payFor(world, {
+				expectedCharge: { minor: 4_060, currency: "GBP" },
+				fxQuoteId: QUOTE_ID,
+			}));
+			assertEquals([result.status, result.blockers.map((b) => b.code)], ["failed", [
+				"quote_expired",
+			]]);
+			assertEquals([spy.orders.length, spy.charges.length], [0, 0]);
+		});
+	}
+});
+
+Deno.test("#435: a quote for a total that has since moved is price_changed; the listing figure is not the charge", async () => {
+	const moved = usdOrder({ quotes: [usdQuote({ toMinor: 4_800 })] });
+	await withCheckout(moved, async (spy) => {
+		const result = await create(payFor(moved, {
+			expectedCharge: { minor: 4_060, currency: "GBP" },
+			fxQuoteId: QUOTE_ID,
+		}));
+		assertEquals(result.blockers[0]?.code, "price_changed");
+		assertEquals(spy.orders.length, 0);
+	});
+	const world = usdOrder();
+	await withCheckout(world, async (spy) => {
+		const result = await create(payFor(world, {
+			expectedCharge: { minor: 5_000, currency: "USD" },
+			fxQuoteId: QUOTE_ID,
+		}));
+		assertEquals(result.blockers[0]?.code, "price_changed");
+		assertEquals(spy.orders.length, 0);
 	});
 });
 // #endregion

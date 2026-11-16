@@ -22,12 +22,13 @@ import type { MoneyView, ProviderAvailability } from "../types/checkout-types.ts
  * ## Deferred intent: the sheet shows the CHARGE
  *
  * The Element is mounted before any PaymentIntent exists (`mode: "payment"`, `amount`, `currency`),
- * and its amount is the session's `charge` — the order total in the listings' own currency, which is
- * what the processor actually takes. The wallet sheet is where the buyer agrees to that amount, so the
- * Element must show the figure that will be charged, not a converted display total. On `confirm`:
+ * and its amount is the session's `buyerCharge` — the order total in the buyer's own currency through
+ * the locked quote, or in the listings' own (Decision #435) — which is what the processor actually
+ * takes. The wallet sheet is where the buyer agrees to that amount, so the Element must show the figure
+ * that will be charged, not a converted display total. On `confirm`:
  *
  * 1. `elements.submit()` — the sheet's details are validated.
- * 2. `begin()` — the server re-prices the purchase and opens the PaymentIntent for the SAME `charge`
+ * 2. `begin()` — the server re-prices the purchase and opens the PaymentIntent for the SAME charge
  *    (`CheckoutBackendService.create` with provider `express`); a refusal is reported back to the
  *    sheet with `paymentFailed` and in words on the page.
  * 3. `stripe.confirmPayment({ redirect: "if_required" })` — device wallets confirm in place; a
@@ -51,7 +52,7 @@ export type ExpressStart =
 export interface ExpressCheckoutElementProps {
 	/** The server's offer for the `express` route; absent → no express region at all. */
 	offer: ProviderAvailability | undefined;
-	/** The amount the sheet shows and the processor takes — the session's `charge`. */
+	/** The amount the sheet shows and the processor takes — the session's `buyerCharge`. */
 	charge: MoneyView | null;
 	/** Something unrelated to the route blocks payment (a basket or details blocker). */
 	blocked: boolean;
@@ -164,7 +165,7 @@ export function ExpressCheckoutElement(props: ExpressCheckoutElementProps): JSX.
 	const reason = !offer.available
 		? offer.reason ?? "Express checkout isn't available for this account."
 		: blocked
-		? "Sort out the item above first — an express payment can't clear it."
+		? "Express checkout opens once nothing is stopping this order."
 		: charge === null
 		? "This basket mixes currencies, so it can't be paid in one express payment."
 		: null;
@@ -193,6 +194,11 @@ export function ExpressCheckoutElement(props: ExpressCheckoutElementProps): JSX.
 						)}
 						{state.value === "failed" && <p class="cko-xpay__reason" role="status">{LOAD_FAILED}
 						</p>}
+						{state.value !== "none" && state.value !== "failed" && (
+							<p class="cko-xpay__or">
+								<span class="cko-xpay__or-word">Or</span>
+							</p>
+						)}
 					</>
 				)}
 		</section>

@@ -280,11 +280,12 @@ export function StatusMark(
 
 // #region Price origin
 /**
- * The creator's original currency, shown BENEATH a converted headline figure.
+ * The creator's original currency, shown BENEATH a converted headline figure, in the checkout's own
+ * words — `Listed at €90.00 EUR`, the reference a converted charge is stated beside (Decision #435).
  *
  * **It renders nothing when the viewer is already reading in that currency.** That guard is the whole
  * component: without it the line printed unconditionally, so a viewer whose display currency matched
- * the listing saw the same amount twice — the second time prefixed "Orig.", which reads as a
+ * the listing saw the same amount twice — the second time prefixed "Listed at", which reads as a
  * conversion that did not happen and invites the question of why two identical numbers disagree about
  * being the same. `MoneyView` has exactly this guard internally and it was bypassed by hand-rolling
  * the line.
@@ -306,7 +307,7 @@ export function PriceOrigin(
 	if (!viewing || viewing === origin) return null;
 	return (
 		<span class={cls}>
-			Orig. {formatMoney(minor, origin, displayLocale.value || "en-GB")} {origin}
+			Listed at {formatMoney(minor, origin, displayLocale.value || "en-GB")} {origin}
 		</span>
 	);
 }

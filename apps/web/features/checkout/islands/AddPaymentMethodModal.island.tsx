@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import type { Signal } from "@preact/signals";
+import type { ReadonlySignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/checkout.css";
 import "../styles/checkout-payment.css";
@@ -59,8 +59,10 @@ type MethodTab = "card" | "bank";
 
 /** Props for {@link AddPaymentMethodModal}. */
 export interface AddPaymentMethodModalProps {
-	/** Controlled visibility, so the payment screen owns when it opens. */
-	open: Signal<boolean>;
+	/** Controlled visibility — a plain signal, or a modal-stack frame's (`createModalStack`). */
+	open: ReadonlySignal<boolean>;
+	/** Called for every dismissal — Cancel, Escape, the backdrop, and after a card is saved. */
+	onClose: () => void;
 	/** The account paying — the card is saved to IT. */
 	owner: Pick<CheckoutOwner, "ownerType" | "ownerId">;
 	/** Whether cards can be saved in this environment (the server's answer, from the session). */
@@ -174,9 +176,7 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 		? cardGate
 		: "Bank mandates are set up with the finance team, so this can't be completed here yet.";
 
-	const close = () => {
-		open.value = false;
-	};
+	const close = () => props.onClose();
 
 	/**
 	 * Stripe confirmed the card; the server re-reads the SetupIntent and records it, and the new card
@@ -251,6 +251,9 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 	return (
 		<Dialog
 			visible={open}
+			onVisibleChange={(next) => {
+				if (!next) close();
+			}}
 			modal
 			class="cko-addpm"
 			header="Add a payment method"

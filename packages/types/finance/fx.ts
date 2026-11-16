@@ -304,3 +304,104 @@ export function convertMinorUnits(
 	return Math.round(major * rate * 10 ** toExponent);
 }
 // #endregion
+
+// #region Settlement and conversion (Decision #435)
+/**
+ * The currencies money settles in on the GB platform (Decision #423 (B)): a conversion is quoted only
+ * between two of these, and a buyer is billed in one of them. AED, INR and NGN stay display-only.
+ * Mirrors `security.platform_params.settlement_currencies`.
+ */
+export const SETTLEMENT_CURRENCIES: readonly string[] = Object.freeze([
+	"GBP",
+	"USD",
+	"EUR",
+	"CAD",
+	"AUD",
+	"JPY",
+	"SGD",
+	"CHF",
+	"ZAR",
+]);
+
+/** Whether Projective settles money in `code`. */
+export function isSettlementCurrency(code: string | null | undefined): boolean {
+	return !!code && SETTLEMENT_CURRENCIES.includes(code.trim().toUpperCase());
+}
+
+/**
+ * The currency a billing country pays in (Decision #435 (B), ruling M5 (b)): the country's own currency
+ * when Projective settles it, else the platform base. A display preference never decides it.
+ */
+export function currencyForCountry(country: string | null | undefined): string {
+	const own = displayCurrencyForRegion(country);
+	return own && isSettlementCurrency(own) ? own : PLATFORM_BASE_CURRENCY;
+}
+
+/** The scale of a stored rate: `numeric(20, 10)`, ten decimal places. */
+const RATE_SCALE = 10_000_000_000n;
+
+/**
+ * A rate as an exact integer scaled by 10¹⁰, from the decimal string or number the database returned.
+ * Refuses anything that is not a positive decimal with at most ten places.
+ */
+export function parseFixedRate(rate: string | number): bigint {
+	const text = typeof rate === "number" ? rate.toFixed(10) : rate.trim();
+	const match = /^(\d+)(?:\.(\d{1,10}))?$/.exec(text);
+	if (!match) throw new RangeError(`Not a stored exchange rate: ${String(rate)}`);
+	const scaled = BigInt(match[1]) * RATE_SCALE + BigInt((match[2] ?? "").padEnd(10, "0"));
+	if (scaled <= 0n) throw new RangeError(`An exchange rate must be positive: ${String(rate)}`);
+	return scaled;
+}
+
+/** What a conversion quote charges, in the payer's currency's minor units. */
+export interface ConversionCharge {
+	/** The mid-market cost of the delivered amount, truncated. */
+	principalMinor: number;
+	/** The margin on {@link principalMinor}, truncated (Decision #187). */
+	spreadMinor: number;
+	/** What the payer is charged: principal + margin. */
+	fromMinor: number;
+}
+
+/**
+ * The price of `toMinor` in the payer's currency — the exact mirror of `finance.fn_fx_quote_minor`.
+ * `fromRate` and `toRate` are the two currencies' platform-base rates (`amount_quote = amount_base ×
+ * rate`); the arithmetic is integer throughout, so this and the database never differ in the last
+ * minor unit (pinned by `supabase/probes/fx_rounding_parity.sql`'s vectors).
+ */
+export function quoteConversionMinor(input: {
+	toMinor: number;
+	fromRate: string | number;
+	toRate: string | number;
+	fromExponent: number;
+	toExponent: number;
+	spreadBp: number;
+}): ConversionCharge {
+	const principal =
+		(BigInt(input.toMinor) * parseFixedRate(input.fromRate) * 10n ** BigInt(input.fromExponent)) /
+		(parseFixedRate(input.toRate) * 10n ** BigInt(input.toExponent));
+	const spread = (principal * BigInt(Math.max(Math.trunc(input.spreadBp), 0))) / 10_000n;
+	return {
+		principalMinor: Number(principal),
+		spreadMinor: Number(spread),
+		fromMinor: Number(principal + spread),
+	};
+}
+
+/**
+ * What a refund of `refundMinor` of an escrow of `escrowMinor` returns to a payer it cost `sourceMinor`
+ * of their own currency (Decision #435 (D)) — the mirror of `finance.fn_fx_refund_minor`: a whole
+ * refund returns exactly what was paid, a part its share rounded up, never more than was paid.
+ */
+export function pinnedRefundMinor(
+	refundMinor: number,
+	escrowMinor: number,
+	sourceMinor: number,
+): number {
+	if (refundMinor <= 0 || escrowMinor <= 0 || sourceMinor <= 0) return 0;
+	if (refundMinor >= escrowMinor) return sourceMinor;
+	const share = (BigInt(refundMinor) * BigInt(sourceMinor) + BigInt(escrowMinor) - 1n) /
+		BigInt(escrowMinor);
+	return Math.min(sourceMinor, Number(share));
+}
+// #endregion

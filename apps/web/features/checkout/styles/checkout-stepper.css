@@ -1,5 +1,6 @@
 /*
- * CheckoutStepper — the four-step trail in the middle-nav header band.
+ * CheckoutStepper — the four-step trail: in the middle-nav header band on the basket and confirmation
+ * steps, and in the shell top bar's centre on the two focus steps.
  *
  * `Basket › Details › Payment › Confirmation`, as plain labels separated by a chevron. The design
  * carries the active step with ink and weight alone: no numbered markers, no check glyph, no
@@ -157,8 +158,45 @@ a.cko-stepper__step:focus-visible {
 	}
 }
 
+.cko-trail {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 0;
+}
+
+@media (max-width: 767px) {
+	.cko-trail {
+		justify-content: flex-start;
+	}
+
+	.cko-trail .cko-stepper__step {
+		font-size: var(--text-sm);
+	}
+
+	.cko-trail .cko-stepper__item + .cko-stepper__item::before {
+		margin-inline: var(--space-2);
+		inline-size: 0.32rem;
+		block-size: 0.32rem;
+	}
+}
+
+@media (max-width: 399px) {
+	.cko-trail .cko-stepper__step {
+		font-size: var(--text-xs);
+	}
+
+	.cko-trail .cko-stepper__item + .cko-stepper__item::before {
+		margin-inline: var(--space-1);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.cko-stepper__step {
 		transition: none;
 	}
+}
+
+:root[data-motion="reduced"] .cko-stepper__step {
+	transition: none;
 }

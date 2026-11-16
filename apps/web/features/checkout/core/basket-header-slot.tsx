@@ -1,12 +1,20 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import CheckoutStepperBand from "../islands/CheckoutStepperBand.island.tsx";
-import { checkoutStepOf, isCheckoutPath } from "./basket-model.ts";
+import {
+	carriedParams,
+	checkoutStepOf,
+	isCheckoutPath,
+	isFocusStep,
+	preselectFrom,
+} from "./basket-model.ts";
 import { resolveCheckoutSession } from "./checkout-ssr.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
- * basket-header-slot — the middle-nav HEADER band on **every** checkout route, all four steps.
+ * basket-header-slot — the middle-nav HEADER band on the checkout's two full-chrome steps (basket,
+ * confirmation). The two focus steps register no band: their trail rides the shell top bar instead
+ * (`checkoutTrailFor`, DESIGN_SYSTEM §D.6), so the frame gives the step its 48px back.
  *
  * The band answers identity, progress and currency, and — below 767px, where the lane is removed — it
  * inherits the lane's scope duty. That inheritance is why it resolves the account's baskets even on a
@@ -31,6 +39,8 @@ export async function basketHeaderFor(
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
 	if (!isCheckoutPath(url.pathname)) return null;
+	const step = checkoutStepOf(url.pathname);
+	if (isFocusStep(step)) return null;
 
 	const { session, baskets, owner, display } = await resolveCheckoutSession(context, url, actor);
 	const basketId = session.basketId || null;
@@ -42,7 +52,7 @@ export async function basketHeaderFor(
 
 	return (
 		<CheckoutStepperBand
-			step={checkoutStepOf(url.pathname)}
+			step={step}
 			owner={session.owner}
 			ownerParam={owner}
 			basketName={active?.name ?? "Basket"}
@@ -50,6 +60,8 @@ export async function basketHeaderFor(
 			baskets={baskets}
 			display={display}
 			orderId={url.searchParams.get("order")}
+			preselect={preselectFrom(url.searchParams)}
+			carry={carriedParams(url.searchParams)}
 		/>
 	);
 }

@@ -71,7 +71,7 @@ export interface BusinessGateView {
 /** The session facts a gate reads. */
 export type GateSession = Pick<
 	CheckoutSessionContext,
-	"owner" | "wallet" | "spendLimit" | "businessAccount" | "blockers" | "totals" | "charge"
+	"owner" | "wallet" | "spendLimit" | "businessAccount" | "blockers" | "totals" | "buyerCharge"
 >;
 
 /** Props-like input for {@link businessGateOf}. */
@@ -255,7 +255,7 @@ export function businessGateOf(input: BusinessGateInput): BusinessGateView | nul
 			kind: spend,
 			icon: "shield",
 			sentence: copy.sentence(ctx),
-			meta: historyOf(request, (session.charge ?? session.totals.total).display),
+			meta: historyOf(request, (session.buyerCharge ?? session.totals.total).display),
 			action: canRequest
 				? { type: "request", label: copy.action?.(ctx) ?? "Request approval" }
 				: null,

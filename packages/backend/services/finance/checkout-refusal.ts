@@ -67,6 +67,18 @@ const PC409_COPY: Readonly<Record<Pc409Refusal, string>> = {
 export function pc409Blocker(refusal: Pc409Refusal): CheckoutBlocker {
 	return { code: refusal, message: PC409_COPY[refusal], itemId: null };
 }
+
+/**
+ * The PC409 refusals of a conversion quote (Decision #435) — expired, already used, or not this order's
+ * — each the `quote_expired` blocker, on which the page re-quotes and the buyer confirms the new total.
+ */
+const QUOTE_REFUSALS: ReadonlySet<string> = new Set([
+	"quote_expired",
+	"quote_used",
+	"quote_invalid",
+]);
+const QUOTE_COPY =
+	"The exchange rate for this payment has been refreshed. Review the new total, then pay.";
 // #endregion
 
 // #region Mapping
@@ -167,6 +179,9 @@ export function refusalBlocker(
 	const prefix = error.code === "PC409" ? prefixOf(error.message) : null;
 	if (prefix !== null && Object.hasOwn(PC409_COPY, prefix)) {
 		return pc409Blocker(prefix as Pc409Refusal);
+	}
+	if (prefix !== null && QUOTE_REFUSALS.has(prefix)) {
+		return { code: "quote_expired", message: QUOTE_COPY, itemId: null };
 	}
 	const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? fallback;
 	return code ? orderRefusal(code, error, basketId, ownerType) : null;

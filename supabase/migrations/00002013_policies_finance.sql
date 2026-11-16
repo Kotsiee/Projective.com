@@ -213,6 +213,12 @@ SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
 CREATE POLICY "View visible wallet ledger" ON finance.transactions FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 
+CREATE POLICY "View own FX quotes" ON finance.fx_quotes FOR
+SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
+
+CREATE POLICY "View own FX conversions" ON finance.fx_conversions FOR
+SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
+
 CREATE POLICY "View visible payouts" ON finance.payouts FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 

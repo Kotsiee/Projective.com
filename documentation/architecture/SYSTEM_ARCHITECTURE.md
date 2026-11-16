@@ -1869,8 +1869,10 @@ returns `text/calendar; charset=utf-8` with a `content-disposition: attachment` 
 `platformFeeFor` → `checkoutTotals`, executed by the fat service, which wraps integer minor units into
 `MoneyView`s the client only renders. No `toFixed`, no `Intl.NumberFormat` and no `reduce`-over-prices
 in any island. `create()` is idempotent on its `idempotencyKey` and **re-verifies `expectedCharge`** —
-the session's `charge`, the order total in the listings' own currency, amount and currency — against a
-freshly computed charge, so a client-supplied figure is never accepted on trust; the display total is
+the session's `buyerCharge`, amount and currency: the order total in the listings' own currency, or
+its price in the buyer's billing currency through the locked quote the request names (`fxQuoteId`,
+Decision #435; a quote that ran out, was used or is not this basket's is refused `quote_expired`) —
+against a freshly computed charge, so a client-supplied figure is never accepted on trust; the display total is
 never part of that check, because a rate that moved changes what the buyer reads, not what they pay
 (FINANCE_AUDIT C8), and a page that sends no `expectedCharge` is refused `price_changed` and told to
 reload. Every refusal — a promo beside a ticket, revision, seat or session line (`promo_not_applicable`,
@@ -3029,9 +3031,10 @@ than one that is merely stale.
 | :--------------- | :----------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Rates            | `finance.fx_rates` (+ a seeded floor, both directions)       | Append-only observations. `FxService` is the only reader, as `anon` (public reference data). It reads only the rows quoted against the platform base (GBP), so the seeded inverse pairs are never read (FA (s)). |
 | Engine           | `@server/services/finance/FxService.ts`                      | One GBP-based table, re-based for any other base by one division through the pivot (`rebase`), cached 15 min in **Deno KV** with a per-isolate memory fallback. There are no fixtures: `fx-fixtures.ts` is deleted (FA (s)). `convertAmount()` returns the value **and** its `asOf` snapshot instant. Never throws; an unresolvable pair returns the ORIGIN unchanged. |
-| Preference       | `org.user_preferences.preferred_display_currency` / `locale` | Stamped into the JWT by `custom_access_token_hook`; a guest's choice rides the `pj.currency` cookie so SSR can read it. `PATCH /api/user/preferences` writes it under RLS.  |
+| Preference       | `org.user_preferences.preferred_display_currency` / `locale` | Stamped into the JWT by `custom_access_token_hook`; a guest's choice rides the `pj.currency` cookie so SSR can read it. A first-visit guest with no cookie is priced in the currency of the first `Accept-Language` tag that names a region (`acceptLanguageTags` → `preferenceHints`; a bare language never picks one), then GBP (`resolveCurrencyContext`, Decision #433). Sign-up seeds the same hint from `navigator.languages`. `PATCH /api/user/preferences` writes it under RLS.  |
+| Billing currency | `billingCurrencyOf` · `currencyForCountry` (`@projective/types/finance`) | The currency a buyer is CHARGED in (Decision #435): the billing country's, clamped to the nine settlement currencies, else GBP. Never the display preference (ruling M5 (b)); a conversion quote bridges it to the order's currency (`finance.quote_fx_conversion`). |
 | Request scope    | `apps/web/utils/currency-context.ts`                         | Resolves the request's `(currency, locale, table)` and carries it through the whole render via `AsyncLocalStorage`.                                                        |
-| Presentation     | `@projective/ui/display` `MoneyView`                         | Renders it. Formats with `Intl.NumberFormat` on the viewer's locale; discloses the origin inline when the currencies differ.                                               |
+| Presentation     | `@projective/ui/display` `MoneyView`                         | Renders it. Formats with `Intl.NumberFormat` on the viewer's locale; discloses the origin inline when the currencies differ. A charge is `exact`: printed as given, never converted or swept, with what it was listed at as its `reference` (Decision #435). |
 
 **Why `AsyncLocalStorage` and not a context provider or a module signal.** Both alternatives were
 tried and measured. A Preact context provider at the document root is **not** visible to a server
@@ -3458,13 +3461,24 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
   card is charged in place — confirmed server-side, with a bank's 3-D Secure challenge answered in the
   browser by Stripe.js `handleNextAction` (`CardPaymentHandoff.confirmation`); a new card is entered
   through the Add-card form (a SetupIntent), never typed into the checkout.
-- **Charged in the listing's own currency, shown in the buyer's.** The processor is charged the
-  session's `charge` — the order total in the listings' currency, computed by re-reading the same basket
-  in that currency through the same `toTotals` (`chargeFor`), so the figure shown and the figure charged
-  are one computation; the display currency no longer gates the card (#126(g) resolved). The checkout
-  rail states both (`AED 840.27 (~US$229.00 USD charged)`, with the locked rate).
+- **Charged in the buyer's billing currency through a quote, else the listing's own** (Decision #435,
+  superseding #153 (H); switched off by `fx_checkout_enabled`). The order total in the listings'
+  currency (`originTotals`) is computed by re-reading the same basket in that currency through the same
+  `toTotals` (`originTotalFor`), so the order's figure is one computation. When the billing currency
+  (`billingCurrencyOf`, the Details step's country) differs, the session locks a conversion quote for
+  exactly that total (`fx-quotes.ts` → `finance.quote_fx_conversion`, reused while 5 minutes remain)
+  and `buyerCharge` is the quote's `from_minor` in the billing currency, with the quote's labels
+  (`CheckoutFxQuote`); `?pay_in=` the order's currency, or a refused quote, leaves `buyerCharge` at
+  the order total (`payIn` says which, and why). The processor is charged `buyerCharge` into the
+  paying wallet in its currency, and the quote travels with the attached order (`fx_quote_id`), so
+  `settle_card_payment` and the browser's order both convert exactly it. A live, unpaid PaymentIntent
+  for another figure (a new quote or currency) is cancelled at Stripe before the new one opens
+  (`cancelSupersededIntent`). On the order-currency path the checkout prints its figures in the
+  display currency only and names the charge currency under the total (`Charged in USD`), with
+  `settlement.rateLabel` and `asOfLabel` verbatim in the breakdown, so the client composes no FX
+  (Decision #433).
 - **Express wallets are Stripe's Express Checkout Element** (`provider: "express"`): mounted in
-  deferred-intent mode for the `charge`, it shows whichever of Apple Pay, Google Pay and PayPal the
+  deferred-intent mode for the `buyerCharge`, it shows whichever of Apple Pay, Google Pay and PayPal the
   device, browser and account allow (HTTPS required; Apple Pay also needs the payment-method domain
   registered). On confirm the server opens the PaymentIntent (automatic payment methods, matching the
   deferred Elements group); a redirect-based wallet returns to `/checkout/payment?pay=<payment>&attempt=<key>`

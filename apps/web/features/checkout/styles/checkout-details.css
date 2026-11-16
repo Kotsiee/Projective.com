@@ -37,7 +37,7 @@
  *   renders the field grids as direct children of `.ckod` — the same name resolves here, so both
  *   presentations get the same breakpoints against their own real width.
  * - `cko` is the STEP-BODY name every shared `.cko-*` block asks about. This step mounts the shared
- *   `OrderSummaryRail` inside the shared `.cko-pstep__aside`, whose pinning and height cap are
+ *   `OrderSummaryRail` inside the shared `.cko-pstep__aside`, whose pinning and offset are
  *   written once in `checkout-payment.css` against `@container cko`. Without this name that rule
  *   would silently not apply here and the rail would be unpinned on one step of a two-step flow —
  *   and the alternative, restating the same `calc()` under a second container name, is exactly the
@@ -626,7 +626,7 @@
 
 /*
  * The bespoke `.ckod-rail` is gone. Both steps now mount the ONE `OrderSummaryRail` inside
- * `.cko-pstep__aside`, whose geometry, tone, sticky offset and internal scroll all live in
+ * `.cko-pstep__aside`, whose geometry, tone and sticky offset all live in
  * `checkout-payment.css` — so the rail is literally the same rule on both steps rather than two
  * rules kept in agreement by hand. Two implementations of one summary could only ever produce a
  * discrepancy, and the step where a buyer would find it is the one where it matters most.

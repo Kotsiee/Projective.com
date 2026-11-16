@@ -144,7 +144,15 @@ Deno.test("search words reach reason labels and the viewer's own accounts; famil
 	assertEquals(reasonsMatching("   "), []);
 	assertEquals(reasonsForKinds([]), null);
 	assertEquals(reasonsForKinds(["other"]), null);
-	assertEquals(reasonsForKinds(["platform_fee"]), ["platform_fee", "instant_payout_fee"]);
+	assertEquals(reasonsForKinds(["platform_fee"]), [
+		"platform_fee",
+		"instant_payout_fee",
+		"fx_spread",
+	]);
+	assertEquals(ledgerKindOf("fx_conversion"), "transfer");
+	assertEquals(ledgerKindOf("fx_spread"), "platform_fee");
+	assert(reasonsMatching("conversion").includes("fx_conversion"));
+	assert(reasonsMatching("margin").includes("fx_spread"));
 	assertEquals(ledgerKindOf("service_sale_vault_retention"), "service_sale");
 	assertEquals(ledgerKindOf("something_new"), "other");
 	const accounts = [

@@ -36,7 +36,9 @@ import type { BasketItem, MoneyView } from "../types/checkout-types.ts";
  *
  * The action SET changes per step; the layout never does. On the **basket** step the design reads as
  * two facts at opposite ends of the band — the running **Total** at the inline start, the **Checkout**
- * pill at the inline end. On the confirmation step the band is that step's action set, right-aligned.
+ * pill at the inline end. The Total yields to the body's summary card wherever that card is a sticky
+ * column (the band's container ≥ 58rem, the same box `.bsk` measures), so one figure is on screen at
+ * every width. On the confirmation step the band is that step's action set, right-aligned.
  *
  * Four rules are load-bearing here, and each one is a defect this codebase has already shipped once:
  *

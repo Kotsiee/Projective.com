@@ -126,6 +126,12 @@ export function reasonMeta(reason: string, direction: "credit" | "debit"): Reaso
 			return { category: "transfer", label: "Transfer in", refKind: "transfer" };
 		case "transfer_out":
 			return { category: "transfer", label: "Transfer out", refKind: "transfer" };
+		case "fx_conversion":
+			return direction === "credit"
+				? { category: "transfer", label: "Currency conversion in", refKind: null }
+				: { category: "transfer", label: "Currency conversion out", refKind: null };
+		case "fx_spread":
+			return { category: "fee", label: "Conversion margin", refKind: null };
 		default: {
 			const words = reason.replace(/_/g, " ").trim();
 			return {

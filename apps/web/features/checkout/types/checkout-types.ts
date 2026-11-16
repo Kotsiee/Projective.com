@@ -22,6 +22,7 @@ export type {
 	BasketItem,
 	BasketOwnerSummary,
 	BasketSummary,
+	BuyerCharge,
 	CardArtConfig,
 	CardBrand,
 	CheckoutApprovalRequest,
@@ -29,7 +30,9 @@ export type {
 	CheckoutBlockerCode,
 	CheckoutBusinessAccount,
 	CheckoutBusinessGate,
+	CheckoutFxQuote,
 	CheckoutOwner,
+	CheckoutPayIn,
 	CheckoutPreselect,
 	CheckoutResult,
 	CheckoutResultStatus,
@@ -42,6 +45,7 @@ export type {
 	ItemKindMeta,
 	MoneyView,
 	MoveBasketItem,
+	OriginTotals,
 	PaymentProvider,
 	ProviderAvailability,
 	PurchasableItemGroup,
@@ -109,6 +113,11 @@ export interface CheckoutContext {
 	provider?: string | null;
 	/** Whether the buyer has opted into the voluntary gateway contribution. */
 	contribute?: boolean;
+	/**
+	 * `?pay_in=` (Decision #435): the currency the buyer chose to pay in — their billing currency through
+	 * a locked conversion, or the order's own; `null` takes the billing currency.
+	 */
+	payIn?: string | null;
 }
 // #endregion
 

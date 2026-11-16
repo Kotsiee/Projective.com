@@ -12,7 +12,6 @@ import {
 	isFocusSearchShortcut,
 	isOpenFeedbackShortcut,
 	isToggleSidebarShortcut,
-	laneSearchShortcutLabel,
 	type ShortcutKey,
 	type ShortcutPress,
 	type ShortcutTarget,
@@ -178,11 +177,6 @@ Deno.test("isFocusLaneSearchShortcut — no Shift, both modifiers, Alt, a held o
 	assertEquals(isFocusLaneSearchShortcut(chord({ repeat: true })), false);
 	assertEquals(isFocusLaneSearchShortcut(chord({ defaultPrevented: true })), false);
 	assertEquals(isFocusLaneSearchShortcut(chord({ key: "/", code: "Digit7" })), false);
-});
-
-Deno.test("laneSearchShortcutLabel — ⇧⌘/ on Apple devices, Ctrl ⇧ / elsewhere", () => {
-	assertEquals(laneSearchShortcutLabel(true), "⇧⌘/");
-	assertEquals(laneSearchShortcutLabel(false), "Ctrl ⇧ /");
 });
 // #endregion
 

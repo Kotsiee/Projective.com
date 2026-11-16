@@ -79,7 +79,6 @@ DECLARE
     v_note text;
     v_constraint text;
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
-    v_payer_wallet text;
     v_recover bigint := 0;
     v_from_pending bigint := 0;
     v_short bigint := 0;
@@ -191,12 +190,7 @@ BEGIN
            FOR UPDATE
     LOOP
         UPDATE finance.escrows SET status = 'refunded' WHERE id = v_escrow.id;
-        v_payer_wallet := finance.fn_escrow_payer_wallet_type(v_escrow.payer_business_id, v_escrow.payer_user_id);
-        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(v_escrow.payer_business_id, v_escrow.payer_user_id), v_escrow.currency);
-        PERFORM finance.fn_wallet_credit(
-            COALESCE(v_escrow.payer_business_id, v_escrow.payer_user_id), v_payer_wallet, v_escrow.currency,
-            v_escrow.amount_cents, 'escrow_refund', 'escrows', v_escrow.id
-        );
+        PERFORM finance.fn_refund_escrow_to_payer(v_escrow.id, v_escrow.amount_cents, 'escrow_refund');
         IF v_escrow.ticket_id IS NOT NULL THEN
             UPDATE projects.tickets SET payment_status = 'unpaid'::public.payment_status
              WHERE id = v_escrow.ticket_id
@@ -2064,6 +2058,392 @@ BEGIN
         RAISE EXCEPTION 'owner: not an account that can pay' USING ERRCODE = '22023';
     END IF;
     RETURN finance.fn_ensure_wallet(v_type, p_owner_id, v_currency);
+END;
+$$;
+-- #endregion
+
+-- #region 7b. Paying in one's own currency — FX quotes and conversions (Decision #435)
+-- A conversion row is never rewritten or removed; a quote is frozen once written, except that its use
+-- is recorded once. Bound in 00001830.
+CREATE OR REPLACE FUNCTION finance.fn_fx_conversions_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'ledger: finance.fx_conversions is append-only — % refused', TG_OP USING ERRCODE = 'PL403';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.fn_fx_quotes_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.consumed_at IS NULL AND NEW.consumed_at IS NOT NULL
+       AND (pg_catalog.to_jsonb(NEW) - 'consumed_at') = (pg_catalog.to_jsonb(OLD) - 'consumed_at') THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'ledger: an FX quote is frozen once written; only its use is recorded — % refused', TG_OP
+        USING ERRCODE = 'PL403';
+END;
+$$;
+
+-- Quote what `p_to_minor` of `p_to_currency` costs the account in `p_from_currency` (user door). The
+-- caller pays for the account (themselves; a member who can spend for an entity's basket; a funder of
+-- the project), and what is quoted is named: a checkout's basket, or the stage, ticket or revision a
+-- card lock or a wallet funding pays for, whose payer is the account. Refused, before anything is
+-- written, while paying in another currency is switched off (PX503 `fx_unavailable`), with no margin set
+-- (PX500 `fx_spread_not_configured`), for a currency outside `settlement_currencies` (PX422
+-- `currency_not_settled`, Decision #423), or on a rate older than `fx_rate_max_age_hours` (PX503
+-- `fx_rate_stale`). The margin is the higher of the two currencies' `fx_spread_bp`. Returns the quote,
+-- usable for `fx_quote_ttl_minutes`.
+CREATE OR REPLACE FUNCTION finance.quote_fx_conversion(
+    p_owner_type text,
+    p_owner_id uuid,
+    p_from_currency text,
+    p_to_currency text,
+    p_to_minor bigint,
+    p_purpose text,
+    p_ref_table text,
+    p_ref_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_from text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_from_currency, '')));
+    v_to text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_to_currency, '')));
+    v_basket finance.baskets;
+    v_project uuid;
+    v_payer uuid;
+    v_person uuid;
+    v_settle jsonb;
+    v_spread bigint;
+    v_base text;
+    v_from_rate numeric;
+    v_from_as_of timestamptz;
+    v_from_provider text;
+    v_to_rate numeric;
+    v_to_as_of timestamptz;
+    v_to_provider text;
+    v_as_of timestamptz;
+    v_max_age integer;
+    v_ttl integer;
+    m record;
+    q finance.fx_quotes;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
+    END IF;
+    IF p_purpose IS NULL OR p_purpose NOT IN ('checkout', 'escrow_lock', 'funding') THEN
+        RAISE EXCEPTION 'purpose: expected checkout, escrow_lock or funding' USING ERRCODE = '22023';
+    END IF;
+    IF v_from !~ '^[A-Z]{3}$' OR v_to !~ '^[A-Z]{3}$' THEN
+        RAISE EXCEPTION 'currency: expected three-letter currency codes' USING ERRCODE = '22023';
+    END IF;
+    IF v_from = v_to THEN
+        RAISE EXCEPTION 'currency: % needs no conversion', v_to USING ERRCODE = '22023';
+    END IF;
+    IF p_to_minor IS NULL OR p_to_minor <= 0 THEN
+        RAISE EXCEPTION 'amountMinor: nothing to convert' USING ERRCODE = '22023';
+    END IF;
+    IF p_owner_type IS NULL OR p_owner_type NOT IN ('user', 'freelancer', 'team', 'business', 'enterprise') THEN
+        RAISE EXCEPTION 'owner: not an account that can pay' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_purpose = 'checkout' THEN
+        IF p_ref_table IS DISTINCT FROM 'baskets' OR p_ref_id IS NULL THEN
+            RAISE EXCEPTION 'ref: a checkout quote names its basket' USING ERRCODE = '22023';
+        END IF;
+        SELECT * INTO v_basket FROM finance.baskets b WHERE b.id = p_ref_id;
+        IF NOT FOUND OR v_basket.owner_id IS DISTINCT FROM p_owner_id
+           OR NOT (v_basket.owner_type = p_owner_type
+                   OR (p_owner_type IN ('user', 'freelancer') AND v_basket.owner_type IN ('user', 'freelancer')))
+           OR NOT finance.fn_can_manage_basket(v_basket.owner_type, v_basket.owner_id) THEN
+            RAISE EXCEPTION 'auth: you can''t pay for that basket' USING ERRCODE = '42501';
+        END IF;
+    ELSE
+        IF p_ref_table IS NULL OR p_ref_table NOT IN ('project_stages', 'tickets', 'revisions') OR p_ref_id IS NULL THEN
+            RAISE EXCEPTION 'ref: a funding quote names its stage, ticket or revision' USING ERRCODE = '22023';
+        END IF;
+        SELECT CASE p_ref_table
+                   WHEN 'project_stages' THEN (SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = p_ref_id)
+                   WHEN 'tickets' THEN (SELECT t.project_id FROM projects.tickets t WHERE t.id = p_ref_id)
+                   ELSE (SELECT ps.project_id FROM projects.stage_revision_requests rv
+                           JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+                          WHERE rv.id = p_ref_id)
+               END
+          INTO v_project;
+        IF v_project IS NULL THEN
+            RAISE EXCEPTION 'ref: that % does not exist', p_ref_table USING ERRCODE = 'P0002';
+        END IF;
+        IF NOT projects.fn_can_fund_project(v_project) THEN
+            RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this'
+                USING ERRCODE = 'PK403';
+        END IF;
+        SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id) INTO v_payer, v_person
+          FROM projects.projects p WHERE p.id = v_project;
+        IF COALESCE(v_payer, v_person) IS DISTINCT FROM p_owner_id
+           OR (v_payer IS NOT NULL AND p_owner_type <> 'business')
+           OR (v_payer IS NULL AND p_owner_type NOT IN ('user', 'freelancer')) THEN
+            RAISE EXCEPTION 'auth: this project is paid for by another account' USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    IF NOT COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
+                      WHERE pp.key = 'fx_checkout_enabled'), false) THEN
+        RAISE EXCEPTION 'fx_unavailable: paying in another currency is not available yet' USING ERRCODE = 'PX503';
+    END IF;
+    SELECT pp.value INTO v_settle FROM security.platform_params pp WHERE pp.key = 'settlement_currencies';
+    IF v_settle IS NULL OR pg_catalog.jsonb_typeof(v_settle) <> 'array' OR NOT (v_settle ? v_from) OR NOT (v_settle ? v_to) THEN
+        RAISE EXCEPTION 'currency_not_settled: % to % is not a pair Projective converts', v_from, v_to
+            USING ERRCODE = 'PX422';
+    END IF;
+    v_spread := GREATEST(finance.fn_param_minor('fx_spread_bp', v_from), finance.fn_param_minor('fx_spread_bp', v_to));
+    IF v_spread IS NULL THEN
+        RAISE EXCEPTION 'fx_spread_not_configured: the conversion margin is not set' USING ERRCODE = 'PX500';
+    END IF;
+    IF v_spread < 0 OR v_spread > 2000 THEN
+        RAISE EXCEPTION 'fx_spread_not_configured: the conversion margin % is outside 0-2000 bp', v_spread
+            USING ERRCODE = 'PX500';
+    END IF;
+
+    v_base := COALESCE((SELECT pp.value #>> '{}' FROM security.platform_params pp WHERE pp.key = 'base_currency'), 'GBP');
+    IF v_from = v_base THEN
+        v_from_rate := 1;
+    ELSE
+        SELECT r.rate, r.as_of, r.provider INTO v_from_rate, v_from_as_of, v_from_provider
+          FROM finance.fx_rates r WHERE r.base = v_base AND r.quote = v_from
+         ORDER BY r.as_of DESC, r.created_at DESC LIMIT 1;
+    END IF;
+    IF v_to = v_base THEN
+        v_to_rate := 1;
+    ELSE
+        SELECT r.rate, r.as_of, r.provider INTO v_to_rate, v_to_as_of, v_to_provider
+          FROM finance.fx_rates r WHERE r.base = v_base AND r.quote = v_to
+         ORDER BY r.as_of DESC, r.created_at DESC LIMIT 1;
+    END IF;
+    v_as_of := LEAST(v_from_as_of, v_to_as_of);
+    v_max_age := COALESCE((SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp
+                            WHERE pp.key = 'fx_rate_max_age_hours'), 24);
+    IF v_from_rate IS NULL OR v_to_rate IS NULL OR v_as_of IS NULL THEN
+        RAISE EXCEPTION 'fx_rate_unavailable: no exchange rate is recorded for % to %', v_from, v_to
+            USING ERRCODE = 'PX503';
+    END IF;
+    IF v_as_of < pg_catalog.now() - pg_catalog.make_interval(hours => v_max_age) THEN
+        RAISE EXCEPTION 'fx_rate_stale: the exchange rate for % to % is out of date', v_from, v_to
+            USING ERRCODE = 'PX503';
+    END IF;
+
+    SELECT * INTO m FROM finance.fn_fx_quote_minor(p_to_minor, v_from, v_to, v_from_rate, v_to_rate, v_spread::integer);
+    IF m.principal_minor IS NULL OR m.principal_minor <= 0 THEN
+        RAISE EXCEPTION 'amountMinor: % % is too small to convert', p_to_minor, v_to USING ERRCODE = '22023';
+    END IF;
+    v_ttl := COALESCE((SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp
+                        WHERE pp.key = 'fx_quote_ttl_minutes'), 30);
+
+    INSERT INTO finance.fx_quotes (
+        owner_type, owner_id, purpose, ref_table, ref_id, from_currency, to_currency, to_minor,
+        principal_minor, spread_bp, spread_minor, from_minor, from_rate, to_rate, mid_rate, rate_as_of,
+        rate_provider, created_by, expires_at
+    ) VALUES (
+        p_owner_type, p_owner_id, p_purpose, p_ref_table, p_ref_id, v_from, v_to, p_to_minor,
+        m.principal_minor, v_spread::integer, m.spread_minor, m.from_minor, v_from_rate, v_to_rate,
+        pg_catalog.round(v_to_rate / v_from_rate, 10), v_as_of,
+        COALESCE(pg_catalog.concat_ws('/', v_from_provider, NULLIF(v_to_provider, v_from_provider)), 'base'),
+        v_uid, pg_catalog.now() + pg_catalog.make_interval(mins => GREATEST(v_ttl, 1))
+    )
+    RETURNING * INTO q;
+    RETURN pg_catalog.to_jsonb(q);
+END;
+$$;
+
+-- Execute a quote: debit the account's wallet in the quote's currency (`fx_conversion` for the
+-- principal, `fx_spread` for the margin) and credit its wallet in the target currency (`fx_conversion`)
+-- with exactly `to_minor`, every leg stamped with the pair, the rate and its date, and one `purchase`
+-- row in finance.fx_conversions. The target wallet is the one the escrow holds debit for the account
+-- (finance.fn_person_wallet_type for a person), created if missing. A used quote refuses PC409
+-- `quote_used:`; an expired one PC409 `quote_expired:` unless `p_honour_expired` (a card payment started
+-- on it). Only the money doors call it, after their own authorisation and spend gate. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_execute_fx_quote(
+    p_quote_id uuid,
+    p_from_wallet uuid,
+    p_ref_table text,
+    p_ref_id uuid,
+    p_honour_expired boolean DEFAULT false
+)
+RETURNS finance.fx_conversions
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    q finance.fx_quotes;
+    w finance.wallets;
+    v_to_type text;
+    v_to_wallet uuid;
+    c finance.fx_conversions;
+BEGIN
+    SELECT * INTO q FROM finance.fx_quotes x WHERE x.id = p_quote_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'quote: that exchange-rate quote does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF q.consumed_at IS NOT NULL THEN
+        RAISE EXCEPTION 'quote_used: that exchange-rate quote has already been used — review the total and try again'
+            USING ERRCODE = 'PC409';
+    END IF;
+    IF NOT COALESCE(p_honour_expired, false) AND q.expires_at <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'quote_expired: the exchange-rate quote expired — review the new total and try again'
+            USING ERRCODE = 'PC409';
+    END IF;
+    SELECT * INTO w FROM finance.wallets x WHERE x.id = p_from_wallet FOR UPDATE;
+    IF NOT FOUND OR w.owner_id IS DISTINCT FROM q.owner_id OR w.currency <> q.from_currency
+       OR NOT (w.owner_type = q.owner_type
+               OR (q.owner_type IN ('user', 'freelancer') AND w.owner_type IN ('user', 'freelancer'))) THEN
+        RAISE EXCEPTION 'quote: that wallet is not the account''s wallet in %', q.from_currency USING ERRCODE = '22023';
+    END IF;
+    IF w.balance_cents < q.from_minor THEN
+        RAISE EXCEPTION 'Your wallet balance doesn''t cover this conversion' USING ERRCODE = 'PF402';
+    END IF;
+    v_to_type := CASE WHEN q.owner_type IN ('user', 'freelancer') THEN finance.fn_person_wallet_type(q.owner_id)
+                      ELSE q.owner_type END;
+    v_to_wallet := finance.fn_ensure_wallet(v_to_type, q.owner_id, q.to_currency);
+
+    INSERT INTO finance.fx_conversions (
+        kind, quote_id, owner_type, owner_id, from_wallet_id, to_wallet_id, from_currency, to_currency,
+        from_minor, principal_minor, spread_bp, spread_minor, to_minor, rate_base, mid_rate, rate_as_of,
+        ref_table, ref_id
+    ) VALUES (
+        'purchase', q.id, w.owner_type, q.owner_id, w.id, v_to_wallet, q.from_currency, q.to_currency,
+        q.from_minor, q.principal_minor, q.spread_bp, q.spread_minor, q.to_minor, q.from_currency, q.mid_rate,
+        q.rate_as_of, p_ref_table, p_ref_id
+    )
+    RETURNING * INTO c;
+
+    PERFORM finance.fn_wallet_debit_fx(w.owner_id, w.owner_type, w.currency, q.principal_minor, 'fx_conversion',
+        'fx_conversions', c.id, q.from_currency, q.mid_rate, q.rate_as_of);
+    PERFORM finance.fn_wallet_debit_fx(w.owner_id, w.owner_type, w.currency, q.spread_minor, 'fx_spread',
+        'fx_conversions', c.id, q.from_currency, q.mid_rate, q.rate_as_of);
+    PERFORM finance.fn_wallet_credit_fx(q.owner_id, v_to_type, q.to_currency, q.to_minor, 'fx_conversion',
+        'fx_conversions', c.id, q.from_currency, q.mid_rate, q.rate_as_of);
+    UPDATE finance.fx_quotes SET consumed_at = pg_catalog.now() WHERE id = q.id;
+    RETURN c;
+END;
+$$;
+
+-- Fund a stage, a ticket or a paid revision from the payer's wallet in another currency (user door): the
+-- wallet route of projects.fund_stage / fund_ticket / fund_paid_revision when the payer holds their own
+-- currency. The caller's own `funding` quote must price exactly what that door will hold, by the same
+-- definitions begin_card_payment reads; the spend gate counts what leaves the paying wallet, the quote
+-- converts it, and the door holds from the result in the same transaction, so a refused hold takes the
+-- conversion back with it. The escrows held are stamped with the conversion. Returns the door's answer
+-- with the conversion and the charge.
+CREATE OR REPLACE FUNCTION finance.fund_with_conversion(
+    p_fx_quote_id uuid,
+    p_project_id uuid,
+    p_stage_id uuid,
+    p_ticket_id uuid DEFAULT NULL,
+    p_revision_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_ref_table text := CASE WHEN p_revision_id IS NOT NULL THEN 'revisions'
+                             WHEN p_ticket_id IS NOT NULL THEN 'tickets'
+                             ELSE 'project_stages' END;
+    v_ref_id uuid := COALESCE(p_revision_id, p_ticket_id, p_stage_id);
+    q finance.fx_quotes;
+    v_payer uuid;
+    v_person uuid;
+    v_currency text;
+    v_need bigint;
+    v_source finance.wallets;
+    c finance.fx_conversions;
+    v_result jsonb;
+    v_escrows uuid[];
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
+    END IF;
+    IF p_project_id IS NULL OR p_stage_id IS NULL THEN
+        RAISE EXCEPTION 'stageId: choose the stage to fund' USING ERRCODE = '22023';
+    END IF;
+    IF p_ticket_id IS NOT NULL AND p_revision_id IS NOT NULL THEN
+        RAISE EXCEPTION 'ticketId: a revision is paid for on its own, not with a ticket' USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO q FROM finance.fx_quotes x WHERE x.id = p_fx_quote_id;
+    IF NOT FOUND OR q.created_by IS DISTINCT FROM v_uid OR q.purpose <> 'funding'
+       OR q.ref_table IS DISTINCT FROM v_ref_table OR q.ref_id IS DISTINCT FROM v_ref_id THEN
+        RAISE EXCEPTION 'fxQuoteId: that exchange-rate quote is not for this funding' USING ERRCODE = '22023';
+    END IF;
+    IF NOT projects.fn_can_fund_project(p_project_id) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can fund this'
+            USING ERRCODE = 'PK403';
+    END IF;
+    SELECT p.client_business_id, COALESCE(p.client_user_id, p.owner_user_id), pg_catalog.upper(COALESCE(p.currency, 'USD'))
+      INTO v_payer, v_person, v_currency
+      FROM projects.projects p WHERE p.id = p_project_id;
+    IF COALESCE(v_payer, v_person) IS DISTINCT FROM q.owner_id OR q.to_currency <> v_currency THEN
+        RAISE EXCEPTION 'fxQuoteId: that exchange-rate quote is not for this project''s payer and currency'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_revision_id IS NOT NULL THEN
+        SELECT rv.price_cents INTO v_need
+          FROM projects.stage_revision_requests rv
+          JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+         WHERE rv.id = p_revision_id AND ps.id = p_stage_id AND ps.project_id = p_project_id;
+    ELSIF p_ticket_id IS NOT NULL THEN
+        SELECT projects.fn_ticket_stage_price(tk.required_stages, tk.unit_price_cents, ps) INTO v_need
+          FROM projects.tickets tk
+          JOIN projects.project_stages ps ON ps.id = projects.fn_ticket_funding_stage(tk.id)
+         WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id AND ps.id = p_stage_id;
+    ELSE
+        v_need := (projects.fn_stage_funding_need(p_stage_id) ->> 'amount_cents')::bigint;
+    END IF;
+    IF v_need IS NULL OR v_need <> q.to_minor THEN
+        RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — review it and try again' USING ERRCODE = 'PC409';
+    END IF;
+
+    SELECT * INTO v_source FROM finance.wallets w
+     WHERE w.owner_id = q.owner_id AND w.currency = q.from_currency
+       AND w.owner_type = finance.fn_escrow_payer_wallet_type(v_payer, CASE WHEN v_payer IS NULL THEN v_person END);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Your wallet holds no %', q.from_currency USING ERRCODE = 'PF402';
+    END IF;
+    PERFORM finance.fn_assert_business_spend(v_source.id, v_uid, q.from_minor, v_ref_table, v_ref_id);
+    c := finance.fn_execute_fx_quote(q.id, v_source.id, v_ref_table, v_ref_id, false);
+    PERFORM finance.fn_carry_spend_cover(v_source.id, c.to_wallet_id, c.to_minor);
+
+    IF p_revision_id IS NOT NULL THEN
+        v_result := projects.fund_paid_revision(p_revision_id);
+        v_escrows := ARRAY[(v_result ->> 'escrow_id')::uuid];
+    ELSIF p_ticket_id IS NOT NULL THEN
+        v_result := projects.fund_ticket(p_project_id, p_ticket_id);
+        v_escrows := ARRAY[(v_result ->> 'escrow_id')::uuid];
+    ELSE
+        v_result := projects.fund_stage(p_project_id, p_stage_id);
+        SELECT COALESCE(pg_catalog.array_agg(e.id ORDER BY e.id), '{}') INTO v_escrows
+          FROM finance.escrows e
+         WHERE e.project_stage_id = p_stage_id AND e.status = 'held'
+           AND e.created_at = pg_catalog.now() AND e.fx_conversion_id IS NULL;
+    END IF;
+    PERFORM finance.fn_stamp_escrow_fx(c.id, v_escrows);
+    PERFORM finance.fn_close_spend_cover(c.to_wallet_id);
+    RETURN COALESCE(v_result, '{}'::jsonb) || pg_catalog.jsonb_build_object(
+        'fx_conversion_id', c.id, 'charge_minor', c.from_minor, 'charge_currency', c.from_currency);
 END;
 $$;
 -- #endregion

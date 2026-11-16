@@ -83,6 +83,7 @@ import {
 } from "./live-payments.ts";
 import {
 	cancelStaleIntent,
+	cancelSupersededIntent,
 	classifyStripeError,
 	createConnectAccount,
 	createCustomer,
@@ -405,6 +406,41 @@ function handoffOf(
 }
 
 /**
+ * Whether a new checkout attempt charges a different figure than the live payment for its lines — a
+ * different currency, amount or conversion quote (Decision #435) — so the live one is cancelled rather
+ * than resumed.
+ */
+export function supersedes(
+	next: InboundPayment,
+	checkout: CheckoutOrderLink,
+	live: InboundPayment,
+): boolean {
+	return next.currency !== live.currency || next.amountCents !== live.amountCents ||
+		(checkout.fxQuoteId ?? null) !== (live.checkout?.fxQuoteId ?? live.fxQuoteId ?? null);
+}
+
+/**
+ * Cancel a live payment a newer attempt supersedes: its intent at Stripe when one exists (refused when
+ * the bank is already processing it), then the attempt itself. `false` when it could not be.
+ */
+async function cancelSuperseded(accessToken: string, live: InboundPayment): Promise<boolean> {
+	if (live.providerRef) {
+		const canceled = await cancelSupersededIntent(getStripe(), live.providerRef).catch((error) => {
+			console.error("[payments:supersede] could not cancel", live.providerRef, error);
+			return null;
+		});
+		if (!canceled?.canceled) return false;
+	}
+	const abandoned = await abandonCardPayment(
+		accessToken,
+		live.id,
+		"superseded by a new quote or currency",
+	);
+	// With its intent cancelled the old attempt can no longer be paid, whatever the ledger answered.
+	return abandoned.ok || !!live.providerRef;
+}
+
+/**
  * The shared flow behind every card-payment entry point. With `savedCard` (a `pm_…` the payer's
  * members can see), that card is charged in place; without it the browser collects a card.
  */
@@ -440,11 +476,29 @@ async function cardPayment(
 			if (!live || (live.status !== "requires_payment" && live.status !== "processing")) {
 				return refused(linked.refusal);
 			}
-			if (!replayed) {
-				await abandonCardPayment(actor.accessToken, payment.id, "superseded by a payment in progress");
+			if (supersedes(payment, checkout, live)) {
+				// The live payment charges another figure for these lines — the buyer switched the currency
+				// they pay in, or the quote behind it was replaced (Decision #435): an unpaid one is cancelled
+				// and this attempt goes ahead; one the bank is already processing stays in progress.
+				if (
+					live.status !== "requires_payment" || !(await cancelSuperseded(actor.accessToken, live))
+				) {
+					return refused(linked.refusal);
+				}
+				const relinked = await attachCheckoutOrder(actor.accessToken, payment.id, checkout);
+				if (!relinked.ok) return refused(relinked.refusal);
+				if (relinked.value) payment = relinked.value;
+			} else {
+				if (!replayed) {
+					await abandonCardPayment(
+						actor.accessToken,
+						payment.id,
+						"superseded by a payment in progress",
+					);
+				}
+				payment = live;
+				replayed = true;
 			}
-			payment = live;
-			replayed = true;
 		} else if (linked.value) payment = linked.value;
 	}
 
@@ -573,6 +627,7 @@ export class PaymentBackendService {
 			projectId: input.projectId,
 			stageId: input.stageId,
 			ticketId: input.ticketId ?? null,
+			fxQuoteId: input.fxQuoteId ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency,
 			idempotencyKey: input.idempotencyKey,
@@ -593,6 +648,8 @@ export class PaymentBackendService {
 			expectedAmountMinor: number;
 			currency: string;
 			idempotencyKey: string;
+			/** The payer's `escrow_lock` conversion quote for this round (Decision #435). */
+			fxQuoteId?: string | null;
 		},
 		actor: ReadActor,
 	): Promise<Result<CardPaymentHandoff>> {
@@ -602,6 +659,7 @@ export class PaymentBackendService {
 			projectId: input.projectId,
 			stageId: input.stageId,
 			revisionId: input.revisionId,
+			fxQuoteId: input.fxQuoteId ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency.toUpperCase(),
 			idempotencyKey: input.idempotencyKey,

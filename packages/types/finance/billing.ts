@@ -65,6 +65,15 @@ export const InvoiceLineItemSchema = z.object({
 	description: z.string().max(400),
 	amountCents: minorUnits,
 	currency,
+	/**
+	 * A line paid through an FX conversion (Decision #435) is stated in the invoice's currency at its
+	 * pinned figure, beside what it was priced at: {@link originMinor} of {@link originCurrency}, one
+	 * unit of the invoice's currency buying {@link fxRate} of it. All `null` otherwise.
+	 */
+	originMinor: minorUnitsNonNeg.nullable(),
+	originCurrency: currency.nullable(),
+	fxRate: z.number().positive().nullable(),
+	fxAsOf: timestamp.nullable(),
 });
 export type InvoiceLineItem = z.infer<typeof InvoiceLineItemSchema>;
 // #endregion

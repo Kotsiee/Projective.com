@@ -46,3 +46,17 @@
 		align-self: flex-end;
 	}
 }
+
+body > iframe[title="Stripe developer tools frame"] {
+	inset-block-end: calc(
+		var(--space-2) + var(--ribbon-inset, 0px) + env(safe-area-inset-bottom, 0px)
+	) !important;
+	inset-inline-start: var(--space-2) !important;
+	inset-inline-end: auto !important;
+}
+
+@media (max-width: 767px) {
+	body > iframe[title="Stripe developer tools frame"] {
+		inset-block-end: 40dvh !important;
+	}
+}

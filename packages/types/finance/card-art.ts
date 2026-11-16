@@ -195,34 +195,33 @@ export function networkLabel(network: CardNetwork): string {
 // #endregion
 
 // #region Token palettes
-/** The per-network recipe: which brand accent anchors the face, at what angle and mix strengths. */
 interface NetworkRecipe {
-	accent: string;
+	accent: string | null;
 	angle: number;
-	fromPct: number;
-	toPct: number;
+	lit: number;
 }
 
-/**
- * Networks are distinguished on **two** axes — which of the three brand accents anchors the face, and
- * the angle/strength of the ramp — because the theme engine emits only `--primary`/`--secondary`/
- * `--tertiary` as brand accents and five networks cannot each own one. Semantic tokens
- * (`--success`/`--warning`/`--danger`) are deliberately excluded: they carry meaning, and a card is not
- * a status.
- */
 const NETWORK_RECIPE: Record<CardNetwork, NetworkRecipe> = {
-	visa: { accent: "--primary", angle: 135, fromPct: 46, toPct: 18 },
-	mastercard: { accent: "--secondary", angle: 120, fromPct: 52, toPct: 20 },
-	amex: { accent: "--tertiary", angle: 160, fromPct: 44, toPct: 16 },
-	discover: { accent: "--primary", angle: 100, fromPct: 24, toPct: 50 },
-	unionpay: { accent: "--secondary", angle: 200, fromPct: 28, toPct: 48 },
-	vault: { accent: "--primary", angle: 145, fromPct: 74, toPct: 40 },
-	unknown: { accent: "--on-surface", angle: 140, fromPct: 12, toPct: 4 },
+	visa: { accent: "--primary", angle: 115, lit: 0.46 },
+	mastercard: { accent: "--secondary", angle: 125, lit: 0.46 },
+	amex: { accent: "--tertiary", angle: 160, lit: 0.46 },
+	discover: { accent: "--tertiary", angle: 100, lit: 0.44 },
+	unionpay: { accent: "--secondary", angle: 200, lit: 0.44 },
+	vault: { accent: "--primary", angle: 135, lit: 0.46 },
+	unknown: { accent: null, angle: 140, lit: 0 },
 };
 
-/** A token mix of `accent` into the card's surface ground. */
-function mix(accent: string, pct: number): string {
-	return `color-mix(in srgb, var(${accent}) ${pct}%, var(--surface-2))`;
+const RAMP_FALL = [0, 0.08, 0.17] as const;
+const BUSINESS_DEPTH = 0.04;
+const GRAPHITE_STOPS = [30, 21, 13] as const;
+const STOP_AT = ["0%", "48%", "100%"] as const;
+
+function accentStop(accent: string, lightness: number): string {
+	return `oklch(from var(${accent}) ${lightness.toFixed(2)} min(c, 0.13) h)`;
+}
+
+function graphiteStop(share: number): string {
+	return `color-mix(in srgb, var(--on-scrim) ${share}%, var(--scrim))`;
 }
 // #endregion
 
@@ -234,10 +233,11 @@ function mix(accent: string, pct: number): string {
  * brand string when the BIN is absent or unrecognised — so a card stored before BIN capture still gets
  * its correct network rather than the `unknown` face.
  *
- * Every ramp is anchored on `--surface-2` rather than laid over `--primary` directly, so `foreground`
- * can stay `var(--on-surface)`. That is deliberate: the `--on-primary` / `--primary` pair measures
- * 3.57:1 in dark mode (a live, unresolved token-layer defect flagged by CLAUDE.md Decisions #64/#65),
- * and a card face printing a holder's name must not inherit it.
+ * The face is a deep three-stop ramp in the network's accent, printed in `var(--on-scrim)`. Each stop
+ * pins OKLCH lightness (≤ 0.46) and keeps the token's own hue and chroma, so the face is identical in
+ * light and dark mode and its ink clears 4.5:1 at the lit edge in both — `--secondary`/`--tertiary`
+ * flip between tone 40 and tone 80 across the modes, which a `color-mix()` ramp could not absorb. The
+ * `--on-primary`/`--primary` pair (3.57:1 in dark) is never used for ink.
  *
  * Pure and total — no I/O, no clock, no randomness — so the server projection and any client preview
  * render the same face.
@@ -246,11 +246,12 @@ export function resolveCardArt(input: CardArtInput): CardArtConfig {
 	const network = networkFromBin(input.binNumber) ?? networkFromBrand(input.brand);
 	const recipe = NETWORK_RECIPE[network];
 	const label = networkLabel(network);
+	const depth = input.isBusinessCard ? BUSINESS_DEPTH : 0;
+	const accent = recipe.accent;
 
-	// A business card sits a step deeper so it reads as the heavier instrument of the two.
-	const lift = input.isBusinessCard ? 12 : 0;
-	const from = Math.min(recipe.fromPct + lift, 92);
-	const to = Math.min(recipe.toPct + lift, 92);
+	const stops = accent === null
+		? GRAPHITE_STOPS.map((share) => graphiteStop(share - (input.isBusinessCard ? 4 : 0)))
+		: RAMP_FALL.map((fall) => accentStop(accent, recipe.lit - fall - depth));
 
 	return {
 		network,
@@ -260,16 +261,14 @@ export function resolveCardArt(input: CardArtInput): CardArtConfig {
 			: network !== "vault" && input.isBusinessCard
 			? `${label} Business`
 			: label,
-		gradient: `linear-gradient(${recipe.angle}deg, ${mix(recipe.accent, from)} 0%, ${
-			mix(recipe.accent, to)
-		} 100%)`,
-		chipTone: `color-mix(in srgb, var(--on-surface) ${
-			input.isBusinessCard ? 38 : 28
-		}%, var(--surface-3))`,
-		sheenTone: `color-mix(in srgb, var(--on-surface) ${
-			input.isBusinessCard ? 16 : 10
+		gradient: `linear-gradient(${recipe.angle}deg, ${
+			stops.map((stop, i) => `${stop} ${STOP_AT[i]}`).join(", ")
+		})`,
+		chipTone: "color-mix(in srgb, var(--on-scrim) 78%, var(--scrim))",
+		sheenTone: `color-mix(in srgb, var(--on-scrim) ${
+			input.isBusinessCard ? 14 : 11
 		}%, transparent)`,
-		foreground: "var(--on-surface)",
+		foreground: "var(--on-scrim)",
 		holographic: input.isBusinessCard,
 	};
 }

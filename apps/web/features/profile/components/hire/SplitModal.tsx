@@ -34,6 +34,7 @@ export interface SplitModalProps {
 	/** A one-line qualifier under the title (the format, a status word). */
 	subtitle?: string;
 	left: ComponentChildren;
+	/** The read-only column; `null` renders the inputs alone, full width (a failed load). */
 	right: ComponentChildren;
 	/** The footer's leading summary — price, rating, a count. */
 	summary: ComponentChildren;
@@ -48,6 +49,8 @@ export interface SplitModalProps {
 	bodyRef?: RefObject<HTMLDivElement>;
 	/** The right column's accessible name. Defaults to "Preview". */
 	asideLabel?: string;
+	/** The dialog's width — an `--overlay-w-*` token for a narrower flow; the frame's default else. */
+	width?: string;
 	onClose: () => void;
 	class?: string;
 }
@@ -55,6 +58,7 @@ export interface SplitModalProps {
 export function SplitModal(props: SplitModalProps): JSX.Element {
 	const { open, title, subtitle, left, right, summary, actions, notice, loading, onClose } = props;
 	const phone = useIsMobile();
+	const hasRight = right !== null && right !== undefined && right !== false;
 	return (
 		<Dialog
 			visible={open}
@@ -65,7 +69,7 @@ export function SplitModal(props: SplitModalProps): JSX.Element {
 					{subtitle && <span class="pf-split__subtitle">{subtitle}</span>}
 				</span>
 			}
-			width="min(64rem, calc(100vw - var(--space-6)))"
+			width={props.width ?? "min(64rem, calc(100vw - var(--space-6)))"}
 			class={`pf-split${props.class ? ` ${props.class}` : ""}`}
 			initialFocusRef={props.initialFocusRef}
 			footer={
@@ -80,9 +84,11 @@ export function SplitModal(props: SplitModalProps): JSX.Element {
 		>
 			<div class="pf-splitscope" aria-busy={loading ? "true" : undefined} ref={props.bodyRef}>
 				{notice && <div class="pf-split__notice">{notice}</div>}
-				<div class="pf-split__grid">
+				<div class={hasRight ? "pf-split__grid" : "pf-split__grid pf-split__grid--single"}>
 					<div class="pf-split__inputs">{left}</div>
-					<aside class="pf-split__preview" aria-label={props.asideLabel ?? "Preview"}>{right}</aside>
+					{hasRight && (
+						<aside class="pf-split__preview" aria-label={props.asideLabel ?? "Preview"}>{right}</aside>
+					)}
 				</div>
 			</div>
 		</Dialog>

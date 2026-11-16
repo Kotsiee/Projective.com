@@ -56,6 +56,8 @@ export interface WalletHomeData {
 	invoices: WalletRead<InvoicesView> | null;
 	/** The `?w=` param of the wallet the server resolved. */
 	wallet: string;
+	/** The currency wallet the page is narrowed to (`?currency=`, Decision #435); `null` for all of them. */
+	currency: string | null;
 	/** The currency the figures were drawn in. */
 	display: string;
 }
@@ -116,7 +118,8 @@ export async function resolveWalletHome(
 
 	if (!main.ok || !main.data) return { ok: false, message: main.message ?? FALLBACK };
 	const { overview, switcher } = main.data;
-	const moved = walletPageRedirect(url.searchParams, switcher);
+	const currency = overview.currencies.find((entry) => entry.selected)?.currency ?? null;
+	const moved = walletPageRedirect(url.searchParams, { ...switcher, currency });
 	if (moved !== null) return { redirect: pageAt(url, moved) };
 	const active = switcher.active;
 
@@ -138,6 +141,7 @@ export async function resolveWalletHome(
 				: null,
 			invoices: invoices ? toRead(invoices, (d) => d.invoices) : null,
 			wallet: walletParam(active.scope, active.id),
+			currency,
 			display: active.available.currency ||
 				toDisplayCurrency(query.display ?? context.displayCurrency),
 		},

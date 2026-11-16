@@ -985,7 +985,7 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- Paying a basket from the wallet (00001210 §11). A money-moving function a client may call: it
 -- authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
 -- moves money only through the service-role primitives it calls as its owner.
-GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) TO authenticated;
 
 -- The seller's own marketplace commission (00001210 §11; Decision #337, ruling M1). It answers only a
 -- seller about themselves, or a team to its active members, which is why fn_effective_commission_bp
@@ -1000,7 +1000,7 @@ GRANT EXECUTE ON FUNCTION finance.get_seller_commission(text, uuid) TO authentic
 -- queue drain, the wallet watch, the billing run, the statement generator) stays service-role only.
 GRANT EXECUTE ON FUNCTION finance.get_billing_settings(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.set_billing_controls(uuid, text, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION finance.place_on_account_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_on_account_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.get_on_account_standing(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.pay_invoice(uuid) TO authenticated;
 
@@ -1142,8 +1142,8 @@ GRANT EXECUTE ON FUNCTION finance.public_metrics () TO service_role;
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
 -- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
 -- money received, an account payable or an identity verified.
-REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid) TO authenticated;
 -- Single-ticket funding (Decisions #166, #430): a signed-in payer's door, never anon's.
 REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) TO authenticated;
@@ -1295,6 +1295,26 @@ REVOKE ALL ON FUNCTION finance.fn_is_income_reason (text) FROM PUBLIC, anon, aut
 REVOKE ALL ON FUNCTION finance.fn_apply_pot_allocations (uuid, bigint, text, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_can_manage_pots (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_pot_movements_append_only () FROM PUBLIC, anon, authenticated, service_role;
+
+-- Paying in one's own currency (Decision #435): quoting is the payer's own door and funding with a
+-- conversion the funder's; both check their caller inside. Executing a quote, stamping and refunding
+-- escrow, carrying a spend cover, the FX-stamping ledger primitives and the arithmetic are reached only
+-- from inside the money doors; the two guards are trigger functions.
+REVOKE ALL ON FUNCTION finance.quote_fx_conversion (text, uuid, text, text, bigint, text, text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.quote_fx_conversion (text, uuid, text, text, bigint, text, text, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fn_execute_fx_quote (uuid, uuid, text, uuid, boolean) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_stamp_escrow_fx (uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_refund_escrow_to_payer (uuid, bigint, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_carry_spend_cover (uuid, uuid, bigint) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_wallet_credit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_wallet_debit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_currency_exponent (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_fx_quote_minor (bigint, text, text, numeric, numeric, integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_fx_refund_minor (bigint, bigint, bigint) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_fx_conversions_append_only () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_fx_quotes_guard () FROM PUBLIC, anon, authenticated, service_role;
 
 -- FINANCE_BUILD_PROMPTS DB3: the scheduler's two sweeps (registered by name in 00005060), the one KYB
 -- predicate (any subject's verification, so never a client's to ask) and the open-dispute refusal.

@@ -5,6 +5,7 @@ import {
 	toDisplayCurrency,
 } from "@projective/types/finance";
 import type { UserContext } from "@projective/types/auth";
+import { acceptLanguageTags, preferenceHints } from "@projective/types/org";
 import { setAmbientCurrencyResolver } from "@projective/ui/display/money";
 import { FxService } from "@server/services/finance/FxService.ts";
 import { readCookies } from "@web/utils/auth-cookies.ts";
@@ -29,7 +30,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *    already on the request, costing no read.
  * 2. **The `pj.currency` cookie** — a guest has no JWT and no preferences row, but a guest still
  *    picks a currency, and it must survive a navigation. Written by the switcher alongside the PATCH.
- * 3. **The platform base.**
+ * 3. **The `Accept-Language` region** — a first-visit guest with no cookie is priced in the
+ *    currency of the first tag that names a region (`en-US` → USD); a bare language never picks
+ *    one (Decision #207). Sign-up seeds the same hint into `org.user_preferences`.
+ * 4. **The platform base.**
  *
  * The claim is checked FIRST on purpose. A signed-in user's stored preference is the truth; letting a
  * stale cookie win would mean signing in on a new device silently ignored the currency that user has
@@ -102,7 +106,10 @@ export async function resolveCurrencyContext(
 	// A signed-in viewer's stored preference (via the JWT claim) outranks any cookie on this device.
 	const claimed = context?.userId ? context.displayCurrency : undefined;
 	const displayCurrency = toDisplayCurrency(
-		claimed ?? cookies[CURRENCY_COOKIE] ?? PLATFORM_BASE_CURRENCY,
+		claimed ??
+			cookies[CURRENCY_COOKIE] ??
+			preferenceHints(acceptLanguageTags(req.headers.get("accept-language"))).displayCurrency ??
+			PLATFORM_BASE_CURRENCY,
 	);
 	const locale = (context?.userId ? context.locale : undefined) ??
 		cookies[LOCALE_COOKIE] ??

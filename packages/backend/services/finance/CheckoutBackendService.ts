@@ -3,10 +3,12 @@ import { PaymentBackendService, PROCESSOR_ANSWERS } from "./PaymentBackendServic
 import type {
 	BasketItem,
 	BillingContext,
+	BuyerCharge,
 	BuyerDetails,
 	CardPaymentHandoff,
 	CheckoutApprovalRequest,
 	CheckoutBlocker,
+	CheckoutPayIn,
 	CheckoutPaymentSim,
 	CheckoutResult,
 	CheckoutSessionContext,
@@ -65,6 +67,7 @@ import {
 	spendPositionFor,
 } from "./live-buyer.ts";
 import { fileSpendRequest } from "./wallet-actions.ts";
+import { checkoutFxQuoteOf, lockQuote, readQuote } from "./fx-quotes.ts";
 
 /**
  * CheckoutBackendService — the FAT half of the payment surface: the whole server projection the
@@ -373,8 +376,9 @@ function blockersFor(
  * on the business's monthly invoice — so its account-level answer stands as given.
  *
  * **The display currency no longer gates a card** (Decision #153, resolving #126(g)). A processor
- * charge is made in the listings' own currency and the buyer is SHOWN that figure — the session's
- * `charge`, beside the total in their own currency — so there is nothing left to switch.
+ * charge is made in the session's `buyerCharge` currency — the buyer's billing currency through a
+ * quote, or the listings' own (Decision #435) — and the buyer is SHOWN that exact figure, so there is
+ * nothing left to switch.
  */
 function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
 	const connected = io.processorConnected();
@@ -469,21 +473,20 @@ function moneyIn(minor: number, currency: string): MoneyView {
 }
 
 /**
- * What a card or express payment charges for these lines: the order total in the listings' OWN
- * currency (Decision #153).
+ * The order total for these lines in the listings' OWN currency: what the order is written in, what
+ * `finance.place_wallet_order` debits in that currency, and what a conversion quote must deliver.
  *
  * The figure is not a conversion of the display total — that would be a third number nobody priced.
  * It is the SAME basket read in the currency the sellers priced in, narrowed to the same lines and
  * totalled by the same `toTotals` (so the same promo resolution, the same discounts, the same
- * rounding): exactly what a buyer reading the basket in that currency would see as their total, and
- * exactly what `finance.place_wallet_order` debits when the order is then paid from the topped-up
- * wallet. When the display currency already IS that currency, the display total is returned as-is and
- * no second read is made. `null` when the lines span more than one currency — no single charge exists.
+ * rounding): exactly what a buyer reading the basket in that currency would see as their total. When
+ * the display currency already IS that currency, the display total is returned as-is and no second
+ * read is made. `null` when the lines span more than one currency — no single order total exists.
  *
  * The voluntary contribution is never part of it: `create` refuses a contribution on every route, so
  * a charge that included one would be a figure no payment can be made for.
  */
-async function chargeFor(
+async function originTotalFor(
 	query: BasketQuery,
 	actor: ReadActor,
 	resolved: Pick<Resolved, "basketId" | "money" | "owner">,
@@ -507,6 +510,58 @@ async function chargeFor(
 	const promo = await native.resolvePromo(native.promoCode, lines);
 	return toTotals(lines, promoMinorFor(promo), native.money, feeBpOf(resolved.owner), 0).total;
 }
+
+/** What a checkout charges and in which currency it may be paid. */
+interface PricedCharge {
+	buyerCharge: BuyerCharge;
+	payIn: CheckoutPayIn;
+}
+
+/**
+ * What the buyer is charged for an order whose total in its own currency is `origin` (Decision #435):
+ * in their billing currency through a locked conversion quote (reused while it has time left) when that
+ * differs from the order's and they have not declined it with `?pay_in=`, else `origin` itself. Paying
+ * in the billing currency is offered only when the quote door prices it — switched off, unsettled
+ * currencies or a stale rate leave the order's own currency with the reason.
+ */
+async function buyerChargeFor(
+	owner: ResolvedOwner,
+	basketId: string,
+	origin: MoneyView,
+	billing: string,
+	wants: string | null | undefined,
+	actor: ReadActor,
+): Promise<PricedCharge> {
+	const order = origin.currency;
+	const inOrderCurrency = (conversion: boolean, reason: string | null): PricedCharge => ({
+		buyerCharge: { ...origin, quote: null },
+		payIn: { selected: order, billing, order, conversion, reason },
+	});
+	if (billing === order || origin.minor <= 0) return inOrderCurrency(false, null);
+	const lock = await io.lockQuote(actor, {
+		ownerType: owner.ownerType,
+		ownerId: owner.ownerId,
+		fromCurrency: billing,
+		toCurrency: order,
+		toMinor: origin.minor,
+		purpose: "checkout",
+		refTable: "baskets",
+		refId: basketId,
+	});
+	if (!lock.ok) return inOrderCurrency(false, lock.reason);
+	if ((wants ?? billing).trim().toUpperCase() === order) return inOrderCurrency(true, null);
+	return {
+		buyerCharge: {
+			...moneyIn(lock.quote.fromMinor, billing),
+			quote: checkoutFxQuoteOf(lock.quote),
+		},
+		payIn: { selected: billing, billing, order, conversion: true, reason: null },
+	};
+}
+
+/** Why a quote the page sent can no longer be paid on: the page re-quotes and the buyer confirms. */
+const QUOTE_EXPIRED =
+	"The exchange rate for this payment has been refreshed. Review the new total, then pay.";
 
 /** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
 async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved | null> {
@@ -653,6 +708,8 @@ export interface CheckoutIo {
 	chargeCard: typeof PaymentBackendService.createCheckoutCardPayment;
 	placeOrder: typeof placeOrder;
 	processorConnected: () => boolean;
+	lockQuote: typeof lockQuote;
+	readQuote: typeof readQuote;
 }
 
 const LIVE_IO: CheckoutIo = {
@@ -667,6 +724,8 @@ const LIVE_IO: CheckoutIo = {
 	chargeCard: (input, actor) => PaymentBackendService.createCheckoutCardPayment(input, actor),
 	placeOrder,
 	processorConnected,
+	lockQuote,
+	readQuote,
 };
 
 let io: CheckoutIo = LIVE_IO;
@@ -779,19 +838,31 @@ export class CheckoutBackendService {
 			);
 			// The charge first: it names the wallet the order is paid from, whose balance the wallet route
 			// is offered against, the currency the on-account standing is read in, and whose limit,
-			// threshold and approvals the spend read answers for.
-			const charge = await chargeFor(
+			// threshold and approvals the spend read answers for. It is the order's own total, or that
+			// total converted into the billing currency the buyer's details name (Decision #435).
+			const origin = await originTotalFor(
 				query,
 				actor,
 				resolved,
 				items,
 				() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
 			);
+			const details = await io.details(owner, query, actor);
+			const priced = origin
+				? await buyerChargeFor(
+					owner,
+					resolved.basketId,
+					origin,
+					details.buyer.billingCurrency,
+					query.payIn,
+					actor,
+				)
+				: null;
+			const charge = priced?.buyerCharge ?? null;
 			const paying = payingWalletOf(resolved.wallets, charge);
 			const requirements = checkoutRequirements(items);
-			const [onAccount, details, position] = await Promise.all([
+			const [onAccount, position] = await Promise.all([
 				standingFor(owner, charge, actor),
-				io.details(owner, query, actor),
 				io.spendPosition(owner, totals.total.minor, money, actor, {
 					basketId: resolved.basketId,
 					charge,
@@ -830,7 +901,9 @@ export class CheckoutBackendService {
 					cardsConnected: io.processorConnected(),
 					promo,
 					totals,
-					charge,
+					buyerCharge: charge,
+					originTotals: origin ? { currency: origin.currency, total: origin } : null,
+					payIn: priced?.payIn ?? null,
 					requiresEmail: requirements.requiresEmail,
 					requiresSchedule: requirements.requiresSchedule,
 					requiresStage: requirements.requiresStage,
@@ -931,7 +1004,8 @@ export class CheckoutBackendService {
 	 * it already placed.
 	 *
 	 * A CARD or EXPRESS payment answers `requires_action` with a PaymentIntent for the session's
-	 * `charge` — the total in the listings' own currency: the charge tops up the paying wallet, and once
+	 * `buyerCharge` — the order total, or its quoted price in the buyer's currency: the charge tops up
+	 * the paying wallet in its currency, and once
 	 * the signed webhook has credited it the browser places the wallet order under the SAME attempt key,
 	 * so a retried or repeated placement replays rather than ordering twice.
 	 *
@@ -988,10 +1062,33 @@ export class CheckoutBackendService {
 			const promo = await view.resolvePromo(view.promoCode, eligible);
 			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
 			const priced: Resolved = { ...resolved, items: eligible };
-			// What every route pays, in the lines' own currency: the wallet route is offered against it,
-			// the on-account standing is read in it, and a card, an express wallet or an on-account
-			// credit is made for exactly it.
-			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
+			// The order's total in the lines' own currency — what the order is written in — and what every
+			// route charges: that total, or with the quote the page was shown (Decision #435) its price in
+			// the buyer's currency. The wallet route is offered against the charge, the on-account standing
+			// is read in it, and a card, an express wallet or an on-account credit is made for exactly it.
+			const origin = await originTotalFor(query, actor, resolved, eligible, () => totals.total);
+			let charge: BuyerCharge | null = origin ? { ...origin, quote: null } : null;
+			let quoteId: string | null = null;
+			if (origin && input.fxQuoteId) {
+				const quote = await io.readQuote(actor, input.fxQuoteId);
+				if (
+					!quote || quote.consumedAt !== null || Date.parse(quote.expiresAt) <= Date.now() ||
+					quote.purpose !== "checkout" || quote.refId !== resolved.basketId ||
+					quote.ownerId !== owner.ownerId
+				) {
+					return refusal(QUOTE_EXPIRED, [blocker("quote_expired", QUOTE_EXPIRED)]);
+				}
+				if (quote.toCurrency !== origin.currency || quote.toMinor !== origin.minor) {
+					const message =
+						`The price changed while you were paying — it's now ${origin.display}. Review the total and try again.`;
+					return refusal(message, [blocker("price_changed", message)]);
+				}
+				charge = {
+					...moneyIn(quote.fromMinor, quote.fromCurrency),
+					quote: checkoutFxQuoteOf(quote),
+				};
+				quoteId = quote.id;
+			}
 			const [standing, details, spendLimit] = await Promise.all([
 				standingFor(owner, charge, actor),
 				io.details(owner, query, actor),
@@ -1009,7 +1106,7 @@ export class CheckoutBackendService {
 				promoCode: view.promoCode,
 			});
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
-			if (!charge) {
+			if (!charge || !origin) {
 				// The lines share one currency (a blocker above says so otherwise), so a missing charge
 				// means they did not read back in it: the basket moved under the payment.
 				const message = "Your basket changed while you were paying — review it and try again.";
@@ -1042,9 +1139,10 @@ export class CheckoutBackendService {
 				const message = "The optional contribution isn't available for this payment. Review the total and try again.";
 				return refusal(message, [blocker("price_changed", message)]);
 			}
-			// The charge the buyer confirmed, in the listings' own currency, re-verified against the fresh
-			// one — never the display total, which a moved rate changes while the charge stands (C8). A
-			// page that sent no charge predates the check and is told to reload; it is never charged.
+			// The charge the buyer confirmed — the order's total, or its quoted price in their currency —
+			// re-verified against the fresh one; never the display total, which a moved rate changes while
+			// the charge stands (C8). A page that sent no charge predates the check and is told to reload;
+			// it is never charged.
 			const expected = input.expectedCharge;
 			if (!expected) {
 				const message = "This checkout page is out of date. Reload it to see the total, then pay.";
@@ -1062,7 +1160,7 @@ export class CheckoutBackendService {
 				return refusal(message, [blocker("price_changed", message)]);
 			}
 
-			// The unit price each line was shown in, in the listing's OWN currency (the charge's) — what
+			// The unit price each line was shown in, in the listing's OWN currency (the order's) — what
 			// the database compares with the catalogue before any money moves.
 			const units: Record<string, number> = {};
 			for (const item of eligible) {
@@ -1072,19 +1170,21 @@ export class CheckoutBackendService {
 			const rpcArgs = {
 				p_basket_id: resolved.basketId,
 				p_item_ids: eligible.map((item) => item.id),
-				p_currency: charge.currency,
+				p_currency: origin.currency,
 				p_units: units,
 				p_promo_code: appliedCode,
 				p_idempotency_key: input.idempotencyKey,
 			};
+			// Named only when set, so a same-currency order still resolves the doors by their old arguments.
+			const quoteArg = quoteId ? { p_fx_quote_id: quoteId } : {};
 
 			if (onAccount) {
-				// Credited on account in the lines' OWN currency — exactly what place_wallet_order then
-				// debits, the same charge a card is made for — in one database transaction.
+				// Credited on account in the charge's currency — converted into the order's by the quote when
+				// there is one — and paid by place_wallet_order, in one database transaction.
 				const { data, error } = simulatedDoor(sim) ??
 					await io.placeOrder(
 						"place_on_account_order",
-						{ ...rpcArgs, p_amount: charge.minor },
+						{ ...rpcArgs, p_amount: charge.minor, ...quoteArg },
 						actor.accessToken,
 					);
 				if (error) {
@@ -1117,9 +1217,10 @@ export class CheckoutBackendService {
 			}
 
 			if (byProcessor) {
-				// The processor is charged in the lines' OWN currency — the figure the session showed as
-				// `charge`, computed again above by the same function — and the order is then paid from the
-				// wallet in that same currency, so the top-up and the debit are one amount.
+				// The processor is charged the figure the session showed as `buyerCharge`, verified again
+				// above, into the wallet in its currency; the order is then paid from that wallet — through
+				// the quote's conversion when the charge is in the buyer's currency (Decision #435), so the
+				// top-up and what the order takes are one amount.
 				// The saved card the buyer chose, re-checked against the owner's OWN list (read as the
 				// caller, so a card id from another account resolves to nothing). An express payment
 				// names no saved card: the wallet sheet supplies the instrument.
@@ -1162,10 +1263,11 @@ export class CheckoutBackendService {
 					checkout: {
 						basketId: resolved.basketId,
 						itemIds: eligible.map((item) => item.id),
-						currency: charge.currency,
+						currency: origin.currency,
 						units,
 						promoCode: appliedCode,
 						orderKey: input.idempotencyKey,
+						...(quoteId ? { fxQuoteId: quoteId } : {}),
 					},
 				}, actor);
 				if (!pay.ok || !pay.data) {
@@ -1202,11 +1304,12 @@ export class CheckoutBackendService {
 				return ok({ result }, { message: result.message, status: 202 });
 			}
 
-			// The total the buyer was shown, in the charge currency: the database refuses any other net.
+			// The order's total in its own currency: the database refuses any other net, and holds the quote
+			// to it when the buyer pays in their own currency.
 			const { data, error } = simulatedDoor(sim) ??
 				await io.placeOrder(
 					"place_wallet_order",
-					{ ...rpcArgs, p_expected_minor: charge.minor },
+					{ ...rpcArgs, p_expected_minor: origin.minor, ...quoteArg },
 					actor.accessToken,
 				);
 			if (error) {
@@ -1281,12 +1384,23 @@ export class CheckoutBackendService {
 			}
 			const promo = await view.resolvePromo(view.promoCode, eligible);
 			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
-			const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
-			if (!charge) {
+			const origin = await originTotalFor(query, actor, resolved, eligible, () => totals.total);
+			if (!origin) {
 				return fail(422, {
 					message: "This basket mixes currencies. Ask for approval of each currency separately.",
 				}) as ServiceResult<Out>;
 			}
+			// The figure that leaves the business's wallet: converted into its billing currency when it pays
+			// in that one (Decision #435), which is the wallet and amount the spend gate will count.
+			const details = await io.details(owner, query, actor);
+			const { buyerCharge: charge } = await buyerChargeFor(
+				owner,
+				resolved.basketId,
+				origin,
+				details.buyer.billingCurrency,
+				query.payIn,
+				actor,
+			);
 			const walletId = await businessWalletIn(owner, charge.currency, actor.accessToken);
 			if (!walletId) {
 				return fail(409, {
@@ -1372,35 +1486,61 @@ interface PlacedOrder {
 	charged_minor: number;
 	currency: string;
 	replayed: boolean;
+	/** What the buyer was charged when they paid through a conversion (Decision #435); else absent. */
+	charge_minor?: number;
+	charge_currency?: string;
 }
 
 /**
- * The order an attempt key already placed, read as the caller. `null` when none — including when the
- * key belongs to an order the caller cannot see, which the payment function itself then refuses.
+ * The order an attempt key already placed, read as the caller, with what its conversion charged when
+ * there was one. `null` when none — including when the key belongs to an order the caller cannot see,
+ * which the payment function itself then refuses.
  */
 async function placedOrderFor(key: string, accessToken: string): Promise<PlacedOrder | null> {
-	const { data, error } = await getUserClient(accessToken).schema("finance").from("orders")
-		.select("id, reference, charged_minor, currency")
-		.eq("idempotency_key", key)
+	const db = getUserClient(accessToken).schema("finance");
+	const { data, error } = await db.from("orders").select("*").eq("idempotency_key", key)
 		.maybeSingle();
 	if (error) throw new Error(`finance.orders replay read failed: ${error.message}`);
 	if (!data) return null;
-	const row = data as { id: string; reference: string; charged_minor: number | string; currency: string };
-	return {
+	const row = data as {
+		id: string;
+		reference: string;
+		charged_minor: number | string;
+		currency: string;
+		fx_conversion_id?: string | null;
+	};
+	const placed: PlacedOrder = {
 		order_id: row.id,
 		reference: row.reference,
 		charged_minor: Number(row.charged_minor),
 		currency: row.currency,
 		replayed: true,
 	};
+	if (!row.fx_conversion_id) return placed;
+	const conversion = await db.from("fx_conversions").select("*").eq("id", row.fx_conversion_id)
+		.maybeSingle();
+	if (conversion.error) {
+		throw new Error(`finance.fx_conversions replay read failed: ${conversion.error.message}`);
+	}
+	const paid = conversion.data as { from_minor: number | string; from_currency: string } | null;
+	return paid
+		? {
+			...placed,
+			charge_minor: Number(paid.from_minor),
+			charge_currency: String(paid.from_currency).trim(),
+		}
+		: placed;
 }
 
 /**
- * A completed wallet payment. The charge is stated in the currency the wallet actually moved — the
- * listing's own — never re-converted: a receipt quotes what happened, not what it would cost today.
+ * A completed wallet payment. The charge is stated in the currency the buyer's wallet actually moved —
+ * their own when a conversion paid for it, else the listing's — never re-converted: a receipt quotes
+ * what happened, not what it would cost today.
  */
 function succeeded(placed: PlacedOrder): CheckoutResult {
-	const charged = moneyIn(placed.charged_minor, placed.currency);
+	const charged = typeof placed.charge_minor === "number" && placed.charge_currency
+		? moneyIn(placed.charge_minor, placed.charge_currency)
+		: moneyIn(placed.charged_minor, placed.currency);
 	return {
 		status: "succeeded",
 		orderId: placed.order_id,

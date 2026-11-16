@@ -70,14 +70,94 @@ CREATE TABLE finance.transactions (
     -- uuid and printed `balance_after_cents` out of the order it was computed in (#125(e), Decision
     -- #126). The wall clock keeps the rows in write order.
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
-    -- Immutable once written: a statement/invoice reprints the rate that was actually applied, never
-    -- today's. `fx_base` defaults to the platform base so a stamped rate is never orphaned from the
-    -- currency it was quoted against.
+    -- The FX snapshot of a row a conversion wrote (finance.fx_conversions, Decision #435), NULL on every
+    -- other row: one `fx_base` (the currency the payer paid in) bought `fx_rate` units of the pair's other
+    -- currency at mid-market, observed `fx_as_of`. Immutable with the row, so a statement or invoice
+    -- reprints the rate that was applied, never today's. `fx_base` keeps the platform-base default.
     fx_rate numeric(20, 10),
     fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz
 );
+
+-- #region FX conversion — paying in one's own currency for money held in another (Decision #435)
+-- A locked conversion price: what `to_minor` of `to_currency` costs in `from_currency` at the newest
+-- platform-base rates of both (`from_rate`, `to_rate`; amount_quote = amount_base × rate) plus the
+-- disclosed margin (`security.platform_params.fx_spread_bp`). `principal_minor` is the mid-market cost
+-- and `spread_minor` the margin on it, both truncated (Decision #187); `from_minor` is what the payer is
+-- charged. Written only by finance.quote_fx_conversion for the account that pays, frozen except for
+-- `consumed_at` (trg_fx_quotes_guard, 00001830), executed at most once by finance.fn_execute_fx_quote.
+-- A quote a card payment was started on is honoured past `expires_at`: the payer was charged on it.
+CREATE TABLE finance.fx_quotes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
+    owner_id uuid NOT NULL,
+    purpose text NOT NULL CHECK (purpose IN ('checkout', 'escrow_lock', 'funding')),
+    ref_table text CHECK (ref_table IS NULL OR ref_table IN ('baskets', 'project_stages', 'tickets', 'revisions')),
+    ref_id uuid,
+    from_currency char(3) NOT NULL CHECK (from_currency ~ '^[A-Z]{3}$'),
+    to_currency char(3) NOT NULL CHECK (to_currency ~ '^[A-Z]{3}$'),
+    to_minor bigint NOT NULL CHECK (to_minor > 0),
+    principal_minor bigint NOT NULL CHECK (principal_minor > 0),
+    spread_bp integer NOT NULL CHECK (spread_bp BETWEEN 0 AND 2000),
+    spread_minor bigint NOT NULL CHECK (spread_minor >= 0),
+    from_minor bigint NOT NULL,
+    from_rate numeric(20, 10) NOT NULL CHECK (from_rate > 0),
+    to_rate numeric(20, 10) NOT NULL CHECK (to_rate > 0),
+    -- One `from_currency` buys `mid_rate` units of `to_currency` at mid-market (to_rate ÷ from_rate).
+    mid_rate numeric(20, 10) NOT NULL CHECK (mid_rate > 0),
+    -- The older of the two rates' observations: the one the freshness rule judges.
+    rate_as_of timestamptz NOT NULL,
+    rate_provider text NOT NULL,
+    created_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    CONSTRAINT ck_fx_quotes_pair CHECK (from_currency <> to_currency),
+    CONSTRAINT ck_fx_quotes_charge CHECK (from_minor = principal_minor + spread_minor),
+    CONSTRAINT ck_fx_quotes_ref CHECK (num_nulls (ref_table, ref_id) IN (0, 2)),
+    CONSTRAINT ck_fx_quotes_window CHECK (expires_at > created_at)
+);
+
+-- One executed conversion, append-only (trg_fx_conversions_append_only, 00001830). A `purchase`
+-- executes a quote: `principal_minor` (reason `fx_conversion`) and `spread_minor` (`fx_spread`) leave
+-- `from_wallet_id`, and `to_minor` (`fx_conversion`) arrives in `to_wallet_id`, both the payer's own. An
+-- `unwind` returns a refunded share of the escrow a purchase funded (`ref_table` = 'escrows') to the
+-- purchase's source wallet at its pinned figure, margin included and never charged again: `from_minor`
+-- is the escrow currency refunded and `to_minor` what the payer gets back; no wallet is debited, because
+-- the money comes out of the escrow. `rate_base` and `mid_rate` state the pair the purchase's way round
+-- (one `rate_base` bought `mid_rate` of the other currency) on both kinds.
+CREATE TABLE finance.fx_conversions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    kind text NOT NULL CHECK (kind IN ('purchase', 'unwind')),
+    quote_id uuid REFERENCES finance.fx_quotes (id) ON DELETE RESTRICT,
+    parent_id uuid REFERENCES finance.fx_conversions (id) ON DELETE RESTRICT,
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
+    owner_id uuid NOT NULL,
+    from_wallet_id uuid REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    to_wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    from_currency char(3) NOT NULL CHECK (from_currency ~ '^[A-Z]{3}$'),
+    to_currency char(3) NOT NULL CHECK (to_currency ~ '^[A-Z]{3}$'),
+    from_minor bigint NOT NULL CHECK (from_minor > 0),
+    principal_minor bigint NOT NULL CHECK (principal_minor > 0),
+    spread_bp integer NOT NULL DEFAULT 0 CHECK (spread_bp >= 0),
+    spread_minor bigint NOT NULL DEFAULT 0 CHECK (spread_minor >= 0),
+    to_minor bigint NOT NULL CHECK (to_minor > 0),
+    rate_base char(3) NOT NULL,
+    mid_rate numeric(20, 10) NOT NULL CHECK (mid_rate > 0),
+    rate_as_of timestamptz NOT NULL,
+    ref_table text,
+    ref_id uuid,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT uq_fx_conversions_quote UNIQUE (quote_id),
+    CONSTRAINT ck_fx_conversions_pair CHECK (from_currency <> to_currency AND rate_base IN (from_currency, to_currency)),
+    CONSTRAINT ck_fx_conversions_charge CHECK (from_minor = principal_minor + spread_minor),
+    CONSTRAINT ck_fx_conversions_kind CHECK (
+        (kind = 'purchase' AND quote_id IS NOT NULL AND parent_id IS NULL AND from_wallet_id IS NOT NULL)
+        OR (kind = 'unwind' AND quote_id IS NULL AND parent_id IS NOT NULL AND from_wallet_id IS NULL
+            AND spread_bp = 0 AND spread_minor = 0 AND ref_table = 'escrows' AND ref_id IS NOT NULL)
+    )
+);
+-- #endregion
 
 CREATE TABLE finance.escrows (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -133,11 +213,17 @@ CREATE TABLE finance.escrows (
     expires_at timestamptz,
     -- Held by the From-wallet auto-fund queue (finance.fn_auto_fund_drain) rather than by a person.
     auto_funded boolean NOT NULL DEFAULT false,
-    -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
-    -- Immutable once written — settlement reproduces the escrow at the rate it was funded at.
+    -- The snapshot of the conversion that funded this escrow (Decision #435), all NULL on an escrow held
+    -- from a balance already in its currency: one `fx_base` (the payer's currency) bought `fx_rate` of
+    -- this escrow's currency at mid-market, observed `fx_as_of`, and `fx_source_minor` is the exact amount
+    -- of `fx_base` it cost (its largest-remainder share of the conversion's charge, margin included),
+    -- which a refund returns pro rata (finance.fn_refund_escrow_to_payer). Written once, by
+    -- finance.fn_stamp_escrow_fx.
     fx_rate numeric(20, 10),
     fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz,
+    fx_conversion_id uuid REFERENCES finance.fx_conversions (id) ON DELETE RESTRICT,
+    fx_source_minor bigint CHECK (fx_source_minor IS NULL OR fx_source_minor >= 0),
     CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1),
     CONSTRAINT ck_escrows_one_subject CHECK (num_nonnulls (ticket_id, cohort_membership_id) <= 1),
     CONSTRAINT ck_escrows_sitting_on_seat CHECK (session_event_id IS NULL OR cohort_membership_id IS NOT NULL),
@@ -156,7 +242,8 @@ CREATE TABLE finance.escrows (
         status <> 'reserved'
         OR (ticket_id IS NOT NULL AND payee_id IS NULL AND expires_at IS NULL
             AND revision_id IS NULL AND cohort_membership_id IS NULL)
-    )
+    ),
+    CONSTRAINT ck_escrows_fx_snapshot CHECK (num_nulls (fx_conversion_id, fx_source_minor, fx_rate, fx_as_of) IN (0, 4))
 );
 
 CREATE TABLE finance.payout_accounts (
@@ -360,7 +447,15 @@ CREATE TABLE finance.invoice_line_items (
     ref_id uuid,
     description text NOT NULL,
     amount_cents bigint NOT NULL,
-    currency text NOT NULL
+    currency text NOT NULL,
+    -- A line paid through an FX conversion (Decision #435) is stated in the invoice's currency at its
+    -- pinned figure, beside what it was priced at: `origin_minor` of `origin_currency`, one unit of the
+    -- invoice's currency buying `fx_rate` of it at mid-market, observed `fx_as_of`. All NULL otherwise.
+    origin_minor bigint CHECK (origin_minor IS NULL OR origin_minor >= 0),
+    origin_currency char(3) CHECK (origin_currency IS NULL OR origin_currency ~ '^[A-Z]{3}$'),
+    fx_rate numeric(20, 10) CHECK (fx_rate IS NULL OR fx_rate > 0),
+    fx_as_of timestamptz,
+    CONSTRAINT ck_invoice_line_items_origin CHECK (num_nulls (origin_minor, origin_currency, fx_rate, fx_as_of) IN (0, 4))
 );
 
 CREATE TABLE finance.contribution_agreements (
@@ -1158,6 +1253,10 @@ CREATE TABLE finance.orders (
     payment_provider text NOT NULL DEFAULT 'stripe',
     payment_method_label text NOT NULL DEFAULT ''::text,
     saved_card_id uuid REFERENCES finance.saved_cards (id) ON DELETE SET NULL,
+    -- The conversion that paid for this order in the buyer's own currency (Decision #435): the order's
+    -- figures stay in its lines' currency, and the buyer's charge is the conversion's `from_minor` in its
+    -- `from_currency`. NULL when no conversion was needed.
+    fx_conversion_id uuid REFERENCES finance.fx_conversions (id) ON DELETE RESTRICT,
 
     -- The idempotency key the checkout submitted. UNIQUE, so a retry after an unseen timeout resolves
     -- to the SAME order rather than charging twice — the one guarantee a payment endpoint must make.
@@ -1393,6 +1492,11 @@ CREATE TABLE finance.inbound_payments (
     -- Why the webhook could not place it (a price that moved, a line no longer for sale). The money
     -- stays in the wallet; the browser's own attempt re-asks under the same key.
     order_error text,
+    -- The locked FX quote this payment was started on (Decision #435): it is charged the quote's
+    -- `from_minor` in its `from_currency`, into the payer's wallet in that currency, and settlement
+    -- executes the quote before the escrow lock or the order. NULL when the payment is in the currency it
+    -- pays for.
+    fx_quote_id uuid REFERENCES finance.fx_quotes (id) ON DELETE RESTRICT,
     -- Why a settled payment's purpose was not applied (`settled_unapplied`, Decision #200): the lock or
     -- the order refused after the credit, which is kept. The detail stays in lock_error / order_error.
     unapplied_reason text,
@@ -1409,6 +1513,7 @@ CREATE TABLE finance.inbound_payments (
     updated_at timestamptz NOT NULL DEFAULT now(),
     succeeded_at timestamptz,
     CONSTRAINT uq_inbound_payments_provider_ref UNIQUE (provider, provider_ref),
+    CONSTRAINT uq_inbound_payments_fx_quote UNIQUE (fx_quote_id),
     -- A refund never exceeds what was credited, and only a settled payment was credited anything.
     CONSTRAINT inbound_payments_refund_within_received CHECK (
         refunded_cents >= 0 AND refunded_cents <= COALESCE(amount_received_cents, 0)

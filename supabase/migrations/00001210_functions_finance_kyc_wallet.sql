@@ -342,6 +342,41 @@ BEGIN
     PERFORM pg_catalog.set_config('finance.spend_cover', v_cover::text, true);
 END;
 $$;
+
+-- Carry what a door's gate counted on the wallet a conversion drew from over to the wallet it paid into
+-- (Decision #435): the budget or the ref the source holds in this transaction moves to the target as
+-- `p_to_amount` of the target's currency, so the holds the target pays pass once without counting
+-- again, and the source keeps nothing a later door could be waved through on. Nothing to carry, nothing
+-- moves. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_carry_spend_cover(p_from_wallet uuid, p_to_wallet uuid, p_to_amount bigint)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_cover jsonb := NULLIF(pg_catalog.current_setting('finance.spend_cover', true), '')::jsonb;
+    v_key text;
+BEGIN
+    IF v_cover IS NULL OR p_from_wallet IS NULL OR p_to_wallet IS NULL OR COALESCE(p_to_amount, 0) <= 0
+       OR v_cover ->> 'tx' IS DISTINCT FROM pg_catalog.pg_current_xact_id()::text THEN
+        RETURN;
+    END IF;
+    IF COALESCE(v_cover -> 'budget', '{}'::jsonb) ? p_from_wallet::text THEN
+        v_cover := pg_catalog.jsonb_set(v_cover #- ARRAY['budget', p_from_wallet::text], ARRAY['budget', p_to_wallet::text],
+            pg_catalog.to_jsonb(COALESCE((v_cover -> 'budget' ->> p_to_wallet::text)::bigint, 0) + p_to_amount));
+    END IF;
+    FOR v_key IN SELECT k FROM pg_catalog.jsonb_object_keys(COALESCE(v_cover -> 'refs', '{}'::jsonb)) AS k
+                  WHERE k LIKE p_from_wallet::text || '|%'
+    LOOP
+        v_cover := pg_catalog.jsonb_set(v_cover #- ARRAY['refs', v_key],
+            ARRAY['refs', p_to_wallet::text || pg_catalog.substr(v_key, pg_catalog.length(p_from_wallet::text) + 1)],
+            pg_catalog.to_jsonb(p_to_amount));
+    END LOOP;
+    PERFORM pg_catalog.set_config('finance.spend_cover', v_cover::text, true);
+END;
+$$;
 -- #endregion
 
 -- =============================================================================================
@@ -1255,9 +1290,12 @@ and KYB verification (PK403 kyb_required).';
 --     (`scheduled_at`, still ahead), and projects.fn_book_session_slot seats the buyer on a one-seat
 --     cohort and holds ONE escrow PER SITTING from this wallet. Every other kind (a whole project, a
 --     service) is still refused (PS501) rather than paid into nowhere.
---   * The charge is made in the lines' own currency, which must be one the paying wallet holds. The
---     display-currency figure the buyer saw is a conversion the application verifies separately; the
---     money that moves is integer minor units with no FX in it.
+--   * The lines are priced in one currency, and the order is in it. The account pays from its wallet in
+--     that currency, or, with `p_fx_quote_id` (Decision #435), from its wallet in the quote's currency:
+--     the quote must price exactly this order's net for this basket, the spend gate counts what leaves
+--     that wallet, finance.fn_execute_fx_quote converts it into the account's wallet in the order's
+--     currency, every escrow the order holds is stamped with the conversion (finance.fn_stamp_escrow_fx)
+--     and the order names it. An expired quote is honoured only for a card payment started on it.
 --   * A digital product pays its SELLER's marketplace commission (Decision #337, ruling M1):
 --     finance.fn_effective_commission_bp for the line's owning team, else its owning person — a
 --     negotiated rate, else their Standing rung's (8% → 6.5%, finance.standing_commission_tiers). It
@@ -1290,7 +1328,8 @@ CREATE OR REPLACE FUNCTION finance.place_wallet_order(
     p_units jsonb,
     p_promo_code text,
     p_idempotency_key text,
-    p_expected_minor bigint
+    p_expected_minor bigint,
+    p_fx_quote_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1299,6 +1338,9 @@ SECURITY DEFINER
 SET search_path = finance, catalogue, org, security, public
 AS $$
 DECLARE
+    v_quote finance.fx_quotes;
+    v_source finance.wallets;
+    v_conv finance.fx_conversions;
     v_fee_bp integer;
     v_line_bp integer;
     v_uid uuid := auth.uid();
@@ -1352,9 +1394,13 @@ BEGIN
         IF NOT finance.fn_owner_visible (v_existing.owner_type, v_existing.owner_id) THEN
             RAISE EXCEPTION 'That payment key belongs to another account' USING ERRCODE = '42501';
         END IF;
+        SELECT * INTO v_conv FROM finance.fx_conversions WHERE id = v_existing.fx_conversion_id;
         RETURN pg_catalog.jsonb_build_object(
             'order_id', v_existing.id, 'reference', v_existing.reference, 'status', v_existing.status,
-            'charged_minor', v_existing.charged_minor, 'currency', v_existing.currency, 'replayed', true
+            'charged_minor', v_existing.charged_minor, 'currency', v_existing.currency, 'replayed', true,
+            'fx_conversion_id', v_existing.fx_conversion_id,
+            'charge_minor', COALESCE(v_conv.from_minor, v_existing.charged_minor),
+            'charge_currency', COALESCE(v_conv.from_currency::text, v_existing.currency)
         );
     END IF;
 
@@ -1369,9 +1415,13 @@ BEGIN
         IF NOT finance.fn_owner_visible (v_existing.owner_type, v_existing.owner_id) THEN
             RAISE EXCEPTION 'That payment key belongs to another account' USING ERRCODE = '42501';
         END IF;
+        SELECT * INTO v_conv FROM finance.fx_conversions WHERE id = v_existing.fx_conversion_id;
         RETURN pg_catalog.jsonb_build_object(
             'order_id', v_existing.id, 'reference', v_existing.reference, 'status', v_existing.status,
-            'charged_minor', v_existing.charged_minor, 'currency', v_existing.currency, 'replayed', true
+            'charged_minor', v_existing.charged_minor, 'currency', v_existing.currency, 'replayed', true,
+            'fx_conversion_id', v_existing.fx_conversion_id,
+            'charge_minor', COALESCE(v_conv.from_minor, v_existing.charged_minor),
+            'charge_currency', COALESCE(v_conv.from_currency::text, v_existing.currency)
         );
     END IF;
     IF NOT finance.fn_can_manage_basket (v_basket.owner_type, v_basket.owner_id) THEN
@@ -1766,36 +1816,85 @@ BEGIN
             USING ERRCODE = 'PC409';
     END IF;
 
-    -- The paying wallet: the account's wallet in the charge currency. A personal account's wallet may
-    -- carry either personal type.
-    SELECT w.* INTO v_wallet
-      FROM finance.wallets w
-     WHERE w.owner_id = v_basket.owner_id
-       AND w.currency = v_currency
-       AND (w.owner_type = v_basket.owner_type
-            OR (v_basket.owner_type IN ('user', 'freelancer') AND w.owner_type IN ('user', 'freelancer')))
-     ORDER BY (w.owner_type = v_basket.owner_type) DESC
-     LIMIT 1
-     FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Your wallet holds no %', v_currency USING ERRCODE = 'PF402';
-    END IF;
-    IF v_wallet.balance_cents < v_net THEN
-        RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
-    END IF;
-    -- A business basket passes the spend gate once for the whole charge (BB3): KYB, the buyer's envelope,
-    -- the threshold with the platform fallback, an approval bound to this basket. Its cover lets the
-    -- ticket and revision lines below hold without counting the buyer — or anyone — again.
-    IF v_basket.owner_type = 'business' THEN
-        PERFORM finance.fn_assert_business_spend (v_wallet.id, v_uid, v_net, 'baskets', v_basket.id);
-    ELSIF v_basket.owner_type IN ('team', 'enterprise') THEN
-        IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_net >= v_wallet.approval_threshold_cents THEN
-            RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
-                USING ERRCODE = 'PA403';
+    IF p_fx_quote_id IS NOT NULL THEN
+        SELECT * INTO v_quote FROM finance.fx_quotes q WHERE q.id = p_fx_quote_id FOR UPDATE;
+        IF NOT FOUND OR v_quote.owner_id IS DISTINCT FROM v_basket.owner_id
+           OR NOT (v_quote.owner_type = v_basket.owner_type
+                   OR (v_basket.owner_type IN ('user', 'freelancer') AND v_quote.owner_type IN ('user', 'freelancer')))
+           OR v_quote.purpose <> 'checkout' OR v_quote.ref_id IS DISTINCT FROM v_basket.id THEN
+            RAISE EXCEPTION 'quote_invalid: That exchange-rate quote is not for this order — review the total and try again'
+                USING ERRCODE = 'PC409';
         END IF;
-        IF NOT finance.fn_check_spending_limit (v_wallet.id, v_uid, v_net) THEN
-            RAISE EXCEPTION 'This purchase is over your spending limit for this account'
-                USING ERRCODE = 'PA403';
+        IF v_quote.to_currency <> v_currency OR v_quote.to_minor <> v_net THEN
+            RAISE EXCEPTION 'price_changed: The total changed while you were paying — review it and try again'
+                USING ERRCODE = 'PC409';
+        END IF;
+        SELECT w.* INTO v_source
+          FROM finance.wallets w
+         WHERE w.owner_id = v_basket.owner_id
+           AND w.currency = v_quote.from_currency
+           AND (w.owner_type = v_basket.owner_type
+                OR (v_basket.owner_type IN ('user', 'freelancer') AND w.owner_type IN ('user', 'freelancer')))
+         ORDER BY (w.owner_type = v_basket.owner_type) DESC
+         LIMIT 1
+         FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Your wallet holds no %', v_quote.from_currency USING ERRCODE = 'PF402';
+        END IF;
+        IF v_source.balance_cents < v_quote.from_minor THEN
+            RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
+        END IF;
+        IF v_basket.owner_type = 'business' THEN
+            PERFORM finance.fn_assert_business_spend (v_source.id, v_uid, v_quote.from_minor, 'baskets', v_basket.id);
+        ELSIF v_basket.owner_type IN ('team', 'enterprise') THEN
+            IF COALESCE(v_source.approval_threshold_cents, 0) > 0 AND v_quote.from_minor >= v_source.approval_threshold_cents THEN
+                RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
+                    USING ERRCODE = 'PA403';
+            END IF;
+            IF NOT finance.fn_check_spending_limit (v_source.id, v_uid, v_quote.from_minor) THEN
+                RAISE EXCEPTION 'This purchase is over your spending limit for this account'
+                    USING ERRCODE = 'PA403';
+            END IF;
+        END IF;
+        v_conv := finance.fn_execute_fx_quote(v_quote.id, v_source.id, 'orders', v_order_id,
+            EXISTS (SELECT 1 FROM finance.inbound_payments p
+                     WHERE p.fx_quote_id = v_quote.id AND p.status IN ('succeeded', 'settled_unapplied')));
+        IF v_basket.owner_type = 'business' THEN
+            PERFORM finance.fn_carry_spend_cover (v_source.id, v_conv.to_wallet_id, v_conv.to_minor);
+        END IF;
+        SELECT w.* INTO v_wallet FROM finance.wallets w WHERE w.id = v_conv.to_wallet_id FOR UPDATE;
+    ELSE
+        -- The paying wallet: the account's wallet in the charge currency. A personal account's wallet may
+        -- carry either personal type.
+        SELECT w.* INTO v_wallet
+          FROM finance.wallets w
+         WHERE w.owner_id = v_basket.owner_id
+           AND w.currency = v_currency
+           AND (w.owner_type = v_basket.owner_type
+                OR (v_basket.owner_type IN ('user', 'freelancer') AND w.owner_type IN ('user', 'freelancer')))
+         ORDER BY (w.owner_type = v_basket.owner_type) DESC
+         LIMIT 1
+         FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Your wallet holds no %', v_currency USING ERRCODE = 'PF402';
+        END IF;
+        IF v_wallet.balance_cents < v_net THEN
+            RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
+        END IF;
+        -- A business basket passes the spend gate once for the whole charge (BB3): KYB, the buyer's envelope,
+        -- the threshold with the platform fallback, an approval bound to this basket. Its cover lets the
+        -- ticket and revision lines below hold without counting the buyer — or anyone — again.
+        IF v_basket.owner_type = 'business' THEN
+            PERFORM finance.fn_assert_business_spend (v_wallet.id, v_uid, v_net, 'baskets', v_basket.id);
+        ELSIF v_basket.owner_type IN ('team', 'enterprise') THEN
+            IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_net >= v_wallet.approval_threshold_cents THEN
+                RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
+                    USING ERRCODE = 'PA403';
+            END IF;
+            IF NOT finance.fn_check_spending_limit (v_wallet.id, v_uid, v_net) THEN
+                RAISE EXCEPTION 'This purchase is over your spending limit for this account'
+                    USING ERRCODE = 'PA403';
+            END IF;
         END IF;
     END IF;
 
@@ -1807,12 +1906,12 @@ BEGIN
         id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor,
         creator_discount_minor, promo_discount_minor, platform_fee_minor, platform_fee_bp,
         platform_fee_mode, tax_minor, processing_contribution_minor, total_minor, charged_minor,
-        payment_provider, payment_method_label, idempotency_key, promo_code
+        payment_provider, payment_method_label, idempotency_key, promo_code, fx_conversion_id
     ) VALUES (
         v_order_id, v_reference, 'confirmed', pg_catalog.now(), v_basket.owner_type, v_basket.owner_id,
         v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, v_fee_bp, 'seller_deducted', 0,
         0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key,
-        CASE WHEN v_promo_minor > 0 THEN v_promo.code END
+        CASE WHEN v_promo_minor > 0 THEN v_promo.code END, v_conv.id
     );
 
     -- The products are paid here; each ticket line's share leaves the wallet as its escrow hold below.
@@ -1963,20 +2062,33 @@ BEGIN
          WHERE id = (v_line.l ->> 'id')::uuid;
     END LOOP;
 
+    IF v_conv.id IS NOT NULL THEN
+        PERFORM finance.fn_stamp_escrow_fx(v_conv.id, ARRAY(
+            SELECT e.id FROM finance.escrows e
+             WHERE e.created_at = pg_catalog.now()
+               AND e.currency = v_currency
+               AND e.status IN ('held', 'reserved')
+               AND e.fx_conversion_id IS NULL
+               AND COALESCE(e.payer_business_id, e.payer_user_id) = v_basket.owner_id));
+    END IF;
     IF v_basket.owner_type = 'business' THEN
         PERFORM finance.fn_close_spend_cover (v_wallet.id);
+        PERFORM finance.fn_close_spend_cover (v_source.id);
     END IF;
     UPDATE finance.orders SET platform_fee_minor = v_fee_total WHERE id = v_order_id;
     UPDATE finance.baskets SET updated_at = pg_catalog.now(), promo_code = NULL WHERE id = v_basket.id;
 
     RETURN pg_catalog.jsonb_build_object(
         'order_id', v_order_id, 'reference', v_reference, 'status', 'confirmed',
-        'charged_minor', v_net, 'currency', v_currency, 'replayed', false
+        'charged_minor', v_net, 'currency', v_currency, 'replayed', false,
+        'fx_conversion_id', v_conv.id,
+        'charge_minor', COALESCE(v_conv.from_minor, v_net),
+        'charge_currency', COALESCE(v_conv.from_currency::text, v_currency)
     );
 END;
 $$;
 
-COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint) IS
+COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
 applied (none sent → none applied), debit the wallet, credit each seller net of their own marketplace
@@ -1988,7 +2100,10 @@ seller credit, and cohort seats (Decision #171), which settle through the buyer'
 membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks
 (Decision #211), which settle into a one-seat cohort with one escrow per sitting
 (projects.fn_book_session_slot); every other kind is refused. The net must equal p_expected_minor (the
-total the buyer saw). A promo is redeemed atomically against its cap and recorded on the order.
+total the buyer saw, in the order''s currency). With p_fx_quote_id (Decision #435) the account pays from
+its wallet in the quote''s currency, converted first at the locked quote, which must price exactly this
+net; the escrows are stamped with the conversion and the order names it. A promo is redeemed atomically
+against its cap and recorded on the order.
 Idempotent on the key, re-checked after the basket lock. Refusal SQLSTATEs: 42501 not allowed · PK403
 verification · PB404 basket gone · PC409 basket/price/promo/seat hold changed, price_changed (the net is
 not p_expected_minor), promo_exhausted (the cap was reached), or a session time that passed · PD422 a

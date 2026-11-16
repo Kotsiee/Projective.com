@@ -24,6 +24,8 @@ import {
 import {
 	ContributionAgreementSchema,
 	EscrowSchema,
+	FxConversionQuoteSchema,
+	FxConversionSchema,
 	FxRateSchema,
 	PayoutSplitSchema,
 	PendingReleaseSchema,
@@ -68,6 +70,8 @@ interface RowContract {
 const ROWS: Readonly<Record<string, RowContract>> = {
 	"finance.wallets": { schema: WalletSchema },
 	"finance.transactions": { schema: TransactionSchema },
+	"finance.fx_quotes": { schema: FxConversionQuoteSchema },
+	"finance.fx_conversions": { schema: FxConversionSchema },
 	"finance.escrows": { schema: EscrowSchema },
 	"finance.payout_accounts": { schema: PayoutAccountSchema },
 	"finance.invoices": { schema: InvoiceSchema },

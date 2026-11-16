@@ -106,6 +106,11 @@ export const CheckoutOrderLinkSchema = z.object({
 	promoCode: z.string().max(60).nullable(),
 	/** The checkout's attempt key — the order's idempotency key, shared with the browser's placement. */
 	orderKey: attemptKey,
+	/**
+	 * The locked FX quote that converts this top-up into {@link currency} (Decision #435); absent when
+	 * the top-up is already in the order's currency.
+	 */
+	fxQuoteId: uuid.optional(),
 });
 export type CheckoutOrderLink = z.infer<typeof CheckoutOrderLinkSchema>;
 
@@ -145,6 +150,11 @@ export const InboundPaymentSchema = z.object({
 	/** Why a `settled_unapplied` payment's lock or order was not applied; `null` on every other status. */
 	unappliedReason: z.string().max(400).nullable().optional(),
 	/**
+	 * The locked FX quote this payment was started on (Decision #435): charged in the quote's currency
+	 * and converted at settlement, before the lock or the order. `null` when no conversion is needed.
+	 */
+	fxQuoteId: uuid.nullable().optional(),
+	/**
 	 * How much of the charge `charge.refunded` has accounted for (Stripe's cumulative
 	 * `amount_refunded`, capped at what was credited); each newly refunded part is a `refund` debit.
 	 */
@@ -173,6 +183,11 @@ export const CreateEscrowLockIntentSchema = z.object({
 	stageIds: z.array(uuid).min(1).max(20).optional(),
 	expectedAmountMinor: minorUnitsPositive,
 	currency,
+	/**
+	 * The payer's `escrow_lock` conversion quote (Decision #435): the card is then charged the quote's
+	 * amount in its currency ({@link expectedAmountMinor}, {@link currency}) and settlement converts it.
+	 */
+	fxQuoteId: uuid.nullable().optional(),
 	idempotencyKey: attemptKey,
 });
 export type CreateEscrowLockIntent = z.infer<typeof CreateEscrowLockIntentSchema>;

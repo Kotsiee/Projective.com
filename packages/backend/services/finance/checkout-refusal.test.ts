@@ -214,6 +214,25 @@ Deno.test("any other PC409 stays price_changed with the database's own sentence"
 	);
 });
 
+Deno.test("#435: a quote that ran out, was used or is not this order's is quote_expired, and the page re-quotes", () => {
+	for (const prefix of ["quote_expired", "quote_used", "quote_invalid"]) {
+		const blocker = refusalBlocker(
+			{ code: "PC409", message: `${prefix}: the conversion quote can no longer be used` },
+			BASKET,
+			"user",
+		);
+		assertEquals(blocker?.code, "quote_expired", prefix);
+		assertEquals(
+			blocker?.message,
+			"The exchange rate for this payment has been refreshed. Review the new total, then pay.",
+		);
+	}
+	assertEquals(
+		refusalBlocker({ code: "PF402", message: "quote_expired: odd" }, BASKET, "user")?.code,
+		"insufficient_funds",
+	);
+});
+
 Deno.test("an unmapped SQLSTATE is not a refusal (the caller throws, the route answers 503)", () => {
 	assertEquals(refusalBlocker({ code: "XX000", message: "boom" }, BASKET, "business"), null);
 });

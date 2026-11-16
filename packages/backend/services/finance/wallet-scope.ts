@@ -78,8 +78,13 @@ export interface WalletContext {
 	money: MoneyProjector;
 	/** Every wallet the viewer can see, personal first. */
 	accounts: WalletAccount[];
-	/** The wallet this read is about, or the read-only rollup of all of them. */
+	/**
+	 * The wallet this read is about, or the read-only rollup of all of them. Narrowed to one currency's
+	 * wallet row when {@link currency} is set; {@link accounts} always holds every row.
+	 */
 	target: WalletAccount | "aggregate";
+	/** The currency wallet the read is narrowed to (`?currency=`, Decision #435); `null` for all of them. */
+	currency: string | null;
 	/** The `wallet` param the read was asked for, canonical when it names a wallet ({@link resolveTarget}). */
 	requested: string;
 	/** The `wallet` param of {@link target}; differs from `requested` when that wallet could not be opened. */
@@ -147,6 +152,20 @@ export function resolveTarget(
 	return { target, requested, resolved: target?.key ?? requested };
 }
 
+/**
+ * The account narrowed to its wallet in `currency` (Decision #435), or `null` when it holds none — the
+ * page then shows every currency, and its address drops the param.
+ */
+export function narrowToCurrency(
+	account: WalletAccount,
+	currency: string | null | undefined,
+): WalletAccount | null {
+	const code = currency?.trim().toUpperCase();
+	if (!code) return null;
+	const rows = account.rows.filter((row) => row.currency.toUpperCase() === code);
+	return rows.length > 0 ? { ...account, rows } : null;
+}
+
 /** The wallet the active context points at, when the request names none. */
 function activeKey(actor: ReadActor): string {
 	switch (actor.contextType) {
@@ -164,8 +183,9 @@ function activeKey(actor: ReadActor): string {
  * the display currency. `null` when the caller cannot be identified — every wallet surface is a
  * signed-in surface.
  *
- * The display currency is an explicit `?display=` first, then the viewer's preference, then the
- * target wallet's own currency — each narrowed to one the FX engine can price.
+ * The display currency is an explicit `?display=` first, then the currency wallet the read is narrowed
+ * to (so its figures are stated exactly), then the viewer's preference, then the target wallet's own
+ * currency — each narrowed to one the FX engine can price.
  */
 export async function resolveWalletContext(
 	query: WalletQuery,
@@ -249,9 +269,12 @@ export async function resolveWalletContext(
 		query.wallet?.trim() || activeKey(actor),
 	);
 	if (target === null) return null;
+	const narrowed = target === "aggregate" ? null : narrowToCurrency(target, query.currency);
 
 	const ownCurrency = target === "aggregate" ? null : primaryCurrency(target);
-	const display = FxService.supportedCurrency(query.display || query.viewerCurrency || ownCurrency || null);
+	const display = FxService.supportedCurrency(
+		query.display || narrowed?.rows[0]?.currency || query.viewerCurrency || ownCurrency || null,
+	);
 	const profile = profileRes.data as
 		| { kyc_status: string | null; kyc_tier: number | null; payout_ready: boolean | null }
 		| null;
@@ -268,7 +291,8 @@ export async function resolveWalletContext(
 		},
 		money: await moneyProjector(display),
 		accounts,
-		target,
+		target: narrowed ?? target,
+		currency: narrowed?.rows[0]?.currency.toUpperCase() ?? null,
 		requested,
 		resolved,
 		// A profile zone that cannot be read is no reason to fail the wallet: the calendar falls back to UTC.

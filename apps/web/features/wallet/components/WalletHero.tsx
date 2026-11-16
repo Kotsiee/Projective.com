@@ -24,6 +24,7 @@ import {
 	viewLabel,
 	walletPageHref,
 	walletParam,
+	walletScopeNoun,
 	type WalletView,
 } from "../core/wallet-model.ts";
 import { ActionIcon, FundStateIcon } from "./wallet-glyphs.tsx";
@@ -54,12 +55,6 @@ const ROLE_LABEL: Readonly<Record<string, string>> = {
 	member: "Member",
 };
 
-const VAULT_NOUN: Readonly<Record<string, string>> = {
-	team: "Team vault",
-	business: "Business vault",
-	enterprise: "Enterprise vault",
-};
-
 /** Whether the read-only "All accounts" rollup is worth offering: with one account it only repeats it. */
 export function showsAggregate(switcher: WalletSwitcher): boolean {
 	return switcher.accounts.length > 1 || switcher.active.scope === "aggregate";
@@ -69,7 +64,7 @@ export function showsAggregate(switcher: WalletSwitcher): boolean {
 export function accountKind(ref: WalletRef): string {
 	if (ref.scope === "aggregate") return "All accounts";
 	if (ref.scope === "personal") return "Your wallet";
-	const noun = VAULT_NOUN[ref.scope] ?? "Vault";
+	const noun = walletScopeNoun(ref.scope);
 	return ref.role ? `${ROLE_LABEL[ref.role]} · ${noun}` : noun;
 }
 
@@ -214,6 +209,41 @@ function Conversion({ overview }: { overview: WalletOverview }): JSX.Element | n
 	);
 }
 
+function CurrencyTabs(
+	{ overview, switcher, view }: {
+		overview: WalletOverview;
+		switcher: WalletSwitcher;
+		view: WalletView;
+	},
+): JSX.Element | null {
+	const rows = overview.currencies;
+	const narrowed = rows.some((row) => row.selected);
+	if (rows.length < 2 && !narrowed) return null;
+	const param = walletParam(switcher.active.scope, switcher.active.id);
+	return (
+		<nav class="wlt-currencies" aria-label="Currency wallets">
+			<a
+				class="wlt-currencies__item"
+				href={walletPageHref(view, param)}
+				aria-current={narrowed ? undefined : "page"}
+			>
+				All currencies
+			</a>
+			{rows.map((row) => (
+				<a
+					key={row.currency}
+					class="wlt-currencies__item"
+					href={walletPageHref(view, param, null, null, row.currency)}
+					aria-current={row.selected ? "page" : undefined}
+				>
+					<span class="wlt-currencies__code">{row.currency}</span>
+					<MoneyView value={row.available} size="micro" exact class="wlt-currencies__amount" />
+				</a>
+			))}
+		</nav>
+	);
+}
+
 function MetricMark({ state }: { state: FundState }): JSX.Element {
 	return state === "available"
 		? <span class="wlt-metric__dot" aria-hidden="true" />
@@ -336,6 +366,8 @@ export function WalletHero(props: WalletHeroProps): JSX.Element {
 							{!aggregate && <Conversion overview={overview} />}
 						</div>
 					)}
+
+				{!aggregate && <CurrencyTabs overview={overview} switcher={switcher} view={view} />}
 
 				{!compact && !aggregate && (
 					<dl class="wlt-metrics">

@@ -1,45 +1,21 @@
 import type { JSX } from "preact";
+import { MetaLine } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
-import type {
-	BuyerDetails,
-	CheckoutSettlement,
-	PostalAddress,
-} from "../types/checkout-types.ts";
+import type { BuyerDetails, PostalAddress } from "../types/checkout-types.ts";
 
 /**
- * CheckoutContractBanner — the terms of the purchase, stated once at the top of the payment step.
+ * CheckoutContractBanner — who the work goes to and who is billed, stated once at the top of the
+ * payment step's reading column.
  *
- * ## Why it exists, and why it is here rather than in the rail
+ * These facts are already decided by the time the buyer reaches Payment, so the banner is quiet,
+ * unboxed text — a section-header label, the recipient, and one Meta line — with an inline link back
+ * to the Details step. The settlement currency and the FX rate are NOT restated here: the summary
+ * rail discloses both beside the Order Total they qualify (PRODUCT_SPEC: the total in the buyer's
+ * currency, the exact charge in the seller's, and the rate it was shown at).
  *
- * The delivery address, the billed identity and the settlement currency are the parts of a purchase
- * that are **already decided** by the time the buyer reaches Payment. They used to sit in the summary
- * rail, where they pushed the Order Total and the Buy Now button below the fold on a laned surface —
- * so the rail spent its most valuable space restating facts and its least valuable space on the
- * decision the page exists for. They belong at the top of the reading column instead: the buyer
- * confirms the contract, then chooses how to settle it, and the rail is left to answer "how much".
- *
- * ## What it says, and what it refuses to say
- *
- * **The FX line renders only when a conversion actually happened.** `settlement.rateLabel` is `null`
- * on a same-currency checkout, and the whole row is then absent — not a rate of 1.0, not an empty
- * stamp. A timestamp with no conversion behind it reads as a commitment the platform has not made,
- * and it is exactly the kind of clutter that trains a reader to stop reading the banner at all.
- *
- * **Every string here was composed server-side.** The rate statement, the snapshot stamp and the
- * currency label all arrive pre-formatted on `CheckoutSettlement`; this component concatenates
- * nothing and converts nothing. The rate in particular is read off the money that was actually
- * converted rather than resolved a second time — a printed rate that differs from the applied one is
- * the single FX failure a reader has no way to detect.
- *
- * **An unfilled field says so in words.** A missing address line prints "No address saved" rather
- * than collapsing to nothing, because a banner that silently omits a fact reads identically to a
- * banner whose fact is fine.
- *
- * ## Separation
- *
- * §B.4 allows the four-sided contour here: the banner is a single tonal surface carrying one hairline
- * and one link, drawn as a compact card because it is a distinct *statement* rather than a section of
- * the flow beneath it. Nothing inside it is boxed again.
+ * **An unfilled field says so in words.** A missing address prints "No address saved" rather than
+ * collapsing to nothing, because a summary that silently omits a fact reads identically to one whose
+ * fact is fine.
  */
 
 // #region Address
@@ -68,16 +44,14 @@ function addressLine(address: PostalAddress): string | null {
 export interface CheckoutContractBannerProps {
 	/** The buyer's saved record for the ACTIVE billing identity — the same one the invoice prints. */
 	buyer: BuyerDetails;
-	/** What this checkout settles in, and the FX observation behind it. Server-composed. */
-	settlement: CheckoutSettlement;
 	/** The Details step in edit mode — `?edit=1`, or the auto-skip sends the buyer straight past it. */
 	detailsHref: string;
 }
 // #endregion
 
-/** The delivery, billing and settlement terms this payment will be made on. */
+/** The delivery and billing terms this payment will be made on. */
 export function CheckoutContractBanner(props: CheckoutContractBannerProps): JSX.Element {
-	const { buyer, settlement } = props;
+	const { buyer } = props;
 
 	const business = buyer.contextKind === "business";
 	const recipient = `${buyer.delivery.firstName} ${buyer.delivery.lastName}`.trim();
@@ -91,88 +65,22 @@ export function CheckoutContractBanner(props: CheckoutContractBannerProps): JSX.
 	return (
 		<section class="cko-contract" aria-labelledby="cko-contract-head">
 			<div class="cko-contract__headrow">
-				<h2 class="cko-contract__head" id="cko-contract-head">Billing &amp; Delivery Summary</h2>
-				{
-					/*
-					 * An ANCHOR wearing the quiet link treatment, not a button: it navigates to a real page,
-					 * so it has to survive a middle-click and an open-in-new-tab. `?edit=1` is carried by the
-					 * caller and is mandatory — the Details step auto-skips a complete record, so every other
-					 * route into the form redirects straight past it.
-					 */
-				}
+				<h2 class="cko-contract__head" id="cko-contract-head">Billing &amp; delivery</h2>
 				<a class="cko-contract__change" href={props.detailsHref}>
 					Change Details
 					<Icon name="arrow-right" size="2xs" />
 				</a>
 			</div>
-
-			<dl class="cko-contract__facts">
-				<div class="cko-contract__fact" data-fact="parties">
-					<dt class="cko-contract__key">Deliver &amp; bill to</dt>
-					<dd class="cko-contract__val">
-						<span class="cko-contract__party">
-							{recipient || billedTo || "No name saved"}
-						</span>
-						{
-							/*
-							 * The billed identity is named separately ONLY when it differs from the recipient.
-							 * On a personal purchase the two are the same person and printing the name twice
-							 * invites the reader to look for a distinction that is not there.
-							 */
-						}
-						{billedTo && billedTo !== recipient && (
-							<span class="cko-contract__sub">
-								Billed to {billedTo}
-							</span>
-						)}
-						<span class="cko-contract__sub">
-							{email || <span data-empty="true">No email saved</span>}
-						</span>
-						<span class="cko-contract__sub">
-							{address ?? <span data-empty="true">No address saved</span>}
-						</span>
-					</dd>
-				</div>
-
-				{
-					/*
-					 * When the sellers priced in another currency, every route takes the payment in THAT
-					 * currency — a card or express charge (Decision #153) and a wallet order alike — so the
-					 * fact names both: what the order is shown in, and what it is taken in. The rail carries
-					 * the exact charged figure.
-					 */
-				}
-				<div class="cko-contract__fact" data-fact="currency">
-					<dt class="cko-contract__key">Currency &amp; settlement</dt>
-					<dd class="cko-contract__val">
-						<span class="cko-contract__party">{settlement.label}</span>
-						<span class="cko-contract__sub">
-							{settlement.originCurrency
-								? `Priced in ${settlement.originCurrency} and shown converted; payment is taken in ${settlement.originCurrency}.`
-								: "Every price on this order was set in this currency."}
-						</span>
-					</dd>
-				</div>
-
-				{
-					/*
-					 * Present ONLY when something was actually converted — see the component note. The stamp
-					 * is the observation the platform priced against, stated in UTC because a rate is a fact
-					 * about an instant and a local rendering of it is one more thing to disagree about.
-					 */
-				}
-				{settlement.rateLabel && (
-					<div class="cko-contract__fact" data-fact="fx">
-						<dt class="cko-contract__key">Rate</dt>
-						<dd class="cko-contract__val">
-							<span class="cko-contract__party">{settlement.rateLabel}</span>
-							{settlement.asOfLabel && (
-								<span class="cko-contract__sub">Locked {settlement.asOfLabel}</span>
-							)}
-						</dd>
-					</div>
-				)}
-			</dl>
+			<p class="cko-contract__party">{recipient || billedTo || "No name saved"}</p>
+			<MetaLine
+				class="cko-contract__facts"
+				items={[
+					billedTo && billedTo !== recipient && `Billed to ${billedTo}`,
+					email || { text: "No email saved", node: <span data-empty="true">No email saved</span> },
+					address ??
+						{ text: "No address saved", node: <span data-empty="true">No address saved</span> },
+				]}
+			/>
 		</section>
 	);
 }

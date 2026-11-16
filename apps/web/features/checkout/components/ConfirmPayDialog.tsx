@@ -3,7 +3,7 @@ import type { Signal } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { feeDisclosure, PROVIDER_LABEL } from "../core/checkout-model.ts";
+import { feeDisclosure, listedReference, PROVIDER_LABEL } from "../core/checkout-model.ts";
 import { Amount } from "./Amount.tsx";
 import type { CheckoutSessionContext, SavedCard } from "../types/checkout-types.ts";
 
@@ -19,7 +19,9 @@ import type { CheckoutSessionContext, SavedCard } from "../types/checkout-types.
  * it; it is also not routine, so the default filled primary — the same treatment as "Save" — would
  * understate it. `warning` is the register the platform already uses for a consequential gate, and
  * the button carries the exact server-formatted amount: a button reading "Confirm" asks the buyer to
- * remember what they were told, and one reading "Pay £1,225.00" does not.
+ * remember what they were told, and one reading "Pay £1,225.00" does not. When the charge is converted
+ * into the buyer's own currency (Decision #435), that exact charge is the figure and the button, with
+ * the listed total, the locked rate and the margin beside it.
  *
  * **The outcome is not shown here.** The dialog closes the moment a charge lands and the body's
  * result panel takes focus, so there is exactly one place an outcome is rendered — including
@@ -58,6 +60,10 @@ function routeLabel(session: CheckoutSessionContext, card: SavedCard | null): st
 export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 	const { open, session, lineCount, card, busy } = props;
 	const fee = feeDisclosure(session.totals);
+	const charge = session.buyerCharge;
+	const quote = charge?.quote ?? null;
+	const reference = listedReference(session);
+	const payable = charge && quote ? charge : session.totals.total;
 
 	const footer = (
 		<div class="cko-confirm__foot">
@@ -76,7 +82,7 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 				rounded
 				loading={busy}
 				// The SERVER's string, printed verbatim. This dialog composes no figure of its own.
-				label={busy ? "Taking payment…" : `Pay ${session.totals.total.display}`}
+				label={busy ? "Taking payment…" : `Pay ${payable.display}`}
 				onClick={props.onConfirm}
 			/>
 		</div>
@@ -96,10 +102,28 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 		>
 			<div class="cko-confirm__body">
 				<p class="cko-confirm__figure">
-					<Amount value={session.totals.total} size="hero" />
+					{charge && quote && reference
+						? <Amount value={charge} size="hero" exact reference={reference} />
+						: <Amount value={session.totals.total} size="hero" hideOrigin />}
 				</p>
 
 				<dl class="cko-confirm__rows">
+					{charge && quote && (
+						<div class="cko-confirm__row">
+							<dt class="cko-confirm__label">{quote.marginLabel}</dt>
+							<dd class="cko-confirm__value">
+								<Amount value={quote.margin} size="micro" exact />
+							</dd>
+						</div>
+					)}
+					{charge && !quote && charge.currency !== session.currency && (
+						<div class="cko-confirm__row">
+							<dt class="cko-confirm__label">Charged in {charge.currency}</dt>
+							<dd class="cko-confirm__value">
+								<Amount value={charge} size="micro" hideOrigin pinned />
+							</dd>
+						</div>
+					)}
 					<div class="cko-confirm__row">
 						<dt class="cko-confirm__label">Paying from</dt>
 						<dd class="cko-confirm__value">{session.owner.name}</dd>
@@ -118,7 +142,12 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 						<div class="cko-confirm__row">
 							<dt class="cko-confirm__label">{session.promo.label}</dt>
 							<dd class="cko-confirm__value">
-								−<Amount value={session.totals.promoDiscount} size="micro" tone="credit" />
+								−<Amount
+									value={session.totals.promoDiscount}
+									size="micro"
+									tone="credit"
+									hideOrigin
+								/>
 							</dd>
 						</div>
 					)}
@@ -129,6 +158,7 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 								value={session.totals.platformFee}
 								size="micro"
 								tone={fee.charged ? "default" : "muted"}
+								hideOrigin
 							/>
 							<span class="cko-confirm__hint">{fee.note}</span>
 						</dd>

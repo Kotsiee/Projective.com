@@ -276,6 +276,19 @@ function handleOf(item: ExploreItem): string | null {
 	return handle ? clip(handle, 40) : null;
 }
 
+/** A discovery item's public cover (listing showcase slot 1), or `null` when it has none. */
+function coverOf(item: ExploreItem): string | null {
+	return "media" in item && typeof item.media === "string" && item.media ? item.media : null;
+}
+
+/** The cover of the service a project was instantiated from, when that listing is public. */
+function sourceServiceCover(catalog: Catalog | null, blueprintId: string | null): string | null {
+	if (!catalog || !blueprintId) return null;
+	const slug = indexOf(catalog).blueprintById.get(blueprintId);
+	const item = slug ? catalog.byId.get(slug) : undefined;
+	return item ? coverOf(item) : null;
+}
+
 /** A listing (service or product) from the public catalogue, by uuid. */
 function listingPurchasable(
 	catalog: Catalog,
@@ -295,7 +308,7 @@ function listingPurchasable(
 		slug,
 		type: family === "product" ? "products" : "services",
 		title: item.title,
-		thumbnail: "media" in item && typeof item.media === "string" && item.media ? item.media : null,
+		thumbnail: coverOf(item),
 		sellerHandle: handleOf(item),
 		sellerName: clip(item.owner.name, 120),
 		href: `/view/${slug}`,
@@ -331,7 +344,11 @@ function projectBelongsTo(project: ProjectFact, owner: ResolvedOwner): boolean {
 const CLOSED_PROJECT = new Set(["completed", "cancelled", "archived"]);
 const CLOSED_STAGE = new Set(["approved", "paid", "cancelled"]);
 
-function projectPurchasable(project: ProjectFact, owner: ResolvedOwner): Purchasable {
+function projectPurchasable(
+	project: ProjectFact,
+	owner: ResolvedOwner,
+	catalog: Catalog | null,
+): Purchasable {
 	const closed = CLOSED_PROJECT.has(project.status)
 		? "This project is closed."
 		: projectBelongsTo(project, owner)
@@ -343,7 +360,8 @@ function projectPurchasable(project: ProjectFact, owner: ResolvedOwner): Purchas
 		slug: project.slug,
 		type: "projects",
 		title: project.title,
-		thumbnail: null,
+		// A client project has no artwork; a service-backed one wears its source listing's cover.
+		thumbnail: sourceServiceCover(catalog, project.source_blueprint_id),
 		// A project line funds the buyer's OWN project; there is no seller to credit on the line.
 		sellerHandle: null,
 		sellerName: null,
@@ -840,7 +858,7 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 			const project = projectById.get(
 				line.revision_id ? stageById.get(line.stage_id ?? "")?.projectId ?? "" : line.item_id,
 			);
-			purchasable = project ? projectPurchasable(project, owner) : null;
+			purchasable = project ? projectPurchasable(project, owner, catalog) : null;
 		} else if (catalog) {
 			purchasable = listingPurchasable(catalog, family, line.item_id);
 		}
@@ -1755,7 +1773,7 @@ async function purchasableForAdd(
 	if (family === "project") {
 		const column = UUID_RE.test(reference) ? "id" : "slug";
 		const [project] = await readProjects(session, column, [reference]);
-		return project ? projectPurchasable(project, session.owner) : null;
+		return project ? projectPurchasable(project, session.owner, session.catalog) : null;
 	}
 	const catalog = session.catalog;
 	if (!catalog) return null;
@@ -1975,7 +1993,7 @@ export async function addTicket(
 	if (input.itemId && input.itemId !== project.id && input.itemId !== project.slug) {
 		return refuse(422, "That ticket isn't part of this project.", { ticketId: "invalid" });
 	}
-	const p = projectPurchasable(project, session.owner);
+	const p = projectPurchasable(project, session.owner, session.catalog);
 	if (p.closed) return refuse(409, p.closed, { ticketId: "unavailable" });
 	const fundingStageId = ticketFundingStageId(ticket);
 	const replacing = input.replaceStages === true;

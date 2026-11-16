@@ -90,6 +90,26 @@ export function preferenceHints(languages: readonly string[]): PreferenceHints {
 	if (currency) hints.displayCurrency = currency;
 	return hints;
 }
+
+/**
+ * The language tags of an HTTP `Accept-Language` header, most preferred first — the server's view of
+ * the same list {@link preferenceHints} reads from `navigator.languages`. Weights order the tags (a
+ * stable sort, so equal weights keep their written order); `q=0` and the `*` wildcard are dropped.
+ */
+export function acceptLanguageTags(header: string | null | undefined): string[] {
+	if (!header) return [];
+	return header
+		.split(",")
+		.map((part, index) => {
+			const [tag, ...params] = part.trim().split(";");
+			const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
+			const weight = q ? Number(q.slice(2)) : 1;
+			return { tag: tag.trim(), weight: Number.isFinite(weight) ? weight : 0, index };
+		})
+		.filter((entry) => entry.tag !== "" && entry.tag !== "*" && entry.weight > 0)
+		.sort((a, b) => b.weight - a.weight || a.index - b.index)
+		.map((entry) => entry.tag);
+}
 // #endregion
 
 // #region First day of the week

@@ -413,17 +413,13 @@ SET search_path = public, finance, projects, org, auth
 AS $$
 DECLARE
     r finance.escrows;
-    v_wallet text;
 BEGIN
     SELECT * INTO r FROM finance.escrows WHERE id = p_escrow_id AND status = 'held' FOR UPDATE;
     IF NOT FOUND THEN
         RETURN 0;
     END IF;
     UPDATE finance.escrows SET status = 'refunded' WHERE id = r.id;
-    v_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
-    PERFORM finance.fn_ensure_wallet(v_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
-    PERFORM finance.fn_wallet_credit(COALESCE(r.payer_business_id, r.payer_user_id), v_wallet, r.currency,
-        r.amount_cents, 'escrow_refund', 'escrows', r.id);
+    PERFORM finance.fn_refund_escrow_to_payer(r.id, r.amount_cents, 'escrow_refund');
     RETURN r.amount_cents;
 END;
 $$;

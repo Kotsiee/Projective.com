@@ -121,6 +121,28 @@ CREATE TRIGGER trg_pot_movements_no_truncate
     BEFORE TRUNCATE ON finance.pot_movements
     FOR EACH STATEMENT
     EXECUTE FUNCTION finance.fn_pot_movements_append_only ();
+
+-- An executed FX conversion is ledger too (00001240, Decision #435); a quote is frozen once written,
+-- except that its use is recorded once.
+CREATE TRIGGER trg_fx_conversions_append_only
+    BEFORE UPDATE OR DELETE ON finance.fx_conversions
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_fx_conversions_append_only ();
+
+CREATE TRIGGER trg_fx_conversions_no_truncate
+    BEFORE TRUNCATE ON finance.fx_conversions
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_fx_conversions_append_only ();
+
+CREATE TRIGGER trg_fx_quotes_guard
+    BEFORE UPDATE OR DELETE ON finance.fx_quotes
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_fx_quotes_guard ();
+
+CREATE TRIGGER trg_fx_quotes_no_truncate
+    BEFORE TRUNCATE ON finance.fx_quotes
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_fx_quotes_guard ();
 -- #endregion
 
 -- #region Disputes — never deleted, terminal once resolved, evidence append-only (00001260, Decision #212)

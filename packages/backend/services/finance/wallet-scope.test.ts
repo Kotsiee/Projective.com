@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { resolveTarget, type WalletAccount } from "./wallet-scope.ts";
+import { currenciesOf } from "./live-wallet.ts";
+import { narrowToCurrency, resolveTarget, type WalletAccount } from "./wallet-scope.ts";
 
 const TEAM_ID = "0b5e3a52-3d0c-4c2e-9f61-2a7c1d9e8f00";
 const FOREIGN_ID = "7c2d9e8f-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
@@ -49,4 +50,41 @@ Deno.test("a param that names no wallet is a mismatch too; personal and the roll
 
 Deno.test("with no personal wallet to fall back to there is no target", () => {
 	assertEquals(resolveTarget([TEAM], `business:${FOREIGN_ID}`).target, null);
+});
+
+const row = (currency: string, balance: number) => ({
+	id: `w-${currency}`,
+	owner_type: "user",
+	owner_id: "u1",
+	currency,
+	balance_cents: balance,
+	approval_threshold_cents: null,
+});
+
+const HOLDING: WalletAccount = { ...PERSONAL, rows: [row("GBP", 12_000), row("EUR", 4_000)] };
+
+Deno.test("#435: ?currency= narrows an account to that currency's wallet, read case-blind", () => {
+	assertEquals(narrowToCurrency(HOLDING, "eur")?.rows.map((r) => r.id), ["w-EUR"]);
+	assertEquals(narrowToCurrency(HOLDING, " GBP ")?.rows.map((r) => r.id), ["w-GBP"]);
+	assertEquals(narrowToCurrency(HOLDING, "JPY"), null);
+	assertEquals(narrowToCurrency(HOLDING, null), null);
+	assertEquals(narrowToCurrency(HOLDING, ""), null);
+});
+
+Deno.test("#435: every currency wallet is listed in its own currency, the narrowed one marked", () => {
+	const narrowed = narrowToCurrency(HOLDING, "EUR");
+	if (!narrowed) throw new Error("EUR wallet expected");
+	const listed = currenciesOf({ accounts: [HOLDING], currency: "EUR" }, narrowed);
+	assertEquals(
+		listed.map((c) => [c.currency, c.available.minor, c.available.currency, c.selected]),
+		[
+			["EUR", 4_000, "EUR", true],
+			["GBP", 12_000, "GBP", false],
+		],
+	);
+	assertEquals(listed.every((c) => c.available.origin === null), true);
+	assertEquals(
+		currenciesOf({ accounts: [HOLDING], currency: null }, HOLDING).some((c) => c.selected),
+		false,
+	);
 });

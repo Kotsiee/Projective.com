@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { cx } from "@ui/core/cx.ts";
-import { type MoneySize, MoneyView } from "@projective/ui/display/money";
+import { type MoneyReference, type MoneySize, MoneyView } from "@projective/ui/display/money";
 import type { MoneyView as MoneyViewValue } from "../types/checkout-types.ts";
 
 /**
@@ -80,6 +80,13 @@ export interface AmountProps {
 	 * so it converts nothing.
 	 */
 	pinned?: boolean;
+	/**
+	 * The figure is a charge stated exactly in its own currency (Decision #435): never re-projected,
+	 * never marked as an estimate, and left alone by the currency sweep.
+	 */
+	exact?: boolean;
+	/** With {@link exact}: what the figure was listed at in another currency, and the rate between them. */
+	reference?: MoneyReference | null;
 	class?: string;
 }
 // #endregion
@@ -123,6 +130,8 @@ export function Amount(props: AmountProps): JSX.Element {
 				sign={sign}
 				hideOrigin={props.hideOrigin}
 				displayCurrency={props.pinned ? value.currency : undefined}
+				exact={props.exact}
+				reference={props.reference}
 			/>
 			{srLabel ? <span class="ui-visually-hidden">{srLabel}</span> : null}
 		</span>

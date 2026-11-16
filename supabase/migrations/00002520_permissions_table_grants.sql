@@ -822,6 +822,14 @@ GRANT SELECT ON TABLE finance.inbound_payments TO authenticated;
 
 GRANT ALL ON TABLE finance.inbound_payments TO service_role;
 
+-- FX quotes and conversions (Decision #435): SELECT under their policies in 00002013; written only by the
+-- 00001240 doors. A conversion is append-only (00001830), so the service role reads and appends.
+GRANT SELECT ON TABLE finance.fx_quotes, finance.fx_conversions TO authenticated;
+
+GRANT ALL ON TABLE finance.fx_quotes TO service_role;
+
+GRANT SELECT, INSERT ON TABLE finance.fx_conversions TO service_role;
+
 -- Processor customers (Decision #126): definer-only, so no client grant at all.
 REVOKE ALL ON TABLE finance.processor_customers FROM anon, authenticated;
 GRANT ALL ON TABLE finance.processor_customers TO service_role;

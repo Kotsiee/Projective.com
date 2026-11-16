@@ -839,7 +839,11 @@ same gate the checkout's `invoice` provider applies (refused `PK403 kyb_required
 `supabase/probes/business_invoicing_terms_kyb.sql`). Returns
 `{ invoicing_mode, billing_day }`.
 
-### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_expected_minor)` → jsonb
+### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_expected_minor, p_fx_quote_id DEFAULT NULL)` → jsonb
+
+> **With `p_fx_quote_id` (Decision #435)** the account pays from its wallet in the quote's currency:
+> see [Paying in one's own currency](#-paying-in-ones-own-currency-decision-435). The result (and a
+> replay) adds `fx_conversion_id`, `charge_minor` and `charge_currency`: what the buyer was charged.
 
 **Age gate:** a caller under 18 is refused `PM403` right after the sign-in check (`org.fn_assert_adult`, Decision #190) —
 which covers `finance.place_on_account_order`, which pays through this function.
@@ -990,7 +994,10 @@ amount within the currency's `on_account_limit_cents`), `get_on_account_standing
 `LANGUAGE sql STABLE SECURITY DEFINER`; no grant to `authenticated` (the finance-wide `PUBLIC` /
 `anon` revoke, `00002510`), so only its definer callers read it.
 
-### `finance.place_on_account_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_amount)` → jsonb (`00001250`, Decision #172)
+### `finance.place_on_account_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_amount, p_fx_quote_id DEFAULT NULL)` → jsonb (`00001250`, Decision #172)
+
+> **With `p_fx_quote_id` (Decision #435)** `p_amount` is the quote's charge: credited, limited, owed and
+> locked in the quote's currency, then converted into the order's by `place_wallet_order`.
 
 Checkout's Invoice route: the platform fronts the order's amount as an `on_account_credit` to the
 business wallet and `place_wallet_order` pays from it, in one transaction. Signed out `42501`. A key
@@ -1443,7 +1450,12 @@ the webhook answers 2xx, and a human reconciles it from `finance.v_ops_unledgere
 
 ### Card payments — user doors
 
-#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL, p_revision_id DEFAULT NULL)` → jsonb
+#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL, p_revision_id DEFAULT NULL, p_fx_quote_id DEFAULT NULL)` → jsonb
+
+> **With `p_fx_quote_id` (Decision #435)** an escrow lock is charged the quote's `from_minor` in its
+> `from_currency` into the payer's wallet in that currency, and `attach_checkout_order` accepts a
+> checkout's `fx_quote_id`; `settle_card_payment` executes either quote. See
+> [Paying in one's own currency](#-paying-in-ones-own-currency-decision-435).
 
 **Age gate:** a caller under 18 is refused `PM403` for either purpose (`org.fn_assert_adult`, Decision #190).
 
@@ -2103,3 +2115,115 @@ amount, a self-declared paid stage not counted, nothing below the threshold, mal
 `finance.record_payout_account` asserts an adult (`org.fn_assert_adult`, `PM403`): a Stripe connected
 account needs an account holder of 18 or over. Every other money door already refuses a minor
 (Decision #190).
+
+## 💱 Paying in one's own currency (Decision #435)
+
+A buyer pays in their own billing currency; escrow is still held, released and paid out in the
+seller's. The design is **Quote → Convert → Hold**: one locked quote per checkout, card lock or wallet
+funding converts the payer's money into their OWN wallet in the seller's currency, and the existing
+single-currency doors (`fn_hold_ticket_escrow`, `fund_stage`, `fund_ticket`, `fund_paid_revision`,
+`fn_confirm_seat`, `fn_book_session_slot`, the reservations) hold from that wallet unchanged.
+Automatic holds (a claim, the Chain Reaction, the auto-fund queue) never convert. Switched off by
+`security.platform_params.fx_checkout_enabled` (false) until counsel and a live rate feed (DB17).
+
+### Arithmetic (`00001200`)
+
+- **`finance.fn_currency_exponent(p_currency)` → integer** (IMMUTABLE): 0 for BIF CLP DJF GNF ISK JPY
+  KMF KRW PYG RWF UGX UYI VND VUV XAF XOF XPF, 3 for BHD IQD JOD KWD LYD OMR TND, else 2 (FBP DB8 step 4's
+  list).
+- **`finance.fn_fx_quote_minor(p_to_minor, p_from_currency, p_to_currency, p_from_rate, p_to_rate,
+  p_spread_bp, OUT principal_minor, OUT spread_minor, OUT from_minor)`** (IMMUTABLE): principal =
+  `⌊to_minor × r_from × 10^e_from ÷ (r_to × 10^e_to)⌋` in exact integer arithmetic on the base rates'
+  ten decimal places; margin = `⌊principal × spread_bp ÷ 10000⌋` (Decision #187); charge = their sum.
+  Vectors pinned by `supabase/probes/fx_rounding_parity.sql`, mirrored in TS.
+- **`finance.fn_fx_refund_minor(p_refund_minor, p_escrow_minor, p_source_minor)`** → bigint
+  (IMMUTABLE): a whole refund returns `p_source_minor` exactly; a partial one
+  `⌈refund × source ÷ escrow⌉`, capped at `p_source_minor` (rounded in the payer's favour).
+
+### Ledger primitives with a snapshot (`00001200`)
+
+- **`finance.fn_wallet_credit_fx(…, p_fx_base, p_fx_rate, p_fx_as_of)`** /
+  **`finance.fn_wallet_debit_fx(…)`**: the full credit and debit bodies, stamping the row's FX snapshot
+  when `p_fx_rate` is set. `fn_wallet_credit` / `fn_wallet_debit` (signatures unchanged) delegate with
+  no snapshot. The voluntary debit list gains `fx_conversion` and `fx_spread`. Internal.
+
+### The quote door (`00001240`)
+
+**`finance.quote_fx_conversion(p_owner_type, p_owner_id, p_from_currency, p_to_currency, p_to_minor,
+p_purpose, p_ref_table, p_ref_id)` → jsonb** (user door, `authenticated`). The caller pays for the
+account: themselves; a member who can spend for an entity's basket (`fn_can_manage_basket`); or a
+funder of the project (`projects.fn_can_fund_project`) whose payer is the account. A checkout names its
+basket, a card lock or a wallet funding its stage, ticket or revision. Refusals, before anything is
+written: `PX503 fx_unavailable` (switched off), `PX422 currency_not_settled` (either currency outside
+`settlement_currencies`, Decision #423), `PX500 fx_spread_not_configured` (no margin, or outside
+0–2000 bp), `PX503 fx_rate_unavailable` / `PX503 fx_rate_stale` (a rate older than
+`fx_rate_max_age_hours`), `22023` (same currency, nothing to convert, too small to convert), `42501`
+(not the caller's account), `PK403 not_funder`. The margin is the higher of the two currencies'
+`fx_spread_bp`. Writes one `finance.fx_quotes` row, usable for `fx_quote_ttl_minutes`; the service
+picks `p_from_currency` (the billing country's currency, or the listing's when the buyer declines the
+conversion), so the database holds no country map.
+
+### Execution, stamping, refunds (`00001240`, `00001200`)
+
+- **`finance.fn_execute_fx_quote(p_quote_id, p_from_wallet, p_ref_table, p_ref_id, p_honour_expired
+  DEFAULT false)` → `finance.fx_conversions`** (internal): debits the source wallet `fx_conversion`
+  (principal) and `fx_spread` (margin) and credits the account's wallet in the target currency
+  `fx_conversion` (`to_minor`), all stamped, writes the `purchase` row and records the quote's use.
+  `PC409 quote_used:` / `PC409 quote_expired:` (unless `p_honour_expired`, for a card payment started on
+  it), `PF402` when the source cannot cover it, `22023` for a wallet that is not the account's.
+- **`finance.fn_stamp_escrow_fx(p_conversion_id, p_escrow_ids)` → integer** (internal): stamps the
+  escrows a purchase funded with its snapshot and each one's exact cost (largest remainder).
+- **`finance.fn_refund_escrow_to_payer(p_escrow_id, p_amount, p_reason)` → bigint** (internal): every
+  refund door's credit to the payer: `fn_refund_ticket_escrow`, `fn_refund_ticket_reservations`,
+  `fn_fair_exit_release` (`00001200`), `fn_refund_seat_escrow` (`00001155`), `fn_split_seat_escrow`
+  (`00001260`) and the lost-chargeback refund in `record_dispute_closed` (`00001240`). An unconverted
+  escrow is credited in its currency, as before; a converted one is credited to the conversion's
+  source wallet in the payer's currency at its pinned figure (`fn_fx_refund_minor`), recorded as an
+  `unwind`, never passing through the escrow currency's wallet. Returns what was credited.
+- **`finance.fn_carry_spend_cover(p_from_wallet, p_to_wallet, p_to_amount)`** (`00001210`, internal):
+  moves the business spend gate's transaction-local cover from the wallet a conversion drew on to the
+  one it paid into, so the holds beneath count the buyer's envelope once, on the money that left.
+
+### The doors that convert
+
+- **`place_wallet_order(…, p_fx_quote_id)`**: the quote must be the basket owner's `checkout` quote for
+  this basket pricing exactly the order's net (`PC409 quote_invalid:` / `price_changed:`); the spend
+  gate counts the quote's charge on the source wallet; the conversion runs; the order is paid from the
+  target wallet; every escrow it held is stamped; `orders.fx_conversion_id` names it.
+- **`begin_card_payment(…, p_fx_quote_id)`**: an escrow lock's quote must be the caller's `escrow_lock`
+  quote for that stage, ticket or revision, charging exactly `p_expected_amount` in `p_currency` and
+  delivering exactly what the lock holds (`PC409`); the payment is credited to the payer's wallet in
+  the quote's currency. A top-up refuses a quote (`22023`).
+- **`attach_checkout_order`** accepts `fx_quote_id` in the checkout (a uuid): the basket's `checkout`
+  quote, charging exactly the payment in its currency and delivering the order's (`checkout.currency`).
+  Stored in the checkout jsonb and on `inbound_payments.fx_quote_id`.
+- **`settle_card_payment`**: an escrow lock with a quote gates, executes (honoured past expiry), carries
+  the cover, then locks and stamps, all inside the lock's subtransaction (a refused lock rolls the
+  conversion back; the money stays in the payer's wallet). A checkout with a quote places the order with
+  `p_expected_minor` = the quote's `to_minor` and the quote.
+- **`finance.fund_with_conversion(p_fx_quote_id, p_project_id, p_stage_id, p_ticket_id DEFAULT NULL,
+  p_revision_id DEFAULT NULL)` → jsonb** (user door, `authenticated`): the wallet route of
+  `fund_stage` / `fund_ticket` / `fund_paid_revision` from the payer's own currency. The caller's
+  `funding` quote must price exactly what the door holds (`fn_stage_funding_need`, the ticket's stage
+  price, the round's price; `PC409`); gate, execute, carry, fund, stamp in one transaction. Returns the
+  door's answer plus `fx_conversion_id`, `charge_minor`, `charge_currency`.
+- **`place_on_account_order(…, p_fx_quote_id)`**: see above.
+
+### Billing, statements, auto-fund, reconciliation
+
+- `fn_generate_consolidated_invoice` invoices a converted escrow in the currency the business paid in
+  (`fx_conversions.from_currency`) at its `fx_source_minor`, with its own amount, currency, rate and date
+  on the line; its fee line likewise, truncated. No invoice is issued in the escrow's currency for it.
+- `fn_generate_statement` counts `fx_spread` among the fees.
+- `fn_wallet_watch` does not drain the auto-fund queue on an `fx_conversion` credit: a conversion is
+  bound to the purchase that made it.
+- `fn_reconcile_wallets` also logs every row of `finance.v_fx_conversion_reconciliation`.
+
+### Triggers
+
+`finance.fn_fx_conversions_append_only()` and `finance.fn_fx_quotes_guard()` (`00001240`), bound in
+`00001830`: conversions refuse UPDATE / DELETE / TRUNCATE; a quote refuses every change but recording
+its use once (`PL403`).
+
+Probes: `fx_rounding_parity`, `fx_quote_guards`, `fx_checkout_conversion`, `fx_card_settlement`,
+`fx_refund_pinning`, `fx_invoice_billing_currency` (each asserts both reconciliation views are clean).

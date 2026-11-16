@@ -183,6 +183,7 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		orderId: row.order_id ?? null,
 		orderError: row.order_error ?? null,
 		unappliedReason: row.unapplied_reason ?? null,
+		fxQuoteId: row.fx_quote_id ?? null,
 		refundedCents: num(row.refunded_cents) ?? 0,
 		refundUnrecoveredCents: num(row.refund_unrecovered_cents) ?? 0,
 		createdAt: row.created_at,
@@ -202,6 +203,7 @@ function checkoutLinkOf(raw: unknown): CheckoutOrderLink | null {
 		units: (typeof link.units === "object" && link.units !== null ? link.units : {}) as Record<string, number>,
 		promoCode: typeof link.promo_code === "string" ? link.promo_code : null,
 		orderKey: String(link.order_key),
+		...(typeof link.fx_quote_id === "string" ? { fxQuoteId: link.fx_quote_id } : {}),
 	};
 }
 
@@ -268,6 +270,8 @@ export function beginCardPayment(
 		ticketId?: string | null;
 		/** One paid revision round to pay for instead (Decision #199). */
 		revisionId?: string | null;
+		/** The payer's `escrow_lock` conversion quote, charged in its currency (Decision #435). */
+		fxQuoteId?: string | null;
 		expectedAmountMinor: number;
 		currency: string;
 		idempotencyKey: string;
@@ -284,6 +288,7 @@ export function beginCardPayment(
 		// Sent only when set, so a stage lock or a top-up still resolves the function by its old arguments.
 		...(args.ticketId ? { p_ticket_id: args.ticketId } : {}),
 		...(args.revisionId ? { p_revision_id: args.revisionId } : {}),
+		...(args.fxQuoteId ? { p_fx_quote_id: args.fxQuoteId } : {}),
 	}, (row) => ({ payment: inboundPaymentOf(row), replayed: row.replayed === true }));
 }
 
@@ -322,6 +327,7 @@ export async function attachCheckoutOrder(
 			units: link.units,
 			promo_code: link.promoCode,
 			order_key: link.orderKey,
+			...(link.fxQuoteId ? { fx_quote_id: link.fxQuoteId } : {}),
 		},
 	});
 	if (error) {

@@ -432,19 +432,37 @@ The abstract intent ("price and be paid in your own currency; see prices in your
 - **Snapshot-at-commit.** At escrow lock / release / checkout the FX rate(s) used are captured onto
   the row (`fx_rate`, `fx_base`, `fx_as_of` on `finance.transactions`/`escrows`), sourced from
   `finance.fx_rates`. Settlement is therefore deterministic and reproducible — it never drifts with
-  the market. **Not built yet**: no function writes these columns today, because no money is
-  converted (FINANCE_AUDIT C7); `finance.escrows`' are kept as **reserved** for the conversion below
-  (Decision #337, ruling Q0.2 (d)).
+  the market. Every leg of a conversion (below) writes them, and so does every escrow a conversion
+  funds, together with `fx_conversion_id` and `fx_source_minor`, what the escrow cost the payer in
+  their own currency (Decision #435).
 - **Display conversion is read-time only.** Balances/prices are shown in the viewer's
   `org.user_preferences.preferred_display_currency` using the latest `finance.fx_rates` row; this
   **never** mutates stored amounts or affects settlement. Rates come from a **daily FX feed**, and
   every converted figure carries a **staleness mark** naming its rate's date (ruling M5 (f)) — **Not
   built yet**: every converted figure today uses a seed rate dated 2026-08-01.
-- **Conversion between one's own wallets** (rulings M5 (c), (d)) — **Not built yet**: a holder may
-  convert a balance from one currency to another at the mid-market rate plus a **disclosed margin**,
-  paid by the payer (in a conversion, the holder converting). The margin is a
-  `security.platform_params` dial whose value is not set yet. Until it is built, balances are per
-  currency and withdraw-only.
+- **Paying in one's own currency** (rulings M5 (c), (d); Decision #435) — **built, switched off**
+  (`fx_checkout_enabled` = false until counsel and a live feed). A purchase priced in another
+  currency is converted between the payer's OWN wallets: their billing-currency wallet pays the
+  quote's `from_minor` (`fx_conversion` principal + `fx_spread` margin), their wallet in the order's
+  currency is credited exactly the order's figure (`fx_conversion`), and the order, the escrow and
+  every payout then run in the seller's currency, unchanged. The numbers:
+  - **Billing currency** = the billing country's currency (`currencyForCountry`), when it is one of
+    the nine settlement currencies (`settlement_currencies`, Decision #423), else GBP. Never the
+    display preference (ruling M5 (b)).
+  - **Quote** (`finance.quote_fx_conversion`): the newest GBP-pivot rates, refused when older than
+    `fx_rate_max_age_hours` (24); usable for `fx_quote_ttl_minutes` (30) and only once, for the one
+    purchase it names (`checkout` · `escrow_lock` · `funding`).
+  - **Margin** = `fx_spread_bp`, a per-currency map (`{"default": 150}`, 1.5%); a quote takes the
+    higher of its two currencies' values, and the margin is disclosed before the payer confirms.
+  - **Rounding** (Decision #187): principal = ⌊delivered × r_from × 10^e_from ÷ (r_to × 10^e_to)⌋ on
+    the rates' ten decimal places; margin = ⌊principal × bp ÷ 10 000⌋; charge = principal + margin.
+    `quoteConversionMinor` mirrors it exactly (pinned to the database's vectors).
+  - **Refund** of converted escrow: its pro-rata share of what it cost the payer, ⌈refund × source ÷
+    escrow⌉, never above what was paid — a whole refund returns exactly the charge, margin included —
+    credited to the wallet that paid, in the payer's currency (an `unwind` conversion). The platform
+    carries any rate drift.
+  - **Never converts**: an automatic hold (a claim, the Chain Reaction, the auto-fund queue), a
+    payout, or a free-standing balance — conversion exists only inside a purchase the payer confirms.
 
 ---
 
@@ -655,7 +673,15 @@ Governs shared wallets (Business / Team / Enterprise).
   `finance.fn_reconcile_wallets`, which reports drift to ops and never corrects it; the ledger
   itself is append-only (Decision #186); external Stripe-balance-vs-escrow-pool reconciliation is an
   ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints). Beside it runs a per-currency
-  conservation-identity view (§6; Decision #337, ruling M2) — **Not built yet**.
+  conservation-identity view (§6; Decision #337, ruling M2) — **Not built yet**. A conversion
+  (§11, Decision #435) is reconciled on its own too: `finance.v_fx_conversion_reconciliation` sets
+  each `finance.fx_conversions` row against its ledger legs (principal, margin and credit; every
+  drift must be 0), and `finance.v_fx_exposure` totals the platform's net position per currency
+  pair.
+- **Converted refunds and invoices** (Decision #435): a refund of converted escrow returns the
+  payer's pinned share in their own currency (§11). An on-account order paid through a quote is
+  credited, limited and invoiced in the business's billing currency, so a business sees one
+  invoice currency however its sellers price.
 - **Idempotency** (`finance.idempotency_keys`): every money-mutating request presents a key; a retry
   replays the stored response rather than re-executing — retries **never double-move money**.
 - **Tax docs:** Stripe-issued 1099 / local forms surface to the user (§9); no PII is stored.

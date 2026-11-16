@@ -23,6 +23,70 @@ FROM finance.wallets w
 LEFT JOIN finance.transactions t ON t.wallet_id = w.id
 GROUP BY w.id, w.owner_type, w.owner_id, w.currency, w.balance_cents;
 
+-- Every FX conversion whose ledger legs, or whose funded escrows, do not add up (Decision #435): one row
+-- per problem, empty while every conversion was written through its doors. A purchase debits its source
+-- `principal_minor` (`fx_conversion`) and `spread_minor` (`fx_spread`) and credits its target `to_minor`
+-- (`fx_conversion`), every leg naming it, and the escrows it stamped never cost more than it charged. An
+-- escrow's unwinds are credited to their target, naming the escrow, exactly as recorded. Read by
+-- finance.fn_reconcile_wallets; service role only.
+CREATE OR REPLACE VIEW finance.v_fx_conversion_reconciliation AS
+WITH purchase_legs AS (
+    SELECT c.id AS conversion_id, c.kind, c.principal_minor, c.spread_minor, c.to_minor, c.from_minor,
+           COALESCE(SUM(t.amount_cents) FILTER (WHERE t.wallet_id = c.from_wallet_id AND t.direction = 'debit'
+                                                  AND t.reason = 'fx_conversion'), 0)::bigint AS principal_ledger,
+           COALESCE(SUM(t.amount_cents) FILTER (WHERE t.wallet_id = c.from_wallet_id AND t.direction = 'debit'
+                                                  AND t.reason = 'fx_spread'), 0)::bigint AS spread_ledger,
+           COALESCE(SUM(t.amount_cents) FILTER (WHERE t.wallet_id = c.to_wallet_id AND t.direction = 'credit'
+                                                  AND t.reason = 'fx_conversion'), 0)::bigint AS credit_ledger
+      FROM finance.fx_conversions c
+      LEFT JOIN finance.transactions t ON t.ref_table = 'fx_conversions' AND t.ref_id = c.id
+     WHERE c.kind = 'purchase'
+     GROUP BY c.id, c.kind, c.principal_minor, c.spread_minor, c.to_minor, c.from_minor
+), purchase_escrows AS (
+    SELECT e.fx_conversion_id AS conversion_id, SUM(e.fx_source_minor)::bigint AS shares
+      FROM finance.escrows e
+     WHERE e.fx_conversion_id IS NOT NULL
+     GROUP BY e.fx_conversion_id
+), unwind_credits AS (
+    SELECT u.ref_id AS escrow_id, u.to_wallet_id, SUM(u.to_minor)::bigint AS to_minor,
+           COALESCE((SELECT SUM(t.amount_cents) FROM finance.transactions t
+                      WHERE t.wallet_id = u.to_wallet_id AND t.direction = 'credit' AND t.ref_table = 'escrows'
+                        AND t.ref_id = u.ref_id AND t.fx_rate IS NOT NULL), 0)::bigint AS credit_ledger
+      FROM finance.fx_conversions u
+     WHERE u.kind = 'unwind'
+     GROUP BY u.ref_id, u.to_wallet_id
+)
+SELECT l.conversion_id, l.kind, NULL::uuid AS escrow_id, 'principal' AS problem,
+       l.principal_minor AS expected_minor, l.principal_ledger AS ledger_minor
+  FROM purchase_legs l WHERE l.principal_ledger <> l.principal_minor
+UNION ALL
+SELECT l.conversion_id, l.kind, NULL::uuid, 'spread', l.spread_minor, l.spread_ledger
+  FROM purchase_legs l WHERE l.spread_ledger <> l.spread_minor
+UNION ALL
+SELECT l.conversion_id, l.kind, NULL::uuid, 'credit', l.to_minor, l.credit_ledger
+  FROM purchase_legs l WHERE l.credit_ledger <> l.to_minor
+UNION ALL
+SELECT l.conversion_id, l.kind, NULL::uuid, 'escrow_shares', l.from_minor, pe.shares
+  FROM purchase_legs l JOIN purchase_escrows pe ON pe.conversion_id = l.conversion_id
+ WHERE pe.shares > l.from_minor
+UNION ALL
+SELECT NULL::uuid, 'unwind', uc.escrow_id, 'unwind_credit', uc.to_minor, uc.credit_ledger
+  FROM unwind_credits uc WHERE uc.credit_ledger <> uc.to_minor;
+
+-- What the platform owes in each escrow currency against what it took in each payer currency, for
+-- escrow a conversion funded that is still held, reserved or disputed (Decision #435): the treasury's
+-- open FX exposure, an ops read and never a money path. Service role only.
+CREATE OR REPLACE VIEW finance.v_fx_exposure AS
+SELECT e.fx_base AS paid_currency,
+       e.currency AS owed_currency,
+       pg_catalog.count(*) AS escrows,
+       SUM(e.fx_source_minor)::bigint AS paid_minor,
+       SUM(e.amount_cents)::bigint AS owed_minor,
+       MIN(e.fx_as_of) AS oldest_rate_as_of
+  FROM finance.escrows e
+ WHERE e.fx_conversion_id IS NOT NULL AND e.status IN ('held', 'reserved', 'disputed')
+ GROUP BY e.fx_base, e.currency;
+
 -- Ops (Decision #200): every settled card payment without the ledger credit it is — no
 -- transaction_id, or one that is not this payment's credit of what arrived into its wallet. Empty
 -- while finance.settle_card_payment and the inbound_payments CHECKs hold; service role only.

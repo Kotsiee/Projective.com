@@ -88,9 +88,9 @@ compensating row through `fn_wallet_credit` / `fn_wallet_debit`, never by an edi
 | `ref_table`,`ref_id`  | text,uuid   | Nullable source pointer (usually `escrows`).                                    |
 | `balance_after_cents` | bigint      | Running balance after this line.                                                |
 | `fund_state`          | `finance.fund_state` | Meant to name the pot of capital the amount belongs to; default `available`. **No writer sets it today**, so every row reads `available` (FDD X22 / N13), and the ledger reader's `fundState` filter (`wallet-ledger.ts`) matches only that. The fund states are projected from escrows, `pending_releases` and wallets instead (above). |
-| `fx_rate`             | numeric     | **Additive** (`20260723090000`). Rate applied to reach `fx_base`, if converted. |
-| `fx_base`             | char(3)     | **Additive.** The base currency (usually GBP).                                  |
-| `fx_as_of`            | timestamptz | **Additive.** The `finance.fx_rates.as_of` the rate was snapshotted from.       |
+| `fx_rate`             | numeric     | The FX snapshot of a row a conversion wrote (Decision #435), `NULL` on every other row: one `fx_base` bought `fx_rate` units of the pair's other currency at mid-market. Stamped identically on both legs of a conversion and on the refund of escrow it funded, by `fn_wallet_credit_fx` / `fn_wallet_debit_fx`. |
+| `fx_base`             | char(3)     | The currency the payer paid in; keeps its platform-base default (`GBP`) on a row with no rate. |
+| `fx_as_of`            | timestamptz | The `finance.fx_rates.as_of` of the older of the two rates the quote read.     |
 
 **Canonical `reason` codes:** `topup` (money in — a card payment settled by the Stripe webhook writes
 `topup` with `ref_table = 'inbound_payments'`, Decision #125), `escrow_hold`, `escrow_release`, `escrow_refund`, `fair_exit_release`,
@@ -99,7 +99,11 @@ compensating row through `fn_wallet_credit` / `fn_wallet_debit`, never by an edi
 amounts (see `finance.chargebacks` for the dispute case they reference). A team release
 (`finance.fn_split_team_payout`, 2026-09-28) also writes `team_finder_fee` (a finder's cut) and
 `<reason>_vault_retention` (the vault's cut plus dust, e.g. `escrow_release_vault_retention` /
-`fair_exit_release_vault_retention`).
+`fair_exit_release_vault_retention`). A conversion (Decision #435, `finance.fx_conversions`) writes
+`fx_conversion` twice, the principal debited from the source wallet and the target amount credited
+to the target wallet, and `fx_spread` for the margin debited beside the principal, all with
+`ref_table = 'fx_conversions'`. Both debit reasons are voluntary in `fn_wallet_debit_fx`, so a
+conversion never reaches earmarked money; statements count `fx_spread` as a fee.
 
 > **`demo_opening_credit` is retired** (2026-09-28). A business wallet used to be credited
 > 2,500,000 minor units, in whatever currency it was opened in, by the `trg_seed_business_wallet`
@@ -132,7 +136,13 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `released_at`                  | timestamptz          | When it was released to the payee: what a consolidated invoice selects its period by. |
 | `expires_at`                   | timestamptz          | Nullable. When an unclaimed PREPAID escrow is refunded to its payer (Decision #428): stamped by `finance.fn_hold_ticket_escrow` on an unbound hold (`now()` + `prepaid_service_ttl_hours` 120 for a productised service, `prepaid_project_ttl_hours` 168 for a client project — `finance.fn_prepaid_escrow_ttl_hours`), cleared by `finance.fn_bind_ticket_escrow` at the claim, swept by `finance.fn_sweep_expired_prepaid_escrows`. `ck_escrows_expiry_unbound`: never set on a bound escrow. Kept on a refunded row as the deadline it met. |
 | `auto_funded`                  | boolean              | `NOT NULL DEFAULT false`. Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. |
-| `fx_rate`,`fx_base`,`fx_as_of` | —                    | **Additive** FX snapshot (`20260723090000`).      |
+| `fx_rate`,`fx_base`,`fx_as_of` | numeric,char(3),timestamptz | The snapshot of the conversion that funded this escrow (Decision #435): one `fx_base` (the payer's currency) bought `fx_rate` of this escrow's currency at mid-market, observed `fx_as_of`. `NULL` on an escrow held from a balance already in its currency. |
+| `fx_conversion_id`             | uuid                 | FK → `finance.fx_conversions` (RESTRICT). The purchase conversion that funded it. |
+| `fx_source_minor`              | bigint               | `CHECK >= 0`. What the escrow cost in `fx_base`, margin included: its largest-remainder share of the conversion's charge, so the shares of one conversion sum to exactly what was charged. A refund returns it pro rata (`finance.fn_refund_escrow_to_payer`). |
+
+The four FX columns are written together, once, by `finance.fn_stamp_escrow_fx`
+(`ck_escrows_fx_snapshot`: all four or none). Releases and payouts never read them: escrow is held and
+paid in its own currency.
 
 Zod row schema: `EscrowSchema` (`@projective/types/finance`, `ledger.ts`). Every finance row schema is
 held to its table column for key by `packages/types/finance/finance-tables.contract.test.ts`.
@@ -179,7 +189,7 @@ escrow at funding. The column stays, neither dropped nor retyped, for that step;
 | :-------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `finance.payout_accounts`         | Provider payout destination (Stripe **Connect** account, Accounts v2 Express recipient); `(provider, account_id)` UNIQUE; **one active Stripe account per owner** (`uq_payout_accounts_owner_active`, partial on `status <> 'disabled'`). `owner_type` CHECKs the five-value finance owner axis. `status` ∈ `pending_verification` · `verified` · `restricted` · `disabled` — the v2 `stripe_balance.stripe_transfers` capability mapped by `payoutAccountStatusFor()`, written only by `finance.sync_payout_account` from what Stripe reports; `updated_at` is the last reconciliation. Owner-scoped. Zod `PayoutAccountSchema`. See the flagged overlap with the new `finance.payment_methods`.                                                     |
 | `finance.invoices`                | Per-stage or `consolidated_monthly` invoice; `status` draft/issued/paid/overdue/void; `pdf_file_id` → `files.items`.                                                                                                         |
-| `finance.invoice_line_items`      | Invoice lines; `ref_type` ∈ escrow/bonus/platform_fee/refund/tax.                                                                                                                                                            |
+| `finance.invoice_line_items`      | Invoice lines; `ref_type` ∈ escrow/bonus/platform_fee/refund/tax/on_account. A line for escrow a conversion funded (Decision #435) is stated in the invoice's currency at its pinned figure, beside `origin_minor` · `origin_currency` · `fx_rate` · `fx_as_of` (all four or none, `ck_invoice_line_items_origin`). Zod `InvoiceLineItemSchema`. |
 | `finance.disputes`                | One contested held escrow (Decision #212). `escrow_id` → `finance.escrows` **RESTRICT** (was CASCADE — a dispute is never deleted); `session_event_id` → `projects.session_events` (the sitting a no-show claim is about; NULL otherwise); `opened_by_profile` (the claimant); `status dispute_status` ∈ `open` · `awaiting_response` · `under_review` · `resolved_release` · `resolved_refund` · `resolved_split` (PRODUCT_MANAGEMENT §3.8); `audit` jsonb (the attendance audit's frozen snapshot); `respond_by` (the auto-escalation deadline, `dispute_response_hours`); `responded_at`, `escalated_at`; `review_by` (the review SLA — stamped `now + dispute_review_hours` (72) by every door into `under_review`; a target, never a ruling: past it the sweep only alerts ops and the operators) and `review_alerted_at` (the last overdue alert, at most once a day per case); `resolved_by` → `auth.users` (NULL when the platform's audit or the money's own path settled it); `payee_share_bp` (1–9999, a split ruling only); `settlement` jsonb (`payee_minor` · `fee_minor` · `refund_minor` · `currency`, or `deferred` / `by_fact`); `updated_at`, `resolved_at`. CHECKs: `ck_disputes_resolved_at` (resolved ⇔ `resolved_at`), `ck_disputes_split_share` (split ⇔ `payee_share_bp`), `ck_disputes_awaiting_deadline`, `ck_disputes_review_deadline` (`under_review` ⇒ `review_by`). One LIVE dispute per escrow (`uq_disputes_escrow_live`); `idx_disputes_review_by` (partial, `under_review`) serves the sweep and the operator queue. Never deleted, terminal once resolved (`trg_disputes_immutable`, `trg_disputes_no_truncate`). Written only by the definers in `00001260` and `projects.claim_session_no_show`. Zod `DisputeCaseSchema` / `DisputeSummarySchema` / `DisputeQueueSchema` (`packages/types/finance/disputes.ts`). |
 | `finance.dispute_messages`        | A dispute's statements (the Evidence Vault, append-only — `trg_dispute_messages_immutable`): `sender_user_id`, `party` ∈ `claimant` · `respondent` · `operator`, `body`. Written only by `finance.respond_to_dispute`. `dispute_id` → RESTRICT. |
 | `finance.dispute_evidence`        | The Evidence Vault's files (Decision #212): `dispute_id`, `message_id` (the statement it was filed with), `file_id` → `files.items` RESTRICT (the sender's own uploaded file), `submitted_by`; `(message_id, file_id)` UNIQUE. Append-only (`trg_dispute_evidence_immutable`); a filed file cannot be soft-deleted while its dispute is live (`trg_files_items_guard_evidence`), and `files.fn_can_read` opens it to the dispute's parties and operators. |
@@ -224,9 +234,62 @@ reports `provider`/`asOf` so a seeded or stale rate is always distinguishable fr
 > invoice reprints the rate that was actually applied, never today's. **Store-in-origin is already
 > satisfied everywhere** — every priced entity already carries a `currency` (`finance.*`,
 > `projects.projects`, `projects.tickets`/`project_stages` via the project,
-> `marketplace.service_blueprints`), so **no** currency column is added to a priced entity here. ⚠️
-> **FX economics (who bears the spread / how the conversion fee is charged) is OPEN** — flagged in
-> root `CLAUDE.md` §8, not decided in schema.
+> `marketplace.service_blueprints`), so **no** currency column is added to a priced entity here. The
+> FX economics are ruled (Decision #337, ruling M5 (d); Decision #435): mid-market plus a disclosed
+> margin, paid by whoever converts, through the two tables below.
+
+### `finance.fx_quotes` (Decision #435)
+
+A locked conversion price: what `to_minor` of `to_currency` costs in `from_currency`. Written only by
+`finance.quote_fx_conversion`, for the account that pays; frozen once written except that `consumed_at`
+is set once (`trg_fx_quotes_guard`, `PL403` otherwise); executed at most once by
+`finance.fn_execute_fx_quote`. RLS: the owning account reads it (`fn_owner_visible`). Zod
+`FxConversionQuoteSchema` (`ledger.ts`).
+
+| Column                          | Type                     | Notes |
+| :------------------------------ | :----------------------- | :---- |
+| `owner_type`,`owner_id`         | text,uuid                | The paying account (the five-value finance owner axis). |
+| `purpose`                       | text                     | `checkout` · `escrow_lock` · `funding`. |
+| `ref_table`,`ref_id`            | text,uuid                | What it prices: `baskets` for a checkout; `project_stages` · `tickets` · `revisions` for a card lock or a wallet funding (`ck_fx_quotes_ref`: both or neither). |
+| `from_currency`,`to_currency`   | char(3)                  | ISO codes, different (`ck_fx_quotes_pair`), both in `settlement_currencies`. |
+| `to_minor`                      | bigint                   | `CHECK > 0`. The seller-currency amount it delivers, exactly. |
+| `principal_minor`               | bigint                   | `CHECK > 0`. The mid-market cost, truncated (Decision #187). |
+| `spread_bp`,`spread_minor`      | integer,bigint           | The margin: the higher of the two currencies' `fx_spread_bp`, and `⌊principal × bp ÷ 10000⌋`. |
+| `from_minor`                    | bigint                   | What the payer is charged: `principal_minor + spread_minor` (`ck_fx_quotes_charge`). |
+| `from_rate`,`to_rate`           | numeric(20,10)           | The platform-base (GBP) rates of both currencies (1 for the base itself). |
+| `mid_rate`                      | numeric(20,10)           | `to_rate ÷ from_rate`, rounded to 10 places: one `from_currency` in `to_currency`. Display and snapshot only; the arithmetic uses the two base rates. |
+| `rate_as_of`,`rate_provider`    | timestamptz,text         | The older of the two observations (the freshness rule judges it) and their source. |
+| `created_by`                    | uuid                     | FK → `auth.users` (RESTRICT). |
+| `created_at`,`expires_at`       | timestamptz              | `expires_at` = `created_at` + `fx_quote_ttl_minutes` (`ck_fx_quotes_window`). A card payment started on a quote is honoured after it. |
+| `consumed_at`                   | timestamptz              | Set once, by the conversion that used it. |
+
+### `finance.fx_conversions` (Decision #435)
+
+One executed conversion, append-only for every role (`trg_fx_conversions_append_only`,
+`trg_fx_conversions_no_truncate`, `PL403`). RLS: the owning account reads it. Zod `FxConversionSchema`.
+
+| Column                           | Type                  | Notes |
+| :------------------------------- | :-------------------- | :---- |
+| `kind`                           | text                  | `purchase` (executes a quote) or `unwind` (returns a refunded share of escrow a purchase funded). |
+| `quote_id`                       | uuid                  | FK → `finance.fx_quotes` (RESTRICT), UNIQUE: a quote executes once. Purchases only. |
+| `parent_id`                      | uuid                  | FK → `finance.fx_conversions` (RESTRICT): the purchase an unwind reverses. |
+| `owner_type`,`owner_id`          | text,uuid             | The account converting. |
+| `from_wallet_id`                 | uuid                  | FK → `finance.wallets` (RESTRICT). The source wallet; `NULL` on an unwind, whose money comes out of the refunded escrow. |
+| `to_wallet_id`                   | uuid                  | FK → `finance.wallets` (RESTRICT). A purchase's target is the wallet the escrow holds debit (`fn_person_wallet_type` for a person); an unwind's is the purchase's source wallet. |
+| `from_currency`,`to_currency`    | char(3)               | The direction of this movement. |
+| `from_minor`,`principal_minor`,`spread_bp`,`spread_minor` | bigint,bigint,integer,bigint | `from_minor = principal_minor + spread_minor` (`ck_fx_conversions_charge`); an unwind carries no margin. |
+| `to_minor`                       | bigint                | What arrived. |
+| `rate_base`,`mid_rate`,`rate_as_of` | char(3),numeric,timestamptz | The pair stated the purchase's way round on both kinds: one `rate_base` (the payer's currency) bought `mid_rate` of the other. |
+| `ref_table`,`ref_id`             | text,uuid             | What it paid for (`orders`, `inbound_payments`, `project_stages`, `tickets`, `revisions`) or, on an unwind, the refunded escrow (`escrows`). |
+| `created_at`                     | timestamptz           | `clock_timestamp()`. |
+
+`ck_fx_conversions_kind` holds each kind to its shape. For the per-currency conservation identity
+(DB16, not built): a purchase's `principal_minor` is external-out of `from_currency`, its
+`spread_minor` revenue, its `to_minor` external-in to `to_currency`; an unwind's `from_minor` is
+external-out of the escrow's currency and its `to_minor` external-in to the payer's.
+`finance.v_fx_conversion_reconciliation` (`00003004`) lists every conversion whose ledger legs or
+funded escrows do not add up, and `finance.v_fx_exposure` the open converted escrow per currency pair
+(both service role only).
 
 ---
 
@@ -604,6 +667,11 @@ top-up settles); `invoiced` by `finance.place_on_account_order` (label "On accou
 `refunded` and `cancelled` have no writer: `awaiting_payment` is kept for a provider-side step no path
 takes yet, and the refund / cancel writers wait for ruling M8 (FDD D-12). Never dropped (edit-in-place).
 
+`finance.orders.fx_conversion_id` (uuid, NULL, FK → `finance.fx_conversions` RESTRICT; Decision #435):
+the conversion that paid for the order when the buyer paid in their own currency. The order's figures
+stay in its lines' currency; the buyer's charge is that conversion's `from_minor` in its
+`from_currency`, which `place_wallet_order` returns (and replays) as `charge_minor` · `charge_currency`.
+
 `finance.orders.promo_code` (`text`, NULL, ≤ 40): the basket-wide promo the order redeemed, upper-cased
 as `finance.promo_codes.code`; `NULL` when no promo saved anything. Not a foreign key, for the reason
 `baskets.promo_code` gives. Mirrored by the Zod `Order.promoCode`. The code's `redemption_count` is
@@ -700,6 +768,7 @@ would leave no trace; `finance.orders` records basket purchases, not top-ups or 
 | `order_id`              | uuid                             | NULL. FK → `finance.orders` (`SET NULL`). The order that checkout placed — by the settling webhook or the browser, under one key.                                                                                         |
 | `order_error`           | text                             | NULL. Why settlement could not place the order (a price that moved, a line withdrawn); the money stays in the wallet. `order_id`/`order_error` exist only with a `checkout` (CHECK `inbound_payments_order_only_with_checkout`). |
 | `unapplied_reason`      | text                             | NULL. Why a `settled_unapplied` payment's purpose was not applied — "The escrow could not be held: …" or "The order could not be placed: …" (Decision #200); the detail stays in `lock_error` / `order_error`. Present exactly on `settled_unapplied` (CHECK). |
+| `fx_quote_id`           | uuid                             | NULL, FK → `finance.fx_quotes` (RESTRICT), UNIQUE (`uq_inbound_payments_fx_quote`). The locked quote the payment was started on (Decision #435): charged the quote's `from_minor` in its `from_currency` into the payer's wallet in that currency; settlement executes it (honoured past its expiry) before the escrow lock or the order. Set by `begin_card_payment` for an escrow lock, by `attach_checkout_order` for a checkout (whose `checkout` jsonb then also carries `fx_quote_id`, with `currency` the order's). |
 | `refunded_cents`        | bigint                           | NOT NULL `DEFAULT 0`. How much of the charge `charge.refunded` has accounted for — Stripe's cumulative `amount_refunded`, capped at `amount_received_cents`; each newly refunded part is a `refund` debit (`finance.record_charge_refunded`, FINANCE_AUDIT H3). CHECK `inbound_payments_refund_within_received`: `0 ≤ refunded_cents ≤ amount_received_cents`, and non-zero only on a settled payment. |
 | `refund_unrecovered_cents` | bigint                        | NOT NULL `DEFAULT 0`. The part of `refunded_cents` the wallet could not cover when it was refunded — the platform's loss, recorded (with an ops row) rather than forced into a negative balance, like `finance.chargebacks.unrecovered_cents`. CHECK `inbound_payments_refund_unrecovered_within`: `0 ≤ … ≤ refunded_cents`. |
 | `created_at`            | timestamptz                      | NOT NULL `DEFAULT now()`.                                                                                                                                                                                                |

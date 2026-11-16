@@ -7,12 +7,13 @@ const parse = (qs: string) => parseWalletPageQuery(new URLSearchParams(qs));
 
 Deno.test("a canonical address parses as itself and is not corrected", () => {
 	const qs =
-		`w=${TEAM}&flow=3m&display=EUR&tz=Europe%2FLondon&do=top_up&back=%2Fcheckout&q=acme&dir=in` +
+		`w=${TEAM}&currency=EUR&flow=3m&display=EUR&tz=Europe%2FLondon&do=top_up&back=%2Fcheckout&q=acme&dir=in` +
 		"&kind=escrow_release,topup";
 	const { value, corrected } = parse(qs);
 	assertEquals(corrected, false);
 	assertEquals(value, {
 		w: TEAM,
+		currency: "EUR",
 		flow: "3m",
 		display: "EUR",
 		tz: "Europe/London",
@@ -32,6 +33,7 @@ Deno.test("an empty address is every default, uncorrected", () => {
 	assertEquals(parse(""), {
 		value: {
 			w: null,
+			currency: null,
 			flow: null,
 			display: null,
 			tz: null,
@@ -52,6 +54,8 @@ Deno.test("normalised spellings are kept but the address is corrected", () => {
 	assertEquals([legacy.value.flow, legacy.corrected], ["3m", true]);
 	const lowerCurrency = parse("display=eur");
 	assertEquals([lowerCurrency.value.display, lowerCurrency.corrected], ["EUR", true]);
+	const lowerWallet = parse("currency=gbp");
+	assertEquals([lowerWallet.value.currency, lowerWallet.corrected], ["GBP", true]);
 	const kinds = parse("kind=topup,other,escrow_release,topup");
 	assertEquals([kinds.value.kind, kinds.corrected], [["escrow_release", "topup"], true]);
 	const q = parse("q=%20%20acme%20");
@@ -63,6 +67,8 @@ Deno.test("unknown or unsafe values are dropped and the address is corrected", (
 		const qs of [
 			"w=team:not-a-uuid",
 			"w=wallet",
+			"currency=euro",
+			"currency=",
 			"flow=fortnight",
 			"display=XYZ",
 			"tz=Mars%2FOlympus",
@@ -109,4 +115,29 @@ Deno.test("a wallet the viewer cannot open redirects to the resolved one, withou
 		"w=personal&notice=wallet-unavailable",
 	);
 	assertEquals(walletPageRedirect(asked, { requested: TEAM, resolved: TEAM }), null);
+	// A currency meant for one wallet is never carried to another.
+	assertEquals(
+		walletPageRedirect(new URLSearchParams(`w=${TEAM}&currency=EUR`), {
+			requested: TEAM,
+			resolved: "personal",
+		}),
+		"w=personal&notice=wallet-unavailable",
+	);
+});
+
+Deno.test("#435: a ?currency= the account holds no wallet in is dropped; one it holds renders", () => {
+	const asked = new URLSearchParams("w=personal&currency=JPY&flow=3m");
+	assertEquals(
+		walletPageRedirect(asked, { requested: "personal", resolved: "personal", currency: null }),
+		"w=personal&flow=3m",
+	);
+	assertEquals(
+		walletPageRedirect(new URLSearchParams("w=personal&currency=EUR"), {
+			requested: "personal",
+			resolved: "personal",
+			currency: "EUR",
+		}),
+		null,
+	);
+	assertEquals(walletPageRedirect(asked, { requested: "personal", resolved: "personal" }), null);
 });

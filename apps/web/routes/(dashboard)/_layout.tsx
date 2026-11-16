@@ -47,6 +47,7 @@ import {
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
 import { basketLaneFor } from "@web/features/checkout/core/basket-lane-slot.tsx";
 import { checkoutChromeFor } from "@web/features/checkout/core/checkout-chrome.ts";
+import { checkoutTrailFor } from "@web/features/checkout/core/checkout-trail-slot.tsx";
 import { basketHeaderFor } from "@web/features/checkout/core/basket-header-slot.tsx";
 import { basketFooterFor } from "@web/features/checkout/core/basket-footer-slot.tsx";
 import {
@@ -333,13 +334,14 @@ export default define.page(async function DashboardLayout(ctx) {
 	// Resolved together rather than in series: the four slots are independent, and awaiting each
 	// behind the last would add all four latencies to every dashboard navigation. A `bare` page
 	// renders none of them, so none is read.
+	const focus = chrome === "focus";
 	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = chrome === "bare"
 		? [null, null, null, null]
 		: await Promise.all([
-			laneFor(ctx.url, context, actor, ctx.state, ctx.req),
+			focus ? null : laneFor(ctx.url, context, actor, ctx.state, ctx.req),
 			middleNavHeaderFor(ctx.url, context, actor, ctx.state),
 			middleNavFooterFor(ctx.url, context, actor, ctx.state),
-			middleNavPanelFor(ctx.url, context, actor),
+			focus ? null : middleNavPanelFor(ctx.url, context, actor),
 		]);
 
 	return (
@@ -348,6 +350,7 @@ export default define.page(async function DashboardLayout(ctx) {
 			context={context}
 			protectedRoute
 			chrome={chrome}
+			focusTrail={focus ? checkoutTrailFor(ctx.url, context) : null}
 			lane={lane}
 			middleNavHeader={middleNavHeader}
 			middleNavFooter={middleNavFooter}

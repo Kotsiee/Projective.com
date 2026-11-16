@@ -264,10 +264,7 @@ BEGIN
         END IF;
     END IF;
     IF v_refund > 0 THEN
-        v_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
-        PERFORM finance.fn_ensure_wallet(v_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
-        PERFORM finance.fn_wallet_credit(COALESCE(r.payer_business_id, r.payer_user_id), v_wallet, r.currency,
-            v_refund, 'escrow_refund', 'escrows', r.id);
+        PERFORM finance.fn_refund_escrow_to_payer(r.id, v_refund, 'escrow_refund');
     END IF;
     RETURN pg_catalog.jsonb_build_object('payee_minor', v_payout, 'fee_minor', v_fee, 'refund_minor', v_refund);
 END;

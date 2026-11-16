@@ -339,69 +339,6 @@
 }
 /* #endregion */
 
-/* #region Blockers */
-.cko-block {
-	padding: var(--space-4);
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface-1));
-}
-
-.cko-block__head {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	margin: 0 0 var(--space-3);
-	color: var(--warning);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-}
-
-.cko-block__list {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.cko-block__item {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-	align-items: flex-start;
-	color: var(--on-surface);
-	font-size: var(--text-sm);
-}
-
-.cko-block__icon {
-	flex: none;
-	color: var(--warning);
-}
-
-.cko-block__text {
-	flex: 1;
-	min-inline-size: 0;
-}
-
-.cko-block__link {
-	color: var(--primary-ink);
-	font-size: var(--text-xs);
-	white-space: nowrap;
-}
-
-.cko-block__link:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/* A price that moved is the one blocker the buyer must re-read a figure for, so it reads louder. */
-.cko-block__item[data-code="price_changed"] .cko-block__icon,
-.cko-block__item[data-code="not_authorised"] .cko-block__icon {
-	color: var(--danger);
-}
-/* #endregion */
-
 /* #region Groups */
 .cko-group {
 	display: flex;
@@ -900,32 +837,6 @@
 	margin: 0;
 }
 
-.cko-cards__empty {
-	display: flex;
-	gap: var(--space-2);
-	align-items: flex-start;
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-}
-
-.cko-cards__empty a {
-	color: var(--primary-ink);
-}
-/* #endregion */
-
-/* #region The gate reminder beside the money */
-.cko__gate {
-	display: flex;
-	gap: var(--space-2);
-	align-items: flex-start;
-	margin: 0;
-	padding: var(--space-3);
-	border-radius: var(--radius-base);
-	background: color-mix(in srgb, var(--warning) var(--tint-subtle), transparent);
-	color: var(--on-surface);
-	font-size: var(--text-xs);
-}
 /* #endregion */
 
 /* #region Outcome */

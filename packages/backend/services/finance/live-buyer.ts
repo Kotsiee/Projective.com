@@ -12,6 +12,7 @@ import type {
 	SpendLimitBlock,
 } from "@projective/types/finance";
 import {
+	billingCurrencyOf,
 	buyerDetailsComplete,
 	DEFAULT_LOCALE,
 	destinationEmail,
@@ -159,9 +160,20 @@ export function invoicingOf(owner: ResolvedOwner): MonthlyInvoicing {
 
 /**
  * The record for an account: the saved row when there is one, otherwise a pre-fill from what the
- * platform already knows, never saved.
+ * platform already knows, never saved. Its `billingCurrency` is the billing country's (Decision #435
+ * (B)), whatever the display currency.
  */
 function recordOf(
+	owner: ResolvedOwner,
+	row: BuyerRow | null,
+	display: string,
+	self: ResolvedOwner | null = null,
+): BuyerDetails {
+	const record = draftOf(owner, row, display, self);
+	return { ...record, billingCurrency: billingCurrencyOf(record) };
+}
+
+function draftOf(
 	owner: ResolvedOwner,
 	row: BuyerRow | null,
 	display: string,
@@ -673,7 +685,7 @@ export interface SpendBinding {
 	/** The basket a business `needs_approval` request binds to; `null` when there is none. */
 	basketId: string | null;
 	/**
-	 * The charge in the listings' own currency (the session's `charge`): it picks the paying wallet —
+	 * The charge (the session's `buyerCharge`, in the currency it is paid in): it picks the paying wallet —
 	 * the one `place_wallet_order` debits — and is what an approval's amount is compared with when the
 	 * two share a currency, so a covering approval is never read as short by a conversion's rounding.
 	 */

@@ -6,10 +6,13 @@
 -- Ledger primitives: credit / debit an EXISTING wallet and append its ledger row (the balance CHECK
 -- enforces sufficient funds). A missing wallet raises PW404 instead of returning: a credit with nowhere
 -- to land must fail its caller, never vanish (Decision #186). A caller that may be the first to pay an
--- owner runs finance.fn_ensure_wallet before crediting.
-CREATE OR REPLACE FUNCTION finance.fn_wallet_credit(
+-- owner runs finance.fn_ensure_wallet before crediting. The `_fx` forms also stamp the row's FX snapshot
+-- (`fx_base`, `fx_rate`, `fx_as_of`), which only a conversion writes (Decision #435); the plain forms
+-- stamp none.
+CREATE OR REPLACE FUNCTION finance.fn_wallet_credit_fx(
     p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
-    p_reason text, p_ref_table text, p_ref_id uuid
+    p_reason text, p_ref_table text, p_ref_id uuid,
+    p_fx_base text, p_fx_rate numeric, p_fx_as_of timestamptz
 ) RETURNS void AS $$
 DECLARE
     v_wallet uuid;
@@ -26,8 +29,25 @@ BEGIN
     UPDATE finance.wallets SET balance_cents = balance_cents + p_amount
     WHERE id = v_wallet RETURNING balance_cents INTO v_balance;
 
-    INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents)
-    VALUES (v_wallet, 'credit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance);
+    IF p_fx_rate IS NULL THEN
+        INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents)
+        VALUES (v_wallet, 'credit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance);
+    ELSE
+        INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents,
+                                          fx_base, fx_rate, fx_as_of)
+        VALUES (v_wallet, 'credit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance,
+                p_fx_base, p_fx_rate, p_fx_as_of);
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
+
+CREATE OR REPLACE FUNCTION finance.fn_wallet_credit(
+    p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
+    p_reason text, p_ref_table text, p_ref_id uuid
+) RETURNS void AS $$
+BEGIN
+    PERFORM finance.fn_wallet_credit_fx(p_owner_id, p_owner_type, p_currency, p_amount, p_reason, p_ref_table, p_ref_id,
+        NULL, NULL, NULL);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
@@ -38,13 +58,15 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 -- covers it but the balance minus the active pots does not. An INVOLUNTARY recovery (a lost
 -- chargeback, a card refund) takes what the wallet holds and then shrinks its pots newest first, each
 -- with a finance.pot_movements row, so the pots never earmark more than the wallet holds.
-CREATE OR REPLACE FUNCTION finance.fn_wallet_debit(
+CREATE OR REPLACE FUNCTION finance.fn_wallet_debit_fx(
     p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
-    p_reason text, p_ref_table text, p_ref_id uuid
+    p_reason text, p_ref_table text, p_ref_id uuid,
+    p_fx_base text, p_fx_rate numeric, p_fx_as_of timestamptz
 ) RETURNS void AS $$
 DECLARE
     v_voluntary CONSTANT text[] := ARRAY[
-        'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout'
+        'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout',
+        'fx_conversion', 'fx_spread'
     ];
     v_involuntary CONSTANT text[] := ARRAY['chargeback', 'refund'];
     v_wallet finance.wallets;
@@ -87,9 +109,17 @@ BEGIN
     UPDATE finance.wallets SET balance_cents = balance_cents - p_amount
     WHERE id = v_wallet.id RETURNING balance_cents INTO v_balance;
 
-    INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents)
-    VALUES (v_wallet.id, 'debit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance)
-    RETURNING id INTO v_tx;
+    IF p_fx_rate IS NULL THEN
+        INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents)
+        VALUES (v_wallet.id, 'debit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance)
+        RETURNING id INTO v_tx;
+    ELSE
+        INSERT INTO finance.transactions (wallet_id, direction, amount_cents, currency, reason, ref_table, ref_id, balance_after_cents,
+                                          fx_base, fx_rate, fx_as_of)
+        VALUES (v_wallet.id, 'debit', p_amount, p_currency, p_reason, p_ref_table, p_ref_id, v_balance,
+                p_fx_base, p_fx_rate, p_fx_as_of)
+        RETURNING id INTO v_tx;
+    END IF;
 
     v_excess := v_earmarked - v_balance;
     IF v_excess > 0 THEN
@@ -112,6 +142,16 @@ BEGIN
             v_excess := v_excess - v_take;
         END LOOP;
     END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
+
+CREATE OR REPLACE FUNCTION finance.fn_wallet_debit(
+    p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
+    p_reason text, p_ref_table text, p_ref_id uuid
+) RETURNS void AS $$
+BEGIN
+    PERFORM finance.fn_wallet_debit_fx(p_owner_id, p_owner_type, p_currency, p_amount, p_reason, p_ref_table, p_ref_id,
+        NULL, NULL, NULL);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
@@ -193,6 +233,187 @@ AS $$
       FROM security.platform_params pp
      WHERE pp.key = p_key;
 $$;
+
+-- #region FX conversion arithmetic and FX-funded escrow (Decision #435)
+-- The minor-unit exponent of a currency (ISO 4217): 0, 3, or 2 for every other code. One list, mirrored
+-- by packages/types/finance CURRENCY_EXPONENT. Here, beside the primitives, because the conversion
+-- arithmetic below reads it when it is created.
+CREATE OR REPLACE FUNCTION finance.fn_currency_exponent(p_currency text)
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, ''))) = ANY (ARRAY[
+            'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'UYI', 'VND',
+            'VUV', 'XAF', 'XOF', 'XPF']) THEN 0
+        WHEN pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, ''))) = ANY (ARRAY[
+            'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']) THEN 3
+        ELSE 2
+    END;
+$$;
+
+-- The price of `p_to_minor` of `p_to_currency` in `p_from_currency`, from the two platform-base rates
+-- (amount_quote = amount_base × rate): the mid-market principal, truncated, and the margin of
+-- `p_spread_bp` on it, truncated (Decision #187), so every rounding favours the payer. Exact integer
+-- arithmetic on the rates' ten decimal places; `quoteConversionMinor` (packages/types/finance/fx.ts) is
+-- its parity-pinned mirror.
+CREATE OR REPLACE FUNCTION finance.fn_fx_quote_minor(
+    p_to_minor bigint,
+    p_from_currency text,
+    p_to_currency text,
+    p_from_rate numeric,
+    p_to_rate numeric,
+    p_spread_bp integer,
+    OUT principal_minor bigint,
+    OUT spread_minor bigint,
+    OUT from_minor bigint
+)
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT p.principal, s.spread, p.principal + s.spread
+      FROM (SELECT pg_catalog.div(
+                p_to_minor::numeric
+                    * pg_catalog.round(p_from_rate * 10000000000)
+                    * pg_catalog.power(10::numeric, finance.fn_currency_exponent(p_from_currency)),
+                pg_catalog.round(p_to_rate * 10000000000)
+                    * pg_catalog.power(10::numeric, finance.fn_currency_exponent(p_to_currency))
+            )::bigint AS principal) p
+     CROSS JOIN LATERAL (
+            SELECT pg_catalog.div(p.principal::numeric * GREATEST(COALESCE(p_spread_bp, 0), 0), 10000)::bigint AS spread
+     ) s;
+$$;
+
+-- A pinned refund (Decision #435 (D)): `p_refund_minor` of an escrow of `p_escrow_minor` that cost the
+-- payer `p_source_minor` of their own currency returns its pro-rata share of that cost, rounded up in
+-- the payer's favour and never above what was paid; a whole refund returns exactly what was paid.
+CREATE OR REPLACE FUNCTION finance.fn_fx_refund_minor(p_refund_minor bigint, p_escrow_minor bigint, p_source_minor bigint)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN COALESCE(p_refund_minor, 0) <= 0 OR COALESCE(p_escrow_minor, 0) <= 0 OR COALESCE(p_source_minor, 0) <= 0 THEN 0
+        WHEN p_refund_minor >= p_escrow_minor THEN p_source_minor
+        ELSE LEAST(p_source_minor, pg_catalog.div(
+                 p_refund_minor::numeric * p_source_minor + p_escrow_minor - 1, p_escrow_minor::numeric)::bigint)
+    END;
+$$;
+
+-- Stamp the escrows a purchase conversion funded with its snapshot and each one's exact cost in the
+-- payer's currency: the conversion's charge shared across them and whatever else it paid for, by largest
+-- remainder, so the shares sum to exactly what was charged. An escrow already stamped, or in another
+-- currency, is left alone. Returns how many were stamped. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_stamp_escrow_fx(p_conversion_id uuid, p_escrow_ids uuid[])
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    c finance.fx_conversions;
+    v_count integer;
+BEGIN
+    SELECT * INTO c FROM finance.fx_conversions x WHERE x.id = p_conversion_id AND x.kind = 'purchase';
+    IF NOT FOUND OR p_escrow_ids IS NULL OR pg_catalog.cardinality(p_escrow_ids) = 0 THEN
+        RETURN 0;
+    END IF;
+    WITH funded AS (
+        SELECT e.id, e.amount_cents::numeric AS amount
+          FROM finance.escrows e
+         WHERE e.id = ANY (p_escrow_ids) AND e.currency = c.to_currency AND e.fx_conversion_id IS NULL
+    ), parts AS (
+        SELECT f.id, f.amount FROM funded f
+        UNION ALL
+        SELECT NULL::uuid, GREATEST(c.to_minor - COALESCE((SELECT pg_catalog.sum(f.amount) FROM funded f), 0), 0)
+    ), shares AS (
+        SELECT p.id,
+               pg_catalog.div(c.from_minor::numeric * p.amount, c.to_minor::numeric) AS share,
+               pg_catalog.mod(c.from_minor::numeric * p.amount, c.to_minor::numeric) AS remainder
+          FROM parts p
+    ), ranked AS (
+        SELECT s.id, s.share,
+               pg_catalog.row_number() OVER (ORDER BY s.remainder DESC, s.id NULLS LAST) AS place,
+               c.from_minor - pg_catalog.sum(s.share) OVER () AS shortfall
+          FROM shares s
+    )
+    UPDATE finance.escrows e
+       SET fx_conversion_id = c.id,
+           fx_source_minor = (r.share + CASE WHEN r.place <= r.shortfall THEN 1 ELSE 0 END)::bigint,
+           fx_base = c.rate_base,
+           fx_rate = c.mid_rate,
+           fx_as_of = c.rate_as_of
+      FROM ranked r
+     WHERE e.id = r.id;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$;
+
+-- Return part or all of an escrow to its payer: every refund door calls this (Decision #435 (D)). An
+-- escrow held from a balance in its own currency is credited back in it, as it always was. One that a
+-- conversion funded goes back to the payer's own currency, into the wallet the conversion drew on, at
+-- its pinned figure (finance.fn_fx_refund_minor of what it cost), recorded as an `unwind` conversion;
+-- nothing passes through the payer's wallet in the escrow's currency. The credit carries `p_reason` and
+-- names the escrow either way. Returns what was credited, in the currency it was credited in. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_refund_escrow_to_payer(p_escrow_id uuid, p_amount bigint, p_reason text)
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r finance.escrows;
+    c finance.fx_conversions;
+    w finance.wallets;
+    v_payer uuid;
+    v_type text;
+    v_back bigint;
+BEGIN
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RETURN 0;
+    END IF;
+    SELECT * INTO r FROM finance.escrows e WHERE e.id = p_escrow_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'escrow: % does not exist', p_escrow_id USING ERRCODE = 'P0002';
+    END IF;
+    v_payer := COALESCE(r.payer_business_id, r.payer_user_id);
+
+    IF r.fx_conversion_id IS NULL THEN
+        v_type := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
+        PERFORM finance.fn_ensure_wallet(v_type, v_payer, r.currency);
+        PERFORM finance.fn_wallet_credit(v_payer, v_type, r.currency, p_amount, p_reason, 'escrows', r.id);
+        RETURN p_amount;
+    END IF;
+
+    SELECT * INTO c FROM finance.fx_conversions x WHERE x.id = r.fx_conversion_id;
+    SELECT * INTO w FROM finance.wallets x WHERE x.id = c.from_wallet_id;
+    IF w.owner_id IS DISTINCT FROM v_payer THEN
+        RAISE EXCEPTION 'escrow: % was funded from a wallet that is not its payer''s', r.id USING ERRCODE = 'PL409';
+    END IF;
+    v_back := finance.fn_fx_refund_minor(p_amount, r.amount_cents, r.fx_source_minor);
+    IF v_back <= 0 THEN
+        RETURN 0;
+    END IF;
+    INSERT INTO finance.fx_conversions (
+        kind, parent_id, owner_type, owner_id, from_wallet_id, to_wallet_id, from_currency, to_currency,
+        from_minor, principal_minor, to_minor, rate_base, mid_rate, rate_as_of, ref_table, ref_id
+    ) VALUES (
+        'unwind', c.id, w.owner_type, w.owner_id, NULL, w.id, r.currency, w.currency,
+        p_amount, p_amount, v_back, c.rate_base, c.mid_rate, c.rate_as_of, 'escrows', r.id
+    );
+    PERFORM finance.fn_wallet_credit_fx(w.owner_id, w.owner_type, w.currency, v_back, p_reason, 'escrows', r.id,
+        c.rate_base, c.mid_rate, c.rate_as_of);
+    RETURN v_back;
+END;
+$$;
+-- #endregion
 
 -- The team payout plan (finance-model §5) — ONE implementation read by the release
 -- (fn_split_team_payout) and the console's preview (preview_team_split), so what a team is shown it
@@ -908,7 +1129,6 @@ CREATE OR REPLACE FUNCTION finance.fn_refund_ticket_reservations(
 RETURNS integer AS $$
 DECLARE
     r record;
-    v_payer_wallet text;
     v_flipped uuid;
     v_actor uuid;
     v_count integer := 0;
@@ -930,12 +1150,7 @@ BEGIN
          WHERE id = r.id AND status = 'reserved'
         RETURNING id INTO v_flipped;
         CONTINUE WHEN v_flipped IS NULL;
-        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
-        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
-        PERFORM finance.fn_wallet_credit(
-            COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, r.amount_cents,
-            'escrow_refund', 'escrows', r.id
-        );
+        PERFORM finance.fn_refund_escrow_to_payer(r.id, r.amount_cents, 'escrow_refund');
         IF v_actor IS NOT NULL THEN
             INSERT INTO projects.ticket_history (ticket_id, actor_id, action_type, new_stage_id, changes)
             VALUES (p_ticket_id, v_actor, 'prepaid_stage_refunded', r.project_stage_id,
@@ -1173,6 +1388,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 -- Consolidate a business's billing period into one invoice PER CURRENCY (PRODUCT_SPEC §Escrow, Wallets
 -- & Finance #4): every escrow RELEASED in [p_start, p_end) — by released_at, never created_at — as
 -- escrow / deadline-bonus / platform-fee lines, and every on-account credit as an `on_account` line.
+-- An escrow a conversion funded is invoiced in the currency the business paid in, at what it cost
+-- there, with its own amount, currency and rate on the line (Decision #435).
 -- Projective is the issuer (issue_from_profile NULL). total = escrow + bonus + tax: the platform fee
 -- was deducted from the payee at release, so it is shown, never added. amount_due = the on-account
 -- credit, the only part not already paid from the wallet; with nothing due the invoice is issued Paid.
@@ -1200,10 +1417,13 @@ BEGIN
 
     FOR c IN
         WITH spend AS (
-            SELECT upper(e.currency) AS currency,
-                   SUM(e.amount_cents + e.deadline_bonus_cents) AS subtotal,
-                   SUM(e.platform_fee_cents) AS fee
+            SELECT upper(COALESCE(cv.from_currency, e.currency)) AS currency,
+                   SUM(COALESCE(e.fx_source_minor, e.amount_cents + e.deadline_bonus_cents)) AS subtotal,
+                   SUM(CASE WHEN cv.id IS NULL THEN e.platform_fee_cents
+                            ELSE div(e.platform_fee_cents::numeric * e.fx_source_minor, e.amount_cents::numeric)::bigint
+                       END) AS fee
               FROM finance.escrows e
+              LEFT JOIN finance.fx_conversions cv ON cv.id = e.fx_conversion_id
              WHERE e.payer_business_id = p_business_id AND e.status = 'released'
                AND e.released_at >= p_start AND e.released_at < p_end
              GROUP BY 1
@@ -1248,14 +1468,32 @@ BEGIN
         END IF;
 
         FOR r IN
-            SELECT id, amount_cents, deadline_bonus_cents, platform_fee_cents, upper(currency) AS currency
-            FROM finance.escrows
-            WHERE payer_business_id = p_business_id
-                AND status = 'released'
-                AND released_at >= p_start AND released_at < p_end
-                AND upper(currency) = c.currency
-            ORDER BY released_at, id
+            SELECT e.id, e.amount_cents, e.deadline_bonus_cents, e.platform_fee_cents,
+                   upper(e.currency) AS origin_currency, e.fx_source_minor, e.fx_rate, e.fx_as_of,
+                   cv.id AS conversion_id, upper(COALESCE(cv.from_currency, e.currency)) AS currency
+            FROM finance.escrows e
+            LEFT JOIN finance.fx_conversions cv ON cv.id = e.fx_conversion_id
+            WHERE e.payer_business_id = p_business_id
+                AND e.status = 'released'
+                AND e.released_at >= p_start AND e.released_at < p_end
+                AND upper(COALESCE(cv.from_currency, e.currency)) = c.currency
+            ORDER BY e.released_at, e.id
         LOOP
+            IF r.conversion_id IS NOT NULL THEN
+                INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency,
+                                                        origin_minor, origin_currency, fx_rate, fx_as_of)
+                VALUES (v_invoice, 'escrow', r.id, 'Released escrow (converted, margin included)', r.fx_source_minor, r.currency,
+                        r.amount_cents, r.origin_currency, r.fx_rate, r.fx_as_of);
+                IF r.platform_fee_cents > 0 THEN
+                    INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency,
+                                                            origin_minor, origin_currency, fx_rate, fx_as_of)
+                    VALUES (v_invoice, 'platform_fee', r.id, 'Platform fee (included, deducted from the payee)',
+                            div(r.platform_fee_cents::numeric * r.fx_source_minor, r.amount_cents::numeric)::bigint, r.currency,
+                            r.platform_fee_cents, r.origin_currency, r.fx_rate, r.fx_as_of);
+                END IF;
+                CONTINUE;
+            END IF;
+
             INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
             VALUES (v_invoice, 'escrow', r.id, 'Released escrow', r.amount_cents, r.currency);
 
@@ -1343,7 +1581,6 @@ DECLARE
     v_payout bigint;
     v_refund bigint;
     v_payee_wallet text;
-    v_payer_wallet text;
     v_flipped uuid;
 BEGIN
     -- Nothing was earned on a prepaid escrow nobody claimed (Decision #197): all of it goes back.
@@ -1379,9 +1616,7 @@ BEGIN
             PERFORM finance.fn_wallet_credit_pending(r.payee_id, v_payee_wallet, r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
         END IF;
 
-        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
-        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
-        PERFORM finance.fn_wallet_credit(COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, v_refund, 'fair_exit_refund', 'escrows', r.id);
+        PERFORM finance.fn_refund_escrow_to_payer(r.id, v_refund, 'fair_exit_refund');
 
         UPDATE projects.tickets
         SET total_amount_paid = total_amount_paid + v_payout,
@@ -1406,7 +1641,6 @@ CREATE OR REPLACE FUNCTION finance.fn_refund_ticket_escrow(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
     r record;
-    v_payer_wallet text;
     v_flipped uuid;
 BEGIN
     PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
@@ -1420,12 +1654,7 @@ BEGIN
         WHERE id = r.id AND status = 'held'
         RETURNING id INTO v_flipped;
         CONTINUE WHEN v_flipped IS NULL;
-        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
-        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
-        PERFORM finance.fn_wallet_credit(
-            COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, r.amount_cents,
-            'escrow_refund', 'escrows', r.id
-        );
+        PERFORM finance.fn_refund_escrow_to_payer(r.id, r.amount_cents, 'escrow_refund');
     END LOOP;
 
     UPDATE projects.tickets
@@ -1542,6 +1771,7 @@ AS $$
 DECLARE
     v_run uuid := pg_catalog.gen_random_uuid();
     v_count integer;
+    v_fx integer;
 BEGIN
     WITH drift AS (
         SELECT r.wallet_id AS id, r.owner_type, r.owner_id, r.currency, r.balance_cents,
@@ -1586,8 +1816,21 @@ BEGIN
     )
     SELECT pg_catalog.count(*)::integer INTO v_count FROM logged;
 
+    INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+    SELECT 'reconcile:' || v_run::text,
+           'error',
+           pg_catalog.format('FX conversion %s (%s) does not match its ledger: %s expected %s, found %s',
+               x.conversion_id, x.kind, x.problem, x.expected_minor, x.ledger_minor),
+           pg_catalog.now(),
+           'server',
+           'finance.reconcile_wallets',
+           pg_catalog.to_jsonb(x) || pg_catalog.jsonb_build_object('run_id', v_run)
+      FROM finance.v_fx_conversion_reconciliation x;
+    GET DIAGNOSTICS v_fx = ROW_COUNT;
+    v_count := v_count + v_fx;
+
     IF v_count > 0 THEN
-        RAISE WARNING 'finance.fn_reconcile_wallets: % wallet(s) drifted from the ledger (run %)', v_count, v_run;
+        RAISE WARNING 'finance.fn_reconcile_wallets: % wallet(s) or conversion(s) drifted from the ledger (run %)', v_count, v_run;
     END IF;
     RETURN v_count;
 END;
@@ -1596,7 +1839,9 @@ $$;
 COMMENT ON FUNCTION finance.fn_reconcile_wallets() IS
 'Nightly ledger reconciliation: flags every wallet whose balance_cents differs from the sum of its
 ledger rows or from its newest balance_after_cents, or whose pots drift from their movements or
-earmark more than it holds, into ops.log_entries. Read-only on finance; service role / pg_cron only.';
+earmark more than it holds, and every FX conversion whose ledger legs or funded escrows do not add up
+(finance.v_fx_conversion_reconciliation, Decision #435), into ops.log_entries. Read-only on finance;
+service role / pg_cron only.';
 
 -- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
 -- job registry (`ops.scheduled_jobs`, 00005060).

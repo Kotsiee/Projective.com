@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { itemKindMeta } from "@projective/types/finance";
+import { ProgressiveImage } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { itemKindLabel } from "../core/basket-model.ts";
 import { Amount } from "./Amount.tsx";
@@ -46,9 +47,11 @@ export function OrderLines(props: OrderLinesProps): JSX.Element {
 					data-available={item.available ? undefined : "false"}
 				>
 					<span class="cko-rail__thumb" aria-hidden="true">
-						{item.thumbnail
-							? <img class="cko-rail__thumbimg" src={item.thumbnail} alt="" loading="lazy" />
-							: <Icon name={groupIconName(itemKindMeta(item.itemType).group)} />}
+						<ProgressiveImage
+							src={item.thumbnail}
+							loading="lazy"
+							fallback={<Icon name={groupIconName(itemKindMeta(item.itemType).group)} />}
+						/>
 					</span>
 
 					<span class="cko-rail__itembody">

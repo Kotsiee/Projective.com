@@ -19,6 +19,21 @@ import {
 	WalletFlowPeriod,
 } from "../types/wallet-types.ts";
 
+// #region Scope nouns
+const SCOPE_NOUN: Readonly<Record<WalletScope, string>> = {
+	personal: "Personal wallet",
+	team: "Team vault",
+	business: "Business vault",
+	enterprise: "Enterprise vault",
+	aggregate: "All accounts",
+};
+
+/** The noun printed for an account's scope ("Team vault") — on `/wallet` and on every card face. */
+export function walletScopeNoun(scope: WalletScope): string {
+	return SCOPE_NOUN[scope];
+}
+// #endregion
+
 // #region Wallet param (scope:id) ⇄ query
 /** Encodes a wallet reference as the `?w=` param (`personal` · `team:{id}` · `aggregate`). */
 export function walletParam(scope: WalletScope, id: string): string {
@@ -47,10 +62,11 @@ export function defaultWalletParam(context: UserContext): string {
  * context is not the personal one.
  */
 export function buildWalletQuery(
-	opts: { wallet?: string | null; display?: string | null },
+	opts: { wallet?: string | null; currency?: string | null; display?: string | null },
 ): string {
 	const qs = new URLSearchParams();
 	if (opts.wallet) qs.set("w", opts.wallet);
+	if (opts.currency) qs.set("currency", opts.currency);
 	if (opts.display) qs.set("display", opts.display);
 	return qs.toString();
 }
@@ -59,6 +75,7 @@ export function buildWalletQuery(
 export function walletQueryFrom(sp: URLSearchParams, context: UserContext): WalletQuery {
 	return {
 		wallet: sp.get("w") ?? defaultWalletParam(context),
+		currency: sp.get("currency"),
 		display: sp.get("display"),
 		viewerCurrency: context.displayCurrency ?? null,
 		timezone: sp.get("tz"),
@@ -127,8 +144,9 @@ export function walletPageHref(
 	wallet: string,
 	display?: string | null,
 	flow?: FlowPeriod | null,
+	currency?: string | null,
 ): string {
-	const params = new URLSearchParams(buildWalletQuery({ wallet, display }));
+	const params = new URLSearchParams(buildWalletQuery({ wallet, currency, display }));
 	if (flow && flow !== defaultPeriodFor(view) && viewShowsRuler(view)) params.set("flow", flow);
 	const qs = params.toString();
 	return `${VIEW_PATH[view]}${qs ? `?${qs}` : ""}`;

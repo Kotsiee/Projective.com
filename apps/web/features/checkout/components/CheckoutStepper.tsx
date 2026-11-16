@@ -4,11 +4,15 @@ import {
 	type CheckoutStep,
 	checkoutStepHref,
 	checkoutStepIndex,
+	detailsEditHref,
+	withCarry,
 } from "../core/basket-model.ts";
+import type { CheckoutPreselect } from "../types/checkout-types.ts";
 
 /**
- * CheckoutStepper — the four-step trail in the middle-nav header band:
- * `Basket › Details › Payment › Confirmation`.
+ * CheckoutStepper — the four-step trail `Basket › Details › Payment › Confirmation`: in the middle-nav
+ * header band on the basket and confirmation steps, and in the shell top bar's centre on the two
+ * focus steps (`checkoutTrailFor`, §D.6).
  *
  * **A row of real anchors, rendered on the server, with no client JS.** The URL already holds which
  * step the buyer is on, so the component reads it as a prop and needs no state; the `@projective/ui`
@@ -56,6 +60,10 @@ export interface CheckoutStepperProps {
 	owner: string;
 	/** The completed order, on the confirmation step; `null` elsewhere. */
 	orderId?: string | null;
+	/** The `?project_id=` / `?service_id=` / `?ticket_id=` narrowing every step link keeps. */
+	preselect?: Partial<CheckoutPreselect>;
+	/** The params a link carries from the current page (`carriedParams`): `?display=`, `sim*`. */
+	carry?: Readonly<Record<string, string>>;
 	/**
 	 * How far the buyer has actually got. A step beyond this is `upcoming` even when it sits before
 	 * {@link active} in the list — which happens exactly once, and legitimately: a buyer whose details
@@ -96,13 +104,18 @@ export function CheckoutStepper(props: CheckoutStepperProps): JSX.Element {
 								? (
 									<a
 										class="cko-stepper__step"
-										href={checkoutStepHref(
-											entry.step,
-											props.basketId,
-											props.owner,
-											undefined,
-											props.orderId,
-										)}
+										href={entry.step === "details"
+											? detailsEditHref(props.basketId, props.owner, props.preselect, props.carry)
+											: withCarry(
+												checkoutStepHref(
+													entry.step,
+													props.basketId,
+													props.owner,
+													props.preselect,
+													props.orderId,
+												),
+												props.carry,
+											)}
 									>
 										{entry.label}
 										<span class="ui-visually-hidden">, completed</span>

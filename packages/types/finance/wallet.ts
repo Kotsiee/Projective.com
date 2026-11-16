@@ -272,7 +272,8 @@ export type LedgerKind = z.infer<typeof LedgerKind>;
 
 /**
  * The `finance.transactions.reason` codes each {@link LedgerKind} stands for. `other` names no code: it
- * is whatever no family claims, and so cannot be filtered on.
+ * is whatever no family claims, and so cannot be filtered on. A currency conversion between one
+ * account's own wallets is a transfer, and its disclosed margin a platform fee (Decision #435).
  */
 export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>> = {
 	escrow_release: [
@@ -287,10 +288,10 @@ export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>
 	service_sale: ["service_sale", "service_sale_vault_retention"],
 	product_sale: ["product_sale", "product_sale_vault_retention"],
 	order_payment: ["order_payment"],
-	platform_fee: ["platform_fee", "instant_payout_fee"],
+	platform_fee: ["platform_fee", "instant_payout_fee", "fx_spread"],
 	topup: ["topup"],
 	payout: ["payout", "payout_reversal"],
-	transfer: ["transfer_in", "transfer_out", "team_distribution"],
+	transfer: ["transfer_in", "transfer_out", "team_distribution", "fx_conversion"],
 	refund: ["refund", "escrow_refund", "fair_exit_refund", "chargeback"],
 	other: [],
 };
@@ -772,9 +773,23 @@ export function allocationSlices(
  * way + the in/out sparkline + 5 recent lines + the capability-gated quick actions + the verification
  * gate) plus exactly one populated variant-extras block.
  */
+/** One of an account's wallets (Decision #435): its currency and its balance, stated in that currency. */
+export const WalletCurrencySchema = z.object({
+	currency,
+	available: MoneyViewSchema,
+	/** Whether the page is narrowed to this currency (`?currency=`). */
+	selected: z.boolean(),
+});
+export type WalletCurrency = z.infer<typeof WalletCurrencySchema>;
+
 export const WalletOverviewSchema = z.object({
 	ref: WalletRefSchema,
 	variant: WalletVariant,
+	/**
+	 * The account's wallets, one per currency, each in its own currency — the per-currency views the
+	 * page can narrow to; empty for the read-only rollup.
+	 */
+	currencies: z.array(WalletCurrencySchema).max(12).default([]),
 	balances: WalletBalancesSchema,
 	available: MoneyViewSchema,
 	locked: MoneyViewSchema,
@@ -1501,14 +1516,35 @@ export type WalletActionResult = z.infer<typeof WalletActionResultSchema>;
 // #endregion
 
 // #region Pure helpers (shared client + server — presentation only, no money math)
-/** Minor-unit exponent per currency (the fixture set is 2dp; default 2). */
+/**
+ * Minor-unit exponent per currency (ISO 4217), every code not at 2: the one list
+ * `finance.fn_currency_exponent` holds too (pinned by `fx-conversion.test.ts`).
+ */
 const CURRENCY_EXPONENT: Record<string, number> = {
+	BIF: 0,
+	CLP: 0,
+	DJF: 0,
+	GNF: 0,
+	ISK: 0,
 	JPY: 0,
-	KWD: 3,
+	KMF: 0,
+	KRW: 0,
+	PYG: 0,
+	RWF: 0,
+	UGX: 0,
+	UYI: 0,
+	VND: 0,
+	VUV: 0,
+	XAF: 0,
+	XOF: 0,
+	XPF: 0,
 	BHD: 3,
-	USD: 2,
-	GBP: 2,
-	EUR: 2,
+	IQD: 3,
+	JOD: 3,
+	KWD: 3,
+	LYD: 3,
+	OMR: 3,
+	TND: 3,
 };
 
 /** The minor-unit exponent for a currency (default 2). */
@@ -1646,6 +1682,11 @@ export function walletVariant(scope: WalletScope): WalletVariant {
 export interface WalletQuery {
 	/** `personal` · `team:{id}` · `business:{id}` · `enterprise:{id}` · `aggregate`; null → active. */
 	wallet?: string | null;
+	/**
+	 * `?currency=` (Decision #435): one of the account's own currency wallets, read alone and stated in
+	 * its own currency; null → every currency the account holds, converted into the display currency.
+	 */
+	currency?: string | null;
 	/** An explicit display currency (the page's `?display=`); wins over the viewer's preference. */
 	display?: string | null;
 	/** The viewer's preferred display currency (their account setting); used when none is explicit. */
@@ -1742,6 +1783,8 @@ const WALLET_PARAM_RE =
 export interface WalletPageQuery {
 	/** `?w=`: which wallet. */
 	w: string | null;
+	/** `?currency=`: one of the account's currency wallets, upper-case (Decision #435). */
+	currency: string | null;
 	/** `?flow=`: the cash-flow window. */
 	flow: WalletFlowPeriod | null;
 	/** `?display=`: an explicit display currency, one of {@link DISPLAY_CURRENCIES}. */
@@ -1795,6 +1838,7 @@ const rawParam = z.string().optional();
 export const WalletPageQuerySchema = z
 	.object({
 		w: rawParam,
+		currency: rawParam,
 		flow: rawParam,
 		display: rawParam,
 		tz: rawParam,
@@ -1819,6 +1863,9 @@ export const WalletPageQuerySchema = z
 
 		const wLower = raw.w?.trim().toLowerCase();
 		const w = wLower !== undefined && WALLET_PARAM_RE.test(wLower) ? wLower : null;
+
+		const currencyUpper = raw.currency?.trim().toUpperCase();
+		const walletCurrency = currencyUpper && /^[A-Z]{3}$/.test(currencyUpper) ? currencyUpper : null;
 
 		const flowRaw = raw.flow?.trim() ?? "";
 		const flowParsed = WalletFlowPeriod.safeParse(flowRaw);
@@ -1849,6 +1896,7 @@ export const WalletPageQuerySchema = z
 
 		const value: WalletPageQuery = {
 			w: take(raw.w, w, w),
+			currency: take(raw.currency, walletCurrency, walletCurrency),
 			flow: take(raw.flow, flow, flow),
 			display: take(raw.display, display, display),
 			tz: take(raw.tz, tz, tz),
@@ -1878,6 +1926,7 @@ export function parseWalletPageQuery(params: URLSearchParams): WalletPageQueryRe
 export function walletPageSearch(value: WalletPageQuery, base?: URLSearchParams): string {
 	const fields: [string, string | null][] = [
 		["w", value.w],
+		["currency", value.currency],
 		["flow", value.flow],
 		["display", value.display],
 		["tz", value.tz],
@@ -1904,17 +1953,27 @@ export const WALLET_UNAVAILABLE_NOTICE = "wallet-unavailable";
  * says what the page shows. A corrected query goes to its canonical form ({@link walletPageSearch}).
  * Once the read is known (`scope`), a wallet the viewer cannot open goes to the wallet the read
  * resolved, without `do` and `back` (an intent meant for one wallet never runs on another) and with
- * `notice=wallet-unavailable` (Audit R5, FINANCE_AUDIT §4.3).
+ * `notice=wallet-unavailable` (Audit R5, FINANCE_AUDIT §4.3). A `?currency=` the resolved account holds
+ * no wallet in (`scope.currency`, the currency the read narrowed to) is dropped.
  */
 export function walletPageRedirect(
 	params: URLSearchParams,
-	scope?: { requested: string; resolved: string } | null,
+	scope?: { requested: string; resolved: string; currency?: string | null } | null,
 ): string | null {
 	const { value, corrected } = parseWalletPageQuery(params);
 	if (scope && scope.requested !== scope.resolved) {
 		const base = new URLSearchParams(params);
 		base.set("notice", WALLET_UNAVAILABLE_NOTICE);
-		return walletPageSearch({ ...value, w: scope.resolved, do: null, back: null }, base);
+		return walletPageSearch(
+			{ ...value, w: scope.resolved, currency: null, do: null, back: null },
+			base,
+		);
+	}
+	if (
+		scope && scope.currency !== undefined && value.currency !== null &&
+		value.currency !== scope.currency
+	) {
+		return walletPageSearch({ ...value, currency: scope.currency }, params);
 	}
 	return corrected ? walletPageSearch(value, params) : null;
 }

@@ -1,79 +1,116 @@
 /**
- * buy-now.css — the single-listing instant-checkout modal (`.bnow-*`).
- *
- * Widths are container queries against the panel, not the viewport: the dialog is
- * `min(32rem, 94vw)` and docks as a bottom sheet below `--bp-md`, so its content box and the window
- * agree at no width at all.
+ * buy-now.css — the single-purchase instant-checkout modal (`.bnow-*`), drawn in the shared
+ * `SplitModal` frame: the buyer's inputs on the panel's own surface, the order on a solid
+ * `--surface-1` pane beside one hairline, and the commit in the dialog's footer.
  *
  * **Only the pay control carries commitment weight** (§B.8.1). Everything else on the panel — the
- * instrument chooser, the review link, the card faces — is low-emphasis, because a surface with two
+ * route chooser, the review link, the card faces — is low-emphasis, because a surface with two
  * equally-weighted controls where one moves money is a surface that will eventually be mis-clicked.
  */
 
-/* #region Root */
+/* #region Frame */
+.ui-dialog__panel.bnow-split .ui-dialog__body {
+	padding: 0;
+}
+
+.bnow-split .pf-split__notice {
+	margin: 0;
+	padding: var(--space-4) var(--space-5) 0;
+}
+
+.bnow-split .pf-split__grid {
+	gap: 0;
+	align-items: stretch;
+}
+
+.bnow-split .pf-split__inputs {
+	padding: var(--space-5);
+}
+
+.bnow-split .pf-split__preview {
+	padding: var(--space-5);
+	border-inline-start: var(--hairline);
+	background: var(--surface-1);
+}
+
+@container (max-width: 40rem) {
+	.bnow-split .pf-split__preview {
+		padding: var(--space-5);
+		border-inline-start: 0;
+		border-block-start: var(--hairline);
+	}
+}
+/* #endregion */
+
+/* #region Columns */
 .bnow {
 	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-5);
 	inline-size: 100%;
+	min-inline-size: 0;
 }
 
 .bnow:focus-visible {
 	outline: none;
 }
 
-.bnow__pending {
+.bnow__lock,
+.bnow__inputs {
 	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	justify-content: center;
-	padding-block: var(--space-8);
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-}
-
-.bnow__recover {
-	display: flex;
-	justify-content: center;
+	flex-direction: column;
+	gap: var(--space-6);
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
 }
 
 .bnow__section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
 .bnow__head {
 	margin: 0;
 	color: var(--text-secondary);
-	font-size: var(--text-2xs);
+	font-size: var(--text-xs);
 	font-weight: var(--fw-semibold);
 	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 }
+
+.bnow-ledger {
+	container-type: inline-size;
+	position: sticky;
+	inset-block-start: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+@container (max-width: 40rem) {
+	.bnow-ledger {
+		position: static;
+	}
+}
+
+@container (max-width: 18rem) {
+	.bnow-ledger .cko-rail__item {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.bnow-ledger .cko-rail__thumb {
+		display: none;
+	}
+}
 /* #endregion */
 
-/* #region The checkout's own parts, at the panel's scale */
-.bnow .cko-card.ui-paycard-option,
-.bnow .cko-card .ui-paycard {
-	--pc-max: var(--cko-plate-w);
-}
-
-.bnow__blocker {
-	display: flex;
-	gap: var(--space-2);
-	align-items: flex-start;
-	color: var(--on-surface);
-	font-size: var(--text-xs);
-	line-height: var(--leading-normal);
-}
-
-.bnow__blocker > svg {
-	flex: none;
-	color: var(--warning);
-}
-
+/* #region Stages and escrow */
 .bnow__escrow {
 	display: flex;
 	align-items: flex-start;
@@ -90,14 +127,63 @@
 }
 /* #endregion */
 
-/* #region Foot */
-.bnow__foot {
+/* #region Placeholders */
+.bnow__skeleton .bnow-ph {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
 	align-items: center;
 }
 
+.bnow__skeleton .bnow-ph::before {
+	content: "\00a0";
+	inline-size: 0;
+	overflow: hidden;
+}
+
+.bnow__skeleton .cko-route__head {
+	cursor: default;
+}
+
+.bnow__skeleton .cko-route__head:active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Commit */
+.bnow__commit {
+	min-inline-size: 11rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.bnow__commit[aria-disabled="true"] {
+	cursor: progress;
+}
+
+.bnow__commit[data-phase="settled"] .bnow__check {
+	animation: bnow-check-in var(--dur-medium) var(--spring-snappy);
+}
+
+@keyframes bnow-check-in {
+	from {
+		transform: scale(0.6);
+	}
+
+	to {
+		transform: scale(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bnow__commit .bnow__check {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .bnow__commit .bnow__check {
+	animation: none;
+}
+/* #endregion */
+
+/* #region Foot */
 .bnow__full {
 	color: var(--text-secondary);
 	font-size: var(--text-xs);
@@ -116,6 +202,20 @@
 /* #endregion */
 
 /* #region Outcome */
+.bnow__recover {
+	display: flex;
+	justify-content: flex-start;
+}
+
+.bnow__pending {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
 .bnow__result {
 	display: flex;
 	flex-direction: column;
@@ -123,6 +223,10 @@
 	align-items: center;
 	padding-block: var(--space-6);
 	text-align: center;
+}
+
+.bnow__result:focus-visible {
+	outline: none;
 }
 
 .bnow__result[data-status="succeeded"] {
@@ -139,6 +243,7 @@
 }
 
 .bnow__result-msg {
+	margin: 0;
 	color: var(--on-surface);
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
@@ -147,6 +252,22 @@
 .bnow__result-amount {
 	margin: 0;
 	color: var(--on-surface);
+}
+
+.bnow__blocker {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+	text-align: start;
+}
+
+.bnow__blocker > svg {
+	flex: none;
+	color: var(--warning);
 }
 
 .bnow__next {
@@ -161,14 +282,3 @@
 	box-shadow: none;
 }
 /* #endregion */
-
-/* The panel's own narrow tier — a bottom sheet on a phone, not a 32rem dialog. */
-@container (max-width: 22rem) {
-	.bnow .cko-rail__item {
-		grid-template-columns: minmax(0, 1fr) auto;
-	}
-
-	.bnow .cko-rail__thumb {
-		display: none;
-	}
-}

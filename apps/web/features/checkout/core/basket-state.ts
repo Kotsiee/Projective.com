@@ -46,6 +46,8 @@ export const displayCurrency = signal<string>("GBP");
 export const preselectProjectId = signal<string | null>(null);
 /** The `?service_id=` narrowing a checkout was opened with. */
 export const preselectServiceId = signal<string | null>(null);
+/** The `?pay_in=` currency the payment step was opened with (Decision #435); `null` pays in the billing one. */
+export const payInCurrency = signal<string | null>(null);
 
 /** Build the {@link CheckoutContext} every service call threads, from the current signals. */
 export function currentCheckoutContext(): CheckoutContext {
@@ -55,6 +57,7 @@ export function currentCheckoutContext(): CheckoutContext {
 		display: displayCurrency.value,
 		projectId: preselectProjectId.value,
 		serviceId: preselectServiceId.value,
+		payIn: payInCurrency.value,
 	};
 }
 
@@ -68,12 +71,14 @@ export function seedCheckoutContext(seed: {
 	display: string;
 	projectId?: string | null;
 	serviceId?: string | null;
+	payIn?: string | null;
 }): void {
 	activeBasketId.value = seed.basketId;
 	activeOwner.value = seed.owner;
 	displayCurrency.value = seed.display;
 	preselectProjectId.value = seed.projectId ?? null;
 	preselectServiceId.value = seed.serviceId ?? null;
+	payInCurrency.value = seed.payIn ?? null;
 	if (seed.basketId) writeStored("local", LocalKeys.BASKET_LAST, seed.basketId);
 }
 
@@ -252,6 +257,11 @@ export const chosenCardId = signal<string | null>(null);
 export const selectedMethodId = computed<PaymentMethodId | null>(() =>
 	methodIdOf(chosenProvider.value, chosenCardId.value)
 );
+
+/** Choose the card route before a card is: the route gate then asks for one, or for a new card. */
+export function selectCardRoute(): void {
+	chosenProvider.value = "card";
+}
 
 /** Select an instrument — the wallet, or one saved card. */
 export function selectPaymentMethod(id: PaymentMethodId): void {

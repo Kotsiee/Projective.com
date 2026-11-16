@@ -55,6 +55,16 @@ export type MoneySize = "hero" | "figure" | "key" | "body" | "micro";
 /** Semantic tone. `debit` is deliberately neutral — a debit is a movement, not a failure. */
 export type MoneyTone = "default" | "credit" | "debit" | "fee" | "muted";
 
+/** What an exact figure was listed at in another currency, printed after it as a secondary statement. */
+export interface MoneyReference {
+	/** The listed figure, in its own currency, as the server formatted it. */
+	value: MoneyValue;
+	/** The server's rate statement (`1 GBP = 1.17 EUR`), printed verbatim after the figure. */
+	rateLabel?: string | null;
+	/** The words that introduce the figure (default `Listed at`). */
+	label?: string;
+}
+
 export interface MoneyViewProps {
 	/**
 	 * The server-resolved figure. Structurally the Zod `MoneyView` from `@projective/types/finance`,
@@ -82,6 +92,13 @@ export interface MoneyViewProps {
 	sign?: "+" | "−" | null;
 	/** Suppress the origin disclosure (a dense table that discloses once in its own header). */
 	hideOrigin?: boolean;
+	/**
+	 * The figure is exact in its own currency: a charge, not an estimate. It is printed as given, never
+	 * converted or marked `~`, and carries no `data-money`, so the currency sweep leaves it alone.
+	 */
+	exact?: boolean;
+	/** With {@link exact}: the figure it was listed at in another currency, and the rate between them. */
+	reference?: MoneyReference | null;
 	class?: string;
 }
 
@@ -104,16 +121,35 @@ function spokenLabel(projected: ProjectedMoney): string {
 	return `approximately ${projected.display}, converted from ${projected.origin.display} ${projected.origin.currency} at a rate of ${rate}`;
 }
 
+function referenceText(reference: MoneyReference): string {
+	const rate = reference.rateLabel ? ` at ${reference.rateLabel}` : "";
+	return `${
+		reference.label ?? "Listed at"
+	} ${reference.value.display} ${reference.value.currency.toUpperCase()}${rate}`;
+}
+
+function exactLabel(value: MoneyValue, reference: MoneyReference | null): string {
+	return reference
+		? `${value.display}, exactly. ${referenceText(reference)}.`
+		: `${value.display}, exactly`;
+}
+
 export function MoneyView(props: MoneyViewProps): JSX.Element {
 	const own = (props.value?.currency ?? props.currency ?? BASE_CURRENCY).toUpperCase();
+	const exact = props.exact ?? false;
 	const view = useCurrencyView(
-		{ displayCurrency: props.displayCurrency, locale: props.locale, table: props.table },
+		{
+			displayCurrency: exact ? own : props.displayCurrency,
+			locale: props.locale,
+			table: props.table,
+		},
 		own,
 	);
 
 	const value = toValue(props, view.locale);
 	const projected = projectMoney(value, view.displayCurrency, view.locale, view.table);
-	const origin = props.hideOrigin ? null : projected.origin;
+	const origin = props.hideOrigin || exact ? null : projected.origin;
+	const reference = exact ? props.reference ?? null : null;
 
 	const { size = "body", tone = "default", sign = null } = props;
 
@@ -137,6 +173,42 @@ export function MoneyView(props: MoneyViewProps): JSX.Element {
 	useEffect(() => {
 		if (host.current) host.current.dataset.moneyLive = "1";
 	}, []);
+
+	if (exact) {
+		const exactParts = splitMoney(value.display, own);
+		return (
+			<span
+				class={cx(
+					"ui-money",
+					`ui-money--${size}`,
+					`ui-money--${tone}`,
+					"ui-money--exact",
+					props.class,
+				)}
+			>
+				<span class="ui-money__amount ui-money__num" aria-hidden="true">
+					{sign ? <span class="ui-money__sign">{sign}</span> : null}
+					{exactParts.symbol ? <span class="ui-money__symbol">{exactParts.symbol}</span> : null}
+					<span class="ui-money__major">{exactParts.major}</span>
+					{exactParts.minor ? <span class="ui-money__minor">{exactParts.minor}</span> : null}
+					{exactParts.suffix ? <span class="ui-money__symbol">{exactParts.suffix}</span> : null}
+				</span>
+				{reference
+					? (
+						<span class="ui-money__reference" aria-hidden="true">
+							{reference.label ?? "Listed at"}{" "}
+							<span class="ui-money__num">{reference.value.display}</span>{" "}
+							{reference.value.currency.toUpperCase()}
+							{reference.rateLabel
+								? <span class="ui-money__num">{` at ${reference.rateLabel}`}</span>
+								: null}
+						</span>
+					)
+					: null}
+				<span class="ui-visually-hidden">{exactLabel(value, reference)}</span>
+			</span>
+		);
+	}
 
 	return (
 		<span

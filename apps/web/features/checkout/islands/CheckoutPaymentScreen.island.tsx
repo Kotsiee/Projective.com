@@ -12,7 +12,7 @@ import { loadStripe } from "@features/payments/core/stripe-js.ts";
 import { returnPathOf, stripeReturnOf, withoutStripeReturn } from "@features/payments/core/stripe-flow.ts";
 import type { CardPaymentHandoff } from "@projective/types/finance";
 import { CheckoutService } from "../core/CheckoutService.ts";
-import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
+import { basketHref, checkoutStepHref, payInParamOf } from "../core/basket-model.ts";
 import {
 	applyResponse,
 	applySession,
@@ -29,7 +29,7 @@ import {
 	resetAttempt,
 	restoreDraft,
 	seedCheckoutContext,
-	selectedMethodId,
+	selectCardRoute,
 	selectPaymentMethod,
 	session as sessionSignal,
 	submitting,
@@ -38,6 +38,8 @@ import { contributionOptedIn, seedStep } from "../core/checkout-state.ts";
 import { cardStepPending } from "../core/card-step.ts";
 import {
 	attemptFingerprint,
+	type ChargeWitness,
+	chargeWitness,
 	includedNow,
 	resultIcon,
 	resultTitle,
@@ -54,20 +56,21 @@ import {
 import { devGateSession } from "../core/dev-gate.ts";
 import { type DevCheckoutGate, readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { Amount } from "../components/Amount.tsx";
+import { rowDomId } from "../components/BasketRow.tsx";
 import { BusinessSpendGate } from "../components/BusinessSpendGate.tsx";
-import { CheckoutBlockers } from "../components/CheckoutBlockers.tsx";
 import { CheckoutContractBanner } from "../components/CheckoutContractBanner.tsx";
 import { ConfirmPayDialog } from "../components/ConfirmPayDialog.tsx";
 import { OrderSummaryRail } from "../components/OrderSummaryRail.tsx";
 import { PaymentMethodChooser } from "../components/PaymentChoice.tsx";
+import { PayGateNotice } from "../components/PayGateNotice.tsx";
 import { type ExpressStart, ExpressCheckoutElement } from "../components/ExpressCheckoutElement.tsx";
 import { RequestApprovalDialog } from "../components/RequestApprovalDialog.tsx";
 import { SpendLimitNotice } from "../components/SpendLimitNotice.tsx";
 import AddPaymentMethodModal from "./AddPaymentMethodModal.island.tsx";
-import { LINE_ID_PREFIX } from "../components/CheckoutLine.tsx";
 import type {
 	BasketItem,
 	CheckoutBootstrap,
+	CheckoutSessionContext,
 	MonthlyInvoicing,
 	SavedCard,
 } from "../types/checkout-types.ts";
@@ -81,9 +84,10 @@ import type {
  * each was arrived at by measurement rather than preference:
  *
  * 1. **`expectedCharge` is a witness statement, not a calculation.** It is the charge the buyer was
- *    SHOWN — the session's `charge`, in the listings' own currency; the server recomputes and refuses
- *    on mismatch, which is what turns a price that moved between render and submit into a
- *    `price_changed` refusal instead of a silent overcharge.
+ *    SHOWN — the session's `buyerCharge`, in their own currency with the quote it was priced on, or in
+ *    the listings' own; the server recomputes and refuses on mismatch, which is what turns a price that
+ *    moved between render and submit into a `price_changed` refusal instead of a silent overcharge, and
+ *    a quote that ran out into `quote_expired` and a re-read (Decision #435).
  * 2. **The attempt key is minted once per attempt and dropped when the purchase changes.** A retry
  *    replays an outcome; a genuinely different purchase must never replay the previous one's.
  * 3. **The outcome claims focus, and re-claims it.** The confirm dialog restores focus to its trigger
@@ -92,17 +96,16 @@ import type {
  *
  * ## The three regions
  *
- * **The banner states the contract.** Where the work goes, who is billed, what currency it settles in
- * and — only when one applies — the FX rate it was priced at. All of it already decided, all of it one
- * link from being changed.
+ * **The banner states the contract.** Where the work goes and who is billed — already decided, one
+ * link from being changed. The settlement currency and any FX rate are disclosed beside the total.
  *
- * **The main column answers "how".** One list of instruments the buyer owns — the Projective wallet
- * and every card on file — sharing one selection, plus the alternative arrangement (monthly
- * invoicing) for the identities that qualify for it.
+ * **The main column answers "how".** The express wallets first, above an OR divider, then ONE radio
+ * group of routes — the Projective wallet, a card on file, the invoice — where only the chosen route
+ * opens, plus the alternative arrangement (monthly invoicing) for the identities that qualify.
  *
- * **The summary rail answers "how much", and carries the commit.** The lines, the arithmetic, the
- * express sheets and Buy Now, in that order, so the button that agrees to a total is beside the total
- * it agrees to rather than a screen away from it.
+ * **The summary rail answers "how much", and carries the commit.** The lines, the arithmetic, the one
+ * pay notice and Buy Now, in that order, so the button that agrees to a total is beside the total it
+ * agrees to — and every reason it is off is said once, beside it.
  *
  * ## What this step does NOT do
  *
@@ -136,8 +139,18 @@ export interface CheckoutPaymentScreenProps {
 	cards: readonly SavedCard[];
 	/** The card a card payment pre-selects; `null` when none is usable. */
 	defaultCardId: string | null;
+	/**
+	 * The Details step reopened for editing (`detailsEditHref`), built by the route from its own URL so
+	 * the basket, the owner, the narrowing and the carried params survive the round trip.
+	 */
+	detailsHref: string;
+	/** This step in each currency the order may be paid in (`payInHrefs`, Decision #435), keyed by currency. */
+	payInHrefs: Readonly<Record<string, string>>;
 }
 // #endregion
+
+/** How long before a shown quote expires it is re-read — under the server's five-minute reuse window. */
+const QUOTE_REFRESH_LEAD_MS = 4 * 60 * 1000;
 
 export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps): JSX.Element {
 	const { initial } = props;
@@ -174,6 +187,12 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	 * outlast such a reset.
 	 */
 	const chargeKey = useRef<string | null>(null);
+	/**
+	 * The charge, and the quote it was priced on, that a processor charge was started for. The wallet
+	 * order that completes it states THESE, not the session's current ones: a re-read can lock a fresh
+	 * quote while the payment settles, and the order must be the one the card paid for.
+	 */
+	const chargeWitnessRef = useRef<ChargeWitness | null>(null);
 	// #endregion
 
 	// #region Reads
@@ -198,6 +217,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			display: initial.display,
 			projectId: initial.session.preselect.projectId,
 			serviceId: initial.session.preselect.serviceId,
+			payIn: payInParamOf(initial.session.payIn),
 		});
 		applySession({ session: initial.session });
 		restoreDraft(initial.session.basketId);
@@ -211,6 +231,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		display: initial.display,
 		projectId: initial.session.preselect.projectId,
 		serviceId: initial.session.preselect.serviceId,
+		payIn: payInParamOf(initial.session.payIn),
 	});
 
 	useEffect(() => {
@@ -254,6 +275,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		blocker.gate ? { ...blocker, message: gatedSentence(blocker, view) } : blocker
 	);
 	const listed = worded.filter((blocker) => !ownedByGate(businessGate, blocker));
+	const gateLines = listed.length > 0 ? listed : worded.slice(0, 1);
 
 	const fingerprint = attemptFingerprint(
 		view,
@@ -302,6 +324,23 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		readKey.current = key;
 		void reload();
 	}, [chosenProvider.value, contributionOptedIn.value]);
+
+	/*
+	 * A conversion quote on screen is re-read shortly before it runs out (Decision #435), inside the
+	 * window the server no longer reuses it in, so the charge shown is always one Pay can still take. A
+	 * quote with less time than that left is answered by the payment itself: `quote_expired`, then the
+	 * re-read below.
+	 */
+	const shownQuote = view.buyerCharge?.quote ?? null;
+	useEffect(() => {
+		if (!shownQuote) return;
+		const wait = Date.parse(shownQuote.expiresAt) - Date.now() - QUOTE_REFRESH_LEAD_MS;
+		if (!(wait > 0)) return;
+		const id = setTimeout(() => {
+			if (!submitting.peek()) void reload();
+		}, wait);
+		return () => clearTimeout(id);
+	}, [shownQuote?.quoteId, shownQuote?.expiresAt]);
 
 	/*
 	 * An outcome takes focus. It is the answer to the only question the buyer had, and on a long
@@ -375,7 +414,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	 * Charge the purchase — from the selected instrument, or (`override`) as the wallet order that
 	 * completes a processor charge, under that charge's own attempt key.
 	 */
-	const submit = useCallback(async (override?: { provider: "wallet"; key: string }) => {
+	const submit = useCallback(async (
+		override?: { provider: "wallet"; key: string; witness: ChargeWitness | null },
+	) => {
 		const current = sessionSignal.value;
 		if (!current || submitting.value) return;
 
@@ -395,6 +436,10 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		submitting.value = true;
 		approvalNote.value = null;
 		const key = override?.key ?? newAttemptKey();
+		// The charge the buyer was SHOWN — in their own currency with its quote, or the listings' — never
+		// recomputed here: the server re-verifies it and refuses on mismatch, which is what makes a moved
+		// price a refusal instead of an overcharge. The order completing a card charge states that charge's.
+		const witness = override?.witness ?? chargeWitness(current);
 		const res = await CheckoutService.create({
 			basketId: current.basketId,
 			ownerType: current.owner.ownerType,
@@ -404,12 +449,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			cardId: provider === "card" ? chosenCardId.value : null,
 			promoCode: current.promo?.valid ? current.promo.code : null,
 			currency: current.currency,
-			// The charge the buyer was SHOWN, in the listings' own currency. Never recomputed here — the
-			// server re-verifies it and refuses on mismatch, which is what makes a moved price a refusal
-			// instead of an overcharge.
-			expectedCharge: current.charge
-				? { minor: current.charge.minor, currency: current.charge.currency }
-				: null,
+			expectedCharge: witness.expectedCharge,
+			fxQuoteId: witness.fxQuoteId,
 			// The SERVER's own contribution figure, echoed back rather than re-derived. It is part of
 			// the total above, so a write that omitted it would make the server's recompute lower by
 			// exactly the contribution and refuse every attempt as `price_changed`.
@@ -427,7 +468,10 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		applyResponse(res, (data) => {
 			lastResult.value = data.result;
 			// A card charge hands over to the browser; its order will be placed under this same key.
-			if (data.result.status === "requires_action") chargeKey.current = key;
+			if (data.result.status === "requires_action") {
+				chargeKey.current = key;
+				chargeWitnessRef.current = witness;
+			}
 			if (data.result.status === "succeeded") {
 				clearDraft();
 				/*
@@ -471,7 +515,11 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 				: "Your bank accepted the payment, but it hasn't reached your wallet yet. Your order is placed automatically when it arrives — you'll get a notification.";
 			return;
 		}
-		await submit({ provider: "wallet", key: key ?? newAttemptKey() });
+		await submit({
+			provider: "wallet",
+			key: key ?? newAttemptKey(),
+			witness: chargeWitnessRef.current,
+		});
 	}, [submit]);
 
 	/** Open the PaymentIntent for an express wallet payment (Stripe's Express Checkout Element). */
@@ -481,7 +529,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		// Each press of a wallet button is its own attempt; its key travels with the charge from here.
 		resetAttempt();
 		const key = newAttemptKey();
+		const witness = chargeWitness(current);
 		chargeKey.current = key;
+		chargeWitnessRef.current = witness;
 		submitting.value = true;
 		const res = await CheckoutService.create({
 			basketId: current.basketId,
@@ -492,9 +542,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			cardId: null,
 			promoCode: current.promo?.valid ? current.promo.code : null,
 			currency: current.currency,
-			expectedCharge: current.charge
-				? { minor: current.charge.minor, currency: current.charge.currency }
-				: null,
+			expectedCharge: witness.expectedCharge,
+			fxQuoteId: witness.fxQuoteId,
 			processingContributionMinor: current.totals.processingContribution.minor,
 			billingContextId: current.buyer.contextId,
 			idempotencyKey: key,
@@ -635,8 +684,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const filingNote = businessGate?.kind === "pending" ? null : approvalNote.value;
 	const showsInvoicing = view.buyer.contextKind === "business" ||
 		view.owner.ownerType === "business" || view.owner.ownerType === "enterprise";
-	const detailsHref = editDetailsHref(initial.owner);
-	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${view.totals.total.display}`;
+	const detailsHref = props.detailsHref;
+	const payable = view.buyerCharge?.quote ? view.buyerCharge : view.totals.total;
+	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${payable.display}`;
 	// The route the confirmation is actually about, so the dialog never names the instrument the buyer
 	// had selected when they pressed an express button instead.
 	const confirmProvider = chosenProvider.value;
@@ -683,7 +733,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 								{outcomeLines.reasons.map(({ blocker, sentence }, index) => (
 									<li key={`${blocker.code}-${index}`} data-code={blocker.code}>
 										{sentence}
-										{blocker.code === "price_changed" && (
+										{(blocker.code === "price_changed" || blocker.code === "quote_expired") && (
 											<a class="cko-result__jump" href="#cko-summary">See the new total</a>
 										)}
 									</li>
@@ -753,14 +803,6 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 			{!done && (
 				<>
-					<CheckoutBlockers
-						blockers={listed}
-						title={listed.length === 1
-							? "One thing to sort out first"
-							: `${listed.length} things to sort out first`}
-						lineIdPrefix={LINE_ID_PREFIX}
-					/>
-
 					{businessGate && (
 						<BusinessSpendGate
 							view={businessGate}
@@ -779,15 +821,11 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 					{filingNote && <p class="cko-gate__note" aria-hidden="true">{filingNote}</p>}
 					<span class="ui-visually-hidden" role="status">{approvalNote.value ?? ""}</span>
 
-					<SpendLimitNotice limit={view.spendLimit} business={view.businessAccount !== null} />
+					<SpendLimitNotice limit={view.spendLimit} />
 
 					<div class="cko-pstep__cols">
 						<div class="cko-pstep__main">
-							<CheckoutContractBanner
-								buyer={view.buyer}
-								settlement={view.settlement}
-								detailsHref={detailsHref}
-							/>
+							<CheckoutContractBanner buyer={view.buyer} detailsHref={detailsHref} />
 
 							<section class="cko__section" aria-labelledby="cko-pay-head">
 								<div class="cko__headrow">
@@ -798,13 +836,18 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									</p>
 								</div>
 
-								{
-									/*
-									 * ONE list, ONE selection. The wallet and the cards write the same
-									 * `selectedMethodId`, so choosing a card cannot leave the wallet looking chosen
-									 * and vice versa — the two presentations are two drawings of one decision.
-									 */
-								}
+								<ExpressCheckoutElement
+									offer={view.providers.find((entry) => entry.provider === "express")}
+									charge={view.buyerCharge}
+									blocked={hardBlocked}
+									begin={beginExpress}
+									onConfirmed={(paymentId) => void finishByCard(paymentId, chargeKey.current)}
+									returnPathFor={(paymentId) => expressReturnPath(paymentId, chargeKey.current)}
+									onError={(message) => {
+										checkoutError.value = message;
+									}}
+								/>
+
 								<PaymentMethodChooser
 									providers={view.providers}
 									wallet={view.wallet}
@@ -812,10 +855,13 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									// session's resolved owner rather than the viewer's own name, because on a
 									// team or business basket the balance being spent is the ENTITY's.
 									ownerName={view.owner.name}
+									ownerType={view.owner.ownerType}
 									cards={savedCards}
-									selected={selectedMethodId.value}
+									provider={chosenProvider.value}
+									cardId={chosenCardId.value}
 									labelledBy="cko-pay-head"
 									onSelect={selectPaymentMethod}
+									onSelectCardRoute={selectCardRoute}
 									onAddCard={() => {
 										addMethodOpen.value = true;
 									}}
@@ -823,6 +869,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									onAccountNote={view.invoicing.mode === "intervaled_monthly"
 										? view.invoicing.nextStatementLabel ?? "Billed on your next monthly invoice"
 										: null}
+									refusalId="cko-buy-gate"
+									settlement={view.settlement}
 								/>
 
 								{
@@ -856,41 +904,14 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									contributionOptedIn.value = next;
 								}}
 								basketHref={basketHref(view.basketId || null, initial.owner)}
+								payInHrefs={props.payInHrefs}
 							>
-								<ExpressCheckoutElement
-									offer={view.providers.find((entry) => entry.provider === "express")}
-									charge={view.charge}
-									blocked={hardBlocked}
-									begin={beginExpress}
-									onConfirmed={(paymentId) => void finishByCard(paymentId, chargeKey.current)}
-									returnPathFor={(paymentId) => expressReturnPath(paymentId, chargeKey.current)}
-									onError={(message) => {
-										checkoutError.value = message;
-									}}
-								/>
-
-								{
-									/*
-									 * Two hairlines meeting a word is one separation device drawn across the row,
-									 * not a box — and the word stays in the accessibility tree because "these are
-									 * two different ways to pay" is a fact a reader needs, not decoration.
-									 */
-								}
-								<p class="cko-rail__or">
-									<span class="cko-rail__or-word">OR PAY WITH SAVED METHOD</span>
-								</p>
-
-								{
-									/*
-									 * The reason, repeated next to the money. A disabled control whose explanation
-									 * lives elsewhere on the page is indistinguishable from a broken one.
-									 */
-								}
-								{blocked && worded[0] && (
-									<p class="cko__gate" id="cko-buy-gate" role="status">
-										<Icon name="lock" />
-										<span>Pay is off until this is sorted: {worded[0].message}</span>
-									</p>
+								{!cardStep && blocked && (
+									<PayGateNotice
+										id="cko-buy-gate"
+										blockers={gateLines}
+										lineHref={(itemId) => basketLineHref(view, initial.owner, itemId)}
+									/>
 								)}
 
 								{!cardStep && !gateCommits && (
@@ -932,7 +953,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			{view.businessAccount && (
 				<RequestApprovalDialog
 					open={approvalOpen}
-					amount={view.charge ?? view.totals.total}
+					amount={view.buyerCharge ?? view.totals.total}
 					lineCount={paying.length}
 					business={view.owner.name}
 					approvers={view.businessAccount.approvers}
@@ -945,6 +966,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 			<AddPaymentMethodModal
 				open={addMethodOpen}
+				onClose={() => {
+					addMethodOpen.value = false;
+				}}
 				owner={view.owner}
 				cardsConnected={view.cardsConnected}
 				onSaved={(cardId) => {
@@ -1005,17 +1029,11 @@ function expressReturnOf(href: string): {
 }
 // #endregion
 
-// #region Route back to the buyer's record
-/**
- * The Details step, forced into edit mode.
- *
- * `?edit=1` is mandatory, not decoration: the Details step auto-skips a buyer whose record is already
- * complete, so without the flag every route back into the form redirects straight past it and the
- * settings become unreachable the moment they are filled in.
- */
-function editDetailsHref(owner: string): string {
-	const base = checkoutStepHref("details", null, owner);
-	return `${base}${base.includes("?") ? "&" : "?"}edit=1`;
+// #region Route back to the basket
+function basketLineHref(view: CheckoutSessionContext, owner: string, itemId: string): string {
+	const base = basketHref(view.basketId || null, owner);
+	const item = view.items.find((entry) => entry.id === itemId);
+	return item ? `${base}#${rowDomId(item)}` : base;
 }
 // #endregion
 

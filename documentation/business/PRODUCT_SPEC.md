@@ -701,6 +701,10 @@ presentation:
 - **The total the buyer will be charged, in their own currency**, with the creator's original
   currency and the rate disclosed beside it — never a converted figure passed off as the price it
   was set at (§Internationalization; `MoneyView` is the only component permitted to render money).
+  At checkout the currency charged is named beside the total and the exact charge and rate are one
+  tap away (Decision #433). When Projective converts the charge into the buyer's own currency, the
+  exact charge, what the order is listed at, the locked rate and the conversion margin are all
+  stated before the buyer confirms (Decision #435).
 - **The delivery commitment** — a turnaround window for a One-Off, the stage sequence and current
   stage for a Pipeline, the actual bookable slot for a Session, the cohort start and cadence for a
   Group Session, the file manifest for a Product.
@@ -1743,7 +1747,9 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
     purchase (Decision #166), ready to pay in one step.
   - **From wallet** — the ticket joins the Business's **auto-fund queue** and is funded from the
     Business wallet as soon as the wallet can cover it, oldest first: every credit to the wallet (a
-    top-up, a refund, a recurring deposit) retries the queue. Funding means the hold when the ticket
+    top-up, a refund, a recurring deposit) retries the queue. A currency conversion's credit does
+    not: it already belongs to the purchase it was made for (Decision #435). An automatic hold never
+    converts. Funding means the hold when the ticket
     has a payee, or — for an unclaimed Pipeline ticket — returning it to the boards so its next claim
     holds. An automatic hold that would go over the project owner's spending limit, or is at or
     above the wallet's approval threshold, raises a spend approval for that ticket instead and is
@@ -1773,12 +1779,26 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   the buyer to make that true (root `CLAUDE.md` §8 Decision #126). A card payment that arrives is
   always kept: if what it was for can no longer be completed (a price moved, the stage moved on), the
   money stays in the payer's wallet and the payer is told so, never silently dropped (Decision #200).
-- **A purchase is charged in the currency the seller priced it in, and the buyer sees both
-  figures** (Decision #153). Browsing in another currency never blocks paying by card: checkout shows
-  the total in the buyer's currency beside the exact amount that will be charged in the seller's
-  (`AED 840.27 (~US$229.00 USD charged)`) and the rate it was shown at; the buyer's bank converts the
-  charge on their statement. Apple Pay, Google Pay and PayPal are offered as express buttons wherever
-  the device can use them — to individuals only, since they are personal instruments.
+- **A buyer pays in their own currency; the seller is paid in theirs** (Decision #435, superseding
+  #153's charge-currency rule). The checkout charges the buyer in their **billing currency**: the
+  currency of the billing country on the Details step, when it is one of the nine currencies
+  Projective settles in, else GBP. Their display preference never decides it. Projective prices
+  the order through a **conversion quote**: the mid-market rate plus a disclosed conversion margin
+  (`finance-model.md` §11), locked for 30 minutes and used once. The figure is exact, never an
+  estimate: `£78.07 charged · Listed at €90.00 EUR at 1 GBP = 1.17 EUR`, with the margin on its own
+  line, before the buyer confirms. The conversion happens inside the buyer's own wallets, and the
+  order, the escrow and every payout stay in the seller's currency. A refund of converted money
+  returns exactly what the buyer paid for that share, in their currency. The buyer may instead
+  **pay in the listing's own currency** (`?pay_in=`), and their bank then converts the charge.
+- **Until paying in one's own currency is switched on, the order's own currency is charged, and the
+  buyer is always told which** (Decisions #153, #433). Paying in one's own currency stays off
+  (`fx_checkout_enabled`) until counsel signs it off and a live rate feed exists. Browsing in another
+  currency never blocks paying by card. Checkout shows every figure in the buyer's currency only and
+  always names the currency charged under the total (`Charged in USD`). The exact amount charged
+  (`US$229.00`), the rate it was locked at and the fact that the bank may add its own conversion fee
+  are one tap away. The confirmation dialog states the exact charge outright. Apple Pay, Google Pay
+  and PayPal are offered as express buttons wherever the device can use them — to individuals only,
+  since they are personal instruments.
 - **A paid order is never left unplaced.** Once the card or wallet payment has arrived, the order is
   placed even if the buyer closed the page; if it can no longer be placed (a price changed, an item
   was withdrawn), the money stays in the buyer's wallet and they are told why (Decision #153).

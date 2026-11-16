@@ -207,7 +207,8 @@ async function contextFor(
 	walletKey: string | null,
 ): Promise<{ ctx: WalletContext; account: WalletAccount } | Result> {
 	if (walletKey === null) return refuse(422, "Choose a wallet.");
-	const ctx = await resolveWalletContext({ ...query, wallet: walletKey }, actor);
+	// A movement acts on the whole account, whichever currency wallet the page is reading (Decision #435).
+	const ctx = await resolveWalletContext({ ...query, wallet: walletKey, currency: null }, actor);
 	if (!ctx) return refuse(401, "Sign in to use your wallet.");
 	return actionTarget(ctx);
 }

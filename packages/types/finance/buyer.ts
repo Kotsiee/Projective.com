@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { currency, timestamp } from "./common.ts";
 import { destinationEmail, PurchaseOwnerType, reference } from "./basket.ts";
+import { currencyForCountry } from "./fx.ts";
 
 /**
  * finance buyer — the Zod SSOT for the details a buyer supplies once and the checkout then stops
@@ -231,12 +232,32 @@ export const BuyerDetailsSchema = z.object({
 	personal: PersonalBillingSchema,
 	business: BusinessBillingSchema,
 	invoicing: MonthlyInvoicingSchema,
-	/** The currency this identity's invoices are raised in (`default_currency`). */
+	/**
+	 * The currency this identity is billed in: its billing country's, through {@link billingCurrencyOf}
+	 * (Decision #435 (B)) — never the display preference.
+	 */
 	billingCurrency: currency,
 	/** When the buyer last saved these details; `null` for a record that has never been saved. */
 	savedAt: timestamp.nullable(),
 });
 export type BuyerDetails = z.infer<typeof BuyerDetailsSchema>;
+
+/**
+ * The currency a billing identity pays in (Decision #435 (B)): the active block's billing country
+ * through {@link currencyForCountry} — one of the settlement currencies, else the platform base.
+ */
+export function billingCurrencyOf(
+	details: {
+		contextKind: BillingContextKind;
+		personal: PersonalBilling;
+		business: BusinessBilling;
+	},
+): string {
+	const address = details.contextKind === "business"
+		? details.business.address
+		: details.personal.address;
+	return currencyForCountry(address.country);
+}
 
 /** The `PUT /api/checkout/details` payload — the whole record, saved as one atomic edit. */
 export const SaveBuyerDetailsSchema = z.object({

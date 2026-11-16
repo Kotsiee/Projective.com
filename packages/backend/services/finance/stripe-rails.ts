@@ -270,6 +270,33 @@ export async function cancelStaleIntent(
 	});
 	return { canceled: canceled.status === "canceled", status: canceled.status };
 }
+
+/** The intent states nobody has paid from yet, which a newer attempt may cancel. */
+const UNPAID_INTENT_STATES: ReadonlySet<string> = new Set([
+	"requires_payment_method",
+	"requires_confirmation",
+	"requires_action",
+]);
+
+/**
+ * Cancel an intent a newer attempt supersedes — the buyer changed the currency they pay in, or the
+ * quote behind it was replaced (Decision #435). Re-read first: an intent the bank is already
+ * processing, or that succeeded, is left alone and reported, so nobody is charged twice. Stripe's
+ * `payment_intent.canceled` webhook then marks the payment.
+ */
+export async function cancelSupersededIntent(
+	stripe: Stripe,
+	intentId: string,
+): Promise<{ canceled: boolean; status: string }> {
+	const fresh = await stripe.paymentIntents.retrieve(intentId);
+	if (!UNPAID_INTENT_STATES.has(fresh.status)) return { canceled: false, status: fresh.status };
+	const canceled = await stripe.paymentIntents.cancel(intentId, {
+		cancellation_reason: "abandoned",
+	}, {
+		idempotencyKey: stripeIdempotencyKey("cancel_superseded_intent", intentId),
+	});
+	return { canceled: canceled.status === "canceled", status: canceled.status };
+}
 // #endregion
 
 // #region Connect (payout accounts)

@@ -1,31 +1,21 @@
 import type { JSX } from "preact";
-import { Alert } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { Amount } from "./Amount.tsx";
 import type { SpendLimitBlock } from "../types/checkout-types.ts";
 
 /**
- * SpendLimitNotice — how the acting member's spending limit bears on this purchase.
+ * SpendLimitNotice — where the acting member stands against their spending limit on this purchase.
  *
- * **`needs_approval` is a route forward, not a wall.** That is the whole reason the SSOT carries a
- * verdict rather than an over/under boolean: a member who has passed their ceiling is not refused,
- * they are routed to whoever can approve it, and a surface that rendered the same red refusal for
- * both outcomes would teach them their purchase is impossible. So the deferred case is `warning`,
- * and only `blocked` is a refusal.
+ * It states the envelope only — spent, the cap and what is left — whatever the verdict. A refusal or a
+ * route forward is said once elsewhere: the session's `spend_limit` blocker in the step's pay notice,
+ * or a business's gate (`BusinessSpendGate`, Decision #243), so one refusal never reads two ways.
  *
- * **On a business checkout it states the envelope only.** The refusal and its way forward — "Request
- * approval" bound to the basket, the pending request, KYB, a short pool — are the business gate's
- * (`BusinessSpendGate`, Decision #243), worded from the one business refusal map; a second wording
- * here would put two sentences on one refusal. A team or an enterprise has no request to file, so its
- * refusal is still said here.
- *
- * `warning` here means what §A.1 says it means — caution, a state that needs attention before the
- * thing can proceed — not a decoration and not an action colour.
+ * An allowed purchase under a cap still shows the position: a member spending an entity's money is
+ * entitled to know how much of the window this purchase uses, and only telling them once they have
+ * run out is how a budget becomes a surprise.
  *
  * Three figures are printed and none is computed: cap, spent and remaining all arrive as
- * server-formatted `MoneyView`s. `remaining` in particular is the server's, because a client that
- * subtracted `spent` from `cap` would disagree with it the moment a pending purchase in another tab
- * counted against the window.
+ * server-formatted `MoneyView`s.
  */
 
 // #region Props
@@ -33,90 +23,48 @@ import type { SpendLimitBlock } from "../types/checkout-types.ts";
 export interface SpendLimitNoticeProps {
 	/** The server's projection. `applies: false` renders nothing. */
 	limit: SpendLimitBlock;
-	/**
-	 * A business checkout, whose refusal the business gate says: only the envelope's figures render
-	 * here, whatever the verdict.
-	 */
-	business?: boolean;
 }
 // #endregion
-
-/** The meter of what remains against the cap — a count of money, never a computation. */
-function LimitFacts(props: { limit: SpendLimitBlock }): JSX.Element {
-	const { limit } = props;
-	return (
-		<dl class="cko-limit__facts">
-			<div class="cko-limit__fact">
-				<dt class="cko-limit__key">
-					Spent{limit.periodLabel ? ` ${limit.periodLabel}` : ""}
-				</dt>
-				<dd class="cko-limit__val">
-					<Amount value={limit.spent} size="body" />
-				</dd>
-			</div>
-			<div class="cko-limit__fact">
-				<dt class="cko-limit__key">Your limit</dt>
-				<dd class="cko-limit__val">
-					{limit.cap ? <Amount value={limit.cap} size="body" /> : "No cap"}
-				</dd>
-			</div>
-			{limit.remaining && (
-				<div class="cko-limit__fact">
-					<dt class="cko-limit__key">Left to spend</dt>
-					<dd class="cko-limit__val">
-						<Amount
-							value={limit.remaining}
-							size="body"
-							tone={limit.remaining.minor > 0 ? "default" : "muted"}
-						/>
-					</dd>
-				</div>
-			)}
-		</dl>
-	);
-}
 
 /** Render the spending-limit position, or nothing when no limit applies. */
 export function SpendLimitNotice(props: SpendLimitNoticeProps): JSX.Element | null {
 	const { limit } = props;
 	if (!limit.applies) return null;
 
-	// An allowed purchase under a cap still shows the position: a member spending an entity's money
-	// is entitled to know how much of the window this purchase uses, and only telling them once they
-	// have run out is how a budget becomes a surprise.
-	if (limit.verdict === "allowed" || props.business) {
-		return (
-			<section class="cko-limit" data-verdict="allowed" aria-labelledby="cko-limit-head">
-				<h3 class="cko-limit__head" id="cko-limit-head">
-					<Icon name="shield" />
-					Spending limit
-				</h3>
-				<LimitFacts limit={limit} />
-			</section>
-		);
-	}
-
-	const deferred = limit.verdict === "needs_approval";
-
 	return (
-		<Alert
-			class="cko-limit cko-limit--gate"
-			severity={deferred ? "warning" : "danger"}
-			title={deferred ? "This purchase needs approval" : "This purchase is over your limit"}
-		>
-			{
-				/*
-				 * The verdict's own sentence, verbatim. Two wordings of one refusal is how a buyer comes
-				 * to believe they have two different problems — the same rule the provider refusals keep.
-				 */
-			}
-			<p class="cko-limit__reason">
-				{limit.reason ??
-					(deferred
-						? "Someone with a higher limit will need to approve this before it can be paid."
-						: "This account's spending limit does not cover this purchase.")}
-			</p>
-			<LimitFacts limit={limit} />
-		</Alert>
+		<section class="cko-limit" data-verdict={limit.verdict} aria-labelledby="cko-limit-head">
+			<h3 class="cko-limit__head" id="cko-limit-head">
+				<Icon name="shield" />
+				Spending limit
+			</h3>
+			<dl class="cko-limit__facts">
+				<div class="cko-limit__fact">
+					<dt class="cko-limit__key">
+						Spent{limit.periodLabel ? ` ${limit.periodLabel}` : ""}
+					</dt>
+					<dd class="cko-limit__val">
+						<Amount value={limit.spent} size="body" />
+					</dd>
+				</div>
+				<div class="cko-limit__fact">
+					<dt class="cko-limit__key">Your limit</dt>
+					<dd class="cko-limit__val">
+						{limit.cap ? <Amount value={limit.cap} size="body" /> : "No cap"}
+					</dd>
+				</div>
+				{limit.remaining && (
+					<div class="cko-limit__fact">
+						<dt class="cko-limit__key">Left to spend</dt>
+						<dd class="cko-limit__val">
+							<Amount
+								value={limit.remaining}
+								size="body"
+								tone={limit.remaining.minor > 0 ? "default" : "muted"}
+							/>
+						</dd>
+					</div>
+				)}
+			</dl>
+		</section>
 	);
 }

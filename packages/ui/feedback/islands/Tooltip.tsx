@@ -8,12 +8,13 @@ import { useFloating } from "../../hooks/useFloating.ts";
 import { usePresence } from "../../overlay/core/usePresence.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { useId } from "../../hooks/useId.ts";
+import { pushEscapeLayer } from "../../hooks/escape-stack.ts";
 import type { Placement } from "../../types/mod.ts";
 
 // #region Props
 /** Props for {@link Tooltip}. */
 export interface TooltipProps {
-	/** Tooltip text or node; `""` keeps it closed. */
+	/** Tooltip text or node; `""` keeps it closed, and closes it if it is open. */
 	content: string | VNode;
 	/** Anchor element — wrapped in an inline span that carries the ref + listeners. */
 	children: ComponentChildren;
@@ -44,6 +45,13 @@ export interface TooltipProps {
 	 * row (`ui-tooltip__anchor--truncate`), so the ellipsis chain through it to the label holds.
 	 */
 	whenTruncated?: boolean;
+	/**
+	 * A press on the anchor (click, tap, Enter/Space on the button it holds) opens it at once and pins
+	 * it until a second press, Escape, blur, or a press outside the anchor and the tooltip — so a touch
+	 * reader, who never hovers, can read it. While pinned it is the top Escape layer, so Escape closes
+	 * it and not the dialog it sits in. The anchor must hold a focusable `<button>`.
+	 */
+	toggleOnPress?: boolean;
 	/** Gap between anchor and tooltip, px (default 6). */
 	offset?: number;
 	/** Extra class(es) merged onto the tooltip surface. */
@@ -69,7 +77,8 @@ function clipsText(anchor: HTMLElement): boolean {
  * Tooltip — a hover/focus micro-popup describing its anchor. Positioned by {@link useFloating} (flips
  * on overflow) and wired with `role="tooltip"` + `aria-describedby` so it is announced, shortcut
  * included. Opens on pointer-enter or keyboard (`:focus-visible`) focus after `delay`, hides on
- * leave/blur; Escape closes it from anywhere while it is up. Presence keeps it mounted through a
+ * leave/blur; Escape closes it from anywhere while it is up. `toggleOnPress` adds a pinned state a
+ * press opens and closes, for touch. Presence keeps it mounted through a
  * short exit fade that collapses under reduced motion. The pending timer is cancelled on every
  * re-schedule and on unmount.
  *
@@ -91,6 +100,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 		shortcut,
 		interactive = false,
 		whenTruncated = false,
+		toggleOnPress = false,
 		offset = 6,
 		class: className,
 	} = props;
@@ -98,6 +108,8 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 	const triggerRef = useRef<HTMLSpanElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const timer = useRef<number | undefined>(undefined);
+	const pinned = useRef(false);
+	const releaseEscape = useRef<(() => void) | null>(null);
 	const tipId = useId(undefined, "tooltip");
 
 	const open = useSignal(false);
@@ -122,26 +134,62 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 		if (whenTruncated && triggerRef.current && !clipsText(triggerRef.current)) return;
 		schedule(true, typeof delay === "number" ? delay : DELAY_MS[delay]);
 	};
-	const hide = () => schedule(false, interactive ? INTERACTIVE_GRACE_MS : 0);
+	const close = () => {
+		clearTimer();
+		pinned.current = false;
+		releaseEscape.current?.();
+		releaseEscape.current = null;
+		open.value = false;
+	};
+	const hide = () => {
+		if (!pinned.current) schedule(false, interactive ? INTERACTIVE_GRACE_MS : 0);
+	};
 	// Keyboard focus only: focus a script moves after a click (a popover focusing its first control)
 	// is not a request for the label.
 	const showOnFocus = (e: JSX.TargetedFocusEvent<HTMLSpanElement>) => {
 		if ((e.target as Element).matches(":focus-visible")) show();
 	};
+	const hideOnBlur = () => (pinned.current ? close() : hide());
+	const togglePinned = () => {
+		if (pinned.current) return close();
+		if (content === "") return;
+		clearTimer();
+		pinned.current = true;
+		releaseEscape.current ??= pushEscapeLayer({
+			enabled: () => true,
+			closeOnEscape: () => true,
+			dismiss: close,
+		});
+		open.value = true;
+	};
 
-	useEffect(() => clearTimer, []);
+	useEffect(() => () => {
+		clearTimer();
+		releaseEscape.current?.();
+	}, []);
+	useEffect(() => {
+		if (content === "" && open.peek()) close();
+	}, [content === ""]);
 
 	// Global while open, so a pointer-only reader can dismiss it without moving (WCAG 1.4.13).
 	useEffect(() => {
 		if (!open.value) return;
 		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			clearTimer();
-			open.value = false;
+			if (e.key === "Escape") close();
+		};
+		const onPointerDown = (e: PointerEvent) => {
+			const target = e.target as Node | null;
+			if (!pinned.current || !target) return;
+			if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+			close();
 		};
 		globalThis.addEventListener("keydown", onKeyDown);
-		return () => globalThis.removeEventListener("keydown", onKeyDown);
-	}, [open.value]);
+		if (toggleOnPress) document.addEventListener("pointerdown", onPointerDown, true);
+		return () => {
+			globalThis.removeEventListener("keydown", onKeyDown);
+			if (toggleOnPress) document.removeEventListener("pointerdown", onPointerDown, true);
+		};
+	}, [open.value, toggleOnPress]);
 	// #endregion
 
 	// Read when the panel mounts (client-only), so the server never needs the preference.
@@ -157,7 +205,8 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 			onPointerEnter={show}
 			onPointerLeave={hide}
 			onFocusIn={showOnFocus}
-			onFocusOut={hide}
+			onFocusOut={hideOnBlur}
+			onClick={toggleOnPress ? togglePinned : undefined}
 		>
 			{children}
 			{mounted && (

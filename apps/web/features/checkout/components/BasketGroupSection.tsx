@@ -1,10 +1,9 @@
 import type { ComponentChildren, JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { Checkbox } from "@projective/ui/fields";
-import { Amount } from "./Amount.tsx";
 import { groupAnchorId } from "../core/lists-model.ts";
 import type { RenderGroup } from "../core/basket-view.ts";
-import type { MoneyView, PurchasableItemGroup } from "../types/checkout-types.ts";
+import type { PurchasableItemGroup } from "../types/checkout-types.ts";
 
 /**
  * BasketGroupSection — the basket body's two nesting levels: the CATEGORY a buyer scans by, and the
@@ -19,25 +18,21 @@ import type { MoneyView, PurchasableItemGroup } from "../types/checkout-types.ts
  * `basketListsFrom` already re-indexes them into its Tickets and Sessions sections. It is a
  * re-ordering of server groups, never a re-grouping of lines, and it moves no money.
  *
- * ## Where a subtotal may be printed, and where it may not
+ * ## No section prints a subtotal (Decision #434)
  *
- * A `BasketGroup` carries a server-computed `subtotal`. A CATEGORY does not — there is no
- * per-category figure in the projection — so a category that rolls up several engagement groups has
- * **no figure this surface is allowed to state**, because stating one would mean adding two server
- * totals together and that is the second arithmetic path the money contract exists to prevent.
- *
- * The closing "Subtotal" line therefore prints once, at the outermost level that has exactly ONE
- * server figure behind it: on the category when the category holds a single group (which is always
- * true of Products), and on each engagement block otherwise. Every section still ends in a right-
- * aligned subtotal; the only thing that moves is which unit it closes. A per-category rollup in the
- * projection would collapse the two cases into one — see the work report.
+ * The basket step states ONE figure, the summary card's Total, and each line states its own price.
+ * A category or engagement "Subtotal" either repeated that Total (one engagement in the basket) or
+ * a line's own price (one line in a category), so neither level closes with a figure. The arithmetic
+ * between them belongs to the Payment step's invoice panel, and the lane's derived lists carry each
+ * engagement's server subtotal. A category could never have printed its own anyway: the projection
+ * has no per-category figure, and summing two server totals here would be the second arithmetic path
+ * the money contract forbids.
  *
  * ## Separation (§B.4)
  *
- * A category is spacing and type weight — no box, no border, no tint. Its one device is the single
- * hairline above the closing subtotal. An engagement block is one tonal step with a radius, which is
- * the sanctioned way to nest without drawing a border around non-interactive content. The only full
- * outlines on either belong to the controls: the selection checkboxes and the links.
+ * A category is spacing and type weight — no box, no border, no tint. An engagement block is
+ * whitespace alone. The only full outlines on either belong to the controls: the selection
+ * checkboxes and the links.
  */
 
 // #region Category projection
@@ -72,11 +67,6 @@ export interface BasketCategory {
 	label: string;
 	/** The server groups filed here, in the order the server sent them. */
 	groups: RenderGroup[];
-	/**
-	 * The server figure closing the whole category, or `null` when several groups price it and no
-	 * single server total exists. Never summed — see this module's header.
-	 */
-	subtotal: MoneyView | null;
 	/** Whether the category's lines render flat, rather than inside engagement blocks. */
 	flat: boolean;
 }
@@ -100,7 +90,6 @@ export function categoriesOf(sections: readonly RenderGroup[]): BasketCategory[]
 			key: entry.key,
 			label: entry.label,
 			groups,
-			subtotal: groups.length === 1 ? groups[0].subtotal : null,
 			flat,
 		});
 	}
@@ -192,8 +181,6 @@ export function BasketCategorySection(props: BasketCategorySectionProps): JSX.El
 					The search is hiding {hidden} {hidden === 1 ? "line" : "lines"} here.
 				</p>
 			)}
-
-			{category.subtotal && <SubtotalLine value={category.subtotal} />}
 		</section>
 	);
 }
@@ -208,23 +195,3 @@ export function BasketCategorySection(props: BasketCategorySectionProps): JSX.El
  * The replacement keeps the server group as the unit — the projection was always shaped this way —
  * and spends whitespace on the hierarchy instead of a box.
  */
-
-// #region Subtotal
-/**
- * The line that closes a priced unit.
- *
- * One server `MoneyView` rendered through the shared {@link Amount} and nothing else — the label is a
- * word, the figure is the server's, and the single hairline above it is the whole separation device
- * (§B.4/§B.9: one boundary, one device).
- */
-function SubtotalLine({ value }: { value: MoneyView }): JSX.Element {
-	return (
-		<p class="bsk-subtotal">
-			<span class="bsk-subtotal__label">Subtotal</span>
-			<span class="bsk-subtotal__value">
-				<Amount value={value} size="lead" />
-			</span>
-		</p>
-	);
-}
-// #endregion

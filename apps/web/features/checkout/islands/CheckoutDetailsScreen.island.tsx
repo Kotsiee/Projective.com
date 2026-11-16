@@ -6,7 +6,7 @@ import { missingBuyerFields } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
 import { Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
+import { basketHref, carriedParams, checkoutStepHref, withCarry } from "../core/basket-model.ts";
 import { currentCheckoutContext } from "../core/basket-state.ts";
 import { includedNow } from "../core/checkout-model.ts";
 import { useCheckoutContext } from "../core/checkout-context.ts";
@@ -202,7 +202,10 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 			return;
 		}
 		if (!await save()) return;
-		globalThis.location.assign(checkoutStepHref("payment", session.basketId || null, owner));
+		globalThis.location.assign(withCarry(
+			checkoutStepHref("payment", session.basketId || null, owner, session.preselect),
+			carriedParams(new URLSearchParams(globalThis.location.search)),
+		));
 	}, []);
 
 	/** The form's submit — reached from the rail's Continue and from Enter on the last field. */

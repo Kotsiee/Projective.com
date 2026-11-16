@@ -47,6 +47,8 @@ export interface WalletContext {
 	wallet: string | null;
 	display: string | null;
 	timezone?: string | null;
+	/** The currency wallet the page reads (`?currency=`, Decision #435); movements ignore it. */
+	currency?: string | null;
 }
 
 /** A finished CSV export, or the reason there is none. */

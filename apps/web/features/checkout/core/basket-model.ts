@@ -3,6 +3,7 @@ import { itemKindMeta } from "@projective/types/finance";
 import type {
 	BasketItem,
 	CheckoutContext,
+	CheckoutPayIn,
 	CheckoutPreselect,
 	CheckoutView,
 } from "../types/checkout-types.ts";
@@ -129,6 +130,94 @@ export function checkoutHref(
 	preselect?: Partial<CheckoutPreselect>,
 ): string {
 	return checkoutStepHref("payment", basketId, owner, preselect);
+}
+
+/**
+ * The query a link onward or back through the flow carries over from the page it leaves, beyond the
+ * basket, owner and narrowing its builder already writes: the `?display=` currency and any dev `sim*`
+ * axis. Never a one-shot param — `edit`, `order`, a Stripe or express return.
+ */
+export function carriedParams(sp: URLSearchParams): Record<string, string> {
+	const carry: Record<string, string> = {};
+	for (const [key, value] of sp) {
+		if (value && (key === "display" || key === "pay_in" || key.startsWith("sim"))) {
+			carry[key] = value;
+		}
+	}
+	return carry;
+}
+
+/** A step href with the carried params appended; a param the href already names keeps its value. */
+export function withCarry(href: string, carry: Readonly<Record<string, string>> = {}): string {
+	const at = href.indexOf("?");
+	const path = at < 0 ? href : href.slice(0, at);
+	const qs = new URLSearchParams(at < 0 ? "" : href.slice(at + 1));
+	for (const [key, value] of Object.entries(carry)) if (!qs.has(key)) qs.set(key, value);
+	const q = qs.toString();
+	return q ? `${path}?${q}` : path;
+}
+
+/**
+ * The Details step reopened for editing — every backward link to it (the step trail, Change Details,
+ * the invoicing action). `edit=1` is load-bearing: Details auto-skips a complete record to Payment
+ * (`canSkipDetails`), so a link back without it lands straight back where it started. The basket, the
+ * owner, the narrowing and the carried params travel with it, so the step reopens on the same purchase.
+ */
+export function detailsEditHref(
+	basketId?: string | null,
+	owner?: string | null,
+	preselect?: Partial<CheckoutPreselect>,
+	carry: Readonly<Record<string, string>> = {},
+): string {
+	return withCarry(checkoutStepHref("details", basketId, owner, preselect), {
+		edit: "1",
+		...carry,
+	});
+}
+
+/**
+ * The `?pay_in=` a checkout read carries (Decision #435): the order's own currency when the buyer chose
+ * it over a conversion into their billing currency, else `null` — the billing currency is the default.
+ */
+export function payInParamOf(payIn: CheckoutPayIn | null): string | null {
+	if (!payIn || !payIn.conversion || payIn.billing === payIn.order) return null;
+	return payIn.selected === payIn.order ? payIn.order : null;
+}
+
+/**
+ * The payment step in each currency a checkout may be paid in, keyed by currency: the billing currency
+ * at the canonical address (no `?pay_in=`), the order's own with it. Empty when there is no choice.
+ */
+export function payInHrefs(
+	payIn: CheckoutPayIn | null,
+	basketId: string | null,
+	owner: string | null,
+	preselect: Partial<CheckoutPreselect>,
+	carry: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+	if (!payIn || !payIn.conversion || payIn.billing === payIn.order) return {};
+	const rest = Object.fromEntries(Object.entries(carry).filter(([key]) => key !== "pay_in"));
+	const base = checkoutStepHref("payment", basketId, owner, preselect);
+	return {
+		[payIn.billing]: withCarry(base, rest),
+		[payIn.order]: withCarry(base, { ...rest, pay_in: payIn.order }),
+	};
+}
+
+/**
+ * Where a payment-step address whose `?pay_in=` is not the canonical one belongs: `null` when it is,
+ * else the same address with `pay_in` corrected (`eur` → `EUR`) or removed (the billing currency, or a
+ * currency this checkout cannot be paid in).
+ */
+export function payInRedirect(url: URL, payIn: CheckoutPayIn | null): string | null {
+	const raw = url.searchParams.get("pay_in");
+	if (raw === null) return null;
+	const wanted = payInParamOf(payIn);
+	if (raw === wanted) return null;
+	const next = new URL(url);
+	if (wanted) next.searchParams.set("pay_in", wanted);
+	else next.searchParams.delete("pay_in");
+	return `${next.pathname}${next.search}`;
 }
 
 /** Append the non-empty params to a path, or return it unchanged. */
@@ -306,6 +395,7 @@ export function contextFrom(sp: URLSearchParams, context: UserContext): Checkout
 		projectId: preselect.projectId,
 		serviceId: preselect.serviceId,
 		ticketId: preselect.ticketId ?? null,
+		payIn: sp.get("pay_in"),
 	};
 }
 
@@ -328,6 +418,7 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	if (ctx.ticketId) qs.set("ticket_id", ctx.ticketId);
 	if (ctx.provider) qs.set("provider", ctx.provider);
 	if (ctx.contribute !== undefined) qs.set("contribute", ctx.contribute ? "1" : "0");
+	if (ctx.payIn) qs.set("pay_in", ctx.payIn);
 	return qs.toString();
 }
 
@@ -350,6 +441,7 @@ export function withContext<T extends Record<string, unknown>>(
 		...(ctx.display ? { display: ctx.display } : {}),
 		...(ctx.provider ? { provider: ctx.provider } : {}),
 		...(ctx.contribute !== undefined ? { contribute: ctx.contribute } : {}),
+		...(ctx.payIn ? { payIn: ctx.payIn } : {}),
 	};
 }
 // #endregion

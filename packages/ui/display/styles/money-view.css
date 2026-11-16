@@ -112,6 +112,18 @@
 	unicode-bidi: isolate;
 }
 
+.ui-money__reference {
+	font-size: 0.8125em;
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+	line-height: 1.15;
+}
+
+.ui-money--hero .ui-money__reference,
+.ui-money--figure .ui-money__reference {
+	flex-basis: 100%;
+}
+
 /* #region Type scale
  * Steps stay under ~1.4× their neighbour so no two adjacent sizes read as the same figure at a
  * glance, matching the wallet ramp (§B.8). `hero` is a balance identity; `micro` a dense table cell.
@@ -140,7 +152,9 @@
  * loud enough to compete with the identity figure it is qualifying. Pinned to a fixed step instead.
  */
 .ui-money--hero .ui-money__origin,
-.ui-money--figure .ui-money__origin {
+.ui-money--figure .ui-money__origin,
+.ui-money--hero .ui-money__reference,
+.ui-money--figure .ui-money__reference {
 	font-size: var(--text-md);
 }
 /* #endregion */

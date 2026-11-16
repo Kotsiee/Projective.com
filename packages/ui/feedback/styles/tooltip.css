@@ -30,6 +30,7 @@
 	/* A static band by design (§B.10.3): above every class `useOverlayStack` allocates, and a claim
 	   would steal Escape from the dialog the tooltip is shown inside. */
 	z-index: var(--z-tooltip);
+	inline-size: max-content;
 	max-inline-size: min(18rem, calc(100vw - var(--space-4)));
 	padding: var(--space-1) var(--space-3);
 	white-space: normal;

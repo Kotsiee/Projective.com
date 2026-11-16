@@ -72,7 +72,7 @@ export function ProcessingContribution(props: ProcessingContributionProps): JSX.
 					 * labelled button rather than a bare glyph.
 					 */
 				}
-				<Tooltip content={offer.note} placement="top">
+				<Tooltip content={offer.note} placement="top" toggleOnPress>
 					<button
 						type="button"
 						class="cko-contrib__info"
@@ -86,6 +86,7 @@ export function ProcessingContribution(props: ProcessingContributionProps): JSX.
 					<Amount
 						value={offer.amount}
 						size="body"
+						hideOrigin
 						tone={optedIn.value ? "default" : "muted"}
 						sign="+"
 						srLabel={optedIn.value

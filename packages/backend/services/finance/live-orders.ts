@@ -15,6 +15,7 @@ import {
 	formatMoney,
 	fulfilmentKindOf,
 } from "@projective/types/finance";
+import type { ExploreItem } from "@projective/types/explore";
 import { getUserClient } from "../../core/supabase.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -188,10 +189,23 @@ const STATUS_MESSAGE: Record<OrderStatus, (total: string) => string> = {
 /** The display facts a receipt line borrows from the live catalogue and the buyer's projects. */
 interface LineContext {
 	catalog: Catalog | null;
-	projects: Map<string, { slug: string; title: string }>;
+	projects: Map<string, ProjectFace>;
 	stages: Map<string, { slug: string; projectId: string; name: string; position: number }>;
 	/** A funded ticket's payee, by ticket id — who "can start now" on the confirmation. */
 	payees: Map<string, string>;
+}
+
+/** A purchased project as its order lines read it. */
+interface ProjectFace {
+	slug: string;
+	title: string;
+	/** The listing a service-backed project was instantiated from; `null` for a client project. */
+	sourceBlueprintId: string | null;
+}
+
+/** A discovery item's public cover (listing showcase slot 1), or `null` when it has none. */
+function coverOf(item: ExploreItem): string | null {
+	return "media" in item && typeof item.media === "string" && item.media ? item.media : null;
 }
 
 /** The public face of a purchased listing, when the catalogue still carries it. */
@@ -203,6 +217,14 @@ function listingFace(ctx: LineContext, line: LineRow): {
 	const none = { thumbnail: null, sellerHandle: null, sellerName: null };
 	const catalog = ctx.catalog;
 	if (!catalog) return none;
+	const project = ctx.projects.get(line.item_id);
+	if (project) {
+		const slug = project.sourceBlueprintId
+			? [...catalog.blueprintBySlug].find(([, row]) => row.id === project.sourceBlueprintId)?.[0]
+			: undefined;
+		const source = slug ? catalog.byId.get(slug) : undefined;
+		return { ...none, thumbnail: source ? coverOf(source) : null };
+	}
 	const bySlug = line.item_type === "digital_product"
 		? [...catalog.productBySlug].find(([, row]) => row.id === line.item_id)?.[0]
 		: [...catalog.blueprintBySlug].find(([, row]) => row.id === line.item_id)?.[0];
@@ -210,7 +232,7 @@ function listingFace(ctx: LineContext, line: LineRow): {
 	if (!item) return none;
 	const handle = item.owner.handle.replace(/^@/, "");
 	return {
-		thumbnail: "media" in item && typeof item.media === "string" && item.media ? item.media : null,
+		thumbnail: coverOf(item),
 		sellerHandle: handle ? clip(handle, 40) : null,
 		sellerName: clip(item.owner.name, 120),
 	};
@@ -250,11 +272,23 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 		}
 	}
 
-	const projects = new Map<string, { slug: string; title: string }>();
+	const projects = new Map<string, ProjectFace>();
 	if (projectIds.size > 0) {
-		const { data } = await db.from("projects").select("id, slug, title").in("id", [...projectIds]);
-		for (const row of (data ?? []) as { id: string; slug: string; title: string }[]) {
-			projects.set(row.id, { slug: row.slug, title: row.title });
+		const { data } = await db.from("projects").select("id, slug, title, source_blueprint_id")
+			.in("id", [...projectIds]);
+		for (
+			const row of (data ?? []) as {
+				id: string;
+				slug: string;
+				title: string;
+				source_blueprint_id: string | null;
+			}[]
+		) {
+			projects.set(row.id, {
+				slug: row.slug,
+				title: row.title,
+				sourceBlueprintId: row.source_blueprint_id,
+			});
 		}
 	}
 

@@ -348,8 +348,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- AFTER INSERT on finance.transactions, for business wallets only. A credit (not on account) retries
--- the auto-fund queue. A debit that takes the balance from at-or-above the business's floor to below
+-- AFTER INSERT on finance.transactions, for business wallets only. A credit (not on account, and not a
+-- conversion, which is bound to the purchase that made it, Decision #435) retries the auto-fund queue. A debit that takes the balance from at-or-above the business's floor to below
 -- it — in the business's default currency — warns and runs any floor top-up. Stateless debounce: the
 -- crossing is read off the debit itself (balance before = after + amount), so the warning re-arms
 -- only once the balance is back at or above the floor. Never raises into the money movement.
@@ -368,7 +368,7 @@ BEGIN
     IF NOT FOUND OR w.owner_type <> 'business' THEN RETURN NULL; END IF;
 
     IF NEW.direction = 'credit' THEN
-        IF NEW.reason <> 'on_account_credit' THEN
+        IF NEW.reason NOT IN ('on_account_credit', 'fx_conversion') THEN
             PERFORM finance.fn_auto_fund_drain(w.id);
         END IF;
         RETURN NULL;
@@ -483,6 +483,8 @@ $$;
 -- saw, so place_wallet_order refuses it as `p_expected_minor` before any debit; the charged = credit
 -- assert after it stays as the backstop. A replayed key replays the order without crediting again,
 -- including the twin that waited on the locks below. The order is written `invoiced`, "On account".
+-- With `p_fx_quote_id` (Decision #435) the business buys on account in the quote's currency: `p_amount`
+-- is the quote's charge, credited, limited and owed in that currency, and converted into the order's.
 CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -490,7 +492,8 @@ CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_units jsonb,
     p_promo_code text,
     p_idempotency_key text,
-    p_amount bigint
+    p_amount bigint,
+    p_fx_quote_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -502,6 +505,9 @@ DECLARE
     v_basket finance.baskets;
     v_business org.business_profiles;
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_credit_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_expected bigint := p_amount;
+    v_quote finance.fx_quotes;
     v_limit bigint;
     v_order jsonb;
 BEGIN
@@ -539,6 +545,17 @@ BEGIN
     IF v_business.invoicing_mode <> 'intervaled_monthly' THEN
         RAISE EXCEPTION 'Switch to monthly invoicing to pay by invoice' USING ERRCODE = 'PK403';
     END IF;
+    IF p_fx_quote_id IS NOT NULL THEN
+        SELECT * INTO v_quote FROM finance.fx_quotes q WHERE q.id = p_fx_quote_id;
+        IF NOT FOUND OR v_quote.purpose <> 'checkout' OR v_quote.ref_id IS DISTINCT FROM v_basket.id
+           OR v_quote.owner_type <> 'business' OR v_quote.owner_id IS DISTINCT FROM v_basket.owner_id
+           OR v_quote.to_currency <> v_currency OR v_quote.from_minor <> p_amount THEN
+            RAISE EXCEPTION 'quote_invalid: That exchange-rate quote is not for this order — review the total and try again'
+                USING ERRCODE = 'PC409';
+        END IF;
+        v_credit_currency := v_quote.from_currency;
+        v_expected := v_quote.to_minor;
+    END IF;
     IF EXISTS (
         SELECT 1 FROM finance.invoices i
          WHERE i.issue_to_business_id = v_business.id
@@ -551,7 +568,7 @@ BEGIN
     -- same owed figure and together pass the limit. Taken before the owed read, held to commit: the read
     -- below is a new statement, so it sees every on-account credit committed while this waited.
     PERFORM pg_catalog.pg_advisory_xact_lock(
-        pg_catalog.hashtextextended('finance.on_account:' || v_business.id::text || ':' || v_currency, 0));
+        pg_catalog.hashtextextended('finance.on_account:' || v_business.id::text || ':' || v_credit_currency, 0));
     -- The same key racing itself waited on the locks above; crediting again would mint a surplus.
     IF EXISTS (SELECT 1 FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key) THEN
         RETURN finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
@@ -559,24 +576,24 @@ BEGIN
     END IF;
     -- The limit in this currency's own minor units (Decision #337, ruling M5 (e)). A currency the map
     -- does not list, with no "default", is not offered on account at all.
-    v_limit := finance.fn_param_minor('on_account_limit_cents', v_currency);
+    v_limit := finance.fn_param_minor('on_account_limit_cents', v_credit_currency);
     IF v_limit IS NULL THEN
-        RAISE EXCEPTION 'limit_not_configured: paying on account is not available in % — pay from the wallet instead', v_currency
+        RAISE EXCEPTION 'limit_not_configured: paying on account is not available in % — pay from the wallet instead', v_credit_currency
             USING ERRCODE = 'PF402';
     END IF;
-    IF finance.fn_on_account_owed(v_business.id, v_currency) + p_amount > v_limit THEN
+    IF finance.fn_on_account_owed(v_business.id, v_credit_currency) + p_amount > v_limit THEN
         RAISE EXCEPTION 'This would take the business past its on-account limit — pay from the wallet instead'
             USING ERRCODE = 'PF402';
     END IF;
 
     -- The spend gate (KYB, the buyer's envelope, the threshold — BB3) runs once, in place_wallet_order
     -- below, on what the order actually charges; a refusal there takes this credit back with it.
-    PERFORM finance.fn_ensure_wallet('business', v_business.id, v_currency);
-    PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
+    PERFORM finance.fn_ensure_wallet('business', v_business.id, v_credit_currency);
+    PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_credit_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
     v_order := finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
-        p_idempotency_key, p_amount);
+        p_idempotency_key, v_expected, p_fx_quote_id);
     IF (SELECT o.charged_minor FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key)
-       IS DISTINCT FROM p_amount THEN
+       IS DISTINCT FROM v_expected THEN
         RAISE EXCEPTION 'The amount to pay on account no longer matches this order — review the basket and try again'
             USING ERRCODE = 'PC409';
     END IF;
@@ -714,9 +731,9 @@ BEGIN
      WHERE t.wallet_id = w.id AND t.created_at >= p_start;
     SELECT COALESCE(SUM(t.amount_cents) FILTER (WHERE t.direction = 'credit'), 0),
            COALESCE(SUM(t.amount_cents) FILTER (WHERE t.direction = 'debit'
-                                                  AND t.reason NOT IN ('platform_fee', 'instant_payout_fee')), 0),
+                                                  AND t.reason NOT IN ('platform_fee', 'instant_payout_fee', 'fx_spread')), 0),
            COALESCE(SUM(t.amount_cents) FILTER (WHERE t.direction = 'debit'
-                                                  AND t.reason IN ('platform_fee', 'instant_payout_fee')), 0)
+                                                  AND t.reason IN ('platform_fee', 'instant_payout_fee', 'fx_spread')), 0)
       INTO v_in, v_out, v_fees
       FROM finance.transactions t
      WHERE t.wallet_id = w.id AND t.created_at >= p_start AND t.created_at < p_end;

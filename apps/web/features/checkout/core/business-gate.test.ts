@@ -43,7 +43,7 @@ function session(
 		},
 		wallet: { available: usd(889_700), shortfall: usd(0), covers: true },
 		totals: { total: TOTAL } as GateSession["totals"],
-		charge: TOTAL,
+		buyerCharge: { ...TOTAL, quote: null },
 		blockers: [],
 		businessAccount: {
 			approvers: ["Priya Raman"],
@@ -220,7 +220,9 @@ Deno.test("declined, expired or outgrown: request again, saying what became of t
 	const expired = gate(session({}, { request: request("expired") }));
 	assertEquals(expired?.meta, ["Your last request expired before it was used."]);
 	const outgrown = gate(
-		session({ charge: usd(4800) }, { request: request("approved", { covers: false }) }),
+		session({ buyerCharge: { ...usd(4800), quote: null } }, {
+			request: request("approved", { covers: false }),
+		}),
 	);
 	assertEquals(outgrown?.meta, ["The approval covers $24.00, but this order is now $48.00."]);
 });
