@@ -2348,7 +2348,8 @@ is left to the command palette.
   through `security.fn_set_session_context` (clearing any team or enterprise slot). The claims
   then lag the database exactly as after a context switch, so the route re-issues the session on
   the same response (the hook re-mints `active_context.isFreelancer`; Decision #193) and the client
-  hard-navigates to `/[handle]/edit` so the server-painted chrome (sidebar Services/Teams, the
+  hard-navigates to the person's profile on its About block (`/@handle#about`, edited in place,
+  Decision #439) so the server-painted chrome (sidebar Services/Teams, the
   Create menu's seller items, the popover's role) re-derives from the new token. A `claimsStale`
   answer is reported, never navigated past (Decision #150).
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
@@ -3476,7 +3477,33 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
   (`cancelSupersededIntent`). On the order-currency path the checkout prints its figures in the
   display currency only and names the charge currency under the total (`Charged in USD`), with
   `settlement.rateLabel` and `asOfLabel` verbatim in the breakdown, so the client composes no FX
-  (Decision #433).
+  (Decision #433). **A quote a card payment has already paid on is honoured past its window**
+  (Decision #436): while the paying wallet still holds that money, the session offers it again
+  (`lockQuote`'s first read, against `walletBalances`), `create` accepts it once expired, and it never
+  starts a second card payment (a quote binds one). So a retry of an order that failed after the money
+  arrived pays at the rate that was charged, as `place_wallet_order` and `settle_card_payment` already
+  honour it.
+- **The FX switch has a development override** (Decision #436). The Dev Context Switcher's
+  `fxCheckout` axis travels as the `pj.dev.fx-checkout` cookie, which `readActor` honours only under
+  `DENO_ENV=development` (`actor.fxCheckoutOverride`). `lockQuote` forwards it to PostgREST as
+  `x-pj-dev-fx-checkout`, read by `finance.fn_fx_checkout_enabled()`. `off` refuses from any caller,
+  since it refuses only its sender, and the service answers it before any read. `on` loosens the gate,
+  so it counts only where `security.platform_params.dev_overrides_honoured` is true, which only the
+  local seed world sets: the server's environment and the database must both agree, because
+  `quote_fx_conversion` is a user door PostgREST serves to any signed-in caller. Where it counts, it
+  also quotes on the newest recorded rate whatever its age (a local database has no feed).
+- **Funding a stage or a paid revision is charged in the payer's own currency too** (Decision #436).
+  `GET /api/finance/escrow/quote` answers `funding` (`FundingCharge`) beside the stage quote, and
+  `GET …/paid-revision/quote` answers it for one round. `fundingChargeFor` (`funding-charge.ts`)
+  resolves the payer with the checkout's own reads (`resolveOwner`, `buyerDetailsFor`,
+  `walletBalances`). When their billing currency differs it locks a `funding` quote (reused while 5
+  minutes remain) for the wallet route and a new `escrow_lock` quote for a card, offered only at the
+  same figure, because each door executes only its own purpose and a quote binds one card payment.
+  The wallet route converts through `finance.fund_with_conversion` (`wallet-actions.fundEscrow`,
+  `fundFromWallet`), and a card is charged the quote's `from_minor` (`createEscrowLockIntent` /
+  `createPaidRevisionIntent` with `fxQuoteId`), which `settle_card_payment` converts. `?pay_in=` the
+  project's currency charges its own amount. Only a stage that can be funded now, or a round that can
+  be paid now, is quoted.
 - **Express wallets are Stripe's Express Checkout Element** (`provider: "express"`): mounted in
   deferred-intent mode for the `buyerCharge`, it shows whichever of Apple Pay, Google Pay and PayPal the
   device, browser and account allow (HTTPS required; Apple Pay also needs the payment-method domain

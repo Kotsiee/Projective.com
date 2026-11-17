@@ -475,9 +475,11 @@ Freelancer work samples — the profile's "Selected work" masonry.
 | `client_name` / `category` | text  | The two captions a tile carries besides its title; both optional (undisclosed work names no client).                              |
 | `attachment_id`          | uuid    | Legacy proof-of-work link.                                                                                                          |
 | `is_public`              | boolean | `NOT NULL DEFAULT true`.                                                                                                            |
-| `sort_order`             | integer | `NOT NULL DEFAULT 0`. Index `idx_portfolios_user (user_id, sort_order)`.                                                           |
+| `sort_order`             | integer | `NOT NULL DEFAULT 0`. Index `idx_portfolios_user (user_id, sort_order)`. A new piece is stored first (one below the lowest live order). |
+| `archived_at`            | timestamptz | Nullable. When the owner took the piece off their profile (Decision #439). Nothing is hard-deleted: an archived piece leaves every read and its cover rendition is retired. |
 
-RLS is on with **no policy** — every read is `org.get_profile_portfolio` (definer).
+RLS is on with **no policy** — every read is `org.get_profile_portfolio` (definer), and every write
+is `org.save_portfolio_piece` · `org.archive_portfolio_piece` (definers).
 
 ---
 

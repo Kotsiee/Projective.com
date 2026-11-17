@@ -10,7 +10,12 @@ import {
 	type Routine,
 } from "@projective/types/scheduling";
 import { calendarPage, requestNewRoutine, routinesOn } from "../core/calendar-state.ts";
-import { entryHoldsTime, type EntryOrganisation } from "../core/routine-view.ts";
+import {
+	entryHoldsTime,
+	type EntryOrganisation,
+	joinRoutine,
+	leaveRoutine,
+} from "../core/routine-view.ts";
 
 const NONE = "none";
 const NEW = "new";
@@ -63,8 +68,9 @@ export interface EventOrganiseFieldsProps {
  * for the event modal and the inspector alike (Decision #389).
  *
  * A commitment gets the ANSWER rather than a control it could only be refused on: somebody else is
- * relying on it, so it holds its time. Joining a routine takes on the routine's behaviour, and the
- * Availability row shows that happen, so nothing changes out of sight.
+ * relying on it, so it holds its time. Joining a routine takes on the routine's behaviour and leaving
+ * one gives a passive entry its time back (Decision #441), and the Availability row shows that happen,
+ * so nothing changes out of sight.
  */
 export function EventOrganiseFields(props: EventOrganiseFieldsProps): JSX.Element {
 	const { event, onChange, onJoin } = props;
@@ -78,10 +84,7 @@ export function EventOrganiseFields(props: EventOrganiseFieldsProps): JSX.Elemen
 	}, [current]);
 
 	function join(routine: Routine): void {
-		onChange({
-			routineId: routine.id,
-			...(holds ? {} : { availabilityBehavior: routine.behavior }),
-		});
+		onChange(joinRoutine(event, routine));
 		onJoin?.(routine);
 	}
 
@@ -121,7 +124,7 @@ export function EventOrganiseFields(props: EventOrganiseFieldsProps): JSX.Elemen
 						}
 						const routine = routines.find((r) => r.id === next);
 						if (routine) join(routine);
-						else if (next === NONE && current !== NONE) onChange({ routineId: null });
+						else if (next === NONE && current !== NONE) onChange(leaveRoutine(event));
 					}}
 				/>
 			</section>

@@ -4,7 +4,12 @@ import { Icon } from "@projective/ui/icons";
 import { awaitsAnswer, type CalendarEvent, detectTimeClash } from "@projective/types/scheduling";
 import { providerMarkFor } from "./provider-marks.tsx";
 import { EventClashNote } from "./EventClashNote.tsx";
-import { selectEvent, sourceIsVisible } from "../core/calendar-state.ts";
+import {
+	inspectPopover,
+	openEventModal,
+	selectEvent,
+	sourceIsVisible,
+} from "../core/calendar-state.ts";
 import { timesLabel } from "../core/event-view.ts";
 
 /** What a row calls an entry. A masked one has only its privacy-safe status. */
@@ -50,9 +55,10 @@ export interface AgendaRowProps {
  * recognisable in the grid. A masked block shows its privacy-safe status instead of a title, exactly
  * as it does everywhere else — the list is not a way around the projection.
  *
- * The row is a PICK, not a link: it opens the entry beside the grid and moves the grid onto it. Where
- * the entry lives (its engagement, `href`) is one step further, from the details it opens. The row's
- * rect is what a popover points from, when that is how its reader has things open.
+ * The row is a PICK, not a link: it opens the entry beside the grid and moves the grid onto it, and a
+ * double-click opens it in the event modal (Decision #441). Where the entry lives (its engagement,
+ * `href`) is one step further, from the details it opens. The row's rect is what a popover points from,
+ * whenever the right panel is closed or its reader has things open that way.
  */
 export function AgendaRow(props: AgendaRowProps): JSX.Element {
 	const { event, repeat, tz, selected, flashing, all, leaving, drag } = props;
@@ -104,6 +110,10 @@ export function AgendaRow(props: AgendaRowProps): JSX.Element {
 				onClick={(e) => {
 					const box = e.currentTarget.getBoundingClientRect();
 					selectEvent(event, "list", { x: box.left, y: box.top, w: box.width, h: box.height });
+				}}
+				onDblClick={() => {
+					inspectPopover.value = null;
+					openEventModal(event.id);
 				}}
 			>
 				<span class="cal-up__body">

@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
-import TabCreateButton from "../islands/TabCreateButton.island.tsx";
+import OwnerExperience from "../islands/OwnerExperience.island.tsx";
 import { type ReviewStance, TAB_LABEL } from "../core/profile-model.ts";
-import { editHrefFor, type OwnerEdit } from "../core/owner-edit.ts";
-import { OwnerEditLink } from "./OwnerEditLink.tsx";
+import { canEditBlock } from "../core/owner-edit.ts";
+import type { OwnerContext } from "../core/owner-ssr.ts";
 import { tabIcon } from "./profile-glyphs.tsx";
 import { ExperienceTab, PostsTab, ReviewsTab, WorkTab } from "./tabs/mod.ts";
 import type {
@@ -14,48 +14,26 @@ import type {
 
 /**
  * ProfileTabContent — the thin dispatcher for one profile section (root CLAUDE.md §8 Decision #96).
- * It decides emptiness once, renders either the teaching empty state or the section body from
- * {@link ./tabs/mod.ts}, and carries the owner's "+ …" trigger where the section is creatable.
+ * It decides emptiness once and renders either the teaching empty state or the section body from
+ * {@link ./tabs/mod.ts}.
  *
  * There is no visible panel title: the tab strip directly above already names the section in its
  * active state. The heading survives visually-hidden so the panel keeps its landmark name.
  *
- * For the owner the Experience section carries the {@link OwnerEditLink} to its editor section
- * (Decision #408), shown at once while the section is empty and on hover or focus once it is not.
+ * For the owner (Decision #439) the sections they fill are never "empty": the Experience section is
+ * the {@link OwnerExperience} island and Work carries the owner's portfolio, each with its own Add
+ * and a stub where a visitor would see nothing.
  */
 export interface ProfileTabContentProps {
 	profile: ProfileView;
 	tab: ProfileTab;
 	payload: ProfileTabPayload;
-	canEdit: boolean;
 	authed: boolean;
 	/** Reviews only — the stance the URL asked for (`?as=`), so SSR paints the filtered list. */
 	reviewStance?: ReviewStance;
-	/** The owner's edit links (`core/owner-edit.ts`); `null` for a visitor. */
-	ownerEdit?: OwnerEdit | null;
+	/** The owner's rights and stored model; `null` for a visitor. */
+	owner?: OwnerContext | null;
 }
-
-/** The editor section a profile section is changed in, where it has one. */
-function editLinkFor(tab: ProfileTab, edit: OwnerEdit | null | undefined): JSX.Element | null {
-	const href = tab === "experience" ? editHrefFor(edit, "experience") : null;
-	return href ? <OwnerEditLink href={href} label="your experience" /> : null;
-}
-
-// #region Owner create triggers
-/** The owner's create action for a section, or `null` when the section is not owner-creatable. */
-function createFor(tab: ProfileTab): { label: string; noun: string } | null {
-	switch (tab) {
-		case "work":
-			return { label: "Add work", noun: "portfolio piece" };
-		case "experience":
-			return { label: "Add experience", noun: "experience entry" };
-		case "posts":
-			return { label: "Write post", noun: "post" };
-		case "reviews":
-			return null;
-	}
-}
-// #endregion
 
 // #region Empty state
 /**
@@ -116,15 +94,12 @@ function emptyNoteFor(tab: ProfileTab, kind: ProfileKind): string {
 	return own ?? EMPTY_NOTE[tab];
 }
 
-function EmptySection(
-	{ tab, kind, action }: { tab: ProfileTab; kind: ProfileKind; action: JSX.Element | null },
-): JSX.Element {
+function EmptySection({ tab, kind }: { tab: ProfileTab; kind: ProfileKind }): JSX.Element {
 	return (
 		<div class="pf-empty">
 			<span class="pf-empty__mark" aria-hidden="true">{tabIcon(tab)}</span>
 			<span class="pf-empty__title">No {TAB_LABEL[tab].toLowerCase()} yet</span>
 			<p class="pf-empty__note">{emptyNoteFor(tab, kind)}</p>
-			{action ? <div class="pf-empty__action">{action}</div> : null}
 		</div>
 	);
 }
@@ -132,13 +107,29 @@ function EmptySection(
 
 // #region Body dispatch
 function sectionBody(
-	{ profile, tab, payload, canEdit, authed, reviewStance }: ProfileTabContentProps,
+	{ profile, tab, payload, authed, reviewStance, owner }: ProfileTabContentProps,
 ): JSX.Element {
 	switch (tab) {
 		case "work":
-			return <WorkTab profile={profile} payload={payload} authed={authed} canEdit={canEdit} />;
+			return (
+				<WorkTab
+					profile={profile}
+					payload={payload}
+					authed={authed}
+					portfolio={owner && canEditBlock(owner.edit, "work") ? owner.edit : null}
+				/>
+			);
 		case "experience":
-			return <ExperienceTab payload={payload} />;
+			return owner && canEditBlock(owner.edit, "experience")
+				? (
+					<OwnerExperience
+						profile={profile}
+						model={owner.model}
+						payload={payload}
+						edit={owner.edit}
+					/>
+				)
+				: <ExperienceTab payload={payload} />;
 		case "reviews":
 			return <ReviewsTab payload={payload} stance={reviewStance} kind={profile.kind} />;
 		case "posts":
@@ -147,23 +138,22 @@ function sectionBody(
 }
 // #endregion
 
+/** Whether the owner fills this section on the page, so it is never drawn as empty for them. */
+function ownerFills(tab: ProfileTab, owner: ProfileTabContentProps["owner"]): boolean {
+	if (!owner) return false;
+	if (tab === "experience") return canEditBlock(owner.edit, "experience");
+	if (tab === "work") return canEditBlock(owner.edit, "work");
+	return false;
+}
+
 export function ProfileTabContent(props: ProfileTabContentProps): JSX.Element {
-	const { tab, payload, canEdit, profile } = props;
-	const create = createFor(tab);
-	const createButton = canEdit && create
-		? <TabCreateButton label={create.label} noun={create.noun} />
-		: null;
-	const empty = countFor(tab, payload) === 0;
-	const editLink = editLinkFor(tab, props.ownerEdit);
-	const headCreate = createButton && !empty ? createButton : null;
+	const { tab, payload, profile } = props;
+	const empty = countFor(tab, payload) === 0 && !ownerFills(tab, props.owner);
 	return (
-		<div class={editLink && !empty ? "pf-panel pf-ownerblock" : "pf-panel"}>
+		<div class="pf-panel">
 			<h2 class="ui-visually-hidden">{TAB_LABEL[tab]}</h2>
-			{headCreate || editLink ? <div class="pf-panel__head">{headCreate}{editLink}</div> : null}
 			<div class="pf-panel__body">
-				{empty
-					? <EmptySection tab={tab} kind={profile.kind} action={createButton} />
-					: sectionBody(props)}
+				{empty ? <EmptySection tab={tab} kind={profile.kind} /> : sectionBody(props)}
 			</div>
 		</div>
 	);

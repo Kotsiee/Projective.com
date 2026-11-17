@@ -1,9 +1,9 @@
 /*
  * The `/wallet` middle-nav lane. It renders an expanded stack and a collapsed icon rail and lets
  * `.ui-splitter[data-mode="collapsed"]` reveal one, like every other lane. Density follows §B.6: the
- * money actions as the lanes' icon-only buttons in the head, the pages as the lanes' `NavItem` rows
- * centred in the body, the standing facts (gate, note) pinned in the foot, and Withdraw · Top up in
- * the shared footer band — no card or tile around any of them.
+ * pages as the lanes' `NavItem` rows, the wallet at a glance beneath them past one hairline, the
+ * verification gate pinned in the foot, and only the collapse toggle in the footer band. It carries no
+ * money action — those live in the hero — and no card or tile around anything.
  */
 
 /* #region Dual presentation */
@@ -28,22 +28,14 @@
 }
 /* #endregion */
 
-/* #region Expanded stack — head (actions) · body (pages, centred) · foot (standing facts) */
-/* The head's icon-only actions; the row wraps rather than hiding one behind a kebab. */
-.wlt-lane__actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	margin-inline: calc(-1 * var(--space-1));
-}
-
+/* #region Expanded stack — body (pages, then the wallet at a glance) · foot (the gate) */
 .wlt-lane__actionicon {
 	position: relative;
 	display: inline-grid;
 	place-items: center;
 }
 
-/* A locked action keeps its lock glyph and still opens: pressing it explains why. */
+/* A locked control keeps its lock glyph and still opens: pressing it explains why. */
 .wlt-lane__lock {
 	position: absolute;
 	inset-block-end: calc(-1 * var(--space-1));
@@ -52,11 +44,11 @@
 	color: var(--on-surface-variant);
 }
 
-/* The page links sit in the middle of the lane's height; `margin-block: auto` centres them without
-   cutting off the top when the lane is too short to hold them. */
 .wlt-lane__body {
 	container: wlt-lane / inline-size;
-	margin-block: auto;
+	display: flex;
+	flex-direction: column;
+	padding-block: var(--space-2) var(--space-4);
 }
 
 .wlt-pages__list {
@@ -90,13 +82,72 @@
 	border-block-start: 0;
 }
 
-.wlt-lane__note {
+/* #endregion */
+
+.wlt-rails {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin-block-start: var(--space-6);
+	margin-inline: var(--space-2);
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.wlt-glance {
+	list-style: none;
 	margin: 0;
+	padding: var(--space-1) var(--space-2) 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wlt-glance__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: var(--space-3);
+	row-gap: var(--space-px);
+}
+
+.wlt-glance__name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.wlt-glance__amount {
+	justify-self: end;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.wlt-glance__meta {
+	grid-column: 1 / -1;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wlt-glance__row[data-paused="true"] .wlt-glance__name {
+	color: var(--text-secondary);
+}
+
+.wlt-glance__empty {
+	margin: 0;
+	padding-block: var(--space-1);
+	padding-inline-end: var(--space-2);
+	font-size: var(--text-xs);
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
-/* #endregion */
 
 /*
  * #region Verification gate
@@ -160,14 +211,6 @@
 	flex-direction: column;
 	align-items: center;
 	gap: var(--space-1);
-}
-
-.wlt-rail__group--actions {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	overflow-y: auto;
-	padding-block-start: var(--space-4);
-	border-block-start: 1px solid var(--hairline-color);
 }
 
 .wlt-rail__bottom {

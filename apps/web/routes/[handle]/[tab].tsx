@@ -3,9 +3,8 @@ import { define } from "@web/utils/state.ts";
 import { ProfileTab, type ProfileTabPayload } from "@projective/types/profile";
 import { resolveProfileTab } from "@features/profile/core/profile-ssr.ts";
 import { ProfileTabContent } from "@features/profile/components/ProfileTabContent.tsx";
-import { ownerEditFor } from "@features/profile/core/owner-edit.ts";
+import { ownerOf } from "@features/profile/core/owner-ssr.ts";
 import { readActor } from "@web/utils/api-session.ts";
-import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import {
 	legacyTabTarget,
 	parseReviewStance,
@@ -81,12 +80,9 @@ export default define.page<typeof handler>(function ProfileTabPage(ctx) {
 			profile={profile}
 			tab={tab}
 			payload={payload}
-			canEdit={false}
 			authed={!!ctx.state.isAuthenticated}
 			reviewStance={reviewStance}
-			ownerEdit={ownerEditFor(profile, {
-				scheduling: !isRestrictedRequest(ctx.req, ctx.state.userContext),
-			})}
+			owner={ownerOf(ctx)}
 		/>
 	);
 });

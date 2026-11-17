@@ -63,6 +63,7 @@ import { EventAttachmentsTab } from "./tabs/EventAttachmentsTab.tsx";
 import { EventFinanceTab } from "./tabs/EventFinanceTab.tsx";
 import { EventHistoryTab } from "./tabs/EventHistoryTab.tsx";
 import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
+import { type EntryOrganisation, organisedPatch } from "../core/routine-view.ts";
 
 /**
  * EventModal — the ONE calendar-event surface. Creating an entry, reading one, and negotiating a new
@@ -170,6 +171,16 @@ export interface EventModalProps {
 	 * person's rather than the entry's, in any seat. Absent -> this surface offers no reminders.
 	 */
 	onReminders?: (event: CalendarEvent, reminders: EntryReminder[] | null) => void;
+	/**
+	 * Draw an entry that exists in another colour at once, and save it once the picks settle (Decision
+	 * #441). Not staged, so the grid behind the modal changes with the pick. Absent, a pick is staged.
+	 */
+	onRecolour?: (event: CalendarEvent, accent: string | null) => void;
+	/**
+	 * Move an entry that exists into or out of a routine, or set whether it holds its time, at once and
+	 * saved once it settles, as {@link onRecolour}. Absent, the change is staged.
+	 */
+	onOrganise?: (event: CalendarEvent, change: EntryOrganisation) => void;
 }
 
 const tabId = (t: EventTab) => `evm-tab-${t}`;
@@ -356,6 +367,36 @@ export function EventModal(props: EventModalProps): JSX.Element {
 		draft.value = props.event;
 		baseline.value = eventFingerprint(props.event);
 		formRev.value++;
+	}
+
+	/*
+	 * Ctrl+S / Cmd+S is the footer's Create or Save while the modal is on top. The browser's own Save
+	 * page is held back for as long as the modal is open, since what is on screen is the entry.
+	 */
+	const saveKey = useRef(() => {});
+	saveKey.current = () => {
+		if (stack.isTop && canEdit && (creating || dirty)) commit();
+	};
+	useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key.toLowerCase() !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+			e.preventDefault();
+			saveKey.current();
+		};
+		document.addEventListener("keydown", onKeyDown, true);
+		return () => document.removeEventListener("keydown", onKeyDown, true);
+	}, []);
+
+	/** A colour on an entry that exists is not staged: the working copy and the calendar move together. */
+	function recolour(accent: string | null): void {
+		patch({ accent: accent ?? undefined });
+		props.onRecolour?.(event, accent);
+	}
+
+	/** Likewise its routine and behaviour, which move its whole series through their own door. */
+	function organise(change: EntryOrganisation): void {
+		patch(organisedPatch(change));
+		props.onOrganise?.(event, change);
 	}
 
 	/**
@@ -705,6 +746,8 @@ export function EventModal(props: EventModalProps): JSX.Element {
 														props.onReminders?.(event, next);
 													}
 													: undefined}
+												onRecolour={!creating && props.onRecolour ? recolour : undefined}
+												onOrganise={!creating && props.onOrganise ? organise : undefined}
 											/>
 										)
 										: null}

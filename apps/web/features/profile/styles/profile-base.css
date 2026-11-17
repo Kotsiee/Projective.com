@@ -72,17 +72,12 @@
     min-inline-size: 0;
 }
 
-/* The section panel every tab body sits in: an optional owner-action row over the routed body. */
+/* The section panel every tab body sits in. */
 .pf-panel {
     display: flex;
     flex-direction: column;
     gap: var(--pf-block-gap);
     min-inline-size: 0;
-}
-
-.pf-panel__head {
-    display: flex;
-    justify-content: flex-end;
 }
 
 .pf-panel__body {
@@ -169,7 +164,7 @@ a.pf-tag:focus-visible {
     box-shadow: var(--focus-ring-shadow);
 }
 
-/* The teaching empty state — what the section holds, and the owner's way to fill it. Unboxed. */
+/* The teaching empty state — what the section holds. Unboxed. */
 .pf-empty {
     display: flex;
     flex-direction: column;
@@ -203,41 +198,6 @@ a.pf-tag:focus-visible {
     font-size: var(--text-sm);
     line-height: var(--leading-normal, 1.5);
     color: var(--text-secondary);
-}
-
-.pf-empty__action {
-    margin-block-start: var(--space-2);
-}
-
-/* The owner's "+ New …" trigger: a text control with the plus glyph, no fill. */
-.pf-create {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: var(--text-sm);
-    font-weight: var(--fw-medium);
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.pf-create:hover {
-    color: var(--text-secondary);
-}
-
-.pf-create:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring-shadow);
-    border-radius: var(--radius-xs);
-}
-
-.pf-create__icon {
-    inline-size: var(--icon-sm);
-    block-size: var(--icon-sm);
 }
 
 .pf-modal__body {

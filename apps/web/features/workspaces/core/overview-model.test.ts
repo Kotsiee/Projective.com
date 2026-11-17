@@ -53,7 +53,7 @@ const BUSINESS_STEPS: SetupStepId[] = ["invite", "verification", "fund", "money"
 const HREF: Record<SetupStepId, string> = {
 	invite: "/teams/northloop/invitations",
 	money: "/teams/northloop/payouts",
-	profile: "/@northloop/edit",
+	profile: "/@northloop",
 	fund: "/wallet?w=business:team-1",
 	verification: "/settings/verification#identity-check",
 	publish: "/teams/northloop/settings",

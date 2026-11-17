@@ -1,6 +1,11 @@
 /// <reference lib="dom" />
 import { assert, assertEquals, assertFalse } from "@std/assert";
-import { CHECKOUT_PAYMENT_SIM_COOKIE, parseCheckoutPaymentSim } from "@projective/types/finance";
+import {
+	CHECKOUT_PAYMENT_SIM_COOKIE,
+	FX_CHECKOUT_OVERRIDE_COOKIE,
+	parseCheckoutPaymentSim,
+	parseFxCheckoutOverride,
+} from "@projective/types/finance";
 import type * as DevContextModule from "./dev-context.ts";
 import type * as DevSeamModule from "@web/utils/dev-seam.ts";
 
@@ -297,6 +302,66 @@ Deno.test("checkoutPayment — an unknown attribute or cookie value reads as no 
 	assertEquals(parseCheckoutPaymentSim("refund"), null);
 	assertEquals(parseCheckoutPaymentSim(undefined), null);
 	assertEquals(parseCheckoutPaymentSim(" timeout "), "timeout");
+});
+// #endregion
+
+// #region fxCheckout (paying in one's own currency, server-side through a cookie, Decision #436)
+const FX_ATTR = "data-dev-fx-checkout";
+
+/** The last write of the FX checkout cookie. */
+function lastFxCookie(writes: readonly string[]): string | undefined {
+	return writes.filter((w) => w.startsWith(`${FX_CHECKOUT_OVERRIDE_COOKIE}=`)).at(-1);
+}
+
+Deno.test("fxCheckout — the inert default is auto; on and off are overrides the server reads", () => {
+	assertEquals(ctx.DEV_DEFAULTS.fxCheckout, "auto");
+	assertEquals(ctx.DEV_FX_CHECKOUTS.map((o) => o.value), ["auto", "on", "off"]);
+	for (const { value } of ctx.DEV_FX_CHECKOUTS) {
+		assertEquals(parseFxCheckoutOverride(value), value === "auto" ? null : value);
+	}
+});
+
+Deno.test("fxCheckout — reflect writes the attribute and the cookie while it overrides, and deletes both", async () => {
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, fxCheckout: "on" });
+		assertEquals(root.attributes.get(FX_ATTR), "on");
+		assertEquals(seam.readDevSeam()?.fxCheckout, "on");
+		assertEquals(lastFxCookie(writes), `${FX_CHECKOUT_OVERRIDE_COOKIE}=on; path=/; samesite=lax`);
+
+		ctx.patchDevContext({ fxCheckout: "off" });
+		assertEquals(lastFxCookie(writes), `${FX_CHECKOUT_OVERRIDE_COOKIE}=off; path=/; samesite=lax`);
+
+		ctx.patchDevContext({ fxCheckout: "auto" });
+		assertFalse(root.attributes.has(FX_ATTR));
+		assertEquals(seam.readDevSeam()?.fxCheckout, "auto");
+		assertEquals(
+			lastFxCookie(writes),
+			`${FX_CHECKOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`,
+		);
+	});
+});
+
+Deno.test("fxCheckout — switching simulation off deletes the attribute and removes the cookie", async () => {
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, fxCheckout: "on" });
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(FX_ATTR));
+		assertEquals(
+			lastFxCookie(writes),
+			`${FX_CHECKOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`,
+		);
+	});
+});
+
+Deno.test("fxCheckout — an unknown attribute or cookie value reads as no override", async () => {
+	await withDocument((root) => {
+		root.dataset.devPersona = "client";
+		root.dataset.devFxCheckout = "maybe";
+		assertEquals(seam.readDevSeam()?.fxCheckout, "auto");
+	});
+	assertEquals(parseFxCheckoutOverride("maybe"), null);
+	assertEquals(parseFxCheckoutOverride(undefined), null);
+	assertEquals(parseFxCheckoutOverride(" off "), "off");
 });
 // #endregion
 

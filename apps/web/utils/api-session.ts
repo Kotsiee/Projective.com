@@ -1,4 +1,9 @@
-import { parsePlanGatesOverride, PLAN_GATES_OVERRIDE_COOKIE } from "@projective/types/finance";
+import {
+	FX_CHECKOUT_OVERRIDE_COOKIE,
+	parseFxCheckoutOverride,
+	parsePlanGatesOverride,
+	PLAN_GATES_OVERRIDE_COOKIE,
+} from "@projective/types/finance";
 import { actorFrom, type ReadActor } from "@server/services/read-actor.ts";
 import { readCookies, SB_ACCESS_COOKIE } from "./auth-cookies.ts";
 import { resolveRequestContext } from "./user-context.ts";
@@ -51,8 +56,12 @@ export function readActor(ctx: SessionContext): ReadActor {
 	const cookies = readCookies(ctx.req);
 	const accessToken = ctx.state.accessToken ?? cookies[SB_ACCESS_COOKIE];
 	const actor = actorFrom(context, accessToken);
-	const planGatesOverride = isDevelopmentEnv()
-		? parsePlanGatesOverride(cookies[PLAN_GATES_OVERRIDE_COOKIE])
-		: null;
-	return planGatesOverride && actor.userId ? { ...actor, planGatesOverride } : actor;
+	if (!isDevelopmentEnv() || !actor.userId) return actor;
+	const planGatesOverride = parsePlanGatesOverride(cookies[PLAN_GATES_OVERRIDE_COOKIE]);
+	const fxCheckoutOverride = parseFxCheckoutOverride(cookies[FX_CHECKOUT_OVERRIDE_COOKIE]);
+	return {
+		...actor,
+		...(planGatesOverride ? { planGatesOverride } : {}),
+		...(fxCheckoutOverride ? { fxCheckoutOverride } : {}),
+	};
 }

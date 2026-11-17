@@ -1,11 +1,12 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { untracked, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
 import { Calendar, type CalendarContextTarget, EventPopoverLayer } from "@projective/ui/calendar";
 import { ConfirmDialog, Message } from "@projective/ui/feedback";
-import { ActionMenu } from "@projective/ui/navigation";
+import { useMediaQuery } from "@projective/ui/navigation";
+import { CONTEXT_PANEL_INFLOW_QUERY } from "@web/features/shell/core/context-panel-state.ts";
 import {
 	awaitsAnswer,
 	type CalendarEvent,
@@ -16,6 +17,7 @@ import {
 } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { renderInspectActions } from "../components/EventPopoverActions.tsx";
+import { EntryActionMenu } from "../components/EntryActionMenu.tsx";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { RoutineDialog } from "../components/RoutineDialog.tsx";
@@ -36,7 +38,7 @@ import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
 import type { CalendarAddress } from "../core/calendar-address.ts";
 import { kindOfHidden } from "../core/calendar-address.ts";
-import { agendaRows, authoringFor, timesMovable } from "../core/calendar-authoring.ts";
+import { authoringFor, timesMovable } from "../core/calendar-authoring.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
 import { useCalendarViewMemory } from "../hooks/useCalendarViewMemory.ts";
 import {
@@ -55,13 +57,16 @@ import {
 	calendarSnapZoom,
 	calendarView,
 	calendarZoom,
+	createClass,
 	createRequest,
+	deleteAsk,
 	deselectEvent,
 	eventReread,
 	focusedAt,
 	gridSpotlight,
 	hiddenClasses,
 	hiddenClassesAt,
+	importedEvents,
 	inspectInPanel,
 	inspectPopover,
 	inspectRoutine,
@@ -69,9 +74,12 @@ import {
 	leavingEvents,
 	openEventModal,
 	organiseRequest,
+	recolourRequest,
 	releaseCalendarAddress,
 	remindersRequest,
 	removeRequest,
+	requestCreate,
+	rightPanelOpen,
 	routineDialogOpen,
 	selectedEventId,
 	selectedRoutineId,
@@ -189,9 +197,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/** The grid region the right-click menu binds to, and what the grid said was under the pointer. */
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const pointed = useSignal<CalendarContextTarget | null>(null);
-	/** The entry a menu Delete is waiting on the reader's confirmation for. */
-	const doomed = useSignal<CalendarEvent | null>(null);
+	/** Whether the menu's Delete confirmation ({@link deleteAsk}) is showing. */
 	const confirmDelete = useSignal(false);
+	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
 
 	/**
 	 * The surface's clock: the page's own `now`, advanced at wall rate since it was read — the same
@@ -269,12 +277,40 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		composer.setReminders(asked.event, asked.reminders);
 	});
 
-	/** An entry organised from outside this tree: the lane's drop, the inspector's fields. */
+	/** Entries organised from outside this tree: the lane's drop and menu, the inspector's fields. */
 	useSignalEffect(() => {
 		const asked = organiseRequest.value;
-		if (!asked) return;
-		organiseRequest.value = null;
-		composer.organise(asked.event, asked.change);
+		if (asked.length === 0) return;
+		organiseRequest.value = [];
+		for (const { event, change } of asked) composer.organise(event, change);
+	});
+
+	/** Colours picked outside the modal: either menu, the inspector. */
+	useSignalEffect(() => {
+		const asked = recolourRequest.value;
+		if (asked.length === 0) return;
+		recolourRequest.value = [];
+		for (const { event, accent } of asked) composer.recolour(event, accent);
+	});
+
+	/** A menu's Delete, from the grid or the lane, waits on the one confirmation. */
+	useSignalEffect(() => {
+		if (!deleteAsk.value) return;
+		confirmDelete.value = true;
+	});
+
+	/*
+	 * An open popover holds the entry it was opened on, so it follows that entry as it changes — a
+	 * colour, a routine — and goes when the entry does.
+	 */
+	useSignalEffect(() => {
+		const list = events.value;
+		const shown = untracked(() => inspectPopover.value);
+		if (shown?.kind !== "event") return;
+		const fresh = list.find((e) => e.id === shown.event.id) ??
+			untracked(() => importedEvents.value).find((e) => e.id === shown.event.id);
+		if (!fresh) inspectPopover.value = null;
+		else if (fresh !== shown.event) inspectPopover.value = { ...shown, event: fresh };
 	});
 
 	/** A routine moved entries this tree cannot see, so the agenda is read again. */
@@ -373,6 +409,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		selectedRoutineId.value = null;
 		routineDialogOpen.value = false;
 		inspectPopover.value = null;
+		deleteAsk.value = null;
 		eventStack.close();
 		releaseCalendarAddress();
 		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
@@ -385,13 +422,18 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		calendarInspectMode.value = inspectMode;
 	}, [inspectMode]);
 
-	/** A band asked for a blank entry (the footer's New event, or the lane rail's). */
+	/** A band asked for a blank entry (the footer's New event, the lane's New event or reminder). */
 	useEffect(() => {
 		if (createRequest.value === 0) return;
 		// On the reader's focus, but never behind the clock: a blank entry opens on the next free slot,
 		// and one meant for the past is moved there in the modal, which says so.
 		const start = Math.max(focusedAt(page.value), Math.ceil(clock() / SLOT_MS) * SLOT_MS);
-		composer.expandCreate({ start, end: start + HOUR_MS }, "");
+		const reminder = CREATE_KINDS.find((k) => k.instant);
+		if (createClass.peek() === "reminder" && reminder) {
+			composer.expandCreate({ start, end: start }, "", reminder.value);
+		} else {
+			composer.expandCreate({ start, end: start + HOUR_MS }, "");
+		}
 	}, [createRequest.value]);
 
 	const p = page.value;
@@ -407,9 +449,15 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/*
 	 * The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words; and
 	 * nothing of the door, so an entry whose move the door would refuse is marked `fixed` and its drag
-	 * stays a click.
+	 * stays a click. An imported file's entries sit beside the saved ones rather than inside `events`:
+	 * they are this visit's only, and folding them in would let the next read drop them unseen.
 	 */
-	const shown = visibleEvents(events.value, invitationsOnly.value, hiddenClassesAt(props.address))
+	const imported = importedEvents.value;
+	const shown = visibleEvents(
+		[...events.value, ...imported],
+		invitationsOnly.value,
+		hiddenClassesAt(props.address),
+	)
 		.map((e) => {
 			const ghost = awaitsAnswer(e);
 			const gone = leaving.includes(e.id);
@@ -418,7 +466,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		});
 
 	const open = eventStack.top.value;
-	const framed = composer.resolve(open);
+	const framed = composer.resolve(open, imported);
 
 	/*
 	 * A withdrawn calendar leaves no trace: an entry another calendar still holds up survives, but it
@@ -429,20 +477,15 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	const renderSource = (source: string) =>
 		sourceIsVisible(source) ? renderCalendarSource(source) : null;
 	const access = accessFor(framed, seam.value);
-	const menu = agendaRows(pointed.value, p.timezone, {
-		create: (range) =>
-			composer.expandCreate(
-				range.allDay ? range : { start: range.start, end: range.start + HOUR_MS },
-				"",
-			),
-		createBlank: () => createRequest.value++,
-		open: (ev) => selectEvent(ev, "grid"),
-		edit: (ev) => openEventModal(ev.id),
-		remove: (ev) => {
-			doomed.value = ev;
-			confirmDelete.value = true;
-		},
-	}, AUTHORING);
+	/*
+	 * A click opens beside the grid only while the panel is there to hold it (Decision #441): with the
+	 * panel closed the engine's own popover answers, and the popover's title asks for the panel.
+	 */
+	const directOpen = inspectMode === "panel" && rightPanelOpen(inflow);
+	const openInModal = (ev: CalendarEvent) => {
+		inspectPopover.value = null;
+		openEventModal(ev.id);
+	};
 
 	return (
 		<div
@@ -473,7 +516,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				spotlight={gridSpotlight}
 				present={calendarPresent}
 				// In the panel the entry opens beside the grid, so the engine's popover would repeat it.
-				directOpen={inspectMode === "panel"}
+				directOpen={directOpen}
 				renderEventActions={renderInspectActions}
 				timezone={p.timezone}
 				view={viewAt(props.address)}
@@ -509,6 +552,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 						"grid",
 						calendarView.peek() === "month" ? focusedAnchor(surfaceRef.current) : null,
 					)}
+				onEventDoubleClick={(ev) => openInModal(ev as CalendarEvent)}
 				onContextTarget={(t) => (pointed.value = t)}
 			/>
 			<EventPopoverLayer
@@ -518,10 +562,17 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				renderEventActions={renderInspectActions}
 				onOpenEvent={(ev) => inspectInPanel(ev as CalendarEvent)}
 			/>
-			<ActionMenu
-				model={menu}
+			<EntryActionMenu
 				surface={surfaceRef}
-				aria-label={pointed.value?.event ? "Event actions" : "Calendar actions"}
+				target={pointed.value}
+				tz={p.timezone}
+				from="grid"
+				onCreateAt={(range) =>
+					composer.expandCreate(
+						range.allDay ? range : { start: range.start, end: range.start + HOUR_MS },
+						"",
+					)}
+				onCreateBlank={requestCreate}
 			/>
 			<ConfirmDialog
 				visible={confirmDelete}
@@ -531,11 +582,11 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				rejectLabel="Keep"
 				acceptSeverity="danger"
 				onAccept={() => {
-					const ev = doomed.peek();
-					doomed.value = null;
+					const ev = deleteAsk.peek();
+					deleteAsk.value = null;
 					if (ev) remove(ev.id);
 				}}
-				onReject={() => (doomed.value = null)}
+				onReject={() => (deleteAsk.value = null)}
 			/>
 			<RoutineDialog tz={p.timezone} now={p.now} />
 
@@ -568,6 +619,8 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 						onServerRemove={composer.serverRemove}
 						onDelete={(ev) => remove(ev.id)}
 						onReminders={composer.setReminders}
+						onRecolour={composer.recolour}
+						onOrganise={composer.organise}
 					/>
 				)
 				: null}

@@ -1,4 +1,5 @@
 import { apiFetch } from "@web/utils/api-client.ts";
+import { ownerBlockHref } from "./owner-edit.ts";
 import {
 	type EnableFreelancerInput,
 	type FreelancerConversionResult,
@@ -30,9 +31,12 @@ export type UnlockOutcome =
 // #endregion
 
 // #region Helpers
-/** The profile editor for a person — where a fresh seller sets up what buyers will see. */
+/**
+ * A fresh seller's own profile, opened on its About block — where they set up, in place, what buyers
+ * will see (Decision #439).
+ */
 export function profileSetupPath(handle: string): string {
-	return `/${encodeURIComponent(handle)}/edit`;
+	return ownerBlockHref(handle, "about");
 }
 // #endregion
 

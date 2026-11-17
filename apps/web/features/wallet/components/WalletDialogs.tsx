@@ -43,6 +43,7 @@ import type {
 	SpendApprovalView,
 	WalletAction,
 	WalletActionResult,
+	WalletLockCode,
 	WalletOverview,
 	WalletRef,
 	WalletScope,
@@ -65,7 +66,7 @@ import {
 } from "@features/payments/core/stripe-flow.ts";
 import { useStripeCardSetup } from "@features/payments/hooks/useStripeElement.ts";
 import { stageLockSentence } from "@features/payments/core/stage-funding.ts";
-import { ActionIcon, CategoryIcon } from "./wallet-glyphs.tsx";
+import { ActionIcon, CategoryIcon, WalletGlyph } from "./wallet-glyphs.tsx";
 
 /** The data every wallet dialog draws from. */
 export interface WalletDialogData {
@@ -195,29 +196,43 @@ function Done({ amount, message }: { amount: string | null; message: string | nu
 }
 
 // #region Locked
+interface Locked {
+	title: string;
+	reason: string | null;
+	mark: JSX.Element;
+	fixHref?: string | null;
+	fixLabel?: string | null;
+}
+
+/** What a locked automation control is called in the dialog that explains it. */
+const LOCK_TITLE: Readonly<Record<WalletLockCode, string>> = {
+	pots_not_running: "Pots",
+	smoother_planned: "Income Smoother",
+};
+
 function LockedDialog(
-	{ id, item, position }: { id: number; item: ResolvedAction; position: Position },
+	{ id, locked, position }: { id: number; locked: Locked; position: Position },
 ) {
 	const closing = useClosing(id);
 	return (
 		<Frame
 			id={id}
-			title={item.label}
+			title={locked.title}
 			position={position}
 			closing={closing}
 			footer={
 				<>
-					{item.fixHref && <a class="wlt-textlink" href={item.fixHref}>{item.fixLabel}</a>}
+					{locked.fixHref && <a class="wlt-textlink" href={locked.fixHref}>{locked.fixLabel}</a>}
 					<Button variant="filled" label="Got it" onClick={closing.close} />
 				</>
 			}
 		>
 			<div class="wlt-dlg__locked">
 				<span class="wlt-dlg__mark" aria-hidden="true">
-					<ActionIcon action={item.action} size="md" />
+					{locked.mark}
 					<Icon name="lock" class="wlt-dlg__lock" />
 				</span>
-				<p class="wlt-dlg__lead">{item.reason ?? "This isn't available right now."}</p>
+				<p class="wlt-dlg__lead">{locked.reason ?? "This isn't available right now."}</p>
 			</div>
 		</Frame>
 	);
@@ -1334,6 +1349,23 @@ export function WalletDialogs(props: WalletDialogsProps): JSX.Element | null {
 
 	if (!open) return null;
 	switch (open.kind) {
+		case "lock": {
+			const lock = props.overview.locks.find((l) => l.code === open.code);
+			return lock
+				? (
+					<LockedDialog
+						key={open.id}
+						id={open.id}
+						position={position}
+						locked={{
+							title: LOCK_TITLE[lock.code],
+							reason: lock.reason,
+							mark: <WalletGlyph name={lock.code === "pots_not_running" ? "escrow" : "smooth"} size="md" />,
+						}}
+					/>
+				)
+				: null;
+		}
 		case "line":
 			return <LineDialog key={open.id} id={open.id} line={open.line} position={position} />;
 		case "approval": {
@@ -1355,7 +1387,20 @@ export function WalletDialogs(props: WalletDialogsProps): JSX.Element | null {
 		case "action": {
 			const item = props.resolve(open.action);
 			if (item.locked) {
-				return <LockedDialog key={open.id} id={open.id} item={item} position={position} />;
+				return (
+					<LockedDialog
+						key={open.id}
+						id={open.id}
+						position={position}
+						locked={{
+							title: item.label,
+							reason: item.reason,
+							mark: <ActionIcon action={item.action} size="md" />,
+							fixHref: item.fixHref,
+							fixLabel: item.fixLabel,
+						}}
+					/>
+				);
 			}
 			if (open.action === "add_method") {
 				return <AddCardDialog key={open.id} {...props} id={open.id} position={position} />;

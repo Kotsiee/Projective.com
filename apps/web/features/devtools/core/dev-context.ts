@@ -30,6 +30,7 @@ import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
 import {
 	CHECKOUT_PAYMENT_SIM_COOKIE,
+	FX_CHECKOUT_OVERRIDE_COOKIE,
 	OPERATOR_DESK_OVERRIDE_COOKIE,
 	PAYOUT_OVERRIDE_COOKIE,
 	PLAN_GATES_OVERRIDE_COOKIE,
@@ -56,6 +57,7 @@ import {
 	type DevEmailConfirmation,
 	type DevEmbeddings,
 	type DevFundingState,
+	type DevFxCheckout,
 	type DevLayoutDirection,
 	type DevLowBalance,
 	type DevEngagementOrigin,
@@ -420,6 +422,13 @@ export interface DevOverrides {
 	 */
 	checkoutPayment: DevCheckoutPayment;
 	/**
+	 * Paying in one's own currency (Decision #436): let the database's `fx_checkout_enabled` decide, or
+	 * turn it on or off for this browser, so a buyer is charged in their billing currency through a
+	 * locked quote or in the listing's, side by side, without touching the shared switch. Server-side,
+	 * through the `pj.dev.fx-checkout` cookie and a header: `on` counts only in a seeded local database.
+	 */
+	fxCheckout: DevFxCheckout;
+	/**
 	 * A business Spend module's request queue (Decision #246): none, two waiting on the viewer, the
 	 * viewer's own (Withdraw), the decided history in every terminal state (withdrawn included), or the
 	 * viewer as an approver of a business still in KYB. Its own axis because each takes another member's
@@ -577,6 +586,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	basketScenario: "auto",
 	checkoutGate: "auto",
 	checkoutPayment: "ok",
+	fxCheckout: "auto",
 	spendRequests: "auto",
 	saved: "auto",
 	promoDismissal: "auto",
@@ -929,6 +939,13 @@ export const DEV_CHECKOUT_PAYMENTS: ReadonlyArray<DevOption<DevCheckoutPayment>>
 	{ value: "promo_exhausted", label: "Promo used up" },
 ];
 
+/** Paying-in-one's-own-currency positions (Decision #436). `Database` lets `fx_checkout_enabled` decide. */
+export const DEV_FX_CHECKOUTS: ReadonlyArray<DevOption<DevFxCheckout>> = [
+	{ value: "auto", label: "Database" },
+	{ value: "on", label: "On" },
+	{ value: "off", label: "Off" },
+];
+
 /** Business Spend request queues (Decision #246). */
 export const DEV_SPEND_REQUESTS: ReadonlyArray<DevOption<DevSpendRequests>> = [
 	{ value: "auto", label: "Auto" },
@@ -1235,6 +1252,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devCheckoutGate;
 		if (next.checkoutPayment !== "ok") root.dataset.devCheckoutPayment = next.checkoutPayment;
 		else delete root.dataset.devCheckoutPayment;
+		if (next.fxCheckout !== "auto") root.dataset.devFxCheckout = next.fxCheckout;
+		else delete root.dataset.devFxCheckout;
 		if (next.spendRequests !== "auto") root.dataset.devSpendRequests = next.spendRequests;
 		else delete root.dataset.devSpendRequests;
 		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
@@ -1324,6 +1343,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
 		delete root.dataset.devCheckoutPayment;
+		delete root.dataset.devFxCheckout;
 		delete root.dataset.devSpendRequests;
 		delete root.dataset.devSaved;
 		delete root.dataset.devPromoDismissal;
@@ -1355,7 +1375,15 @@ function reflect(next: DevOverrides): void {
 	writeOperatorModeCookie(next);
 	writeOperatorDeskCookie(next);
 	writeCheckoutPaymentCookie(next);
+	writeFxCheckoutCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+/** Mirror the FX checkout axis into `pj.dev.fx-checkout` — the route resolver forwards it as a header. */
+function writeFxCheckoutCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.fxCheckout !== "auto"
+		? `${FX_CHECKOUT_OVERRIDE_COOKIE}=${next.fxCheckout}; path=/; samesite=lax`
+		: `${FX_CHECKOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /**

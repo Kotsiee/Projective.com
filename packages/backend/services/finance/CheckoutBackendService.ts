@@ -519,10 +519,11 @@ interface PricedCharge {
 
 /**
  * What the buyer is charged for an order whose total in its own currency is `origin` (Decision #435):
- * in their billing currency through a locked conversion quote (reused while it has time left) when that
- * differs from the order's and they have not declined it with `?pay_in=`, else `origin` itself. Paying
- * in the billing currency is offered only when the quote door prices it — switched off, unsettled
- * currencies or a stale rate leave the order's own currency with the reason.
+ * in their billing currency through a locked conversion quote when that differs from the order's and
+ * they have not declined it with `?pay_in=`, else `origin` itself. The quote is the one a card payment
+ * already paid on while `wallets` still holds that money, else one reused while it has time left, else a
+ * new one. Paying in the billing currency is offered only when the quote door prices it — switched off,
+ * unsettled currencies or a stale rate leave the order's own currency with the reason.
  */
 async function buyerChargeFor(
 	owner: ResolvedOwner,
@@ -531,6 +532,7 @@ async function buyerChargeFor(
 	billing: string,
 	wants: string | null | undefined,
 	actor: ReadActor,
+	wallets: ReadonlyMap<string, number>,
 ): Promise<PricedCharge> {
 	const order = origin.currency;
 	const inOrderCurrency = (conversion: boolean, reason: string | null): PricedCharge => ({
@@ -547,7 +549,7 @@ async function buyerChargeFor(
 		purpose: "checkout",
 		refTable: "baskets",
 		refId: basketId,
-	});
+	}, { availableMinor: wallets.get(billing) ?? 0 });
 	if (!lock.ok) return inOrderCurrency(false, lock.reason);
 	if ((wants ?? billing).trim().toUpperCase() === order) return inOrderCurrency(true, null);
 	return {
@@ -856,6 +858,7 @@ export class CheckoutBackendService {
 					details.buyer.billingCurrency,
 					query.payIn,
 					actor,
+					resolved.wallets,
 				)
 				: null;
 			const charge = priced?.buyerCharge ?? null;
@@ -1069,15 +1072,21 @@ export class CheckoutBackendService {
 			const origin = await originTotalFor(query, actor, resolved, eligible, () => totals.total);
 			let charge: BuyerCharge | null = origin ? { ...origin, quote: null } : null;
 			let quoteId: string | null = null;
+			let quotePaid = false;
 			if (origin && input.fxQuoteId) {
-				const quote = await io.readQuote(actor, input.fxQuoteId);
+				const held = await io.readQuote(actor, input.fxQuoteId);
+				const quote = held?.quote ?? null;
+				// A quote a card payment has already paid on is honoured past its window, as the database
+				// honours it: the money arrived at that rate.
 				if (
-					!quote || quote.consumedAt !== null || Date.parse(quote.expiresAt) <= Date.now() ||
+					!held || !quote || quote.consumedAt !== null ||
+					(!held.paid && Date.parse(quote.expiresAt) <= Date.now()) ||
 					quote.purpose !== "checkout" || quote.refId !== resolved.basketId ||
 					quote.ownerId !== owner.ownerId
 				) {
 					return refusal(QUOTE_EXPIRED, [blocker("quote_expired", QUOTE_EXPIRED)]);
 				}
+				quotePaid = held.paid;
 				if (quote.toCurrency !== origin.currency || quote.toMinor !== origin.minor) {
 					const message =
 						`The price changed while you were paying — it's now ${origin.display}. Review the total and try again.`;
@@ -1224,6 +1233,15 @@ export class CheckoutBackendService {
 				// The saved card the buyer chose, re-checked against the owner's OWN list (read as the
 				// caller, so a card id from another account resolves to nothing). An express payment
 				// names no saved card: the wallet sheet supplies the instrument.
+				// A paid quote's money is in the wallet already, and a quote binds one card payment only: the
+				// wallet pays, or once it no longer holds the money the page re-quotes.
+				if (quotePaid) {
+					const held = (resolved.wallets.get(charge.currency) ?? 0) >= charge.minor;
+					const message = held
+						? `Your card payment of ${charge.display} is already in your Projective wallet. Pay from the wallet to place this order.`
+						: QUOTE_EXPIRED;
+					return refusal(message, [blocker(held ? "no_provider" : "quote_expired", message)]);
+				}
 				const cardId = input.provider === "card" ? input.cardId : null;
 				const card = cardId ? priced.cards.find((c) => c.id === cardId) ?? null : null;
 				if (cardId && !card) {
@@ -1400,6 +1418,7 @@ export class CheckoutBackendService {
 				details.buyer.billingCurrency,
 				query.payIn,
 				actor,
+				resolved.wallets,
 			);
 			const walletId = await businessWalletIn(owner, charge.currency, actor.accessToken);
 			if (!walletId) {

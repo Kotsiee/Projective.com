@@ -511,6 +511,9 @@ CREATE TABLE org.portfolios (
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
+    -- When the owner took the piece off their profile (org.archive_portfolio_piece). Nothing is
+    -- hard-deleted: an archived piece leaves every read and its cover rendition is retired.
+    archived_at timestamp with time zone,
         CONSTRAINT portfolios_pkey PRIMARY KEY (id),
         CONSTRAINT portfolios_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.freelancer_profiles (user_id) ON DELETE CASCADE
 );

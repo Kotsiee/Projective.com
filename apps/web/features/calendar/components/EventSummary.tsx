@@ -1,10 +1,16 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/event-modal.css";
 import { calendarEntryName, calendarTime, maskLabel } from "@projective/ui/calendar";
 import { RichTextEditor } from "@projective/ui/editor";
-import { Button, DateTimePicker, InlineEdit, type InlineEditField } from "@projective/ui/fields";
+import {
+	Button,
+	DateTimePicker,
+	InlineEdit,
+	type InlineEditField,
+	SwatchPicker,
+} from "@projective/ui/fields";
 import { ConfirmPopup, Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import {
@@ -14,6 +20,7 @@ import {
 	ENTRY_CLASS_LABEL,
 	entryClassOf,
 	type SchedulingTarget,
+	swatchOf,
 } from "@projective/types/scheduling";
 import { normalizeLink } from "@projective/types/links";
 import { hasRichTextProse, sanitizeRichText } from "@projective/types/richtext";
@@ -21,6 +28,7 @@ import {
 	calendarPage,
 	openEventModal,
 	requestOrganise,
+	requestRecolour,
 	requestReminders,
 	requestRemove,
 	requestUpdate,
@@ -209,6 +217,30 @@ function Agenda(
 }
 
 /**
+ * The entry's colour, for its host: written as it is picked, and saved once the picks settle
+ * (Decision #441). The bound value follows the entry, which a pick in either menu also moves.
+ */
+function ColourField({ event }: { event: CalendarEvent }): JSX.Element {
+	const own = swatchOf(event.accent) === "default" ? null : event.accent ?? null;
+	const bound = useSignal<string | null>(own);
+	useEffect(() => {
+		bound.value = own;
+	}, [own]);
+	const id = `cal-sum-colour-${event.id}`;
+	return (
+		<section class="evm-doc__sec">
+			<h3 class="evm-h" id={id}>Colour</h3>
+			<SwatchPicker
+				size="sm"
+				value={bound}
+				aria-labelledby={id}
+				onValueChange={(token) => requestRecolour(event, token)}
+			/>
+		</section>
+	);
+}
+
+/**
  * EventSummary — the inspector: one entry, read in the `/calendar` right panel's Event tab.
  *
  * READ first: what, when, where and whose, in type registers rather than a form, with nothing boxed
@@ -388,6 +420,8 @@ export function EventSummary({ event, tz, answerTarget }: EventSummaryProps): JS
 					onCommit={(description) => requestUpdate({ ...event, description })}
 				/>
 			)}
+
+			{canEdit ? <ColourField event={event} /> : null}
 
 			{entryOrganisable(event)
 				? (

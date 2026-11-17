@@ -157,6 +157,8 @@ interface World {
 	lock?: (request: QuoteRequest) => QuoteLock;
 	/** The quotes a `create` can read back by id. */
 	quotes?: FxConversionQuote[];
+	/** The ids of those a card payment has already paid on. */
+	paidQuotes?: string[];
 }
 
 /** What a test's checkout did: each read of the basket, each standing asked for, each money call. */
@@ -166,6 +168,8 @@ interface Spy {
 	charges: Parameters<CheckoutIo["chargeCard"]>[0][];
 	orders: { door: string; args: Record<string, unknown> }[];
 	locks: QuoteRequest[];
+	/** The paying wallet's Available each lock was offered a paid quote against. */
+	available: (number | undefined)[];
 }
 
 /** USD per GBP, read at the moment each basket read is made — a test moves it to move the rate. */
@@ -344,7 +348,7 @@ function handoff(
 
 /** Run `run` against a checkout reading `world`, every read and write faked; the live I/O comes back after. */
 async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Promise<void> {
-	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [], locks: [] };
+	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [], locks: [], available: [] };
 	const buyer = { ...BUYER, billingCurrency: world.billing ?? "GBP" };
 	setCheckoutIoForTesting({
 		readBasket: (query) => {
@@ -373,12 +377,17 @@ async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Pro
 			return Promise.resolve(null);
 		},
 		details: () => Promise.resolve({ buyer, billingContexts: [], invoicing: buyer.invoicing }),
-		lockQuote: (_actor, request) => {
+		lockQuote: (_actor, request, options) => {
 			spy.locks.push(request);
+			spy.available.push(options?.availableMinor);
 			return Promise.resolve(world.lock?.(request) ?? { ok: false, reason: null });
 		},
-		readQuote: (_actor, id) =>
-			Promise.resolve(world.quotes?.find((quote) => quote.id === id) ?? null),
+		readQuote: (_actor, id) => {
+			const quote = world.quotes?.find((q) => q.id === id);
+			return Promise.resolve(
+				quote ? { quote, paid: world.paidQuotes?.includes(id) ?? false } : null,
+			);
+		},
 		spendLimit: () => Promise.resolve(ALLOWED),
 		spendPosition: () => Promise.resolve({ spendLimit: ALLOWED, businessAccount: null }),
 		placedOrder: () => Promise.resolve(world.prior ?? null),
@@ -905,6 +914,58 @@ Deno.test("#435: an expired, used or foreign quote is quote_expired, and nothing
 			assertEquals([spy.orders.length, spy.charges.length], [0, 0]);
 		});
 	}
+});
+
+Deno.test("#436: a quote a card payment already paid on is honoured past its window from the wallet", async () => {
+	const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+	const world = usdOrder({ quotes: [usdQuote({ expiresAt: past })], paidQuotes: [QUOTE_ID] });
+	await withCheckout(world, async (spy) => {
+		const result = await create(payFor(world, {
+			expectedCharge: { minor: 4_060, currency: "GBP" },
+			fxQuoteId: QUOTE_ID,
+		}));
+		assertEquals(result.status, "succeeded");
+		assertEquals(
+			spy.orders.map(({ door, args }) => [door, args.p_expected_minor, args.p_fx_quote_id]),
+			[["place_wallet_order", 5_000, QUOTE_ID]],
+		);
+	});
+});
+
+Deno.test("#436: the session offers a paid quote only against the paying wallet's Available", async () => {
+	const world = usdOrder({ wallets: new Map([["GBP", 4_100], ["USD", 0]]) });
+	await withCheckout(world, async (spy) => {
+		await sessionOf();
+		assertEquals(spy.available, [4_100]);
+	});
+});
+
+Deno.test("#436: a paid quote never starts a second card payment", async () => {
+	const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+	const paid = {
+		quotes: [usdQuote({ expiresAt: past })],
+		paidQuotes: [QUOTE_ID],
+		cards: [card("card-a")],
+	};
+	const pay = {
+		provider: "card" as const,
+		cardId: "card-a",
+		expectedCharge: { minor: 4_060, currency: "GBP" },
+		fxQuoteId: QUOTE_ID,
+	};
+	const held = usdOrder(paid);
+	await withCheckout(held, async (spy) => {
+		const result = await create(payFor(held, pay));
+		assertEquals([result.status, result.blockers.map((b) => b.code)], ["failed", ["no_provider"]]);
+		assertEquals(result.message.includes("already in your Projective wallet"), true);
+		assertEquals(spy.charges.length, 0);
+	});
+	const spent = usdOrder({ ...paid, wallets: new Map([["GBP", 4_000], ["USD", 0]]) });
+	await withCheckout(spent, async (spy) => {
+		const result = await create(payFor(spent, pay));
+		assertEquals(result.blockers.map((b) => b.code), ["quote_expired"]);
+		assertEquals(spy.charges.length, 0);
+	});
 });
 
 Deno.test("#435: a quote for a total that has since moved is price_changed; the listing figure is not the charge", async () => {

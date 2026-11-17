@@ -1142,6 +1142,13 @@ owner (a stale `pending` one past its expiry is closed first) and notifies every
 "owner holds `approve_spend`" shortcut and the reuse of any approved row for the ticket are gone: the
 hold's spend gate redeems the approval exactly once. Never raises.
 
+Run by `finance.fn_wallet_watch` (`trg_transactions_wallet_watch`) on every credit to a business
+wallet except an `on_account_credit`, an `fx_conversion`, and a card `topup` whose payment is for a
+purchase (`purpose = 'escrow_lock'`, or a `checkout` attached). `finance.settle_card_payment` runs it
+for that top-up itself, after the lock or the order, so the purchase is served first and the queue
+gets what it left: all of it when the purchase was refused (Decision #437; probe
+`autofund_bound_topup.sql`).
+
 ---
 
 ## 🏢 Workspace money governance (`00001210` §13)
@@ -1569,7 +1576,9 @@ swap and subtransaction, under the checkout's `order_key` and with the payment's
 `p_expected_minor` — the key the browser places the same order under, so whichever arrives second
 replays and exactly one order exists; an order that no longer nets to the amount paid is refused
 rather than drawing the difference from the wallet (`settled_unapplied`, #200); a refusal rolls back only the
-order, recorded in `order_error`, and the money stays in the wallet. Notifies `escrow.funded` or
+order, recorded in `order_error`, and the money stays in the wallet. A business wallet's auto-fund
+queue is retried only then (`finance.fn_auto_fund_drain`; the credit itself does not retry it,
+Decision #437), so neither the lock nor the order loses its money to an older queued ticket. Notifies `escrow.funded` or
 `wallet.topup_succeeded` (with the lock failure, the placed order, or the order refusal spelled out).
 Returns `order_id` / `order_error` beside the lock outcome.
 
@@ -2161,7 +2170,16 @@ written: `PX503 fx_unavailable` (switched off), `PX422 currency_not_settled` (ei
 (not the caller's account), `PK403 not_funder`. The margin is the higher of the two currencies'
 `fx_spread_bp`. Writes one `finance.fx_quotes` row, usable for `fx_quote_ttl_minutes`; the service
 picks `p_from_currency` (the billing country's currency, or the listing's when the buyer declines the
-conversion), so the database holds no country map.
+conversion), so the database holds no country map. "Switched off" is
+`finance.fn_fx_checkout_enabled()` below.
+
+**`finance.fn_dev_fx_checkout()` → text** and **`finance.fn_fx_checkout_enabled()` → boolean**
+(`00001240`, internal, Decision #436): the switch as one request sees it. The first reads the Dev
+Context Switcher's `x-pj-dev-fx-checkout` request header (`on` · `off` · NULL), which the app sends
+only in development. The second is `fx_checkout_enabled` unless that header says otherwise: `off` is
+honoured from any caller (it refuses only its sender); `on` loosens the gate, so it counts only where
+`security.platform_params.dev_overrides_honoured` is true, which only the local seed world sets
+(`supabase/seeds/07_finance.sql`). Probe `fx_quote_guards.sql` §6.
 
 ### Execution, stamping, refunds (`00001240`, `00001200`)
 
@@ -2216,7 +2234,7 @@ conversion), so the database holds no country map.
   on the line; its fee line likewise, truncated. No invoice is issued in the escrow's currency for it.
 - `fn_generate_statement` counts `fx_spread` among the fees.
 - `fn_wallet_watch` does not drain the auto-fund queue on an `fx_conversion` credit: a conversion is
-  bound to the purchase that made it.
+  bound to the purchase that made it. Nor on a card top-up made for a purchase (Decision #437).
 - `fn_reconcile_wallets` also logs every row of `finance.v_fx_conversion_reconciliation`.
 
 ### Triggers

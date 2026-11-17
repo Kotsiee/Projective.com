@@ -1,75 +1,19 @@
-import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
-import { readActor } from "@web/utils/api-session.ts";
-import { isRestrictedRequest } from "@web/utils/age-gate.ts";
-import type { OwnerAvailability } from "@projective/types/scheduling";
-import { resolveOwnerAvailability } from "@features/profile/core/profile-ssr.ts";
-import AvailabilityEditor from "@features/profile/islands/AvailabilityEditor.island.tsx";
-import { firstWeekdayOf } from "@projective/types/org";
+import { ownerBlockHref } from "@features/profile/core/owner-edit.ts";
 
 /**
- * `/[handle]/edit/availability` — the owner's **Availability** page: the discovery-call offer and its
- * burnout guards, the time zone and publishing, and the weekly hours as a summary beside the link to
- * `/calendar?view=availability`, where they are edited (Decision #408). Owner-only with the same
- * server guard as `/[handle]/edit` — a guest is sent to sign in, anyone else to the profile — and
- * seeded from the owner's own schedule (a draft included), read under their session.
+ * `/[handle]/edit/availability` — retired (Decision #439), kept as a permanent redirect.
+ *
+ * Whether the hours show and the time zone they are kept in are edited in place on the profile's
+ * Availability block, which `/[handle]#availability` opens for its owner; the call terms are
+ * Settings → Scheduling's, and the weekly hours stay on `/calendar?view=availability`.
  */
 export const handler = define.handlers({
-	async GET(ctx) {
-		const profile = ctx.state.profile;
-		if (!profile) return page({ availability: null, takesCalls: false });
-		const self = `/${profile.handle}/edit/availability`;
-		if (!ctx.state.accessToken && !ctx.state.isAuthenticated) {
-			return new Response(null, {
-				status: 303,
-				headers: { location: `/login?redirectTo=${encodeURIComponent(self)}` },
-			});
-		}
-		if (!profile.viewer?.isOwner) {
-			return new Response(null, { status: 303, headers: { location: `/${profile.handle}` } });
-		}
-		// An under-18 account publishes no hours and takes no calls (Decision #208).
-		if (isRestrictedRequest(ctx.req, ctx.state.userContext)) {
-			return new Response(null, { status: 303, headers: { location: `/${profile.handle}/edit` } });
-		}
-		const { availability, takesCalls, status } = await resolveOwnerAvailability(profile.handle, readActor(ctx));
-		if (!availability) {
-			if (status === 401) {
-				return new Response(null, {
-					status: 303,
-					headers: { location: `/login?redirectTo=${encodeURIComponent(self)}` },
-				});
-			}
-			if (status === 403) {
-				return new Response(null, { status: 303, headers: { location: `/${profile.handle}` } });
-			}
-			return page({ availability: null, takesCalls }, { status: 503 });
-		}
-		ctx.state.title = `Availability · ${profile.name} · Projective`;
-		return page({ availability, takesCalls });
+	GET(ctx) {
+		const handle = ctx.state.profile?.handle ?? ctx.params.handle;
+		return new Response(null, {
+			status: 308,
+			headers: { location: ownerBlockHref(handle, "availability") },
+		});
 	},
-});
-
-export default define.page<typeof handler>(function ProfileAvailabilityEditPage(ctx) {
-	const { availability, takesCalls } = ctx.data as {
-		availability: OwnerAvailability | null;
-		takesCalls: boolean;
-	};
-	const profile = ctx.state.profile;
-	if (!profile) return null;
-	if (!availability) {
-		return (
-			<p class="pf-empty__note" role="alert">
-				Your availability can't be loaded right now. Try again in a moment.
-			</p>
-		);
-	}
-	return (
-		<AvailabilityEditor
-			handle={profile.handle}
-			initial={availability}
-			takesCalls={takesCalls}
-			weekStartsOn={firstWeekdayOf(ctx.state.userContext?.locale)}
-		/>
-	);
 });

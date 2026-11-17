@@ -3,6 +3,8 @@ import { ProjectsList } from "@features/explore/components/collections/ProjectsL
 import { ClientProofStrip } from "../work/ClientProofStrip.tsx";
 import { WorkMasonry } from "../work/WorkMasonry.tsx";
 import { WorkRoster } from "../work/WorkRoster.tsx";
+import OwnerPortfolio from "../../islands/OwnerPortfolio.island.tsx";
+import type { OwnerEdit } from "../../core/owner-edit.ts";
 import type { ProfileTabPayload, ProfileView } from "../../types/profile-types.ts";
 
 /**
@@ -14,13 +16,16 @@ import type { ProfileTabPayload, ProfileView } from "../../types/profile-types.t
  * layout renders them as their own region above the section tabs (`ProfileServicesSection`), so
  * they stay on screen whichever section is routed. Every collection is a server component; the
  * sheet is `profile-work.css`, which reaches the page through the profile islands' barrel import.
+ * For a freelancer's owner, Selected work is the {@link OwnerPortfolio} island, drawn even when empty
+ * so its Add stands where the work will (Decision #439).
  */
 export function WorkTab(
-	{ profile, payload, authed }: {
+	{ profile, payload, authed, portfolio = null }: {
 		profile: ProfileView;
 		payload: ProfileTabPayload;
 		authed: boolean;
-		canEdit: boolean;
+		/** The owner's rights when they may edit the portfolio here; `null` for a visitor. */
+		portfolio?: OwnerEdit | null;
 	},
 ): JSX.Element {
 	const multiMember = profile.kind === "team" || profile.kind === "business" ||
@@ -41,11 +46,13 @@ export function WorkTab(
 	return (
 		<div class="pf-work">
 			<ClientProofStrip clients={profile.notableClients} />
-			{payload.pieces.length > 0 && (
-				<WorkSection title="Selected work">
-					<WorkMasonry pieces={payload.pieces} />
-				</WorkSection>
-			)}
+			{portfolio
+				? <OwnerPortfolio pieces={payload.pieces} edit={portfolio} />
+				: payload.pieces.length > 0 && (
+					<WorkSection title="Selected work">
+						<WorkMasonry pieces={payload.pieces} />
+					</WorkSection>
+				)}
 			{proofFirst ? completed : hiring}
 			{proofFirst ? hiring : completed}
 			{multiMember && payload.members.length > 0 && (

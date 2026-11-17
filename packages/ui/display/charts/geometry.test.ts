@@ -10,10 +10,12 @@ import {
 	heatSteps,
 	nearestIndex,
 	percentLabel,
+	seriesEmpty,
 	sparkGeometry,
 	stepCell,
 	stepIndex,
 	timeAxis,
+	xTickIndices,
 } from "./geometry.ts";
 
 // #region Area
@@ -58,6 +60,40 @@ Deno.test("a non-finite value never reaches a path", () => {
 // #endregion
 
 // #region Navigation
+Deno.test("an edge strokes only where a series moves, and never along an area's baseline", () => {
+	const geo = areaGeometry(flow([[0, 0], [500, 0], [0, 0], [0, 0], [0, 0], [0, 200]]));
+	const [up, down, net] = geo.series;
+	assertEquals((up.edge.match(/M/g) ?? []).length, 1, "one run around the one movement");
+	assert(!up.edge.includes("Z"), "an edge is open, never the closed area");
+	assert(up.path.includes("Z"), "the area still closes to the baseline");
+	assertEquals((net.edge.match(/M/g) ?? []).length, 2, "net moves twice, so it draws two runs");
+	assert(down.edge.startsWith("M"));
+	assertEquals(areaGeometry(flow([[0, 0], [0, 0]])).series[0].edge, "", "a quiet series draws no edge");
+});
+
+Deno.test("x-axis labels spread evenly with both ends kept, every bucket when there are few", () => {
+	assertEquals(xTickIndices(3), [0, 1, 2]);
+	assertEquals(xTickIndices(30), [0, 7, 15, 22, 29]);
+	assertEquals(xTickIndices(12, 4), [0, 4, 7, 11]);
+	assertEquals(xTickIndices(7), [0, 2, 4, 6], "a week never bunches two labels a day apart");
+	assertEquals(xTickIndices(13), [0, 3, 6, 9, 12]);
+	for (const n of [6, 8, 9, 26, 31, 60]) {
+		const picked = xTickIndices(n);
+		const gaps = picked.slice(1).map((v, j) => v - picked[j]);
+		assert(Math.min(...gaps) >= 2, `${n}: no two labels a bucket apart`);
+		assertEquals([picked[0], picked.at(-1)], [0, n - 1], `${n}: both ends kept`);
+	}
+	assertEquals(xTickIndices(0), []);
+	assertEquals(xTickIndices(Number.NaN), []);
+});
+
+Deno.test("a window where nothing moved is empty; one moving value is not", () => {
+	assert(seriesEmpty(flow([[0, 0], [0, 0]])));
+	assert(seriesEmpty([]));
+	assert(!seriesEmpty(flow([[0, 0], [0, 5]])));
+	assert(seriesEmpty([{ values: [Number.NaN, 0] }]), "a non-finite value moved nothing");
+});
+
 Deno.test("the crosshair snaps to the nearest bucket", () => {
 	assertEquals(nearestIndex(0, 10), 0);
 	assertEquals(nearestIndex(1, 10), 9);

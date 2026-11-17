@@ -16,7 +16,8 @@ import "../styles/become-partner.css";
  * only things that can be pressed (§B.11.1).
  *
  * Dumb by contract: the skills arrive as props from the server controller, and the unlock is the
- * `partner-service` sequence (convert → re-mint the session → hard navigation to `/[handle]/edit`).
+ * `partner-service` sequence (convert → re-mint the session → hard navigation to the person's own
+ * profile, opened on its About block for in-place editing, Decision #439).
  * While that runs the action stays busy through the navigation — flipping it back to idle for the last
  * frames would offer a control that can no longer do anything.
  */
@@ -25,7 +26,7 @@ import "../styles/become-partner.css";
 export interface BecomePartnerWizardProps {
 	/** The person already holds a seller profile — show the way forward, not a form. */
 	alreadySeller: boolean;
-	/** Their profile editor (`/[handle]/edit`), when the person's handle is known. */
+	/** Their own profile, opened on its About block (`/@handle#about`), when the handle is known. */
 	editPath: string | null;
 	/** The `org.skills` taxonomy, by label. */
 	skills: StarterSkillOption[];

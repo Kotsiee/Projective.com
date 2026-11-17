@@ -1,7 +1,11 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import type { CardPaymentHandoff, StageFundingQuote } from "@projective/types/finance";
+import type {
+	CardPaymentHandoff,
+	FundingCharge,
+	StageFundingQuote,
+} from "@projective/types/finance";
 import { Alert, Dialog } from "@projective/ui/feedback";
 import { Button, SelectButton } from "@projective/ui/fields";
 import { WalletService } from "@features/wallet/core/WalletService.ts";
@@ -12,6 +16,7 @@ import {
 	type StageFundMethod,
 	stageLockSentence,
 } from "../core/stage-funding.ts";
+import { FundingConversion } from "./FundingConversion.tsx";
 import { StripeElementPanel } from "./StripeElementPanel.tsx";
 import "../styles/stage-fund.css";
 
@@ -22,7 +27,10 @@ import "../styles/stage-fund.css";
  * The figure is the server's quote (`GET /api/finance/escrow/quote`), never computed here. The wallet
  * path is the `/wallet` fund action (`projects.fund_stage`); the card path is the escrow intent
  * (`POST /api/finance/escrow/intent`) confirmed in Stripe's Payment Element, and the stage is funded
- * only when the signed webhook settles it — the dialog waits for that and says what happened.
+ * only when the signed webhook settles it — the dialog waits for that and says what happened. When the
+ * payer's billing currency differs (Decision #436), the figure is the quote's charge in it, with what
+ * the stage is listed at, the rate and the margin beneath; the wallet route converts through the quote
+ * and a card is charged on its own card quote.
  */
 export interface FundStageDialogProps {
 	visible: Signal<boolean>;
@@ -44,23 +52,26 @@ const METHOD_OPTIONS: { label: string; value: StageFundMethod }[] = [
 export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 	const step = useSignal<Step>("loading");
 	const quote = useSignal<StageFundingQuote | null>(null);
+	const funding = useSignal<FundingCharge | null>(null);
 	const method = useSignal<StageFundMethod>("wallet");
 	const handoff = useSignal<CardPaymentHandoff | null>(null);
 	const message = useSignal<string | null>(null);
 	const attempt = useRef("");
 
-	const load = async () => {
+	const load = async (payIn: string | null = null) => {
 		step.value = "loading";
-		quote.value = null;
 		message.value = null;
-		const res = await PaymentsService.stageFundingQuote(props.project, props.stage);
+		const res = await PaymentsService.stageFundingQuote(props.project, props.stage, payIn);
 		if (!res.ok || !res.data) {
+			quote.value = null;
+			funding.value = null;
 			message.value = res.message ?? "We couldn't read this stage's funding just now.";
 			step.value = "error";
 			return;
 		}
 		quote.value = res.data.quote;
-		method.value = stageFundingPlan(res.data.quote).methods[0] ?? "card";
+		funding.value = res.data.funding ?? null;
+		method.value = stageFundingPlan(res.data.quote, funding.value).methods[0] ?? "card";
 		attempt.current = newAttemptKey();
 		step.value = "choose";
 	};
@@ -80,6 +91,7 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 	const commit = async (q: StageFundingQuote) => {
 		step.value = "sending";
 		message.value = null;
+		const charge = funding.value?.charge ?? null;
 		if (method.value === "wallet") {
 			const res = await WalletService.fundEscrow({
 				scope: q.payer.scope,
@@ -87,6 +99,7 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 				stageId: q.stageId,
 				amountMinor: q.amountMinor,
 				currency: q.currency,
+				fxQuoteId: charge?.quote?.quoteId ?? null,
 			});
 			if (!res.ok) {
 				message.value = res.message ?? "The stage couldn't be funded.";
@@ -98,11 +111,13 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 			props.onFunded();
 			return;
 		}
+		const converted = charge?.quote ? funding.value?.cardQuoteId ?? null : null;
 		const res = await PaymentsService.escrowLockIntent({
 			projectId: q.projectId,
 			stageId: q.stageId,
-			expectedAmountMinor: q.amountMinor,
-			currency: q.currency,
+			expectedAmountMinor: converted && charge ? charge.minor : q.amountMinor,
+			currency: converted && charge ? charge.currency : q.currency,
+			fxQuoteId: converted,
 			idempotencyKey: attempt.current,
 		});
 		if (!res.ok || !res.data) {
@@ -123,7 +138,7 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 	};
 
 	const q = quote.value;
-	const plan = q ? stageFundingPlan(q) : null;
+	const plan = q ? stageFundingPlan(q, funding.value) : null;
 	const canCommit = !!q && !!plan && plan.blocked === null &&
 		(step.value === "choose" || step.value === "error");
 
@@ -174,6 +189,13 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 					<>
 						<p class="sfd__name">{q.stageName}</p>
 						<p class="sfd__amount">{plan.amountLabel}</p>
+						{funding.value && (
+							<FundingConversion
+								funding={funding.value}
+								disabled={step.value === "sending"}
+								onPayIn={(currency) => void load(currency)}
+							/>
+						)}
 						<p class="sfd__meta">{plan.ticketsLine}</p>
 						{plan.blocked ? <Alert severity="warning">{plan.blocked}</Alert> : (
 							<>

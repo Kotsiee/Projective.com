@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal, untracked } from "@preact/signals";
 import {
 	CALENDAR_ZOOM_DEFAULT,
 	calendarStateAt,
@@ -644,6 +644,14 @@ function writeEventParam(id: string | null): void {
 	if (loc) history.replaceState(history.state, "", withEventParam(loc.pathname, loc.search, id));
 }
 
+/**
+ * Whether the right panel is showing: docked from 1280px, its drawer below. Read reactively by a
+ * region that draws differently while it is open; {@link selectEvent} peeks.
+ */
+export function rightPanelOpen(inflow: boolean = contextPanelInflow()): boolean {
+	return inflow ? contextPanelDocked.value : contextDrawerOpen.value;
+}
+
 /** Show the pick in the docked panel, or below 1280px its drawer, remembering the tab it covers. */
 function revealPanel(): void {
 	const showing = panelTab.peek();
@@ -679,8 +687,9 @@ export function inspectInPanel(event: CalendarEvent): void {
  *
  * A pick in the list moves the grid onto the entry and flashes it there; a pick on the grid scrolls
  * the list to its row and flashes that. Neither view's scroll is otherwise driven by the other. The
- * details then open as the reader asked: in the inspector, or with `popover` on and something to anchor
- * to, in the compact popover. A pick with no anchor has no popover to point from, so it docks.
+ * details then open where the reader is looking (Decision #441): in the inspector while the right panel
+ * is open, and with it closed — or with `popover` on — in the compact popover over the pick, so a click
+ * never opens the panel by itself. A pick with no anchor has no popover to point from, so it docks.
  */
 export function selectEvent(
 	event: CalendarEvent,
@@ -696,9 +705,11 @@ export function selectEvent(
 	} else {
 		pulse(laneSpotlight, event.id);
 	}
-	if (anchor && calendarInspectMode.peek() === "popover") {
+	const popover = calendarInspectMode.peek() === "popover" || !untracked(() => rightPanelOpen());
+	if (anchor && popover) {
 		inspectPopover.value = { kind: "event", event, anchor };
 	} else {
+		inspectPopover.value = null;
 		inspectInPanel(event);
 	}
 }
@@ -751,6 +762,32 @@ export const eventReread = signal<CalendarEvent | null>(null);
 export function publishEvent(event: CalendarEvent): void {
 	eventReread.value = event;
 }
+
+/** One colour picked outside the body, waiting for it: a swatch token, or `null` for the default. */
+export interface RecolourAsk {
+	event: CalendarEvent;
+	accent: string | null;
+}
+
+/**
+ * Colours picked in the lane's menu or the inspector, queued for the body, which applies each at once
+ * and saves the last of a quick run (Decision #441). A queue rather than one value, so two picks in
+ * one tick both land.
+ */
+export const recolourRequest = signal<readonly RecolourAsk[]>([]);
+
+/** Ask the body to draw an entry in another colour. */
+export function requestRecolour(event: CalendarEvent, accent: string | null): void {
+	recolourRequest.value = [...recolourRequest.peek(), { event, accent }];
+}
+
+/** An entry a menu's Delete is asking the reader to confirm. The body owns the one confirmation. */
+export const deleteAsk = signal<CalendarEvent | null>(null);
+
+/** Ask the reader, through the body's confirmation, whether to delete an entry. */
+export function requestDeleteConfirm(event: CalendarEvent): void {
+	deleteAsk.value = event;
+}
 // #endregion
 
 // #region Routines
@@ -799,14 +836,33 @@ export function deselectRoutine(): void {
 	writeRoutineParam(null);
 }
 
-/** An entry being organised from outside the body: the same handshake as {@link requestUpdate}. */
-export const organiseRequest = signal<
-	{ event: CalendarEvent; change: EntryOrganisation } | null
->(null);
+/** One entry being organised from outside the body. */
+export interface OrganiseAsk {
+	event: CalendarEvent;
+	change: EntryOrganisation;
+}
+
+/**
+ * Entries being organised from outside the body: the same handshake as {@link requestUpdate}, queued,
+ * because gathering several entries into a routine asks for them all in one tick.
+ */
+export const organiseRequest = signal<readonly OrganiseAsk[]>([]);
 
 /** Ask the body to move an entry and its series into or out of a routine, or set its behaviour. */
 export function requestOrganise(event: CalendarEvent, change: EntryOrganisation): void {
-	organiseRequest.value = { event, change };
+	organiseRequest.value = [...organiseRequest.peek(), { event, change }];
+}
+
+/** The Add entries to a routine dialog (Decision #441), mounted by the lane, which raises it. */
+export const routineEntriesOpen = signal(false);
+
+/** The routine the dialog opens on, or `null` for the reader to choose. */
+export const routineEntriesFor = signal<string | null>(null);
+
+/** Open the dialog that gathers existing entries into a routine. */
+export function requestRoutineEntries(routineId: string | null): void {
+	routineEntriesFor.value = routineId;
+	routineEntriesOpen.value = true;
 }
 
 /** Bumped when a write moved entries the body cannot see, so it reads the agenda again. */
@@ -836,9 +892,6 @@ export function finishNewRoutine(routine: Routine): void {
 /** The id of the middle-nav panel's month navigator — the header band's toggle controls it. */
 export const CALENDAR_PANEL_ID = "cal-panel";
 
-/** The unified Connect-a-calendar consent modal. */
-export const connectOpen = signal(false);
-
 /**
  * The export modal. Opened by the footer rig's Export and mounted once, by the rig. Import needs no
  * counterpart: its popover is anchored to the trigger that opened it, so the trigger owns it.
@@ -855,21 +908,29 @@ export const exportOpen = signal(false);
  */
 export const createRequest = signal(0);
 
-/** Ask the body to open a blank entry. */
+/** What the next blank entry is: an Event, or a Reminder (the lane's New reminder). */
+export const createClass = signal<EntryClass>("event");
+
+/** Ask the body to open a blank Event. */
 export function requestCreate(): void {
+	requestCreateEntry("event");
+}
+
+/** Ask the body to open a blank Event or Reminder. */
+export function requestCreateEntry(entry: EntryClass): void {
+	createClass.value = entry;
 	createRequest.value++;
 }
 // #endregion
 
 // #region Imported entries
 /**
- * Entries read out of an imported `.ics`, `.ical` or `.vcs`, held CLIENT-SIDE only.
+ * Entries read out of an imported `.ics`, `.ical` or `.vcs`, held CLIENT-SIDE for this visit.
  *
  * Nothing posts them: the event door (`/api/scheduling/events`) keeps an entry the host composes,
- * not a file's worth, so no calendar draws the Import control that fills this (Decision #343, ruling
- * C7 (a)) and it stays empty. The lane, the panel and the bands still read it beside the fetched page,
- * so a door that keeps an import has one signal to fill. A second import of the same file replaces
- * the first (`mergeImported`).
+ * not a file's worth. `/calendar`'s Import fills this (Decision #440, amending #343 C7 (a)), and the
+ * grid, the lane, the panel and the bands draw it read-only beside the fetched page; a reload empties
+ * it. A second import of the same file replaces the first (`mergeImported`).
  */
 export const importedEvents = signal<readonly CalendarEvent[]>([]);
 // #endregion

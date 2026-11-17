@@ -1315,6 +1315,10 @@ REVOKE ALL ON FUNCTION finance.fn_fx_quote_minor (bigint, text, text, numeric, n
 REVOKE ALL ON FUNCTION finance.fn_fx_refund_minor (bigint, bigint, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_fx_conversions_append_only () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_fx_quotes_guard () FROM PUBLIC, anon, authenticated, service_role;
+-- The FX switch as one request sees it (Decision #436): read only inside the quote door.
+REVOKE ALL ON FUNCTION finance.fn_dev_fx_checkout () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_dev_overrides_honoured () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_fx_checkout_enabled () FROM PUBLIC, anon, authenticated;
 
 -- FINANCE_BUILD_PROMPTS DB3: the scheduler's two sweeps (registered by name in 00005060), the one KYB
 -- predicate (any subject's verification, so never a client's to ask) and the open-dispute refusal.
@@ -1633,6 +1637,20 @@ FROM public, anon;
 
 GRANT
 EXECUTE ON FUNCTION org.save_showcase (text, uuid, jsonb) TO authenticated,
+service_role;
+
+REVOKE ALL ON FUNCTION org.save_portfolio_piece (text, uuid, jsonb)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION org.save_portfolio_piece (text, uuid, jsonb) TO authenticated,
+service_role;
+
+REVOKE ALL ON FUNCTION org.archive_portfolio_piece (text, uuid, uuid)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION org.archive_portfolio_piece (text, uuid, uuid) TO authenticated,
 service_role;
 
 -- The media projection. The single-item form is internal to the definer reads; the batch form is

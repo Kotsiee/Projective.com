@@ -3,6 +3,8 @@ import type { CalendarEvent, Routine } from "@projective/types/scheduling";
 import {
 	entryHoldsTime,
 	groupByRoutine,
+	joinRoutine,
+	leaveRoutine,
 	organisedPatch,
 	routineMeta,
 	sessionServicesHref,
@@ -75,6 +77,29 @@ Deno.test("a working copy spells leaving a routine as no routine, and leaves wha
 	assertEquals(behaviourOnly, { availabilityBehavior: "passive" });
 	// Spread over the entry, an absent key must not clear the routine it is in.
 	assertFalse("routineId" in behaviourOnly);
+});
+
+Deno.test("joining a routine takes its behaviour, unless somebody relies on the entry", () => {
+	assertEquals(joinRoutine(entry("a"), routine("r")), {
+		routineId: "r",
+		availabilityBehavior: "passive",
+	});
+	assertEquals(joinRoutine(entry("a", { kind: "session" }), routine("r")), { routineId: "r" });
+	assertEquals(
+		joinRoutine(entry("a"), routine("r", { behavior: "disruptive" })).availabilityBehavior,
+		"disruptive",
+	);
+});
+
+Deno.test("leaving a routine gives back its hatching: a passive entry holds its time again", () => {
+	assertEquals(leaveRoutine(entry("a", { routineId: "r", availabilityBehavior: "passive" })), {
+		routineId: null,
+		availabilityBehavior: "disruptive",
+	});
+	assertEquals(leaveRoutine(entry("a", { routineId: "r", availabilityBehavior: "disruptive" })), {
+		routineId: null,
+	});
+	assertEquals(leaveRoutine(entry("a", { routineId: "r" })), { routineId: null });
 });
 
 Deno.test("a passive routine points at Session Services, on its own words", () => {

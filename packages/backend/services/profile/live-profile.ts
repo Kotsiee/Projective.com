@@ -676,11 +676,14 @@ interface RawPiece {
 	title: string;
 	client: string | null;
 	category: string | null;
+	description?: string | null;
+	is_public?: boolean | null;
 	media: unknown;
 }
 
 /**
- * The "Selected work" masonry — the owner's own public portfolio pieces.
+ * The "Selected work" masonry — the owner's own public portfolio pieces (and, read by the owner,
+ * their private ones, marked by `isPublic`).
  *
  * A piece has no page of its own, so its tile opens the piece itself at full size: the largest
  * rendition of a still, or the video. That is a real destination with no script behind it, where a
@@ -711,6 +714,8 @@ export async function fetchPortfolio(handle: string, actor: ReadActor): Promise<
 				alt: p.title,
 			},
 			href: full,
+			description: p.description ?? "",
+			isPublic: p.is_public ?? true,
 		});
 	}
 	return out;

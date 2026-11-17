@@ -197,6 +197,52 @@ export type ApplyMedia = z.infer<typeof ApplyMediaSchema>;
 
 // #endregion
 
+// #region Portfolio pieces
+
+/** The caps a freelancer's portfolio is held to — mirrored by `org.save_portfolio_piece`. */
+export const PORTFOLIO_LIMITS = {
+	pieces: 60,
+	title: 120,
+	client: 120,
+	category: 60,
+	description: 2000,
+} as const;
+
+/**
+ * A new cover for a piece: one of the owner's LIBRARY assets, cut into a public 16:10 showcase
+ * rendition server-side with this crop (the same cut the profile showcase makes).
+ */
+export const PortfolioCoverSchema = z.object({
+	sourceAssetId: z.string().uuid(),
+	crop: CropStateSchema.optional(),
+});
+export type PortfolioCover = z.infer<typeof PortfolioCoverSchema>;
+
+/**
+ * Create or edit one portfolio piece ("Selected work"). No `id` is a new piece, which needs a cover;
+ * an edit may replace the cover or keep it. An empty client or category is stored as none.
+ * `.strict()` so a key the editor never sends (a `sortOrder`, an `archivedAt`) is refused.
+ */
+export const SavePortfolioPieceSchema = z.object({
+	id: z.string().uuid().optional(),
+	title: line(PORTFOLIO_LIMITS.title, 1),
+	client: line(PORTFOLIO_LIMITS.client).nullable().optional(),
+	category: line(PORTFOLIO_LIMITS.category).nullable().optional(),
+	description: z.string().max(PORTFOLIO_LIMITS.description).default(""),
+	isPublic: z.boolean(),
+	cover: PortfolioCoverSchema.optional(),
+}).strict().refine((p) => p.id !== undefined || p.cover !== undefined, {
+	message: "Choose a cover picture.",
+	path: ["cover"],
+});
+export type SavePortfolioPiece = z.infer<typeof SavePortfolioPieceSchema>;
+
+/** Archive one piece: it leaves the profile, and nothing is hard-deleted. */
+export const ArchivePortfolioPieceSchema = z.object({ id: z.string().uuid() }).strict();
+export type ArchivePortfolioPiece = z.infer<typeof ArchivePortfolioPieceSchema>;
+
+// #endregion
+
 // #region The edit model
 
 /**

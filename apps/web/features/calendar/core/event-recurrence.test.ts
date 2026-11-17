@@ -1,5 +1,10 @@
 import { assertEquals } from "@std/assert";
-import type { CalendarEvent, IsoDate } from "@projective/types/scheduling";
+import type {
+	AvailabilityRuleDraft,
+	CalendarEvent,
+	IsoDate,
+	RulePattern,
+} from "@projective/types/scheduling";
 import { ENTRY_BATCH_MAX } from "@projective/types/scheduling";
 import {
 	describeRepeat,
@@ -10,8 +15,10 @@ import {
 	repeatAnchor,
 	type RepeatDraft,
 	repeatSentence,
+	sameRepeatPattern,
 	seriesMasterOf,
 	seriesOf,
+	templateRepeat,
 	toRRule,
 } from "./event-recurrence.ts";
 
@@ -153,5 +160,118 @@ Deno.test("a past entry is named; a series only when nothing it lays down is sti
 	assertEquals(
 		pastNotice({ ...event, recurrenceRule: "FREQ=DAILY" }, TZ, START + 60 * 24 * HOUR),
 		`The first ${ENTRY_BATCH_MAX} occurrences are added now, and all of them are in the past.`,
+	);
+});
+
+let ruleSeq = 0;
+
+function rule(
+	pattern: RulePattern,
+	over: Partial<AvailabilityRuleDraft> = {},
+): AvailabilityRuleDraft {
+	return {
+		id: `r-${++ruleSeq}`,
+		effect: "add",
+		pattern,
+		condition: { unlessWeekdays: [] },
+		bands: [{ start: 540, end: 1020 }],
+		startsOn: "2026-01-05" as IsoDate,
+		endsOn: null,
+		priority: 50,
+		label: "",
+		active: true,
+		fee: null,
+		colorToken: null,
+		...over,
+	};
+}
+
+Deno.test("a template's weekly rules join into one weekly repeat, in ISO weekdays", () => {
+	assertEquals(
+		templateRepeat({
+			rules: [
+				rule({ type: "weekly", days: [2, 4], interval: 1 }),
+				rule({ type: "weekly", days: [0, 1], interval: 1 }),
+			],
+		}),
+		{ freq: "WEEKLY", interval: 1, isoDays: [1, 2, 4, 7] },
+	);
+});
+
+Deno.test("a template one rule cannot follow maps to nothing", () => {
+	assertEquals(
+		templateRepeat({
+			rules: [
+				rule({ type: "weekly", days: [2], interval: 1 }),
+				rule({ type: "weekly", days: [6], interval: 2 }),
+			],
+		}),
+		null,
+		"mixed intervals",
+	);
+	assertEquals(
+		templateRepeat({ rules: [rule({ type: "monthly_date", days: [12], interval: 1 })] }),
+		null,
+		"monthly",
+	);
+	assertEquals(templateRepeat({ rules: [] }), null, "no rules");
+	assertEquals(
+		templateRepeat({
+			rules: [
+				rule({ type: "daily", interval: 2 }),
+				rule({ type: "daily", interval: 3 }),
+			],
+		}),
+		null,
+		"two daily rules",
+	);
+});
+
+Deno.test("only active add rules shape a template's repeat", () => {
+	assertEquals(
+		templateRepeat({
+			rules: [
+				rule({ type: "weekly", days: [1, 3], interval: 1 }),
+				rule({ type: "weekly", days: [5], interval: 2 }, { active: false }),
+				rule({ type: "weekly", days: [6], interval: 3 }, { effect: "subtract", bands: [] }),
+			],
+		}),
+		{ freq: "WEEKLY", interval: 1, isoDays: [1, 3] },
+	);
+	assertEquals(
+		templateRepeat({
+			rules: [rule({ type: "weekly", days: [1], interval: 1 }, { active: false })],
+		}),
+		null,
+	);
+});
+
+Deno.test("a single daily rule repeats daily at its interval", () => {
+	assertEquals(
+		templateRepeat({ rules: [rule({ type: "daily", interval: 2 })] }),
+		{ freq: "DAILY", interval: 2, isoDays: [] },
+	);
+});
+
+Deno.test("two repeats match on frequency, interval and weekdays, however they end", () => {
+	const weekly: RepeatDraft = {
+		freq: "WEEKLY",
+		interval: 1,
+		isoDays: [3, 1],
+		end: { type: "count", count: 4 },
+	};
+	assertEquals(sameRepeatPattern(weekly, { freq: "WEEKLY", interval: 1, isoDays: [1, 3] }), true);
+	assertEquals(sameRepeatPattern(weekly, { freq: "WEEKLY", interval: 2, isoDays: [1, 3] }), false);
+	assertEquals(sameRepeatPattern(weekly, { freq: "WEEKLY", interval: 1, isoDays: [1] }), false);
+	assertEquals(
+		sameRepeatPattern(
+			{ freq: "DAILY", interval: 2, isoDays: [] },
+			{ freq: "DAILY", interval: 2, isoDays: [4] },
+		),
+		true,
+	);
+	assertEquals(
+		sameRepeatPattern(weekly, { freq: "DAILY", interval: 1, isoDays: [1, 3] }),
+		false,
 	);
 });

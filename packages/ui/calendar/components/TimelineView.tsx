@@ -73,6 +73,8 @@ export interface TimelineViewProps {
 	onQuickCreate?: (range: CalendarRange, title: string) => void;
 	onExpandCreate?: (range: CalendarRange, title: string) => void;
 	onOpenEvent?: (event: CalendarEvent) => void;
+	/** A single entry double-clicked (`CalendarProps.onEventDoubleClick`). */
+	onEventDoubleClick?: (event: CalendarEvent) => void;
 	onMoveEvent?: (event: CalendarEvent, range: CalendarRange) => void;
 	/** The viewport's centre day moved. */
 	onFocusChange?: (ms: number) => void;
@@ -160,6 +162,12 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
 				const ev = eventOf(item);
 				if (ev) props.onOpenEvent?.(ev);
 			}}
+			onDoubleClickItem={props.onEventDoubleClick
+				? (item) => {
+					const ev = eventOf(item);
+					if (ev) props.onEventDoubleClick?.(ev);
+				}
+				: undefined}
 			onCreateRange={(_lane, r, _anchor, title) => {
 				if (props.onExpandCreate) props.onExpandCreate(range(r), title ?? "");
 				else props.onSelectRange?.(range(r));

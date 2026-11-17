@@ -262,6 +262,8 @@ export interface TimeGridProps {
 	onMoveEvent?: (event: CalendarEvent, range: CalendarRange) => void;
 	/** What a right-click landed on (`CalendarProps.onContextTarget`). */
 	onContextTarget?: CalendarProps["onContextTarget"];
+	/** A single entry double-clicked (`CalendarProps.onEventDoubleClick`). */
+	onEventDoubleClick?: CalendarProps["onEventDoubleClick"];
 	/** Fired as the scroll centre crosses into a new block, so the header + mini-map track it. */
 	onFocusChange?: (dayStart: number) => void;
 	/**
@@ -1634,6 +1636,19 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 		report({ event: null, range: selectionRange(slot.dayStart, from, from + 30, SNAP) });
 	}
 
+	/** A double-click on a single card: close what its first click opened, and hand the entry over. */
+	function onDblClick(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		const report = props.onEventDoubleClick;
+		if (!report || gesture.peek()) return;
+		const { hit } = hitAt(e);
+		if (hit.kind !== "event") return;
+		if (hit.event.foldedCount > 0 && clusterEvents(hit.event.clusterId).length > 1) return;
+		const source = eventById.get(hit.event.eventId);
+		if (!source) return;
+		if (props.popover) props.popover.value = null;
+		report(source);
+	}
+
 	function onPointerLeave(): void {
 		if (gesture.peek()) return;
 		hoverId.value = null;
@@ -1832,6 +1847,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				onPointerMove={onPointerMove}
 				onPointerLeave={onPointerLeave}
 				onContextMenu={onContextMenu}
+				onDblClick={onDblClick}
 			>
 				<canvas ref={canvasRef} class="cal-tg__canvas" aria-hidden="true" />
 			</div>

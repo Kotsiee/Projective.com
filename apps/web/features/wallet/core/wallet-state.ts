@@ -1,5 +1,12 @@
 import { signal } from "@preact/signals";
-import type { LedgerLine, WalletAction, WalletOverview } from "../types/wallet-types.ts";
+import type {
+	DepositRuleView,
+	LedgerLine,
+	PayoutScheduleView,
+	WalletAction,
+	WalletLockCode,
+	WalletOverview,
+} from "../types/wallet-types.ts";
 import type { FlowPeriod } from "./wallet-model.ts";
 
 /*
@@ -26,6 +33,19 @@ export const walletOverviewLive = signal<WalletOverview | null>(null);
  * other page that draws one; `null` until they pick.
  */
 export const walletFlowLive = signal<FlowPeriod | null>(null);
+
+/** The wallet's standing schedules: its recurring deposits and its automatic payout. */
+export interface WalletSchedules {
+	/** `null` where the wallet has none to read (the rollup) or the read failed. */
+	rules: DepositRuleView[] | null;
+	schedule: PayoutScheduleView | null;
+}
+
+/**
+ * The schedules the page body last read, published once it has hydrated and again after every money
+ * movement, so the lane's Scheduled rail follows a rule paused or a payout changed in a dialog.
+ */
+export const walletSchedulesLive = signal<WalletSchedules | null>(null);
 
 /** The Transactions and Analytics pages' window and download, as the footer band drives them. */
 export interface WalletLedgerTools {
@@ -62,6 +82,7 @@ export const walletCardReturnNotice = signal<string | null>(null);
 /** A dialog the command centre can open. */
 export type WalletDialog =
 	| { kind: "action"; action: WalletAction; stageId?: string }
+	| { kind: "lock"; code: WalletLockCode }
 	| { kind: "line"; line: LedgerLine }
 	| { kind: "approval"; approvalId: string };
 

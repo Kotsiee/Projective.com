@@ -21,11 +21,8 @@ import { NotificationsSection } from "./sections/NotificationsSection.tsx";
 import { MessagingSection } from "./sections/MessagingSection.tsx";
 import { SchedulingSection } from "./sections/SchedulingSection.tsx";
 import { BillingSection } from "./sections/BillingSection.tsx";
-import {
-	IntegrationsOverview,
-	SchedulingOverview,
-	VerificationOverview,
-} from "./sections/Overviews.tsx";
+import { IntegrationsSection } from "./sections/IntegrationsSection.tsx";
+import { SchedulingOverview, VerificationOverview } from "./sections/Overviews.tsx";
 
 /**
  * SettingsSectionView — renders one Settings section on either surface (Decision #150). The page
@@ -180,6 +177,6 @@ function renderSection(
 		case "verification":
 			return <VerificationOverview data={data} error={error} onEscalate={escalate()} />;
 		case "integrations":
-			return <IntegrationsOverview data={data} error={error} onEscalate={escalate()} />;
+			return <IntegrationsSection data={data} error={error} />;
 	}
 }

@@ -209,11 +209,13 @@ export {
 	heatSteps,
 	nearestIndex,
 	percentLabel,
+	seriesEmpty,
 	SPARK_VIEW,
 	sparkGeometry,
 	stepCell,
 	stepIndex,
 	timeAxis,
+	xTickIndices,
 } from "./charts/geometry.ts";
 export type {
 	AreaGeometry,

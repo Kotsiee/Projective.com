@@ -410,6 +410,13 @@ export interface CalendarProps {
 	/** Called when an existing event is opened. */
 	onOpenEvent?: (event: CalendarEvent) => void;
 	/**
+	 * Called when a single entry is double-clicked, after the engine has closed any popover its first
+	 * click opened — for a host whose fuller surface (an editor, a modal) is one gesture past the
+	 * summary. A folded cluster card does not report: it names no one entry. Keyboard readers reach the
+	 * same surface through the host's own controls. Day, Week, Month and Timeline report.
+	 */
+	onEventDoubleClick?: (event: CalendarEvent) => void;
+	/**
 	 * Told what a right-click (or the ContextMenu key) on the grid landed on, before the event
 	 * bubbles. The engine draws no menu and never cancels the event for it: the host binds its menu to
 	 * an ancestor (`ActionMenu`'s `surface`) and builds the rows from this. Day, Week and Month report.

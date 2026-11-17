@@ -51,18 +51,22 @@
 
 .ui-chart [data-series="1"] {
 	--ui-chart-ink: var(--ui-chart-c1);
+	--ui-chart-wash-n: var(--ui-chart-wash-1, var(--chart-wash));
 }
 
 .ui-chart [data-series="2"] {
 	--ui-chart-ink: var(--ui-chart-c2);
+	--ui-chart-wash-n: var(--ui-chart-wash-2, var(--chart-wash));
 }
 
 .ui-chart [data-series="3"] {
 	--ui-chart-ink: var(--ui-chart-c3);
+	--ui-chart-wash-n: var(--ui-chart-wash-3, var(--chart-wash));
 }
 
 .ui-chart [data-series="4"] {
 	--ui-chart-ink: var(--ui-chart-c4);
+	--ui-chart-wash-n: var(--ui-chart-wash-4, var(--chart-wash));
 }
 
 /* #region Plot */
@@ -129,6 +133,12 @@
 	background: var(--ui-chart-ink);
 }
 
+.ui-chart__head {
+	display: flex;
+	align-items: baseline;
+	min-block-size: 1.5rem;
+}
+
 .ui-chart__foot {
 	display: flex;
 	flex-wrap: wrap;
@@ -140,6 +150,7 @@
 
 /* #region Area */
 .ui-chart__frame {
+	container: ui-chart / inline-size;
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	grid-template-rows: auto auto;
@@ -187,7 +198,6 @@
 	border-block-start-color: var(--outline);
 }
 
-.ui-chart__area,
 .ui-chart__line {
 	stroke: var(--ui-chart-ink);
 	stroke-width: 2;
@@ -197,7 +207,20 @@
 }
 
 .ui-chart__area {
-	fill: color-mix(in srgb, var(--ui-chart-ink) var(--tint), transparent);
+	fill: var(--ui-chart-fill, color-mix(in srgb, var(--ui-chart-ink) var(--tint), transparent));
+	stroke: none;
+}
+
+.ui-chart__stop {
+	stop-color: var(--ui-chart-ink);
+}
+
+.ui-chart__stop--line {
+	stop-opacity: var(--ui-chart-wash-n, var(--chart-wash));
+}
+
+.ui-chart__stop--base {
+	stop-opacity: 0;
 }
 
 .ui-chart__line {
@@ -208,25 +231,20 @@
 	position: absolute;
 	inset-block: 0;
 	inset-inline-start: calc(var(--ui-chart-x) * 100%);
-	border-inline-start: var(--hairline);
-	border-inline-start-color: var(--outline);
+	border-inline-start: var(--hairline-strong);
 	pointer-events: none;
-}
-
-[dir="rtl"] .ui-chart__cross {
-	inset-inline-start: auto;
-	inset-inline-end: calc(var(--ui-chart-x) * 100%);
 }
 
 .ui-chart__dot {
 	position: absolute;
 	inset-block-start: calc(var(--ui-chart-y) * 100%);
 	inset-inline-start: 0;
-	inline-size: var(--space-2);
-	block-size: var(--space-2);
+	box-sizing: border-box;
+	inline-size: calc(var(--space-2) + var(--space-px));
+	block-size: calc(var(--space-2) + var(--space-px));
+	border: var(--space-px) solid var(--ui-chart-ink);
 	border-radius: var(--radius-full);
-	background: var(--ui-chart-ink);
-	box-shadow: 0 0 0 var(--space-px) var(--surface);
+	background: var(--surface);
 	transform: translate(-50%, -50%);
 }
 
@@ -235,13 +253,67 @@
 }
 
 .ui-chart__xaxis {
+	position: relative;
 	grid-column: 2;
-	display: flex;
-	justify-content: space-between;
-	gap: var(--space-3);
+	block-size: 1lh;
 	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
 	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
+}
+
+.ui-chart__xtick {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: calc(var(--ui-chart-x) * 100%);
+	white-space: nowrap;
+	transform: translateX(-50%);
+}
+
+.ui-chart__xtick[data-edge="start"] {
+	transform: none;
+}
+
+.ui-chart__xtick[data-edge="end"] {
+	transform: translateX(-100%);
+}
+
+[dir="rtl"] .ui-chart__xtick {
+	transform: translateX(50%);
+}
+
+[dir="rtl"] .ui-chart__xtick[data-edge="start"] {
+	transform: none;
+}
+
+[dir="rtl"] .ui-chart__xtick[data-edge="end"] {
+	transform: translateX(100%);
+}
+
+@container ui-chart (max-width: 26rem) {
+	.ui-chart__xtick[data-minor="true"] {
+		display: none;
+	}
+}
+
+.ui-chart__empty {
+	position: absolute;
+	inset-block: 0 calc((1 - var(--ui-chart-y, 1)) * 100%);
+	inset-inline: 0;
+	display: grid;
+	place-content: center;
+	justify-items: center;
+	gap: var(--space-1);
+	padding: var(--space-4);
+	text-align: center;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.ui-chart[data-empty="true"] .ui-chart__plot {
+	cursor: default;
 }
 
 .ui-chart__legend {

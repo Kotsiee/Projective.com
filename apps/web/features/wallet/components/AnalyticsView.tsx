@@ -8,6 +8,7 @@ import { MoneyView } from "@projective/ui/display/money";
 import { styleVars } from "@ui/core/style.ts";
 import type {
 	ActivityView,
+	AllocationSlice,
 	KindSlice,
 	MoneyView as Money,
 	ProjectAllocation,
@@ -20,8 +21,10 @@ import {
 	ledgerKindLabel,
 	periodPhrase,
 } from "../core/wallet-model.ts";
-import { timeAxis } from "@projective/ui/display";
+import { seriesEmpty, timeAxis } from "@projective/ui/display";
 import { FlowAreaChart } from "./FlowAreaChart.tsx";
+import { CapitalBar } from "./CapitalBar.tsx";
+import { QuietWindow } from "./CashFlow.tsx";
 
 /** Props for {@link AnalyticsView}. */
 export interface AnalyticsViewProps {
@@ -33,6 +36,16 @@ export interface AnalyticsViewProps {
 	onRetry: () => void;
 	/** Whether the island has hydrated; relative dates are drawn against the browser's clock once known. */
 	mounted: boolean;
+	/** The wallet's capital as it stands now — the overview's server-drawn slices; empty for the rollup. */
+	allocation: readonly AllocationSlice[];
+}
+
+/** Whether nothing moved in or out in any bucket of the window. */
+function quiet(a: ActivityView): boolean {
+	return seriesEmpty([
+		{ values: a.flow.map((p) => p.inMinor) },
+		{ values: a.flow.map((p) => p.outMinor) },
+	]);
 }
 
 /** The charts the page draws, each with an inspector of its own. */
@@ -622,13 +635,21 @@ export function AnalyticsView(props: AnalyticsViewProps): JSX.Element {
 							span={show.value === "all" ? 8 : 12}
 							onInspect={inspect("flow")}
 						>
-							{hasTrend(a.flow)
+							<CapitalBar slices={props.allocation} />
+							{hasTrend(a.flow) || quiet(a)
 								? (
 									<FlowAreaChart
 										points={a.flow}
 										currency={a.totalIn.currency}
 										phrase={phrase}
 										spans={a.grain !== "day"}
+										readout="head"
+										empty={
+											<QuietWindow
+												period={props.period}
+												hint="Try a longer window on the ruler below."
+											/>
+										}
 									/>
 								)
 								: <NoTrend phrase={phrase} grain={a.grain} />}

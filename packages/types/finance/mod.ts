@@ -32,3 +32,4 @@ export * from "./order.ts";
 export * from "./payments.ts";
 export * from "./ticket-funding.ts";
 export * from "./funding.ts";
+export * from "./funding-charge.ts";

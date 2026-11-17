@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { AreaChart, type AreaChartSeries, compactMoney } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { styleVars } from "@ui/core/style.ts";
@@ -14,13 +14,19 @@ export interface FlowAreaChartProps {
 	spans: boolean;
 	/** The series drawn (`in` · `out` · `net`); every one when absent. */
 	show?: readonly string[];
+	/** Where the chart's own readout sits; `none` when the caller prints one from {@link onActiveChange}. */
+	readout?: "foot" | "head" | "none";
+	/** Hears the focused bucket change, for a readout of the caller's own. */
+	onActiveChange?: (index: number | null) => void;
+	/** Drawn over the empty frame when nothing moved in the window. */
+	empty?: ComponentChildren;
 }
 
-/** Each series' ink, so a series keeps its colour when another is hidden (wallet-analytics.css). */
-const SERIES_INK: Readonly<Record<string, string>> = {
-	in: "var(--wlt-chart-in)",
-	out: "var(--wlt-chart-out-ink)",
-	net: "var(--wlt-chart-net)",
+/** Each series' ink and wash, so a series keeps its colour when another is hidden (wallet-analytics.css). */
+const SERIES_INK: Readonly<Record<string, { ink: string; wash: string }>> = {
+	in: { ink: "var(--wlt-chart-in)", wash: "var(--wlt-chart-wash-in)" },
+	out: { ink: "var(--wlt-chart-out)", wash: "var(--wlt-chart-wash-out)" },
+	net: { ink: "var(--wlt-chart-net)", wash: "var(--chart-wash)" },
 };
 
 function Signed({ minor, currency }: { minor: number; currency: string }): JSX.Element {
@@ -30,9 +36,10 @@ function Signed({ minor, currency }: { minor: number; currency: string }): JSX.E
 }
 
 /**
- * Cash flow as the shared diverging {@link AreaChart}: money in rising above the zero baseline, money
- * out falling below it, and the net as a line across both — one axis, one unit. Every figure the
- * readout and the hidden table print is the server's own `MoneyView`; only the axis ticks are compact.
+ * Cash flow as the shared diverging {@link AreaChart}: money in rising above the zero baseline on a
+ * `--success` wash, money out falling below it on a `--danger` wash, and the net as a `--primary` line
+ * across both — one axis, one unit. Every figure the readout and the hidden table print is the
+ * server's own `MoneyView`; only the axis ticks are compact.
  */
 export function FlowAreaChart(props: FlowAreaChartProps): JSX.Element {
 	const { points, currency } = props;
@@ -67,9 +74,17 @@ export function FlowAreaChart(props: FlowAreaChartProps): JSX.Element {
 					? <Signed minor={value} currency={currency} />
 					: <MoneyView minor={value} currency={currency} size="micro" />}
 			formatTick={(value) => compactMoney(value, currency)}
+			readout={props.readout}
+			onActiveChange={props.onActiveChange}
+			empty={props.empty}
 		/>
 	);
 	if (series.length === all.length) return chart;
-	const inks = Object.fromEntries(series.map((s, i) => [`--wlt-area-${i + 1}`, SERIES_INK[s.id]]));
-	return <div style={styleVars(inks)}>{chart}</div>;
+	const vars = Object.fromEntries(
+		series.flatMap((s, i) => [
+			[`--wlt-area-${i + 1}`, SERIES_INK[s.id].ink],
+			[`--wlt-area-wash-${i + 1}`, SERIES_INK[s.id].wash],
+		]),
+	);
+	return <div style={styleVars(vars)}>{chart}</div>;
 }

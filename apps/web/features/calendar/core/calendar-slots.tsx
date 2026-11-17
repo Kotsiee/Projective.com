@@ -155,16 +155,7 @@ export async function calendarFooterFor(
 ): Promise<ComponentChildren> {
 	if (!isCalendar(url)) return null;
 	if (isAvailability(url)) return <AvailabilityFooter />;
-	// A same-origin PATH, not a URL: the consent's `returnTo` is validated server-side and an
-	// absolute one is refused, because an attacker-chosen return target turns a consent screen into
-	// an open redirect wearing this domain's credibility.
-	return (
-		<CalendarFooterRig
-			initial={await resolveOnce(url, actor)}
-			returnTo="/calendar"
-			address={addressOf(url)}
-		/>
-	);
+	return <CalendarFooterRig initial={await resolveOnce(url, actor)} address={addressOf(url)} />;
 }
 
 /**

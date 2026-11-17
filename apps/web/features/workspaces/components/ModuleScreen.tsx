@@ -61,8 +61,8 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 	const { workspace: ws, module } = props;
 	const copy = kindCopy(ws.kind);
 	const mod = moduleFor(module);
-	/** The entity's profile editor — name, story, logo and banner are edited there, through the media pipeline. */
-	const editHref = `/@${ws.handle}/edit`;
+	/** The entity's public profile — name, story, logo and showcase are edited there, in place (Decision #439). */
+	const editHref = `/@${ws.handle}`;
 	const canEditProfile = ws.viewerCapabilities.includes("edit_profile");
 
 	switch (module) {

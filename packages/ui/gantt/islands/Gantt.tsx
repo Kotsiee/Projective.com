@@ -580,7 +580,9 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		else props.onOpenItem?.(item, anchor);
 	}
 
-	function hitAt(e: PointerEvent): { at: { x: number; y: number }; hit: ItemBox | null } {
+	function hitAt(
+		e: PointerEvent | MouseEvent,
+	): { at: { x: number; y: number }; hit: ItemBox | null } {
 		const at = viewport.pointerAt(e);
 		const hit = hitTestItems(
 			boxesRef.current,
@@ -818,6 +820,16 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		}
 	}
 
+	function onDblClick(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		const report = props.onDoubleClickItem;
+		if (!report || gesture.peek() || store.fly.peek()) return;
+		const { hit } = hitAt(e);
+		const item = hit ? itemById.get(hit.id) : undefined;
+		if (!item) return;
+		popover.value = null;
+		report(item);
+	}
+
 	const live = gesture.value;
 	const cursor = live?.kind === "move" && live.moved
 		? "grabbing"
@@ -978,6 +990,7 @@ export default function Gantt(props: GanttProps): JSX.Element {
 					onPointerDown={onPointerDown}
 					onPointerMove={onPointerMove}
 					onPointerLeave={onPointerLeave}
+					onDblClick={onDblClick}
 				>
 					<canvas ref={canvasRef} class="gantt__canvas" aria-hidden="true" />
 				</div>

@@ -20,10 +20,12 @@ import {
 	repeatAnchor,
 	type RepeatDraft,
 	type RepeatFreq,
+	sameRepeatPattern,
 	seriesOf,
 	sundayWeekday,
 	toRRule,
 } from "../core/event-recurrence.ts";
+import { useRepeatTemplates } from "../hooks/useRepeatTemplates.ts";
 
 /**
  * EventRecurrenceField — whether an entry repeats, and how.
@@ -45,6 +47,8 @@ export interface EventRecurrenceFieldProps {
 	onPatch: (patch: Partial<CalendarEvent>) => void;
 	/** A cadence with no entry behind it (a routine's), so there are no occurrences to speak of. */
 	cadenceOnly?: boolean;
+	/** Offer the Availability tab's templates as patterns beside a custom rule. */
+	withTemplates?: boolean;
 }
 
 /**
@@ -73,6 +77,7 @@ const UNIT_WORD: Record<RepeatFreq, string> = {
 	YEARLY: "year",
 };
 const MAX_INTERVAL = 99;
+const CUSTOM = "custom";
 
 function pickerDate(date: IsoDate): Date {
 	const p = civilParts(date);
@@ -105,6 +110,18 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 		key,
 	);
 	const count = useBound<number | null>(draft.end.type === "count" ? draft.end.count : 10, key);
+	const offered = useRepeatTemplates(props.withTemplates === true);
+	const templates = offered.templates ?? [];
+	const followed = templates.find((t) => sameRepeatPattern(t.draft, draft))?.id ?? CUSTOM;
+	const pattern = useBound<string>(followed, `${key}|${templates.length}`);
+	const templateNote = offered.error ??
+		(offered.skipped > 0
+			? `${offered.skipped} ${
+				offered.skipped === 1 ? "template repeats" : "templates repeat"
+			} in a way one rule can't follow, so ${
+				offered.skipped === 1 ? "it isn't" : "they aren't"
+			} listed.`
+			: null);
 
 	function setRule(next: RepeatDraft | null): void {
 		onPatch({ recurrenceRule: next ? toRRule(next, anchor) : undefined });
@@ -128,6 +145,39 @@ export function EventRecurrenceField(props: EventRecurrenceFieldProps): JSX.Elem
 			{rule
 				? (
 					<div class="evm-repeat__custom">
+						{props.withTemplates && offered.templates
+							? (
+								<>
+									{templates.length > 0
+										? (
+											<div class="evm-repeat__row">
+												<span class="evm-repeat__k" aria-hidden="true">Pattern</span>
+												<Select
+													size="sm"
+													value={pattern}
+													options={[
+														{ value: CUSTOM, label: "Custom" },
+														...templates.map((t) => ({ value: t.id, label: t.name })),
+													]}
+													panelWidth="auto"
+													aria-label="Pattern"
+													onValueChange={(id) => {
+														const template = templates.find((t) => t.id === id);
+														if (!template) {
+															pattern.value = followed;
+															return;
+														}
+														const { freq, interval, isoDays } = template.draft;
+														edit({ freq, interval, isoDays });
+													}}
+												/>
+											</div>
+										)
+										: null}
+									{templateNote ? <p class="evm-room__note">{templateNote}</p> : null}
+								</>
+							)
+							: null}
 						<div class="evm-repeat__row" role="group" aria-label="Frequency">
 							<span class="evm-repeat__word" aria-hidden="true">Every</span>
 							<NumberInput

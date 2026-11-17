@@ -277,6 +277,8 @@ export interface MonthGridProps {
 	onOpenEvent?: (event: CalendarEvent) => void;
 	/** What a right-click landed on (`CalendarProps.onContextTarget`); an empty cell is its whole day. */
 	onContextTarget?: CalendarProps["onContextTarget"];
+	/** A single entry double-clicked (`CalendarProps.onEventDoubleClick`). */
+	onEventDoubleClick?: CalendarProps["onEventDoubleClick"];
 	/** Open a specific day (the Day view) when its number is clicked. */
 	onOpenDay?: (dayStart: number) => void;
 	/** The window scrolled to show another stretch: a day inside the focal month, near the top. */
@@ -876,6 +878,16 @@ export function MonthGrid(props: MonthGridProps): JSX.Element {
 								},
 							},
 					);
+				}}
+				onDblClick={(e) => {
+					const report = props.onEventDoubleClick;
+					if (!report || gesture.current) return;
+					const target = e.target instanceof Element ? e.target : null;
+					const id = target?.closest<HTMLElement>("[data-event-id]")?.dataset.eventId;
+					const event = id ? props.events.find((ev) => ev.id === id) : undefined;
+					if (!event) return;
+					if (props.popover?.peek()) props.popover.value = null;
+					report(event);
 				}}
 				onClickCapture={(e) => {
 					if (swallowClick.current === null) return;

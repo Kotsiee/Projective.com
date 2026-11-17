@@ -13,13 +13,6 @@
 }
 
 .wlt-an {
-	/*
-	 * The chart's three series: money in on the success ramp, money out a neutral grey (a direction, not
-	 * a judgement), and net in full ink — told apart by lightness and by FORM (two washes, one line), so
-	 * no two hues sit side by side that a reader must separate by colour alone.
-	 */
-	--wlt-chart-out-ink: var(--outline);
-	--wlt-chart-net: var(--on-surface);
 	--wlt-area-h: 15rem;
 	container: wlt-an / inline-size;
 	display: flex;
@@ -138,9 +131,12 @@
    outranks the block's own defaults whichever sheet the bundle orders first. */
 .wlt-area.ui-chart {
 	--ui-chart-1: var(--wlt-area-1, var(--wlt-chart-in));
-	--ui-chart-2: var(--wlt-area-2, var(--wlt-chart-out-ink));
+	--ui-chart-2: var(--wlt-area-2, var(--wlt-chart-out));
 	--ui-chart-3: var(--wlt-area-3, var(--wlt-chart-net));
-	--ui-chart-h: var(--wlt-area-h);
+	--ui-chart-wash-1: var(--wlt-area-wash-1, var(--wlt-chart-wash-in));
+	--ui-chart-wash-2: var(--wlt-area-wash-2, var(--wlt-chart-wash-out));
+	--ui-chart-wash-3: var(--wlt-area-wash-3, var(--chart-wash));
+	--ui-chart-h: var(--wlt-area-h, var(--chart-h));
 }
 /* #endregion */
 

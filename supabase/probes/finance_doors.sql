@@ -237,11 +237,11 @@ ROLLBACK TO SAVEPOINT s_s4;
 -- #endregion
 
 -- #region 5. L9: no release while a dispute is open
-SAVEPOINT s_l9_ticket;
+-- The fixture is chosen outside every savepoint: a ROLLBACK TO undoes set_config, and the release
+-- below reads it after the dispute's savepoint is rolled back.
 DO $$
 DECLARE
     v_e finance.escrows;
-    v_out text;
 BEGIN
     SELECT * INTO v_e FROM finance.escrows
      WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL
@@ -252,6 +252,15 @@ BEGIN
     END IF;
     PERFORM pg_catalog.set_config('probe.escrow', v_e.id::text, true);
     PERFORM pg_catalog.set_config('probe.ticket', v_e.ticket_id::text, true);
+END $$;
+
+SAVEPOINT s_l9_ticket;
+DO $$
+DECLARE
+    v_e finance.escrows;
+    v_out text;
+BEGIN
+    SELECT * INTO v_e FROM finance.escrows WHERE id = pg_temp.s('escrow')::uuid;
     INSERT INTO finance.disputes (escrow_id, opened_by_profile, reason)
     VALUES (v_e.id, COALESCE(v_e.payer_user_id, v_e.payee_id), 'probe: work not delivered');
 

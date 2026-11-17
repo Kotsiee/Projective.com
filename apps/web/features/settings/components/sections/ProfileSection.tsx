@@ -23,10 +23,10 @@ import { sectionMeta } from "../../core/settings-registry.ts";
 
 /**
  * Settings → Profile (Decision #150): who can find the profile and what its public page shows — the
- * same four switches the profile editor carries, saved through the editor's OWN route
- * (`POST /api/profile/[handle]/save`, `org.save_profile`), so there is one write path and the two
- * surfaces cannot disagree. Everything else about the profile (story, skills, showcase) stays in the
- * editor, which this section links to.
+ * one home of these four settings since the profile is edited in place (Decision #439), saved through
+ * the profile's own route (`POST /api/profile/[handle]/save`, `org.save_profile`), so there is one
+ * write path. Everything else about the profile (story, skills, showcase) is edited on the profile
+ * page itself, which this section links to and which opens it as the contextual modal.
  */
 
 const VISIBILITY_OPTIONS = [
@@ -81,7 +81,7 @@ export function ProfileSection(props: ProfileSectionProps): JSX.Element {
 			<div class="stg-section">
 				<SectionHead title={meta.label} description={meta.description} />
 				<InlineNotice align="start" text="Your profile settings couldn't be loaded just now." />
-				{handle ? <OutLink href={`/${handle}/edit`}>Open the profile editor</OutLink> : null}
+				{handle ? <OutLink href={`/${handle}`}>Open your profile</OutLink> : null}
 			</div>
 		);
 	}
@@ -186,7 +186,7 @@ export function ProfileSection(props: ProfileSectionProps): JSX.Element {
 				/>
 			</SettingsBlock>
 
-			<OutLink href={`/${handle}/edit`}>Edit your public profile</OutLink>
+			<OutLink href={`/${handle}`}>Edit your public profile on the page</OutLink>
 			<SaveStatus state={status.value} />
 		</div>
 	);

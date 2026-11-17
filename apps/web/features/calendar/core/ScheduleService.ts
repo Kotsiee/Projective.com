@@ -10,6 +10,7 @@ import type {
 	EntryRoom,
 	EventClashVerdict,
 	OrganiseEntryInput,
+	PresetListResult,
 	RescheduleInput,
 	Routine,
 	RsvpInput,
@@ -58,6 +59,11 @@ export const ScheduleService = {
 		const qs = new URLSearchParams({ handle });
 		if (around) qs.set("around", around);
 		return getScheduling<{ page: SchedulePage }>(`/api/scheduling/availability?${qs.toString()}`);
+	},
+
+	/** The acting owner's live availability presets — the Availability tab's templates. */
+	presets(): Promise<CalendarResult<PresetListResult>> {
+		return getScheduling<PresetListResult>("/api/scheduling/presets");
 	},
 
 	/** A session-based entity's schedule page. */

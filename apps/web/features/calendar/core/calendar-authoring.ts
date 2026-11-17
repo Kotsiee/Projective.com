@@ -1,4 +1,9 @@
-import { type CalendarEvent, eligibleVoterCount } from "@projective/types/scheduling";
+import {
+	type CalendarEvent,
+	eligibleVoterCount,
+	type EntryClass,
+	type Routine,
+} from "@projective/types/scheduling";
 import type { CalendarContextTarget, CalendarRange } from "@ui/calendar/core/types.ts";
 import type { MenuItem } from "@ui/types/mod.ts";
 
@@ -14,6 +19,10 @@ import type { MenuItem } from "@ui/types/mod.ts";
  * calendars and a person's public schedule author nothing. RSVP, the reschedule negotiation and the
  * discovery-call moves are answers, not authoring, and stay on every calendar that shows them.
  *
+ * An `.ics` import is not authoring either (Decision #440, amending C7 (a)): `/calendar` reads the
+ * file into this visit's view, read-only, and says it is not saved. Its entries have no host, so
+ * {@link entryEditable} refuses every one of them and their drag stays a click.
+ *
  * Pure: no DOM, no signals.
  */
 
@@ -27,17 +36,15 @@ export type AuthoringAction =
 	| "keyboardCreate"
 	| "move"
 	| "edit"
-	| "delete"
-	| "import";
+	| "delete";
 
-/** The door each action writes through, or `null` where nothing keeps it yet. */
-export const AUTHORING_DOOR: Readonly<Record<AuthoringAction, string | null>> = {
+/** The door each action writes through. */
+export const AUTHORING_DOOR: Readonly<Record<AuthoringAction, string>> = {
 	create: "POST /api/scheduling/events",
 	keyboardCreate: "POST /api/scheduling/events",
 	move: "PATCH /api/scheduling/events",
 	edit: "PATCH /api/scheduling/events",
 	delete: "DELETE /api/scheduling/events",
-	import: null,
 };
 
 const BY_HOST: Readonly<Record<CalendarHost, readonly AuthoringAction[]>> = {
@@ -85,35 +92,89 @@ export interface AgendaMenuActions {
 }
 
 /**
- * The agenda's right-click rows for what the grid reported (Decision #380). An entry the viewer may
- * change offers Edit · Delete, each only where `can` has it; anyone else's opens read-only, as its
- * summary does. Empty time offers New event on that slot, and anywhere the grid cannot place (a
- * header, the timeline) a blank one at the focus — both only where `can` has `create`.
+ * What else an entry's menu offers where the surface has it (Decision #441): its colour, drawn by the
+ * caller as a menu row, and the routine it is in.
+ */
+export interface EntryMenuExtras {
+	/** The colour grid as a menu row, for an entry the viewer may edit. */
+	colour?: (event: CalendarEvent) => MenuItem;
+	/** The live routines, offered to an entry the viewer may organise. */
+	routines?: readonly Routine[];
+	/** Whether the viewer may organise this entry (`entryOrganisable`). */
+	organisable?: (event: CalendarEvent) => boolean;
+	/** Move it into a routine, or out of the one it is in (`null`). */
+	organise?: (event: CalendarEvent, routine: Routine | null) => void;
+	/** Make a routine and move it in. */
+	newRoutine?: (event: CalendarEvent) => void;
+}
+
+/** The Routine submenu: every live routine, No routine, and New routine; where it is now is inert. */
+function routineRow(ev: CalendarEvent, extras: EntryMenuExtras): MenuItem | null {
+	const { routines, organise } = extras;
+	if (!routines || !organise || !extras.organisable?.(ev)) return null;
+	const current = routines.find((r) => r.id === ev.routineId)?.id ?? null;
+	const items: MenuItem[] = [
+		{
+			key: "routine:none",
+			label: "No routine",
+			disabled: current === null,
+			disabledReason: current === null ? "It is in no routine." : undefined,
+			command: () => organise(ev, null),
+		},
+		...routines.map((r): MenuItem => ({
+			key: `routine:${r.id}`,
+			label: r.name,
+			disabled: r.id === current,
+			disabledReason: r.id === current ? "It is already in this routine." : undefined,
+			command: () => organise(ev, r),
+		})),
+	];
+	if (extras.newRoutine) {
+		const make = extras.newRoutine;
+		items.push({ separator: true }, {
+			key: "routine:new",
+			label: "New routine…",
+			command: () => make(ev),
+		});
+	}
+	return { key: "routine", label: "Routine", items };
+}
+
+/**
+ * The agenda's right-click rows for what the grid or the lane reported (Decisions #380, #441). An entry
+ * the viewer may change offers Edit · its colour · Delete, each only where `can` has it; anyone else's
+ * opens read-only, as its summary does. An entry the viewer may organise offers its Routine too. Empty
+ * time offers New event on that slot, and anywhere the grid cannot place (a header, the timeline) a
+ * blank one at the focus — both only where `can` has `create`.
  */
 export function agendaRows(
 	target: CalendarContextTarget | null,
 	tz: string,
 	act: AgendaMenuActions,
 	can: ReadonlySet<AuthoringAction>,
+	extras: EntryMenuExtras = {},
 ): MenuItem[] {
 	const ev = target?.event as CalendarEvent | null | undefined;
 	if (ev) {
 		const rows: MenuItem[] = [];
-		if (entryEditable(ev) && can.has("edit")) {
+		const editable = entryEditable(ev) && can.has("edit");
+		if (editable) {
 			rows.push({ key: "edit", label: "Edit event", command: () => act.edit(ev) });
+		} else {
+			rows.push({ key: "open", label: "Open details", command: () => act.open(ev) });
 		}
+		if (editable && extras.colour) rows.push(extras.colour(ev));
+		const routine = routineRow(ev, extras);
+		if (routine) rows.push(routine);
 		if (entryEditable(ev) && can.has("delete")) {
-			if (rows.length > 0) rows.push({ separator: true });
-			rows.push({
+			rows.push({ separator: true }, {
 				key: "delete",
 				label: "Delete event",
 				danger: true,
 				command: () => act.remove(ev),
 			});
 		}
-		return rows.length > 0
-			? rows
-			: [{ key: "open", label: "Open details", command: () => act.open(ev) }];
+		return rows;
 	}
 	if (!can.has("create")) return [];
 	const range = target?.range;
@@ -126,5 +187,49 @@ export function agendaRows(
 		...(range.allDay ? {} : { hour: "2-digit", minute: "2-digit" }),
 	}).format(range.start);
 	return [{ key: "new", label: "New event", hint: when, command: () => act.create(range) }];
+}
+// #endregion
+
+// #region The lane's right-click rows
+/** What the lane's own right-click rows do; the lane supplies them. */
+export interface LaneMenuActions {
+	create: (entry: EntryClass) => void;
+	newRoutine: () => void;
+	/** Gather entries into `routine`; `null` asks which, or with no routine yet, makes one first. */
+	addToRoutine: (routine: Routine | null) => void;
+}
+
+/**
+ * The rows a right-click on the lane itself gets, rather than on an entry in it (Decision #441): New
+ * event · New reminder where `can` has `create`, then New routine and a way to gather existing entries
+ * into one. On a routine's own row the gathering names that routine.
+ */
+export function laneRows(
+	routine: Routine | null,
+	routines: readonly Routine[],
+	act: LaneMenuActions,
+	can: ReadonlySet<AuthoringAction>,
+): MenuItem[] {
+	const rows: MenuItem[] = [];
+	if (can.has("create")) {
+		rows.push(
+			{ key: "new-event", label: "New event", command: () => act.create("event") },
+			{ key: "new-reminder", label: "New reminder", command: () => act.create("reminder") },
+			{ separator: true },
+		);
+	}
+	rows.push(
+		{ key: "new-routine", label: "New routine", command: act.newRoutine },
+		{
+			key: "add-to-routine",
+			label: routine
+				? `Add entries to ${routine.name}…`
+				: routines.length > 0
+				? "Add entries to a routine…"
+				: "Add entries to a new routine…",
+			command: () => act.addToRoutine(routine),
+		},
+	);
+	return rows;
 }
 // #endregion

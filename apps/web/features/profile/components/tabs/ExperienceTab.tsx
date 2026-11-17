@@ -20,18 +20,25 @@ export interface ExperienceTabProps {
 }
 
 // #region Row
-interface RowProps {
+/** One ledger row as a visitor reads it; `actions` is the owner's per-row controls (Decision #439). */
+export interface LedgerRowProps {
 	logo?: string;
 	org: string;
 	title: ComponentChildren;
 	dates: string;
 	summary?: string;
 	link?: string;
+	actions?: ComponentChildren;
+	/** The owner's handle on the row, for focus to return to its controls. */
+	rowKey?: string;
 }
 
-function Row({ logo, org, title, dates, summary, link }: RowProps): JSX.Element {
+/** A ledger row: the logo, what and where, the dates — and, for the owner, its controls. */
+export function LedgerRow(
+	{ logo, org, title, dates, summary, link, actions, rowKey }: LedgerRowProps,
+): JSX.Element {
 	return (
-		<li class="pf-tl">
+		<li class={actions ? "pf-tl pf-ownerblock" : "pf-tl"} data-row={rowKey}>
 			<Avatar image={logo} label={org} size={40} shape="square" class="pf-tl__logo" />
 			<div class="pf-tl__body">
 				<span class="pf-tl__title">{title}</span>
@@ -46,6 +53,7 @@ function Row({ logo, org, title, dates, summary, link }: RowProps): JSX.Element 
 					: null}
 			</div>
 			<span class="pf-tl__dates">{dates}</span>
+			{actions ? <div class="pf-tl__actions">{actions}</div> : null}
 		</li>
 	);
 }
@@ -63,20 +71,24 @@ function Section(
 // #endregion
 
 // #region Entry shapes
-function experienceDates(e: ExperienceEntry): string {
+/** "2019 – Present". */
+export function experienceDates(e: ExperienceEntry): string {
 	const end = e.current ? "Present" : e.end ?? "Present";
 	return `${e.start} – ${end}`;
 }
 
-function educationDates(e: EducationEntry): string {
+/** "2014 – 2018". */
+export function educationDates(e: EducationEntry): string {
 	return `${e.start} – ${e.end ?? "Present"}`;
 }
 
-function certificationDates(c: CertificationEntry): string {
+/** "2021 – 2024", or the issue year alone. */
+export function certificationDates(c: CertificationEntry): string {
 	return c.expires ? `${c.issued} – ${c.expires}` : c.issued;
 }
 
-function certificationTitle(c: CertificationEntry): ComponentChildren {
+/** A certification's name, with the platform's verified crest where it holds. */
+export function certificationTitle(c: CertificationEntry): ComponentChildren {
 	if (!c.verified) return c.name;
 	return (
 		<>
@@ -102,7 +114,7 @@ export function ExperienceTab({ payload }: ExperienceTabProps): JSX.Element {
 				? (
 					<Section title="Experience">
 						{experience.map((e) => (
-							<Row
+							<LedgerRow
 								key={e.id}
 								logo={e.logo}
 								org={e.org}
@@ -118,7 +130,7 @@ export function ExperienceTab({ payload }: ExperienceTabProps): JSX.Element {
 				? (
 					<Section title="Education">
 						{education.map((e) => (
-							<Row
+							<LedgerRow
 								key={e.id}
 								logo={e.logo}
 								org={e.school}
@@ -133,7 +145,7 @@ export function ExperienceTab({ payload }: ExperienceTabProps): JSX.Element {
 				? (
 					<Section title="Certifications">
 						{certifications.map((c) => (
-							<Row
+							<LedgerRow
 								key={c.id}
 								logo={c.logo}
 								org={c.issuer}

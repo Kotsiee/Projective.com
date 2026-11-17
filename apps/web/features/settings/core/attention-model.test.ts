@@ -170,7 +170,7 @@ Deno.test("attention — the profile item only nudges profile steps, with the st
 	const photo = at("add_photo");
 	assertEquals(photo.map((i) => [i.key, i.href, i.action]), [[
 		"profile",
-		"/juno/edit",
+		"/@juno",
 		"Add a profile photo",
 	]]);
 	assertEquals(at("verify_email"), []);

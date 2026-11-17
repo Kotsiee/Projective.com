@@ -56,6 +56,28 @@ export function entryHoldsTime(event: CalendarEvent): boolean {
 }
 
 /**
+ * Moving an entry into a routine: it takes the routine's behaviour, unless somebody relies on it, in
+ * which case it keeps holding its time.
+ */
+export function joinRoutine(event: CalendarEvent, routine: Routine): EntryOrganisation {
+	return {
+		routineId: routine.id,
+		...(entryHoldsTime(event) ? {} : { availabilityBehavior: routine.behavior }),
+	};
+}
+
+/**
+ * Taking an entry out of its routine also gives back what the routine lent it: a passive entry holds
+ * its time again, so its hatching goes with the routine (Decision #441).
+ */
+export function leaveRoutine(event: CalendarEvent): EntryOrganisation {
+	return {
+		routineId: null,
+		...(event.availabilityBehavior === "passive" ? { availabilityBehavior: "disruptive" } : {}),
+	};
+}
+
+/**
  * Where a passive routine's inspector points: Session Services on the marketplace, on the routine's
  * own words. A person who keeps "Spanish" open on their week is the audience for a Spanish tutor.
  */

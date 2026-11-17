@@ -73,7 +73,9 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('fx_rate_max_age_hours', '24'::jsonb,
         'The oldest rate observation a quote may use, in hours: an older rate refuses the quote (fx_rate_stale) rather than converting on it.'),
     ('settlement_currencies', '["GBP", "USD", "EUR", "CAD", "AUD", "JPY", "SGD", "CHF", "ZAR"]'::jsonb,
-        'The currencies money settles in on the GB platform (Decision #423 (B)); AED, INR and NGN are display-only. A conversion is quoted only between two of these.')
+        'The currencies money settles in on the GB platform (Decision #423 (B)); AED, INR and NGN are display-only. A conversion is quoted only between two of these.'),
+    ('dev_overrides_honoured', 'false'::jsonb,
+        'Whether this database honours a Dev Context Switcher override that LOOSENS a gate (today x-pj-dev-fx-checkout: on, finance.fn_fx_checkout_enabled, Decision #436). False everywhere but a local database: only the development seed world (supabase/seeds/07_finance.sql) sets it, so a header a client sends to a deployed PostgREST loosens nothing. An override that can only make a gate stricter needs no such key.')
 ON CONFLICT (key) DO NOTHING;
 
 -- from 20260723092000

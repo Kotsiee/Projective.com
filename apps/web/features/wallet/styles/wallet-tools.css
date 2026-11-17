@@ -1,9 +1,9 @@
 /*
  * The wallet's tools: the overview's range ruler, pinned under the top bar while the page scrolls
  * beneath it; the Transactions and Analytics footer rig (period ruler · Download); and the hero's
- * corner tools (display currency · settings). The pinned ruler floats over both the aurora and the
- * sheet, so it carries its own solid ground and a slight drop shadow; the tools only ever sit on the
- * aurora, so they take the hero's glass and ink.
+ * corner tools (display currency · settings). Every one that floats takes the hero's one glass
+ * (wallet-hero.css). The pinned ruler also floats over the sheet once it slides up, so it flips to the
+ * sheet's polarity there (`data-ground="sheet"`, set by the page from the sheet's position).
  */
 
 /* #region The pinned ruler bar */
@@ -51,8 +51,10 @@
 .wlt-ruler {
 	--wlt-ruler-pad: var(--space-1);
 	--wlt-ruler-dir: 1;
-	position: relative;
-	isolation: isolate;
+	--wlt-ruler-ink: var(--wlt-hero-ink-soft);
+	--wlt-ruler-ink-hover: var(--wlt-hero-ink);
+	--wlt-ruler-thumb: var(--wlt-hero-thumb);
+	--wlt-ruler-thumb-ink: var(--wlt-hero-thumb-ink);
 	display: grid;
 	grid-template-columns: repeat(var(--wlt-ruler-n), minmax(2.25rem, 1fr));
 	flex: none;
@@ -60,20 +62,27 @@
 	min-inline-size: calc(var(--wlt-ruler-n) * 2.25rem + 2 * var(--wlt-ruler-pad));
 	block-size: var(--wlt-tool-h);
 	padding: var(--wlt-ruler-pad);
-	border: 1px solid var(--hairline-color);
+	border: 1px solid var(--wlt-glass-edge);
 	border-radius: var(--radius-full);
-	box-shadow: var(--wlt-ruler-shadow);
+	box-shadow: none;
 	pointer-events: auto;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
 }
 
-/* The ruler's ground, on an underlay beneath the sliding thumb: a solid tonal step, never glass. */
 .wlt-ruler::before {
-	content: "";
-	position: absolute;
-	inset: 0;
 	z-index: -2;
-	border-radius: inherit;
-	background: var(--surface-2);
+}
+
+.wlt-rulebar[data-ground="sheet"] .wlt-ruler {
+	--wlt-glass-surface: var(--wlt-ruler-sheet-fill);
+	--wlt-ruler-ink: var(--on-surface-variant);
+	--wlt-ruler-ink-hover: var(--on-surface);
+	--wlt-ruler-thumb: var(--surface);
+	--wlt-ruler-thumb-ink: var(--on-surface);
+	border-color: var(--hairline-strong-color);
+	box-shadow: var(--wlt-ruler-shadow);
 }
 
 [dir="rtl"] .wlt-ruler {
@@ -92,10 +101,12 @@
 	inset-inline-start: var(--wlt-ruler-pad);
 	inline-size: calc((100% - 2 * var(--wlt-ruler-pad)) / var(--wlt-ruler-n));
 	border-radius: var(--radius-full);
-	background: var(--surface);
+	background: var(--wlt-ruler-thumb);
 	box-shadow: var(--elevation-low);
 	transform: translateX(calc(var(--wlt-ruler-i) * 100% * var(--wlt-ruler-dir)));
-	transition: transform var(--dur-medium) var(--spring-standard);
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .wlt-ruler__cell {
@@ -106,7 +117,7 @@
 	border: 0;
 	border-radius: var(--radius-full);
 	background: transparent;
-	color: var(--on-surface-variant);
+	color: var(--wlt-ruler-ink);
 	font: inherit;
 	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
@@ -121,12 +132,11 @@
 }
 
 .wlt-ruler__cell:hover {
-	color: var(--on-surface);
+	color: var(--wlt-ruler-ink-hover);
 }
 
 .wlt-ruler__cell[aria-checked="true"] {
-	color: var(--on-surface);
-	font-weight: var(--fw-semibold);
+	color: var(--wlt-ruler-thumb-ink);
 	cursor: default;
 }
 
@@ -287,8 +297,6 @@
 }
 
 .wlt-tool {
-	position: relative;
-	isolation: isolate;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -309,18 +317,6 @@
 		border-color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-tool::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	border-radius: inherit;
-	background: var(--wlt-glass-fill);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .wlt-tool--icon {
@@ -344,12 +340,9 @@
 
 @media (hover: hover) {
 	.wlt-tool:hover {
+		--wlt-glass-surface: var(--wlt-glass-fill-hover);
 		border-color: var(--wlt-glass-edge-hover);
 		box-shadow: var(--wlt-pill-lift);
-	}
-
-	.wlt-tool:hover::before {
-		background: var(--wlt-glass-fill-hover);
 	}
 }
 
@@ -363,6 +356,12 @@
 	transition-duration: var(--dur-press);
 }
 
+.wlt-tool:focus-visible,
+.wlt-scope:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
 /* In a narrow hero the currency keeps its symbol and gives up the code. */
 @container wlt-herobox (max-width: 30rem) {
 	.wlt-tool__code {
@@ -371,7 +370,7 @@
 }
 /* #endregion */
 
-/* #region The currency list (a glass popover — see wallet-accounts.css `.wlt-glass-pop`) */
+/* #region The currency list (a glass popover — see wallet-popovers.css `.wlt-glass-pop`) */
 .wlt-currency {
 	display: flex;
 	flex-direction: column;
@@ -419,7 +418,9 @@
 /* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
+	.wlt-ruler,
 	.wlt-ruler__thumb,
+	.wlt-ruler__cell,
 	.wlt-scale__marker,
 	.wlt-scale__name {
 		transition: none;
@@ -431,7 +432,9 @@
 	}
 }
 
+:root[data-motion="reduced"] .wlt-ruler,
 :root[data-motion="reduced"] .wlt-ruler__thumb,
+:root[data-motion="reduced"] .wlt-ruler__cell,
 :root[data-motion="reduced"] .wlt-scale__marker,
 :root[data-motion="reduced"] .wlt-scale__name {
 	transition: none;

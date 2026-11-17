@@ -24,6 +24,7 @@ import { availabilityAt, localTimeLabel, wallClockAt } from "../core/hours.ts";
 import { type HireProject, reviewsHref } from "../core/profile-model.ts";
 import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { useMinuteClock } from "../hooks/useMinuteClock.ts";
+import { liveProfile } from "../core/owner-store.ts";
 import { useTrustSignalOverride } from "../hooks/useTrustSignalOverride.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import { settingsOf } from "@projective/types/profile";
@@ -87,7 +88,9 @@ function pad(n: number): string {
 }
 
 export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JSX.Element {
-	const { profile, preview, authed, services, hireProjects, consultation } = props;
+	const { preview, authed, services, hireProjects, consultation } = props;
+	/** An owner's in-place edits (Decision #439) redraw the band too; a visitor's band never changes. */
+	const profile = props.profile.viewer?.isOwner === true ? liveProfile(props.profile) : props.profile;
 	const condensed = headerCondensed.value;
 	const liveAvatar = useSignal(profile.avatar);
 	const avatar = liveAvatar.value;

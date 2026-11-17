@@ -6,71 +6,6 @@
 	max-inline-size: var(--measure);
 }
 
-.stg-providers {
-	display: flex;
-	flex-direction: column;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.stg-provider {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-2) var(--space-3);
-	padding-block: var(--space-3);
-}
-
-.stg-provider + .stg-provider {
-	border-block-start: var(--hairline);
-}
-
-.stg-provider__glyph {
-	display: block;
-	flex: none;
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
-	color: var(--on-surface);
-}
-
-.stg-provider[data-state="na"] .stg-provider__glyph {
-	opacity: var(--fld-disabled-alpha);
-}
-
-.stg-provider__text {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-}
-
-.stg-provider__name {
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-
-.stg-provider__meta {
-	overflow-wrap: anywhere;
-	font-size: var(--text-xs);
-	color: var(--text-secondary);
-}
-
-.stg-provider__actions {
-	display: flex;
-	justify-content: flex-end;
-}
-
-.stg-provider__actions .ui-button {
-	text-decoration: none;
-}
-
-.stg-provider__lock {
-	font-size: var(--text-xs);
-	color: var(--text-secondary);
-}
-
 .stg-removal__body {
 	display: flex;
 	flex-direction: column;
@@ -132,14 +67,5 @@
 @container stg (max-width: 30rem) {
 	.stg-handle {
 		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.stg-provider {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.stg-provider__actions {
-		grid-column: 2;
-		justify-content: flex-start;
 	}
 }

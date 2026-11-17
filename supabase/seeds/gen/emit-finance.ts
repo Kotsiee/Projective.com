@@ -229,6 +229,10 @@ export function emitFinance(world: World): string {
 			"07_finance.sql — wallets, ledger, escrows, orders, invoices, payouts and cards",
 			"Every balance_after_cents is a computed running balance over a chronologically sorted event list; the generator refuses to emit a ledger that ever goes negative. Nothing is minted: every entity balance starts with a dated top-up from its owner, audited in finance.ledger_audit. Vault permissions are not written here — the wallet insert trigger projects them from the workspace roles.",
 		),
+		"-- A seeded database is a development database: it honours a Dev Context Switcher override that",
+		"-- loosens a gate (finance.fn_fx_checkout_enabled, Decision #436). No deployed database runs this file.",
+		"UPDATE security.platform_params SET value = 'true'::jsonb WHERE key = 'dev_overrides_honoured';",
+		"",
 	];
 
 	// #region Wallets

@@ -1,5 +1,6 @@
 import {
 	addDays,
+	type AvailabilityPreset,
 	type CalendarEvent,
 	civilParts,
 	dateInZone,
@@ -155,6 +156,41 @@ export function presetOf(rule: string | undefined, a: RepeatAnchor): RepeatPrese
 	if (!rule) return "none";
 	return REPEAT_PRESETS.find((p) => p !== "none" && toRRule(presetDraft(p, a), a) === rule) ??
 		"custom";
+}
+
+/** A repeat's pattern without how it ends: what an availability template can stand for. */
+export type RepeatPattern = Omit<RepeatDraft, "end">;
+
+/**
+ * The one repeat pattern an availability template follows, or `null` when one rule cannot: its active
+ * `add` rules all weekly at one interval (their days joined), or a single daily rule.
+ */
+export function templateRepeat(preset: Pick<AvailabilityPreset, "rules">): RepeatPattern | null {
+	const adds = preset.rules.filter((r) => r.active && r.effect === "add");
+	if (adds.length === 0) return null;
+	const [first] = adds;
+	if (first.pattern.type === "daily") {
+		return adds.length === 1
+			? { freq: "DAILY", interval: first.pattern.interval, isoDays: [] }
+			: null;
+	}
+	if (first.pattern.type !== "weekly") return null;
+	const interval = first.pattern.interval;
+	const days = new Set<number>();
+	for (const rule of adds) {
+		if (rule.pattern.type !== "weekly" || rule.pattern.interval !== interval) return null;
+		for (const wd of rule.pattern.days) days.add(isoOf(wd));
+	}
+	return { freq: "WEEKLY", interval, isoDays: [...days].sort((x, y) => x - y) };
+}
+
+/** Whether two repeats follow the same pattern, however each one ends. */
+export function sameRepeatPattern(a: RepeatPattern, b: RepeatPattern): boolean {
+	if (a.freq !== b.freq || a.interval !== b.interval) return false;
+	if (a.freq !== "WEEKLY") return true;
+	const x = [...a.isoDays].sort((p, q) => p - q);
+	const y = [...b.isoDays].sort((p, q) => p - q);
+	return x.length === y.length && x.every((d, i) => d === y[i]);
 }
 // #endregion
 

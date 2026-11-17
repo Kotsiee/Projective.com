@@ -1,13 +1,20 @@
-import type { FundPaidRevision, PaidRevisionFunding } from "@projective/types/finance";
+import type {
+	FundingCharge,
+	FundPaidRevision,
+	PaidRevisionFunding,
+	PaidRevisionQuoteQuery,
+} from "@projective/types/finance";
 import { formatMoney } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { isFinanceBackendLive } from "../../core/supabase.ts";
+import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { projectsDb } from "../projects/live-support.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
+import { fundingChargeFor } from "./funding-charge.ts";
+import { readQuote } from "./fx-quotes.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 
 /**
@@ -206,17 +213,32 @@ async function readFundingFacts(
 // #endregion
 
 // #region Direct payment
+/** Why a round's conversion quote can no longer be used: the dialog re-reads and the payer confirms. */
+const QUOTE_REFRESHED =
+	"The exchange rate for this revision has been refreshed. Review the new figure, then pay.";
+
+/** Whether a door refused the conversion quote itself: used, expired, or not this round's. */
+function isQuoteRefusal(error: { code?: string; message: string }): boolean {
+	return (error.code === "PC409" && /^quote_(used|expired|invalid)/.test(error.message)) ||
+		(error.code === "22023" && error.message.startsWith("fxQuoteId:"));
+}
+
 async function fundByCard(
 	input: FundPaidRevision,
 	facts: RevisionFundingFacts,
 	actor: ReadActor,
 ): Promise<ServiceResult<PaidRevisionFunding>> {
+	// Paid in the payer's own currency (Decision #436): the card is charged the quote's figure, which
+	// `begin_card_payment` holds it to, and settlement converts it before the round's escrow is held.
+	const held = input.fxQuoteId ? await readQuote(actor, input.fxQuoteId) : null;
+	if (input.fxQuoteId && !held) return fail(409, { message: QUOTE_REFRESHED });
 	const begun = await PaymentBackendService.createPaidRevisionIntent({
 		projectId: facts.project.id,
 		stageId: facts.stage.id,
 		revisionId: facts.revision.id,
-		expectedAmountMinor: input.expectedAmountMinor,
-		currency: input.currency,
+		expectedAmountMinor: held ? held.quote.fromMinor : input.expectedAmountMinor,
+		currency: held ? held.quote.fromCurrency : input.currency,
+		fxQuoteId: held ? held.quote.id : null,
 		idempotencyKey: input.idempotencyKey,
 	}, actor);
 	if (!begun.ok || !begun.data) {
@@ -228,11 +250,23 @@ async function fundByCard(
 }
 
 async function fundFromWallet(
+	input: FundPaidRevision,
 	facts: RevisionFundingFacts,
 	actor: ReadActor & { accessToken: string },
 ): Promise<ServiceResult<PaidRevisionFunding>> {
-	const { data, error } = await projectsDb(actor).rpc("fund_paid_revision", { p_revision_id: facts.revision.id });
+	// Paid in the payer's own currency (Decision #436): the quote converts their money and the round is
+	// held from the result in one transaction.
+	const { data, error } = input.fxQuoteId
+		? await getUserClient(actor.accessToken).schema("finance").rpc("fund_with_conversion", {
+			p_fx_quote_id: input.fxQuoteId,
+			p_project_id: facts.project.id,
+			p_stage_id: facts.stage.id,
+			p_ticket_id: null,
+			p_revision_id: facts.revision.id,
+		})
+		: await projectsDb(actor).rpc("fund_paid_revision", { p_revision_id: facts.revision.id });
 	if (error) {
+		if (input.fxQuoteId && isQuoteRefusal(error)) return fail(409, { message: QUOTE_REFRESHED });
 		const authority = businessAuthorityRefusal(error);
 		if (authority) {
 			return fail(authority.status, { message: authority.message, details: authority.details });
@@ -271,9 +305,54 @@ export class RevisionPurchaseBackendService {
 			}
 			const refusal = revisionFundingCheck(facts, input);
 			if (refusal) return fail(refusal.status, { message: refusal.message });
-			return input.method === "card" ? await fundByCard(input, facts, actor) : await fundFromWallet(facts, actor);
+			return input.method === "card"
+				? await fundByCard(input, facts, actor)
+				: await fundFromWallet(input, facts, actor);
 		} catch (error) {
 			console.error("[revision-purchase:fund]", error instanceof Error ? error.message : error);
+			return fail(503, { message: "We couldn't reach this revision just now. Try again in a moment." });
+		}
+	}
+
+	/**
+	 * What paying for one round straight from the review charges its payer (Decision #436): the round's
+	 * own price, or through locked quotes its price in their billing currency unless `payIn` names the
+	 * project's. Every gate the payment applies is checked first, so a round that cannot be paid for now
+	 * locks no quote.
+	 */
+	static async quote(
+		query: PaidRevisionQuoteQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ funding: FundingCharge }>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to pay for this revision." });
+		if (!isFinanceBackendLive()) {
+			return fail(503, { message: "Paying for revisions isn't connected in this environment." });
+		}
+		try {
+			const facts = await readFundingFacts(actor, query.revisionId);
+			if (!facts) {
+				return fail(404, { message: "We couldn't find that revision — it may have been withdrawn." });
+			}
+			const { project, revision } = facts;
+			const price = Number(revision.price_cents) || 0;
+			const refusal = revisionFundingCheck(facts, {
+				...query,
+				expectedAmountMinor: price,
+				currency: project.currency,
+			});
+			if (refusal) return fail(refusal.status, { message: refusal.message });
+			const funding = await fundingChargeFor({
+				payer: project.client_business_id
+					? { scope: "business", id: project.client_business_id }
+					: { scope: "personal", id: project.client_user_id || project.owner_user_id },
+				listed: { minor: price, currency: project.currency },
+				refTable: "revisions",
+				refId: revision.id,
+				payIn: query.payIn ?? null,
+			}, actor);
+			return ok({ funding });
+		} catch (error) {
+			console.error("[revision-purchase:quote]", error instanceof Error ? error.message : error);
 			return fail(503, { message: "We couldn't reach this revision just now. Try again in a moment." });
 		}
 	}

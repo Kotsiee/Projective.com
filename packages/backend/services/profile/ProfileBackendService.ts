@@ -15,9 +15,11 @@ import {
 } from "./live-profile.ts";
 import {
 	applyProfileMedia,
+	archivePortfolioPiece,
 	type ProfileMediaState,
 	type ProfileOwner,
 	refusalFrom,
+	savePortfolioPiece,
 	saveProfile,
 	saveShowcaseGrid,
 	setFollow,
@@ -35,7 +37,9 @@ import {
 	type ProfileTab,
 	type ProfileTabPayload,
 	type ProfileView,
+	type SavePortfolioPiece,
 	type SaveShowcase,
+	type WorkPiece,
 } from "@projective/types/profile";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
 import type {
@@ -333,6 +337,45 @@ export class ProfileBackendService {
 		const saved = await saveShowcaseGrid(target.data.owner, handle, input, actor);
 		if (saved.ok) invalidateCatalog();
 		return saved;
+	}
+
+	/**
+	 * Create or edit one portfolio piece (a freelancer's "Selected work"). Answers with the owner's
+	 * whole portfolio as now STORED — private pieces included, read under their session — so the
+	 * page redraws from what the database holds rather than from what was sent.
+	 */
+	static async savePortfolioPiece(
+		handle: string,
+		input: SavePortfolioPiece,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ pieces: WorkPiece[] }>> {
+		const target = await ownedProfile(handle, actor);
+		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
+		if (target.data.profile.kind !== "freelancer") {
+			return fail(422, { message: "Only a freelancer's profile has a portfolio." });
+		}
+		const saved = await savePortfolioPiece(target.data.owner, input, actor);
+		if (!saved.ok) return fail(saved.status, { message: saved.message, errors: saved.errors });
+		invalidateCatalog();
+		const pieces = await fetchPortfolio(handle, actor);
+		if (!pieces) return unavailable();
+		return ok({ pieces }, { message: input.id ? "Piece saved." : "Piece added." });
+	}
+
+	/** Take one piece off the profile (archived, never deleted). Answers with the portfolio as stored. */
+	static async archivePortfolioPiece(
+		handle: string,
+		id: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ pieces: WorkPiece[] }>> {
+		const target = await ownedProfile(handle, actor);
+		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
+		const archived = await archivePortfolioPiece(target.data.owner, id, actor);
+		if (!archived.ok) return fail(archived.status, { message: archived.message, errors: archived.errors });
+		invalidateCatalog();
+		const pieces = await fetchPortfolio(handle, actor);
+		if (!pieces) return unavailable();
+		return ok({ pieces }, { message: "Piece removed from your profile." });
 	}
 
 	/** The owner's schedule + call settings, for the Availability editor. */

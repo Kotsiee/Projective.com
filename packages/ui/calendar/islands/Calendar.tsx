@@ -96,6 +96,12 @@ const POPOVER_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as cons
  */
 const EMPTY_CLUSTERS: ReadonlySet<string> = new Set<string>();
 
+function sameEvent(a: CalendarEvent, b: CalendarEvent): boolean {
+	if (a === b) return true;
+	const keys = Object.keys(a) as (keyof CalendarEvent)[];
+	return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
 export default function Calendar(props: CalendarProps): JSX.Element {
 	const tz = props.timezone ?? props.availability?.timezone ?? localTimezone();
 	const hour12 = true;
@@ -195,6 +201,28 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		if (popover.peek()?.kind === "stack") popover.value = null;
 		else if (clusterId) popover.value = null;
 	}
+
+	useEffect(() => {
+		const open = popover.peek();
+		if (!open || open.kind === "create") return;
+		const byId = new Map(props.events.map((e) => [e.id, e]));
+		if (open.kind === "event") {
+			const fresh = byId.get(open.event.id);
+			if (!fresh) popover.value = null;
+			else if (!sameEvent(fresh, open.event)) popover.value = { ...open, event: fresh };
+			return;
+		}
+		const fresh = open.events
+			.map((e) => byId.get(e.id))
+			.filter((e): e is CalendarEvent => e !== undefined);
+		if (fresh.length !== open.events.length) {
+			popover.value = null;
+			return;
+		}
+		if (fresh.some((e, i) => !sameEvent(e, open.events[i]))) {
+			popover.value = { ...open, events: fresh };
+		}
+	}, [props.events]);
 
 	/**
 	 * Commit the quick-create, then clear the draft.
@@ -837,6 +865,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onQuickCreate={props.onQuickCreate}
 								onExpandCreate={props.onExpandCreate}
 								onOpenEvent={props.onOpenEvent}
+								onEventDoubleClick={props.onEventDoubleClick}
 								onMoveEvent={props.onMoveEvent}
 								onFocusChange={setFocus}
 								avoid={POPOVER_AVOID}
@@ -857,6 +886,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
 								onContextTarget={props.onContextTarget}
+								onEventDoubleClick={props.onEventDoubleClick}
 								onOpenDay={(d) => {
 									setFocus(d);
 									setView("day");
@@ -885,6 +915,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onSelectRange={props.onSelectRange}
 								onOpenEvent={props.onOpenEvent}
 								onContextTarget={props.onContextTarget}
+								onEventDoubleClick={props.onEventDoubleClick}
 								onFocusDayChange={setFocus}
 								unfolded={unfolded.value}
 								onUnfold={toggleUnfold}
@@ -917,6 +948,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								onOpenEvent={props.onOpenEvent}
 								onMoveEvent={props.onMoveEvent}
 								onContextTarget={props.onContextTarget}
+								onEventDoubleClick={props.onEventDoubleClick}
 								onFocusChange={setFocus}
 								unfolded={unfolded.value}
 								onUnfold={toggleUnfold}

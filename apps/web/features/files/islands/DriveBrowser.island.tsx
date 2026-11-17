@@ -24,6 +24,7 @@ import {
 } from "@projective/types/integrations";
 
 import { FileTypeIcon } from "@web/features/projects/components/FileTypeIcon.tsx";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
@@ -103,8 +104,6 @@ export interface DriveBrowserProps {
 	owner: { ownerType: AssetOwnerType; ownerId: string };
 	/** The destination folder; `null` files it at the library root, which is a real destination. */
 	folderId: string | null;
-	/** The same-origin PATH a consent returns to. Validated server-side; an absolute URL is refused. */
-	returnTo: string;
 	onClose: () => void;
 	/** The rows that landed in the hub — the host re-reads its listing. */
 	onAdded?: (assets: AssetItem[]) => void;
@@ -166,7 +165,7 @@ function canBrowse(status: ConnectionStatus): boolean {
 // #endregion
 
 export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | null {
-	const { open, connections, owner, folderId, returnTo, onClose, onAdded } = props;
+	const { open, connections, owner, folderId, onClose, onAdded } = props;
 
 	// #region State
 	/** The connection being browsed; `null` before one is chosen. */
@@ -198,8 +197,6 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 	const outcome = useSignal<{ severity: "success" | "warning" | "danger"; text: string } | null>(
 		null,
 	);
-	/** A consent is being started for this provider slug — disables just that path. */
-	const starting = useSignal<string | null>(null);
 
 	const panelRef = useRef<HTMLDivElement>(null);
 	const reqId = useRef(0);
@@ -351,25 +348,10 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 	// #endregion
 
 	// #region Consent
-	/**
-	 * Begin a consent and hand the browser to the provider.
-	 *
-	 * A NAVIGATION, never a fetch: a consent screen is something a person reads and agrees to, and
-	 * requesting it in the background would be asking the provider to authorise a grant nobody saw.
-	 */
-	async function connect(providerSlug: string): Promise<void> {
-		if (starting.value) return;
-		starting.value = providerSlug;
-		error.value = null;
-		const res = await IntegrationsService.start({ providerSlug, returnTo });
-		if (res.ok && res.data) {
-			globalThis.location.assign(res.data.authorizeUrl);
-			// Deliberately NOT clearing `starting`: the page is navigating away, and re-enabling the
-			// control in the frames before it does invites a second consent for the same provider.
-			return;
-		}
-		starting.value = null;
-		error.value = res.message ?? "That connection could not be started.";
+	/** Every consent starts in Settings → Integrations (Decision #440): close, and open its drives. */
+	function connect(): void {
+		onClose();
+		void openSettings("integrations", "storage");
 	}
 	// #endregion
 
@@ -499,9 +481,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 								variant="outlined"
 								size="sm"
 								label={sourceLabel(slug)}
-								loading={starting.value === slug}
-								disabled={starting.value !== null}
-								onClick={() => void connect(slug)}
+								onClick={connect}
 							/>
 						))}
 					</div>
@@ -542,9 +522,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 									variant="filled"
 									size="sm"
 									label={consent === "reconnect" ? "Reconnect" : `Connect ${active.providerLabel}`}
-									loading={starting.value === active.providerSlug}
-									disabled={starting.value !== null}
-									onClick={() => void connect(active.providerSlug)}
+									onClick={connect}
 								/>
 							</div>
 						)

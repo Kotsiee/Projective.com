@@ -28,7 +28,6 @@ import { FolderMark } from "../components/FolderMark.tsx";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { NodeMark } from "../components/file-hub-glyphs.tsx";
 import { FilesService } from "../core/FilesService.ts";
-import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { pathKey } from "../core/asset-model.ts";
 import { dropAttrs } from "../core/files-dnd.ts";
 import {
@@ -49,7 +48,6 @@ import {
 } from "../core/files-tree.ts";
 import {
 	askNewFolder,
-	connectDriveOpen,
 	currentPath,
 	currentScope,
 	disconnectOpen,
@@ -225,18 +223,8 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 			collapsed.value = el?.dataset.mode === "collapsed";
 		} catch { /* no DOM — non-fatal */ }
 
-		void load().then(reportConsent);
+		void load();
 	}, []);
-
-	/** The consent round trip's outcome is a coarse marker on the URL it came back to. */
-	function reportConsent(): void {
-		const url = new URL(globalThis.location.href);
-		const outcome = IntegrationsService.completionFrom(url);
-		if (!outcome) return;
-		if (outcome === "failed") treeError.value = "That drive could not be connected. Try again.";
-		url.searchParams.delete("connect");
-		history.replaceState(history.state, "", url.pathname + url.search + url.hash);
-	}
 
 	// A structural write anywhere, from a menu here or from the body, re-reads the tree.
 	useSignalEffect(() => {
@@ -321,7 +309,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 					key: action,
 					label: "Connect Drive",
 					icon: "link",
-					command: () => (connectDriveOpen.value = true),
+					command: () => void openSettings("integrations", "storage"),
 				};
 			case "disconnect-drive":
 				return {

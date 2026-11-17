@@ -979,6 +979,29 @@ function stageLabelOf(stage: StageFact): string {
 	return clip(`Stage ${stage.position} · ${stage.name}`, 120);
 }
 
+/** The engagement keys a basket line is narrowed and grouped on. */
+export interface EngagementKeys {
+	projectId?: string;
+	serviceId?: string;
+}
+
+/**
+ * A line's engagement keys, from what it buys and never from stored metadata: a project's slug as
+ * `projectId`; a service's or a product's slug as `serviceId`, the token Buy Now narrows on
+ * (`?service_id=svc-…` / `prd-…`). A paid revision is bought on its own from the review, so its round
+ * id is its `serviceId`, while it still groups under its project.
+ */
+export function engagementKeysOf(
+	purchasable: { family: Family; slug: string } | null | undefined,
+	revisionId: string | null,
+): EngagementKeys {
+	const keys: EngagementKeys = {};
+	if (purchasable?.family === "project") keys.projectId = purchasable.slug;
+	else if (purchasable) keys.serviceId = purchasable.slug;
+	if (revisionId) keys.serviceId = revisionId;
+	return keys;
+}
+
 /** Project one stored line into the SSOT's {@link BasketItem}, in the session's display currency. */
 function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketItem {
 	const { purchasable: p, stage } = facts;
@@ -1025,12 +1048,8 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 	delete metadata.boardProjectId;
 	delete metadata.payeeName;
 	if (facts.ticket?.payeeName) metadata.payeeName = facts.ticket.payeeName;
-	if (p?.family === "project") metadata.projectId = p.slug;
-	if (p?.family === "service") metadata.serviceId = p.slug;
+	Object.assign(metadata, engagementKeysOf(p, line.revision_id));
 	if (facts.boardProjectSlug) metadata.boardProjectId = facts.boardProjectSlug;
-	// A paid revision is bought on its own from the review (Buy Now narrows by `serviceId`), and its
-	// round id is that token; it still groups under its project.
-	if (line.revision_id) metadata.serviceId = line.revision_id;
 	if (line.item_type === "set_session" && p?.blueprint) {
 		metadata.sessions = Math.max(1, p.blueprint.session_count ?? 1);
 	}

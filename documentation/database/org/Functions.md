@@ -57,7 +57,7 @@ than ten, or any slug the taxonomy does not hold, raises `22023`. In one transac
    the definer context because `audit_logs` is not granted to `authenticated`; cf. `0205`/`0304`).
 
 Returns `{ freelancer_profile_id, handle, created, is_freelancer }` — `handle` is the person's
-`@username` (the client navigates to `/[handle]/edit`); `created` is `false` when the profile
+`@username` (the client navigates to the profile, `/@handle#about`, to edit it in place); `created` is `false` when the profile
 already existed (the call is then a no-op re-activation). Raises `28000` when unauthenticated,
 `42501` when the caller has not completed onboarding (no `users_public` row), `PM403` when the
 caller is under 18 (`org.fn_assert_adult`, Decision #190) and `22023` for a refused skill list. The access token is NOT re-minted here: `POST /api/user/freelancer`
@@ -523,7 +523,7 @@ so a private profile's existence is never disclosed by a different answer. The f
 | `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
 | `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card. A team's are the reviews whose subject is the team (`target_entity_type = 'team'`) — never a member's personal reviews (Teams P1, probe D).                                                                                                                                                                                                                                              |
 | `get_profile_roster(handle)`         | A team's, business's or enterprise's members. A team member's row is PUBLIC facts only (Teams P1): `role` is the base preset's label (`Owner` · `Admin` · `Lead` · `Member`) — a custom role reads as its base preset, since its name is member-only under `org.team_roles` RLS and no role carries a "public" flag; never the member's `title` — plus `since` (`joined_at`) and `skills` (the member's first two `freelancer_profiles.skills`, by `org.skills` label — `[]` unless the member's own profile admits the caller, `fn_profile_visible('user', …)`, so a private member's skills stay off the team page as they are off their own); no stake, no workload. A business member's is their `title`, else the base preset's label (`Owner` · `Admin` · `Member`) — never a custom role's name, which `org.business_roles` RLS keeps to members — and a business row carries `since` (the membership's `joined_at`) (BP1, Decision #244). Ordered by preset rank then join date.                                                                                                                  |
-| `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
+| `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references, `description` and `is_public` (the owner also reads their private ones); a piece with no picture, or an archived one, is omitted, never drawn empty.                                                                                                            |
 | `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
 
 ### `org.get_own_private_profile()` — the owner's own date of birth and zone
@@ -598,6 +598,26 @@ a crafted request and the row.
   grid (`[{position, file_id, alt}]`; an absent slot is emptied). Each file must be a live, public
   `showcase` rendition of this owner, and **slot 1 must be an image** — it is the thumbnail every card
   of the profile leads with. Renditions that drop out of the grid are retired.
+- **`org.save_portfolio_piece(owner_type, owner_id, piece jsonb) → jsonb`** (Decision #439) —
+  creates or edits ONE "Selected work" piece:
+  `{id?, title, client?, category?, description?, is_public, cover_file_id?}`. A freelancer's profile
+  only (`owner: only a freelancer's profile has a portfolio`); the freelancer row is locked so the cap
+  and the order hold under concurrent saves. No `id` is a new piece: it needs a cover
+  (`cover: choose a cover picture`), at most 60 live pieces (`piece: up to 60 portfolio pieces`), and
+  it is stored first in the order. An `id` must be one of the caller's live pieces
+  (`piece: not one of your portfolio pieces`) and every field is replaced; an edit without
+  `cover_file_id` keeps the cover. Limits: title 1–120 after trimming, client ≤ 120, category ≤ 60,
+  description ≤ 2,000; an empty client or category is stored as `NULL`. A cover must be a live,
+  public, `uploaded` **still** (`image/*`) with `purpose = 'showcase'` in the `showcase` bucket, owned
+  by this person, and held by no showcase slot, listing media row or other piece
+  (`cover: that picture is already in use`) — so retiring it later can never take a picture off
+  another surface. A replaced cover is retired (soft delete). Returns `{ok, id}`. Granted to
+  `authenticated`; the backend cuts the cover through the showcase pipeline first and retires it again
+  if this refuses.
+- **`org.archive_portfolio_piece(owner_type, owner_id, piece_id) → jsonb`** (Decision #439) — takes
+  one live piece off the profile: stamps `archived_at` (never a delete) and retires its cover. Any
+  piece that is not the caller's live one is `piece: not one of your portfolio pieces`. Returns
+  `{ok}`. Granted to `authenticated`.
 
 > **The derived- and identity-column guards** that stop a client writing `org.teams` /
 > `org.enterprises` ratings, counters, plan, ownership, verification, handle or media ids directly

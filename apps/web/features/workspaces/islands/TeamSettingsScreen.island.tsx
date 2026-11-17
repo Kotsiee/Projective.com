@@ -370,7 +370,7 @@ export default function TeamSettingsScreen(props: TeamSettingsScreenProps): JSX.
 											as="span"
 											items={["Mark, banner and story are edited on the public profile"]}
 										/>{" "}
-										<Link href={`/@${ws.handle}/edit`}>Edit the profile</Link>
+										<Link href={`/@${ws.handle}`}>Edit the profile</Link>
 									</p>
 								)}
 								{saveError.value && (

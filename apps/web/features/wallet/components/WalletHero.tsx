@@ -3,13 +3,11 @@ import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { Avatar } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import type {
 	FundState,
 	MoneyView as Money,
 	WalletOverview,
-	WalletRef,
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import {
@@ -19,18 +17,19 @@ import {
 	type ResolvedAction,
 } from "../core/wallet-home.ts";
 import {
+	type FlowPeriod,
 	fundStateLabel,
-	heldIn,
 	viewLabel,
 	walletPageHref,
 	walletParam,
-	walletScopeNoun,
 	type WalletView,
 } from "../core/wallet-model.ts";
+import { deckParam, deckPosition, neighbourOf, scopeDeck, scopeHref } from "../core/scope-deck.ts";
+import { useScopeSwipe } from "../hooks/useScopeSwipe.ts";
 import { ActionIcon, FundStateIcon } from "./wallet-glyphs.tsx";
 import { HeroTools } from "./WalletTools.tsx";
 import { HeroAurora } from "./HeroAurora.tsx";
-import { personFallbackImage } from "@web/components/UserAvatar.tsx";
+import { ScopeSwitcher } from "./ScopeSwitcher.tsx";
 
 /** Props for {@link WalletHero}. */
 export interface WalletHeroProps {
@@ -44,130 +43,10 @@ export interface WalletHeroProps {
 	actions: HeroActions;
 	/** The currency the page is drawn in (`?display=`), carried into account links. */
 	display: string;
+	/** The page's window (`?flow=`), carried when the reader moves to another wallet. */
+	flow: FlowPeriod | null;
 	onAction: (action: ResolvedAction) => void;
 	heroRef?: RefObject<HTMLElement>;
-}
-
-const ROLE_LABEL: Readonly<Record<string, string>> = {
-	owner: "Owner",
-	admin: "Admin",
-	pm: "Manager",
-	member: "Member",
-};
-
-/** Whether the read-only "All accounts" rollup is worth offering: with one account it only repeats it. */
-export function showsAggregate(switcher: WalletSwitcher): boolean {
-	return switcher.accounts.length > 1 || switcher.active.scope === "aggregate";
-}
-
-/** Who an account belongs to, as the scope pill and rail describe it. */
-export function accountKind(ref: WalletRef): string {
-	if (ref.scope === "aggregate") return "All accounts";
-	if (ref.scope === "personal") return "Your wallet";
-	const noun = walletScopeNoun(ref.scope);
-	return ref.role ? `${ROLE_LABEL[ref.role]} · ${noun}` : noun;
-}
-
-function heldCurrency(ref: WalletRef): string {
-	return heldIn(ref.available).currency;
-}
-
-function ScopePill(
-	{ switcher, display, view }: { switcher: WalletSwitcher; display: string; view: WalletView },
-): JSX.Element {
-	const open = useSignal(false);
-	const active = switcher.active;
-	const accounts = showsAggregate(switcher)
-		? [...switcher.accounts, switcher.aggregate]
-		: switcher.accounts;
-	const name = active.scope === "personal" ? "Personal" : active.name;
-	return (
-		<Popover
-			open={open}
-			placement="bottom"
-			label="Choose a wallet"
-			class="wlt-glass-pop wlt-scope-pop"
-			trigger={(api) => (
-				<button
-					type="button"
-					ref={api.ref as RefObject<HTMLButtonElement>}
-					class="wlt-scope"
-					aria-haspopup="dialog"
-					aria-expanded={api.expanded}
-					aria-controls={api.panelId}
-					onClick={api.toggle}
-				>
-					{active.scope === "aggregate"
-						? <Icon name="wallet" size="xs" class="wlt-scope__glyph" />
-						: (
-							<Avatar
-								image={active.avatar ?? undefined}
-								fallbackImage={personFallbackImage(active.scope)}
-								label={active.name}
-								size={20}
-								class="wlt-scope__avatar"
-							/>
-						)}
-					<span class="wlt-scope__name">{name}</span>
-					<span class="wlt-scope__sep" aria-hidden="true">·</span>
-					<span class="wlt-scope__currency">
-						{active.scope === "aggregate" ? display : heldCurrency(active)}
-					</span>
-					<Icon name="chevron-down" size="xs" class="wlt-scope__chevron" />
-				</button>
-			)}
-		>
-			<ul class="wlt-scope-menu">
-				{accounts.map((ref) => {
-					const param = walletParam(ref.scope, ref.id);
-					const current = param === walletParam(active.scope, active.id);
-					return (
-						<li key={param}>
-							<a
-								class="ui-menu-item wlt-scope-menu__item"
-								href={walletPageHref(
-									view === "invoices" && ref.scope !== "business" ? "overview" : view,
-									param,
-									display,
-								)}
-								aria-current={current ? "page" : undefined}
-							>
-								{ref.scope === "aggregate"
-									? (
-										<span class="wlt-scope-menu__all">
-											<Icon name="wallet" size="xs" />
-										</span>
-									)
-									: (
-										<Avatar
-											image={ref.avatar ?? undefined}
-											fallbackImage={personFallbackImage(ref.scope)}
-											label={ref.name}
-											size={28}
-										/>
-									)}
-								<span class="wlt-scope-menu__text">
-									<span class="wlt-scope-menu__name">
-										{ref.scope === "personal" ? "Personal" : ref.name}
-									</span>
-									<span class="wlt-scope-menu__meta">
-										{ref.scope === "aggregate" ? "Read-only total" : accountKind(ref)}
-									</span>
-								</span>
-								<MoneyView
-									value={ref.available}
-									size="micro"
-									hideOrigin
-									class="wlt-scope-menu__amount"
-								/>
-								{current && <Icon name="check" size="xs" class="wlt-scope-menu__check" />}
-							</a>
-						</li>
-					);
-				})}
-			</ul>
-		</Popover>
-	);
 }
 
 interface Metric {
@@ -321,10 +200,16 @@ function MorePill(
 }
 
 /**
- * The luminous hero: the scope pill, the total balance with its fund-state figures, and the
- * capability-gated action pills — or, on every page but the overview, a compact hero naming the page.
- * Its gradient runs up behind the glass top bar, it stays pinned while the dashboard sheet slides over
- * it, and its top inline-end corner holds the display-currency and settings tools.
+ * The luminous hero on every wallet page: the scope carousel over the balance it names, the
+ * fund-state figures, and the capability-gated action pills — the one home of every money action
+ * (the lane carries none). Off the overview the balance gives way to a compact title naming the page,
+ * with the same carousel and the same actions.
+ *
+ * The carousel and the balance are one deck: dragging it sideways moves the balance with the pointer
+ * and, past the commit point, navigates to the neighbouring wallet's address for the same page; the
+ * chevrons, the arrow keys and the dropdown go to the same addresses. The gradient runs up behind the
+ * glass top bar, the hero stays pinned while the dashboard sheet slides over it, and its top
+ * inline-end corner holds the display-currency and settings tools.
  */
 export function WalletHero(props: WalletHeroProps): JSX.Element {
 	const { overview, switcher, actions, view } = props;
@@ -336,6 +221,15 @@ export function WalletHero(props: WalletHeroProps): JSX.Element {
 		: "Total balance";
 	const ownRef = useRef<HTMLElement>(null);
 	const heroRef = props.heroRef ?? ownRef;
+	const at = deckPosition(scopeDeck(switcher), deckParam(switcher.active));
+	const swipe = useScopeSwipe({
+		enabled: at.count > 1,
+		onCommit: (step) => {
+			const target = neighbourOf(at, step);
+			if (target) location.assign(scopeHref(target, view, props.display, props.flow));
+		},
+	});
+	const hasActions = actions.pills.length + actions.more.length > 0;
 	return (
 		<section
 			class={compact ? "wlt-hero wlt-hero--compact" : "wlt-hero"}
@@ -345,52 +239,68 @@ export function WalletHero(props: WalletHeroProps): JSX.Element {
 			<HeroAurora host={heroRef} />
 			<HeroTools display={props.display} />
 			<div class="wlt-hero__inner">
-				<ScopePill switcher={switcher} display={props.display} view={view} />
+				<div
+					ref={swipe.deckRef}
+					class="wlt-hero__deck"
+					data-phase={swipe.phase.value}
+					data-swipe={at.count > 1 ? "true" : undefined}
+					{...swipe.handlers}
+				>
+					<ScopeSwitcher
+						switcher={switcher}
+						view={view}
+						display={props.display}
+						flow={props.flow}
+						onStep={swipe.leave}
+					/>
 
-				{compact
-					? (
-						<div class="wlt-hero__balance">
-							<h1 id="wlt-title" class="wlt-hero__title">{viewLabel(view)}</h1>
-							<p class="wlt-hero__meta">
-								{balanceLabel} <MoneyView value={overview.capital} size="body" hideOrigin />
-							</p>
-						</div>
-					)
-					: (
-						<div class="wlt-hero__balance">
-							<h1 id="wlt-title" class="ui-visually-hidden">Wallet</h1>
-							<p class="wlt-hero__label">{balanceLabel}</p>
-							<p class="wlt-hero__figure">
-								<MoneyView value={overview.capital} size="hero" />
-							</p>
-							{!aggregate && <Conversion overview={overview} />}
-						</div>
-					)}
+					<div ref={swipe.slideRef} class="wlt-hero__slide">
+						{compact
+							? (
+								<div class="wlt-hero__balance">
+									<h1 id="wlt-title" class="wlt-hero__title">{viewLabel(view)}</h1>
+									<p class="wlt-hero__meta">
+										{balanceLabel} <MoneyView value={overview.capital} size="body" hideOrigin />
+									</p>
+								</div>
+							)
+							: (
+								<div class="wlt-hero__balance">
+									<h1 id="wlt-title" class="ui-visually-hidden">Wallet</h1>
+									<p class="wlt-hero__label">{balanceLabel}</p>
+									<p class="wlt-hero__figure">
+										<MoneyView value={overview.capital} size="hero" />
+									</p>
+									{!aggregate && <Conversion overview={overview} />}
+								</div>
+							)}
 
-				{!aggregate && <CurrencyTabs overview={overview} switcher={switcher} view={view} />}
+						{!aggregate && <CurrencyTabs overview={overview} switcher={switcher} view={view} />}
 
-				{!compact && !aggregate && (
-					<dl class="wlt-metrics">
-						{metricsOf(overview).map((m) => (
-							<div class="wlt-metric" key={m.state}>
-								<dt class="wlt-metric__label">
-									<Tooltip content={m.hint}>
-										<span class="wlt-metric__term">
-											<MetricMark state={m.state} />
-											{fundStateLabel(m.state)}
-										</span>
-									</Tooltip>
-									<span class="ui-visually-hidden">: {m.hint}</span>
-								</dt>
-								<dd class="wlt-metric__value">
-									<MoneyView value={m.value} size="body" hideOrigin />
-								</dd>
-							</div>
-						))}
-					</dl>
-				)}
+						{!compact && !aggregate && (
+							<dl class="wlt-metrics">
+								{metricsOf(overview).map((m) => (
+									<div class="wlt-metric" key={m.state}>
+										<dt class="wlt-metric__label">
+											<Tooltip content={m.hint}>
+												<span class="wlt-metric__term">
+													<MetricMark state={m.state} />
+													{fundStateLabel(m.state)}
+												</span>
+											</Tooltip>
+											<span class="ui-visually-hidden">: {m.hint}</span>
+										</dt>
+										<dd class="wlt-metric__value">
+											<MoneyView value={m.value} size="body" hideOrigin />
+										</dd>
+									</div>
+								))}
+							</dl>
+						)}
+					</div>
+				</div>
 
-				{!compact && (actions.pills.length + actions.more.length > 0
+				{hasActions
 					? (
 						<div class="wlt-actions" role="group" aria-label="Wallet actions">
 							{actions.pills.map((item) => (
@@ -405,9 +315,9 @@ export function WalletHero(props: WalletHeroProps): JSX.Element {
 						<p class="wlt-hero__note">
 							{aggregate
 								? "A read-only total. Choose an account to move money."
-								: "You can view this vault."}
+								: "You can view this vault. Money actions belong to its owners and admins."}
 						</p>
-					))}
+					)}
 			</div>
 		</section>
 	);

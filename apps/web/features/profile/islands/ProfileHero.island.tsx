@@ -18,8 +18,14 @@ import "../styles/profile.css";
 import "../styles/profile-hire.css";
 import { AvatarLightbox } from "../components/AvatarLightbox.tsx";
 import { OwnerAvatarEdit } from "../components/OwnerAvatarEdit.tsx";
-import { OwnerEditLink, OwnerStub } from "../components/OwnerEditLink.tsx";
-import { editHrefFor, type OwnerEdit } from "../core/owner-edit.ts";
+import { InlineEditBlock, OwnerEditButton } from "../components/edit/OwnerBlock.tsx";
+import { NameEditor } from "../components/edit/NameEditor.tsx";
+import { ShowcaseEditor } from "../components/edit/ShowcaseEditor.tsx";
+import { canEditBlock, type OwnerEdit } from "../core/owner-edit.ts";
+import { liveProfile, ownerModel, refreshOwnerView } from "../core/owner-store.ts";
+import { useOwnerAnchor } from "../hooks/useOwnerAnchor.ts";
+import { useOwnerModel } from "../hooks/useOwnerModel.ts";
+import type { ProfileEditModel, ShowcaseSlot } from "@projective/types/profile";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
@@ -84,14 +90,14 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * one a guest never learns exists), but its press opens the prompt in place of the listings
  * popover; the modals a member reaches through that popover gate their own primaries the same way.
  *
- * # The owner sees the visitor's page
+ * # The owner edits the visitor's page in place
  *
- * The profile is edited at `/[handle]/edit`, and on the public route the owner is PREVIEWING — the
- * page renders as a visitor's, rig and all, and a press on a visitor's control explains what it does
- * rather than acting on their own account (`preview`, `core/rig-actions.ts`). The one exception is
- * the photo: for the owner it is {@link OwnerAvatarEdit}, whose hover overlay opens the File Picker
- * in avatar mode. The name and the showcase carry the owner's {@link OwnerEditLink} to their editor
- * section, and an empty showcase stands as an {@link OwnerStub} (Decision #408).
+ * The owner's page renders as a visitor's, rig and all, and a press on a visitor's control explains
+ * what it does rather than acting on their own account (`preview`, `core/rig-actions.ts`). What they
+ * own is edited where it stands (Decision #439): the photo is {@link OwnerAvatarEdit}, whose hover
+ * overlay opens the File Picker in avatar mode; the name's pencil swaps it for the
+ * {@link NameEditor}; the showcase's pencil (or, with none, its one-line stub) opens the
+ * {@link ShowcaseEditor} in the showcase column itself.
  *
  * # The full-size photo is the owner's to offer
  *
@@ -125,13 +131,16 @@ export interface ProfileHeroProps {
 	defaultCurrency: string;
 	/** The viewer's active workspace id → a created project's `scopeId`. */
 	scopeId: string;
-	/** The owner's edit links (`core/owner-edit.ts`); `null` for a visitor. */
+	/** What the owner may edit here (`core/owner-edit.ts`); `null` for a visitor. */
 	ownerEdit?: OwnerEdit | null;
+	/** The owner's stored edit model; `null` for a visitor. */
+	ownerModel?: ProfileEditModel | null;
 }
 
 export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
-	const { profile, preview, authed, services, spend, hireProjects, defaultCurrency, scopeId } =
-		props;
+	const { preview, authed, services, spend, hireProjects, defaultCurrency, scopeId } = props;
+	/** The owner's page redraws from the re-read projection after an edit; a visitor's never changes. */
+	const profile = props.profile.viewer?.isOwner === true ? liveProfile(props.profile) : props.profile;
 	const avatar = profile.avatar;
 	const showcase = profile.showcase;
 	const bareHandle = profile.handle.replace(/^@+/, "");
@@ -159,8 +168,27 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	const toast = useToast();
 	const consultation = props.consultation;
 	const rigHost = useRef<HTMLDivElement>(null);
-	const basicsHref = editHrefFor(props.ownerEdit, "basics");
-	const showcaseHref = editHrefFor(props.ownerEdit, "showcase");
+	const model = useOwnerModel(props.ownerModel ?? null);
+	const editHandle = props.ownerEdit?.handle ?? profile.handle;
+	const canName = !!model && canEditBlock(props.ownerEdit, "basics");
+	const canShowcase = !!model && canEditBlock(props.ownerEdit, "showcase");
+	const nameEditing = useSignal(false);
+	const showcaseEditing = useSignal(false);
+	const showcasePencil = useRef<HTMLButtonElement>(null);
+	useOwnerAnchor("basics", () => (nameEditing.value = true), canName);
+	useOwnerAnchor("showcase", () => (showcaseEditing.value = true), canShowcase);
+
+	function closeShowcase(): void {
+		showcaseEditing.value = false;
+		setTimeout(() => showcasePencil.current?.focus(), 0);
+	}
+
+	/** A showcase write landed: keep the stored model current and re-read the hero's showcase. */
+	function onShowcaseChanged(slots: ShowcaseSlot[]): void {
+		const stored = ownerModel.peek();
+		if (stored) ownerModel.value = { ...stored, showcase: slots };
+		void refreshOwnerView(editHandle);
+	}
 
 	/**
 	 * Focus RETURN for the four flows: when the one in progress closes and focus has fallen to
@@ -253,10 +281,17 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	const adornments = isSellerKind(profile.kind)
 		? adornmentItems(shownAdornments(profile.adornments, trustOverride.adornments))
 		: [];
+	const nameHeading = (
+		<h1 class="pf-hero__name">
+			<span class="pf-hero__nametext">{profile.name}</span>
+			<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
+		</h1>
+	);
+	const showcaseColumn = showcaseEditing.value || !!showcase;
 
 	return (
 		<>
-			<header class="pf-hero" data-showcase={showcase ? "true" : "false"}>
+			<header class="pf-hero" data-showcase={showcaseColumn ? "true" : "false"}>
 				<div class="pf-hero__id">
 					{
 						/* The breadcrumb position: the way back into the Explore tree, above the
@@ -318,22 +353,29 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 							)}
 					</div>
 
-					{basicsHref
+					{canName && model
 						? (
-							<div class="pf-hero__namerow pf-ownerblock">
-								<h1 class="pf-hero__name">
-									<span class="pf-hero__nametext">{profile.name}</span>
-									<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
-								</h1>
-								<OwnerEditLink href={basicsHref} label="your name and headline" />
-							</div>
+							<InlineEditBlock
+								anchor="basics"
+								class="pf-hero__namerow"
+								label="your name"
+								editing={nameEditing}
+								view={nameHeading}
+								stub=""
+								editor={() => (
+									<>
+										<h1 class="ui-visually-hidden">{profile.name}</h1>
+										<NameEditor
+											handle={editHandle}
+											profile={profile}
+											model={model}
+											close={() => (nameEditing.value = false)}
+										/>
+									</>
+								)}
+							/>
 						)
-						: (
-							<h1 class="pf-hero__name">
-								<span class="pf-hero__nametext">{profile.name}</span>
-								<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
-							</h1>
-						)}
+						: nameHeading}
 
 					<p class="pf-hero__meta">
 						<span class="pf-hero__handle">{profile.handle}</span>
@@ -376,27 +418,49 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 
 					<ProfileMetrics profile={profile} spend={spend} />
 
-					{!showcase && showcaseHref && (
-						<OwnerStub
-							class="pf-hero__showcasestub"
-							title="Showcase"
-							note="Visitors see none until you add pictures or videos."
-							href={showcaseHref}
-							label="your showcase"
-						/>
+					{!showcase && canShowcase && !showcaseEditing.value && (
+						<div id="showcase" class="pf-ownerblock pf-hero__showcasestub">
+							<div class="pf-ownerhead">
+								<h2 class="pf-h">Showcase</h2>
+								<OwnerEditButton
+									label="your showcase"
+									buttonRef={showcasePencil}
+									onClick={() => (showcaseEditing.value = true)}
+								/>
+							</div>
+							<p class="pf-ownerstub__note">Visitors see none until you add pictures or videos.</p>
+						</div>
 					)}
 				</div>
 
-				{showcase && (
-					<div class={showcaseHref ? "pf-hero__showcase pf-ownerblock" : "pf-hero__showcase"}>
-						<ProfileShowcase showcase={showcase} name={profile.name} reduced={reduced} />
-						{showcaseHref && (
-							<span class="pf-hero__showcaseedit">
-								<OwnerEditLink href={showcaseHref} label="your showcase" />
-							</span>
-						)}
-					</div>
-				)}
+				{showcaseEditing.value && model
+					? (
+						<div id="showcase" class="pf-hero__showcase pf-hero__showcase--editing">
+							<ShowcaseEditor
+								handle={editHandle}
+								initial={model.showcase}
+								onChanged={onShowcaseChanged}
+								onDone={closeShowcase}
+							/>
+						</div>
+					)
+					: showcase && (
+						<div
+							id={canShowcase ? "showcase" : undefined}
+							class={canShowcase ? "pf-hero__showcase pf-ownerblock" : "pf-hero__showcase"}
+						>
+							<ProfileShowcase showcase={showcase} name={profile.name} reduced={reduced} />
+							{canShowcase && (
+								<span class="pf-hero__showcaseedit">
+									<OwnerEditButton
+										label="your showcase"
+										buttonRef={showcasePencil}
+										onClick={() => (showcaseEditing.value = true)}
+									/>
+								</span>
+							)}
+						</div>
+					)}
 			</header>
 
 			<ConnectionsDialog

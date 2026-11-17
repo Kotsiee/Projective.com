@@ -3,7 +3,6 @@ import { Icon, type IconName } from "@projective/ui/icons";
 import { NavItem } from "@projective/ui/navigation";
 import {
 	type FlowPeriod,
-	hasInvoices,
 	viewLabel,
 	WALLET_VIEWS,
 	walletPageHref,
@@ -21,8 +20,6 @@ export interface WalletPageNavProps {
 	flow?: FlowPeriod | null;
 	/** The currency wallet the pages are narrowed to (`?currency=`, Decision #435), kept on every link. */
 	currency?: string | null;
-	/** The business extras of the wallet, when it is a business vault — the only wallet that is billed. */
-	business: unknown;
 	/** `lane` lists icon-led rows; `strip` is the phone's horizontal switcher at the top of the sheet. */
 	variant: "lane" | "strip";
 }
@@ -35,25 +32,20 @@ export const VIEW_ICON: Readonly<Record<WalletView, IconName>> = {
 	invoices: "document",
 };
 
-/** The pages this wallet offers: invoices only where the wallet is billed. */
-export function walletViewsFor(business: unknown): WalletView[] {
-	return WALLET_VIEWS.filter((view) => view !== "invoices" || hasInvoices(business));
-}
-
 /**
- * The wallet's page links — real addresses, each carrying the wallet and the currency — as the lanes'
- * shared `NavItem` rows on a wide screen and as a horizontal strip on a phone, where the shell removes
- * the lane.
+ * The wallet's four page links — real addresses, each carrying the wallet and the currency — as the
+ * lanes' shared `NavItem` rows on a wide screen and as a horizontal strip on a phone, where the shell
+ * removes the lane. Invoices is listed for every wallet: a wallet that is not billed reads its page as
+ * the sentence saying so, so the lane reads the same whichever wallet the carousel lands on.
  */
 export function WalletPageNav(props: WalletPageNavProps): JSX.Element {
-	const views = walletViewsFor(props.business);
 	return (
 		<nav
 			class={props.variant === "lane" ? "wlt-pages" : "wlt-pagestrip"}
 			aria-label="Wallet pages"
 		>
 			<ul class={props.variant === "lane" ? "wlt-pages__list" : "wlt-pagestrip__list"}>
-				{views.map((view) => {
+				{WALLET_VIEWS.map((view) => {
 					const current = view === props.view;
 					const href = walletPageHref(
 						view,

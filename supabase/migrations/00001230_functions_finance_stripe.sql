@@ -1048,6 +1048,13 @@ BEGIN
         RETURNING * INTO v_payment;
     END IF;
 
+    -- A business's From-wallet queue is retried by a top-up made for a purchase only now
+    -- (finance.fn_wallet_watch skips its credit): the purchase has had the money first, and what it
+    -- left — all of it when the purchase was refused — is then a credit like any other.
+    IF v_wallet.owner_type = 'business' AND (v_payment.purpose = 'escrow_lock' OR v_payment.checkout IS NOT NULL) THEN
+        PERFORM finance.fn_auto_fund_drain(v_wallet.id);
+    END IF;
+
     v_unapplied := CASE
         WHEN v_lock_status = 'failed' THEN 'The escrow could not be held: ' || COALESCE(v_lock_error, 'unknown reason')
         WHEN v_order_error IS NOT NULL THEN 'The order could not be placed: ' || v_order_error

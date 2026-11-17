@@ -405,3 +405,27 @@ export function pinnedRefundMinor(
 	return Math.min(sourceMinor, Number(share));
 }
 // #endregion
+
+// #region Dev override (Decision #436)
+/**
+ * The Dev Context Switcher's paying-in-one's-own-currency position (`fxCheckout`): `on` or `off` in
+ * place of the database's `fx_checkout_enabled`; absent = no override. `off` only refuses its sender,
+ * so the database honours it from any caller; `on` loosens the gate, so it counts only in a database
+ * whose own `dev_overrides_honoured` is set, which only the local seed world sets
+ * (`finance.fn_fx_checkout_enabled`). Sent only by a development build.
+ */
+export const FxCheckoutOverride = z.enum(["on", "off"]);
+export type FxCheckoutOverride = z.infer<typeof FxCheckoutOverride>;
+
+/** The cookie that carries {@link FxCheckoutOverride} from the browser to the server. */
+export const FX_CHECKOUT_OVERRIDE_COOKIE = "pj.dev.fx-checkout";
+
+/** The request header that carries it from the server to PostgREST (`finance.fn_dev_fx_checkout`). */
+export const FX_CHECKOUT_OVERRIDE_HEADER = "x-pj-dev-fx-checkout";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseFxCheckoutOverride(raw: string | null | undefined): FxCheckoutOverride | null {
+	const parsed = FxCheckoutOverride.safeParse(raw?.trim());
+	return parsed.success ? parsed.data : null;
+}
+// #endregion

@@ -16,12 +16,14 @@ import {
 import { DndContext, type DragEndEvent, DragOverlay, useDraggable } from "@projective/ui/dnd";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import type { CalendarEvent, SchedulePage } from "@projective/types/scheduling";
+import type { CalendarEvent, Routine, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { AgendaFilters } from "../components/AgendaFilters.tsx";
 import { AgendaRow, type AgendaRowProps, agendaRowTitle } from "../components/AgendaRow.tsx";
+import { EntryActionMenu } from "../components/EntryActionMenu.tsx";
+import { RoutineEntriesDialog } from "../components/RoutineEntriesDialog.tsx";
 import {
 	ENTRY_DRAG,
 	LooseEntries,
@@ -42,7 +44,10 @@ import {
 	openRoutines,
 	pendingInvitations,
 	requestCreate,
+	requestCreateEntry,
+	requestNewRoutine,
 	requestOrganise,
+	requestRoutineEntries,
 	routinesOn,
 	selectedEventId,
 	visibleEvents,
@@ -52,7 +57,11 @@ import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 import { repeatSentence } from "../core/event-recurrence.ts";
 import { listRows } from "../core/event-series.ts";
 import { entryOrganisable } from "../core/routine-actions.ts";
-import { entryHoldsTime, groupByRoutine } from "../core/routine-view.ts";
+import { groupByRoutine, joinRoutine, leaveRoutine } from "../core/routine-view.ts";
+import { authoringFor, laneRows } from "../core/calendar-authoring.ts";
+
+/** What the lane authors: the agenda's own entries, as the grid beside it does (C7 (a)). */
+const AUTHORING = authoringFor("personal");
 
 /**
  * CalendarLane — the middle-nav lane for `/calendar`: what is coming, and when am I available.
@@ -84,6 +93,10 @@ import { entryHoldsTime, groupByRoutine } from "../core/routine-view.ts";
  * than scattering through the list, which is the clutter a routine exists to end, and a row drags
  * between the two through `@projective/ui/dnd`, by pointer or by its grip from the keyboard.
  *
+ * **A right-click is the grid's** (Decision #441): a row opens the same {@link EntryActionMenu} an
+ * entry has on the grid, colour and routine included, and anywhere else the lane's own rows — New
+ * event · New reminder · New routine · Add entries to a routine ({@link RoutineEntriesDialog}).
+ *
  * **Filter sits beside the search**, the `/projects` anatomy: the shared {@link LaneFilterPopover} over
  * {@link CalendarFilterFacets}, narrowing the grid and this list together.
  *
@@ -113,6 +126,11 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const dragged = useSignal<CalendarEvent | null>(null);
 	/** Off until the mount below has moved the address's narrowing into the shared signal. */
 	const settled = useSignal(false);
+	/** What the last right-click in the lane landed on. */
+	const pointed = useSignal<{ event: CalendarEvent | null; routine: Routine | null }>({
+		event: null,
+		routine: null,
+	});
 
 	useEffect(() => {
 		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is right.
@@ -164,17 +182,35 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 		const routine = routines.find((r) => routineTarget(r.id) === drop.over) ?? null;
 		if ((routine?.id ?? null) === (event.routineId ?? null)) return;
 		if (!routine) {
-			requestOrganise(event, { routineId: null });
+			requestOrganise(event, leaveRoutine(event));
 			return;
 		}
 		if (!openRoutines.peek().includes(routine.id)) {
 			openRoutines.value = [...openRoutines.peek(), routine.id];
 		}
-		requestOrganise(event, {
-			routineId: routine.id,
-			...(entryHoldsTime(event) ? {} : { availabilityBehavior: routine.behavior }),
-		});
+		requestOrganise(event, joinRoutine(event, routine));
 	}
+
+	/**
+	 * Name what a right-click landed on before the menu reads it: a row is its entry, a routine's own
+	 * row is that routine, and anywhere else is the lane.
+	 */
+	function aim(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+		const el = e.target instanceof Element ? e.target : null;
+		const id = el?.closest<HTMLElement>("[data-event-id]")?.dataset.eventId;
+		const event = id ? all.find((x) => x.id === id) ?? null : null;
+		const rid = event ? undefined : el?.closest<HTMLElement>("[data-routine-id]")?.dataset.routineId;
+		pointed.value = { event, routine: rid ? routines.find((r) => r.id === rid) ?? null : null };
+	}
+
+	const laneMenu = laneRows(pointed.value.routine, routines, {
+		create: requestCreateEntry,
+		newRoutine: () => requestNewRoutine(),
+		addToRoutine: (routine) => {
+			if (routine || routines.length > 0) requestRoutineEntries(routine?.id ?? null);
+			else requestNewRoutine((made) => requestRoutineEntries(made.id));
+		},
+	}, AUTHORING);
 
 	const rowFor = (e: CalendarEvent) => (
 		<DraggableRow
@@ -251,7 +287,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			</div>
 
 			{/* Expanded presentation. */}
-			<div class="cal-lane" ref={laneRef}>
+			<div class="cal-lane" ref={laneRef} onContextMenuCapture={aim}>
 				<LaneHead class="cal-lane__head">
 					<AgendaFilters
 						events={all}
@@ -317,6 +353,14 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 						/>
 					</LaneFooterActions>
 				</LaneFooter>
+				<EntryActionMenu
+					surface={laneRef}
+					target={pointed.value.event ? { event: pointed.value.event, range: null } : null}
+					tz={tz}
+					from="list"
+					background={laneMenu}
+				/>
+				<RoutineEntriesDialog events={all} routines={routines} tz={tz} now={now} />
 			</div>
 		</div>
 	);

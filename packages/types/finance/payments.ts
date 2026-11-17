@@ -230,6 +230,8 @@ export function unpricedTicketsSentence(count: number): string {
 export const StageFundingQuoteQuerySchema = z.object({
 	project: z.string().min(1).max(64),
 	stage: z.string().min(1).max(80),
+	/** The payer paying in the project's currency rather than their own (Decision #436). */
+	payIn: currency.optional(),
 });
 export type StageFundingQuoteQuery = z.infer<typeof StageFundingQuoteQuerySchema>;
 
@@ -289,6 +291,12 @@ export const FundPaidRevisionSchema = z.object({
 	method: PaidRevisionFundingMethod,
 	expectedAmountMinor: minorUnitsPositive,
 	currency,
+	/**
+	 * Paying in one's own currency (Decision #436): the round's `funding` quote for `wallet`, its
+	 * `escrow_lock` quote for `card` (`FundingCharge`). `expectedAmountMinor` and `currency` stay the
+	 * round's own price; the card is charged the quote's figure, which the database holds it to.
+	 */
+	fxQuoteId: uuid.nullable().optional(),
 	idempotencyKey: attemptKey,
 });
 export type FundPaidRevision = z.infer<typeof FundPaidRevisionSchema>;

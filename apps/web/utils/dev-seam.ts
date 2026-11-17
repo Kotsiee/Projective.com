@@ -214,8 +214,8 @@ export type DevDiscoveryCall =
 export type DevConferencingConnection = "auto" | "connected" | "missing";
 
 /**
- * The viewer's connected calendar (Decision #383, ruling R3): what Connect a calendar lists and offers.
- * `auto` asks the server. Client-side only.
+ * The viewer's connected calendar (Decision #383, ruling R3): what Settings → Integrations' Calendars
+ * block lists and offers (Decision #440). `auto` asks the server. Client-side only.
  */
 export type DevCalendarConnection = "auto" | "busy_only" | "publishing" | "expired";
 
@@ -322,6 +322,15 @@ export type DevCheckoutGate =
  * service answers with it in place of the money call once every real check has passed.
  */
 export type DevCheckoutPayment = CheckoutPaymentSim;
+
+/**
+ * Paying in one's own currency (Decision #436): `auto` lets the database's `fx_checkout_enabled`
+ * decide; `on` and `off` override it for this browser's requests. SERVER-side: the switcher mirrors it
+ * into the `pj.dev.fx-checkout` cookie, which a development build forwards to PostgREST as a header.
+ * `off` refuses only its sender; `on` counts only in a database that honours development overrides
+ * (the local seed world's), so the quote, the charge and the server's checks all see the same switch.
+ */
+export type DevFxCheckout = "auto" | "on" | "off";
 
 /**
  * The simulated spend-request queue on a business's Spend module (Decision #246): `empty` no requests,
@@ -613,6 +622,8 @@ export interface DevSeamState {
 	checkoutGate?: DevCheckoutGate;
 	/** The simulated payment outcome. Optional like `walletAurora`; absent reads as `ok`. */
 	checkoutPayment?: DevCheckoutPayment;
+	/** The paying-in-one's-own-currency override. Optional like `walletAurora`; absent reads as `auto`. */
+	fxCheckout?: DevFxCheckout;
 	/** The simulated Spend request queue. Optional like `walletAurora`; absent reads as `auto`. */
 	spendRequests?: DevSpendRequests;
 	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
@@ -853,6 +864,7 @@ const CHECKOUT_PAYMENTS: readonly DevCheckoutPayment[] = [
 	"price_changed",
 	"promo_exhausted",
 ];
+const FX_CHECKOUTS: readonly DevFxCheckout[] = ["auto", "on", "off"];
 const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [
 	"auto",
 	"empty",
@@ -951,6 +963,7 @@ export function readDevSeam(): DevSeamState | null {
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		// Absent = `ok`, its inert value: `reflect()` omits the attribute while nothing is simulated.
 		checkoutPayment: coerce(ds.devCheckoutPayment, CHECKOUT_PAYMENTS, "ok"),
+		fxCheckout: coerce(ds.devFxCheckout, FX_CHECKOUTS, "auto"),
 		spendRequests: coerce(ds.devSpendRequests, SPEND_REQUEST_SIMS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),

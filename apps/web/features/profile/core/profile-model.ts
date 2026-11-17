@@ -477,31 +477,30 @@ export function memberNoticeFor(
 	return { text, settingsHref: linked ? facts.settingsHref : null };
 }
 
+/** The owner bar's note on their own page: the edit controls are theirs alone (Decision #439). */
+export const OWNER_NOTE = "Visitors see this page without the edit buttons or the empty blocks.";
+
 /**
- * The owner header's Preview note on a business page for a member who may edit it: the rig they see
- * is not quite the visitors' one (Decision #244 amends #119 (B) for business editors).
+ * The owner bar's note on a business page for a member who may edit it: the rig they see is not quite
+ * the visitors' one (Decision #244 amends #119 (B) for business editors).
  */
-export const BUSINESS_PREVIEW_NOTE =
-	"This is how your business looks to visitors. They see Message where you see Manage business, and none of the edit buttons or empty blocks.";
+export const BUSINESS_OWNER_NOTE =
+	"Visitors see this page with Message where you see Manage business, and without the edit buttons or the empty blocks.";
 
 /**
  * The same note on a team page (Teams P1): Manage team stands in Hire's place for the team's editors
  * only. It does not promise visitors a Hire — a team with nothing to hire for offers none.
  */
-export const TEAM_PREVIEW_NOTE =
-	"This is how your team looks to visitors, who never see Manage team, the edit buttons or empty blocks.";
+export const TEAM_OWNER_NOTE =
+	"Visitors see this page without Manage team, the edit buttons or the empty blocks.";
 
-/**
- * The Preview note for a workspace editor (a viewer whose read carries the console door), or
- * `undefined` for everyone else — the owner nav then shows its plain note.
- */
-export function previewNoteFor(
-	profile: Pick<ProfileView, "kind" | "workspace">,
-): string | undefined {
-	if (!profile.workspace?.consoleHref) return undefined;
-	if (profile.kind === "business") return BUSINESS_PREVIEW_NOTE;
-	if (profile.kind === "team") return TEAM_PREVIEW_NOTE;
-	return undefined;
+/** The owner bar's note: a workspace editor's names the rig control visitors do not see. */
+export function ownerNoteFor(profile: Pick<ProfileView, "kind" | "workspace">): string {
+	if (profile.workspace?.consoleHref) {
+		if (profile.kind === "business") return BUSINESS_OWNER_NOTE;
+		if (profile.kind === "team") return TEAM_OWNER_NOTE;
+	}
+	return OWNER_NOTE;
 }
 
 /**

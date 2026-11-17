@@ -10,7 +10,11 @@ import type {
 	SubmissionUnit,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
-import type { FundPaidRevision, PaidRevisionFunding } from "@projective/types/finance";
+import type {
+	FundingCharge,
+	FundPaidRevision,
+	PaidRevisionFunding,
+} from "@projective/types/finance";
 
 /** The body of a direct paid revision payment; the address supplies the rest. */
 export type PaidRevisionFundingRequest = Omit<FundPaidRevision, "projectId" | "stageId" | "submissionId">;
@@ -80,6 +84,25 @@ export const SettlementService = {
 		return postProjects<PaidRevisionFunding>(
 			`${stageBase(projectId, stageId)}/submissions/${submission}/paid-revision/fund`,
 			body,
+		);
+	},
+
+	/**
+	 * What paying for a raised round directly charges the caller (Decision #436): its own price, or in
+	 * their own currency through locked quotes unless `payIn` names the project's.
+	 */
+	paidRevisionQuote(
+		projectId: string,
+		stageId: string,
+		submissionId: string,
+		revisionId: string,
+		payIn: string | null = null,
+	): Promise<ProjectsResult<{ funding: FundingCharge }>> {
+		const query = new URLSearchParams({ revision: revisionId });
+		if (payIn) query.set("pay_in", payIn);
+		const submission = encodeURIComponent(submissionId);
+		return getProjects<{ funding: FundingCharge }>(
+			`${stageBase(projectId, stageId)}/submissions/${submission}/paid-revision/quote?${query}`,
 		);
 	},
 

@@ -10,13 +10,15 @@ import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
 import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
 import ProfileStyleAnchor from "@features/profile/islands/ProfileStyleAnchor.island.tsx";
+import OwnerBar from "@features/profile/islands/OwnerBar.island.tsx";
+import OwnerContextBar from "@features/profile/islands/OwnerContextBar.island.tsx";
 import { ProfileContextBar } from "@features/profile/components/ProfileContextBar.tsx";
 import { ProfileServicesSection } from "@features/profile/components/ProfileServicesSection.tsx";
 import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
-import { OwnerNav, type OwnerNavTab } from "@features/profile/components/OwnerNav.tsx";
-import { ownerEditFor } from "@features/profile/core/owner-edit.ts";
+import { ownerOf } from "@features/profile/core/owner-ssr.ts";
 import { ProfileMemberNotice } from "@features/profile/components/ProfileMemberNotice.tsx";
+import { firstWeekdayOf } from "@projective/types/org";
 import type { ProductItem, ServiceItem } from "@features/profile/types/profile-types.ts";
 import {
 	viewLaneFor,
@@ -39,7 +41,7 @@ import {
 	defaultTabFor,
 	estimatedSpendFor,
 	isSellerKind,
-	previewNoteFor,
+	ownerNoteFor,
 	TABS_ANCHOR,
 } from "@features/profile/core/profile-model.ts";
 
@@ -69,23 +71,24 @@ import {
  * full-page availability calendar (`/[handle]/availability`, which fills the content region and gets
  * only a one-line identity strip with a way back).
  *
- * # The owner's three views
+ * # The owner edits in place
  *
  * When the DATABASE says the viewer owns the profile (`profile.viewer.isOwner`, read under their own
- * session — never the unverified chrome token), an {@link OwnerNav} sits above the page with three
- * tabs: **Preview** (the public page as a visitor sees it — the rig explains itself rather than
- * acting — with each block's edit link and a stub where a visitor would see nothing, Decision #408),
- * **Edit profile & settings** (`/[handle]/edit`) and **Availability**
- * (`/[handle]/edit/availability`). The two edit routes render only the owner nav and their own body;
- * their pages refuse anyone who is not the owner.
+ * session — never the unverified chrome token) and their edit model was read
+ * (`ctx.state.profileEdit`), the page is the visitor's page with its blocks editable where they stand
+ * (Decision #439): the hero's name and showcase, the {@link OwnerContextBar} in place of the server
+ * bar, and the sections' own owner islands. The rig still explains itself rather than acting. The
+ * {@link OwnerBar} above it says what visitors do not see and opens the account-level settings —
+ * Settings → Profile as the contextual modal, or a workspace's console Settings. `/[handle]/edit` and
+ * `/[handle]/edit/availability` are retired to 308s onto this page.
  *
  * # A business's page (Decision #244)
  *
  * A business is a buyer: it resolves no listings (so no price or purchase surface can render), and
  * its rig leads with Message. Outsiders cannot open a draft, archived or invite-only business at
  * all — the database answers it as missing — so the only reader of such a page is a member, who is
- * told why by the {@link ProfileMemberNotice} above it. A member who may edit it previews the page
- * with "Manage business" in Message's place, and the owner nav's note says so.
+ * told why by the {@link ProfileMemberNotice} above it. A member who may edit it sees the page with
+ * "Manage business" in Message's place, and the owner bar's note says so.
  *
  * # A team's page (Teams P1)
  *
@@ -94,7 +97,7 @@ import {
  * a draft, archived or invite-only team from everyone outside it, and the member who reaches it reads
  * the notice, with a link to the console's Settings when they may open it. A member holding
  * `edit_profile` (the owner and admin presets, or a custom role that grants it, Decision #250 (b))
- * previews the page with "Manage team" in Hire's place, and the owner nav's note says so.
+ * sees the page with "Manage team" in Hire's place, and the owner bar's note says so.
  */
 export default define.page(async function ProfileLayout(ctx) {
 	const profile = ctx.state.profile;
@@ -200,30 +203,6 @@ export default define.page(async function ProfileLayout(ctx) {
 		return shell(<ctx.Component />, { lane: lane ?? undefined, header });
 	}
 
-	// The owner's edit surfaces: the owner nav and the page's own body, no profile chrome. The pages
-	// themselves refuse a non-owner (a redirect from their handler), so this branch never paints an
-	// editor around somebody else's profile.
-	if (segments[1] === "edit") {
-		const tab: OwnerNavTab = segments[2] === "availability" ? "availability" : "edit";
-		return shell(
-			<div class="pf-scope pf-scope--edit">
-				{
-					/* The owner nav is server-rendered; the sheet it needs rides this anchor even when the
-				    page below it (a refusal note) mounts no island. */
-				}
-				<ProfileStyleAnchor />
-				{owner && (
-					<OwnerNav
-						handle={profile.handle}
-						active={tab}
-						scheduling={!isRestrictedRequest(ctx.req, ctx.state.userContext)}
-					/>
-				)}
-				<ctx.Component />
-			</div>,
-		);
-	}
-
 	// The Availability calendar fills the content region; it gets a one-line identity strip so the
 	// page still says whose calendar it is and carries a way back to the profile.
 	if (segments[1] === "availability") {
@@ -249,8 +228,8 @@ export default define.page(async function ProfileLayout(ctx) {
 	const seller = isSellerKind(profile.kind);
 	const actor = readActor(ctx);
 	const restricted = isRestrictedRequest(ctx.req, context);
-	// The owner's Preview links each block to the part of the editor that changes it (Decision #408).
-	const ownerEdit = ownerEditFor(profile, { scheduling: !restricted });
+	// The owner's in-place editors (Decision #439) — `null` for a visitor, or an unreadable model.
+	const owned = ownerOf(ctx);
 	// Independent reads, so they run in one wave. The listings render on every section. A seller's
 	// call offer feeds the Hire popover's consultation row (and the owner's preview shows the row
 	// their visitors see); a buyer entity takes none. Only a signed-in VISITOR of a seller can add
@@ -282,11 +261,12 @@ export default define.page(async function ProfileLayout(ctx) {
 	return shell(
 		<div class="pf-scope">
 			{owner && (
-				<OwnerNav
-					handle={profile.handle}
-					active="preview"
-					scheduling={!restricted}
-					note={previewNoteFor(profile)}
+				<OwnerBar
+					note={owned
+						? ownerNoteFor(profile)
+						: "Your profile can't be edited right now. Try again in a moment."}
+					personal={profile.owner?.type === "user"}
+					consoleSettingsHref={profile.workspace?.settingsHref ?? null}
 				/>
 			)}
 			<ProfileMemberNotice profile={profile} />
@@ -302,9 +282,19 @@ export default define.page(async function ProfileLayout(ctx) {
 					hireProjects={hireProjects}
 					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
 					scopeId={context?.contextId ?? ""}
-					ownerEdit={ownerEdit}
+					ownerEdit={owned?.edit ?? null}
+					ownerModel={owned?.model ?? null}
 				/>
-				<ProfileContextBar profile={profile} ownerEdit={ownerEdit} />
+				{owned
+					? (
+						<OwnerContextBar
+							profile={profile}
+							model={owned.model}
+							edit={owned.edit}
+							weekStartsOn={firstWeekdayOf(context?.locale)}
+						/>
+					)
+					: <ProfileContextBar profile={profile} />}
 				<ProfileServicesSection services={services} authed={authed} />
 				<ProfileProductsSection products={products} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">

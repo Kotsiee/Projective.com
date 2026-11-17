@@ -7,8 +7,9 @@ import { Button, ToggleSwitch } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { LaneFilterChoices, LaneFilterFacet } from "@projective/ui/navigation";
 import type { SchedulePage } from "@projective/types/scheduling";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { CalendarExportPopover } from "../components/CalendarExportPopover.tsx";
-import { ConnectCalendarDialog } from "../components/ConnectCalendarDialog.tsx";
+import { CalendarImportPopover } from "../components/CalendarImportPopover.tsx";
 import type { CalendarAddress } from "../core/calendar-address.ts";
 import {
 	calendarPage,
@@ -17,7 +18,6 @@ import {
 	type CalendarSurface,
 	calendarZoom,
 	calendarZoomAt,
-	connectOpen,
 	importedEvents,
 	PRESET_OPTIONS,
 	requestCreate,
@@ -32,10 +32,10 @@ import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
  * CalendarFooterRig — the middle-nav FOOTER band on every `/calendar` route, in three parts: the
  * display preset on the leading edge, the zoom ruler in the centre, and the surface's actions on the
  * trailing edge. The actions keep the anatomy of `/catalogue/[id]`'s rig: the secondaries are
- * icon-only ghost circles with a portal Tooltip each (Export · Connect), and — below 767px only, where
- * the shell removes the lane whose footer carries it (Decision #378) — New event is the band's one
- * filled commit, last. There is no `.ics` Import: nothing keeps what it would read yet, so it is not
- * drawn (Decision #343, ruling C7 (a)).
+ * icon-only ghost circles with a portal Tooltip each (Import · Export · Connect), and — below 767px
+ * only, where the shell removes the lane whose footer carries it (Decision #378) — New event is the
+ * band's one filled commit, last. Connect opens Settings → Integrations on its Calendars block
+ * (Decision #440); the calendar has no connect dialog of its own.
  *
  * **The preset** is a ghost circle that opens a one-choice menu over {@link calendarPreset}:
  * everything, availability only, hide availability, or booked holidays only. It is a lens over the
@@ -48,7 +48,7 @@ import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
  * hands to the engine, so the marker and the grid's Ctrl+wheel move one value.
  *
  * **The layer is mounted HERE, not in a route body**, because it belongs to whatever triggers it:
- * the connect modal and the export popover open from this rig at every width.
+ * the import and export popovers open from this rig at every width.
  *
  * **The rig contains itself.** `container-type: inline-size` stops this `nowrap` row contributing its
  * min-content to the middle-nav's `minmax(0, 1fr)` content track and makes its tiers real container
@@ -63,8 +63,6 @@ import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
 export interface CalendarFooterRigProps {
 	/** The SSR page — the export popover writes what the surface holds, so it needs the same data. */
 	initial: SchedulePage | null;
-	/** Same-origin path a consent round trip returns to. */
-	returnTo: string;
 	/** Which calendar the rig frames (default `personal`). */
 	surface?: CalendarSurface;
 	/** What the agenda's URL asks to be shown (Decision #413), so the ruler paints in the first byte. */
@@ -168,6 +166,16 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 			<RigZoom address={props.address} />
 
 			<div class="cal-rig__actions">
+				{personal
+					? (
+						<CalendarImportPopover
+							timezone={tz}
+							triggerClass={GHOST_CIRCLE}
+							placement="top-end"
+							iconSize="sm"
+						/>
+					)
+					: null}
 				<CalendarExportPopover
 					events={[...(page?.events ?? []), ...importedEvents.value]}
 					timezone={tz}
@@ -190,7 +198,7 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 									icon={<Icon name="link" size="sm" />}
 									aria-label="Connect a calendar"
 									aria-haspopup="dialog"
-									onClick={() => (connectOpen.value = true)}
+									onClick={() => void openSettings("integrations", "calendars")}
 								/>
 							</Tooltip>
 							<Tooltip content="New event">
@@ -207,8 +215,6 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 					)
 					: null}
 			</div>
-
-			{personal ? <ConnectCalendarDialog open={connectOpen} returnTo={props.returnTo} /> : null}
 		</div>
 	);
 }

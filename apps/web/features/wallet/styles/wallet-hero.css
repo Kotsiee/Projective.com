@@ -171,17 +171,129 @@
 	text-align: center;
 }
 
+.wlt-pill,
+.wlt-tool,
+.wlt-scope,
+.wlt-currencies__item,
+.wlt-ruler {
+	position: relative;
+	isolation: isolate;
+}
+
+.wlt-pill::before,
+.wlt-tool::before,
+.wlt-scope::before,
+.wlt-currencies__item::before,
+.wlt-ruler::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: var(--wlt-glass-surface, var(--wlt-glass-fill));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-hero__deck {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-hero__deck[data-swipe="true"] {
+	touch-action: pan-y;
+}
+
+.wlt-hero__deck[data-phase="drag"] {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.wlt-hero__slide {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-5);
+	inline-size: 100%;
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.wlt-hero__deck:not([data-phase="rest"]) .wlt-hero__slide {
+	transform: translate3d(var(--wlt-swipe-x, 0px), 0, 0);
+	opacity: calc(1 - var(--wlt-swipe-p, 0) * var(--wlt-swipe-fade));
+}
+
+.wlt-hero__deck[data-phase="drag"] .wlt-hero__slide {
+	transition: none;
+}
+
+.wlt-scope-switcher {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-scope-switcher__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-scope-switcher__row > .ui-tooltip__anchor {
+	flex: none;
+}
+
+.wlt-scope-dots {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-block-size: var(--pip-dot);
+}
+
+.wlt-scope-dots__dot {
+	inline-size: var(--pip-dot);
+	block-size: var(--pip-dot);
+	border-radius: var(--radius-full);
+	background: var(--wlt-glass-edge-hover);
+}
+
+.wlt-scope-dots__dot[data-on="true"] {
+	inline-size: calc(var(--pip-dot) * 2.5);
+	background: var(--wlt-hero-ink);
+}
+
+.wlt-scope-dots--count {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+	color: var(--wlt-hero-ink-soft);
+}
+
 .wlt-scope {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+	min-inline-size: 0;
 	max-inline-size: 100%;
-	min-block-size: 2rem;
+	min-block-size: var(--wlt-tool-h);
 	padding-block: var(--space-1);
 	padding-inline: var(--space-1) var(--space-3);
 	border: 1px solid var(--wlt-glass-edge);
 	border-radius: var(--radius-full);
-	background: var(--wlt-glass-fill);
+	background: transparent;
 	color: var(--wlt-hero-ink);
 	font: inherit;
 	font-size: var(--text-sm);
@@ -189,23 +301,41 @@
 	cursor: pointer;
 	transform: scale(1);
 	transition:
-		background-color var(--dur-fast) var(--ease-standard),
 		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
 }
 
-.wlt-scope:hover {
-	background: var(--wlt-glass-fill-hover);
+@media (hover: hover) {
+	.wlt-scope:hover {
+		--wlt-glass-surface: var(--wlt-glass-fill-hover);
+		border-color: var(--wlt-glass-edge-hover);
+		box-shadow: var(--wlt-pill-lift);
+	}
+}
+
+.wlt-scope[aria-expanded="true"] {
+	--wlt-glass-surface: var(--wlt-glass-fill-hover);
 	border-color: var(--wlt-glass-edge-hover);
+}
+
+.wlt-scope__all {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: var(--radius-full);
+	background: var(--wlt-glass-bubble);
+}
+
+.wlt-scope__avatar {
+	flex: none;
 }
 
 .wlt-scope:active {
 	transform: scale(var(--btn-press-scale));
 	transition-duration: var(--dur-press);
-}
-
-.wlt-scope__glyph {
-	margin-inline: var(--space-1);
 }
 
 .wlt-scope__name {
@@ -292,7 +422,7 @@
 	padding-inline: var(--space-3);
 	border: 1px solid var(--wlt-glass-edge);
 	border-radius: var(--radius-full);
-	background: var(--wlt-glass-fill);
+	background: transparent;
 	color: var(--wlt-hero-ink-soft);
 	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
@@ -307,7 +437,7 @@
 }
 
 .wlt-currencies__item:hover {
-	background: var(--wlt-glass-fill-hover);
+	--wlt-glass-surface: var(--wlt-glass-fill-hover);
 	border-color: var(--wlt-glass-edge-hover);
 	color: var(--wlt-hero-ink);
 }
@@ -323,8 +453,8 @@
 }
 
 .wlt-currencies__item[aria-current="page"] {
+	--wlt-glass-surface: var(--wlt-glass-fill-hover);
 	border-color: var(--wlt-glass-edge-hover);
-	background: var(--wlt-glass-fill-hover);
 	color: var(--wlt-hero-ink);
 }
 
@@ -406,8 +536,6 @@
 }
 
 .wlt-pill {
-	position: relative;
-	isolation: isolate;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
@@ -428,18 +556,6 @@
 		box-shadow var(--dur-fast) var(--ease-standard),
 		border-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-pill::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	border-radius: inherit;
-	background: var(--wlt-glass-fill);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .wlt-pill__icon {
@@ -475,13 +591,10 @@
 
 @media (hover: hover) {
 	.wlt-pill:hover {
+		--wlt-glass-surface: var(--wlt-glass-fill-hover);
 		transform: translateY(-1px) scale(1);
 		border-color: var(--wlt-glass-edge-hover);
 		box-shadow: var(--wlt-pill-lift);
-	}
-
-	.wlt-pill:hover::before {
-		background: var(--wlt-glass-fill-hover);
 	}
 }
 
@@ -582,6 +695,10 @@
 	.wlt-scope:active {
 		transform: none !important;
 	}
+
+	.wlt-hero__slide {
+		transition: none;
+	}
 }
 
 :root[data-motion="reduced"] .wlt-pill,
@@ -589,4 +706,8 @@
 :root[data-motion="reduced"] .wlt-pill:active,
 :root[data-motion="reduced"] .wlt-scope:active {
 	transform: none !important;
+}
+
+:root[data-motion="reduced"] .wlt-hero__slide {
+	transition: none;
 }

@@ -173,8 +173,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
 		label: "Integrations",
 		description: "Connected drives, calendars and video tools",
 		icon: "link",
-		keywords: ["connect", "oauth", "apps"],
-		surface: "status-escalate",
+		keywords: ["connect", "oauth", "apps", "disconnect"],
+		surface: "modal",
 	},
 ];
 // #endregion
@@ -578,7 +578,17 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		label: "Discovery calls",
 		description: "Let clients book a call with you",
 		icon: "video",
-		keywords: ["discovery call", "accept calls", "booking", "intro call", "consultation"],
+		keywords: [
+			"discovery call",
+			"accept calls",
+			"booking",
+			"intro call",
+			"consultation",
+			"paid consultation",
+			"confirm automatically",
+			"auto-confirm",
+			"agenda",
+		],
 		surface: "page-only",
 		gate: isSeller,
 		anchor: "calls",
@@ -667,7 +677,7 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		description: "Google Drive, Dropbox, Frame.io and S3",
 		icon: "folder",
 		keywords: ["google drive", "dropbox", "frame.io", "s3", "cloud storage", "files"],
-		surface: "status-escalate",
+		surface: "modal",
 		anchor: "storage",
 	},
 	{
@@ -676,8 +686,8 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		label: "Calendars",
 		description: "Sync Google or Outlook calendars",
 		icon: "calendar",
-		keywords: ["google calendar", "outlook", "calendar sync", "busy times"],
-		surface: "status-escalate",
+		keywords: ["google calendar", "outlook", "calendar sync", "busy times", "publish"],
+		surface: "modal",
 		anchor: "calendars",
 	},
 	{
@@ -687,7 +697,7 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		description: "The tool your call links are made with",
 		icon: "video-camera",
 		keywords: ["zoom", "google meet", "teams", "video link", "conferencing"],
-		surface: "status-escalate",
+		surface: "modal",
 		anchor: "conferencing",
 	},
 ];

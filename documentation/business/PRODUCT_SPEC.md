@@ -413,7 +413,8 @@ MS Teams or Google Calendar, but with integrated financial protection.
   counts as busy for discovery calls and session bookings. A **Passive** one leaves the time free,
   so a client can book over it, and it shows on the grid as a hatched ghost rather than a solid
   card. An entry takes its routine's setting on joining and follows it, unless its host set it
-  apart. A commitment somebody else relies on (a booked session, a call, an engagement's meeting,
+  apart, and leaving a routine gives a passive entry its time back: it is Disruptive again until its
+  owner says otherwise (Decision #441). A commitment somebody else relies on (a booked session, a call, an engagement's meeting,
   anything with people on it) always holds its time. A passive routine's details point to matching
   Session Services on the marketplace.
 - **An entry takes a colour of its host's choosing** (Decision #408). One of twelve: Default, which
@@ -911,46 +912,55 @@ starting rate across the seller's listings, resolved through the same rule the s
 A fact that is unmeasured or absent is omitted whole; nothing on the bar is inferred from a
 neighbouring signal.
 
-**The owner manages the profile from three views of it.** When the person looking at a profile is
-the one who manages it — the individual, a team's owner or an admin (whoever holds its profile
-right; a team gives a lead that right through a custom role, Decision #250 (b)), a business's owner
-or an admin (whoever holds its profile right, Decision #244), an
-enterprise's owner or admin — an owner header sits above the page with three tabs, each its own
-address:
+**The owner edits the profile on the profile itself.** When the person looking at a profile is the
+one who manages it — the individual, a team's owner or an admin (whoever holds its profile right; a
+team gives a lead that right through a custom role, Decision #250 (b)), a business's owner or an
+admin (whoever holds its profile right, Decision #244), an enterprise's owner or admin — `/[handle]`
+is both the page visitors read and the page the owner edits (Decision #439). There is no separate
+editor, preview or availability page: `/[handle]/edit` and `/[handle]/edit/availability` only
+redirect here.
 
-- **Preview** (`/[handle]`) is the profile as a visitor sees it, and its conversion controls say
-  they are inert here rather than acting on the owner's own account — except that a team's or a
-  business's editor sees its console link (**Manage team** in Hire's place, **Manage business** in
-  Message's), and the Preview tab's note says so (Decision #244; Teams P1). The one thing the owner can
-  change from it in place is the photo: hovering it reveals an edit overlay that opens the File Picker
-  to upload a picture, choose one from their library or bring in their sign-in account's picture, then
-  frame it (Decision #158). Every other block the editor changes carries an owner-only edit link, a
-  pencil that shows while the block is hovered or focused (always, on touch), to the section of Edit
-  Profile & Settings that changes it — the name and headline, the showcase, the story, where they are
-  based, skills, languages, experience — or, for the hours, to Availability. A block a visitor would
-  not see, because it is empty or hidden, stands in its place as a one-line note with the same link
-  (Decision #408). A visitor's page carries none of it.
-- **Edit Profile & Settings** (`/[handle]/edit`) is one vertically stacked page of collapsible
-  sections that mirror the preview's structure, every field a persistently editable input: the
-  photo and the six-slot showcase (adding to an empty slot lets the owner choose up to as many
-  pictures or videos as there are empty slots, then frame each one before anything is saved), the name, headline and story, location and time zone, skills,
-  languages, career history, education and certifications, and the privacy and display switches —
-  who can see the profile (public · unlisted · private), whether visitors may open the photo full
-  size, whether the location line and the local clock show. A certification the platform has
-  verified loses that verification the moment its name or issuer is edited, because the check
-  described the credential that was checked. Changes are saved together (with an unsaved-changes
-  warning and Ctrl + S), and a refused field is marked where it is.
-- **Availability** (`/[handle]/edit/availability`) is where a seller sets the discovery-call terms —
-  whether calls are taken, a free courtesy call and ⁄ or a paid one with its duration and fee,
-  automatic confirmation and whether a reason is required — and the burnout guards every call is
-  booked within: gaps before and after a call, minimum notice, how far ahead, and for free calls a
-  weekly cap and a per-person cooldown. Every owner also sets the time zone and whether the hours are
-  published there. The weekly working hours are shown there as a summary and edited on the calendar
-  (`/calendar?view=availability`), the default availability template being their one source
-  (Decision #408). Everything the public profile says about availability is derived from what is
-  saved in these two places.
+- **The layout is the visitor's.** The owner sees exactly the page a visitor does, and its conversion
+  controls say they are inert here rather than acting on the owner's own account — except that a
+  team's or a business's editor sees its console link (**Manage team** in Hire's place, **Manage
+  business** in Message's) (Decision #244; Teams P1). One quiet line above the page says what
+  visitors do not see and opens the owner's settings (below).
+- **Every block is edited where it stands.** Each block the owner can change carries a pencil that
+  shows while the block is hovered or focused (always, on touch). Pressing it swaps the block for its
+  form in the same place, with Save and Cancel (and Escape, and Ctrl + S); nothing changes until Save,
+  so reading the page can never edit it by accident. The blocks are the photo (its hover overlay opens
+  the File Picker to upload a picture, choose one from their library or bring in their sign-in
+  account's picture, then frame it — Decision #158), the name, the headline and story, where they are
+  based (and, for a person, the time zone their local clock reads in), the availability block
+  (whether the weekly hours show on the profile and the time zone they are kept in), skills,
+  languages, the showcase, the portfolio, and the Experience section's roles, education and
+  certifications. A block a visitor would not see, because it is empty or hidden, stands in its
+  place as a one-line note with its pencil. A refused field is marked where it is, and leaving the
+  page with an open, changed form asks first. A visitor's page carries none of it.
+- **The showcase is managed in the hero.** Its pencil turns the showcase column into the six-slot
+  grid (below), where each change is applied at once — a picture is already a public rendition the
+  moment it is applied — and Done returns the showcase.
+- **New entries are added in a dialog.** Each Experience ledger has its own Add (a role, education, a
+  certification) and the portfolio has **Add work**; each opens a dialog rather than growing the page,
+  and the new entry stands on the page the moment the dialog saves. An existing ledger row is edited
+  in place; an existing portfolio piece is edited in the same dialog it was added in, because a tile
+  is a picture in a masonry column and a form inside it would reflow every column around it. A
+  certification the platform has verified loses that verification the moment its name or issuer is
+  edited, because the check described the credential that was checked. A removed portfolio piece is
+  archived, never deleted; a private piece shows on the owner's page marked as theirs alone.
+- **Account-level settings are not on the page.** Who can see the profile (public · unlisted ·
+  private), whether visitors may open the photo full size, and whether the location line and the
+  local clock show are **Settings → Profile**, which the owner line opens as the contextual Settings
+  modal; the handle is Settings → Account; a team's or business's visibility is its console's
+  Settings. The discovery-call terms are **Settings → Scheduling**: whether calls are taken, automatic
+  confirmation and whether a reason is required, a free courtesy call and ⁄ or a paid one with its
+  duration and fee, and the burnout guards every call is booked within — gaps before and after a
+  call, minimum notice, how far ahead, and for free calls a weekly cap and a per-person cooldown. The
+  weekly working hours are edited on the calendar (`/calendar?view=availability`), the default
+  availability template being their one source (Decision #408). Everything the public profile says
+  about availability is derived from what is saved in these places.
 
-**The showcase is a six-slot grid, and slot 1 is the profile's face.** In the editor each empty slot
+**The showcase is a six-slot grid, and slot 1 is the profile's face.** While the owner manages it, each empty slot
 is a dashed placeholder and each filled one offers replace and remove on hover or focus (removal is
 confirmed). **Slot 1 is the primary thumbnail** every explore card, search result and public listing
 of the profile leads with, so it takes a still only; the other five take stills, and videos once
@@ -1005,7 +1015,7 @@ team members.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state. The rest is completed afterwards in its console: its name, logo and
-  banner on its profile editor (`/@handle/edit`), member roles on Members and Roles, spending rules
+  banner on its public profile, edited in place (`/@handle`), member roles on Members and Roles, spending rules
   on Spend, billing and invoicing terms on Billing, and its verification (KYB) on Verification. The
   console's **Overview** walks the setup
   in order (Decision #248): **Invite a colleague** · **Verify the business** (KYB) · **Add money**
@@ -1748,8 +1758,10 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
   - **From wallet** — the ticket joins the Business's **auto-fund queue** and is funded from the
     Business wallet as soon as the wallet can cover it, oldest first: every credit to the wallet (a
     top-up, a refund, a recurring deposit) retries the queue. A currency conversion's credit does
-    not: it already belongs to the purchase it was made for (Decision #435). An automatic hold never
-    converts. Funding means the hold when the ticket
+    not: it already belongs to the purchase it was made for (Decision #435). A card payment made for
+    a purchase (a checkout order, or a stage, ticket or revision being funded) reaches that purchase
+    first and retries the queue only afterwards, with whatever the purchase left, all of it when the
+    purchase was refused (Decision #437). An automatic hold never converts. Funding means the hold when the ticket
     has a payee, or — for an unclaimed Pipeline ticket — returning it to the boards so its next claim
     holds. An automatic hold that would go over the project owner's spending limit, or is at or
     above the wallet's approval threshold, raises a spend approval for that ticket instead and is
@@ -1790,6 +1802,11 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   order, the escrow and every payout stay in the seller's currency. A refund of converted money
   returns exactly what the buyer paid for that share, in their currency. The buyer may instead
   **pay in the listing's own currency** (`?pay_in=`), and their bank then converts the charge.
+  Funding a stage from the board, or buying a paid revision round straight from the review, follows
+  the same rule (Decision #436): the payer is charged in their billing currency through the same
+  kind of quote, sees what the stage or round is listed at beside it, and may pay in the project's
+  currency instead. A card payment made in their currency whose purchase then fails is still paid
+  at the rate it was charged at, when the checkout is retried from the wallet.
 - **Until paying in one's own currency is switched on, the order's own currency is charged, and the
   buyer is always told which** (Decisions #153, #433). Paying in one's own currency stays off
   (`fx_checkout_enabled`) until counsel signs it off and a live rate feed exists. Browsing in another
@@ -4118,7 +4135,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `talent`                 | The bench — freelancers and teams the business has hired (Decision #230 (i))                    |
 |               |                           | `verification`           | Business verification (KYB) — where it stands, what is still due, what it unlocks, and the start of Stripe Connect onboarding for whoever holds the billing right (Decision #242) |
-|               |                           | `settings`               | A hand-off to the profile editor (name, pictures). The Business's own Settings (visibility, archive with its blockers named, restore) is not built yet (Decision #244 (d), #261 (c)). It is published from the Overview, ownership moves from Members, archive from the console header and the roster, and restore from the roster |
+|               |                           | `settings`               | A hand-off to the public profile, edited in place (name, pictures). The Business's own Settings (visibility, archive with its blockers named, restore) is not built yet (Decision #244 (d), #261 (c)). It is published from the Overview, ownership moves from Members, archive from the console header and the roster, and restore from the roster |
 |               |                           | `calendar`               | The business's calendar — the meetings, stage due dates and ticket deadlines of every project it has commissioned, on one grid, each as the viewer may see it on that project and linking to it; an event is answered or rescheduled as on its project, and new entries are added on the project's own calendar (Decision #308) |
 |               |                           | _other modules_          | `roles` · `invitations` · `messages` · `analytics` · `standing` · `profile` — the rest of the kind-business module registry (`features/workspaces/core/module-registry.tsx`). A business has no `catalogue`: it shows no seller surface |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
@@ -4151,10 +4168,10 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `channels/[channel]`     | The team's chat channels — every active member is in every channel; `/channels` lands on `general` (Decision #306) |
 |               |                           | _lane hubs_              | The lane groups the modules into hubs (Decision #306, superseding #228 (C)): Core operations — Overview · Projects · Calendar · Files · Catalogue (team only) · Members (`members` · `invitations` · `roles`) · Wallet (`finance` · `payouts`; a business's `finance` · `spend` · `billing`) · Analytics (Decision #332 folded the former Governance section in); Channels; the plain one-word labels are Decision #308; Settings (`settings` · `profile` · `verification`) in the lane footer. Every module keeps its own address |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
-|               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |
+|               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) headed by the scope carousel that switches between the viewer's wallets (chevrons, a sideways drag or the dropdown, each a `?w=` address) and carrying every money action, over a sheet of the balance breakdown, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's four pages and shows its pots and standing schedules at a glance; it carries no money action, which live in the hero on every wallet page (Decision #438). The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |
 |               |                           | `transactions`           | The full ledger, newest first, paged, with a CSV export                                         |
 |               |                           | `analytics`              | Cash flow over the window picked on the pinned range ruler, the balance breakdown, and money moved by category and by project |
-|               |                           | `invoices`               | A business vault's bills due, the accruing month and past statements (a non-business wallet is told it is not billed) |
+|               |                           | `invoices`               | A business vault's bills due, the accruing month and past statements; listed in the lane for every wallet, and a non-business wallet is told it is not billed |
 |               |                           | `[wallet id]`            | View specific wallet — addressed as `?w=scope:id` on `/wallet` (a view filter), never a path segment |
 |               | `/checkout`               | `index`                  | **Step 1 — Basket & lists.** The acting principal's basket plus its named lists (a list is a named basket row, not a separate table). `/basket` **302→** here, query string preserved |
 |               |                           | `details`                | **Step 2 — Delivery & billing.** Distraction-free chrome (DESIGN_SYSTEM Part D.6). Auto-skips to `payment` when the saved details are already complete; `?edit=1` forces the form open |
@@ -4196,8 +4213,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |
 |               |                           | `posts`                  | Published articles and updates                                                                 |
 |               |                           | `availability`           | Full-page availability calendar (no profile chrome; linked as "Full calendar" from the context bar's availability block) |
-|               |                           | `edit`                   | **Owner only.** Edit Profile & Settings — collapsible inline sections, the six-slot showcase + photo through the File Picker’s media mode (upload · library · sign-in picture, then the crop stage), privacy and display switches (§The Public Profile) |
-|               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
+|               |                           | `edit` · `edit/availability` | **Retired** (Decision #439) — each 308s onto `/[handle]` (`edit/availability` onto its Availability block), where the owner edits in place; privacy and display switches are Settings → Profile, call terms Settings → Scheduling (§The Public Profile) |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/rsvp/[token]`           |                          | A guest's invitation (Decision #391), for somebody with no account. No shell and no sign-in: the emailed link shows the invitation and takes Accept, Tentative or Decline, and joining the call takes a code sent to the invited address. Every dead state reads the same. `noindex`, `no-referrer`, `no-store`, because the path is a capability. |

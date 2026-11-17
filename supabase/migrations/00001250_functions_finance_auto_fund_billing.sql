@@ -349,7 +349,10 @@ END;
 $$;
 
 -- AFTER INSERT on finance.transactions, for business wallets only. A credit (not on account, and not a
--- conversion, which is bound to the purchase that made it, Decision #435) retries the auto-fund queue. A debit that takes the balance from at-or-above the business's floor to below
+-- conversion, which is bound to the purchase that made it, Decision #435) retries the auto-fund queue.
+-- Nor does a card top-up made for a purchase (an attached checkout or an escrow lock): it is credited
+-- before that purchase is applied, so finance.settle_card_payment retries the queue itself once the
+-- purchase has had the money. A debit that takes the balance from at-or-above the business's floor to below
 -- it — in the business's default currency — warns and runs any floor top-up. Stateless debounce: the
 -- crossing is read off the debit itself (balance before = after + amount), so the warning re-arms
 -- only once the balance is back at or above the floor. Never raises into the money movement.
@@ -368,7 +371,10 @@ BEGIN
     IF NOT FOUND OR w.owner_type <> 'business' THEN RETURN NULL; END IF;
 
     IF NEW.direction = 'credit' THEN
-        IF NEW.reason NOT IN ('on_account_credit', 'fx_conversion') THEN
+        IF NEW.reason NOT IN ('on_account_credit', 'fx_conversion')
+           AND NOT (NEW.reason = 'topup' AND NEW.ref_table = 'inbound_payments' AND EXISTS (
+                   SELECT 1 FROM finance.inbound_payments p
+                    WHERE p.id = NEW.ref_id AND (p.purpose = 'escrow_lock' OR p.checkout IS NOT NULL))) THEN
             PERFORM finance.fn_auto_fund_drain(w.id);
         END IF;
         RETURN NULL;

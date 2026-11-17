@@ -1,59 +1,75 @@
 import { assertEquals } from "@std/assert";
 import {
-	availabilityHrefFor,
+	anchorOfHash,
+	canEditBlock,
 	EDIT_ANCHORS,
 	editAnchorsFor,
-	editHrefFor,
+	ownerBlockHref,
 	ownerEditFor,
 } from "./owner-edit.ts";
 
 const owned = { isOwner: true, follows: false };
+const scheduling = { scheduling: true };
 
-Deno.test("each kind links only to the sections its editor draws", () => {
-	assertEquals(editAnchorsFor("freelancer"), [...EDIT_ANCHORS]);
-	assertEquals(editAnchorsFor("client"), [
+Deno.test("each kind offers only the blocks its save path takes", () => {
+	assertEquals(editAnchorsFor("freelancer", scheduling), [...EDIT_ANCHORS]);
+	assertEquals(editAnchorsFor("client", scheduling), [
 		"showcase",
 		"basics",
 		"about",
 		"location",
+		"availability",
 		"languages",
 		"experience",
-		"privacy",
 	]);
-	assertEquals(editAnchorsFor("team"), ["showcase", "basics", "about", "privacy"]);
-	assertEquals(editAnchorsFor("business"), ["showcase", "basics", "about", "location", "privacy"]);
-	assertEquals(editAnchorsFor("enterprise"), ["showcase", "basics", "location", "privacy"]);
+	assertEquals(editAnchorsFor("team", scheduling), ["showcase", "basics", "about", "availability"]);
+	assertEquals(editAnchorsFor("business", scheduling), [
+		"showcase",
+		"basics",
+		"about",
+		"location",
+		"availability",
+	]);
+	assertEquals(editAnchorsFor("enterprise", scheduling), [
+		"showcase",
+		"basics",
+		"location",
+		"availability",
+	]);
 });
 
-Deno.test("a visitor gets no links at all", () => {
+Deno.test("an under-18 owner has no availability block", () => {
+	assertEquals(editAnchorsFor("client", { scheduling: false }).includes("availability"), false);
+});
+
+Deno.test("a visitor may edit nothing", () => {
 	const visitor = ownerEditFor(
 		{ handle: "@mari", kind: "freelancer", viewer: { isOwner: false, follows: false } },
-		{ scheduling: true },
+		scheduling,
 	);
 	assertEquals(visitor, null);
-	assertEquals(ownerEditFor({ handle: "@mari", kind: "freelancer" }, { scheduling: true }), null);
-	assertEquals(editHrefFor(visitor, "about"), null);
-	assertEquals(availabilityHrefFor(visitor), null);
+	assertEquals(ownerEditFor({ handle: "@mari", kind: "freelancer" }, scheduling), null);
+	assertEquals(canEditBlock(visitor, "about"), false);
 });
 
-Deno.test("an owner's links land on the editor's anchors under the canonical @handle", () => {
-	const edit = ownerEditFor({ handle: "mari", kind: "freelancer", viewer: owned }, {
-		scheduling: true,
-	});
-	assertEquals(editHrefFor(edit, "skills"), "/@mari/edit#skills");
-	assertEquals(editHrefFor(edit, "showcase"), "/@mari/edit#showcase");
-	assertEquals(availabilityHrefFor(edit), "/@mari/edit/availability");
+Deno.test("an owner's rights carry the canonical @handle and the kind's blocks", () => {
+	const edit = ownerEditFor({ handle: "mari", kind: "freelancer", viewer: owned }, scheduling);
+	assertEquals(edit?.handle, "@mari");
+	assertEquals(canEditBlock(edit, "work"), true);
+	const team = ownerEditFor({ handle: "@studio", kind: "team", viewer: owned }, scheduling);
+	assertEquals(canEditBlock(team, "skills"), false);
+	assertEquals(canEditBlock(team, "location"), false);
 });
 
-Deno.test("a missing section and an under-18 owner's hours have no link", () => {
-	const team = ownerEditFor({ handle: "@studio", kind: "team", viewer: owned }, {
-		scheduling: true,
-	});
-	assertEquals(editHrefFor(team, "skills"), null);
-	assertEquals(editHrefFor(team, "location"), null);
-	const minor = ownerEditFor({ handle: "@kim", kind: "client", viewer: owned }, {
-		scheduling: false,
-	});
-	assertEquals(availabilityHrefFor(minor), null);
-	assertEquals(editHrefFor(minor, "languages"), "/@kim/edit#languages");
+Deno.test("a hash names a block only when it is one", () => {
+	assertEquals(anchorOfHash("#skills"), "skills");
+	assertEquals(anchorOfHash("availability"), "availability");
+	assertEquals(anchorOfHash("#privacy"), null);
+	assertEquals(anchorOfHash(""), null);
+});
+
+Deno.test("a block's address opens it on the owner's page", () => {
+	assertEquals(ownerBlockHref("mari", "about"), "/@mari#about");
+	assertEquals(ownerBlockHref("@mari", "availability"), "/@mari#availability");
+	assertEquals(ownerBlockHref("mari", "experience"), "/@mari/experience#experience");
 });

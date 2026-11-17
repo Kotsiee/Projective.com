@@ -50,7 +50,9 @@ GRANT ALL ON TABLE security.platform_params TO service_role;
 --   * org.org_invitations · org.org_invite_links · org.org_join_requests — the token IS the accept
 --     capability (00001020 §12), so every read and write is a definer.
 --   * org.portfolios · org.profile_links · org.user_skills — read through org.get_profile_view and
---     written through org.save_profile, which validate what a policy cannot.
+--     org.get_profile_portfolio, and written through org.save_profile (skills) and
+--     org.save_portfolio_piece · org.archive_portfolio_piece (portfolio pieces), which validate what
+--     a policy cannot.
 --   * org.email_verification_tokens — not even a policy mistake can expose a token hash.
 
 -- Read by a guest as well as a signed-in reader: reference data, the public follow graph, and the

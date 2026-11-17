@@ -190,6 +190,12 @@ export interface GanttProps {
 	 */
 	onOpenItem?: (item: GanttItem, anchor: GanttAnchor) => void;
 	/**
+	 * Called when an item is double-clicked, after the engine has closed any popover its first click
+	 * opened — for a host whose fuller surface is one gesture past the summary. Keyboard readers reach
+	 * the same surface through the host's own controls.
+	 */
+	onDoubleClickItem?: (item: GanttItem) => void;
+	/**
 	 * Called when a drag across empty lane space is released. Supplying it (with `canCreate`) is what
 	 * ENABLES the gesture; the range is snapped to the live tier's grain.
 	 */

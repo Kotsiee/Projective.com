@@ -39,6 +39,29 @@ export function nearestIndex(ratio: number, count: number): number {
 	return Math.min(count - 1, Math.max(0, Math.round(finiteOr(ratio) * (count - 1))));
 }
 
+/**
+ * Which buckets carry an x-axis label: every one when there are few, else as many as `max` spread
+ * evenly with both ends always labelled, so a long window reads as a scale rather than as its first
+ * and last day. The most labels whose gaps differ by at most one bucket, and are never a single
+ * bucket, win — seven days take four labels two days apart rather than five that bunch.
+ */
+export function xTickIndices(count: number, max = 5): number[] {
+	const n = Math.max(0, Math.floor(finiteOr(count)));
+	const cap = Math.max(2, Math.floor(finiteOr(max, 5)));
+	if (n <= cap) return Array.from({ length: n }, (_, i) => i);
+	for (let k = cap; k > 2; k -= 1) {
+		const picked = Array.from({ length: k }, (_, j) => Math.round((j * (n - 1)) / (k - 1)));
+		const gaps = picked.slice(1).map((v, j) => v - picked[j]);
+		if (Math.min(...gaps) >= 2 && Math.max(...gaps) - Math.min(...gaps) <= 1) return picked;
+	}
+	return [0, n - 1];
+}
+
+/** Whether every value of every series is zero (or missing) — a window in which nothing moved. */
+export function seriesEmpty(series: readonly { values: readonly number[] }[]): boolean {
+	return series.every((s) => s.values.every((v) => finiteOr(v) === 0));
+}
+
 /** The next focused index for a key (←/→ already mirrored for RTL), or `undefined` for other keys. */
 export function stepIndex(
 	current: number | null,
@@ -77,6 +100,12 @@ export interface AreaSeriesInput {
 /** One series' drawable geometry. */
 export interface AreaSeriesGeometry {
 	path: string;
+	/**
+	 * The stroke along the series' values only — never the area's baseline — and only where it moves:
+	 * a run of zeros away from any movement is left to the zero gridline, so two series resting at zero
+	 * never paint over each other along the baseline.
+	 */
+	edge: string;
 	/** Each point's height as a ratio of the plot from the top. */
 	ys: number[];
 }
@@ -121,8 +150,15 @@ export function areaGeometry(
 			const shape = s.mark === "line"
 				? line<number>().x(xAt).y(yAt).curve(curveMonotoneX)
 				: area<number>().x(xAt).y0(y(0)).y1(yAt).curve(curveMonotoneX);
+			const moving = (i: number) => i >= 0 && i < vs.length && vs[i] !== 0;
+			const edge = line<number>()
+				.x(xAt)
+				.y(yAt)
+				.defined((_: number, i: number) => moving(i) || moving(i - 1) || moving(i + 1))
+				.curve(curveMonotoneX);
 			return {
 				path: vs.length > 0 ? safePath(shape(vs)) : "",
+				edge: vs.length > 0 ? safePath(edge(vs)) : "",
 				ys: vs.map((v) => y(v) / height),
 			};
 		}),

@@ -2090,6 +2090,56 @@ BEGIN
 END;
 $$;
 
+-- The Dev Context Switcher's paying-in-one's-own-currency simulation a request carries (Decision #436):
+-- `x-pj-dev-fx-checkout` (PostgREST's `request.headers`), which the app sends only in development —
+-- 'on', 'off', or NULL for none.
+CREATE OR REPLACE FUNCTION finance.fn_dev_fx_checkout()
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT CASE lower(COALESCE(
+               (NULLIF(pg_catalog.current_setting('request.headers', true), '')::json) ->> 'x-pj-dev-fx-checkout',
+               ''))
+        WHEN 'on' THEN 'on'
+        WHEN 'off' THEN 'off'
+    END;
+$$;
+
+-- Does this database honour a development override that loosens a gate? `dev_overrides_honoured`, which
+-- only the local seed world sets: a header any client can send to PostgREST is never a key on its own.
+CREATE OR REPLACE FUNCTION finance.fn_dev_overrides_honoured()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((SELECT (p.value #>> '{}')::boolean FROM security.platform_params p
+                      WHERE p.key = 'dev_overrides_honoured'), false);
+$$;
+
+-- Is paying in one's own currency on for this request? `fx_checkout_enabled`, unless the request's
+-- development simulation says otherwise. `off` is honoured from any caller: it refuses only its sender.
+-- `on` loosens the gate, so it counts only where finance.fn_dev_overrides_honoured().
+CREATE OR REPLACE FUNCTION finance.fn_fx_checkout_enabled()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE finance.fn_dev_fx_checkout()
+        WHEN 'off' THEN false
+        WHEN 'on' THEN finance.fn_dev_overrides_honoured()
+                       OR COALESCE((SELECT (p.value #>> '{}')::boolean FROM security.platform_params p
+                                     WHERE p.key = 'fx_checkout_enabled'), false)
+        ELSE COALESCE((SELECT (p.value #>> '{}')::boolean FROM security.platform_params p
+                        WHERE p.key = 'fx_checkout_enabled'), false)
+    END;
+$$;
+
 -- Quote what `p_to_minor` of `p_to_currency` costs the account in `p_from_currency` (user door). The
 -- caller pays for the account (themselves; a member who can spend for an entity's basket; a funder of
 -- the project), and what is quoted is named: a checkout's basket, or the stage, ticket or revision a
@@ -2196,8 +2246,7 @@ BEGIN
         END IF;
     END IF;
 
-    IF NOT COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
-                      WHERE pp.key = 'fx_checkout_enabled'), false) THEN
+    IF NOT finance.fn_fx_checkout_enabled() THEN
         RAISE EXCEPTION 'fx_unavailable: paying in another currency is not available yet' USING ERRCODE = 'PX503';
     END IF;
     SELECT pp.value INTO v_settle FROM security.platform_params pp WHERE pp.key = 'settlement_currencies';
@@ -2236,7 +2285,10 @@ BEGIN
         RAISE EXCEPTION 'fx_rate_unavailable: no exchange rate is recorded for % to %', v_from, v_to
             USING ERRCODE = 'PX503';
     END IF;
-    IF v_as_of < pg_catalog.now() - pg_catalog.make_interval(hours => v_max_age) THEN
+    -- A development `on` (Decision #436) quotes on the newest recorded rate whatever its age where the
+    -- database honours it: a local database has no rate feed (DB17).
+    IF v_as_of < pg_catalog.now() - pg_catalog.make_interval(hours => v_max_age)
+       AND NOT (finance.fn_dev_fx_checkout() IS NOT DISTINCT FROM 'on' AND finance.fn_dev_overrides_honoured()) THEN
         RAISE EXCEPTION 'fx_rate_stale: the exchange rate for % to % is out of date', v_from, v_to
             USING ERRCODE = 'PX503';
     END IF;

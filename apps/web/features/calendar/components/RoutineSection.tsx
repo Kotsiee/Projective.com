@@ -34,7 +34,7 @@ export interface RoutineSectionProps {
 }
 
 /**
- * RoutineSection — the lane's "Routines & Cadences" (Decision #389): one collapsible row per routine,
+ * RoutineSection — the lane's "Routines" (Decisions #389, #441): one collapsible row per routine,
  * so a week of gym sessions reads as one line instead of forty. It has its own scroll above the list,
  * because the list opens centred on what is next, which would otherwise scroll these out of reach of
  * the row being dragged to them.
@@ -49,7 +49,7 @@ export function RoutineSection(props: RoutineSectionProps): JSX.Element {
 	return (
 		<section class="cal-rtn" aria-labelledby="cal-rtn-title">
 			<header class="cal-rtn__head">
-				<h2 class="cal-rtn__title" id="cal-rtn-title">Routines &amp; Cadences</h2>
+				<h2 class="cal-rtn__title" id="cal-rtn-title">Routines</h2>
 				<LaneIconButton
 					icon={<Icon name="plus" />}
 					label="New routine"
@@ -89,6 +89,7 @@ function RoutineGroup(
 	return (
 		<div
 			class="cal-rtn__group"
+			data-routine-id={routine.id}
 			ref={drop.setNodeRef}
 			data-open={open ? "true" : undefined}
 			data-over={drop.isOver.value ? "true" : undefined}

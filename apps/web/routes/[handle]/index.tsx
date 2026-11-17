@@ -5,6 +5,7 @@ import { resolveProfileTab } from "@features/profile/core/profile-ssr.ts";
 import { ProfileTabContent } from "@features/profile/components/ProfileTabContent.tsx";
 import { readActor } from "@web/utils/api-session.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
+import { ownerOf } from "@features/profile/core/owner-ssr.ts";
 
 /**
  * `/[handle]` — the profile index, which IS the Work section (root CLAUDE.md §8 Decision #96). The
@@ -38,8 +39,8 @@ export default define.page<typeof handler>(function ProfileHomePage(ctx) {
 			profile={profile}
 			tab="work"
 			payload={payload}
-			canEdit={false}
 			authed={!!ctx.state.isAuthenticated}
+			owner={ownerOf(ctx)}
 		/>
 	);
 });

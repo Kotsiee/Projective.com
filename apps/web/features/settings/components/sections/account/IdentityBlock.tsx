@@ -3,6 +3,7 @@ import { InlineNotice } from "@projective/ui/feedback";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { type DateFormat, formatDateValue } from "@projective/types/org";
 import { contactHref } from "@features/contact/core/contact-url.ts";
+import { ownerBlockHref } from "@features/profile/core/owner-edit.ts";
 import { OutLink, SettingsBlock } from "../../SettingsParts.tsx";
 
 /** Props for {@link IdentityBlock}. */
@@ -54,7 +55,7 @@ export function IdentityBlock(props: IdentityBlockProps): JSX.Element {
 				)
 				: <InlineNotice align="start" text="Your account details couldn't be loaded just now." />}
 			{identity?.username
-				? <OutLink href={`/${identity.username}/edit`}>Edit your name on your profile</OutLink>
+				? <OutLink href={ownerBlockHref(identity.username, "basics")}>Edit your name on your profile</OutLink>
 				: null}
 		</SettingsBlock>
 	);

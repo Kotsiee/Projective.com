@@ -1,20 +1,15 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
-import { Button, Checkbox, FormControl, InputText, Select, Textarea } from "@projective/ui/fields";
+import { Button, FormControl, InputText, Select } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import type {
-	CertificationEdit,
-	EducationEdit,
-	ExperienceEdit,
-	LanguageEdit,
-	LanguageLevel,
-} from "@projective/types/profile";
+import type { LanguageEdit, LanguageLevel } from "@projective/types/profile";
 import { errorFor, type Keyed, newKey } from "../../core/edit-model.ts";
 
 /**
- * ListEditors — the owner editor's repeating sections: languages, roles, education and
- * certifications. Each row edits in place; rows can be added, removed and moved. The parent owns the
- * list (it is part of the page's one draft) — these components only render it and report changes.
+ * ListEditors — the owner's repeating rows: the languages block's list, and the labelled
+ * {@link Field} the Experience section's forms share (`LedgerForms.tsx`). Each row edits in place;
+ * rows can be added, removed and moved. The parent owns the list — these components only render it
+ * and report changes.
  *
  * Rows are keyed by their client `key`, so a row's inputs stay attached to it while others move or
  * disappear. Every control is labelled, every icon-only action carries a portal `Tooltip` and an
@@ -115,7 +110,7 @@ function RowList<T>(props: RowListProps<T>): JSX.Element {
 }
 
 /** A labelled text field bound to one row value. */
-function Field(
+export function Field(
 	props: {
 		label: string;
 		value: string;
@@ -250,244 +245,6 @@ export function LanguagesEditor(
 					</div>
 				);
 			}}
-		/>
-	);
-}
-
-// #endregion
-
-// #region Experience
-
-export function ExperienceEditor(
-	{ rows, onChange, errors }: {
-		rows: Keyed<ExperienceEdit>[];
-		onChange: (rows: Keyed<ExperienceEdit>[]) => void;
-		errors: Record<string, string>;
-	},
-): JSX.Element {
-	return (
-		<RowList
-			rows={rows}
-			onChange={onChange}
-			noun="role"
-			max={30}
-			addLabel="Add a role"
-			empty="No roles yet."
-			blank={() => ({
-				orgName: "",
-				role: "",
-				startYear: "",
-				endYear: null,
-				isCurrent: false,
-				summary: "",
-			})}
-			renderRow={(row, i, update) => (
-				<div class="pf-rows__grid">
-					<Field
-						label="Role"
-						required
-						value={row.role}
-						maxLength={120}
-						error={errorFor(errors, `experience.${i}.role`)}
-						onValue={(v) => update({ role: v })}
-					/>
-					<Field
-						label="Enterprise"
-						required
-						value={row.orgName}
-						maxLength={120}
-						error={errorFor(errors, `experience.${i}.orgName`)}
-						onValue={(v) => update({ orgName: v })}
-					/>
-					<Field
-						label="From (year)"
-						required
-						value={row.startYear}
-						maxLength={4}
-						placeholder="2019"
-						error={errorFor(errors, `experience.${i}.startYear`)}
-						onValue={(v) => update({ startYear: v.trim() })}
-					/>
-					{!row.isCurrent && (
-						<Field
-							label="To (year)"
-							value={row.endYear ?? ""}
-							maxLength={4}
-							placeholder="2023"
-							error={errorFor(errors, `experience.${i}.endYear`)}
-							onValue={(v) => update({ endYear: v.trim() || null })}
-						/>
-					)}
-					<Checkbox
-						class="pf-rows__check"
-						value={row.isCurrent}
-						label="I work here now"
-						onValueChange={(v) => update({ isCurrent: v, endYear: v ? null : row.endYear })}
-					/>
-					<FormControl label="What you did" class="pf-rows__wide" collapseHint>
-						{({ id }) => (
-							<Textarea
-								id={id}
-								value={row.summary}
-								maxLength={600}
-								rows={2}
-								autoResize
-								fluid
-								size="sm"
-								onValueChange={(v) => update({ summary: v })}
-							/>
-						)}
-					</FormControl>
-				</div>
-			)}
-		/>
-	);
-}
-
-// #endregion
-
-// #region Education
-
-export function EducationEditor(
-	{ rows, onChange, errors }: {
-		rows: Keyed<EducationEdit>[];
-		onChange: (rows: Keyed<EducationEdit>[]) => void;
-		errors: Record<string, string>;
-	},
-): JSX.Element {
-	return (
-		<RowList
-			rows={rows}
-			onChange={onChange}
-			noun="school"
-			max={20}
-			addLabel="Add education"
-			empty="No education yet."
-			blank={() => ({ school: "", credential: "", field: "", startYear: "", endYear: null })}
-			renderRow={(row, i, update) => (
-				<div class="pf-rows__grid">
-					<Field
-						label="School"
-						required
-						value={row.school}
-						maxLength={120}
-						error={errorFor(errors, `education.${i}.school`)}
-						onValue={(v) => update({ school: v })}
-					/>
-					<Field
-						label="Qualification"
-						required
-						value={row.credential}
-						maxLength={80}
-						placeholder="BSc, Diploma…"
-						error={errorFor(errors, `education.${i}.credential`)}
-						onValue={(v) => update({ credential: v })}
-					/>
-					<Field
-						label="Field of study"
-						value={row.field}
-						maxLength={120}
-						error={errorFor(errors, `education.${i}.field`)}
-						onValue={(v) => update({ field: v })}
-					/>
-					<Field
-						label="From (year)"
-						required
-						value={row.startYear}
-						maxLength={4}
-						error={errorFor(errors, `education.${i}.startYear`)}
-						onValue={(v) => update({ startYear: v.trim() })}
-					/>
-					<Field
-						label="To (year)"
-						value={row.endYear ?? ""}
-						maxLength={4}
-						error={errorFor(errors, `education.${i}.endYear`)}
-						onValue={(v) => update({ endYear: v.trim() || null })}
-					/>
-				</div>
-			)}
-		/>
-	);
-}
-
-// #endregion
-
-// #region Certifications
-
-export function CertificationsEditor(
-	{ rows, onChange, errors }: {
-		rows: Keyed<CertificationEdit>[];
-		onChange: (rows: Keyed<CertificationEdit>[]) => void;
-		errors: Record<string, string>;
-	},
-): JSX.Element {
-	return (
-		<RowList
-			rows={rows}
-			onChange={onChange}
-			noun="certification"
-			max={20}
-			addLabel="Add a certification"
-			empty="No certifications yet."
-			blank={() => ({
-				name: "",
-				issuer: "",
-				issuedYear: "",
-				expiresYear: null,
-				credentialUrl: null,
-				verified: false,
-			})}
-			renderRow={(row, i, update) => (
-				<div class="pf-rows__grid">
-					<Field
-						label="Certification"
-						required
-						value={row.name}
-						maxLength={120}
-						error={errorFor(errors, `certifications.${i}.name`)}
-						onValue={(v) => update({ name: v })}
-					/>
-					<Field
-						label="Issued by"
-						required
-						value={row.issuer}
-						maxLength={120}
-						error={errorFor(errors, `certifications.${i}.issuer`)}
-						onValue={(v) => update({ issuer: v })}
-					/>
-					<Field
-						label="Issued (year)"
-						required
-						value={row.issuedYear}
-						maxLength={4}
-						error={errorFor(errors, `certifications.${i}.issuedYear`)}
-						onValue={(v) => update({ issuedYear: v.trim() })}
-					/>
-					<Field
-						label="Expires (year)"
-						value={row.expiresYear ?? ""}
-						maxLength={4}
-						error={errorFor(errors, `certifications.${i}.expiresYear`)}
-						onValue={(v) => update({ expiresYear: v.trim() || null })}
-					/>
-					<Field
-						label="Credential link"
-						value={row.credentialUrl ?? ""}
-						maxLength={500}
-						placeholder="https://…"
-						class="pf-rows__wide"
-						error={errorFor(errors, `certifications.${i}.credentialUrl`)}
-						onValue={(v) => update({ credentialUrl: v.trim() || null })}
-					/>
-					{row.verified && (
-						<p class="pf-rows__verified">
-							<Icon name="seal-check" size="xs" filled aria-hidden /> Verified by Projective — editing the
-							name or issuer removes this until it's checked again.
-						</p>
-					)}
-				</div>
-			)}
 		/>
 	);
 }

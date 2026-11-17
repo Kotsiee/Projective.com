@@ -23,24 +23,28 @@ export function WorkMasonry({ pieces }: { pieces: readonly WorkPiece[] }): JSX.E
 		<ul class="pf-masonry" role="list" aria-label="Selected work">
 			{pieces.map((piece) => (
 				<li class="pf-masonry__item" key={piece.id}>
-					{piece.media.kind === "video"
-						? <WorkVideoTile piece={piece} />
-						: (
-							<a class="pf-tile" href={piece.href}>
-								<TileImage media={piece.media} />
-								<span class="pf-tile__scrim" aria-hidden="true" />
-								<span class="pf-tile__caption">
-									<span class="pf-tile__title">{piece.title}</span>
-									<span class="pf-tile__meta">
-										{piece.client ? `${piece.client} · ` : ""}
-										{piece.category}
-									</span>
-								</span>
-							</a>
-						)}
+					<WorkTile piece={piece} />
 				</li>
 			))}
 		</ul>
+	);
+}
+
+/** One piece's tile — the video island, or the zero-JS image anchor with its hover caption. */
+export function WorkTile({ piece }: { piece: WorkPiece }): JSX.Element {
+	if (piece.media.kind === "video") return <WorkVideoTile piece={piece} />;
+	return (
+		<a class="pf-tile" href={piece.href}>
+			<TileImage media={piece.media} />
+			<span class="pf-tile__scrim" aria-hidden="true" />
+			<span class="pf-tile__caption">
+				<span class="pf-tile__title">{piece.title}</span>
+				<span class="pf-tile__meta">
+					{piece.client ? `${piece.client} · ` : ""}
+					{piece.category}
+				</span>
+			</span>
+		</a>
 	);
 }
 

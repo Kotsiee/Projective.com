@@ -24,6 +24,7 @@ import {
 	DEV_FILE_ACCESSES,
 	DEV_ENGAGEMENT_ORIGINS,
 	DEV_FUNDING_STATES,
+	DEV_FX_CHECKOUTS,
 	DEV_PREPAID_STAGES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LOW_BALANCES,
@@ -886,6 +887,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.checkoutPayment}
 						disabled={!o.enabled}
 						onChange={(checkoutPayment) => patchDevContext({ checkoutPayment })}
+					/>
+				</Field>
+
+				<Field label="Pay in own currency" hint="FX quote at checkout">
+					<Segment
+						name="Pay in own currency"
+						options={DEV_FX_CHECKOUTS}
+						value={o.fxCheckout}
+						disabled={!o.enabled}
+						onChange={(fxCheckout) => patchDevContext({ fxCheckout })}
 					/>
 				</Field>
 

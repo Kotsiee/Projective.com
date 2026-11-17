@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { ensureSession } from "@web/utils/session.ts";
 import { resolveTokenContext } from "@web/utils/user-context.ts";
-import { resolveProfile } from "@features/profile/core/profile-ssr.ts";
+import { resolveEditModel, resolveProfile } from "@features/profile/core/profile-ssr.ts";
 import {
 	applyBusinessPageSim,
 	BUSINESS_PAGE_SIM_COOKIE,
@@ -36,6 +36,10 @@ import { IS_DEV } from "@web/utils/dev.ts";
  * Decision #244) is laid over a business's read here, and its team page state (`pj.dev.team-page`,
  * Teams P1) over a team's — once, so the layout and every section agree: a member's hidden reason,
  * or the outsider's 404.
+ *
+ * When the database says the viewer owns the profile, their stored edit model is read here too
+ * (`ctx.state.profileEdit`, Decision #439) — once, for the page's in-place editors — except under the
+ * item viewer and the calendar, which edit nothing.
  */
 export default define.middleware(async (ctx) => {
 	// Prefer the routed param; fall back to the first path segment (robust if params aren't populated).
@@ -60,6 +64,9 @@ export default define.middleware(async (ctx) => {
 	ctx.state.profile = profile;
 	ctx.state.profileStatus = status;
 	if (profile) ctx.state.handle = profile.handle;
+	ctx.state.profileEdit = profile?.viewer?.isOwner === true && editsHere(ctx.url.pathname)
+		? (await resolveEditModel(profile.handle, readActor(ctx))).model
+		: null;
 
 	const res = await ctx.next();
 	// Mint a renewed session onto the response (or clear a dead one) — empty on the fast path.
@@ -69,3 +76,9 @@ export default define.middleware(async (ctx) => {
 	// Reserved word / unknown / hidden → 404; unreadable → 503. The layout renders the matching body.
 	return new Response(res.body, { status, headers: res.headers });
 });
+
+/** Whether a `/[handle]` path is one the owner edits on: the profile and its sections. */
+function editsHere(pathname: string): boolean {
+	const segment = pathname.split("/").filter(Boolean)[1];
+	return segment !== "view" && segment !== "availability" && segment !== "edit";
+}

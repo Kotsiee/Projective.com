@@ -4,6 +4,7 @@ import {
 	type SetupAction,
 	type SetupStepKey,
 } from "@projective/types/org";
+import { ownerBlockHref } from "@features/profile/core/owner-edit.ts";
 
 /**
  * setup-actions — where each profile setup step and suggested next action is completed, and the words
@@ -43,15 +44,24 @@ export const SETUP_ACTION_REASON: Readonly<Partial<Record<SetupAction, string>>>
 	become_partner: "Offer your skills alongside hiring.",
 };
 
-/** Where a checklist step is completed. `handle` is the PERSON's (no `@`). */
+/**
+ * Where a checklist step is completed. `handle` is the PERSON's (no `@`). A profile step opens its
+ * block's in-place editor on the person's own page (Decision #439).
+ */
 export function setupStepHref(step: SetupStepKey, handle: string): string {
 	switch (step) {
 		case "email_verified":
 			return "/settings/account#emails";
 		case "working_hours":
-			return `/${handle}/edit/availability`;
-		default:
-			return `/${handle}/edit`;
+			return ownerBlockHref(handle, "availability");
+		case "profile_copy":
+			return ownerBlockHref(handle, "about");
+		case "skills":
+			return ownerBlockHref(handle, "skills");
+		case "account":
+			return ownerBlockHref(handle, "basics");
+		case "avatar":
+			return `/@${handle.replace(/^@+/, "")}`;
 	}
 }
 
@@ -65,11 +75,17 @@ export function setupActionHref(action: SetupAction, handle: string): string {
 		case "add_payout":
 			return "/settings/verification#payouts";
 		case "publish_hours":
-			return `/${handle}/edit/availability`;
+			return ownerBlockHref(handle, "availability");
+		case "write_profile":
+			return ownerBlockHref(handle, "about");
+		case "add_skills":
+			return ownerBlockHref(handle, "skills");
+		case "complete_account":
+			return ownerBlockHref(handle, "basics");
 		case "become_partner":
 			return "/become-partner";
 		default:
-			return `/${handle}/edit`;
+			return `/@${handle.replace(/^@+/, "")}`;
 	}
 }
 

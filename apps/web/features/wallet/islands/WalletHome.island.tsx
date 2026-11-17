@@ -35,6 +35,8 @@ import {
 	walletFlowLive,
 	walletLedgerTools,
 	walletOverviewLive,
+	type WalletSchedules,
+	walletSchedulesLive,
 } from "../core/wallet-state.ts";
 import { tintHero } from "../core/hero-tint.ts";
 import { backLabelFor, WALLET_INTENT_PARAM, walletIntentOf } from "../core/wallet-intent.ts";
@@ -51,7 +53,6 @@ import type {
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import { WalletHero } from "../components/WalletHero.tsx";
-import { AccountRail } from "../components/AccountRail.tsx";
 import { CashFlow } from "../components/CashFlow.tsx";
 import { UpcomingList } from "../components/UpcomingList.tsx";
 import { LedgerFeed, LedgerPreview } from "../components/LedgerList.tsx";
@@ -64,6 +65,7 @@ import { InvoicesPanel } from "../components/InvoicesPanel.tsx";
 import { RangeRuler } from "../components/WalletTools.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
 import { WalletPageNav } from "../components/WalletPageNav.tsx";
+import { WalletRails } from "../components/WalletRails.tsx";
 
 /** Props for {@link WalletHome}. */
 export interface WalletHomeProps {
@@ -107,6 +109,16 @@ function saveBlob(blob: Blob, filename: string): void {
 	a.click();
 	a.remove();
 	setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** The schedules the lane's rail lists, from the page's own funding and payout reads. */
+function schedulesOf(
+	funding: Part<FundingView> | null,
+	payouts: Part<PayoutsView> | null,
+): WalletSchedules | null {
+	const rules = funding?.data?.rules ?? null;
+	const schedule = payouts?.data?.schedule ?? null;
+	return rules || schedule ? { rules, schedule } : null;
 }
 
 function Failure({ message }: { message: string }): JSX.Element {
@@ -170,6 +182,9 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const returnTo = useSignal<{ href: string; label: string } | null>(null);
 	const heroRef = useRef<HTMLElement>(null);
 	const sheetRef = useRef<HTMLDivElement>(null);
+	const rulebarRef = useRef<HTMLDivElement>(null);
+	/** What the pinned ruler floats over: the aurora at the top, the sheet once it slides under. */
+	const rulerGround = useSignal<"aurora" | "sheet">("aurora");
 
 	const query = (): WalletContext => ({
 		wallet: data.wallet,
@@ -339,10 +354,43 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		});
 	}, []);
 
-	// The lane follows what the page shows, so its actions and gate agree after a money movement.
+	// The lane follows what the page shows, so its rails and gate agree after a money movement.
 	useEffect(() => {
 		walletOverviewLive.value = overview.value;
 	}, [overview.value]);
+
+	useEffect(() => {
+		walletSchedulesLive.value = schedulesOf(funding.value, payouts.value);
+	}, [funding.value, payouts.value]);
+
+	// The pinned ruler takes the ground it floats over: hero glass on the aurora, the sheet's glass
+	// once the sheet has slid up beneath it.
+	useEffect(() => {
+		if (view !== "overview") return;
+		let frame = 0;
+		const measure = () => {
+			frame = 0;
+			const ruler = rulebarRef.current?.querySelector<HTMLElement>(".wlt-ruler");
+			const sheet = sheetRef.current;
+			if (!ruler || !sheet) return;
+			const box = ruler.getBoundingClientRect();
+			const under = sheet.getBoundingClientRect().top < box.top + box.height / 2;
+			rulerGround.value = under ? "sheet" : "aurora";
+		};
+		const queue = () => {
+			if (!frame) frame = requestAnimationFrame(measure);
+		};
+		measure();
+		globalThis.addEventListener("scroll", queue, { passive: true });
+		globalThis.addEventListener("resize", queue);
+		globalThis.addEventListener("load", queue);
+		return () => {
+			globalThis.removeEventListener("scroll", queue);
+			globalThis.removeEventListener("resize", queue);
+			globalThis.removeEventListener("load", queue);
+			if (frame) cancelAnimationFrame(frame);
+		};
+	}, []);
 
 	// The footer band drives the Transactions and Analytics pages' window and download.
 	const canExport = view === "analytics"
@@ -496,7 +544,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				   band (`walletFooterFor`). */
 			}
 			{view === "overview" && (
-				<div class="wlt-rulebar">
+				<div class="wlt-rulebar" ref={rulebarRef} data-ground={rulerGround.value}>
 					<div class="wlt-rulebar__slot">
 						<RangeRuler value={period.value} onChange={choosePeriod} />
 					</div>
@@ -508,6 +556,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				switcher={switcher.value}
 				actions={actions}
 				display={display.value}
+				flow={period.value}
 				heroRef={heroRef}
 				onAction={(item) => openAction(item.action)}
 			/>
@@ -524,9 +573,13 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 						display={display.value}
 						flow={period.value}
 						currency={data.currency}
-						business={o.business}
 					/>
 					<VerificationGate overview={o} />
+					<WalletRails
+						overview={o}
+						schedules={schedulesOf(funding.value, payouts.value)}
+						idPrefix="wlt-sheet"
+					/>
 				</div>
 
 				{view === "overview" && (
@@ -539,12 +592,6 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 								period={period.value}
 							/>
 						)}
-						<AccountRail
-							switcher={switcher.value}
-							display={display.value}
-							pot={o.personal?.taxPot ?? null}
-							reducedMotion={reducedMotion}
-						/>
 						<CashFlow
 							period={period.value}
 							activity={activity}
@@ -621,6 +668,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 							error={flowError.value}
 							onRetry={() => void loadActivity(period.value)}
 							mounted={mounted.value}
+							allocation={o.allocation}
 						/>
 					</div>
 				)}

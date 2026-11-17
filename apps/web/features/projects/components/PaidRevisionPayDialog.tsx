@@ -3,7 +3,13 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { Alert, Dialog } from "@projective/ui/feedback";
-import { type CardPaymentHandoff, formatMoney, type PaidRevisionFundingMethod } from "@projective/types/finance";
+import {
+	type CardPaymentHandoff,
+	formatMoney,
+	type FundingCharge,
+	type PaidRevisionFundingMethod,
+} from "@projective/types/finance";
+import { FundingConversion } from "@features/payments/components/FundingConversion.tsx";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import type { PaidRevisionRaised } from "../types/projects-types.ts";
@@ -14,7 +20,9 @@ import { SettlementService } from "../core/SettlementService.ts";
  * **Pay from wallet** holds the round's escrow from the Available balance at once, **Pay by card**
  * mounts the Payment Element and waits for the signed webhook to hold it, and **Add to basket** hands
  * the round to Buy Now as a `paid_revision` line (Decision #167). The work goes back to the freelancer
- * only once the escrow is held, so the dialog reports success only after that.
+ * only once the escrow is held, so the dialog reports success only after that. When the payer's billing
+ * currency differs (Decision #436), it reads the round's charge in it on open and pays on the quote for
+ * the route chosen, with what the round is listed at, the rate and the margin beneath.
  */
 export interface PaidRevisionPayDialogProps {
 	/** Visibility, owned by the caller (the shared overlay contract is signal-first). */
@@ -44,6 +52,22 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 	const handoff = useSignal<CardPaymentHandoff | null>(null);
 	const error = useSignal<string | null>(null);
 	const key = useSignal(attemptKey());
+	const funding = useSignal<FundingCharge | null>(null);
+	const reading = useSignal(false);
+
+	async function readCharge(payIn: string | null = null): Promise<void> {
+		if (!round || !stageId || !submissionId) return;
+		reading.value = true;
+		const res = await SettlementService.paidRevisionQuote(
+			projectId,
+			stageId,
+			submissionId,
+			round.revisionId,
+			payIn,
+		);
+		reading.value = false;
+		funding.value = res.ok && res.data ? res.data.funding : null;
+	}
 
 	useEffect(() => {
 		if (!open.value) return;
@@ -51,11 +75,17 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 		method.value = null;
 		handoff.value = null;
 		error.value = null;
+		funding.value = null;
 		key.value = attemptKey();
+		void readCharge();
 	}, [open.value, round?.revisionId]);
 
-	const price = round ? formatMoney(round.priceMinor, round.currency) : "";
-	const busy = step.value === "starting" || step.value === "settling";
+	const charge = funding.value?.charge ?? null;
+	const price = charge?.display ?? (round ? formatMoney(round.priceMinor, round.currency) : "");
+	const held = funding.value?.listed.display ?? price;
+	const cardQuote = charge?.quote ? funding.value?.cardQuoteId ?? null : null;
+	const cardBlocked = !!charge?.quote && !cardQuote;
+	const busy = step.value === "starting" || step.value === "settling" || reading.value;
 
 	async function pay(chosen: PaidRevisionFundingMethod): Promise<void> {
 		if (!round || !stageId || !submissionId || busy) return;
@@ -67,6 +97,7 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 			method: chosen,
 			expectedAmountMinor: round.priceMinor,
 			currency: round.currency,
+			fxQuoteId: chosen === "wallet" ? charge?.quote?.quoteId ?? null : cardQuote,
 			idempotencyKey: key.value,
 		});
 		if (!res.ok || !res.data) {
@@ -122,7 +153,7 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 				<Button
 					label="Pay by card"
 					variant="outlined"
-					disabled={busy}
+					disabled={busy || cardBlocked}
 					loading={step.value === "starting" && method.value === "card"}
 					onClick={() => void pay("card")}
 				/>
@@ -151,10 +182,20 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 			footer={footer}
 		>
 			<p class="subm-modal__note">
-				<strong>{price}</strong>{" "}
+				<strong>{held}</strong>{" "}
 				is held in escrow on the ticket and released when you approve the revised work. The
 				submission goes back to the freelancer once it is held.
 			</p>
+			{funding.value && step.value === "choose"
+				? (
+					<FundingConversion
+						funding={funding.value}
+						align="start"
+						disabled={busy}
+						onPayIn={(currency) => void readCharge(currency)}
+					/>
+				)
+				: null}
 			{error.value ? <Alert severity="danger">{error.value}</Alert> : null}
 			{card
 				? (

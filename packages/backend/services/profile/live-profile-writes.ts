@@ -3,6 +3,7 @@ import type {
 	ApplyMedia,
 	ProfileOwnerType,
 	ProfileSavePatch,
+	SavePortfolioPiece,
 	SaveShowcase,
 	ShowcaseSlot,
 } from "@projective/types/profile";
@@ -337,6 +338,99 @@ export async function saveShowcaseGrid(
 		if (error) return refusalFrom(error);
 		const state = await readMediaState(client, handle);
 		return state ? ok(state) : fail(503, { message: UNAVAILABLE });
+	} catch {
+		return fail(503, { message: UNAVAILABLE });
+	}
+}
+
+// #endregion
+
+// #region Portfolio pieces
+
+/** The snake_case piece `org.save_portfolio_piece` reads; an empty client or category travels as none. */
+export function portfolioPayload(
+	input: SavePortfolioPiece,
+	coverFileId: string | null,
+): Record<string, unknown> {
+	const blank = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+	return {
+		id: input.id ?? null,
+		title: input.title.trim(),
+		client: blank(input.client),
+		category: blank(input.category),
+		description: input.description ?? "",
+		is_public: input.isPublic,
+		cover_file_id: coverFileId,
+	};
+}
+
+/**
+ * Create or edit one portfolio piece. A new cover is cut first — a public 16:10 still from one of
+ * the caller's library assets, through the showcase pipeline — and then the definer door decides
+ * whether the piece and that cover may go on this profile; a refused write retires the cover again.
+ */
+export async function savePortfolioPiece(
+	owner: ProfileOwner,
+	input: SavePortfolioPiece,
+	actor: ReadActor,
+): Promise<ServiceResult<{ id: string }>> {
+	if (!canReadLive(actor)) return denied();
+	let rendition: Rendition | null = null;
+	if (input.cover) {
+		const cut = await cutShowcaseRendition(input.cover.sourceAssetId, input.cover.crop, actor, {
+			owner,
+			position: 1,
+			stillOnly: "A portfolio cover has to be a still image.",
+			displayName: "Portfolio cover",
+		});
+		if (!cut.ok || !cut.data) {
+			const errors: FieldErrors | undefined = cut.status === 404 || cut.status === 422
+				? { cover: cut.message ?? "That picture can't be used as a cover." }
+				: undefined;
+			return fail(cut.status, { message: cut.message, errors });
+		}
+		rendition = cut.data.rendition;
+	}
+	try {
+		const { data, error } = await getUserClient(actor.accessToken).schema("org").rpc(
+			"save_portfolio_piece",
+			{
+				p_owner_type: owner.type,
+				p_owner_id: owner.id,
+				p_piece: portfolioPayload(input, rendition?.id ?? null),
+			},
+		);
+		if (error) {
+			if (rendition) await retireRendition(rendition);
+			return refusalFrom(error);
+		}
+		const id = (data as { id?: string } | null)?.id ?? input.id;
+		if (!id) {
+			if (rendition) await retireRendition(rendition);
+			return fail(503, { message: UNAVAILABLE });
+		}
+		return ok({ id });
+	} catch {
+		if (rendition) await retireRendition(rendition);
+		return fail(503, { message: UNAVAILABLE });
+	}
+}
+
+/** Take one piece off the profile: archived (never deleted), its cover retired. */
+export async function archivePortfolioPiece(
+	owner: ProfileOwner,
+	id: string,
+	actor: ReadActor,
+): Promise<ServiceResult<{ archived: true }>> {
+	if (!canReadLive(actor)) return denied();
+	try {
+		const { error } = await getUserClient(actor.accessToken).schema("org").rpc("archive_portfolio_piece", {
+			p_owner_type: owner.type,
+			p_owner_id: owner.id,
+			p_piece_id: id,
+		});
+		if (error) return refusalFrom(error);
+		return ok({ archived: true as const });
 	} catch {
 		return fail(503, { message: UNAVAILABLE });
 	}

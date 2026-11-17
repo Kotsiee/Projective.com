@@ -744,7 +744,8 @@ $$;
 
 -- The portfolio masonry ("Selected work") — the owner's own pieces, public ones only for a visitor.
 -- A piece's picture is its cover rendition; a piece without a public cover is not drawable and is
--- left out rather than drawn as an empty tile.
+-- left out rather than drawn as an empty tile. An archived piece is left out for everyone.
+-- `is_public` travels so the owner's editor can say which of their pieces visitors cannot see.
 CREATE OR REPLACE FUNCTION org.get_profile_portfolio(p_handle text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -768,10 +769,12 @@ BEGIN
     RETURN COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'id', pf.id, 'title', pf.title, 'client', pf.client_name, 'category', pf.category,
-            'description', pf.description, 'media', files.fn_public_media_ref (pf.cover_file_id)
+            'description', pf.description, 'is_public', pf.is_public,
+            'media', files.fn_public_media_ref (pf.cover_file_id)
         ) ORDER BY pf.sort_order, pf.created_at DESC)
         FROM org.portfolios pf
         WHERE pf.user_id = v_id AND (pf.is_public OR v_owner) AND pf.cover_file_id IS NOT NULL
+          AND pf.archived_at IS NULL
     ), '[]'::jsonb);
 END;
 $$;
@@ -1449,6 +1452,172 @@ BEGIN
       AND i.purpose = 'showcase'::files.asset_purpose AND i.deleted_at IS NULL;
 
     RETURN jsonb_build_object('ok', true, 'slots', jsonb_array_length(p_slots));
+END;
+$$;
+
+-- Create or edit ONE portfolio piece ("Selected work"). `p_piece` is
+-- `{id?, title, client?, category?, description?, is_public, cover_file_id?}`: no `id` is a new
+-- piece, which needs a cover and goes first in the order; an `id` must be one of the caller's live
+-- pieces, and every field is replaced (an edit without `cover_file_id` keeps the cover). A cover
+-- must be a live, public SHOWCASE still of this person that no showcase slot, listing or other piece
+-- holds — the pipeline cut it for this write — so retiring it later can never take a picture off
+-- another surface. A replaced cover is retired (soft-deleted), as a replaced avatar is. Only a
+-- freelancer has a portfolio (`org.portfolios.user_id` references `org.freelancer_profiles`); the
+-- freelancer row is locked so the 60-piece cap and the order hold under concurrent saves.
+CREATE OR REPLACE FUNCTION org.save_portfolio_piece(p_owner_type text, p_owner_id uuid, p_piece jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_piece jsonb := COALESCE(p_piece, '{}'::jsonb);
+    v_id uuid;
+    v_title text;
+    v_client text;
+    v_category text;
+    v_description text;
+    v_public boolean;
+    v_cover uuid;
+    v_prev uuid;
+    v_mime text;
+    v_first integer;
+BEGIN
+    IF v_uid IS NULL OR NOT org.fn_profile_manages (p_owner_type, p_owner_id) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'owner: you cannot edit this profile';
+    END IF;
+    IF p_owner_type <> 'user' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'owner: only a freelancer''s profile has a portfolio';
+    END IF;
+    PERFORM 1 FROM org.freelancer_profiles f WHERE f.user_id = p_owner_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'owner: only a freelancer''s profile has a portfolio';
+    END IF;
+    IF jsonb_typeof(v_piece) <> 'object' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'piece: expected an object';
+    END IF;
+
+    v_id := NULLIF(v_piece ->> 'id', '')::uuid;
+    v_title := btrim(COALESCE(v_piece ->> 'title', ''));
+    v_client := NULLIF(btrim(COALESCE(v_piece ->> 'client', '')), '');
+    v_category := NULLIF(btrim(COALESCE(v_piece ->> 'category', '')), '');
+    v_description := COALESCE(v_piece ->> 'description', '');
+    v_public := COALESCE((v_piece ->> 'is_public')::boolean, true);
+    v_cover := NULLIF(v_piece ->> 'cover_file_id', '')::uuid;
+
+    IF char_length(v_title) NOT BETWEEN 1 AND 120 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'title: give the piece a title (120 characters or fewer)';
+    END IF;
+    IF char_length(COALESCE(v_client, '')) > 120 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'client: must be 120 characters or fewer';
+    END IF;
+    IF char_length(COALESCE(v_category, '')) > 60 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'category: must be 60 characters or fewer';
+    END IF;
+    IF char_length(v_description) > 2000 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'description: must be 2,000 characters or fewer';
+    END IF;
+
+    IF v_id IS NOT NULL THEN
+        SELECT pf.cover_file_id INTO v_prev
+        FROM org.portfolios pf
+        WHERE pf.id = v_id AND pf.user_id = p_owner_id AND pf.archived_at IS NULL
+        FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'piece: not one of your portfolio pieces';
+        END IF;
+    ELSE
+        IF v_cover IS NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'cover: choose a cover picture';
+        END IF;
+        IF (SELECT count(*) FROM org.portfolios pf WHERE pf.user_id = p_owner_id AND pf.archived_at IS NULL) >= 60 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'piece: up to 60 portfolio pieces';
+        END IF;
+    END IF;
+
+    IF v_cover IS NOT NULL AND v_cover IS DISTINCT FROM v_prev THEN
+        SELECT i.mime_type INTO v_mime
+        FROM files.items i
+        WHERE i.id = v_cover
+          AND i.purpose = 'showcase'::files.asset_purpose
+          AND i.bucket_id = 'showcase'
+          AND i.visibility = 'public'::files.file_visibility
+          AND i.status = 'uploaded'::files.file_status
+          AND i.deleted_at IS NULL
+          AND i.owner_type = 'user'::files.owner_kind
+          AND i.owner_user_id = p_owner_id;
+        IF v_mime IS NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'cover: not a processed cover picture for this profile';
+        END IF;
+        IF v_mime NOT LIKE 'image/%' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'cover: a portfolio cover has to be a still image';
+        END IF;
+        IF EXISTS (SELECT 1 FROM org.profile_showcase_items s WHERE s.file_id = v_cover)
+           OR EXISTS (
+               SELECT 1 FROM catalogue.listing_media m
+               WHERE v_cover IN (m.file_id, m.rendition_file_id, m.poster_file_id)
+           )
+           OR EXISTS (
+               SELECT 1 FROM org.portfolios pf
+               WHERE pf.cover_file_id = v_cover AND pf.id IS DISTINCT FROM v_id
+           ) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'cover: that picture is already in use';
+        END IF;
+    END IF;
+
+    IF v_id IS NULL THEN
+        SELECT COALESCE(min(pf.sort_order), 0) - 1 INTO v_first
+        FROM org.portfolios pf WHERE pf.user_id = p_owner_id AND pf.archived_at IS NULL;
+        INSERT INTO org.portfolios (user_id, title, description, client_name, category, is_public, cover_file_id, sort_order)
+        VALUES (p_owner_id, v_title, v_description, v_client, v_category, v_public, v_cover, v_first)
+        RETURNING id INTO v_id;
+    ELSE
+        UPDATE org.portfolios pf SET
+            title = v_title,
+            description = v_description,
+            client_name = v_client,
+            category = v_category,
+            is_public = v_public,
+            cover_file_id = COALESCE(v_cover, pf.cover_file_id)
+        WHERE pf.id = v_id;
+        IF v_cover IS NOT NULL AND v_prev IS NOT NULL AND v_prev <> v_cover THEN
+            UPDATE files.items SET deleted_at = now()
+            WHERE id = v_prev AND purpose = 'showcase'::files.asset_purpose AND deleted_at IS NULL;
+        END IF;
+    END IF;
+
+    RETURN jsonb_build_object('ok', true, 'id', v_id);
+END;
+$$;
+
+-- Take ONE piece off the profile. Nothing is hard-deleted: the row is stamped `archived_at`, which
+-- every read leaves out, and its cover rendition is retired (soft-deleted) so it leaves every listing.
+CREATE OR REPLACE FUNCTION org.archive_portfolio_piece(p_owner_type text, p_owner_id uuid, p_piece_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_cover uuid;
+BEGIN
+    IF auth.uid () IS NULL OR NOT org.fn_profile_manages (p_owner_type, p_owner_id) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'owner: you cannot edit this profile';
+    END IF;
+    UPDATE org.portfolios pf SET archived_at = now()
+    WHERE pf.id = p_piece_id AND p_owner_type = 'user' AND pf.user_id = p_owner_id AND pf.archived_at IS NULL
+    RETURNING pf.cover_file_id INTO v_cover;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'piece: not one of your portfolio pieces';
+    END IF;
+    IF v_cover IS NOT NULL THEN
+        UPDATE files.items SET deleted_at = now()
+        WHERE id = v_cover AND purpose = 'showcase'::files.asset_purpose AND deleted_at IS NULL;
+    END IF;
+    RETURN jsonb_build_object('ok', true);
 END;
 $$;
 -- #endregion

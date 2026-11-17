@@ -56,6 +56,11 @@
 	}
 }
 
+.wlt-sheet__lanemoved .wlt-rails {
+	margin-block-start: var(--space-2);
+	margin-inline: 0;
+}
+
 .wlt-pagestrip__list {
 	list-style: none;
 	margin: 0;
@@ -124,10 +129,6 @@
 	.wlt-sheet__grid {
 		grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
 		align-items: start;
-	}
-
-	.wlt-accounts {
-		grid-column: 1 / -1;
 	}
 
 	.wlt-sheet__grid:not([data-methods]) .wlt-ledger {

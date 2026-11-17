@@ -1,5 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
-import type { PlanGatesOverride } from "@projective/types/finance";
+import type { FxCheckoutOverride, PlanGatesOverride } from "@projective/types/finance";
 import type { CacheTenant } from "../core/cache.ts";
 
 /**
@@ -66,6 +66,12 @@ export interface ReadActor {
 	 * forged one refuses nobody but its sender.
 	 */
 	planGatesOverride?: PlanGatesOverride;
+	/**
+	 * The Dev Context Switcher's paying-in-one's-own-currency override (Decision #436), set only by a
+	 * development build's route resolver. It reaches the database as a header: `off` refuses only its
+	 * sender, and `on` counts only where the database itself honours development overrides.
+	 */
+	fxCheckoutOverride?: FxCheckoutOverride;
 }
 
 /** The anonymous caller. Frozen and shared so "no session" is one identity, not a fresh object. */

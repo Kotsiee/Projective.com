@@ -266,9 +266,6 @@ export const attachLinkOpen = signal(false);
 /** Where a menu-opened Attach link appears; `null` is the rig button. */
 export const attachLinkAt = signal<PressPoint | null>(null);
 
-/** The Connect a drive dialog. */
-export const connectDriveOpen = signal(false);
-
 /** Rows waiting on the delete confirmation. */
 export interface PendingRemoval {
 	assetIds: string[];
@@ -565,7 +562,6 @@ export function resetFilesState(): void {
 	newFolderAt.value = null;
 	attachLinkOpen.value = false;
 	attachLinkAt.value = null;
-	connectDriveOpen.value = false;
 	pendingRemoval.value = null;
 	removalOpen.value = false;
 	pendingDisconnect.value = null;

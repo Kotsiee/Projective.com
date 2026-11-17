@@ -6,8 +6,10 @@ import type {
 	ProfileTab,
 	ProfileTabPayload,
 	ProfileView,
+	SavePortfolioPiece,
 	SaveShowcase,
 	ShowcaseSlot,
+	WorkPiece,
 } from "@projective/types/profile";
 import type { ImagePlaceholder } from "@projective/types/files";
 import type { OwnerAvailability, SaveOwnerAvailability } from "@projective/types/scheduling";
@@ -58,6 +60,19 @@ export const ProfileService = {
 	/** Replace the whole showcase grid (empty a slot, move items, edit alt text). */
 	saveShowcase(handle: string, input: SaveShowcase): Promise<ProfileResult<ProfileMediaState>> {
 		return sendProfile<ProfileMediaState>(`${base(handle)}/showcase`, "PUT", input);
+	},
+
+	/** Create (no `id`) or edit one portfolio piece. Answers with the owner's whole portfolio as stored. */
+	savePortfolioPiece(
+		handle: string,
+		input: SavePortfolioPiece,
+	): Promise<ProfileResult<{ pieces: WorkPiece[] }>> {
+		return sendProfile<{ pieces: WorkPiece[] }>(`${base(handle)}/portfolio`, "POST", input);
+	},
+
+	/** Take one portfolio piece off the profile (archived). Answers with the portfolio as stored. */
+	archivePortfolioPiece(handle: string, id: string): Promise<ProfileResult<{ pieces: WorkPiece[] }>> {
+		return sendProfile<{ pieces: WorkPiece[] }>(`${base(handle)}/portfolio/archive`, "POST", { id });
 	},
 
 	/** The owner's schedule + call settings, as the editor is seeded (a draft included). */

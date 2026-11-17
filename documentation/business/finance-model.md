@@ -442,7 +442,8 @@ The abstract intent ("price and be paid in your own currency; see prices in your
   built yet**: every converted figure today uses a seed rate dated 2026-08-01.
 - **Paying in one's own currency** (rulings M5 (c), (d); Decision #435) — **built, switched off**
   (`fx_checkout_enabled` = false until counsel and a live feed). A purchase priced in another
-  currency is converted between the payer's OWN wallets: their billing-currency wallet pays the
+  currency (a checkout, or since Decision #436 funding a stage or a paid revision round from its
+  dialog) is converted between the payer's OWN wallets: their billing-currency wallet pays the
   quote's `from_minor` (`fx_conversion` principal + `fx_spread` margin), their wallet in the order's
   currency is credited exactly the order's figure (`fx_conversion`), and the order, the escrow and
   every payout then run in the seller's currency, unchanged. The numbers:

@@ -7,13 +7,14 @@ import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { CalendarEvent } from "@projective/types/scheduling";
 import { ICS_MAX_BYTES } from "@projective/types/scheduling";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import {
 	CALENDAR_IMPORT_ACCEPT,
 	type CalendarImportPreview,
 	mergeImported,
 	readCalendarFile,
 } from "../core/calendar-import.ts";
-import { connectOpen, importedEvents } from "../core/calendar-state.ts";
+import { importedEvents } from "../core/calendar-state.ts";
 
 /**
  * CalendarImportPopover — the Import control on `/calendar`: an icon trigger and the light popover it
@@ -34,9 +35,9 @@ import { connectOpen, importedEvents } from "../core/calendar-state.ts";
  * The trigger is a NATIVE button carrying `api.ref`: a `ref` on the `Button` component stops at the
  * component and the panel anchors at the origin.
  *
- * **Not mounted.** What it adds lives only in the session (`importedEvents`), so no calendar draws it
- * until a write door keeps an import (Decision #343, ruling C7 (a)); the reader and its preview wait
- * here for that door.
+ * **For this visit.** What it adds lives in the session (`importedEvents`): drawn read-only beside the
+ * saved calendar and gone on reload, and the popover says so before anything is added (Decision #440,
+ * amending #343 C7 (a)). Keep in sync opens Settings → Integrations on its Calendars block.
  */
 export interface CalendarImportPopoverProps {
 	/** The surface's zone — floating times and all-day dates in the file are read in it. */
@@ -103,7 +104,9 @@ export function CalendarImportPopover(props: CalendarImportPopoverProps): JSX.El
 		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
 		toast.show({
 			severity: "success",
-			summary: `Added ${plural(chosen.events.length, "event", "events")} from ${chosen.calendarName}.`,
+			summary: `Showing ${
+				plural(chosen.events.length, "event", "events")
+			} from ${chosen.calendarName} until you reload.`,
 			life: 4000,
 		});
 	}
@@ -239,14 +242,17 @@ export function CalendarImportPopover(props: CalendarImportPopoverProps): JSX.El
 						)
 						: (
 							<div class="cal-importpop__foot cal-importpop__foot--sync">
-								<p class="cal-importpop__note">A one-off copy: it won’t follow changes to the original.</p>
+								<p class="cal-importpop__note">
+									Shown for this visit only, read-only, and not saved. It won’t follow changes to
+									the original.
+								</p>
 								<Button
 									variant="text"
 									size="sm"
 									class="cal-importpop__sync"
 									onClick={() => {
 										open.value = false;
-										connectOpen.value = true;
+										void openSettings("integrations", "calendars");
 									}}
 								>
 									Keep in sync

@@ -170,6 +170,15 @@ export function withSavedIds(current: EditDraft, sent: EditDraft, saved: EditDra
 	};
 }
 
+/**
+ * The patch one inline block sends: the stored model's draft with `change` laid over it, diffed by
+ * {@link patchOf}, so a block sends only what it changed and only what this kind edits.
+ */
+export function blockPatch(model: ProfileEditModel, change: Partial<EditDraft>): ProfileSavePatch {
+	const base = draftOf(model);
+	return patchOf(base, { ...base, ...change }, model.sections, model.ownerType === "user");
+}
+
 /** Whether the draft differs from the baseline in anything a save would send. */
 export function isDirty(
 	baseline: EditDraft,

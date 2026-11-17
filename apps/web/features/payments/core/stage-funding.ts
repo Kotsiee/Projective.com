@@ -1,5 +1,6 @@
 import {
 	formatMoney,
+	type FundingCharge,
 	type StageFundingQuote,
 	unpricedTicketsSentence,
 } from "@projective/types/finance";
@@ -30,9 +31,13 @@ export interface StageFundingPlan {
 /**
  * The plan for a quote. The wallet is offered only when it covers the whole stage — `fund_stage` is
  * all or nothing — and the card always, since a card payment tops the same wallet up and the webhook
- * then holds the stage from it.
+ * then holds the stage from it. With a `funding` charge (Decision #436) both are judged in the charge's
+ * currency, and a converted charge offers the card only on its own card quote.
  */
-export function stageFundingPlan(quote: StageFundingQuote): StageFundingPlan {
+export function stageFundingPlan(
+	quote: StageFundingQuote,
+	funding: FundingCharge | null = null,
+): StageFundingPlan {
 	const blocked = !quote.fundable
 		? "This stage has finished, so nothing more can be funded."
 		: quote.unpricedCount > 0
@@ -40,14 +45,19 @@ export function stageFundingPlan(quote: StageFundingQuote): StageFundingPlan {
 		: quote.amountMinor <= 0
 		? "Nothing in this stage is waiting for funding."
 		: null;
-	const covers = quote.walletBalanceMinor >= quote.amountMinor;
-	const methods: StageFundMethod[] = blocked ? [] : covers ? ["wallet", "card"] : ["card"];
+	const charge = funding?.charge ?? { minor: quote.amountMinor, currency: quote.currency };
+	const available = funding ? funding.walletAvailableMinor : quote.walletBalanceMinor;
+	const covers = available >= charge.minor;
+	const card = !funding?.charge.quote || funding.cardQuoteId !== null;
+	const methods: StageFundMethod[] = blocked
+		? []
+		: [...(covers ? ["wallet" as const] : []), ...(card ? ["card" as const] : [])];
 	return {
 		blocked,
 		methods,
-		amountLabel: formatMoney(quote.amountMinor, quote.currency),
+		amountLabel: funding ? funding.charge.display : formatMoney(quote.amountMinor, quote.currency),
 		walletLabel: `${quote.payer.scope === "business" ? "Business wallet" : "Your wallet"} · ${
-			formatMoney(Math.max(0, quote.walletBalanceMinor), quote.currency)
+			formatMoney(Math.max(0, available), charge.currency)
 		} available`,
 		ticketsLine: `${quote.ticketCount} ${
 			quote.ticketCount === 1 ? "ticket" : "tickets"

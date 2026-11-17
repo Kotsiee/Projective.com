@@ -104,7 +104,6 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 		const drive = await resolveEntityDrive(ws, actor, url);
 		return (
 			<FilesFooterRig
-				base={view.base}
 				scope="workspace"
 				subjectId={ws.id}
 				segments={folderSegmentsOfQuery(url.search)}
@@ -127,7 +126,6 @@ export async function workspaceFooterFor(url: URL, actor: ReadActor): Promise<Co
 			<CalendarFooterRig
 				surface="entity"
 				initial={read.page ? entityAgendaPage(read.page) : null}
-				returnTo={url.pathname}
 			/>
 		);
 	}

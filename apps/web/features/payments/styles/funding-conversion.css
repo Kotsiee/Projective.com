@@ -1,0 +1,23 @@
+.fund-fx {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.fund-fx--start {
+	align-items: flex-start;
+}
+
+.fund-fx__line {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+}
+
+.fund-fx--start .fund-fx__line {
+	text-align: start;
+}

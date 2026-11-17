@@ -13,8 +13,8 @@
 	 */
 	--wlt-tool-h: 2.25rem;
 	--wlt-tool-gap: var(--space-3);
-	--wlt-tools-reserve: 8.5rem;
-	--wlt-tools-reserve-narrow: 6rem;
+	--wlt-tools-reserve: 9rem;
+	--wlt-tools-reserve-narrow: 7rem;
 	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 14%, transparent);
 
 	--wlt-aurora-cyan: #06b6d4;
@@ -37,6 +37,10 @@
 	--wlt-glass-edge-hover: color-mix(in srgb, var(--on-scrim) 40%, transparent);
 	--wlt-glass-bubble: color-mix(in srgb, var(--on-scrim) 14%, transparent);
 	--wlt-pill-lift: 0 var(--space-2) var(--space-5) color-mix(in srgb, var(--scrim) 30%, transparent);
+	--wlt-hero-thumb: var(--on-scrim);
+	--wlt-hero-thumb-ink: var(--wlt-aurora-indigo-deep);
+	--wlt-ruler-sheet-fill: color-mix(in srgb, var(--surface-2) 78%, transparent);
+	--wlt-swipe-fade: 0.6;
 
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 16%, transparent);
 
@@ -60,7 +64,10 @@
 
 	--wlt-credit-ink: color-mix(in srgb, var(--success) 72%, var(--on-surface));
 	--wlt-chart-in: var(--success);
-	--wlt-chart-out: color-mix(in srgb, var(--outline) 60%, var(--surface));
+	--wlt-chart-out: var(--danger);
+	--wlt-chart-net: var(--primary);
+	--wlt-chart-wash-in: 0.28;
+	--wlt-chart-wash-out: 0.24;
 	--wlt-attention-fill: color-mix(in srgb, var(--warning) 16%, var(--surface));
 	--wlt-attention-ink: color-mix(in srgb, var(--warning) 62%, var(--on-surface));
 }

@@ -4,6 +4,7 @@ import "../styles/session-disputes.css";
 import { Button, InputText } from "@projective/ui/fields";
 import type { SessionSitting, SessionWorkspace } from "@projective/types/projects";
 import { checkJoinLink } from "@features/calendar/core/meeting-link.ts";
+import { SettingsLink } from "@features/settings/components/SettingsLink.tsx";
 import { SessionService } from "../core/SessionService.ts";
 import { disputeTimeLabel } from "../core/dispute-view.ts";
 
@@ -44,7 +45,10 @@ export function SittingRoomLink({ workspace, onNotice }: SittingRoomLinkProps): 
 			<div class="sess-dispute__report">
 				<p class="sess-dispute__line">{sitting.title} has no room yet</p>
 				<p class="sess-dispute__meta">
-					{disputeTimeLabel(sitting.startsAt)}. <a href="/settings/integrations">Connect an account</a>{" "}
+					{disputeTimeLabel(sitting.startsAt)}.{" "}
+					<SettingsLink section="integrations" anchor="conferencing">
+						Connect an account
+					</SettingsLink>{" "}
 					to have one created, or add your own link.
 				</p>
 				<p class="sess-dispute__meta">

@@ -13,8 +13,8 @@ import SettingsConsole from "../islands/SettingsConsole.island.tsx";
  *
  * Thin controller: validate the segment (an unknown one 303s to the canonical first section — a
  * mistyped or retired address still lands somewhere useful), read the section through the SAME
- * composer the modal's `/api/settings/[section]` uses, and hand it to the island. `verification` and
- * `integrations` never reach here — their static routes render their own consoles in the same lane.
+ * composer the modal's `/api/settings/[section]` uses, and hand it to the island. `verification`
+ * never reaches here — its static route renders its own console in the same lane.
  * The guest bounce is the `(dashboard)` middleware's job.
  */
 export const handler = define.handlers({

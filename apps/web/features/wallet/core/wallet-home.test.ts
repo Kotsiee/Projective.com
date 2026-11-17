@@ -3,12 +3,12 @@ import type { UserContext } from "@projective/types/auth";
 import type { LedgerLine, MoneyView, WalletAction, WalletOverview } from "../types/wallet-types.ts";
 import { allocationSlices } from "../types/wallet-types.ts";
 import {
-	flowBars,
 	fundStateHint,
 	ledgerFeed,
 	mergeLedger,
 	methodName,
 	resolveHeroActions,
+	scheduleRows,
 	upcomingItems,
 } from "./wallet-home.ts";
 import {
@@ -385,16 +385,39 @@ Deno.test("a running payout schedule says when it next pays, and the smoother's 
 	assertEquals([runs.when, pays.when], ["Next run Wed 1 Oct", "Monthly"], "once the engines run");
 });
 
-Deno.test("flow bars share one peak across money in and out, and an empty window is flat", () => {
-	const bars = flowBars([
-		{ label: "1 Sep", start: "2026-09-01", inMinor: 400, outMinor: 100, netMinor: 300 },
-		{ label: "2 Sep", start: "2026-09-02", inMinor: 0, outMinor: 800, netMinor: -800 },
+Deno.test("the lane's Scheduled rail lists each rule then a running payout, worded as Upcoming words them", () => {
+	const rule = (id: string, interval: "weekly" | "monthly" | "below_floor", active: boolean) => ({
+		id,
+		amount: money(2_500),
+		interval,
+		sourceLabel: null,
+		nextRunLabel: "Next run Mon 1 Dec",
+		active,
+		failureNote: null,
+	});
+	const schedule = {
+		mode: "threshold" as const,
+		destinationLabel: null,
+		threshold: money(50_000),
+		instant: false,
+		nextRunLabel: "When the balance reaches £500.00",
+	};
+	const rows = scheduleRows(
+		[rule("a", "weekly", true), rule("b", "below_floor", false)],
+		schedule,
+	);
+	assertEquals(rows.map((r) => [r.title, r.when, r.paused]), [
+		["Weekly top-up", "Next run Mon 1 Dec", false],
+		["Floor top-up", "Paused", true],
+		["Threshold payout", "When the balance reaches £500.00", false],
 	]);
-	assertEquals(bars.map((b) => [b.inRatio, b.outRatio]), [[0.5, 0.125], [0, 1]]);
+	assertEquals(rows[2].amount?.minor, 50_000, "only a threshold payout has a figure");
+	const upcoming = upcomingItems({ overview: overview(), rules: [rule("a", "weekly", true)], schedule });
+	assertEquals(upcoming.map((i) => i.title), rows.filter((r) => !r.paused).map((r) => r.title));
 	assertEquals(
-		flowBars([{ label: "1 Sep", start: "2026-09-01", inMinor: 0, outMinor: 0, netMinor: 0 }])[0]
-			.inRatio,
-		0,
+		scheduleRows(null, { ...schedule, mode: "manual", threshold: null }),
+		[],
+		"a manual payout never runs, so it is no row",
 	);
 });
 

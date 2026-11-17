@@ -5,9 +5,10 @@ import { invalidBody, toPaymentsResponse } from "@features/payments/core/respond
 import { StageFundingBackendService } from "@server/services/finance/stage-funding.ts";
 
 /**
- * `GET /api/finance/escrow/quote?project=prj-…&stage=stg-…` — what funding one stage takes for the
- * caller (Decision #197): its unfunded tickets at their prices, any still unpriced, and the wallet the
- * escrow is held from with its balance.
+ * `GET /api/finance/escrow/quote?project=prj-…&stage=stg-…[&pay_in=EUR]` — what funding one stage takes
+ * for the caller (Decision #197): its unfunded tickets at their prices, any still unpriced, and the
+ * wallet the escrow is held from with its balance; and `funding`, what it charges them, in their own
+ * currency through locked quotes unless `pay_in` names the project's (Decision #436).
  *
  * `GET /api/finance/escrow/quote?project=prj-…&ticket=tkt-…` — what funding one ticket takes (Decision
  * #428): every stage it runs through at its own price, the one paid now, the prepaid refund window and
@@ -23,16 +24,20 @@ export const handler = define.handlers({
 			project: url.searchParams.get("project") ?? "",
 			stage: url.searchParams.get("stage") ?? undefined,
 			ticket: url.searchParams.get("ticket") ?? undefined,
+			payIn: url.searchParams.get("pay_in") ?? undefined,
 		});
 		if (!parsed.success) return invalidBody(parsed.error);
-		const { project, stage, ticket } = parsed.data;
+		const { project, stage, ticket, payIn } = parsed.data;
 		if (ticket !== undefined) {
 			return toPaymentsResponse(
 				await StageFundingBackendService.quoteTicket({ project, ticket }, readActor(ctx)),
 			);
 		}
 		return toPaymentsResponse(
-			await StageFundingBackendService.quote({ project, stage: stage ?? "" }, readActor(ctx)),
+			await StageFundingBackendService.quote(
+				{ project, stage: stage ?? "", payIn },
+				readActor(ctx),
+			),
 		);
 	},
 });

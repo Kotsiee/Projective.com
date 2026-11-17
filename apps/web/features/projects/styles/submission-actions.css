@@ -138,6 +138,10 @@
 	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
+
+.subm-modal__note + .fund-fx {
+	margin-block-start: var(--space-3);
+}
 .subm-modal__form {
 	display: flex;
 	flex-direction: column;

@@ -30,7 +30,6 @@ export function filesFooterFor(url: URL, context: UserContext): ComponentChildre
 	if (!loc) return null;
 	return (
 		<FilesFooterRig
-			base={loc.base}
 			scope={loc.scope}
 			subjectId={loc.subjectId}
 			segments={loc.segments}

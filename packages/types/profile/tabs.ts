@@ -222,6 +222,13 @@ export const WorkPieceSchema = z.object({
 	media: WorkPieceMediaSchema,
 	/** Where the tile opens — the profile-scoped item viewer. */
 	href: z.string(),
+	/** The piece's stored description, as the owner's editor reopens it. */
+	description: z.string().optional(),
+	/**
+	 * Whether visitors see the piece. Only the owner's read ever carries a private one, so a
+	 * visitor's payload is all `true` (or absent).
+	 */
+	isPublic: z.boolean().optional(),
 });
 export type WorkPiece = z.infer<typeof WorkPieceSchema>;
 // #endregion

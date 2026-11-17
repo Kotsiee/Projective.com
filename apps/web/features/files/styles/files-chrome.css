@@ -994,76 +994,11 @@
 	gap: var(--space-2);
 }
 
-.fh-rig__hint {
-	margin: var(--space-3) 0 0;
-	font-size: var(--fh-fs-micro);
-	line-height: 1.55;
-	color: var(--text-secondary);
-}
-
-.fh-rig__manage {
-	font-weight: var(--fw-medium);
-	color: var(--primary-ink);
-	text-decoration: none;
-}
-
-.fh-rig__manage:hover {
-	text-decoration: underline;
-}
-
 .fh-rig__error {
 	margin: var(--space-3) 0 0;
 	font-size: var(--fh-fs-micro);
 	line-height: 1.55;
 	color: var(--danger);
-}
-
-.fh-rig__providers {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	margin-block-start: var(--space-4);
-}
-
-.fh-rig__provider {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	font: inherit;
-	font-size: var(--fh-fs-body);
-	text-align: start;
-	padding: var(--space-3);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
-	background: none;
-	color: var(--on-surface);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.fh-rig__provider:hover:not(:disabled) {
-	background: var(--surface-3);
-}
-
-.fh-rig__provider:disabled {
-	cursor: progress;
-	opacity: 0.72;
-}
-
-.fh-rig__provider:focus-visible {
-	outline: none;
-}
-
-.fh-rig__provider-label {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-}
-
-.fh-rig__provider-mark,
-.fh-rig__provider-caret {
-	color: var(--text-secondary);
-	flex: none;
 }
 /* #endregion */
 
@@ -1171,7 +1106,6 @@
 	.fh-rail__item,
 	.fh-filter__option,
 	.fh-filter__toggle,
-	.fh-rig__provider,
 	.fh-headerband__icon {
 		transition: none;
 	}

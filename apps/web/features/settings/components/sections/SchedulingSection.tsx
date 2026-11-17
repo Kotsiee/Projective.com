@@ -29,12 +29,15 @@ import {
 	useSynced,
 } from "../SettingsParts.tsx";
 import { sectionMeta } from "../../core/settings-registry.ts";
+import { PaidConsultationRows } from "./scheduling/PaidConsultationRows.tsx";
 
 /**
  * Settings → Scheduling & calls (Decision #150; PRODUCT_SPEC §Discovery & Courtesy Calls "the
  * configuration … lives under Settings"): how calendar entries open and the reminders they get
- * (Decision #388), whether clients may book a discovery call, the free courtesy call's length, weekly
- * cap and per-person cooldown, and the buffers and notice around every call.
+ * (Decision #388), whether clients may book a discovery call — confirmed automatically or not, with
+ * or without an agenda, and the paid consultation (Decision #439, from the retired availability
+ * editor) — the free courtesy call's length, weekly cap and per-person cooldown, and the buffers and
+ * notice around every call.
  *
  * A `page-only` section — the contextual modal shows its status and escalates here. The weekly hours
  * come from the default availability template, which this page summarises and opens in the shared
@@ -177,7 +180,7 @@ function CalendarPrefsBlock({ prefs }: { prefs: CalendarPrefs | null }): JSX.Ele
 					<>
 						<SettingsRow
 							label="Open events in"
-							description="The side panel holds everything. A popover shows the essentials over the calendar."
+							description="Side panel: a click fills the panel while it is open, and shows a popover while it is closed. Popover: always the essentials, over the calendar."
 							control={
 								<SelectButton
 									size="sm"
@@ -227,7 +230,6 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 	const status = useSignal<SaveState>(IDLE);
 	const handle = props.data.handle;
 	const a = availability.value;
-	const editorHref = handle ? `/${handle}/edit/availability` : "/settings";
 
 	useSignalEffect(() => {
 		if (presetsSaved.value === 0 || !handle) return;
@@ -337,10 +339,39 @@ export function SchedulingSection(props: SchedulingSectionProps): JSX.Element {
 									/>
 								}
 							/>
-							<p class="stg-note">
-								Paid consultations and their fee are set in the{" "}
-								<a href={editorHref}>availability editor</a>.
-							</p>
+							<div
+								class="stg-subform"
+								data-off={c.acceptsCalls ? undefined : "true"}
+								inert={!c.acceptsCalls}
+							>
+								<SettingsRow
+									label="Confirm bookings automatically"
+									descId="stg-autoconfirm-desc"
+									description="Off, you accept or decline each request yourself."
+									control={
+										<CallSwitch
+											label="Confirm bookings automatically"
+											descId="stg-autoconfirm-desc"
+											value={c.autoConfirm}
+											onChange={(autoConfirm) => patch({ autoConfirm })}
+										/>
+									}
+								/>
+								<SettingsRow
+									label="Ask what the call is about"
+									descId="stg-agenda-desc"
+									description="People write a line about what they'd like to discuss when they book."
+									control={
+										<CallSwitch
+											label="Ask what the call is about"
+											descId="stg-agenda-desc"
+											value={c.agendaRequired}
+											onChange={(agendaRequired) => patch({ agendaRequired })}
+										/>
+									}
+								/>
+								<PaidConsultationRows call={c} patch={patch} />
+							</div>
 						</SettingsBlock>
 
 						<SettingsBlock

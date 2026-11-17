@@ -183,13 +183,7 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 				title={p.title}
 				canCreate={p.canCreate && AUTHORING.has("create")}
 				renderSource={renderCalendarSource}
-				headerActions={
-					<CalendarConnectAction
-						returnTo={props.channelId
-							? `/projects/${props.projectId}/${props.channelId}/calendar`
-							: `/projects/${props.projectId}/calendar`}
-					/>
-				}
+				headerActions={<CalendarConnectAction />}
 				storageKey={STORAGE_KEY}
 				onViewChange={(v) => (view.value = v)}
 				onFocusChange={(ms) => (focus.value = ms)}

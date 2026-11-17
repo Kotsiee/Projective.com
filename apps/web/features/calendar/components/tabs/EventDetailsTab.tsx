@@ -27,7 +27,7 @@ import {
 	rememberProvider,
 	ROOMLESS,
 } from "../../core/meeting-link.ts";
-import { organisedPatch } from "../../core/routine-view.ts";
+import { type EntryOrganisation, organisedPatch } from "../../core/routine-view.ts";
 import { roomAccount } from "../../hooks/room-accounts.ts";
 import { MeetingProviderRail } from "../MeetingProviderRail.tsx";
 import { EventOrganiseFields } from "../EventOrganiseFields.tsx";
@@ -41,7 +41,8 @@ import { EventRemindersField } from "../EventRemindersField.tsx";
  * meeting about, where is the room, and what do I need to get through the door.
  *
  * **Editing is a two-column workspace, the same one a new entry is composed in.** The left column is
- * what the entry IS — when it runs and what it is for; the right column is how people reach it — the
+ * what the entry IS — when it runs, what it is for and the colour it is drawn in, which on an entry that
+ * exists is written as it is picked (Decision #441); the right column is how people reach it — the
  * room, whether it can be booked over and what routine it is in, whether it repeats, and who hears
  * about it. The facts about the occurrence itself move to the
  * modal's footer, so nothing on this side restates a value the reader is editing a column away. An
@@ -76,6 +77,10 @@ export interface EventDetailsTabProps {
 	 * part of the staged working copy. Absent, a surface offers none.
 	 */
 	onReminders?: (reminders: EntryReminder[] | null) => void;
+	/** Write a colour straight away rather than stage it: an entry that exists (Decision #441). */
+	onRecolour?: (accent: string | null) => void;
+	/** Write its routine and behaviour straight away rather than stage them, as {@link onRecolour}. */
+	onOrganise?: (change: EntryOrganisation) => void;
 }
 
 export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
@@ -214,7 +219,7 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 														{MEETING_PROVIDER_LABEL[meeting.provider]} isn't connected.{" "}
 														<a
 															class="evm-link"
-															href="/settings/integrations"
+															href="/settings/integrations#conferencing"
 															target="_blank"
 															rel="noopener"
 														>
@@ -380,7 +385,10 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 					size="sm"
 					value={accent}
 					aria-labelledby={colourId}
-					onValueChange={(token) => props.onPatch({ accent: token ?? undefined })}
+					onValueChange={(token) =>
+						props.onRecolour
+							? props.onRecolour(token)
+							: props.onPatch({ accent: token ?? undefined })}
 				/>
 			</section>
 		)
@@ -392,7 +400,8 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 		? (
 			<EventOrganiseFields
 				event={event}
-				onChange={(change) => props.onPatch(organisedPatch(change))}
+				onChange={(change) =>
+					props.onOrganise ? props.onOrganise(change) : props.onPatch(organisedPatch(change))}
 				// A new entry takes its routine's cadence unless it already has one of its own.
 				onJoin={(routine) => {
 					if (creating && routine.recurrenceRule && !event.recurrenceRule) {
@@ -412,16 +421,21 @@ export function EventDetailsTab(props: EventDetailsTabProps): JSX.Element {
 						{props.when}
 					</section>
 					{agenda}
+					{colour}
 				</div>
 				<div class="evm-compose__side">
 					{room}
 					{organise}
-					{colour}
 					{creating
 						? (
 							<section class="evm-doc__sec">
 								<h3 class="evm-h">Repeats</h3>
-								<EventRecurrenceField event={event} tz={tz} onPatch={props.onPatch} />
+								<EventRecurrenceField
+									event={event}
+									tz={tz}
+									withTemplates
+									onPatch={props.onPatch}
+								/>
 							</section>
 						)
 						: repeat

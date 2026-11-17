@@ -366,6 +366,9 @@ export function eventBadge(status: EventLiveStatus, whenLabel: string): EventBad
  * footer showing no Save — so the reader's new time would be silently dropped when the frame closed.
  * They are joined into ONE entry so two adjacent numbers can never read as a third.
  *
+ * Its colour, routine and behaviour are not staged on an entry that exists (Decision #441): they are
+ * written as they are picked, so they are not measured here either.
+ *
  * Order-sensitive on the pack, because reordering IS an edit.
  */
 export function eventFingerprint(event: CalendarEvent): string {
@@ -376,8 +379,6 @@ export function eventFingerprint(event: CalendarEvent): string {
 		event.kind,
 		event.location ?? "",
 		event.description ?? "",
-		event.routineId ?? "",
-		event.availabilityBehavior ?? "disruptive",
 		meeting
 			? [
 				meeting.provider,

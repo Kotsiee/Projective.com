@@ -68,8 +68,8 @@ export function InvoicesPanel(props: InvoicesPanelProps): JSX.Element {
 			<section class="wlt-section" aria-labelledby="wlt-bills-title">
 				<h2 id="wlt-bills-title" class="wlt-section__title">Invoices & statements</h2>
 				<p class="wlt-empty">
-					Only a business vault is billed and receives monthly statements. Switch to one from the
-					wallet menu to see its invoices.
+					Only a business vault is billed and receives monthly statements. Switch to one with the
+					wallet switcher above to see its invoices.
 				</p>
 			</section>
 		);

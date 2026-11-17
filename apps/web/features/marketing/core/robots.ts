@@ -4,7 +4,7 @@
  *
  * Disallowed:
  * - **The signed-in app** — every top-level segment the `(dashboard)` route group serves (its guard
- *   sends a crawler to `/login` anyway), plus the owner-only profile editor (`/:handle/edit`). `/legal`
+ *   sends a crawler to `/login` anyway), plus the retired profile editor (`/:handle/edit`). `/legal`
  *   is public, so only its signed-in `/legal/workspace` is listed. `robots.test.ts` reads the route
  *   group and fails when a dashboard segment is missing here, or when a rule would catch a public page.
  * - **The API** (`/api/`), which serves no pages.
@@ -60,7 +60,8 @@ export function disallowRules(): string[] {
 	return [
 		"/api/",
 		...APP_PATHS.flatMap(exactRules),
-		// The owner-only profile editor (`[handle]/edit`, `[handle]/edit/availability`).
+		// The retired profile editor addresses (`[handle]/edit`, `[handle]/edit/availability`), which
+		// only 308 onto the profile now (Decision #439) — nothing there for a crawler to index.
 		...exactRules("/*/edit"),
 		"/*?feedback=open",
 		"/*&feedback=open",

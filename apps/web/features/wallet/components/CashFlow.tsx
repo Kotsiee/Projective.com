@@ -3,10 +3,9 @@ import { useSignal } from "@preact/signals";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
-import { styleVars } from "@ui/core/style.ts";
-import type { ActivityView, FlowPoint } from "../types/wallet-types.ts";
-import { flowBars } from "../core/wallet-home.ts";
-import { type FlowPeriod, periodPhrase, periodSlicesAreSpans } from "../core/wallet-model.ts";
+import type { ActivityView, MoneyView as Money } from "../types/wallet-types.ts";
+import { type FlowPeriod, periodPhrase } from "../core/wallet-model.ts";
+import { FlowAreaChart } from "./FlowAreaChart.tsx";
 
 /** Props for {@link CashFlow}. */
 export interface CashFlowProps {
@@ -19,148 +18,133 @@ export interface CashFlowProps {
 	moreHref?: string;
 }
 
-function bucketName(period: FlowPeriod, label: string): string {
-	return periodSlicesAreSpans(period) ? `From ${label}` : label;
-}
-
 /** The window phrase as a heading's meta: "Last 3 months", "All time". */
-function windowLabel(period: FlowPeriod): string {
+export function windowLabel(period: FlowPeriod): string {
 	const phrase = periodPhrase(period).replace(/^the /, "");
 	return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
-function FlowChart(
-	{ points, currency, period }: {
-		points: readonly FlowPoint[];
+function Figure(
+	{ minor, currency, sign, tone }: {
+		minor: number;
 		currency: string;
-		period: FlowPeriod;
+		sign?: "+" | "−";
+		tone?: "credit" | "default";
 	},
 ): JSX.Element {
-	const active = useSignal<number | null>(null);
-	const bars = flowBars(points);
-	const last = bars.length - 1;
-	const focused = active.value !== null ? points[active.value] : null;
+	return <MoneyView minor={minor} currency={currency} size="key" sign={sign} tone={tone} hideOrigin />;
+}
 
-	const move = (e: KeyboardEvent) => {
-		if (bars.length === 0) return;
-		const rtl = getComputedStyle(e.currentTarget as Element).direction === "rtl";
-		const forward = rtl ? "ArrowLeft" : "ArrowRight";
-		const back = rtl ? "ArrowRight" : "ArrowLeft";
-		const at = active.value;
-		let next: number | null = at;
-		if (e.key === forward) next = at === null ? 0 : Math.min(last, at + 1);
-		else if (e.key === back) next = at === null ? last : Math.max(0, at - 1);
-		else if (e.key === "Home") next = 0;
-		else if (e.key === "End") next = last;
-		else if (e.key === "Escape") next = null;
-		else return;
-		e.preventDefault();
-		active.value = next;
-	};
+function Net({ value }: { value: Money }): JSX.Element {
+	return value.minor < 0
+		? <Figure minor={-value.minor} currency={value.currency} sign="−" />
+		: <MoneyView value={value} size="key" hideOrigin />;
+}
 
+/**
+ * The cash-flow header's live readout: the window's server totals — In · Out · Net — at rest, under a
+ * hint to scrub, and the focused bucket's own figures while the crosshair is on one (pointer, touch or
+ * the arrow keys), with the bucket named above them. The figures keep their places and `tabular-nums`, so scrubbing moves
+ * no layout. Announced politely, as the chart's own readout is.
+ */
+export function FlowReadout(
+	{ activity: a, index }: { activity: ActivityView; index: number | null },
+): JSX.Element {
+	const point = index !== null ? a.flow[index] ?? null : null;
+	const currency = a.totalIn.currency;
+	const when = point
+		? (a.grain === "day" ? point.label : `From ${point.label}`)
+		: `Totals · point at the chart to read each ${a.grain}`;
+	const inMinor = point ? point.inMinor : a.totalIn.minor;
+	const outMinor = point ? point.outMinor : a.totalOut.minor;
 	return (
-		<figure class="wlt-chart">
-			<div
-				class="wlt-chart__plot"
-				role="group"
-				aria-roledescription="chart"
-				aria-label={`Money in and out over ${
-					periodPhrase(period)
-				}. Use the arrow keys to read each bar.`}
-				tabIndex={0}
-				onKeyDown={move}
-				onPointerLeave={() => {
-					active.value = null;
-				}}
-				onBlur={() => {
-					active.value = null;
-				}}
-			>
-				{bars.map((bar, i) => (
-					<span
-						key={`${bar.label}-${i}`}
-						class="wlt-chart__col"
-						data-active={active.value === i ? "true" : undefined}
-						onPointerEnter={() => {
-							active.value = i;
-						}}
-						aria-hidden="true"
-					>
-						<span class="wlt-chart__up">
-							<span
-								class="wlt-chart__bar wlt-chart__bar--in"
-								style={styleVars({ "--h": bar.inRatio, "--hmin": bar.inRatio > 0 ? "2px" : "0px" })}
-							/>
-						</span>
-						<span class="wlt-chart__down">
-							<span
-								class="wlt-chart__bar wlt-chart__bar--out"
-								style={styleVars({
-									"--h": bar.outRatio,
-									"--hmin": bar.outRatio > 0 ? "2px" : "0px",
-								})}
-							/>
-						</span>
-					</span>
-				))}
-			</div>
-			<div class="wlt-chart__scale" aria-hidden="true">
-				<span>{bars[0]?.label ?? ""}</span>
-				<span>Today</span>
-			</div>
-			<p class="wlt-chart__readout" aria-live="polite">
-				{focused
-					? (
-						<>
-							<span class="wlt-chart__when">{bucketName(period, focused.label)}</span>
-							<span class="wlt-chart__pair">
-								<span class="wlt-key wlt-key--in" aria-hidden="true" />
-								In <MoneyView minor={focused.inMinor} currency={currency} size="micro" />
-							</span>
-							<span class="wlt-chart__pair">
-								<span class="wlt-key wlt-key--out" aria-hidden="true" />
-								Out <MoneyView minor={focused.outMinor} currency={currency} size="micro" />
-							</span>
-						</>
-					)
-					: <span class="wlt-chart__hint">Over {periodPhrase(period)}</span>}
-			</p>
-			<div class="ui-visually-hidden">
-				<table>
-					<caption>Money in and out over {periodPhrase(period)}</caption>
-					<thead>
-						<tr>
-							<th scope="col">Period</th>
-							<th scope="col">In</th>
-							<th scope="col">Out</th>
-						</tr>
-					</thead>
-					<tbody>
-						{points.map((p, i) => (
-							<tr key={`${p.label}-${i}`}>
-								<th scope="row">{bucketName(period, p.label)}</th>
-								<td>
-									<MoneyView minor={p.inMinor} currency={currency} size="micro" />
-								</td>
-								<td>
-									<MoneyView minor={p.outMinor} currency={currency} size="micro" />
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
-		</figure>
+		<div class="wlt-flow__readout" aria-live="polite" data-scrubbing={point ? "true" : undefined}>
+			<p class="wlt-flow__when">{when}</p>
+			<dl class="wlt-flow__totals">
+				<div class="wlt-flow__total">
+					<dt class="wlt-flow__term">
+						<span class="wlt-key wlt-key--in" aria-hidden="true" />
+						In
+					</dt>
+					<dd class="wlt-flow__figure">
+						{point
+							? (
+								<Figure
+									minor={inMinor}
+									currency={currency}
+									sign={inMinor > 0 ? "+" : undefined}
+									tone={inMinor > 0 ? "credit" : "default"}
+								/>
+							)
+							: (
+								<MoneyView
+									value={a.totalIn}
+									size="key"
+									sign={inMinor > 0 ? "+" : undefined}
+									tone={inMinor > 0 ? "credit" : "default"}
+									hideOrigin
+								/>
+							)}
+					</dd>
+				</div>
+				<div class="wlt-flow__total">
+					<dt class="wlt-flow__term">
+						<span class="wlt-key wlt-key--out" aria-hidden="true" />
+						Out
+					</dt>
+					<dd class="wlt-flow__figure">
+						{point
+							? <Figure minor={outMinor} currency={currency} sign={outMinor > 0 ? "−" : undefined} />
+							: (
+								<MoneyView
+									value={a.totalOut}
+									size="key"
+									sign={outMinor > 0 ? "−" : undefined}
+									hideOrigin
+								/>
+							)}
+					</dd>
+				</div>
+				<div class="wlt-flow__total">
+					<dt class="wlt-flow__term">
+						<span class="wlt-key wlt-key--net" aria-hidden="true" />
+						Net
+					</dt>
+					<dd class="wlt-flow__figure">
+						{point
+							? (point.netMinor < 0
+								? <Figure minor={-point.netMinor} currency={currency} sign="−" />
+								: <Figure minor={point.netMinor} currency={currency} />)
+							: <Net value={a.net} />}
+					</dd>
+				</div>
+			</dl>
+		</div>
+	);
+}
+
+/** What the empty frame says when nothing moved in the window. */
+export function QuietWindow({ period, hint }: { period: FlowPeriod; hint: string }): JSX.Element {
+	return (
+		<>
+			<span class="wlt-quiet__title">No cash movement in this window</span>
+			<span class="wlt-quiet__hint">
+				Nothing moved in or out over {periodPhrase(period)}. {hint}
+			</span>
+		</>
 	);
 }
 
 /**
- * Money in against money out for the chosen window, summed server-side, with its trend. The window is
- * picked on the pinned range ruler; the heading names it so the section says which span it is showing
- * wherever the reader scrolled from.
+ * Money in against money out for the chosen window, summed server-side, drawn as the shared diverging
+ * area chart — in above the baseline, out below, net as a line — under a live header readout. The
+ * window is picked on the pinned range ruler; the heading names it so the section says which span it
+ * is showing wherever the reader scrolled from. A window in which nothing moved keeps its frame: the
+ * gridlines, the baseline and the dates, with a sentence over them.
  */
 export function CashFlow(props: CashFlowProps): JSX.Element {
 	const { activity, period } = props;
+	const active = useSignal<number | null>(null);
 	return (
 		<section class="wlt-section wlt-flow" id="cash-flow" aria-labelledby="wlt-flow-title">
 			<header class="wlt-section__head">
@@ -182,57 +166,15 @@ export function CashFlow(props: CashFlowProps): JSX.Element {
 						aria-busy={props.loading}
 						data-loading={props.loading ? "true" : undefined}
 					>
-						<dl class="wlt-flow__totals">
-							<div class="wlt-flow__total">
-								<dt class="wlt-flow__term">
-									<span class="wlt-key wlt-key--in" aria-hidden="true" />
-									Money in
-								</dt>
-								<dd class="wlt-flow__figure">
-									<MoneyView
-										value={activity.totalIn}
-										size="key"
-										sign={activity.totalIn.minor > 0 ? "+" : undefined}
-										tone={activity.totalIn.minor > 0 ? "credit" : "default"}
-										hideOrigin
-									/>
-								</dd>
-							</div>
-							<div class="wlt-flow__total">
-								<dt class="wlt-flow__term">
-									<span class="wlt-key wlt-key--out" aria-hidden="true" />
-									Money out
-								</dt>
-								<dd class="wlt-flow__figure">
-									<MoneyView
-										value={activity.totalOut}
-										size="key"
-										sign={activity.totalOut.minor > 0 ? "−" : undefined}
-										hideOrigin
-									/>
-								</dd>
-							</div>
-							<div class="wlt-flow__total">
-								<dt class="wlt-flow__term">Net</dt>
-								<dd class="wlt-flow__figure">
-									{activity.net.minor < 0
-										? (
-											<MoneyView
-												minor={-activity.net.minor}
-												currency={activity.net.currency}
-												size="key"
-												sign="−"
-												hideOrigin
-											/>
-										)
-										: <MoneyView value={activity.net} size="key" hideOrigin />}
-								</dd>
-							</div>
-						</dl>
-						<FlowChart
+						<FlowReadout activity={activity} index={active.value} />
+						<FlowAreaChart
 							points={activity.flow}
 							currency={activity.totalIn.currency}
-							period={period}
+							phrase={periodPhrase(period)}
+							spans={activity.grain !== "day"}
+							readout="none"
+							onActiveChange={(index) => (active.value = index)}
+							empty={<QuietWindow period={period} hint="Try a longer window on the ruler above." />}
 						/>
 					</div>
 				)

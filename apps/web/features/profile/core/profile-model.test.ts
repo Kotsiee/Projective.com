@@ -10,8 +10,10 @@ import {
 	memberNoticeFor,
 	memberSinceLabel,
 	messageReachable,
+	BUSINESS_OWNER_NOTE,
+	OWNER_NOTE,
+	ownerNoteFor,
 	parseReviewStance,
-	previewNoteFor,
 	responseLabel,
 	reviewsForStance,
 	reviewStanceCounts,
@@ -21,6 +23,7 @@ import {
 	rigFor,
 	rosterMetaFacts,
 	SETTINGS_PUBLISHES,
+	TEAM_OWNER_NOTE,
 	standingFactorFacts,
 	teamHiddenNoticeText,
 } from "./profile-model.ts";
@@ -290,25 +293,16 @@ Deno.test("memberNoticeFor: a hidden business keeps BP1's line and withholds Set
 	});
 });
 
-Deno.test("previewNoteFor: a workspace editor's preview says what visitors do not see", () => {
+Deno.test("ownerNoteFor: a workspace editor's note says which rig control visitors do not see", () => {
 	const editor = { hiddenReason: null, consoleHref: "/teams/northloop", settingsHref: null };
+	assertEquals(ownerNoteFor({ kind: "team", workspace: editor }), TEAM_OWNER_NOTE);
 	assertEquals(
-		previewNoteFor({ kind: "team", workspace: editor }),
-		"This is how your team looks to visitors, who never see Manage team, the edit buttons or empty blocks.",
+		ownerNoteFor({ kind: "business", workspace: { ...editor, consoleHref: "/businesses/atlaslabs" } }),
+		BUSINESS_OWNER_NOTE,
 	);
-	assertEquals(
-		previewNoteFor({
-			kind: "business",
-			workspace: { ...editor, consoleHref: "/businesses/atlaslabs" },
-		}),
-		"This is how your business looks to visitors. They see Message where you see Manage business, and none of the edit buttons or empty blocks.",
-	);
-	// No console door (a platform admin, a person's own page): the owner nav's plain note.
-	assertEquals(
-		previewNoteFor({ kind: "team", workspace: { ...editor, consoleHref: null } }),
-		undefined,
-	);
-	assertEquals(previewNoteFor({ kind: "freelancer" }), undefined);
+	// No console door (a platform admin, a person's own page): the plain note.
+	assertEquals(ownerNoteFor({ kind: "team", workspace: { ...editor, consoleHref: null } }), OWNER_NOTE);
+	assertEquals(ownerNoteFor({ kind: "freelancer" }), OWNER_NOTE);
 });
 
 Deno.test("memberSinceLabel is the join year, and nothing for an unreadable date", () => {

@@ -8,8 +8,8 @@ import { Icon, type IconName } from "@projective/ui/icons";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { fileDateLabel } from "@web/features/projects/core/file-model.ts";
 import { filesZoom } from "@web/features/projects/core/view-state.ts";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import UploadDrawer from "./UploadDrawer.island.tsx";
-import { ConnectDriveDialog } from "../components/ConnectDriveDialog.tsx";
 import { FolderColorField } from "../components/FolderColorField.tsx";
 import { FolderColorPopover } from "../components/FolderColorPopover.tsx";
 import { PointAnchor } from "../components/PointAnchor.tsx";
@@ -21,7 +21,6 @@ import {
 	attachLinkAt,
 	attachLinkOpen,
 	commitFiles,
-	connectDriveOpen,
 	disconnectOpen,
 	enqueueUploads,
 	folderColorAt,
@@ -92,8 +91,6 @@ import { uploadTasksOf } from "../core/upload-tasks.ts";
 
 // #region Props
 export interface FilesFooterRigProps {
-	/** The route base every deep link in this scope hangs off. */
-	base: string;
 	scope: FileScope;
 	subjectId: string | null;
 	/** The folder path within the scope; `[]` is the scope root. */
@@ -364,7 +361,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 		notice.value = null;
 		switch (action) {
 			case "connect_drive":
-				connectDriveOpen.value = true;
+				void openSettings("integrations", "storage");
 				return;
 			case "export":
 				exportCsv();
@@ -581,8 +578,6 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 					el.value = "";
 				}}
 			/>
-
-			{connectDrive && <ConnectDriveDialog visible={connectDriveOpen} returnTo={props.base} />}
 
 			<ConfirmDialog
 				visible={removalOpen}

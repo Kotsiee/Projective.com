@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currency } from "./common.ts";
 import { formatMoney, type MoneyView, MoneyViewSchema } from "./wallet.ts";
 
 /** A row id or a fixture reference: the commit doors re-validate every id they are given. */
@@ -217,6 +218,8 @@ export const EscrowQuoteQuerySchema = z.object({
 	project: z.string().min(1).max(64),
 	stage: z.string().min(1).max(80).optional(),
 	ticket: z.string().min(1).max(80).optional(),
+	/** A stage's payer paying in the project's currency rather than their own (Decision #436). */
+	payIn: currency.optional(),
 }).refine((q) => (q.stage === undefined) !== (q.ticket === undefined), {
 	message: "Name a stage or a ticket, not both.",
 	path: ["ticket"],

@@ -1,7 +1,7 @@
 import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
-import type { ProfileView } from "@projective/types/profile";
+import type { ProfileEditModel, ProfileView } from "@projective/types/profile";
 import type { DiscoveryRanking } from "@projective/types/explore";
 import type { A11yOverlays } from "@web/utils/a11y-context.ts";
 import type { PageMeta } from "@features/marketing/core/seo.ts";
@@ -81,6 +81,12 @@ export interface State {
 	 * claiming the profile does not exist.
 	 */
 	profileStatus?: 200 | 404 | 503;
+	/**
+	 * The owner's stored edit model for a `/[handle]` page they own (Decision #439) — read once by the
+	 * namespace middleware so the layout's blocks and the routed section edit one model. `null` for a
+	 * visitor, an unreadable model, and the item viewer and calendar leaves, which edit nothing.
+	 */
+	profileEdit?: ProfileEditModel | null;
 	/**
 	 * How the viewer stands toward the engagement a `/projects/[slug]/*` request addresses — resolved
 	 * ONCE by `routes/(dashboard)/projects/[projectSlug]/_middleware.ts` (Decision #144) so the page,

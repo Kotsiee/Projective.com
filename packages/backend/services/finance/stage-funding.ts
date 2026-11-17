@@ -1,8 +1,10 @@
 import type {
+	FundingCharge,
 	StageFundingQuote,
 	StageFundingQuoteQuery,
 	TicketFundingQuote,
 } from "@projective/types/finance";
+import { fundingChargeFor, listedCharge } from "./funding-charge.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -88,13 +90,16 @@ export async function resolveStageRefs(
 /** The thin `GET /api/finance/escrow/quote` route's service. */
 export class StageFundingBackendService {
 	/**
-	 * The payer's quote for one stage. 401 signed out, 503 where the finance backend is not live, 404
-	 * for a project or stage the caller cannot see, 403 for someone who may not fund it.
+	 * The payer's quote for one stage, with what funding it charges them (Decision #436): in their own
+	 * currency through locked quotes when it differs from the project's, unless `payIn` names the
+	 * project's. Only a stage that can be funded now is converted. 401 signed out, 503 where the finance
+	 * backend is not live, 404 for a project or stage the caller cannot see, 403 for someone who may not
+	 * fund it.
 	 */
 	static async quote(
 		query: StageFundingQuoteQuery,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ quote: StageFundingQuote }>> {
+	): Promise<ServiceResult<{ quote: StageFundingQuote; funding: FundingCharge }>> {
 		if (!canReadLive(actor)) return fail(401, { message: "Sign in to fund this stage." });
 		if (!isFinanceBackendLive()) {
 			return fail(503, { message: "Stage funding isn't connected in this environment." });
@@ -109,7 +114,20 @@ export class StageFundingBackendService {
 					details: quoted.refusal.details,
 				});
 			}
-			return ok({ quote: quoted.value });
+			const quote = quoted.value;
+			const listed = { minor: quote.amountMinor, currency: quote.currency };
+			const fundable = quote.fundable && quote.unpricedCount === 0 && quote.amountMinor > 0;
+			const funding = fundable
+				? await fundingChargeFor({
+					payer: quote.payer,
+					listed,
+					refTable: "project_stages",
+					refId: quote.stageId,
+					payIn: query.payIn ?? null,
+					listedAvailableMinor: quote.walletBalanceMinor,
+				}, actor)
+				: listedCharge(listed, quote.walletBalanceMinor);
+			return ok({ quote, funding });
 		} catch (error) {
 			console.error("[stage-funding:quote]", error instanceof Error ? error.message : error);
 			return fail(503, {

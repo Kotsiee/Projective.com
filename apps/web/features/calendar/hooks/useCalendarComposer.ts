@@ -1,5 +1,5 @@
 import { type Signal, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
 import {
 	type CalendarEvent,
@@ -15,6 +15,7 @@ import { seriesOf } from "../core/event-recurrence.ts";
 import { roomOf } from "../core/meeting-link.ts";
 import { type EntryOrganisation, organisedPatch } from "../core/routine-view.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
+import { type DebouncedWrites, debouncedWrites } from "../core/debounced-writes.ts";
 import type { CalendarResult } from "../types/results.ts";
 
 /**
@@ -37,6 +38,25 @@ function fieldsOf(e: CalendarEvent): EntryFields {
 		accent: swatchOf(e.accent) === "default" ? null : e.accent,
 		recurrenceRule: e.recurrenceRule,
 	};
+}
+
+/**
+ * A colour write: the fields the door requires as the entry stands, and its accent. Its routine,
+ * behaviour and rule are left out, which the door reads as "leave them as they are", so a colour can
+ * never undo an organise still in flight.
+ */
+function accentFieldsOf(e: CalendarEvent): EntryFields {
+	const { availabilityBehavior: _b, routineId: _r, recurrenceRule: _rule, ...rest } = fieldsOf(e);
+	return rest;
+}
+
+/** How long a colour, a behaviour or a routine must stay put before it is saved (Decision #441). */
+const SETTLE_MS = 500;
+
+/** One series' organise, as it waits: the entry it was asked on and every change merged since. */
+interface OrganiseWrite {
+	eventId: string;
+	change: EntryOrganisation;
 }
 
 /** Options for {@link useCalendarComposer}. */
@@ -69,8 +89,11 @@ export interface CalendarComposer {
 	resolve(top: { id: string } | null, extra?: readonly CalendarEvent[]): CalendarEvent | null;
 	/** `CalendarProps.onQuickCreate` — a daily range commits one entry per day. */
 	quickCreate(range: CalendarRange, title: string): void;
-	/** `CalendarProps.onExpandCreate` — a daily range opens on its first day and keeps the series. */
-	expandCreate(range: CalendarRange, title: string): void;
+	/**
+	 * `CalendarProps.onExpandCreate` — a daily range opens on its first day and keeps the series. `kind`
+	 * mints something other than the composer's own kind (a Reminder from the lane).
+	 */
+	expandCreate(range: CalendarRange, title: string, kind?: CalendarEventKind): void;
 	moveEvent(event: CalendarEvent, range: CalendarRange): void;
 	openEvent(event: CalendarEvent): void;
 	close(): void;
@@ -85,8 +108,13 @@ export interface CalendarComposer {
 	update(event: CalendarEvent): void;
 	/** Save the viewer's own alerts for an entry, any seat's. `null` follows their default. */
 	setReminders(event: CalendarEvent, reminders: EntryReminder[] | null): void;
-	/** Move an entry and its whole series into or out of a routine, or set whether they hold time. */
+	/**
+	 * Move an entry and its whole series into or out of a routine, or set whether they hold time: drawn
+	 * at once, saved once the series has stayed put for a moment, and put back with the server's reason.
+	 */
 	organise(event: CalendarEvent, change: EntryOrganisation): void;
+	/** Draw an entry in another colour at once, and save the last of a quick run of picks. */
+	recolour(event: CalendarEvent, accent: string | null): void;
 	serverUpdate(event: CalendarEvent): void;
 	/** A server write took this entry off the calendar: drop it here, writing nothing. */
 	serverRemove(id: string): void;
@@ -163,6 +191,117 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		apply(next, () => ScheduleService.update(next.id, fieldsOf(next), room));
 	}
 
+	// #region Settled writes
+	/** Each entry's accent before a run of picks began, for a refused save to go back to. */
+	const accentBefore = useRef(new Map<string, string | undefined>());
+	/** Each series' rows before a run of organising began. */
+	const organiseBefore = useRef(new Map<string, CalendarEvent[]>());
+	const writers = useRef<
+		{ accent: DebouncedWrites<string | null>; organise: DebouncedWrites<OrganiseWrite> } | null
+	>(null);
+	if (!writers.current) {
+		writers.current = {
+			accent: debouncedWrites<string | null>({
+				ms: SETTLE_MS,
+				merge: (_waiting, next) => next,
+				send: saveAccent,
+			}),
+			organise: debouncedWrites<OrganiseWrite>({
+				ms: SETTLE_MS,
+				merge: (waiting, next) => ({
+					eventId: next.eventId,
+					change: { ...waiting.change, ...next.change },
+				}),
+				send: saveOrganise,
+			}),
+		};
+	}
+	const accentWrites = writers.current.accent;
+	const organiseWrites = writers.current.organise;
+
+	/** A server row, keeping the colour of one whose own pick is still waiting to be saved. */
+	function adopt(server: CalendarEvent, local: CalendarEvent): CalendarEvent {
+		return writers.current?.accent.pending(local.id) ? { ...server, accent: local.accent } : server;
+	}
+
+	function saveAccent(id: string, accent: string | null): void {
+		const current = events.peek().find((e) => e.id === id);
+		if (!current) {
+			accentBefore.current.delete(id);
+			return;
+		}
+		const fields = accentFieldsOf({ ...current, accent: accent ?? undefined });
+		void ScheduleService.update(id, fields).then((res) => {
+			const waiting = writers.current?.accent.pending(id) ?? false;
+			if (res.ok && res.data) {
+				const saved = res.data.event.accent;
+				if (waiting) {
+					accentBefore.current.set(id, saved);
+					return;
+				}
+				accentBefore.current.delete(id);
+				events.value = events.peek().map((e) => (e.id === id ? { ...e, accent: saved } : e));
+				return;
+			}
+			if (!waiting) {
+				const before = accentBefore.current.get(id);
+				accentBefore.current.delete(id);
+				events.value = events.peek().map((e) => (e.id === id ? { ...e, accent: before } : e));
+			}
+			refuse(res.message);
+		});
+	}
+
+	function saveOrganise(key: string, write: OrganiseWrite): void {
+		void ScheduleService.organise({ eventId: write.eventId, ...write.change }).then((res) => {
+			const waiting = writers.current?.organise.pending(key) ?? false;
+			const held = organiseBefore.current.get(key) ?? [];
+			if (res.ok && res.data) {
+				const rows = new Map(res.data.events.map((e) => [e.id, e]));
+				if (waiting) {
+					organiseBefore.current.set(key, held.map((e) => rows.get(e.id) ?? e));
+					return;
+				}
+				organiseBefore.current.delete(key);
+				events.value = events.peek().map((e) => {
+					const row = rows.get(e.id);
+					return row ? adopt(row, e) : e;
+				});
+				return;
+			}
+			if (!waiting) {
+				organiseBefore.current.delete(key);
+				// Only what this write moved goes back, so a colour picked meanwhile stands.
+				const back = new Map(held.map((e) => [e.id, e]));
+				events.value = events.peek().map((e) => {
+					const was = back.get(e.id);
+					return was
+						? {
+							...e,
+							routineId: was.routineId,
+							availabilityBehavior: was.availabilityBehavior,
+						}
+						: e;
+				});
+			}
+			refuse(res.message);
+		});
+	}
+
+	// A write still settling is sent as the surface goes, rather than lost with it.
+	useEffect(() => {
+		const flush = () => {
+			writers.current?.accent.flush();
+			writers.current?.organise.flush();
+		};
+		globalThis.addEventListener("pagehide", flush);
+		return () => {
+			globalThis.removeEventListener("pagehide", flush);
+			flush();
+		};
+	}, []);
+	// #endregion
+
 	return {
 		events,
 		draft,
@@ -178,10 +317,10 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 			draft.value = null;
 			create(eventsForRange(range, title, optsRef.current.timezone(), mint));
 		},
-		expandCreate(range, title) {
+		expandCreate(range, title, kind) {
 			const daily = range.daily ? range : null;
 			const at = daily ? firstOccurrence(range, optsRef.current.timezone()) : range;
-			const blank = { ...mint(at), title };
+			const blank = { ...(kind ? blankEvent(at, kind) : mint(at)), title };
 			series.current = daily;
 			draft.value = blank;
 			eventStack.open("event", blank.id, { mode: "create" });
@@ -229,21 +368,23 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 		organise(event, change) {
 			const key = seriesKey(event);
 			const before = events.peek();
+			if (!organiseBefore.current.has(key)) {
+				organiseBefore.current.set(key, before.filter((e) => seriesKey(e) === key));
+			}
 			events.value = before.map((e) =>
 				seriesKey(e) === key ? { ...e, ...organisedPatch(change) } : e
 			);
-			void ScheduleService.organise({ eventId: event.id, ...change })
-				.then((res) => {
-					if (res.ok && res.data) {
-						const rows = new Map(res.data.events.map((e) => [e.id, e]));
-						events.value = events.peek().map((e) => rows.get(e.id) ?? e);
-						return;
-					}
-					// Only this write's rows go back, so an edit that landed meanwhile stands.
-					const held = new Map(before.filter((e) => seriesKey(e) === key).map((e) => [e.id, e]));
-					events.value = events.peek().map((e) => held.get(e.id) ?? e);
-					refuse(res.message);
-				});
+			organiseWrites.schedule(key, { eventId: event.id, change });
+		},
+		recolour(event, accent) {
+			const current = events.peek().find((e) => e.id === event.id);
+			if (!current) return;
+			events.value = events.peek().map((e) =>
+				e.id === event.id ? { ...e, accent: accent ?? undefined } : e
+			);
+			if (!optsRef.current.persist) return;
+			if (!accentBefore.current.has(event.id)) accentBefore.current.set(event.id, current.accent);
+			accentWrites.schedule(event.id, accent);
 		},
 		serverUpdate(event) {
 			events.value = events.value.map((e) => (e.id === event.id ? event : e));

@@ -1,6 +1,5 @@
 import type {
 	DepositRuleView,
-	FlowPoint,
 	FundState,
 	LedgerLine,
 	MoneyView,
@@ -202,6 +201,18 @@ const MODE_LABEL: Readonly<Record<PayoutScheduleView["mode"], string>> = {
 	threshold: "Threshold",
 };
 
+/** A recurring deposit's name, from how often it runs ("Weekly top-up", "Floor top-up"). */
+export function ruleTitle(interval: DepositRuleView["interval"]): string {
+	if (interval === "weekly") return "Weekly top-up";
+	if (interval === "below_floor") return "Floor top-up";
+	return "Monthly top-up";
+}
+
+/** An automatic payout's name ("Weekly payout"); `null` for a manual schedule, which never runs. */
+export function payoutTitle(mode: PayoutScheduleView["mode"]): string | null {
+	return mode === "manual" ? null : `${MODE_LABEL[mode]} payout`;
+}
+
 /**
  * Assembles obligations, most urgent first: what needs the viewer, then money on its way in, then
  * standing arrangements. A row carries an action only when the server offered it, and automation the
@@ -306,11 +317,7 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 		items.push({
 			id: `rule-${rule.id}`,
 			kind: "recurring",
-			title: rule.interval === "weekly"
-				? "Weekly top-up"
-				: rule.interval === "below_floor"
-				? "Floor top-up"
-				: "Monthly top-up",
+			title: ruleTitle(rule.interval),
 			meta: rule.failureNote ?? (rule.sourceLabel ? `From ${rule.sourceLabel}` : null),
 			when: rule.active ? rule.nextRunLabel : "Paused",
 			amount: rule.amount,
@@ -331,11 +338,12 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 	}
 
 	const schedule = src.schedule;
-	if (schedule && schedule.mode !== "manual") {
+	const payout = schedule ? payoutTitle(schedule.mode) : null;
+	if (schedule && payout) {
 		items.push({
 			id: "payout-schedule",
 			kind: "payout",
-			title: `${MODE_LABEL[schedule.mode]} payout`,
+			title: payout,
 			meta: schedule.destinationLabel ? `To ${schedule.destinationLabel}` : null,
 			when: schedule.nextRunLabel,
 			amount: schedule.mode === "threshold" ? schedule.threshold : null,
@@ -380,25 +388,45 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 }
 // #endregion
 
-// #region Flow geometry
-/** One flow-chart bucket as display ratios of the busiest bucket. */
-export interface FlowBar {
-	label: string;
-	inRatio: number;
-	outRatio: number;
+// #region Lane rails
+/** One standing arrangement as the lane's Scheduled rail lists it. */
+export interface ScheduleRow {
+	id: string;
+	title: string;
+	/** The next run ("Next run Mon 1 Dec"), or "Paused" for a rule that is not running. */
+	when: string | null;
+	/** What it moves; a scheduled payout sweeps the balance, so only a threshold one has a figure. */
+	amount: MoneyView | null;
+	paused: boolean;
 }
 
 /**
- * Scales money in and out against one shared peak so both sides compare by eye; an empty window
- * yields zero ratios. Geometry only — no figure is derived from it.
+ * The wallet's recurring deposits, then its automatic payout — the standing arrangements the lane
+ * lists at a glance, worded exactly as the Upcoming list words them. A manual payout schedule never
+ * runs, so it is no row at all; a paused rule stays listed, marked paused.
  */
-export function flowBars(points: readonly FlowPoint[]): FlowBar[] {
-	const peak = points.reduce((max, p) => Math.max(max, p.inMinor, p.outMinor), 0);
-	return points.map((p) => ({
-		label: p.label,
-		inRatio: peak > 0 ? p.inMinor / peak : 0,
-		outRatio: peak > 0 ? p.outMinor / peak : 0,
+export function scheduleRows(
+	rules: readonly DepositRuleView[] | null,
+	schedule: PayoutScheduleView | null,
+): ScheduleRow[] {
+	const rows: ScheduleRow[] = (rules ?? []).map((rule) => ({
+		id: `rule-${rule.id}`,
+		title: ruleTitle(rule.interval),
+		when: rule.active ? rule.nextRunLabel : "Paused",
+		amount: rule.amount,
+		paused: !rule.active,
 	}));
+	const payout = schedule ? payoutTitle(schedule.mode) : null;
+	if (schedule && payout) {
+		rows.push({
+			id: "payout-schedule",
+			title: payout,
+			when: schedule.nextRunLabel,
+			amount: schedule.mode === "threshold" ? schedule.threshold : null,
+			paused: false,
+		});
+	}
+	return rows;
 }
 // #endregion
 

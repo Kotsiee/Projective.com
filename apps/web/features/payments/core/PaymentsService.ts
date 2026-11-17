@@ -8,6 +8,7 @@ import type {
 	CreateCardSetup,
 	ConnectOnboardingLink,
 	CreateEscrowLockIntent,
+	FundingCharge,
 	IdentitySessionHandoff,
 	InboundPayment,
 	KybOnboardingInput,
@@ -76,17 +77,17 @@ export const PaymentsService = {
 
 	/**
 	 * What funding one stage takes for the caller (Decision #197): its unfunded tickets at their prices,
-	 * any still unpriced, and the wallet the escrow is held from with its balance.
+	 * any still unpriced, and the wallet the escrow is held from with its balance; and what it charges
+	 * them (Decision #436), in their own currency unless `payIn` names the project's.
 	 */
 	stageFundingQuote(
 		project: string,
 		stage: string,
-	): Promise<PaymentsResponse<{ quote: StageFundingQuote }>> {
-		return send(
-			`/api/finance/escrow/quote?project=${encodeURIComponent(project)}&stage=${
-				encodeURIComponent(stage)
-			}`,
-		);
+		payIn: string | null = null,
+	): Promise<PaymentsResponse<{ quote: StageFundingQuote; funding: FundingCharge }>> {
+		const query = new URLSearchParams({ project, stage });
+		if (payIn) query.set("pay_in", payIn);
+		return send(`/api/finance/escrow/quote?${query}`);
 	},
 
 	/**

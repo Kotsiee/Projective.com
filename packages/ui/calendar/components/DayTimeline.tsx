@@ -260,6 +260,8 @@ interface DayCardProps {
 	highlighted: boolean;
 	/** Open this card — the popover if the host wired one, otherwise straight to the host. */
 	onActivate: (slot: DaySlot, el: HTMLElement | null) => void;
+	/** A double-click on the card (`CalendarProps.onEventDoubleClick`); absent, none is listened for. */
+	onDoubleActivate?: (slot: DaySlot) => void;
 	/** How far the card has stepped back behind the interaction. See `SceneEvent.recede`. */
 	recede: SceneRecede;
 	renderSource?: (source: string) => VNode | null;
@@ -403,6 +405,7 @@ function DayCard(props: DayCardProps): JSX.Element {
 			})}
 			onPointerEnter={onEnter}
 			onPointerLeave={onLeave}
+			onDblClick={props.onDoubleActivate ? () => props.onDoubleActivate?.(slot) : undefined}
 		>
 			{Array.from({ length: props.shadows }, (_, s) => (
 				<span
@@ -495,6 +498,8 @@ export interface DayTimelineProps {
 	onOpenEvent?: (event: CalendarEvent) => void;
 	/** What a right-click landed on (`CalendarProps.onContextTarget`). */
 	onContextTarget?: CalendarProps["onContextTarget"];
+	/** A single entry double-clicked (`CalendarProps.onEventDoubleClick`). */
+	onEventDoubleClick?: CalendarProps["onEventDoubleClick"];
 	/** A single card opens straight through `onOpenEvent` (`CalendarProps.directOpen`). */
 	directOpen?: boolean;
 	/** Fired (day-granular) as the scroll centre crosses into a new day, so the header + mini-map track it. */
@@ -791,6 +796,17 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 		layer.value = { kind: "event", event: slot.event, anchor };
 	}
 
+	/** A double-click on a single card: close what its first click opened, and hand the entry over. */
+	function doubleActivate(slot: DaySlot, daySlots: DaySlot[]): void {
+		const report = props.onEventDoubleClick;
+		if (!report) return;
+		if (slot.foldedCount > 0 && slot.clusterSize > 1) {
+			if (daySlots.filter((x) => x.clusterId === slot.clusterId).length > 1) return;
+		}
+		if (props.popover) props.popover.value = null;
+		report(slot.event);
+	}
+
 	// #region Visible-day window
 	const top = viewport.scrollTop.value;
 	const h = viewport.viewportH.value;
@@ -1000,6 +1016,9 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 											renderSource={props.renderSource}
 											onOpen={props.onOpenEvent}
 											onActivate={(sl, el) => activateCard(sl, el, slots)}
+											onDoubleActivate={props.onEventDoubleClick
+												? (sl) => doubleActivate(sl, slots)
+												: undefined}
 											onUnfold={props.onUnfold}
 										/>
 									);

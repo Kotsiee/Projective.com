@@ -11,6 +11,10 @@
 -- =============================================================================================
 
 
+-- A seeded database is a development database: it honours a Dev Context Switcher override that
+-- loosens a gate (finance.fn_fx_checkout_enabled, Decision #436). No deployed database runs this file.
+UPDATE security.platform_params SET value = 'true'::jsonb WHERE key = 'dev_overrides_honoured';
+
 INSERT INTO finance.wallets (id, owner_type, owner_id, currency, balance_cents, approval_threshold_cents, created_at)
 VALUES
   ('ef814c58-b670-4eb9-a349-1cde0ca3405f', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 'USD', 433610, NULL, now() - interval '10080 hours'),

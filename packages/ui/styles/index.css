@@ -781,6 +781,7 @@
 	*/
 	--chart-h: 11rem;
 	--chart-h-sm: 9rem;
+	--chart-wash: 0.2;
 
 	/* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
 	on a phone. The Drawer component consumes this directly, so the package default and the

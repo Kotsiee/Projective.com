@@ -1357,6 +1357,12 @@ export const FundEscrowInputSchema = z.object({
 	stageId: z.string().max(64),
 	amountMinor: minorUnitsPositive,
 	currency,
+	/**
+	 * The payer's `funding` conversion quote (Decision #436): the stage is then funded from their wallet
+	 * in the quote's currency through `finance.fund_with_conversion`, and `amountMinor` + `currency`
+	 * stay the stage's own requirement.
+	 */
+	fxQuoteId: uuid.nullable().optional(),
 });
 export type FundEscrowInput = z.infer<typeof FundEscrowInputSchema>;
 

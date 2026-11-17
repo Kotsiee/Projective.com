@@ -94,6 +94,16 @@ function refuse(status: number, message: string): Result {
 	return fail(status, { message }) as Result;
 }
 
+/** Why a funding's conversion quote can no longer be used: the dialog re-reads and the payer confirms. */
+const FUNDING_QUOTE_REFRESHED =
+	"The exchange rate for this funding has been refreshed. Review the new figure, then fund.";
+
+/** Whether a door refused the conversion quote itself: used, expired, or not this funding's. */
+function isQuoteRefusal(error: { code?: string; message: string }): boolean {
+	return (error.code === "PC409" && /^quote_(used|expired|invalid)/.test(error.message)) ||
+		(error.code === "22023" && error.message.startsWith("fxQuoteId:"));
+}
+
 /**
  * A money RPC's refusal: the business spend gate's (`kyb_required` / `over_limit` / `needs_approval` —
  * a 403 whose details name the spend an approval request would bind to), a draft or archived
@@ -402,6 +412,8 @@ export async function distribute(input: DistributeInput, query: WalletQuery, act
  * stage (`projects.get_stage_funding_quote`) and it must still cost what the buyer was shown, so a
  * ticket added or re-priced between the page and the press refuses rather than committing a figure
  * nobody confirmed. Tickets nobody has claimed are held prepaid and bound to whoever claims them.
+ * With `fxQuoteId` (Decision #436) the payer pays from their wallet in the quote's currency: the quote
+ * converts it and the stage is held from the result (`finance.fund_with_conversion`).
  */
 export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
@@ -440,11 +452,22 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 		);
 	}
 
-	const { data, error } = await db.rpc("fund_stage", {
-		p_project_id: projectId,
-		p_stage_id: input.stageId,
-	});
+	// Paid in the payer's own currency (Decision #436): the quote converts their money and the stage is
+	// held from the result in one transaction, so a refused hold takes the conversion back with it.
+	const { data, error } = input.fxQuoteId
+		? await getUserClient(ctx.actor.accessToken).schema("finance").rpc("fund_with_conversion", {
+			p_fx_quote_id: input.fxQuoteId,
+			p_project_id: projectId,
+			p_stage_id: input.stageId,
+			p_ticket_id: null,
+			p_revision_id: null,
+		})
+		: await db.rpc("fund_stage", {
+			p_project_id: projectId,
+			p_stage_id: input.stageId,
+		});
 	if (error) {
+		if (input.fxQuoteId && isQuoteRefusal(error)) return refuse(409, FUNDING_QUOTE_REFRESHED);
 		// Only a holder of vault `spend` on the paying business's wallet funds its escrow (BB2).
 		const authority = businessAuthorityRefusal(error);
 		if (authority) {

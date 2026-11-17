@@ -78,24 +78,28 @@
 
 .wlt-alloc__cell[data-state="available"],
 .wlt-alloc__item[data-state="available"],
+.wlt-capital__item[data-state="available"],
 .wlt-alloc-pop[data-state="available"] {
 	--wlt-alloc-fill: var(--wlt-fund-available);
 }
 
 .wlt-alloc__cell[data-state="locked"],
 .wlt-alloc__item[data-state="locked"],
+.wlt-capital__item[data-state="locked"],
 .wlt-alloc-pop[data-state="locked"] {
 	--wlt-alloc-fill: var(--wlt-fund-escrow);
 }
 
 .wlt-alloc__cell[data-state="pending"],
 .wlt-alloc__item[data-state="pending"],
+.wlt-capital__item[data-state="pending"],
 .wlt-alloc-pop[data-state="pending"] {
 	--wlt-alloc-fill: var(--wlt-fund-clearing);
 }
 
 .wlt-alloc__cell[data-state="on_hold"],
 .wlt-alloc__item[data-state="on_hold"],
+.wlt-capital__item[data-state="on_hold"],
 .wlt-alloc-pop[data-state="on_hold"] {
 	--wlt-alloc-fill: var(--wlt-fund-reserved);
 }

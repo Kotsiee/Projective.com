@@ -3,6 +3,7 @@ import {
 	type CalendarEvent,
 	type EventAttendee,
 	EventAttendeeSchema,
+	type Routine,
 } from "@projective/types/scheduling";
 import type { CalendarContextTarget } from "@ui/calendar/core/types.ts";
 import {
@@ -12,7 +13,10 @@ import {
 	type AuthoringAction,
 	authoringFor,
 	type CalendarHost,
+	type EntryMenuExtras,
 	entryEditable,
+	type LaneMenuActions,
+	laneRows,
 	timesMovable,
 } from "./calendar-authoring.ts";
 
@@ -101,9 +105,21 @@ Deno.test("the project calendars and a public schedule author nothing (C7 (a), S
 	assertEquals([...authoringFor("schedule")], []);
 });
 
-Deno.test(".ics import is on no calendar until a door keeps what it reads", () => {
-	assertEquals(AUTHORING_DOOR.import, null);
-	for (const host of HOSTS) assert(!authoringFor(host).has("import"), host);
+Deno.test("an imported .ics entry authors nothing: it opens read-only and never moves (#440)", () => {
+	const imported: CalendarEvent = {
+		id: "ics-0a1b2c3-0-standup@example.com",
+		title: "Stand-up",
+		kind: "general",
+		status: "confirmed",
+		start: START,
+		end: START + 900_000,
+		sources: ["ics"],
+	};
+	assert(!entryEditable(imported));
+	assert(!timesMovable(imported));
+	assertEquals(reached({ event: imported, range: null }, authoringFor("personal")), {
+		open: "open",
+	});
 });
 // #endregion
 
@@ -145,5 +161,96 @@ Deno.test("a body that authors nothing offers no New, Edit or Delete row", () =>
 	const none = authoringFor("project");
 	assertEquals(reached({ event: entry(), range: null }, none), { open: "open" });
 	assertEquals(reached({ event: null, range: null }, none), {});
+});
+
+const ROUTINE = (id: string, name: string): Routine => ({
+	id,
+	scheduleId: "s",
+	name,
+	slug: "rtn-2222222222",
+	colorToken: null,
+	isActive: true,
+	behavior: "passive",
+	recurrenceRule: null,
+	metadata: {},
+	createdAt: "",
+	updatedAt: "",
+});
+
+const NOOP: AgendaMenuActions = {
+	create: () => {},
+	createBlank: () => {},
+	open: () => {},
+	edit: () => {},
+	remove: () => {},
+};
+
+Deno.test("an entry's menu carries its colour and its routine where the surface offers them (#441)", () => {
+	const moved: (string | null)[] = [];
+	const extras: EntryMenuExtras = {
+		colour: () => ({ key: "colour", label: "Colour" }),
+		routines: [ROUTINE("r1", "Gym"), ROUTINE("r2", "Spanish")],
+		organisable: () => true,
+		organise: (_, r) => moved.push(r?.id ?? null),
+		newRoutine: () => moved.push("new"),
+	};
+	const can = authoringFor("personal");
+	const rows = agendaRows({ event: entry({ routineId: "r2" }), range: null }, "UTC", NOOP, can, extras);
+	assertEquals(rows.map((r) => r.key ?? "—"), ["edit", "colour", "routine", "—", "delete"]);
+
+	const sub = rows.find((r) => r.key === "routine")?.items ?? [];
+	assertEquals(sub.map((r) => r.key ?? "—"), [
+		"routine:none",
+		"routine:r1",
+		"routine:r2",
+		"—",
+		"routine:new",
+	]);
+	assert(sub.find((r) => r.key === "routine:r2")?.disabled, "where it is now is inert");
+	assert(!sub.find((r) => r.key === "routine:none")?.disabled);
+	for (const row of sub) {
+		if (row.separator || row.disabled) continue;
+		row.command?.({ originalEvent: new Event("click"), item: row });
+	}
+	assertEquals(moved, [null, "r1", "new"]);
+});
+
+Deno.test("anyone else's entry offers no colour, and a routine only when it can be organised", () => {
+	const extras: EntryMenuExtras = {
+		colour: () => ({ key: "colour", label: "Colour" }),
+		routines: [ROUTINE("r1", "Gym")],
+		organisable: (e) => e.connected === true,
+		organise: () => {},
+	};
+	const can = authoringFor("personal");
+	const keys = (over: Partial<CalendarEvent>) =>
+		agendaRows({ event: entry(over), range: null }, "UTC", NOOP, can, extras).map((r) => r.key);
+	assertEquals(keys({ connected: true }), ["open", "routine"]);
+	assertEquals(keys({ viewerIsHost: false }), ["open"]);
+});
+
+Deno.test("the lane's own rows create, make a routine, and gather entries into one (#441)", () => {
+	const calls: string[] = [];
+	const act: LaneMenuActions = {
+		create: (entry) => calls.push(`create:${entry}`),
+		newRoutine: () => calls.push("routine"),
+		addToRoutine: (r) => calls.push(`add:${r?.id ?? "ask"}`),
+	};
+	const gym = ROUTINE("r1", "Gym");
+	const press = (rows: ReturnType<typeof laneRows>) => {
+		calls.length = 0;
+		for (const row of rows) row.command?.({ originalEvent: new Event("click"), item: row });
+		return [...calls];
+	};
+	const can = authoringFor("personal");
+	assertEquals(press(laneRows(null, [gym], act, can)), [
+		"create:event",
+		"create:reminder",
+		"routine",
+		"add:ask",
+	]);
+	assertEquals(laneRows(gym, [gym], act, can).at(-1)?.label, "Add entries to Gym…");
+	assertEquals(laneRows(null, [], act, can).at(-1)?.label, "Add entries to a new routine…");
+	assertEquals(press(laneRows(null, [gym], act, authoringFor("project"))), ["routine", "add:ask"]);
 });
 // #endregion

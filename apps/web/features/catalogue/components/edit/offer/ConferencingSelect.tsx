@@ -5,6 +5,7 @@ import { Select } from "@projective/ui/fields";
 import type { ConnectionsView } from "@projective/types/integrations";
 import type { MeetingProvider } from "@projective/types/scheduling";
 import { IntegrationsService } from "@web/features/files/core/IntegrationsService.ts";
+import { SettingsLink } from "@features/settings/components/SettingsLink.tsx";
 import { DEFAULT_PROVIDER, providerChoices, providerOf } from "../../../core/conferencing-model.ts";
 import { FieldHead } from "../FieldHead.tsx";
 
@@ -57,7 +58,9 @@ export function ConferencingSelect(
 					{failed.value ?? (
 						<>
 							No meeting tool is connected, so buyers get a room once you connect one.{" "}
-							<a class="cat-offer__link" href="/settings/integrations">Connect one</a>
+							<SettingsLink class="cat-offer__link" section="integrations" anchor="conferencing">
+								Connect one
+							</SettingsLink>
 						</>
 					)}
 				</p>

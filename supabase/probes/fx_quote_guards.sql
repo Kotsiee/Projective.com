@@ -4,7 +4,8 @@
 -- outside settlement_currencies (PX422, Decision #423), on a stale rate (PX503 fx_rate_stale), for the
 -- same currency (22023) and for someone else's basket (42501); it prices the principal and margin as
 -- fn_fx_quote_minor does, charges the higher of the two currencies' margins, and the quote row is
--- frozen except for its use (PL403).
+-- frozen except for its use (PL403). The development header (Decision #436) switches it off from any
+-- caller, and on only where `dev_overrides_honoured` is set.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
@@ -148,10 +149,29 @@ BEGIN
     IF v_r NOT LIKE 'PL403:%' THEN v_fail := v_fail || ('use recorded twice: ' || v_r); END IF;
     -- #endregion
 
+    -- #region 6. The development switch (Decision #436): off from any caller, on only where the database honours it
+    PERFORM pg_catalog.set_config('request.headers', '{"x-pj-dev-fx-checkout": "off"}', true);
+    v_r := pg_temp.try_as(v_buyer, pg_temp.quote_sql(v_buyer, v_basket, 'GBP', 'EUR', 9000));
+    IF v_r NOT LIKE 'PX503: fx_unavailable%' THEN v_fail := v_fail || ('dev off over a switch that is on: ' || v_r); END IF;
+    UPDATE security.platform_params SET value = 'false'::jsonb WHERE key = 'fx_checkout_enabled';
+    UPDATE security.platform_params SET value = 'false'::jsonb WHERE key = 'dev_overrides_honoured';
+    PERFORM pg_catalog.set_config('request.headers', '{"x-pj-dev-fx-checkout": "on"}', true);
+    v_r := pg_temp.try_as(v_buyer, pg_temp.quote_sql(v_buyer, v_basket, 'GBP', 'EUR', 9000));
+    IF v_r NOT LIKE 'PX503: fx_unavailable%' THEN v_fail := v_fail || ('dev on where it is not honoured: ' || v_r); END IF;
+    UPDATE security.platform_params SET value = 'true'::jsonb WHERE key = 'dev_overrides_honoured';
+    v_r := pg_temp.try_as(v_buyer, pg_temp.quote_sql(v_buyer, v_basket, 'GBP', 'EUR', 9000));
+    IF v_r <> 'ok' THEN v_fail := v_fail || ('dev on where it is honoured: ' || v_r); END IF;
+    v_r := pg_temp.try_as(v_buyer, pg_temp.quote_sql(v_buyer, v_basket, 'GBP', 'CAD', 9000));
+    IF v_r <> 'ok' THEN v_fail := v_fail || ('dev on quotes the newest rate whatever its age: ' || v_r); END IF;
+    PERFORM pg_catalog.set_config('request.headers', '', true);
+    v_r := pg_temp.try_as(v_buyer, pg_temp.quote_sql(v_buyer, v_basket, 'GBP', 'EUR', 9000));
+    IF v_r NOT LIKE 'PX503: fx_unavailable%' THEN v_fail := v_fail || ('an honouring database without the header: ' || v_r); END IF;
+    -- #endregion
+
     IF pg_catalog.cardinality(v_fail) > 0 THEN
         RAISE EXCEPTION 'PROBE FAIL: %', pg_catalog.array_to_string(v_fail, ' | ');
     END IF;
-    RAISE NOTICE 'PASS quote_fx_conversion: off by default, priced and truncated, higher margin, every refusal, frozen row';
+    RAISE NOTICE 'PASS quote_fx_conversion: off by default, priced and truncated, higher margin, every refusal, frozen row, the development switch';
 END $$;
 
 ROLLBACK;
