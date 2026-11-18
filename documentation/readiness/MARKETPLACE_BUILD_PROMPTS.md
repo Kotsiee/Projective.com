@@ -50,7 +50,7 @@ cohort seat) → **SC3**.
 | Row   | Now · Crit · Gate  | Work order      | The row flips when                                                                                         |
 | :---- | :----------------- | :-------------- | :--------------------------------------------------------------------------------------------------------- |
 | MK-32 | ❌ · High · UAT    | **RV1** (🧑 ×4) | A completed buyer reviews, the seller is told and replies; the row cites T&S R2 for the report entry point |
-| MK-33 | ❌ · Normal · PROD | **RV2** (🧑 ×4) | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
+| MK-33 | ❌ · Normal · PROD | **RV2** (#486)  | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
 | MK-34 | ✅ · Normal · UAT  | **RV1**         | Real reviews replace seed-only data (note clears)                                                          |
 | —     | —                  | **RV3** (🧑)    | Standing reads real reviews (no row of its own; #58-63 (h))                                                |
 
@@ -147,7 +147,7 @@ block, so a question you defer still stops the build at the right step.
 | 6  | The tax model (⚖️)                                                                               | CK4                 | Stripe Tax on every order, card and wallet alike, behind a switch that stays off until counsel          |
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
-| 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | Double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score per client party |
+| 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score  |
 | 10 | What Standing's peer track is                                                                    | RV3                 | Reviews between providers who shared an engagement                                                      |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
@@ -854,6 +854,11 @@ CONTEXT (verified at b7280787):
      before applying or accepting a hire (logged: that is the Informed Consent).
   4. One score or two (Client vs Business Trust Score). Recommended: one score per client party,
      a person or a business, under one name. Log the contradiction as a decision row either way.
+  RULED #486 (2026-11-18): all four as recommended; skip this stop. The numbers: k = 5 at the
+  client-track mean; −0.25 per dispute the client opened and lost (resolved_release) in 12
+  months, capped at −1.00; ghosting −0.10 each, capped at −0.50, dormant until #337 P3's
+  auto-approve is built; floor 1.00; shown from 3 reviews; warned below 3.00. The `client_trust`
+  coefficient is unset (#486 (c), proposal 2.50). RV2 waits for RV1, re-verified at HEAD.
 
 STEPS:
   1. Red first: a provider cannot review a client today, and the SELECT policy shows every

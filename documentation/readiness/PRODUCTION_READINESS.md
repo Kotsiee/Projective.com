@@ -316,6 +316,7 @@ Work orders for every open row, with the run order:
 | Manual Assignment: PRODUCT_SPEC §Assignment Modes says it ships; nothing calls it      | USER_FLOWS PJ-13   | Spec ↔ code gap: build, or re-scope the spec       |
 | Project completion: the handover rule assumes a completion step the app cannot perform | USER_FLOWS PJ-40   | Spec ↔ code gap                                    |
 | Plan gates while nothing can be bought (`business_plan_gates_enforced` is on)          | PRD-F14            | Ruled 2026-11-18 (#472): A, gates off for UAT and back on in SBP S4; the `00005001` switch is not made yet |
+| Reviews: the reveal rule, Client Trust Score v1, the warning; "Client" vs "Business Trust Score" | USER_FLOWS MK-33   | Ruled 2026-11-18 (#486): double-blind; a Bayesian mean less a lost-dispute deduction, shown from 3 reviews; below 3.00, demote + acknowledge; one score per client party. RV2 waits for RV1 |
 
 ## Doc drift to sweep (not scored)
 
