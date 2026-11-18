@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **70%** |           190 | 95 |  75 | 20 |              26 |
-| **Production**   | **63%** |           244 | 100 | 101 | 43 |              37 |
+| **Production**   | **63%** |           245 | 100 | 102 | 43 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,7 +44,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
+| MK — Discovery, marketplace, checkout & sessions |    57 | 24 | 21 | 10 |  2 |   64% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 35 | 13 |  2 |   61% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
@@ -218,13 +218,14 @@ PRODUCTION_READINESS.md.
 | MK-38 | Pipeline blueprint, fixed or tiered intensity            | Seller             | Offer, Pricing                                     | ✅     | Critical | MVP  | No seeded tiered listing (#417 (f)); stage CREATE category not copied (#417 (c))                                 |
 | MK-39 | 1-on-1 session listing: presets, RRULE, session plan     | Seller             | Availability section                               | ✅     | High     | UAT  | No seeded `session_plan` (#411 (f))                                                                              |
 | MK-40 | Open a cohort and schedule group sittings                | Seller             | —                                                  | ❌     | High     | UAT  | `schedule_sitting` has no app caller, so a new group listing is waitlist-only (S-05 → SCH-WP7); the seed opens no cohort either (#453 (e)) |
-| MK-41 | Publish, pause, archive, duplicate, batch, delete        | Seller             | console, `/api/catalogue/{status,batch,duplicate}` | 🟡     | Critical | PROD | Published unscreened (PRD-D10); `catalogue.listing_published` has no emitter                                     |
+| MK-41 | Publish, pause, archive, duplicate, batch, delete        | Seller             | console, `/api/catalogue/{status,batch,duplicate}` | 🟡     | Critical | PROD | Published unscreened (PRD-D10); the gate holds only in the door: a seller's bare UPDATE or INSERT publishes a listing with no cover or price, and clearing `published_at` reopens #217's currency lock (`00002520:871` + owner-only `00002020:43-65`; #494, SC4 ⏳ CK1); `catalogue.listing_published` has no emitter (ruled: followers, daily digest) |
 | MK-42 | Buyer simulation / preview                               | Seller             | `/catalogue/:slug/simulate`                        | ✅     | Normal   | UAT  | `x-frame-options` loosened (#219 (d))                                                                            |
 | MK-43 | Listing analytics                                        | Seller             | `/catalogue?view=analytics`                        | 🟡     | Normal   | UAT  | No writer of `view` events (#218 (b)); impressions need the EXPLORE flag                                         |
 | MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | 🟡     | Normal   | UAT  | The inquiry link carries a thread uuid (#218 (a); `?event=<id>` stays ROUTING's, PRD-J1), and a team's or a business's order is dropped from the board, not shown without a buyer (#218 (d)); SC6 builds both after CK1 and SC4 (#500). Quotes are answered in the drawer (`QuotePanel`, #458) |
 | MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | Team listings are edited only by their creator, and no door asks `publish_listings` (#312 (a), PRD-C34); ruled A, tightened (#500): any holder edits any team listing and creating needs it, presets on the team's schedule; SC6 builds it after CK1 and SC4 |
 | MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
 | MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R1 → R2 |
+| MK-57 | Edit a published listing within its locks                | Seller             | `/catalogue/:slug`                                 | 🟡     | High     | PROD | The doors hold the locks, the tables do not (#494 (A) 3–4): a direct write changes a published listing's currency, its questions and delivery model, and points a showcase slot at another person's file; the doors also let it lose its cover or every stage (#494 (d)) → SC4 (#494 (a)) |
 
 ### Calls & sessions
 
@@ -530,3 +531,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | SR1: MK-03 narrowed (a filtered nearest-neighbour ask fills: `ef_search` 200 with the iterative scan; a vector off unit length is refused); still 🟡 (`EMBEDDINGS_ENABLED=false` until Voyage's terms) | 83% | 69% |  63% |
 | 2026-11-18 | NT2 + NT3 (#344 (a), #339 N3): PJ-60 ❌ → 🟡 (the dispatcher and notification email with signed bounces, built locally; digests (PRD-E15) and a hosted send left) | 83% | 70% | 63% |
 | 2026-11-18 | FBP DB16 (#483): MW-62 ❌ → 🟡 (`/admin/ledger` reads the conservation identity, its nightly checks and the open drift; Stripe reconciliation and the alert left) | 83% | 70% | 63% |
+| 2026-11-18 | SC4 step 1 (#494): new MK-57 🟡 (a published listing's currency, questions, delivery model and showcase files are locked only in the doors; a direct write skips them); MK-41 still 🟡, its note names the publish-gate bypass (a bare UPDATE or INSERT publishes past the gate) | 83% | 70% | 63% |

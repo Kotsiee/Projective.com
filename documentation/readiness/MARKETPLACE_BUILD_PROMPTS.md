@@ -64,13 +64,14 @@ cohort seat) → **SC3**.
 | MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
 | MK-39 | ✅ · High · UAT    | **SC2**                                           | A session plan is seeded (note clears)                                                 |
 | MK-40 | ❌ · High · UAT    | **SC3** → SCH-WP7                                 | 🟡 after SC3 (a seller opens a cohort); ✅ after WP7 (sittings scheduled from the app) |
-| MK-41 | 🟡 · Crit · PROD   | **SC4** + T&S SN2 → SN3                           | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
+| MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                               |
 | MK-43 | 🟡 · Normal · UAT  | **SC5**                                           | Views are written and counted; 90 days are seeded                                      |
 | MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ CK1, SC4)                       | Slug links; a team or business buyer is named                                          |
 | MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ CK1, SC4)                 | The note states the ruled team-editing scope                                           |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
 | MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands |
+| MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                   |
 
 **Score projection** (section score = Σ weight × credit / Σ weight; Critical 3 · High 2 · Normal 1;
 ✅ 1 · 🟡 0.5 · ❌ 0; ⏸ excluded):
@@ -79,7 +80,7 @@ cohort seat) → **SC3**.
 | :------------------------ | ----: | :------------------------------------------------------------------------------------------ |
 | Basket, checkout & orders |   63% | CK1 74% → DB21 85% → CK2 87% → CK6 + you 91% → SBP S4 93% → DB17 94% → CK4 switched on 100% |
 | Reviews                   |   25% | RV1 75% → RV2 100%                                                                          |
-| Seller catalogue          |   66% | CK1 70% → SC3 + SCH-WP7 78% → SC5 80% → SC6 82% → SN3 88% → MK-47's chain 96% → SC7 100%    |
+| Seller catalogue          |   65% | CK1 69% → SC4 72% → SC3 + WP7 80% → SC5 81% → SC6 83% → SN3 89% → MK-47 96% → SC7 100%      |
 
 What UAT needs from these sections: **CK1** and the MK-31 chain (the cluster's two Critical · UAT
 ❌s in the Scoreboard), **RV1**, **SC3** + SCH-WP7, **SC5**, **SC6**, **CK2**, **CK6** + you and SBP
@@ -109,7 +110,8 @@ and this file).
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts.
 
-1. **SC4 → SC6** — ⏳ CK1 (`00001170`). SC4 leads: it may be a live write bypass.
+1. **SC4 → SC6** — ⏳ CK1 (`00001170`). SC4 leads: the write bypass is live and wider than its
+   CONTEXT says (#494), and SC4 also writes `00002018` and `00002020`.
 2. **RV1** — ⏳ SAC1 (`00002500`, `00002510`). Better after CK3, which gives it an entry point.
 3. **SC2 → SC3 → SCH-WP7** — the seed generator is one writer at a time; `00001155` runs with no
    other SCH package.
@@ -158,6 +160,7 @@ block, so a question you defer still stops the build at the right step.
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |
 | 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
+| 17 | Who `catalogue.listing_published` tells, and on which publish                                    | SC4                 | **Ruled #494:** the owning party's followers, in a daily digest, on a listing's first publish only      |
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
 
 **For counsel** (build behind a switch that stays off; never switch it on): A8's wording, the tax
@@ -1131,6 +1134,17 @@ emitter; the decision row.
 
 §1.2 rows: **MK-41** stays 🟡 with a narrower note (screening is SN3's), and becomes ✅ when SN3
 lands.
+
+**Step 1 ran on 2026-11-18, and the rulings are in (#494).** The bypass is live and wider than the
+CONTEXT says: a bare UPDATE or INSERT publishes past the gate, clearing `published_at` reopens
+#217's lock, and a published listing's currency, questions, delivery model and showcase files change
+directly (#494 (A)). The doors are INVOKER, so step 2 makes `set_listing_status` and
+`set_listings_status` definers (#494 (B)) and also writes `00002018` and `00002020`. Step 3's
+audience is **the owning party's followers, in a daily digest** (`group_window` `1 day`, a link to
+`/view/<slug>`, a listing's first publish only; #494 (C)), and the rule enters PRODUCT_SPEC.md in
+SC4's change. SC4 waits for CK1 (#494 (D)). When it runs, its step 1 commits the red probe, it asks
+whether MK-57 rides along (#494 (a)), and its CONTEXT's `00005010:87` and `catalog.ts:107` read
+`:88` and `:108`.
 
 ### SC5 — A listing's views are counted
 
