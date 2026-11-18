@@ -55,6 +55,7 @@ import {
 	walletVariant,
 } from "@projective/types/finance";
 import type { MoneyProjector } from "./commerce-money.ts";
+import { MONEY_LOCKED, moneyWritesLive } from "./money-gate.ts";
 import { type PayoutRunPlan, planPayoutRun } from "./payout-schedules.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
@@ -127,9 +128,10 @@ import { standingFor } from "./wallet-standing.ts";
 // #region Environment
 /**
  * The actions that need the Stripe fiat rails (Decision #125/#126), with the sentence the surface shows
- * on them when the processor is NOT connected in this deployment (`FINANCE_BACKEND_LIVE` off, or no
- * well-formed Stripe key). Where it is connected they run; where it is not, each is offered locked with
- * its reason and refused server-side regardless (`PaymentBackendService` answers 503).
+ * on them when the processor is NOT connected in this deployment (no well-formed Stripe key; with
+ * `FINANCE_BACKEND_LIVE` off the money switch's {@link MONEY_LOCKED} is shown instead). Where
+ * it is connected they run; where it is not, each is offered locked with its reason and refused
+ * server-side regardless (`PaymentBackendService` answers 503).
  */
 export const PROCESSOR_REASON: Readonly<Partial<Record<WalletAction, string>>> = {
 	top_up: "Top-ups need a payment processor, which isn't connected in this environment.",
@@ -400,7 +402,9 @@ export interface OfferedActions {
 
 /**
  * What this viewer may do on this wallet (capability → absence), then which of those cannot run here
- * (environment → locked, with the reason). The two gates behave differently on purpose — see the
+ * (environment → locked, with the reason: the money switch first, `FINANCE_BACKEND_LIVE` off
+ * locking every action with {@link MONEY_LOCKED}; then the processor, then each action's own
+ * state). The two gates behave differently on purpose — see the
  * footer rig — and the verification lock is applied on the client from `verification`. Automation
  * whose engine does not run is offered LOCKED, never dropped (Decision #337, ruling M6).
  */
@@ -433,7 +437,13 @@ export function actionsFor(
 	// a ticket or stage to fund — BUSINESSES_AUDIT §4.3), so it is filed from that surface, never here.
 
 	const unavailable: { action: WalletAction; reason: string }[] = [];
+	const moneyOff = !moneyWritesLive();
 	for (const action of offered) {
+		// The money switch first (`money-gate.ts`): off, every action is drawn locked with its reason.
+		if (moneyOff) {
+			unavailable.push({ action, reason: MONEY_LOCKED });
+			continue;
+		}
 		const processor = isPaymentsLive() ? undefined : PROCESSOR_REASON[action];
 		if (processor) {
 			unavailable.push({ action, reason: processor });

@@ -1418,7 +1418,9 @@ off on this server.", `details.code = "money_writes_off"`), then the action's ow
 door. That covers every `/wallet` action (the Stripe-backed ones, which also need Stripe's keys, and
 the internal moves: transfer, distribute, fund-escrow, recurring rules, payout schedule, spend
 requests and decisions, pots), checkout orders and approval requests, invoicing terms and billing
-controls, invoice payment, paid revisions and dispute writes. `money-gate.test.ts` proves each
+controls, invoice payment, paid revisions and dispute writes. With it off the wallet draws every
+offered action locked with the reason (`live-wallet.actionsFor`, `MONEY_LOCKED`), so no control
+offers a press that can only be refused. `money-gate.test.ts` proves each
 refuses before any request; `money-gate.gate.test.ts` fails when a finance door the database does
 not declare `STABLE` is called from a function that skips the chokepoint, unless it is allowlisted
 with its reason (the service-role webhook and cron doors, a rate lock, telemetry). Money a project's

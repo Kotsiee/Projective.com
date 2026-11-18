@@ -26,6 +26,12 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 export const MONEY_WRITES_OFF =
 	"Payments are switched off on this server. Nothing was charged or moved.";
 
+/**
+ * Why a money control is drawn locked while the switch is off (`live-wallet.actionsFor`), so a
+ * surface never offers a press that can only be refused.
+ */
+export const MONEY_LOCKED = "Payments are switched off on this server, so money can't move here.";
+
 /** The `details.code` of that refusal, for a surface that words it itself. */
 export const MONEY_WRITES_OFF_CODE = "money_writes_off";
 
