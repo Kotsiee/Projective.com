@@ -226,7 +226,17 @@ Entity channels need no policy of their own: a channel's `dm_participants` rows 
 active members (trigger-maintained, [Functions.md](Functions.md#entity-channels-00001300--00001840-decision-306)),
 so `view_dm_threads_if_participant`, `view_dm_messages_if_participant`, the send policy and every
 `comms.can_read_message` policy already answer "is this person a member of the entity". A member who
-leaves has their participation soft-deleted, which `comms.is_dm_participant` reads as gone. The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
+leaves has their participation soft-deleted, which `comms.is_dm_participant` reads as gone.
+
+**History before `joined_at` (PRD-C33, Decision #482 (b)).** `view_dm_messages_if_participant` asks
+membership only, so a person added to a group reads every message written before they arrived.
+The owner ruled (2026-11-18) that a group newcomer reads only from their own `joined_at`; an entity
+channel keeps its whole history, being the workspace's record. **Not built yet:** the policy,
+`comms.can_read_message` (reactions, pins, favourites, attachments), the attachment file read, the
+thread summary preview and unread counts all still admit earlier messages. A service inquiry can no
+longer gain a newcomer at all (`comms.add_dm_thread_members`, #482 (a)).
+
+The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
 DEFINER), so a first message never has to insert into a thread the caller is not yet a member of.
 Joining, marking read, starring and archiving remain policy-less on purpose — nothing exercises them.
 

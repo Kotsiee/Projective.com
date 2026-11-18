@@ -369,9 +369,24 @@ Adds people to a thread the caller is an **undeleted participant** of (`comms.is
 returning how many were actually added. Already-present members are skipped; a member who had
 soft-deleted the conversation for themselves is **restored** (`deleted_at = NULL`) and counted —
 being added back by somebody is the one event that should bring a conversation back into a person's
-inbox. A plain `dm` thread that ends up with more than two participants is flipped to `group`; a
-`service_inquiry` keeps its kind. Raises `42501` ("Not a participant of this conversation") for a
-stranger.
+inbox. A plain `dm` thread that ends up with more than two participants is flipped to `group`.
+Raises `42501` ("Not a participant of this conversation") for a stranger, and `22023` for an entity
+channel (its people are its workspace's) and for a **`service_inquiry`** ("An inquiry is only
+between its buyer and its seller. Start a group to bring someone else in.", PRD-C27, Decision #482).
+An inquiry cannot become a group, which carries no listing (`ck_dm_threads_subject_inquiry`), and
+before #482 it was widened in place: a `service_inquiry` with three people, which the pair lookups
+in `get_or_create_dm_thread` / `send_request_message` (and the TypeScript `findExistingDmThread`,
+`pairThread`) — all joined on two people only — then returned for ANY two of its members. So a
+stranger who opened an inquiry on a seller's listing and added C read every later "message this
+person" and hiring request between the seller and C. Since #482 every `dm` and `service_inquiry`
+holds exactly its pair, the invariant those lookups rely on. `SECURITY DEFINER`,
+`search_path = ''` (was `public, comms, org, auth`). The backend maps the refusal to `422`
+(`INQUIRY_CLOSED_MESSAGE`, `live-conversation-writes.ts`); the fixture path refuses in the same words
+and no longer offers Add members on an inquiry (`canAddMembers`). Verified by
+`supabase/probes/dm_pair_isolation.sql`: seven failures before the fix (the widen accepted, the
+request and both "message this person" doors landing in the stranger's inquiry, the newcomer reading
+its history, a three-person inquiry), green after, with a DM still becoming a group that no pair
+lookup returns.
 
 **Verified by execution** against the local Postgres (inside `BEGIN … ROLLBACK`, then applied): a
 named group with three participants; a blank title → `NULL`; the DM lookup no longer returning the
@@ -748,5 +763,5 @@ team is `P0002`; `anon` holds no `EXECUTE`; a 61-character name is `22023`; blan
 | `comms.fn_promote_thread_on_reply` | Returns early for a channel (no request folder to promote). |
 | `comms.tg_dm_auto_reply` | Answers only `dm` / `service_inquiry` threads. |
 | `comms.trg_dm_shield` | Exempt (above). |
-| `comms.add_dm_thread_members` | Refuses a channel (`22023`) — joining the entity is the only way in. `comms.set_group_photo` accepts a channel only from its editors (Decision #308). |
+| `comms.add_dm_thread_members` | Refuses a channel (`22023`) — joining the entity is the only way in — and, since Decision #482, a `service_inquiry` too. `comms.set_group_photo` accepts a channel only from its editors (Decision #308). |
 | `comms.tg_mask_dm_message_pii` | **Unchanged**: a channel message is masked when the sender and another member share a protected engagement (`comms.fn_dm_protected_project`) — the same rule as a DM. Flagged on Decision #306. |

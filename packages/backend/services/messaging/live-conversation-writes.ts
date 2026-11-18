@@ -99,11 +99,27 @@ async function resolveThreadId(actor: Actor, conversationId: string): Promise<st
 	return openedThreadId(thread.data);
 }
 
-/** The RPCs raise two sentences of their own; everything else goes through the shared mapper. */
+/**
+ * `comms.add_dm_thread_members` refuses a service inquiry with this sentence (`22023`, Decision
+ * #482): an inquiry is its buyer's and seller's pair thread, and a third person in it would make it
+ * the thread every pair lookup hands any two of its members. The fixture path refuses in the same
+ * words.
+ */
+export const INQUIRY_CLOSED_MESSAGE =
+	"An inquiry is only between its buyer and its seller. Start a group to bring someone else in.";
+
+/** The RPCs raise three sentences of their own; everything else goes through the shared mapper. */
 function rpcRefusal(message: string, code?: string): WriteRefusal {
 	if (isAgeRestricted({ code })) return { ...DM_SHIELDED };
 	if (message.includes("Not a participant")) {
 		return { status: 403, message: "You can only add people to a conversation you're in." };
+	}
+	if (message.includes(INQUIRY_CLOSED_MESSAGE)) {
+		return {
+			status: 422,
+			message: INQUIRY_CLOSED_MESSAGE,
+			errors: { conversationId: "inquiry_closed" },
+		};
 	}
 	if (message.includes("at least one other person")) {
 		return {

@@ -1510,7 +1510,15 @@ context without "ping fatigue."
   or a named pick — start a group. An optional opening message is posted **in the same act**, so
   a first message to somebody never leaves an empty thread behind a question that failed to
   land. Adding people to a DM converts it into a group; a member who had deleted the conversation
-  for themselves is restored by being added back.
+  for themselves is restored by being added back. A **service inquiry** is its buyer's and its
+  seller's alone and takes nobody else: to bring someone in, either of them starts a group. A
+  widened inquiry would stay the pair's thread, so the next "message this person" between the
+  seller and the newcomer would land where the buyer reads it (Decision #482).
+- **What a newcomer reads:** someone added to a group reads its messages **from the moment they
+  joined**, never what was said before they arrived, because the people already there wrote for one
+  another. A team's or business's channel is the workspace's record, so a member who joins it reads
+  its whole history (Decision #482 (b)). **Not built yet:** today a group newcomer reads everything
+  (PRD-C33).
 - **When it appears in the list:** a conversation joins its **starter's** inbox list the moment it
   is created, empty or not — they asked for it, and one that stayed hidden until they wrote in it
   read as a create that had failed. Everyone it was started **with** sees it once it holds a

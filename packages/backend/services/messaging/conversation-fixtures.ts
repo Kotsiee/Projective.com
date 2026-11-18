@@ -681,8 +681,9 @@ export function findConversationDetail(
 		archived: c.archived,
 		folder: c.folder,
 		// Anyone may add members to a group; either party of a DM may spin one up (task §2B). A
-		// channel's members are its workspace's, so nobody adds anyone to it.
-		canAddMembers: c.kind !== "entity_channel",
+		// channel's members are its workspace's, and an inquiry is its buyer's and seller's alone
+		// (Decision #482), so nobody adds anyone to either.
+		canAddMembers: c.kind !== "entity_channel" && c.kind !== "service_inquiry",
 		serviceId: c.serviceId,
 		serviceName: c.serviceName,
 	};

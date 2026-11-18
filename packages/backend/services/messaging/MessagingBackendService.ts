@@ -79,7 +79,11 @@ import { fetchMessagingSettings } from "./live-settings.ts";
 import { saveLiveSettings } from "./live-settings-write.ts";
 import { fetchConversationFilePage, fetchConversationRoster } from "./live-workspace.ts";
 import { insertDmMessage } from "./live-writes.ts";
-import { addLiveMembers, createLiveConversation } from "./live-conversation-writes.ts";
+import {
+	addLiveMembers,
+	createLiveConversation,
+	INQUIRY_CLOSED_MESSAGE,
+} from "./live-conversation-writes.ts";
 import { renderGroupPhoto, setLiveGroupPhoto } from "./live-group-photo.ts";
 import { fetchRankedContacts } from "./live-suggestions.ts";
 import { findRankedContacts } from "./suggestion-fixtures.ts";
@@ -933,6 +937,12 @@ export class MessagingBackendService {
 		}
 		if (base.kind === "entity_channel") {
 			return fail(422, { message: "A channel's members are its workspace's members." });
+		}
+		if (base.kind === "service_inquiry") {
+			return fail(422, {
+				message: INQUIRY_CLOSED_MESSAGE,
+				errors: { conversationId: "inquiry_closed" },
+			});
 		}
 		const members = uniqueContactIds(input.contactIds)
 			.map((id) => findContact(id))

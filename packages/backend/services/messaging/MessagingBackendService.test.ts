@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { MessagingBackendService } from "./MessagingBackendService.ts";
+import { INQUIRY_CLOSED_MESSAGE } from "./live-conversation-writes.ts";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
@@ -104,5 +105,22 @@ Deno.test("live gate off: the fixture backend still answers", async () => {
 		const read = await MessagingBackendService.markRead("dm-anyone", TOKENLESS);
 		assert(read.ok);
 		assertEquals(read.data?.moved, false);
+	});
+});
+
+Deno.test("live gate off: an inquiry offers no Add members and refuses one in the database's words (#482)", async () => {
+	await withEnv(OFF, async () => {
+		const res = await MessagingBackendService.conversation("dm-omar", TOKENLESS);
+		assert(res.ok);
+		assertEquals(res.data?.detail.kind, "service_inquiry");
+		assertEquals(res.data?.detail.canAddMembers, false);
+
+		const add = await MessagingBackendService.addMembers(
+			{ conversationId: "dm-omar", contactIds: ["mara"] },
+			TOKENLESS,
+		);
+		assertEquals(add.ok, false);
+		assertEquals(add.status, 422);
+		assertEquals(add.message, INQUIRY_CLOSED_MESSAGE);
 	});
 });

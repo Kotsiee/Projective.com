@@ -149,7 +149,7 @@ INSERT INTO probe_anon_allow VALUES
 CREATE TEMP TABLE probe_actor_reviewed (sig text PRIMARY KEY, reason text NOT NULL, open_row text) ON COMMIT DROP;
 INSERT INTO probe_actor_reviewed VALUES
     ('analytics.fn_subject_visible(analytics.subject_kind,uuid)', 'predicate: admin, self, member or listing manager', NULL),
-    ('comms.add_dm_thread_members(uuid,uuid[])',             'a participant may widen a service_inquiry thread the pair lookup reuses', 'PRD-C27'),
+    ('comms.add_dm_thread_members(uuid,uuid[])',             'authorised: a participant; never into a pair''s inquiry or a channel (#482)', NULL),
     ('comms.create_group_thread(text,uuid[])',               'caller: the creator is auth.uid(); members are recipients', NULL),
     ('comms.get_or_create_dm_thread(uuid,uuid)',             'caller: the pair is (auth.uid(), target)', NULL),
     ('comms.send_request_message(uuid,text,uuid)',           'authorised: the other side of the caller''s pending invitation or application', NULL),

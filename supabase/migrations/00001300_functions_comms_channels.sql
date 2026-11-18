@@ -63,7 +63,9 @@ BEGIN
     -- A GROUP that happens to contain both people is not their DM: the join alone would return
     -- it (nothing requires the thread to hold ONLY these two), so a "message this person" from a
     -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
-    -- thread (unified messaging, one record per pair); a group and an entity channel are not.
+    -- thread (unified messaging, one record per pair); a group and an entity channel are not. A dm
+    -- or service_inquiry never holds a third person (comms.add_dm_thread_members, PRD-C27), which
+    -- is what lets this join on the two people alone.
     PERFORM comms.fn_lock_dm_pair(v_current_user_id, target_user_id);
     SELECT t.id, t.ref INTO v_thread_id, v_ref
     FROM comms.dm_threads t
@@ -863,17 +865,26 @@ COMMENT ON FUNCTION comms.create_group_thread(text, uuid[]) IS
 -- than duplicated — being added back by somebody is the one event that should
 -- bring a conversation back into a person's inbox. A plain DM that gains a
 -- third person becomes a group, because that is what the kind column exists to
--- record; a service inquiry keeps its kind.
+-- record.
+--
+-- A service inquiry takes nobody (PRD-C27, Decision #482). It is its buyer's and its seller's pair
+-- thread, and it cannot become a group, which carries no listing (ck_dm_threads_subject_inquiry).
+-- Widened in place it stayed a pair thread, and the pair lookups (get_or_create_dm_thread,
+-- send_request_message) join on two people only — so after a stranger added C to their inquiry,
+-- the seller's and C's "message this person" and hiring requests landed where the stranger reads
+-- them. So every `dm` and `service_inquiry` holds exactly its two people, and to bring somebody
+-- else in, a member starts a group.
 CREATE OR REPLACE FUNCTION comms.add_dm_thread_members(
     p_thread_id uuid,
     p_member_ids uuid[]
 ) RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, comms, org, auth
+SET search_path = ''
 AS $$
 DECLARE
     v_me       uuid := auth.uid();
+    v_kind     comms.conversation_kind;
     v_added    integer := 0;
     v_restored integer := 0;
 BEGIN
@@ -885,10 +896,16 @@ BEGIN
         RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
     END IF;
 
+    SELECT t.kind INTO v_kind FROM comms.dm_threads t WHERE t.id = p_thread_id;
+
     -- An entity channel's people are the entity's active members (comms.fn_sync_channel_member);
     -- joining the entity is the only way in.
-    IF EXISTS (SELECT 1 FROM comms.dm_threads t WHERE t.id = p_thread_id AND t.kind = 'entity_channel') THEN
+    IF v_kind = 'entity_channel'::comms.conversation_kind THEN
         RAISE EXCEPTION 'A channel''s members are its workspace''s members' USING ERRCODE = '22023';
+    END IF;
+    IF v_kind = 'service_inquiry'::comms.conversation_kind THEN
+        RAISE EXCEPTION 'An inquiry is only between its buyer and its seller. Start a group to bring someone else in.'
+            USING ERRCODE = '22023';
     END IF;
 
     UPDATE comms.dm_participants p
@@ -901,7 +918,7 @@ BEGIN
 
     INSERT INTO comms.dm_participants (thread_id, user_id)
     SELECT DISTINCT p_thread_id, m
-    FROM unnest(p_member_ids) AS m
+    FROM pg_catalog.unnest(p_member_ids) AS m
     WHERE m IS NOT NULL
       AND m <> v_me
       AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m)
@@ -913,10 +930,10 @@ BEGIN
 
     IF v_added + v_restored > 0 THEN
         UPDATE comms.dm_threads t
-        SET kind = 'group'
+        SET kind = 'group'::comms.conversation_kind
         WHERE t.id = p_thread_id
-          AND t.kind = 'dm'
-          AND (SELECT count(*) FROM comms.dm_participants p WHERE p.thread_id = p_thread_id) > 2;
+          AND t.kind = 'dm'::comms.conversation_kind
+          AND (SELECT pg_catalog.count(*) FROM comms.dm_participants p WHERE p.thread_id = p_thread_id) > 2;
     END IF;
 
     RETURN v_added + v_restored;
@@ -996,7 +1013,7 @@ COMMENT ON FUNCTION comms.set_group_photo(uuid, uuid) IS
 'Set or clear (NULL) a group conversation''s or an entity channel''s photo. Any undeleted participant of a group may; a channel''s creator or a manage_settings holder for a channel (Decision #308); the file must be a processed public avatars-bucket rendition owned by the caller. SECURITY DEFINER because dm_threads carries no client UPDATE policy; the previous photo is soft-deleted.';
 
 COMMENT ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) IS
-'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group. SECURITY DEFINER for the same reason as create_group_thread.';
+'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group; refuses a service inquiry and an entity channel (22023), so a dm or service_inquiry always holds exactly its pair (PRD-C27, Decision #482). SECURITY DEFINER for the same reason as create_group_thread.';
 
 -- =============================================================================
 -- Inbox folders and hiring requests.
