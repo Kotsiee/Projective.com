@@ -703,7 +703,8 @@ STEPS:
      unlogged table, refusing PR429 past the dial) so a direct PostgREST flood is bounded too.
   3. G13: revoke INSERT on search.query_logs from anon and authenticated; the app writes through
      fn_log_query only (check its caller). DONE by SAC2 (Decision #462): verify only.
-  4. G14: revoke EXECUTE on search.is_admin(uuid) from PUBLIC and anon.
+  4. G14: revoke EXECUTE on search.is_admin(uuid) from PUBLIC and anon. DONE by SAC1 (Decision
+     #477): no client role executes it; verify only.
   5. G18: pin search_path = '' on the sync trigger functions and qualify every name.
 
 ACCEPTANCE: trust_p2_grants.sql: a post to an archived room → refused; a 9,000-character body →

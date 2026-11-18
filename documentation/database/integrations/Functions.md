@@ -1,5 +1,11 @@
 # integrations Schema: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Capability/authorization **predicates**, the connector runtime's **doors**, and maintenance
 **triggers**. Every predicate is `SECURITY DEFINER` (so it can read the definer-only tables) and
 returns **only a boolean or a slug** — the sanctioned way to ask an authorization question with no
@@ -25,7 +31,9 @@ SELECT EXISTS (
 
 Tests `granted_kinds` (what the consent actually returned), **not** the provider's `capabilities`
 (what it could in principle do). A user who connected Google for calendar only does not thereby get
-conferencing or storage. `STABLE`. `EXECUTE` → `authenticated`.
+conferencing or storage. `STABLE`. `EXECUTE` → `service_role` only: it answers for any user id, so a
+signed-in stranger could list anyone's connected providers (Decision #477, PRD-C9). No client calls
+it.
 
 ### `fn_conferencing_provider(p_user uuid) → text`
 
@@ -33,7 +41,9 @@ Which provider slug should mint a meeting room for this user right now — the m
 active conferencing connection — or **NULL** when none is connected. NULL is a normal answer, not an
 error: the caller falls back to `scheduling.call_settings.preferred_provider_slug`, a platform room,
 or a manual link. **A discovery call stays bookable by someone who has connected nothing**
-(`PRODUCT_SPEC.md` §Discovery & Courtesy Calls). `STABLE`. `EXECUTE` → `authenticated`.
+(`PRODUCT_SPEC.md` §Discovery & Courtesy Calls). `STABLE`. `EXECUTE` → `service_role` only, for the
+same reason (Decision #477, PRD-C9): its one caller is the definer trigger
+`scheduling.fn_sitting_provider`, which runs it as its owner.
 
 ---
 

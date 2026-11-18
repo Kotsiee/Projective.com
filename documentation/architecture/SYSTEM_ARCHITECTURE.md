@@ -2715,35 +2715,50 @@ function, and Supabase additionally grants every `postgres`-created function in 
 and `authenticated`, so an ungranted `SECURITY DEFINER` is a door anybody can open, signed out
 included.
 
-- **Deny by default.** `00002510_permissions_function_grants.sql` revokes `EXECUTE` schema-wide at
-  the top of the file, before any per-function statement: `org` (from `PUBLIC`, `anon`,
-  `authenticated`), `projects` (from `PUBLIC`, `anon`), `public` (from `PUBLIC`, `anon`,
-  `authenticated` on every function that is not an extension member), `finance` later in the file,
-  and `editorial` and `community` (from `PUBLIC`, `anon`, `authenticated` — the mid-file
-  "editorial + community — deny by default" block, Decision #274). `service_role` keeps them all. A
-  client role then reaches a function only where it is **granted by name**.
+- **Deny by default, in every schema (Decision #477).** The first region of
+  `00002510_permissions_function_grants.sql` runs after every function exists, on every reset. It
+  loops over every routine the migration role (`postgres`) owns, in every schema, skips extension
+  members (`pg_depend` deptype `e`, owned by `supabase_admin`), revokes `EXECUTE` from `PUBLIC`,
+  `anon` and `authenticated`, and grants `service_role`. No schema list exists to go stale. A
+  client role then reaches a function only where it is **granted by name**, below that region, with
+  its reason beside it. A grant written beside its function in a category-1 file runs before the
+  region and is reset by it, so it must be restated in `00002510`.
 - **What gets a grant.** `authenticated`: a door the app calls with the user's JWT, which resolves
   the caller from `auth.uid()` and checks its own authority. `anon`: a guest read the public site
-  needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy calls,
-  because a policy expression runs as the invoking role (`projects.has_project_access`,
-  `org.is_active_team_member`, …). Nothing else: an internal helper, a primitive that trusts its
-  arguments (`projects.fn_assign_ticket_core`, `public.provision_user_profile`, the ledger
-  primitives) or a trigger function gets no client grant. Its definer callers run it as its owner.
-- **A new function is unreachable until granted.** The schema-wide revokes run after every function
-  exists, on every `supabase db reset`. They do not cover a function created afterwards: PUBLIC's
-  `EXECUTE` comes from the global default privileges, which no per-schema `ALTER DEFAULT PRIVILEGES`
-  can revoke. Add any new function to the consolidated `00001xxx` files, never after `00002510`.
+  needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy, a view or
+  a column default calls, because that expression runs as the invoking role
+  (`projects.has_project_access`, `org.is_active_team_member`, …). Nothing else: an internal helper,
+  a primitive that trusts its arguments (`projects.fn_assign_ticket_core`,
+  `public.provision_user_profile`, the ledger primitives), a reader that answers for any user id
+  (`search.is_admin(uuid)`, `integrations.fn_has_capability`) or a trigger function gets no client
+  grant. Its definer callers run it as its owner.
+- **A new function is unreachable until granted.** `00002500` revokes `PUBLIC` from the migration
+  role's GLOBAL default privileges (`ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON
+  FUNCTIONS FROM PUBLIC`, no `IN SCHEMA`: a per-schema default can only add to the global one), and
+  takes Supabase's own `anon` / `authenticated` default off `public`. A function created after the
+  chain, by a later migration or by hand, starts with no client grant in any schema. That includes a
+  probe's `pg_temp` helper: a probe that calls one as `anon` or `authenticated` restores `PUBLIC` for
+  it with `ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT EXECUTE ON FUNCTIONS TO PUBLIC` inside
+  its own rolled-back transaction.
 - **Pinned `search_path`.** A `SECURITY DEFINER` sets `search_path` (`''` or an explicit list of the
   schemas it reads), so a caller's `search_path` cannot redirect an unqualified name. Every definer
   in every exposed schema does; `security.is_admin()`, the last exception, was pinned and taken off
   `PUBLIC` on 2026-10-30 (IW-M8).
 - **An INVOKER calling a revoked function fails.** Its body, and an INVOKER trigger's, runs as the
   invoking role, so a call it makes to a revoked function raises `permission denied` for that role.
-  Make the caller a definer rather than granting the callee (see `security.fn_slug_guard`).
-- **Verified by** `supabase/probes/function_grants.sql`: no app-owned function in `projects` or
-  `public` is executable by `PUBLIC`; no client role can execute `provision_user_profile` or the
-  claim core; `projects.claim_ticket` is a self-claim for a project participant; every definer in
-  both schemas pins its `search_path`; extension operators stay executable.
+  Make the caller a definer rather than granting the callee (see `security.fn_slug_guard`), unless
+  the callee is pure or answers only about `auth.uid()`: the INVOKER catalogue doors keep their
+  policies as the gate and grant their shape validators (Decision #477 flag (a)).
+- **Verified by** `supabase/probes/function_grants.sql`, over every app schema (`config.toml`'s
+  exposed schemas, passed by `deno task test:probes` as `api_schemas`, plus every schema holding a
+  migration-owned function): (a) `PUBLIC` executes no app function; (b) `anon` executes exactly an
+  allowlist kept in the probe, one reason per line; (c) every definer pins its `search_path`; (d) a
+  definer that takes a person's id and is executable by `authenticated` is on a reviewed list that
+  says why it is safe (or which readiness row tracks it); (e) every function an RLS policy, a
+  column default, a `CHECK`, a view or an INVOKER body runs is executable by every client role that
+  reaches it; (f) no default privilege hands `EXECUTE` to a client role. It also creates a function
+  in every app schema and proves no client role can run it, and checks the self-claim rule of
+  `projects.claim_ticket` and the `search.is_admin` / `integrations` refusals at runtime.
 
 ### Runtime & API Security
 

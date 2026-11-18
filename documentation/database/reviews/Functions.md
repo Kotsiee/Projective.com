@@ -1,5 +1,11 @@
 # reviews: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Migration [`00001005_functions_reviews.sql`](../../../supabase/migrations/00001005_functions_reviews.sql).
 
 ## `reviews.recalculate_entity_rating()` — trigger

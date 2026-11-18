@@ -1,5 +1,11 @@
 # finance Schema: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 The `finance` engine is **ticket-centric**. Money moves only through `SECURITY DEFINER` functions:
 the client-facing, **stage-level** actions live in the `projects`/`org` schemas and invoke this
 engine internally (see [`../projects/Functions.md`](../projects/Functions.md) once populated, and

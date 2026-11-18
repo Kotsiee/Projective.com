@@ -1,5 +1,11 @@
 # comms: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Functions and scheduled jobs for the `comms` schema. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
 

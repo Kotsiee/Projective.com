@@ -1,5 +1,11 @@
 # analytics Schema: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Four functions, all `SECURITY DEFINER` with a pinned `search_path` (`00001600`; the substrate from
 migration `20260724110000_analytics_event_substrate.sql`, the listing rollups from Decision #217).
 
@@ -19,7 +25,10 @@ analytics.fn_emit(
 ```
 
 The **single write path** into `analytics.events`. `authenticated` has no `INSERT` grant, so every
-event — from a client, from a trigger, or from a backend service — arrives through here.
+event — from a trigger or from a backend service — arrives through here. `EXECUTE` is `service_role`
+only (Decision #477): the actor is pinned, but the subject and project are not, so a client could
+forge events into another subject's analytics. Its callers are the Standing, workload and billing
+definers, which run it as their owner.
 
 Two properties make it safe to call from anywhere:
 

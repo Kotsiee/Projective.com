@@ -4,20 +4,43 @@
 -- Security, RLS & Permissions). Source file noted before each statement group.
 -- =============================================================================
 
--- #region org — deny by default (2026-09-28)
--- Postgres grants EXECUTE on every new function to PUBLIC, and `org` is exposed to PostgREST — so
--- every org function, predicate and internal helper was an RPC anybody could call, `anon` included.
--- Two of them were holes on their own: org.create_team trusted a caller-supplied owner and ran for a
--- signed-out caller, and org.get_dashboard_teams answered for any user id it was handed. EXECUTE is now
--- revoked from every client role on the whole schema, here at the top of the file, and every function
--- that SHOULD be reachable is granted back by name further down (or in the region at the end). A new
--- org function is therefore unreachable until somebody decides it should be — the safe default.
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA org FROM PUBLIC, anon, authenticated;
+-- #region Deny by default — every app schema (SAC1, PRD-C7)
+-- Postgres hands EXECUTE on every new function to PUBLIC, and 16 app schemas are exposed to
+-- PostgREST, so a function nobody granted was still an RPC that anyone, `anon` included, could call.
+-- This region runs after every function exists, on every reset. It takes EXECUTE from PUBLIC and both
+-- client roles on every routine the migration role owns, in every schema, and gives it to the service
+-- role. Extension members (pgvector, pg_trgm, …) are owned by supabase_admin and are left alone.
+-- Every grant below is therefore a named client door with its reason beside it. A function nobody
+-- names is reachable only by the service role and the definers that call it. Future functions start
+-- closed as well: 00002500 revokes PUBLIC from the migration role's global default privileges.
+-- A grant written beside its function in a category-1 file runs before this region and is reset by
+-- it, so each one is restated by name below.
+DO $$
+DECLARE
+    v_fn regprocedure;
+BEGIN
+    FOR v_fn IN
+        SELECT p.oid::regprocedure
+        FROM pg_proc p
+        WHERE p.proowner = current_user::regrole
+            AND p.pronamespace NOT IN ('pg_catalog'::regnamespace, 'information_schema'::regnamespace)
+            AND NOT EXISTS (
+                SELECT 1 FROM pg_depend d
+                WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+            )
+    LOOP
+        EXECUTE format('REVOKE EXECUTE ON ROUTINE %s FROM PUBLIC, anon, authenticated', v_fn);
+        EXECUTE format('GRANT EXECUTE ON ROUTINE %s TO service_role', v_fn);
+    END LOOP;
+END $$;
+-- #endregion
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA org
-REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
-
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA org TO service_role;
+-- #region org (2026-09-28)
+-- Every org function, predicate and internal helper was once an RPC anybody could call, `anon`
+-- included. Two of them were holes on their own: org.create_team trusted a caller-supplied owner and
+-- ran for a signed-out caller, and org.get_dashboard_teams answered for any user id it was handed.
+-- The region above closes the schema, and every org function that SHOULD be reachable is granted
+-- back by name here, further down, or in the region at the end.
 
 -- The membership predicates ARE the SELECT policies of the org, projects, comms and files tables, and
 -- a policy expression runs as the invoking role — so they stay executable by both client roles.
@@ -33,17 +56,21 @@ GRANT EXECUTE ON FUNCTION org.fn_today_in (text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION org.fn_age_years (date, text) TO anon, authenticated;
 -- #endregion
 
--- #region projects — deny by default
+-- #region projects
 -- `projects` is exposed to PostgREST and `anon` holds USAGE on it (00002500), so the PUBLIC EXECUTE
--- every new function receives made each definer here an RPC a signed-out caller could reach. EXECUTE
--- is revoked from PUBLIC and `anon` on the whole schema before any per-function statement below, so
--- the grants in this file (and the `authenticated` grants beside their functions in 00001130) are the
--- complete list of client doors. A new projects function is unreachable until it is granted by name.
--- PUBLIC's EXECUTE comes from the global default privileges, which no per-schema ALTER DEFAULT
--- PRIVILEGES can revoke; this schema-wide REVOKE runs after every function exists, on every reset.
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA projects FROM PUBLIC, anon;
+-- every new function once received made each definer here an RPC a signed-out caller could reach.
+-- The grants in this file are the complete list of client doors; a new projects function is
+-- unreachable until it is granted by name.
 
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA projects TO service_role;
+-- Granted beside their functions in 00001100 and 00001130 too, but those run before the region at
+-- the top of this file resets every grant, so they are restated here. Each is a door the app calls
+-- with the user's JWT, and each resolves the caller from auth.uid().
+GRANT EXECUTE ON FUNCTION projects.create_project (jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.apply_to_project (text, text, uuid, text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.invite_to_project (uuid, uuid, uuid, text, text, bigint, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.respond_to_project_invitation (uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.remove_project_member (uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.get_engagement_context (uuid) TO authenticated;
 
 -- The RLS predicates: policies on the projects tables, storage.objects and scheduling.events call
 -- them, and a policy expression runs as the invoking role. Each answers only about auth.uid().
@@ -99,34 +126,12 @@ GRANT EXECUTE ON FUNCTION projects.claim_ticket (uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.assign_ticket_manual (uuid, uuid) TO authenticated;
 -- #endregion
 
--- #region public — deny by default
+-- #region public
 -- PostgREST always exposes `public`, and Supabase's default privileges grant EXECUTE on every function
 -- postgres creates there to `anon` and `authenticated` on top of PUBLIC, so the provisioning definer
--- public.provision_user_profile (a profile for any uid it is handed) was callable signed-out. Every
--- app-owned function here is revoked from all three; the extension members (pgvector, pg_trgm) are
--- owned by supabase_admin and skipped so their operators and the search doors keep working.
-DO $$
-DECLARE
-    v_fn regprocedure;
-BEGIN
-    FOR v_fn IN
-        SELECT p.oid::regprocedure
-        FROM pg_proc p
-        WHERE p.pronamespace = 'public'::regnamespace
-            AND NOT EXISTS (
-                SELECT 1 FROM pg_depend d
-                WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
-            )
-    LOOP
-        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', v_fn);
-        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', v_fn);
-    END LOOP;
-END $$;
-
--- Removes Supabase's explicit client-role default for future postgres-owned functions here; PUBLIC's
--- comes from the global default and is closed by the loop above on every reset.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;
+-- public.provision_user_profile (a profile for any uid it is handed) was callable signed-out. The
+-- region at the top of this file revokes all three; its extension members (pgvector, pg_trgm) are
+-- owned by supabase_admin and keep their grants, so their operators and the search doors keep working.
 
 -- Stated per function too, so a later broad grant cannot hand them out. provision_user_profile runs
 -- only inside its two definer callers (handle_new_user, complete_onboarding), as their owner; the two
@@ -136,28 +141,18 @@ REVOKE ALL ON FUNCTION public.handle_new_user () FROM PUBLIC, anon, authenticate
 REVOKE ALL ON FUNCTION public.handle_email_confirmed () FROM PUBLIC, anon, authenticated;
 -- #endregion
 
--- #region editorial + community — deny by default (Decision #274)
--- Both schemas are exposed to PostgREST with USAGE for `anon` (00002500), so the PUBLIC EXECUTE every
--- new function receives would make each one an RPC a signed-out caller could reach. EXECUTE is
--- revoked from PUBLIC and both client roles on the whole of both schemas here, after every function
--- exists, so the per-surface regions below are the complete list of client doors: a new editorial
--- or community function is unreachable until its surface grants it by name. A predicate an RLS
--- policy calls runs as the invoking role and must be granted back to the roles that policy names.
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA editorial, community TO service_role;
+-- #region editorial + community (Decision #274)
+-- Both schemas are exposed to PostgREST with USAGE for `anon` (00002500). The per-surface regions
+-- below are the complete list of client doors: a new editorial or community function is unreachable
+-- until its surface grants it by name. A predicate an RLS policy calls runs as the invoking role and
+-- must be granted back to the roles that policy names.
 -- #endregion
 
--- #region comms — deny by default (SECURITY_MODERATION_AND_AI_GAPS E3)
--- `comms` is exposed to PostgREST and every new function is EXECUTE-able by PUBLIC, so each definer
--- here was an RPC any signed-in user could reach: comms.fn_notify wrote a forged "payout failed"
--- notice, with any link, into anybody's inbox, and the queue / digest / escalation runners could be
--- forced. EXECUTE is revoked from PUBLIC and both client roles on the whole schema here, before the
--- per-function grants further down, so those grants and this region are the complete list of client
--- doors. A trigger function needs no EXECUTE to fire, and the service role keeps everything.
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA comms FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA comms TO service_role;
+-- #region comms (SECURITY_MODERATION_AND_AI_GAPS E3)
+-- Each comms definer was once an RPC any signed-in user could reach: comms.fn_notify wrote a forged
+-- "payout failed" notice, with any link, into anybody's inbox, and the queue / digest / escalation
+-- runners could be forced. The grants here and further down are the complete list of client doors.
+-- A trigger function needs no EXECUTE to fire, and the service role keeps everything.
 
 -- The DM read predicates (policies run as the invoking role) and the DM doors the messaging service
 -- calls under the user's JWT; each answers only for auth.uid().
@@ -222,23 +217,21 @@ REVOKE ALL ON FUNCTION community.feedback_status_counts () FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION community.feedback_status_counts () TO anon, authenticated;
 -- #endregion
 
--- --- from 0200_permissions.sql ---
-
-GRANT
-EXECUTE ON ALL FUNCTIONS IN SCHEMA search TO anon,
-authenticated,
-service_role;
+-- #region search — named doors only (SAC1)
+-- `search` once granted EXECUTE on every function to `anon` and `authenticated`, so its index-sync
+-- definers and search.is_admin(uuid) were RPCs any guest could call. The region at the top of this
+-- file closes the schema; each grant below is one door the catalogue, the explorer or the operator
+-- console calls. The index-sync functions are triggers, which fire without EXECUTE.
 
 -- A team's live W_i is maintained by triggers (Decision #235), never called by a client: the refresh
 -- writes the index as its definer, and the sum reads tickets and memberships.
 REVOKE ALL ON FUNCTION search.fn_refresh_team_workload (uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION search.fn_team_live_workload (uuid) FROM PUBLIC, anon, authenticated;
 
--- --- from 0219_search_engine_weights.sql ---
-
-GRANT
-EXECUTE ON FUNCTION search.is_admin (uuid) TO authenticated,
-service_role;
+-- search.is_admin(uuid) answers for any user id it is handed, so no client role calls it (PRD-C6).
+-- Its callers are the three weight and analytics definers, which run it as their owner. The weights
+-- policy asks security.is_admin(), which reads only auth.uid().
+-- #endregion
 
 -- --- from 0220_search_engine_rpc.sql ---
 
@@ -523,14 +516,17 @@ EXECUTE ON FUNCTION comms.fn_compact_delivery_events (interval) TO service_role;
 
 -- --- from 20260724100000_scheduling_schema_availability.sql ---
 
+-- The scheduling read predicates are the SELECT policies of schedules, availability_rules and
+-- call_platforms for `anon` as well as `authenticated`, so both roles keep them. Each answers only
+-- whether auth.uid() owns or shares the schedule, so a guest always gets false.
 GRANT
-EXECUTE ON FUNCTION scheduling.fn_owner_visible (scheduling.owner_type, uuid) TO authenticated;
+EXECUTE ON FUNCTION scheduling.fn_owner_visible (scheduling.owner_type, uuid) TO anon, authenticated;
 
 GRANT
 EXECUTE ON FUNCTION scheduling.fn_owner_manages (scheduling.owner_type, uuid) TO authenticated;
 
 GRANT
-EXECUTE ON FUNCTION scheduling.fn_can_view_schedule (uuid) TO authenticated;
+EXECUTE ON FUNCTION scheduling.fn_can_view_schedule (uuid) TO anon, authenticated;
 
 GRANT
 EXECUTE ON FUNCTION scheduling.fn_can_manage_schedule (uuid) TO authenticated;
@@ -540,15 +536,9 @@ EXECUTE ON FUNCTION scheduling.fn_schedule_is_public (uuid) TO anon,
 authenticated;
 
 -- --- integrations: connector + plugin predicates ---
-
-GRANT
-EXECUTE ON FUNCTION integrations.fn_has_capability (
-    uuid,
-    integrations.provider_kind
-) TO authenticated;
-
-GRANT
-EXECUTE ON FUNCTION integrations.fn_conferencing_provider (uuid) TO authenticated;
+-- fn_has_capability and fn_conferencing_provider answer for any user id, so a signed-in stranger
+-- could list anyone's connected providers (PRD-C9). No client calls them; their one caller is the
+-- definer trigger scheduling.fn_sitting_provider, which runs them as its owner. Service role only.
 
 GRANT
 EXECUTE ON FUNCTION integrations.fn_plugin_installed (uuid) TO authenticated;
@@ -683,41 +673,22 @@ EXECUTE ON FUNCTION scheduling.fn_slot_is_free (
 ) TO anon,
 authenticated;
 
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_call_request_refusal (
-    uuid,
-    uuid,
-    scheduling.call_type,
-    timestamptz,
-    timestamptz,
-    uuid
-) TO authenticated;
-
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_can_request_call (
-    uuid,
-    uuid,
-    scheduling.call_type,
-    timestamptz,
-    timestamptz
-) TO authenticated;
+-- scheduling.fn_call_request_refusal and its boolean twin fn_can_request_call answer for any
+-- requester id, unpublished schedules included, so a caller could read whether a stranger is in a
+-- host's cooldown and the host's weekly courtesy count, both withheld from readers (00002520). No
+-- client calls either. Their callers are the definer trigger fn_enforce_call_request (which a
+-- booking's insert fires) and the definer propose_call_time, both running as the owner. Service role
+-- only (SAC1).
 
 -- --- from 20260724110000_analytics_event_substrate.sql ---
 
+-- The SELECT policy of analytics.events and daily_rollups; it answers only about auth.uid().
 GRANT
 EXECUTE ON FUNCTION analytics.fn_subject_visible (analytics.subject_kind, uuid) TO authenticated;
 
-GRANT
-EXECUTE ON FUNCTION analytics.fn_emit (
-    text,
-    analytics.subject_kind,
-    uuid,
-    jsonb,
-    numeric,
-    uuid,
-    text,
-    uuid
-) TO authenticated;
+-- analytics.fn_emit pins the actor to the caller but writes any subject and project it is handed, so
+-- a caller could forge events into another subject's analytics. No client calls it: its callers are
+-- the Standing, workload and billing definers, which run it as their owner. Service role only (SAC1).
 
 -- --- from 20260724111000_standing_reputation.sql ---
 
@@ -1033,21 +1004,13 @@ FROM PUBLIC, anon, authenticated;
 -- do the checking and run them as their owner. Reachable directly, `rpc/fn_wallet_credit` would credit
 -- any wallet with any amount.
 --
--- So EXECUTE is revoked from PUBLIC and `anon` on EVERY finance function, and on future ones. The
--- explicit grants to `authenticated` above survive that: they are the predicates the RLS policies call
--- and the two public resolvers. Every SQL caller of a primitive is SECURITY DEFINER, so none of this
--- changes anything that works today. The service role — the backend's trusted door — keeps them all.
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA finance FROM PUBLIC, anon;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA finance
-REVOKE
-EXECUTE ON FUNCTIONS
-FROM PUBLIC;
-
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA finance TO service_role;
+-- So no finance function is reachable by PUBLIC or `anon` unless it is granted by name (the region at
+-- the top of this file). The explicit grants to `authenticated` above are the predicates the RLS
+-- policies call and the two public resolvers. Every SQL caller of a primitive is SECURITY DEFINER.
+-- The service role, the backend's trusted door, keeps them all.
 
 -- …except the simulator, whose EXECUTE belongs to `authenticated` alone (the region above explains
--- why): the blanket grant just handed it to the service role, so take that back here.
+-- why): the region at the top of this file handed it to the service role, so take that back here.
 REVOKE EXECUTE ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) FROM service_role;
 
 -- Stated per primitive as well, so no client role can be found holding one even if a broad grant to
@@ -1328,9 +1291,11 @@ REVOKE ALL ON FUNCTION finance.fn_assert_no_open_dispute (uuid) FROM PUBLIC, ano
 
 
 -- --- files: asset management ---
--- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
--- files.items, and a policy expression runs as the invoking role, so revoking it would deny every
--- read. It is safe to expose — it answers one boolean about one id and returns false by default.
+-- files.fn_can_read IS the SELECT policy on files.items and files.item_variants and the link check of
+-- comms.message_attachments, all three for `authenticated`, and a policy expression runs as the
+-- invoking role, so that role keeps it. It answers one boolean about one id for auth.uid() and returns
+-- false by default. No policy serves `anon` with it.
+GRANT EXECUTE ON FUNCTION files.fn_can_read (uuid) TO authenticated;
 --
 -- The rest are internal. fn_recompute_usage rewrites a metered rollup and the two trigger functions
 -- have no meaningful direct call, so none of them is a client entry point (the same discipline
@@ -2060,6 +2025,14 @@ FROM public, anon;
 GRANT
 EXECUTE ON FUNCTION catalogue.save_listing (uuid, jsonb) TO authenticated,
 service_role;
+
+-- save_listing is INVOKER and validates the patch with these pure shape checks, so the caller runs
+-- them. Each reads only its own arguments.
+GRANT EXECUTE ON FUNCTION catalogue.fn_form_archetype (catalogue.listing_kind, marketplace.service_delivery_model) TO authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_stage_shape_ok (jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_tier_price_ok (jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_tier_prices_ordered (jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_team_role_shape_ok (jsonb) TO authenticated;
 
 REVOKE ALL ON FUNCTION catalogue.set_listing_status (uuid, text)
 FROM public, anon;

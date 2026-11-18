@@ -1,5 +1,13 @@
 # org: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute only `org.fn_age_years`, `org.fn_today_in`, `org.fn_valid_time_zone`,
+`org.fn_profile_visible`, `org.get_profile_cards`, the eight `get_profile_*` reads,
+`org.is_active_team_member`, `org.is_active_business_member`, `org.is_enterprise_member`. The full
+allowlist, one reason per line, is in `supabase/probes/function_grants.sql`.
+
 Only the functions touched by recent work are documented here; the remaining `org.*` routines
 (`set_operator_mode`, …) are still to be backfilled. See `brain2.md`'s Database section for the
 migration-numbering and RLS conventions.
@@ -12,13 +20,12 @@ migration-numbering and RLS conventions.
 > `update_business`. Their replacements are the workspace RPCs in
 > [§ The workspace console](#-the-workspace-console-00001020).
 >
-> **`EXECUTE` is deny-by-default on the whole `org` schema** (`00002510`, top of file): it is
+> **`EXECUTE` is deny-by-default on the whole `org` schema** (`00002510`, its first region): it is
 > revoked from `PUBLIC`, `anon` and `authenticated` on every function, the service role keeps them
-> all, and every function that SHOULD be reachable is granted back by name. The schema-wide `REVOKE`
-> runs after every function exists, so it closes the schema on every reset; the region's
-> `ALTER DEFAULT PRIVILEGES IN SCHEMA org … FROM PUBLIC` does not cover a function created later,
-> because PUBLIC's `EXECUTE` comes from the global default, which no per-schema statement can
-> revoke. `org` is exposed to PostgREST, and Postgres grants `EXECUTE` to `PUBLIC` by default — so
+> all, and every function that SHOULD be reachable is granted back by name. The region runs after
+> every function exists, so it closes the schema on every reset, and `00002500` revokes `PUBLIC`
+> from the migration role's global default, so a function created later starts closed too
+> (Decision #477). `org` is exposed to PostgREST, and Postgres grants `EXECUTE` to `PUBLIC` by default — so
 > before this every org function, predicate and internal helper was an RPC anybody could call. The
 > three membership predicates the policies are built from (`is_active_team_member`,
 > `is_active_business_member`, `is_enterprise_member`) stay executable by both client roles,
@@ -219,7 +226,7 @@ Owner-only (buyer) by construction — enterprises carry no service/product surf
 
 ## Onboarding provisioning (`public`, `00001010`)
 
-`public` is deny-by-default too (`00002510` "public — deny by default"): every app-owned function
+`public` is deny-by-default too (`00002510`, its first region): every app-owned function
 there is revoked from `PUBLIC`, `anon` and `authenticated` and granted to `service_role`, then
 granted back by name. PostgREST always exposes `public`, and Supabase's default privileges hand
 every function `postgres` creates there to `anon` and `authenticated` as well as `PUBLIC`. The

@@ -1,5 +1,11 @@
 # catalogue: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 ## The seller console's write doors — [`00001170_functions_catalogue.sql`](../../../supabase/migrations/00001170_functions_catalogue.sql)
 
 A listing is **two rows that must agree**: the `catalogue.listings` row the console edits, and the

@@ -1,5 +1,12 @@
 # files: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute only `files.fn_folder_in_library`, `files.fn_library_archived`, `files.fn_owns_library`,
+`files.fn_resolve_share`, `files.fn_storage_object_withheld`, `files.get_public_media`. The full
+allowlist, one reason per line, is in `supabase/probes/function_grants.sql`.
+
 Migration:
 [`00001160_functions_files.sql`](../../../supabase/migrations/00001160_functions_files.sql)
 (functions) and
@@ -24,7 +31,7 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `fn_touch_updated_at()`                              | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
 | `fn_recompute_usage(owner_kind, uuid)`               | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.      |
 | `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change. |
-| `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `PUBLIC` (it **is** the policy) | **The** read predicate for `files.items`.                   |
+| `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `authenticated` (it **is** the policy) | **The** read predicate for `files.items`.                   |
 | `fn_check_storage_quota()`                           | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
 | `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`.   |
 | `fn_mint_share_slug() → text`                        | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
@@ -35,7 +42,7 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `fn_guard_folder_columns()`                          | trigger    | —       | trigger only (`REVOKE`d)        | A folder's provenance and true ancestry are the server's.   |
 | `fn_library_archived(owner_kind, uuid)`              | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | Is this an archived entity's library (for a member)?        |
 | `fn_guard_hard_delete()`                             | trigger    | —       | trigger only (`REVOKE`d)        | A client never hard-deletes a file or a folder.             |
-| `fn_owns_library(owner_kind, uuid)`                  | `STABLE`   | —       | `PUBLIC` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
+| `fn_owns_library(owner_kind, uuid)`                  | `STABLE`   | —       | `anon` · `authenticated` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
 | `get_storage_quota(owner_kind, uuid)`                | `STABLE`   | ✅      | `authenticated` · svc           | One principal's allowance, for that principal only.         |
 | `fn_record_download(…)`                              | `VOLATILE` | ✅      | `service_role`                  | The download ledger's only writer.                          |
 | `fn_item_grant_role(uuid) → grant_role`              | `STABLE`   | ✅      | definers only (`REVOKE`d)       | The caller's strongest live grant on a file (Decision #402). |
@@ -460,8 +467,8 @@ claim → magic-byte sniff → decode → WebP tiers → promote), running as th
 ## 🧭 `files.fn_folder_in_library(…) → boolean`
 
 `(p_folder_id uuid, p_owner_type files.owner_kind, p_owner_entity_id uuid, p_owner_user_id uuid)` ·
-`STABLE` · `SQL` · **not** definer · `EXECUTE` to `PUBLIC` (both guards call it as the client's own
-role) · Decision #314.
+`STABLE` · `SQL` · **not** definer · `EXECUTE` to `anon` and `authenticated` (both guards call it as
+the client's own role) · Decision #314.
 
 True when `p_folder_id` is a live (`deleted_at IS NULL`), **native** (`source = 'supabase'`) folder
 of the named library: same `owner_type`, same `owner_entity_id`, and — for a personal library only —

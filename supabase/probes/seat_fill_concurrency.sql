@@ -187,6 +187,9 @@ BEGIN
             GET STACKED DIAGNOSTICS d = PG_EXCEPTION_DETAIL;
             RETURN 'refused ' || SQLSTATE || ' ' || COALESCE(NULLIF(d, ''), '-') || ' ' || SQLERRM;
         END $f$ $q$);
+    -- A function postgres creates gets no PUBLIC EXECUTE (00002500), and this session runs it as
+    -- authenticated; the grant dies with the temporary function.
+    PERFORM dblink_exec(p_conn, 'GRANT EXECUTE ON FUNCTION pg_temp.try_sql(text) TO PUBLIC');
     PERFORM dblink_exec(p_conn, format('SET request.jwt.claims TO %L',
         json_build_object('sub', p_sub, 'role', 'authenticated')::text));
     PERFORM dblink_exec(p_conn, 'SET ROLE authenticated');

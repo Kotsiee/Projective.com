@@ -20,6 +20,9 @@
 -- =============================================================================================
 
 BEGIN;
+-- The pg_temp helpers below run as anon and authenticated, and 00002500 gives a new function no PUBLIC
+-- EXECUTE; this hands it back to the helpers alone, and rolls back with them.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
 
 CREATE FUNCTION pg_temp.check(p_label text, p_ok boolean, p_got text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN

@@ -1,5 +1,11 @@
 # marketplace: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 ## Service instantiation — [`00001175_functions_marketplace_instantiate.sql`](../../../supabase/migrations/00001175_functions_marketplace_instantiate.sql)
 
 "Add to Projects" on a Pipeline listing (Decision #209). A pipeline is not bought; it is staffed and

@@ -1,13 +1,18 @@
 # editorial: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute none of them. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Migration
 [`00001320_functions_editorial_community.sql`](../../../supabase/migrations/00001320_functions_editorial_community.sql)
-(regions `[editorial.*]`); triggers in `00001898` under the same region names. EXECUTE is revoked
-from `PUBLIC`, `anon` and `authenticated` on the whole schema (`00002510`, "editorial + community —
-deny by default") and granted back by name in the surface's region there. Editorial content is read
-straight from its tables under their SELECT policies, so editorial functions should be rare — a
-derived read, never a write door. Tables: [Tables.md](Tables.md) · Policies:
-[Policies.md](Policies.md).
+(regions `[editorial.*]`); triggers in `00001898` under the same region names. EXECUTE is deny by
+default (`00002510`, its first region) and granted back by name in the surface's region there.
+Editorial content is read straight from its tables under their SELECT policies, so editorial
+functions should be rare — a derived read, never a write door. Tables: [Tables.md](Tables.md) ·
+Policies: [Policies.md](Policies.md).
 
 ## Shared guards
 

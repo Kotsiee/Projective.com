@@ -182,12 +182,6 @@ GRANT ALL ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA search
 GRANT ALL ON SEQUENCES TO service_role;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA search
-GRANT
-EXECUTE ON ROUTINES TO anon,
-authenticated,
-service_role;
-
 -- ops is exposed through PostgREST for ops.log_entries ingestion only. USAGE grants no table
 -- privilege: every ops table stays revoked above unless 00002520 grants it by name.
 GRANT USAGE ON SCHEMA ops TO anon, authenticated, service_role;
@@ -350,3 +344,17 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA reviews REVOKE TRUNCATE ON TABLES FROM anon, 
 REVOKE TRUNCATE ON ALL TABLES IN SCHEMA files FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA files REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
+
+-- #region Function EXECUTE — deny by default (SAC1, PRD-C7)
+-- Postgres gives EXECUTE on every new function to PUBLIC through the GLOBAL default privileges, and a
+-- per-schema `ALTER DEFAULT PRIVILEGES IN SCHEMA x REVOKE … FROM PUBLIC` cannot remove it: per-schema
+-- defaults only add to the global ones. So the migration role's global default is revoked here, once,
+-- and a function it creates after this line starts with no client grant in any schema. Every function
+-- that already exists is closed by the first region of 00002510, on every reset.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+-- Supabase adds its own per-schema default in `public`: EXECUTE for `anon` and `authenticated` on
+-- every function postgres creates there. No app schema carries any other client EXECUTE default.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;
+-- #endregion

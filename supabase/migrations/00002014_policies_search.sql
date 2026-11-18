@@ -43,5 +43,7 @@ CREATE POLICY "Read own interest events" ON search.interest_events
 
 -- --- from 0219_search_engine_weights.sql ---
 
+-- security.is_admin() reads only auth.uid(). search.is_admin(uuid) answers for any id and no client
+-- role may execute it (PRD-C6), so a policy that called it would refuse every guest read with 42501.
 CREATE POLICY "Admins read weights" ON search.search_weights
-  FOR SELECT USING (search.is_admin());
+  FOR SELECT USING (security.is_admin());

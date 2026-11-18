@@ -119,6 +119,9 @@ BEGIN
             RETURN 'refused ' || SQLSTATE || ' ' || SQLERRM;
         END $f$
     $q$);
+    -- A function postgres creates gets no PUBLIC EXECUTE (00002500), and this session runs it as
+    -- authenticated; the grant dies with the temporary function.
+    PERFORM dblink_exec(p_conn, 'GRANT EXECUTE ON FUNCTION pg_temp.try_sql(text) TO PUBLIC');
     IF p_as_owner THEN
         PERFORM dblink_exec(p_conn, format('SET request.jwt.claims = %L',
             json_build_object('sub', (SELECT owner FROM probe_fx), 'role', 'authenticated')::text));

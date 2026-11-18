@@ -1,5 +1,13 @@
 # projects: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute only `projects.get_cohort_offer`, the seven RLS predicates (`has_project_access`,
+`has_stage_access`, `can_review_project`, `can_edit_project_details`, `can_manage_project_members`,
+`is_cohort_member`, `is_ticket_manager`). The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
+
 Functions and RPCs for the `projects` schema. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
 
@@ -8,8 +16,8 @@ signature, security context, `EXECUTE` holders and caller check. Defined in `000
 trigger bindings in `00001800` / `00001820` / `00001850`; explicit grants in `00002510` and beside a
 handful of definitions.
 
-**Reading the `EXECUTE` line.** `projects` is **deny-by-default** (`00002510`, "projects — deny by
-default"): every function is revoked from `PUBLIC` and `anon` and granted to `service_role`, and a
+**Reading the `EXECUTE` line.** `projects` is **deny-by-default** (`00002510`, its first region): every
+function is revoked from `PUBLIC`, `anon` and `authenticated` and granted to `service_role`, and a
 client role (`anon`, `authenticated`) holds `EXECUTE` only where it is granted by name — so each
 entry names its holders. "Owner only" means no client role and no `service_role`: only a `SECURITY
 DEFINER` caller, running as the owner, reaches it. For a trigger function `EXECUTE` is moot: Postgres

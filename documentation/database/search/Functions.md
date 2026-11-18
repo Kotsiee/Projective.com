@@ -1,5 +1,12 @@
 # search: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute only `search.fn_log_query`, `search.fn_nearest`, `search.fn_nearest_to_entity`,
+`search.fn_norm`, `search.ranking_weights`, `search.trending_entities`. The full allowlist, one
+reason per line, is in `supabase/probes/function_grants.sql`.
+
 Declared in `00001400_functions_search.sql`; the triggers that fire them are in
 `00001800_triggers_core_search.sql`. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
@@ -12,6 +19,11 @@ yet written up. `fn_mock_embedding` is deleted, and so are `fn_search_entities` 
 `fn_search_global` (Decision #340, Q0.2 (f)): uncalled definers that joined `org.users_public` and
 `projects.projects` past their RLS (SECURITY_MODERATION_AND_AI_GAPS E5, G11). Discovery ranks in the
 app (`ExploreBackendService`); `fn_norm`'s only caller was `fn_search_entities`.
+
+`search.is_admin(p_user_id uuid DEFAULT auth.uid())` answers for any user id it is handed, so no
+client role executes it (Decision #477, PRD-C6). Its callers are the three weight and analytics
+definers, and the "Admins read weights" policy asks `security.is_admin()`, which reads only
+`auth.uid()`.
 
 ---
 

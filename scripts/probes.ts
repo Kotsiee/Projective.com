@@ -19,6 +19,7 @@
  *
  * `name` filters by file basename (with or without `.sql`). `--verbose` prints a failing probe's full
  * psql output. `PROBES_DB_CONTAINER` overrides the container (default `supabase_db_Projective`).
+ * Every probe gets the psql variable `api_schemas`: config.toml's exposed schemas, comma-joined.
  * Exits 0 when every probe that ran passed, 1 when any failed, 2 when the database is unreachable.
  * `supabase/probes/*.ts` probes need a running app server and are not run here.
  */
@@ -33,12 +34,25 @@ const PSQL = ["psql", "-d", "postgres", "-X", "-q", "-v", "ON_ERROR_STOP=1"];
 const psqlUser = (commits: boolean) => ["-U", commits ? "supabase_admin" : "postgres"];
 // The two markers a committing probe uses to refuse the shared database.
 const COMMIT_MARKERS = [":{?disposable}", "probe.allow_commit"];
+// The PostgREST-exposed schemas (`[api] schemas` in supabase/config.toml), passed to every probe as
+// the psql variable `api_schemas`, so a grant probe derives the app's schemas instead of listing them.
+const API_SCHEMAS = apiSchemas(await Deno.readTextFile("supabase/config.toml"));
 
 const flags = Deno.args.filter((a) => a.startsWith("--"));
 const names = Deno.args.filter((a) => !a.startsWith("--")).map((n) => n.replace(/\.sql$/, ""));
 const disposable = flags.includes("--disposable");
 const verbose = flags.includes("--verbose");
 const timeoutSec = Number(flags.find((f) => f.startsWith("--timeout="))?.split("=")[1] ?? 180);
+// #endregion
+
+// #region Config
+/** The `schemas` array of config.toml's `[api]` table, comma-joined. */
+function apiSchemas(toml: string): string {
+	const api = toml.split(/^\[/m).find((table) => table.startsWith("api]"));
+	const list = api?.match(/^schemas\s*=\s*\[([^\]]*)\]/m)?.[1];
+	if (list === undefined) throw new Error("supabase/config.toml has no [api] schemas list");
+	return list.split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean).join(",");
+}
 // #endregion
 
 // #region Probe execution
@@ -54,7 +68,7 @@ const decoder = new TextDecoder();
 
 async function psql(sql: string, commits = false): Promise<{ code: number; out: string }> {
 	const env = commits ? ["-e", "PGOPTIONS=-c probe.allow_commit=on"] : [];
-	const vars = commits ? ["-v", "disposable=1"] : [];
+	const vars = ["-v", `api_schemas=${API_SCHEMAS}`, ...(commits ? ["-v", "disposable=1"] : [])];
 	const child = new Deno.Command("docker", {
 		args: ["exec", "-i", ...env, CONTAINER, ...PSQL, ...psqlUser(commits), ...vars],
 		stdin: "piped",

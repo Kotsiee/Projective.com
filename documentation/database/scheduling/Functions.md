@@ -1,5 +1,14 @@
 # scheduling Schema: Functions
 
+**`EXECUTE` is deny by default (Decision #477).** The first region of `00002510` revokes it from
+`PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
+functions created later, so a client role holds only what `00002510` grants by name. `anon` may
+execute only the public booking calendar's readers (`get_free_busy`, `get_public_blackouts`,
+`fn_slot_is_free`, `fn_has_conflicting_event`, `fn_is_blacked_out`, `fn_band_covers`,
+`fn_call_window_covers`, `fn_resolved_slot_fee`, `fn_preset_for_blueprint`, `fn_schedule_is_public`,
+the two local-time helpers), the read predicates `fn_owner_visible` and `fn_can_view_schedule`. The
+full allowlist, one reason per line, is in `supabase/probes/function_grants.sql`.
+
 The booking engine. Every predicate is pure and `STABLE`, so **the same function backs the
 pre-flight "is this slot bookable?" check the UI makes and the hard gate the trigger applies at
 INSERT** — the rules cannot drift between the two. Added 2026-07-24 by migrations `20260724100000`,
@@ -162,6 +171,11 @@ calls only** — a paid call is self-limiting.
 ### `scheduling.fn_can_request_call(…) → boolean`
 
 The boolean face of the same gate (`refusal IS NULL`), for a pre-flight UI check.
+
+**`EXECUTE`: `service_role` only, for both (Decision #477).** Each answers for any requester id and
+for an unpublished schedule, so a caller could read whether a stranger is in a host's cooldown and
+the host's weekly courtesy count, both withheld from readers. No client calls either; their callers
+are the definer trigger `fn_enforce_call_request` and the definer `propose_call_time`.
 
 ---
 
