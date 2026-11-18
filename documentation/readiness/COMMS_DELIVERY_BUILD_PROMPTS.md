@@ -336,19 +336,23 @@ ACCEPTANCE:
 
 ### CD2 — The hosted delivery proof: every outbound channel sends for real on staging
 
-> **Status (2026-11-18, at `edb447a9`): deferred; the owner ruled "wait".** A CD2 run found none of
-> its dependencies on `main`: no NT2–NT5, no CD1, and no staging deployment (PRD-G8 ❌). It built
-> nothing and committed nothing, and it declined a PRD-E6-only proof. Re-run CD2 in wave 5, after
-> re-checking every dependency at HEAD. **One gap for the builder to put to the owner before writing
-> step 1.** `--check` must test each transport with "the SAME predicates the code uses", but the
-> script reads only the five `DELIVERY_SMOKE_*` exports. It cannot see the hosted app's environment
-> (`RESEND_API_KEY`, `MAIL_FROM`, the VAPID pair, the Twilio keys), so the predicates must run
-> inside the app. Option A (recommended): the app reports its own channel liveness through a
-> bearer-guarded read on NT2's dispatch route: names and ✓ / ✗ only, a 404 to any other bearer. This
-> adds a route, which FILES does not list. Option B: the owner runs `--check` on the staging host,
-> in its environment. Also add CD1's Option A checks (the provider list id in
-> `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step 1
-> omits them.
+> **Status (2026-11-18, re-checked at `b695f326`): deferred again; the owner ruled "wait" twice
+> (#484).** The first run (`edb447a9`) found none of its dependencies on `main` and declined a
+> PRD-E6-only proof. The second found NT2 (`4dfd07f6`) and CD1 steps 1–4 (`25531b74`) merged, but
+> NT3 not yet on `main`, NT4 and NT5 not started, CD1 step 5 waiting for NT3, and no staging
+> deployment (PRD-G8 ❌). Neither run built or ran any of CD2. Re-run CD2 in wave 5, after
+> re-checking every dependency at HEAD; its 🧑 PREREQUISITES stop still comes first. **The `--check`
+> gap is ruled (#484): the app reports its own liveness.** The script reads only the
+> `DELIVERY_SMOKE_*` exports and cannot see the hosted app's environment (`RESEND_API_KEY`,
+> `MAIL_FROM`, the VAPID pair, the Twilio keys), so step 1's "SAME predicates the code uses" run
+> inside the app: `GET /api/comms/dispatch`, behind the same constant-time `COMMS_DISPATCH_SECRET`
+> bearer as the `POST`, answers `deliverySources()` (`services/comms/channel-liveness.ts`) as the
+> dispatcher and each channel by name with ✓ / ✗ only, and the same 404 to any other bearer. FILES
+> gains that route (`routes/api/comms/dispatch.ts`, `dispatch-ssr.ts`, a route test, ROUTING).
+> Before writing step 1, settle #484 flag (a): which bearer the script presents, since a sixth
+> `DELIVERY_SMOKE_*` export is outside the prompt's list. Also add CD1's Option A checks (the
+> provider list id in `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`,
+> because step 1 omits them.
 
 ```text
 PROMPT CD2: The hosted delivery proof — every outbound channel sends for real on staging
