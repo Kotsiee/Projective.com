@@ -20,12 +20,15 @@ import { IdentitiesBackendService } from "@server/services/auth/IdentitiesBacken
 import { PlanBackendService } from "@server/services/finance/PlanBackendService.ts";
 import { CardsBackendService } from "@server/services/finance/CardsBackendService.ts";
 import { channelLiveness } from "@server/services/comms/channel-liveness.ts";
-import { pendingSetupSteps, type ResolvedUiSettings } from "@projective/types/org";
+import { pendingSetupSteps, type ResolvedUiSettings, type UserEmail } from "@projective/types/org";
 import {
 	CHANNEL_LIVENESS_OVERRIDE_COOKIE,
 	type ChannelLivenessOverride,
+	EMAIL_DELIVERABILITY_OVERRIDE_COOKIE,
+	type EmailDeliverabilityOverride,
 	NO_LIVE_CHANNELS,
 	parseChannelLivenessOverride,
+	parseEmailDeliverabilityOverride,
 } from "@projective/types/comms";
 import { cardExpiryCounts } from "./attention-model.ts";
 import { defaultMessagingRole } from "@features/messaging/core/conversation-model.ts";
@@ -55,6 +58,8 @@ export interface SettingsReadInput {
 	a11y?: A11yOverlays | null;
 	/** The Dev Context Switcher's channel-delivery override ({@link deliveryOverrideOf}). */
 	deliveryOverride?: ChannelLivenessOverride | null;
+	/** The Dev Context Switcher's email-deliverability override ({@link deliverabilityOverrideOf}). */
+	deliverabilityOverride?: EmailDeliverabilityOverride | null;
 }
 
 /**
@@ -64,6 +69,27 @@ export interface SettingsReadInput {
 export function deliveryOverrideOf(req: Request): ChannelLivenessOverride | null {
 	if (!isDevelopmentEnv()) return null;
 	return parseChannelLivenessOverride(readCookies(req)[CHANNEL_LIVENESS_OVERRIDE_COOKIE]);
+}
+
+/**
+ * The `pj.dev.email-deliverability` override on a request, or `null`. Honoured only when `DENO_ENV`
+ * is `development`, so no deploy can be made to hide or invent a bounce.
+ */
+export function deliverabilityOverrideOf(req: Request): EmailDeliverabilityOverride | null {
+	if (!isDevelopmentEnv()) return null;
+	return parseEmailDeliverabilityOverride(readCookies(req)[EMAIL_DELIVERABILITY_OVERRIDE_COOKIE]);
+}
+
+/**
+ * The account read's addresses under a development override: `bounced` draws the primary as
+ * undeliverable (COMMS NT3), `deliverable` draws every address fine; `null` leaves the server's answer.
+ */
+export function withDeliverability(
+	emails: UserEmail[] | null,
+	override: EmailDeliverabilityOverride | null | undefined,
+): UserEmail[] | null {
+	if (!emails || !override) return emails;
+	return emails.map((e) => ({ ...e, undeliverable: override === "bounced" && e.isPrimary }));
 }
 // #endregion
 
@@ -98,7 +124,10 @@ async function readSection(
 			const data: SettingsSectionData = {
 				section: "account",
 				identity: identity.data?.identity ?? null,
-				emails: emails.ok && emails.data ? emails.data.emails : null,
+				emails: withDeliverability(
+					emails.ok && emails.data ? emails.data.emails : null,
+					input.deliverabilityOverride,
+				),
 				handlePolicy: policy.ok && policy.data ? policy.data.policy : null,
 				lifecycle: lifecycle.ok && lifecycle.data ? lifecycle.data.lifecycle : null,
 				connected: connected.ok && connected.data ? connected.data : null,

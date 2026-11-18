@@ -28,7 +28,7 @@
 | :---- | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
 | MK-18 | ✅ · High · UAT    | **CK5**                                          | An idle basket gets one nudge, within consent (note clears)                                                                            |
 | MK-19 | ✅ · High · UAT    | —                                                | —                                                                                                                                      |
-| MK-20 | 🟡 · Crit · PROD   | **CK4** (🧑 + ⚖️)                                | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
+| MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                         | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
 | MK-21 | ✅ · Crit · MVP    | — (CO17 is Planned, §0.5)                        | —                                                                                                                                      |
 | MK-22 | ✅ · Crit · MVP    | — (environment)                                  | —                                                                                                                                      |
 | MK-23 | 🟡 · High · UAT    | **CK6** + you, on a hosted domain                | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
@@ -42,17 +42,17 @@
 | MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB19 → DB21 → MONEY MR3 (⏳ CK1, DB16) | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section close here too, because their gap sits in checkout or in a
-door built below: **MK-16** (a quote offer is paid at its price) → **CK7**; **MK-12** (reserve a
-cohort seat) → **SC3**.
+door built below: **MK-16** (a quote offer is paid at its price) → **CK7** (built, #491; live run
+left); **MK-12** (reserve a cohort seat) → **SC3**.
 
 **Reviews**
 
 | Row   | Now · Crit · Gate  | Work order      | The row flips when                                                                                         |
 | :---- | :----------------- | :-------------- | :--------------------------------------------------------------------------------------------------------- |
 | MK-32 | ❌ · High · UAT    | **RV1** (🧑 ×4) | A completed buyer reviews, the seller is told and replies; the row cites T&S R2 for the report entry point |
-| MK-33 | ❌ · Normal · PROD | **RV2** (🧑 ×4) | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
+| MK-33 | ❌ · Normal · PROD | **RV2** (#486)  | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
 | MK-34 | ✅ · Normal · UAT  | **RV1**         | Real reviews replace seed-only data (note clears)                                                          |
-| —     | —                  | **RV3** (🧑)    | Standing reads real reviews (no row of its own; #58-63 (h))                                                |
+| MW-64 | ❌ · Normal · PROD | **RV3** (#489)  | Standing reads real reviews, and Elite can be reached (#58-63 (h))                                         |
 
 **Seller catalogue**
 
@@ -64,13 +64,14 @@ cohort seat) → **SC3**.
 | MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
 | MK-39 | ✅ · High · UAT    | **SC2**                                           | A session plan is seeded (note clears)                                                 |
 | MK-40 | ❌ · High · UAT    | **SC3** → SCH-WP7                                 | 🟡 after SC3 (a seller opens a cohort); ✅ after WP7 (sittings scheduled from the app) |
-| MK-41 | 🟡 · Crit · PROD   | **SC4** + T&S SN2 → SN3                           | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
+| MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                               |
 | MK-43 | 🟡 · Normal · UAT  | **SC5**                                           | Views are written and counted; 90 days are seeded                                      |
-| MK-44 | 🟡 · Normal · UAT  | **SC6**                                           | Slug links; a team or business buyer is named                                          |
-| MK-45 | ✅ · High · UAT    | **SC6** (🧑 #312 (a), (e))                        | The note states the ruled team-editing scope                                           |
-| MK-46 | ❌ · Normal · PROD | **SC7** (🧑 + ⚖️)                                 | Request to Sell, the client's grant and the royalty leg run                            |
+| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ CK1, SC4)                       | Slug links; a team or business buyer is named                                          |
+| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ CK1, SC4)                 | The note states the ruled team-editing scope                                           |
+| MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
 | MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands |
+| MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                   |
 
 **Score projection** (section score = Σ weight × credit / Σ weight; Critical 3 · High 2 · Normal 1;
 ✅ 1 · 🟡 0.5 · ❌ 0; ⏸ excluded):
@@ -79,7 +80,7 @@ cohort seat) → **SC3**.
 | :------------------------ | ----: | :------------------------------------------------------------------------------------------ |
 | Basket, checkout & orders |   63% | CK1 74% → DB21 85% → CK2 87% → CK6 + you 91% → SBP S4 93% → DB17 94% → CK4 switched on 100% |
 | Reviews                   |   25% | RV1 75% → RV2 100%                                                                          |
-| Seller catalogue          |   66% | CK1 70% → SC3 + SCH-WP7 78% → SC5 80% → SC6 82% → SN3 88% → MK-47's chain 96% → SC7 100%    |
+| Seller catalogue          |   65% | CK1 69% → SC4 72% → SC3 + WP7 80% → SC5 81% → SC6 83% → SN3 89% → MK-47 96% → SC7 100%      |
 
 What UAT needs from these sections: **CK1** and the MK-31 chain (the cluster's two Critical · UAT
 ❌s in the Scoreboard), **RV1**, **SC3** + SCH-WP7, **SC5**, **SC6**, **CK2**, **CK6** + you and SBP
@@ -99,21 +100,26 @@ and this file).
 1. **CK1** — MK-29, and the download record MONEY's DB21 delta asks for. It edits neither `00001240`
    nor `00000017`, so it can be the second SQL session beside MONEY's Wave 2 once `00002510` is
    free.
-2. **CK7 → CK2** — ⏳ CK1 (`00001210`).
+2. **CK7 → CK2** — CK7 ran ahead of CK1 by owner ruling (#491 (1)) and has landed; CK2 ⏳ CK1. CK2's
+   🧑 is ruled (#485), and CK2 waits here for CK7 and for FBP DB16, because #485 (a) adds a
+   conservation-identity term.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
-4. **CK4** — ⏳ DB21 (a refund reverses the tax), 🧑 + ⚖️.
-5. **SC7** — ⏳ CK1 and DB19. The last change to the money path in this file.
+4. **CK4** — ⏳ DB21 (a refund reverses the tax); 🧑 ruled #490, ⚖️ counsel before the switch.
+5. **SC7** — ⏳ CK1, DB19 and DB21 (a refund reverses the royalty too, #493 (D)); 🧑 ruled #493, ⚖️
+   counsel before the grant switch. The last change to the money path in this file.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts.
 
-1. **SC4 → SC6** — ⏳ CK1 (`00001170`). SC4 leads: it may be a live write bypass.
+1. **SC4 → SC6** — ⏳ CK1 (`00001170`). SC4 leads: the write bypass is live and wider than its
+   CONTEXT says (#494), and SC4 also writes `00002018` and `00002020`.
 2. **RV1** — ⏳ SAC1 (`00002500`, `00002510`). Better after CK3, which gives it an entry point.
 3. **SC2 → SC3 → SCH-WP7** — the seed generator is one writer at a time; `00001155` runs with no
    other SCH package.
 4. **CK5** — ⏳ `00005060` free (DB16, PM-WP1, PM-GH1, MR4, MR5 and DB17 also write it).
-5. **SC5 → RV2 → RV3.**
-6. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase.
+5. **SC5 → RV2 → RV3.** RV3's 🧑 is ruled (#489), and RV3 waits here for RV2.
+6. T&S **R1 → R2** (their track) → **SC8** (rulings #496; ⚖️ counsel words the regime); **SC9** once
+   per #393 phase.
 
 **App lane** (up to three at once, file-disjoint): **SC1** and **CK6** now; **CK3** ⏳ CK1
 (`live-orders.ts`); **MKZ** last.
@@ -141,27 +147,29 @@ block, so a question you defer still stops the build at the right step.
 | :- | :----------------------------------------------------------------------------------------------- | :------------------ | :------------------------------------------------------------------------------------------------------ |
 | 1  | #393 A6: sale originals as a third zone, snapshotted at publish                                  | CK1                 | Yes, as the spec recommends                                                                             |
 | 2  | #393 A8 (⚖️): what "downloaded" means for the refund rule                                        | CK1                 | The first completed delivery (or a reader session, once one exists), expressly accepted before Pay      |
-| 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | The offer's own expiry bounds payment                                                                   |
-| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | The seller, for their own products, seller-funded; platform codes stay operator-only                    |
+| 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | **Ruled #491:** the offer's own expiry bounds payment (A); built                                        |
+| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
-| 6  | The tax model (⚖️)                                                                               | CK4                 | Stripe Tax on every order, card and wallet alike, behind a switch that stays off until counsel          |
+| 6  | The tax model (⚖️)                                                                               | CK4                 | **Ruled #490:** Stripe Tax on digital products only, tax-exclusive; off until counsel                   |
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
-| 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | Double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score per client party |
-| 10 | What Standing's peer track is                                                                    | RV3                 | Reviews between providers who shared an engagement                                                      |
+| 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
+| 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
-| 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
-| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | Agreed per request within platform bounds; commission first, royalty from the seller's net              |
-| 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | Counsel's                                                                                               |
-| 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | Per phase, the spec's own recommendations                                                               |
+| 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | **Ruled #500:** A, tightened: holders edit any team listing and create; delete: the creator or an admin |
+| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
+| 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |
+| 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
+| 17 | Who `catalogue.listing_published` tells, and on which publish                                    | SC4                 | **Ruled #494:** the owning party's followers, in a daily digest, on a listing's first publish only      |
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
 
 **For counsel** (build behind a switch that stays off; never switch it on): A8's wording, the tax
-obligation, the nudge's consent basis, SC7's licence wording, SC8's notice regime, and one question
-to add to MONEY MR7's brief: **may a buyer-started refund of a card-paid line land in the wallet?**
-UK consumer rules generally expect a refund to the original payment method unless the buyer agrees
-otherwise. DB21 credits the wallet and MR3 keeps card refunds operator-only.
+obligation and its tax-exclusive display (#490 (c)), the nudge's consent basis, SC7's licence
+wording, SC8's notice regime, and one question to add to MONEY MR7's brief: **may a buyer-started
+refund of a card-paid line land in the wallet?** UK consumer rules generally expect a refund to the
+original payment method unless the buyer agrees otherwise. DB21 credits the wallet and MR3 keeps
+card refunds operator-only.
 
 ### 0.4 Stale text found on 2026-11-18
 
@@ -171,16 +179,17 @@ Fix each in the prompt named, or in MKZ if that prompt has already landed.
 | :----------------------------------------------------- | :----------------------------------------------------- | :---------------------------------------------------------------------- | :----- |
 | USER_FLOWS MK-29                                       | `live-orders.ts:376`                                   | The note is `:359`; the download gate `:386`                            | CK1    |
 | `ASSET_DELIVERY_ARCHITECTURE.md` §2                    | `00001210:1892`, `live-orders.ts:342`                  | `:2153`, `:386`                                                         | CK1    |
-| USER_FLOWS MK-16                                       | "after LV2's checkout lands"                           | LV2 has landed (#457); the branch is still missing                      | CK7    |
+| USER_FLOWS MK-16                                       | "after LV2's checkout lands"                           | LV2 has landed (#457); the branch is still missing                      | #491   |
 | USER_FLOWS MK-40                                       | `schedule_sitting` has no caller, so SCH-WP7 closes it | No door opens a group cohort at all; WP7 schedules sittings of one      | SC3    |
 | USER_FLOWS MK-44                                       | "quotes cannot be acted on"                            | `QuotePanel only="host"` is in `ClientDrawerBody.tsx:213` (#458)        | SC6    |
 | USER_FLOWS MK-45                                       | "—"                                                    | #312 flags (a) and (e) are open                                         | SC6    |
-| `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1407`                                                         | CK4    |
+| `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1413`                                                         | #490   |
 | `database/comms/Functions.md:131-135`                  | `fn_enqueue` has no caller                             | `00001510:3143` calls it                                                | CK5    |
 | `database/reviews/Tables.md:43`                        | the landing testimonials read the table                | `testimonials()` is dead (#349)                                         | RV1    |
 | `00002018:52-63`, `database/reviews/Policies.md:14-15` | no table records a product purchase                    | `finance.order_lines` does                                              | RV1    |
 | `packages/types/profile/tabs.ts:180`                   | `freelancer` = "fellow freelancer"                     | the RPC's `author_role = 'freelancer'` is a provider reviewing a client | RV2    |
 | FBP header                                             | DB3 is uncommitted                                     | committed in `44382c08` (MONEY's addendum already says so)              | MKZ    |
+| USER_FLOWS MK-47                                       | "21 rulings open"                                      | A2 ruled (#499); A6 and A8 are CK1's (#488)                             | SC9    |
 
 ### 0.5 Not in this file
 
@@ -316,7 +325,7 @@ written, then the delta below, then §1.2 with the rows given. Only the delta is
 | SBP S1 → S4   | SBP · MONEY §4         | MK-24 → ✅ once an on-account order is walked live | MONEY's delta stands. `place_on_account_order` (`00001250:494-617`) also needs a KYB-verified business; the plan gate sits in `set_invoicing_terms` (`00001210:~1240`).                                                                                                                                            |
 | SCH-WP7       | SCH §… (`:1045`)       | MK-40 → ✅ (with SC3)                              | Run right after SC3, in the same slot: SC3 opens the cohort, and step 5 schedules its later sittings. Its 🧑 at step 6 (#344 (f)) stands. Step 8 (`cancelSeat`, S-22) closes Calls & sessions MK-53, which is not this file's row.                                                                                 |
 | T&S P2a       | T&S §… (`:496`)        | —                                                  | Add `reviews.entity_reviews.title`, `comment` and `reply_comment` to the public copy it refuses at the floor (RV1 makes them writable).                                                                                                                                                                            |
-| T&S R1 → R2   | T&S (`:722`, `:926`)   | MK-47 (with SC8, SC9)                              | `ops.reports`' proposed subject CHECK (SA:1262-1276) has no `review`: add `review` and `listing`. R2's listing entry point is MK-47's report half, and RV1's reviews need a Report action from it.                                                                                                                 |
+| T&S R1 → R2   | T&S (`:722`, `:926`)   | MK-47 (with SC8, SC9)                              | `ops.reports`' proposed subject CHECK (SA:1265-1279) has `listing` but no `review`: add `review`. R1's `source` also takes `notice`, with no reporter (#496 (A)). R2's listing entry point is MK-47's report half, and RV1's reviews need a Report action from it.                                                 |
 | T&S SN2 → SN3 | T&S (`:1029`, `:1082`) | MK-41 → ✅                                         | SN3 hooks `cutShowcaseRendition` in `live-catalogue-writes.ts`. SC4 must have landed first, so no listing reaches `published` around the gate.                                                                                                                                                                     |
 | COMMS NT3     | COMMS                  | MK-25's note (and MK-13's)                         | CK5's email rides it.                                                                                                                                                                                                                                                                                              |
 
@@ -446,6 +455,11 @@ CONTEXT (verified at b7280787; re-check every line):
      already says. Platform-wide codes stay operator-only, unchanged.
   B: as A, and a seller's code may also cover their session lines.
   C: platform codes only; an ops door replaces the seller one.
+  RULED #485 (2026-11-18): A. The team issuer asks catalogue.fn_manages_listing /
+  org.fn_member_can('team', …, 'publish_listings') (#485 (b)). #485 (a) RULED: the platform
+  pays for a platform code. The seller is credited as if the code had not applied (commission on
+  the line before the platform's share). The cost is a new v_conservation_identity term, so CK2
+  also waits for FBP DB16.
 
 STEPS:
   1. Red first: extend supabase/probes/promo_redemption_concurrency.sql. Today the same
@@ -473,7 +487,8 @@ route draws 429s. finance_invariants.sql passes. Screenshots of the Promotions v
 
 SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 6 and finance-model.md §15 (the per-account
 marker removed; the issuer rule as ruled); FBP DB19 (step 1 marked done by CK2); FINANCE_AUDIT.md
-CO7 and CO22; documentation/database/finance/*; Zod; ROUTING.md; the decision row.
+CO7 and CO22; finance-model.md §1.2 ("after any seller-funded promo", #485 (a));
+documentation/database/finance/*; Zod; ROUTING.md; the decision row.
 ```
 
 §1.2 rows: **MK-26** 🟡 → ✅.
@@ -557,6 +572,11 @@ confirm the obligation before any switch goes on:
      follow.
   Either way, a table for me to confirm: which product tax code a digital product, a service
   engagement and a session each take.
+  RULED #490 (2026-11-18): A, split by kind · tax added at checkout (tax-exclusive) · the codes as
+  tabled in #490 (C) · wait for DB21. The engine is A's whole, but the platform collects only on
+  the kinds tax_collected_kinds names (digital_product by default); every other line says the
+  seller is responsible for any tax on their work. Skip this block when you run: re-verify DB21 at
+  HEAD and stop if it has not landed (#490 (f)). Counsel still confirms before any switch goes on.
 
 STEPS (for A; for B, steps 1, 3 and 5 only):
   1. Red first: a unit test that a GB consumer buying a digital product, with the switch on, sees
@@ -689,6 +709,9 @@ CONTEXT (verified at b7280787):
 🧑 DECISION (before step 3): an accepted offer left unpaid. Recommended A: the offer's own
 seller-set expiry (3-30 days, #458) still bounds payment; past it the line refuses PC409 and the
 buyer may ask again. B: a fixed payment window after acceptance (a platform dial).
+  RULED #491 (2026-11-18): A, and CK7 runs ahead of CK1 in queue M. BUILT in #491's change; only
+  the live run (request → offer → accept → pay → board, the quote card captured) is left, so MK-16
+  stays 🟡 until it is recorded.
 
 STEPS:
   1. Red first: a probe. Accept a seeded offer priced below the listing, check out: today the
@@ -851,6 +874,11 @@ CONTEXT (verified at b7280787):
      before applying or accepting a hire (logged: that is the Informed Consent).
   4. One score or two (Client vs Business Trust Score). Recommended: one score per client party,
      a person or a business, under one name. Log the contradiction as a decision row either way.
+  RULED #486 (2026-11-18): all four as recommended; skip this stop. The numbers: k = 5 at the
+  client-track mean; −0.25 per dispute the client opened and lost (resolved_release) in 12
+  months, capped at −1.00; ghosting −0.10 each, capped at −0.50, dormant until #337 P3's
+  auto-approve is built; floor 1.00; shown from 3 reviews; warned below 3.00. The `client_trust`
+  coefficient is unset (#486 (c), proposal 2.50). RV2 waits for RV1, re-verified at HEAD.
 
 STEPS:
   1. Red first: a provider cannot review a client today, and the SELECT policy shows every
@@ -878,7 +906,7 @@ weight is added; documentation/database/{reviews,search}/*; Zod; the decision ro
 
 ### RV3 — Standing reads real reviews
 
-No row of its own. It keeps Standing honest once RV1 writes reviews.
+Closes MW-64 (new, #489; ❌ → ✅). It keeps Standing honest once RV1 writes reviews.
 
 ```text
 PROMPT RV3: Standing's review component reads the reviews people actually wrote
@@ -895,6 +923,17 @@ finance.ratings (00000017:365-374) is an unread legacy table.
 shared an engagement (teammates, freelancers on the same stages), written through RV1's doors on
 the shared anchor. B: drop the peer track from the formula until it is specified, and weight the
 client track alone.
+RULED #489 (2026-11-18): B, and a review recomputes its subject; skip this stop. The
+component is client_rating_avg / 5 × 20, the Bayesian mean of the subject's visible, revealed
+client reviews (k = 5 at the delivery track's corpus mean); peer_rating_avg stays, reserved,
+never written. A review write (RV1's submit, edit, withdraw, hide; RV2's reveal) calls
+org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for reviews). At HEAD:
+the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
+seeds/11_standing.sql:116); no standing probe exists yet; fn_recompute_standing (00001030:51)
+does not pin search_path = '', so RV3 pins it. #489 (a) ruled: the component is 0 until
+the subject's first client review, then the prior applies. #489 (b): dispute_free is also 0 until
+the first escrow (RV3 builds it with (a)). (c): a team's Standing reads only the team's reviews.
+RV3 waits for RV2, re-verified at HEAD.
 
 STEPS:
   1. Red first: a new review does not move Standing.
@@ -911,7 +950,7 @@ SAME CHANGE: PRODUCT_SPEC.md §Standing; finance-model.md; documentation/databas
 the decision row closing #58-63 (h)'s ratings half.
 ```
 
-§1.2 rows: none flip. If Standing's display changes, update MK-06's note.
+§1.2 rows: **MW-64** ❌ → ✅ (new, #489). If Standing's display changes, update MK-06's note.
 
 ---
 
@@ -1100,6 +1139,17 @@ emitter; the decision row.
 §1.2 rows: **MK-41** stays 🟡 with a narrower note (screening is SN3's), and becomes ✅ when SN3
 lands.
 
+**Step 1 ran on 2026-11-18, and the rulings are in (#494).** The bypass is live and wider than the
+CONTEXT says: a bare UPDATE or INSERT publishes past the gate, clearing `published_at` reopens
+#217's lock, and a published listing's currency, questions, delivery model and showcase files change
+directly (#494 (A)). The doors are INVOKER, so step 2 makes `set_listing_status` and
+`set_listings_status` definers (#494 (B)) and also writes `00002018` and `00002020`. Step 3's
+audience is **the owning party's followers, in a daily digest** (`group_window` `1 day`, a link to
+`/view/<slug>`, a listing's first publish only; #494 (C)), and the rule enters PRODUCT_SPEC.md in
+SC4's change. SC4 waits for CK1 (#494 (D)). When it runs, its step 1 commits the red probe, it asks
+whether MK-57 rides along (#494 (a)), and its CONTEXT's `00005010:87` and `catalog.ts:107` read
+`:88` and `:108`.
+
 ### SC5 — A listing's views are counted
 
 Closes MK-43 (🟡 → ✅).
@@ -1167,6 +1217,11 @@ CONTEXT (verified at b7280787):
 member holding the team's catalogue capability (read the team role matrix) may edit, publish,
 pause and duplicate any team listing; deleting stays with the creator and the team's admins;
 presets follow the same scope. B: creator-only stays, and the UI says so.
+RULED #500 (2026-11-18): A, tightened. Any active publish_listings holder edits, publishes,
+pauses and duplicates any team listing, and create_listing for a team needs it too; deleting is
+the creator while still a holder, or a member at the admin or owner rank; a team listing's
+presets live on the team's own schedule. ?event= stays (ROUTING, #388; PRD-J1), so ACCEPTANCE
+reads "no uuid in any Clients href but ?event=". SC6 waits for CK1 (#488) and SC4 (#494).
 
 STEPS:
   1. Red first: a probe for the uuid hrefs and the missing team buyer.
@@ -1192,15 +1247,15 @@ Closes MK-46 (❌ → ✅).
 PROMPT SC7: A freelancer asks to sell an asset made on a project; the client grants it; every
 sale routes the client's royalty
 
-ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after CK1
-and DB19.
+ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after CK1,
+DB19 and DB21 (#493 (D)).
 
 CONTEXT (verified at b7280787):
-  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3090-3100): a "strict approval gate". The freelancer
-    triggers Request Marketplace Listing; the client may grant shared IP for the whole asset or
-    for parts; the approved asset is minted with "a cryptographic link back to the original
-    project". §5 (:3116-3127): Shared Royalty, "a percentage of every sale is automatically
-    routed to the original Client's wallet".
+  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 7cb49117): a "strict approval gate".
+    The freelancer triggers Request Marketplace Listing; the client may grant shared IP for the
+    whole asset or for parts; the approved asset is minted with "a cryptographic link back to the
+    original project". §5 (:3174-3185): Shared Royalty, "a percentage of every sale is
+    automatically routed to the original Client's wallet".
   - Nothing exists: no table, door or UI, and catalogue.products has no provenance column. The
     enum ip_option_mode includes shared_ownership (00000003:41), used by
     projects.ip_ownership_mode and project_stages.ip_mode; the deed text is
@@ -1215,6 +1270,18 @@ CONTEXT (verified at b7280787):
      business decides through a member with the right capability; never a 13-17 account.
   3. ⚖️ The licence wording a grant creates (counsel), and what happens to a royalty when the
      client's account is erased (recommended: it stops, and the seller keeps it).
+  RULED #493 (2026-11-18), all as recommended, with stop 2's premise corrected, and two points
+  re-ruled the same day (#493 (G)): (1) the freelancer proposes a rate and the client approves or
+  declines it as proposed, never counters; 0-50% of the seller's net, fixed at the grant; the
+  commission first, then the royalty floored from what is left, the dust to the seller; the client
+  credited through fn_wallet_credit_pending beside the seller, so a refund recovers both. (2) Only
+  a released exclusive_transfer or licensed_use stage takes a request; shared_ownership already
+  lets the maker sell, so it lists with provenance, no grant and no royalty, and the client is
+  told; projective_partner is refused; a business grants through a member holding
+  manage_projects; no 13-17 account on either side. (3) The grant survives erasure, its royalty
+  stops and the seller keeps it; the grant sits behind a platform param that stays off until
+  counsel. Wait for CK1, DB19 and DB21. Skip this block when you run: re-verify all three at HEAD
+  and stop if one has not landed, and read #493's flags (a)-(c) before step 2 ((d) is ruled).
 
 STEPS:
   1. Red first: a probe that no request door exists and a sale routes nothing to the client.
@@ -1257,6 +1324,14 @@ listing entry point. PRD-D9 is ❌.
 ⚖️ DECISION (before step 2): which notice regime the intake follows (counsel): the fields a valid
 notice needs, the counter-notice, and the repeat-infringer rule. Build the mechanism; the words
 are counsel's, behind a param that keeps the public form off until they are in.
+RULED #496 (2026-11-18): record and wait; SC8 ran step 0 only, as R1 and R2 had not landed.
+(A) A rights-holder needs no account: ops.reports.source takes 'notice' (reporter NULL), with
+an immutable, Zod-typed notice block that SC8 fills and files through its own rate-limited
+door, never ops.file_report. (B) The takedown is a hold on catalogue.listings that an operator
+door sets and lifts; setting it pauses the listing through set_listing_status's code path, and
+set_listing_status refuses 'published' while it stands. No new status. Skip this block when
+you run: re-verify R1 and R2 at HEAD and stop if either is missing (#496 (D)); add the
+'notice' source yourself if R1 shipped without it. Ask #496 flag (b) before step 4.
 
 STEPS:
   1. Red first: a probe that a notice has nowhere to go.
@@ -1301,7 +1376,7 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 
 | Phase | Delivers                                                | Waits for                                   |
 | :---- | :------------------------------------------------------ | :------------------------------------------ |
-| 1     | Signed reads closed; `/api/files/object` retired        | CK1; A2                                     |
+| 1     | Signed reads closed; `/api/files/object` retired        | CK1; A2 ruled #499                          |
 | 2     | The upload whitelist, mandatory ClamAV, large files     | T&S SN2 (the safety node); A7               |
 | 3     | The edge host, `SUPABASE_PUBLIC_URL`, the link resolver | Your edge choice; A5                        |
 | 4     | The sandbox origin, the CDN, previews, private buckets  | Phase 3; A1, A4                             |

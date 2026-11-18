@@ -52,7 +52,7 @@ function usd(tokens: number): string {
 
 function summary(report: EmbeddingSyncReport): string {
 	return `embedded ${report.embedded} · skipped ${report.skipped} · no index row ${report.missing} · ` +
-		`failed ${report.failed}`;
+		`not unit length ${report.rejected} · failed ${report.failed}`;
 }
 
 if (!isSupabaseConfigured()) {
@@ -113,6 +113,8 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
 			...report,
 			embedded: total.embedded + report.embedded,
 			missing: total.missing + report.missing,
+			// A refused vector is never stored, so the next round meets the same targets again.
+			rejected: Math.max(total.rejected, report.rejected),
 			tokens: total.tokens + report.tokens,
 			skipped: report.skipped - total.embedded,
 		}

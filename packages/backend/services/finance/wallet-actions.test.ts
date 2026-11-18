@@ -74,6 +74,33 @@ Deno.test("an action on the wallet it names runs there; the rollup stays read-on
 // #region The wallet an action names (no vault without an id)
 /** Nothing past the refusal is reached: a door would need a database this test does not have. */
 const QUERY: WalletQuery = { wallet: null, display: null };
+
+/**
+ * Run `fn` with the money switch on, so an action reaches its own checks (`money-gate.ts`; with it
+ * off every action answers 503 first, which `money-gate.test.ts` proves). Nothing here reaches a door.
+ */
+async function moneyOn(fn: () => Promise<void>): Promise<void> {
+	const vars: Record<string, string | undefined> = {
+		FINANCE_BACKEND_LIVE: "true",
+		USE_MOCKS: "false",
+		VITE_USE_MOCKS: undefined,
+		SUPABASE_URL: Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:59999",
+		SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY") ?? "anon-key",
+	};
+	const prior = new Map(Object.keys(vars).map((key) => [key, Deno.env.get(key)]));
+	const apply = (values: Iterable<[string, string | undefined]>) => {
+		for (const [key, value] of values) {
+			if (value === undefined) Deno.env.delete(key);
+			else Deno.env.set(key, value);
+		}
+	};
+	apply(Object.entries(vars));
+	try {
+		await fn();
+	} finally {
+		apply(prior);
+	}
+}
 const ACTOR = {
 	userId: "u-1",
 	accessToken: "token",
@@ -81,26 +108,27 @@ const ACTOR = {
 	contextType: "personal",
 } as ReadActor;
 
-Deno.test("a vault scope with no context id is refused, never read as the personal wallet", async () => {
-	const split = await distribute(
-		{
-			scope: "team",
-			contextId: "",
-			amountMinor: 1_000,
-			currency: "USD",
-			idempotencyKey: "attempt-1",
-		},
-		QUERY,
-		ACTOR,
-	);
-	assertEquals([split.ok, split.status, split.message], [false, 422, "Choose a wallet."]);
-	const card = await addMethod(
-		{ scope: "business", contextId: "", methodRole: "funding" },
-		QUERY,
-		ACTOR,
-	);
-	assertEquals([card.ok, card.status], [false, 422]);
-});
+Deno.test("a vault scope with no context id is refused, never read as the personal wallet", () =>
+	moneyOn(async () => {
+		const split = await distribute(
+			{
+				scope: "team",
+				contextId: "",
+				amountMinor: 1_000,
+				currency: "USD",
+				idempotencyKey: "attempt-1",
+			},
+			QUERY,
+			ACTOR,
+		);
+		assertEquals([split.ok, split.status, split.message], [false, 422, "Choose a wallet."]);
+		const card = await addMethod(
+			{ scope: "business", contextId: "", methodRole: "funding" },
+			QUERY,
+			ACTOR,
+		);
+		assertEquals([card.ok, card.status], [false, 422]);
+	}));
 // #endregion
 
 // #region Automation locked until its engine runs (Decision #337, ruling M6)
@@ -113,18 +141,19 @@ const SCHEDULE: PayoutScheduleInput = {
 	instant: false,
 };
 
-Deno.test("every payout mode reaches the wallet: no mode is locked now that schedules run", async () => {
-	assertFalse("schedule_not_running" in LOCK_REASON, "the schedule lock is gone (DB4)");
-	for (const mode of ["scheduled_weekly", "scheduled_monthly", "threshold"] as const) {
-		const out = await setPayout(
-			{ ...SCHEDULE, scope: "team", mode, thresholdMinor: 50_000 },
-			QUERY,
-			ACTOR,
-		);
-		// The vault scope with no id is refused before any read, which proves no lock answered first.
-		assertEquals([out.ok, out.status, out.message], [false, 422, "Choose a wallet."], mode);
-	}
-});
+Deno.test("every payout mode reaches the wallet: no mode is locked now that schedules run", () =>
+	moneyOn(async () => {
+		assertFalse("schedule_not_running" in LOCK_REASON, "the schedule lock is gone (DB4)");
+		for (const mode of ["scheduled_weekly", "scheduled_monthly", "threshold"] as const) {
+			const out = await setPayout(
+				{ ...SCHEDULE, scope: "team", mode, thresholdMinor: 50_000 },
+				QUERY,
+				ACTOR,
+			);
+			// The vault scope with no id is refused before any read, which proves no lock answered first.
+			assertEquals([out.ok, out.status, out.message], [false, 422, "Choose a wallet."], mode);
+		}
+	}));
 
 Deno.test("the save door's refusals: Instant is planned, authority and a field are worded", () => {
 	const instant = payoutScheduleRefusal({
@@ -154,18 +183,37 @@ Deno.test("the save door's refusals: Instant is planned, authority and a field a
 	assertEquals(Object.keys(destination.errors ?? {}), ["destinationId"]);
 });
 
-Deno.test("enrolling in the smoother is locked while it is planned; leaving it never is", async () => {
-	const enrol = await enrolSmoother({ targetMonthlyMinor: 300_000, currency: "USD" }, QUERY, ACTOR);
-	assertEquals([enrol.status, enrol.details], [409, { reason: "smoother_planned" }]);
-	assertEquals(enrol.message, LOCK_REASON.smoother_planned);
-	// Leaving passes the lock and reaches the sign-in check (this actor carries no session).
-	const leave = await enrolSmoother(
-		{ targetMonthlyMinor: 300_000, currency: "USD", enrol: false },
-		QUERY,
-		{ ...ACTOR, accessToken: undefined } as unknown as ReadActor,
-	);
-	assertEquals(leave.status, 401);
-});
+Deno.test("enrolling in the smoother is locked while it is planned; leaving it never is", () =>
+	moneyOn(async () => {
+		const enrol = await enrolSmoother(
+			{ targetMonthlyMinor: 300_000, currency: "USD" },
+			QUERY,
+			ACTOR,
+		);
+		assertEquals([enrol.status, enrol.details], [409, { reason: "smoother_planned" }]);
+		assertEquals(enrol.message, LOCK_REASON.smoother_planned);
+		// Leaving passes the lock and goes on to its door (answered here by a recorder, never a database).
+		const realFetch = globalThis.fetch;
+		const sent: string[] = [];
+		globalThis.fetch = (input: string | URL | Request) => {
+			sent.push(input instanceof Request ? input.url : String(input));
+			return Promise.resolve(Response.json({ message: "offline" }, { status: 500 }));
+		};
+		try {
+			const leave = await enrolSmoother(
+				{ targetMonthlyMinor: 300_000, currency: "USD", enrol: false },
+				QUERY,
+				ACTOR,
+			);
+			assertFalse(leave.details?.reason === "smoother_planned", "leaving is never locked");
+			assert(
+				sent.some((url) => url.endsWith("/rpc/set_income_smoother")),
+				"leaving reached its door",
+			);
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	}));
 // #endregion
 
 // #region N17: the schedule of the currency the action names

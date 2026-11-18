@@ -263,9 +263,10 @@ the runtime), and `supabase/functions/` stays empty. Two doors reach it, and bot
 
 Both routes compare the bearer in constant time and answer 404 otherwise. `/api/comms/dispatch` is a
 named server-to-server door in `apps/web/utils/csrf.ts`, since the database sends no `Origin`. The
-service claims only the channels its transport registry (`dispatch-transports.ts`) can send. The
-registry ships **empty**: NT3 adds email, NT4 push and NT5 SMS. Until then every outbound delivery
-waits `pending` and nothing is claimed. Each payload carries the title, the absolute deep link
+service claims only the channels its transport registry (`dispatch-transports.ts`) can send. Email
+is registered (COMMS NT3, `email-transport.ts`, Resend) while `RESEND_API_KEY` and `MAIL_FROM` are
+well formed; NT4 adds push and NT5 SMS. Every other channel's deliveries wait `pending` and are not
+claimed. Each payload carries the title, the absolute deep link
 (`APP_URL` + `action_url`, a same-origin path, else `/notifications`) and the notification id,
 never the body or the payload (EPI §3.5 rules 2 and 4). The runbook for turning the flag on is EPI
 §8.1.
@@ -314,6 +315,56 @@ success resets it. `SECURITY DEFINER`, `search_path = ''`; service role only.
 
 Probes: `supabase/probes/comms_dispatch.sql` (rolled back) and `comms_dispatch_race.sql` (two
 sessions claim at once; commits, so it runs only under `--disposable`).
+
+### Email: provider callbacks and the account unsubscribe (COMMS NT3; Decision #339, ruling N3 (b))
+
+The email transport sends a notification's title as the subject, one sentence for its category, an
+"Open in Projective" link and a link to Settings → Notifications. It never sends the body or the
+payload. Each send carries the delivery id as Resend's Idempotency-Key, and records Resend's message
+id as the delivery's `provider_ref`. Marketing mail also carries the RFC 8058 pair
+(`List-Unsubscribe: <…/api/comms/unsubscribe?token=…>`, `List-Unsubscribe-Post`) and is refused
+(`no_unsubscribe_link`) rather than sent without one. The token names the person, never an address.
+
+Suppression has one active row per (channel, address) (`idx_channel_suppressions_active`), so every
+writer below takes a per-address transaction lock (`hashtext('comms-suppression:email:' || address)`)
+and then inserts, widens or leaves that row.
+
+#### `comms.fn_record_delivery_event(p_provider, p_provider_event_id, p_event_type, p_provider_ref DEFAULT NULL, p_recipient DEFAULT NULL, p_bounce_kind DEFAULT NULL, p_occurred_at DEFAULT NULL) → text`
+
+Applies one verified provider event. `POST /api/comms/webhooks/resend` (`DeliveryEventService`)
+checks the Svix signature first. The `(provider, provider_event_id)` claim on
+`comms.delivery_events` (`ON CONFLICT DO NOTHING`) and every effect share one transaction, so a
+replay answers `replayed` and changes nothing (EPI §3.3). The delivery is found by
+`(provider, provider_ref)`.
+
+| Event                                      | Effect                                                                                                                                                                                                                                                                                                                                             | Answers       |
+| :----------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
+| `email.delivered`                          | The delivery is `delivered` (forward only, through `fn_record_delivery_result`).                                                                                                                                                                                                                                                                  | `delivered`   |
+| `email.bounced`, `bounce.type = Permanent` | The delivery fails for good (`error = 'hard_bounce'`, `attempts ≥ 5`, never retried, even after `delivered`). The ADDRESS is suppressed for email in every category (`marketing_only = false`, `reason = 'hard_bounce'`, `source_event_id`), widening an unsubscribe or complaint row. The first time, its owner receives the mandatory in-app `account.email_undeliverable`. | `hard_bounce` |
+| `email.complained`                         | The address is suppressed for Marketing only (`reason = 'complaint'`), unless a row already covers it: a complaint is not a bounce.                                                                                                                                                                                                              | `complaint`   |
+| `email.failed`, `email.suppressed`         | The delivery fails (the provider refused or skipped the send).                                                                                                                                                                                                                                                                                    | `failed`      |
+| anything else                              | Recorded only (a `Temporary` bounce, `delivery_delayed`, `sent`, `opened`).                                                                                                                                                                                                                                                                      | `recorded`    |
+
+The owner is the delivery's person, or else the account holding the address verified. The event row
+keeps no payload beyond the bounce kind; the address is stored only on the suppression row.
+`SECURITY DEFINER`, `search_path = ''`; service role only.
+
+#### `comms.fn_unsubscribe_marketing(p_user uuid) → text`
+
+The account's one-click marketing unsubscribe (`POST /api/comms/unsubscribe`, after
+`MarketingUnsubscribeService` verifies the signed link). It suppresses the person's primary verified
+address for email, Marketing only (`reason = 'unsubscribe'`), so security and money mail still
+reaches it. Answers `unsubscribed`, `already` (an active row covers it) or `no_address`. Service role
+only.
+
+**Lifting.** A hard bounce is lifted only by the owner confirming the address again: Settings →
+Account's **Confirm again** re-issues a token for a verified but undeliverable address
+(`security.issue_email_verification`), and `org.confirm_user_email` lifts it
+(`lifted_reason = 'reverified'`). An unsubscribe or a complaint is never lifted by re-verifying.
+Changing the primary address leaves the old address's row in place. **Not built:** turning
+Marketing email back on in Settings does not yet lift a one-click unsubscribe (PRD-E16).
+
+Probe: `supabase/probes/email_bounce.sql` (rolled back).
 
 ---
 

@@ -349,8 +349,33 @@ function handoff(
 	}, { status: 201 });
 }
 
+/**
+ * The money switch on (`FINANCE_BACKEND_LIVE`, Supabase configured, not mocked) — a checkout pays only
+ * where money may move (`money-gate.ts`); `money-gate.test.ts` proves it refuses where it may not.
+ * Answers the function that puts the environment back.
+ */
+function moneySwitchOn(): () => void {
+	const vars: Record<string, string | undefined> = {
+		FINANCE_BACKEND_LIVE: "true",
+		USE_MOCKS: "false",
+		VITE_USE_MOCKS: undefined,
+		SUPABASE_URL: Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:59999",
+		SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY") ?? "anon-key",
+	};
+	const prior = new Map(Object.keys(vars).map((key) => [key, Deno.env.get(key)]));
+	const apply = (values: Iterable<[string, string | undefined]>) => {
+		for (const [key, value] of values) {
+			if (value === undefined) Deno.env.delete(key);
+			else Deno.env.set(key, value);
+		}
+	};
+	apply(Object.entries(vars));
+	return () => apply(prior);
+}
+
 /** Run `run` against a checkout reading `world`, every read and write faked; the live I/O comes back after. */
 async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Promise<void> {
+	const restoreEnv = moneySwitchOn();
 	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [], locks: [], available: [] };
 	const buyer = { ...BUYER, billingCurrency: world.billing ?? "GBP" };
 	setCheckoutIoForTesting({
@@ -418,6 +443,7 @@ async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Pro
 	} finally {
 		setCheckoutIoForTesting(null);
 		usdPerGbp = 1.25;
+		restoreEnv();
 	}
 }
 

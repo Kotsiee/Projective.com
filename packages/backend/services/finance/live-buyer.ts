@@ -27,6 +27,7 @@ import { fetchPartyCards } from "../profile/party-cards.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
+import { MONEY_WRITES_OFF, moneyWritesLive } from "./money-gate.ts";
 
 /**
  * live-buyer — the checkout's Details step and account gates, read and written as the signed-in
@@ -368,6 +369,8 @@ export async function saveBuyerDetails(
 		if (!current.eligible && wantsMode === "intervaled_monthly") {
 			return { ok: false, status: 422, message: current.ineligibleReason ?? "Monthly invoicing isn't available." };
 		}
+		// Invoicing terms decide how the account pays: a money write, behind the money switch.
+		if (!moneyWritesLive()) return { ok: false, status: 503, message: MONEY_WRITES_OFF };
 		const terms = await db.rpc("set_invoicing_terms", {
 			p_owner_type: owner.ownerType,
 			p_owner_id: owner.ownerId,

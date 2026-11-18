@@ -21,8 +21,8 @@
 --     pays the claimed ticket and refunds the unclaimed one
 --   9 a solo seller's service is unchanged: prepaid until the claim, then bound to the claimant
 --  10 nowhere in the database is a held ticket escrow bound while nobody holds its ticket
--- FBP DB16 (conservation_identity.sql) has not landed, so every settlement here asserts its own
--- conservation: for each escrow, paid out + platform fee + refunded = held.
+-- Every settlement here is checked against the conservation identity (finance.v_conservation_identity,
+-- FBP DB16): it leaves each currency's imbalance where the last fixture credit left it.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a seeded local DB:
 --   deno task test:probes service_unclaimed_escrow
@@ -59,21 +59,20 @@ LANGUAGE sql STABLE AS $$
      WHERE t.ref_table = 'escrows' AND t.ref_id = p_escrow AND t.direction = 'credit'
        AND t.wallet_id = pg_temp.mr1_payer_wallet(p_escrow);
 $$;
--- Every escrow on these tickets: paid + fee + refunded = held, and nothing still held. Raises.
-CREATE FUNCTION pg_temp.mr1_assert_conserved(p_tickets uuid[], p_label text) RETURNS void
+-- The identity's imbalances now, kept for the checks below; taken again after each fixture credit,
+-- which has no payment behind it.
+CREATE FUNCTION pg_temp.mr1_mark() RETURNS void
+LANGUAGE sql AS $$
+    SELECT set_config('probe.imbalance', (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c)::text, true);
+$$;
+-- Every settlement since the mark left each currency's imbalance where it was. Raises.
+CREATE FUNCTION pg_temp.mr1_assert_conserved(p_label text) RETURNS void
 LANGUAGE plpgsql AS $$
-DECLARE
-    r record;
 BEGIN
-    FOR r IN SELECT e.id, e.status, e.amount_cents, COALESCE(e.platform_fee_cents, 0) AS fee
-               FROM finance.escrows e
-              WHERE e.ticket_id = ANY (p_tickets) AND e.revision_id IS NULL AND e.status IN ('released', 'refunded')
-    LOOP
-        IF pg_temp.mr1_paid(r.id) + r.fee + pg_temp.mr1_refunded(r.id) <> r.amount_cents THEN
-            RAISE EXCEPTION 'FAIL % conservation on escrow %: paid % + fee % + refunded % <> held %',
-                p_label, r.id, pg_temp.mr1_paid(r.id), r.fee, pg_temp.mr1_refunded(r.id), r.amount_cents;
-        END IF;
-    END LOOP;
+    IF (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c) IS DISTINCT FROM current_setting('probe.imbalance')::jsonb THEN
+        RAISE EXCEPTION 'FAIL % conservation: the identity moved from % to %',
+            p_label, current_setting('probe.imbalance'), (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
+    END IF;
 END;
 $$;
 
@@ -155,6 +154,7 @@ BEGIN
     v_wallet_type := finance.fn_person_wallet_type(v_buyer);
     PERFORM finance.fn_ensure_wallet(v_wallet_type, v_buyer, v_currency);
     PERFORM finance.fn_wallet_credit(v_buyer, v_wallet_type, v_currency, 50000000, 'topup', 'inbound_payments', gen_random_uuid());
+    PERFORM pg_temp.mr1_mark();
     SELECT id INTO v_wallet FROM finance.wallets
      WHERE owner_type = v_wallet_type AND owner_id = v_buyer AND currency = v_currency;
 
@@ -213,7 +213,7 @@ BEGIN
             RAISE EXCEPTION 'FAIL 2 a Fair Exit on unclaimed work paid % and refunded % of %',
                 pg_temp.mr1_paid(v_ea) + pg_temp.mr1_paid(v_eb), v_after - v_before, v_amount_a + v_amount_b;
         END IF;
-        PERFORM pg_temp.mr1_assert_conserved(ARRAY[v_ta, v_tb], '2');
+        PERFORM pg_temp.mr1_assert_conserved('2');
         RAISE NOTICE 'PASS 2 a stage Fair Exit on unclaimed work pays nobody and refunds % whole', v_after - v_before;
         RAISE EXCEPTION 'probe-undo';
     EXCEPTION WHEN SQLSTATE 'P0001' THEN
@@ -291,7 +291,7 @@ BEGIN
         IF (SELECT status FROM finance.escrows WHERE id = v_ea) <> 'held' THEN
             RAISE EXCEPTION 'FAIL 5 the sweep touched the claimed ticket''s escrow';
         END IF;
-        PERFORM pg_temp.mr1_assert_conserved(ARRAY[v_tb], '5');
+        PERFORM pg_temp.mr1_assert_conserved('5');
         RAISE NOTICE 'PASS 5 the TTL leaves both before %h; after it % comes back whole, logged, and the claimed escrow stays held', v_ttl, v_amount_b;
         RAISE EXCEPTION 'probe-undo';
     EXCEPTION WHEN SQLSTATE 'P0001' THEN
@@ -322,7 +322,7 @@ BEGIN
             RAISE EXCEPTION 'FAIL 6 the claimed ticket did not pay the team through its split (paid %, % members)',
                 pg_temp.mr1_paid(v_ea), v_members;
         END IF;
-        PERFORM pg_temp.mr1_assert_conserved(ARRAY[v_ta, v_tb], '6');
+        PERFORM pg_temp.mr1_assert_conserved('6');
         RAISE NOTICE 'PASS 6 approval paid the claimed ticket % across % team wallet(s) and refunded the unclaimed % whole',
             pg_temp.mr1_paid(v_ea), v_members, v_amount_b;
         RAISE EXCEPTION 'probe-undo';
@@ -348,7 +348,7 @@ BEGIN
         IF v_after - v_before <> v_amount_b + pg_temp.mr1_refunded(v_ea) THEN
             RAISE EXCEPTION 'FAIL 7 the buyer got % back, expected %', v_after - v_before, v_amount_b + pg_temp.mr1_refunded(v_ea);
         END IF;
-        PERFORM pg_temp.mr1_assert_conserved(ARRAY[v_ta, v_tb], '7');
+        PERFORM pg_temp.mr1_assert_conserved('7');
         RAISE NOTICE 'PASS 7 Fair Exit at 50%%: the claimed ticket paid % and refunded %; the unclaimed % came back whole',
             pg_temp.mr1_paid(v_ea), pg_temp.mr1_refunded(v_ea), v_amount_b;
         RAISE EXCEPTION 'probe-undo';
@@ -385,6 +385,7 @@ BEGIN
     PERFORM finance.fn_ensure_wallet(v_brief_payer_type, COALESCE(v_brief_payer, v_brief_owner), v_brief_currency);
     PERFORM finance.fn_wallet_credit(COALESCE(v_brief_payer, v_brief_owner), v_brief_payer_type, v_brief_currency,
                                      50000000, 'topup', 'inbound_payments', gen_random_uuid());
+    PERFORM pg_temp.mr1_mark();
     -- No approval threshold and an uncapped envelope, as business_spend_gate.sql sets them up.
     UPDATE finance.wallets SET approval_threshold_cents = NULL
      WHERE owner_type = v_brief_payer_type AND owner_id = COALESCE(v_brief_payer, v_brief_owner) AND currency = v_brief_currency;
@@ -428,7 +429,7 @@ BEGIN
             OR (SELECT pg_temp.mr1_paid(id) FROM finance.escrows WHERE ticket_id = v_bc) <= 0 THEN
             RAISE EXCEPTION 'FAIL 8 approving the brief''s stage: %', v_out;
         END IF;
-        PERFORM pg_temp.mr1_assert_conserved(ARRAY[v_bc, v_bd], '8');
+        PERFORM pg_temp.mr1_assert_conserved('8');
         RAISE NOTICE 'PASS 8 a team-hired brief holds unclaimed work prepaid; approval pays the claimed ticket and refunds the other whole';
         RAISE EXCEPTION 'probe-undo';
     EXCEPTION WHEN SQLSTATE 'P0001' THEN
@@ -451,6 +452,7 @@ BEGIN
     SELECT upper(COALESCE(p.currency, 'USD')) INTO v_currency FROM projects.projects p WHERE p.id = v_solo_project;
     PERFORM finance.fn_ensure_wallet(v_wallet_type, v_buyer, v_currency);
     PERFORM finance.fn_wallet_credit(v_buyer, v_wallet_type, v_currency, 50000000, 'topup', 'inbound_payments', gen_random_uuid());
+    PERFORM pg_temp.mr1_mark();
     SELECT id INTO v_solo_s1 FROM projects.project_stages WHERE project_id = v_solo_project ORDER BY sort_order LIMIT 1;
     INSERT INTO projects.tickets (project_id, owner_user_id, current_stage_id, status, title, description, text_description, required_stages)
     VALUES (v_solo_project, v_buyer, NULL, 'backlog', 'Probe 466 solo', '{"t":"x"}', 'A description.',

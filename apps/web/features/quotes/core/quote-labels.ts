@@ -42,11 +42,33 @@ export function offerStateLabel(state: QuoteOfferState): string {
 	}
 }
 
-/** Whether a status renders with the attention tone: it is waiting on this viewer. */
+/**
+ * Whether a status renders with the attention tone: it is waiting on this viewer. An accepted offer
+ * waits on its buyer to pay until it expires (CK7); past that, nothing they can pay is waiting.
+ */
 export function waitsOnViewer(quote: QuoteView): boolean {
 	if (quote.role === "host") return quote.status === "sent";
 	return (quote.status === "answered" && quote.offer?.state === "pending") ||
-		(quote.status === "accepted" && !quote.ordered);
+		(quote.status === "accepted" && !quote.ordered && quote.offer?.state === "accepted");
+}
+
+/**
+ * The one sentence under an offer about its money, from the viewer's side: how an open or accepted
+ * offer is paid, that a lapsed accepted offer can no longer be (the seller's expiry bounds payment,
+ * CK7), or that it has been paid for. `null` when there is nothing to say.
+ */
+export function offerMoneyNote(quote: QuoteView): string | null {
+	const state = quote.offer?.state;
+	if (quote.ordered) return "Paid for. The engagement is in Projects.";
+	if (state === "pending" || state === "accepted") {
+		return "Paid into escrow at checkout, and released when the delivery is approved.";
+	}
+	if (state === "expired" && quote.status === "accepted") {
+		return quote.role === "buyer"
+			? "This offer lapsed before it was paid. Withdraw the request, then ask again from the listing."
+			: "This offer lapsed before the buyer paid for it.";
+	}
+	return null;
 }
 
 /** A calendar date in the viewer's locale, e.g. "2 Dec 2026". */

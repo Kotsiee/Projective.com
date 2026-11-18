@@ -14,10 +14,14 @@ Tables: [Tables.md](Tables.md) · Policies: [Policies.md](Policies.md).
 
 ## Newsletter
 
-The double opt-in (Decision #480, PRD-E11). Every function below is `search_path = ''` and **service
-role only** (`00002510`, `[community.newsletter]`), called from `NewsletterBackendService`
-(`packages/backend/services/newsletter/`). The last three take only the mailed link's token, the
-address's one credential. The probe `supabase/probes/newsletter_double_opt_in.sql` pins them.
+The double opt-in (Decision #480, PRD-E11) and the provider's copy of the list (CD1 step 5). Every
+function below is `search_path = ''` and **service role only**, called from
+`packages/backend/services/newsletter/`. The double opt-in's doors are named in `00002510`
+(`[community.newsletter]`); the four provider doors hold it through the deny-by-default default
+privileges alone (no client role may execute them; the service role keeps EXECUTE), as NT3's comms
+doors do. The link's three doors take only the mailed link's token, the address's one credential.
+The probes `supabase/probes/newsletter_double_opt_in.sql` and `newsletter_provider_sync.sql` pin
+them.
 
 ### `community.fn_newsletter_pending_topics(p_row community.newsletter_subscriptions) → text[]`
 
@@ -94,6 +98,61 @@ The unsubscribe page's button (`p_reason = 'link'`) and a mail client's RFC 8058
 `unsubscribed_at`, the reason, and clears a pending request), `already_unsubscribed` (the first
 opt-out's time and reason stay; a request pending since is cleared), `not_found`. Nothing is
 deleted.
+
+### `community.fn_newsletter_provider_sync_enabled() → boolean`
+
+The `newsletter.provider_sync` feature flag (`00005001`, off in every seed), false when the row is
+missing. `SECURITY DEFINER` for the reason `comms.fn_dispatch_enabled` is: the service role reads no
+flag table, and this answers one boolean of one flag.
+
+### `community.newsletter_sync_batch(p_limit integer DEFAULT 50) → jsonb`
+
+What `newsletter-provider-sync` (`NewsletterProviderSync.run`) must do next, reading only. `STABLE`,
+`SECURITY INVOKER`. A row is **send-eligible** when confirmed, not unsubscribed and not suppressed
+for marketing email (`fn_newsletter_suppressed`); the provider must hold a contact for exactly those
+rows:
+
+| Action   | When                                                                                         |
+| :------- | :------------------------------------------------------------------------------------------- |
+| `upsert` | eligible, and `provider_synced_at` is NULL or older than `updated_at`                        |
+| `remove` | not eligible, and `provider_contact_ref` is set (unsubscribed, or suppressed with a contact) |
+
+Returns `{ enabled, segment_id, topic_ids, rows }`: the flag (no rows while it is off), the raw
+values of the params `newsletter_provider_segment_id` and `newsletter_provider_topic_ids`, and at
+most `p_limit` (1–500) rows, oldest change first. Each row is
+`{ id, email, topics, action, contact_ref, version, reconfirmed }` and nothing else of the
+subscription; `version` is the row's `updated_at`, and `reconfirmed` is true when the row was
+confirmed after the version the provider last received (the one case in which an existing contact's
+provider-side opt-out may be lifted).
+
+### `community.record_newsletter_sync(p_id uuid, p_version timestamptz, p_action text, p_contact_ref text DEFAULT NULL, p_topics text[] DEFAULT NULL) → text`
+
+What one provider call did, stamped against the version the batch read. `SECURITY INVOKER`, under a
+row lock, never touching `updated_at`. `upserted` sets `provider_contact_ref`, `provider_topics` and
+`provider_synced_at = p_version` (`stale` when a newer version was already recorded); `refused` (the
+provider refused the address for good) sets `provider_synced_at = p_version`, so it waits for the
+row's next change; `removed` clears all three provider columns, but only for the contact it deleted
+(`stale` otherwise). Returns `recorded` · `stale` · `not_found`; an unknown action, an upsert or
+removal without its contact id, or an unknown topic is `22023`.
+
+### `community.record_newsletter_provider_event(p_email text, p_event text, p_occurred_at timestamptz DEFAULT NULL, p_contact_ref text DEFAULT NULL, p_opted_out text[] DEFAULT NULL, p_opted_in text[] DEFAULT NULL) → jsonb`
+
+The provider's own news about an address, from NT3's signed Resend webhook
+(`applyNewsletterProviderEvent`). `SECURITY INVOKER`, keyed by the address under a row lock. The
+provider can take an address off the list, or a topic off an address, but never put either back.
+
+| Event          | From                                         | Effect                                                                                                                                                                                                                              |
+| :------------- | :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unsubscribed` | `contact.updated` with `unsubscribed: true`  | `unsubscribed_at`, reason `provider`; `stale` for a contact other than the one known.                                                                                                                                               |
+| `complaint`    | `email.complained` (any mail to the address) | `unsubscribed_at`, reason `complaint`, beside NT3's Marketing-only suppression.                                                                                                                                                     |
+| `topics`       | `contact.topics.updated`                     | Each opted-out topic the provider had opted in (`provider_topics`) leaves `topics`; the last one leaving unsubscribes (reason `provider`). An opted-in topic the provider never held is not added: the row is re-synced (`resync`). |
+| `present`      | `contact.created` / `contact.updated`        | A contact that is not the known one is recorded and re-synced, so a stray contact of an ineligible row is deleted.                                                                                                                  |
+| `deleted`      | `contact.deleted`                            | The known contact's deletion clears the provider columns and unsubscribes (reason `provider`); any other deletion is `unchanged`.                                                                                                   |
+
+A complaint or topic event that happened before the row's last confirmation is `stale`, so a late or
+replayed delivery never undoes a newer consent. An unsubscribe clears a pending request. Returns
+`{ outcome }`: `unsubscribed` · `already_unsubscribed` · `topics_removed` · `resync` · `unchanged` ·
+`stale` · `not_found`; an unknown event or topic, or a contact event without its id, is `22023`.
 
 ## Help feedback
 

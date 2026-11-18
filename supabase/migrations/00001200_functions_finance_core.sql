@@ -1760,10 +1760,10 @@ END;
 $$;
 
 -- finance.wallets.balance_cents is a cache written beside the ledger, so it can drift from it. Compares
--- every wallet's cached balance with the SUM of its signed ledger rows (finance.v_wallet_reconciliation,
--- 00003004) and with its newest row's balance_after_cents, and its pots with their movements and with
--- its balance (FINANCE_AUDIT L7), in ONE statement so a movement committing mid-run is seen whole or
--- not at all.
+-- every wallet's cached balance with the SUM of its signed ledger rows and with its newest row's
+-- balance_after_cents, and its pots with their movements and with its balance (FINANCE_AUDIT L7), by
+-- reading finance.v_wallet_drift (00003004) in ONE statement, so a movement committing mid-run is seen
+-- whole or not at all.
 -- Each drifted wallet becomes an `error` row in ops.log_entries (scope `finance.reconcile_wallets`,
 -- the figures in `data`) and the run raises a WARNING; returns the number of drifted wallets.
 -- Read-only on finance: drift is reported for a human, never auto-corrected.
@@ -1780,21 +1780,9 @@ DECLARE
     v_fx integer;
 BEGIN
     WITH drift AS (
-        SELECT r.wallet_id AS id, r.owner_type, r.owner_id, r.currency, r.balance_cents,
-               r.ledger_sum_cents, r.earmarked_cents, r.pot_drift_cents,
-               latest.balance_after_cents AS latest_balance_after_cents
-          FROM finance.v_wallet_reconciliation r
-          LEFT JOIN LATERAL (
-                SELECT t.balance_after_cents
-                  FROM finance.transactions t
-                 WHERE t.wallet_id = r.wallet_id
-                 ORDER BY t.created_at DESC, t.id DESC
-                 LIMIT 1
-          ) latest ON true
-         WHERE r.drift_cents <> 0
-            OR r.balance_cents <> COALESCE(latest.balance_after_cents, 0)
-            OR r.pot_drift_cents <> 0
-            OR r.earmarked_cents > r.balance_cents
+        SELECT d.wallet_id AS id, d.owner_type, d.owner_id, d.currency, d.balance_cents,
+               d.ledger_sum_cents, d.earmarked_cents, d.pot_drift_cents, d.latest_balance_after_cents
+          FROM finance.v_wallet_drift d
     ), logged AS (
         INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
         SELECT 'reconcile:' || v_run::text,
@@ -1851,6 +1839,136 @@ service role / pg_cron only.';
 
 -- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
 -- job registry (`ops.scheduled_jobs`, 00005060).
+-- #endregion
+
+-- #region Conservation identity — checked nightly, read by operators (Decision #337, ruling M2 (A); FBP DB16)
+-- The nightly check: one ops.log_entries row per currency in finance.v_conservation_identity (00003004),
+-- scope `finance.conservation`, source `server`: `error` when the currency does not conserve, `metric`
+-- when it does, every term in `data` under one `run_id`. It runs after finance.fn_reconcile_wallets
+-- and, like it, never corrects anything: an imbalance is a human's to explain. Returns how many
+-- currencies are out of balance and raises a WARNING when any is. Service role / pg_cron only.
+CREATE OR REPLACE FUNCTION finance.fn_check_conservation()
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_run uuid := pg_catalog.gen_random_uuid();
+    v_bad integer;
+BEGIN
+    WITH logged AS (
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        SELECT 'conservation:' || v_run::text,
+               CASE WHEN c.imbalance_minor <> 0 THEN 'error' ELSE 'metric' END,
+               CASE WHEN c.imbalance_minor <> 0
+                    THEN pg_catalog.format('%s does not conserve: the platform accounts for %s, external movements explain %s (imbalance %s)',
+                             c.currency, c.accounted_minor, c.external_minor, c.imbalance_minor)
+                    ELSE pg_catalog.format('%s conserves: %s accounted for, all of it explained by external movements',
+                             c.currency, c.accounted_minor)
+               END,
+               pg_catalog.now(),
+               'server',
+               'finance.conservation',
+               pg_catalog.to_jsonb(c) || pg_catalog.jsonb_build_object('run_id', v_run)
+          FROM finance.v_conservation_identity c
+        RETURNING level
+    )
+    SELECT pg_catalog.count(*) FILTER (WHERE level = 'error')::integer INTO v_bad FROM logged;
+
+    IF v_bad > 0 THEN
+        RAISE WARNING 'finance.fn_check_conservation: % currency(ies) do not conserve money (run %)', v_bad, v_run;
+    END IF;
+    RETURN v_bad;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_check_conservation() IS
+'Nightly conservation check (Decision #337, ruling M2 (A)): one ops.log_entries row per currency of
+finance.v_conservation_identity, scope finance.conservation, level error for an imbalance and metric
+for a balanced currency, every term in data. Never corrects anything. Service role / pg_cron only.';
+
+-- Scheduled nightly at 03:50 UTC, after the 03:40 reconciliation, as `finance-conservation-check` by
+-- the job registry (`ops.scheduled_jobs`, 00005060).
+
+-- The operator read behind /admin/ledger's Conservation and Wallet drift sections: security.is_admin()
+-- only; anyone else gets 42501, which the page answers with a 404, as /admin/disputes does (Decision
+-- #212). `currencies` is the identity now; `nights` the checks of the last 30 days, newest first (one
+-- row per currency per run); `drift` what is open now (every wallet finance.v_wallet_drift lists, every
+-- conversion finance.v_fx_conversion_reconciliation does) and how many drift rows the nightly
+-- reconciliation logged in those 30 days. Reads only; ids, no names.
+CREATE OR REPLACE FUNCTION finance.get_ledger_health()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read ledger health' USING ERRCODE = '42501';
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'as_of', pg_catalog.now(),
+        'currencies', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(c) ORDER BY c.currency)
+              FROM finance.v_conservation_identity c
+        ), '[]'::jsonb),
+        'nights', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'run_id', l.data ->> 'run_id',
+                       'checked_at', l.created_at,
+                       'currency', l.data ->> 'currency',
+                       'balanced', l.level = 'metric',
+                       'external_minor', (l.data ->> 'external_minor')::bigint,
+                       'accounted_minor', (l.data ->> 'accounted_minor')::bigint,
+                       'imbalance_minor', (l.data ->> 'imbalance_minor')::bigint
+                   ) ORDER BY l.created_at DESC, l.data ->> 'currency')
+              FROM ops.log_entries l
+             WHERE l.scope = 'finance.conservation' AND l.source = 'server'
+               AND l.created_at >= pg_catalog.now() - interval '30 days'
+        ), '[]'::jsonb),
+        'drift', pg_catalog.jsonb_build_object(
+            'wallets', COALESCE((
+                SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                           'wallet_id', d.wallet_id,
+                           'owner_type', d.owner_type,
+                           'currency', d.currency,
+                           'balance_minor', d.balance_cents,
+                           'ledger_sum_minor', d.ledger_sum_cents,
+                           'latest_balance_after_minor', d.latest_balance_after_cents,
+                           'earmarked_minor', d.earmarked_cents,
+                           'pot_drift_minor', d.pot_drift_cents
+                       ) ORDER BY d.currency, d.wallet_id)
+                  FROM finance.v_wallet_drift d
+            ), '[]'::jsonb),
+            'conversions', COALESCE((
+                SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                           'conversion_id', x.conversion_id,
+                           'escrow_id', x.escrow_id,
+                           'kind', x.kind,
+                           'problem', x.problem,
+                           'expected_minor', x.expected_minor,
+                           'ledger_minor', x.ledger_minor
+                       ) ORDER BY x.kind, x.problem, x.conversion_id)
+                  FROM finance.v_fx_conversion_reconciliation x
+            ), '[]'::jsonb),
+            'logged_30d', (
+                SELECT pg_catalog.count(*)
+                  FROM ops.log_entries l
+                 WHERE l.scope = 'finance.reconcile_wallets' AND l.source = 'server' AND l.level = 'error'
+                   AND l.created_at >= pg_catalog.now() - interval '30 days'
+            ),
+            'last_logged_at', (
+                SELECT pg_catalog.max(l.created_at)
+                  FROM ops.log_entries l
+                 WHERE l.scope = 'finance.reconcile_wallets' AND l.source = 'server' AND l.level = 'error'
+            )
+        )
+    );
+END;
+$$;
 -- #endregion
 
 -- #region Escrow age — how long held money sits in the platform balance (Decision #473, MR7)

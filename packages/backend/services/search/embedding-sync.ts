@@ -13,6 +13,7 @@ import {
 import { EmbeddingBackendService } from "./EmbeddingBackendService.ts";
 import {
 	isEmbeddingCurrent,
+	NonUnitEmbeddingError,
 	readEmbeddingStates,
 	type StoredEmbedding,
 	writeEmbedding,
@@ -93,6 +94,11 @@ export interface EmbeddingSyncReport {
 	embedded: number;
 	/** Embedded, but the entity had no index row to hold the vector. */
 	missing: number;
+	/**
+	 * Embedded, but `fn_set_embedding` refused the vector as off unit length (`PV422`). Each is logged
+	 * by kind and id and skipped; the sync goes on, and a re-run embeds it again.
+	 */
+	rejected: number;
 	/** Left unembedded because a chunk failed; a re-run picks them up. */
 	failed: number;
 	/** Tokens Voyage billed for this sync. */
@@ -122,7 +128,8 @@ export function setEmbeddingSyncDepsForTesting(next: Partial<EmbeddingSyncDeps> 
 
 /**
  * Embed and store every stale target, stopping at the first chunk Voyage or the database refuses —
- * what is stored stays stored, and a re-run skips it by its hash.
+ * what is stored stays stored, and a re-run skips it by its hash. A vector the database refuses as
+ * off unit length stops nothing: that one target is logged, counted as `rejected` and skipped.
  *
  * Chunks are planned from each target's token estimate — the one `embedDocuments` plans with — under
  * `DOCUMENT_BATCH`'s token ceiling and at most `chunkSize` inputs (capped at
@@ -142,6 +149,7 @@ export async function syncEmbeddings(
 		skipped: 0,
 		embedded: 0,
 		missing: 0,
+		rejected: 0,
 		failed: 0,
 		tokens: 0,
 	};
@@ -169,9 +177,17 @@ export async function syncEmbeddings(
 		let written = 0;
 		try {
 			for (const [n, target] of chunk.entries()) {
-				const stored = await syncDeps.writeEmbedding(target.entity, res.data[n], target.hash);
-				if (stored) report.embedded++;
-				else report.missing++;
+				try {
+					const stored = await syncDeps.writeEmbedding(target.entity, res.data[n], target.hash);
+					if (stored) report.embedded++;
+					else report.missing++;
+				} catch (error) {
+					if (!(error instanceof NonUnitEmbeddingError)) throw error;
+					report.rejected++;
+					console.warn(
+						`[embeddings] skipped ${target.entity.kind} ${target.entity.id} — not unit length`,
+					);
+				}
 				written++;
 			}
 		} catch (error) {

@@ -30,6 +30,11 @@ export const UserEmailSchema = z.object({
 	verifiedAt: z.string().nullable(),
 	/** The address GoTrue signs this account in with — it cannot be removed from here. */
 	isSignIn: z.boolean(),
+	/**
+	 * Mail to this address bounced hard, so Projective sends it nothing in any category until it is
+	 * changed or confirmed again (COMMS NT3; Decision #339, ruling N3 (b)). An unsubscribe is not this.
+	 */
+	undeliverable: z.boolean(),
 	createdAt: z.string(),
 });
 export type UserEmail = z.infer<typeof UserEmailSchema>;

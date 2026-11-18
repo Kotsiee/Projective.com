@@ -55,15 +55,26 @@ Deno.test("deliverySources — the dispatcher half is the running dispatcher, th
 	assertEquals(sources, { dispatcher: true, transports: { email: true, push: false, sms: false } });
 });
 
-Deno.test("deliverySources — a running dispatcher with the shipped, empty registry makes no channel live, even with a real Resend key", async () => {
+Deno.test("deliverySources — email is live once the dispatcher runs and Resend is configured (NT3); push and SMS are not", async () => {
 	await withEnvAsync({
 		RESEND_API_KEY: "re_live_key",
 		MAIL_FROM: "Projective <no-reply@example.com>",
 	}, async () => {
 		const sources = await deliverySources(() => Promise.resolve(true));
-		assertEquals(sources.dispatcher, true);
-		assertEquals(sources.transports, NO_TRANSPORT);
-		assertEquals(await channelLiveness(null, sources), NO_LIVE_CHANNELS);
+		assertEquals(sources.transports, { email: true, push: false, sms: false });
+		assertEquals(await channelLiveness(null, sources), { email: true, push: false, sms: false });
+		// The same key with no dispatcher running still sends nothing.
+		const stopped = await deliverySources(() => Promise.resolve(false));
+		assertEquals(await channelLiveness(null, stopped), NO_LIVE_CHANNELS);
+	});
+});
+
+Deno.test("deliverySources — the placeholder Resend key is no email transport", async () => {
+	await withEnvAsync({
+		RESEND_API_KEY: "XXXX-XXXX",
+		MAIL_FROM: "Projective <no-reply@example.com>",
+	}, async () => {
+		assertEquals((await deliverySources(() => Promise.resolve(true))).transports, NO_TRANSPORT);
 	});
 });
 

@@ -54,6 +54,9 @@ BEGIN
     IF pg_catalog.to_regprocedure('finance.fn_reconcile_wallets()') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-reconcile-wallets', '40 3 * * *']];
     END IF;
+    IF pg_catalog.to_regprocedure('finance.fn_check_conservation()') IS NOT NULL THEN
+        v_expected := v_expected || ARRAY[ARRAY['finance-conservation-check', '50 3 * * *']];
+    END IF;
     IF pg_catalog.to_regprocedure('finance.fn_mature_pending_releases(integer)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-mature-pending-releases', '5 * * * *']];
     END IF;

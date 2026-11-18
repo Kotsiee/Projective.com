@@ -1,7 +1,7 @@
 import type { VerificationStatus } from "@projective/types/finance";
 import { serverEnv } from "../../core/env.ts";
-import { isFinanceBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
 	applyIdentityEvent,
@@ -109,12 +109,7 @@ export class DevVerificationBackendService {
 			return fail(404, { message: "Not found." });
 		}
 		if (!canReadLive(actor)) return fail(401, { message: "Sign in to verify your account." });
-		if (!isFinanceBackendLive()) {
-			return fail(503, {
-				message:
-					"Verification isn't connected in this environment — run against the live database.",
-			});
-		}
+		if (!moneyWritesLive()) return moneyWritesOff();
 
 		const current = await myVerificationStatus(actor.accessToken);
 		if (!current.ok) return refused(current.refusal);

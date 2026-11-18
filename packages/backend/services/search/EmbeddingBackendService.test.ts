@@ -5,7 +5,11 @@ import {
 	assertFalse,
 	assertStringIncludes,
 } from "@std/assert";
-import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "@projective/types/explore";
+import {
+	EMBEDDING_DIMENSIONS,
+	EMBEDDING_MODEL,
+	EMBEDDING_SQLSTATE,
+} from "@projective/types/explore";
 import {
 	EmbeddingBackendService,
 	embeddingBreakerState,
@@ -31,6 +35,7 @@ import {
 	setEmbeddingSyncDepsForTesting,
 	syncEmbeddings,
 } from "./embedding-sync.ts";
+import { NonUnitEmbeddingError, setEmbeddingError } from "./embedding-index.ts";
 import { estimateEmbeddingTokens } from "../../core/embedding-text.ts";
 import type { CatalogEntity } from "../explore/live-catalog.ts";
 
@@ -611,6 +616,60 @@ Deno.test("syncEmbeddings — a refused write counts the rest of its chunk and e
 		assertEquals(report.failed, 5);
 		assertStringIncludes(report.error ?? "", "fn_set_embedding");
 	} finally {
+		setEmbeddingDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
+	}
+});
+
+Deno.test("setEmbeddingError — PV422 is the unit-length refusal, by kind and id only; any other code is a failure", () => {
+	const entity: CatalogEntity = { kind: "team", id: "00000000-0000-4000-8000-000000000007" };
+	const refused = setEmbeddingError(entity, {
+		code: EMBEDDING_SQLSTATE.notUnitLength,
+		message: "fn_set_embedding: a unit-length vector is required, not norm 2.000000",
+	});
+	assert(refused instanceof NonUnitEmbeddingError);
+	assertEquals(refused.entity, entity);
+	assertStringIncludes(refused.message, `team ${entity.id}`);
+	assertFalse(refused.message.includes("norm"), "the refusal never echoes the vector");
+	const failed = setEmbeddingError(entity, {
+		code: "22023",
+		message: "a 1024-dimension vector is required",
+	});
+	assertFalse(failed instanceof NonUnitEmbeddingError);
+	assertStringIncludes(failed.message, "search.fn_set_embedding failed — a 1024-dimension vector");
+});
+
+Deno.test("syncEmbeddings — a vector refused as off unit length is logged and skipped; the sync goes on", async () => {
+	const targets = Array.from({ length: 6 }, (_, n) => syncTarget(n, 40));
+	const { fetch } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	const written: string[] = [];
+	setEmbeddingSyncDepsForTesting({
+		readEmbeddingStates: () => Promise.resolve(new Map()),
+		writeEmbedding: (entity: CatalogEntity) => {
+			if (entity.id === targets[1].entity.id || entity.id === targets[4].entity.id) {
+				return Promise.reject(new NonUnitEmbeddingError(entity));
+			}
+			written.push(entity.id);
+			return Promise.resolve(true);
+		},
+	});
+	const warnings: string[] = [];
+	const { warn } = console;
+	console.warn = (...args: unknown[]) => warnings.push(args.join(" "));
+	try {
+		const report = await syncEmbeddings(targets, { chunkSize: 4 });
+		assertEquals(written, [0, 2, 3, 5].map((n) => targets[n].entity.id));
+		assertEquals(report.embedded, 4);
+		assertEquals(report.rejected, 2);
+		assertEquals(report.failed, 0);
+		assertEquals(report.error, undefined, "a refused vector is not a failed sync");
+		assertEquals(warnings, [
+			`[embeddings] skipped product ${targets[1].entity.id} — not unit length`,
+			`[embeddings] skipped product ${targets[4].entity.id} — not unit length`,
+		]);
+	} finally {
+		console.warn = warn;
 		setEmbeddingDepsForTesting(null);
 		setEmbeddingSyncDepsForTesting(null);
 	}

@@ -58,6 +58,26 @@ INSERT INTO security.platform_params (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
+-- #region [newsletter] The newsletter's sender and its provider copy (CD1 step 5, Decision #480)
+-- Empty in every seed: each environment's Resend account has its own segment and topic ids and its
+-- own verified `news.` domain, set by hand once they exist (providers spec §8.5 setup 1). None of
+-- them is a secret. The sync stays off behind its flag until they are set.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('newsletter_mail_from', 'null'::jsonb,
+        'Who newsletter mail is from, e.g. "Projective <news@news.example.com>" on the verified newsletter subdomain (providers spec §8.5 setup 1, Decision #480 (a)), so a complaint about it never lands on the transactional notify. subdomain. Read by the confirmation mailer; null, or not an address, falls back to MAIL_FROM with a warning.'),
+    ('newsletter_provider_segment_id', 'null'::jsonb,
+        'The Resend segment every send-eligible newsletter address is synced into (newsletter-provider-sync, Decision #480 Q1 A). Broadcasts are sent to this segment, always with one topic. null: the sync does nothing.'),
+    ('newsletter_provider_topic_ids', '{"general": null, "changelog": null}'::jsonb,
+        'The Resend topic id of each newsletter topic (NEWSLETTER_TOPICS). Create both topics with a default subscription of opt_out; the sync sets every contact''s topics explicitly. Any id missing: the sync does nothing.')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO security.feature_flags (key, enabled, payload)
+VALUES ('newsletter.provider_sync', false, jsonb_build_object(
+    'description', 'When enabled, newsletter-provider-sync (every 5 minutes) pushes each send-eligible newsletter address and its topics to the Resend segment in newsletter_provider_segment_id and deletes the contact of an address that left or is suppressed. Turn on per environment once RESEND_API_KEY, the segment and both topic ids are set.'
+))
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- from 20260723090000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('base_currency', '"GBP"'::jsonb,

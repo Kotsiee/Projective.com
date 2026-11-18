@@ -92,6 +92,7 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
 3. ✅ **CD1 · Q1 and Q2: ruled 2026-11-18 (#480).** Q1 Option A, Resend contacts (one provider); Q2
    yes, a new topic on a confirmed address needs the confirm link. The owner also chose to build
    steps 1–4 ahead of NT3; step 5 (the sync) waits for NT3, and a re-run of CD1 does step 5 only.
+   Step 5 built 2026-11-18 after NT3 (#502), with one open owner question, #502 flag (d).
 4. **§C's SAC5 · Decision #444 flag (c)**: when you rule which top-level segments to reserve,
    include `newsletter`. CD1's two pages live under it, so CD1 then never edits `00001020`. SAC5
    landed (`cd6d016f`) without it; ruled 2026-11-18 (#480): CD1 adds it with its routes.
@@ -106,8 +107,11 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
    - Push: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
    - Text (when you have them): the three Twilio keys, a Messaging Service, geo-permissions limited
      to launch markets, and the status callback `https://<origin>/api/comms/webhooks/twilio`.
-   - CD1 under Option A: the provider list id in `security.platform_params` and the
-     `newsletter.provider_sync` flag on.
+   - CD1 under Option A (#502; EPI §8.5 setup 8's runbook): in Resend, verify `news.<domain>`,
+     create the segment and the topics `General` and `Changelog` (default subscription opt_out),
+     and add the four `contact.*` events to the webhook. In `security.platform_params`, set
+     `newsletter_provider_segment_id`, `newsletter_provider_topic_ids` and `newsletter_mail_from`.
+     Then turn the `newsletter.provider_sync` flag on.
 
    No agent types, pastes or echoes a secret, and no agent changes a hosted setting.
 6. **Twilio tokens** (#339 flag (n)): you obtain them. PRD-E8 stays 🟡 until then.
@@ -178,7 +182,7 @@ themselves are not repeated.
 | MS4    | Comms §2 | PRD-E9 → 🟡                 | Not started; runnable now beside NT2 (disjoint files). The three `message.*` rows are `00005010:66-68`, still `/messages/{entity_id}`. Its `'/messages/' \|\| ref` links resolve only once MS2 lands: if both finish together, merge MS2 first.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | MS5    | Comms §2 | PRD-E9 → ✅                 | ⏳ MS2, MS3, MS4. localStorage state is now only in `ConversationHeader.island.tsx` and `InboxView.island.tsx` (confirm `MessagesSidebar.island.tsx` holds none). `MessagingSection.tsx`'s line refs are stale: re-find the Read receipts and Typing indicator switches.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | NT2    | Comms §3 | PRD-E4 → 🟡                 | **✅ Built 2026-11-18 (PRD-E4 🟡).** The Status note above NT2 in COMMS §3 lists what landed and the four fixes found on the way. All three additions below are done. Was: not started; 🧑 1 is ruled: Option A, a Fresh route (#344 (a), 2026-11-18). Skip the stop and add no decision row. Refs: the flag read is `00001310:1157`, the URL read `:1169`, the params `00005001:136-143`. Three additions. (1) ST2's `services/comms/channel-liveness.ts:34` hard-codes `dispatcher: false`: derive it from the running dispatcher (the flag plus a well-formed `COMMS_DISPATCH_SECRET`) and extend `channel-liveness.test.ts`. (2) `scripts/cron-vault.ts` provisions only `INTEGRATIONS_CRON_SECRET` (`:16`, `:36`): add `COMMS_DISPATCH_SECRET` when `.env.local` holds a well-formed one, so `db:reset` leaves local dispatch working (notifications move no money, so the script's "money sweeps stay manual" rule holds); update its `$comment` in `deno.json`. (3) Note in PRD-E10's evidence that the claim now consults `fn_is_suppressed` (CAS N8); E10 stays ❌ until NT3. |
-| NT3    | Comms §3 | PRD-E5 → 🟡, PRD-E10 → 🟡   | ⏳ NT2 and MS4 (`00005010`). The transport (`527b4cd6`) and `[auth.email.smtp]` (#448) are done. Three additions. (1) ✅ done by NT2: `channel-liveness.ts` reads `transports` from `configuredChannels()` in `dispatch-transports.ts`, so registering the email transport there is the whole step. (2) `waitlist.invited` (`00005010:84`) routes `in_app` only, but #455 says its email rides PRD-E5: add `email` to its channels. (3) The account's marketing unsubscribe and CD1's newsletter unsubscribe share the RFC 8058 one-click shape but not a list (an account vs an anonymous address): name the route `/api/comms/unsubscribe`, so `/api/newsletter/unsubscribe` sits beside it.                                                                                                                                                                                                                                                                                                                                                                                         |
+| NT3    | Comms §3 | PRD-E5 → 🟡, PRD-E10 → 🟡   | **✅ Built 2026-11-18 (PRD-E5, PRD-E10 🟡), ahead of MS4 by owner choice.** The Status note above NT3 in COMMS §3 lists what landed; additions (1)–(3) below are done, and digests (PRD-E15) and Marketing re-subscribe (PRD-E16) are new rows. Was: ⏳ NT2 and MS4 (`00005010`). The transport (`527b4cd6`) and `[auth.email.smtp]` (#448) are done. Three additions. (1) ✅ done by NT2: `channel-liveness.ts` reads `transports` from `configuredChannels()` in `dispatch-transports.ts`, so registering the email transport there is the whole step. (2) `waitlist.invited` (`00005010:84`) routes `in_app` only, but #455 says its email rides PRD-E5: add `email` to its channels. (3) The account's marketing unsubscribe and CD1's newsletter unsubscribe share the RFC 8058 one-click shape but not a list (an account vs an anonymous address): name the route `/api/comms/unsubscribe`, so `/api/newsletter/unsubscribe` sits beside it.                                                                                                                                                                                                                                                                                                                                                                                         |
 | NT4    | Comms §3 | PRD-E7 → 🟡                 | ⏳ NT3 (`dispatch-transports.ts`, `core/env.ts`, `.env.example`, the dev seam). `static/` has `icon-192.png` and `icon-512.png` but no manifest; `sw.js` has no push handler. `channel-liveness.ts:35` hard-codes `push: false`: read the push registration. Keep `pushPermission` as its own axis: ST2's `notificationDelivery` axis draws channels live or off, not browser permission.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | NT5    | Comms §3 | PRD-E8 → 🟡                 | ⏳ NT4. ST2 rewrote `NotificationsSection.tsx`: the SMS column renders today with "nothing is sent yet" copy from the liveness map (`data.delivery`), and the `:43`, `:50`, `:76` refs are stale. Use `data.delivery.sms` as the `smsAvailable` the prompt asks for, not a second flag, and hide the whole SMS column while it is false (#339 flag (n)). Reuse ST2's `notificationDelivery` dev axis instead of adding `smsProvider`. `.env.example:112` still holds `SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN` (step 1 removes it).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
@@ -190,10 +194,11 @@ Not in §E: SR1–SR4 (search) and Z1 (the comms docs sweep, which runs after th
 
 ### CD1 — The newsletter: double opt-in, a one-click unsubscribe, the list synced to the provider
 
-> **Status (2026-11-18, #480).** 🧑 Q1 and Q2 ruled (Option A; yes). Steps 1–4 are built, ahead of
-> NT3 by owner ruling; PRD-E11 is 🟡. Step 5 waits for NT3's `DeliveryEventService`. When it runs,
-> it also gives the newsletter its own sender (#480 (a), PRD-E14) and maps Resend's per-topic
-> unsubscribe to removing that topic (#480 (b)).
+> **Status (2026-11-18, #480, #502). Built.** 🧑 Q1 and Q2 ruled (Option A; yes). Steps 1–4 were
+> built ahead of NT3 by owner ruling (#480); step 5 was built after NT3 (#502). That step added the
+> sync job, the provider's contact events on NT3's webhook, the newsletter's own sender (PRD-E14 🟡)
+> and a per-topic unsubscribe that removes the topic. PRD-E11 and PRD-E14 are 🟡 until CD2 proves a
+> hosted send. Open: #502 flag (d), whether an opt-in made on Resend's preference page counts.
 
 ```text
 PROMPT CD1: The newsletter — double opt-in, a one-click unsubscribe, and the list synced to the
@@ -336,19 +341,25 @@ ACCEPTANCE:
 
 ### CD2 — The hosted delivery proof: every outbound channel sends for real on staging
 
-> **Status (2026-11-18, at `edb447a9`): deferred; the owner ruled "wait".** A CD2 run found none of
-> its dependencies on `main`: no NT2–NT5, no CD1, and no staging deployment (PRD-G8 ❌). It built
-> nothing and committed nothing, and it declined a PRD-E6-only proof. Re-run CD2 in wave 5, after
-> re-checking every dependency at HEAD. **One gap for the builder to put to the owner before writing
-> step 1.** `--check` must test each transport with "the SAME predicates the code uses", but the
-> script reads only the five `DELIVERY_SMOKE_*` exports. It cannot see the hosted app's environment
-> (`RESEND_API_KEY`, `MAIL_FROM`, the VAPID pair, the Twilio keys), so the predicates must run
-> inside the app. Option A (recommended): the app reports its own channel liveness through a
-> bearer-guarded read on NT2's dispatch route: names and ✓ / ✗ only, a 404 to any other bearer. This
-> adds a route, which FILES does not list. Option B: the owner runs `--check` on the staging host,
-> in its environment. Also add CD1's Option A checks (the provider list id in
-> `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step 1
-> omits them.
+> **Status (2026-11-18, re-checked at `b695f326`): deferred again; the owner ruled "wait" twice
+> (#484).** The first run (`edb447a9`) found none of its dependencies on `main` and declined a
+> PRD-E6-only proof. The second found NT2 (`4dfd07f6`) and CD1 steps 1–4 (`25531b74`) merged, but
+> NT3 not yet on `main`, NT4 and NT5 not started, CD1 step 5 waiting for NT3, and no staging
+> deployment (PRD-G8 ❌). Neither run built or ran any of CD2. Re-run CD2 in wave 5, after
+> re-checking every dependency at HEAD; its 🧑 PREREQUISITES stop still comes first. **The `--check`
+> gap is ruled (#484): the app reports its own liveness.** The script reads only the
+> `DELIVERY_SMOKE_*` exports and cannot see the hosted app's environment (`RESEND_API_KEY`,
+> `MAIL_FROM`, the VAPID pair, the Twilio keys), so step 1's "SAME predicates the code uses" run
+> inside the app: `GET /api/comms/dispatch`, behind the same constant-time `COMMS_DISPATCH_SECRET`
+> bearer as the `POST`, answers `deliverySources()` (`services/comms/channel-liveness.ts`) as the
+> dispatcher and each channel by name with ✓ / ✗ only, and the same 404 to any other bearer. FILES
+> gains that route (`routes/api/comms/dispatch.ts`, `dispatch-ssr.ts`, a route test, ROUTING). The
+> script presents that bearer from a sixth export, `DELIVERY_SMOKE_DISPATCH_SECRET` (#484 flag (a),
+> ruled 2026-11-18), which you export in your own shell like the other five; it is never read from a
+> file or printed. The read also reports `RESEND_WEBHOOK_SECRET` and the Twilio callback token as
+> present ✓ / ✗ (#484 flag (c), ruled 2026-11-18). Also add CD1's Option A checks (the provider list
+> id in `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step
+> 1 omits them.
 
 ```text
 PROMPT CD2: The hosted delivery proof — every outbound channel sends for real on staging

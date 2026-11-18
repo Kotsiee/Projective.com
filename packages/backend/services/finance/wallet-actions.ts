@@ -30,6 +30,7 @@ import { formatMoney, unpricedTicketsSentence } from "@projective/types/finance"
 import { LOCK_REASON, overviewOf } from "./live-wallet.ts";
 import { readStageFundingQuote } from "./stage-funding.ts";
 import { createDepositRule, refusalOf, setIncomeSmoother } from "./live-payments.ts";
+import { moneyWritesLive, moneyWritesOff, refuseUnlessMoneyLive } from "./money-gate.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { resolveWalletContext, type WalletAccount, type WalletContext, type WalletRow } from "./wallet-scope.ts";
 
@@ -44,6 +45,9 @@ import { resolveWalletContext, type WalletAccount, type WalletContext, type Wall
  * withdrawal debits the wallet and sends a Stripe Transfer, adding a card answers with a SetupIntent,
  * and a recurring deposit / the Income Smoother are recorded by definer doors. Where the processor is
  * not connected, `PaymentBackendService` answers 503 with the reason.
+ *
+ * Every action passes the money switch first (`money-gate.ts`, PRD-B3): a caller with no session
+ * is refused 401, then, with `FINANCE_BACKEND_LIVE` off, every action 503 before any read or door.
  *
  * Every success answers with the wallet's refreshed Overview, re-read after the write, so the surface
  * shows what the database now holds rather than an optimistic guess.
@@ -210,12 +214,22 @@ export function actionTarget(
 	return { ctx, account: ctx.target };
 }
 
-/** Guard + resolve the wallet an action targets. */
+/** The money switch, worded for the wallet: signed in (401), then `FINANCE_BACKEND_LIVE` (503). */
+function moneyGate(actor: ReadActor): Result | null {
+	return refuseUnlessMoneyLive<{ result: WalletActionOutcome }>(
+		actor,
+		"Sign in to use your wallet.",
+	);
+}
+
+/** Guard + resolve the wallet an action targets: the money switch first, before any read. */
 async function contextFor(
 	query: WalletQuery,
 	actor: ReadActor,
 	walletKey: string | null,
 ): Promise<{ ctx: WalletContext; account: WalletAccount } | Result> {
+	const gated = moneyGate(actor);
+	if (gated) return gated;
 	if (walletKey === null) return refuse(422, "Choose a wallet.");
 	// A movement acts on the whole account, whichever currency wallet the page is reading (Decision #435).
 	const ctx = await resolveWalletContext({ ...query, wallet: walletKey, currency: null }, actor);
@@ -314,6 +328,8 @@ export async function addRecurring(input: DepositRuleInput, query: WalletQuery, 
 
 /** Save a card: answers with the SetupIntent the Payment Element confirms in `setup` mode. */
 export async function addMethod(input: AddMethodInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	const gated = moneyGate(actor);
+	if (gated) return gated;
 	const scope = cardScopeOf(input.scope);
 	const key = keyOf(input.scope, input.contextId);
 	if (!scope || !key) return refuse(422, "Choose the account the card is for.");
@@ -339,9 +355,10 @@ export async function enrolSmoother(
 	query: WalletQuery,
 	actor: ReadActor,
 ): Promise<Result> {
+	const gated = moneyGate(actor);
+	if (gated) return gated;
 	if (input.enrol !== false) return locked("smoother_planned");
-	if (!actor.userId || !actor.accessToken) return refuse(401, "Sign in to use your wallet.");
-	const set = await setIncomeSmoother(actor.accessToken, {
+	const set = await setIncomeSmoother(actor.accessToken!, {
 		currency: input.currency.toUpperCase(),
 		targetMonthlyMinor: input.targetMonthlyMinor,
 		enrol: input.enrol !== false,
@@ -620,6 +637,7 @@ export async function fileSpendRequest(
 	accessToken: string,
 	filing: SpendRequestFiling,
 ): Promise<ServiceResult<{ id: string | null }>> {
+	if (!moneyWritesLive()) return moneyWritesOff();
 	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(
 		"request_spend_approval",
 		{

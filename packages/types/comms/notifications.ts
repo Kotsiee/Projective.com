@@ -272,6 +272,27 @@ export const DispatchTallySchema = z.object({
 	suppressed: z.number().int().min(0),
 });
 export type DispatchTally = z.infer<typeof DispatchTallySchema>;
+
+/**
+ * What `comms.fn_record_delivery_event` did with one verified provider event (COMMS NT3):
+ * `replayed` = its (provider, provider_event_id) was already claimed, so nothing changed.
+ */
+export const DeliveryEventOutcome = z.enum([
+	"delivered",
+	"hard_bounce",
+	"complaint",
+	"failed",
+	"recorded",
+	"replayed",
+]);
+export type DeliveryEventOutcome = z.infer<typeof DeliveryEventOutcome>;
+
+/** What `comms.fn_unsubscribe_marketing` did for one signed one-click link. */
+export const MarketingUnsubscribeOutcome = z.enum(["unsubscribed", "already", "no_address"]);
+export type MarketingUnsubscribeOutcome = z.infer<typeof MarketingUnsubscribeOutcome>;
+
+/** The account's one-click marketing unsubscribe (RFC 8058), beside the newsletter's own. */
+export const COMMS_UNSUBSCRIBE_PATH = "/api/comms/unsubscribe";
 // #endregion
 
 // #region Scheduled sends

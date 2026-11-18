@@ -1022,6 +1022,30 @@ ACCEPTANCE:
 > (destination `{ address }`) and a `DispatchPayload` (title, absolute link, notification id); use
 > the delivery id as the Idempotency-Key. Step 5 of NT2 (the sweep sends due
 > `comms.notification_digests` as one email) is NT3's once the transport exists.
+>
+> **Status 2026-11-18, later: ✅ built (PRD-E5 and PRD-E10 🟡; ✅ on COMMS_DELIVERY CD2).** The owner
+> ran NT3 ahead of MS4: the `00005010` wait was a one-writer lock, and the rows are disjoint. The
+> provider stop was already ruled (#391 (4), Resend).
+>
+> What landed:
+> - `email-transport.ts`, registered in `dispatch-transports.ts`. It sends the title, one sentence and
+>   the link, with the delivery id as Idempotency-Key and Resend's id as `provider_ref`. Marketing
+>   carries RFC 8058 one-click (signed `unsubscribe-token.ts`, the person and never an address).
+> - `POST /api/comms/webhooks/resend` (`DeliveryEventService`: Svix, 300 s, a 256 KiB cap) and
+>   `comms.fn_record_delivery_event`.
+> - `/api/comms/unsubscribe` with `comms.fn_unsubscribe_marketing` (delta (3)'s name). Its CSRF entry
+>   sits in CD1's `ONE_CLICK_ROUTES`.
+> - In the catalog, `account.email_undeliverable` (`/settings/account#emails`; the block's real anchor
+>   is `emails`) and `waitlist.invited` with email (delta (2)).
+> - `org.get_my_emails` gains `undeliverable`. `security.issue_email_verification` re-issues for a
+>   hard-bounced verified address, and `org.confirm_user_email` lifts the bounce (`reverified`).
+> - Settings → Account shows an InlineNotice, an "Undeliverable" mark and **Confirm again**.
+> - The `emailDeliverability` dev axis, `RESEND_WEBHOOK_SECRET`, and probe `email_bounce.sql`.
+>
+> No `00002510` edit was needed: deny-by-default gives the service role every comms function.
+> `config.toml` was already done (#448). Not built, logged as new rows:
+> - **PRD-E15:** digest email (NT2 step 5) needs a digest claim with a lease.
+> - **PRD-E16:** re-enabling Marketing in Settings does not lift a one-click unsubscribe.
 
 ```text
 PROMPT NT3: Transactional email — one provider, signed bounces; a hard bounce blocks the address

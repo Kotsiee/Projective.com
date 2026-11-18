@@ -734,7 +734,9 @@ COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text
 --
 -- CALLER CHECKS (SECURITY DEFINER and internal — no client role may execute it): signed in (28000),
 -- an adult (PM403), a key of 8–120 characters (22023), a published (P0002) One-Off or Direct
--- Deliverable (22023) with at least one priced stage (22023), not the buyer's own or their team's
+-- Deliverable (22023) — any listing when `p_terms` is given, because a quote offer may answer a
+-- Pipeline or a private cohort and is bought as a One-Off all the same (Decision #458 (a); CK7) —
+-- with at least one priced stage (22023), not the buyer's own or their team's
 -- (PU422), an adult seller (P0002), a brief (22023), a target date not in the past (22007).
 --
 -- RETURNS {project_id, project_slug, ticket_id, stage_ids, escrow_id, amount_cents, currency,
@@ -786,8 +788,8 @@ BEGIN
     IF NOT FOUND OR NOT v_bp.is_published THEN
         RAISE EXCEPTION 'That service is not available.' USING ERRCODE = 'P0002';
     END IF;
-    IF v_bp.delivery_model NOT IN ('one_off'::marketplace.service_delivery_model,
-                                   'direct_deliverable'::marketplace.service_delivery_model) THEN
+    IF p_terms IS NULL AND v_bp.delivery_model NOT IN ('one_off'::marketplace.service_delivery_model,
+                                                       'direct_deliverable'::marketplace.service_delivery_model) THEN
         RAISE EXCEPTION 'Only a One-Off or a Task is scoped and paid for at checkout.' USING ERRCODE = '22023';
     END IF;
     IF v_bp.freelancer_profile_id = v_client OR (
@@ -915,7 +917,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION marketplace.fn_buy_scoped_service (uuid, text, jsonb, date, boolean, text, jsonb) IS
-'A One-Off or Task paid at checkout becomes a funded engagement in the order''s transaction, as its buyer (Decision #457): the seller-owned project with the buyer as client, its stages, seats and rooms, the one master ticket, the instantiation record, projects.fund_ticket (first stage held; every stage under p_whole) and draft -> active. Internal: called by finance.place_wallet_order.';
+'A One-Off or Task paid at checkout becomes a funded engagement in the order''s transaction, as its buyer (Decision #457): the seller-owned project with the buyer as client, its stages, seats and rooms, the one master ticket, the instantiation record, projects.fund_ticket (first stage held; every stage under p_whole) and draft -> active. With p_terms (a quote offer''s, Decision #458 (a)) any listing the seller sells is bought as a One-Off on those terms. Internal: called by finance.place_wallet_order.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.archive_service_draft(p_project_slug text, p_reason text) -> jsonb

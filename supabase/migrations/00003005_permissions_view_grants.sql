@@ -47,6 +47,10 @@ REVOKE ALL ON finance.v_fx_conversion_reconciliation FROM PUBLIC, anon, authenti
 GRANT SELECT ON finance.v_fx_conversion_reconciliation TO service_role;
 REVOKE ALL ON finance.v_fx_exposure FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON finance.v_fx_exposure TO service_role;
+REVOKE ALL ON finance.v_wallet_drift FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON finance.v_wallet_drift TO service_role;
+REVOKE ALL ON finance.v_conservation_identity FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON finance.v_conservation_identity TO service_role;
 -- #endregion
 
 -- #region analytics

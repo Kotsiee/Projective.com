@@ -14,10 +14,8 @@ import type { ReadActor } from "../read-actor.ts";
  * door `finance.read_escrow_age()` (00001200). That door is the gate: it refuses anyone but a
  * platform operator (`security.is_admin()`) with 42501, which this maps to 403 and the page answers
  * with a 404, as `/admin/disputes` does (Decision #212). It decides nothing and moves nothing; the
- * database classifies and ages every row.
- *
- * `/admin/ledger` and `LedgerHealthService` are FBP DB16's and have not landed. When they do, the
- * service exposes this as its Escrow age read and the page renders it as one section.
+ * database classifies and ages every row. `LedgerHealthService.escrowAge` (FBP DB16) exposes it as
+ * the page's Escrow age section read.
  */
 
 // #region Raw rows (the SQL jsonb, as written by the function)

@@ -9,7 +9,15 @@ import {
 
 // #region Harness
 function report(considered: number): EmbeddingSyncReport {
-	return { considered, skipped: 0, embedded: considered, missing: 0, failed: 0, tokens: 0 };
+	return {
+		considered,
+		skipped: 0,
+		embedded: considered,
+		missing: 0,
+		rejected: 0,
+		failed: 0,
+		tokens: 0,
+	};
 }
 
 /** A fake clock holding one timer at a time, and a run that records each batch it is handed. */

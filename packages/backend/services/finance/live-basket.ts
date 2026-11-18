@@ -793,6 +793,120 @@ interface LineFacts {
 	ticket?: { fact: TicketFact; price: Price | null; payeeName: string | null } | null;
 	/** A paid revision line's price now (Decision #167); `null` for any other line. */
 	revision?: { price: Price | null } | null;
+	/** A quote offer line's price, the offer's own (Decision #458; CK7); `null` for any other line. */
+	offer?: { price: Price | null } | null;
+}
+
+/**
+ * A quote offer as the basket line that buys it reads it, with its request's state (Decision #458).
+ * RLS lets the offer's two parties read both rows; anyone else reads nothing, so the line closes.
+ */
+export interface QuoteOfferFact {
+	id: string;
+	status: string;
+	priceCents: number;
+	currency: string;
+	expiresAt: string;
+	supersededBy: string | null;
+	requestStatus: string | null;
+	requesterId: string | null;
+	blueprintId: string | null;
+}
+
+/** The offer id a basket line carries (`metadata.quoteOfferId`), or `null` for any other line. */
+export function quoteOfferIdOf(meta: unknown): string | null {
+	if (typeof meta !== "object" || meta === null) return null;
+	const id = (meta as { quoteOfferId?: unknown }).quoteOfferId;
+	return typeof id === "string" && id !== "" ? id : null;
+}
+
+/** Offers by id, each with its request's state, read as the caller. */
+async function readQuoteOffers(
+	session: Session,
+	ids: readonly string[],
+): Promise<Map<string, QuoteOfferFact>> {
+	const out = new Map<string, QuoteOfferFact>();
+	const wanted = [...new Set(ids)].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+	if (wanted.length === 0) return out;
+	const offers = await session.db.schema("marketplace").from("quote_offers")
+		.select("id, quote_request_id, status, price_cents, currency, expires_at, superseded_by")
+		.in("id", wanted);
+	if (offers.error) {
+		throw new Error(`marketplace.quote_offers read failed: ${offers.error.message}`);
+	}
+	const rows = (offers.data ?? []) as {
+		id: string;
+		quote_request_id: string;
+		status: string;
+		price_cents: number | string;
+		currency: string;
+		expires_at: string;
+		superseded_by: string | null;
+	}[];
+	if (rows.length === 0) return out;
+	const requests = await session.db.schema("marketplace").from("quote_requests")
+		.select("id, status, requester_user_id, blueprint_id")
+		.in("id", [...new Set(rows.map((r) => r.quote_request_id))]);
+	if (requests.error) {
+		throw new Error(`marketplace.quote_requests read failed: ${requests.error.message}`);
+	}
+	const byId = new Map(
+		((requests.data ?? []) as {
+			id: string;
+			status: string;
+			requester_user_id: string;
+			blueprint_id: string;
+		}[]).map((r) => [r.id, r]),
+	);
+	for (const row of rows) {
+		const request = byId.get(row.quote_request_id);
+		out.set(row.id, {
+			id: row.id,
+			status: row.status,
+			priceCents: Number(row.price_cents),
+			currency: row.currency.toUpperCase(),
+			expiresAt: row.expires_at,
+			supersededBy: row.superseded_by,
+			requestStatus: request?.status ?? null,
+			requesterId: request?.requester_user_id ?? null,
+			blueprintId: request?.blueprint_id ?? null,
+		});
+	}
+	return out;
+}
+
+/** What a buyer reads on a quote offer line that checkout would refuse. */
+export const QUOTE_LINE_CLOSED = {
+	gone: "This offer is no longer available — remove it from your basket.",
+	personal: "Buy this offer from your personal account.",
+	expired: "This offer has expired — withdraw the request and ask the seller for a new quote.",
+} as const;
+
+/**
+ * The price and availability of a basket line that buys a quote offer, the twin of
+ * `finance.place_wallet_order`'s offer branch (CK7): the offer's own price, in its currency, while the
+ * offer is the buyer's own, accepted, not superseded and for this listing, and not past its expiry —
+ * the seller's expiry bounds payment as well as acceptance (owner ruling A). Pure.
+ */
+export function quoteOfferPurchase(
+	offer: QuoteOfferFact | null,
+	line: { item_type: PurchasableItemKind; item_id: string },
+	owner: Pick<ResolvedOwner, "ownerType" | "ownerId">,
+	now: number = Date.now(),
+): { price: Price | null; closed: string | null } {
+	if (owner.ownerType !== "user" && owner.ownerType !== "freelancer") {
+		return { price: null, closed: QUOTE_LINE_CLOSED.personal };
+	}
+	if (
+		!offer || line.item_type !== "one_off_service" || offer.status !== "accepted" ||
+		offer.requestStatus !== "accepted" || offer.supersededBy !== null ||
+		offer.requesterId !== owner.ownerId || offer.blueprintId !== line.item_id
+	) {
+		return { price: null, closed: QUOTE_LINE_CLOSED.gone };
+	}
+	const price: Price = { minor: offer.priceCents, currency: offer.currency };
+	if (Date.parse(offer.expiresAt) <= now) return { price, closed: QUOTE_LINE_CLOSED.expired };
+	return { price, closed: null };
 }
 
 /** Paid revision rounds by id. RLS lets the project's reviewers read them. */
@@ -859,6 +973,13 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 	);
 	const ticketById = new Map(tickets.map((t) => [t.id, t]));
 	const escrowsByTicket = await readTicketEscrows(session, tickets.map((t) => t.id));
+	const offerById = await readQuoteOffers(
+		session,
+		lines.flatMap((line) => {
+			const id = quoteOfferIdOf(line.metadata);
+			return id ? [id] : [];
+		}),
+	);
 	// A ticket line staged before stages were bought one by one names none: it buys the funding stage.
 	const lineStageId = (line: LineRow): string | null => {
 		if (line.stage_id || !line.ticket_id) return line.stage_id;
@@ -907,6 +1028,11 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 		const stage = stageId ? stageById.get(stageId) ?? null : null;
 		const stageProject = stage ? projectById.get(stage.projectId) ?? null : null;
 
+		// A quote offer may answer any listing its seller sells and is bought as a One-Off all the same
+		// (Decision #458 (a)), so its line is judged by the offer, never by the listing's model.
+		const offerId = quoteOfferIdOf(line.metadata);
+		const offer = offerId ? quoteOfferPurchase(offerById.get(offerId) ?? null, line, owner) : null;
+
 		let closed: string | null = null;
 		if (!purchasable) {
 			closed = family !== "project" && !catalog
@@ -916,6 +1042,8 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 				: "This listing is no longer available.";
 		} else if (purchasable.closed) {
 			closed = purchasable.closed;
+		} else if (offer) {
+			closed = offer.closed;
 		} else if (
 			family === "service" && purchasable.blueprint &&
 			SERVICE_MODEL[line.item_type] !== purchasable.blueprint.delivery_model
@@ -964,6 +1092,7 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 			closed,
 			ticket,
 			revision,
+			offer: offer ? { price: offer.price } : null,
 		});
 
 		if (purchasable && !parents.has(purchasable.slug)) {
@@ -1070,10 +1199,13 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 	// The price comes from the listing as it stands now; the row's own figure only stands in for a
 	// listing that can no longer be priced, and such a line is never payable.
 	// A ticket line is priced from its ticket (its own price, else its stage's) — never the project's.
+	// A quote offer line is priced from its offer — never its listing's milestones (CK7).
 	const current = line.revision_id
 		? facts.revision?.price ?? null
 		: line.ticket_id
 		? facts.ticket?.price ?? null
+		: facts.offer
+		? facts.offer.price
 		: p
 		? unitPriceOf(line.item_type, p, stage, line.seats, line.metadata)
 		: null;

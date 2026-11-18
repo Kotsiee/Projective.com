@@ -52,8 +52,9 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Blanks a guest''s address 30 days after their entry ends or their seat is withdrawn.')
 ON CONFLICT (name) DO NOTHING;
 
--- The ledger reconciliation (M3, Decision #186) and the pending-window sweep (M4, Decision #191) are
--- registered only where their function exists, so this seed is correct whichever order those changes
+-- The ledger reconciliation (M3, Decision #186), the conservation check that follows it (ruling M2 (A),
+-- FBP DB16) and the pending-window sweep (M4, Decision #191) are registered only where their function
+-- exists, so this seed is correct whichever order those changes
 -- reach a branch in, and pg_cron is never pointed at a function that is not there.
 INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
 SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
@@ -61,6 +62,9 @@ SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
     ('finance-reconcile-wallets', '40 3 * * *', 'SELECT finance.fn_reconcile_wallets();',
         'finance.fn_reconcile_wallets()',
         'Ledger reconciliation after the billing run: logs every wallet whose cached balance drifted from its ledger (Decision #186).'),
+    ('finance-conservation-check', '50 3 * * *', 'SELECT finance.fn_check_conservation();',
+        'finance.fn_check_conservation()',
+        'Conservation identity after the reconciliation: one ops row per currency, an error for any imbalance; never corrects (Decision #337, ruling M2).'),
     ('finance-mature-pending-releases', '5 * * * *', 'SELECT finance.fn_mature_pending_releases();',
         'finance.fn_mature_pending_releases(integer)',
         'Credits every pending release past its 7-day window to the available balance (Decision #191).')
@@ -298,5 +302,18 @@ SELECT 'account-data-exports', 'http', '9,24,39,54 * * * *', NULL, '/api/user/cr
        'ACCOUNT_CRON_SECRET',
        'Builds each requested personal data export into a ZIP in the private data_exports bucket and tells its owner, then removes archives past their 7 days (DataExportBackendService.sweep).'
  WHERE pg_catalog.to_regprocedure('security.claim_data_exports(integer)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [newsletter] The newsletter's provider sync (CD1 step 5, Decision #480 Q1 A)
+-- Pushes each send-eligible newsletter address and its topics to the mail provider's contact list and
+-- deletes the contact of an address that left or is suppressed (NewsletterProviderSync.run). An http
+-- job on the dispatcher's own bearer, so outbound mail keeps one Vault entry. Every 5 minutes, off the
+-- quarter-hours; a run reads at most 50 rows and stops at a 429. It does nothing while the
+-- newsletter.provider_sync flag is off, which it is in every seed.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('newsletter-provider-sync', 'http', '2-59/5 * * * *',
+        NULL, '/api/newsletter/cron/sync?limit=50', 'COMMS_DISPATCH_SECRET',
+        'Syncs the newsletter list to the Resend segment: creates or updates the contact of each confirmed, unsuppressed address the provider is behind on, deletes the contact of each address that left (NewsletterProviderSync.run). Does nothing while newsletter.provider_sync is off.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion

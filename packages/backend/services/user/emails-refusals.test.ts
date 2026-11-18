@@ -145,7 +145,18 @@ Deno.test("toUserEmails — maps snake_case rows, keeps order, drops a malformed
 		isPrimary: false,
 		verifiedAt: null,
 		isSignIn: false,
+		undeliverable: false,
 		createdAt: "2026-10-06T00:00:00+00:00",
 	});
 	assertEquals(toUserEmails(null), []);
+	const bounced = toUserEmails([{
+		id: "c",
+		email: "gone@example.com",
+		is_primary: true,
+		verified_at: "2026-10-06T00:00:00+00:00",
+		is_sign_in: true,
+		undeliverable: true,
+		created_at: "2026-10-06T00:00:00+00:00",
+	}]);
+	assertEquals(bounced[0].undeliverable, true);
 });

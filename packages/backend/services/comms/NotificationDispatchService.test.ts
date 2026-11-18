@@ -87,9 +87,20 @@ function deps(db: DispatchDb, transports: DispatchTransport[], live = true): Dis
 }
 // #endregion
 
-Deno.test("the shipped registry is empty: no channel has a transport until NT3–NT5", () => {
-	assertEquals(configuredTransports().size, 0);
-	assertEquals(configuredChannels(), { email: false, push: false, sms: false });
+Deno.test("the shipped registry: email once Resend is configured (NT3); no push or SMS until NT4–NT5", () => {
+	const keep = ["RESEND_API_KEY", "MAIL_FROM"].map((k) => [k, Deno.env.get(k)] as const);
+	try {
+		Deno.env.set("RESEND_API_KEY", "XXXX-XXXX");
+		Deno.env.set("MAIL_FROM", "Projective <no-reply@example.test>");
+		assertEquals(configuredTransports().size, 0);
+		assertEquals(configuredChannels(), { email: false, push: false, sms: false });
+
+		Deno.env.set("RESEND_API_KEY", "re_test_key");
+		assertEquals([...configuredTransports().keys()], ["email"]);
+		assertEquals(configuredChannels(), { email: true, push: false, sms: false });
+	} finally {
+		for (const [k, v] of keep) v === undefined ? Deno.env.delete(k) : Deno.env.set(k, v);
+	}
 });
 
 Deno.test("dispatch — with no transport configured, nothing is claimed and every delivery waits", async () => {

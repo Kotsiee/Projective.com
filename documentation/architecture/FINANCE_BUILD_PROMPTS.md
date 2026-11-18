@@ -227,7 +227,11 @@ logged; the coordinator logs them.
   `f1f10e31`). No prompt here touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),
   instant payouts and maintenance cycles (ruling P3), the Stripe-balance reconciliation (ruling M2
-  B; FA L6), tax computation (A9) and the wallet-plus-card split payment (CO17).
+  B; FA L6) and the wallet-plus-card split payment (CO17).
+- **Tax computation (A9) left "Planned"** (#490, owner rulings 2026-11-18): Stripe Tax at checkout
+  and on invoices, collected by the platform on digital products only and added on top of the
+  price, behind `tax_collection_enabled` (off until counsel), as
+  `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4, after DB21.
 - **The shadow double-entry journal (ruling M2 B) left "Planned"** (#463, owner rulings A · A,
   2026-11-18): the public launch is its trigger, so it is built before PROD, and the money doors
   write it in each movement's own transaction, as `readiness/MONEY_BUILD_PROMPTS.md` MR8a → MR8b,
@@ -1356,7 +1360,12 @@ HOT: 00001155 and 00001510 (no SCH work package running; SCH-WP2's interim merge
 00001240, 00001210.
 ```
 
-### DB16 — The conservation identity, checked nightly, with an ops reader (M2)
+### DB16 — ✅ Done: the conservation identity, checked nightly, with an ops reader (M2)
+
+> **Status (2026-11-18, Decision #483):** built with MONEY_BUILD_PROMPTS' DB16 delta and MR7's Escrow
+> age section. The held side counts `reserved` escrow too, and an FX-quoted on-account order is
+> counted in its credit currency; #483 (E) lists every premise that moved. The prompt below stays as
+> the record.
 
 > **Input from DB5 (2026-11-12):** pots are earmarks inside `wallets.balance_cents`, so
 > `finance.pot_movements` is not a money term: the identity counts wallet balances whole. Σ pots ≤

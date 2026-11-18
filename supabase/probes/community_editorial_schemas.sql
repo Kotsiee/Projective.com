@@ -260,14 +260,14 @@ BEGIN
     -- The owner confirmed, then unsubscribed. A re-subscribe from the public form must not undo the
     -- opt-out: it records a pending request and leaves every other column as it was.
     UPDATE community.newsletter_subscriptions
-    SET unsubscribed_at = '2026-01-02T03:04:05Z', unsubscribed_reason = 'probe',
+    SET unsubscribed_at = '2026-01-02T03:04:05Z', unsubscribed_reason = 'link',
         confirmed_at = '2026-01-01T00:00:00Z', updated_at = '2000-01-01T00:00:00Z'
     WHERE id = v_row.id;
     v_out := community.subscribe_newsletter('probe.person@example.com', 'explore', 'general');
     SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE id = v_row.id;
     IF v_out->>'outcome' <> 'resubscribed' OR (v_out->>'already_subscribed')::boolean
         OR v_row.unsubscribed_at IS DISTINCT FROM '2026-01-02T03:04:05Z'::timestamptz
-        OR v_row.unsubscribed_reason IS DISTINCT FROM 'probe'
+        OR v_row.unsubscribed_reason IS DISTINCT FROM 'link'
         OR v_row.confirmed_at IS DISTINCT FROM '2026-01-01T00:00:00Z'::timestamptz
         OR v_row.topics <> ARRAY['changelog', 'general'] OR v_row.source <> 'footer'
         OR v_row.resubscribe_topics IS DISTINCT FROM ARRAY['general']

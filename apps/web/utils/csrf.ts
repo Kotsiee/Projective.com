@@ -80,9 +80,9 @@ const FORM_ROUTES = new Set([
  * client posts `List-Unsubscribe=One-Click` from its own servers, cross-site and with no `Origin`, so
  * the Origin check stands aside here: the token in the URL is the credential, and an unsubscribe is
  * the one write a forged post could only make on a link the forger already holds. A form body (or
- * none) only.
+ * none) only. The newsletter's (an anonymous list) and an account's marketing email (COMMS NT3).
  */
-const ONE_CLICK_ROUTES = new Set(["/api/newsletter/unsubscribe"]);
+const ONE_CLICK_ROUTES = new Set(["/api/newsletter/unsubscribe", "/api/comms/unsubscribe"]);
 
 const FORM_TYPES = new Set(["application/x-www-form-urlencoded", "multipart/form-data"]);
 

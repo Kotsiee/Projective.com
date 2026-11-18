@@ -15,6 +15,8 @@
 --   7. A refused hold rolls everything back: no project, no ticket, no escrow, the wallet untouched.
 --   8. finance.place_wallet_order: the line is re-priced, the order line links the engagement, a
 --      business basket and a moved price are refused with nothing written.
+--   9. Conservation (finance.v_conservation_identity, FBP DB16): every purchase and refusal above
+--      leaves each currency's imbalance where it was, measured after each of the fixture's own moves.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 \
@@ -93,6 +95,8 @@ BEGIN
     PERFORM finance.fn_ensure_wallet(finance.fn_person_wallet_type(v_buyer), v_buyer, 'USD');
     PERFORM finance.fn_wallet_credit(v_buyer, finance.fn_person_wallet_type(v_buyer), 'USD', 2000000,
         'topup', 'inbound_payments', gen_random_uuid());
+    -- The fixture's credit has no payment behind it, so the identity is measured from here on.
+    PERFORM set_config('probe.imbalance', (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c)::text, true);
 
     PERFORM set_config('probe.oneoff', v_oneoff.id::text, true);
     PERFORM set_config('probe.seller', v_oneoff.seller::text, true);
@@ -371,8 +375,15 @@ DECLARE
     v_escrows bigint;
     v_b0 bigint;
 BEGIN
+    IF (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c) IS DISTINCT FROM current_setting('probe.imbalance')::jsonb THEN
+        RAISE EXCEPTION 'FAIL 9 conservation: sections 2-6 moved the identity from % to %',
+            current_setting('probe.imbalance'), (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
+    END IF;
+    RAISE NOTICE 'PASS 9 conservation: every purchase and refusal in sections 2-6 left each currency''s imbalance where it was';
     PERFORM pg_temp.act(v_buyer);
     v_b0 := pg_temp.balance(v_buyer);
+    -- The drain below debits with no escrow behind it, a fixture move: the identity is measured again
+    -- after the section's closing credit.
     PERFORM finance.fn_wallet_debit(v_buyer, finance.fn_person_wallet_type(v_buyer), 'USD', v_b0 - 1000,
         'escrow_hold', 'escrows', gen_random_uuid());
     v_b0 := pg_temp.balance(v_buyer);
@@ -393,6 +404,7 @@ BEGIN
     RAISE NOTICE 'PASS 7 nothing written: no project, no escrow, wallet untouched';
     PERFORM finance.fn_wallet_credit(v_buyer, finance.fn_person_wallet_type(v_buyer), 'USD', 2000000,
         'topup', 'inbound_payments', gen_random_uuid());
+    PERFORM set_config('probe.imbalance', (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c)::text, true);
 END $$;
 -- #endregion
 
@@ -536,6 +548,17 @@ BEGIN
         RAISE EXCEPTION 'FAIL 8 Task order line %', to_jsonb(v_ol);
     END IF;
     RAISE NOTICE 'PASS 8 a Task through checkout: single_task, held at 190000, line linked';
+END $$;
+-- #endregion
+
+-- #region 9. Conservation across the checkout
+DO $$
+BEGIN
+    IF (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c) IS DISTINCT FROM current_setting('probe.imbalance')::jsonb THEN
+        RAISE EXCEPTION 'FAIL 9 conservation: the checkout moved the identity from % to %',
+            current_setting('probe.imbalance'), (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
+    END IF;
+    RAISE NOTICE 'PASS 9 conservation: every order in section 8 left each currency''s imbalance where it was';
 END $$;
 -- #endregion
 

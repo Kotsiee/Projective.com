@@ -24,9 +24,11 @@
 -- complaints), which stays in `comms` with the rest of outbound delivery: a send job reads both.
 --
 -- No client role holds any privilege on this table (00002520) and it has no policy (00002021). Its
--- writers are the three doors in 00001320, each called by the service role from
--- NewsletterBackendService: `community.subscribe_newsletter` (the public form),
--- `community.confirm_newsletter` and `community.unsubscribe_newsletter` (the mailed link's token).
+-- writers are the doors in 00001320, each called by the service role: `community.subscribe_newsletter`
+-- (the public form), `community.confirm_newsletter` and `community.unsubscribe_newsletter` (the
+-- mailed link's token), from NewsletterBackendService; `community.record_newsletter_sync` (the
+-- provider sync) and `community.record_newsletter_provider_event` (the provider's own events), from
+-- NewsletterProviderSync and the Resend webhook (Decision #480 Q1 A).
 -- The Zod SSOT is packages/types/community/newsletter.ts.
 CREATE TABLE community.newsletter_subscriptions (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
@@ -56,7 +58,8 @@ CREATE TABLE community.newsletter_subscriptions (
     -- unsubscribed address into it has not proved they own it, so the request is recorded below and
     -- the address stays unsubscribed (and unsendable) until the confirm link applies it. The reason
     -- is the door's: `link` (the unsubscribe page's button), `one_click` (an RFC 8058 POST from a
-    -- mail client), and the provider's own reasons once its events are read.
+    -- mail client), `provider` (the mail provider's own unsubscribe, its last topic opted out, or its
+    -- contact deleted there) and `complaint` (a spam complaint about any mail to the address).
     unsubscribed_at timestamptz,
     unsubscribed_reason text,
     -- Topics asked for by the public form and pending the owner's confirmation (Decision #274 flag
@@ -75,6 +78,20 @@ CREATE TABLE community.newsletter_subscriptions (
     -- confirm door refuses a link whose mail is more than 7 days old, so a link found in an old inbox
     -- cannot confirm what its owner has since forgotten.
     confirmation_sent_at timestamptz,
+    -- The mail provider's copy of the list (Decision #480 Q1 A, CD1 step 5). Postgres is the record;
+    -- newsletter-provider-sync keeps exactly one provider contact for each send-eligible address,
+    -- holding the address and its topics and nothing else, and deletes the contact of an address that
+    -- left or is suppressed. The contact's id at the provider (Resend), NULL while none is known.
+    provider_contact_ref text,
+    -- The row version (its `updated_at`) the provider last received, NULL = never, or due again. The
+    -- sync stamps the version it READ, not the time it finished, so a change committed while a sync
+    -- is in flight is newer than the stamp and goes out on the next run.
+    provider_synced_at timestamptz,
+    -- The topics the provider's contact was last set to opt in to (NULL while no contact is known).
+    -- A provider-side topic opt-out counts only for a topic in this set: the provider echoes every
+    -- topic update, the sync's own included, so an opt-out of a topic it never held is not a choice
+    -- its owner made there.
+    provider_topics text[],
     -- The opaque handle carried in the confirm / unsubscribe link. One-click unsubscribe cannot ask
     -- the reader to sign in first, so the link itself has to be the credential.
     token uuid NOT NULL DEFAULT gen_random_uuid (),
@@ -91,6 +108,19 @@ CREATE TABLE community.newsletter_subscriptions (
     CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
     CONSTRAINT newsletter_subscriptions_email_length CHECK (char_length(email) <= 254),
     CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore', 'changelog')),
+    -- A reason exactly when there is an opt-out, and only a door's own (NewsletterUnsubscribedReason).
+    CONSTRAINT newsletter_subscriptions_unsubscribed_reason_check CHECK (
+        (unsubscribed_at IS NULL) = (unsubscribed_reason IS NULL)
+        AND (unsubscribed_reason IS NULL OR unsubscribed_reason IN ('link', 'one_click', 'provider', 'complaint'))
+    ),
+    CONSTRAINT newsletter_subscriptions_provider_contact_ref_length CHECK (
+        provider_contact_ref IS NULL OR char_length(provider_contact_ref) BETWEEN 1 AND 128
+    ),
+    -- The same topic set again; empty is allowed (a contact holding no topic is removed next run).
+    CONSTRAINT newsletter_subscriptions_provider_topics_check CHECK (
+        provider_topics IS NULL
+        OR (array_position(provider_topics, NULL) IS NULL AND provider_topics <@ ARRAY['general', 'changelog']::text[])
+    ),
     CONSTRAINT newsletter_subscriptions_topics_check CHECK (
         cardinality(topics) >= 1
         AND array_position(topics, NULL) IS NULL

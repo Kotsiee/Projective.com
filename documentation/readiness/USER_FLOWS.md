@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **69%** |           190 | 95 |  74 | 21 |              26 |
-| **Production**   | **63%** |           243 | 100 |  99 | 44 |              37 |
+| **UAT**          | **70%** |           190 | 95 |  75 | 20 |              26 |
+| **Production**   | **63%** |           245 | 100 | 102 | 43 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,15 +44,15 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 34 | 14 |  2 |   60% |
-| MW — Money, workspaces, legal & operator         |    63 | 21 | 23 | 16 |  3 |   59% |
+| MK — Discovery, marketplace, checkout & sessions |    57 | 24 | 21 | 10 |  2 |   64% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 35 | 13 |  2 |   61% |
+| MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
 - **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
-- **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62 ❌
+- **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
 
@@ -85,7 +85,7 @@ PRODUCTION_READINESS.md.
 | ID-05 | Help centre, search, "Was this helpful?"                | Any     | `/help/[...path]`, `/api/help/{search,feedback}`         | ✅     | High     | UAT  | —                                                                                                                      |
 | ID-06 | Contact intake (sales, support, dispute, security)      | Any     | `/contact`, `/api/contact`, `/api/contact/attachments/*` | 🟡     | High     | UAT  | No acknowledgement mail; triage has no UI (MW-60); attachments unscanned (PRD-D3)                                      |
 | ID-07 | Feedback board: suggest, vote, follow                   | Any     | `/feedback`, `/api/feedback/ideas/*`                     | 🟡     | Normal   | UAT  | The status door is operator-API only, so every idea stays "Under review", visible to its author alone                  |
-| ID-08 | Newsletter subscribe                                    | Guest   | footer, changelog, `/api/newsletter/subscribe`           | 🟡     | Normal   | PROD | Double opt-in, per-topic consent and the one-click unsubscribe are built (#480, PRD-E11 🟡): a confirmation mail, `/newsletter/confirm`, `/newsletter/unsubscribe`. Issues are not sent yet (the provider sync, CD1 step 5) and no hosted send is proved (CD2) |
+| ID-08 | Newsletter subscribe                                    | Guest   | footer, changelog, `/api/newsletter/subscribe`           | 🟡     | Normal   | PROD | Double opt-in, per-topic consent and the one-click unsubscribe are built (#480, PRD-E11 🟡): a confirmation mail, `/newsletter/confirm`, `/newsletter/unsubscribe`. The Resend contacts sync is built too (#502): issues go out from Resend to the confirmed addresses, and a provider unsubscribe or complaint comes back. No hosted send is proved yet (CD2) |
 | ID-09 | Articles                                                | Guest   | `/articles`, `/articles/[slug]`                          | ✅     | Normal   | PROD | —                                                                                                                      |
 | ID-10 | Changelog and RSS                                       | Guest   | `/changelog`, `/changelog/[version]`, `rss.xml`          | ✅     | Normal   | PROD | —                                                                                                                      |
 | ID-11 | Legal hub: documents, versions, compare, PDF            | Any     | `/legal`, `/legal/[slug]{,/pdf}`                         | 🟡     | Critical | PROD | Every version `reviewedAt: null` → "Draft — pending legal review", noindexed (PRD-M1)                                  |
@@ -160,7 +160,7 @@ PRODUCTION_READINESS.md.
 | :---- | :---------------------------------------------------- | :------ | :--------------------------------------------- | :----- | :----- | :--- | :-------------------------------------------------------------------------------------------------------------------------------- |
 | MK-01 | Explore Home and rails                                | Any     | `/`, `/explore`                                | ✅     | High   | MVP  | "Picked for you" thin while interest events are stubbed; saves don't feed ranking (#180 (c))                                      |
 | MK-02 | Keyword search with category, sort, facets, typeahead | Any     | `/explore?q=`, `/api/explore/{search,suggest}` | 🟡     | High   | PROD | Unbounded params with no Zod (S37); no rate limit (S30); offset paging reorders (S24) — COMMS SR2/SR3 · S21 built (#459)          |
-| MK-03 | Semantic re-rank and "Similar" rail                   | Any     | same                                           | 🟡     | Normal | PROD | `EMBEDDINGS_ENABLED=false` until Voyage's no-training terms are on file; `ef_search` starvation (S11 → SR1)                       |
+| MK-03 | Semantic re-rank and "Similar" rail                   | Any     | same                                           | 🟡     | Normal | PROD | `EMBEDDINGS_ENABLED=false` until Voyage's no-training terms are on file · S11 built (SR1: `ef_search` 200, iterative scan)        |
 | MK-04 | Guest browsing and search-engine indexing             | Guest   | `/explore`, `/view/:id`, `/:handle/view/:id`   | ✅     | High   | PROD | #452: the sitemap index lists public listings, posts and profiles; both view routes declare `/view/:id` canonical                 |
 | MK-05 | Card menus and `?intent=book\|contact\|apply`         | Any     | Explore cards → `/view/:id?intent=`            | ✅     | Normal | UAT  | — (DS3: a team's or a business's Message reaches its owner; More (⋯) opens the menu on touch; #422 (b), (e))                      |
 | MK-06 | Standing and Reliability shown in discovery           | Buyer   | cards, `/view`, `/:handle`                     | 🟡     | Normal | PROD | Reliability Index unbuilt (#338 P4); #454 retired Pro's `discovery_boost` (ranking is not for sale)                               |
@@ -178,7 +178,7 @@ PRODUCTION_READINESS.md.
 | MK-13 | Join a cohort waitlist                               | Buyer      | `/api/services/waitlist`                           | 🟡     | Normal   | UAT  | #455: invited in order with a 48-hour held seat, converts or expires, seller queue on the Clients tab. Left: the invite is in-app only (NT3), so a buyer who is away can miss the hold |
 | MK-14 | Project opening → Apply                              | Freelancer | `/view/:id?intent=apply`                           | ✅     | High     | MVP  | — (the handshake is PJ-15)                                                                                                                  |
 | MK-15 | Team or business storefront                          | Buyer      | `/:handle`, `/:handle/view/:id`                    | ✅     | Normal   | UAT  | —                                                                                                                                           |
-| MK-16 | Contact seller: a question or a custom quote         | Buyer      | `/view` → `/api/services/contact-action` → `/api/services/quotes` | 🟡     | High     | UAT  | The seller answers with a priced offer, both sides are notified, and accepting puts one basket line in (#458, probe `quote_offers`); checkout does not yet price the line from the offer (`place_wallet_order` quote branch after LV2's checkout lands), so no quote reaches a funded engagement yet |
+| MK-16 | Contact seller: a question or a custom quote         | Buyer      | `/view` → `/api/services/contact-action` → `/api/services/quotes` | 🟡     | High     | UAT  | #491 (CK7): checkout charges the accepted offer's line the offer, never the listing, and makes it a one-milestone One-Off engagement whose escrow and checklist are the offer's, for any listing its seller sells; the seller's expiry bounds payment, so a lapsed offer refuses at checkout and the buyer withdraws and asks again (probe `quote_checkout`, after #458's offer, notices and accept-to-basket, probe `quote_offers`). Left: the live request → offer → accept → pay → board run in the app, and the quote card's new states captured at 1440, 900 and 390 (no dev-server slot was free) |
 | MK-17 | Save an item from Explore                            | Any        | card star, results drawer                          | ✅     | Normal   | UAT  | — (DS3: the drawer saves through `/api/saved`; `/api/explore/bookmark` removed)                                                             |
 
 ### Basket, checkout & orders
@@ -218,13 +218,14 @@ PRODUCTION_READINESS.md.
 | MK-38 | Pipeline blueprint, fixed or tiered intensity            | Seller             | Offer, Pricing                                     | ✅     | Critical | MVP  | No seeded tiered listing (#417 (f)); stage CREATE category not copied (#417 (c))                                 |
 | MK-39 | 1-on-1 session listing: presets, RRULE, session plan     | Seller             | Availability section                               | ✅     | High     | UAT  | No seeded `session_plan` (#411 (f))                                                                              |
 | MK-40 | Open a cohort and schedule group sittings                | Seller             | —                                                  | ❌     | High     | UAT  | `schedule_sitting` has no app caller, so a new group listing is waitlist-only (S-05 → SCH-WP7); the seed opens no cohort either (#453 (e)) |
-| MK-41 | Publish, pause, archive, duplicate, batch, delete        | Seller             | console, `/api/catalogue/{status,batch,duplicate}` | 🟡     | Critical | PROD | Published unscreened (PRD-D10); `catalogue.listing_published` has no emitter                                     |
+| MK-41 | Publish, pause, archive, duplicate, batch, delete        | Seller             | console, `/api/catalogue/{status,batch,duplicate}` | 🟡     | Critical | PROD | Published unscreened (PRD-D10); the gate holds only in the door: a seller's bare UPDATE or INSERT publishes a listing with no cover or price, and clearing `published_at` reopens #217's currency lock (`00002520:871` + owner-only `00002020:43-65`; #494, SC4 ⏳ CK1); `catalogue.listing_published` has no emitter (ruled: followers, daily digest) |
 | MK-42 | Buyer simulation / preview                               | Seller             | `/catalogue/:slug/simulate`                        | ✅     | Normal   | UAT  | `x-frame-options` loosened (#219 (d))                                                                            |
 | MK-43 | Listing analytics                                        | Seller             | `/catalogue?view=analytics`                        | 🟡     | Normal   | UAT  | No writer of `view` events (#218 (b)); impressions need the EXPLORE flag                                         |
-| MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | 🟡     | Normal   | UAT  | Links are not slugs (#218 (a)); team or business orders have no buyer user (#218 (d)); quotes cannot be acted on |
-| MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | — (#312)                                                                                                         |
+| MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | 🟡     | Normal   | UAT  | The inquiry link carries a thread uuid (#218 (a); `?event=<id>` stays ROUTING's, PRD-J1), and a team's or a business's order is dropped from the board, not shown without a buyer (#218 (d)); SC6 builds both after CK1 and SC4 (#500). Quotes are answered in the drawer (`QuotePanel`, #458) |
+| MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | Team listings are edited only by their creator, and no door asks `publish_listings` (#312 (a), PRD-C34); ruled A, tightened (#500): any holder edits any team listing and creating needs it, presets on the team's schedule; SC6 builds it after CK1 and SC4 |
 | MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
-| MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path                                    |
+| MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R1 → R2 |
+| MK-57 | Edit a published listing within its locks                | Seller             | `/catalogue/:slug`                                 | 🟡     | High     | PROD | The doors hold the locks, the tables do not (#494 (A) 3–4): a direct write changes a published listing's currency, its questions and delivery model, and points a showcase slot at another person's file, and a seller sets their own `promoted` flag past the plan check (#494 (f)); the doors also let it lose its cover or every stage (#494 (d)) → SC4 (#494 (a)) |
 
 ### Calls & sessions
 
@@ -344,7 +345,7 @@ The operator's ruling is MW-59.
 | ID    | Flow                                      | Persona | Entry                  | Status | Crit     | Gate | What's missing                                                          |
 | :---- | :---------------------------------------- | :------ | :--------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------- |
 | PJ-59 | Notifications drawer and `/notifications` | Any     | `/api/notifications/*` | ✅     | High     | MVP  | 30 s ETag poll; in-app only                                             |
-| PJ-60 | Email notifications, digests, escalation  | System  | —                      | ❌     | Critical | UAT  | Dispatcher gated off; deliveries stuck `pending` (PRD-E4, E5; NT2, NT3) |
+| PJ-60 | Email notifications, digests, escalation  | System  | —                      | 🟡     | Critical | UAT  | Built locally: the dispatcher (NT2, #344 (a)) and email through Resend with signed bounces (NT3, #339 N3). A hard bounce blocks every category, and Settings → Account offers Confirm again. Escalation adds an email the dispatcher sends. Left: the digest emails (PRD-E15) and a hosted send (CD2; PRD-E4, E5, E10) |
 | PJ-61 | Web push and SMS                          | System  | —                      | ❌     | Normal   | PROD | NT4 (VAPID), NT5 (Twilio) (PRD-E7, E8)                                  |
 | PJ-62 | Chat message notifications                | Any     | —                      | ❌     | High     | UAT  | No `message.*` emitter (MS4, PRD-E9)                                    |
 
@@ -430,6 +431,7 @@ Refunds are MK-31.
 | MW-28 | Allowances and entitlements enforced     | Any        | `get_proposal_allowance`      | 🟡     | High   | PROD | Proposal, footprint and storage enforcement switched off; only business gates enforced   |
 | MW-29 | Agency tier and annual prices            | Team admin | —                             | ⏸      | Normal | PROD | Stopped at the storage-figure question (#252 S2)                                         |
 | MW-30 | Standing-tapered marketplace commission  | Freelancer | checkout `place_wallet_order` | ✅     | High   | UAT  | — (DB11)                                                                                 |
+| MW-64 | Every Standing rung is reachable         | Freelancer | `org.fn_recompute_standing`   | ❌     | Normal | PROD | Elite unreachable: an unwritten peer track halves reviews, so max 90 < 92 (#489; RV3)    |
 
 Public pricing is ID-04.
 
@@ -485,7 +487,7 @@ Request to Sell and shared IP are MK-46.
 | MW-59 | Dispute desk queue and rulings        | Operator | `/admin/disputes`, `/api/finance/disputes/[id]/{resolve,escalate}` | 🟡     | Critical | UAT  | Release, refund and split rulings work; release refuses an open dispute (DB3); no deadline on `under_review` (#212 (c)); freeze unbuilt (DB6); parties told in-app only |
 | MW-60 | Contact request triage                | Operator | —                                                                  | ❌     | High     | UAT  | Intake works (#276); no operator inbox; nothing calls `ops.set_contact_request_status` (PRD-A7)                                                                         |
 | MW-61 | Moderation queue, reports, penalties  | Operator | —                                                                  | ❌     | Critical | PROD | R1–R5 not started (PRD-D9)                                                                                                                                              |
-| MW-62 | Reconciliation and conservation views | Operator | —                                                                  | ❌     | Critical | PROD | Nothing reads `fn_reconcile_wallets`; DB16 and Stripe-balance reconciliation open (PRD-F8, F9)                                                                          |
+| MW-62 | Reconciliation and conservation views | Operator | `/admin/ledger`                                                    | 🟡     | Critical | PROD | `/admin/ledger` (#483) shows an operator the conservation identity per currency, its last 30 nightly checks and the open wallet drift; Stripe-balance reconciliation (PRD-F8, MR5) and the alert (PRD-F9, MR4) open |
 | MW-63 | Operator metrics and provisioning     | Operator | —                                                                  | ❌     | Normal   | PROD | No operator dashboard; `ops.admin_users` filled by seed or SQL only                                                                                                     |
 
 ---
@@ -525,3 +527,9 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | SAC3 (#478): PJ-49 narrowed (read marks are the chat's POST after paint, never the page's GET); still 🟡 | 82% | 68% |  62% |
 | 2026-11-18 | MR2 (#479): PJ-41 ❌ → ✅, PJ-42 🟡 → ✅ (a brief settles its escrow before it cancels; nothing archives while money is held); MK-09 narrowed (Cancel below the lane breakpoint), still 🟡 (PRD-F24) | 82% | 69% |  63% |
 | 2026-11-18 | MR1 (#474): MK-09 🟡 → ✅ (an unclaimed escrow binds nobody until a claim: TTL, approval and Fair Exit refund it; a ticket nobody holds can't enter work; #479 closed its other gap) | 83% | 69% |  63% |
+| 2026-11-18 | RV3's ruling (#489): new MW-64 ❌ (no subject can reach Elite: a never-written peer track halves the review component, so the score tops out at 90 against Elite's 92; ruled B, RV3 builds it after RV2) | 83% | 69% | 63% |
+| 2026-11-18 | SR1: MK-03 narrowed (a filtered nearest-neighbour ask fills: `ef_search` 200 with the iterative scan; a vector off unit length is refused); still 🟡 (`EMBEDDINGS_ENABLED=false` until Voyage's terms) | 83% | 69% |  63% |
+| 2026-11-18 | NT2 + NT3 (#344 (a), #339 N3): PJ-60 ❌ → 🟡 (the dispatcher and notification email with signed bounces, built locally; digests (PRD-E15) and a hosted send left) | 83% | 70% | 63% |
+| 2026-11-18 | FBP DB16 (#483): MW-62 ❌ → 🟡 (`/admin/ledger` reads the conservation identity, its nightly checks and the open drift; Stripe reconciliation and the alert left) | 83% | 70% | 63% |
+| 2026-11-18 | SC4 step 1 (#494): new MK-57 🟡 (a published listing's currency, questions, delivery model and showcase files are locked only in the doors; a direct write skips them); MK-41 still 🟡, its note names the publish-gate bypass (a bare UPDATE or INSERT publishes past the gate) | 83% | 70% | 63% |
+| 2026-11-18 | CK7 (#491): MK-16 narrowed (an accepted quote offer is paid at its price into a one-milestone One-Off; the seller's expiry bounds payment); still 🟡 (the live run in the app is left) | 83% | 70% | 63% |

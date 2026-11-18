@@ -14,9 +14,23 @@
  *
  * The platform fee is the SSOT's `PLATFORM_FEE_BP` (500 = 5%, pinned to the seeded
  * `security.platform_params.platform_fee_bp` by a unit test), truncated by `platformFeeFor` exactly
- * as every SQL fee path truncates (Decision #187); no seeded payer holds a negotiated rate. Team income follows
- * finance-model §5: 10% vault retention (`finance.split_rules.vault_bp`), the remainder split by
- * `contribution_agreements.percent_bp`, dust to the vault.
+ * as every SQL fee path truncates (Decision #187); no seeded payer holds a negotiated rate. A team's
+ * released escrow follows finance-model §5: 10% vault retention (`finance.split_rules.vault_bp`), the
+ * remainder split by `contribution_agreements.percent_bp`, dust to the vault.
+ *
+ * ## Every movement is written as its door writes it, so the seed conserves money
+ *
+ * `finance.v_conservation_identity` (FBP DB16) reads what came in and went out from the event tables, so
+ * a seeded credit with no cash behind it reads as an imbalance (FA N35). Hence: every top-up is a
+ * settled `finance.inbound_payments` row and its `topup` credit (`settle_card_payment`); a card order
+ * is a checkout top-up and then the wallet order (`place_wallet_order`); a product sale is ONE
+ * `product_sale` credit to the seller's wallet, a team's included, and a sale younger than the pending
+ * window waits in `finance.pending_releases` (Decision #191); the order's `platform_fee_minor` is its
+ * product lines' commission; a refunded card order is the charge refunded at Stripe, debited from the
+ * wallet the card topped up (`record_charge_refunded`); payouts are standard (Instant Payouts are
+ * Planned, ruling P3). A service line settles by holding an escrow on the engagement it creates
+ * (Decision #457), and the seeded service orders have no engagement behind them, so they move no money.
+ * No reason here is one a function does not write.
  */
 
 import { PLATFORM_FEE_BP, platformFeeFor } from "@projective/types/finance";
@@ -49,7 +63,8 @@ import { SCHEDULES } from "./schedules.ts";
 
 
 const VAULT_BP = 1000;
-const INSTANT_PAYOUT_FEE_BP = 100;
+/** `security.platform_params.pending_release_days` (00005001): an earned credit waits this long. */
+const PENDING_RELEASE_DAYS = 7;
 
 interface Wallet {
 	id: string;
@@ -70,6 +85,25 @@ interface LedgerEvent {
 	fundState: "available" | "pending" | "locked" | "on_hold";
 	/** Tie-break within a day: lower runs first. */
 	order: number;
+	/** The ledger row's id when another row names it (a settled payment's `transaction_id`). */
+	txId?: string;
+}
+
+/** One settled card payment, as `finance.settle_card_payment` leaves it (Decision #125). */
+interface InboundPayment {
+	id: string;
+	walletId: string;
+	createdBy: string;
+	amount: number;
+	daysAgo: number;
+	txId: string;
+	providerRef: string;
+	idempotencyKey: string;
+	/** The checkout it paid for, and the order it placed (Decision #153). */
+	orderKey: string | null;
+	orderId: string | null;
+	/** What `charge.refunded` took back, all of it debited from the wallet (`record_charge_refunded`). */
+	refundedCents: number;
 }
 
 /** The platform fee through the SSOT's `platformFeeFor`, so a seeded sale and a live one are charged the same way. */
@@ -257,33 +291,62 @@ export function emitFinance(world: World): string {
 	const push = (key: string, e: Omit<LedgerEvent, "order"> & { order?: number }) =>
 		walletOf(key).events.push({ order: 0, ...e });
 
+	/** Who a payment was made by: the person, or the entity's owner. */
+	const payerUserOf = (key: string): string => {
+		const who = party(world, key);
+		return who.kind === "user" ? who.persona.userId : who.entity.ownerUserId;
+	};
+
+	// A card top-up: the settled payment and the `topup` credit it is (Decision #200), `key` naming it.
+	const payments: InboundPayment[] = [];
+	const cardTopUp = (
+		ownerKey: string,
+		amount: number,
+		daysAgo: number,
+		key: string,
+		checkout: { orderKey: string; orderId: string } | null,
+	): InboundPayment => {
+		const w = walletOf(ownerKey);
+		const paymentId = uuidFor("inbound_payment", key);
+		const payment: InboundPayment = {
+			id: paymentId,
+			walletId: w.id,
+			createdBy: payerUserOf(ownerKey),
+			amount,
+			daysAgo,
+			txId: uuidFor("transaction", `${w.id}:topup:${paymentId}`),
+			providerRef: `pi_seed_${key.replace(/[^a-z0-9]+/gi, "_")}`,
+			idempotencyKey: `seed:${key}`,
+			orderKey: checkout?.orderKey ?? null,
+			orderId: checkout?.orderId ?? null,
+			refundedCents: 0,
+		};
+		payments.push(payment);
+		push(ownerKey, {
+			daysAgo,
+			direction: "credit",
+			amount,
+			reason: "topup",
+			refTable: "inbound_payments",
+			refId: paymentId,
+			fundState: "available",
+			order: -2,
+			txId: payment.txId,
+		});
+		return payment;
+	};
+
 	// Each business's opening deposit: a real top-up from its owner's funding card on the day it was
 	// created. (No wallet is minted money — the platform's old opening-credit trigger is gone.)
 	for (const e of world.entities.values()) {
 		if (e.kind !== "business") continue;
-		push(e.key, {
-			daysAgo: e.createdDaysAgo,
-			direction: "credit",
-			amount: 2_500_000,
-			reason: "topup",
-			refTable: "payment_methods",
-			refId: uuidFor("payment_method", `${e.key}:funding`),
-			fundState: "available",
-		});
+		cardTopUp(e.key, 2_500_000, e.createdDaysAgo, `topup:${e.key}:opening`, null);
 	}
 	for (const t of TOPUPS) {
-		push(t.owner, {
-			daysAgo: t.daysAgo,
-			direction: "credit",
-			amount: t.cents,
-			reason: "topup",
-			refTable: "payment_methods",
-			refId: uuidFor("payment_method", `${t.owner}:funding`),
-			fundState: "available",
-		});
+		cardTopUp(t.owner, t.cents, t.daysAgo, `topup:${t.owner}:${t.daysAgo}`, null);
 	}
 
-	/** Team income: vault retention to the team wallet, the rest split by contribution share. */
+	/** A team's released escrow: vault retention to the team wallet, the rest split by contribution share. */
 	const teamIncome = (
 		teamKey: string,
 		payout: number,
@@ -461,6 +524,7 @@ export function emitFinance(world: World): string {
 	// Orders: card-charged unless `fromWallet`; sellers are credited net of the platform fee.
 	const orderRows: string[][] = [];
 	const orderLineRows: string[][] = [];
+	const pendingRows: string[][] = [];
 	/** The seller's first conferencing platform, from the schedule they publish (`schedules.ts`). */
 	const sellerPlatform = (principal: { entityKey?: string; accountUserId: string }) => {
 		const ownerKey = principal.entityKey ??
@@ -487,10 +551,14 @@ export function emitFinance(world: World): string {
 		const placedBy = persona(world, o.placedBy);
 		const orderId = uuidFor("order", o.key);
 		let subtotal = 0;
+		/** What the product lines cost: the part of the order paid from the wallet. */
+		let productPaid = 0;
+		let feeTotal = 0;
 		o.items.forEach((corpusId, li) => {
 			const { item, principal, isService } = sellerOf(corpusId);
 			const price = priceMinorOf(item);
 			subtotal += price;
+			const lineFee = isService ? 0 : fee(price);
 			const service = isService ? SERVICES.find((s) => s.key === corpusId)! : null;
 			const itemType = !isService
 				? "digital_product"
@@ -532,69 +600,85 @@ export function emitFinance(world: World): string {
 				fulfilment === "session" ? String(service!.sessionMinutes ?? 60) : "NULL",
 				// The room is on a platform the seller actually offers, from their own schedule.
 				fulfilment === "session" ? q(sellerPlatform(principal)) : "NULL",
+				// The seller's commission, on the product lines only: an escrow line is charged at release.
+				isService ? "NULL" : String(PLATFORM_FEE_BP),
+				String(lineFee),
 				String(li),
 			]);
 
-			// Seller side.
-			const net = price - fee(price);
-			const reason = isService ? "service_sale" : "product_sale";
-			if (principal.kind === "team") {
-				teamIncome(
-					principal.entityKey!,
-					net,
-					o.daysAgo,
-					"order_lines",
-					uuidFor("order_line", `${o.key}:${corpusId}`),
-					reason,
-				);
+			// A service line is paid by the escrow its engagement holds (Decision #457), and no seeded
+			// service order has one, so it moves no money here.
+			if (isService) return;
+			productPaid += price;
+			feeTotal += lineFee;
+			// Seller side: ONE `product_sale` credit net of the commission to the seller's own wallet, a
+			// team's included (`place_wallet_order`), pending for the window first (Decision #191).
+			const sellerKey = principal.kind === "team"
+				? principal.entityKey!
+				: [...world.personas.values()].find((p) => p.userId === principal.accountUserId)!.key;
+			if (o.daysAgo < PENDING_RELEASE_DAYS) {
+				pendingRows.push([
+					id(uuidFor("pending_release", `${o.key}:${corpusId}`)),
+					id(orderId),
+					id(walletOf(sellerKey).id),
+					"'product_sale'",
+					String(price - lineFee),
+					"'USD'",
+					ago(o.daysAgo),
+					`${ago(o.daysAgo)} + interval '${PENDING_RELEASE_DAYS} days'`,
+					"'pending'",
+					ago(o.daysAgo),
+				]);
 			} else {
-				const sellerKey = [...world.personas.values()].find((p) =>
-					p.userId === principal.accountUserId
-				)!.key;
 				push(sellerKey, {
 					daysAgo: o.daysAgo,
 					direction: "credit",
-					amount: net,
-					reason,
-					refTable: "order_lines",
-					refId: uuidFor("order_line", `${o.key}:${corpusId}`),
+					amount: price - lineFee,
+					reason: "product_sale",
+					refTable: "orders",
+					refId: orderId,
 					fundState: "available",
 				});
-				if (o.status === "refunded") {
-					push(sellerKey, {
-						daysAgo: o.daysAgo - 2,
-						direction: "debit",
-						amount: net,
-						reason: "refund",
-						refTable: "orders",
-						refId: orderId,
-						fundState: "available",
-					});
-				}
 			}
 		});
-		if (o.fromWallet) {
+		if (productPaid > 0) {
+			// A card order is a checkout top-up, then the wallet order that spends it (Decision #153).
+			const payment = o.fromWallet
+				? null
+				: cardTopUp(o.buyer, productPaid, o.daysAgo, `order:${o.key}`, {
+					orderKey: `seed:${o.key}`,
+					orderId,
+				});
 			push(o.buyer, {
 				daysAgo: o.daysAgo,
 				direction: "debit",
-				amount: subtotal,
+				amount: productPaid,
 				reason: "order_payment",
 				refTable: "orders",
 				refId: orderId,
 				fundState: "available",
 				order: -1,
 			});
-		}
-		if (o.status === "refunded") {
-			push(o.buyer, {
-				daysAgo: o.daysAgo - 2,
-				direction: "credit",
-				amount: subtotal,
-				reason: "refund",
-				refTable: "orders",
-				refId: orderId,
-				fundState: "available",
-			});
+			// Refunded at Stripe: `charge.refunded` debits the wallet the card topped up.
+			if (o.status === "refunded") {
+				if (!payment) {
+					throw new Error(
+						`world: order "${o.key}" is refunded but was paid from a wallet; no door refunds that`,
+					);
+				}
+				payment.refundedCents = productPaid;
+				push(o.buyer, {
+					daysAgo: o.daysAgo - 2,
+					direction: "debit",
+					amount: productPaid,
+					reason: "refund",
+					refTable: "inbound_payments",
+					refId: payment.id,
+					fundState: "available",
+				});
+			}
+		} else if (o.status === "refunded") {
+			throw new Error(`world: order "${o.key}" is refunded but paid for nothing`);
 		}
 		orderRows.push([
 			id(orderId),
@@ -606,7 +690,7 @@ export function emitFinance(world: World): string {
 			"'USD'",
 			String(subtotal),
 			"0",
-			String(fee(subtotal)),
+			String(feeTotal),
 			String(PLATFORM_FEE_BP),
 			"'seller_deducted'",
 			String(subtotal),
@@ -636,20 +720,8 @@ export function emitFinance(world: World): string {
 			refTable: "payouts",
 			refId: payoutId,
 			fundState: "available",
+			txId,
 		});
-		if (po.instant) {
-			const instantFee = Math.floor((po.cents * INSTANT_PAYOUT_FEE_BP) / 10000);
-			push(po.owner, {
-				daysAgo: po.daysAgo,
-				direction: "debit",
-				amount: instantFee,
-				reason: "instant_payout_fee",
-				refTable: "payouts",
-				refId: payoutId,
-				fundState: "available",
-				order: 1,
-			});
-		}
 		payoutRows.push([
 			id(payoutId),
 			id(walletOf(po.owner).id),
@@ -657,12 +729,13 @@ export function emitFinance(world: World): string {
 			String(po.cents),
 			"'USD'",
 			"'paid'",
-			String(!!po.instant),
+			// Instant Payouts are Planned (Decision #337, ruling P3): the door refuses them.
+			"false",
 			"'stripe'",
 			q(`po_seed_${po.owner}_${po.daysAgo}`),
 			id(txId),
 			ago(po.daysAgo),
-			po.instant ? ago(po.daysAgo) : ago(Math.max(0, po.daysAgo - 2)),
+			ago(Math.max(0, po.daysAgo - 2)),
 		]);
 	}
 
@@ -679,9 +752,8 @@ export function emitFinance(world: World): string {
 					`ledger: wallet of "${w.key}" goes negative (${balance}) at ${e.reason} ${e.amount} ${e.daysAgo} days ago`,
 				);
 			}
-			const txId = e.reason === "payout"
-				? uuidFor("transaction", `${w.id}:payout:${e.daysAgo}`)
-				: uuidFor("transaction", `${w.id}:${e.reason}:${e.refId ?? ""}:${e.daysAgo}:${e.amount}`);
+			const txId = e.txId ??
+				uuidFor("transaction", `${w.id}:${e.reason}:${e.refId ?? ""}:${e.daysAgo}:${e.amount}`);
 			txRows.push([
 				id(txId),
 				id(w.id),
@@ -1010,9 +1082,79 @@ export function emitFinance(world: World): string {
 				"timezone",
 				"duration_minutes",
 				"conferencing_provider",
+				"platform_fee_bp",
+				"platform_fee_minor",
 				"position",
 			],
 			orderLineRows,
+		),
+	);
+	// Every settled card payment and the ledger credit it is (Decision #200), after the orders their
+	// checkouts placed. A refund debited the wallet in full, so nothing is the platform's loss.
+	out.push(
+		insert(
+			"finance.inbound_payments",
+			[
+				"id",
+				"purpose",
+				"wallet_id",
+				"amount_cents",
+				"currency",
+				"amount_received_cents",
+				"status",
+				"provider",
+				"provider_ref",
+				"idempotency_key",
+				"transaction_id",
+				"livemode",
+				"created_by",
+				"checkout",
+				"order_id",
+				"refunded_cents",
+				"created_at",
+				"updated_at",
+				"succeeded_at",
+			],
+			payments.map((p) => [
+				id(p.id),
+				"'wallet_topup'",
+				id(p.walletId),
+				String(p.amount),
+				"'USD'",
+				String(p.amount),
+				"'succeeded'",
+				"'stripe'",
+				q(p.providerRef),
+				q(p.idempotencyKey),
+				id(p.txId),
+				"false",
+				id(p.createdBy),
+				p.orderKey === null ? "NULL" : jsonb({ currency: "USD", order_key: p.orderKey }),
+				id(p.orderId),
+				String(p.refundedCents),
+				ago(p.daysAgo),
+				ago(p.daysAgo),
+				ago(p.daysAgo),
+			]),
+		),
+	);
+	// A sale inside the pending window waits here, credited by the hourly sweep (Decision #191).
+	out.push(
+		insert(
+			"finance.pending_releases",
+			[
+				"id",
+				"order_id",
+				"wallet_id",
+				"reason",
+				"amount_cents",
+				"currency",
+				"released_at",
+				"available_at",
+				"state",
+				"created_at",
+			],
+			pendingRows,
 		),
 	);
 	out.push(

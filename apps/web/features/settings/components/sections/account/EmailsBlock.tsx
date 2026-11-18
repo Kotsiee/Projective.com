@@ -160,6 +160,14 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 	const list = emails.value;
 	const full = (list?.length ?? 0) >= MAX_USER_EMAILS;
 	const outcome = verify.value ? VERIFY_COPY[verify.value] : null;
+	/** The primary address mail bounced from (COMMS NT3): nothing is sent to it until it is fixed. */
+	const bounced = list?.find((e) => e.isPrimary && e.undeliverable) ?? null;
+	const reconfirm = (e: UserEmail) =>
+		run(
+			`r:${e.id}`,
+			() => SettingsService.resendEmail(e.id),
+			(d) => DELIVERY_COPY[d ?? "unavailable"](e.email),
+		);
 
 	return (
 		<SettingsBlock
@@ -197,6 +205,14 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 			{outcome
 				? <InlineNotice align="start" assertive={outcome.tone === "warning"} text={outcome.text} />
 				: null}
+			{bounced
+				? (
+					<InlineNotice
+						align="start"
+						text={`We can't deliver email to ${bounced.email}, so nothing is sent there. Change your primary address, or confirm this one again.`}
+					/>
+				)
+				: null}
 			{list === null
 				? <InlineNotice align="start" text="Your email addresses couldn't be loaded just now." />
 				: (
@@ -212,6 +228,7 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 										{e.verifiedAt
 											? <StatusMark tone="success" label="Verified" />
 											: <StatusMark tone="warning" label="Unverified" />}
+										{e.undeliverable ? <StatusMark tone="danger" label="Undeliverable" /> : null}
 										{e.isSignIn ? <span class="stg-emails__sign">Signs you in</span> : null}
 									</span>
 								</div>
@@ -242,19 +259,14 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 									)
 									: (
 										<div class="stg-emails__actions">
-											{!e.verifiedAt
+											{!e.verifiedAt || e.undeliverable
 												? (
 													<Button
 														size="sm"
 														variant="text"
-														label="Resend link"
+														label={e.verifiedAt ? "Confirm again" : "Resend link"}
 														loading={busy.value === `r:${e.id}`}
-														onClick={() =>
-															run(
-																`r:${e.id}`,
-																() => SettingsService.resendEmail(e.id),
-																(d) => DELIVERY_COPY[d ?? "unavailable"](e.email),
-															)}
+														onClick={() => reconfirm(e)}
 													/>
 												)
 												: null}

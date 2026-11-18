@@ -774,7 +774,13 @@ door that mints a handle reads it:
 - `/api/auth/join` and the sign-up form, through `IndividualJoinSchema` and `usernameError`, which
   both say `USERNAME_RESERVED`.
 
-A person's sign-up still skips the namespace's shape and taken checks (PRD-C25).
+Both doors that mint a person also ask the whole namespace through `org.fn_handle_taken`, under the
+create doors' per-handle lock. A handle any person (in any case), team, business or enterprise
+holds, or one released in the last 90 days, is taken (PRD-C25). The refusal stays the generic
+`JOIN_REFUSED` / `ONBOARDING_REFUSED`, so sign-up is no oracle for who holds a handle. Only the
+shape still differs: a person's username keeps `USERNAME_RE` (which allows `.`, `_` and capitals),
+while the rest of the namespace keeps its stricter pattern. The owner left that for a later
+decision (2026-11-18).
 
 **The namespace guard (Teams P1).** Every top-level URL segment `apps/web/routes/` serves — route
 groups `(…)` descended (they add no segment), `[params]`, `_`-prefixed files and `index` skipped, as
@@ -979,6 +985,8 @@ expired live session), and answering the flat `serviceResponse` envelope. Live b
 | `/api/notifications/archive`      | `POST` `{ ids }` | `NotificationIdsSchema` → `comms.archive_notifications` (dismiss; never a hard delete) → `{ updated }`. |
 | `/api/comms/dispatch`             | `POST` `{ notification_id }` | The notification dispatcher's entry point (Decision #344 (a)): the `comms.notifications` trigger posts here through pg_net. `DispatchRequestSchema` (the id alone) → `NotificationDispatchService.dispatch` → `{ claimed, sent, failed, skipped, suppressed }`. Bearer `COMMS_DISPATCH_SECRET` (≥ 32 chars, constant-time), checked before the body is read; anything else **404**; 422 any other body. A named server-to-server door in the `/api` origin guard (`utils/csrf.ts`), since the database sends no `Origin`. |
 | `/api/comms/cron/dispatch`        | `POST` (`?limit=`, 1–500, default 200) | The dispatcher's retry sweep (job `comms-dispatch-sweep`, every minute): one pass over every due delivery. Bearer `COMMS_DISPATCH_SECRET`; anything else **404**. |
+| `/api/comms/webhooks/resend`      | `POST` (raw body, ≤ 256 KiB) | The email provider's delivery webhook (COMMS NT3): `DeliveryEventService.handleResend` checks the Svix signature (`RESEND_WEBHOOK_SECRET`, 300 s tolerance, constant time) before parsing, then `comms.fn_record_delivery_event` claims `(resend, svix-id)` with the effect in one transaction: delivered, a hard bounce (the address suppressed for every category and its owner told), a complaint (Marketing only). The newsletter's share follows the claim, replays included (CD1 step 5): Resend's `contact.*` events and a complaint go to `community.record_newsletter_provider_event`, which can take an address or a topic off the newsletter but never add one. **200** for handled, replayed and ignored events; **400** forged, stale or unreadable (and every delivery while the secret is unset); **413** oversized; **503** asks for a redelivery. No session; a server-to-server door. |
+| `/api/comms/unsubscribe`          | `GET` · `POST` (`?token=`) | An account's one-click marketing unsubscribe (COMMS NT3, RFC 8058), beside the newsletter's `/api/newsletter/unsubscribe`. `GET` writes nothing and **303→** `/settings/notifications`. `POST` (`List-Unsubscribe=One-Click`, or any form post) verifies the signed token (the person, never an address) and suppresses their primary verified address for Marketing only (`comms.fn_unsubscribe_marketing`), answering plain text: 200, or **404** for a link this server did not sign. Cross-site and without `Origin` from the mail provider's servers, so the `/api` origin guard stands aside for this path (a form body or none). `no-store`, `no-referrer`. |
 
 ### Help centre API (P2)
 
@@ -1004,6 +1012,7 @@ every link): they `303` to the matching page with the same query. Every answer o
 | `/api/newsletter/unsubscribe` | `GET` | Writes nothing: `303` to `/newsletter/unsubscribe` with the same query. |
 | `/api/newsletter/unsubscribe` | `POST` `?token=` + `List-Unsubscribe=One-Click` | RFC 8058 one-click, from a mail provider's servers: **no Origin check** (`utils/csrf.ts` `ONE_CLICK_ROUTES`; a form body or none only, else 415), the token is the credential → `community.unsubscribe_newsletter(…, 'one_click')` → 200 `text/plain` · 404. |
 | `/api/newsletter/unsubscribe` | `POST` form `token` | The unsubscribe page's button → `unsubscribe_newsletter(…, 'link')` → **303** back to the page. Idempotent; nothing is deleted. |
+| `/api/newsletter/cron/sync`   | `POST` (`?limit=`, 1–200, default 50) | The scheduler's door to `NewsletterProviderSync.run` (job `newsletter-provider-sync`, every 5 minutes; CD1 step 5, Decision #480 Q1 A): pushes each send-eligible address and its topics to the Resend segment and deletes the contact of each address that left (`community.newsletter_sync_batch` → `record_newsletter_sync`). Bearer `COMMS_DISPATCH_SECRET` (≥ 32 chars, constant-time), the dispatcher's own; anything else **404**. Answers counts only, never an address; does nothing while `newsletter.provider_sync` is off. The provider's own contact events come back on `POST /api/comms/webhooks/resend`, not here. |
 
 ### Feedback board (Decision #272)
 
@@ -1192,6 +1201,20 @@ is **never a URL**: it opens in a dialog over the queue and is read and ruled th
 `/disputes` pages remain unbuilt; a party reads their case in the session sidebar. In development the
 Dev Context Switcher's `operatorDesk` axis (`pj.dev.operator`) renders sample cases instead; it grants
 nothing.
+
+### Operator ledger page (FBP DB16)
+
+`/admin/ledger` (`routes/(dashboard)/admin/ledger.tsx` → `features/admin/routes/LedgerHealthScreen.tsx`)
+is the platform operator's read-only view of whether the books add up (Decision #337, ruling M2 (A)),
+under the same reserved `admin` segment; a bare `/admin` stays a 404. It is a list of sections, each
+one `LedgerHealthService` read: **Conservation** and **Wallet drift** (`finance.get_ledger_health()`)
+and **Escrow age** (`finance.read_escrow_age()`, MR7, Decision #473). **Every read is the gate:** each
+door refuses anyone but `security.is_admin()` (`ops.admin_users`), and the controller turns that
+refusal, no session or no live database into a **404**, exactly as the dispute desk does. It renders
+only once a read has answered (which proves the caller an operator); a section whose read failed
+otherwise then says so in place, and with no answer at all the page is a 502. It has no query state and no
+control; it reaches no `/api/*` route and moves no money. MR3, MR4, MR5 and MR8b add their sections
+here.
 
 | Path | Method / body | Delegates to |
 | :-- | :-- | :-- |

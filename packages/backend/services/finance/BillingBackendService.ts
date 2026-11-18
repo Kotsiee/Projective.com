@@ -11,6 +11,7 @@ import {
 import { planGateHeaders, planGateRefusal } from "../../core/plan-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 
 /**
@@ -325,6 +326,7 @@ export class BillingBackendService {
 	 */
 	static async update(input: UpdateBillingInput, actor: ReadActor): Promise<Result<BusinessBillingView>> {
 		if (!canReadLive(actor) || !actor.accessToken) return SIGNED_OUT as Result<BusinessBillingView>;
+		if (!moneyWritesLive()) return moneyWritesOff<BusinessBillingView>();
 		try {
 			const current = await readView(actor, input.businessId);
 			if (!current) return NOT_FOUND as Result<BusinessBillingView>;
@@ -368,6 +370,7 @@ export class BillingBackendService {
 	 */
 	static async payInvoice(invoiceId: string, actor: ReadActor): Promise<Result<BusinessBillingView>> {
 		if (!canReadLive(actor) || !actor.accessToken) return SIGNED_OUT as Result<BusinessBillingView>;
+		if (!moneyWritesLive()) return moneyWritesOff<BusinessBillingView>();
 		let businessId: string;
 		try {
 			const finance = getUserClient(actor.accessToken).schema("finance");

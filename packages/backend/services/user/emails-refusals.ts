@@ -191,6 +191,8 @@ export interface EmailRow {
 	is_primary: boolean;
 	verified_at: string | null;
 	is_sign_in: boolean;
+	/** Suppressed for email in every category (a hard bounce, COMMS NT3); absent on an older row. */
+	undeliverable?: boolean;
 	created_at: string;
 }
 
@@ -206,6 +208,7 @@ export function toUserEmails(rows: readonly EmailRow[] | null | undefined): User
 			isPrimary: row.is_primary,
 			verifiedAt: row.verified_at,
 			isSignIn: row.is_sign_in,
+			undeliverable: row.undeliverable === true,
 			createdAt: row.created_at,
 		});
 		return parsed.success ? [parsed.data] : [];

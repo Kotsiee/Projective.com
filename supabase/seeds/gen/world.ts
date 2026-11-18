@@ -2233,12 +2233,12 @@ export const TOPUPS: Array<{ owner: string; cents: number; daysAgo: number }> = 
 	{ owner: "helia", cents: 6_000_000, daysAgo: 30 },
 ];
 
-export const PAYOUTS: Array<{ owner: string; cents: number; daysAgo: number; instant?: boolean }> =
+/** Standard withdrawals: Instant Payouts are Planned (Decision #337, ruling P3) and the door refuses them. */
+export const PAYOUTS: Array<{ owner: string; cents: number; daysAgo: number }> =
 	[
 		{ owner: "maris", cents: 900_000, daysAgo: 10 },
-		{ owner: "kwame", cents: 500_000, daysAgo: 16, instant: true },
+		{ owner: "kwame", cents: 500_000, daysAgo: 16 },
 		{ owner: "tomasz", cents: 300_000, daysAgo: 14 },
-		{ owner: "ren", cents: 120_000, daysAgo: 40 },
 	];
 // #endregion
 

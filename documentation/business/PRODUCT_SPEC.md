@@ -115,12 +115,13 @@ aligned on time and location.
   the setting, and an operator reading a case sees that and how many people in the room matched no
   seat. **Not yet run on live provider accounts.**
 - **Today only in-app notices are delivered**, apart from the email a guest with no account gets
-  (Decision #391). The dispatcher that will carry email, push and SMS to people on Projective is
-  built and switched off (Decision #344 (a)). It sends a notice's title and a link back into
-  Projective, never its contents, and does not send a notice more than a day old. Until a provider
-  is connected for a channel, that channel's notices wait. The SMS setting shows only once the SMS
-  provider (Twilio) is configured. **Not built yet:** the email, push and SMS providers (Decision
-  #339, rulings P3 and N3).
+  (Decision #391). The dispatcher that carries email, push and SMS to people on Projective is built
+  and switched off (Decision #344 (a)). It sends a notice's title and a link back into Projective,
+  never its contents, and does not send a notice more than a day old. Until a provider is connected
+  for a channel, that channel's notices wait. Email is built (COMMS NT3, through the email provider)
+  and sends once the provider key and the dispatcher are switched on. The SMS setting shows only
+  once the SMS provider (Twilio) is configured. **Not built yet:** push and SMS, and the daily and
+  weekly digest emails (Decision #339, rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
   move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer
@@ -840,6 +841,13 @@ for **a private cohort for their team** (above) is the same request on a group-s
   revision allotment and a due date of the turnaround from the day it is paid. Once accepted, the
   seller can no longer withdraw or reprice it; the buyer can still withdraw the request until they
   have paid, which takes the line out of their basket.
+- **The offer's expiry bounds payment too (Decision #491).** An accepted offer is paid for before
+  the date the seller set when they sent it; the card says "Pay by" that date. Past it, the offer
+  reads expired, checkout refuses its line and the basket says why. The buyer withdraws the request,
+  which takes the line out of their basket, and may ask again; the seller prices it afresh. There is
+  no separate platform payment window, so a buyer never holds a seller to a price longer than the
+  seller offered it. Any listing the seller sells may be quoted — a Pipeline's or a private cohort's
+  custom scope included — and a paid offer is always bought as that one-milestone One-Off.
 - **Each move tells the other party.** The seller is told of a request, an accepted or declined offer
   and a withdrawn request, from their client pipeline; the buyer of an offer, a revision, a withdrawn
   offer and a declined request, beside their conversation with the seller, where the offer and its
@@ -1655,8 +1663,11 @@ Three product rules govern the whole surface:
 3. **Unsubscribing from marketing never silences anything else.** An unsubscribe suppresses that
    address for Marketing only — a transactional or security email still reaches it. A **hard
    bounce** is different: the address cannot receive mail, so it is blocked for every category, and
-   the user is asked in the app to fix their email (Decision #339, ruling N3 (b)). **Not built
-   yet:** no email is sent yet, so neither rule is applied, and the in-app prompt does not exist.
+   the user is asked in the app to fix their email (Decision #339, ruling N3 (b)): a notice, and a
+   warning on their address in Settings with **Confirm again**. Confirming the address again proves it
+   receives mail and lifts the block; changing the primary address leaves the old one blocked. A
+   spam complaint counts as an unsubscribe, because the address works and the person objects.
+   Every marketing email has a one-click unsubscribe.
 
 **The newsletter is double opt-in, list by list.** Anyone can type an address into a public
 subscribe form, so nothing is sent to it until its owner confirms from the link mailed to it; the
@@ -1664,7 +1675,11 @@ link works for seven days. An address already on one list confirms each new list
 Unsubscribing (one click in the mail client, or the link in any newsletter mail) holds until the
 owner subscribes again **and** confirms: typing the address into the form again only asks. The form
 answers the same way for every address, so it never tells anyone who is on the list (Decision
-#480). **Not built yet:** the issues themselves (sent from the mail provider, CD1 step 5).
+#480). Issues are composed and sent from the mail provider, to the confirmed addresses Projective
+keeps there, each issue on one list. The provider can take an address, or one list, off the
+newsletter (its own unsubscribe, a list left on its preference page, a spam complaint about any
+Projective mail), but it can never add one back: consent is given only through Projective's
+confirm link (CD1 step 5). **Not proved yet:** a real issue sent on a hosted environment (CD2).
 
 A muted chat stays muted on every device: the mute is kept on the server, not per device (Decision
 #339, ruling N3 (d)).

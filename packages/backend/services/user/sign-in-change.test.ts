@@ -23,6 +23,7 @@ const OLD: UserEmail = {
 	isPrimary: true,
 	verifiedAt: "2026-01-01T00:00:00Z",
 	isSignIn: true,
+	undeliverable: false,
 	createdAt: "2026-01-01T00:00:00Z",
 };
 const NEW: UserEmail = {
@@ -31,6 +32,7 @@ const NEW: UserEmail = {
 	isPrimary: false,
 	verifiedAt: "2026-11-01T00:00:00Z",
 	isSignIn: false,
+	undeliverable: false,
 	createdAt: "2026-11-01T00:00:00Z",
 };
 const INPUT: MakeSignIn = { password: "Correct-horse-1", makePrimary: true };

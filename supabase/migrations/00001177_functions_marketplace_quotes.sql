@@ -5,7 +5,9 @@
 -- the request; the buyer accepts or declines the offer, or withdraws the request. Accepting puts
 -- exactly ONE `one_off_service` line in the buyer's personal basket, and checkout prices that line from
 -- the offer (`fn_quote_offer_terms`), never from its snapshot. Nothing here reserves, charges or
--- escrows: money moves only at checkout, where the offer escrows like any One-Off.
+-- escrows: money moves only at checkout, where the offer escrows like any One-Off. The seller's expiry
+-- bounds payment as well as acceptance (owner ruling A, CK7): an accepted offer past it is not re-added
+-- to a basket, checkout refuses it, and the buyer withdraws the request and may ask again.
 --
 -- There is no client write on either table (00002018), so each door is the only way to make its move.
 -- A door locks the request first and then its offer, so two doors on one request serialise in one
@@ -424,7 +426,7 @@ $$;
 -- The buyer takes the pending offer before it expires. The offer and the request close as accepted, and
 -- exactly one `one_off_service` line joins the buyer's personal basket, carrying the offer's id; the
 -- line's price is a display snapshot only. Accepting again is idempotent: it returns the live line, or
--- re-adds one the buyer removed, and refuses once a line has been paid for.
+-- re-adds one the buyer removed, and refuses once a line has been paid for or the offer has expired.
 CREATE OR REPLACE FUNCTION marketplace.accept_quote_offer(p_offer uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -453,6 +455,9 @@ BEGIN
         SELECT l.live_line, l.ordered INTO v_line, v_ordered FROM marketplace.fn_quote_offer_line(o.id) l;
         IF v_ordered THEN
             RAISE EXCEPTION 'Quote refused: already_ordered' USING ERRCODE = 'check_violation';
+        END IF;
+        IF o.expires_at <= pg_catalog.now() THEN
+            RAISE EXCEPTION 'Quote refused: offer_expired' USING ERRCODE = 'check_violation';
         END IF;
     ELSE
         IF o.status <> 'pending' OR q.status <> 'answered' THEN
@@ -615,8 +620,9 @@ $$;
 -- array in `fn_blueprint_stage_terms`' shape (the offer's price, Standard and locked) for
 -- `fn_buy_scoped_service`'s `p_terms`, the offer's scope as the brief, and today plus the turnaround as
 -- the target date. Refused unless the caller is the offer's buyer, the offer and its request are
--- accepted, the line named is a live line of the caller's carrying this offer, and no other line has
--- already bought it. Called by `finance.place_wallet_order`, inside the order's transaction.
+-- accepted, the offer has not expired, the line named is a live line of the caller's carrying this
+-- offer, and no other line has already bought it. Called by `finance.place_wallet_order`, inside the
+-- order's transaction, after it has checked the same in checkout's own words: these are its backstop.
 CREATE OR REPLACE FUNCTION marketplace.fn_quote_offer_terms(p_offer uuid, p_basket_item uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -638,6 +644,9 @@ BEGIN
     END IF;
     IF o.status <> 'accepted' OR q.status <> 'accepted' THEN
         RAISE EXCEPTION 'Quote refused: offer_not_accepted' USING ERRCODE = 'check_violation';
+    END IF;
+    IF o.expires_at <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'Quote refused: offer_expired' USING ERRCODE = 'check_violation';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM finance.basket_items bi
@@ -686,8 +695,8 @@ $$;
 -- #region Reads
 -- Every quote request between the caller and one other person, in either role, newest first, each with
 -- its current offer (the pending or accepted one, else the latest) and how many offers were sent. The
--- caller's role names the side they are on; `expired` is derived. Feeds the buyer's conversation panel
--- and the host's client drawer.
+-- caller's role names the side they are on; `expired` is derived: a pending offer, or an accepted one
+-- not yet paid for, past its expiry. Feeds the buyer's conversation panel and the host's client drawer.
 CREATE OR REPLACE FUNCTION marketplace.get_quotes_with(p_counterpart uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -727,7 +736,9 @@ BEGIN
                        'offer', CASE WHEN o.id IS NULL THEN NULL ELSE pg_catalog.jsonb_build_object(
                            'id', o.id,
                            'status', o.status,
-                           'expired', o.status = 'pending' AND o.expires_at <= pg_catalog.now(),
+                           'expired', o.expires_at <= pg_catalog.now() AND (
+                               o.status = 'pending' OR (o.status = 'accepted'
+                                   AND NOT (SELECT l.ordered FROM marketplace.fn_quote_offer_line(o.id) l))),
                            'scope', o.scope,
                            'deliverables', pg_catalog.to_jsonb(o.deliverables),
                            'price_cents', o.price_cents,
@@ -766,8 +777,8 @@ COMMENT ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text) I
 COMMENT ON FUNCTION marketplace.send_quote_offer (uuid, text, text[], bigint, integer, integer) IS
 'The host prices a sent or answered request: scope, deliverables (a checklist, one escrow), price in the listing''s currency, turnaround 1-90 days, expiry 3-30 days. Supersedes the pending offer (withdrawn, superseded_by). Notifies the buyer (quote.offer_received).';
 COMMENT ON FUNCTION marketplace.accept_quote_offer (uuid) IS
-'The buyer accepts the pending, unexpired offer: offer and request accepted, exactly one one_off_service basket line carrying quoteOfferId. Idempotent; refused once paid for. Charges nothing.';
+'The buyer accepts the pending, unexpired offer: offer and request accepted, exactly one one_off_service basket line carrying quoteOfferId. Idempotent; refused once paid for or past its expiry. Charges nothing.';
 COMMENT ON FUNCTION marketplace.fn_quote_offer_terms (uuid, uuid) IS
-'Checkout''s price, brief, target date and one-stage p_terms for a basket line that buys an accepted offer. Internal to finance.place_wallet_order.';
+'Checkout''s price, brief, target date and one-stage p_terms for a basket line that buys an accepted, unexpired offer. Internal to finance.place_wallet_order.';
 COMMENT ON FUNCTION marketplace.get_quotes_with (uuid) IS
 'Every quote request between the caller and one counterpart, either role, with its current offer. Read by the conversation panel and the client drawer.';

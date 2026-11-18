@@ -66,6 +66,20 @@ Deno.test("quoteActionsOf — an accepted offer goes to checkout until it is pai
 	assertEquals(quoteActionsOf({ ...accepted, ordered: true }), []);
 });
 
+Deno.test("quoteActionsOf — an accepted offer past its expiry is not payable: withdraw, then ask again", () => {
+	const lapsed = row({
+		status: "accepted",
+		offer: { ...row().offer!, status: "accepted", expired: true },
+	});
+	assertEquals(quoteActionsOf(lapsed), ["withdraw_request"]);
+	assertEquals(quoteViewOf(lapsed).offer?.state, "expired");
+	assertEquals(quoteActionsOf({ ...lapsed, role: "host" }), []);
+	assertEquals(
+		quoteViewOf({ ...lapsed, offer: { ...lapsed.offer!, status: "declined" } }).offer?.state,
+		"declined",
+	);
+});
+
 Deno.test("quoteActionsOf — the host prices, revises, withdraws and declines an open request", () => {
 	assertEquals(quoteActionsOf(row({ role: "host" })), [
 		"send_offer",

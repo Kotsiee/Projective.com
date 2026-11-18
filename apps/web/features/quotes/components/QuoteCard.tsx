@@ -4,6 +4,7 @@ import { MoneyView } from "@projective/ui/display/money";
 import { Button } from "@projective/ui/fields";
 import type { QuoteActionKind, QuoteView } from "@projective/types/services";
 import {
+	offerMoneyNote,
 	offerStateLabel,
 	quoteStatusLabel,
 	revisionsLabel,
@@ -47,7 +48,7 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 	const offer = q.offer;
 	const titleId = `${props.idBase}-qte-${q.id}`;
 	const revisions = revisionsLabel(q.freeRevisions);
-	const live = offer && (offer.state === "pending" || offer.state === "accepted");
+	const moneyNote = offerMoneyNote(q);
 
 	const button = (kind: QuoteActionKind) => {
 		const label = kind === "send_offer"
@@ -129,6 +130,11 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 						{offer.state === "pending" && (
 							<span class="qte__meta-part">Open until {shortDate(offer.expiresAt)}</span>
 						)}
+						{offer.state === "accepted" && !q.ordered && (
+							<span class="qte__meta-part">
+								{q.role === "buyer" ? "Pay by" : "Payable until"} {shortDate(offer.expiresAt)}
+							</span>
+						)}
 						{offer.state === "expired" && (
 							<span class="qte__meta-part">Expired {shortDate(offer.expiresAt)}</span>
 						)}
@@ -139,12 +145,7 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 							{offer.deliverables.map((d, i) => <li key={i} class="qte__deliverable">{d}</li>)}
 						</ul>
 					)}
-					{live && !q.ordered && (
-						<p class="qte__escrow">
-							Paid into escrow at checkout, and released when the delivery is approved.
-						</p>
-					)}
-					{q.ordered && <p class="qte__escrow">Paid for. The engagement is in Projects.</p>}
+					{moneyNote && <p class="qte__escrow">{moneyNote}</p>}
 				</section>
 			)}
 

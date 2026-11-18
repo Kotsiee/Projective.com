@@ -254,6 +254,24 @@ export function parseChannelLivenessOverride(
 	return value === "live" || value === "off" ? value : null;
 }
 
+/**
+ * The Dev Context Switcher's `emailDeliverability` axis (COMMS NT3): `bounced` draws the person's
+ * primary address as undeliverable (a hard bounce) in the account read, `deliverable` draws every
+ * address as fine. Absent = the server's own answer. Honoured in development only.
+ */
+export type EmailDeliverabilityOverride = "deliverable" | "bounced";
+
+/** The cookie that carries {@link EmailDeliverabilityOverride}. */
+export const EMAIL_DELIVERABILITY_OVERRIDE_COOKIE = "pj.dev.email-deliverability";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseEmailDeliverabilityOverride(
+	raw: string | null | undefined,
+): EmailDeliverabilityOverride | null {
+	const value = raw?.trim();
+	return value === "deliverable" || value === "bounced" ? value : null;
+}
+
 /** The global row, trimmed to what the console edits. Times are `HH:MM` local to `timezone`. */
 export const NotificationCenterPrefsSchema = z.object({
 	inApp: z.boolean(),

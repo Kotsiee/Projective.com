@@ -87,6 +87,152 @@ SELECT e.fx_base AS paid_currency,
  WHERE e.fx_conversion_id IS NOT NULL AND e.status IN ('held', 'reserved', 'disputed')
  GROUP BY e.fx_base, e.currency;
 
+-- Every wallet whose cached balance differs from the SUM of its signed ledger rows or from its newest
+-- row's balance_after_cents, or whose pots drift from their movements or earmark more than it holds
+-- (FINANCE_AUDIT L7). Empty while every movement went through finance.fn_wallet_credit / fn_wallet_debit
+-- and every pot change through its door. One read for the two that need it: the nightly
+-- finance.fn_reconcile_wallets (which logs each row) and the operator's finance.get_ledger_health (which
+-- shows the drift still open). Service role only.
+CREATE OR REPLACE VIEW finance.v_wallet_drift AS
+SELECT r.wallet_id, r.owner_type, r.owner_id, r.currency, r.balance_cents, r.ledger_sum_cents,
+       r.drift_cents, r.earmarked_cents, r.pot_drift_cents,
+       latest.balance_after_cents AS latest_balance_after_cents
+  FROM finance.v_wallet_reconciliation r
+  LEFT JOIN LATERAL (
+        SELECT t.balance_after_cents
+          FROM finance.transactions t
+         WHERE t.wallet_id = r.wallet_id
+         ORDER BY t.created_at DESC, t.id DESC
+         LIMIT 1
+  ) latest ON true
+ WHERE r.drift_cents <> 0
+    OR r.balance_cents <> COALESCE(latest.balance_after_cents, 0)
+    OR r.pot_drift_cents <> 0
+    OR r.earmarked_cents > r.balance_cents;
+
+-- The conservation identity, per currency (Decision #337, ruling M2 (A); FBP DB16). Every unit of money
+-- the platform holds came in from outside and has not gone back out:
+--
+--     Σ external in − Σ external out  =  Σ held + Σ fees retained − Σ platform losses
+--
+-- `imbalance_minor` is the right side minus the left: 0 while every movement went through a door; above
+-- 0 the platform accounts for money nobody paid in (a credit with no cash, FCA CO20; a payee paid past
+-- its escrow, N4; a simulated row, #423 (A)); below 0 money left the books unexplained. The external
+-- terms are read from the EVENT tables, never from the ledger rows they wrote, so a ledger credit with no
+-- cash behind it cannot balance itself. In one statement, so a movement committing mid-read is seen
+-- whole or not at all.
+--   in      settled card payments (`amount_received_cents`, `settled_unapplied` included, #200) ·
+--           on-account receivables (an `invoiced` order's credit, in the currency it was credited in:
+--           its conversion's `from_minor`, or its own total) · the target side of every FX conversion
+--           (#435: a purchase's `to_minor`, an unwind's payer-currency `to_minor`)
+--   out     payouts sent or in flight, net of reversals (not `failed` / `cancelled`, which returned the
+--           debit) · card refunds (`refunded_cents`) · lost chargebacks, whole (the bank takes the
+--           disputed amount) · paid invoices' `amount_due_cents` (the on-account receivable settled) ·
+--           the source side of every FX conversion (`principal_minor`)
+--   held    wallet balances (pots are earmarks inside them, DB5) · every escrow not yet released or
+--           refunded (`held`, `reserved` #430, `disputed`, the unused `funded` default) at its
+--           `amount_cents` · pending releases not yet matured, net of chargeback recoveries
+--   fees    released escrows' `platform_fee_cents` · orders' `platform_fee_minor` (the product lines'
+--           commission) · FX spreads (`spread_minor`, in the source currency)
+--   losses  lost chargebacks' `unrecovered_cents` · card refunds' `refund_unrecovered_cents`
+-- A new money flow adds its terms here in the same change (FBP §1). Read by finance.fn_check_conservation
+-- and finance.get_ledger_health; service role only.
+CREATE OR REPLACE VIEW finance.v_conservation_identity AS
+WITH terms (currency, term, minor) AS (
+    SELECT p.currency::text, 'in_cash', p.amount_received_cents
+      FROM finance.inbound_payments p
+     WHERE p.transaction_id IS NOT NULL
+    UNION ALL
+    SELECT COALESCE(c.from_currency::text, o.currency), 'in_on_account', COALESCE(c.from_minor, o.total_minor)
+      FROM finance.orders o
+      LEFT JOIN finance.fx_conversions c ON c.id = o.fx_conversion_id
+     WHERE o.status = 'invoiced'
+    UNION ALL
+    SELECT c.to_currency::text, 'in_fx', c.to_minor FROM finance.fx_conversions c
+    UNION ALL
+    SELECT po.currency::text, 'out_payouts', po.amount_cents - po.reversed_cents
+      FROM finance.payouts po
+     WHERE po.status NOT IN ('failed', 'cancelled')
+    UNION ALL
+    SELECT p.currency::text, 'out_card_refunds', p.refunded_cents
+      FROM finance.inbound_payments p
+     WHERE p.refunded_cents > 0
+    UNION ALL
+    SELECT cb.currency::text, 'out_chargebacks', cb.amount_cents
+      FROM finance.chargebacks cb
+     WHERE cb.status = 'lost'
+    UNION ALL
+    SELECT i.currency, 'out_invoices', i.amount_due_cents
+      FROM finance.invoices i
+     WHERE i.status = 'paid' AND i.amount_due_cents > 0
+    UNION ALL
+    SELECT c.from_currency::text, 'out_fx', c.principal_minor FROM finance.fx_conversions c
+    UNION ALL
+    SELECT w.currency, 'held_wallets', w.balance_cents FROM finance.wallets w
+    UNION ALL
+    SELECT e.currency, 'held_escrows', e.amount_cents
+      FROM finance.escrows e
+     WHERE e.status NOT IN ('released', 'refunded')
+    UNION ALL
+    SELECT pr.currency::text, 'held_pending', pr.amount_cents - pr.recovered_cents
+      FROM finance.pending_releases pr
+     WHERE pr.state <> 'available'
+    UNION ALL
+    SELECT e.currency, 'fees_escrows', e.platform_fee_cents
+      FROM finance.escrows e
+     WHERE e.status = 'released' AND e.platform_fee_cents > 0
+    UNION ALL
+    SELECT o.currency, 'fees_orders', o.platform_fee_minor
+      FROM finance.orders o
+     WHERE o.platform_fee_minor > 0
+    UNION ALL
+    SELECT c.from_currency::text, 'fees_fx', c.spread_minor
+      FROM finance.fx_conversions c
+     WHERE c.spread_minor > 0
+    UNION ALL
+    SELECT cb.currency::text, 'losses_chargebacks', cb.unrecovered_cents
+      FROM finance.chargebacks cb
+     WHERE cb.status = 'lost' AND cb.unrecovered_cents > 0
+    UNION ALL
+    SELECT p.currency::text, 'losses_card_refunds', p.refund_unrecovered_cents
+      FROM finance.inbound_payments p
+     WHERE p.refund_unrecovered_cents > 0
+), per_currency AS (
+    SELECT pg_catalog.upper(pg_catalog.btrim(t.currency)) AS currency,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'in_cash'), 0)::bigint AS in_cash_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'in_on_account'), 0)::bigint AS in_on_account_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'in_fx'), 0)::bigint AS in_fx_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'out_payouts'), 0)::bigint AS out_payouts_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'out_card_refunds'), 0)::bigint AS out_card_refunds_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'out_chargebacks'), 0)::bigint AS out_chargebacks_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'out_invoices'), 0)::bigint AS out_invoices_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'out_fx'), 0)::bigint AS out_fx_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_wallets'), 0)::bigint AS held_wallets_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_escrows'), 0)::bigint AS held_escrows_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_pending'), 0)::bigint AS held_pending_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_escrows'), 0)::bigint AS fees_escrows_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_orders'), 0)::bigint AS fees_orders_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_fx'), 0)::bigint AS fees_fx_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_chargebacks'), 0)::bigint AS losses_chargebacks_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_card_refunds'), 0)::bigint AS losses_card_refunds_minor
+      FROM terms t
+     GROUP BY 1
+)
+SELECT c.*,
+       (c.in_cash_minor + c.in_on_account_minor + c.in_fx_minor)
+         - (c.out_payouts_minor + c.out_card_refunds_minor + c.out_chargebacks_minor + c.out_invoices_minor
+            + c.out_fx_minor) AS external_minor,
+       (c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
+         + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
+         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor) AS accounted_minor,
+       ((c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
+         + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
+         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor))
+       - ((c.in_cash_minor + c.in_on_account_minor + c.in_fx_minor)
+         - (c.out_payouts_minor + c.out_card_refunds_minor + c.out_chargebacks_minor + c.out_invoices_minor
+            + c.out_fx_minor)) AS imbalance_minor
+  FROM per_currency c;
+
 -- Ops (Decision #200): every settled card payment without the ledger credit it is — no
 -- transaction_id, or one that is not this payment's credit of what arrived into its wallet. Empty
 -- while finance.settle_card_payment and the inbound_payments CHECKs hold; service role only.

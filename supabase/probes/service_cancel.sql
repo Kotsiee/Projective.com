@@ -11,6 +11,9 @@
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a seeded local DB:
 --   deno task test:probes service_cancel
+--
+-- Conservation is the identity's (finance.v_conservation_identity, FBP DB16): the cancellation leaves
+-- every currency's imbalance where it was, measured after the fixture's own credit.
 -- =============================================================================================
 
 BEGIN;
@@ -37,6 +40,7 @@ DECLARE
     v_preview jsonb;
     v_expected_return bigint;
     v_held_before bigint;
+    v_imbalance jsonb;
     v_before bigint;
     v_after bigint;
     v_status project_status;
@@ -232,6 +236,7 @@ BEGIN
     -- #region 6. The client cancels: settled, then Cancelled
     SELECT balance_cents INTO v_before FROM finance.wallets
      WHERE owner_type = v_wallet_type AND owner_id = v_buyer AND currency = v_currency;
+    v_imbalance := (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
     v_out := projects.cancel_service(v_project, jsonb_build_object(v_s1::text, 50), 'Changed my mind');
     SELECT balance_cents INTO v_after FROM finance.wallets
      WHERE owner_type = v_wallet_type AND owner_id = v_buyer AND currency = v_currency;
@@ -246,10 +251,9 @@ BEGIN
                 WHERE ps.project_id = v_project AND e.status IN ('held', 'reserved')) THEN
         RAISE EXCEPTION 'FAIL 6 escrow is still held or reserved after the cancellation';
     END IF;
-    IF (v_out->>'freelancer_paid_cents')::bigint + (v_out->>'fee_cents')::bigint
-        + (v_out->>'client_refunded_cents')::bigint <> v_held_before THEN
-        RAISE EXCEPTION 'FAIL 6 conservation: paid % + fee % + refunded % <> held %',
-            v_out->>'freelancer_paid_cents', v_out->>'fee_cents', v_out->>'client_refunded_cents', v_held_before;
+    IF (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c) IS DISTINCT FROM v_imbalance THEN
+        RAISE EXCEPTION 'FAIL 6 conservation: the cancellation moved the identity from % to %',
+            v_imbalance, (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
     END IF;
     IF v_after - v_before <> (v_out->>'client_refunded_cents')::bigint THEN
         RAISE EXCEPTION 'FAIL 6 the buyer''s wallet moved % but the door reports % refunded',

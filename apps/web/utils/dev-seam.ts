@@ -311,6 +311,15 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
 export type DevNotificationDelivery = "auto" | "live" | "off";
 
 /**
+ * Settings → Account's email deliverability (COMMS NT3): `auto` follows the suppression list;
+ * `bounced` draws the primary address as undeliverable (a hard bounce), so the notice and its
+ * "Confirm again" control can be seen without a real bounce; `deliverable` draws every address fine.
+ * Reaches the server through the `pj.dev.email-deliverability` cookie, which only a development build
+ * reads; no suppression is written either way.
+ */
+export type DevEmailDeliverability = "auto" | "deliverable" | "bounced";
+
+/**
  * The simulated basket (the header drawer and its switcher): `empty` answers a basket with no lines;
  * `multi_owner` adds a team and a business account, each with a basket and a list, to the switcher;
  * `unavailable` marks the first line no longer buyable. `auto` shows the real basket. Client-side
@@ -685,6 +694,8 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated channel delivery. Optional like `walletAurora`; absent reads as `auto`. */
 	notificationDelivery?: DevNotificationDelivery;
+	/** The simulated email deliverability. Optional like `walletAurora`; absent reads as `auto`. */
+	emailDeliverability?: DevEmailDeliverability;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
@@ -927,6 +938,7 @@ const TEAM_SETTINGS_SIMS: readonly DevTeamSettings[] = [
 ];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const NOTIFICATION_DELIVERIES: readonly DevNotificationDelivery[] = ["auto", "live", "off"];
+const EMAIL_DELIVERABILITIES: readonly DevEmailDeliverability[] = ["auto", "deliverable", "bounced"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
 	"auto",
 	"empty",
@@ -1060,6 +1072,7 @@ export function readDevSeam(): DevSeamState | null {
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		notificationDelivery: coerce(ds.devNotificationDelivery, NOTIFICATION_DELIVERIES, "auto"),
+		emailDeliverability: coerce(ds.devEmailDeliverability, EMAIL_DELIVERABILITIES, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		// Absent = `ok`, its inert value: `reflect()` omits the attribute while nothing is simulated.

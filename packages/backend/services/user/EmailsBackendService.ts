@@ -158,7 +158,13 @@ export class EmailsBackendService {
 		}
 	}
 
-	/** Mail a fresh confirmation link for one of the caller's UNVERIFIED addresses. */
+	/**
+	 * Mail a fresh confirmation link for one of the caller's UNVERIFIED addresses, or for a verified one
+	 * that bounced hard (`undeliverable`, COMMS NT3): the link arriving proves the inbox receives mail,
+	 * and confirming it lifts the suppression (`org.confirm_user_email`). This mail is the person's own
+	 * request and goes straight through the mail transport, not the dispatcher, so the suppression does
+	 * not hold it back.
+	 */
 	static async resend(
 		actor: ReadActor,
 		emailId: string,
@@ -173,7 +179,9 @@ export class EmailsBackendService {
 			// theirs, and is answered exactly like one that does not exist.
 			const row = before.emails.find((email) => email.id === emailId);
 			if (!row) return notFound();
-			if (row.verifiedAt) return fail(409, { message: "That address is already confirmed." });
+			if (row.verifiedAt && !row.undeliverable) {
+				return fail(409, { message: "That address is already confirmed." });
+			}
 			const room = sends.peek(actor.userId);
 			if (!room.allowed) return rateLimited(room.retryAfterMs);
 

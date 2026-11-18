@@ -379,6 +379,13 @@ export interface ServerEnv {
 	/** Who mail is from, `Projective <no-reply@notify.<domain>>`, from `MAIL_FROM`. */
 	mailFrom: string | undefined;
 	/**
+	 * The signing secret of the Resend webhook endpoint (`whsec_…`, Svix), from `RESEND_WEBHOOK_SECRET`
+	 * (COMMS NT3; providers spec §8.5 setup 6). Server-only. It signs every
+	 * `POST {APP_URL}/api/comms/webhooks/resend` delivery; while it is unset, the `XXXX-XXXX`
+	 * placeholder or not `whsec_…`, the route refuses every delivery rather than trust an unsigned one.
+	 */
+	resendWebhookSecret: string | undefined;
+	/**
 	 * The Cloudflare Turnstile site key (public), from `TURNSTILE_SITE_KEY` (Decision #447). It reaches
 	 * the widget only through a page handler or `GET /api/auth/captcha`. Absent: no widget renders.
 	 * Read through `resolveTurnstileKeys` (`core/turnstile.ts`), which drops the placeholder and, outside
@@ -453,6 +460,7 @@ export function serverEnv(): ServerEnv {
 		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
 		resendApiKey: firstEnv("RESEND_API_KEY"),
 		mailFrom: firstEnv("MAIL_FROM"),
+		resendWebhookSecret: firstEnv("RESEND_WEBHOOK_SECRET"),
 		turnstileSiteKey: firstEnv("TURNSTILE_SITE_KEY"),
 		turnstileSecretKey: firstEnv("TURNSTILE_SECRET_KEY"),
 	};

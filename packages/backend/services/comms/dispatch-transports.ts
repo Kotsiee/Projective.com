@@ -4,16 +4,18 @@ import {
 	OutboundChannel,
 } from "@projective/types/comms";
 import type { DispatchPayload } from "./dispatch-payload.ts";
+import { emailDispatchTransport } from "./email-transport.ts";
 
 /**
  * dispatch-transports — the registry of what the notification dispatcher can send through: one
  * transport per outbound channel, behind one entry point (EPI §8.1).
  *
- * It starts EMPTY. The dispatcher claims only the channels registered here, so an unregistered
- * channel's deliveries stay pending and untouched (deferred, EPI §3.2) and go out once its transport
- * lands, while they are still inside the 24-hour window. COMMS NT3 registers email, NT4 push and NT5
- * SMS. Each entry is a factory read at call time, so a provider key set later counts without a
- * restart, and a provider that is not configured (a missing or placeholder key) answers `null`.
+ * The dispatcher claims only the channels with a configured transport here, so any other channel's
+ * deliveries stay pending and untouched (deferred, EPI §3.2) and go out once its transport is
+ * configured, while they are still inside the 24-hour window. COMMS NT3 registered email (Resend);
+ * NT4 adds push and NT5 SMS. Each entry is a factory read at call time, so a provider key set later
+ * counts without a restart, and a provider that is not configured (a missing or placeholder key)
+ * answers `null`.
  * Channel liveness reads the same registry (`channel-liveness.ts`), so a channel is never shown as
  * delivering before something here can carry it.
  */
@@ -49,8 +51,13 @@ export type TransportRegistry = Partial<Record<OutboundChannel, TransportFactory
 // #endregion
 
 // #region Registry
-/** The transports this build ships: none yet (NT3 email, NT4 push, NT5 SMS). */
-const REGISTRY: TransportRegistry = {};
+/**
+ * The transports this build ships: email through Resend (NT3), while its key and sender are
+ * configured. Push (NT4) and SMS (NT5) are still to come.
+ */
+const REGISTRY: TransportRegistry = {
+	email: () => emailDispatchTransport(),
+};
 
 /** Every configured transport, by channel, in the outbound channels' declared order. */
 export function configuredTransports(

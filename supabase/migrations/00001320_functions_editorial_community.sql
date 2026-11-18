@@ -79,20 +79,26 @@ COMMENT ON FUNCTION editorial.fn_guard_release_version_immutable() IS
 
 
 -- #region [community.newsletter]
--- The double opt-in (Decision #274 flag (c), resolved by PRD-E11's CD1). Four functions, every one
--- service-role only (00002510) and called from NewsletterBackendService
--- (packages/backend/services/newsletter/):
+-- The double opt-in (Decision #274 flag (c), resolved by PRD-E11's CD1) and the provider's copy of
+-- the list (Decision #480 Q1 A, CD1 step 5). Every function is service-role only (00002510), called
+-- from packages/backend/services/newsletter/:
 --
---   fn_newsletter_pending_topics  what a confirmation would apply to a row, or NULL (the one rule);
---   fn_newsletter_suppressed      whether the suppression list refuses the address for marketing;
---   subscribe_newsletter          the public form: records the request, reports a mail as due;
---   read_newsletter_link          what the mailed link's pages show, writing nothing (a GET);
---   confirm_newsletter            the Confirm button's POST: applies the pending request;
---   unsubscribe_newsletter        the Unsubscribe button and the RFC 8058 one-click POST.
+--   fn_newsletter_pending_topics      what a confirmation would apply to a row, or NULL (the one rule);
+--   fn_newsletter_suppressed          whether the suppression list refuses the address for marketing;
+--   subscribe_newsletter              the public form: records the request, reports a mail as due;
+--   read_newsletter_link              what the mailed link's pages show, writing nothing (a GET);
+--   confirm_newsletter                the Confirm button's POST: applies the pending request;
+--   unsubscribe_newsletter            the Unsubscribe button and the RFC 8058 one-click POST;
+--   fn_newsletter_provider_sync_enabled  the sync's switch, the `newsletter.provider_sync` flag;
+--   newsletter_sync_batch             what the provider sync must push or delete next (a read);
+--   record_newsletter_sync            what one provider call did, stamped on its row;
+--   record_newsletter_provider_event  the provider's own news about an address (its webhook).
 --
--- The token in the mailed link is the only credential the last three take, because the address has
--- no account. A link is good for 7 days after its mail (confirmation_sent_at); an unsubscribe never
--- expires, and nothing here deletes a row.
+-- The token in the mailed link is the only credential the link's doors take, because the address
+-- has no account. A link is good for 7 days after its mail (confirmation_sent_at); an unsubscribe
+-- never expires, and nothing here deletes a row. The provider's copy holds the address and its
+-- topics only; Postgres stays the record, so the provider can take an address off the list but never
+-- put one on.
 
 -- community.fn_newsletter_pending_topics — what the confirm link would apply to this row: on an
 -- unsubscribed address the pending re-subscribe (NULL when none), on an unconfirmed one its whole
@@ -401,6 +407,307 @@ BEGIN
     UPDATE community.newsletter_subscriptions
     SET unsubscribed_at = now(),
         unsubscribed_reason = p_reason,
+        resubscribe_topics = NULL,
+        resubscribe_requested_at = NULL,
+        updated_at = now()
+    WHERE id = v_row.id;
+    RETURN jsonb_build_object('outcome', 'unsubscribed');
+END;
+$$;
+
+-- community.fn_newsletter_provider_sync_enabled — the `newsletter.provider_sync` feature flag, false
+-- when the row is missing. SECURITY DEFINER for the same reason as comms.fn_dispatch_enabled: the
+-- service role reads no flag table, and this answers one boolean of one flag.
+CREATE OR REPLACE FUNCTION community.fn_newsletter_provider_sync_enabled()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT f.enabled FROM security.feature_flags f WHERE f.key = 'newsletter.provider_sync'),
+        false
+    );
+$$;
+
+-- community.newsletter_sync_batch — what newsletter-provider-sync must do next, oldest change first,
+-- reading only. A row is SEND-ELIGIBLE when confirmed, not unsubscribed and not suppressed for
+-- marketing email (fn_newsletter_suppressed); the provider must hold a contact for exactly those:
+--
+--   upsert  eligible, and the provider has not received this version (provider_synced_at NULL or
+--           older than updated_at): create the contact, or set its topics;
+--   remove  not eligible, and a provider contact is known (provider_contact_ref): delete it.
+--
+-- `reconfirmed` is true when the row was confirmed after the version the provider last received, the
+-- one case in which an existing contact's own provider-side opt-out may be lifted: its owner has just
+-- consented again. Answers {enabled, segment_id, topic_ids, rows}: the `newsletter.provider_sync` flag
+-- (false when the row is missing, and then no rows), the provider's segment and per-topic ids
+-- (security.platform_params), and at most p_limit rows (1–500). The address leaves only for the
+-- provider call it is read for.
+CREATE OR REPLACE FUNCTION community.newsletter_sync_batch(p_limit integer DEFAULT 50)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_enabled boolean;
+    v_limit integer := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 500);
+    v_rows jsonb;
+BEGIN
+    v_enabled := community.fn_newsletter_provider_sync_enabled();
+    IF v_enabled THEN
+        SELECT COALESCE(jsonb_agg(to_jsonb(b) ORDER BY b.version, b.id), '[]'::jsonb) INTO v_rows
+        FROM (
+            SELECT r.id,
+                   r.email,
+                   to_jsonb(r.topics) AS topics,
+                   CASE WHEN e.eligible THEN 'upsert' ELSE 'remove' END AS action,
+                   r.provider_contact_ref AS contact_ref,
+                   r.updated_at AS version,
+                   r.confirmed_at IS NOT NULL
+                       AND r.confirmed_at > COALESCE(r.provider_synced_at, '-infinity'::timestamptz) AS reconfirmed
+            FROM community.newsletter_subscriptions r
+            CROSS JOIN LATERAL (
+                SELECT r.confirmed_at IS NOT NULL
+                    AND r.unsubscribed_at IS NULL
+                    AND NOT community.fn_newsletter_suppressed(r.email) AS eligible
+            ) e
+            WHERE (e.eligible AND (r.provider_synced_at IS NULL OR r.provider_synced_at < r.updated_at))
+               OR (NOT e.eligible AND r.provider_contact_ref IS NOT NULL)
+            ORDER BY r.updated_at, r.id
+            LIMIT v_limit
+        ) b;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'enabled', v_enabled,
+        'segment_id', (SELECT p.value FROM security.platform_params p WHERE p.key = 'newsletter_provider_segment_id'),
+        'topic_ids', (SELECT p.value FROM security.platform_params p WHERE p.key = 'newsletter_provider_topic_ids'),
+        'rows', COALESCE(v_rows, '[]'::jsonb)
+    );
+END;
+$$;
+
+-- community.record_newsletter_sync — what one provider call did for one row, stamped against the
+-- version the batch read (p_version, the row's updated_at then). Never touches updated_at: a sync is
+-- not a change of the subscription.
+--
+--   upserted  the provider holds contact p_contact_ref opted in to exactly p_topics:
+--             provider_contact_ref, provider_topics and provider_synced_at = p_version, unless a newer
+--             version was already recorded (`stale`);
+--   refused   the provider refused the address for good (not a rate limit or an outage):
+--             provider_synced_at = p_version, so it is not retried until the row changes;
+--   removed   contact p_contact_ref is gone: provider_contact_ref, provider_topics and
+--             provider_synced_at cleared, so the row is created afresh if it is ever eligible again; a
+--             different contact recorded since (a concurrent upsert) is left alone (`stale`).
+--
+-- Answers recorded · stale · not_found. An unknown action, an upsert or removal without its contact
+-- id, or an unknown topic is refused (22023).
+CREATE OR REPLACE FUNCTION community.record_newsletter_sync(
+    p_id uuid,
+    p_version timestamptz,
+    p_action text,
+    p_contact_ref text DEFAULT NULL,
+    p_topics text[] DEFAULT NULL
+)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row community.newsletter_subscriptions%ROWTYPE;
+BEGIN
+    IF p_version IS NULL OR p_action IS NULL OR p_action NOT IN ('upserted', 'refused', 'removed') THEN
+        RAISE EXCEPTION 'A sync record needs a version and a known action.' USING ERRCODE = '22023';
+    END IF;
+    IF p_action IN ('upserted', 'removed')
+       AND (p_contact_ref IS NULL OR char_length(p_contact_ref) NOT BETWEEN 1 AND 128) THEN
+        RAISE EXCEPTION 'A sync record of % needs the contact id.', p_action USING ERRCODE = '22023';
+    END IF;
+    IF p_action = 'upserted' AND (
+        p_topics IS NULL OR array_position(p_topics, NULL) IS NOT NULL
+        OR NOT p_topics <@ ARRAY['general', 'changelog']::text[]
+    ) THEN
+        RAISE EXCEPTION 'An upsert record needs the topics it opted in to.' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE id = p_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN 'not_found';
+    END IF;
+
+    IF p_action = 'removed' THEN
+        IF v_row.provider_contact_ref IS DISTINCT FROM p_contact_ref THEN
+            RETURN 'stale';
+        END IF;
+        UPDATE community.newsletter_subscriptions
+        SET provider_contact_ref = NULL, provider_topics = NULL, provider_synced_at = NULL
+        WHERE id = p_id;
+        RETURN 'recorded';
+    END IF;
+
+    IF v_row.provider_synced_at IS NOT NULL AND v_row.provider_synced_at > p_version THEN
+        RETURN 'stale';
+    END IF;
+    IF p_action = 'upserted' THEN
+        UPDATE community.newsletter_subscriptions
+        SET provider_contact_ref = p_contact_ref,
+            provider_topics = ARRAY(SELECT DISTINCT t COLLATE "C" FROM unnest(p_topics) AS u (t) ORDER BY 1),
+            provider_synced_at = p_version
+        WHERE id = p_id;
+    ELSE
+        UPDATE community.newsletter_subscriptions SET provider_synced_at = p_version WHERE id = p_id;
+    END IF;
+    RETURN 'recorded';
+END;
+$$;
+
+-- community.record_newsletter_provider_event — the mail provider's own news about an address, from
+-- its signed webhook (Resend's contact events and a spam complaint; NT3's DeliveryEventService). The
+-- provider can take an address off the list, or a topic off an address, but never put either back:
+-- consent is given only through the confirm link. Keyed by the address, under a row lock:
+--
+--   unsubscribed  contact p_contact_ref unsubscribed there    → unsubscribed_at, reason `provider`;
+--   complaint     a spam complaint about any mail to it       → unsubscribed_at, reason `complaint`;
+--   topics        its topic preferences changed there         → each p_opted_out topic the provider
+--                 had opted in (provider_topics) leaves `topics`, and the last one leaving is an
+--                 unsubscribe (reason `provider`); an opt-out of a topic the provider never held is the
+--                 echo of a sync, not a choice. A p_opted_in topic the provider never held is not added
+--                 here: the provider's copy is re-synced from this row instead (`resync`);
+--   present       the provider holds contact p_contact_ref    → recorded when it is not the one known,
+--                 and re-synced, so an ineligible address's stray contact is deleted and an eligible
+--                 one is set to this row's topics;
+--   deleted       contact p_contact_ref was deleted there    → when it is the contact this row knows,
+--                 the provider columns are cleared and the address unsubscribed (reason `provider`);
+--                 any other deletion (the sync's own, already cleared, or an older contact) is
+--                 `unchanged`.
+--
+-- Staleness, so a late or replayed delivery never undoes a newer consent: an `unsubscribed` event of
+-- a contact other than the one known is `stale`; a complaint or topic event that happened before the
+-- row's last confirmation (p_occurred_at < confirmed_at) is `stale`, and so is an `unsubscribed`
+-- event when no contact is known. An unsubscribe clears a pending request, as unsubscribe_newsletter
+-- does. Answers {outcome}: unsubscribed · already_unsubscribed · topics_removed · resync · unchanged
+-- · stale · not_found. An unknown event or topic, or a contact event without its id, is refused
+-- (22023).
+CREATE OR REPLACE FUNCTION community.record_newsletter_provider_event(
+    p_email text,
+    p_event text,
+    p_occurred_at timestamptz DEFAULT NULL,
+    p_contact_ref text DEFAULT NULL,
+    p_opted_out text[] DEFAULT NULL,
+    p_opted_in text[] DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_email text := lower(btrim(COALESCE(p_email, '')));
+    v_row community.newsletter_subscriptions%ROWTYPE;
+    v_out text[] := COALESCE(p_opted_out, '{}'::text[]);
+    v_in text[] := COALESCE(p_opted_in, '{}'::text[]);
+    v_known text[];
+    v_topics text[];
+    v_reason text;
+    v_before_consent boolean;
+BEGIN
+    IF p_event IS NULL OR p_event NOT IN ('unsubscribed', 'complaint', 'topics', 'present', 'deleted') THEN
+        RAISE EXCEPTION 'Unknown provider event.' USING ERRCODE = '22023';
+    END IF;
+    IF array_position(v_out || v_in, NULL) IS NOT NULL
+       OR NOT (v_out || v_in) <@ ARRAY['general', 'changelog']::text[] THEN
+        RAISE EXCEPTION 'Unknown newsletter topic.' USING ERRCODE = '22023';
+    END IF;
+    IF p_event IN ('unsubscribed', 'present', 'deleted')
+       AND (p_contact_ref IS NULL OR char_length(p_contact_ref) NOT BETWEEN 1 AND 128) THEN
+        RAISE EXCEPTION 'A % event needs the contact id.', p_event USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE email = v_email FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('outcome', 'not_found');
+    END IF;
+    v_before_consent := v_row.confirmed_at IS NOT NULL AND p_occurred_at IS NOT NULL
+        AND p_occurred_at < v_row.confirmed_at;
+
+    IF p_event = 'present' THEN
+        IF v_row.provider_contact_ref IS NOT DISTINCT FROM p_contact_ref THEN
+            RETURN jsonb_build_object('outcome', 'unchanged');
+        END IF;
+        UPDATE community.newsletter_subscriptions
+        SET provider_contact_ref = p_contact_ref, provider_topics = NULL, provider_synced_at = NULL
+        WHERE id = v_row.id;
+        RETURN jsonb_build_object('outcome', 'resync');
+    END IF;
+
+    IF p_event = 'deleted' THEN
+        IF v_row.provider_contact_ref IS DISTINCT FROM p_contact_ref THEN
+            RETURN jsonb_build_object('outcome', 'unchanged');
+        END IF;
+        UPDATE community.newsletter_subscriptions
+        SET provider_contact_ref = NULL, provider_topics = NULL, provider_synced_at = NULL
+        WHERE id = v_row.id;
+        v_reason := 'provider';
+    ELSIF p_event = 'unsubscribed' THEN
+        IF v_row.provider_contact_ref IS DISTINCT FROM p_contact_ref
+           AND (v_row.provider_contact_ref IS NOT NULL OR v_before_consent) THEN
+            RETURN jsonb_build_object('outcome', 'stale');
+        END IF;
+        v_reason := 'provider';
+    ELSIF v_before_consent THEN
+        RETURN jsonb_build_object('outcome', 'stale');
+    ELSIF p_event = 'complaint' THEN
+        v_reason := 'complaint';
+    ELSE
+        -- p_event = 'topics'
+        IF v_row.unsubscribed_at IS NOT NULL THEN
+            RETURN jsonb_build_object('outcome', 'unchanged');
+        END IF;
+        v_known := COALESCE(v_row.provider_topics, '{}'::text[]);
+        v_topics := ARRAY(
+            SELECT t COLLATE "C" FROM unnest(v_row.topics) AS u (t)
+            WHERE NOT (t = ANY (v_out) AND t = ANY (v_known))
+            ORDER BY 1
+        );
+        IF cardinality(v_topics) = 0 THEN
+            v_reason := 'provider';
+        ELSIF v_topics IS DISTINCT FROM v_row.topics THEN
+            UPDATE community.newsletter_subscriptions
+            SET topics = v_topics,
+                provider_topics = ARRAY(
+                    SELECT t COLLATE "C" FROM unnest(v_known) AS u (t) WHERE NOT (t = ANY (v_out)) ORDER BY 1
+                ),
+                updated_at = now()
+            WHERE id = v_row.id;
+            RETURN jsonb_build_object('outcome', 'topics_removed');
+        ELSIF v_row.confirmed_at IS NOT NULL
+              AND EXISTS (SELECT 1 FROM unnest(v_in) AS u (t) WHERE NOT (t = ANY (v_known))) THEN
+            UPDATE community.newsletter_subscriptions SET provider_synced_at = NULL WHERE id = v_row.id;
+            RETURN jsonb_build_object('outcome', 'resync');
+        ELSE
+            RETURN jsonb_build_object('outcome', 'unchanged');
+        END IF;
+    END IF;
+
+    -- What is left is an unsubscribe of the whole address, for v_reason.
+    IF v_row.unsubscribed_at IS NOT NULL THEN
+        IF v_row.resubscribe_topics IS NOT NULL THEN
+            UPDATE community.newsletter_subscriptions
+            SET resubscribe_topics = NULL, resubscribe_requested_at = NULL, updated_at = now()
+            WHERE id = v_row.id;
+        END IF;
+        RETURN jsonb_build_object('outcome', 'already_unsubscribed');
+    END IF;
+    UPDATE community.newsletter_subscriptions
+    SET unsubscribed_at = now(),
+        unsubscribed_reason = v_reason,
         resubscribe_topics = NULL,
         resubscribe_requested_at = NULL,
         updated_at = now()

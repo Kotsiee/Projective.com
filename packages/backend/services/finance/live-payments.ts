@@ -26,6 +26,7 @@ import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
+import { moneyWritesLive, moneyWritesOffRefusal } from "./money-gate.ts";
 import type { FundingPaymentInput } from "./funding-state.ts";
 
 /**
@@ -241,12 +242,18 @@ export function verificationCaseOf(row: Row): VerificationCase {
 // #endregion
 
 // #region User doors (the caller's own token)
+/**
+ * Call one user door as the caller. Every door here belongs to the Stripe fiat rails, whose entry
+ * points (`PaymentBackendService`, `wallet-actions`) pass the money switch first; this asks it
+ * again, so a caller that skipped it is refused rather than reaching the door (`money-gate.ts`).
+ */
 async function userRpc<T>(
 	accessToken: string,
 	fn: string,
 	args: Record<string, unknown>,
 	map: (row: Row) => T,
 ): Promise<DbResult<T>> {
+	if (!moneyWritesLive()) return { ok: false, refusal: moneyWritesOffRefusal() };
 	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(fn, args);
 	if (error) return { ok: false, refusal: refusalOf(error, fn) };
 	return { ok: true, value: map(data as Row) };
@@ -318,6 +325,7 @@ export async function attachCheckoutOrder(
 	paymentId: string,
 	link: CheckoutOrderLink,
 ): Promise<DbResult<InboundPayment | null>> {
+	if (!moneyWritesLive()) return { ok: false, refusal: moneyWritesOffRefusal() };
 	const { data, error } = await getUserClient(accessToken).schema("finance").rpc("attach_checkout_order", {
 		p_payment_id: paymentId,
 		p_checkout: {

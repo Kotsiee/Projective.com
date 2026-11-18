@@ -2,17 +2,29 @@ import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
 	NEWSLETTER_EMAIL_MAX,
 	NEWSLETTER_LINK_TTL_DAYS,
+	NEWSLETTER_PARAM_KEYS,
+	NEWSLETTER_PROVIDER_SYNC_FLAG,
 	NEWSLETTER_RESEND_AFTER_MINUTES,
 	NEWSLETTER_TOPIC_LABELS,
 	NEWSLETTER_TOPICS,
 	NewsletterConfirmOutcome,
 	NewsletterConfirmRpcResultSchema,
 	NewsletterLinkRpcResultSchema,
+	NewsletterProviderConfigSchema,
+	NewsletterProviderEventKind,
+	NewsletterProviderEventOutcome,
+	NewsletterProviderEventRpcResultSchema,
 	NewsletterSource,
 	NewsletterSubscribeOutcome,
 	NewsletterSubscribeRpcResultSchema,
 	NewsletterSubscribeSchema,
+	NewsletterSyncAction,
+	NewsletterSyncBatchSchema,
+	NewsletterSyncRecordAction,
+	NewsletterSyncRecordOutcome,
+	NewsletterSyncRowSchema,
 	NewsletterTopic,
+	NewsletterUnsubscribedReason,
 	NewsletterUnsubscribeOutcome,
 	NewsletterUnsubscribeReason,
 	NewsletterUnsubscribeRpcResultSchema,
@@ -249,5 +261,120 @@ Deno.test("the table carries confirmation_sent_at, and a pending topic may sit o
 			"(resubscribe_topics IS NULL OR unsubscribed_at IS NOT NULL OR confirmed_at IS NOT NULL)",
 		),
 	);
+});
+// #endregion
+
+// #region Twins of the provider's copy (CD1 step 5)
+/** The quoted literals of the first `NOT IN (…)` in `body`. */
+function notInList(body: string): string[] {
+	const from = body.indexOf("NOT IN (");
+	assert(from >= 0, "no NOT IN list");
+	return [...body.slice(from, body.indexOf(")", from)).matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+Deno.test("NewsletterUnsubscribedReason mirrors the reason CHECK, and the link's reasons are a subset", () => {
+	const allowed = literalsAfter("unsubscribed_reason IN (", "IN (", ")");
+	assertEquals(NewsletterUnsubscribedReason.options, allowed);
+	assert(NewsletterUnsubscribeReason.options.every((r) => allowed.includes(r)));
+	// The provider door writes exactly the two reasons the link never does.
+	const body = functionBody("record_newsletter_provider_event");
+	assert(body.includes("'provider'") && body.includes("'complaint'"));
+});
+
+Deno.test("the table carries the provider columns, bounded like the Zod row", () => {
+	for (
+		const column of [
+			"provider_contact_ref text,",
+			"provider_synced_at timestamptz,",
+			"provider_topics text[],",
+		]
+	) {
+		assert(sql.includes(column), column);
+	}
+	assert(sql.includes("char_length(provider_contact_ref) BETWEEN 1 AND 128"));
+	assertEquals(literalsAfter("provider_topics <@ ARRAY[", "ARRAY[", "]"), [...NEWSLETTER_TOPICS]);
+});
+
+Deno.test("the sync's actions, the record's actions and the provider's events are the doors' own", () => {
+	assertEquals(
+		notInList(functionBody("record_newsletter_sync")),
+		NewsletterSyncRecordAction.options,
+	);
+	assertEquals(
+		notInList(functionBody("record_newsletter_provider_event")),
+		NewsletterProviderEventKind.options,
+	);
+	const batch = functionBody("newsletter_sync_batch");
+	assertEquals(quotesEvery(batch, NewsletterSyncAction.options), []);
+	assertEquals(
+		quotesEvery(functionBody("record_newsletter_sync"), NewsletterSyncRecordOutcome.options),
+		[],
+	);
+	assertEquals(
+		quotesEvery(
+			functionBody("record_newsletter_provider_event"),
+			NewsletterProviderEventOutcome.options,
+		),
+		[],
+	);
+});
+
+Deno.test("the batch reads the flag and the params this module names", () => {
+	assert(
+		functionBody("fn_newsletter_provider_sync_enabled").includes(
+			`'${NEWSLETTER_PROVIDER_SYNC_FLAG}'`,
+		),
+	);
+	const batch = functionBody("newsletter_sync_batch");
+	assert(batch.includes(`'${NEWSLETTER_PARAM_KEYS.segmentId}'`));
+	assert(batch.includes(`'${NEWSLETTER_PARAM_KEYS.topicIds}'`));
+	const seed = Deno.readTextFileSync(
+		new URL("../../../supabase/migrations/00005001_seed_platform_params.sql", import.meta.url),
+	).replace(/\r\n/g, "\n");
+	for (const key of Object.values(NEWSLETTER_PARAM_KEYS)) assert(seed.includes(`('${key}',`), key);
+	assert(seed.includes(`VALUES ('${NEWSLETTER_PROVIDER_SYNC_FLAG}', false,`));
+	// One seeded topic id per topic, each empty until an environment sets it.
+	assert(seed.includes(`'{${NEWSLETTER_TOPICS.map((t) => `"${t}": null`).join(", ")}}'::jsonb`));
+});
+
+Deno.test("a batch parses; a row carrying anything more of the subscription does not", () => {
+	const row = {
+		id: "0b0e7d5c-34a1-4b7a-9d61-2f1f5c2e9a10",
+		email: "a@b.co",
+		topics: ["general"],
+		action: "upsert",
+		contact_ref: null,
+		version: "2026-11-18T21:28:12.760158+00:00",
+		reconfirmed: true,
+	};
+	assert(
+		NewsletterSyncBatchSchema.safeParse({
+			enabled: true,
+			segment_id: null,
+			topic_ids: null,
+			rows: [row],
+		}).success,
+	);
+	assertFalse(NewsletterSyncRowSchema.safeParse({ ...row, source: "footer" }).success);
+	assertFalse(NewsletterSyncRowSchema.safeParse({ ...row, action: "create" }).success);
+});
+
+Deno.test("the provider config needs the segment and every topic id", () => {
+	const topicIds = { general: "t-general", changelog: "t-changelog" };
+	assert(NewsletterProviderConfigSchema.safeParse({ segmentId: "seg", topicIds }).success);
+	assertFalse(NewsletterProviderConfigSchema.safeParse({ segmentId: null, topicIds }).success);
+	assertFalse(
+		NewsletterProviderConfigSchema.safeParse({
+			segmentId: "seg",
+			topicIds: { general: "t", changelog: null },
+		})
+			.success,
+	);
+	assertFalse(NewsletterProviderConfigSchema.safeParse({ segmentId: " ", topicIds }).success);
+});
+
+Deno.test("the provider door's answer parses, and a drifted one does not", () => {
+	assert(NewsletterProviderEventRpcResultSchema.safeParse({ outcome: "topics_removed" }).success);
+	assertFalse(NewsletterProviderEventRpcResultSchema.safeParse({ outcome: "removed" }).success);
 });
 // #endregion
