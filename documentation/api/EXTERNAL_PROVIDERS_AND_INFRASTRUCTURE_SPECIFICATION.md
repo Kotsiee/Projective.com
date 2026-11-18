@@ -456,11 +456,10 @@ need Stripe's domain-association file served at
 the static route if it asks for one.
 
 **G. Platform balance.** Transfers need **available** platform balance (`SYSTEM_ARCHITECTURE.md`
-§1.3, step 5). Set the platform's own payout schedule so retained fees are swept without starving
-transfers: manual, or a delay longer than the pending window (Decision #191). **Flagged (Decision
-#476 (a), awaiting a human):** an automatic schedule pays out the whole available balance, and that
-balance holds escrow longer than any delay, so the delay option can starve a later Transfer. The
-preflight requires manual until this is ruled.
+§1.3, step 5). Set the platform's own payout schedule to **manual** (Settings → Payouts; Decision
+#476 (a), ruled 2026-11-18). An automatic schedule pays out the whole available balance, and that
+balance holds escrow longer than any settlement delay, so it would starve a later Transfer. Retained
+fees are paid out by hand. `deno task stripe:preflight` fails any other schedule.
 
 **H. Runtime.**
 
