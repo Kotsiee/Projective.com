@@ -153,7 +153,7 @@ block, so a question you defer still stops the build at the right step.
 | 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
-| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** agreed, 0–50% of the seller's net; `exclusive_transfer` stages only; stops on erasure   |
+| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | Counsel's                                                                                               |
 | 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
@@ -1246,17 +1246,18 @@ CONTEXT (verified at b7280787):
      business decides through a member with the right capability; never a 13-17 account.
   3. ⚖️ The licence wording a grant creates (counsel), and what happens to a royalty when the
      client's account is erased (recommended: it stops, and the seller keeps it).
-  RULED #493 (2026-11-18), all as recommended, with stop 2's premise corrected: (1) the
-  freelancer proposes a rate, the client accepts or counters; 0-50% of the seller's net, fixed at
-  the grant; the commission first, then the royalty floored from what is left, the dust to the
-  seller; the client credited through fn_wallet_credit_pending beside the seller, so a refund
-  recovers both. (2) Only a released exclusive_transfer stage takes a request: shared_ownership
-  and licensed_use already let the maker sell, so they list with provenance and no grant;
-  projective_partner is refused; a business grants through a member holding manage_projects; no
-  13-17 account on either side. (3) The grant survives erasure, its royalty stops and the seller
-  keeps it; the grant sits behind a platform param that stays off until counsel. Wait for CK1,
-  DB19 and DB21. Skip this block when you run: re-verify all three at HEAD and stop if one has not
-  landed, and read #493's flags (a)-(d) before step 2.
+  RULED #493 (2026-11-18), all as recommended, with stop 2's premise corrected, and two points
+  re-ruled the same day (#493 (G)): (1) the freelancer proposes a rate and the client approves or
+  declines it as proposed, never counters; 0-50% of the seller's net, fixed at the grant; the
+  commission first, then the royalty floored from what is left, the dust to the seller; the client
+  credited through fn_wallet_credit_pending beside the seller, so a refund recovers both. (2) Only
+  a released exclusive_transfer or licensed_use stage takes a request; shared_ownership already
+  lets the maker sell, so it lists with provenance, no grant and no royalty, and the client is
+  told; projective_partner is refused; a business grants through a member holding
+  manage_projects; no 13-17 account on either side. (3) The grant survives erasure, its royalty
+  stops and the seller keeps it; the grant sits behind a platform param that stays off until
+  counsel. Wait for CK1, DB19 and DB21. Skip this block when you run: re-verify all three at HEAD
+  and stop if one has not landed, and read #493's flags (a)-(c) before step 2 ((d) is ruled).
 
 STEPS:
   1. Red first: a probe that no request door exists and a sale routes nothing to the client.
