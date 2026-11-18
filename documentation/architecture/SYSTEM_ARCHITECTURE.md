@@ -2667,14 +2667,21 @@ pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
 - **Deferred work is durable and cancellable.** `comms.notification_queue` holds promises of future
   notifications (session T-60/T-15/T-5 reminders, abandoned-basket nudges, ghosting/auto-approve
   timers) keyed by a deterministic `dedupe_key`, so re-running a scheduler is a no-op and the event
-  that invalidates a reminder cancels it by key.
+  that invalidates a reminder cancels it by key. The abandoned-basket nudge is its daily
+  `comms.fn_enqueue_basket_nudges` (CK5, Decision #492): Marketing, email, behind the
+  `comms.basket_nudge` flag, which stays off until counsel confirms.
+- **Marketing is opt-in at the root.** `comms.fn_category_channel_on` is the one rule the router,
+  the unread escalation and the digests read: a category's own value, else the global toggle — but
+  a Marketing channel with no explicit yes is off (Decision #492).
 
 **Where people change it.** Settings → Notifications edits preferences through `GET`/`PUT
 /api/user/notifications` (`NotificationCenterBackendService`, caller's JWT). Because the router reads
-`COALESCE(category, global)`, a channel MASTER is saved together with a `resetChannels` entry that
-sets that channel back to `null` on every category row — otherwise an older per-category value would
-outrank the master. Mandatory catalog types are shown as locked "always on" rows summarised from the
-catalog (`RequiredAlerts`), never as switches. Settings → Messaging writes the same
+the category's value before the global one, a channel MASTER is saved together with a
+`resetChannels` entry that sets that channel back to `null` on every category row — otherwise an
+older per-category value would outrank the master. A reset Marketing value reads off, so a master
+never opts anyone into Marketing; the grid draws every switch through `categoryChannelOn`, the TS
+mirror of the SQL rule. Mandatory catalog types are shown as locked "always on" rows summarised
+from the catalog (`RequiredAlerts`), never as switches. Settings → Messaging writes the same
 `notification_prefs` row (receipts, typing, sound, away replies) through `POST /api/messaging/settings`;
 quiet hours and the global pause are edited only under Notifications, so one column has one editor.
 

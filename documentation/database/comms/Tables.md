@@ -189,7 +189,10 @@ was removed in place; Settings → Notifications (`PUT /api/user/notifications`)
 Sparse per-category narrowing — a freelancer muting `discovery` while keeping every `money` and
 `work` alert. PK `(user_id, category)`. A **NULL column inherits** the corresponding global toggle;
 an **absent row inherits everything**, so the table stays sparse and a new category needs no
-backfill.
+backfill. **Marketing is the exception:** it is opt-in, so its NULL column (or absent row) reads
+**off**, and only an explicit `true` lets a Marketing notice through on that channel
+(`comms.fn_category_channel_on`, CK5, Decision #492). A global toggle clears every category's value
+for its channel, so it can withdraw a Marketing yes but never grant one.
 
 ### `comms.notification_type_mutes`
 
@@ -233,7 +236,8 @@ destination) from **`skipped`** (nothing to send to — no device, no email on f
 ### `comms.notification_queue`
 
 A **promise** of a notification, not a notification. Backs every time-based flow: session
-T-60/T-15/T-5 reminders, the abandoned-basket nudge, ghosting/auto-approve timers, and quiet-hours
+T-60/T-15/T-5 reminders, the abandoned-basket nudge (`basket.abandoned:{basket id}`,
+`comms.fn_enqueue_basket_nudges`), ghosting/auto-approve timers, and quiet-hours
 deferral. A deterministic `dedupe_key` (e.g. `session:{id}:reminder_15m`) makes re-running a
 scheduler a no-op and lets the event that invalidates the reminder cancel it **by key** — enforced
 by a partial unique index over live rows only.

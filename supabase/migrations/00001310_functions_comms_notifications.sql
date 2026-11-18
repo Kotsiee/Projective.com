@@ -222,6 +222,31 @@ COMMENT ON FUNCTION comms.fn_is_suppressed(comms.notification_channel, text, com
 
 -- #endregion
 
+-- #region 2b. Opt-in — whether a category lets a channel through (CK5, Decision #492)
+-- Read by the router, the unread escalation and the digests (owner ruling: Marketing is opt-in, fixed
+-- at the root). A category's own value wins; with none, the channel's master toggle decides —
+-- except Marketing, which stays off until the person turns it on, so no default and no master
+-- toggle ever opts anyone in.
+CREATE OR REPLACE FUNCTION comms.fn_category_channel_on(
+    p_category comms.notification_category,
+    p_category_value boolean,
+    p_master boolean
+) RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        p_category_value,
+        CASE WHEN p_category = 'marketing'::comms.notification_category THEN false ELSE p_master END,
+        false
+    );
+$$;
+
+COMMENT ON FUNCTION comms.fn_category_channel_on(comms.notification_category, boolean, boolean) IS
+    'Whether one category lets one channel through: the category''s own value, else the channel''s master toggle — except Marketing, which is opt-in and is off without an explicit yes (CK5). Read by fn_resolve_channels, fn_escalate_unread and fn_build_digests; Settings → Notifications mirrors it (categoryChannelOn).';
+-- #endregion
+
 -- #region 3. The router — resolve the channel fan-out for one (recipient, event)
 -- Precedence, highest first:
 --   catalog.mandatory (quiet hours still apply)  >  global snooze (unless critical)  >
@@ -302,12 +327,13 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- (4) + (5) Category override, else the global toggle.
+        -- (4) + (5) Category override, else the global toggle — except Marketing, which is opt-in and
+        -- has no global toggle to fall back on (comms.fn_category_channel_on).
         v_allowed := CASE v_ch
-            WHEN 'in_app'  THEN COALESCE(v_cat.in_app, v_prefs.in_app)
-            WHEN 'push'    THEN COALESCE(v_cat.push,   v_prefs.push)
-            WHEN 'email'   THEN COALESCE(v_cat.email,  v_prefs.email)
-            WHEN 'sms'     THEN COALESCE(v_cat.sms,    v_prefs.sms)
+            WHEN 'in_app'  THEN comms.fn_category_channel_on(v_type.category, v_cat.in_app, v_prefs.in_app)
+            WHEN 'push'    THEN comms.fn_category_channel_on(v_type.category, v_cat.push,   v_prefs.push)
+            WHEN 'email'   THEN comms.fn_category_channel_on(v_type.category, v_cat.email,  v_prefs.email)
+            WHEN 'sms'     THEN comms.fn_category_channel_on(v_type.category, v_cat.sms,    v_prefs.sms)
             -- `webhook` is an integration, not a user preference — always allowed if the catalog
             -- asked for it.
             WHEN 'webhook' THEN true
@@ -927,7 +953,8 @@ $$;
 -- (a) Unread escalation: "still unread after the user's escalate_after window → fall back to email".
 -- Only for urgent, non-digestible events that were pushed but not read, and only where the person's
 -- email channel for that type is on as the router resolves it: the snooze (a critical event pierces
--- it), then a live mute covering email, then the category toggle, then the global one. The
+-- it), then a live mute covering email, then the category toggle, then the global one (Marketing:
+-- its own yes only, comms.fn_category_channel_on). The
 -- `NOT EXISTS` guard on an existing email delivery row is what stops every cron tick sending another
 -- copy.
 CREATE OR REPLACE FUNCTION comms.fn_escalate_unread(p_limit integer DEFAULT 500)
@@ -957,7 +984,7 @@ BEGIN
                 AND (m.muted_until IS NULL OR m.muted_until > now())
                 AND (COALESCE(cardinality(m.channels), 0) = 0 OR 'email' = ANY (m.channels))
           )
-          AND COALESCE(c.email, p.email) IS TRUE
+          AND comms.fn_category_channel_on(n.category, c.email, p.email)
           AND p.escalate_after IS NOT NULL
           AND n.created_at <= now() - p.escalate_after
           -- Bounded window: an unread notification from last month is not escalated today.
@@ -1044,7 +1071,7 @@ BEGIN
                 OR EXTRACT(ISODOW FROM comms.fn_local_now(p.timezone))::int = COALESCE(p.digest_weekday, 1)
           )
           AND COALESCE(c.digest_frequency, p.digest_frequency) = p_period
-          AND COALESCE(c.email, p.email) IS TRUE
+          AND comms.fn_category_channel_on(k.category, c.email, p.email)
         GROUP BY p.user_id
     LOOP
         SELECT array_agg(n.id ORDER BY n.created_at DESC),
@@ -1644,4 +1671,128 @@ $$;
 
 COMMENT ON FUNCTION comms.fn_unsubscribe_marketing(uuid) IS
     'One-click marketing unsubscribe for an account: suppresses the person''s primary verified address for email, Marketing only. Returns unsubscribed, already (an active suppression covers it) or no_address. Service role only (the route verifies the signed link).';
+-- #endregion
+
+-- #region 12. The abandoned-basket nudge (CK5; owner ruling A: it is Marketing)
+-- The daily finder behind comms-basket-nudges (00005060). A PERSONAL DEFAULT basket qualifies when it
+-- holds a live line (not removed, not bought, not saved for later), nothing in it — the basket or any
+-- line — has been touched for the catalogue row's lead time, its owner has placed no order since that
+-- touch, and it has not been nudged since that touch nor inside the row's group window: one reminder
+-- per idle spell, never two inside a window. Only an adult (org.fn_is_minor fails closed) who can be
+-- reached is queued: the router's answer for basket.abandoned — Marketing is opt-in, so nobody who has
+-- not turned Marketing on — less email when the primary verified address is missing or suppressed for
+-- Marketing (an unsubscribe or a complaint). The notice names the lines and never a price: a price may
+-- have moved, and the link opens /checkout, which reprices every line. Off until counsel confirms the
+-- consent basis (security.feature_flags 'comms.basket_nudge'); while off it queues nothing.
+CREATE OR REPLACE FUNCTION comms.fn_enqueue_basket_nudges(p_limit integer DEFAULT 500)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_type comms.notification_types%ROWTYPE;
+    v_row record;
+    v_first text;
+    v_body text;
+    v_count integer := 0;
+BEGIN
+    IF NOT COALESCE(
+        (SELECT f.enabled FROM security.feature_flags f WHERE f.key = 'comms.basket_nudge'), false
+    ) THEN
+        RETURN 0;
+    END IF;
+
+    SELECT * INTO v_type FROM comms.notification_types t WHERE t.key = 'basket.abandoned';
+    IF NOT FOUND OR NOT v_type.enabled OR v_type.default_lead_time IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    FOR v_row IN
+        SELECT s.basket_id, s.owner_id, s.lines, s.line_count
+          FROM (
+            SELECT b.id AS basket_id,
+                   b.owner_id,
+                   GREATEST(b.updated_at, max(i.updated_at)) AS touched_at,
+                   array_agg(i.title ORDER BY i.position, i.created_at, i.id) FILTER (
+                       WHERE i.removed_at IS NULL AND i.purchased_at IS NULL AND NOT i.saved_for_later
+                   ) AS lines,
+                   count(*) FILTER (
+                       WHERE i.removed_at IS NULL AND i.purchased_at IS NULL AND NOT i.saved_for_later
+                   ) AS line_count
+              FROM finance.baskets b
+              JOIN finance.basket_items i ON i.basket_id = b.id
+             WHERE b.owner_type = 'user' AND b.is_default
+             GROUP BY b.id, b.owner_id, b.updated_at
+          ) s
+          JOIN org.users_public u ON u.user_id = s.owner_id
+          LEFT JOIN org.user_emails ue
+                 ON ue.user_id = s.owner_id AND ue.is_primary AND ue.verified_at IS NOT NULL
+          CROSS JOIN LATERAL (
+            SELECT comms.fn_resolve_channels(s.owner_id, v_type.key) AS channels
+          ) r
+         WHERE s.line_count > 0
+           AND s.touched_at <= pg_catalog.now() - v_type.default_lead_time
+           AND NOT org.fn_is_minor(s.owner_id)
+           AND NOT EXISTS (
+               SELECT 1 FROM finance.orders o
+                WHERE o.owner_type = 'user' AND o.owner_id = s.owner_id AND o.placed_at >= s.touched_at
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM comms.notification_queue q
+                WHERE q.type = v_type.key
+                  AND q.entity_table = 'finance.baskets'
+                  AND q.entity_id = s.basket_id
+                  AND q.status IN ('scheduled', 'processing', 'sent')
+                  AND (q.created_at >= s.touched_at
+                       OR q.created_at > pg_catalog.now() - COALESCE(v_type.group_window, v_type.default_lead_time))
+           )
+           AND (
+               COALESCE(pg_catalog.cardinality(
+                   pg_catalog.array_remove(r.channels, 'email'::comms.notification_channel)), 0) > 0
+               OR ('email'::comms.notification_channel = ANY (r.channels)
+                   AND ue.email IS NOT NULL
+                   AND NOT comms.fn_is_suppressed('email', lower(ue.email), 'marketing'))
+           )
+         ORDER BY s.touched_at, s.basket_id
+         LIMIT GREATEST(COALESCE(p_limit, 500), 0)
+    LOOP
+        v_first := CASE WHEN pg_catalog.length(v_row.lines[1]) > 80
+                        THEN pg_catalog.left(v_row.lines[1], 79) || '…'
+                        ELSE v_row.lines[1] END;
+        v_body := CASE WHEN v_row.line_count = 1
+                       THEN pg_catalog.format('%s is still in your basket.', v_first)
+                       ELSE pg_catalog.format('%s and %s more are still in your basket.', v_first, v_row.line_count - 1)
+                  END || ' Prices are checked again at checkout.';
+
+        IF comms.fn_enqueue(
+            v_row.owner_id,
+            v_type.key,
+            'Your basket is waiting',
+            v_body,
+            pg_catalog.now(),
+            'basket.abandoned:' || v_row.basket_id::text,
+            'finance.baskets',
+            v_row.basket_id,
+            pg_catalog.jsonb_build_object(
+                'lines', pg_catalog.to_jsonb(v_row.lines[1:5]),
+                'line_count', v_row.line_count
+            ),
+            NULL,
+            NULL,
+            NULL,
+            'basket.abandoned:' || v_row.basket_id::text,
+            'basket_idle'
+        ) IS NOT NULL THEN
+            v_count := v_count + 1;
+        END IF;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_enqueue_basket_nudges(integer) IS
+    'The daily abandoned-basket finder (CK5): queues one basket.abandoned (Marketing, email) for each personal default basket holding a live line, untouched for the catalogue lead time, whose adult owner has not ordered since, has not been nudged since that touch nor inside the group window, opted into Marketing and can be reached (a primary verified address not suppressed for Marketing). Names the lines, never a price; the link opens /checkout. Returns how many it queued. Queues nothing while security.feature_flags comms.basket_nudge is off. Service role only.';
 -- #endregion

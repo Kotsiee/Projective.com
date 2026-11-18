@@ -87,7 +87,6 @@ VALUES
 -- ── discovery ─────────────────────────────────────────────────────────────────────────────────
 ('catalogue.listing_published','{}',              'discovery', 'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              '/catalogue/{entity_id}',                    NULL, 'A listing went live.'),
 ('catalogue.listing_paused', '{}',                'discovery', 'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              '/catalogue/{entity_id}',                    NULL, 'A listing was paused.'),
-('basket.abandoned',         '{}',                'discovery', 'low',      ARRAY['email']::comms.notification_channel[],                 false, false, true,  false, '3 days',          '/explore',                                  '1 day', 'Items were left in the basket.'),
 ('suggestion.next_steps',    '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '7 days',          '/explore',                                  NULL, 'Suggested next steps based on recent activity.'),
 ('review.received',          '{}',                'discovery', 'medium',   ARRAY['in_app','push','email']::comms.notification_channel[], false, false, true,  false, NULL,              '/{handle}/reviews',                         NULL, 'You received a review.'),
 ('review.reminder',          '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '7 days',          '/projects/{context_id}',                    '3 days', 'A completed engagement is waiting on your review.'),
@@ -135,6 +134,10 @@ VALUES
 ('moderation.action',        '{}',                'system',    'high',     ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              NULL,                                        NULL, 'A moderation decision was applied to your account or content.'),
 -- ── marketing (opt-in only; `mandatory` is barred by CHECK) ────────────────────────────────────
 ('marketing.newsletter',     '{}',                'marketing', 'low',      ARRAY['email']::comms.notification_channel[],                 false, false, true,  false, NULL,              NULL,                                        NULL, 'Platform newsletter (double opt-in, per topic; community.newsletter_subscriptions).'),
+-- The abandoned-basket nudge (CK5, Decision #492, ruling A): Marketing, so opt-in and stopped by an
+-- unsubscribe; email only, because an inbox row has no one-step opt-out; not digestible, as every
+-- reminder; opens /checkout, which reprices. Sent by comms.fn_enqueue_basket_nudges, off until counsel.
+('basket.abandoned',         '{}',                'marketing', 'low',      ARRAY['email']::comms.notification_channel[],                 false, false, false, false, '3 days',          '/checkout',                                 '1 day', 'A personal basket left idle: one reminder per idle spell, to an opted-in adult (comms.fn_enqueue_basket_nudges).'),
 ('marketing.product_update', '{}',                'marketing', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              NULL,                                        NULL, 'New platform features and product news.')
 ON CONFLICT (key) DO NOTHING;
 

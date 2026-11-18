@@ -89,7 +89,10 @@ The routing matrix in one function. Precedence, highest first:
    #339, ruling N3 (a)).
 2. **global snooze** (`muted_until`) — silences everything except `critical`.
 3. **per-type mute** — total, or narrowed to specific transports.
-4. **per-category toggles** — `COALESCE(category, global)`.
+4. **per-category toggles** — the category's own value, else the global toggle
+   (`comms.fn_category_channel_on`). **Marketing has no global fallback:** it is opt-in, so a
+   Marketing channel with no explicit yes is off whatever the global toggle says (CK5, Decision
+   #492).
 5. **global toggles**.
 6. **quiet hours** — drops `push`/`sms` only (the inbox and email still land), unless the catalog
    row sets `overrides_quiet_hours`. The same rule holds a mandatory type's push and SMS (item 1).
@@ -108,6 +111,16 @@ UTC rather than raising.
 
 Destination-level suppression. A `marketing_only` suppression (an unsubscribe) blocks **only** the
 `marketing` category, so it can never silence a security or money-movement email.
+
+### `comms.fn_category_channel_on(p_category, p_category_value, p_master) → boolean`
+
+The one opt-in rule (CK5, Decision #492): a category's own value for a channel wins; with none, the
+channel's global toggle decides — except **Marketing**, which is off without an explicit yes, so no
+default and no global toggle ever opts anyone in. `IMMUTABLE`, `search_path = ''`. Read by the
+router (item 4 above), the unread escalation and the digests; Settings → Notifications draws its
+switches through the same rule (`categoryChannelOn`, `apps/web/features/settings/core/`). A global
+toggle clears every category's value for its channel (`resetChannels`), so it withdraws a Marketing
+yes rather than granting one.
 
 ### `comms.fn_resolve_type_key(p_key) → text`
 
@@ -131,17 +144,41 @@ no context would otherwise render as `/projects/`).
 | `comms.fn_process_queue(p_limit) → integer`                             | Cron worker. Claims due rows `FOR UPDATE SKIP LOCKED` so two overlapping ticks cannot double-send; three failures park a row as `failed` with linear backoff. |
 
 `fn_enqueue` never raises either: a failed write logs a `WARNING` (type key and SQLSTATE) and
-returns `NULL`. It has no caller yet (CAS N11). The door is sound, and each caller belongs to the
-track that owns the reason for the reminder:
+returns `NULL`. Each caller belongs to the track that owns the reason for the reminder:
 
-| Caller                                          | Track                                                                         |
-| :---------------------------------------------- | :---------------------------------------------------------------------------- |
-| Session reminders (T-60 / T-15 / T-5)           | Scheduling (`SCHEDULING_BUILD_PROMPTS.md` SCH-WP3)                            |
-| The abandoned-basket nudge                      | Finance SV4, as COMMS NT1 assigns it (see the flag below)                     |
-| The 7- and 13-day ghosting auto-approve notices | Finance and projects (`PM_BUILD_PROMPTS.md` PM-GH1; Decision #337, ruling P3) |
+| Caller                                                                         | Track                                                                                    |
+| :----------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
+| Session reminders and calendar alerts (`scheduling.fn_enqueue_due_reminders`)  | Scheduling (`00001510` §7b; SCH-WP3, Decision #388)                                      |
+| The abandoned-basket nudge (`comms.fn_enqueue_basket_nudges`, below)           | This file (CK5, Decision #492); built, and switched off until counsel confirms                  |
+| The 7- and 13-day ghosting auto-approve notices                                | Finance and projects (`PM_BUILD_PROMPTS.md` PM-GH1; Decision #337, ruling P3); not built |
 
-⚠️ `FINANCE_BUILD_PROMPTS.md` (SV4 step 5 and its cross-track notes) hands the abandoned-basket
-nudge back to comms, so neither track's prompt builds that caller yet.
+### `comms.fn_enqueue_basket_nudges(p_limit integer DEFAULT 500) → integer`
+
+The daily abandoned-basket finder (`comms-basket-nudges`, CK5; owner ruling A, Decision #492: the
+nudge is **Marketing**). `SECURITY DEFINER`, `search_path = ''`; service role only. It queues one
+`basket.abandoned` (Marketing · low · email · opens `/checkout`) through `fn_enqueue` for each
+basket that passes every test:
+
+- a **personal default** basket (`owner_type = 'user'`, `is_default`) — never a wishlist, nor a
+  team, business or enterprise basket, which has no one person to remind;
+- at least one **live** line: not removed, not bought, not saved for later;
+- **idle**: neither the basket nor any line touched (`updated_at`) for the catalogue's
+  `default_lead_time` (1 day);
+- **no order since**: its owner has placed no `finance.orders` row since that touch;
+- **one reminder per idle spell, none twice in a window**: no `basket.abandoned` for the basket
+  queued, processing or sent since that touch, nor inside the catalogue's `group_window` (3 days);
+- an **adult** owner (`NOT org.fn_is_minor`, which fails closed on an unknown date of birth);
+- **reachable within consent**: the router's answer for the type (so only someone who turned
+  Marketing on, never a muted type or a snooze), less email when the primary verified address is
+  missing or suppressed for Marketing (a one-click unsubscribe or a complaint).
+
+The notice names up to five lines (`payload.lines`, `line_count`) and **never a price**, which may
+have moved: the link opens `/checkout`, which reprices every line. It is due at once, so
+`comms-process-queue` sends it within the minute through `fn_notify`, and NT3's email carries the
+RFC 8058 one-click unsubscribe. The `dedupe_key` and `group_key` are `basket.abandoned:<basket id>`.
+Returns how many it queued. **Off** until counsel confirms the consent basis:
+`security.feature_flags['comms.basket_nudge'].enabled` is `false` in every seed, and while it is off
+the finder returns `0`. Probe: `supabase/probes/basket_nudge.sql`.
 
 ---
 
@@ -163,9 +200,10 @@ explicit `auth.uid()` predicates are belt-and-braces. They write only `read_at` 
 the first five through `NotificationInboxBackendService` (`/api/notifications/*`).
 
 **Not granted to `authenticated`:** `fn_notify`, `fn_notify_many`, `fn_enqueue`, `fn_cancel_queued`,
-`fn_process_queue`, `fn_resolve_channels`, `fn_is_quiet_hours`, `fn_is_suppressed`. A client that
-could call `fn_notify` could spoof any notification to any user; one that could call
-`fn_process_queue` could force-send every pending reminder.
+`fn_process_queue`, `fn_resolve_channels`, `fn_is_quiet_hours`, `fn_is_suppressed`,
+`fn_category_channel_on`, `fn_enqueue_basket_nudges`. A client that could call `fn_notify` could
+spoof any notification to any user; one that could call `fn_process_queue` could force-send every
+pending reminder.
 
 ---
 
@@ -186,16 +224,19 @@ could call `fn_notify` could spoof any notification to any user; one that could 
 | `comms-reap-devices`    | daily 03:32  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 gateway failures or unseen for 180 days.                               |
 | `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
 | `comms-dispatch-sweep`  | every minute | http: `POST /api/comms/cron/dispatch?limit=200` (`COMMS_DISPATCH_SECRET`) | The dispatcher's retry sweep: sends what the trigger's post missed and retries failures past their backoff, through `fn_claim_deliveries`. Claims nothing while `comms.dispatch_webhook` is off. |
+| `comms-basket-nudges`   | daily 10:17  | `fn_enqueue_basket_nudges(500)` | Queues one `basket.abandoned` per idle personal basket, within consent (CK5). Queues nothing while `comms.basket_nudge` is off. |
 
 `fn_escalate_unread` is idempotent by construction: a `NOT EXISTS` guard on an existing `email`
 delivery row is what stops every tick sending another copy. It adds the email only where the
 person's email channel for that type is on, read in the router's order: a snooze withholds it unless
 the event is `critical`, then a live mute of the type that covers email, then the category's email
-toggle, else the global one (CAS N9). `fn_build_digests` is idempotent by the unique index on
+toggle, else the global one — Marketing only by its own yes (CAS N9; `fn_category_channel_on`).
+`fn_build_digests` is idempotent by the unique index on
 `(user_id, period, window_start)`. It picks every person whose cadence for some category is this
 period — the category row's `digest_frequency`, else the global one, as the router defers on — and
-rolls up the digestible rows of only those categories whose email is on, so a per-category digest is
-no longer lost (CAS N10).
+rolls up the digestible rows of only those categories whose email is on (read through
+`fn_category_channel_on`, so Marketing joins a digest only by its own yes), so a per-category digest
+is no longer lost (CAS N10).
 
 `comms.fn_local_now(timezone, at)` is the safe local-clock helper the digest gate uses — a bad IANA
 zone degrades to UTC instead of aborting the run for every other user.

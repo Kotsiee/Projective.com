@@ -1,7 +1,11 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
-import { NO_LIVE_CHANNELS, PERSONAL_CHANNELS } from "@projective/types/comms";
+import { NO_LIVE_CHANNELS, NotificationCategory, PERSONAL_CHANNELS } from "@projective/types/comms";
 import { resolveChannelLiveness } from "@server/services/comms/channel-liveness.ts";
-import { channelDescription, requiredDeliveryNote } from "./notifications-model.ts";
+import {
+	categoryChannelOn,
+	channelDescription,
+	requiredDeliveryNote,
+} from "./notifications-model.ts";
 
 const DELIVERY_CLAIM = /^Sent |^Alerts on devices/;
 
@@ -69,4 +73,25 @@ Deno.test("requiredDeliveryNote — an outbound-only category never claims deliv
 		requiredDeliveryNote(["email"], NO_LIVE_CHANNELS),
 		"Email alerts follow once they launch.",
 	);
+});
+
+Deno.test("categoryChannelOn — a category's own value wins over the master, in both directions", () => {
+	for (const category of NotificationCategory.options) {
+		assert(categoryChannelOn(category, true, false), `${category}: own on, master off`);
+		assertFalse(categoryChannelOn(category, false, true), `${category}: own off, master on`);
+	}
+});
+
+Deno.test("categoryChannelOn — with no value of its own a category follows the master, except Marketing", () => {
+	for (const category of NotificationCategory.options) {
+		assertFalse(categoryChannelOn(category, null, false), `${category}: master off`);
+		if (category === "marketing") {
+			assertFalse(
+				categoryChannelOn(category, null, true),
+				"Marketing is opt-in: master on is no yes",
+			);
+		} else {
+			assert(categoryChannelOn(category, null, true), `${category}: follows master on`);
+		}
+	}
 });

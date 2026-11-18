@@ -222,7 +222,8 @@ logged; the coordinator logs them.
   track's.
 - **M1's `/pricing` copy** (#252 (l)) is `SUBSCRIPTIONS_BUILD_PROMPTS.md`'s. **#341 E2's lint ban**
   on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7). **The
-  abandoned-basket nudge** (FA (t)) is a comms notification (`COMMS_BUILD_PROMPTS.md`).
+  abandoned-basket nudge** (FA (t)) is MARKETPLACE_BUILD_PROMPTS CK5's, a comms emitter (built,
+  Decision #492).
 - **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (the root `CLAUDE.md` edit
   `f1f10e31`). No prompt here touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),
@@ -1935,7 +1936,8 @@ STEPS:
   5. CO15: the N1 recovery sweep (the jobs session's 'finance-sweep-card-payments' job, POST
      /api/finance/cron/card-payments) also cancels an intent still requires_* after 24 h (with an
      idempotency key); the handled payment_intent.canceled webhook marks the row. No new job. The
-     abandoned-basket nudge is a comms notification, not this prompt's.
+     abandoned-basket nudge is MARKETPLACE_BUILD_PROMPTS CK5's (built, Decision #492), not
+     this prompt's.
   6. N34: Zod uuid on the order, line and calendar routes.
   7. Dev Context Switcher: checkoutPayment (ok · declined · authenticate · timeout · unapplied ·
      price_changed · promo_exhausted), applied in the service under the dev seam: DevOverrides +
