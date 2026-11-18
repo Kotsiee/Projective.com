@@ -25,7 +25,7 @@ import {
 	WorkspaceKind,
 	WorkspaceRole,
 } from "./common.ts";
-import { RESERVED_HANDLES } from "../profile/reserved.ts";
+import { PLANNED_SEGMENTS, RESERVED_HANDLES } from "../profile/reserved.ts";
 import { EntitlementKey } from "../finance/entitlements.ts";
 import { SplitRuleType } from "../finance/vault.ts";
 import { ConversationKind } from "../messaging/conversations.ts";
@@ -421,6 +421,37 @@ Deno.test("every top-level route segment is a reserved handle, so no @handle can
 		`reserve ${
 			missing.join(", ")
 		} in RESERVED_HANDLES AND org.fn_is_reserved_handle in the same change`,
+	);
+});
+
+Deno.test("every planned segment is reserved in RESERVED_HANDLES and in org.fn_is_reserved_handle", () => {
+	const start = reservedBody.indexOf("ARRAY[");
+	const sql = new Set(literals(reservedBody.slice(start, reservedBody.indexOf("]", start))));
+	assertEquals(
+		PLANNED_SEGMENTS.length,
+		new Set(PLANNED_SEGMENTS).size,
+		"PLANNED_SEGMENTS repeats a word",
+	);
+	assertEquals(
+		PLANNED_SEGMENTS.filter((word) => !RESERVED_HANDLES.has(word)),
+		[],
+		"missing from RESERVED_HANDLES",
+	);
+	assertEquals(
+		PLANNED_SEGMENTS.filter((word) => !sql.has(word)),
+		[],
+		"missing from org.fn_is_reserved_handle",
+	);
+	// A planned word is one a handle could otherwise take, so each one fits the claim rule's shape.
+	assertEquals(PLANNED_SEGMENTS.filter((word) => localHandleRefusal(word) !== "reserved"), []);
+});
+
+Deno.test("a planned segment whose route has shipped moves out of PLANNED_SEGMENTS", () => {
+	const routed = new Set(topLevelSegments(ROUTES));
+	assertEquals(
+		PLANNED_SEGMENTS.filter((word) => routed.has(word)),
+		[],
+		"the route now reserves this word: move it from PLANNED_SEGMENTS into RESERVED_HANDLES' route list",
 	);
 });
 
@@ -972,7 +1003,10 @@ Deno.test("the channel name rule is the SQL CHECK and create_entity_channel's re
 		),
 		"create_entity_channel no longer refuses by the TS name rule",
 	);
-	assert(create.includes(`AND t.archived_at IS NULL) >= ${CHANNEL_LIVE_CAP} THEN`), "live cap drifted");
+	assert(
+		create.includes(`AND t.archived_at IS NULL) >= ${CHANNEL_LIVE_CAP} THEN`),
+		"live cap drifted",
+	);
 	assert(
 		functionBody(commsFunctions, "comms.fn_ensure_default_channel").includes(
 			`'${DEFAULT_CHANNEL_SLUG}', true`,
@@ -1004,7 +1038,9 @@ Deno.test("org.get_workspace_detail answers the channels the mapper reads", () =
 		"get_workspace_detail no longer answers channels from comms.fn_entity_channel_list",
 	);
 	const list = functionBody(commsFunctions, "comms.fn_entity_channel_list");
-	for (const key of ["'id'", "'slug'", "'topic'", "'is_default'", "'unread'", "'last_activity_at'"]) {
+	for (
+		const key of ["'id'", "'slug'", "'topic'", "'is_default'", "'unread'", "'last_activity_at'"]
+	) {
 		assert(list.includes(key), `fn_entity_channel_list no longer answers ${key}`);
 	}
 	assert(list.includes("ORDER BY t.is_default DESC, t.slug"), "default first, then by slug");
@@ -1026,7 +1062,9 @@ Deno.test("EntityChannelSchema + the detail default; the channel inputs", () => 
 	assert(!EntityChannelSchema.safeParse({ ...row, unreadCount: -1 }).success);
 	assert(CreateChannelInputSchema.safeParse({ kind: "team", id: "t1", name: "# general" }).success);
 	assert(!CreateChannelInputSchema.safeParse({ kind: "team", id: "t1", name: "   " }).success);
-	assert(ArchiveChannelInputSchema.safeParse({ kind: "business", id: "b1", channelId: "c1" }).success);
+	assert(
+		ArchiveChannelInputSchema.safeParse({ kind: "business", id: "b1", channelId: "c1" }).success,
+	);
 });
 
 // #endregion

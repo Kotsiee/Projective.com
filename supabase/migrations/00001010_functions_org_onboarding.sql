@@ -58,6 +58,12 @@ BEGIN
     -- Every path lands here — the GoTrue signup trigger and complete_onboarding alike — so the age
     -- floor holds even for a client that skips /join (Decision #190).
     PERFORM org.fn_check_dob(v_dob, v_timezone);
+    -- A person's @username shares the one handle namespace (00001020 §9), so a reserved route word is
+    -- refused here, on every door that mints a person, and not only by the browser form (Decision
+    -- #444 flag (c)). The sign-up shape (USERNAME_RE) stays the person's own.
+    IF org.fn_is_reserved_handle(v_username) THEN
+        RAISE EXCEPTION 'That handle is reserved.' USING ERRCODE = '22023';
+    END IF;
     v_objective := p_meta->>'objective';
     v_avatar_file_id := NULLIF(p_meta->>'avatar_file_id', '')::uuid;
 

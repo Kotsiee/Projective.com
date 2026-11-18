@@ -67,6 +67,11 @@ Deno.test("the claim rule is settled locally: short, charset, edge hyphen, reser
 		["a".repeat(41), "invalid", HANDLE_REFUSALS.long],
 		["teams", "reserved", HANDLE_REFUSALS.reserved],
 		["settings", "reserved", HANDLE_REFUSALS.reserved],
+		// Planned segments (Decision #444 flag (c)): held before their routes exist.
+		["analytics", "reserved", HANDLE_REFUSALS.reserved],
+		["disputes", "reserved", HANDLE_REFUSALS.reserved],
+		["connections", "reserved", HANDLE_REFUSALS.reserved],
+		["projective", "reserved", HANDLE_REFUSALS.reserved],
 	];
 	for (const [handle, status, reason] of cases) {
 		const { state } = run([{ type: "input", handle }]);

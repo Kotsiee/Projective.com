@@ -8,6 +8,7 @@ import {
 	LEGAL_ACCEPTANCE_REQUIRED,
 	OwnerCompletionSchema,
 	TermsReacceptSchema,
+	USERNAME_RESERVED,
 } from "./join.ts";
 
 /** The date `years` years (and `days` days) before today in `zone`, as an ISO date. */
@@ -41,6 +42,25 @@ Deno.test("join: a 12-year-old is refused with the minimum-age copy", () => {
 Deno.test("join: a 13-year-old and a 16-year-old are accepted (restricted is the database's call)", () => {
 	assertEquals(dobIssue(isoYearsAgo(13)), undefined);
 	assertEquals(dobIssue(isoYearsAgo(16)), undefined);
+});
+
+Deno.test("join: a reserved route word is refused as a username, however it is typed", () => {
+	const usernameIssue = (username: string) => {
+		const parsed = IndividualJoinSchema.safeParse({
+			...individual,
+			dob: isoYearsAgo(30),
+			username,
+		});
+		return parsed.success
+			? undefined
+			: parsed.error.issues.find((i) => i.path[0] === "username")?.message;
+	};
+	for (const username of ["analytics", "Disputes", " connections ", "share", "projective"]) {
+		assertEquals(usernameIssue(username), USERNAME_RESERVED, username);
+	}
+	for (const username of ["ada", "analytics.lab", "my-disputes"]) {
+		assertEquals(usernameIssue(username), undefined, username);
+	}
 });
 
 Deno.test("join: a future, malformed, impossible or pre-1900 date of birth is not a real one", () => {
@@ -130,7 +150,12 @@ Deno.test("join: the one endpoint schema routes an owner's completion by its typ
 Deno.test("join: every path refuses a final step without the consent box ticked (Decision #446)", () => {
 	const cases = [
 		[IndividualJoinSchema, { ...individual, dob: isoYearsAgo(30) }],
-		[IndividualJoinSchema, { ...individual, oauth: true, password: undefined, dob: isoYearsAgo(30) }],
+		[IndividualJoinSchema, {
+			...individual,
+			oauth: true,
+			password: undefined,
+			dob: isoYearsAgo(30),
+		}],
 		[EnterpriseJoinSchema, { ...enterprise, dob: isoYearsAgo(40) }],
 		[OwnerCompletionSchema, { ...owner, dob: isoYearsAgo(40) }],
 		[TermsReacceptSchema, { type: "terms", acceptTerms: true }],

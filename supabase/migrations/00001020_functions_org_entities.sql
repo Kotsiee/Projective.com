@@ -978,6 +978,8 @@ $$;
 -- The SQL twin of @projective/types/profile RESERVED_HANDLES (pinned by workspace.contract.test.ts,
 -- which also fails when a top-level segment under apps/web/routes/ is missing from the list — a new
 -- top-level route is reserved here AND in RESERVED_HANDLES in the same change, pr-checklist.md).
+-- The words from 'analytics' on are PLANNED_SEGMENTS: reserved ahead of any route file, each with
+-- its source in reserved.ts (Decision #444 flag (c)).
 CREATE OR REPLACE FUNCTION org.fn_is_reserved_handle(p_handle text)
 RETURNS boolean
 LANGUAGE sql
@@ -995,7 +997,16 @@ AS $$
         'notifications', 'basket', 'cart', 'checkout', 'catalogue', 'orders', 'order', 'pay', 'payment',
         'payments', 'invoice', 'invoices', 'create', 'new', 'search', 'submissions', 'attachments',
         'board', 'tasks', 'calendar', 'meet', 'invite', 'rsvp', 'saved', 'api', 'assets', 'static', 'public', '_app',
-        '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal'
+        '_middleware', '_layout', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'admin', 'internal',
+        'analytics', 'connections', 'disputes', 'reset', 'vendor', 'email', 'root', 'support',
+        'projective', 'www', 'mail', 'security', 'trust', 'safety', 'abuse', 'report', 'official',
+        'staff', 'system', 'moderator', 'operator', 'press', 'docs', 'developers', 'integrations',
+        'marketplace', 'account', 'profile', 'profiles', 'enterprise', 'enterprises', 'community',
+        'partners', 'jobs', 'talent', 'hire', 'reports', 'insights', 'standing', 'verification',
+        'subscriptions', 'plans', 'upgrade', 'referrals', 'templates', 'guides', 'events', 'auth',
+        'oauth', 'sso', 'webhooks', 'cdn', 'media', 'uploads', 'images', 'fonts', 'health', 'healthz',
+        'metrics', 'graphql', 'rpc', 'null', 'undefined', 'anonymous', 'guest', 'everyone', 'user',
+        'users'
     ]);
 $$;
 

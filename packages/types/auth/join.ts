@@ -4,6 +4,7 @@ import { toSupportedLocale } from "../org/locales.ts";
 import { bracketFromDob, isTimeZone, UNDER_MINIMUM_REFUSAL } from "./age.ts";
 import { passwordIssue, PasswordSchema } from "./password.ts";
 import { CaptchaTokenSchema } from "./captcha.ts";
+import { isReservedHandle } from "../profile/reserved.ts";
 
 /**
  * auth/join — the Zod SSOT for the `/join` request body (SYSTEM_ARCHITECTURE.md §Security: every API
@@ -24,6 +25,12 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * separators `.`, `-`, `_`. Anything the app's `sanitizeHandle` produces must pass this test.
  */
 export const USERNAME_RE = /^[a-z][a-z0-9._-]{2,29}$/i;
+/**
+ * The refusal for a username that is a reserved route word (`RESERVED_HANDLES`). The sign-up form,
+ * `/api/auth/join` and `public.provision_user_profile` all refuse one; this is the sentence a person
+ * reads.
+ */
+export const USERNAME_RESERVED = "That username is reserved — try another.";
 /** Loose international phone shape: optional +, digits, spaces, dashes, parens. */
 export const PHONE_RE = /^[+]?[()\d\s-]{7,20}$/;
 /** An ISO calendar date as a native `<input type="date">` submits it. */
@@ -105,7 +112,10 @@ export const IndividualJoinSchema = z.object({
 	oauth: z.boolean().default(false),
 	firstName: name,
 	lastName: name,
-	username: z.string().trim().regex(USERNAME_RE, "Invalid username."),
+	username: z.string().trim().regex(USERNAME_RE, "Invalid username.").refine(
+		(value) => !isReservedHandle(value),
+		USERNAME_RESERVED,
+	),
 	dob,
 	timeZone,
 	locale,

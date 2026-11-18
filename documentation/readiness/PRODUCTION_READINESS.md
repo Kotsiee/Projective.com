@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **52%** |           61 | 27 |  9 | 25 |          11 |
-| **Production**   | **33%** |          128 | 30 | 19 | 79 |          22 |
+| **UAT**          | **52%** |           62 | 28 |  9 | 25 |          11 |
+| **Production**   | **33%** |          129 | 31 | 19 | 79 |          22 |
 
 Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 
@@ -53,7 +53,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |    9 |  3 |  0 |  6 |   33% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   24 |  5 |  5 | 14 |   41% |
+| C. Security & access control       |   25 |  6 |  5 | 14 |   44% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   12 |  2 |  1 |  9 |   17% |
 | F. Money, ledger & reconciliation  |   22 |  4 |  3 | 15 |   28% |
@@ -134,9 +134,10 @@ Work orders for every open row, with the run order:
 | PRD-C19 | Account erasure reaches every personal row                                                | ❌     | Critical | PROD | `fn_erase_account` (`00001060:555-582`) reaches eight tables; erasure windows hard-coded (`:434`, `:490`)                                                             | ERA1–ERA4  |
 | PRD-C20 | Minors: the proxy flag, the under-16 marketing rule and adult-only settings withheld      | ❌     | High     | PROD | No minors-proxy flag; `GET /api/settings/[section]` serves adult-only payloads to a restricted account (IW-L5)                                                        | MIN1, MIN2 |
 | PRD-C21 | The `users_public` row policy is narrowed                                                 | ❌     | Normal   | PROD | `00002010:10-13` unchanged                                                                                                                                            | RLS1       |
-| PRD-C22 | Every planned top-level route segment is a reserved handle                                | ❌     | High     | UAT  | `analytics`, `disputes`, `connections` are claimable (`packages/types/profile/reserved.ts`, `org.fn_is_reserved_handle`)                                              | SAC5       |
+| PRD-C22 | Every planned top-level route segment is a reserved handle                                | ✅     | High     | UAT  | #444 (c) ruled: 68 `PLANNED_SEGMENTS` (`profile/reserved.ts`) in `RESERVED_HANDLES` and `org.fn_is_reserved_handle`, pinned by `workspace.contract.test.ts` and `reserved_handles.sql`; sign-up (`provision_user_profile`, `/api/auth/join`) refuses them too | SAC5       |
 | PRD-C23 | Dead `security` tables and the finance cascades cleaned up                                | ❌     | Normal   | PROD | `IDENTITY_AND_WORKSPACES_AUDIT.md` "still open" (2026-11-12)                                                                                                          | HK1        |
 | PRD-C24 | Auth low findings closed                                                                  | ❌     | Normal   | PROD | `safeRedirect` accepts `/api/*` (LOW1-7); OAuth email and name ride the `/join` query string (LOW1-4); `/join` ignores the under-13 lock cookie in a new tab (LOW1-5) | LOW1       |
+| PRD-C25 | A person's sign-up asks the whole handle namespace                                        | ❌     | High     | UAT  | `public.provision_user_profile` (`00001010`) skips `org.fn_handle_taken`: a new person can sign up as a team's or business's handle (`@northloop` reproduced, SAC5), and `fn_resolve_profile` then ranks the person first, so the team's page is unreachable. `USERNAME_RE` also allows `.`, `_` and capitals, which the namespace rule refuses | —          |
 
 ## D. Trust, safety & moderation
 
@@ -292,7 +293,7 @@ Work orders for every open row, with the run order:
 | The focus indicator's design                                                           | PRD-L3             | Deferred to the owner (#341)                       |
 | Conversation addresses: PRODUCT_SPEC `cht-…` vs ROUTING thread id / `dm-{handle}`      | PRD-J1, PRD-E2     | New contradiction, #444 flag (a)                   |
 | `/view/[entity]/schedule`: PRODUCT_SPEC live leaf vs #411's 308                        | —                  | New contradiction, #444 flag (b)                   |
-| The PRODUCT_SPEC sitemap's routes with no file, and which segments to reserve          | PRD-C22            | #444 flag (c)                                      |
+| The PRODUCT_SPEC sitemap's routes with no file, and which segments to reserve          | PRD-C22            | Ruled 2026-11-18 (#444 (c)): all 68 words reserved, sourced and speculative; SAC5 built it |
 | Terms acceptance at sign-up (what is recorded, which versions) — a spec gap            | PRD-M2             | Ruled 2026-11-18 (#446): checkbox; rows, no IP/UA; material versions re-ask |
 | Legal document sign-off                                                                | PRD-M1             | Pending counsel                                    |
 | AML posture; leaving a failed payout in Stripe (M9)                                    | PRD-M6, PRD-F11    | Pending counsel (#336 I1, #337)                    |
@@ -344,3 +345,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | ST6 (#450): PRD-M3 ❌ → 🟡 (self-serve data export; hosted job dispatch left, PRD-G6) | 58% | 52% |  33% |
 | 2026-11-18 | LV1 (#456): PRD-F22 ❌ → 🟡 (services settle first); new PRD-F24 ❌     | 58% | 52% |  33% |
 | 2026-11-18 | SAC6 (#465): no row flips; PRD-C13–C16 gain `auth:parity` + the hosted runbook | 58% | 52% |  33% |
+| 2026-11-18 | SAC5 (#444 (c)): PRD-C22 ❌ → ✅ (68 planned segments reserved); new PRD-C25 ❌ | 58% | 52% |  33% |

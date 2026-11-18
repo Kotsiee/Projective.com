@@ -1,8 +1,10 @@
 import type { EmployeeTier, Industry } from "@projective/types/auth";
 
 /**
- * Static option sets and reserved words for the auth forms. The enterprise tiers and industries
- * label the values `@projective/types/auth` owns, which the join schema validates against.
+ * Static option sets for the auth forms. The enterprise tiers and industries label the values
+ * `@projective/types/auth` owns, which the join schema validates against. Reserved usernames are
+ * not listed here: the forms read `RESERVED_HANDLES` (`@projective/types/profile`), the one list
+ * the database shares.
  */
 
 /** A `<select>` / choice option. */
@@ -58,44 +60,3 @@ export const PERMISSION_TIERS: readonly Choice[] = [
 	{ value: "member", label: "Member — contribute" },
 	{ value: "observer", label: "Observer — read-only" },
 ];
-
-/**
- * Reserved handles/usernames a person cannot claim — they collide with static top-level routes
- * (ROUTING.md reserved-handle precedence) or are otherwise protected.
- */
-export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
-	"join",
-	"login",
-	"logout",
-	"verify",
-	"reset",
-	"forgot-password",
-	"onboarding",
-	"api",
-	"admin",
-	"root",
-	"support",
-	"help",
-	"about",
-	"changelog",
-	"feedback",
-	"features",
-	"explore",
-	"view",
-	"inspect",
-	"rsvp",
-	"home",
-	"projects",
-	"messages",
-	"wallet",
-	"teams",
-	"business",
-	"settings",
-	"services",
-	"become-partner",
-	"projective",
-	"www",
-	"mail",
-	"static",
-	"assets",
-]);

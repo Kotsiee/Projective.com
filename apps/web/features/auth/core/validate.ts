@@ -7,8 +7,14 @@
  * Every validator returns `null` when valid, or a short human-readable error string.
  */
 
-import { EMAIL_RE, passwordIssue, PHONE_RE, USERNAME_RE } from "@projective/types/auth";
-import { RESERVED_HANDLES } from "./options.ts";
+import {
+	EMAIL_RE,
+	passwordIssue,
+	PHONE_RE,
+	USERNAME_RE,
+	USERNAME_RESERVED,
+} from "@projective/types/auth";
+import { isReservedHandle } from "@projective/types/profile";
 
 export { EMAIL_RE, PHONE_RE, USERNAME_RE };
 /** A domain or URL — `example.com`, `www.example.com`, or `https://example.com/path`. */
@@ -60,7 +66,7 @@ export function usernameError(value: string): string | null {
 	if (!USERNAME_RE.test(v)) {
 		return "3–30 characters: letters, numbers, . - or _, starting with a letter.";
 	}
-	if (RESERVED_HANDLES.has(v.toLowerCase())) return "That username is reserved — try another.";
+	if (isReservedHandle(v)) return USERNAME_RESERVED;
 	return null;
 }
 

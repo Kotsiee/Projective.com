@@ -716,12 +716,10 @@ why the denylist is not merely a duplicate of the route table:
 - **`inspect`** (Decision #161(G)) is denied for both reasons at once: `/inspect/:fileId` opens
   private files, so an `@inspect` profile would borrow its voice the way `@share` would; and a bare
   `/inspect` (no id) meets no static route and falls through to `/:handle`, which the denylist turns
-  into a 404. It is listed in `RESERVED_HANDLES`, `org.fn_is_reserved_handle` and the auth form's
-  username list (`features/auth/core/options.ts`, which still lacks `file`, `files` and `share` —
-  pre-existing drift).
+  into a 404. It is listed in `RESERVED_HANDLES` and `org.fn_is_reserved_handle`.
 - **`rsvp`** (Decision #391): `/rsvp/:token` is a guest's capability address, so an `@rsvp` profile
   would borrow its voice, and a bare `/rsvp` would fall through to `/:handle`. It is listed in
-  `RESERVED_HANDLES`, `org.fn_is_reserved_handle` and the auth form's username list.
+  `RESERVED_HANDLES` and `org.fn_is_reserved_handle`.
 - **`changelog`**, **`feedback`** and **`features`** (the public-routes build, 2026-10-17) are
   denied ahead of their routes. `/changelog` and `/feedback` are public editorial surfaces that
   speak for the platform — an `@changelog` or `@feedback` profile would borrow that voice the way
@@ -729,15 +727,41 @@ why the denylist is not merely a duplicate of the route table:
   catalogue. `/changelog` (P5) and `/feedback` (P7) now have their routes; `/features` has none until
   the landing track lands it, so a bare request meets no static route and falls through to
   `/:handle`, which the denylist turns into a 404 rather than a fabricated profile. All three are in
-  `RESERVED_HANDLES`, `org.fn_is_reserved_handle` (pinned by `supabase/probes/reserved_handles.sql`
-  as well as the contract test) and the auth form's username list.
+  `RESERVED_HANDLES` and `org.fn_is_reserved_handle` (pinned by
+  `supabase/probes/reserved_handles.sql` as well as the contract test).
 - **`robots.txt`** and **`sitemap.xml`** were reserved before they were served; since P8 (Decision
   #279) they are routes of their own (`(public)/robots.txt.ts`, `(public)/sitemap.xml.ts`), and the
   namespace guard below counts them as the top-level segments they are.
 
+- **Planned segments** (`PLANNED_SEGMENTS` in `@projective/types/profile`, Decision #444 flag (c),
+  ruled 2026-11-18) are reserved before any route file exists, because the namespace guard below
+  sees only `apps/web/routes/`. `reserved.ts` gives each word's source. There are four sources:
+  - **Sitemap rows with no file:** `analytics`, `connections`, `disputes` and `reset`, from the
+    PRODUCT_SPEC §Sitemap rows with no route file.
+  - **Paths served outside the routes tree:** `vendor` (`/vendor/<lib>/<version>/…`,
+    `vendorAssets()`, #161) and `email` (`static/email/`).
+  - **The sign-up form's old list:** `root`, `support`, `projective`, `www` and `mail` (#257 flag
+    (d)). That form now reads `RESERVED_HANDLES` and keeps no list of its own.
+  - **Speculative words:** 57 of them. They are platform voices (`security`, `trust`, `staff`, …),
+    plausible surfaces (`docs`, `developers`, `integrations`, `marketplace`, …), infrastructure and
+    sign-in paths (`auth`, `sso`, `webhooks`, …) and placeholder words (`null`, `guest`, …).
+
+  When a planned word's route ships, the contract test asks for it to move out of
+  `PLANNED_SEGMENTS`, because the route now reserves it.
+
 All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twin
-`org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"
-flow validating against it inherits every entry without knowing why any is listed.
+`org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your
+handle" flow validating against it inherits every entry without knowing why any is listed. Every
+door that mints a handle reads it:
+
+- the team, business and enterprise create doors and the username change, through
+  `org.fn_handle_refusal`;
+- both doors that mint a person (the GoTrue sign-up trigger and `complete_onboarding`), through
+  `public.provision_user_profile`;
+- `/api/auth/join` and the sign-up form, through `IndividualJoinSchema` and `usernameError`, which
+  both say `USERNAME_RESERVED`.
+
+A person's sign-up still skips the namespace's shape and taken checks (PRD-C25).
 
 **The namespace guard (Teams P1).** Every top-level URL segment `apps/web/routes/` serves — route
 groups `(…)` descended (they add no segment), `[params]`, `_`-prefixed files and `index` skipped, as
