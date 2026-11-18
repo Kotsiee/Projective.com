@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **69%** |           190 | 95 |  74 | 21 |              26 |
-| **Production**   | **63%** |           244 | 100 |  99 | 45 |              37 |
+| **UAT**          | **70%** |           190 | 95 |  75 | 20 |              26 |
+| **Production**   | **63%** |           244 | 100 | 100 | 44 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 34 | 14 |  2 |   60% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 35 | 13 |  2 |   61% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 23 | 17 |  3 |   58% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -344,7 +344,7 @@ The operator's ruling is MW-59.
 | ID    | Flow                                      | Persona | Entry                  | Status | Crit     | Gate | What's missing                                                          |
 | :---- | :---------------------------------------- | :------ | :--------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------- |
 | PJ-59 | Notifications drawer and `/notifications` | Any     | `/api/notifications/*` | ✅     | High     | MVP  | 30 s ETag poll; in-app only                                             |
-| PJ-60 | Email notifications, digests, escalation  | System  | —                      | ❌     | Critical | UAT  | Dispatcher gated off; deliveries stuck `pending` (PRD-E4, E5; NT2, NT3) |
+| PJ-60 | Email notifications, digests, escalation  | System  | —                      | 🟡     | Critical | UAT  | Built locally: the dispatcher (NT2, #344 (a)) and email through Resend with signed bounces (NT3, #339 N3). A hard bounce blocks every category, and Settings → Account offers Confirm again. Escalation adds an email the dispatcher sends. Left: the digest emails (PRD-E15) and a hosted send (CD2; PRD-E4, E5, E10) |
 | PJ-61 | Web push and SMS                          | System  | —                      | ❌     | Normal   | PROD | NT4 (VAPID), NT5 (Twilio) (PRD-E7, E8)                                  |
 | PJ-62 | Chat message notifications                | Any     | —                      | ❌     | High     | UAT  | No `message.*` emitter (MS4, PRD-E9)                                    |
 
@@ -528,3 +528,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | MR1 (#474): MK-09 🟡 → ✅ (an unclaimed escrow binds nobody until a claim: TTL, approval and Fair Exit refund it; a ticket nobody holds can't enter work; #479 closed its other gap) | 83% | 69% |  63% |
 | 2026-11-18 | RV3's ruling (#489): new MW-64 ❌ (no subject can reach Elite: a never-written peer track halves the review component, so the score tops out at 90 against Elite's 92; ruled B, RV3 builds it after RV2) | 83% | 69% | 63% |
 | 2026-11-18 | SR1: MK-03 narrowed (a filtered nearest-neighbour ask fills: `ef_search` 200 with the iterative scan; a vector off unit length is refused); still 🟡 (`EMBEDDINGS_ENABLED=false` until Voyage's terms) | 83% | 69% |  63% |
+| 2026-11-18 | NT2 + NT3 (#344 (a), #339 N3): PJ-60 ❌ → 🟡 (the dispatcher and notification email with signed bounces, built locally; digests (PRD-E15) and a hosted send left) | 83% | 70% | 63% |

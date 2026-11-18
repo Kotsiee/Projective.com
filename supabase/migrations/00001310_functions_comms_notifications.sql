@@ -1452,3 +1452,196 @@ $$;
 COMMENT ON FUNCTION comms.fn_record_delivery_result(uuid, comms.delivery_status, text, text, text) IS
     'Records one send''s outcome on a claimed delivery: sent (sent_at), delivered (delivered_at) or failed (failed_at, the error cut to 500 characters), with the provider and its message id. Moves a row only forward (sent needs queued; delivered and failed need queued or sent) and returns whether it moved. For push, p_error = ''gone'' revokes the device and clears its keys, another failure counts against it, and a success resets its failure count. Service role only.';
 -- #endregion
+
+-- #region 11. Provider callbacks and the account unsubscribe (COMMS NT3; Decision #339, ruling N3 (b))
+-- One active suppression per (channel, address) (idx_channel_suppressions_active), so every write
+-- below takes a per-address transaction lock first, then inserts, widens or leaves the one row.
+
+-- (a) One verified provider event (the Svix-signed Resend webhook). The (provider, provider_event_id)
+-- claim and every effect commit together, so a replay is a no-op (EPI §3.3):
+--   email.delivered            → the delivery is delivered (forward only, fn_record_delivery_result);
+--   email.bounced, permanent   → the delivery fails for good, the ADDRESS is suppressed for email in
+--                                every category (marketing_only = false, ruling N3 (b)), and, the first
+--                                time, its owner receives the mandatory account.email_undeliverable;
+--   email.complained           → the address is suppressed for Marketing only (a complaint is not a
+--                                bounce: the address works and the person objects);
+--   email.failed / suppressed  → the delivery fails (the provider refused or skipped the send);
+--   anything else              → recorded only (a temporary bounce, delivery_delayed, sent, opened).
+-- The address arrives from the provider and is stored only on the suppression row; the event row
+-- keeps no payload beyond the bounce kind.
+CREATE OR REPLACE FUNCTION comms.fn_record_delivery_event(
+    p_provider text,
+    p_provider_event_id text,
+    p_event_type text,
+    p_provider_ref text DEFAULT NULL,
+    p_recipient text DEFAULT NULL,
+    p_bounce_kind text DEFAULT NULL,
+    p_occurred_at timestamptz DEFAULT NULL
+) RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_event uuid;
+    v_delivery comms.notification_deliveries%ROWTYPE;
+    v_address text := lower(btrim(COALESCE(p_recipient, '')));
+    v_owner uuid;
+    v_owner_email uuid;
+    v_active comms.channel_suppressions%ROWTYPE;
+    v_widened boolean := false;
+BEGIN
+    IF COALESCE(btrim(p_provider), '') = '' OR COALESCE(btrim(p_provider_event_id), '') = ''
+       OR COALESCE(btrim(p_event_type), '') = '' THEN
+        RAISE EXCEPTION 'A delivery event needs a provider, an event id and a type' USING ERRCODE = '22023';
+    END IF;
+
+    IF COALESCE(p_provider_ref, '') <> '' THEN
+        SELECT * INTO v_delivery
+          FROM comms.notification_deliveries d
+         WHERE d.provider = p_provider AND d.provider_ref = p_provider_ref
+         ORDER BY d.created_at DESC
+         LIMIT 1
+           FOR UPDATE;
+    END IF;
+
+    INSERT INTO comms.delivery_events (provider, provider_event_id, delivery_id, event_type, occurred_at, raw, processed_at)
+    VALUES (
+        p_provider, p_provider_event_id, v_delivery.id, p_event_type,
+        COALESCE(p_occurred_at, pg_catalog.now()),
+        pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object('bounce', lower(p_bounce_kind))),
+        pg_catalog.now()
+    )
+    ON CONFLICT (provider, provider_event_id) DO NOTHING
+    RETURNING id INTO v_event;
+    IF v_event IS NULL THEN
+        RETURN 'replayed';
+    END IF;
+
+    IF p_event_type = 'email.delivered' THEN
+        IF v_delivery.id IS NOT NULL THEN
+            PERFORM comms.fn_record_delivery_result(v_delivery.id, 'delivered');
+        END IF;
+        RETURN 'delivered';
+    END IF;
+
+    IF p_event_type IN ('email.failed', 'email.suppressed') THEN
+        IF v_delivery.id IS NOT NULL THEN
+            PERFORM comms.fn_record_delivery_result(v_delivery.id, 'failed', NULL, NULL, p_event_type);
+        END IF;
+        RETURN 'failed';
+    END IF;
+
+    IF p_event_type = 'email.bounced' AND lower(COALESCE(p_bounce_kind, '')) = 'permanent' THEN
+        -- The delivery is final: an address that bounced hard is not retried. A bounce may follow a
+        -- `delivered` (the receiving server accepted, then refused), and the bounce is the truth.
+        IF v_delivery.id IS NOT NULL THEN
+            UPDATE comms.notification_deliveries d
+               SET status = 'failed', failed_at = pg_catalog.now(), error = 'hard_bounce',
+                   attempts = GREATEST(d.attempts, 5)
+             WHERE d.id = v_delivery.id AND d.status IN ('queued', 'sent', 'delivered');
+        END IF;
+        IF v_address = '' THEN
+            RETURN 'hard_bounce';
+        END IF;
+
+        PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('comms-suppression:email:' || v_address));
+        SELECT ue.user_id, ue.id INTO v_owner, v_owner_email
+          FROM org.user_emails ue
+         WHERE lower(ue.email) = v_address AND ue.verified_at IS NOT NULL
+         ORDER BY (ue.user_id = v_delivery.user_id) DESC NULLS LAST, ue.is_primary DESC, ue.created_at
+         LIMIT 1;
+        -- The delivery's person is the owner; their address row is linked only if it is theirs.
+        IF v_delivery.user_id IS NOT NULL AND v_owner IS DISTINCT FROM v_delivery.user_id THEN
+            v_owner := v_delivery.user_id;
+            v_owner_email := NULL;
+        END IF;
+
+        SELECT * INTO v_active
+          FROM comms.channel_suppressions s
+         WHERE s.channel = 'email' AND lower(s.destination) = v_address AND s.lifted_at IS NULL
+           FOR UPDATE;
+        IF NOT FOUND THEN
+            INSERT INTO comms.channel_suppressions (channel, destination, user_id, reason, marketing_only, source_event_id)
+            VALUES ('email', v_address, v_owner, 'hard_bounce', false, v_event);
+            v_widened := true;
+        ELSIF v_active.marketing_only THEN
+            -- An unsubscribe or a complaint is widened: the address no longer receives anything.
+            UPDATE comms.channel_suppressions s
+               SET marketing_only = false, reason = 'hard_bounce', source_event_id = v_event,
+                   user_id = COALESCE(s.user_id, v_owner)
+             WHERE s.id = v_active.id;
+            v_widened := true;
+        END IF;
+
+        IF v_widened AND v_owner IS NOT NULL THEN
+            PERFORM comms.fn_notify(
+                v_owner,
+                'account.email_undeliverable',
+                'We can''t deliver email to your address',
+                pg_catalog.format('Mail to %s bounced, so Projective has stopped sending to it. Change your email address, or confirm it again, in Settings.', v_address),
+                'org.user_emails',
+                v_owner_email
+            );
+        END IF;
+        RETURN 'hard_bounce';
+    END IF;
+
+    IF p_event_type = 'email.complained' THEN
+        IF v_address <> '' THEN
+            PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('comms-suppression:email:' || v_address));
+            IF NOT EXISTS (
+                SELECT 1 FROM comms.channel_suppressions s
+                 WHERE s.channel = 'email' AND lower(s.destination) = v_address AND s.lifted_at IS NULL
+            ) THEN
+                INSERT INTO comms.channel_suppressions (channel, destination, user_id, reason, marketing_only, source_event_id)
+                VALUES ('email', v_address, v_delivery.user_id, 'complaint', true, v_event);
+            END IF;
+        END IF;
+        RETURN 'complaint';
+    END IF;
+
+    RETURN 'recorded';
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_record_delivery_event(text, text, text, text, text, text, timestamptz) IS
+    'Applies one verified provider event in one transaction with its (provider, provider_event_id) claim, so a replay returns ''replayed'' and changes nothing. email.delivered marks the delivery delivered; a permanent email.bounced fails the delivery for good, suppresses the address for email in every category (widening a marketing-only row) and, the first time, sends its owner the mandatory account.email_undeliverable; email.complained suppresses the address for Marketing only; email.failed and email.suppressed fail the delivery; anything else is only recorded. Returns delivered | hard_bounce | complaint | failed | recorded | replayed. Service role only.';
+
+-- (b) The account's one-click marketing unsubscribe (RFC 8058, POST /api/comms/unsubscribe). The
+-- signed link names the person, never an address: their primary verified address is suppressed for
+-- Marketing only, so a security or money notice still reaches it (#339 ruling N3 (b)).
+CREATE OR REPLACE FUNCTION comms.fn_unsubscribe_marketing(p_user uuid)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_address text;
+BEGIN
+    SELECT lower(ue.email) INTO v_address
+      FROM org.user_emails ue
+     WHERE ue.user_id = p_user AND ue.is_primary AND ue.verified_at IS NOT NULL;
+    IF v_address IS NULL THEN
+        RETURN 'no_address';
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('comms-suppression:email:' || v_address));
+    IF EXISTS (
+        SELECT 1 FROM comms.channel_suppressions s
+         WHERE s.channel = 'email' AND lower(s.destination) = v_address AND s.lifted_at IS NULL
+    ) THEN
+        RETURN 'already';
+    END IF;
+    INSERT INTO comms.channel_suppressions (channel, destination, user_id, reason, marketing_only)
+    VALUES ('email', v_address, p_user, 'unsubscribe', true);
+    RETURN 'unsubscribed';
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_unsubscribe_marketing(uuid) IS
+    'One-click marketing unsubscribe for an account: suppresses the person''s primary verified address for email, Marketing only. Returns unsubscribed, already (an active suppression covers it) or no_address. Service role only (the route verifies the signed link).';
+-- #endregion

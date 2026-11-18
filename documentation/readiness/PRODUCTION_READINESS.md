@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **60%** |           64 | 34 |  8 | 22 |           9 |
-| **Production**   | **40%** |          140 | 45 | 20 | 75 |          19 |
+| **UAT**          | **61%** |           64 | 34 |  9 | 21 |           8 |
+| **Production**   | **41%** |          142 | 45 | 22 | 75 |          18 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -55,7 +55,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
 | C. Security & access control       |   32 | 18 |  4 | 10 |   65% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
-| E. Communications & delivery       |   14 |  2 |  3 |  9 |   23% |
+| E. Communications & delivery       |   16 |  2 |  5 |  9 |   30% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
@@ -177,16 +177,18 @@ Work orders for every open row, with the run order:
 | PRD-E2  | Chat has one send door and `cht-` addresses                 | ❌     | Critical | MVP  | Two stores and two send doors; the live resolver takes raw uuids (`services/messaging/live-threads.ts:63`)                                                                  | MS2      |
 | PRD-E3  | Chat updates without a reload                               | ❌     | Critical | MVP  | No subscriber, poll or long-poll in `features/messaging`; the realtime publication (`00002600`) is unused                                                                   | MS3      |
 | PRD-E4  | A notification dispatcher (runtime decided, claim, retries) | 🟡     | Critical | UAT  | NT2 (#344 (a)): `POST /api/comms/dispatch` (Fresh), posted to by the trigger with a Vault `COMMS_DISPATCH_SECRET` bearer, plus the `comms-dispatch-sweep` job; `comms.fn_claim_deliveries` (`SKIP LOCKED`, `2^n` backoff, 5 attempts, 15-min lease, 24 h window) and forward-only `fn_record_delivery_result`; probes `comms_dispatch.sql`, `comms_dispatch_race.sql`. The transport registry ships empty (NT3–NT5). Left: the hosted Vault secrets and flag, proved on staging (CD2) | NT2, CD2 |
-| PRD-E5  | Notification email                                          | ❌     | Critical | UAT  | `services/mail/transport.ts` (Resend) serves only secondary-email verification and guest email; no notification email sends yet; Settings → Notifications now says so (ST2) | NT3      |
+| PRD-E5  | Notification email                                          | 🟡     | Critical | UAT  | NT3 (#339 N3): the dispatcher's email transport (`email-transport.ts`, Resend). It sends the title, one sentence and the link; never the body. The delivery id is the Idempotency-Key, Resend's id is the `provider_ref`, and Marketing carries RFC 8058 one-click to `/api/comms/unsubscribe`. Settings → Notifications shows email live once the dispatcher runs with a key. `waitlist.invited` now emails (#455). Left: a hosted send (CD2) | NT3, CD2 |
 | PRD-E6  | Auth email: production SMTP and a full template set         | 🟡     | Critical | UAT  | #448: Resend `[auth.email.smtp]` (off locally); a template per reachable GoTrue email, all sent to Mailpit. Left: hosted SMTP + Site URL (EPI §8.5), a proven send          | AU5      |
 | PRD-E7  | Web push                                                    | ❌     | High     | PROD | No VAPID keys or push code                                                                                                                                                  | NT4      |
 | PRD-E8  | SMS                                                         | ❌     | Normal   | PROD | No Twilio transport                                                                                                                                                         | NT5      |
 | PRD-E9  | Chat events notify (`message.*`) and chat controls persist  | ❌     | High     | UAT  | Not built                                                                                                                                                                   | MS4, MS5 |
-| PRD-E10 | Bounce and complaint suppression honoured                   | ❌     | High     | PROD | The dispatcher's claim now consults `comms.fn_is_suppressed` (NT2, CAS N8: a suppressed address comes back `suppressed`, probe `comms_dispatch.sql`). Still nothing writes a suppression: no signed provider webhook, no `RESEND_WEBHOOK_SECRET` (#339) | NT3      |
+| PRD-E10 | Bounce and complaint suppression honoured                   | 🟡     | High     | PROD | NT3 (#339 N3 (b)): `POST /api/comms/webhooks/resend` checks Svix (`RESEND_WEBHOOK_SECRET`, 300 s) before parsing, and `comms.fn_record_delivery_event` claims `(resend, svix-id)` with its effect. A hard bounce suppresses every category and sends one `account.email_undeliverable`; Settings shows "Undeliverable" with **Confirm again**, which lifts it. A complaint or unsubscribe is Marketing only. The claim consults it (NT2). Probe `email_bounce.sql`. Left: the hosted endpoint and secret, proved on staging (CD2) | NT3, CD2 |
 | PRD-E11 | Newsletter double opt-in and provider sync                  | 🟡     | Normal   | PROD | #480 (CD1 steps 1–4): `subscribe_newsletter` reports a confirmation as due and the mail goes through `deliverMail` with the RFC 8058 pair; `/newsletter/confirm`'s button → `confirm_newsletter` (7-day link); `/api/newsletter/unsubscribe` takes the one-click POST with no Origin check; Turnstile on the opt-in; a confirmed address's new topic is confirmed on its own (probe `newsletter_double_opt_in.sql`, route and unit tests). Left: the Resend contacts sync (step 5, after NT3) and a hosted send (CD2) | CD1 → CD2 |
 | PRD-E12 | A waitlist is told when a seat opens                        | ✅     | Normal   | UAT  | #455: the `cohort-waitlist-invites` job invites the queue in order, one per free seat, each holding its seat 48 hours, with an in-app `waitlist.invited` (probe `waitlist_invite.sql`). Its email rides PRD-E5 | LV4      |
 | PRD-E13 | Project rooms carry read marks                              | ❌     | Normal   | PROD | #478 (g), CAS M10's other half: project rooms have no read-mark writer and always report `unread: false` (`live-detail.ts`); only DM threads mark read (#478) | —        |
 | PRD-E14 | Newsletter mail leaves from its own subdomain              | ❌     | Normal   | PROD | #480 (a): the confirmation mail rides `MAIL_FROM` (`notify.<domain>`), so a complaint about an unwanted confirmation lands on the transactional subdomain (EPI §8.5 setup 1); CD1 added no env key (COMMS_DELIVERY §0.2) | CD1 step 5 / CD2 |
+| PRD-E15 | Daily and weekly digest emails are sent                     | ❌     | Normal   | PROD | Found by NT3: `comms.fn_build_digests` writes `comms.notification_digests` rows (`pending`), but nothing claims or mails them. NT2's step 5 left this for the mail transport, which NT3 built, and it needs a claim with a lease (the table has no `queued` state). Someone who chose a digest gets nothing by email | — |
+| PRD-E16 | Turning Marketing email back on lifts a one-click unsubscribe | ❌     | Normal   | PROD | Found by NT3: `/api/comms/unsubscribe` writes a Marketing-only suppression (`comms.fn_unsubscribe_marketing`), but re-enabling Marketing email in Settings → Notifications only flips the preference, so the suppression keeps blocking. The settings save should lift a `reason = 'unsubscribe'` row for the person's primary address | — |
 
 ## F. Money, ledger & reconciliation
 
@@ -382,3 +384,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | PRD-C27 (#482): PRD-C27 ❌ → ✅ (an inquiry takes nobody, so a DM or inquiry is only ever its pair's); new PRD-C33 ❌ (a group newcomer reads from joining, owner ruling) | 58% | 59% |  40% |
 | 2026-11-18 | SAC5 follow-up (#444 (c)): PRD-C25 ❌ → ✅ (sign-up asks the whole handle namespace; username shape left to the owner) | 58% | 60% |  41% |
 | 2026-11-18 | CK4 step 0 (#490): no row flips; the tax model ruled (A split by kind, tax-exclusive, codes tabled) and CK4 waits for DB21; new PRD-M7 ❌ (tax on the platform's own fees) | 58% | 60% | 40% |
+| 2026-11-18 | NT3 (#339 N3): PRD-E5 ❌ → 🟡 (notification email through Resend), PRD-E10 ❌ → 🟡 (signed bounces: a hard bounce blocks every category, Confirm again lifts it); new PRD-E15, PRD-E16 ❌ | 58% | 61% |  41% |

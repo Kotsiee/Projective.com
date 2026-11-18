@@ -3,6 +3,7 @@ import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { isSettingsSectionKey } from "@projective/types/settings";
 import {
+	deliverabilityOverrideOf,
 	deliveryOverrideOf,
 	resolveSettingsSection,
 } from "@features/settings/core/settings-ssr.ts";
@@ -36,6 +37,7 @@ export const handler = define.handlers({
 			actor,
 			a11y: ctx.state.a11y,
 			deliveryOverride: deliveryOverrideOf(ctx.req),
+			deliverabilityOverride: deliverabilityOverrideOf(ctx.req),
 		});
 		return Response.json({ ok: true, ...envelope }, { headers: { "cache-control": "no-store" } });
 	},

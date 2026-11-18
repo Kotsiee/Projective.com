@@ -27,7 +27,10 @@ import {
 import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
-import { CHANNEL_LIVENESS_OVERRIDE_COOKIE } from "@projective/types/comms";
+import {
+	CHANNEL_LIVENESS_OVERRIDE_COOKIE,
+	EMAIL_DELIVERABILITY_OVERRIDE_COOKIE,
+} from "@projective/types/comms";
 import {
 	AGE_OVERRIDE_COOKIE,
 	CAPTCHA_OVERRIDE_COOKIE,
@@ -75,6 +78,7 @@ import {
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevMicPermission,
+	type DevEmailDeliverability,
 	type DevNotificationDelivery,
 	type DevNotifications,
 	type DevOperatorDesk,
@@ -158,6 +162,7 @@ export type {
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
+	DevEmailDeliverability,
 	DevNotificationDelivery,
 	DevNotifications,
 	DevOperatorDesk,
@@ -446,6 +451,13 @@ export interface DevOverrides {
 	 */
 	notificationDelivery: DevNotificationDelivery;
 	/**
+	 * Settings → Account's email deliverability (COMMS NT3): the suppression list, every address drawn
+	 * fine (`deliverable`), or the primary drawn as bounced hard (`bounced`), so the undeliverable
+	 * notice and its "Confirm again" control show without a real bounce. Server-side, through the
+	 * `pj.dev.email-deliverability` cookie; no suppression is written either way.
+	 */
+	emailDeliverability: DevEmailDeliverability;
+	/**
 	 * The header basket drawer: the real basket, an empty one, a switcher holding personal + team +
 	 * business baskets, or a basket with an unavailable line. Its own axis because a second paying
 	 * account and a delisted item both take other people's actions to reach.
@@ -653,6 +665,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	disputeState: "auto",
 	notifications: "auto",
 	notificationDelivery: "auto",
+	emailDeliverability: "auto",
 	basketScenario: "auto",
 	checkoutGate: "auto",
 	checkoutPayment: "ok",
@@ -1002,6 +1015,13 @@ export const DEV_NOTIFICATION_DELIVERIES: ReadonlyArray<DevOption<DevNotificatio
 	{ value: "auto", label: "Server" },
 	{ value: "live", label: "All live" },
 	{ value: "off", label: "None live" },
+];
+
+/** Email deliverability options for Settings → Account. `Server` follows the suppression list. */
+export const DEV_EMAIL_DELIVERABILITIES: ReadonlyArray<DevOption<DevEmailDeliverability>> = [
+	{ value: "auto", label: "Server" },
+	{ value: "deliverable", label: "Deliverable" },
+	{ value: "bounced", label: "Bounced" },
 ];
 
 /** Basket drawer scenarios. */
@@ -1386,6 +1406,9 @@ function reflect(next: DevOverrides): void {
 		if (next.notificationDelivery !== "auto") {
 			root.dataset.devNotificationDelivery = next.notificationDelivery;
 		} else delete root.dataset.devNotificationDelivery;
+		if (next.emailDeliverability !== "auto") {
+			root.dataset.devEmailDeliverability = next.emailDeliverability;
+		} else delete root.dataset.devEmailDeliverability;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
@@ -1489,6 +1512,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devNotificationDelivery;
+		delete root.dataset.devEmailDeliverability;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
 		delete root.dataset.devCheckoutPayment;
@@ -1531,6 +1555,7 @@ function reflect(next: DevOverrides): void {
 	writeCheckoutPaymentCookie(next);
 	writeFxCheckoutCookie(next);
 	writeNotificationDeliveryCookie(next);
+	writeEmailDeliverabilityCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
 }
 
@@ -1538,6 +1563,13 @@ function writeNotificationDeliveryCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.notificationDelivery !== "auto"
 		? `${CHANNEL_LIVENESS_OVERRIDE_COOKIE}=${next.notificationDelivery}; path=/; samesite=lax`
 		: `${CHANNEL_LIVENESS_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** Mirror the email deliverability axis into `pj.dev.email-deliverability`, which the account read honours in development. */
+function writeEmailDeliverabilityCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.emailDeliverability !== "auto"
+		? `${EMAIL_DELIVERABILITY_OVERRIDE_COOKIE}=${next.emailDeliverability}; path=/; samesite=lax`
+		: `${EMAIL_DELIVERABILITY_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Mirror the FX checkout axis into `pj.dev.fx-checkout` — the route resolver forwards it as a header. */

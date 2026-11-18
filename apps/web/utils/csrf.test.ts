@@ -112,6 +112,23 @@ Deno.test("webhooks and scheduler endpoints are exempt; a look-alike path is not
 	assertEquals(refuseCrossSiteWrite(req("/api/comms/dispatch/other", json()))?.status, 403);
 });
 
+Deno.test("one-click unsubscribe (RFC 8058): a mail provider's form post with no Origin passes; JSON does not", () => {
+	const oneClick = (): RequestInit => ({
+		headers: { "content-type": "application/x-www-form-urlencoded" },
+		body: "List-Unsubscribe=One-Click",
+	});
+	for (const path of ["/api/newsletter/unsubscribe", "/api/comms/unsubscribe"]) {
+		assertEquals(refuseCrossSiteWrite(req(`${path}?token=t`, oneClick())), null, path);
+		assertEquals(
+			refuseCrossSiteWrite(req(`${path}?token=t`, { headers: { origin: EVIL } })),
+			null,
+			`${path} bodiless`,
+		);
+		assertEquals(refuseCrossSiteWrite(req(`${path}?token=t`, json()))?.status, 415, `${path} JSON`);
+	}
+	assertEquals(refuseCrossSiteWrite(req("/api/comms/unsubscribe-all", oneClick()))?.status, 403);
+});
+
 // #region Page routes
 const RSVP = "/rsvp/:token";
 

@@ -183,7 +183,7 @@ Every inbound endpoint follows the webhook standard in §3.3. A new route lands 
 | `POST /api/integrations/webhooks/zoom`               | Zoom Event Subscription                           | `x-zm-signature` `v0` HMAC, 300 s; the URL-validation challenge is answered only after verification            | `ZOOM_WEBHOOK_SECRET`                                     | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Shipped**; `/api/sessions/webhooks/zoom` re-exports it until the app is re-pointed |
 | `GET /api/integrations/callback`                     | OAuth providers, via a browser redirect           | `integrations.consent_states.state` (≥ 22 chars, single use, ~10 min) + PKCE verifier                          | per-provider client secret                                | `consent_states.consumed_at`                                            | **Shipped**; no provider enabled |
 | `POST /api/integrations/webhooks/[provider]`         | Google channels, Graph subscriptions              | `X-Goog-Channel-Token` / Graph `clientState` against `webhook_subscriptions.verification_token`                | per channel                                               | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Shipped**; pushes are acknowledged until calendar sync lands |
-| `POST /api/comms/webhooks/[provider]`                | The email provider (Svix), Twilio                 | Svix `svix-signature` / `X-Twilio-Signature`                                                                   | `RESEND_WEBHOOK_SECRET` · the Twilio auth token           | `comms.delivery_events (provider, provider_event_id)`                   | **Proposed**              |
+| `POST /api/comms/webhooks/resend` (Twilio's is NT5) | The email provider (Svix)                         | Svix `svix-signature`: an HMAC-SHA256 over `${svix-id}.${svix-timestamp}.${body}`, 300 s, constant time, before parsing | `RESEND_WEBHOOK_SECRET`                                   | `comms.delivery_events (provider, provider_event_id)`, claimed with the effect (`fn_record_delivery_event`) | **Shipped** (COMMS NT3)    |
 | `POST /api/comms/dispatch`    | pg_net, from the `comms.notifications` trigger (`fn_dispatch_notification`)      | A Vault-held bearer of ≥ 32 chars, compared in constant time; anything else gets 404 (#339 N3 (c))                                | `COMMS_DISPATCH_SECRET`                                   | `comms.fn_claim_deliveries` (`SKIP LOCKED`) and forward-only results                            | **Shipped** (NT2, #344 (a)); no transport yet        |
 | `POST {SUPABASE_URL}/functions/v1/scan-file`         | Anyone (`verify_jwt = false`)                     | **None**                                                                                                       | none                                                      | none                                                                    | **Defect** (§9.5)         |
 | `POST /api/{finance,user,scheduling,contact,integrations,comms}/cron/*` | pg_net (`ops.fn_dispatch_http_job`)               | A bearer of ≥ 32 chars; anything else gets 404                                                                 | `*_CRON_SECRET` · `COMMS_DISPATCH_SECRET`                                           | Per job (`SYSTEM_ARCHITECTURE.md` §Scheduled jobs)                      | **Shipped**               |
@@ -1701,16 +1701,36 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
    an address. A guest's message sends no `Idempotency-Key`, because each retry carries a new link,
    and Resend refuses a reused key with a different body. A timed-out send can therefore arrive
    twice, which is harmless: both links work.
-6. **Webhooks (Proposed `POST /api/comms/webhooks/resend`).**
-   - Events: `email.delivered`, `email.bounced`, `email.complained` and `email.delivery_delayed`.
-   - Verify the Svix headers: an HMAC-SHA256 over `${svix-id}.${svix-timestamp}.${body}`, with the
-     base64 secret after `whsec_` and a 5-minute tolerance.
-   - Write `comms.delivery_events` with `provider = 'resend'` and `provider_event_id = svix-id`.
-7. **Suppression follows PRODUCT_SPEC §Notifications rule 3.** A bounce or a complaint suppresses
-   the address **for Marketing only**, and transactional and security mail still goes out.
-   Commercial note: repeatedly sending to a hard-bounced address hurts sender reputation. If the
-   bounce rate ever threatens deliverability, raise it as a business-rule change. Do not quietly
-   suppress transactional mail.
+6. **Webhooks: built (COMMS NT3), `POST /api/comms/webhooks/resend`.**
+   - **Events:** `email.delivered`, `email.bounced`, `email.complained` and `email.delivery_delayed`;
+     `email.failed` and `email.suppressed` fail the delivery, and the rest are only recorded.
+   - **Verification:** the Svix headers are checked before the body is parsed: an HMAC-SHA256 over
+     `${svix-id}.${svix-timestamp}.${body}`, keyed with the base64 secret after `whsec_`
+     (`RESEND_WEBHOOK_SECRET`). The comparison is constant time against every `v1,` signature, with a
+     300 s tolerance. The body is capped at 256 KiB.
+   - **Recording:** `comms.fn_record_delivery_event` claims `comms.delivery_events` with
+     `provider = 'resend'` and `provider_event_id = svix-id`, and applies the effect in the same
+     transaction, so a replay is a 2xx no-op. It finds the delivery by Resend's message id, which
+     the send recorded as `provider_ref`. Every send also carries the delivery id as Resend's
+     `Idempotency-Key`.
+   - **Runbook, per environment:** in Resend → Webhooks, add
+     `https://<origin>/api/comms/webhooks/resend` with those four events plus `email.failed`, and
+     put its signing secret in the app's secret store as `RESEND_WEBHOOK_SECRET`. Prove it with
+     Resend's test recipients: `delivered@resend.dev` leads to `delivered`; `bounced@resend.dev`
+     suppresses the address for every category; `complained@resend.dev` suppresses it for
+     Marketing only (COMMS_DELIVERY CD2's `--send` cases).
+7. **Suppression follows PRODUCT_SPEC §Notifications rule 3 and Decision #339, ruling N3 (b).**
+   - **A hard bounce** (`bounce.type = Permanent`) suppresses the address for email in **every**
+     category, because it cannot receive mail. Its owner is told once, in the app
+     (`account.email_undeliverable`), and Settings → Account shows the address as undeliverable
+     with **Confirm again**. Confirming the address lifts the block
+     (`lifted_reason = 'reverified'`).
+   - **A complaint or an unsubscribe** suppresses Marketing only: the address works and the person
+     objects, so transactional and security mail still goes out.
+   - **A temporary bounce** is only recorded.
+   - **Unsubscribing:** every Marketing-category email carries a one-click `List-Unsubscribe`
+     (RFC 8058) to `POST /api/comms/unsubscribe`. Its signed token names the person, never an
+     address.
 8. **The newsletter (Decision #480, PRD-E11).** Postgres is the record
    (`community.newsletter_subscriptions`) and the opt-in is double:
    - **Built.** A subscribe that leaves something awaiting confirmation mails a link
@@ -2018,7 +2038,7 @@ removed.
 | `TURNSTILE_SITE_KEY` · `TURNSTILE_SECRET_KEY`                                                                  | **In contract** (#447)            | `core/turnstile.ts`; site key served by a route               | public · secret        |
 | `SUPABASE_AUTH_CAPTCHA_SECRET`                                                                                 | **In contract** (#447)            | `supabase/config.toml` `env(...)`                             | secret                 |
 | `SUPABASE_AUTH_SMTP_PASS` · `SUPABASE_AUTH_SMTP_ADMIN_EMAIL`                                                   | **Built** (#448), off locally     | `supabase/config.toml` `env(...)`                             | secret · config        |
-| `RESEND_API_KEY` · `MAIL_FROM` (built) · `RESEND_WEBHOOK_SECRET` (proposed)                                    | **Built, no key yet**             | `services/mail/transport.ts`, the dispatcher's email transport (NT3), the webhook route | secret · config        |
+| `RESEND_API_KEY` · `MAIL_FROM` · `RESEND_WEBHOOK_SECRET` (NT3)                                                 | **Built, no key yet**             | `services/mail/transport.ts`, the dispatcher's email transport (NT3), the webhook route | secret · config        |
 | `VAPID_PUBLIC_KEY`                                                                                             | **Proposed**                      | app (served)                                                  | public                 |
 | `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | app env (the dispatcher's push transport, NT4)                | secret · config        |
 | `APNS_KEY_ID` · `APNS_TEAM_ID` · `APNS_BUNDLE_ID` · `APNS_PRIVATE_KEY` · `APNS_ENVIRONMENT`                    | **Proposed** (Growth)             | app env (the dispatcher)                                      | secret · config        |

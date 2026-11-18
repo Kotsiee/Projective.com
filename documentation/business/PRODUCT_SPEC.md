@@ -115,12 +115,13 @@ aligned on time and location.
   the setting, and an operator reading a case sees that and how many people in the room matched no
   seat. **Not yet run on live provider accounts.**
 - **Today only in-app notices are delivered**, apart from the email a guest with no account gets
-  (Decision #391). The dispatcher that will carry email, push and SMS to people on Projective is
-  built and switched off (Decision #344 (a)). It sends a notice's title and a link back into
-  Projective, never its contents, and does not send a notice more than a day old. Until a provider
-  is connected for a channel, that channel's notices wait. The SMS setting shows only once the SMS
-  provider (Twilio) is configured. **Not built yet:** the email, push and SMS providers (Decision
-  #339, rulings P3 and N3).
+  (Decision #391). The dispatcher that carries email, push and SMS to people on Projective is built
+  and switched off (Decision #344 (a)). It sends a notice's title and a link back into Projective,
+  never its contents, and does not send a notice more than a day old. Until a provider is connected
+  for a channel, that channel's notices wait. Email is built (COMMS NT3, through the email provider)
+  and sends once the provider key and the dispatcher are switched on. The SMS setting shows only
+  once the SMS provider (Twilio) is configured. **Not built yet:** push and SMS, and the daily and
+  weekly digest emails (Decision #339, rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
   move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer
@@ -1656,8 +1657,11 @@ Three product rules govern the whole surface:
 3. **Unsubscribing from marketing never silences anything else.** An unsubscribe suppresses that
    address for Marketing only — a transactional or security email still reaches it. A **hard
    bounce** is different: the address cannot receive mail, so it is blocked for every category, and
-   the user is asked in the app to fix their email (Decision #339, ruling N3 (b)). **Not built
-   yet:** no email is sent yet, so neither rule is applied, and the in-app prompt does not exist.
+   the user is asked in the app to fix their email (Decision #339, ruling N3 (b)): a notice, and a
+   warning on their address in Settings with **Confirm again**. Confirming the address again proves it
+   receives mail and lifts the block; changing the primary address leaves the old one blocked. A
+   spam complaint counts as an unsubscribe, because the address works and the person objects.
+   Every marketing email has a one-click unsubscribe.
 
 **The newsletter is double opt-in, list by list.** Anyone can type an address into a public
 subscribe form, so nothing is sent to it until its owner confirms from the link mailed to it; the

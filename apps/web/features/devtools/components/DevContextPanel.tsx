@@ -34,6 +34,7 @@ import {
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_EMAIL_DELIVERABILITIES,
 	DEV_NOTIFICATION_DELIVERIES,
 	DEV_NOTIFICATIONS,
 	DEV_OPERATOR_DESKS,
@@ -893,6 +894,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.notificationDelivery}
 						disabled={!o.enabled}
 						onChange={(notificationDelivery) => patchDevContext({ notificationDelivery })}
+					/>
+				</Field>
+
+				<Field label="Email deliverability" hint="Settings → Account · reload">
+					<Segment
+						name="Email deliverability"
+						options={DEV_EMAIL_DELIVERABILITIES}
+						value={o.emailDeliverability}
+						disabled={!o.enabled}
+						onChange={(emailDeliverability) => patchDevContext({ emailDeliverability })}
 					/>
 				</Field>
 

@@ -39,6 +39,8 @@
 
 -- The caller's addresses, primary first. `is_sign_in` marks the address GoTrue signs this account in
 -- with — it cannot be removed from the settings console, and it is NOT the same fact as "primary".
+-- `undeliverable` is true while the address is suppressed for email in every category (a hard bounce,
+-- COMMS NT3; Decision #339, ruling N3 (b)); a marketing-only unsubscribe or complaint is not shown.
 CREATE OR REPLACE FUNCTION org.get_my_emails()
 RETURNS TABLE (
     id uuid,
@@ -46,6 +48,7 @@ RETURNS TABLE (
     is_primary boolean,
     verified_at timestamptz,
     is_sign_in boolean,
+    undeliverable boolean,
     created_at timestamptz
 )
 LANGUAGE sql
@@ -58,6 +61,11 @@ AS $$
            e.is_primary,
            e.verified_at,
            COALESCE(lower(e.email) = lower(u.email), false) AS is_sign_in,
+           EXISTS (
+               SELECT 1 FROM comms.channel_suppressions s
+                WHERE s.channel = 'email' AND lower(s.destination) = lower(e.email)
+                  AND s.lifted_at IS NULL AND NOT s.marketing_only
+           ) AS undeliverable,
            e.created_at
     FROM org.user_emails e
     LEFT JOIN auth.users u ON u.id = e.user_id
@@ -66,7 +74,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION org.get_my_emails() IS
-'The calling user''s addresses (primary first, then oldest first) with is_sign_in = the GoTrue sign-in address. Empty for a caller with no subject.';
+'The calling user''s addresses (primary first, then oldest first) with is_sign_in = the GoTrue sign-in address and undeliverable = suppressed for email in every category (a hard bounce). Empty for a caller with no subject.';
 -- #endregion
 
 -- #region 2. Writes (the signed-in owner)
@@ -320,12 +328,20 @@ BEGIN
        SET consumed_at = now()
      WHERE t.email_id = v_row.id AND t.consumed_at IS NULL;
 
+    -- The token arrived, so the inbox receives mail: a hard-bounce suppression on the address is lifted
+    -- (COMMS NT3, Decision #339 ruling N3 (b)). An unsubscribe or a complaint is consent, not
+    -- deliverability, and stays.
+    UPDATE comms.channel_suppressions s
+       SET lifted_at = now(), lifted_reason = 'reverified'
+     WHERE s.channel = 'email' AND lower(s.destination) = lower(v_row.email)
+       AND s.lifted_at IS NULL AND NOT s.marketing_only;
+
     RETURN v_row.id;
 END;
 $$;
 
 COMMENT ON FUNCTION org.confirm_user_email(text) IS
-'Redeems a verification token for the signed-in owner: stamps verified_at, consumes the address''s tokens, returns the address id. Refuses token_invalid / token_used / token_expired / token_wrong_account / email_in_use.';
+'Redeems a verification token for the signed-in owner: stamps verified_at, consumes the address''s tokens, lifts a hard-bounce email suppression on the address (lifted_reason reverified), returns the address id. Refuses token_invalid / token_used / token_expired / token_wrong_account / email_in_use.';
 
 -- Moving the sign-in address (Decision #451), step 1: may the caller move their sign-in to this
 -- address now? Everything the person's own state decides, checked before the service asks GoTrue for
@@ -507,8 +523,10 @@ COMMENT ON FUNCTION org.record_sign_in_change(uuid, uuid, boolean) IS
 -- nothing. The service establishes ownership first anyway (the id comes from the caller's own
 -- org.add_user_email, or is checked against org.get_my_emails).
 --
--- Returns NULL, issuing nothing, when the address is already verified (there is nothing to prove).
--- An unknown id raises `email_not_found`.
+-- Returns NULL, issuing nothing, when the address is already verified (there is nothing to prove) and
+-- is not undeliverable. A verified address that bounced hard (suppressed for email in every category,
+-- COMMS NT3) may be confirmed again: the arriving token is the proof that lifts the suppression in
+-- org.confirm_user_email. An unknown id raises `email_not_found`.
 CREATE OR REPLACE FUNCTION security.issue_email_verification(p_email_id uuid)
 RETURNS text
 LANGUAGE plpgsql
@@ -525,7 +543,11 @@ BEGIN
         RAISE EXCEPTION 'email_not_found' USING ERRCODE = 'P0001';
     END IF;
 
-    IF v_row.verified_at IS NOT NULL THEN
+    IF v_row.verified_at IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM comms.channel_suppressions s
+         WHERE s.channel = 'email' AND lower(s.destination) = lower(v_row.email)
+           AND s.lifted_at IS NULL AND NOT s.marketing_only
+    ) THEN
         RETURN NULL;
     END IF;
 
@@ -548,7 +570,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION security.issue_email_verification(uuid) IS
-'SERVICE ROLE ONLY. Mints a 24-hour single-use verification token for an unverified org.user_emails row, stores only its SHA-256, expires earlier tokens, returns the raw token (NULL when the address is already verified). Raises email_not_found.';
+'SERVICE ROLE ONLY. Mints a 24-hour single-use verification token for an unverified org.user_emails row, or a verified one that bounced hard, stores only its SHA-256, expires earlier tokens, returns the raw token (NULL when the address is verified and deliverable). Raises email_not_found.';
 -- #endregion
 
 -- #region 4. Guard trigger function (trigger: 00001815)

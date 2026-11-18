@@ -2697,9 +2697,21 @@ stays empty. `POST /api/comms/dispatch` is thin over `@server/services/comms/Not
   off in every seed. Channel liveness reads the flag, a well-formed bearer and the registry, so
   Settings promises a channel only once it sends.
 
-**Still to build:** the transports. The registry ships empty, so every outbound delivery waits
-`pending` until COMMS NT3 (email through Resend), NT4 (Web Push, VAPID) and NT5 (SMS, Twilio) each
-register one, with their provider credentials.
+**Email is built (COMMS NT3).** `email-transport.ts` sends through Resend while `RESEND_API_KEY` and
+`MAIL_FROM` are well formed. Each message carries:
+- the title and one sentence for its category;
+- an "Open in Projective" link;
+- the delivery id as Idempotency-Key;
+- for Marketing, the RFC 8058 one-click pair to `POST /api/comms/unsubscribe`.
+
+Resend's signed webhook (`POST /api/comms/webhooks/resend`, `DeliveryEventService`) feeds
+`comms.fn_record_delivery_event`, which applies Decision #339 ruling N3 (b):
+- **A hard bounce** suppresses the address for every category and tells its owner once
+  (`account.email_undeliverable`; Settings → Account offers **Confirm again**, which lifts it).
+- **A complaint** suppresses Marketing only.
+
+**Still to build:** push (COMMS NT4, VAPID) and SMS (NT5, Twilio), each a transport in the same
+registry with its provider credentials, and the daily and weekly digest emails (PRD-E15).
 
 ---
 
@@ -4203,7 +4215,12 @@ The application relies on a strict set of environment variables. The canonical s
 > goes through the same provider (Decision #448): `SUPABASE_AUTH_SMTP_PASS` (the Resend sending key)
 > and `SUPABASE_AUTH_SMTP_ADMIN_EMAIL` (the bare address inside `MAIL_FROM`) are read only by
 > `supabase/config.toml` `[auth.email.smtp]`, which stays off locally; hosted, they are entered in the
-> Dashboard (§Authentication & Identity).
+> Dashboard (§Authentication & Identity). The same transport is the notification dispatcher's email
+> channel (COMMS NT3): `RESEND_WEBHOOK_SECRET` (`whsec_…`, Svix) verifies
+> `POST /api/comms/webhooks/resend`, and the route refuses every delivery while it is unset or the
+> placeholder. A hard bounce suppresses the address for every category, and a complaint or a
+> one-click unsubscribe (`/api/comms/unsubscribe`) suppresses it for Marketing only
+> (§The Notification Engine).
 
 > **`DENO_ENV` — unset means production (IW-M1 / K10).** `serverEnv().appEnv` and the web layer's
 > `apps/web/utils/app-env.ts` both read a missing `DENO_ENV` as `production`. Every development-only

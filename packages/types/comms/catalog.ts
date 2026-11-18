@@ -115,6 +115,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"search.saved_alert",
 	// account
 	"account.email_verified",
+	"account.email_undeliverable",
 	"account.sign_in_changed",
 	"account.password_changed",
 	"account.new_device_login",

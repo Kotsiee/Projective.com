@@ -361,7 +361,10 @@ stored, in `org.email_verification_tokens`, with `expires_at = now() + 24 hours`
 (`EMAIL_TOKEN_TTL_HOURS`); every earlier outstanding token for the address is expired first, so only
 the newest link works. An unknown id raises `P0001 'email_not_found'`; an address that is **already
 verified returns `NULL`** and issues nothing (there is nothing to prove — `EmailsBackendService`
-answers that case itself before calling).
+answers that case itself before calling), unless it bounced hard: a verified address with an active,
+non-marketing-only `comms.channel_suppressions` row on `email` may be confirmed again (Settings →
+Account's **Confirm again**, COMMS NT3), and redeeming that token lifts the suppression
+(`org.confirm_user_email`).
 
 **Why `security`, and why no user id.** The service role holds `USAGE` on `security` and not on `org`,
 so this is the one email function that lives here. It takes no identity on purpose: the app decodes

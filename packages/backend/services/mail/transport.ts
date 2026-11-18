@@ -27,17 +27,31 @@ export interface MailMessage {
 	 * (`List-Unsubscribe`, `List-Unsubscribe-Post`). Never an address beyond `to`, never a secret.
 	 */
 	headers?: Readonly<Record<string, string>>;
+	/**
+	 * The provider's Idempotency-Key: a notification email sends its delivery id, so a retried send
+	 * is one message. A guest's message sends none, because each retry carries a new link and Resend
+	 * refuses a reused key with a different body.
+	 */
+	idempotencyKey?: string;
+}
+
+/** What a provider answered for an accepted message: its own message id, when it gave one. */
+export interface MailReceipt {
+	id: string | null;
 }
 
 /** Something that can put a message in an inbox. Throws when it could not. */
 export interface MailTransport {
-	send(message: MailMessage): Promise<void>;
+	send(message: MailMessage): Promise<MailReceipt | void>;
 }
 
 /** How long one send may take, so a slow provider cannot hold a request or a sweep open. */
 const SEND_TIMEOUT_MS = 10_000;
 
-/** Resend's HTTP API. An error names the status only, never the recipient. */
+/**
+ * Resend's HTTP API. An error names the status only, never the recipient. An accepted send answers
+ * Resend's message id (`{ id }`), which its delivery webhook quotes as `data.email_id`.
+ */
 export function resendTransport(
 	apiKey: string,
 	from: string,
@@ -50,6 +64,7 @@ export function resendTransport(
 				headers: {
 					authorization: `Bearer ${apiKey}`,
 					"content-type": "application/json",
+					...(message.idempotencyKey ? { "idempotency-key": message.idempotencyKey } : {}),
 				},
 				body: JSON.stringify({
 					from,
@@ -60,8 +75,12 @@ export function resendTransport(
 				}),
 				signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
 			});
-			await res.body?.cancel();
-			if (!res.ok) throw new Error(`Resend answered ${res.status}`);
+			if (!res.ok) {
+				await res.body?.cancel();
+				throw new Error(`Resend answered ${res.status}`);
+			}
+			const body = await res.json().catch(() => null) as { id?: unknown } | null;
+			return { id: typeof body?.id === "string" ? body.id : null };
 		},
 	};
 }
