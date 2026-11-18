@@ -3817,6 +3817,48 @@ Transfer call timed out (the 202 path, where `transfer.created` is the only clos
 this machine (no test keys or CLI were installed): the hosted onboarding, the 3-D Secure challenge UI,
 and the live `stripe listen` forwarding — run the manual steps above.
 
+#### 1.4 Go-live runbook (PRD-F17, Decision #476)
+
+**The check is `deno task stripe:preflight`** (`scripts/stripe-preflight.ts` over
+`services/finance/stripe-preflight.ts`). It only reads: it checks the three event destinations, the
+platform account, the settlement currencies in its balance and the connected accounts' payout
+schedules against the code's own lists, prints a fix line for each failure, and exits non-zero if
+anything fails. It never prints a secret. Activating the account, entering keys and creating
+endpoints are a human's acts, in this order. The Dashboard detail for each step is in the providers
+spec,
+[§4.3 Setup runbook](../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md#43-setup-runbook).
+
+1. **Activate the account.** Use live mode on the GB platform account (Decision #423 (B)): business
+   verification, the Connect platform profile and Identity (§4.3 B, C). The preflight's `platform`
+   checks show activation.
+2. **Add the settlement bank accounts.** Add one per currency in `SETTLEMENT_CURRENCIES`
+   (`@projective/types/finance`), with GBP as the default. Set the platform's own payouts to
+   **manual** (Settings → Payouts; #476 (a)). Set connected accounts' payouts to automatic (§4.3 B,
+   item 3); the API cannot read that default (#476 (b)).
+3. **Create the three event destinations** in Workbench → Webhooks. The account destination and the
+   connected-accounts destination go on `{APP_URL}/api/finance/webhooks/stripe` (one destination may
+   take events from both). The thin destination goes on `{APP_URL}/api/finance/webhooks/stripe-v2`.
+   Pin each snapshot destination to `STRIPE_API_VERSION`. Copy the event lists from the preflight's
+   "What the code expects" printout, which reads `HANDLED_STRIPE_EVENTS` and
+   `HANDLED_STRIPE_THIN_EVENTS`.
+4. **Store the secrets in the host's secret store, never in git.** That means the live key (a
+   restricted key, §4.3 D), the publishable key, each destination's signing secret,
+   `FINANCE_BACKEND_LIVE=true` and `DENO_ENV=production` (§Environment Variable Contract → Stripe).
+   `STRIPE_PREFLIGHT_KEY` is optional: a second restricted key that only reads.
+5. **Review the Radar and Connect onboarding settings**: Radar's rules for card payments, and
+   Express branding, supported countries and support details (§4.3 B). The API cannot read them, so
+   a human signs them off.
+6. **Run the preflight in production.** A live key runs only under `DENO_ENV=production`, so run
+   `deno task stripe:preflight` on the production host, or in a shell that holds exactly its
+   secrets. It must exit 0. Rehearse on the hosted staging sandbox first: a local run fails the
+   destination checks by design, because `stripe listen` forwards events without creating a
+   destination.
+7. **Run MR5's reconciliation once on live**, with a small real top-up and its refund
+   (`MONEY_BUILD_PROMPTS.md` MR5, Decision #460). Until MR5 lands, compare the ledger with the
+   Stripe balance by hand.
+8. **Record the date in PRD-F17** (`readiness/PRODUCTION_READINESS.md`), with the preflight's
+   output. That run flips the row to ✅.
+
 ### 2. Conferencing (Session Engine)
 
 - **Architecture:** Freelancers connect their preferred conferencing tools via **OAuth** (e.g.,
@@ -4217,10 +4259,16 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=XXXX-XXXX
 # The signing secret of the SECOND event destination, /api/finance/webhooks/stripe-v2 (Accounts v2 thin
 # events). Absent → that endpoint answers 503 and v2 capability changes are picked up by account.updated.
 STRIPE_THIN_WEBHOOK_SECRET=XXXX-XXXX
-# The signing secret of the CONNECT event destination (events on connected accounts: payout.paid,
-# payout.failed, account.updated). It may share /api/finance/webhooks/stripe, which verifies against
+# The signing secret of the CONNECT event destination (events on connected accounts: account.updated
+# and the payout.* events). It may share /api/finance/webhooks/stripe, which verifies against
 # either secret (Decision #202). Absent → those deliveries are refused as unsigned.
 STRIPE_CONNECT_WEBHOOK_SECRET=XXXX-XXXX
+# Optional, read ONLY by `deno task stripe:preflight` (§Stripe 1.4, Decision #476), never by the server:
+# a restricted key with Read on Webhook Endpoints / Event Destinations, Account, Balance and Connect
+# accounts, and nothing else, so the runtime key keeps its least-privilege grants. Absent → the preflight
+# reads with STRIPE_SECRET_KEY. Same mode as STRIPE_SECRET_KEY; a live one runs only under
+# DENO_ENV=production.
+STRIPE_PREFLIGHT_KEY=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits,
 # POST /api/finance/cron/payouts and POST /api/finance/cron/payout-schedules; anything else —
 # including an unset secret — gets a 404, so the endpoints do not advertise that they exist.

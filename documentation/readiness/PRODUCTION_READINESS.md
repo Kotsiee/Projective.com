@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **52%** |           62 | 28 |  9 | 25 |          11 |
-| **Production**   | **34%** |          129 | 33 | 19 | 77 |          22 |
+| **Production**   | **35%** |          129 | 33 | 20 | 76 |          21 |
 
 Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 
@@ -56,7 +56,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 | C. Security & access control       |   25 |  8 |  5 | 12 |   48% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   12 |  2 |  1 |  9 |   17% |
-| F. Money, ledger & reconciliation  |   22 |  4 |  3 | 15 |   28% |
+| F. Money, ledger & reconciliation  |   22 |  4 |  4 | 14 |   31% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -75,7 +75,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
   PRD-G6 (hosted cron secrets) → PRD-F5 (dispute freeze).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
   publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
-  period) · PRD-F17 (live Stripe account) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
+  period) · PRD-F17 (live Stripe run; #476) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
   (counsel-reviewed terms; sign-up acceptance itself landed, PRD-M2).
 
 ## A. Product surfaces & navigation
@@ -195,7 +195,7 @@ Work orders for every open row, with the run order:
 | PRD-F14 | Plan and subscription checkout (Stripe Billing)                               | ❌     | High     | UAT  | Nothing can be bought (`services/finance/PlanBackendService.ts:17`), yet `business_plan_gates_enforced` is on, so a new entity is locked out of Business Pro and Pro Team features (caps, intervaled invoicing, split templates) | SBP S4, #252     |
 | PRD-F15 | The escrow holding period is ruled                                            | ❌     | Critical | PROD | Open, pending counsel (#337)                                                                                                                                                                                                     | 🧑 counsel       |
 | PRD-F16 | System wallets and double-entry ruled and built                               | ❌     | High     | PROD | Single-entry ledger with materialised balances (`00001200:44, 148`); #337 X-flags                                                                                                                                                | 🧑               |
-| PRD-F17 | The production Stripe account: live keys, v1 + v2 + Connect webhook endpoints | ❌     | Critical | PROD | Not evidenced in the repo                                                                                                                                                                                                        | —                |
+| PRD-F17 | The production Stripe account: live keys, v1 + v2 + Connect webhook endpoints | 🟡     | Critical | PROD | MR6 (#476): read-only `deno task stripe:preflight` + SA §Stripe 1.4 runbook. Test mode, 2026-11-18: 6 fail (no destinations, not activated, automatic payouts, 8 currencies). Left: the live run                                 | MR6, 🧑 live run |
 | PRD-F18 | Buyers charged in their own currency (FX)                                     | ⏸      | High     | PROD | Built, switched off pending counsel and a live rate feed (#435)                                                                                                                                                                  | DB17             |
 | PRD-F19 | Paid discovery calls and consultations                                        | ⏸      | Normal   | PROD | Ruled off (#343); `PAID_CALLS_LIVE = false` (`packages/types/scheduling/calls.ts:49`)                                                                                                                                            | #343             |
 | PRD-F20 | A multi-currency total never drops a currency                                 | ❌     | High     | UAT  | Totals across currencies silently skip a currency with no rate (FINANCE C13, P0; `wallet-scope.ts:324`)                                                                                                                          | SV5, UI5         |
@@ -348,3 +348,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC5 (#444 (c)): PRD-C22 ❌ → ✅ (68 planned segments reserved); new PRD-C25 ❌ | 58% | 52% |  33% |
 | 2026-11-18 | SAC4 (#475): PRD-C12 ❌ → ✅ (every page form post origin-checked by construction) | 58% | 52% |  34% |
 | 2026-11-18 | SAC2 (#462): PRD-C8 ❌ → ✅ (query logs carry only the caller's id)      | 58% | 52% |  34% |
+| 2026-11-18 | MR6 (#476): PRD-F17 ❌ → 🟡 (Stripe preflight + go-live runbook; the live run is the human's) | 58% | 52% |  35% |

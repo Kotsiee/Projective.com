@@ -33,7 +33,8 @@
 		"./mocks/registry.ts": "./mocks/registry.ts",
 		"./core/env.ts": "./core/env.ts",
 		"./core/data-source.ts": "./core/data-source.ts",
-		"./core/supabase.ts": "./core/supabase.ts"
+		"./core/supabase.ts": "./core/supabase.ts",
+		"./core/stripe.ts": "./core/stripe.ts"
 	},
 	"exclude": ["dist", "coverage"]
 }

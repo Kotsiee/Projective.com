@@ -439,11 +439,15 @@ permissions below are derived from the SDK calls in `services/finance/*`. Grant 
 
 **E. Event destinations.** Three destinations, each pinned to API version `2026-08-26.dahlia`:
 
-| #  | Destination       | Events from        | URL                                              | Events                                                                                                                                                                                                                                                                                                               | Secret → env                    |
-| :- | :---------------- | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------ |
-| 1  | Snapshot: account | Your account       | `{APP_URL}/api/finance/webhooks/stripe`          | `payment_intent.succeeded` · `payment_intent.payment_failed` · `payment_intent.canceled` · `identity.verification_session.verified` · `.requires_input` · `.canceled` · `transfer.created` · `transfer.reversed` · `charge.dispute.created` · `charge.dispute.closed` · `account.updated` · `setup_intent.succeeded` | `STRIPE_WEBHOOK_SECRET`         |
-| 2  | Snapshot: Connect | Connected accounts | the same URL (it verifies against either secret) | `account.updated` · `payout.paid` · `payout.failed`                                                                                                                                                                                                                                                                  | `STRIPE_CONNECT_WEBHOOK_SECRET` |
-| 3  | Thin events (v2)  | Your account       | `{APP_URL}/api/finance/webhooks/stripe-v2`       | `v2.core.account[configuration.recipient].capability_status_updated` · `v2.core.account.updated`                                                                                                                                                                                                                     | `STRIPE_THIN_WEBHOOK_SECRET`    |
+| #  | Destination       | Events from        | URL                                              | Events                                                                 | Secret → env                    |
+| :- | :---------------- | :----------------- | :----------------------------------------------- | :--------------------------------------------------------------------- | :------------------------------ |
+| 1  | Snapshot: account | Your account       | `{APP_URL}/api/finance/webhooks/stripe`          | exactly `HANDLED_STRIPE_EVENTS` (`packages/types/finance/payments.ts`) | `STRIPE_WEBHOOK_SECRET`         |
+| 2  | Snapshot: Connect | Connected accounts | the same URL (it verifies against either secret) | `account.updated` and the `payout.*` events of that list               | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| 3  | Thin events (v2)  | Your account       | `{APP_URL}/api/finance/webhooks/stripe-v2`       | exactly `HANDLED_STRIPE_THIN_EVENTS`                                   | `STRIPE_THIN_WEBHOOK_SECRET`    |
+
+The lists are not restated here. `deno task stripe:preflight` prints them and checks a hosted
+account against them: one destination per row, or rows 1 and 2 as one destination with events from
+both (`SYSTEM_ARCHITECTURE.md` §1.4, Decision #476).
 
 **F. Payment method domains** (Settings → Payment method domains). Register every production and
 staging origin for the Express Checkout Element (Apple Pay, Google Pay, PayPal). Apple Pay may also
@@ -453,7 +457,10 @@ the static route if it asks for one.
 
 **G. Platform balance.** Transfers need **available** platform balance (`SYSTEM_ARCHITECTURE.md`
 §1.3, step 5). Set the platform's own payout schedule so retained fees are swept without starving
-transfers: manual, or a delay longer than the pending window (Decision #191).
+transfers: manual, or a delay longer than the pending window (Decision #191). **Flagged (Decision
+#476 (a), awaiting a human):** an automatic schedule pays out the whole available balance, and that
+balance holds escrow longer than any delay, so the delay option can starve a later Transfer. The
+preflight requires manual until this is ruled.
 
 **H. Runtime.**
 
