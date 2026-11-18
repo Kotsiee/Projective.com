@@ -1,11 +1,34 @@
-import type { ChannelLiveness, OutboundChannel, PersonalChannel } from "@projective/types/comms";
+import type {
+	ChannelLiveness,
+	NotificationCategory,
+	OutboundChannel,
+	PersonalChannel,
+} from "@projective/types/comms";
 
 /**
- * notifications-model — the words Settings → Notifications uses for its channels. Pure, so the one
- * rule it carries is testable: a channel's copy says it delivers only while the server's liveness map
- * says it does. In-app always delivers; an outbound channel that is not live says nothing is sent yet,
- * and its switch still saves, because the preference applies once that channel launches.
+ * notifications-model — the words Settings → Notifications uses for its channels, and the one rule
+ * its category switches read. Pure, so both are testable: a channel's copy says it delivers only while
+ * the server's liveness map says it does. In-app always delivers; an outbound channel that is not live
+ * says nothing is sent yet, and its switch still saves, because the preference applies once that
+ * channel launches.
  */
+
+// #region Category switches
+/**
+ * Whether one category's switch for a channel reads on, as `comms.fn_category_channel_on` decides for
+ * the router, the unread escalation and the digests: the category's own value wins; with none, the
+ * category follows the channel's master toggle — except Marketing, which is opt-in and reads off until
+ * the person turns it on (CK5). A master toggle clears every category's value for its channel, so it
+ * never turns Marketing on.
+ */
+export function categoryChannelOn(
+	category: NotificationCategory,
+	own: boolean | null,
+	master: boolean,
+): boolean {
+	return own ?? (category === "marketing" ? false : master);
+}
+// #endregion
 
 // #region Vocabulary
 /** Each channel's name, as the switches and the matrix columns print it. */

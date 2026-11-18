@@ -107,7 +107,6 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// discovery
 	"catalogue.listing_published",
 	"catalogue.listing_paused",
-	"basket.abandoned",
 	"suggestion.next_steps",
 	"review.received",
 	"review.reminder",
@@ -153,6 +152,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"report.filed",
 	"moderation.action",
 	// marketing (opt-in only — a marketing type can never be mandatory)
+	"basket.abandoned",
 	"marketing.newsletter",
 	"marketing.product_update",
 	// Public & community surfaces (Decision #274): one region per surface, mirroring the same-named

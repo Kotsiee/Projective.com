@@ -2,12 +2,15 @@ import type { SupabaseClient } from "supabaseClient";
 import {
 	type AnalyticsPeriod,
 	type CatalogueFacetCounts,
+	type CatalogueListingRow,
+	CatalogueListingRowSchema,
 	type CatalogueListParams,
 	type CataloguePage,
 	type CatalogueStats,
 	type CatalogueTypeFilter,
 	coverOf,
 	formArchetypeOf,
+	LISTING_ROW_COLUMNS,
 	type ListingAvailabilityBinding,
 	type ListingDetail,
 	type ListingMetrics,
@@ -63,36 +66,11 @@ import { liveHeadline } from "./live-catalogue-analytics.ts";
  */
 
 // #region Rows
-/** A `catalogue.listings` row as the console selects it. */
-export interface CatalogueListingRow {
-	id: string;
-	owner_user_id: string;
-	owner_team_id: string | null;
-	kind: "product" | "service";
-	status: ListingStatus;
-	service_blueprint_id: string | null;
-	product_id: string | null;
-	title: string;
-	description: { html?: string } | null;
-	description_text: string;
-	category: string;
-	delivery_label: string;
-	amount_cents: number;
-	ticket_price_cents: number | null;
-	session_price_cents: number | null;
-	seats_per_session: number | null;
-	currency: string;
-	free_revisions: number | null;
-	extra_revision_price_cents: number | null;
-	promoted: boolean;
-	view_count: number;
-	seo_title: string | null;
-	seo_description: string | null;
-	create_category: string | null;
-	published_at: string | null;
-	created_at: string;
-	updated_at: string;
-}
+/**
+ * A `catalogue.listings` row as the console selects it: every column, typed by
+ * `CatalogueListingRowSchema` (`@projective/types/catalogue`, pinned to its table).
+ */
+export type { CatalogueListingRow };
 
 /** A service blueprint as the console selects it. */
 export interface CatalogueBlueprintRow extends OfferBlueprintColumns {
@@ -114,9 +92,8 @@ export interface CatalogueProductRow extends OfferProductColumns {
 	span: number;
 }
 
-/** The columns {@link CatalogueListingRow} selects. */
-export const LISTING_COLUMNS =
-	"id, owner_user_id, owner_team_id, kind, status, service_blueprint_id, product_id, title, description, description_text, category, delivery_label, amount_cents, ticket_price_cents, session_price_cents, seats_per_session, currency, free_revisions, extra_revision_price_cents, promoted, view_count, seo_title, seo_description, create_category, published_at, created_at, updated_at";
+/** The columns a {@link CatalogueListingRow} is read with: the row schema's keys, so the two cannot drift. */
+export const LISTING_COLUMNS = LISTING_ROW_COLUMNS;
 const BLUEPRINT_COLUMNS =
 	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, allow_tiered_intensity, team_roles, deliverables, turnaround_days, session_minutes, session_count, session_plan, session_rolling, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
 const PRODUCT_COLUMNS =
@@ -173,14 +150,21 @@ function editedLabel(iso: string, now = Date.now()): string {
 	return weeks <= 1 ? "Edited last week" : `Edited ${weeks} weeks ago`;
 }
 
-/** Normalise the numeric columns PostgREST may send as strings, and the currency's case. */
-export function normaliseListing(l: CatalogueListingRow): CatalogueListingRow {
-	return {
-		...l,
-		amount_cents: Number(l.amount_cents) || 0,
-		view_count: Number(l.view_count) || 0,
-		currency: (l.currency ?? "USD").toUpperCase(),
-	};
+/**
+ * One `catalogue.listings` row as read, parsed by its row schema: the one boundary every console read
+ * passes through, so a row the schema does not describe is refused here rather than mapped. A
+ * `bigint` / `numeric` sent as a string arrives as its number.
+ */
+export function parseListingRow(row: unknown): CatalogueListingRow {
+	const parsed = CatalogueListingRowSchema.safeParse(row);
+	if (parsed.success) return parsed.data;
+	const id = (row as { id?: unknown } | null)?.id;
+	const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "row"}: ${i.message}`);
+	throw new Error(
+		`catalogue.listings row ${typeof id === "string" ? id : "?"} does not match its schema — ${
+			issues.join("; ")
+		}`,
+	);
 }
 // #endregion
 
@@ -378,7 +362,7 @@ async function loadScope(db: SupabaseClient, scope: Scope): Promise<Loaded> {
 		: q.eq("owner_user_id", scope.userId).is("owner_team_id", null);
 	const { data, error } = await q.order("updated_at", { ascending: false }).limit(SCOPE_WINDOW);
 	if (error) throw new Error(`catalogue.listings read failed: ${error.message}`);
-	return await withChildren(db, ((data ?? []) as CatalogueListingRow[]).map(normaliseListing));
+	return await withChildren(db, ((data ?? []) as unknown[]).map(parseListingRow));
 }
 
 async function withChildren(db: SupabaseClient, listings: CatalogueListingRow[]): Promise<Loaded> {
@@ -798,7 +782,7 @@ export async function listingBySlug(
 		.eq(isService ? "service_blueprint_id" : "product_id", (subject as { id: string }).id)
 		.maybeSingle();
 	if (listingError) throw new Error(`catalogue.listings read failed: ${listingError.message}`);
-	return data ? normaliseListing(data as CatalogueListingRow) : null;
+	return data ? parseListingRow(data) : null;
 }
 
 /** The caller's own listing a console address names, or `null` — a stranger's is not theirs to manage. */

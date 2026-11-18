@@ -186,6 +186,15 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Claim-TTL auto-release ("Ticket Parking"): a ticket claimed for longer than claim_ttl_minutes goes back to the backlog and its escrow is refunded to the client.',
         false)
 ON CONFLICT (name) DO NOTHING;
+
+-- The abandoned-basket nudge (CK5, Decision #492): once a day, mid-morning in the UK, the finder queues
+-- one basket.abandoned per idle personal basket and comms-process-queue sends it within the minute. It
+-- queues nothing while the comms.basket_nudge flag is off, which it is in every seed until counsel.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('comms-basket-nudges', 'sql', '17 10 * * *',
+        'SELECT comms.fn_enqueue_basket_nudges(500);', NULL, NULL,
+        'Queues one basket.abandoned (Marketing, email) for each personal default basket with a live line left untouched past its lead time, to an opted-in, reachable adult who has not ordered since: once per idle spell, never twice inside the group window. Queues nothing while comms.basket_nudge is off.')
+ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
 -- #region [scheduling] Discovery-call expiry and vote settlement (Q0.3: #343 D9)

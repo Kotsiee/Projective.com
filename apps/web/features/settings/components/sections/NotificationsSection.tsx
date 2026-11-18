@@ -23,6 +23,7 @@ import {
 import { SettingsService } from "../../core/SettingsService.ts";
 import { sectionMeta } from "../../core/settings-registry.ts";
 import {
+	categoryChannelOn,
 	CHANNEL_LABEL,
 	channelDescription,
 	requiredDeliveryNote,
@@ -209,7 +210,7 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 	const effective = (category: NotificationCategory, channel: PersonalChannel): boolean => {
 		const row = c.categories.find((x) => x.category === category);
 		const own = row ? row[PREF_KEY[channel]] : null;
-		return own ?? c.prefs[PREF_KEY[channel]];
+		return categoryChannelOn(category, own, c.prefs[PREF_KEY[channel]]);
 	};
 
 	function setMaster(channel: PersonalChannel, on: boolean): void {

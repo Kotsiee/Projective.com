@@ -640,6 +640,12 @@ price never above the stage's price, a High price never below it. Either way the
 seller's commitment once the service is instantiated: like the revision allotment, they are frozen on
 the engagement, for its seller as much as its client.
 
+**A bought stage keeps the listing's CREATE category (SC2, #417 (c)).** The seller picks one CREATE
+category for the listing (§The CREATE Framework). Every stage the listing becomes in a client's
+engagement carries it, whether the service was added to projects, bought at checkout or bought on a
+quote's terms. An untyped listing gives untyped stages. It labels the work only: it weighs nothing in
+$W_i$ (Decision #338, ruling P4).
+
 **A One-Off or a Task is paid for at checkout, and the payment starts it (Decision #457).** A
 Pipeline is added to the client's projects and funded ticket by ticket. A One-Off or a Task is
 scoped in the configure dialog instead: the brief, the seller's questions, what to fund now and an
@@ -1648,7 +1654,7 @@ Every notification belongs to one of eight **categories**: Money · Work · Mess
 Discovery · Account · System · Marketing. A user controls delivery at three grains — globally, per
 category, and per individual event — across four transports (in-app, push, email, SMS).
 
-Three product rules govern the whole surface:
+Four product rules govern the whole surface:
 
 1. **Some alerts cannot be turned off.** Anything that moves money, changes access, or affects legal
    standing — escrow and payout events, chargebacks, invoices, identity-verification outcomes,
@@ -1668,6 +1674,9 @@ Three product rules govern the whole surface:
    receives mail and lifts the block; changing the primary address leaves the old one blocked. A
    spam complaint counts as an unsubscribe, because the address works and the person objects.
    Every marketing email has a one-click unsubscribe.
+4. **Marketing is opt-in.** Nothing in the Marketing category reaches a person on any channel until
+   they turn Marketing on for that channel in Settings → Notifications; turning a channel's master
+   switch on never turns Marketing on, and turning it off turns Marketing off too (Decision #492).
 
 **The newsletter is double opt-in, list by list.** Anyone can type an address into a public
 subscribe form, so nothing is sent to it until its owner confirms from the link mailed to it; the
@@ -1693,6 +1702,15 @@ rather than deletes**, so the record survives.
 Reminders (a session at T-60/T-15/T-5, a calendar entry at the leads its person chose, a nudge on an
 abandoned basket, a chase on a submission left unreviewed) are scheduled ahead of time and **cancelled
 automatically when the reason disappears** — cancelling a session cancels its reminders.
+
+**The abandoned-basket reminder is marketing** (owner ruling A, Decision #492). A person whose own
+basket still holds something they have not bought, removed or saved for later, and which nobody
+has touched for a day, gets **one** email reminder, and no other until they touch the basket again
+and leave it for another day, never two inside three days. It goes only to an adult who turned
+Marketing email on, never to a 13–17 account, never after they have ordered since, and never to an
+address that unsubscribed. It names what is in the basket but never a price, because prices can
+change: its link opens checkout, which prices every line again. A wishlist and a team or business
+basket are never reminded. **Built and switched off** until counsel confirms the consent basis.
 
 _Schema, routing precedence and delivery mechanics:
 [`database/comms/`](../database/comms/Tables.md) · `SYSTEM_ARCHITECTURE.md` §The Notification

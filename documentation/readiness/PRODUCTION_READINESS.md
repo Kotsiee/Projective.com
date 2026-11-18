@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **67%** |           13 |  9 |  0 |  4 |           3 |
-| **UAT**          | **64%** |           65 | 36 |  9 | 20 |           7 |
-| **Production**   | **43%** |          145 | 47 | 25 | 73 |          17 |
+| **UAT**          | **63%** |           66 | 36 |  9 | 21 |           7 |
+| **Production**   | **43%** |          146 | 47 | 25 | 74 |          17 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -53,7 +53,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
 | B. Live data paths & feature flags |    7 |  2 |  2 |  3 |   50% |
-| C. Security & access control       |   33 | 18 |  4 | 11 |   63% |
+| C. Security & access control       |   34 | 18 |  4 | 12 |   61% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
@@ -148,6 +148,7 @@ Work orders for every open row, with the run order:
 | PRD-C32 | The integrations OAuth callback checks the caller before it spends the state              | ❌     | Normal   | PROD | #478 (e): `IntegrationsBackendService.ts:780-781` consumes the consent `state` before comparing `consent.user_id` to the caller, so a cross-site GET carrying someone else's state burns it | #478 (e)   |
 | PRD-C33 | A group newcomer reads only what was written after they joined                            | ❌     | High     | PROD | #482 (b) (owner ruling): `view_dm_messages_if_participant` and `comms.can_read_message` ask membership only, so anyone added to a group reads its whole history; the bound is `dm_participants.joined_at`, entity channels exempt; the thread preview, unread counts and attachment reads need it too | #482 (b)   |
 | PRD-C34 | A team listing's write doors ask the team's `publish_listings`                            | ❌     | High     | UAT  | #500 (A): `save_listing`, `apply_listing_media`, `set_listing_status`, `duplicate_listing` and `delete_listing` ask only the creator (`00001170:317`, `:810`, `:914`, `:1149`, `:1336`) and `create_listing` any active member (`:58`), so a plain member creates and publishes for the team with their own JWT (only the app's `?team=` scope asks `publish_listings`); `delete_listing`, a definer, lets a creator who has left the team hard-delete its listings with no buyer history | SC6 (#500) |
+| PRD-C35 | A sign-in submitted before the page hydrates never puts the password in the URL           | ❌     | High     | UAT  | Found by CK5 (#492): `CredentialsForm.tsx:130` is `<form onSubmit={onSubmit} noValidate>` with no `method`, so a Sign in pressed before the island hydrates (a slow network, a bundle that failed) is the browser's own GET to `/login?identifier=…&password=…&remember=on`: the password lands in the address bar, the history, the server's access log and any later `Referer`. Seen on a dev server whose build sent no module script. Fix: `method="post"` with a route that answers a non-JS post, or no `name` on the fields until the island hydrates (the reset form's fields carry none, so it is safe) | —          |
 
 ## D. Trust, safety & moderation
 
@@ -251,7 +252,7 @@ Work orders for every open row, with the run order:
 | :----- | :---------------------------------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
 | PRD-I1 | The Additive Rule holds                                                       | ✅     | Critical | UAT  | No `DROP TABLE`, `DROP COLUMN` or `DROP CONSTRAINT` in any migration                                                                                              | —     |
 | PRD-I2 | Contract tests for finance, projects and org                                  | ✅     | High     | UAT  | `finance-tables.contract.test.ts` (39 tables), `projects-tables.contract.test.ts`, `org/identity-tables.contract.test.ts`                                         | —     |
-| PRD-I3 | Zod row schemas for comms messages, `catalogue.listings`, `scheduling.events` | ❌     | High     | PROD | No row schema for `comms.dm_messages`, `comms.project_messages`, `catalogue.listings`; `SchedulingEventRowSchema` covers 30 of 36 columns                         | —     |
+| PRD-I3 | Zod row schemas for comms messages, `catalogue.listings`, `scheduling.events` | ❌     | High     | PROD | No row schema for `comms.dm_messages`, `comms.project_messages`; `SchedulingEventRowSchema` covers 30 of 36 columns (the six `meeting_*` are missing). `catalogue.listings` is done (SC1, #501: `CatalogueListingRowSchema`, `catalogue-tables.contract.test.ts`). Catalogue tables still without a row schema: `products`, `articles`, `listing_media`, `listing_skills`, `listing_tags`, `collections`, `collection_listings` | —     |
 | PRD-I4 | The table contract checks types and nullability                               | ❌     | Normal   | PROD | `packages/types/core/table-contract.ts` checks column names only                                                                                                  | —     |
 | PRD-I5 | `documentation/database/*` matches the tables                                 | 🟡     | Normal   | PROD | Drift: `finance.wallets.created_at`, `org.business_profiles` rating and count columns, `comms.notifications` timestamps, `notification_queue`, `idempotency_keys` | —     |
 
@@ -398,4 +399,6 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 58% | 60% | 42% |
 | 2026-11-18 | LD2 (#497): PRD-B3 ❌ → ✅ (every money write passes one chokepoint, 503 with `FINANCE_BACKEND_LIVE` off; reads stay live); new PRD-B7 ❌ (a project's lifecycle moves money outside the switch) | 58% | 62% | 42% |
 | 2026-11-18 | CD1 step 5 (#502): PRD-E14 ❌ → 🟡 (the confirmation mail leaves from `newsletter_mail_from` on `news.`); PRD-E11 stays 🟡 (the Resend contacts sync, the provider's contact events and the per-topic unsubscribe are built; a hosted send left, CD2) | 58% | 62% |  42% |
-| 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 64% |  43% |
+| 2026-11-18 | CK5 (#492): new PRD-C35 ❌ (a Sign in pressed before the page hydrates is a native GET that puts the password in the URL); no row flips | 58% | 61% | 42% |
+| 2026-11-18 | SC1 (#501): no row flips; PRD-I3 narrowed (`catalogue.listings` has its row schema; comms messages, `scheduling.events` and seven catalogue tables left) | 58% | 61% | 42% |
+| 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 63% |  43% |

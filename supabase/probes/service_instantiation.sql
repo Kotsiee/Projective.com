@@ -77,6 +77,14 @@ UPDATE marketplace.service_blueprints
        stage_template = jsonb_set(jsonb_set(stage_template, '{0,lowPriceCents}', '700'), '{0,highPriceCents}', '2600')
  WHERE id = current_setting('probe.other')::uuid;
 
+-- The CREATE category is the listing's (catalogue.listings.create_category), and every stage the
+-- listing instantiates carries it as a label (#417 (c), SC2). The second listing is left untyped, so
+-- its stages must stay untyped rather than borrow a category.
+UPDATE catalogue.listings SET create_category = 'advise'
+ WHERE service_blueprint_id = current_setting('probe.bp')::uuid;
+UPDATE catalogue.listings SET create_category = NULL
+ WHERE service_blueprint_id = current_setting('probe.other')::uuid;
+
 DO $$
 BEGIN
     IF marketplace.fn_plain_text_html(E'a & <b>\r\n"c"\n\n\n  second  ') <> '<p>a &amp; &lt;b&gt;<br>&quot;c&quot;</p><p>second</p>' THEN
@@ -285,6 +293,10 @@ BEGIN
             RAISE EXCEPTION 'FAIL stage % intensity terms: % locked=% low=% high=%', v_stage.ord,
                 v_stage.default_intensity, v_stage.intensity_locked, v_stage.low_price_cents, v_stage.high_price_cents;
         END IF;
+        IF v_stage.create_category IS DISTINCT FROM 'advise'::org.create_category THEN
+            RAISE EXCEPTION 'FAIL stage % CREATE category % is not the listing''s advise (#417 (c))',
+                v_stage.ord, v_stage.create_category;
+        END IF;
         IF EXISTS (SELECT 1 FROM projects.tickets t WHERE t.current_stage_id = v_stage.id) THEN
             RAISE EXCEPTION 'FAIL stage % was given a ticket: the client creates them (Decision #409)', v_stage.ord;
         END IF;
@@ -296,7 +308,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM projects.tickets WHERE project_id = v_project.id) THEN
         RAISE EXCEPTION 'FAIL the draft holds tickets nobody created';
     END IF;
-    RAISE NOTICE 'PASS % stages, each with its price, brief, checklist, revision terms and a room, and no tickets', v_n;
+    RAISE NOTICE 'PASS % stages, each with its price, brief, checklist, revision terms, the listing''s CREATE category and a room, and no tickets', v_n;
     IF NOT EXISTS (SELECT 1 FROM projects.project_stages ps
                    WHERE ps.project_id = v_project.id AND ps.sort_order = 0 AND ps.default_intensity = 'high') THEN
         RAISE EXCEPTION 'FAIL the first stage lost the seller''s High intensity';
@@ -451,6 +463,9 @@ BEGIN
             RAISE EXCEPTION 'FAIL tiered stage % terms: % locked=% low=% high=%', v_stage.ord,
                 v_stage.default_intensity, v_stage.intensity_locked, v_stage.low_price_cents, v_stage.high_price_cents;
         END IF;
+        IF v_stage.create_category IS NOT NULL THEN
+            RAISE EXCEPTION 'FAIL stage % of an untyped listing took the CREATE category %', v_stage.ord, v_stage.create_category;
+        END IF;
     END LOOP;
     IF NOT EXISTS (SELECT 1 FROM projects.project_stages ps
                    WHERE ps.project_id = current_setting('probe.tiered_project')::uuid
@@ -458,7 +473,36 @@ BEGIN
         RAISE EXCEPTION 'FAIL the first tiered stage lost the seller''s own tier prices';
     END IF;
     RAISE NOTICE 'PASS a tiered listing leaves every stage unlocked, with the seller''s own Low and High prices where set';
+    RAISE NOTICE 'PASS an untyped listing''s stages stay untyped';
 END $$;
+-- #endregion
+
+-- #region 3c. Terms from another source (a priced quote's) still carry the listing's CREATE category
+-- `fn_write_blueprint_stages` takes `p_terms` from `fn_buy_scoped_service` when a quote offer prices
+-- the engagement (Decision #458 (a)); the category is the listing's whatever priced the stages.
+SAVEPOINT quoted_terms;
+DO $$
+DECLARE
+    v_bp marketplace.service_blueprints%ROWTYPE;
+    v_next int;
+    v_ids uuid[];
+BEGIN
+    SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = current_setting('probe.bp')::uuid;
+    SELECT max(ps.sort_order) + 2 INTO v_next
+      FROM projects.project_stages ps WHERE ps.project_id = current_setting('probe.project')::uuid;
+    v_ids := marketplace.fn_write_blueprint_stages(
+        current_setting('probe.project')::uuid, v_bp,
+        jsonb_build_array(jsonb_build_object(
+            'ord', v_next,
+            'stage', jsonb_build_object('name', 'Quoted stage', 'startTrigger', 'on_project_start'),
+            'unit_price_cents', 5000, 'intensity', 'standard', 'intensity_locked', true)));
+    IF (SELECT ps.create_category FROM projects.project_stages ps WHERE ps.id = v_ids[1])
+        IS DISTINCT FROM 'advise'::org.create_category THEN
+        RAISE EXCEPTION 'FAIL a stage written from given terms lost the listing''s CREATE category';
+    END IF;
+    RAISE NOTICE 'PASS a stage written from given terms carries the listing''s CREATE category';
+END $$;
+ROLLBACK TO SAVEPOINT quoted_terms;
 -- #endregion
 
 -- #region 4. Other callers

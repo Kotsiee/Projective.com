@@ -161,6 +161,15 @@ VALUES ('comms.dispatch_webhook', false, jsonb_build_object(
 ))
 ON CONFLICT (key) DO NOTHING;
 
+-- The abandoned-basket nudge is Marketing (CK5, owner ruling A) and waits on counsel's word on its
+-- consent basis, so it is off in every seed and every environment until counsel confirms. Probes
+-- switch it on inside rolled-back transactions.
+INSERT INTO security.feature_flags (key, enabled, payload)
+VALUES ('comms.basket_nudge', false, jsonb_build_object(
+    'description', 'When enabled, the daily comms-basket-nudges job (comms.fn_enqueue_basket_nudges) queues one basket.abandoned email for a personal default basket left idle past its lead time, to an adult who opted into Marketing email; while off, the finder queues nothing.'
+))
+ON CONFLICT (key) DO NOTHING;
+
 -- from 20260724104000
 INSERT INTO
     security.platform_params (key, value, description)

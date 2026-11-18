@@ -845,8 +845,9 @@ STEPS:
   5. Digests: fn_build_digests also selects users whose category row sets a digest cadence, and
      rolls up only those categories' digestible rows.
   6. fn_enqueue and fn_cancel_queued: no change beyond the warnings. Record in Functions.md which
-     track owns which caller (session reminders: scheduling; the abandoned-basket nudge: finance
-     SV4; ghosting timers: finance and projects, ruling P3).
+     track owns which caller (session reminders: scheduling; the abandoned-basket nudge:
+     MARKETPLACE_BUILD_PROMPTS CK5, built (Decision #492); ghosting timers: finance and projects,
+     ruling P3).
 
 SAME CHANGE: migrations edited in place; database/comms docs. PRODUCT_SPEC §Notifications rule 2
 already states step 2, so its text does not change.

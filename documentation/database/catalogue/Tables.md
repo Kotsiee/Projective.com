@@ -69,6 +69,15 @@ enforced.** Article bodies (`catalogue.articles.body`) are not yet covered — D
 One row per listed service or product. `listings_subject_matches_kind` makes a service listing
 carrying a product id (or neither) unrepresentable.
 
+**Row schema:** `CatalogueListingRowSchema` (`@projective/types/catalogue`, `rows.ts`), every column
+keyed by its own name, with each column's CHECK and `kind` / `status` / `create_category` from their
+Zod enums. The seller console selects exactly its keys and parses each row once, at
+`parseListingRow` (`packages/backend/services/catalogue/live-catalogue.ts`).
+`catalogue-tables.contract.test.ts` fails on a column without a key (or a key without a column), on
+an enum out of step with its Postgres type, and on a derived column missing from
+`LISTING_DERIVED_COLUMNS`. The two cross-column CHECKs stay the database's (MARKETPLACE SC1,
+PRD-I3).
+
 | Column                                         | Notes                                                                              |
 | :--------------------------------------------- | :--------------------------------------------------------------------------------- |
 | `kind`                                         | `catalogue.listing_kind`: `product` · `service`.                                   |
@@ -80,7 +89,7 @@ carrying a product id (or neither) unrepresentable.
 | `amount_cents`, `ticket_price_cents`, `session_price_cents`, `seats_per_session`, `currency` | Pricing config. The optional three are NULL for "not priced", never 0. |
 | `free_revisions`, `extra_revision_price_cents` | NULL = undeclared; 0 is a stated offer.                                            |
 | `promoted`                                     | A console hint, set by `marketplace.promote_listing` and cleared by `stop_listing_promotion` (Decision #454). The flag alone buys nothing and no reader trusts it: the console's "Promoted" state and the Explore slot both answer from a LIVE `marketplace.promoted_placements` row, and an organic card is never marked. |
-| `view_count`, `order_count`, `rating_average`, `rating_count` | **Derived** console metrics, guarded against client writes (`trg_listings_derived`). |
+| `view_count`, `order_count`, `rating_average`, `rating_count` | **Derived** console metrics, guarded against client writes (`trg_listings_derived`; `LISTING_DERIVED_COLUMNS` names the same four). `view_count` / `order_count` are written by `analytics.fn_rollup_listings` alone: the listing's `listing.views` / `listing.orders` summed over every rolled-up day, rewritten nightly for each listing the day touched (MARKETPLACE SC5, MK-43); the seed's corpus values are zeroed and re-derived by `13_analytics.sql`. The ratings are seed-only. The console counts orders from `get_listing_sales` and reads ratings from the blueprint or product. |
 
 ## Child tables
 

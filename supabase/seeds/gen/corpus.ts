@@ -16,6 +16,9 @@
  * Regenerating the SQL after an edit: `deno task db:seed:generate`.
  */
 
+import type { BlueprintSessionPlanEntry } from "@projective/types/explore";
+import type { CreateCategory } from "@projective/types/org";
+import type { TicketIntensity } from "@projective/types/projects";
 import type { IntakeField } from "@projective/types/services";
 
 // #region Types
@@ -29,6 +32,15 @@ export interface CorpusStage {
 	priceMinor: number;
 	/** Skill LABELS as the seller wrote them on the stage (rendered verbatim). */
 	skills: string[];
+	/** The tier a ticket starts at (`intensity`); absent = Standard (Decision #417). */
+	intensity?: TicketIntensity;
+	/**
+	 * The seller's own Low / High per-ticket prices, minor units, read only when the service is
+	 * {@link CorpusService.tieredIntensity tiered}. Absent = the platform's tier multiple of
+	 * `priceMinor`. The generator refuses Low > `priceMinor` or High < `priceMinor`.
+	 */
+	lowPriceMinor?: number;
+	highPriceMinor?: number;
 }
 
 export interface CorpusService {
@@ -51,6 +63,18 @@ export interface CorpusService {
 	seatsPerSession?: number;
 	sessionMinutes?: number;
 	sessionCount?: number;
+	/**
+	 * What each sitting of a fixed-count Session covers, by position (`service_blueprints.session_plan`,
+	 * Decision #411). The generator refuses more entries than `sessionCount`.
+	 */
+	sessionPlan?: BlueprintSessionPlanEntry[];
+	/**
+	 * A Pipeline sold tiered (`service_blueprints.allow_tiered_intensity`, Decision #417): the client
+	 * picks Low · Standard · High per ticket. Absent = fixed, every stage locked at its `intensity`.
+	 */
+	tieredIntensity?: boolean;
+	/** The listing's CREATE category (`catalogue.listings.create_category`); absent = untyped. */
+	createCategory?: CreateCategory;
 	stages: CorpusStage[];
 	teamRoles: Array<{ name: string; summary: string; skills: string[]; count: number }>;
 	deliverables: string[];
@@ -639,6 +663,8 @@ export const SERVICES: CorpusService[] = [
 			"realtime",
 			"typescript",
 		],
+		"tieredIntensity": true,
+		"createCategory": "create",
 		"stages": [
 			{
 				"name": "Discovery & scope",
@@ -650,6 +676,8 @@ export const SERVICES: CorpusService[] = [
 				],
 				"turnaround": "~1 week",
 				"priceMinor": 32000,
+				"lowPriceMinor": 20000,
+				"highPriceMinor": 48000,
 				"skills": [
 					"Deno",
 					"Postgres",
@@ -666,6 +694,8 @@ export const SERVICES: CorpusService[] = [
 				],
 				"turnaround": "~2 days",
 				"priceMinor": 26000,
+				"lowPriceMinor": 16000,
+				"highPriceMinor": 42000,
 				"skills": [
 					"Deno",
 					"Postgres",
@@ -682,6 +712,8 @@ export const SERVICES: CorpusService[] = [
 				],
 				"turnaround": "~1 week",
 				"priceMinor": 32000,
+				"lowPriceMinor": 20000,
+				"highPriceMinor": 48000,
 				"skills": [
 					"Deno",
 					"Postgres",
@@ -698,6 +730,8 @@ export const SERVICES: CorpusService[] = [
 				],
 				"turnaround": "~1 week",
 				"priceMinor": 32000,
+				"lowPriceMinor": 22000,
+				"highPriceMinor": 45000,
 				"skills": [
 					"Deno",
 					"Postgres",
@@ -1007,6 +1041,38 @@ export const SERVICES: CorpusService[] = [
 		],
 		"sessionMinutes": 45,
 		"sessionCount": 6,
+		"sessionPlan": [
+			{
+				"title": "Where you are, where you want to be",
+				"description":
+					"We walk through your recent work and agree the growth plan the next five sessions follow.",
+			},
+			{
+				"title": "Portfolio teardown",
+				"description":
+					"A candid read of your portfolio as a hiring manager sees it, with the three changes that matter most.",
+			},
+			{
+				"title": "Craft deep-dive",
+				"description":
+					"One piece of your work, critiqued line by line: layout, type, interaction and intent.",
+			},
+			{
+				"title": "Process and tooling",
+				"description":
+					"How you get from a brief to a decision, and the habits that save the most time.",
+			},
+			{
+				"title": "Presenting your work",
+				"description":
+					"Rehearse a design review and practise taking feedback without losing the thread.",
+			},
+			{
+				"title": "The career conversation",
+				"description":
+					"Roles, levels and the next move, with the plan from session one checked against where you landed.",
+			},
+		],
 		"stages": [],
 		"teamRoles": [],
 		"deliverables": [

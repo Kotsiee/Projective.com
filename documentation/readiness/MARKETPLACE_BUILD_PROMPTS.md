@@ -26,7 +26,7 @@
 
 | Row   | Now · Crit · Gate  | Work order                                       | The row flips (or its note clears) when                                                                                                |
 | :---- | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| MK-18 | ✅ · High · UAT    | **CK5**                                          | An idle basket gets one nudge, within consent (note clears)                                                                            |
+| MK-18 | ✅ · High · UAT    | **CK5** (#492)                                   | An idle basket gets one nudge, within consent (note clears)                                                                            |
 | MK-19 | ✅ · High · UAT    | —                                                | —                                                                                                                                      |
 | MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                         | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
 | MK-21 | ✅ · Crit · MVP    | — (CO17 is Planned, §0.5)                        | —                                                                                                                                      |
@@ -58,7 +58,7 @@ left); **MK-12** (reserve a cohort seat) → **SC3**.
 
 | Row   | Now · Crit · Gate  | Work order                                        | The row flips (or its note clears) when                                                |
 | :---- | :----------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------- |
-| MK-35 | ✅ · Crit · MVP    | **SC1**                                           | `catalogue.listings` has a pinned Zod row schema (note clears; PRD-I3 narrows)         |
+| MK-35 | ✅ · Crit · MVP    | **SC1** (landed, #501)                            | `catalogue.listings` has a pinned Zod row schema (note clears; PRD-I3 narrows)         |
 | MK-36 | ✅ · High · MVP    | — (T&S P2a refuses PII in listing copy)           | —                                                                                      |
 | MK-37 | 🟡 · High · UAT    | **CK1**                                           | ✅ once sale originals are private, frozen at publish (A6) and delivered               |
 | MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
@@ -116,13 +116,13 @@ is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts
 2. **RV1** — ⏳ SAC1 (`00002500`, `00002510`). Better after CK3, which gives it an entry point.
 3. **SC2 → SC3 → SCH-WP7** — the seed generator is one writer at a time; `00001155` runs with no
    other SCH package.
-4. **CK5** — ⏳ `00005060` free (DB16, PM-WP1, PM-GH1, MR4, MR5 and DB17 also write it).
+4. **CK5** — built (#492): the nudge is Marketing, opt-in at the root, and off until counsel (⚖️).
 5. **SC5 → RV2 → RV3.** RV3's 🧑 is ruled (#489), and RV3 waits here for RV2.
 6. T&S **R1 → R2** (their track) → **SC8** (rulings #496; ⚖️ counsel words the regime); **SC9** once
    per #393 phase.
 
-**App lane** (up to three at once, file-disjoint): **SC1** and **CK6** now; **CK3** ⏳ CK1
-(`live-orders.ts`); **MKZ** last.
+**App lane** (up to three at once, file-disjoint): **SC1** (landed, #501) and **CK6** now; **CK3**
+⏳ CK1 (`live-orders.ts`); **MKZ** last.
 
 **Hot files across this file:**
 
@@ -151,7 +151,7 @@ block, so a question you defer still stops the build at the right step.
 | 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
 | 6  | The tax model (⚖️)                                                                               | CK4                 | **Ruled #490:** Stripe Tax on digital products only, tax-exclusive; off until counsel                   |
-| 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
+| 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | **Ruled #492:** A; Marketing made opt-in at the root; built, off until counsel                          |
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
 | 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
 | 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
@@ -184,7 +184,7 @@ Fix each in the prompt named, or in MKZ if that prompt has already landed.
 | USER_FLOWS MK-44                                       | "quotes cannot be acted on"                            | `QuotePanel only="host"` is in `ClientDrawerBody.tsx:213` (#458)        | SC6    |
 | USER_FLOWS MK-45                                       | "—"                                                    | #312 flags (a) and (e) are open                                         | SC6    |
 | `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1413`                                                         | #490   |
-| `database/comms/Functions.md:131-135`                  | `fn_enqueue` has no caller                             | `00001510:3143` calls it                                                | CK5    |
+| `database/comms/Functions.md:131-135`                  | `fn_enqueue` has no caller                             | `00001510:3143` calls it                                                | CK5 ✅  |
 | `database/reviews/Tables.md:43`                        | the landing testimonials read the table                | `testimonials()` is dead (#349)                                         | RV1    |
 | `00002018:52-63`, `database/reviews/Policies.md:14-15` | no table records a product purchase                    | `finance.order_lines` does                                              | RV1    |
 | `packages/types/profile/tabs.ts:180`                   | `freelancer` = "fellow freelancer"                     | the RPC's `author_role = 'freelancer'` is a provider reviewing a client | RV2    |

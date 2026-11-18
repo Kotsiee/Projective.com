@@ -20,10 +20,11 @@ import { fail, type ServiceResult } from "../ServiceResult.ts";
  * Kept apart from the service so it is testable without a Supabase client. Every rule here mirrors
  * `comms.fn_resolve_channels` rather than restating a policy of its own:
  *
- *  - a category column that is `NULL` — or a category with no row at all — follows the channel's
- *    master toggle, so both read back as `null`;
- *  - an explicit category value outranks the master (`COALESCE(category, global)`), which is why a
- *    master toggle travels with a `resetChannels` entry;
+ *  - a category column that is `NULL` — or a category with no row at all — reads back as `null`:
+ *    it follows the channel's master toggle, except Marketing, which is opt-in and is off until the
+ *    person turns it on (`comms.fn_category_channel_on`; the grid draws it with `categoryChannelOn`);
+ *  - an explicit category value outranks the master, which is why a master toggle travels with a
+ *    `resetChannels` entry — and why a master never opts anyone into Marketing;
  *  - mandatory catalog types ignore every preference, which is what {@link RequiredAlerts}
  *    summarises.
  */

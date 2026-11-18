@@ -527,6 +527,12 @@ EXECUTE ON FUNCTION comms.fn_reap_dead_devices (smallint) TO service_role;
 GRANT
 EXECUTE ON FUNCTION comms.fn_compact_delivery_events (interval) TO service_role;
 
+-- The opt-in rule (read inside the router, the escalation and the digests, which run as their owner)
+-- and the daily abandoned-basket finder (CK5, Decision #492): the service role and the pg_cron owner only.
+GRANT EXECUTE ON FUNCTION comms.fn_category_channel_on (comms.notification_category, boolean, boolean) TO service_role;
+
+GRANT EXECUTE ON FUNCTION comms.fn_enqueue_basket_nudges (integer) TO service_role;
+
 -- --- from 20260724100000_scheduling_schema_availability.sql ---
 
 -- The scheduling read predicates are the SELECT policies of schedules, availability_rules and
