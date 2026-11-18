@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **52%** |           62 | 28 |  9 | 25 |          11 |
-| **Production**   | **34%** |          129 | 32 | 19 | 78 |          22 |
+| **Production**   | **34%** |          129 | 33 | 19 | 77 |          22 |
 
 Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 
@@ -53,7 +53,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |    9 |  3 |  0 |  6 |   33% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   25 |  7 |  5 | 13 |   46% |
+| C. Security & access control       |   25 |  8 |  5 | 12 |   48% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   12 |  2 |  1 |  9 |   17% |
 | F. Money, ledger & reconciliation  |   22 |  4 |  3 | 15 |   28% |
@@ -120,7 +120,7 @@ Work orders for every open row, with the run order:
 | PRD-C5  | The access-token hook runs only as `supabase_auth_admin`                                  | ✅     | High     | UAT  | `00001700`; `00002510:375-379`; enabled `supabase/config.toml:330-332`                                                                                                | —          |
 | PRD-C6  | `search.is_admin(uuid)` is not callable by anon                                           | ❌     | High     | UAT  | The schema-wide grant (`00002510:227`) is never revoked for it, so anyone can test whether a uuid is an admin                                                         | P2d, SAC1  |
 | PRD-C7  | Deny-by-default `EXECUTE` in every schema                                                 | ❌     | High     | PROD | `search` grants everything to anon (`00002510:227`, default privileges in `00002500`); eight schemas rely on per-name revokes; 49 definers are executable by PUBLIC   | SAC1       |
-| PRD-C8  | `search.fn_log_query` logs only as the caller                                             | ❌     | Normal   | PROD | Accepts any `p_user_id` from anon (`00001400:404`)                                                                                                                    | SAC2       |
+| PRD-C8  | `search.fn_log_query` logs only as the caller                                             | ✅     | Normal   | PROD | SAC2 (#462): `fn_log_query` takes no user id (naming `p_user_id` is `42883`) and writes `auth.uid()`; it is the only writer (INSERT revoked, guest policy removed); `supabase/probes/search_query_log_attribution.sql` | SAC2       |
 | PRD-C9  | Integration capability readers are not PUBLIC                                             | ❌     | Normal   | PROD | `integrations.fn_has_capability`, `fn_conferencing_provider` (`00001500:20,40`) reveal anyone's connected providers                                                   | SAC1       |
 | PRD-C10 | The grant probe covers every schema                                                       | ❌     | Normal   | PROD | `supabase/probes/function_grants.sql` checks `projects` and `public` only                                                                                             | SAC1       |
 | PRD-C11 | No GET with a side effect                                                                 | 🟡     | High     | UAT  | Auth half closed (#445): the email link's token is spent only by a POST from `/verify/confirm`. Open: `/messages/:id` marks read during render                        | SAC3       |
@@ -347,3 +347,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC6 (#465): no row flips; PRD-C13–C16 gain `auth:parity` + the hosted runbook | 58% | 52% |  33% |
 | 2026-11-18 | SAC5 (#444 (c)): PRD-C22 ❌ → ✅ (68 planned segments reserved); new PRD-C25 ❌ | 58% | 52% |  33% |
 | 2026-11-18 | SAC4 (#475): PRD-C12 ❌ → ✅ (every page form post origin-checked by construction) | 58% | 52% |  34% |
+| 2026-11-18 | SAC2 (#462): PRD-C8 ❌ → ✅ (query logs carry only the caller's id)      | 58% | 52% |  34% |

@@ -702,7 +702,7 @@ STEPS:
      that no seed exceeds it), and a per-sender BEFORE INSERT rate trigger (a token bucket in an
      unlogged table, refusing PR429 past the dial) so a direct PostgREST flood is bounded too.
   3. G13: revoke INSERT on search.query_logs from anon and authenticated; the app writes through
-     fn_log_query only (check its caller).
+     fn_log_query only (check its caller). DONE by SAC2 (Decision #462): verify only.
   4. G14: revoke EXECUTE on search.is_admin(uuid) from PUBLIC and anon.
   5. G18: pin search_path = '' on the sync trigger functions and qualify every name.
 

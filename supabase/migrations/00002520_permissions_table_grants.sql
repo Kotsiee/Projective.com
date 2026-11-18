@@ -13,7 +13,9 @@ INSERT
 UPDATE,
 DELETE ON search.user_affinity TO authenticated;
 
-GRANT INSERT ON search.query_logs TO authenticated, anon;
+-- search.query_logs is written only by the search.fn_log_query definer, which attributes the row
+-- to auth.uid() itself; no client role inserts directly (00002014 has no INSERT policy).
+REVOKE INSERT ON search.query_logs FROM PUBLIC, anon, authenticated;
 
 
 -- --- from 0205_security.sql ---

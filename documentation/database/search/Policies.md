@@ -8,13 +8,17 @@ domain follows once populated.
 
 ## `search.query_logs`
 
-| Policy                        | Command | Rule                                                            |
-| :---------------------------- | :------ | :-------------------------------------------------------------- |
-| Users view own query logs     | SELECT  | `user_id = auth.uid()`                                          |
-| Users insert own query logs   | INSERT  | `user_id = auth.uid()` or a guest (`auth.uid() IS NULL`)        |
+| Policy                    | Command | Rule                   |
+| :------------------------ | :------ | :--------------------- |
+| Users view own query logs | SELECT  | `user_id = auth.uid()` |
 
-The app writes it only through the `SECURITY DEFINER` `search.fn_log_query`, so the INSERT policy
-governs direct PostgREST writes, not the app path.
+There is no INSERT policy, and `00002520` revokes `INSERT` from `PUBLIC`, `anon` and
+`authenticated` (Decision #462). The table's one writer is the `SECURITY DEFINER`
+`search.fn_log_query`, which takes no user id and attributes each row to `auth.uid()` itself
+([Functions.md](Functions.md#searchfn_log_query--discovery-query-telemetry)). A direct PostgREST
+INSERT is refused (`42501`) for a guest and a signed-in user alike, so no one can write a query log
+in another person's name (SEC G13; `supabase/probes/search_query_log_attribution.sql`).
+`service_role` keeps `ALL`. Reads are column-granted without `query_embedding` (`00002520`).
 
 ## `search.interest_events`
 

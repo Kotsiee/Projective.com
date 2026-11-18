@@ -17,9 +17,10 @@ export interface DiscoveryQueryLog {
 
 /**
  * Record a discovery query in `search.query_logs` (the `discovery.search` event) through the
- * guest-safe `search.fn_log_query` definer. The RPC attributes the row to `auth.uid()` itself, so a
- * caller cannot name another user. A no-op while `EXPLORE_BACKEND_LIVE` is off. Throws when the
- * write fails both as the caller and anonymously.
+ * guest-safe `search.fn_log_query` definer, the table's only writer. The RPC takes no user id and
+ * attributes the row to `auth.uid()` itself (NULL for a guest or a minor), so a caller cannot name
+ * another user. A no-op while `EXPLORE_BACKEND_LIVE` is off. Throws when the write fails both as the
+ * caller and anonymously.
  */
 export async function logDiscoveryQuery(actor: ReadActor, log: DiscoveryQueryLog): Promise<void> {
 	if (!isExploreBackendLive()) return;

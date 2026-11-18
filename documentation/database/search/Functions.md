@@ -122,22 +122,23 @@ row-level property: it is maintained **by the platform**, not by whoever happene
 ## `search.fn_log_query` — discovery query telemetry
 
 `(p_query text, p_entity_type text, p_filters jsonb, p_result_count integer, p_duration_ms integer,
-p_candidate_pool integer DEFAULT NULL, p_user_id uuid DEFAULT auth.uid(), p_query_embedding
-vector(1024) DEFAULT NULL) RETURNS void`:
-`SECURITY DEFINER`, executable by `anon`, `authenticated` and `service_role`.
+p_candidate_pool integer DEFAULT NULL, p_query_embedding vector(1024) DEFAULT NULL) RETURNS void`:
+`SECURITY DEFINER`, `search_path = ''`, executable by `anon`, `authenticated` and `service_role`
+(granted by name with no argument list in `00002510`).
 
 Inserts one `search.query_logs` row (see [Tables.md](Tables.md)), deriving `matched_density` as
 `p_result_count / p_candidate_pool` (NULL when the pool is 0 or absent), and the `voyage-4` query
 vector when semantic ranking ran (`p_query_embedding`; NULL otherwise, and the app then omits the
 argument entirely). Its only caller is `logDiscoveryQuery` (`packages/backend/services/search/query-log.ts`),
 which `ExploreBackendService.search` fires without awaiting on the first page of a search. The
-call runs as the reader (their JWT, else `anon`) and **never passes `p_user_id`**, so the default
-`auth.uid()` attributes the row.
+call runs as the reader (their JWT, else `anon`).
 
-> **Flag.** `p_user_id` is honoured for any caller, and the function is a definer granted to
-> `anon`, so a direct PostgREST call can attribute a query log to another user. The app never
-> passes it. Hardening it the way `analytics.fn_emit` treats `p_actor` (honour it only for an
-> admin or the service role) is a one-line change that awaits a human decision.
+**The row is the caller's and nobody else's** (Decision #462). The function takes no user id: it
+writes `auth.uid()`, which is NULL for a guest, and NULL with no query vector for a minor
+(Decision #208, evaluated on `auth.uid()`). A call that names `p_user_id` is refused as an unknown
+function (`42883`, PostgREST `PGRST202`). It is also the table's only writer: no client role holds
+`INSERT` on `search.query_logs`, and the table has no INSERT policy ([Policies.md](Policies.md)).
+Pinned by `supabase/probes/search_query_log_attribution.sql` (PRD-C8, SEC G13).
 
 ---
 

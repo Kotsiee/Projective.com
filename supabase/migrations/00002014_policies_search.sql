@@ -25,14 +25,8 @@ CREATE POLICY "Users manage own affinity" ON search.user_affinity FOR ALL TO pub
 CREATE POLICY "Users view own query logs" ON search.query_logs FOR
 SELECT TO public USING (user_id = auth.uid ());
 
-CREATE POLICY "Users insert own query logs" ON search.query_logs FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        user_id = auth.uid ()
-        OR auth.uid () IS NULL
-    );
+-- No INSERT policy on search.query_logs: its one writer is the search.fn_log_query definer, which
+-- attributes the row to auth.uid() itself, and no client role holds INSERT (00002520).
 
 
 -- --- from 0218_search_engine_signals.sql ---

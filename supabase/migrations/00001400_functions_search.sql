@@ -398,8 +398,11 @@ RETURNS numeric LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
 $$;
 
 -- -----------------------------------------------------------------------------
--- fn_log_query — write search execution telemetry (guest-safe). p_query_embedding is
--- the voyage-4 query vector when semantic ranking ran, else NULL.
+-- fn_log_query — write search execution telemetry (guest-safe). The row is the
+-- caller's: auth.uid(), NULL for a guest. It takes no user id, so nobody can log a
+-- search in another person's name, and it is the table's only writer (no client role
+-- holds INSERT on search.query_logs). p_query_embedding is the voyage-4 query vector
+-- when semantic ranking ran, else NULL.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_log_query(
   p_query       text,
@@ -408,20 +411,19 @@ CREATE OR REPLACE FUNCTION search.fn_log_query(
   p_result_count integer,
   p_duration_ms  integer,
   p_candidate_pool integer DEFAULT NULL,
-  p_user_id     uuid DEFAULT auth.uid(),
   p_query_embedding public.vector(1024) DEFAULT NULL
 )
 RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = search, public
+SET search_path = ''
 AS $$
   INSERT INTO search.query_logs
     (user_id, search_query, query_embedding, filters_applied, entity_type, duration_ms, result_count, matched_density)
   VALUES
     -- A minor's searches are logged anonymously, with no query vector (Decision #208).
-    (CASE WHEN org.fn_is_minor(p_user_id) THEN NULL ELSE p_user_id END, coalesce(p_query, ''),
-     CASE WHEN org.fn_is_minor(p_user_id) THEN NULL ELSE p_query_embedding END,
+    (CASE WHEN org.fn_is_minor(auth.uid()) THEN NULL ELSE auth.uid() END, coalesce(p_query, ''),
+     CASE WHEN org.fn_is_minor(auth.uid()) THEN NULL ELSE p_query_embedding END,
      coalesce(p_filters, '{}'::jsonb), p_entity_type, p_duration_ms, p_result_count,
      CASE WHEN p_candidate_pool > 0 THEN round(p_result_count::numeric / p_candidate_pool, 4) ELSE NULL END);
 $$;

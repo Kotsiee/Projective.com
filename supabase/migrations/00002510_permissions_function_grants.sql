@@ -253,19 +253,9 @@ EXECUTE ON FUNCTION search.fn_norm (
 authenticated,
 service_role;
 
-GRANT
-EXECUTE ON FUNCTION search.fn_log_query (
-    text,
-    text,
-    jsonb,
-    integer,
-    integer,
-    integer,
-    uuid,
-    public.vector
-) TO anon,
-authenticated,
-service_role;
+-- Search telemetry: a guest's /explore search logs as `anon`. Named without its argument list (the
+-- name is unique in `search`), so the grant follows the function through a signature change.
+GRANT EXECUTE ON FUNCTION search.fn_log_query TO anon, authenticated, service_role;
 
 GRANT
 EXECUTE ON FUNCTION search.fn_search_analytics (integer) TO authenticated,
