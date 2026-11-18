@@ -767,7 +767,13 @@ door that mints a handle reads it:
 - `/api/auth/join` and the sign-up form, through `IndividualJoinSchema` and `usernameError`, which
   both say `USERNAME_RESERVED`.
 
-A person's sign-up still skips the namespace's shape and taken checks (PRD-C25).
+Both doors that mint a person also ask the whole namespace through `org.fn_handle_taken`, under the
+create doors' per-handle lock. A handle any person (in any case), team, business or enterprise
+holds, or one released in the last 90 days, is taken (PRD-C25). The refusal stays the generic
+`JOIN_REFUSED` / `ONBOARDING_REFUSED`, so sign-up is no oracle for who holds a handle. Only the
+shape still differs: a person's username keeps `USERNAME_RE` (which allows `.`, `_` and capitals),
+while the rest of the namespace keeps its stricter pattern. The owner left that for a later
+decision (2026-11-18).
 
 **The namespace guard (Teams P1).** Every top-level URL segment `apps/web/routes/` serves — route
 groups `(…)` descended (they add no segment), `[params]`, `_`-prefixed files and `index` skipped, as

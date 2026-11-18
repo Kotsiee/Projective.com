@@ -64,6 +64,15 @@ BEGIN
     IF org.fn_is_reserved_handle(v_username) THEN
         RAISE EXCEPTION 'That handle is reserved.' USING ERRCODE = '22023';
     END IF;
+    -- The person asks the whole namespace too, as every create and rename door does: a handle any
+    -- person (in any case), team, business or enterprise holds, or one a renamed person released in
+    -- the last 90 days, is taken. org.fn_resolve_profile ranks a person first, so a person on a
+    -- team's handle would make the team's page unreachable (PRD-C25). Under the create doors'
+    -- per-handle lock, so a sign-up and a create racing for one handle cannot both see it free.
+    PERFORM pg_advisory_xact_lock(hashtext('handle:' || lower(btrim(v_username))));
+    IF org.fn_handle_taken(lower(btrim(v_username))) THEN
+        RAISE EXCEPTION 'That handle is taken.' USING ERRCODE = '23505';
+    END IF;
     v_objective := p_meta->>'objective';
     v_avatar_file_id := NULLIF(p_meta->>'avatar_file_id', '')::uuid;
 

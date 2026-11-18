@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **59%** |           64 | 33 |  8 | 23 |           9 |
-| **Production**   | **40%** |          139 | 44 | 20 | 75 |          19 |
+| **UAT**          | **60%** |           64 | 34 |  8 | 22 |           9 |
+| **Production**   | **41%** |          139 | 45 | 20 | 74 |          19 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -53,7 +53,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   32 | 17 |  4 | 11 |   62% |
+| C. Security & access control       |   32 | 18 |  4 | 10 |   65% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   14 |  2 |  3 |  9 |   23% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
@@ -137,7 +137,7 @@ Work orders for every open row, with the run order:
 | PRD-C22 | Every planned top-level route segment is a reserved handle                                | ✅     | High     | UAT  | #444 (c) ruled: 68 `PLANNED_SEGMENTS` (`profile/reserved.ts`) in `RESERVED_HANDLES` and `org.fn_is_reserved_handle`, pinned by `workspace.contract.test.ts` and `reserved_handles.sql`; sign-up (`provision_user_profile`, `/api/auth/join`) refuses them too | SAC5       |
 | PRD-C23 | Dead `security` tables and the finance cascades cleaned up                                | ❌     | Normal   | PROD | `IDENTITY_AND_WORKSPACES_AUDIT.md` "still open" (2026-11-12)                                                                                                          | HK1        |
 | PRD-C24 | Auth low findings closed                                                                  | ❌     | Normal   | PROD | `safeRedirect` accepts `/api/*` (LOW1-7); OAuth email and name ride the `/join` query string (LOW1-4); `/join` ignores the under-13 lock cookie in a new tab (LOW1-5) | LOW1       |
-| PRD-C25 | A person's sign-up asks the whole handle namespace                                        | ❌     | High     | UAT  | `public.provision_user_profile` (`00001010`) skips `org.fn_handle_taken`: a new person can sign up as a team's or business's handle (`@northloop` reproduced, SAC5), and `fn_resolve_profile` then ranks the person first, so the team's page is unreachable. `USERNAME_RE` also allows `.`, `_` and capitals, which the namespace rule refuses | —          |
+| PRD-C25 | A person's sign-up asks the whole handle namespace                                        | ✅     | High     | UAT  | #444 (c), owner "taken check only": `public.provision_user_profile` asks `org.fn_handle_taken` under the per-handle lock, so neither sign-up door takes a held handle in any case, or one in its 90-day hold (`signup_handle_namespace.sql`). The username's shape is left for a later decision (§Decisions awaiting a human) | SAC5       |
 | PRD-C26 | `org.get_party_cards` respects a private profile                                          | ✅     | Normal   | PROD | #481 (a) ruled A (owner): a person's card reaches a caller only when `org.fn_party_visible` admits it, meaning visible, or a conversation, a notification they caused, a team, business or enterprise, or a project the two share; a stranger gets nothing and no caller changed; pinned by `definer_visibility.sql` (eleven context arms) | SAC1       |
 | PRD-C27 | A widened inquiry thread is never reused for someone else's DM                            | ✅     | High     | UAT  | #482 (owner ruling A): `comms.add_dm_thread_members` refuses a `service_inquiry` (`22023`, a `422` from the API), so every `dm` and inquiry holds exactly its pair; `dm_pair_isolation.sql`, 7 failures before (the request and both "message this person" doors landed in a stranger's inquiry), green after | #482       |
 | PRD-C28 | `finance.get_purchase_owner` names only entities the caller may see                       | ✅     | Normal   | PROD | #481: a non-member gets a team's or business's face only while `org.fn_profile_visible` admits it (active, public or unlisted), else `NULL`; the avatar path leaves only while the file is public, uploaded and not deleted; pinned by `definer_visibility.sql` | SAC1       |
@@ -307,6 +307,7 @@ Work orders for every open row, with the run order:
 | Conversation addresses: PRODUCT_SPEC `cht-…` vs ROUTING thread id / `dm-{handle}`      | PRD-J1, PRD-E2     | New contradiction, #444 flag (a)                   |
 | `/view/[entity]/schedule`: PRODUCT_SPEC live leaf vs #411's 308                        | —                  | New contradiction, #444 flag (b)                   |
 | The PRODUCT_SPEC sitemap's routes with no file, and which segments to reserve          | PRD-C22            | Ruled 2026-11-18 (#444 (c)): all 68 words reserved, sourced and speculative; SAC5 built it |
+| A person's username shape: `USERNAME_RE` (`.`, `_`, capitals) vs the namespace pattern  | —                  | Left by the owner 2026-11-18 (#444 (c), with PRD-C25). Sign-up allows the wider shape, but the rename door refuses it. Tightening it needs a sign-up-only rule, because sign-in reads `USERNAME_RE` to recognise existing usernames |
 | Terms acceptance at sign-up (what is recorded, which versions) — a spec gap            | PRD-M2             | Ruled 2026-11-18 (#446): checkbox; rows, no IP/UA; material versions re-ask |
 | Legal document sign-off                                                                | PRD-M1             | Pending counsel                                    |
 | AML posture; leaving a failed payout in Stripe (M9)                                    | PRD-M6, PRD-F11    | Pending counsel (#336 I1, #337); M9's brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q2 (#473) |
@@ -375,3 +376,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | CD1 (#480): PRD-E11 ❌ → 🟡 (newsletter double opt-in, per-topic consent, one-click unsubscribe; the provider sync and a hosted send left); new PRD-E14 ❌ | 58% | 58% |  38% |
 | 2026-11-18 | SAC1 follow-up (#481): PRD-C26, C28, C29 ❌ → ✅ (party cards, a purchase owner's face and the free/busy helpers answer only what the caller may see; #481 (a) ruled A) | 58% | 58% |  40% |
 | 2026-11-18 | PRD-C27 (#482): PRD-C27 ❌ → ✅ (an inquiry takes nobody, so a DM or inquiry is only ever its pair's); new PRD-C33 ❌ (a group newcomer reads from joining, owner ruling) | 58% | 59% |  40% |
+| 2026-11-18 | SAC5 follow-up (#444 (c)): PRD-C25 ❌ → ✅ (sign-up asks the whole handle namespace; username shape left to the owner) | 58% | 60% |  41% |
