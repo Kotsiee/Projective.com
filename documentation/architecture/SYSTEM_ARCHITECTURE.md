@@ -2748,7 +2748,7 @@ included.
   invoking role, so a call it makes to a revoked function raises `permission denied` for that role.
   Make the caller a definer rather than granting the callee (see `security.fn_slug_guard`), unless
   the callee is pure or answers only about `auth.uid()`: the INVOKER catalogue doors keep their
-  policies as the gate and grant their shape validators (Decision #477 flag (a)).
+  policies as the gate and grant their shape validators (Decision #477 (a), the owner's ruling).
 - **Verified by** `supabase/probes/function_grants.sql`, over every app schema (`config.toml`'s
   exposed schemas, passed by `deno task test:probes` as `api_schemas`, plus every schema holding a
   migration-owned function): (a) `PUBLIC` executes no app function; (b) `anon` executes exactly an
