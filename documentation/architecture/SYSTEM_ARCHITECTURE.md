@@ -2954,6 +2954,68 @@ PostgreSQL RLS.
   `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` in the app's secrets, and the secret under
   Authentication → Bot and Abuse Protection. `features/auth/core/captcha.contract.test.ts` fails
   `test:unit` while the CAPTCHA is on and a gated call drops the token.
+- **Hosted auth runbook, once per hosted environment (SAC6, Decision #465).** A hosted project never
+  reads `config.toml`, so each setting above is set in the project and then proved by
+  `deno task auth:parity` (`scripts/auth-parity.ts`). The check sends one read-only
+  `GET /v1/projects/{ref}/config/auth` to the Management API with `SUPABASE_ACCESS_TOKEN` for
+  `SUPABASE_PROJECT_REF`, or `--project-ref <ref>` for another environment (§Environment Variable
+  Contract). It prints `key · local · hosted · ok`, exits 1 naming each drifting key and the field to
+  set, and shows a secret only as set or unset. Run it first to see what is off. A step is done when
+  its rows read `ok`, and the environment is done when the whole table does (exit 0). Paste that table
+  (it holds no secret and no token) into the rows' evidence with the environment and the date.
+  `supabase config diff` previews the whole file; `auth:parity` is the gate, because it pins exactly
+  these keys and never prints a secret. Needs a hosted project (PRD-G8).
+  - **Apply path: `supabase config push`.** The installed CLI (2.120.0) has it, and the read-only
+    `supabase config diff`. It pushes every property `config.toml` declares, not only auth, and
+    resolves each `env()` on the pushing machine. From a development checkout three things are
+    wrong: `site_url` and the redirect globs are localhost; `[auth.email.smtp]` is declared off (push
+    only with `SUPABASE_AUTH_EMAIL_SMTP_ENABLED=true`, per the auth-email sender bullet below); and
+    `.env.local`'s `SUPABASE_AUTH_CAPTCHA_SECRET` and `GOOGLE_CLIENT_*` are development values. So:
+    (1) commit a `[remotes.<env>]` block with `project_id = "<ref>"` and that environment's
+    `[remotes.<env>.auth]` `site_url` (the app's public origin) and `additional_redirect_urls`;
+    (2) export the environment's own `SUPABASE_AUTH_CAPTCHA_SECRET`, `GOOGLE_CLIENT_ID` and
+    `GOOGLE_CLIENT_SECRET` (and the SMTP pair) in the shell, which beats the dotenv files;
+    (3) run `supabase config diff --project-ref <ref>` and read it: `site_url` must show the
+    environment's origin, never localhost, and if the remote block did not apply, stop and use the
+    dashboard path; (4) `supabase config push --project-ref <ref>`, which asks before each resource;
+    (5) `deno task auth:parity`. A branch deployed by the Supabase GitHub integration resolves `env()`
+    from that branch's own secrets instead (`supabase secrets set --env-file …`), so set those first.
+    **Dashboard path:** the page named in each step. Supabase renames these pages; the API field is
+    authoritative.
+  - **C13, password policy:** minimum length 8; required characters "lowercase, uppercase letters
+    and digits" (Authentication → Providers → Email; `password_min_length` 8,
+    `password_required_characters` as in the password-rule bullet above). Rows
+    `auth.minimum_password_length`, `auth.password_requirements`.
+  - **C16, password change and linking:** "Secure password change" on (the same page;
+    `security_update_password_require_reauthentication` true) and manual linking on, as reviewed
+    (`security_manual_linking_enabled` true). Rows `auth.email.secure_password_change`,
+    `auth.enable_manual_linking`.
+  - **C14, Google:** Providers → Google on, with this environment's own OAuth client (its authorised
+    redirect URI is the project's `https://<ref>.supabase.co/auth/v1/callback`), and "Skip nonce
+    checks" off (`external_google_enabled` true, `external_google_skip_nonce_check` false). The app's
+    origin goes in URL Configuration's redirect URLs, because the callback is built from the
+    request's origin (`routes/api/auth/oauth/google.ts`). Rows `auth.external.google.*`. Then one
+    real Google sign-in on the environment's own origin (`/login` → Continue with Google → signed in
+    on `/home`), recorded in PRD-C14 with the date and the environment.
+  - **C15, Turnstile:** in Cloudflare, a Turnstile widget for this environment whose hostnames are
+    the app's (the `APP_URL` host, which `/join`'s check also requires). Its site key goes in the
+    app's `TURNSTILE_SITE_KEY`. Its secret goes in the app's `TURNSTILE_SECRET_KEY` (`/join`'s own
+    siteverify) and in GoTrue: Authentication → Bot and Abuse Protection, CAPTCHA on, provider
+    Turnstile, the same secret (`security_captcha_enabled`, `security_captcha_provider`,
+    `security_captcha_secret`). Never a test key: the app ignores one outside development, and the
+    check reports one in GoTrue as `set: a Cloudflare test secret`. Rows `auth.captcha.*`. Then
+    prove that GoTrue itself refuses a failing token, with the public anon key and no real account:
+
+    ```bash
+    curl -s -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{"email":"nobody@example.invalid","password":"x","gotrue_meta_security":{"captcha_token":"invalid"}}'
+    ```
+
+    It must answer 400 with `"error_code":"captcha_failed"`; a credentials error instead means the
+    CAPTCHA is off. Record the date and the environment in PRD-C15.
+  - **TOTP off until MFA1:** Supabase turns TOTP on in every new project, so switch enrolment and
+    verification off (Authentication → Multi-Factor; `mfa_totp_enroll_enabled` and
+    `mfa_totp_verify_enabled` false). Rows `auth.mfa.totp.*`. MFA1 turns them on in `config.toml`,
+    the check's fixture and this step together.
 - **Enterprise SSO is SAML-first and flag-hidden.** Today `/login` and the sign-in prompt still show
   the SSO entry (`SsoPanel`) with no provider configured. The ruled roadmap is to hide the panel
   now, then verified domains → SAML through GoTrue → JIT seats, on the Enterprise plan only. **Not
@@ -4062,6 +4124,13 @@ SUPABASE_SERVICE_ROLE_KEY=XXXX-XXXX
 # Legacy HS256 JWT secret, server-only: verifies an HS256 access token (`core/access-token.ts`). A
 # project on asymmetric keys (the local CLI stack) verifies against its JWKS and needs none.
 SUPABASE_JWT_SECRET=XXXX-XXXX
+# Operator tooling only; the app never reads them. `deno task auth:parity` (scripts/auth-parity.ts)
+# GETs the hosted project's auth config from the Management API (§Authentication & Identity,
+# "Hosted auth runbook"). The ref is the project's 20-letter id. The token is a PERSONAL access token
+# that acts as its owner on every project they can reach: an operator's `.env.local` only, never
+# `.env` and never a deployed app's secrets. The Supabase CLI reads the same variable.
+SUPABASE_PROJECT_REF=XXXX-XXXX
+SUPABASE_ACCESS_TOKEN=XXXX-XXXX
 
 # Authentication (OAuth) — SIGN-IN only; GoTrue owns this and retains no API token
 GOOGLE_CLIENT_ID=XXXX-XXXX
