@@ -115,7 +115,8 @@ is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts
    other SCH package.
 4. **CK5** — ⏳ `00005060` free (DB16, PM-WP1, PM-GH1, MR4, MR5 and DB17 also write it).
 5. **SC5 → RV2 → RV3.** RV3's 🧑 is ruled (#489), and RV3 waits here for RV2.
-6. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase.
+6. T&S **R1 → R2** (their track) → **SC8** (rulings #496; ⚖️ counsel words the regime); **SC9** once
+   per #393 phase.
 
 **App lane** (up to three at once, file-disjoint): **SC1** and **CK6** now; **CK3** ⏳ CK1
 (`live-orders.ts`); **MKZ** last.
@@ -154,7 +155,7 @@ block, so a question you defer still stops the build at the right step.
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
 | 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
-| 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | Counsel's                                                                                               |
+| 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |
 | 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
@@ -320,7 +321,7 @@ written, then the delta below, then §1.2 with the rows given. Only the delta is
 | SBP S1 → S4   | SBP · MONEY §4         | MK-24 → ✅ once an on-account order is walked live | MONEY's delta stands. `place_on_account_order` (`00001250:494-617`) also needs a KYB-verified business; the plan gate sits in `set_invoicing_terms` (`00001210:~1240`).                                                                                                                                            |
 | SCH-WP7       | SCH §… (`:1045`)       | MK-40 → ✅ (with SC3)                              | Run right after SC3, in the same slot: SC3 opens the cohort, and step 5 schedules its later sittings. Its 🧑 at step 6 (#344 (f)) stands. Step 8 (`cancelSeat`, S-22) closes Calls & sessions MK-53, which is not this file's row.                                                                                 |
 | T&S P2a       | T&S §… (`:496`)        | —                                                  | Add `reviews.entity_reviews.title`, `comment` and `reply_comment` to the public copy it refuses at the floor (RV1 makes them writable).                                                                                                                                                                            |
-| T&S R1 → R2   | T&S (`:722`, `:926`)   | MK-47 (with SC8, SC9)                              | `ops.reports`' proposed subject CHECK (SA:1262-1276) has no `review`: add `review` and `listing`. R2's listing entry point is MK-47's report half, and RV1's reviews need a Report action from it.                                                                                                                 |
+| T&S R1 → R2   | T&S (`:722`, `:926`)   | MK-47 (with SC8, SC9)                              | `ops.reports`' proposed subject CHECK (SA:1265-1279) has `listing` but no `review`: add `review`. R1's `source` also takes `notice`, with no reporter (#496 (A)). R2's listing entry point is MK-47's report half, and RV1's reviews need a Report action from it.                                                 |
 | T&S SN2 → SN3 | T&S (`:1029`, `:1082`) | MK-41 → ✅                                         | SN3 hooks `cutShowcaseRendition` in `live-catalogue-writes.ts`. SC4 must have landed first, so no listing reaches `published` around the gate.                                                                                                                                                                     |
 | COMMS NT3     | COMMS                  | MK-25's note (and MK-13's)                         | CK5's email rides it.                                                                                                                                                                                                                                                                                              |
 
@@ -1300,6 +1301,14 @@ listing entry point. PRD-D9 is ❌.
 ⚖️ DECISION (before step 2): which notice regime the intake follows (counsel): the fields a valid
 notice needs, the counter-notice, and the repeat-infringer rule. Build the mechanism; the words
 are counsel's, behind a param that keeps the public form off until they are in.
+RULED #496 (2026-11-18): record and wait; SC8 ran step 0 only, as R1 and R2 had not landed.
+(A) A rights-holder needs no account: ops.reports.source takes 'notice' (reporter NULL), with
+an immutable, Zod-typed notice block that SC8 fills and files through its own rate-limited
+door, never ops.file_report. (B) The takedown is a hold on catalogue.listings that an operator
+door sets and lifts; setting it pauses the listing through set_listing_status's code path, and
+set_listing_status refuses 'published' while it stands. No new status. Skip this block when
+you run: re-verify R1 and R2 at HEAD and stop if either is missing (#496 (D)); add the
+'notice' source yourself if R1 shipped without it. Ask #496 flag (b) before step 4.
 
 STEPS:
   1. Red first: a probe that a notice has nowhere to go.

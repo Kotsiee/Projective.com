@@ -750,13 +750,16 @@ FILES:
 
 STEPS:
   1. ops.reports per SA's proposed shape, plus: source text NOT NULL CHECK (source IN ('user',
-     'automated')); reporter_user_id NULL only when source = 'automated' (a CHECK); detector text
+     'automated', 'notice')) (#496 (A)); reporter_user_id set at filing exactly when source =
+     'user', checked on INSERT so the ON DELETE SET NULL below never trips it (#496 (d)); notice
+     jsonb, set exactly when source = 'notice': a Zod-typed shell that SC8 fills (the fields are
+     counsel's), and a notice row is filed only by SC8's door, never ops.file_report; detector text
      (nudenet · ocr · sightengine · presidio · fragmentation), set exactly when automated;
      reported_user_id (the author, whom R4 penalises). reporter_user_id ON DELETE SET NULL: a
      report outlives its reporter. Indexes on (status, created_at) and (reported_user_id).
-  2. Immutable: a BEFORE UPDATE trigger refuses any change to evidence_snapshot, reporter,
-     subject, source, detector and reason; status moves only pending → dismissed | actioned,
-     through R3's door. No DELETE grant to anyone but the erasure chain.
+  2. Immutable: a BEFORE UPDATE trigger refuses any change to evidence_snapshot, notice,
+     reporter, subject, source, detector and reason; status moves only pending → dismissed |
+     actioned, through R3's door. No DELETE grant to anyone but the erasure chain.
   3. RLS: a reporter reads their own rows; security.is_admin() reads all; the reported person
      reads nothing, so the reporter is never projected to them. No client INSERT or UPDATE.
   4. Doors, service_role only: ops.file_report(p_reporter, p_subject_type, p_subject_id,
@@ -774,7 +777,8 @@ ACCEPTANCE:
   - reports_sink.sql: a filed user report is pending; its reporter reads it; the reported person
     and a stranger read nothing; a client INSERT / UPDATE / DELETE → 42501; a snapshot change is
     refused even as service_role; an automated row with a null reporter is accepted, a user row
-    with one is not; a second pending report on one subject by one reporter is refused.
+    with one is not; a notice row needs a null reporter and its notice block; a second pending
+    report on one subject by one reporter is refused.
   - A unit test: a subject the reporter cannot read → 404 and nothing filed.
 SAME CHANGE: Zod + documentation/database/ops/* + SA §Content moderation + Storage.md and EPI §9.2
 for the bucket, in one change; PRODUCT_MANAGEMENT.md for the report states pending · dismissed ·

@@ -324,6 +324,7 @@ Work orders for every open row, with the run order:
 | Standing's review component: the schema's "peer" track vs PRODUCT_SPEC's two stances (RV3) | USER_FLOWS MW-64   | Ruled 2026-11-18 (#489): B, the client track alone, 0 until the first review; a review recomputes its subject (narrows #58 (e)); RV3 waits for RV2 |
 | Request to Sell: the royalty, who may request and grant, a royalty after erasure (SC7) | USER_FLOWS MK-46   | Ruled 2026-11-18 (#493): agreed per request, 0–50% of the seller's net after commission; released `exclusive_transfer` and `licensed_use` stages, the client approving or declining the rate (re-ruled, #493 (G)); stops on erasure. ⚖️ licence wording; SC7 waits for CK1, DB19, DB21 |
 | #393 A2: does "no signed URL reaches a browser" cover uploads (ASSET phase 1, SC9)        | USER_FLOWS MK-47   | Ruled 2026-11-18 (#499): reads only; signed upload URLs stay, write-only on `quarantine`; phase 1 waits for CK1 |
+| Inbound copyright notices: the valid-notice fields, the counter-notice, the repeat-infringer rule, the designated agent (SC8) | USER_FLOWS MK-47, PRD-D9 | ⚖️ Pending counsel. The mechanism was ruled 2026-11-18 (#496): a `notice` source on `ops.reports` that needs no account, and a takedown hold the seller cannot lift; SC8 waits for T&S R1 → R2 |
 
 ## Doc drift to sweep (not scored)
 

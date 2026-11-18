@@ -224,7 +224,7 @@ PRODUCTION_READINESS.md.
 | MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | 🟡     | Normal   | UAT  | Links are not slugs (#218 (a)); team or business orders have no buyer user (#218 (d)); quotes cannot be acted on |
 | MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | — (#312)                                                                                                         |
 | MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
-| MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path                                    |
+| MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R1 → R2 |
 
 ### Calls & sessions
 
