@@ -69,7 +69,7 @@ cohort seat) → **SC3**.
 | MK-43 | 🟡 · Normal · UAT  | **SC5**                                           | Views are written and counted; 90 days are seeded                                      |
 | MK-44 | 🟡 · Normal · UAT  | **SC6**                                           | Slug links; a team or business buyer is named                                          |
 | MK-45 | ✅ · High · UAT    | **SC6** (🧑 #312 (a), (e))                        | The note states the ruled team-editing scope                                           |
-| MK-46 | ❌ · Normal · PROD | **SC7** (🧑 + ⚖️)                                 | Request to Sell, the client's grant and the royalty leg run                            |
+| MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
 | MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands |
 
 **Score projection** (section score = Σ weight × credit / Σ weight; Critical 3 · High 2 · Normal 1;
@@ -103,7 +103,8 @@ and this file).
    FBP DB16, because #485 (a) adds a conservation-identity term.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
 4. **CK4** — ⏳ DB21 (a refund reverses the tax); 🧑 ruled #490, ⚖️ counsel before the switch.
-5. **SC7** — ⏳ CK1 and DB19. The last change to the money path in this file.
+5. **SC7** — ⏳ CK1, DB19 and DB21 (a refund reverses the royalty too, #493 (D)); 🧑 ruled #493, ⚖️
+   counsel before the grant switch. The last change to the money path in this file.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts.
@@ -152,7 +153,7 @@ block, so a question you defer still stops the build at the right step.
 | 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
-| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | Agreed per request within platform bounds; commission first, royalty from the seller's net              |
+| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** agreed, 0–50% of the seller's net; `exclusive_transfer` stages only; stops on erasure   |
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | Counsel's                                                                                               |
 | 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | Per phase, the spec's own recommendations                                                               |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
@@ -1221,15 +1222,15 @@ Closes MK-46 (❌ → ✅).
 PROMPT SC7: A freelancer asks to sell an asset made on a project; the client grants it; every
 sale routes the client's royalty
 
-ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after CK1
-and DB19.
+ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after CK1,
+DB19 and DB21 (#493 (D)).
 
 CONTEXT (verified at b7280787):
-  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3090-3100): a "strict approval gate". The freelancer
-    triggers Request Marketplace Listing; the client may grant shared IP for the whole asset or
-    for parts; the approved asset is minted with "a cryptographic link back to the original
-    project". §5 (:3116-3127): Shared Royalty, "a percentage of every sale is automatically
-    routed to the original Client's wallet".
+  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 7cb49117): a "strict approval gate".
+    The freelancer triggers Request Marketplace Listing; the client may grant shared IP for the
+    whole asset or for parts; the approved asset is minted with "a cryptographic link back to the
+    original project". §5 (:3174-3185): Shared Royalty, "a percentage of every sale is
+    automatically routed to the original Client's wallet".
   - Nothing exists: no table, door or UI, and catalogue.products has no provenance column. The
     enum ip_option_mode includes shared_ownership (00000003:41), used by
     projects.ip_ownership_mode and project_stages.ip_mode; the deed text is
@@ -1244,6 +1245,17 @@ CONTEXT (verified at b7280787):
      business decides through a member with the right capability; never a 13-17 account.
   3. ⚖️ The licence wording a grant creates (counsel), and what happens to a royalty when the
      client's account is erased (recommended: it stops, and the seller keeps it).
+  RULED #493 (2026-11-18), all as recommended, with stop 2's premise corrected: (1) the
+  freelancer proposes a rate, the client accepts or counters; 0-50% of the seller's net, fixed at
+  the grant; the commission first, then the royalty floored from what is left, the dust to the
+  seller; the client credited through fn_wallet_credit_pending beside the seller, so a refund
+  recovers both. (2) Only a released exclusive_transfer stage takes a request: shared_ownership
+  and licensed_use already let the maker sell, so they list with provenance and no grant;
+  projective_partner is refused; a business grants through a member holding manage_projects; no
+  13-17 account on either side. (3) The grant survives erasure, its royalty stops and the seller
+  keeps it; the grant sits behind a platform param that stays off until counsel. Wait for CK1,
+  DB19 and DB21. Skip this block when you run: re-verify all three at HEAD and stop if one has not
+  landed, and read #493's flags (a)-(d) before step 2.
 
 STEPS:
   1. Red first: a probe that no request door exists and a sale routes nothing to the client.

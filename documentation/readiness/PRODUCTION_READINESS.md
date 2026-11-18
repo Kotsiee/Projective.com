@@ -322,6 +322,7 @@ Work orders for every open row, with the run order:
 | The checkout tax model: what the platform collects on, the display, the tax codes      | PRD-M5, PRD-M7     | Ruled 2026-11-18 (#490): A split by kind (digital products only), tax-exclusive, codes tabled; CK4 waits for DB21; counsel before any switch |
 | Reviews: the reveal rule, Client Trust Score v1, the warning; "Client" vs "Business Trust Score" | USER_FLOWS MK-33   | Ruled 2026-11-18 (#486): double-blind; a Bayesian mean less a lost-dispute deduction, shown from 3 reviews; below 3.00, demote + acknowledge; one score per client party. RV2 waits for RV1 |
 | Standing's review component: the schema's "peer" track vs PRODUCT_SPEC's two stances (RV3) | USER_FLOWS MW-64   | Ruled 2026-11-18 (#489): B, the client track alone, 0 until the first review; a review recomputes its subject (narrows #58 (e)); RV3 waits for RV2 |
+| Request to Sell: the royalty, who may request and grant, a royalty after erasure (SC7) | USER_FLOWS MK-46   | Ruled 2026-11-18 (#493): agreed per request, 0–50% of the seller's net after commission; released `exclusive_transfer` stages only; stops on erasure. ⚖️ licence wording; SC7 waits for CK1, DB19, DB21 |
 
 ## Doc drift to sweep (not scored)
 
