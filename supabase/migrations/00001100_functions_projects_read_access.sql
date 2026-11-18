@@ -1177,8 +1177,9 @@ $$;
 --   • active|on_hold -> completed : every ticket must be terminal (completed/cancelled) AND no
 --                                   escrow may still be held (funds must be settled first).
 --   • active -> on_hold           : always allowed by the owner.
---   • draft|active|on_hold -> cancelled : always allowed by the owner, except a bought service
---                                         holding escrow, which ends through projects.cancel_service.
+--   • draft|active|on_hold -> cancelled|archived : allowed by review authority once nothing is held
+--                                         or reserved (Decision #467, every project kind); money
+--                                         settles first through projects.cancel_project (PF409).
 --   • terminal states (completed/cancelled) are immutable.
 -- Returns the new status. RAISE LOG lines carry the telemetry mandate's structured tags.
 CREATE OR REPLACE FUNCTION projects.set_project_status(
@@ -1217,7 +1218,7 @@ BEGIN
     -- Review authority (the client person, or an active member of the paying client business) drives
     -- every transition. A seller-owned service's provider configures it (Decision #427) but never sets
     -- its status: a bought service is a private engagement whose status follows its money — active at
-    -- its first held escrow, cancelled through projects.cancel_service (Decision #456).
+    -- its first held escrow, cancelled through projects.cancel_project (Decisions #456, #467).
     IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
         RAISE WARNING '[PROJECT_LIFECYCLE_RPC] denied actor=% has no review authority owner=% project=%',
             v_actor, v_owner, p_project_id;
@@ -1289,19 +1290,25 @@ BEGIN
 
     ELSIF p_to_status IN ('cancelled'::project_status, 'archived'::project_status) THEN
         -- Both are reachable from any non-terminal state (already guarded above). Archiving is the soft
-        -- DELETE and asks for nothing: an owner putting an engagement away must not be blocked by the
-        -- conditions that gate finishing it, and `archived` is one-way, so an archived project cannot be
-        -- quietly re-activated behind its history. A bought service holding escrow is the exception
-        -- (Decision #456): the money is the client's and the seller's earnings, so it settles first,
-        -- through projects.cancel_service, which then lands here with nothing held.
-        IF v_client IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM finance.escrows e
-            JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-            WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
-        ) THEN
-            RAISE EXCEPTION 'This service still holds escrow. Cancel it with Cancel service, which settles the escrow first.'
-                USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'cancel_service';
+        -- DELETE and asks for nothing more than this: an owner putting an engagement away must not be
+        -- blocked by the conditions that gate finishing it, and `archived` is one-way, so an archived
+        -- project cannot be quietly re-activated behind its history. Neither may leave money behind
+        -- (Decision #467, every project kind — #456 ruled it first for services): held escrow is the
+        -- client's money and the provider's earnings, so it settles first, through
+        -- projects.cancel_project, which then lands here with nothing held. So Cancelled and Archived
+        -- always mean settled. PF409 with HINT 'cancel': the surface offers Cancel in its place.
+        SELECT count(*) INTO v_held_escrow
+        FROM finance.escrows e
+        JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+        WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved');
+        IF v_held_escrow > 0 THEN
+            RAISE EXCEPTION USING
+                ERRCODE = 'PF409',
+                MESSAGE = format('This %1$s still holds escrow. Use Cancel %1$s, which settles the escrow first.',
+                                 CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END),
+                DETAIL = jsonb_build_object('reason', 'escrow_held', 'held', v_held_escrow,
+                                            'to_status', p_to_status)::text,
+                HINT = 'cancel';
         END IF;
 
     ELSE

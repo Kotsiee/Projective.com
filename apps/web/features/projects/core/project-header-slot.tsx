@@ -21,7 +21,8 @@ import type { ReadActor } from "@server/services/read-actor.ts";
  * a band that belongs to another surface.
  *
  *   • **Overview** → {@link ProjectOverviewHeader}: the engagement's name, plus the owner's Details
- *     and (when the engagement may preview) Preview links. It reads the access the
+ *     and (when the engagement may preview) Preview links, and the client side's Cancel below the
+ *     lane breakpoint (Decision #467). It reads the access the
  *     project middleware memoised for this request, so the band and the page cannot disagree.
  *   • **Details / Preview** → {@link ProjectSetupHeader}, the owner's: identity · the Details ⇄ Preview
  *     pair · the setup ladder (or, once published, the outstanding fixes in words). A non-owner never
@@ -71,12 +72,20 @@ export async function projectHeaderFor(
 		const ladderDone = configures && resolved.status === "draft"
 			? (await resolveProjectSetup(slug, actor)).setup?.previewReady ?? false
 			: true;
+		// The client side may cancel an engagement that has not ended (Decision #467). The band offers it
+		// only below the lane breakpoint, where the lane's own Cancel is not rendered.
+		const ended = resolved.status === "completed" || resolved.status === "cancelled" ||
+			resolved.status === "archived";
+		const cancelLabel = resolved.access === "owner" && !ended
+			? (resolved.service ? "Cancel service" : "Cancel project")
+			: null;
 		return (
 			<ProjectOverviewHeader
 				slug={slug}
 				title={resolved.title}
 				owner={configures}
 				canPreview={configures && !resolved.personal && previewAllowed(resolved.status, ladderDone)}
+				cancelLabel={cancelLabel}
 			/>
 		);
 	}

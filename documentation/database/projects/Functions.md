@@ -1058,7 +1058,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
-| `projects.cancel_service(p_project_id uuid, p_tiers jsonb, p_reason text) → jsonb` | `00001150` | A bought service: unclaimed escrow back whole, each stage holding claimed work through `cancel_stage_fair_exit` at its tier, reservations refunded, project → `cancelled` (#456; § Lifecycle) | `authenticated`        | signed in + `can_review_project`; a bought service; project row locked; a tier for every stage holding claimed work |
+| `projects.cancel_project(p_project_id uuid, p_tiers jsonb, p_reason text) → jsonb` (and its bought-service wrapper `cancel_service`) | `00001150` | Any engagement, through `fn_settle_project_escrow`: unclaimed escrow back whole, each stage holding claimed work through `cancel_stage_fair_exit` at its tier, reservations refunded, project → `cancelled`; an open dispute refuses it (`PD409`) (#456, #467; § Cancelling an engagement) | `authenticated`        | signed in + `can_review_project`; project row locked; not blocked (no open dispute, no sitting escrow, no stage mid-payment); a tier for every stage holding claimed work |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
@@ -1645,60 +1645,80 @@ blueprint-instantiated draft (`source_blueprint_id` set), whose seats stay parke
 A seller-owned service's provider configures the engagement but no longer sets its status: #427 let
 `can_edit_project_details` publish and hold it, and #456 retired that arm, because a bought service is
 a private engagement whose status follows its money (`draft → active` at its first held escrow,
-`fn_activate_funded_service` below; cancelled through `cancel_service`). Completing, cancelling and
+`fn_activate_funded_service` below; cancelled through `cancel_project`). Completing, cancelling and
 archiving stay the client's, whose money the escrow holds.
 
-**A bought service settles before it ends (Decision #456).** On a service with `client_user_id` set,
-`cancelled` and `archived` are refused while any escrow on its stages is `held` or `reserved`:
-`object_not_in_prerequisite_state` (`55000`), HINT `cancel_service`, "This service still holds
-escrow. Cancel it with Cancel service, which settles the escrow first." An unfunded draft still
-cancels or is archived here (Remove draft). A brief is unchanged: PRD-F22 is ruled for services
-only.
+**Every engagement settles before it ends (Decisions #456, #467).** On every project kind — a
+client's brief, a bought service, a One-Off or Task — `cancelled` and `archived` are refused while
+any escrow on its stages is `held` or `reserved`: `PF409`, HINT `cancel`, DETAIL
+`{ reason: "escrow_held", held, to_status }`, "This project still holds escrow. Use Cancel project,
+which settles the escrow first." (the noun is `service` on a bought service). So Cancelled and
+Archived always mean settled. An engagement holding nothing still cancels or is archived here (an
+unfunded draft's Remove draft included). #456 ruled it for services (`55000`, HINT `cancel_service`);
+#467 (owner ruling A on PRD-F22) made it every kind's and gave it its own code.
 
-### A bought service: activation and cancellation (Decision #456)
+### Cancelling an engagement (Decisions #456, #467)
 
-A bought service is a seller-owned engagement with a client (`client_user_id` set, #427); a session
-engagement leaves that column NULL and is not one. All in `00001150`; grants in `00002510`.
+One settle-first door for every project kind: a client's brief, a bought service (`client_user_id`
+set, #427), a One-Off or Task. All in `00001150`; grants in `00002510`. Ledger lines are existing
+reasons only (`escrow_refund`, `fair_exit_release`, `fair_exit_refund`), so no new money term enters
+the ledger; the conservation of each settlement is asserted in `brief_cancel.sql` until FBP DB16's
+`conservation_identity.sql` exists.
 
-- `projects.fn_service_held_tickets(p_project_id uuid) → TABLE (ticket_id, stage_id, stage_name,
-  sort_order, stage_status, claimed, held_cents)` — internal, no grant. One row per (ticket, stage)
-  holding `held` escrow. **`claimed` is the ticket having an assignee**, not its escrow having a
-  payee: the seller is seated on every stage, so `finance.fn_ticket_payee` binds the seller as payee
-  when the escrow is held, before anybody claims (the prepaid rule, #197, reads `payee_id IS NULL`
-  and so never fires on a service).
+- `projects.fn_project_held_tickets(p_project_id uuid) → TABLE (ticket_id, stage_id, stage_name,
+  sort_order, stage_status, claimed, held_cents)` — internal, no grant (was `fn_service_held_tickets`).
+  One row per (ticket, stage) holding `held` escrow. **`claimed` is the ticket having an assignee**,
+  not its escrow having a payee, because when a payee binds differs by kind (a brief's prepaid hold
+  binds at the claim, #428; a bought service's at funding, #456 (b), until MR1), and an unclaimed
+  ticket earned nothing.
+- `projects.fn_project_cancel_blocked(p_project_id uuid) → text` — internal, no grant. Why the
+  engagement cannot be cancelled now, or NULL, in the order the door checks: `ended` (completed /
+  cancelled / archived), `dispute` (an open dispute on a held or reserved escrow,
+  `finance.fn_escrow_has_open_dispute`), `sittings` (a held or reserved escrow with no ticket — a
+  session's per-sitting money, which settles through each sitting, #211), `settling` (a stage
+  holding claimed work is outside the unsettled set — approved, not yet paid).
 - `projects.fn_fair_exit_quote_scoped(p_stage_id uuid, p_tier integer, p_claimed_only boolean) →
   jsonb` — internal, no grant. The Fair Exit quote itself; `fn_fair_exit_quote(stage, tier)` is now
   `fn_fair_exit_quote_scoped(stage, tier, false)`, unchanged for its callers. `p_claimed_only`
   narrows the stage's held tickets to those with an assignee: what `cancel_stage_fair_exit` settles
-  once `cancel_service` has refunded the rest.
-- `projects.preview_service_cancel(p_project_id uuid) → jsonb` — `authenticated`; signed in, then
-  `can_review_project` (`42501`, the seller included), then a bought service (`22023`). Moves
-  nothing.
-  `{ project_id, status, currency, cancellable, blocked, returned_cents, tickets_to_cancel,
-  stages }`:
-  `returned_cents` is every unclaimed ticket's held escrow plus every `reserved` escrow; `stages`
-  lists each stage holding claimed work with three `fn_fair_exit_quote_scoped(…, true)` quotes (25,
-  50, 75). `blocked` is `ended` (completed / cancelled / archived) or `settling` (a stage holding
-  claimed work is outside the unsettled set — approved, not yet paid).
-- `projects.cancel_service(p_project_id uuid, p_tiers jsonb DEFAULT '{}', p_reason text DEFAULT NULL)
-  → jsonb`
-  — `authenticated`; the same guards, then the project row `FOR UPDATE`, a terminal status refused
-  `55000`, `p_tiers` an object. Every stage holding claimed work needs a tier of 25, 50 or 75 keyed
-  by its uuid, checked before anything moves: `22023` with DETAIL
-  `{ reason: "tier_required",
-  stages: [{ stage_id, stage_name }] }`. Then, in order: each
-  unclaimed ticket's held escrow back whole (`finance.fn_refund_ticket_escrow`); each stage holding
-  claimed work ended through `cancel_stage_fair_exit` at its tier (its own locks, dispute check
-  `PD409`, notices); every `reserved` escrow refunded (`finance.fn_refund_ticket_reservations`,
-  reason `service_cancelled`); every ticket not `completed` / `cancelled` closed `cancelled` with a
-  `ticket_history` row (reason `service_cancelled`); every unsettled stage `cancelled`; a revision
-  round `awaiting_payment` `cancelled`;
-  `set_project_status(…, 'cancelled', p_reason or "Cancelled by the client")`, whose guard re-checks
-  that nothing is held or reserved, so a hold that slipped past aborts the whole cancellation; the
-  seller told (`project_cancelled`). Seats are kept, so both sides keep the history. Returns
-  `{ project_id, status, currency, stages, freelancer_paid_cents, fee_cents,
-  client_refunded_cents, tickets_cancelled }`,
-  where paid + fee + refunded equals everything that was held and reserved.
+  once `fn_settle_project_escrow` has refunded the rest.
+- `projects.preview_project_cancel(p_project_id uuid) → jsonb` — `authenticated`; signed in, then
+  `can_review_project` (`42501`, a provider included). Moves nothing.
+  `{ project_id, kind, status, currency, cancellable, blocked, returned_cents, tickets_to_cancel,
+  stages }`: `kind` is `service` when `client_user_id` is set, else `project`; `returned_cents` is
+  every unclaimed ticket's held escrow plus every ticket's `reserved` escrow; `stages` lists each
+  stage holding claimed work with three `fn_fair_exit_quote_scoped(…, true)` quotes (25, 50, 75);
+  `blocked` is `fn_project_cancel_blocked`'s answer.
+- `projects.fn_settle_project_escrow(p_project_id uuid, p_tiers jsonb DEFAULT '{}') → jsonb` —
+  internal, no grant: **the settle-first helper** (#467), the only place a cancellation's money is
+  written. The caller has checked review authority and holds the project row's lock. Checked before
+  anything moves: `p_tiers` an object (`22023`); not blocked — `ended` `55000`, `dispute` through
+  `finance.fn_assert_no_open_dispute` (`PD409 dispute_open`, FBP DB3: the ruling settles that money,
+  the cancel never settles around it), `sittings` `PF409` HINT `sittings`, `settling` `55000`; and a
+  tier of 25, 50 or 75 for every stage holding claimed work, keyed by its uuid (`22023`, DETAIL
+  `{ reason: "tier_required", stages: [{ stage_id, stage_name }] }`). Then, in order: each unclaimed
+  ticket's held escrow back whole (`finance.fn_refund_ticket_escrow`); each stage holding claimed
+  work ended through `cancel_stage_fair_exit` at its tier (its own locks, `hire` capability on a
+  business brief, notices to the payees); every `reserved` escrow refunded
+  (`finance.fn_refund_ticket_reservations`); every ticket not `completed` / `cancelled` closed
+  `cancelled` with a `ticket_history` row; every unsettled stage `cancelled`; a revision round
+  `awaiting_payment` `cancelled`. The history reason is `service_cancelled` on a bought service and
+  `project_cancelled` otherwise. Returns `{ currency, stages, freelancer_paid_cents, fee_cents,
+  client_refunded_cents, tickets_cancelled }`, where paid + fee + refunded equals everything that was
+  held and reserved. It does not change the project's status.
+- `projects.cancel_project(p_project_id uuid, p_tiers jsonb DEFAULT '{}', p_reason text DEFAULT NULL)
+  → jsonb` — `authenticated`: **the door** for every kind. Signed in, `can_review_project`
+  (`42501`), the project row `FOR UPDATE`, a terminal status refused `55000`; then
+  `fn_settle_project_escrow`; then `set_project_status(…, 'cancelled', p_reason or "Cancelled by the
+  client")`, whose guard re-checks that nothing is held or reserved, so a hold that slipped past
+  aborts the whole cancellation. The other side is told (`project_cancelled`): a bought service's
+  seller, or every person holding a live seat on a brief (a freelancer seat, or an active member of a
+  team seat). Seats are kept, so both sides keep the history. Returns the helper's figures plus
+  `{ project_id, kind, status }`.
+- `projects.preview_service_cancel(p_project_id uuid) → jsonb` and
+  `projects.cancel_service(p_project_id uuid, p_tiers jsonb DEFAULT '{}', p_reason text DEFAULT NULL)
+  → jsonb` — `authenticated`, kept for their callers (#456): the same guards, then a bought service
+  (`22023` otherwise), then `preview_project_cancel` / `cancel_project`.
 - `projects.fn_activate_funded_service() → trigger` — `trg_escrows_activate_funded_service`,
   `AFTER
   INSERT OR UPDATE OF status ON finance.escrows WHEN (NEW.status = 'held' AND NEW.project_stage_id IS
@@ -1707,16 +1727,18 @@ engagement leaves that column NULL and is not one. All in `00001150`; grants in 
   funded", actor the funder or, for an automatic hold, the client person). A One-Off or Task bought at
   checkout activates itself (`marketplace.fn_buy_scoped_service`, #457). `SECURITY DEFINER`, `search_path
   = public, projects`.
-- `projects.fn_guard_escrow_on_ended_service() → trigger` — `trg_escrows_ended_service_guard`,
-  `BEFORE
-  INSERT ON finance.escrows WHEN (NEW.status IN ('held', 'reserved') AND NEW.project_stage_id IS NOT
-  NULL)`
-  (`00001830`). Refuses (`55000`) new escrow on a bought service that is `cancelled` or `archived`.
-  A `completed` one stays fundable (PRODUCT_SPEC §Extension Logic). `SECURITY DEFINER`,
-  `search_path = public, projects`.
+- `projects.fn_guard_escrow_on_ended_project() → trigger` — `trg_escrows_ended_project_guard` (were
+  `fn_guard_escrow_on_ended_service` / `trg_escrows_ended_service_guard`), `BEFORE INSERT ON
+  finance.escrows WHEN (NEW.status IN ('held', 'reserved') AND NEW.project_stage_id IS NOT NULL)`
+  (`00001830`). Refuses (`55000`) new escrow on an engagement of any kind that is `cancelled` or
+  `archived` (#467). A `completed` one stays fundable (PRODUCT_SPEC §Extension Logic).
+  `SECURITY DEFINER`, `search_path = public, projects`.
 
-Probe: `supabase/probes/service_cancel.sql` (activation, every refusal, the settlement, conservation,
-the ended-service guard).
+Probes: `supabase/probes/brief_cancel.sql` (a brief: archive and cancel refused while money is held,
+the preview, every refusal, an open dispute `PD409`, sitting escrow `PF409`, archive once settled,
+the settlement, per-escrow conservation from the ledger, the ended guard) and
+`supabase/probes/service_cancel.sql` (a bought service: activation, every refusal, the settlement,
+conservation, the ended guard).
 
 ### `projects.fn_project_shape_lock() → trigger`
 

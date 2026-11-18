@@ -1628,6 +1628,8 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 - the shared `StripeElementPanel`'s **Pay £X** confirm in payment mode — the wallet top-up's card
   step and the `/checkout/payment` card step;
 - `FundStageDialog`'s commit — _Fund €X_ from the wallet or _Continue to payment_ (Decision #197);
+- `CancelProjectDialog`'s **Settle and cancel** — only when the cancel moves money (a refund or a
+  Fair Exit settlement, Decision #467); one that moves nothing is a plain `danger` confirm;
 - `PaidRevisionPayDialog`'s **Pay from wallet** (the card path's own commit is the
   `StripeElementPanel` Pay) and `BuyNowModal`'s **Buy now · €X** (Decisions #404, #430);
 - the DM context drawer's **Fund escrow & confirm seat** — both the `fund_escrow` link and the
@@ -3558,6 +3560,30 @@ read a danger `Message` with **Try again**; a refused exit stays in the dialog b
 Initial focus lands on **Keep stage open**. On success the explorer states the server's notice in
 its bar and re-reads the page. Styles: `styles/fair-exit.css`. Not a conversion-lane surface
 (§3 gate 10 governs entity-view routes only).
+
+**`CancelProjectDialog` (`features/projects/components/`, Decisions #456, #467).** The one Cancel
+confirmation for a client's brief and a bought service (it replaced `CancelServiceDialog`). Built on
+`Dialog` (`alertdialog`, 36rem), like `FairExitDialog`. Props: `open: Signal<boolean>`, `projectId`,
+`title`, `kind` (`project` · `service`, the preview's own answer wins), `onCancelled(result,
+message)`. It owns its read (`GET /api/projects/:id/cancel` on open; a superseded answer is dropped),
+one tier (`SelectButton` 25 · 50 · 75 %, opening on 50) per stage holding claimed work, and its write.
+The settlement is stated before the commit: "Back to your wallet now" when unclaimed money or a
+reservation comes back, then per stage a `dl` of paid for the work delivered · platform fee · refunded
+to you, every figure a `MoneyView` of the server's number, then a meta line (tickets that close ·
+"this cannot be undone"). `core/project-cancel-model.ts` only picks quotes, words the kind and decides
+when the confirm fires; it computes no money. **The commit is the tier-1 accent pill — "Settle and
+cancel", `<Button severity="accent" rounded>` — only when cancelling moves money**
+(`projectCancelMovesMoney`); an engagement holding nothing cancels through a plain `danger` confirm
+("Cancel project" / "Cancel service"). A blocked engagement (`ended` · `dispute` · `sittings` ·
+`settling`) shows an info `Message` and no commit; a failed read a danger `Message` with a tier-4
+**Try again**; a refused cancel stays in the dialog. Initial focus lands on **Keep project** /
+**Keep service**. Entry points: the lane kebab's **Cancel project** / **Cancel service**
+(`SidebarHeader`); the feed card's menu (`ProjectCard`, whose actions rest visible under
+`hover: none`); below `--bp-md`, where the shell renders no lane, the Overview header band's
+**Cancel …** button (`ProjectOverviewHeader`, `data-project-cancel`, answered by the still-mounted
+lane island) — moved, never shown beside the lane's; and an archive refused because money is held
+(`settle_first`) opens it in the archive's place. Styles: `styles/project-cancel.css`. Not a
+conversion-lane surface (§3 gate 10 governs entity-view routes only).
 
 **`SittingRoomLink` (`features/projects/components/`, Decision #383, rulings R2 and R7).** A host's
 way out when a paid sitting has no room: a sentence, a link to Settings, the warning that a link they

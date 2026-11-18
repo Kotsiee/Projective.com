@@ -19,7 +19,9 @@ import { ProjectBackendService } from "@server/services/projects/ProjectBackendS
  *
  * `DELETE` is a **soft archive** — `status = 'archived'` + `archived_at`, never a row removal (root
  * CLAUDE.md §5). The verb is DELETE because that is what the caller means; what the server does with
- * it is the domain's decision, not HTTP's.
+ * it is the domain's decision, not HTTP's. Nothing archives while money is held (Decision #467): the
+ * refusal is a `409` whose `errors.status` is `settle_first`, and the surface offers Cancel
+ * (`/api/projects/:id/cancel`), which settles the escrow first.
  *
  * **No capability guard here.** A server-side owner/`isFreelancer` bounce is forbidden: the Dev
  * Context Switcher's persona is a client seam the server never sees, so such a gate would fire on a

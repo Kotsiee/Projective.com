@@ -17,6 +17,8 @@ import {
 import { LaneSearchField } from "@features/shortcuts/components/LaneSearchField.tsx";
 import { type CardMenuAction, ProjectCard } from "../components/ProjectCard.tsx";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
+import { CancelProjectDialog } from "../components/CancelProjectDialog.tsx";
+import { isSettleFirstRefusal } from "../core/project-cancel-model.ts";
 import { LaneTabs } from "../components/LaneTabs.tsx";
 import { RoleToggle } from "../components/RoleToggle.tsx";
 import { ServiceModifier } from "../components/ServiceModifier.tsx";
@@ -188,6 +190,12 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	const archiveTarget = useSignal<ProjectSummary | null>(null);
 	const archiveOpen = useSignal<boolean>(false);
 	const archiving = useSignal<boolean>(false);
+	/**
+	 * The card whose kebab asked to cancel it — a brief or a bought service — while the one Cancel
+	 * confirmation is up (Decision #467). Also opened by an archive refused over held money.
+	 */
+	const cancelTarget = useSignal<ProjectSummary | null>(null);
+	const cancelOpen = useSignal<boolean>(false);
 	/** Mounted only when no other island has already put a stack up (they share one signal). */
 	const toastMounted = useSignal<boolean>(false);
 	const toast = useToast();
@@ -382,11 +390,31 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		if (out.message) notify(out.ok ? "success" : "danger", out.message);
 	}
 
-	function onMenuAction(id: string, _action: CardMenuAction): void {
+	function onMenuAction(id: string, action: CardMenuAction): void {
 		const item = payload.value.items.find((r) => r.id === id);
 		if (!item) return;
+		if (action === "cancel") {
+			cancelTarget.value = item;
+			cancelOpen.value = true;
+			return;
+		}
 		archiveTarget.value = item;
 		archiveOpen.value = true;
+	}
+
+	/**
+	 * The card's engagement was cancelled: its money settled and it reads Cancelled. Re-read the feed,
+	 * as an archive does, so the card rests with the server's status; the engagement open in the body
+	 * reloads so every view in it shows the ended state.
+	 */
+	function onCancelled(slug: string, message: string | null): void {
+		cancelTarget.value = null;
+		if (isActiveCard(slug)) {
+			globalThis.location.reload();
+			return;
+		}
+		notify("success", message ?? "Cancelled.");
+		void run(params.value, false);
 	}
 
 	/**
@@ -404,6 +432,16 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		archiving.value = false;
 		archiveTarget.value = null;
 		if (!res.ok) {
+			// Nothing archives while money is held (Decision #467): Cancel settles it, so offer it.
+			if (isSettleFirstRefusal(res.errors)) {
+				notify(
+					"danger",
+					res.message ?? "This project still holds escrow. Cancel it, which settles it first.",
+				);
+				cancelTarget.value = target;
+				cancelOpen.value = true;
+				return;
+			}
 			logger.error("Project archive failed", { slug: target.slug, message: res.message });
 			notify("danger", res.message ?? "That did not archive — please try again.");
 			return;
@@ -585,6 +623,18 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 				title={archiveTarget.value?.title ?? null}
 				onAccept={() => void archiveProject()}
 			/>
+
+			{cancelTarget.value
+				? (
+					<CancelProjectDialog
+						open={cancelOpen}
+						projectId={cancelTarget.value.slug}
+						title={cancelTarget.value.title}
+						kind={cancelTarget.value.kind}
+						onCancelled={(_result, message) => onCancelled(cancelTarget.value?.slug ?? "", message)}
+					/>
+				)
+				: null}
 
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</div>

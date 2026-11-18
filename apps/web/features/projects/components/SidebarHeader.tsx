@@ -15,12 +15,13 @@ import {
 /**
  * SidebarHeader — the top row of the Project Details sidebar: a Back arrow that returns to the
  * `/projects` feed, and, right-aligned inline with it, a Star toggle + a kebab (`…`) menu carrying the
- * SAME actions as the feed cards (Open in new tab · Share · Archive project), plus Cancel service for
- * a bought service's client (Decision #456). Kept dumb — the island owns the star state and routes the
- * archive and the cancellation; open/share resolve client-side here.
+ * SAME actions as the feed cards (Open in new tab · Share · Cancel · Archive project): Cancel for the
+ * client side of an engagement that has not ended — a brief's owner or a bought service's client
+ * (Decisions #456, #467). Kept dumb — the island owns the star state and routes the archive and the
+ * cancellation; open/share resolve client-side here.
  */
 
-/** The kebab menu actions — the feed card's `CardMenuAction` vocabulary, plus the lane's `cancel`. */
+/** The kebab menu actions — the feed card's `CardMenuAction` vocabulary. */
 export type SidebarMenuAction = "open" | "share" | "archive" | "cancel";
 
 interface MenuItem {
@@ -32,14 +33,14 @@ interface MenuItem {
 
 /**
  * Only actions that DO something (root CLAUDE.md §3.11). Report and Leave are absent rather than
- * inert: neither has a backend or a product rule yet. Archive and Cancel service render only when the
- * island says this viewer may take them.
+ * inert: neither has a backend or a product rule yet. Cancel and Archive render only when the island
+ * says this viewer may take them; Cancel's label names the engagement's kind.
  */
 const MENU_ITEMS: readonly MenuItem[] = [
 	{ action: "open", label: "Open in new tab", icon: ExternalLinkIcon },
 	{ action: "share", label: "Share", icon: ShareIcon },
+	{ action: "cancel", label: "Cancel project", icon: CloseIcon, danger: true },
 	{ action: "archive", label: "Archive project", icon: ArchiveIcon, danger: true },
-	{ action: "cancel", label: "Cancel service", icon: CloseIcon, danger: true },
 ];
 
 /** The primary site sidebar the `bottom-end` kebab menu must never slide under (edge-detection). */
@@ -53,21 +54,25 @@ export interface SidebarHeaderProps {
 	onToggleStar: () => void;
 	/** Whether the viewer holds an authority role and so is offered Archive project. */
 	canArchive: boolean;
-	/** Whether the viewer is a bought service's client and so is offered Cancel service. */
+	/** Whether the viewer is the client side of an engagement that has not ended, and so may cancel it. */
 	canCancel?: boolean;
-	/** Archive and Cancel service are routed to the island, which confirms and writes. */
+	/** Cancel's label — "Cancel project" on a brief, "Cancel service" on a bought service. */
+	cancelLabel?: string;
+	/** Archive and Cancel are routed to the island, which confirms and writes. */
 	onMenuAction?: (action: SidebarMenuAction) => void;
 }
 
 export function SidebarHeader(
-	{ slug, title, starred, onToggleStar, canArchive, canCancel = false, onMenuAction }:
+	{ slug, title, starred, onToggleStar, canArchive, canCancel = false, cancelLabel, onMenuAction }:
 		SidebarHeaderProps,
 ): JSX.Element {
 	const menuOpen = useSignal(false);
 	const href = `/projects/${slug}`;
-	const offered = MENU_ITEMS.filter((mi) =>
-		mi.action === "archive" ? canArchive : mi.action === "cancel" ? canCancel : true
-	);
+	const offered = MENU_ITEMS
+		.filter((mi) =>
+			mi.action === "archive" ? canArchive : mi.action === "cancel" ? canCancel : true
+		)
+		.map((mi) => mi.action === "cancel" && cancelLabel ? { ...mi, label: cancelLabel } : mi);
 
 	function handleMenu(action: SidebarMenuAction): void {
 		menuOpen.value = false;

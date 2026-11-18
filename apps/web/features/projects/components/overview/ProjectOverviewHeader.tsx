@@ -16,7 +16,10 @@ import { projectDetailsHref, projectHref } from "../../core/project-access.ts";
  * the engagement may preview (`previewAllowed`); a locked control that does nothing is worse than its
  * absence (root CLAUDE.md §3 gate 11), and `/details` already says what is missing.
  *
- * Star stays in the lane header, where it already lives: an action gets one home.
+ * Star stays in the lane header, where it already lives: an action gets one home. Cancel lives there
+ * too, and the shell does not render the lane below `--bp-md`, so below it Cancel MOVES into this band
+ * (never both at once, Decision #467): a plain button the lane island — still mounted, only hidden —
+ * answers by opening its one Cancel confirmation (`data-project-cancel`, ProjectSidebar).
  *
  * A server component (links only). Its styles ride the page's style anchor, which every route that
  * mounts this band also mounts.
@@ -31,33 +34,53 @@ export interface ProjectOverviewHeaderProps {
 	owner: boolean;
 	/** Whether Preview is open to the owner right now. */
 	canPreview: boolean;
+	/**
+	 * Cancel's label ("Cancel project" · "Cancel service") when the viewer is the client side of an
+	 * engagement that has not ended, else `null`. Rendered below `--bp-md` only, where the lane is not.
+	 */
+	cancelLabel?: string | null;
 }
 
 export function ProjectOverviewHeader(props: ProjectOverviewHeaderProps): JSX.Element {
-	const { slug, title, owner, canPreview } = props;
+	const { slug, title, owner, canPreview, cancelLabel = null } = props;
 	return (
 		<header class="pjd-head">
 			<div class="pjd-head__id">
 				<span class="pjd-head__title">{title || "Untitled project"}</span>
 			</div>
-			{owner && (
-				<nav class="pjd-head__links" aria-label="Project configuration">
-					<a class="pjd-head__link" href={projectDetailsHref(slug)}>
+			<div class="pjd-head__end">
+				{cancelLabel && (
+					<button
+						type="button"
+						class="pjd-head__link pjd-head__cancel"
+						data-project-cancel=""
+						aria-haspopup="dialog"
+					>
 						<span class="pjd-head__icon" aria-hidden="true">
-							<Icon name="square-pen" size="sm" />
+							<Icon name="close" size="sm" />
 						</span>
-						<span>Details</span>
-					</a>
-					{canPreview && (
-						<a class="pjd-head__link" href={projectHref(slug, "preview")}>
+						<span>{cancelLabel}</span>
+					</button>
+				)}
+				{owner && (
+					<nav class="pjd-head__links" aria-label="Project configuration">
+						<a class="pjd-head__link" href={projectDetailsHref(slug)}>
 							<span class="pjd-head__icon" aria-hidden="true">
-								<Icon name="eye" size="sm" />
+								<Icon name="square-pen" size="sm" />
 							</span>
-							<span>Preview</span>
+							<span>Details</span>
 						</a>
-					)}
-				</nav>
-			)}
+						{canPreview && (
+							<a class="pjd-head__link" href={projectHref(slug, "preview")}>
+								<span class="pjd-head__icon" aria-hidden="true">
+									<Icon name="eye" size="sm" />
+								</span>
+								<span>Preview</span>
+							</a>
+						)}
+					</nav>
+				)}
+			</div>
 		</header>
 	);
 }

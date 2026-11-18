@@ -1,17 +1,23 @@
-.svc-cancel__body {
+/*
+ * The one Cancel confirmation (CancelProjectDialog) — a client's brief or a bought service
+ * (Decisions #456, #467). Static figures are unboxed rows; each stage holding claimed work is set off
+ * by spacing and one hairline, never a card.
+ */
+
+.proj-cancel__body {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
 }
 
-.svc-cancel__lede {
+.proj-cancel__lede {
 	margin: 0;
 	max-inline-size: var(--measure-narrow);
 	color: var(--on-surface);
 	line-height: var(--leading-normal);
 }
 
-.svc-cancel__stage {
+.proj-cancel__stage {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
@@ -19,58 +25,58 @@
 	border-block-start: var(--hairline);
 }
 
-.svc-cancel__stage-name {
+.proj-cancel__stage-name {
 	margin: 0;
 	font-size: var(--text-base);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
-.svc-cancel__figures {
+.proj-cancel__figures {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
 	margin: 0;
 }
 
-.svc-cancel__row {
+.proj-cancel__row {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
 	gap: var(--space-4);
 }
 
-.svc-cancel__term {
+.proj-cancel__term {
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 
-.svc-cancel__value {
+.proj-cancel__value {
 	margin: 0;
 	font-variant-numeric: tabular-nums;
 	color: var(--on-surface);
 }
 
-.svc-cancel__row--lead .svc-cancel__term,
-.svc-cancel__row--lead .svc-cancel__value {
+.proj-cancel__row--lead .proj-cancel__term,
+.proj-cancel__row--lead .proj-cancel__value {
 	font-size: var(--text-base);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 
-.svc-cancel__meta {
+.proj-cancel__meta {
 	margin: 0;
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 
-.svc-cancel__notice {
+.proj-cancel__notice {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
 }
 
-.svc-cancel__actions {
+.proj-cancel__actions {
 	display: contents;
 }

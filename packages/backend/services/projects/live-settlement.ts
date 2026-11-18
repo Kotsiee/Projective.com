@@ -1,22 +1,22 @@
 import type { SupabaseClient } from "supabaseClient";
 import type {
 	ApproveStage,
-	CancelService,
+	CancelProject,
 	CancelStageFairExit,
 	FairExitBlocked,
 	FairExitPreview,
 	FairExitQuote,
 	FairExitTier,
 	PaidRevisionRaised,
-	PreviewServiceCancel,
+	PreviewProjectCancel,
 	PreviewStageFairExit,
+	ProjectCancelBlocked,
+	ProjectCancelled,
+	ProjectCancelPreview,
+	ProjectCancelStage,
+	ProjectExitQuote,
 	RequestPaidRevision,
 	ReviewSubmission,
-	ServiceCancelBlocked,
-	ServiceCancelled,
-	ServiceCancelPreview,
-	ServiceCancelStage,
-	ServiceExitQuote,
 	StageApproved,
 	StageExited,
 	SubmissionReviewed,
@@ -28,8 +28,8 @@ import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes
 
 /**
  * live-settlement — the RLS-scoped write path for the client decisions that move deliverables and
- * money: a submission verdict, a stage approval, a Fair Exit cancellation and a bought service's
- * cancellation.
+ * money: a submission verdict, a stage approval, a Fair Exit cancellation and an engagement's
+ * cancellation (a brief or a bought service, Decision #467).
  *
  * Every write here is ONE call to a guarded SECURITY DEFINER door — `projects.review_submission`,
  * `projects.approve_stage`, `projects.cancel_stage_fair_exit` — issued under the caller's own JWT, so
@@ -102,6 +102,22 @@ export function settlementRefusal(error: PgError, field?: string): WriteRefusal 
 				status: 422,
 				message: say("That request is not valid."),
 				errors: keyed("not_allowed"),
+			};
+		// A dispute stands against money the request would move (FBP DB3): its ruling settles it.
+		case "PD409":
+			return {
+				status: 409,
+				message:
+					"A dispute is open on money this would move. It is paid or refunded by the ruling.",
+				errors: keyed("dispute_open"),
+			};
+		// Money is still held (Decision #467): it settles first, through Cancel (or, for a session's
+		// sittings, through each sitting).
+		case "PF409":
+			return {
+				status: 409,
+				message: say("This still holds escrow, so it settles first."),
+				errors: keyed("settle_first"),
 			};
 		// The stage's free revision rounds are used (Decision #167): the client can buy one instead.
 		case "PR402":
@@ -457,18 +473,21 @@ export async function exitStageRow(
 }
 // #endregion
 
-// #region Cancelling a bought service (Decision #456)
-/** The notice a cancelled service answers with — what the seller was paid and what came back. */
-export function serviceCancelledMessage(cancelled: ServiceCancelled): string {
+// #region Cancelling an engagement (Decisions #456, #467)
+/** The notice a cancelled engagement answers with — what the provider was paid and what came back. */
+export function projectCancelledMessage(cancelled: ProjectCancelled): string {
+	const noun = cancelled.kind === "service" ? "Service" : "Project";
 	const refunded = formatMoney(cancelled.clientRefundedCents, cancelled.currency);
 	if (cancelled.freelancerPaidCents === 0) {
-		return `Service cancelled — ${refunded} refunded to your wallet.`;
+		return cancelled.clientRefundedCents === 0
+			? `${noun} cancelled.`
+			: `${noun} cancelled — ${refunded} refunded to your wallet.`;
 	}
 	const paid = formatMoney(cancelled.freelancerPaidCents, cancelled.currency);
-	return `Service cancelled — ${paid} paid for the work delivered, ${refunded} refunded to your wallet.`;
+	return `${noun} cancelled — ${paid} paid for the work delivered, ${refunded} refunded to your wallet.`;
 }
 
-function toServiceExitQuote(raw: Record<string, unknown>, tier: FairExitTier): ServiceExitQuote {
+function toProjectExitQuote(raw: Record<string, unknown>, tier: FairExitTier): ProjectExitQuote {
 	return {
 		tier,
 		ticketCount: cents(raw.ticket_count),
@@ -478,18 +497,24 @@ function toServiceExitQuote(raw: Record<string, unknown>, tier: FairExitTier): S
 	};
 }
 
+const CANCEL_BLOCKS: readonly ProjectCancelBlocked[] = ["ended", "dispute", "sittings", "settling"];
+
+/** A `blocked` the function reported, or `null` — an unknown word is not trusted as a reason. */
+function cancelBlockedOf(value: unknown): ProjectCancelBlocked | null {
+	return CANCEL_BLOCKS.find((b) => b === value) ?? null;
+}
+
 /**
- * Map `projects.preview_service_cancel`'s answer onto {@link ServiceCancelPreview}. A stage whose id is
+ * Map `projects.preview_project_cancel`'s answer onto {@link ProjectCancelPreview}. A stage whose id is
  * not a uuid is dropped rather than trusted, and each tier is looked up by its own `tier` key — exported
  * for its tests.
  */
-export function toServiceCancelPreview(payload: Record<string, unknown>): ServiceCancelPreview {
-	const blocked: ServiceCancelBlocked | null =
-		payload.blocked === "ended" || payload.blocked === "settling" ? payload.blocked : null;
+export function toProjectCancelPreview(payload: Record<string, unknown>): ProjectCancelPreview {
+	const blocked = cancelBlockedOf(payload.blocked);
 	const rawStages = Array.isArray(payload.stages)
 		? payload.stages as Record<string, unknown>[]
 		: [];
-	const stages: ServiceCancelStage[] = rawStages
+	const stages: ProjectCancelStage[] = rawStages
 		.filter((s) => UUID_RE.test(String(s?.stage_id ?? "")))
 		.slice(0, 60)
 		.map((s) => {
@@ -498,10 +523,11 @@ export function toServiceCancelPreview(payload: Record<string, unknown>): Servic
 			return {
 				stageId: String(s.stage_id),
 				stageName: clampOr(String(s.stage_name ?? ""), 200, "Untitled stage"),
-				tiers: FAIR_EXIT_TIERS.map((tier) => toServiceExitQuote(quoteOf(tier), tier)),
+				tiers: FAIR_EXIT_TIERS.map((tier) => toProjectExitQuote(quoteOf(tier), tier)),
 			};
 		});
 	return {
+		kind: payload.kind === "service" ? "service" : "project",
 		currency: currencyOf(payload.currency),
 		cancellable: payload.cancellable === true && blocked === null,
 		blocked,
@@ -511,10 +537,11 @@ export function toServiceCancelPreview(payload: Record<string, unknown>): Servic
 	};
 }
 
-/** Map `projects.cancel_service`'s answer onto {@link ServiceCancelled} — exported for its tests. */
-export function toServiceCancelled(payload: Record<string, unknown>): ServiceCancelled {
+/** Map `projects.cancel_project`'s answer onto {@link ProjectCancelled} — exported for its tests. */
+export function toProjectCancelled(payload: Record<string, unknown>): ProjectCancelled {
 	return {
 		status: "cancelled",
+		kind: payload.kind === "service" ? "service" : "project",
 		currency: currencyOf(payload.currency),
 		freelancerPaidCents: cents(payload.freelancer_paid_cents),
 		feeCents: cents(payload.fee_cents),
@@ -524,40 +551,42 @@ export function toServiceCancelled(payload: Record<string, unknown>): ServiceCan
 }
 
 /**
- * Read what cancelling a bought service would settle, through `projects.preview_service_cancel`. The
- * function checks the client person itself (a 403 for anyone else, the seller included).
+ * Read what cancelling an engagement would settle, through `projects.preview_project_cancel`. The
+ * function checks review authority itself (a 403 for anyone else, the provider included).
  */
-export async function previewServiceCancelRow(
+export async function previewProjectCancelRow(
 	actor: ReadActor & { accessToken: string },
-	input: PreviewServiceCancel,
-): Promise<WriteOutcome<ServiceCancelPreview>> {
+	input: PreviewProjectCancel,
+): Promise<WriteOutcome<ProjectCancelPreview>> {
 	const db = projectsDb(actor);
 	const projectId = await resolveProject(db, input.projectId);
 	if (!projectId) return null;
 
-	const { data, error } = await db.rpc("preview_service_cancel", { p_project_id: projectId });
+	const { data, error } = await db.rpc("preview_project_cancel", { p_project_id: projectId });
 	if (error) return { refusal: settlementRefusal(error, "projectId") };
-	return { data: toServiceCancelPreview((data ?? {}) as Record<string, unknown>) };
+	return { data: toProjectCancelPreview((data ?? {}) as Record<string, unknown>) };
 }
 
 /**
- * Cancel a bought service through `projects.cancel_service`: unclaimed escrow back whole, claimed work
- * settled under Fair Exit at each stage's tier, the open tickets and stages closed, then Cancelled.
+ * Cancel an engagement through `projects.cancel_project`, the one settle-first door (Decision #467):
+ * unclaimed escrow back whole, claimed work settled under Fair Exit at each stage's tier, the open
+ * tickets and stages closed, then Cancelled. An open dispute is a 409 (`dispute_open`), a session's
+ * sitting escrow a 409 (`settle_first`).
  */
-export async function cancelServiceRow(
+export async function cancelProjectRow(
 	actor: ReadActor & { accessToken: string },
-	input: CancelService,
-): Promise<WriteOutcome<ServiceCancelled>> {
+	input: CancelProject,
+): Promise<WriteOutcome<ProjectCancelled>> {
 	const db = projectsDb(actor);
 	const projectId = await resolveProject(db, input.projectId);
 	if (!projectId) return null;
 
-	const { data, error } = await db.rpc("cancel_service", {
+	const { data, error } = await db.rpc("cancel_project", {
 		p_project_id: projectId,
 		p_tiers: input.tiers,
 		p_reason: input.reason ?? null,
 	});
 	if (error) return { refusal: settlementRefusal(error, "tiers") };
-	return { data: toServiceCancelled((data ?? {}) as Record<string, unknown>) };
+	return { data: toProjectCancelled((data ?? {}) as Record<string, unknown>) };
 }
 // #endregion

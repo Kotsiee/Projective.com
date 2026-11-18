@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **52%** |           64 | 29 |  8 | 27 |          11 |
-| **Production**   | **34%** |          134 | 34 | 19 | 81 |          21 |
+| **UAT**          | **53%** |           64 | 30 |  7 | 27 |          11 |
+| **Production**   | **35%** |          134 | 35 | 18 | 81 |          21 |
 
 Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 
@@ -56,7 +56,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 | C. Security & access control       |   28 |  9 |  4 | 15 |   46% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   13 |  2 |  1 | 10 |   17% |
-| F. Money, ledger & reconciliation  |   22 |  4 |  4 | 14 |   31% |
+| F. Money, ledger & reconciliation  |   22 |  5 |  3 | 14 |   34% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -70,9 +70,8 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 - **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E2 + PRD-E3 (chat send door and live refresh) →
   PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
-  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 + PRD-F22 + PRD-F24 (claim sweep, ghosting
-  timer, a brief settling before cancel/archive, a service's unclaimed escrow) →
-  PRD-G6 (hosted cron secrets) → PRD-F5 (dispute freeze).
+  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 + PRD-F24 (claim sweep, ghosting
+  timer, a service's unclaimed escrow) → PRD-G6 (hosted cron secrets) → PRD-F5 (dispute freeze).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
   publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
   period) · PRD-F17 (live Stripe run; #476) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
@@ -205,7 +204,7 @@ Work orders for every open row, with the run order:
 | PRD-F19 | Paid discovery calls and consultations                                        | ⏸      | Normal   | PROD | Ruled off (#343); `PAID_CALLS_LIVE = false` (`packages/types/scheduling/calls.ts:49`)                                                                                                                                            | #343             |
 | PRD-F20 | A multi-currency total never drops a currency                                 | ❌     | High     | UAT  | Totals across currencies silently skip a currency with no rate (FINANCE C13, P0; `wallet-scope.ts:324`)                                                                                                                          | SV5, UI5         |
 | PRD-F21 | A live FX rate feed with a staleness mark                                     | ❌     | High     | PROD | Rates come from the seed only; no staleness mark (C6)                                                                                                                                                                            | DB17             |
-| PRD-F22 | Cancelling or archiving a project settles its escrow first                    | 🟡     | Critical | UAT  | Services ruled and built (#456): `projects.cancel_service` settles first and `set_project_status` refuses a held service's cancel or archive; a client brief still cancels or archives with escrow held                          | #456, 🧑 briefs   |
+| PRD-F22 | Cancelling or archiving a project settles its escrow first                    | ✅     | Critical | UAT  | #479 (MR2, ruling #467): every kind cancels through one settle-first door (`projects.cancel_project` → `fn_settle_project_escrow`; an open dispute refuses, PD409) and `set_project_status` refuses Cancelled or Archived while anything is held (PF409); `brief_cancel.sql` + `service_cancel.sql`; live at 1440 and 390 px | MR2 |
 | PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"); with the claim TTL paused (PRD-G2), funded work can sit held indefinitely                                                                              | PM-GH1           |
 | PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ❌     | Critical | UAT  | The seller's seat binds the payee at funding (`fn_ticket_payee`), so the prepaid TTL never sweeps an unclaimed ticket and `approve_stage` or a stage Fair Exit would pay it out (#456 (b))                                       | 🧑                |
 
@@ -302,7 +301,7 @@ Work orders for every open row, with the run order:
 | Terms acceptance at sign-up (what is recorded, which versions) — a spec gap            | PRD-M2             | Ruled 2026-11-18 (#446): checkbox; rows, no IP/UA; material versions re-ask |
 | Legal document sign-off                                                                | PRD-M1             | Pending counsel                                    |
 | AML posture; leaving a failed payout in Stripe (M9)                                    | PRD-M6, PRD-F11    | Pending counsel (#336 I1, #337)                    |
-| Cancel or archive with held escrow: settle first, or refuse                            | PRD-F22            | Services ruled (#456): settle first; briefs open   |
+| Cancel or archive with held escrow: settle first, or refuse                            | PRD-F22            | Ruled (#456 services, #467 briefs): settle first, archive refused while held; built for every kind (#479) |
 | A bought service's unclaimed escrow is bound to the seller at funding                  | PRD-F24            | New, #456 flag (b)                                 |
 | Manual Assignment: PRODUCT_SPEC §Assignment Modes says it ships; nothing calls it      | USER_FLOWS PJ-13   | Spec ↔ code gap: build, or re-scope the spec       |
 | Project completion: the handover rule assumes a completion step the app cannot perform | USER_FLOWS PJ-40   | Spec ↔ code gap                                    |
@@ -355,3 +354,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC2 (#462): PRD-C8 ❌ → ✅ (query logs carry only the caller's id)      | 58% | 52% |  34% |
 | 2026-11-18 | MR6 (#476): PRD-F17 ❌ → 🟡 (Stripe preflight + go-live runbook; the live run is the human's) | 58% | 52% |  35% |
 | 2026-11-18 | SAC3 (#478): PRD-C11 🟡 → ✅ (no GET marks a thread read or spends a mailed link); new PRD-C30–C32, PRD-A10, PRD-E13 ❌ | 58% | 52% |  34% |
+| 2026-11-18 | MR2 (#479): PRD-F22 🟡 → ✅ (a brief, like a service, settles its escrow before it cancels; nothing archives while money is held) | 58% | 53% |  35% |

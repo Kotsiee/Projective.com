@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **82%** |            61 | 41 |  19 |  1 |              15 |
-| **UAT**          | **68%** |           190 | 92 |  76 | 22 |              28 |
-| **Production**   | **62%** |           243 | 97 | 101 | 45 |              39 |
+| **UAT**          | **69%** |           190 | 94 |  75 | 21 |              27 |
+| **Production**   | **63%** |           243 | 99 | 100 | 44 |              38 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,13 +45,13 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    56 | 23 | 21 | 10 |  2 |   63% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 25 | 35 | 15 |  2 |   58% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 34 | 14 |  2 |   60% |
 | MW — Money, workspaces, legal & operator         |    63 | 21 | 23 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · MK-09 · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
-- **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 42, 43 ❌, 60 ❌ · MW-14, 59
+- **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62 ❌
 
 ## What breaks the most flows
@@ -171,7 +171,7 @@ PRODUCTION_READINESS.md.
 | ID    | Flow                                                 | Persona    | Entry                                              | Status | Crit     | Gate | What's missing                                                                                                                              |
 | :---- | :--------------------------------------------------- | :--------- | :------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------ |
 | MK-08 | Product: Buy now or Add to basket                    | Buyer      | `/view/:id`                                        | ✅     | High     | UAT  | Delivery broken (MK-29)                                                                                                                     |
-| MK-09 | Pipeline service: "Add to Projects"                  | Client     | `/view/:id` → `/api/services/instantiate-pipeline` | 🟡     | Critical | MVP  | Unclaimed escrow is bound to the seller at funding (PRD-F24); no Cancel service below the lane breakpoint (#456 (b), (d))                   |
+| MK-09 | Pipeline service: "Add to Projects"                  | Client     | `/view/:id` → `/api/services/instantiate-pipeline` | 🟡     | Critical | MVP  | Unclaimed escrow is bound to the seller at funding (PRD-F24); the client cancels a funded service at every width, below the lane breakpoint from the Overview band (#479; #456 (b) open)                   |
 | MK-10 | One-Off or Single-Task service: scope → basket → pay | Client     | `/view/:id` → `/api/services/configure`            | ✅     | High     | UAT  | — (#457: payment creates the seller-owned engagement with milestone 1 held, or every milestone under the whole-project prepay; live wallet and card checkouts of both). A business account cannot buy one yet (MK-56) |
 | MK-11 | Book a 1-on-1 session or a block → checkout          | Buyer      | `/view/:id` or `/:handle` Hire → `/api/services/book-session` | ✅     | High     | UAT  | — (#453: a block's line reads "2 of 6 sittings scheduled" with each time; the profile books in `/view`'s dialog; answers reach the order line). The provider cannot read the answers yet (MK-55) |
 | MK-12 | Cohort: reserve a seat → checkout                    | Buyer      | `/view/:id` or `/:handle` Hire → `reserveSeat`     | 🟡     | High     | UAT  | Needs an enrolling cohort, and no seller can open one (MK-40); the seed and the shared DB hold none. Intake answers now reach the order line and #422 (a) is closed, live-checked (#453) |
@@ -308,8 +308,8 @@ PRODUCTION_READINESS.md.
 | :---- | :---------------------------- | :------ | :-------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------- |
 | PJ-39 | Fair Exit (end a stage early) | Client  | FairExitDialog, `…/fair-exit`     | 🟡     | Critical | UAT  | The client picks 25/50/75%; no derived floor, ticket-level exit or contest (PM-WP4a, 🧑)                                   |
 | PJ-40 | Complete a project            | Client  | —                                 | ❌     | High     | UAT  | Setup allows only `draft\|active\|on_hold` (`types/projects/setup.ts:1704`); a project stays active after its last release |
-| PJ-41 | Cancel a project              | Client  | —                                 | ❌     | High     | UAT  | No app door; the RPC cancels from any state and settles no escrow (`00001100:1292`; PRD-F22)                               |
-| PJ-42 | Archive a project             | Client  | kebab, `DELETE /api/projects/:id` | 🟡     | Critical | UAT  | Allowed while escrow is held or reserved, and settles nothing (`00001100:1296-1301`; PRD-F22)                              |
+| PJ-41 | Cancel a project              | Client  | kebab, card, `POST /api/projects/:id/cancel` | ✅     | High     | UAT  | #479: settles first (unclaimed back whole, claimed work at the client's Fair Exit tier), then Cancelled; a dispute refuses (PD409); live at 1440 and 390 (the Overview band below the lane breakpoint)                               |
+| PJ-42 | Archive a project             | Client  | kebab, `DELETE /api/projects/:id` | ✅     | Critical | UAT  | #479: refused while escrow is held or reserved (PF409) and Cancel opens in its place (lane, card, `/details` rig; seen at 1440 and 390); archives once settled (`brief_cancel.sql`)                              |
 
 ### Disputes
 
@@ -523,3 +523,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | LV1 (#456): MK-09 narrowed (team seats reach the board; the client cancels a funded service, settled first; no dead Publish); still 🟡 (PRD-F24, no Cancel on mobile) | 82% | 68% |  62% |
 | 2026-11-18 | SAC4 (#475): PJ-72 narrowed (a cross-site form can no longer press `/rsvp/:token`); still 🟡 (guest mail needs the Resend key) | 82% | 68% |  62% |
 | 2026-11-18 | SAC3 (#478): PJ-49 narrowed (read marks are the chat's POST after paint, never the page's GET); still 🟡 | 82% | 68% |  62% |
+| 2026-11-18 | MR2 (#479): PJ-41 ❌ → ✅, PJ-42 🟡 → ✅ (a brief settles its escrow before it cancels; nothing archives while money is held); MK-09 narrowed (Cancel below the lane breakpoint), still 🟡 (PRD-F24) | 82% | 69% |  63% |

@@ -105,24 +105,27 @@ export function feedViewOf(row: Pick<ProjectSummary, "kind" | "viewerRole">): Pr
 /**
  * Whether the lane and feed offer this viewer "Archive project". Never on a freelancer's service
  * (Decision #427): its client reads it and leaves through the listing's Remove draft, and its seller
- * may not archive what the client's money is held in (`set_project_status`).
+ * may not archive what the client's money is held in (`set_project_status`). On a brief the server
+ * still refuses while any escrow is held or reserved (`PF409`, Decision #467), and the surface offers
+ * Cancel in its place.
  */
 export function canArchiveEngagement(kind: EngagementKind, role: ProjectViewerRole): boolean {
 	return kind !== "service" && isOwnerRole(role);
 }
 
 /**
- * Whether the lane offers this viewer "Cancel service" (Decision #456): the client of a bought service
- * that has not ended. Cancelling settles whatever it holds first (`projects.cancel_service`); the
- * seller never cancels what the client's money is held in.
+ * Whether the lane and feed offer this viewer "Cancel" (Decisions #456, #467): the client side of an
+ * engagement that has not ended — a bought service's client, or a brief's owner side (owner · admin
+ * · client). Cancelling settles whatever it holds first (`projects.cancel_project`); a provider never
+ * cancels what the client's money is held in.
  */
-export function canCancelService(
+export function canCancelEngagement(
 	kind: EngagementKind,
 	role: ProjectViewerRole,
 	status: ProjectStatus,
 ): boolean {
-	return kind === "service" && role === "client" &&
-		status !== "completed" && status !== "cancelled" && status !== "archived";
+	if (status === "completed" || status === "cancelled" || status === "archived") return false;
+	return kind === "service" ? role === "client" : isOwnerRole(role);
 }
 
 /** Whether a viewer role satisfies the chosen {@link ProjectInvolvement} axis (`all` always passes). */

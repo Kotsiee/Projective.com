@@ -195,13 +195,13 @@ BEGIN
     BEGIN
         PERFORM projects.set_project_status(v_project, 'cancelled'::project_status);
         RAISE EXCEPTION 'FAIL 5 a funded service was cancelled without settling';
-    EXCEPTION WHEN SQLSTATE '55000' THEN
+    EXCEPTION WHEN SQLSTATE 'PF409' THEN
         RAISE NOTICE 'PASS 5 a plain cancel is refused while escrow is held (%)', SQLERRM;
     END;
     BEGIN
         PERFORM projects.set_project_status(v_project, 'archived'::project_status);
         RAISE EXCEPTION 'FAIL 5 a funded service was archived without settling';
-    EXCEPTION WHEN SQLSTATE '55000' THEN
+    EXCEPTION WHEN SQLSTATE 'PF409' THEN
         RAISE NOTICE 'PASS 5 an archive is refused while escrow is held';
     END;
     BEGIN

@@ -1,6 +1,19 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { FairExitPreviewSchema, StageExitedSchema } from "@projective/types/projects";
-import { fairExitMessage, toFairExitPreview, toStageExited } from "./live-settlement.ts";
+import {
+	FairExitPreviewSchema,
+	ProjectCancelledSchema,
+	ProjectCancelPreviewSchema,
+	StageExitedSchema,
+} from "@projective/types/projects";
+import {
+	fairExitMessage,
+	projectCancelledMessage,
+	settlementRefusal,
+	toFairExitPreview,
+	toProjectCancelled,
+	toProjectCancelPreview,
+	toStageExited,
+} from "./live-settlement.ts";
 
 /*
  * The Fair Exit read and door answer in jsonb whose keys are the SQL function's (Decision #198). A
@@ -235,6 +248,174 @@ Deno.test("the preview is callable by a signed-in user, the quote by nobody", ()
 	assert(!/GRANT EXECUTE ON FUNCTION projects\.fn_fair_exit_quote/.test(grants));
 	assert(
 		/REVOKE ALL ON FUNCTION projects\.fn_fair_exit_quote_scoped \(uuid, integer, boolean\) FROM PUBLIC, anon, authenticated, service_role;/
+			.test(grants),
+	);
+});
+// #endregion
+
+// #region Cancelling an engagement (Decisions #456, #467)
+const STAGE = "2756102c-7332-4015-a56f-147ee334fc4f";
+
+Deno.test("the cancel preview maps a brief's answer, kind and blocked reason included", () => {
+	const p = toProjectCancelPreview({
+		project_id: "7f930a97-cfa8-4784-a7d0-61c913c2f3ce",
+		kind: "project",
+		status: "active",
+		currency: "usd",
+		cancellable: true,
+		blocked: null,
+		returned_cents: 100000,
+		tickets_to_cancel: 4,
+		stages: [
+			{ stage_id: STAGE, stage_name: "Build", tiers: QUOTES },
+			{ stage_id: "not-a-uuid", stage_name: "Dropped", tiers: QUOTES },
+		],
+	});
+	ProjectCancelPreviewSchema.parse(p);
+	assertEquals(p.kind, "project");
+	assertEquals(p.currency, "USD");
+	assertEquals(p.returnedCents, 100000);
+	assertEquals(p.stages.length, 1, "a stage id that is not a uuid is dropped");
+	assertEquals(p.stages[0].tiers.map((q) => q.tier), [25, 50, 75]);
+	assertEquals(p.stages[0].tiers[0].freelancerPaidCents, 1068750);
+
+	for (const blocked of ["ended", "dispute", "sittings", "settling"] as const) {
+		const b = toProjectCancelPreview({
+			kind: "service",
+			cancellable: false,
+			blocked,
+			currency: "GBP",
+		});
+		assertEquals(b.blocked, blocked);
+		assertEquals(b.cancellable, false);
+		assertEquals(b.kind, "service");
+	}
+	const odd = toProjectCancelPreview({ cancellable: true, blocked: "frozen" });
+	assertEquals(odd.blocked, null, "an unknown reason is not trusted");
+	assertEquals(odd.kind, "project");
+});
+
+Deno.test("the cancel door's answer and its notice", () => {
+	const c = toProjectCancelled({
+		project_id: "x",
+		kind: "project",
+		status: "cancelled",
+		currency: "USD",
+		freelancer_paid_cents: 2137500,
+		fee_cents: 112500,
+		client_refunded_cents: 2350000,
+		tickets_cancelled: 4,
+		stages: [],
+	});
+	ProjectCancelledSchema.parse(c);
+	assertEquals(c.freelancerPaidCents + c.feeCents + c.clientRefundedCents, 4600000);
+	assertStringIncludes(projectCancelledMessage(c), "Project cancelled — ");
+	assertStringIncludes(projectCancelledMessage(c), "paid for the work delivered");
+	assertEquals(
+		projectCancelledMessage({
+			...c,
+			kind: "service",
+			freelancerPaidCents: 0,
+			clientRefundedCents: 0,
+		}),
+		"Service cancelled.",
+	);
+	assertStringIncludes(
+		projectCancelledMessage({ ...c, freelancerPaidCents: 0 }),
+		"refunded to your wallet",
+	);
+});
+
+Deno.test("an open dispute and money still held are 409s the dialog can name", () => {
+	const dispute = settlementRefusal({
+		code: "PD409",
+		message: "dispute_open: this payment is held",
+	}, "tiers");
+	assertEquals(dispute.status, 409);
+	assertEquals(dispute.errors, { tiers: "dispute_open" });
+	const held = settlementRefusal({
+		code: "PF409",
+		message: "This engagement holds escrow for booked sittings, which settle through each sitting.",
+	}, "tiers");
+	assertEquals(held.status, 409);
+	assertEquals(held.errors, { tiers: "settle_first" });
+	assertStringIncludes(held.message, "booked sittings");
+});
+
+Deno.test("every key the cancel mappers read is one the SQL emits, through one settle-first helper", () => {
+	const sql = Deno.readTextFileSync(new URL(SQL, REPO));
+	const preview = functionBody(sql, "projects.preview_project_cancel(");
+	const helper = functionBody(sql, "projects.fn_settle_project_escrow(");
+	const door = functionBody(sql, "projects.cancel_project(");
+	const service = functionBody(sql, "projects.cancel_service(");
+	for (
+		const key of [
+			"kind",
+			"currency",
+			"cancellable",
+			"blocked",
+			"returned_cents",
+			"tickets_to_cancel",
+			"stages",
+		]
+	) {
+		assertStringIncludes(preview, `'${key}'`, `preview_project_cancel does not emit "${key}"`);
+	}
+	for (
+		const key of [
+			"currency",
+			"freelancer_paid_cents",
+			"fee_cents",
+			"client_refunded_cents",
+			"tickets_cancelled",
+		]
+	) {
+		assertStringIncludes(helper, `'${key}'`, `fn_settle_project_escrow does not emit "${key}"`);
+	}
+	assertStringIncludes(
+		door,
+		"projects.fn_settle_project_escrow(p_project_id, p_tiers)",
+		"the door settles",
+	);
+	assertStringIncludes(door, "'kind'");
+	assertStringIncludes(service, "projects.cancel_project(", "cancel_service is the same door");
+	assertStringIncludes(helper, "finance.fn_assert_no_open_dispute", "a dispute refuses the cancel");
+	const blocked = functionBody(sql, "projects.fn_project_cancel_blocked(");
+	for (const reason of ["ended", "dispute", "sittings", "settling"]) {
+		assertStringIncludes(
+			blocked,
+			`'${reason}'`,
+			`fn_project_cancel_blocked never says "${reason}"`,
+		);
+	}
+
+	const status = Deno.readTextFileSync(
+		new URL("supabase/migrations/00001100_functions_projects_read_access.sql", REPO),
+	);
+	assertStringIncludes(
+		status,
+		"ERRCODE = 'PF409'",
+		"set_project_status no longer refuses with PF409",
+	);
+	assertStringIncludes(status, "HINT = 'cancel'");
+});
+
+Deno.test("the cancel doors are callable by a signed-in user, the helper by nobody", () => {
+	const grants = Deno.readTextFileSync(
+		new URL("supabase/migrations/00002510_permissions_function_grants.sql", REPO),
+	);
+	assert(
+		/GRANT EXECUTE ON FUNCTION projects\.preview_project_cancel \(uuid\) TO authenticated;/.test(
+			grants,
+		),
+	);
+	assert(
+		/GRANT EXECUTE ON FUNCTION projects\.cancel_project \(uuid, jsonb, text\) TO authenticated;/
+			.test(grants),
+	);
+	assert(!/GRANT EXECUTE ON FUNCTION projects\.fn_settle_project_escrow/.test(grants));
+	assert(
+		/REVOKE ALL ON FUNCTION projects\.fn_settle_project_escrow \(uuid, jsonb\) FROM PUBLIC, anon, authenticated, service_role;/
 			.test(grants),
 	);
 });

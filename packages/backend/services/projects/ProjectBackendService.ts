@@ -132,28 +132,28 @@ import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./dr
 import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
-	cancelServiceRow,
+	cancelProjectRow,
 	exitStageRow,
 	fairExitMessage,
 	previewFairExitRow,
-	previewServiceCancelRow,
+	previewProjectCancelRow,
+	projectCancelledMessage,
 	requestPaidRevisionRow,
 	reviewSubmissionRow,
-	serviceCancelledMessage,
 } from "./live-settlement.ts";
 import { recordStubReview } from "./write-store.ts";
 import type {
 	ApproveStage,
-	CancelService,
+	CancelProject,
 	CancelStageFairExit,
 	FairExitPreview,
 	PaidRevisionRaised,
-	PreviewServiceCancel,
+	PreviewProjectCancel,
 	PreviewStageFairExit,
+	ProjectCancelled,
+	ProjectCancelPreview,
 	RequestPaidRevision,
 	ReviewSubmission,
-	ServiceCancelled,
-	ServiceCancelPreview,
 	StageApproved,
 	StageExited,
 	SubmissionReviewed,
@@ -3586,27 +3586,27 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * What cancelling a bought service would settle (`projects.preview_service_cancel`, Decision #456):
-	 * what comes back at once, and three Fair Exit quotes for each stage holding claimed work. The
-	 * service's client only, refused 403 by the function for anyone else. Live only, like
-	 * {@link previewStageFairExit}: the stub store holds no escrow.
+	 * What cancelling an engagement would settle (`projects.preview_project_cancel`, Decisions #456,
+	 * #467): what comes back at once, and three Fair Exit quotes for each stage holding claimed work,
+	 * for a brief and a bought service alike. Review authority only, refused 403 by the function for
+	 * anyone else. Live only, like {@link previewStageFairExit}: the stub store holds no escrow.
 	 */
-	static async previewServiceCancel(
-		input: PreviewServiceCancel,
+	static async previewProjectCancel(
+		input: PreviewProjectCancel,
 		actor: ReadActor,
-	): Promise<ServiceResult<ServiceCancelPreview>> {
-		const denied = settlementDenied<ServiceCancelPreview>(actor, "cancel a service");
+	): Promise<ServiceResult<ProjectCancelPreview>> {
+		const denied = settlementDenied<ProjectCancelPreview>(actor, "cancel a project");
 		if (denied) return denied;
 		if (!isProjectsBackendLive() || !canReadLive(actor)) {
-			return fail(503, { message: "Cancelling a service needs the live backend." });
+			return fail(503, { message: "Cancelling a project needs the live backend." });
 		}
 		try {
-			const outcome = await previewServiceCancelRow(actor, input);
+			const outcome = await previewProjectCancelRow(actor, input);
 			if (outcome === null) return noSuchProject(input.projectId);
-			if ("refusal" in outcome) return refused<ServiceCancelPreview>(outcome.refusal);
+			if ("refusal" in outcome) return refused<ProjectCancelPreview>(outcome.refusal);
 			return ok(outcome.data);
 		} catch (error) {
-			liveFailed("previewServiceCancel", error);
+			liveFailed("previewProjectCancel", error);
 			return fail(502, {
 				message: "What cancelling settles could not be read — please try again.",
 			});
@@ -3614,36 +3614,39 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * Cancel a bought service (`projects.cancel_service`, Decision #456): every unclaimed ticket's
-	 * escrow back to the client whole, each stage holding claimed work settled under Fair Exit at the
-	 * tier chosen for it, the open tickets and stages closed, then Cancelled. The client only.
+	 * Cancel an engagement of any kind (`projects.cancel_project`, Decision #467): every unclaimed
+	 * ticket's escrow back to the client whole, each stage holding claimed work settled under Fair Exit
+	 * at the tier chosen for it, the open tickets and stages closed, then Cancelled. Review authority
+	 * only; an open dispute refuses it (409 `dispute_open`).
 	 */
-	static async cancelService(
-		input: CancelService,
+	static async cancelProject(
+		input: CancelProject,
 		actor: ReadActor,
-	): Promise<ServiceResult<ServiceCancelled>> {
-		const denied = settlementDenied<ServiceCancelled>(actor, "cancel a service");
+	): Promise<ServiceResult<ProjectCancelled>> {
+		const denied = settlementDenied<ProjectCancelled>(actor, "cancel a project");
 		if (denied) return denied;
 
-		const live = await liveWrite<ServiceCancelled>(
-			"cancelService",
+		const live = await liveWrite<ProjectCancelled>(
+			"cancelProject",
 			actor,
 			input.projectId,
-			serviceCancelledMessage,
-			(a) => cancelServiceRow(a, input),
+			projectCancelledMessage,
+			(a) => cancelProjectRow(a, input),
 			"project",
 		);
 		if (live) return live;
 
-		if (!findProjectDetail(input.projectId)) return noSuchProject(input.projectId);
+		const stub = findProjectDetail(input.projectId);
+		if (!stub) return noSuchProject(input.projectId);
 		return ok({
 			status: "cancelled",
+			kind: stub.kind,
 			currency: "USD",
 			freelancerPaidCents: 0,
 			feeCents: 0,
 			clientRefundedCents: 0,
 			ticketsCancelled: 0,
-		}, { message: "Service cancelled (simulated — no escrow moved)." });
+		}, { message: "Project cancelled (simulated — no escrow moved)." });
 	}
 	// #endregion
 

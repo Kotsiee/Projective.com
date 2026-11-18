@@ -346,6 +346,14 @@
 	opacity: 1;
 }
 
+/* Touch has no hover to reveal them, so they rest visible: the kebab carries Cancel, the only way a
+   client can end an engagement below the lane breakpoint (Decision #467). */
+@media (hover: none) {
+	.proj-card__actions {
+		opacity: 1;
+	}
+}
+
 .proj-card__star,
 .proj-card__menu {
 	position: relative;

@@ -12,7 +12,7 @@ import {
 } from "@projective/ui/navigation";
 import { StatusIcon } from "./StatusIcon.tsx";
 import { KebabIcon, OwnerRoleIcon, StarIcon, WorkerRoleIcon } from "./glyphs.tsx";
-import { canArchiveEngagement, isOwnerRole } from "../types/projects-types.ts";
+import { canArchiveEngagement, canCancelEngagement, isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -51,10 +51,12 @@ const RESTED = new Set<ProjectStatus>(["completed", "cancelled", "archived"]);
  * The actions offered by the kebab menu — only actions that DO something (root CLAUDE.md §3.11).
  * Report and Leave are absent rather than inert: neither has a backend or a product rule yet, and a
  * menu row that closes the menu and changes nothing is a control that lies. The split Open row (Open ·
- * Open in new tab · Open in new window), Copy link and Share resolve inside the card; Archive is the
- * one action routed to the parent.
+ * Open in new tab · Open in new window), Copy link and Share resolve inside the card; Cancel and
+ * Archive are routed to the parent, which confirms and writes. Cancel is the card's because the lane
+ * that also offers it is not rendered below the lane breakpoint, so at 390 px the card is the only way
+ * a client can end an engagement (Decision #467; #456 flag (d)).
  */
-export type CardMenuAction = "archive";
+export type CardMenuAction = "archive" | "cancel";
 
 /**
  * Higher-level layout zone the kebab menu must never slide under. A `bottom-end` menu triggered near
@@ -70,7 +72,7 @@ export interface ProjectCardProps {
 	active?: boolean;
 	/** Toggle the star (optimistic; real persistence lands with the live backend). */
 	onToggleStar: (id: string) => void;
-	/** A kebab-menu action was picked (archive is routed to the parent, which confirms and writes). */
+	/** A kebab-menu action was picked (cancel and archive are routed to the parent, which confirms and writes). */
 	onMenuAction?: (id: string, action: CardMenuAction) => void;
 	/** Told whether Copy link reached the clipboard. */
 	onCopied?: (ok: boolean) => void;
@@ -116,15 +118,26 @@ export function ProjectCard(
 	const isShared = item.scopeType !== "personal";
 	const hasFooter = isShared || Boolean(item.activity);
 
-	const ownerRows: MenuItem[] = canArchiveEngagement(item.kind, item.viewerRole)
-		? [{
-			key: "archive",
-			label: "Archive project",
-			icon: "archive-box",
-			danger: true,
-			command: () => onMenuAction?.(item.id, "archive"),
-		}]
-		: [];
+	const ownerRows: MenuItem[] = [
+		...(canCancelEngagement(item.kind, item.viewerRole, item.status)
+			? [{
+				key: "cancel",
+				label: item.kind === "service" ? "Cancel service" : "Cancel project",
+				icon: "close",
+				danger: true,
+				command: () => onMenuAction?.(item.id, "cancel"),
+			}]
+			: []),
+		...(canArchiveEngagement(item.kind, item.viewerRole)
+			? [{
+				key: "archive",
+				label: "Archive project",
+				icon: "archive-box",
+				danger: true,
+				command: () => onMenuAction?.(item.id, "archive"),
+			}]
+			: []),
+	];
 	const menu = composeMenu(
 		[
 			linkOpenItem({ href, label: "Open", copy: false }),

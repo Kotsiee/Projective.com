@@ -16,8 +16,13 @@ import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStagePopover, type StageAnchor } from "../components/CreateStagePopover.tsx";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
-import { CancelServiceDialog } from "../components/CancelServiceDialog.tsx";
-import { effectiveServiceRole } from "../core/service-cancel-model.ts";
+import { CancelProjectDialog } from "../components/CancelProjectDialog.tsx";
+import {
+	effectiveServiceRole,
+	isSettleFirstRefusal,
+	OPEN_PROJECT_CANCEL_EVENT,
+	projectCancelCopy,
+} from "../core/project-cancel-model.ts";
 import {
 	projectNavArchetype,
 	projectViewLinks,
@@ -58,7 +63,7 @@ import { isTaskDetail } from "../core/task-project.ts";
 import { resolveBoardAccess } from "../core/board-access.ts";
 import {
 	canArchiveEngagement,
-	canCancelService,
+	canCancelEngagement,
 	QUIET_NAV_ACTIVITY,
 } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
@@ -172,7 +177,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// The kebab's Archive project confirmation, and the write it guards while in flight.
 	const archiveOpen = useSignal<boolean>(false);
 	const archiving = useSignal<boolean>(false);
-	// The kebab's Cancel service confirmation on a bought service (Decision #456).
+	// The kebab's Cancel confirmation — a brief or a bought service (Decisions #456, #467).
 	const cancelOpen = useSignal<boolean>(false);
 	/** Mounted only when no other island has already put a stack up (they share one signal). */
 	const toastMounted = useSignal<boolean>(false);
@@ -279,6 +284,29 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		} catch { /* corrupt value — ignore, keep defaults */ }
 	}, []);
 
+	/**
+	 * Below the lane breakpoint the shell hides this lane, so Cancel moves into the Overview's header
+	 * band (`ProjectOverviewHeader`, a server component). Its button carries `data-project-cancel`;
+	 * this island — still mounted, only hidden — answers it by opening the one Cancel confirmation,
+	 * which renders in a portal and so shows whatever the lane's visibility (Decision #467). The setup
+	 * rig's Archive, refused because money is held, asks for it by {@link OPEN_PROJECT_CANCEL_EVENT}.
+	 */
+	useEffect(() => {
+		const onClick = (event: MouseEvent) => {
+			const target = event.target as Element | null;
+			if (!target?.closest?.("[data-project-cancel]")) return;
+			event.preventDefault();
+			cancelOpen.value = true;
+		};
+		const onOpen = () => (cancelOpen.value = true);
+		document.addEventListener("click", onClick);
+		globalThis.addEventListener(OPEN_PROJECT_CANCEL_EVENT, onOpen);
+		return () => {
+			document.removeEventListener("click", onClick);
+			globalThis.removeEventListener(OPEN_PROJECT_CANCEL_EVENT, onOpen);
+		};
+	}, []);
+
 	// Track the dev Context Switcher so the archetype (and thus the whole sidebar body) live-updates when
 	// the developer flips the service type — mirrors the ChannelHeader tab-set reactivity (task §2/§4).
 	useEffect(() => {
@@ -371,7 +399,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	}
 
 	function onMenuAction(action: SidebarMenuAction): void {
-		// Open and Share resolve inside the header; Archive and Cancel service write, after a confirm.
+		// Open and Share resolve inside the header; Archive and Cancel write, after a confirm.
 		if (action === "archive") archiveOpen.value = true;
 		if (action === "cancel") cancelOpen.value = true;
 	}
@@ -386,6 +414,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	 * Soft-archive the engagement (root CLAUDE.md §5 — the row and its history survive) and leave for
 	 * the feed, exactly as the setup rig's Archive does: every view in this lane addresses a project
 	 * that is no longer in circulation. A refusal stays on the page and says why, in the server's words.
+	 * Nothing archives while money is held (Decision #467): that refusal opens Cancel, which settles it.
 	 */
 	async function archiveProject(): Promise<void> {
 		if (archiving.value || !detail) return;
@@ -393,6 +422,14 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		const res = await ProjectSidebarService.archive(detail.slug);
 		archiving.value = false;
 		if (!res.ok) {
+			if (isSettleFirstRefusal(res.errors)) {
+				notify(
+					"danger",
+					res.message ?? "This project still holds escrow. Cancel it, which settles it first.",
+				);
+				cancelOpen.value = true;
+				return;
+			}
 			logger.error("Project archive failed", { slug: detail.slug, message: res.message });
 			notify("danger", res.message ?? "That did not archive — please try again.");
 			return;
@@ -490,11 +527,12 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					starred={starred.value}
 					onToggleStar={toggleStar}
 					canArchive={canArchiveEngagement(view.kind, view.viewerRole)}
-					canCancel={canCancelService(
+					canCancel={canCancelEngagement(
 						view.kind,
 						effectiveServiceRole(view.kind, view.viewerRole, seam.value?.serviceSide),
 						view.status,
 					)}
+					cancelLabel={projectCancelCopy(view.kind).commit}
 					onMenuAction={onMenuAction}
 				/>
 
@@ -604,10 +642,11 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				onAccept={() => void archiveProject()}
 			/>
 
-			<CancelServiceDialog
+			<CancelProjectDialog
 				open={cancelOpen}
 				projectId={view.slug}
 				title={view.title}
+				kind={view.kind}
 				onCancelled={() => globalThis.location.reload()}
 			/>
 

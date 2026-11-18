@@ -1459,15 +1459,22 @@ REVOKE ALL ON FUNCTION projects.fn_fair_exit_quote (uuid, integer) FROM PUBLIC, 
 REVOKE ALL ON FUNCTION projects.fn_fair_exit_quote_scoped (uuid, integer, boolean) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_fair_exit_split (bigint, integer, integer) FROM PUBLIC, anon, authenticated, service_role;
 
--- Cancelling a bought service (Decision #456): the preview and the door check the client person
--- themselves; the held-ticket read is theirs alone, and the two escrow triggers are never called.
+-- Cancelling an engagement (Decisions #456, #467): the previews and the doors check review authority
+-- themselves; the settle-first helper, the held-ticket read and the blocked read are theirs alone, and
+-- the two escrow triggers are never called.
+REVOKE ALL ON FUNCTION projects.preview_project_cancel (uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.preview_project_cancel (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.cancel_project (uuid, jsonb, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.cancel_project (uuid, jsonb, text) TO authenticated;
 REVOKE ALL ON FUNCTION projects.preview_service_cancel (uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.preview_service_cancel (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.cancel_service (uuid, jsonb, text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.cancel_service (uuid, jsonb, text) TO authenticated;
-REVOKE ALL ON FUNCTION projects.fn_service_held_tickets (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_settle_project_escrow (uuid, jsonb) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_project_held_tickets (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_project_cancel_blocked (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_activate_funded_service () FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION projects.fn_guard_escrow_on_ended_service () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_guard_escrow_on_ended_project () FROM PUBLIC, anon, authenticated, service_role;
 
 -- Internal to review_submission / approve_stage (Decision #194): the settler releases escrow and the
 -- notifier writes to anybody's inbox, so neither is callable directly.

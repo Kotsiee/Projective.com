@@ -873,6 +873,12 @@ export interface WriteRefusal {
 }
 
 /**
+ * The words `projects.set_project_status` uses when it refuses Cancelled or Archived over held escrow
+ * (PF409, Decision #467) — "This project still holds escrow. Use Cancel project, …".
+ */
+export const SETTLE_FIRST_FRAGMENT = "still holds escrow";
+
+/**
  * Map a PostgREST/plpgsql failure onto a refusal.
  *
  * A raised `insufficient_privilege` is the database saying no to THIS caller, which is a `403` and
@@ -912,6 +918,22 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 			status: 403,
 			message: clampOr(message, 200, "You cannot make that change."),
 			errors: field ? { [field]: "not_permitted" } : undefined,
+		};
+	}
+
+	// Money still held (Decision #467): `set_project_status` refuses Cancelled or Archived with PF409
+	// while any escrow is held or reserved. A conflict the client resolves through Cancel, which
+	// settles the escrow first — not a rule they broke. Matched on the sentence because the write batch
+	// re-raises with its own HINT, so `settle_first` is what tells the surface to offer Cancel.
+	if (message.includes(SETTLE_FIRST_FRAGMENT)) {
+		return {
+			status: 409,
+			message: clampOr(
+				message,
+				200,
+				"This project still holds escrow. Cancel it, which settles it first.",
+			),
+			errors: field ? { [field]: "settle_first" } : undefined,
 		};
 	}
 

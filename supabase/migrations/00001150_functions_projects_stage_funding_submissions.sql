@@ -1266,8 +1266,9 @@ END;
 $$;
 
 -- The quote itself. p_claimed_only narrows the stage's held tickets to those somebody holds (an
--- assignee): projects.cancel_service refunds every other ticket whole before it ends the stage
--- (Decision #456), so its preview quotes exactly what cancel_stage_fair_exit then settles. Internal.
+-- assignee): projects.fn_settle_project_escrow refunds every other ticket whole before it ends the
+-- stage (Decisions #456, #467), so the cancel preview quotes exactly what cancel_stage_fair_exit then
+-- settles. Internal.
 CREATE OR REPLACE FUNCTION projects.fn_fair_exit_quote_scoped(p_stage_id uuid, p_tier integer, p_claimed_only boolean)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1534,14 +1535,16 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 
 -- #endregion
 
--- #region Decision #456 — a bought service: activated by its money, cancelled by settling it.
--- A bought service is a seller-owned engagement with a client (`client_user_id` set, Decision #427);
--- a session engagement keeps that column NULL and is not one. It has no Publish: its status follows
--- the money. Its tickets holding escrow, one row per (ticket, stage), and whether the work was taken:
--- CLAIMED means somebody holds the ticket (an assignee). The escrow's payee cannot say so here — the
--- seller is seated on every stage, so a hold binds the seller as payee at funding, before any claim
--- (finance.fn_ticket_payee) — and an unclaimed ticket earned nothing. Internal.
-CREATE OR REPLACE FUNCTION projects.fn_service_held_tickets(p_project_id uuid)
+-- #region Decisions #456, #467 — an engagement ends holding nothing: cancelling settles its money first.
+-- Every project kind — a client's brief, a bought service (`client_user_id` set, Decision #427), a
+-- One-Off or Task — is cancelled through ONE settle-first door (Decision #467, the owner's ruling A on
+-- PRD-F22), and set_project_status refuses Cancelled or Archived while anything is still held or
+-- reserved, so either state always means "settled". The tickets holding escrow, one row per (ticket,
+-- stage), and whether the work was taken: CLAIMED means somebody holds the ticket (an assignee). The
+-- escrow's payee is not the test, because when a payee binds differs by kind (a brief's prepaid hold
+-- binds at the claim, #428; a bought service's at funding, #456 (b)), and an unclaimed ticket earned
+-- nothing, so it goes back whole. Internal.
+CREATE OR REPLACE FUNCTION projects.fn_project_held_tickets(p_project_id uuid)
 RETURNS TABLE (
     ticket_id uuid, stage_id uuid, stage_name text, sort_order integer, stage_status stage_status,
     claimed boolean, held_cents bigint
@@ -1561,15 +1564,65 @@ AS $$
      ORDER BY ps.sort_order, tk.id;
 $$;
 
--- What cancelling a bought service settles, read without moving anything: each stage holding claimed
+-- Why an engagement cannot be cancelled right now, or NULL when it can. In the order the door checks:
+--   `ended`    — it is completed, cancelled or archived;
+--   `dispute`  — a dispute stands against money it holds: the ruling pays or refunds that money, never
+--                this door (finance.fn_assert_no_open_dispute, PD409, FBP DB3);
+--   `sittings` — it holds a session's per-sitting escrow, which settles through the sitting handshake
+--                (Decision #211) and which no Fair Exit tier can split;
+--   `settling` — a stage holding claimed work is approved and not yet paid, which
+--                cancel_stage_fair_exit refuses.
+-- Read by the preview and re-checked by the door under the project lock. Internal.
+CREATE OR REPLACE FUNCTION projects.fn_project_cancel_blocked(p_project_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, finance
+AS $$
+DECLARE
+    v_status project_status;
+BEGIN
+    SELECT p.status INTO v_status FROM projects.projects p WHERE p.id = p_project_id;
+    IF v_status IN ('completed'::project_status, 'cancelled'::project_status, 'archived'::project_status) THEN
+        RETURN 'ended';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM finance.escrows e
+          JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+         WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
+           AND finance.fn_escrow_has_open_dispute(e.id)
+    ) THEN
+        RETURN 'dispute';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM finance.escrows e
+          JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+         WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved') AND e.ticket_id IS NULL
+    ) THEN
+        RETURN 'sittings';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM projects.fn_project_held_tickets(p_project_id) h
+         WHERE h.claimed
+           AND h.stage_status NOT IN ('open'::stage_status, 'assigned'::stage_status,
+                                      'in_progress'::stage_status, 'submitted'::stage_status,
+                                      'revisions'::stage_status)
+    ) THEN
+        RETURN 'settling';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- What cancelling an engagement settles, read without moving anything: each stage holding claimed
 -- work with its three Fair Exit quotes over the claimed tickets alone (fn_fair_exit_quote_scoped —
 -- exactly what cancel_stage_fair_exit settles once the door has refunded the rest), and what goes
 -- back to the client at once whatever is chosen: every unclaimed ticket's held escrow and every
--- later-stage reservation (Decision #430). The client person only, like the door. `cancellable` is
--- false, with `blocked` saying why, for an engagement that has ended (`ended`) or a stage holding
--- claimed work mid-settlement (`settling`: approved and not yet paid), which cancel_stage_fair_exit
--- refuses.
-CREATE OR REPLACE FUNCTION projects.preview_service_cancel(p_project_id uuid)
+-- later-stage reservation (Decision #430). Review authority, like the door; the provider and anyone
+-- else `42501`. `cancellable` is false, with `blocked` saying why (projects.fn_project_cancel_blocked).
+-- `kind` is `service` for a bought service and `project` otherwise, so one dialog words both.
+CREATE OR REPLACE FUNCTION projects.preview_project_cancel(p_project_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -1584,7 +1637,7 @@ DECLARE
     v_returned bigint;
 BEGIN
     IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Sign in to cancel a service.' USING ERRCODE = '42501';
+        RAISE EXCEPTION 'Sign in to cancel a project.' USING ERRCODE = '42501';
     END IF;
     SELECT p.status, p.client_user_id, upper(COALESCE(p.currency, 'USD'))
       INTO v_status, v_client, v_currency
@@ -1594,10 +1647,7 @@ BEGIN
         RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
     END IF;
     IF NOT projects.can_review_project(p_project_id) THEN
-        RAISE EXCEPTION 'Only the client may cancel this service.' USING ERRCODE = '42501';
-    END IF;
-    IF v_client IS NULL THEN
-        RAISE EXCEPTION 'Only a bought service is cancelled this way.' USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Only the client may cancel this project.' USING ERRCODE = '42501';
     END IF;
 
     v_currency := COALESCE(
@@ -1607,29 +1657,20 @@ BEGIN
           ORDER BY e.id LIMIT 1),
         v_currency
     );
-    v_blocked := CASE
-        WHEN v_status IN ('completed'::project_status, 'cancelled'::project_status, 'archived'::project_status)
-            THEN 'ended'
-        WHEN EXISTS (
-            SELECT 1 FROM projects.fn_service_held_tickets(p_project_id) h
-             WHERE h.claimed
-               AND h.stage_status NOT IN ('open'::stage_status, 'assigned'::stage_status,
-                                          'in_progress'::stage_status, 'submitted'::stage_status,
-                                          'revisions'::stage_status)
-        ) THEN 'settling'
-    END;
+    v_blocked := projects.fn_project_cancel_blocked(p_project_id);
 
     v_returned := COALESCE((
-        SELECT SUM(h.held_cents)::bigint FROM projects.fn_service_held_tickets(p_project_id) h WHERE NOT h.claimed
+        SELECT SUM(h.held_cents)::bigint FROM projects.fn_project_held_tickets(p_project_id) h WHERE NOT h.claimed
     ), 0) + COALESCE((
         SELECT SUM(e.amount_cents)::bigint
           FROM finance.escrows e
           JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-         WHERE ps.project_id = p_project_id AND e.status = 'reserved'
+         WHERE ps.project_id = p_project_id AND e.status = 'reserved' AND e.ticket_id IS NOT NULL
     ), 0);
 
     RETURN jsonb_build_object(
         'project_id', p_project_id,
+        'kind', CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END,
         'status', v_status,
         'currency', v_currency,
         'cancellable', v_blocked IS NULL,
@@ -1646,39 +1687,67 @@ BEGIN
                                    FROM unnest(ARRAY[25, 50, 75]) AS t(tier))
                    ) ORDER BY s.sort_order)
               FROM (SELECT DISTINCT h.stage_id, h.stage_name, h.sort_order
-                      FROM projects.fn_service_held_tickets(p_project_id) h
+                      FROM projects.fn_project_held_tickets(p_project_id) h
                      WHERE h.claimed) s
         ), '[]'::jsonb)
     );
 END;
 $$;
 
--- Cancel a bought service (Decision #456, ruling PRD-F22 for services): settle, then Cancelled. Every
--- unclaimed ticket's held escrow goes back to its payer whole (finance.fn_refund_ticket_escrow); then
--- every stage still holding claimed work ends under Fair Exit through projects.cancel_stage_fair_exit,
--- the one settlement door, paying the seller p_tiers' share for that stage (25, 50 or 75, required
--- for each such stage and checked before anything moves). Every reservation still waiting on a later
--- stage is refunded (finance.fn_refund_ticket_reservations), the tickets and stages still open close
--- as `cancelled`, a round awaiting payment is moot, the seller is told, and set_project_status lands it
--- `cancelled` — whose guard re-checks that nothing is held or reserved, so a hold that slipped past
--- this door aborts the whole cancellation instead of being stranded. Nothing is deleted; seats are
--- kept so both sides keep the engagement's history. The project row is locked first, so two
--- cancellations settle once.
-CREATE OR REPLACE FUNCTION projects.cancel_service(
+-- The bought-service read (Decision #456), kept for its callers: preview_project_cancel for a project
+-- whose `client_user_id` is set, 22023 for anything else.
+CREATE OR REPLACE FUNCTION projects.preview_service_cancel(p_project_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, auth
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a service.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.id = p_project_id) THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may cancel this service.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.id = p_project_id AND p.client_user_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'Only a bought service is cancelled this way.' USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    RETURN projects.preview_project_cancel(p_project_id);
+END;
+$$;
+
+-- The settle-first helper (Decision #467): the money half of every cancellation, and the only place
+-- it is written. Checked before anything moves: `p_tiers` is an object; the engagement is not blocked
+-- (fn_project_cancel_blocked — an open dispute refuses through fn_assert_no_open_dispute, PD409, a
+-- session's sitting escrow PF409, a stage mid-payment 55000); and every stage holding claimed work has
+-- a tier of 25, 50 or 75 (22023 `tier_required`, naming the stages). Then: every unclaimed ticket's
+-- held escrow goes back to its payer whole (finance.fn_refund_ticket_escrow); every stage holding
+-- claimed work ends under Fair Exit through projects.cancel_stage_fair_exit, the one settlement door,
+-- at that stage's tier (the client's pick until PM-WP4a, Decision #456); every reservation still
+-- waiting on a later stage is refunded (finance.fn_refund_ticket_reservations); the tickets and stages
+-- still open close as `cancelled`; and a round awaiting payment is moot. Every ledger line is an
+-- existing reason (`escrow_refund`, `fair_exit_release`, `fair_exit_refund`), so paid + fee + refunded
+-- equals what was held. Returns those figures; it does not change the project's status. Internal: the
+-- caller has checked review authority and holds the project row's lock.
+CREATE OR REPLACE FUNCTION projects.fn_settle_project_escrow(
     p_project_id uuid,
-    p_tiers jsonb DEFAULT '{}'::jsonb,
-    p_reason text DEFAULT NULL
+    p_tiers jsonb DEFAULT '{}'::jsonb
 )
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, projects, finance, comms, org, auth
+SET search_path = public, projects, finance, auth
 AS $$
 DECLARE
-    v_project record;
     v_tiers jsonb := COALESCE(p_tiers, '{}'::jsonb);
+    v_blocked text;
     v_missing jsonb;
     v_currency text;
+    v_reason text;
     s record;
     t record;
     v_tier integer;
@@ -1690,36 +1759,38 @@ DECLARE
     v_reserved bigint := 0;
     v_closed integer := 0;
 BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Sign in to cancel a service.' USING ERRCODE = '42501';
-    END IF;
-    IF NOT projects.can_review_project(p_project_id) THEN
-        RAISE EXCEPTION 'Only the client may cancel this service.' USING ERRCODE = '42501';
-    END IF;
-
-    SELECT p.id, p.status, p.client_user_id, p.owner_user_id, p.title, p.slug, upper(COALESCE(p.currency, 'USD')) AS currency
-      INTO v_project
-      FROM projects.projects p
-     WHERE p.id = p_project_id
-       FOR UPDATE;
-    IF v_project.id IS NULL THEN
-        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
-    END IF;
-    IF v_project.client_user_id IS NULL THEN
-        RAISE EXCEPTION 'Only a bought service is cancelled this way.' USING ERRCODE = 'invalid_parameter_value';
-    END IF;
-    IF v_project.status IN ('completed'::project_status, 'cancelled'::project_status, 'archived'::project_status) THEN
-        RAISE EXCEPTION 'This service is already % and can no longer be cancelled.', v_project.status
-            USING ERRCODE = 'object_not_in_prerequisite_state';
-    END IF;
     IF jsonb_typeof(v_tiers) <> 'object' THEN
         RAISE EXCEPTION 'Tiers are an object of stage id to 25, 50 or 75.' USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+
+    v_blocked := projects.fn_project_cancel_blocked(p_project_id);
+    IF v_blocked = 'ended' THEN
+        RAISE EXCEPTION 'This project has already ended and can no longer be cancelled.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    ELSIF v_blocked = 'dispute' THEN
+        FOR t IN
+            SELECT e.id FROM finance.escrows e
+              JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+             WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
+             ORDER BY e.id
+        LOOP
+            PERFORM finance.fn_assert_no_open_dispute(t.id);
+        END LOOP;
+    ELSIF v_blocked = 'sittings' THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF409',
+            MESSAGE = 'This engagement holds escrow for booked sittings, which settle through each sitting. Settle or refund them first, then cancel.',
+            DETAIL = jsonb_build_object('reason', 'sittings')::text,
+            HINT = 'sittings';
+    ELSIF v_blocked = 'settling' THEN
+        RAISE EXCEPTION 'A stage is being paid out right now. Try again once that settles.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     SELECT jsonb_agg(jsonb_build_object('stage_id', m.stage_id, 'stage_name', m.stage_name) ORDER BY m.sort_order)
       INTO v_missing
       FROM (SELECT DISTINCT h.stage_id, h.stage_name, h.sort_order
-              FROM projects.fn_service_held_tickets(p_project_id) h
+              FROM projects.fn_project_held_tickets(p_project_id) h
              WHERE h.claimed AND COALESCE(v_tiers->>(h.stage_id::text), '') NOT IN ('25', '50', '75')) m;
     IF v_missing IS NOT NULL THEN
         RAISE EXCEPTION 'Choose how much of the work was delivered on every stage with claimed work.'
@@ -1727,17 +1798,21 @@ BEGIN
                   DETAIL = jsonb_build_object('reason', 'tier_required', 'stages', v_missing)::text;
     END IF;
 
+    SELECT CASE WHEN p.client_user_id IS NOT NULL THEN 'service_cancelled' ELSE 'project_cancelled' END,
+           upper(COALESCE(p.currency, 'USD'))
+      INTO v_reason, v_currency
+      FROM projects.projects p WHERE p.id = p_project_id;
     v_currency := COALESCE(
         (SELECT upper(e.currency) FROM finance.escrows e
            JOIN projects.project_stages ps ON ps.id = e.project_stage_id
           WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
           ORDER BY e.id LIMIT 1),
-        v_project.currency
+        v_currency
     );
 
     FOR t IN
         SELECT h.ticket_id, SUM(h.held_cents)::bigint AS held_cents
-          FROM projects.fn_service_held_tickets(p_project_id) h
+          FROM projects.fn_project_held_tickets(p_project_id) h
          WHERE NOT h.claimed
          GROUP BY h.ticket_id
          ORDER BY h.ticket_id
@@ -1748,7 +1823,7 @@ BEGIN
 
     FOR s IN
         SELECT DISTINCT h.stage_id, h.stage_name, h.sort_order
-          FROM projects.fn_service_held_tickets(p_project_id) h
+          FROM projects.fn_project_held_tickets(p_project_id) h
          WHERE h.claimed
          ORDER BY h.sort_order
     LOOP
@@ -1779,7 +1854,7 @@ BEGIN
          WHERE ps.project_id = p_project_id AND e.status = 'reserved' AND e.ticket_id IS NOT NULL
          ORDER BY e.ticket_id
     LOOP
-        PERFORM finance.fn_refund_ticket_reservations(t.ticket_id, NULL, 'service_cancelled');
+        PERFORM finance.fn_refund_ticket_reservations(t.ticket_id, NULL, v_reason);
     END LOOP;
 
     FOR t IN
@@ -1796,7 +1871,7 @@ BEGIN
         VALUES
             (t.id, auth.uid(), 'status_changed', t.current_stage_id, t.current_stage_id, t.status,
              'cancelled'::ticket_status,
-             jsonb_build_object('from_status', t.status, 'to_status', 'cancelled', 'reason', 'service_cancelled'));
+             jsonb_build_object('from_status', t.status, 'to_status', 'cancelled', 'reason', v_reason));
         v_closed := v_closed + 1;
     END LOOP;
 
@@ -1811,23 +1886,7 @@ BEGIN
       FROM projects.project_stages ps
      WHERE ps.id = r.project_stage_id AND ps.project_id = p_project_id AND r.status = 'awaiting_payment';
 
-    PERFORM projects.set_project_status(
-        p_project_id, 'cancelled'::project_status,
-        COALESCE(NULLIF(left(btrim(COALESCE(p_reason, '')), 400), ''), 'Cancelled by the client')
-    );
-
-    PERFORM comms.fn_notify(
-        v_project.owner_user_id, 'project_cancelled', 'Service cancelled',
-        format('"%s" was cancelled by its client. Claimed work was settled under Fair Exit and the rest of the escrow went back to the client.',
-               COALESCE(v_project.title, 'Your service')),
-        'projects', p_project_id,
-        jsonb_build_object('currency', v_currency, 'freelancer_paid_cents', v_paid, 'stages', v_stages),
-        auth.uid(), 'project', p_project_id, NULL, '/projects/' || v_project.slug
-    );
-
     RETURN jsonb_build_object(
-        'project_id', p_project_id,
-        'status', 'cancelled',
         'currency', v_currency,
         'stages', v_stages,
         'freelancer_paid_cents', v_paid,
@@ -1835,6 +1894,138 @@ BEGIN
         'client_refunded_cents', v_refunded + v_reserved,
         'tickets_cancelled', v_closed
     );
+END;
+$$;
+
+-- Cancel an engagement of any kind (Decision #467): settle, then Cancelled. Review authority only (the
+-- client person, or a member of the paying client business with spend authority); a provider is
+-- refused 42501, as is anyone else. The project row is locked first, so two cancellations settle once;
+-- projects.fn_settle_project_escrow moves the money; set_project_status lands it `cancelled`, whose
+-- guard re-checks that nothing is held or reserved, so a hold that slipped past the helper aborts the
+-- whole cancellation instead of being stranded. Nothing is deleted; seats are kept, so both sides keep
+-- the engagement's history. The other side is told: a bought service's seller, or every person holding
+-- a live seat on a brief.
+CREATE OR REPLACE FUNCTION projects.cancel_project(
+    p_project_id uuid,
+    p_tiers jsonb DEFAULT '{}'::jsonb,
+    p_reason text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, finance, comms, org, auth
+AS $$
+DECLARE
+    v_project record;
+    v_settled jsonb;
+    v_service boolean;
+    a record;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a project.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may cancel this project.' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT p.id, p.status, p.client_user_id, p.owner_user_id, p.title, p.slug
+      INTO v_project
+      FROM projects.projects p
+     WHERE p.id = p_project_id
+       FOR UPDATE;
+    IF v_project.id IS NULL THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    v_service := v_project.client_user_id IS NOT NULL;
+    IF v_project.status IN ('completed'::project_status, 'cancelled'::project_status, 'archived'::project_status) THEN
+        RAISE EXCEPTION 'This % is already % and can no longer be cancelled.',
+            CASE WHEN v_service THEN 'service' ELSE 'project' END, v_project.status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    v_settled := projects.fn_settle_project_escrow(p_project_id, p_tiers);
+
+    PERFORM projects.set_project_status(
+        p_project_id, 'cancelled'::project_status,
+        COALESCE(NULLIF(left(btrim(COALESCE(p_reason, '')), 400), ''), 'Cancelled by the client')
+    );
+
+    IF v_service THEN
+        PERFORM comms.fn_notify(
+            v_project.owner_user_id, 'project_cancelled', 'Service cancelled',
+            format('"%s" was cancelled by its client. Claimed work was settled under Fair Exit and the rest of the escrow went back to the client.',
+                   COALESCE(v_project.title, 'Your service')),
+            'projects', p_project_id,
+            jsonb_build_object('currency', v_settled->>'currency',
+                               'freelancer_paid_cents', (v_settled->>'freelancer_paid_cents')::bigint,
+                               'stages', v_settled->'stages'),
+            auth.uid(), 'project', p_project_id, NULL, '/projects/' || v_project.slug
+        );
+    ELSE
+        FOR a IN
+            SELECT DISTINCT u.uid
+              FROM (
+                  SELECT sa.freelancer_profile_id AS uid
+                    FROM projects.stage_assignments sa
+                    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                   WHERE ps.project_id = p_project_id AND sa.status IN ('assigned', 'accepted')
+                     AND sa.assignee_type = 'freelancer'
+                  UNION
+                  SELECT tm.user_id
+                    FROM projects.stage_assignments sa
+                    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                    JOIN org.team_members tm ON tm.team_id = sa.team_id AND tm.status = 'active'
+                   WHERE ps.project_id = p_project_id AND sa.status IN ('assigned', 'accepted')
+                     AND sa.assignee_type = 'team'
+              ) u
+             WHERE u.uid IS NOT NULL AND u.uid IS DISTINCT FROM auth.uid()
+             ORDER BY u.uid
+        LOOP
+            PERFORM comms.fn_notify(
+                a.uid, 'project_cancelled', 'Project cancelled',
+                format('"%s" was cancelled by its client. Claimed work was settled under Fair Exit and the rest of the escrow went back to the client.',
+                       COALESCE(v_project.title, 'A project you work on')),
+                'projects', p_project_id,
+                jsonb_build_object('currency', v_settled->>'currency', 'stages', v_settled->'stages'),
+                auth.uid(), 'project', p_project_id, NULL, '/projects/' || v_project.slug
+            );
+        END LOOP;
+    END IF;
+
+    RETURN v_settled || jsonb_build_object(
+        'project_id', p_project_id,
+        'kind', CASE WHEN v_service THEN 'service' ELSE 'project' END,
+        'status', 'cancelled'
+    );
+END;
+$$;
+
+-- Cancel a bought service (Decision #456), kept for its callers: projects.cancel_project for a project
+-- whose `client_user_id` is set, 22023 for anything else.
+CREATE OR REPLACE FUNCTION projects.cancel_service(
+    p_project_id uuid,
+    p_tiers jsonb DEFAULT '{}'::jsonb,
+    p_reason text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, auth
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a service.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may cancel this service.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.id = p_project_id) THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.id = p_project_id AND p.client_user_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'Only a bought service is cancelled this way.' USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    RETURN projects.cancel_project(p_project_id, p_tiers, p_reason);
 END;
 $$;
 
@@ -1879,26 +2070,27 @@ BEGIN
 END;
 $$;
 
--- No escrow is held or reserved on a bought service that was cancelled or archived: the cancellation
--- settled everything, and new money on an ended engagement would have no way back but a dispute. A
--- completed one stays fundable — a finished engagement may be extended (PRODUCT_SPEC §Extension Logic).
--- BEFORE INSERT ON finance.escrows (00001830).
-CREATE OR REPLACE FUNCTION projects.fn_guard_escrow_on_ended_service()
+-- No escrow is held or reserved on an engagement that was cancelled or archived (Decisions #456,
+-- #467, every project kind): the cancellation settled everything, and new money on an ended engagement
+-- would have no way back but a dispute. A completed one stays fundable — a finished engagement may be
+-- extended (PRODUCT_SPEC §Extension Logic). BEFORE INSERT ON finance.escrows (00001830).
+CREATE OR REPLACE FUNCTION projects.fn_guard_escrow_on_ended_project()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, projects
 AS $$
+DECLARE
+    v_client uuid;
+    v_status project_status;
 BEGIN
-    IF EXISTS (
-        SELECT 1
-          FROM projects.project_stages ps
-          JOIN projects.projects p ON p.id = ps.project_id
-         WHERE ps.id = NEW.project_stage_id
-           AND p.client_user_id IS NOT NULL
-           AND p.status IN ('cancelled'::project_status, 'archived'::project_status)
-    ) THEN
-        RAISE EXCEPTION 'This service has ended, so nothing more can be funded on it.'
+    SELECT p.client_user_id, p.status INTO v_client, v_status
+      FROM projects.project_stages ps
+      JOIN projects.projects p ON p.id = ps.project_id
+     WHERE ps.id = NEW.project_stage_id;
+    IF v_status IN ('cancelled'::project_status, 'archived'::project_status) THEN
+        RAISE EXCEPTION 'This % has ended, so nothing more can be funded on it.',
+            CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END
             USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
     RETURN NEW;

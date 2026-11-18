@@ -661,8 +661,18 @@ has claimed, and every later stage the client prepaid, comes back to the client'
 the seller has claimed, in progress or in review, is settled under Fair Exit at the share of each
 stage the client says was delivered (25, 50 or 75%, until a derived floor replaces the choice). Then
 the service is Cancelled and its open tickets and stages close. Nothing is deleted, both sides keep
-the record, and a cancelled service takes no more money. Cancelling a client's own project is not
-ruled yet (PRD-F22).
+the record, and a cancelled service takes no more money.
+
+**Every engagement settles its money before it ends (Decision #467).** The rule above holds for every
+project kind: a client's own brief, a bought service, a One-Off or a Task. Cancelling one returns
+unclaimed money whole and settles claimed work under Fair Exit at the share the client picks for each
+stage, then the project is Cancelled. Archiving puts a settled engagement away, so it is refused
+while any escrow is still held or reserved, and the client is offered Cancel instead. Cancelled and
+Archived therefore always mean "settled": no state leaves money stranded. An open dispute on money the
+project holds stops the cancellation; the dispute's ruling settles that money, and the client cancels
+after. A session's booked sittings settle sitting by sitting, so an engagement holding them is
+cancelled once they are settled. The client cancels from the project's menu or from its card in the
+projects list, so it works on a phone too.
 
 **Who adds a stage (Decision #421).** On a project the client architected, the client adds stages to
 it. Once the client has added a freelancer's service, its stages are the seller's template, so only a

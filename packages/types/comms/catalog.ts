@@ -77,6 +77,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"submission.auto_approved",
 	"project.handover",
 	"project.completed",
+	"project.cancelled",
 	"project.member_joined",
 	"application.received",
 	"application.accepted",
@@ -224,6 +225,7 @@ export const NOTIFICATION_TYPE_ALIASES: Readonly<Record<string, KnownNotificatio
 	stage_approved: "stage.approved",
 	stage_cancelled: "stage.cancelled",
 	project_handover: "project.handover",
+	project_cancelled: "project.cancelled",
 };
 
 /** Resolves a canonical or legacy key to its canonical form. Total — unknown keys pass through. */

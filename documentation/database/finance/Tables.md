@@ -147,15 +147,15 @@ paid in its own currency.
 Zod row schema: `EscrowSchema` (`@projective/types/finance`, `ledger.ts`). Every finance row schema is
 held to its table column for key by `packages/types/finance/finance-tables.contract.test.ts`.
 
-**Triggers (Decision #456, `00001830`).** `trg_escrows_ended_service_guard` (`BEFORE INSERT`, a
-`held` or `reserved` row with a stage) refuses new escrow on a bought service that is `cancelled` or
-`archived` (`55000`). `trg_escrows_activate_funded_service` (`AFTER INSERT OR UPDATE OF status`, a
+**Triggers (Decisions #456, #467, `00001830`).** `trg_escrows_ended_project_guard` (`BEFORE INSERT`,
+a `held` or `reserved` row with a stage) refuses new escrow on an engagement of any kind that is
+`cancelled` or `archived` (`55000`). `trg_escrows_activate_funded_service` (`AFTER INSERT OR UPDATE OF status`, a
 `held` row with a stage) moves a bought Pipeline service `draft → active` at its first held escrow.
 Both are `projects.*` functions ([projects/Functions.md](../projects/Functions.md) § A bought
 service). On a bought service the payee is **not** unbound until the claim: the seller is seated on
 every stage, so `fn_ticket_payee` binds them when the escrow is held, and "prepaid"
-(`payee_id IS NULL`) never describes one — `projects.cancel_service` reads "claimed" from the
-ticket's assignee instead.
+(`payee_id IS NULL`) never describes one — the cancel door (`projects.fn_settle_project_escrow`,
+#467) reads "claimed" from the ticket's assignee instead, for every project kind.
 
 **One held base escrow per ticket (Decision #189).** `uq_escrows_ticket_base_held` is a partial
 UNIQUE index on `(ticket_id) WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL`:

@@ -2,6 +2,7 @@ import { signal } from "@preact/signals";
 import type { ProjectRules, ProjectSetup, UpdateProject } from "../types/projects-types.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { isSettleFirstRefusal, OPEN_PROJECT_CANCEL_EVENT } from "./project-cancel-model.ts";
 import { markSetupCommitted, setupBaseline, setupDraft } from "./setup-store.ts";
 import { firstBlocker } from "./setup-validation.ts";
 import { isOnline, markReachable, watchNetwork } from "@web/utils/network.ts";
@@ -455,6 +456,10 @@ export async function archiveSetup(): Promise<boolean> {
 	setupSaving.value = false;
 	if (!res.ok) {
 		reportError(res.message ?? "That did not archive — please try again.");
+		// Nothing archives while money is held (Decision #467): Cancel settles it, so open it here too.
+		if (isSettleFirstRefusal(res.errors)) {
+			globalThis.dispatchEvent(new CustomEvent(OPEN_PROJECT_CANCEL_EVENT));
+		}
 		return false;
 	}
 	globalThis.location.href = "/projects";
