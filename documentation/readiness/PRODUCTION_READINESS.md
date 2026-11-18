@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **54%** |           64 | 31 |  7 | 26 |          11 |
-| **Production**   | **37%** |          137 | 39 | 18 | 80 |          21 |
+| **UAT**          | **57%** |           64 | 32 |  7 | 25 |          10 |
+| **Production**   | **38%** |          137 | 40 | 18 | 79 |          20 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -56,7 +56,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | C. Security & access control       |   31 | 13 |  4 | 14 |   55% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   13 |  2 |  1 | 10 |   17% |
-| F. Money, ledger & reconciliation  |   22 |  5 |  3 | 14 |   34% |
+| F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -70,8 +70,8 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 - **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E2 + PRD-E3 (chat send door and live refresh) →
   PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
-  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 + PRD-F24 (claim sweep, ghosting
-  timer, a service's unclaimed escrow) → PRD-G6 (hosted cron secrets) → PRD-F5 (dispute freeze).
+  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 (claim sweep, ghosting timer) → PRD-G6
+  (hosted cron secrets) → PRD-F5 (dispute freeze).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
   publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
   period) · PRD-F17 (live Stripe run; #476) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
@@ -213,7 +213,7 @@ Work orders for every open row, with the run order:
 | PRD-F21 | A live FX rate feed with a staleness mark                                     | ❌     | High     | PROD | Rates come from the seed only; no staleness mark (C6)                                                                                                                                                                            | DB17             |
 | PRD-F22 | Cancelling or archiving a project settles its escrow first                    | ✅     | Critical | UAT  | #479 (MR2, ruling #467): every kind cancels through one settle-first door (`projects.cancel_project` → `fn_settle_project_escrow`; an open dispute refuses, PD409) and `set_project_status` refuses Cancelled or Archived while anything is held (PF409); `brief_cancel.sql` + `service_cancel.sql`; live at 1440 and 390 px | MR2 |
 | PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"); with the claim TTL paused (PRD-G2), funded work can sit held indefinitely                                                                              | PM-GH1           |
-| PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ❌     | Critical | UAT  | The seller's seat binds the payee at funding (`fn_ticket_payee`), so the prepaid TTL never sweeps an unclaimed ticket and `approve_stage` or a stage Fair Exit would pay it out (#456 (b))                                       | 🧑                |
+| PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ✅     | Critical | UAT  | #474 (MR1, ruling #466): no payee binds until somebody holds the ticket, on every kind of project (`fn_ticket_payee`), so the prepaid TTL, `approve_stage` and a stage Fair Exit refund an unclaimed escrow whole; an unclaimed ticket can't enter work (`PF402` `unclaimed`). `service_unclaimed_escrow.sql` + a live run | MR1 (#466)       |
 
 ## G. Scheduled jobs & operations
 
@@ -309,7 +309,7 @@ Work orders for every open row, with the run order:
 | Legal document sign-off                                                                | PRD-M1             | Pending counsel                                    |
 | AML posture; leaving a failed payout in Stripe (M9)                                    | PRD-M6, PRD-F11    | Pending counsel (#336 I1, #337); M9's brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q2 (#473) |
 | Cancel or archive with held escrow: settle first, or refuse                            | PRD-F22            | Ruled (#456 services, #467 briefs): settle first, archive refused while held; built for every kind (#479) |
-| A bought service's unclaimed escrow is bound to the seller at funding                  | PRD-F24            | New, #456 flag (b)                                 |
+| A bought service's unclaimed escrow is bound to the seller at funding                  | PRD-F24            | Ruled 2026-11-18 (#466): A, the payee binds at the claim for every kind; built (#474) |
 | Manual Assignment: PRODUCT_SPEC §Assignment Modes says it ships; nothing calls it      | USER_FLOWS PJ-13   | Spec ↔ code gap: build, or re-scope the spec       |
 | Project completion: the handover rule assumes a completion step the app cannot perform | USER_FLOWS PJ-40   | Spec ↔ code gap                                    |
 | Plan gates while nothing can be bought (`business_plan_gates_enforced` is on)          | PRD-F14            | Ruled 2026-11-18 (#472): A, gates off for UAT and back on in SBP S4; the `00005001` switch is not made yet |
@@ -368,3 +368,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | #478 (a) ruled (owner): the `/meet` GET join stays; PRD-C30 ❌ → ⏸ | 58% | 54% |  35% |
 | 2026-11-18 | MR7 (#473): no row flips; PRD-F15 stays ❌ (counsel brief written; escrow-age reader built) | 58% | 52% |  33% |
 | 2026-11-18 | SAC1 (#477): PRD-C6, C7, C9, C10 ❌ → ✅ (deny-by-default EXECUTE, one probe over every schema); new PRD-C26–C29 ❌ | 58% | 54% |  37% |
+| 2026-11-18 | MR1 (#474): PRD-F24 ❌ → ✅ (an unclaimed escrow binds nobody until a claim: refunded, never paid out) | 58% | 57% |  38% |

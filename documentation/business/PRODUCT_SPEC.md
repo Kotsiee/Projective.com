@@ -53,7 +53,8 @@ This format is used for tangible work outcomes. It merges traditional "File-base
 - **Workflow:**
   1. **Initiation:** Escrow is held before work starts — when the Client funds the ticket or its whole
      stage (prepaid, Decision #197), or at the latest when the Freelancer claims it. A ticket cannot
-     move to "In Progress" without it (§Escrow Lifecycle for Tickets).
+     move to "In Progress" without it (§Escrow Lifecycle for Tickets), nor without somebody holding
+     it: a funded ticket nobody has claimed starts only when someone claims it (Decision #466).
   2. **Submission:** Freelancer checks off completed tasks and attaches any relevant files. Until it
      is sent, a draft is the freelancer's own and their team's: the client sees it only once it is
      submitted (Decision #338, ruling P5 (d)). **Not built yet:** today a reviewer can read an
@@ -615,7 +616,10 @@ the freelancer’s pre-set workflow.
 **The seller owns the engagement; the buyer is its client (Decision #427).** Instantiating a service
 makes the freelancer (or their team) the project's owner and records the buyer as its client — the
 same shape a session engagement has always had. The seller is seated on every stage, edits the
-project's details, adds stages and staffs it; the client reads those details and never edits them,
+project's details, adds stages and staffs it. A seat is not a claim: a ticket the client funds is held
+with nobody to pay until the seller, or a member of the seller's team, claims it, so the claim's
+workload cap applies and unclaimed money comes back on the prepaid window (Decision #466). The
+client reads those details and never edits them,
 and keeps every commercial act: creating tickets, funding them from their own wallet or card,
 reviewing and approving the work, paying for revisions, and completing, cancelling or archiving the
 engagement. The workspace opens on its **Overview** for both sides — for the client, the service's
@@ -2726,7 +2730,9 @@ committed at the **Claimed** step at the latest, never at the subsequent "In Pro
 nobody has paid for yet — before anybody claims it, from the paying wallet or by card, while the stage
 is open, assigned or in progress. Individual and business clients alike. The money is held in escrow
 at once, with no payee yet; the claim (or the owner's assignment) names the payee without charging
-again, and the freelancer is told they can start. A prepaid escrow nobody claimed is never paid out:
+again, and the freelancer is told they can start. Nobody is bound before somebody claims, whatever the
+stage's seat: a team hired on a stage, or a team seller's service, is named payee at a member's
+claim, not when the money is held (Decision #466). A prepaid escrow nobody claimed is never paid out:
 if its ticket is completed, removed or its stage cancelled or approved, it is refunded to the payer in
 full — approval never completes a ticket it has nobody to pay (Decision #213). A
 stage cannot be funded as a whole while any of its tickets has no price — the card checkout refuses
@@ -2748,7 +2754,7 @@ it is, unpaid, ready to be funded again.
 ticket: it is paid for, but nobody is bound to it and no refund window runs, because the work cannot
 start there yet. When the ticket arrives in that stage — by the Chain Reaction, a move or an
 approval — the prepayment becomes the stage's held escrow, under the same payee rule as any hold
-(the continuing freelancer or a team seat, else prepaid until a claim, with the window starting
+(the continuing freelancer, through the stage's team seat if it has one, else prepaid until a claim, with the window starting
 then), and work carries on even where the stage's Chain Reaction is off, since its money is already
 in escrow. A prepaid stage the ticket never reaches comes back to the client whole, with no fee:
 when the ticket is completed, cancelled or deleted, when the client takes that stage off the

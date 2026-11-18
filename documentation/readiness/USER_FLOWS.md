@@ -33,9 +33,9 @@ signed-in person).
 
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
-| **Investor MVP** | **82%** |            61 | 41 |  19 |  1 |              15 |
-| **UAT**          | **69%** |           190 | 94 |  75 | 21 |              27 |
-| **Production**   | **63%** |           243 | 99 | 100 | 44 |              38 |
+| **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
+| **UAT**          | **69%** |           190 | 95 |  74 | 21 |              26 |
+| **Production**   | **63%** |           243 | 100 |  99 | 44 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,13 +44,13 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    56 | 23 | 21 | 10 |  2 |   63% |
+| MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 34 | 14 |  2 |   60% |
 | MW — Money, workspaces, legal & operator         |    63 | 21 | 23 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
-- **MVP:** ID-31 ❌ · MK-09 · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
+- **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
 - **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62 ❌
 
@@ -171,7 +171,7 @@ PRODUCTION_READINESS.md.
 | ID    | Flow                                                 | Persona    | Entry                                              | Status | Crit     | Gate | What's missing                                                                                                                              |
 | :---- | :--------------------------------------------------- | :--------- | :------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------ |
 | MK-08 | Product: Buy now or Add to basket                    | Buyer      | `/view/:id`                                        | ✅     | High     | UAT  | Delivery broken (MK-29)                                                                                                                     |
-| MK-09 | Pipeline service: "Add to Projects"                  | Client     | `/view/:id` → `/api/services/instantiate-pipeline` | 🟡     | Critical | MVP  | Unclaimed escrow is bound to the seller at funding (PRD-F24); the client cancels a funded service at every width, below the lane breakpoint from the Overview band (#479; #456 (b) open)                   |
+| MK-09 | Pipeline service: "Add to Projects"                  | Client     | `/view/:id` → `/api/services/instantiate-pipeline` | ✅     | Critical | MVP  | The client cancels a funded service at every width, settled first: below the lane breakpoint from the Overview band (#479, seen at 390). Unclaimed escrow binds nobody until a claim and can't enter work (#474)             |
 | MK-10 | One-Off or Single-Task service: scope → basket → pay | Client     | `/view/:id` → `/api/services/configure`            | ✅     | High     | UAT  | — (#457: payment creates the seller-owned engagement with milestone 1 held, or every milestone under the whole-project prepay; live wallet and card checkouts of both). A business account cannot buy one yet (MK-56) |
 | MK-11 | Book a 1-on-1 session or a block → checkout          | Buyer      | `/view/:id` or `/:handle` Hire → `/api/services/book-session` | ✅     | High     | UAT  | — (#453: a block's line reads "2 of 6 sittings scheduled" with each time; the profile books in `/view`'s dialog; answers reach the order line). The provider cannot read the answers yet (MK-55) |
 | MK-12 | Cohort: reserve a seat → checkout                    | Buyer      | `/view/:id` or `/:handle` Hire → `reserveSeat`     | 🟡     | High     | UAT  | Needs an enrolling cohort, and no seller can open one (MK-40); the seed and the shared DB hold none. Intake answers now reach the order line and #422 (a) is closed, live-checked (#453) |
@@ -524,3 +524,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | SAC4 (#475): PJ-72 narrowed (a cross-site form can no longer press `/rsvp/:token`); still 🟡 (guest mail needs the Resend key) | 82% | 68% |  62% |
 | 2026-11-18 | SAC3 (#478): PJ-49 narrowed (read marks are the chat's POST after paint, never the page's GET); still 🟡 | 82% | 68% |  62% |
 | 2026-11-18 | MR2 (#479): PJ-41 ❌ → ✅, PJ-42 🟡 → ✅ (a brief settles its escrow before it cancels; nothing archives while money is held); MK-09 narrowed (Cancel below the lane breakpoint), still 🟡 (PRD-F24) | 82% | 69% |  63% |
+| 2026-11-18 | MR1 (#474): MK-09 🟡 → ✅ (an unclaimed escrow binds nobody until a claim: TTL, approval and Fair Exit refund it; a ticket nobody holds can't enter work; #479 closed its other gap) | 83% | 69% |  63% |

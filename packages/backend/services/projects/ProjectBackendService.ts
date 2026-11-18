@@ -175,6 +175,7 @@ import {
 	ticketLeavesStage,
 	ticketTermsLocked,
 	ticketWorkLocked,
+	UNCLAIMED_WORK_MESSAGE,
 	type WorkspaceViewer,
 } from "@projective/types/projects";
 
@@ -634,6 +635,24 @@ function needsFunding<T>(from: string | null, to: string, escrowHeld: boolean): 
 		message: "Needs funding — work can't start on this ticket until its escrow is held.",
 		errors: { status: "needs_funding" },
 	});
+}
+
+/**
+ * The claim gate beside it (`trg_ticket_escrow_sync`, Decision #466), mirrored the same way: entering
+ * work from outside it also needs somebody holding the ticket, since a funded ticket nobody holds is
+ * prepaid, with no payee, and only a claim starts it. A personal project carries no money, and the
+ * database skips both gates for it.
+ */
+function unclaimedWork<T>(
+	from: string | null,
+	to: string,
+	claimed: boolean,
+	personal: boolean,
+): ServiceResult<T> | null {
+	if (claimed || personal || !WORK_STATUSES.has(to) || (from !== null && WORK_STATUSES.has(from))) {
+		return null;
+	}
+	return fail<T>(422, { message: UNCLAIMED_WORK_MESSAGE, errors: { status: "not_allowed" } });
 }
 
 /**
@@ -3080,6 +3099,13 @@ export class ProjectBackendService {
 			existing?.escrowHeld ?? false,
 		);
 		if (unfunded) return unfunded;
+		const unclaimed = unclaimedWork<{ card: BoardCard }>(
+			existing?.status ?? "backlog",
+			input.status,
+			existing?.claimed ?? false,
+			existing?.personal ?? false,
+		);
+		if (unclaimed) return unclaimed;
 		const id = existing?.id ?? mintTicketId();
 		const card = buildStubCard(input, page.stages, existing, id, Date.now());
 		putTicketCard(owner, input.projectId, card);
@@ -3150,6 +3176,13 @@ export class ProjectBackendService {
 		}
 		const unfunded = needsFunding<{ card: BoardCard }>(current.status, input.status, current.escrowHeld);
 		if (unfunded) return unfunded;
+		const unclaimed = unclaimedWork<{ card: BoardCard }>(
+			current.status,
+			input.status,
+			current.claimed,
+			current.personal ?? false,
+		);
+		if (unclaimed) return unclaimed;
 		// `move_ticket`'s New lane (Decision #421): claimed work keeps its stage.
 		const leavesStage = input.status === "backlog" && input.stageId === null &&
 			current.stageId !== null;

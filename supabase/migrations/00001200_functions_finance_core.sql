@@ -639,10 +639,13 @@ AS $$
     END;
 $$;
 
--- Who a ticket's escrow pays — the one rule the hold and the claim-time bind (Decision #197) share: an
--- accepted team seat on the ticket's stage, so the payout splits across the team at release
--- (fn_split_team_payout keys off payee_type = 'team'), else the ticket's assignee. Both NULL when
--- neither exists: a prepaid escrow then waits unbound for its claim.
+-- Who a ticket's escrow pays — the one rule the hold and the claim-time bind (Decision #197) share. Nobody
+-- until somebody holds the ticket (Decision #466): an escrow nobody claimed earned nothing, so it is held
+-- prepaid, with its refund clock (#428), whatever seat the stage has. That is one rule for every kind of
+-- project: a bought service and a brief whose stage hired a team bind at the claim, exactly as a solo
+-- seat, a One-Off (#457 (c)) and an unhired brief do. Once someone holds it: an accepted team seat on
+-- the ticket's stage, so the payout splits across the team at release (fn_split_team_payout keys off
+-- payee_type = 'team'), else the ticket's assignee.
 CREATE OR REPLACE FUNCTION finance.fn_ticket_payee(
     p_stage_id uuid,
     p_assignee_id uuid,
@@ -653,6 +656,9 @@ AS $$
 DECLARE
     v_team uuid;
 BEGIN
+    IF p_assignee_id IS NULL THEN
+        RETURN;
+    END IF;
     SELECT sa.team_id INTO v_team
       FROM projects.stage_assignments sa
      WHERE sa.project_stage_id = p_stage_id
@@ -663,7 +669,7 @@ BEGIN
     IF v_team IS NOT NULL THEN
         payee_type := 'team'::assignment_type;
         payee_id := v_team;
-    ELSIF p_assignee_id IS NOT NULL THEN
+    ELSE
         payee_type := 'freelancer'::assignment_type;
         payee_id := p_assignee_id;
     END IF;
@@ -933,12 +939,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 -- #region Decision #430 — prepaid later stages: a `reserved` escrow per stage, held on arrival
 -- A ticket arriving in a stage it was prepaid for: that stage's reservation becomes its held escrow with
 -- no second debit (the payer paid when it was reserved), under the hold's own payee rule
--- (fn_ticket_payee): bound when someone holds the ticket or a team seat on the stage, else prepaid with
--- the refund clock starting now (Decision #428). Returns the escrow, or NULL when the ticket has no
--- stage, already holds its base escrow (#189), or holds no reservation for that stage. Called by
--- fn_hold_ticket_escrow before it would debit and by projects.fn_ticket_prepay_sync when the ticket's
--- stage changes, so every way into a stage (the Chain Reaction, a move, a funding placement, a claim)
--- holds what was prepaid there. Internal.
+-- (fn_ticket_payee): bound when someone holds the ticket (to the stage's team seat, if it has one),
+-- else prepaid with the refund clock starting now (Decision #428). Returns the escrow, or NULL when
+-- the ticket has no stage, already holds its base escrow (#189), or holds no reservation for that
+-- stage. Called by fn_hold_ticket_escrow before it would debit and by projects.fn_ticket_prepay_sync
+-- when the ticket's stage changes, so every way into a stage (the Chain Reaction, a move, a funding
+-- placement, a claim) holds what was prepaid there. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_activate_ticket_reservation(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE

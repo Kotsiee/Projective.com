@@ -817,7 +817,7 @@ every existing call resolves against this one.
 | → `completed`       | **additionally** `projects.can_review_project(project)` |
 | Cross-project stage | `p_to_stage_id` must belong to the ticket's project.    |
 | `p_clear_stage`     | only with `p_to_status = 'backlog'`, else `23514` "Only the New backlog takes a ticket out of its stage." Checked after the move authority below, it is open only to a ticket nobody has claimed or delivered against — no assignee, no `claimed_at`, no submission — else `23514` "Only a ticket nobody has claimed goes back to New." (the app's `ticketLeavesStage`, a `422`). Funding is no bar: a fully paid ticket stays paid in New and a per-stage one reads unpaid there |
-| → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) |
+| → `claimed` / `in_progress` / `in_review` from outside work | an escrow must be held — the no-hold-no-work gate in `trg_ticket_escrow_sync` raises `PF402` (Decision #165) — and somebody must hold the ticket: a ticket with no assignee raises `PF402` "A freelancer starts this ticket by claiming it." (`reason: 'unclaimed'`, Decision #466; the app's `UNCLAIMED_WORK_MESSAGE`, a `422`). The claim is the way into work |
 | Another stage, on a claimed ticket | **additionally** `projects.can_review_project(project)` — refused `42501` by `trg_ticket_immutability_guard`, because the hold is priced from the current stage (Decision #291) |
 | Any move of a claimed ticket | `projects.fn_assert_ticket_move` (below, Decision #293): only its assignee or review authority; the assignee only between `todo` / `in_progress` / `in_review` (and out of `claimed`); review authority not while it is `claimed` / `in_progress` (#94); nobody into `claimed`, `cancelled` or `reported_hidden` |
 | A stage the ticket does not list | `p_to_stage_id` other than the stage it sits in must appear in its `required_stages`, else `23514` "This ticket doesn't include this stage." (Decision #428; the app's `ticketIncludesStage` / `STAGE_NOT_INCLUDED_MESSAGE`, a `422`). A ticket listing none goes anywhere. Asked AFTER the write so every authority refusal above — the function's and the ticket guards' — answers first; the refusal rolls the write back |
@@ -1007,7 +1007,11 @@ claim (assignee set from `NULL`, or status into `claimed`); on an assignee being
 `finance.fn_release_ticket_escrow`; assignee cleared → `fn_release_ticket_escrow` (paid to the removed
 freelancer). **The work-start gate (Decision #165):** entering `claimed` / `in_progress` / `in_review`
 from any other status without a `held` escrow raises `PF402` "Needs funding — …" (`DETAIL`
-`{state: 'needs_funding', reason: 'not_held'}`). On the trigger so `claim_ticket`, the routing RPCs,
+`{state: 'needs_funding', reason: 'not_held'}`). **The claim gate (Decision #466):** the same entry
+with no assignee raises `PF402` "A freelancer starts this ticket by claiming it." (`DETAIL`
+`{state: 'awaiting_claim', reason: 'unclaimed'}`), so a funded ticket nobody holds (prepaid, no
+payee) can't be moved into work: only a claim or an assignment starts it, and that binds the payee.
+FBP DB14's INSERT gate reuses this code. On the trigger so `claim_ticket`, the routing RPCs,
 `move_ticket` and a direct row write all meet it; moves between work states (a revision's
 `in_review → in_progress`) are not an entry and are not gated. `SECURITY DEFINER`,
 `search_path = public, projects, finance, org, auth`. Money-moving: on the table path its authority
@@ -1676,9 +1680,8 @@ the ledger; the conservation of each settlement is asserted in `brief_cancel.sql
 - `projects.fn_project_held_tickets(p_project_id uuid) → TABLE (ticket_id, stage_id, stage_name,
   sort_order, stage_status, claimed, held_cents)` — internal, no grant (was `fn_service_held_tickets`).
   One row per (ticket, stage) holding `held` escrow. **`claimed` is the ticket having an assignee**,
-  not its escrow having a payee, because when a payee binds differs by kind (a brief's prepaid hold
-  binds at the claim, #428; a bought service's at funding, #456 (b), until MR1), and an unclaimed
-  ticket earned nothing.
+  not its escrow having a payee: since #466 a payee binds only at the claim, on every kind (#428), so
+  the two agree, but the assignee is what the work gate reads. An unclaimed ticket earned nothing.
 - `projects.fn_project_cancel_blocked(p_project_id uuid) → text` — internal, no grant. Why the
   engagement cannot be cancelled now, or NULL, in the order the door checks: `ended` (completed /
   cancelled / archived), `dispute` (an open dispute on a held or reserved escrow,

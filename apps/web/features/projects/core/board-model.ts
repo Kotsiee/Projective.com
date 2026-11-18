@@ -14,6 +14,7 @@ import {
 	ticketLeavesStage,
 	type TicketStatus,
 	ticketWorkLocked,
+	UNCLAIMED_WORK_MESSAGE,
 	workColumnLocked,
 } from "../types/projects-types.ts";
 
@@ -175,7 +176,7 @@ export const DROP_REFUSAL = {
 	claimedToNew: NEW_LANE_REFUSAL_MESSAGE,
 	assigneeBacklog: "Only the client moves a claimed ticket back to New.",
 	unheld: "Escrow isn't held for this ticket here yet. Fund it before work starts.",
-	claimStarts: "A freelancer starts this ticket by claiming it.",
+	claimStarts: UNCLAIMED_WORK_MESSAGE,
 	submitReviews: "Work reaches Review when its freelancer submits it.",
 	stageNotIncluded: STAGE_NOT_INCLUDED_MESSAGE,
 } as const;

@@ -1541,9 +1541,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- PRD-F22), and set_project_status refuses Cancelled or Archived while anything is still held or
 -- reserved, so either state always means "settled". The tickets holding escrow, one row per (ticket,
 -- stage), and whether the work was taken: CLAIMED means somebody holds the ticket (an assignee). The
--- escrow's payee is not the test, because when a payee binds differs by kind (a brief's prepaid hold
--- binds at the claim, #428; a bought service's at funding, #456 (b)), and an unclaimed ticket earned
--- nothing, so it goes back whole. Internal.
+-- escrow's payee is not the test: since #466 a payee binds only at the claim, on every kind (#428), so
+-- the two agree, but the assignee is what the work gate reads. An unclaimed ticket earned nothing, so
+-- it goes back whole. Internal.
 CREATE OR REPLACE FUNCTION projects.fn_project_held_tickets(p_project_id uuid)
 RETURNS TABLE (
     ticket_id uuid, stage_id uuid, stage_name text, sort_order integer, stage_status stage_status,

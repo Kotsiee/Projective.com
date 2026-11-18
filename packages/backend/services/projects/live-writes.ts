@@ -52,6 +52,7 @@ import {
 	type SubmissionUnit,
 	ticketDueFromStages,
 	TicketIntensity,
+	UNCLAIMED_WORK_MESSAGE,
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
@@ -975,6 +976,8 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		message.includes(NEW_LANE_REFUSAL_MESSAGE) ||
 		// `move_ticket`'s stage list (Decision #428): a ticket enters only the stages it lists.
 		message.includes(STAGE_NOT_INCLUDED_MESSAGE) ||
+		// The escrow gate (Decision #466): a ticket nobody holds starts only by a claim.
+		message.includes(UNCLAIMED_WORK_MESSAGE) ||
 		message.includes("still open") ||
 		message.includes("unsettled") ||
 		// `comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`: a reply whose original is not

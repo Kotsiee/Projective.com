@@ -411,6 +411,19 @@ BEGIN
             DETAIL = jsonb_build_object('state', 'needs_funding', 'reason', 'not_held')::text;
     END IF;
 
+    -- ...and it needs somebody to do the work (Decision #466). A funded ticket nobody holds is prepaid,
+    -- with no payee, and an escrow nobody claimed earned nothing, so it can't be moved into work: the
+    -- claim (claim_ticket, or an assignment) is the way in, and it binds the payee. Same entry rule and
+    -- code as the funding gate above; the sentence is the board's (UNCLAIMED_WORK_MESSAGE).
+    IF NEW.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+        AND OLD.status NOT IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+        AND NEW.current_assignee_id IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF402',
+            MESSAGE = 'A freelancer starts this ticket by claiming it.',
+            DETAIL = jsonb_build_object('state', 'awaiting_claim', 'reason', 'unclaimed')::text;
+    END IF;
+
     -- Stage-completion approval -> release payout to the payee.
     IF OLD.status <> 'completed'::ticket_status AND NEW.status = 'completed'::ticket_status THEN
         PERFORM finance.fn_release_ticket_escrow(NEW.id);

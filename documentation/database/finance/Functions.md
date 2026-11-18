@@ -182,10 +182,16 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `payment_status = 'escrow_funded'` and notifies the payee ("Funded — you can start") and, unless the
   client made the hold themselves (`auth.uid()`), the project owner, both `escrow.funded` with a
   `?tkv=` ticket link. `search_path = public, finance, projects, org, comms, auth`.
-- **`finance.fn_ticket_payee(stage_id, assignee_id)`** → `(payee_type, payee_id)` (Decision #197) —
-  the one payee rule the hold and the bind share: an accepted team seat on the stage, else the
-  assignee; both NULL when neither exists. Internal (`EXECUTE` revoked from `PUBLIC`, `anon`,
-  `authenticated`).
+- **`finance.fn_ticket_payee(stage_id, assignee_id)`** → `(payee_type, payee_id)` (Decisions #197,
+  #466) — the one payee rule the hold, the bind and the reservation's activation share. **Both NULL
+  until somebody holds the ticket** (`assignee_id` NULL): an escrow nobody claimed earned nothing, so
+  it is held prepaid, with its refund clock (#428), whatever seat the stage has. This is one rule for
+  every kind of project: a team seller's bought service and a brief whose stage hired a team now bind
+  at the claim, as a solo seat, a One-Off (#457 (c)) and an unhired brief always did. Before #466 an
+  accepted team seat bound every ticket on its stage at the hold, so the TTL never swept it,
+  `approve_stage` released it and a stage Fair Exit paid a share of it (#456 (b)). Once someone holds
+  the ticket: an accepted team seat on the stage (the release splits it across the team), else the
+  assignee. Internal (`EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated`).
 - **`finance.fn_bind_ticket_escrow(ticket_id)`** → escrow id or `NULL` (Decision #197) — names the
   payee of a PREPAID held escrow when a claim or assignment gives its ticket one. Called by
   `projects.fn_ticket_escrow_sync` before it would hold; `NULL` (nothing unbound, or still no payee)
@@ -205,8 +211,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `ticket_history` row `stage_prepaid` (`new_stage_id` = the stage; amount, currency). Internal.
 - **`finance.fn_activate_ticket_reservation(ticket_id)`** → escrow id or `NULL` (Decision #430) — the
   ticket's current stage's reservation becomes its held escrow under the hold's payee rule
-  (`fn_ticket_payee`): bound to the continuing payee or a team seat, else prepaid with `expires_at`
-  starting now. `NULL` with no stage, a base escrow already held (`uq_escrows_ticket_base_held`, also
+  (`fn_ticket_payee`): bound when someone holds the ticket (to the stage's team seat, if it has one),
+  else prepaid with `expires_at` starting now. `NULL` with no stage, a base escrow already held (`uq_escrows_ticket_base_held`, also
   on a concurrent hold), or no reservation there. Sets `payment_status = 'escrow_funded'`, writes
   `prepaid_stage_held` and tells a present assignee "Funded — you can start". Called by
   `fn_hold_ticket_escrow` and `projects.fn_ticket_prepay_sync`. Internal.

@@ -1391,6 +1391,13 @@ export const NEW_LANE_REFUSAL_MESSAGE = "Only a ticket nobody has claimed goes b
 export const STAGE_NOT_INCLUDED_MESSAGE = "This ticket doesn't include this stage.";
 
 /**
+ * The refusal sentence for moving a ticket nobody holds into a work status (Decision #466). The
+ * escrow gate's PF402 (`trg_ticket_escrow_sync`, reason `unclaimed`), the stub's, and the board's
+ * lock all use it: a funded ticket nobody holds is prepaid, with no payee, and only a claim starts it.
+ */
+export const UNCLAIMED_WORK_MESSAGE = "A freelancer starts this ticket by claiming it.";
+
+/**
  * A freelancer's self-claim of one `open_pull` ticket (`projects.claim_ticket`). There is no assignee
  * field: the claimant is always the session's own user, so a payload cannot name anyone else.
  */

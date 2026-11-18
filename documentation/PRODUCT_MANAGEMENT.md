@@ -494,7 +494,11 @@ begins (its seat is hired by then, so the escrow has a payee); **Pipeline** — 
 wording); **Sessions** — when the booking is confirmed. **Any ticket, earlier (Decision #197):** the
 client may prepay a ticket or a whole stage (open, assigned or in progress) — the escrow is held with
 no payee and the claim or assignment binds one (`finance.fn_bind_ticket_escrow`) without a second
-charge. A prepaid escrow nobody claimed is refunded, never released — and nobody claiming it within
+charge. That holds on every kind of project, whatever seat the stage has (Decision #466): a team
+seller's bought service and a brief whose stage hired a team bind the team at a member's claim, never
+at the hold (`finance.fn_ticket_payee`). And **Funded, prepaid → In progress only through a claim**:
+`trg_ticket_escrow_sync` refuses a ticket nobody holds entering a work status (`PF402`, reason
+`unclaimed`). A prepaid escrow nobody claimed is refunded, never released — and nobody claiming it within
 its window refunds it too (Decision #428): the hold stamps `finance.escrows.expires_at`
 (`finance.fn_prepaid_escrow_ttl_hours`: 120h a productised service, 168h a client project), the bind
 clears it, and `finance.fn_sweep_expired_prepaid_escrows` (every 15 minutes) returns an expired one to
