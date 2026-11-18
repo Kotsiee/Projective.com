@@ -369,7 +369,44 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   (`balance_cents` vs the running ledger sum → `drift_cents`, expected 0), and the wallet's pots
   (FINANCE_AUDIT L7): `earmarked_cents` (Σ active pots, never above `balance_cents`) and
   `pot_drift_cents` (Σ pot balances − Σ signed `pot_movements`, expected 0). `service_role`-only.
-  Read nightly by `fn_reconcile_wallets` (below).
+  Read by `v_wallet_drift` (below).
+- **`finance.v_wallet_drift`** (`00003004`, FBP DB16) — every wallet that disagrees with its ledger:
+  `drift_cents ≠ 0`, `balance_cents` ≠ its newest row's `balance_after_cents` (`created_at DESC, id
+  DESC`; 0 with no rows), `pot_drift_cents ≠ 0`, or `earmarked_cents > balance_cents`. Columns:
+  `wallet_id`, `owner_type`, `owner_id`, `currency`, `balance_cents`, `ledger_sum_cents`,
+  `drift_cents`, `earmarked_cents`, `pot_drift_cents`, `latest_balance_after_cents`. Empty while every
+  movement went through a door. The one predicate both readers use: `fn_reconcile_wallets` (logs each
+  row nightly) and `get_ledger_health` (shows the drift still open). `service_role`-only (`00003005`).
+- **`finance.v_conservation_identity`** (`00003004`, FBP DB16; Decision #337, ruling M2 (A)) — one row
+  per currency, upper-cased: Σ external in − Σ external out (`external_minor`) against Σ held + Σ fees
+  retained − Σ platform losses (`accounted_minor`); `imbalance_minor` = accounted − external, 0 while
+  money is conserved, above 0 when the platform accounts for money nobody paid in (a credit with no
+  cash, FCA CO20; a payee paid past its escrow, N4; a simulated row, #423 (A)). The external terms are
+  read from the event tables, never the ledger rows they wrote. Terms:
+  - in — `in_cash_minor` (`inbound_payments.amount_received_cents` with a `transaction_id`,
+    `settled_unapplied` included, #200) · `in_on_account_minor` (each `invoiced` order's credit in the
+    currency credited: its conversion's `from_minor`, else `total_minor`) · `in_fx_minor`
+    (`fx_conversions.to_minor` in `to_currency`, purchase and unwind);
+  - out — `out_payouts_minor` (`amount_cents − reversed_cents` unless `failed` / `cancelled`) ·
+    `out_card_refunds_minor` (`inbound_payments.refunded_cents`) · `out_chargebacks_minor` (lost cases'
+    `amount_cents`, whole) · `out_invoices_minor` (paid invoices' `amount_due_cents`) · `out_fx_minor`
+    (`fx_conversions.principal_minor` in `from_currency`);
+  - held — `held_wallets_minor` (`balance_cents`; pots are earmarks inside it) · `held_escrows_minor`
+    (`amount_cents` of every escrow not `released` / `refunded`: `held`, `reserved` #430, `disputed`) ·
+    `held_pending_minor` (`pending_releases` not `available`, `amount_cents − recovered_cents`);
+  - fees — `fees_escrows_minor` (released escrows' `platform_fee_cents`) · `fees_orders_minor`
+    (`orders.platform_fee_minor`) · `fees_fx_minor` (`fx_conversions.spread_minor` in `from_currency`);
+  - losses — `losses_chargebacks_minor` (lost cases' `unrecovered_cents`) ·
+    `losses_card_refunds_minor` (`inbound_payments.refund_unrecovered_cents`).
+
+  Every reason a function writes is one of these classes (external-in `topup`, `on_account_credit`;
+  external-out `payout` net of `payout_reversal`, `chargeback`, `refund`, `invoice_payment`; FX
+  `fx_conversion` out of X and into Y, `fx_spread` as revenue; everything else internal: `escrow_hold`,
+  `escrow_release`, `escrow_refund`, `fair_exit_*`, `team_split`, `team_finder_fee`, both
+  `*_vault_retention`, `team_distribution`, `transfer_in` / `transfer_out`, `order_payment`,
+  `product_sale`); the simulator's `simulated_*` get none (#423 (A)). A new money flow adds its terms
+  here in the same change (FBP §1). One statement, so a movement committing mid-read is seen whole.
+  `service_role`-only (`00003005`). Probe: `conservation_identity.sql`.
 
 ### Ledger integrity (Decision #186)
 
@@ -385,8 +422,9 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   (`finance.pot_movements`, `trg_pot_movements_append_only` / `trg_pot_movements_no_truncate`).
 - **`finance.fn_reconcile_wallets()`** → integer — for every wallet, compares `balance_cents` with
   the ledger sum (`v_wallet_reconciliation.drift_cents`) **and** with its newest row's
-  `balance_after_cents` (ordered `created_at DESC, id DESC`, as `list_ledger` pages), in one
-  statement so a movement committing mid-run is seen whole or not at all. Each drifted wallet becomes
+  `balance_after_cents` (ordered `created_at DESC, id DESC`, as `list_ledger` pages), by reading
+  `v_wallet_drift` in one statement so a movement committing mid-run is seen whole or not at all.
+  Each drifted wallet becomes
   one `ops.log_entries` row (`level = 'error'`, `source = 'server'`,
   `scope = 'finance.reconcile_wallets'`, `client_id = 'reconcile:<run id>'`, `data` = `run_id`,
   `wallet_id`, `owner_type`, `owner_id`, `currency`, `balance_cents`, `ledger_sum_cents`,
@@ -402,7 +440,26 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   Part D). `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `security.is_admin()` only, else
   `42501` (the page answers 404). Returns `finance.fn_escrow_age(now())`. Granted to `authenticated`
   (`00002510`), never `anon`. Read by `escrow-age.ts` `readEscrowAge` → `EscrowAgeSchema`
-  (`@projective/types/finance`); its `/admin/ledger` section waits on FBP DB16.
+  (`@projective/types/finance`), which `LedgerHealthService.escrowAge` exposes as `/admin/ledger`'s
+  Escrow age section (FBP DB16).
+- **`finance.fn_check_conservation()`** → integer (FBP DB16; Decision #337, ruling M2 (A)) — the
+  nightly check: one `ops.log_entries` row per currency of `v_conservation_identity` under one run
+  (`source = 'server'`, `scope = 'finance.conservation'`, `client_id = 'conservation:<run id>'`):
+  `level = 'error'` when `imbalance_minor ≠ 0`, `'metric'` when it is 0, `data` = the view's row
+  (every term) plus `run_id`. Raises a `WARNING` when any currency is out of balance and returns how
+  many are. Never corrects anything. `VOLATILE`, `SECURITY DEFINER`, `search_path = ''`; service role
+  only (`00002510`). Scheduled nightly at 03:50 UTC, after the reconciliation, as
+  `finance-conservation-check` (`ops.scheduled_jobs`, `00005060`); no sweep deletes
+  `ops.log_entries`, so 30 nights stay readable.
+- **`finance.get_ledger_health()`** → jsonb (operator) — `/admin/ledger`'s Conservation and Wallet drift
+  sections. `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `security.is_admin()` only, else `42501`
+  (the page answers 404). `{as_of, currencies, nights, drift}`: `currencies` the view's rows A–Z;
+  `nights` the `finance.conservation` rows of the last 30 days, newest first (`run_id`, `checked_at`,
+  `currency`, `balanced`, `external_minor`, `accounted_minor`, `imbalance_minor`); `drift.wallets`
+  every `v_wallet_drift` row (ids, no names), `drift.conversions` every
+  `v_fx_conversion_reconciliation` row, `drift.logged_30d` / `drift.last_logged_at` the
+  `finance.reconcile_wallets` error rows. Reads only. Granted to `authenticated` (`00002510`), never
+  `anon`. Read by `LedgerHealthService` → `LedgerHealthSchema` (`@projective/types/finance`).
 - **`finance.fn_escrow_age(p_now)`** → jsonb — the reader itself, `LANGUAGE sql STABLE`, invoker
   rights; service role only. `{as_of, rows}`: one row per (kind, currency) over the money still
   held, each kind named for the clock that ends it — `held_bound` (a payee is named; ends at
@@ -972,6 +1029,24 @@ refusal rolls the whole order back. The order line records `fulfilment = 'engage
 milestone as `stage_id`, the master ticket, the new `project_id` and the held `escrow_id`, and the
 answers the door kept as `intake_answers`. Its subtitle is "Every milestone funded" under the
 prepay, else "Escrow held". Probe `supabase/probes/one_off_checkout.sql` §8.
+
+**Quote offer lines (Decisions #458, #491).** A `one_off_service` line carrying
+`metadata.quoteOfferId` (put there by `marketplace.accept_quote_offer`) is priced from the OFFER,
+never from its listing's milestones or the line's snapshot. The request is locked, then the offer
+(the quote doors' order), and the line is refused in checkout's words: `PC409` "… is no longer on
+offer" unless the offer is the caller's own (its request's requester, in a personal `user` basket of
+theirs), `accepted` with an `accepted` request, not superseded and for this line's listing; `PC409`
+"… is already paid for" when another line bought it; `PC409` "The offer for … has expired — ask the
+seller for a new quote" at or past `expires_at` (the seller's expiry bounds payment as well as
+acceptance, owner ruling A); `PC409` "… is no longer offered" for an unpublished listing and `PU422`
+for the buyer's own; `PC409` for another currency, or a unit that is not the offer's `price_cents`.
+The listing's delivery model is not matched: a quote may answer any listing its seller sells. The
+line then settles as a One-Off line does, through `marketplace.fn_buy_scoped_service` with the
+offer's terms as `p_terms` (`marketplace.fn_quote_offer_terms`: one locked Standard milestone at the
+offer's price whose checklist is its deliverables, the offer's scope as the brief, today plus its
+turnaround as the target date, `p_whole` true), so the order, its line and the one held escrow all
+equal the offer. Its subtitle is "Custom offer · escrow held". Probe
+`supabase/probes/quote_checkout.sql`.
 
 **Ticket lines (Decisions #166, #430).** A `project_ticket` / `one_off_project` / `one_off_task` line
 that carries `ticket_id` is not a sale: it buys ONE stage of the ticket, the line's `stage_id` (a

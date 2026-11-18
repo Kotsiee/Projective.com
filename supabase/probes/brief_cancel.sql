@@ -12,8 +12,8 @@
 --   6 archive passes once the money is settled (each stage Fair-Exited), refused before
 --   7 the client cancels at 50%: the unclaimed ticket back whole, the claimed work settled at the
 --     tier, every ticket and stage closed, then Cancelled; the seated freelancers told
---   8 conservation: every escrow held before is paid + fee + refunded to the unit, in the ledger
---     (FBP DB16's conservation_identity.sql does not exist yet, so it is asserted here)
+--   8 conservation (finance.v_conservation_identity, FBP DB16): every refusal, settlement and the
+--     cancellation leave each currency's imbalance where the fixture left it
 --   9 an ended brief takes no new escrow and cancels once
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a seeded local DB:
@@ -47,7 +47,7 @@ DECLARE
     v_detail text;
     v_hint text;
     v_n integer;
-    r record;
+    v_imbalance jsonb;
 BEGIN
     -- #region 0. Fixtures (as postgres)
     SELECT p.id, p.owner_user_id, p.client_business_id, upper(COALESCE(p.currency, 'USD')), tk.id,
@@ -103,6 +103,8 @@ BEGIN
      WHERE e.ticket_id = v_claimed_ticket AND e.status = 'held' ORDER BY e.id LIMIT 1;
     RAISE NOTICE 'fixture project=% owner=% freelancer=% stage=% held+reserved=% % over % escrows',
         v_project, v_owner, v_freelancer, v_s1, v_held_before, v_currency, cardinality(v_escrows);
+    -- The fixture's credit has no payment behind it, so the identity is measured from here on.
+    v_imbalance := (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
     -- #endregion
 
     -- #region 1. A plain archive or cancel is refused while money is held
@@ -316,36 +318,12 @@ BEGIN
         v_out->>'freelancer_paid_cents', v_out->>'fee_cents', v_out->>'client_refunded_cents';
     -- #endregion
 
-    -- #region 8. Conservation, per escrow, from the ledger
-    IF (v_out->>'freelancer_paid_cents')::bigint + (v_out->>'fee_cents')::bigint
-        + (v_out->>'client_refunded_cents')::bigint <> v_held_before THEN
-        RAISE EXCEPTION 'FAIL 8 the door: paid % + fee % + refunded % <> held %',
-            v_out->>'freelancer_paid_cents', v_out->>'fee_cents', v_out->>'client_refunded_cents', v_held_before;
+    -- #region 8. Conservation, from the identity
+    IF (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c) IS DISTINCT FROM v_imbalance THEN
+        RAISE EXCEPTION 'FAIL 8 conservation: the brief''s settlement moved the identity from % to %',
+            v_imbalance, (SELECT COALESCE(jsonb_object_agg(c.currency, c.imbalance_minor), '{}'::jsonb) FROM finance.v_conservation_identity c);
     END IF;
-    FOR r IN
-        SELECT e.id, e.amount_cents, e.platform_fee_cents,
-               (SELECT COALESCE(SUM(t.amount_cents), 0) FROM finance.transactions t
-                 WHERE t.direction = 'credit' AND t.ref_table = 'escrows' AND t.ref_id = e.id
-                   AND t.reason IN ('escrow_refund', 'fair_exit_refund')) AS refunded,
-               (SELECT COALESCE(SUM(pr.amount_cents), 0) FROM finance.pending_releases pr WHERE pr.escrow_id = e.id)
-             + (SELECT COALESCE(SUM(t.amount_cents), 0) FROM finance.transactions t
-                 WHERE t.direction = 'credit' AND t.ref_table = 'escrows' AND t.ref_id = e.id
-                   AND t.reason NOT IN ('escrow_refund', 'fair_exit_refund')
-                   AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.transaction_id = t.id)) AS paid
-          FROM finance.escrows e
-         WHERE e.id = ANY (v_escrows)
-    LOOP
-        IF r.paid + r.platform_fee_cents + r.refunded <> r.amount_cents THEN
-            RAISE EXCEPTION 'FAIL 8 escrow %: paid % + fee % + refunded % <> %',
-                r.id, r.paid, r.platform_fee_cents, r.refunded, r.amount_cents;
-        END IF;
-    END LOOP;
-    IF (SELECT SUM(amount_cents) FROM finance.transactions t
-         WHERE t.direction = 'credit' AND t.ref_table = 'escrows' AND t.ref_id = ANY (v_escrows)
-           AND t.reason IN ('escrow_refund', 'fair_exit_refund')) <> (v_out->>'client_refunded_cents')::bigint THEN
-        RAISE EXCEPTION 'FAIL 8 the ledger''s refunds differ from the door''s figure';
-    END IF;
-    RAISE NOTICE 'PASS 8 conservation: each of % escrows is paid + fee + refunded to the unit in the ledger (% held in all)',
+    RAISE NOTICE 'PASS 8 conservation: settling and cancelling % escrows (% held in all) left each currency''s imbalance where it was',
         cardinality(v_escrows), v_held_before;
     -- #endregion
 

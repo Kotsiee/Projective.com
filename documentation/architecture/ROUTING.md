@@ -1190,6 +1190,20 @@ is **never a URL**: it opens in a dialog over the queue and is read and ruled th
 Dev Context Switcher's `operatorDesk` axis (`pj.dev.operator`) renders sample cases instead; it grants
 nothing.
 
+### Operator ledger page (FBP DB16)
+
+`/admin/ledger` (`routes/(dashboard)/admin/ledger.tsx` → `features/admin/routes/LedgerHealthScreen.tsx`)
+is the platform operator's read-only view of whether the books add up (Decision #337, ruling M2 (A)),
+under the same reserved `admin` segment; a bare `/admin` stays a 404. It is a list of sections, each
+one `LedgerHealthService` read: **Conservation** and **Wallet drift** (`finance.get_ledger_health()`)
+and **Escrow age** (`finance.read_escrow_age()`, MR7, Decision #473). **Every read is the gate:** each
+door refuses anyone but `security.is_admin()` (`ops.admin_users`), and the controller turns that
+refusal, no session or no live database into a **404**, exactly as the dispute desk does. It renders
+only once a read has answered (which proves the caller an operator); a section whose read failed
+otherwise then says so in place, and with no answer at all the page is a 502. It has no query state and no
+control; it reaches no `/api/*` route and moves no money. MR3, MR4, MR5 and MR8b add their sections
+here.
+
 | Path | Method / body | Delegates to |
 | :-- | :-- | :-- |
 | `/api/finance/plans` (**Planned**, #252) | `GET · HEAD` | `PricingBackendService.catalogue` → `finance.get_public_plan_catalogue()` (a definer granted to `anon`, since both plan policies are `authenticated`-only today); adds the caller's `current` plan when signed in. Public cache for a guest, private otherwise |

@@ -2529,6 +2529,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-billing-cycle`             | daily 02:20                       | `finance.fn_run_billing_cycle()`                                         | Finance — billing (`00001250`)                                    | One invoice per business per billing day and one statement per wallet per month; a missed day is caught up, a re-run adds nothing.                                                                                                                                                                                                                                                                                                                                                                     |
 | `archive-stale-service-drafts`      | daily 03:10                       | `projects.fn_archive_stale_service_drafts()`                             | Projects — service pipeline (`00001130`)                          | Archives only `draft` rows still idle with no funded stage; never deletes.                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `finance-reconcile-wallets`         | daily 03:40                       | `finance.fn_reconcile_wallets()`                                         | Finance — ledger (Decision #186)                                  | Read-only on finance; a persisting drift is re-reported each run (one ops row per drifted wallet).                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `finance-conservation-check`        | daily 03:50                       | `finance.fn_check_conservation()`                                        | Finance — ledger (ruling M2 (A), FBP DB16)                        | Read-only on finance; one ops row per currency each run (`scope = 'finance.conservation'`), `error` for an imbalance, `metric` for a balanced currency.                                                                                                                                                                                                                                                                                                                                                |
 | `finance-mature-pending-releases`   | hourly :05                        | `finance.fn_mature_pending_releases()`                                   | Finance — pending window (Decision #191)                          | `FOR UPDATE SKIP LOCKED` batches; a matured row is closed and never credited twice.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `auto-release-session-escrow`       | every 15 min                      | `finance.auto_release_session_escrow()`                                  | Sessions & cohorts (`00001155`, Decisions #171 / #211)            | State-gated: only `scheduled` sittings complete and only `held` escrows move — a 1-1 sitting's own escrow 24h after it, a cohort seat's after the last sitting, never under an open dispute.                                                                                                                                                                                                                                                                                                           |
 | `finance-sweep-expired-prepaid-escrows` | :04 / :19 / :34 / :49         | `finance.fn_sweep_expired_prepaid_escrows()`                             | Finance — prepaid ticket escrow (`00001200`, Decision #428)       | Each ticket row is locked `SKIP LOCKED` in the claim's order and its escrow re-read under the lock, so a claim that binds it first wins; only a `held`, unbound escrow past `expires_at` (120h a service, 168h a client project) is refunded, once, to its payer's wallet — logged `prepaid_ttl_expired`, told as `escrow.refunded`. |
@@ -2567,8 +2568,9 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `scheduling-presence-retention`     | daily 04:41                       | `scheduling.fn_prune_presence()`                                         | Scheduling — `finance-model.md` §17                               | Deletes room attendance records past their period, keeping whatever a dispute or a held payment still needs; repeat-safe. |
 | `ops-prune-job-history`             | daily 04:53                       | `ops.fn_prune_job_history()`                                             | Ops — the registry itself                                         | Deletes pg_cron run history that ended more than 7 days ago; repeat-safe.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-`finance-reconcile-wallets` and `finance-mature-pending-releases` are seeded only where their
-function exists (M3 / M4 reached `main` separately), so the seed holds whichever order they land in.
+`finance-reconcile-wallets`, `finance-conservation-check` and `finance-mature-pending-releases` are
+seeded only where their function exists (M3 / M4 reached `main` separately), so the seed holds
+whichever order they land in.
 
 **Registered by the Wave 1 jobs change** (`00005060`; Decision #203 flag (a), ruled as
 FOUNDER_QUESTIONNAIRE Q0.3): the comms engine's `fn_process_queue`, `fn_escalate_unread`,
@@ -3627,8 +3629,8 @@ It is a satellite of this section: where they differ, this section wins, and its
   total moves nothing (`supabase/probes/stripe_event_order.sql`). Not handled, because they move no
   money: `transfer.updated`, `identity.verification_session.processing` and
   `v2.core.account[requirements].updated`. **No reconciliation against the Stripe balance is built**
-  (FDD X14, L6): `finance.fn_reconcile_wallets` and `finance.v_wallet_reconciliation` check the
-  ledger's self-consistency only.
+  (FDD X14, L6): `finance.fn_reconcile_wallets`, `finance.v_wallet_reconciliation` and the
+  conservation identity (below) check the ledger against itself only (MR5 is the external check).
 - **Ledger integrity (Decision #186):** `finance.transactions` is the record and is **append-only
   for every role**: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` (`PL403`) even for the
   table owner and the service role (which holds only `SELECT` + `INSERT`), `wallet_id` is
@@ -3641,6 +3643,20 @@ It is a satellite of this section: where they differ, this section wins, and its
   03:40 UTC) compares each cache with the ledger sum and the newest `balance_after_cents`, writes one
   `ops.log_entries` `error` row per drifted wallet (`scope = 'finance.reconcile_wallets'`) and never
   corrects anything. Proven by `supabase/probes/ledger_immutability.sql`.
+- **Conservation (Decision #337, ruling M2: A now, B before scale; FBP DB16):** the ledger is
+  single-entry per wallet, so money is proven whole by a per-currency identity rather than by
+  double entry. `finance.v_conservation_identity` sets Σ external in − Σ external out (settled card
+  payments, on-account receivables and conversions in; payouts net of reversals, card refunds, lost
+  chargebacks, paid invoices and conversions out, all read from the event tables, never from the
+  ledger rows they wrote) against Σ held (wallets, every escrow not yet released or refunded,
+  unmatured pending releases) + Σ fees retained − Σ platform losses. `finance.fn_check_conservation()`
+  (service role, pg_cron `finance-conservation-check` nightly at 03:50 UTC, after the reconciliation)
+  writes one `ops.log_entries` row per currency (`scope = 'finance.conservation'`, `error` for any
+  imbalance) and never corrects anything; operators read both checks and the escrow-age figures
+  through `finance.get_ledger_health()` and `finance.read_escrow_age()` on `/admin/ledger`
+  (`LedgerHealthService`, one read per section). Every money flow adds its terms to the view in the
+  same change. **B, a shadow double-entry journal written inside the money doors, is built before
+  PROD** (Decision #463; MR8a → MR8b). Proven by `supabase/probes/conservation_identity.sql`.
 - **The pending window (Decision #191):** earned credits (escrow releases and their team splits,
   fair-exit and seat payouts, product sales) go through `finance.fn_wallet_credit_pending`, which
   writes a `finance.pending_releases` row and no ledger line; `finance.fn_mature_pending_releases()`

@@ -52,8 +52,9 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Blanks a guest''s address 30 days after their entry ends or their seat is withdrawn.')
 ON CONFLICT (name) DO NOTHING;
 
--- The ledger reconciliation (M3, Decision #186) and the pending-window sweep (M4, Decision #191) are
--- registered only where their function exists, so this seed is correct whichever order those changes
+-- The ledger reconciliation (M3, Decision #186), the conservation check that follows it (ruling M2 (A),
+-- FBP DB16) and the pending-window sweep (M4, Decision #191) are registered only where their function
+-- exists, so this seed is correct whichever order those changes
 -- reach a branch in, and pg_cron is never pointed at a function that is not there.
 INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
 SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
@@ -61,6 +62,9 @@ SELECT v.name, 'sql', v.schedule, v.command, NULL, NULL, v.description
     ('finance-reconcile-wallets', '40 3 * * *', 'SELECT finance.fn_reconcile_wallets();',
         'finance.fn_reconcile_wallets()',
         'Ledger reconciliation after the billing run: logs every wallet whose cached balance drifted from its ledger (Decision #186).'),
+    ('finance-conservation-check', '50 3 * * *', 'SELECT finance.fn_check_conservation();',
+        'finance.fn_check_conservation()',
+        'Conservation identity after the reconciliation: one ops row per currency, an error for any imbalance; never corrects (Decision #337, ruling M2).'),
     ('finance-mature-pending-releases', '5 * * * *', 'SELECT finance.fn_mature_pending_releases();',
         'finance.fn_mature_pending_releases(integer)',
         'Credits every pending release past its 7-day window to the available balance (Decision #191).')

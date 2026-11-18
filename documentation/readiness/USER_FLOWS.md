@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **70%** |           190 | 95 |  75 | 20 |              26 |
-| **Production**   | **63%** |           244 | 100 | 100 | 44 |              37 |
+| **Production**   | **63%** |           244 | 100 | 101 | 43 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -46,13 +46,13 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 35 | 13 |  2 |   61% |
-| MW — Money, workspaces, legal & operator         |    64 | 21 | 23 | 17 |  3 |   58% |
+| MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
 - **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
-- **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62 ❌
+- **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
 
@@ -486,7 +486,7 @@ Request to Sell and shared IP are MK-46.
 | MW-59 | Dispute desk queue and rulings        | Operator | `/admin/disputes`, `/api/finance/disputes/[id]/{resolve,escalate}` | 🟡     | Critical | UAT  | Release, refund and split rulings work; release refuses an open dispute (DB3); no deadline on `under_review` (#212 (c)); freeze unbuilt (DB6); parties told in-app only |
 | MW-60 | Contact request triage                | Operator | —                                                                  | ❌     | High     | UAT  | Intake works (#276); no operator inbox; nothing calls `ops.set_contact_request_status` (PRD-A7)                                                                         |
 | MW-61 | Moderation queue, reports, penalties  | Operator | —                                                                  | ❌     | Critical | PROD | R1–R5 not started (PRD-D9)                                                                                                                                              |
-| MW-62 | Reconciliation and conservation views | Operator | —                                                                  | ❌     | Critical | PROD | Nothing reads `fn_reconcile_wallets`; DB16 and Stripe-balance reconciliation open (PRD-F8, F9)                                                                          |
+| MW-62 | Reconciliation and conservation views | Operator | `/admin/ledger`                                                    | 🟡     | Critical | PROD | `/admin/ledger` (#483) shows an operator the conservation identity per currency, its last 30 nightly checks and the open wallet drift; Stripe-balance reconciliation (PRD-F8, MR5) and the alert (PRD-F9, MR4) open |
 | MW-63 | Operator metrics and provisioning     | Operator | —                                                                  | ❌     | Normal   | PROD | No operator dashboard; `ops.admin_users` filled by seed or SQL only                                                                                                     |
 
 ---
@@ -529,3 +529,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | RV3's ruling (#489): new MW-64 ❌ (no subject can reach Elite: a never-written peer track halves the review component, so the score tops out at 90 against Elite's 92; ruled B, RV3 builds it after RV2) | 83% | 69% | 63% |
 | 2026-11-18 | SR1: MK-03 narrowed (a filtered nearest-neighbour ask fills: `ef_search` 200 with the iterative scan; a vector off unit length is refused); still 🟡 (`EMBEDDINGS_ENABLED=false` until Voyage's terms) | 83% | 69% |  63% |
 | 2026-11-18 | NT2 + NT3 (#344 (a), #339 N3): PJ-60 ❌ → 🟡 (the dispatcher and notification email with signed bounces, built locally; digests (PRD-E15) and a hosted send left) | 83% | 70% | 63% |
+| 2026-11-18 | FBP DB16 (#483): MW-62 ❌ → 🟡 (`/admin/ledger` reads the conservation identity, its nightly checks and the open drift; Stripe reconciliation and the alert left) | 83% | 70% | 63% |

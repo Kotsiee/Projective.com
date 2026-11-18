@@ -2646,3 +2646,14 @@ GRANT EXECUTE ON FUNCTION finance.fn_escrow_age (timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION finance.read_escrow_age () FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.read_escrow_age () TO authenticated;
 -- #endregion
+
+
+-- #region Conservation identity (00001200, FBP DB16)
+-- The nightly check writes ops rows and reveals every currency's figures: the service role and the
+-- pg_cron owner only. The operator read: signed-in callers reach it, and it refuses anyone but
+-- security.is_admin() (42501), which /admin/ledger answers with a 404.
+REVOKE ALL ON FUNCTION finance.fn_check_conservation () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_check_conservation () TO service_role;
+REVOKE ALL ON FUNCTION finance.get_ledger_health () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.get_ledger_health () TO authenticated;
+-- #endregion

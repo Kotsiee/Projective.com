@@ -267,8 +267,11 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 
 > **Not built — and the ledger model is ruled** (Decision #337, ruling M2). None of the three system
 > wallets exists, and money is not derived double-entry: it is a per-wallet single-entry ledger
-> (§7). The ruling is **A now, B before scale**. A: a per-currency **conservation-identity view**,
-> checked nightly beside `finance.fn_reconcile_wallets` with an ops reader — **Not built yet**. B: a
+> (§7). The ruling is **A now, B before scale**. A: a per-currency **conservation-identity view**
+> (`finance.v_conservation_identity`: Σ external in − Σ external out = Σ held + Σ fees retained − Σ
+> platform losses, the external terms read from the event tables), checked nightly after
+> `finance.fn_reconcile_wallets` by `finance.fn_check_conservation`, and read by operators on
+> `/admin/ledger` (FBP DB16). A new money flow adds its terms to the view in the same change. B: a
 > **shadow double-entry** journal written by every money definer — **Planned**, built when any of
 > three triggers fires: live money beyond a pilot, an enterprise audit-trail ask, or an auditor or
 > regulator. The first is ruled to fire at the public launch (Decision #463), so B is built before
@@ -682,8 +685,10 @@ Governs shared wallets (Business / Team / Enterprise).
   balance vs ledger sum → `drift_cents` must be 0), checked nightly with the running balance by
   `finance.fn_reconcile_wallets`, which reports drift to ops and never corrects it; the ledger
   itself is append-only (Decision #186); external Stripe-balance-vs-escrow-pool reconciliation is an
-  ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints). Beside it runs a per-currency
-  conservation-identity view (§6; Decision #337, ruling M2) — **Not built yet**. A conversion
+  ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints). After it runs the per-currency
+  conservation identity (§6; Decision #337, ruling M2 (A); `finance.fn_check_conservation`, one
+  `ops.log_entries` row per currency per night, `error` for any imbalance), which also never
+  corrects; operators read both, and the escrow-age figures (MR7), on `/admin/ledger`. A conversion
   (§11, Decision #435) is reconciled on its own too: `finance.v_fx_conversion_reconciliation` sets
   each `finance.fx_conversions` row against its ledger legs (principal, margin and credit; every
   drift must be 0), and `finance.v_fx_exposure` totals the platform's net position per currency

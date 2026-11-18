@@ -1360,7 +1360,12 @@ HOT: 00001155 and 00001510 (no SCH work package running; SCH-WP2's interim merge
 00001240, 00001210.
 ```
 
-### DB16 — The conservation identity, checked nightly, with an ops reader (M2)
+### DB16 — ✅ Done: the conservation identity, checked nightly, with an ops reader (M2)
+
+> **Status (2026-11-18, Decision #483):** built with MONEY_BUILD_PROMPTS' DB16 delta and MR7's Escrow
+> age section. The held side counts `reserved` escrow too, and an FX-quoted on-account order is
+> counted in its credit currency; #483 (E) lists every premise that moved. The prompt below stays as
+> the record.
 
 > **Input from DB5 (2026-11-12):** pots are earmarks inside `wallets.balance_cents`, so
 > `finance.pot_movements` is not a money term: the identity counts wallet balances whole. Σ pots ≤
