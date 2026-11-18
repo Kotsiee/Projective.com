@@ -2685,3 +2685,13 @@ REVOKE ALL ON FUNCTION comms.tg_entity_channel_seed_members () FROM PUBLIC, anon
 REVOKE ALL ON FUNCTION comms.tg_entity_member_channels () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION comms.tg_entity_default_channel () FROM PUBLIC, anon, authenticated;
 -- #endregion
+
+-- #region Escrow age (00001200, MR7)
+-- The internal reader takes any clock and answers for every payer, so no client role reaches it; the
+-- service role may run it by hand. The operator door: signed-in callers reach it, and it refuses
+-- anyone but security.is_admin() (42501), which /admin/ledger answers with a 404.
+REVOKE ALL ON FUNCTION finance.fn_escrow_age (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_escrow_age (timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION finance.read_escrow_age () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.read_escrow_age () TO authenticated;
+-- #endregion

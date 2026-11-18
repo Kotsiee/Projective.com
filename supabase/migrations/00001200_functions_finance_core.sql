@@ -1846,3 +1846,114 @@ service role / pg_cron only.';
 -- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
 -- job registry (`ops.scheduled_jobs`, 00005060).
 -- #endregion
+
+-- #region Escrow age — how long held money sits in the platform balance (Decision #473, MR7)
+-- Under Separate Charges & Transfers every card charge settles into the PLATFORM's Stripe balance, and
+-- money leaves it only when a payee withdraws (the Transfer `PaymentBackendService.withdraw` creates).
+-- So escrow, a reservation, a disputed escrow and a release still inside its pending window all sit in
+-- the platform balance, and how long they sit is the fact counsel's answer to ruling M2 turns on
+-- (Decision #337, PRD-F15; the brief is FOUNDER_QUESTIONNAIRE.md Part D). This reader measures it and
+-- moves nothing.
+--
+-- One row per (kind, currency) over the money still held, each kind named for the clock that ends it:
+--   held_bound    held for a named payee (a ticket's or a paid revision's) — ends at approval; no timer
+--                 today (the 14-day auto-approve, PM-GH1, is not built)
+--   held_prepaid  held, nobody has claimed it — the prepaid TTL refunds it at `expires_at` (#428)
+--   held_seat     held for a session seat — released `session_payout_hours` after its sitting (#171, #211)
+--   reserved      a later ticket stage paid for ahead (#430) — no clock at all
+--   disputed      frozen by a dispute (#212) — ends at the operator's ruling
+--   pending       released, inside `pending_release_days` (#191); counted as amount − recovered
+--   on_hold       a pending release a dispute froze (ruling M3; no writer until FBP DB6)
+-- Age runs from when the money entered that state: an escrow's `created_at` (a reservation the stage
+-- activates in place keeps it), a pending release's `released_at`. Release therefore starts a second
+-- clock, and the time in the platform balance is the two added together. `p_now` is the clock to age
+-- against (injectable for probes), never a point-in-time snapshot: a row created after it ages 0.
+-- Ages are days to one decimal; `over` counts and sums the rows older than 30, 60 and 90 days.
+CREATE OR REPLACE FUNCTION finance.fn_escrow_age(p_now timestamptz)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    WITH money AS (
+        SELECT CASE
+                   WHEN e.status = 'disputed' THEN 'disputed'
+                   WHEN e.status = 'reserved' THEN 'reserved'
+                   WHEN e.cohort_membership_id IS NOT NULL THEN 'held_seat'
+                   WHEN e.payee_id IS NULL THEN 'held_prepaid'
+                   ELSE 'held_bound'
+               END AS kind,
+               e.currency::text AS currency,
+               e.amount_cents AS amount_minor,
+               e.created_at AS since
+          FROM finance.escrows e
+         WHERE e.status IN ('held', 'reserved', 'disputed')
+        UNION ALL
+        SELECT pr.state::text, pr.currency::text, pr.amount_cents - pr.recovered_cents, pr.released_at
+          FROM finance.pending_releases pr
+         WHERE pr.state IN ('pending', 'on_hold')
+           AND pr.amount_cents > pr.recovered_cents
+    ),
+    aged AS (
+        SELECT m.kind, m.currency, m.amount_minor, m.since,
+               GREATEST(pg_catalog.date_part('epoch', p_now - m.since) / 86400.0, 0) AS age_days
+          FROM money m
+    ),
+    buckets AS (
+        SELECT a.kind, a.currency,
+               CASE a.kind WHEN 'held_bound' THEN 1 WHEN 'held_prepaid' THEN 2 WHEN 'held_seat' THEN 3
+                           WHEN 'reserved' THEN 4 WHEN 'disputed' THEN 5 WHEN 'pending' THEN 6 ELSE 7 END AS rank,
+               pg_catalog.jsonb_build_object(
+                   'kind', a.kind,
+                   'currency', a.currency,
+                   'count', pg_catalog.count(*),
+                   'total_minor', pg_catalog.sum(a.amount_minor),
+                   'oldest_at', pg_catalog.min(a.since),
+                   'p50_days', pg_catalog.round((pg_catalog.percentile_cont(0.5) WITHIN GROUP (ORDER BY a.age_days))::numeric, 1),
+                   'p90_days', pg_catalog.round((pg_catalog.percentile_cont(0.9) WITHIN GROUP (ORDER BY a.age_days))::numeric, 1),
+                   'max_days', pg_catalog.round(pg_catalog.max(a.age_days)::numeric, 1),
+                   'over', pg_catalog.jsonb_build_array(
+                       pg_catalog.jsonb_build_object('days', 30,
+                           'count', pg_catalog.count(*) FILTER (WHERE a.age_days > 30),
+                           'total_minor', COALESCE(pg_catalog.sum(a.amount_minor) FILTER (WHERE a.age_days > 30), 0)),
+                       pg_catalog.jsonb_build_object('days', 60,
+                           'count', pg_catalog.count(*) FILTER (WHERE a.age_days > 60),
+                           'total_minor', COALESCE(pg_catalog.sum(a.amount_minor) FILTER (WHERE a.age_days > 60), 0)),
+                       pg_catalog.jsonb_build_object('days', 90,
+                           'count', pg_catalog.count(*) FILTER (WHERE a.age_days > 90),
+                           'total_minor', COALESCE(pg_catalog.sum(a.amount_minor) FILTER (WHERE a.age_days > 90), 0))
+                   )
+               ) AS item
+          FROM aged a
+         GROUP BY a.kind, a.currency
+    )
+    SELECT pg_catalog.jsonb_build_object(
+        'as_of', p_now,
+        'rows', COALESCE((SELECT pg_catalog.jsonb_agg(r.item ORDER BY r.currency, r.rank) FROM buckets r),
+                         '[]'::jsonb)
+    );
+$$;
+
+COMMENT ON FUNCTION finance.fn_escrow_age(timestamptz) IS
+'How long held money has sat in the platform balance, per kind (held_bound · held_prepaid · held_seat ·
+reserved · disputed · pending · on_hold) and currency: count, total, oldest, p50 / p90 / max age in
+days, and the count and total older than 30, 60 and 90 days (MR7, Decision #473). Read-only. Internal:
+reached through finance.read_escrow_age (operators) and probes.';
+
+-- The operator door (`/admin/ledger`'s Escrow age section): security.is_admin() only. Anyone else gets
+-- 42501, which the page answers with a 404, as /admin/disputes does (Decision #212).
+CREATE OR REPLACE FUNCTION finance.read_escrow_age()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read escrow age' USING ERRCODE = '42501';
+    END IF;
+    RETURN finance.fn_escrow_age(pg_catalog.now());
+END;
+$$;
+-- #endregion

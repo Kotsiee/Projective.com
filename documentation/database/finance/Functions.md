@@ -385,6 +385,24 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   only (`00002510`). Scheduled nightly at 03:40 UTC as `finance-reconcile-wallets`, a row of the job
   registry (`ops.scheduled_jobs`, Decision #203); `deno task cron:run finance-reconcile-wallets` runs it
   by hand.
+- **`finance.read_escrow_age()`** → jsonb (operator) — how long held money has sat in the platform's
+  Stripe balance (MR7, Decision #473; the counsel brief on ruling M2, `FOUNDER_QUESTIONNAIRE.md`
+  Part D). `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `security.is_admin()` only, else
+  `42501` (the page answers 404). Returns `finance.fn_escrow_age(now())`. Granted to `authenticated`
+  (`00002510`), never `anon`. Read by `escrow-age.ts` `readEscrowAge` → `EscrowAgeSchema`
+  (`@projective/types/finance`); its `/admin/ledger` section waits on FBP DB16.
+- **`finance.fn_escrow_age(p_now)`** → jsonb — the reader itself, `LANGUAGE sql STABLE`, invoker
+  rights; service role only. `{as_of, rows}`: one row per (kind, currency) over the money still
+  held, each kind named for the clock that ends it — `held_bound` (a payee is named; ends at
+  approval), `held_prepaid` (unclaimed; the prepaid TTL, #428), `held_seat` (`cohort_membership_id`;
+  `session_payout_hours`), `reserved` (#430; no clock), `disputed` (#212), from `finance.escrows` by
+  `created_at`; and `pending` / `on_hold` from `finance.pending_releases` by `released_at`, counting
+  `amount_cents − recovered_cents` and only while it is above 0. Each row: `count`, `total_minor`,
+  `oldest_at`, `p50_days` / `p90_days` (`percentile_cont`) / `max_days` to one decimal, and `over`:
+  the count and total older than 30, 60 and 90 days. Ordered by currency, then clock order.
+  Released, refunded and matured money is not counted. `p_now` is the clock to age against, not a
+  snapshot: a row created after it ages 0. Probe: `escrow_age.sql`.
+
 
 ## Stage-level wrappers (in `projects`, invoke this engine — migration `0305`)
 

@@ -3,10 +3,11 @@
 > **Status: ANSWERED 2026-10-30.** The owner filled in Part A, then answered two follow-up rounds
 > the same day (the unanswered, ambiguous and self-contradictory items, and a replacement price
 > table). Wave 1.1 recorded every ruling on Decisions #252, #336–#341 and #343 (the scheduling draft
-> "#335"). **Part C is the ruling table.** This file merges every open question in the twelve audit
-> files of `documentation/architecture/` into one form. Where several audits ask the same thing,
-> they share one question. Part A is the form. Part B is the order in which to run the build work,
-> and which parts can run in parallel Claude sessions.
+> "#335"). **Part C is the ruling table.** **Part D (2026-11-18, Decision #473) is the counsel brief
+> for the money ⚖️ items (M2, M9, #435 (a)).** This file merges every open question in the twelve
+> audit files of `documentation/architecture/` into one form. Where several audits ask the same
+> thing, they share one question. Part A is the form. Part B is the order in which to run the build
+> work, and which parts can run in parallel Claude sessions.
 >
 > **Sources (short names used below):**
 >
@@ -149,7 +150,7 @@ Answer / notes: ______
 
 ⚖️ Confirm with Stripe and counsel how long escrow may sit in the platform balance under Separate
 Charges & Transfers, and what safeguarding posture follows. FM §9 says "legally segregated", but the
-code cannot prove it. Answer: ______
+code cannot prove it. Answer: ______ (the brief for counsel is Part D, Decision #473)
 
 ### M3 · Disputes inside the 7-day clearing window (FDD D-6, FA (c), #126, #191 B3; gates FBP DB6)
 
@@ -1112,3 +1113,198 @@ named = primary). Track and step names are Part B's.
 | E1     | ⭐ All                                                                                                                                                                                                                                                                                                                                                 | #341 (b)(i)–(m)(o): Q2, Q9–Q13, Q15                                                                 | O: WP2, WP10, WP11, WP17                                    |
 | E2     | ⭐                                                                                                                                                                                                                                                                                                                                                     | #341 (p) Q16; FDD N10                                                                               | O: WP7                                                      |
 | E3     | ✎ Q3 yes, but not yet (the design is pending); Q4–Q6, Q17 and D-13 yes; ✎ FA (l) keeps aurora violet; ⭐ FA (h) an Expand Dialog                                                                                                                                                                                                                       | #341 (c)–(f)(q); #337 D-13, FA (h)(l); #245 (a)                                                     | O: WP8, WP9, WP16; F: UI                                    |
+
+---
+
+# PART D — COUNSEL BRIEF: HOW LONG MONEY MAY SIT IN THE PLATFORM BALANCE (2026-11-18)
+
+> **Status: WRITTEN 2026-11-18 (Decision #473); awaiting counsel.** It rules nothing and draws no
+> legal conclusion. It puts three ⚖️ items in front of counsel as one brief, because they turn on
+> the same fact: where Projective's users' money sits, and for how long.
+>
+> | Item                                                    | Ruling so far                                                                                    | Readiness row |
+> | :------------------------------------------------------ | :----------------------------------------------------------------------------------------------- | :------------ |
+> | **Q1.** How long escrow may sit in the platform balance | Ruling M2 (Part A §1, Part C): open, pending Stripe and counsel, with no owner position          | PRD-F15       |
+> | **Q2.** A failed bank payout left in Stripe             | Ruling M9 (Part C): "Most widely acceptable in law"; built as "stays in Stripe" (#202 (a))       | PRD-F11       |
+> | **Q3.** Whether converting a buyer's money is regulated | #435 flag (a) and `FINANCE_BUILD_PROMPTS.md` §0.5 (d): built, switched off until counsel answers | PRD-F18       |
+>
+> **Sources.** The flows (D.1) and timers (D.2) were read from the code at `b7280787`. The Stripe
+> facts (D.3) were read from Stripe's own documentation with the Stripe CLI on 2026-11-18, read-only
+> and with no account access. The ages (D.4) are measured by `finance.read_escrow_age()` on a seeded
+> local database, so they are **synthetic**: they show the reader works, not how real money behaves.
+
+## D.1 How the money moves today
+
+1. **Every card payment is charged on the platform's Stripe account.** Projective is a GB platform
+   on Stripe Connect, using Separate Charges & Transfers with Express connected accounts on Accounts
+   v2 (Decision #125). A charge carries no `on_behalf_of`, no `transfer_data` and no application fee
+   (`stripe-rails.ts`, `paymentIntentParams`), so Projective is the business of record for the
+   charge. Settled money is credited to the payer's ledger wallet (`finance.settle_card_payment`).
+   The platform is ruled to settle in nine currencies (GBP USD EUR CAD AUD JPY SGD CHF ZAR, Decision
+   #423).
+2. **Escrow is held from that wallet**, as a row in `finance.escrows`. It is a ledger record inside
+   the platform balance, not a separate account at Stripe or a bank.
+3. **On release, the payee's share waits 7 days** as a `finance.pending_releases` row (Decision
+   #191), then becomes the payee's **Available** wallet balance.
+4. **Money leaves the platform balance only when someone withdraws.** `begin_payout` debits the
+   wallet, then a Stripe Transfer moves the amount from the platform balance to the payee's
+   connected account (no `source_transaction`), and Stripe pays their bank on its own schedule. A
+   payee may automate this with a weekly, monthly or threshold payout schedule (ruling M6). Without
+   one, an Available balance stays put until the payee asks.
+5. **So four kinds of users' money sit in the platform balance:** client top-ups not yet spent,
+   escrow (held, reserved or disputed), releases still inside their 7 days, and payees' Available
+   balances not yet withdrawn. Escrow is only part of it.
+6. **The platform carries the losses.** Connected accounts are created with
+   `losses_collector: "application"` and the recipient configuration (`stripe-rails.ts`), so the
+   platform owns refunds, chargebacks and negative balances. The ledger is single-entry with
+   materialised balances (ruling M2 A; the shadow journal is Decision #463). `finance-model.md` §9
+   says the funds are "legally segregated", but nothing in the code can show that.
+
+## D.2 The timers the platform enforces today
+
+| Money                                     | Timer                                                                                                                                                                                      | Source                                                                                                                     | Status                                                                                  |
+| :---------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- |
+| Unclaimed prepaid ticket escrow           | **120 h** (a productised service) or **168 h** (a client project), then refunded whole to the payer's wallet                                                                               | Decision #428; `prepaid_service_ttl_hours` / `prepaid_project_ttl_hours`; `fn_sweep_expired_prepaid_escrows`, every 15 min | Built and running                                                                       |
+| A claimed ticket nobody works on          | **1,440 min** idle, then back to the backlog, with its escrow refunded to the client                                                                                                       | #338 D1; `claim_ttl_minutes`; `projects.fn_release_expired_claims`                                                         | Built, but its job is registered **paused** (`enabled = false`) until PM-WP1 hardens it |
+| A submission the client never reviews     | **14 days** (notices at 7 and 13), then auto-approve and the standard payout                                                                                                               | Ruling P3; PM-GH1                                                                                                          | **Not built.** A bound ticket escrow has no timer today (`finance-model.md` §8)         |
+| A session seat                            | **24 h** after its sitting ends, then released (a cohort seat waits for the cohort's last sitting)                                                                                         | #171, #211; `session_payout_hours`; `auto_release_session_escrow`, every 15 min                                            | Built and running                                                                       |
+| A later stage paid for ahead (`reserved`) | **None of its own.** Held when the ticket reaches its stage; refunded only by an event on its ticket (completed, cancelled, deleted, the stage removed, a service cancel, the prepaid TTL) | #430; `fn_refund_ticket_reservations`                                                                                      | Built                                                                                   |
+| A disputed escrow                         | Respondent **48 h**, then escalated; the review target is **72 h**. Past it the case stays held, and the operators are alerted daily                                                       | #212; `dispute_response_hours`, `dispute_review_hours`; `sweep_disputes`                                                   | Built. **No maximum:** the money waits for a ruling                                     |
+| A release inside its clearing window      | **7 days**, then Available                                                                                                                                                                 | #191; `pending_release_days`; `fn_mature_pending_releases`, hourly                                                         | Built and running                                                                       |
+| A payment dispute on clearing money       | Freezes the payee's pending rows (`on_hold`) until the card dispute is decided                                                                                                             | Ruling M3; FBP DB6                                                                                                         | **Not built** (`on_hold` has no writer)                                                 |
+| A payee's Available balance               | **None.** It stays until the payee withdraws or their payout schedule runs                                                                                                                 | Ruling M6; `finance-payout-schedules`, every 15 min                                                                        | Built                                                                                   |
+| A client's top-up                         | **None.** Spent, or withdrawn, at the client's pace                                                                                                                                        | PRODUCT_SPEC §Escrow, Wallets & Finance                                                                                    | Built                                                                                   |
+
+## D.3 What Stripe documents
+
+Read 2026-11-18 from docs.stripe.com. The bullets paraphrase Stripe; they are not legal advice and
+not Projective's reading of the law.
+
+- **When charged money can move.** A transfer is paid from the platform's available balance, and one
+  that exceeds it fails and is not retried. A transfer that names its charge (`source_transaction`)
+  succeeds at once, but waits for that charge's funds to become available. In GB, a new account's
+  first payment settles after 7 days and later ones after 3 business days by default
+  ([SCT](https://docs.stripe.com/connect/separate-charges-and-transfers),
+  [balances](https://docs.stripe.com/payments/balances)).
+- **Holding money.** Stripe recommends holding money only for a clear purpose, with a commitment to
+  transfer it when an event happens or a condition is met. It advises against holding money
+  arbitrarily, says platforms should pay connected accounts as soon as they are identified (usually
+  at the charge), and tells a platform that is unsure to ask its legal advisor
+  ([account balances, "Holding funds"](https://docs.stripe.com/connect/account-balances)).
+- **The 90-day figure.** The same section says Stripe may, for compliance reasons, hold funds in
+  reserve for a period set by the business's country: 10 days in Thailand, 2 years in the United
+  States, **90 days everywhere else**. The page does not say whether the period runs on the
+  platform's balance or the connected account's. The manual-payouts page applies the same table as a
+  hard deadline for paying out money held in a connected account's balance
+  ([manual payouts](https://docs.stripe.com/connect/manual-payouts)). We found no documented
+  deadline for creating an SCT transfer after a charge.
+- **Escrow, by name.** Stripe says, on the manual-payouts page, that "Escrow has a precise legal
+  definition, and Stripe doesn't provide escrow services". Projective's product, code and public
+  copy call the held money "escrow".
+- **Funds segregation exists, as a private preview available in GB.** Allocated money sits outside
+  the platform balance, can only be transferred to a connected account, and is protected from
+  platform payouts, unrelated refunds and chargebacks, and Stripe fees. It requires the platform to
+  carry negative balances (Projective does), a `source_transaction` on every transfer (Projective
+  sets none), and no `on_behalf_of`. Only Visa, Mastercard, Discover, American Express and Swish
+  payments made without `automatic_payment_methods` qualify (Projective's express-wallet path uses
+  them), and recipient accounts cannot take cross-border payouts. It is requested through a Stripe
+  account manager ([funds segregation](https://docs.stripe.com/connect/funds-segregation)).
+- **Cross-border.** Transfers on the payments balance work between the US, Canada, the UK, the EEA
+  and Switzerland. Outside those, the platform and the account must be in the same region. Accounts
+  on the recipient service agreement cannot receive cross-border payouts without Global Payouts, and
+  their transfers take an extra 24 hours to become available. Projective creates its connected
+  accounts with the recipient configuration
+  ([SCT](https://docs.stripe.com/connect/separate-charges-and-transfers),
+  [cross-border payouts](https://docs.stripe.com/connect/connect-cross-border-payouts),
+  [service agreements](https://docs.stripe.com/connect/service-agreement-types)).
+- **Who answers for what.** Without `on_behalf_of` the platform is the business of record, and its
+  balance pays refunds, chargebacks and Stripe fees. Stripe recommends SCT only where the platform
+  also carries connected accounts' negative balances. Merchant of record is judged from the
+  customer's point of view, and Stripe suggests legal advice where that is unclear
+  ([charges](https://docs.stripe.com/connect/charges),
+  [merchant of record](https://docs.stripe.com/connect/merchant-of-record),
+  [risk management](https://docs.stripe.com/connect/risk-management)).
+- **A failed bank payout (Q2).** The bank returns the money, the payout's
+  `failure_balance_transaction` puts it back in the account's Stripe balance, and the bank account
+  is disabled until it is updated. A payout can read `paid` and turn `failed` up to 5 business days
+  later. Stripe's general payouts page says it reattempts at the next scheduled payout once the
+  details are corrected. The Connect pages we read do not say so for connected accounts
+  ([payouts](https://docs.stripe.com/payouts),
+  [payout object](https://docs.stripe.com/api/payouts/object),
+  [connected-account payouts](https://docs.stripe.com/connect/manage-connected-account-payouts)).
+- **Currency conversion (Q3).** Under SCT without `on_behalf_of`, Stripe converts a charge into the
+  platform's currency, and converts again at transfer if the connected account's currency differs
+  ([Connect currencies](https://docs.stripe.com/connect/currencies),
+  [FX Quotes](https://docs.stripe.com/connect/currencies/fx-quotes-api)). The pages we read say
+  nothing about a platform converting money in its own ledger.
+- **Not documented on the pages read:** money transmission, licensing, safeguarding (outside
+  stablecoin custody) or e-money.
+
+## D.4 The ages, measured
+
+`finance.read_escrow_age()` (00001200, operators only) reads seven kinds of held money, one per
+clock in D.2: `held_bound`, `held_prepaid`, `held_seat`, `reserved`, `disputed`, `pending` and
+`on_hold`. For each kind and currency it gives the count, the total, the oldest, the p50, p90 and
+maximum age in days, and the count and total older than 30, 60 and 90 days. Age runs from when the
+money entered that state, so a release starts a second clock, and the total time in the platform
+balance is the two added together. The probe `supabase/probes/escrow_age.sql` proves the figures on
+a fixture. The reader moves nothing.
+
+**Seeded local database, read as the seeded operator at 2026-11-18 19:41 UTC** (synthetic: the seed
+dates its rows relative to the last reset):
+
+| Kind         | Currency | Count |         Total | Oldest     | p50 |  p90 |  Max | Over 30 / 60 / 90 days |
+| :----------- | :------- | ----: | ------------: | :--------- | --: | ---: | ---: | :--------------------- |
+| `held_bound` | USD      |     5 | US$107,000.00 | 2026-11-06 | 9.0 | 11.6 | 12.0 | 0 · 0 · 0              |
+
+The seed holds no prepaid, seat, reserved or disputed escrow and no pending release, so those kinds
+have no row. The probe covers every kind on its own fixture.
+
+Payees' and clients' Available wallet balances are outside the reader, because a wallet balance has
+no single age. On the same database they came to US$54,799.75 across 15 wallets: freelancers
+US$25,515.32, businesses US$18,897.00, users US$7,500.00 and teams US$2,887.43. All of it sits in
+the platform balance until it is withdrawn or spent.
+
+On production, the operator reads the same figures from `/admin/ledger`'s Escrow age section. That
+page is FBP DB16's and has **not landed yet**, so until it does, the read is
+`select finance.read_escrow_age()` as an operator.
+
+## D.5 The questions for counsel
+
+**Q1 (ruling M2, PRD-F15).** A GB platform holds users' money in its own Stripe balance under
+Separate Charges & Transfers, as D.1 describes. It holds escrow until approval, 7 days of clearing,
+payees' released balances until they withdraw, and clients' top-ups.
+
+- (a) May it hold each of these four in its own balance at all, and if so for how long?
+- (b) Does any of them make it a payment institution or e-money issuer, or bring a safeguarding
+  duty? Does calling it "escrow" carry a legal meaning it cannot meet?
+- (c) Is "legally segregated" (`finance-model.md` §9) a claim it can make? Would Stripe's funds
+  segregation, or transferring to the payee's connected account at release instead of at withdrawal,
+  change the answer?
+
+**Q2 (ruling M9, PRD-F11).** When a payee's bank rejects a payout, the money is already in the
+payee's connected account and stays in its Stripe balance until Stripe pays it again (#202 (a)). Is
+leaving it there the most widely acceptable option in law, or must it return to the platform wallet?
+Is there a limit on how long it may stay there?
+
+**Q3 (#435 flag (a), FBP §0.5 (d), PRD-F18).** At checkout, Projective converts a buyer's
+billing-currency money into the seller's currency inside its own ledger. It uses a locked 30-minute
+quote with a disclosed margin of 150 basis points (seeded, switched off), and holds the converted
+amount until payout, possibly for weeks (#435, #436 (C)).
+
+- (a) Is that a regulated currency-exchange or dynamic-currency-conversion service?
+- (b) What markup disclosure is owed?
+- (c) A refund returns the exact amount paid, margin included. Does that meet UK cancellation rules?
+
+## D.6 What the answers decide
+
+| If counsel says                                   | Then the platform must decide                                                                                                                                                            | Where it lands                                                            |
+| :------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------ |
+| A maximum hold, for some or all of the four kinds | Per kind, what happens at the maximum: **refund** the payer, **release** to the payee, or **escalate** to an operator. Plus the alert thresholds (`read_escrow_age`'s 30 / 60 / 90 days) | A sweep per kind; MR4's money alerts; D.2's "None" and "No maximum" rows  |
+| Transfer at release, not at withdrawal            | Move the Transfer from `begin_payout` to the release. This puts the 90-day figure in D.3 on the connected account's balance                                                              | `PaymentBackendService`, `fn_mature_pending_releases`; the journal (#463) |
+| Funds segregation                                 | Ask Stripe for the preview (a human act), and set `source_transaction` on every transfer                                                                                                 | `stripe-rails.ts` `transferParams`; Decision #125                         |
+| "Escrow" is the wrong word                        | Rename it in the public copy and the legal documents                                                                                                                                     | PRD-M1; PRODUCT_SPEC; the legal content                                   |
+| Q2: return the money to the wallet                | Reverse the transfer on `payout.failed`                                                                                                                                                  | FBP SV8; `finance-model.md` §8                                            |
+| Q3: conversion may run, with a stated disclosure  | Switch on `fx_checkout_enabled`, keep or change `fx_spread_bp`, and write the disclosure copy                                                                                            | #435 (C); FBP DB17; PRD-F18                                               |
+
+**Counsel's answer:** Q1 ______ · Q2 ______ · Q3 ______ (by, date)
