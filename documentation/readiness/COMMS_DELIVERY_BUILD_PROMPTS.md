@@ -348,11 +348,12 @@ ACCEPTANCE:
 > inside the app: `GET /api/comms/dispatch`, behind the same constant-time `COMMS_DISPATCH_SECRET`
 > bearer as the `POST`, answers `deliverySources()` (`services/comms/channel-liveness.ts`) as the
 > dispatcher and each channel by name with ✓ / ✗ only, and the same 404 to any other bearer. FILES
-> gains that route (`routes/api/comms/dispatch.ts`, `dispatch-ssr.ts`, a route test, ROUTING).
-> Before writing step 1, settle #484 flag (a): which bearer the script presents, since a sixth
-> `DELIVERY_SMOKE_*` export is outside the prompt's list. Also add CD1's Option A checks (the
-> provider list id in `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`,
-> because step 1 omits them.
+> gains that route (`routes/api/comms/dispatch.ts`, `dispatch-ssr.ts`, a route test, ROUTING). The
+> script presents that bearer from a sixth export, `DELIVERY_SMOKE_DISPATCH_SECRET` (#484 flag (a),
+> ruled 2026-11-18), which you export in your own shell like the other five; it is never read from a
+> file or printed. Also add CD1's Option A checks (the provider list id in
+> `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step 1
+> omits them.
 
 ```text
 PROMPT CD2: The hosted delivery proof — every outbound channel sends for real on staging
