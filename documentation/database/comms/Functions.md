@@ -454,6 +454,44 @@ Probe: `supabase/probes/email_bounce.sql` (rolled back).
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
 | `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). Takes the pair lock (`comms.fn_lock_dm_pair`, CAS M5) before the lookup, so two first messages racing each other find one thread instead of minting two; refuses `42501` with no acting user and `22023 recipient: invalid` for oneself (a self-DM would be one participant row twice, which `dm_participants_thread_user_key` refuses). **Returns `jsonb` `{ thread_id, thread_ref }`** (Decision #339, ruling N1): the thread and its `cht-` address, so a caller builds the conversation's URL without a second read. Zod: `OpenedDmThreadSchema`; the backend reads it through `openedThreadId` (`services/messaging/live-writes.ts`). |
 
+## Who reads which DM messages (`00001300`, PRD-C33, Decision #509)
+
+Being in a thread is not the same as reading all of it. Someone added to a **group** reads its
+messages from their own `dm_participants.joined_at`, never what was said before they arrived (owner
+ruling, Decision #482 (b); PRODUCT_SPEC §Messaging 2.E). An entity channel keeps its whole history
+for a member who joins it, and a DM or a service inquiry holds only its two founding people (#482
+(a)).
+
+### `comms.dm_readable_from(p_thread_id uuid) → timestamptz`
+
+The earliest `created_at` the caller may read in the thread: their own `joined_at` in a `group`,
+`-infinity` in a `dm`, `service_inquiry` or `entity_channel`, and `NULL` when they are not an
+undeleted participant. So `created_at >= comms.dm_readable_from(thread_id)` is the whole DM read
+predicate: a comparison with `NULL` is never true, so a non-member reads nothing without a second
+membership call. A message written at the instant someone joins is theirs (`>=`; `now()` is the
+transaction's start, so the two can be equal). The founders of a group (`create_group_thread`), and
+the pair of a DM that a newcomer turns into one, joined when the thread was minted, so they read it
+whole; a member restored by `add_dm_thread_members` keeps their first `joined_at`. It is
+`SECURITY DEFINER`, `STABLE`, `search_path = ''`, with `EXECUTE` to `authenticated` only
+(`00002510`), because the read policies on `dm_messages`, `message_attachments`, `channel_files`
+and the `messages` storage bucket call it as the invoking role ([Policies.md](Policies.md)).
+
+### `comms.can_read_message(p_message_table text, p_message_id uuid) → boolean`
+
+The one predicate behind reactions, pins, favourites and `files.fn_can_read`'s message-attachment
+arm. A project message: `comms.has_channel_access` on its room. A DM message: undeleted, and
+`created_at >= comms.dm_readable_from(thread_id)`, so a group newcomer can neither see nor add a
+reaction, pin or favourite on a message from before they joined, nor open a file attached to one.
+Until PRD-C33 the DM arm asked `comms.is_dm_participant` alone. `SECURITY DEFINER`, so the
+interaction tables' policies never re-enter the message tables' own.
+
+Verified by `supabase/probes/dm_newcomer_history.sql`: before the change, a newcomer added to a
+group read its earlier messages, their reactions and pins, their attachment rows, Files entries,
+files and stored bytes, a reply's quoted original and the inbox preview, and could react to, unpin
+and favourite them (17 failures). After it, all of that starts at their joining; the founders, a
+restored member, the pair of a DM turned group, and every member of the seeded entity channels
+(synced in after their channels' messages) read their threads whole.
+
 ## Group conversations (`00001300`, Decision #102)
 
 Both are `SECURITY DEFINER` with `search_path = public, comms, org, auth`, `EXECUTE` granted to
@@ -496,24 +534,25 @@ Adds people to a thread the caller is an **undeleted participant** of (`comms.is
 returning how many were actually added. Already-present members are skipped; a member who had
 soft-deleted the conversation for themselves is **restored** (`deleted_at = NULL`) and counted —
 being added back by somebody is the one event that should bring a conversation back into a person's
-inbox. A plain `dm` thread that ends up with more than two participants is flipped to `group`.
-Raises `42501` ("Not a participant of this conversation") for a stranger, and `22023` for an entity
-channel (its people are its workspace's) and for a **`service_inquiry`** ("An inquiry is only
-between its buyer and its seller. Start a group to bring someone else in.", PRD-C27, Decision #482).
-An inquiry cannot become a group, which carries no listing (`ck_dm_threads_subject_inquiry`), and
-before #482 it was widened in place: a `service_inquiry` with three people, which the pair lookups
-in `get_or_create_dm_thread` / `send_request_message` (and the TypeScript `findExistingDmThread`,
-`pairThread`) — all joined on two people only — then returned for ANY two of its members. So a
-stranger who opened an inquiry on a seller's listing and added C read every later "message this
-person" and hiring request between the seller and C. Since #482 every `dm` and `service_inquiry`
-holds exactly its pair, the invariant those lookups rely on. `SECURITY DEFINER`,
-`search_path = ''` (was `public, comms, org, auth`). The backend maps the refusal to `422`
-(`INQUIRY_CLOSED_MESSAGE`, `live-conversation-writes.ts`); the fixture path refuses in the same words
-and no longer offers Add members on an inquiry (`canAddMembers`). Verified by
-`supabase/probes/dm_pair_isolation.sql`: seven failures before the fix (the widen accepted, the
-request and both "message this person" doors landing in the stranger's inquiry, the newcomer reading
-its history, a three-person inquiry), green after, with a DM still becoming a group that no pair
-lookup returns.
+inbox. A restored member keeps their first `joined_at`, so they read the group from when they first
+joined; a newly added one reads it from now (`comms.dm_readable_from`, PRD-C33). A plain `dm` thread
+that ends up with more than two participants is flipped to `group`. Raises `42501` ("Not a
+participant of this conversation") for a stranger, and `22023` for an entity channel (its people are
+its workspace's) and for a **`service_inquiry`** ("An inquiry is only between its buyer and its
+seller. Start a group to bring someone else in.", PRD-C27, Decision #482). An inquiry cannot become
+a group, which carries no listing (`ck_dm_threads_subject_inquiry`), and before #482 it was widened
+in place: a `service_inquiry` with three people, which the pair lookups in `get_or_create_dm_thread`
+/ `send_request_message` (and the TypeScript `findExistingDmThread`, `pairThread`) — all joined on
+two people only — then returned for ANY two of its members. So a stranger who opened an inquiry on a
+seller's listing and added C read every later "message this person" and hiring request between the
+seller and C. Since #482 every `dm` and `service_inquiry` holds exactly its pair, the invariant
+those lookups rely on. `SECURITY DEFINER`, `search_path = ''` (was `public, comms, org, auth`). The
+backend maps the refusal to `422` (`INQUIRY_CLOSED_MESSAGE`, `live-conversation-writes.ts`); the
+fixture path refuses in the same words and no longer offers Add members on an inquiry
+(`canAddMembers`). Verified by `supabase/probes/dm_pair_isolation.sql`: seven failures before the
+fix (the widen accepted, the request and both "message this person" doors landing in the stranger's
+inquiry, the newcomer reading its history, a three-person inquiry), green after, with a DM still
+becoming a group that no pair lookup returns.
 
 **Verified by execution** against the local Postgres (inside `BEGIN … ROLLBACK`, then applied): a
 named group with three participants; a blank title → `NULL`; the DM lookup no longer returning the
@@ -868,7 +907,10 @@ given; RLS on `dm_threads` / `dm_messages` is the guard, so a thread the caller 
 nothing. `p_k` is clamped to 1..20, the list to its first 200 ids, and a repeated id is read once.
 With `p_k = 1` it reads through `dm_threads.last_message_id` (a primary-key lookup), falling back to
 the thread's own newest message when that one has been deleted since; a larger `p_k` walks
-`idx_dm_messages_thread_recent`. Zod: `InboxTailRowSchema` (`@projective/types/messaging`).
+`idx_dm_messages_thread_recent`. The summary is the thread's, not the reader's: for a group newcomer
+it can name a message from before they joined, which the message policy hides (PRD-C33), so the same
+fallback reads their newest readable message, or none. Zod: `InboxTailRowSchema`
+(`@projective/types/messaging`).
 
 ### `comms.tg_dm_thread_summary()` — trigger
 

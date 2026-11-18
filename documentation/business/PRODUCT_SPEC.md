@@ -1636,13 +1636,19 @@ context without "ping fatigue."
 - **What a newcomer reads:** someone added to a group reads its messages **from the moment they
   joined**, never what was said before they arrived, because the people already there wrote for one
   another. A team's or business's channel is the workspace's record, so a member who joins it reads
-  its whole history (Decision #482 (b)). **Not built yet:** today a group newcomer reads everything
-  (PRD-C33).
+  its whole history (Decision #482 (b)). That covers everything hung on a message, not only its
+  text: its reactions and pins, its attachments and the group's Files list, and a reply's quote of
+  an earlier message, which reads "Original message unavailable" to the newcomer. The people who
+  founded the group, and the two people of a DM that a newcomer turned into one, keep everything;
+  someone added back after deleting the conversation for themselves reads from when they first
+  joined (Decision #509).
 - **When it appears in the list:** a conversation joins its **starter's** inbox list the moment it
   is created, empty or not — they asked for it, and one that stayed hidden until they wrote in it
   read as a create that had failed. Everyone it was started **with** sees it once it holds a
-  message, so an empty thread never lands in a stranger's inbox. Opening a conversation directly
-  (by its address) is never gated on either rule — only on being in it.
+  message, so an empty thread never lands in a stranger's inbox. Someone added to a group that
+  already holds messages sees it at once, dated from when they were added, even though nothing in
+  it was written in their time (Decision #509). Opening a conversation directly (by its address) is
+  never gated on either rule — only on being in it.
 - **A group's photo:** a group may carry its own picture, chosen when it is created (beside its
   name) or later from its header menu — **any member** may set, change or remove it, like the name.
   It is picked from the member's own media library (or uploaded) and cropped square; the server cuts

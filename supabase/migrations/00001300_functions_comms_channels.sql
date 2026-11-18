@@ -1114,6 +1114,53 @@ COMMENT ON FUNCTION comms.is_dm_participant(uuid) IS
 'True when the calling user has an undeleted participant row in the given DM thread. SECURITY DEFINER so the RLS policies on comms.dm_participants can use it without recursing into themselves.';
 
 -- =============================================================================
+-- Where the caller's history in a thread begins (PRD-C33, Decision #509).
+--
+-- Being in a thread is not the same as reading all of it. Someone added to a GROUP reads its
+-- messages from the moment they joined (their own `joined_at`), never what was said before they
+-- arrived: the people already there wrote for one another (owner ruling, Decision #482 (b)). That
+-- holds for a DM their arrival turns into a group too, whose two founders keep everything because
+-- they joined when the DM was opened. Every other kind reads whole: an entity channel is its
+-- workspace's record, so a member who joins it reads its history (its participants are synced in
+-- when they join the entity, after the channel's messages); a DM and a service inquiry hold only
+-- their two founding people (#482 (a)), so a bound would have nothing to cut.
+--
+-- Returns the earliest `created_at` the caller may read: `joined_at` in a group, `-infinity`
+-- elsewhere, NULL when the caller is not an undeleted participant. NULL is what makes
+-- `created_at >= comms.dm_readable_from(thread_id)` a complete read predicate on its own: a
+-- comparison with NULL is never true, so a non-member reads nothing and membership needs no
+-- second call. A message written at the instant someone joins is theirs (`>=`; `now()` is the
+-- transaction's start, so the two can be equal).
+--
+-- Restoring a member who deleted the conversation for themselves (comms.add_dm_thread_members)
+-- clears `deleted_at` and keeps `joined_at`, so their history starts where it first did.
+--
+-- SECURITY DEFINER for the reason comms.is_dm_participant is: the RLS policies on dm_messages,
+-- message_attachments, channel_files and storage.objects call it, and it reads dm_participants and
+-- dm_threads, whose own policies would re-enter.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION comms.dm_readable_from(p_thread_id uuid)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN t.kind = 'group'::comms.conversation_kind
+                THEN p.joined_at
+                ELSE '-infinity'::timestamptz
+           END
+      FROM comms.dm_participants p
+      JOIN comms.dm_threads t ON t.id = p.thread_id
+     WHERE p.thread_id = p_thread_id
+       AND p.user_id = auth.uid()
+       AND p.deleted_at IS NULL;
+$$;
+
+COMMENT ON FUNCTION comms.dm_readable_from(uuid) IS
+'The earliest message created_at the calling user may read in the thread: their own joined_at in a group (a newcomer reads from joining), -infinity in a dm, service_inquiry or entity_channel (read whole), NULL when they are not an undeleted participant. `created_at >= comms.dm_readable_from(thread_id)` is the whole DM read predicate (PRD-C33, Decision #509).';
+
+-- =============================================================================
 -- DM thread roster — identity WITHOUT per-viewer state.
 --
 -- The inbox needs to know who else is in a thread: to title a DM after its
@@ -1196,6 +1243,7 @@ AS $$
 DECLARE
     v_channel uuid;
     v_thread  uuid;
+    v_at      timestamptz;
 BEGIN
     IF p_message_id IS NULL THEN
         RETURN false;
@@ -1212,15 +1260,17 @@ BEGIN
         RETURN comms.has_channel_access(v_channel);
     END IF;
 
+    -- A DM message is readable from where the caller's history in its thread begins: anywhere for a
+    -- member of a DM, inquiry or channel, from their own joined_at for a group newcomer (PRD-C33).
     IF p_message_table = 'comms.dm_messages' THEN
-        SELECT thread_id INTO v_thread
+        SELECT thread_id, created_at INTO v_thread, v_at
         FROM comms.dm_messages
         WHERE id = p_message_id AND deleted_at IS NULL;
 
         IF v_thread IS NULL THEN
             RETURN false;
         END IF;
-        RETURN comms.is_dm_participant(v_thread);
+        RETURN COALESCE(v_at >= comms.dm_readable_from(v_thread), false);
     END IF;
 
     RETURN false;
@@ -1228,7 +1278,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION comms.can_read_message(text, uuid) IS
-'True when the calling user may read the message identified by the polymorphic (message_table, message_id) pair — channel access for a project message, thread participation for a DM. SECURITY DEFINER so the policies on the interaction tables do not re-enter the policies on the message tables.';
+'True when the calling user may read the message identified by the polymorphic (message_table, message_id) pair — channel access for a project message; for a DM, thread participation from where the caller''s history begins (comms.dm_readable_from: a group newcomer reads from their joined_at, PRD-C33). SECURITY DEFINER so the policies on the interaction tables do not re-enter the policies on the message tables.';
 
 -- =============================================================================
 -- Group conversations — minting one, and adding people to an existing thread.
@@ -2762,7 +2812,10 @@ COMMENT ON FUNCTION comms.tg_bind_dm_project() IS
 -- read policies are the guard and a thread the caller is not in returns nothing. k = 1 reads through
 -- the thread summary (dm_threads.last_message_id), falling back to the thread's own newest message
 -- when that one has been deleted since; k > 1 walks idx_dm_messages_thread_recent. p_k is held to
--- 1..20, the list to its first 200 ids, and a repeated id is read once.
+-- 1..20, the list to its first 200 ids, and a repeated id is read once. The summary is the thread's,
+-- not the reader's: for a group newcomer it can name a message from before they joined, which the
+-- message policy hides (PRD-C33), so the same fallback reads their newest readable message instead,
+-- or none.
 CREATE OR REPLACE FUNCTION comms.inbox_tails(p_thread_ids uuid[], p_k integer DEFAULT 1)
 RETURNS TABLE (
     thread_id uuid,

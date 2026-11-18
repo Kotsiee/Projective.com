@@ -171,6 +171,9 @@ REVOKE ALL ON FUNCTION public.handle_email_confirmed () FROM PUBLIC, anon, authe
 -- calls under the user's JWT; each answers only for auth.uid().
 GRANT EXECUTE ON FUNCTION comms.is_dm_participant (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.can_read_message (text, uuid) TO authenticated;
+-- Where the caller's history in a thread begins (PRD-C33): the dm_messages, message_attachments,
+-- channel_files and `messages`-bucket read policies call it as the invoking role.
+GRANT EXECUTE ON FUNCTION comms.dm_readable_from (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.get_or_create_dm_thread (uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION comms.dm_thread_roster (uuid[]) TO authenticated;
 -- The inbox's previews (Decision #339, ruling N1). SECURITY INVOKER: RLS answers for the caller.

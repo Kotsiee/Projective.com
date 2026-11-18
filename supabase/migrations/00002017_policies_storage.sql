@@ -11,7 +11,7 @@
 -- Enforcement tiers:
 --   quarantine    - own upload only (INSERT + own SELECT); promotion is a service-role move
 --   project       - read: projects.has_project_access({project_id})
---   messages      - read: comms.dm_participants membership on {thread_id}
+--   messages      - read: comms.dm_readable_from({thread_id}) (membership; a group newcomer from joining)
 --   personal      - read: owner = auth.uid() under users/{auth.uid()}
 --   workspace     - read: active membership of the {entity_id} anchor (team OR business OR enterprise)
 --   invoices      - read: owner on {owner_id}
@@ -67,18 +67,17 @@ SELECT TO authenticated USING (
 -- #endregion
 
 
--- #region messages — global DM/inbox attachments, gated by comms.dm_participants on {thread_id}
+-- #region messages — global DM/inbox attachments, gated by comms.dm_readable_from on {thread_id}
 
+-- From where the caller's history in the thread begins (PRD-C33, Decision #509), the bound every DM
+-- read shares: a group newcomer cannot fetch the bytes of an attachment sent before they joined. An
+-- object is uploaded as its message is sent, so its `created_at` stands for the message's. Like the
+-- message policy, a member who deleted the conversation for themselves reads none of it; the old
+-- participant-row test here did not ask `deleted_at`.
 CREATE POLICY "DM participants can read message attachments" ON storage.objects FOR
 SELECT TO authenticated USING (
         bucket_id = 'messages'
-        AND EXISTS (
-            SELECT 1
-            FROM comms.dm_participants dp
-            WHERE
-                dp.thread_id = (storage.foldername (name)) [1]::uuid
-                AND dp.user_id = auth.uid ()
-        )
+        AND created_at >= comms.dm_readable_from ((storage.foldername (name)) [1]::uuid)
     );
 
 -- #endregion

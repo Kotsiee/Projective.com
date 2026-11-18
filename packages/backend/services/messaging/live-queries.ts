@@ -114,7 +114,11 @@ interface ThreadRow {
 	slug?: string | null;
 	/** The conversation's `cht-` address (Decision #339 ruling N1) — what `ConversationSummary.id` is. */
 	ref: string;
-	/** The thread summary: its newest message, both null while it holds none. */
+	/**
+	 * The thread summary: its newest message, both null while it holds none. The thread's, not the
+	 * viewer's, so for a group newcomer it can name a message the read policy hides from them
+	 * (PRD-C33).
+	 */
 	last_message_at?: string | null;
 	last_message_id?: string | null;
 }
@@ -362,6 +366,11 @@ export interface ConversationContext {
 	viewerId: string;
 	/** The group's photo URL, resolved from `photo_file_id` (absent → no photo). */
 	photoUrl?: string | null;
+	/**
+	 * When the viewer was added, set only for a group whose every message predates them (PRD-C33):
+	 * they read none of it, so the row's activity is the moment they joined, not the group's start.
+	 */
+	addedAt?: string;
 }
 
 /**
@@ -396,7 +405,7 @@ export function toConversationSummary(
 		online: false,
 	}));
 
-	const lastAt = ctx.last?.created_at ?? row.created_at;
+	const lastAt = ctx.last?.created_at ?? ctx.addedAt ?? row.created_at;
 	const readAt = ctx.viewer?.last_read_at;
 	// A message with no words previews as what it carries: `comms.send_message` writes `is_audio` and
 	// `has_attachments` in the message's own transaction (CAS M15), so a memo or a file-only send
@@ -489,20 +498,42 @@ export async function fetchConversations(
 	actor: ReadActor & { accessToken: string },
 	now: number,
 ): Promise<ConversationSummary[]> {
-	const { summaries, unmeasured, startedByViewer } = await fetchParticipatingConversations(
-		actor,
-		now,
-		"inbox",
-	);
+	const { summaries, unmeasured, startedByViewer, addedAfterHistory } =
+		await fetchParticipatingConversations(actor, now, "inbox");
 	// The visibility rule applied at the source, exactly where the fixture path applies it — before
 	// any partition, filter or sort. A thread surfaces in a LIST once it holds a message, or at once
 	// for the person who STARTED it: they just asked for it, and a conversation that vanished from the
 	// lane until they wrote in it read as one that had failed to start. Everyone else it was started
 	// with still sees it only when there is something in it, so an empty thread never lands in a
 	// stranger's inbox. A thread whose tail could not be READ is exempt: we do not know it is empty,
-	// and a transient failure must not silently delete a conversation from someone's inbox.
+	// and a transient failure must not silently delete a conversation from someone's inbox. Nor is a
+	// group the viewer was added to after its last message empty: it holds messages, just none from
+	// their time in it (PRD-C33), so it surfaces at once rather than when somebody next writes.
 	return summaries.filter((c) =>
-		c.messageCount > 0 || unmeasured.has(c.id) || startedByViewer.has(c.id)
+		c.messageCount > 0 || unmeasured.has(c.id) || startedByViewer.has(c.id) ||
+		addedAfterHistory.has(c.id)
+	);
+}
+
+/**
+ * The groups whose newest message predates the viewer's own joining: they were added after
+ * everything in it was written, so the read policy hands them none of it (PRD-C33, Decision #509)
+ * and the tail reads empty, though the thread is not. A founder, and anyone in a DM, an inquiry or a
+ * channel, joined before every message their thread holds, so only a group newcomer is ever named.
+ *
+ * @param threads the threads read, with the thread summary's `last_message_at`.
+ * @param joinedAt the viewer's own `joined_at` per thread id (from `comms.dm_thread_roster`).
+ */
+export function groupsAddedAfterHistory(
+	threads: readonly { id: string; kind: string; last_message_at?: string | null }[],
+	joinedAt: ReadonlyMap<string, string>,
+): Set<string> {
+	return new Set(
+		threads.filter((t) => {
+			const joined = joinedAt.get(t.id);
+			return t.kind === "group" && !!t.last_message_at && !!joined &&
+				Date.parse(t.last_message_at) < Date.parse(joined);
+		}).map((t) => t.id),
 	);
 }
 
@@ -525,7 +556,12 @@ async function fetchParticipatingConversations(
 	scope: ParticipationScope,
 	only?: string,
 ): Promise<
-	{ summaries: ConversationSummary[]; unmeasured: Set<string>; startedByViewer: Set<string> }
+	{
+		summaries: ConversationSummary[];
+		unmeasured: Set<string>;
+		startedByViewer: Set<string>;
+		addedAfterHistory: Set<string>;
+	}
 > {
 	const db = commsClient(actor);
 
@@ -548,7 +584,12 @@ async function fetchParticipatingConversations(
 	if (mineErr) throw new Error(`comms.dm_participants read failed: ${mineErr.message}`);
 	const viewerRows = (mine ?? []) as ParticipantRow[];
 	if (viewerRows.length === 0) {
-		return { summaries: [], unmeasured: new Set(), startedByViewer: new Set() };
+		return {
+			summaries: [],
+			unmeasured: new Set(),
+			startedByViewer: new Set(),
+			addedAfterHistory: new Set(),
+		};
 	}
 
 	const threadIds = viewerRows.map((r) => r.thread_id);
@@ -572,12 +613,19 @@ async function fetchParticipatingConversations(
 	const roster = (rosterRes.error ? [] : (rosterRes.data ?? [])) as RosterRow[];
 
 	const others = new Map<string, string[]>();
+	const joinedAt = new Map<string, string>();
 	for (const row of roster) {
-		if (row.user_id === actor.userId) continue;
+		if (row.user_id === actor.userId) {
+			joinedAt.set(row.thread_id, row.joined_at);
+			continue;
+		}
 		const list = others.get(row.thread_id) ?? [];
 		list.push(row.user_id);
 		others.set(row.thread_id, list);
 	}
+
+	// By thread id, for each row's date; the inbox's visibility filter reads the refs below.
+	const addedAfterHistoryIds = groupsAddedAfterHistory(threads, joinedAt);
 
 	const viewerByThread = new Map(viewerRows.map((r) => [r.thread_id, r]));
 	const [parties, photos] = await Promise.all([
@@ -599,6 +647,7 @@ async function fetchParticipatingConversations(
 			now,
 			viewerId: actor.userId,
 			photoUrl: row.photo_file_id ? mediaUrl(photos.get(row.photo_file_id), "sm") : null,
+			addedAt: addedAfterHistoryIds.has(row.id) ? joinedAt.get(row.id) : undefined,
 		});
 	});
 	const unmeasured = new Set(
@@ -607,7 +656,10 @@ async function fetchParticipatingConversations(
 	const startedByViewer = new Set(
 		threads.filter((t) => t.created_by_user_id === actor.userId).map((t) => t.ref),
 	);
-	return { summaries, unmeasured, startedByViewer };
+	const addedAfterHistory = new Set(
+		threads.filter((t) => addedAfterHistoryIds.has(t.id)).map((t) => t.ref),
+	);
+	return { summaries, unmeasured, startedByViewer, addedAfterHistory };
 }
 
 /** Every listed thread's newest undeleted message, and the threads whose preview could not be read. */

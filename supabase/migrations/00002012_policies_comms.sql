@@ -84,14 +84,15 @@ USING (
                 AND comms.has_channel_access (pm.channel_id)
         )
     )
+    -- A DM message's attachment rows follow the message itself (PRD-C33, Decision #509): readable from
+    -- where the caller's history in the thread begins, so a group newcomer never lists the files sent
+    -- before they joined. This arm once asked only for a participant row, deleted or not, so a member
+    -- who had deleted the conversation for themselves still listed its attachments.
     OR (
         message_table = 'comms.dm_messages'::text AND EXISTS (
-            SELECT 1 FROM comms.dm_participants dp
-            WHERE dp.thread_id = (
-                    SELECT dm_messages.thread_id FROM comms.dm_messages
-                    WHERE dm_messages.id = message_attachments.message_id
-                )
-                AND dp.user_id = auth.uid ()
+            SELECT 1 FROM comms.dm_messages m
+            WHERE m.id = message_attachments.message_id
+                AND m.created_at >= comms.dm_readable_from (m.thread_id)
         )
     )
 );
@@ -208,8 +209,17 @@ SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
 CREATE POLICY "view_dm_threads_if_participant" ON comms.dm_threads FOR
 SELECT TO authenticated USING (comms.is_dm_participant (id));
 
+-- Membership AND history (PRD-C33, Decision #509): a participant reads a message written at or after
+-- the point their history in the thread begins, which is their own `joined_at` in a group and the
+-- thread's start everywhere else (comms.dm_readable_from, 00001300). So someone added to a group, or
+-- to a DM their arrival makes one, reads nothing said before they joined, while an entity channel's
+-- member reads the channel's whole record. The predicate is NULL for a non-member, and NULL is never
+-- true, so it is the whole gate. Every other DM read hangs off this one or off comms.can_read_message,
+-- which asks the same question: the inbox previews (comms.inbox_tails is INVOKER), a reply's quoted
+-- original, the message search the inbox runs over what it read, and every TS reader in
+-- packages/backend/services/messaging, all of which run under the caller's JWT.
 CREATE POLICY "view_dm_messages_if_participant" ON comms.dm_messages FOR
-SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
+SELECT TO authenticated USING (created_at >= comms.dm_readable_from (thread_id));
 
 -- The inbox's one write: a participant may post into their own thread. The
 -- `sender_user_id = auth.uid()` arm is not redundant with membership, for the
@@ -245,13 +255,17 @@ SELECT TO authenticated USING (
     -- message_attachments, message_reactions, message_pins and message_favorites
     -- use. Two vocabularies for one concept inside one schema; matching the wrong
     -- one returns no rows rather than erroring.
+    --
+    -- A DM thread's Files tab lists a file from where the caller's history begins (PRD-C33, Decision
+    -- #509): the row is registered when its message is sent, so its `created_at` stands for the
+    -- message's, and a group newcomer is not shown the files shared before they joined.
     (
         channel_type = 'project'
         AND comms.has_channel_access (channel_id)
     )
     OR (
         channel_type = 'dm'
-        AND comms.is_dm_participant (channel_id)
+        AND created_at >= comms.dm_readable_from (channel_id)
     )
 );
 

@@ -309,8 +309,12 @@ BEGIN
 
     INSERT INTO comms.dm_threads (created_by_user_id, kind, title)
     VALUES (pg_temp.id('owner'), 'group', 'Probe group') RETURNING id INTO v_group;
-    INSERT INTO comms.dm_participants (thread_id, user_id)
-    VALUES (v_group, pg_temp.id('owner')), (v_group, pg_temp.id('free')), (v_group, v_third);
+    -- The members joined before the message, as a group's founders do: a group member reads only
+    -- what was written from their own joined_at (PRD-C33, Decision #509).
+    INSERT INTO comms.dm_participants (thread_id, user_id, joined_at)
+    VALUES (v_group, pg_temp.id('owner'), now() - interval '4 hours'),
+           (v_group, pg_temp.id('free'), now() - interval '4 hours'),
+           (v_group, v_third, now() - interval '4 hours');
     -- The stamp trigger keeps a project only while every participant is party to it, so the
     -- group's stamp is written after the insert, as the fixture it is.
     INSERT INTO comms.dm_messages (thread_id, sender_user_id, body, created_at)

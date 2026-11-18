@@ -109,10 +109,10 @@ CLAUDE.md §6 — RLS is always on).
 | _send_messages_if_member_             | `comms.project_messages`             | `INSERT` | `sender_user_id = auth.uid()` **AND** channel access            |
 | _(none)_                              | `comms.project_messages`, `comms.dm_messages` | `UPDATE` | No policy and no privilege: `comms.edit_message` / `comms.delete_message` are the only writers (PROJECTS CH1) |
 | _(none)_                              | `comms.message_revisions`            | all      | RLS on, no policy, no grant: evidence the doors write and only definers read (PROJECTS CH1) |
-| _view_attachments_if_member_          | `comms.message_attachments`          | `SELECT` | Channel access (project messages) or DM participation           |
+| _view_attachments_if_member_          | `comms.message_attachments`          | `SELECT` | Channel access (project messages); a DM message's rows from the reader's history start (`comms.dm_readable_from`, PRD-C33) |
 | _Users link own message attachments_  | `comms.message_attachments`          | `INSERT` | Only for a message the caller sent, and only for a file the caller can already read (`files.fn_can_read`) — Decision #132 |
-| _view_channel_files_if_member_        | `comms.channel_files`                | `SELECT` | Channel access (`'project'`) or DM participation (`'dm'`)       |
-| _register_channel_files_if_member_    | `comms.channel_files`                | `INSERT` | Same predicate as the read                                      |
+| _view_channel_files_if_member_        | `comms.channel_files`                | `SELECT` | Channel access (`'project'`); a `'dm'` row from the reader's history start (`comms.dm_readable_from`, PRD-C33) |
+| _register_channel_files_if_member_    | `comms.channel_files`                | `INSERT` | Channel access, or DM participation (`comms.is_dm_participant`)  |
 | _view_channel_participants_if_member_ | `comms.project_channel_participants` | `SELECT` | `comms.has_channel_access(channel_id)`                          |
 | _view_own_room_reads_                 | `comms.project_channel_reads`        | `SELECT` | `user_id = auth.uid()` — one's own room read mark only (PROJECTS CH3). No write policy and no client write privilege (`00002520`): `comms.mark_room_read` is its one writer |
 
@@ -193,7 +193,7 @@ Added by Decisions #82/#83; summarised here so this file is not read as the whol
 | `comms.dm_participants`          | **Own row only.**                    | —                                                         |
 | `comms.dm_thread_projects`       | `comms.is_dm_participant(thread_id)` | — (and no write privilege, `00002520`): `comms.bring_dm_into_project` / `take_dm_out_of_project` only (Decision #560) |
 | `comms.dm_threads`               | `comms.is_dm_participant(id)`        | — (and no `INSERT` / `UPDATE` privilege, `00002520`)      |
-| `comms.dm_messages`              | `comms.is_dm_participant(thread_id)` | `INSERT` as self into a thread one is a member of.        |
+| `comms.dm_messages`          | `created_at >= comms.dm_readable_from(thread_id)` (PRD-C33) | `INSERT` as self into a thread one is a member of.        |
 | `comms.message_reactions`        | `comms.can_read_message(...)`        | `INSERT` as self on a readable message; `DELETE` own row. |
 | `comms.message_pins`             | `comms.can_read_message(...)`        | `INSERT` as self; `DELETE` by anyone who can read it.     |
 | `comms.message_favorites`        | Own row only.                        | `INSERT` as self on a readable message; `DELETE` own row. |
@@ -228,13 +228,31 @@ so `view_dm_threads_if_participant`, `view_dm_messages_if_participant`, the send
 `comms.can_read_message` policy already answer "is this person a member of the entity". A member who
 leaves has their participation soft-deleted, which `comms.is_dm_participant` reads as gone.
 
-**History before `joined_at` (PRD-C33, Decision #482 (b)).** `view_dm_messages_if_participant` asks
-membership only, so a person added to a group reads every message written before they arrived.
-The owner ruled (2026-11-18) that a group newcomer reads only from their own `joined_at`; an entity
-channel keeps its whole history, being the workspace's record. **Not built yet:** the policy,
-`comms.can_read_message` (reactions, pins, favourites, attachments), the attachment file read, the
-thread summary preview and unread counts all still admit earlier messages. A service inquiry can no
-longer gain a newcomer at all (`comms.add_dm_thread_members`, #482 (a)).
+**History before `joined_at` (PRD-C33, Decisions #482 (b) and #509).** Membership is not the whole
+read. Someone added to a group, or to a DM their arrival makes one, reads only what was written at
+or after their own `joined_at`; an entity channel keeps its whole history, being the workspace's
+record, and a DM or service inquiry holds only its two founding people
+(`comms.add_dm_thread_members` refuses an inquiry, #482 (a)). Every DM read asks one function,
+`comms.dm_readable_from(thread_id)`
+([Functions.md](Functions.md#who-reads-which-dm-messages-00001300-prd-c33-decision-487)): the
+caller's `joined_at` in a group, `-infinity` elsewhere, `NULL` for a non-member, so
+`created_at >= comms.dm_readable_from(thread_id)` is a complete predicate on its own.
+
+| Read                                              | Bound                                                                                                            |
+| :------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------- |
+| `view_dm_messages_if_participant` (`dm_messages`) | `created_at >= comms.dm_readable_from(thread_id)` (was `comms.is_dm_participant(thread_id)`)                     |
+| reactions · pins · favourites                     | `comms.can_read_message`, whose DM arm now asks the same bound                                                   |
+| `view_attachments_if_member`, DM arm              | the message's `created_at` against the bound; the old arm also admitted a member who had deleted the thread      |
+| `view_channel_files_if_member`, `dm` arm          | the register row's `created_at` (written as its message is sent) against the bound                               |
+| `messages` bucket (`storage.objects`, `00002017`) | the object's `created_at` (uploaded as its message is sent) against the bound; also no longer `deleted_at`-blind |
+| `files.fn_can_read` (message-attachment arm)      | inherits it through `comms.can_read_message`                                                                     |
+| `comms.inbox_tails`, reply quotes, the TS readers | inherit it: `SECURITY INVOKER` / the caller's JWT, so the message policy is their guard                          |
+
+The thread row itself, its roster and its summary columns stay readable to every member: a newcomer
+sees the group they were added to, who is in it and, through `dm_threads.last_message_at`, when it
+last spoke, but no word of what was said. The inbox (`fetchConversations`, `live-queries.ts`) lists
+a group whose every message predates the viewer at once, dated from their joining, rather than
+hiding it as empty until somebody writes. Verified by `supabase/probes/dm_newcomer_history.sql`.
 
 The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
 DEFINER), so a first message never has to insert into a thread the caller is not yet a member of.
