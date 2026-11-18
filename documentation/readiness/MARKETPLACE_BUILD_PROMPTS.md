@@ -155,7 +155,7 @@ block, so a question you defer still stops the build at the right step.
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
 | 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** agreed, 0–50% of the seller's net; `exclusive_transfer` stages only; stops on erasure   |
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | Counsel's                                                                                               |
-| 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | Per phase, the spec's own recommendations                                                               |
+| 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
 | 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
 
@@ -184,6 +184,7 @@ Fix each in the prompt named, or in MKZ if that prompt has already landed.
 | `00002018:52-63`, `database/reviews/Policies.md:14-15` | no table records a product purchase                    | `finance.order_lines` does                                              | RV1    |
 | `packages/types/profile/tabs.ts:180`                   | `freelancer` = "fellow freelancer"                     | the RPC's `author_role = 'freelancer'` is a provider reviewing a client | RV2    |
 | FBP header                                             | DB3 is uncommitted                                     | committed in `44382c08` (MONEY's addendum already says so)              | MKZ    |
+| USER_FLOWS MK-47                                       | "21 rulings open"                                      | A2 ruled (#499); A6 and A8 are CK1's (#488)                             | SC9    |
 
 ### 0.5 Not in this file
 
@@ -1342,7 +1343,7 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 
 | Phase | Delivers                                                | Waits for                                   |
 | :---- | :------------------------------------------------------ | :------------------------------------------ |
-| 1     | Signed reads closed; `/api/files/object` retired        | CK1; A2                                     |
+| 1     | Signed reads closed; `/api/files/object` retired        | CK1; A2 ruled #499                          |
 | 2     | The upload whitelist, mandatory ClamAV, large files     | T&S SN2 (the safety node); A7               |
 | 3     | The edge host, `SUPABASE_PUBLIC_URL`, the link resolver | Your edge choice; A5                        |
 | 4     | The sandbox origin, the CDN, previews, private buckets  | Phase 3; A1, A4                             |

@@ -192,11 +192,14 @@ pipeline-cut rendition, moderated by the publication gate (Decision #148) and wo
 one refusal: `originals` and `deliveries` are never served through it, so `fn_can_read` can never
 become a second door to a sale original.
 
-**Retired:** `/api/files/object/[id]` and `signedReadUrls()`. Their two remaining consumers (the
-library picker and the share-folder listing) move to the proxy, which closes the last signed read
-URL reaching a browser. **Kept:** signed upload URLs (ruling A2). They write one `quarantine` object
-and read nothing, and routing uploads through the app would hold a request worker for an entire
-multi-gigabyte body.
+**Retired:** `/api/files/object/[id]` and `signedReadUrls()`. Their consumers move to the proxy:
+`signedReadUrls()` signs the library picker's private thumbnails, and `fileObjectHref()` links the
+route from the share-folder listing, the chat image pick, both dispute evidence dialogs and the data
+export's file list. The data export's archive link, which `signedObjectUrl()` mints, is a signed
+read URL too (Decision #499 (C) and flag (b)). Moving them all closes the last signed read URL
+reaching a browser. **Kept:** signed upload URLs (ruling A2, ruled #499). They write one
+`quarantine` object and read nothing, and routing uploads through the app would hold a request
+worker for an entire multi-gigabyte body.
 
 ### 5.4 Response header matrix
 
@@ -674,7 +677,7 @@ The recommended answer is what this document assumes.
 | #   | Question                                                                                                                                                                  | Recommendation                                                                                                      | Who      |
 | :-- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------ | :------- |
 | A1  | Do all four public buckets go private? `Storage.md` flagged this for a human, and the brief says yes.                                                                     | Yes, after the public plane exists (§4.2). Accepts a CDN as a hard dependency.                                      | Owner    |
-| A2  | Does "no signed URLs" include uploads?                                                                                                                                    | No. The rule covers reads. Signed upload URLs stay, write-only, on `quarantine`.                                    | Owner    |
+| A2  | Does "no signed URLs" include uploads?                                                                                                                                    | **Ruled #499 (2026-11-18):** no. The rule covers reads. Signed upload URLs stay, write-only, on `quarantine`.       | Owner    |
 | A3  | Does `no-store` apply to all proxied bytes?                                                                                                                               | No. Marketplace bytes only (§5.4).                                                                                  | Owner    |
 | A4  | Does the sandbox serve entitled files?                                                                                                                                    | No. Public derivatives only, so no token is ever needed. CORP is `cross-origin` there.                              | Owner    |
 | A5  | Accept that `<ref>.supabase.co` cannot be intercepted?                                                                                                                    | Yes. Nothing is emitted on it, and private objects stay refused.                                                    | Owner    |
@@ -690,7 +693,7 @@ The recommended answer is what this document assumes.
 | Phase | Delivers                                                                        | Depends on                 | Done when                                                                                                                                      |
 | :---- | :------------------------------------------------------------------------------ | :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0     | Entitlements, `product_versions`, `originals`, `/api/downloads`, purchases view | A6, A8                     | A real checkout delivers every file of a bundle. A refunded line answers `404`. A concurrency probe passes on `place_wallet_order`.            |
-| 1     | Close signed reads, retire `/api/files/object`                                  | A2                         | A test finds no storage host in any read response.                                                                                             |
+| 1     | Close signed reads, retire `/api/files/object`                                  | A2 (ruled #499)            | A test finds no storage host in any read response.                                                                                             |
 | 2     | Upload whitelist, mandatory ClamAV, large files                                 | Safety node, A7            | EICAR is refused. A disallowed format is refused by sniffed type. A 1 GiB upload resumes.                                                      |
 | 3     | Edge host, `SUPABASE_PUBLIC_URL`, direct-link resolver, `clientKey` wiring      | Edge choice, A5            | Every row of §7.1 has a test. A signed URL's `token` never appears in a redirect.                                                              |
 | 4     | Sandbox origin, CDN, previews, then the §4.2 migration                          | A1, A4, phase 3            | A probe proves no `storage.objects` policy reaches `anon`, and `GET /object/authenticated/…` with the anon key is refused on all four buckets. |
