@@ -39,6 +39,7 @@ import { BUSINESS_NOT_ACTIVE_REASON } from "@projective/types/workspace";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { moneyWritesLive, moneyWritesOff, MoneyWritesOffError } from "./money-gate.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
 import {
@@ -708,12 +709,16 @@ interface DoorError {
 	hint?: string | null;
 }
 
-/** Call one of the two order doors as the caller. */
+/**
+ * Call one of the two order doors as the caller. Fails closed while the money switch is off, though
+ * `create` has refused by then.
+ */
 async function placeOrder(
 	door: "place_wallet_order" | "place_on_account_order",
 	args: Record<string, unknown>,
 	accessToken: string,
 ): Promise<{ data: unknown; error: DoorError | null }> {
+	if (!moneyWritesLive()) throw new MoneyWritesOffError();
 	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(door, args);
 	return { data, error };
 }
@@ -1051,6 +1056,7 @@ export class CheckoutBackendService {
 		type Out = { result: CheckoutResult };
 		return guarded("create", async () => {
 			if (!canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			if (!moneyWritesLive()) return moneyWritesOff<Out>();
 			const sim = dev.payment && dev.payment !== "ok" ? dev.payment : null;
 			// A retry after a dropped response carries the key of an attempt that may already have been
 			// paid — and by then its lines are consumed, so every check below would refuse it as "your
@@ -1409,6 +1415,7 @@ export class CheckoutBackendService {
 			: basketQuery;
 		return guarded("approval", async () => {
 			if (!canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			if (!moneyWritesLive()) return moneyWritesOff<Out>();
 			const resolved = await resolve({ ...query, basketId: input.basketId }, actor);
 			if (!resolved) return SIGNED_OUT as ServiceResult<Out>;
 			const { owner, money, view } = resolved;

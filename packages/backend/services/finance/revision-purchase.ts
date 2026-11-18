@@ -11,6 +11,7 @@ import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
+import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
 import { projectsDb } from "../projects/live-support.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
 import { fundingChargeFor } from "./funding-charge.ts";
@@ -254,6 +255,7 @@ async function fundFromWallet(
 	facts: RevisionFundingFacts,
 	actor: ReadActor & { accessToken: string },
 ): Promise<ServiceResult<PaidRevisionFunding>> {
+	if (!moneyWritesLive()) return moneyWritesOff();
 	// Paid in the payer's own currency (Decision #436): the quote converts their money and the round is
 	// held from the result in one transaction.
 	const { data, error } = input.fxQuoteId
@@ -295,9 +297,7 @@ export class RevisionPurchaseBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<PaidRevisionFunding>> {
 		if (!canReadLive(actor)) return fail(401, { message: "Sign in to pay for this revision." });
-		if (!isFinanceBackendLive()) {
-			return fail(503, { message: "Paying for revisions isn't connected in this environment." });
-		}
+		if (!moneyWritesLive()) return moneyWritesOff();
 		try {
 			const facts = await readFundingFacts(actor, input.revisionId);
 			if (!facts) {

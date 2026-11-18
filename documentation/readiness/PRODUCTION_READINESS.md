@@ -44,15 +44,15 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **60%** |           65 | 34 |  9 | 22 |           8 |
-| **Production**   | **42%** |          143 | 45 | 24 | 74 |          18 |
+| **UAT**          | **62%** |           65 | 35 |  9 | 21 |           8 |
+| **Production**   | **42%** |          144 | 46 | 24 | 74 |          18 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
 | Area                               | Rows | ✅ | 🟡 | ❌ | Score |
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
-| B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
+| B. Live data paths & feature flags |    7 |  2 |  2 |  3 |   50% |
 | C. Security & access control       |   33 | 18 |  4 | 11 |   63% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   16 |  2 |  5 |  9 |   30% |
@@ -101,10 +101,11 @@ Work orders for every open row, with the run order:
 | :----- | :-------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
 | PRD-B1 | A live-gated read never serves fixtures                               | ❌     | Critical | MVP  | With `PROJECTS_BACKEND_LIVE=true`, a failed live read or a tokenless caller returns the fixture feed as `ok` (`services/projects/ProjectBackendService.ts:517-535, 1089-1092`)                                  | LD1   |
 | PRD-B2 | Every domain has a live database path                                 | ✅     | Critical | MVP  | Auth, Explore, Projects, Messaging, Catalogue, Finance, Files, Integrations, Workspace, Saved, Scheduling, Editorial, Community, Contact, Newsletter                                                            | —     |
-| PRD-B3 | `FINANCE_BACKEND_LIVE` gates every money write it claims to           | ❌     | High     | UAT  | Internal moves (`transfer_funds`, `distribute_vault`, `fund_stage`, pots, payout schedule, spend decisions) ignore it (`services/finance/wallet-actions.ts:361-465`); `.env.example:403-407` says it gates them | LD2   |
+| PRD-B3 | `FINANCE_BACKEND_LIVE` gates every money write it claims to           | ✅     | High     | UAT  | LD2 (#497): one chokepoint, `services/finance/money-gate.ts`, runs after the signed-in check and before any read or door. With the flag off, every `/wallet` action, checkout orders and approvals, invoicing terms, billing controls, invoice payment, paid revisions, dispute writes and the Stripe rails answer 503; reads stay live. `money-gate.test.ts` (no request with it off) and the static `money-gate.gate.test.ts`; verified live (no new ledger row with it off). Code, `.env.example` and SA say the same thing | LD2 ✅ |
 | PRD-B4 | Flags are honest: none dead, each scoped as documented                | 🟡     | Normal   | UAT  | `PROFILE_BACKEND_LIVE` has no consumer; EXPLORE, CATALOGUE and FILES gate sub-features only; `USE_MOCKS` skips the live-only services (`core/env.ts:64-83`); `mocks/registry.ts` says 17 of 20 have no DB path  | LD3   |
 | PRD-B5 | A gated-off surface refuses in production instead of serving fixtures | 🟡     | Normal   | PROD | Contact and Newsletter answer 503; Community serves fixtures and stores nothing (`services/community/community-source.ts`)                                                                                      | LD4   |
 | PRD-B6 | A worked ticket can be archived                                       | ❌     | Normal   | UAT  | Deleting a non-pristine ticket is refused because the archive is not built (`ProjectBackendService.ts:3229`); #338 ruled archive over delete                                                                    | PM    |
+| PRD-B7 | The money kill switch covers money a project's lifecycle moves      | ❌     | Normal   | PROD | Accepting a submission and approving or cancelling a stage release or refund escrow through `services/projects/live-settlement.ts` under `PROJECTS_BACKEND_LIVE`, whatever `FINANCE_BACKEND_LIVE` says (#497 (a)); the owner rules whether the switch should stop them too | 🧑 #497 (a) |
 
 ## C. Security & access control
 
@@ -304,6 +305,7 @@ Work orders for every open row, with the run order:
 | Where the notification dispatcher runs (Edge Function or Fresh route + pg_cron)        | PRD-E4, E5, E7, E8 | Open (`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`)     |
 | Escrow holding period                                                                  | PRD-F15            | Pending counsel (#337); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q1 (#473) |
 | CSAM hash matching vendor (PhotoDNA)                                                   | PRD-D14            | Pending counsel (T5)                               |
+| Does the money kill switch also stop money a project's lifecycle moves (accept, approve, cancel)? | PRD-B7             | Open (#497 (a)): today those follow `PROJECTS_BACKEND_LIVE` |
 | FX spread and live rate feed                                                           | PRD-F18            | Pending counsel (#435 (a)); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q3 (#473). Feed provider ruled (#471) |
 | System wallets and double-entry (MR8)                                                  | PRD-F16            | Ruled 2026-11-18 (#463): A · A, a journal before PROD, written in the money doors; MR8a waits for DB16, MR5 |
 | Whether the sitemap lists listings and profiles                                        | PRD-J4             | Decided 2026-11-18 (#452, ruling A); built         |
@@ -392,3 +394,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | NT3 (#339 N3): PRD-E5 ❌ → 🟡 (notification email through Resend), PRD-E10 ❌ → 🟡 (signed bounces: a hard bounce blocks every category, Confirm again lifts it); new PRD-E15, PRD-E16 ❌ | 58% | 61% |  41% |
 | 2026-11-18 | FBP DB16 (#483): PRD-F7 ❌ → 🟡 (the conservation identity, checked nightly; DB8, DB9 left), PRD-F9 ❌ → 🟡 (the `/admin/ledger` reader; MR4's alert left); PRD-F15 stays ❌ (its Escrow age section is built) | 58% | 61% | 42% |
 | 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 58% | 60% | 42% |
+| 2026-11-18 | LD2 (#497): PRD-B3 ❌ → ✅ (every money write passes one chokepoint, 503 with `FINANCE_BACKEND_LIVE` off; reads stay live); new PRD-B7 ❌ (a project's lifecycle moves money outside the switch) | 58% | 62% | 42% |

@@ -50,6 +50,7 @@ import { isFinanceBackendLive } from "../../core/supabase.ts";
 export { assertStripeKeyAllowed } from "../../core/stripe.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
 import {
 	abandonCardPayment,
 	abandonIdentityVerification,
@@ -311,8 +312,12 @@ function signedOut<T>(message = "Sign in to continue."): Result<T> {
 	return fail(401, { message });
 }
 
+/**
+ * A rail that cannot run here: with the money switch off, the one refusal every money write gives
+ * (`money-gate.ts`); with it on but Stripe not configured, the rail's own sentence.
+ */
 function notConnected<T>(message = NOT_CONNECTED): Result<T> {
-	return fail(503, { message });
+	return moneyWritesLive() ? fail(503, { message }) : moneyWritesOff<T>();
 }
 
 function refused<T>(refusal: DbRefusal): Result<T> {

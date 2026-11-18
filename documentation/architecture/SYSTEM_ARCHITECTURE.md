@@ -1401,20 +1401,29 @@ database. Feature history: Decisions #53 and #217.
 WRITE surface, over the finance Zod SSOT (`@projective/types/finance`). Thin `WalletService` (client) →
 `apiFetch` → `/api/wallet/{overview,switcher,transactions,activity,payouts,funding,methods,invoices,
 access,action}` (thin routes = HTTP + Zod + guard, NO server capability gate) → the fat service →
-`ServiceResult<T>`. **All money math is the fat service's** (or its `wallet-fixtures.ts`): the
+`ServiceResult<T>`. **All money math is the server's** (`live-wallet.ts` and the database doors): the
 three-state balance projection, the 5%-fee→vault-cut→template→remainder-to-vault team split
 (finance-model §5), FX conversion + `Intl` formatting into the viewer's display currency, the KYC gate
 — the client only formats the returned `MoneyView`s (never computes a balance/split/fee/conversion).
 The read projections + action inputs + the `MoneyView`/`WalletQuery`/`WalletSim` shapes + the pure
 `formatMoney`/`capabilitiesForRole` helpers are the SSOT at **`packages/types/finance/wallet.ts`**.
-Stub-first behind **`FINANCE_BACKEND_LIVE`** (default off, `isFinanceBackendLive()`): the fat service
-DERIVES a coherent finance world (a personal wallet + team/business vaults + an "All accounts"
-aggregate) deterministically from the same cast as `/projects` + `/messages`, and — as a write surface —
-mutates an **in-module session store** (top-up / withdraw / transfer / distribute / fund-escrow /
-recurring / method / payout / spend / smoother) so the flows are exercisable with the gate off (no
-persistence). **No DB migration** — a read+write projection over fixtures; the RLS-scoped `finance.*`
-tables + money functions (the real engine, migrations 0009/0305/0310 + 20260723090000..094000) are the
-deferred live path behind the same gate. The wallet is the **finance face of the active context**
+**Reads are always live; every money write is behind `FINANCE_BACKEND_LIVE` (PRD-B3, LD2).** There
+is no fixture wallet: every read projection reads the caller's own `finance.*` rows under their JWT
+(`wallet-scope` · `live-wallet` · `wallet-ledger`), whatever the flag says, so a person still sees
+their real wallet with it off; a guest gets a 401 and a failed read a 503, never a sample. Every
+user-initiated money write a finance service makes passes ONE chokepoint first,
+`services/finance/money-gate.ts` (`refuseUnlessMoneyLive` · `moneyWritesLive`), in the call order
+of §Integration Blueprints → Stripe 1.1: signed in (401), then the flag (503 "Payments are switched
+off on this server.", `details.code = "money_writes_off"`), then the action's own checks and its
+door. That covers every `/wallet` action (the Stripe-backed ones, which also need Stripe's keys, and
+the internal moves: transfer, distribute, fund-escrow, recurring rules, payout schedule, spend
+requests and decisions, pots), checkout orders and approval requests, invoicing terms and billing
+controls, invoice payment, paid revisions and dispute writes. `money-gate.test.ts` proves each
+refuses before any request; `money-gate.gate.test.ts` fails when a finance door the database does
+not declare `STABLE` is called from a function that skips the chokepoint, unless it is allowlisted
+with its reason (the service-role webhook and cron doors, a rate lock, telemetry). Money a project's
+own lifecycle moves (accepting a submission, approving or cancelling a stage) goes through the
+projects services, not this flag (PRD-B7). The wallet is the **finance face of the active context**
 (Decisions #16/#17): the same route resolves a different wallet via a `?w=scope:id` switcher override.
 Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55; the single-page presentation
 that replaced the deep pages is Decision #122.
@@ -1826,12 +1835,12 @@ entitlement resolver via the `storage_megabytes` key — no parallel billing pat
 
 ### Basket, Checkout & Orders — the four-step flow
 
-The universal basket and the four-step `/checkout` are **three fat services on one gate**, all
-`services/finance/` and all behind the **existing `FINANCE_BACKEND_LIVE`** (`isFinanceBackendLive()`
-in `core/supabase.ts`). **No new env key, and no DB migration** — like `/wallet` this is a read+write
-projection over deterministic fixtures plus an in-module session store, and the RLS-scoped
-`finance.baskets` / `basket_items` / `saved_cards` tables (already authored and documented) are the
-deferred live path behind the same gate with zero shape churn.
+The universal basket and the four-step `/checkout` are **three fat services**, all
+`services/finance/` and all live, like `/wallet`: the basket, its lines and the checkout session read
+and write the RLS-scoped `finance.baskets` / `basket_items` / `saved_cards` / `buyer_details` rows as
+the caller, whatever `FINANCE_BACKEND_LIVE` says. What moves money is behind it, through the one
+chokepoint (`money-gate.ts`; §Catalogue services, the `WalletBackendService` paragraph): placing an
+order, filing an approval request and changing the invoicing terms answer 503 while it is off.
 
 | Half        | Client (thin)      | Routes (thin)                                                        | Service (fat)                |
 | :---------- | :----------------- | :-------------------------------------------------------------------- | :--------------------------- |
@@ -3680,10 +3689,13 @@ It is a satellite of this section: where they differ, this section wins, and its
 | Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
 | The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_transfer_reversed` · `record_bank_payout` · `record_dispute_opened` · `record_dispute_updated` · `record_dispute_closed` · `record_charge_refunded` (service role) |
 
-- **Order of every user-initiated call:** gate (signed in → 401; `FINANCE_BACKEND_LIVE` + a
-  well-formed key → else 503) → **record the request** through a user door (authorised by
-  `auth.uid()`; the escrow amount is computed by the database) → call Stripe with an
-  `Idempotency-Key` derived from that row → **bind** the Stripe object to the row, write-once.
+- **Order of every user-initiated call:** gate (signed in → 401; then the money switch,
+  `FINANCE_BACKEND_LIVE` → else 503 "Payments are switched off on this server." from
+  `services/finance/money-gate.ts`, the one chokepoint every internal money move passes too; then a
+  well-formed key → else 503 "… isn't connected in this environment") → **record the request**
+  through a user door (authorised by `auth.uid()`; the escrow amount is computed by the database) →
+  call Stripe with an `Idempotency-Key` derived from that row → **bind** the Stripe object to the
+  row, write-once.
 - **Identity and payout verdicts are processor-only.** `apply_identity_event` (claimed as
   `stripe:<evt_id>`) and `sync_payout_account` are the only writers of a case's decision, a payout
   account's status and the profile's `kyc_status` / `kyc_verified_at` / `payout_ready` cache; a
@@ -4405,6 +4417,8 @@ PROFILE_BACKEND_LIVE=false
 MESSAGING_BACKEND_LIVE=false
 CATALOGUE_BACKEND_LIVE=false
 LOGGING_BACKEND_LIVE=false
+# Money: the kill switch (services/finance/money-gate.ts). Off, every user-initiated money write and
+# every Stripe rail answers 503 before any door; the rails also need the Stripe keys. Reads stay live.
 FINANCE_BACKEND_LIVE=false
 # (No WORKSPACE_BACKEND_LIVE: the Teams & Businesses console is live-only since 2026-09-28, like the
 # profile — there is no fixture branch left for a gate to choose.)

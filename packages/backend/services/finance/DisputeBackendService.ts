@@ -1,5 +1,6 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
+import { refuseUnlessMoneyLive } from "./money-gate.ts";
 import type {
 	DisputeCase,
 	DisputeQueue,
@@ -44,6 +45,11 @@ function refusal<T>(error: { code?: string; message?: string }): ServiceResult<T
 	}
 }
 
+/**
+ * A dispute READ's gate. A dispute WRITE (respond · escalate · resolve, which can release or
+ * refund the held escrow) passes the money switch instead (`refuseUnlessMoneyLive`,
+ * `money-gate.ts`).
+ */
 function gate<T>(actor: ReadActor): ServiceResult<T> | null {
 	if (!isFinanceBackendLive()) return fail(503, { message: "Disputes need the live database." });
 	if (!actor.accessToken) return fail(401, { message: "Sign in to continue." });
@@ -100,7 +106,7 @@ export class DisputeBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<{ status: DisputeStatus }>> {
 		return guarded("respond", async () => {
-			const blocked = gate<{ status: DisputeStatus }>(actor);
+			const blocked = refuseUnlessMoneyLive<{ status: DisputeStatus }>(actor);
 			if (blocked) return blocked;
 			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
 				"respond_to_dispute",
@@ -123,7 +129,7 @@ export class DisputeBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<{ status: DisputeStatus }>> {
 		return guarded("escalate", async () => {
-			const blocked = gate<{ status: DisputeStatus }>(actor);
+			const blocked = refuseUnlessMoneyLive<{ status: DisputeStatus }>(actor);
 			if (blocked) return blocked;
 			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
 				"escalate_dispute",
@@ -166,7 +172,7 @@ export class DisputeBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<{ status: DisputeStatus }>> {
 		return guarded("resolve", async () => {
-			const blocked = gate<{ status: DisputeStatus }>(actor);
+			const blocked = refuseUnlessMoneyLive<{ status: DisputeStatus }>(actor);
 			if (blocked) return blocked;
 			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
 				"resolve_dispute",
