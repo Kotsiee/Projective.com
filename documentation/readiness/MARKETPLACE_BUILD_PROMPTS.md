@@ -52,7 +52,7 @@ cohort seat) → **SC3**.
 | MK-32 | ❌ · High · UAT    | **RV1** (🧑 ×4) | A completed buyer reviews, the seller is told and replies; the row cites T&S R2 for the report entry point |
 | MK-33 | ❌ · Normal · PROD | **RV2** (#486)  | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
 | MK-34 | ✅ · Normal · UAT  | **RV1**         | Real reviews replace seed-only data (note clears)                                                          |
-| —     | —                  | **RV3** (🧑)    | Standing reads real reviews (no row of its own; #58-63 (h))                                                |
+| MW-64 | ❌ · Normal · PROD | **RV3** (#489)  | Standing reads real reviews, and Elite can be reached (#58-63 (h))                                         |
 
 **Seller catalogue**
 
@@ -113,7 +113,7 @@ is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts
 3. **SC2 → SC3 → SCH-WP7** — the seed generator is one writer at a time; `00001155` runs with no
    other SCH package.
 4. **CK5** — ⏳ `00005060` free (DB16, PM-WP1, PM-GH1, MR4, MR5 and DB17 also write it).
-5. **SC5 → RV2 → RV3.**
+5. **SC5 → RV2 → RV3.** RV3's 🧑 is ruled (#489), and RV3 waits here for RV2.
 6. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase.
 
 **App lane** (up to three at once, file-disjoint): **SC1** and **CK6** now; **CK3** ⏳ CK1
@@ -149,7 +149,7 @@ block, so a question you defer still stops the build at the right step.
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
 | 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
-| 10 | What Standing's peer track is                                                                    | RV3                 | Reviews between providers who shared an engagement                                                      |
+| 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
 | 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | Agreed per request within platform bounds; commission first, royalty from the seller's net              |
@@ -896,7 +896,7 @@ weight is added; documentation/database/{reviews,search}/*; Zod; the decision ro
 
 ### RV3 — Standing reads real reviews
 
-No row of its own. It keeps Standing honest once RV1 writes reviews.
+Closes MW-64 (new, #489; ❌ → ✅). It keeps Standing honest once RV1 writes reviews.
 
 ```text
 PROMPT RV3: Standing's review component reads the reviews people actually wrote
@@ -913,6 +913,15 @@ finance.ratings (00000017:365-374) is an unread legacy table.
 shared an engagement (teammates, freelancers on the same stages), written through RV1's doors on
 the shared anchor. B: drop the peer track from the formula until it is specified, and weight the
 client track alone.
+RULED #489 (2026-11-18): B, and a review recomputes its subject; skip this stop. The
+component is client_rating_avg / 5 × 20, the Bayesian mean of the subject's visible, revealed
+client reviews (k = 5 at the delivery track's corpus mean); peer_rating_avg stays, reserved,
+never written. A review write (RV1's submit, edit, withdraw, hide; RV2's reveal) calls
+org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for reviews). At HEAD:
+the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
+seeds/11_standing.sql:116); no standing probe exists yet; fn_recompute_standing (00001030:51)
+does not pin search_path = '', so RV3 pins it. Before step 2, ask #489 flag (a): a subject
+with no client reviews scores 0 or the prior's mean. RV3 waits for RV2, re-verified at HEAD.
 
 STEPS:
   1. Red first: a new review does not move Standing.
@@ -929,7 +938,7 @@ SAME CHANGE: PRODUCT_SPEC.md §Standing; finance-model.md; documentation/databas
 the decision row closing #58-63 (h)'s ratings half.
 ```
 
-§1.2 rows: none flip. If Standing's display changes, update MK-06's note.
+§1.2 rows: **MW-64** ❌ → ✅ (new, #489). If Standing's display changes, update MK-06's note.
 
 ---
 

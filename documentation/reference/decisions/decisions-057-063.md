@@ -126,7 +126,7 @@ four migrations were applied to a throwaway Postgres 16 container against a stub
 dependencies, and the resolver / metering / enforcement paths exercised (free→Pro resolution, rung
 scaling 10→20→40 listings, 50→70→170 proposals, the L5 volume floor holding a 95.9-score subject at
 L4, legacy-column mirroring, buffer exhaustion, draft-vs-live footprint, and both triggers refusing
-once switched on). | root CLAUDE.md §1/§5/§6 · `supabase/migrations/20260724110000..113000_*` ·
+once switched on). _Ruled since:_ flags (e) and (h) — #489 (2026-11-18). (h)'s ratings half: Standing's review component reads the client track alone (`client_rating_avg / 5 × 20`); `peer_rating_avg` is reserved and never written; RV3 builds the writer after RV2. (e) is narrowed for reviews: a review write recomputes the subject it rates, while money doors and the sweep stay as (e) says. | root CLAUDE.md §1/§5/§6 · `supabase/migrations/20260724110000..113000_*` ·
 `packages/types/{analytics,org/standing,
 finance/{plans,entitlements}}` ·
 `documentation/database/{analytics,org,finance}/*` · `documentation/database/{Schemas,README}.md` ·

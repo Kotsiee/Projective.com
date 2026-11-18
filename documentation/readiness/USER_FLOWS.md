@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **69%** |           190 | 95 |  74 | 21 |              26 |
-| **Production**   | **63%** |           243 | 100 |  99 | 44 |              37 |
+| **Production**   | **63%** |           244 | 100 |  99 | 45 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -46,7 +46,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    56 | 24 | 20 | 10 |  2 |   64% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 34 | 14 |  2 |   60% |
-| MW — Money, workspaces, legal & operator         |    63 | 21 | 23 | 16 |  3 |   59% |
+| MW — Money, workspaces, legal & operator         |    64 | 21 | 23 | 17 |  3 |   58% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
@@ -430,6 +430,7 @@ Refunds are MK-31.
 | MW-28 | Allowances and entitlements enforced     | Any        | `get_proposal_allowance`      | 🟡     | High   | PROD | Proposal, footprint and storage enforcement switched off; only business gates enforced   |
 | MW-29 | Agency tier and annual prices            | Team admin | —                             | ⏸      | Normal | PROD | Stopped at the storage-figure question (#252 S2)                                         |
 | MW-30 | Standing-tapered marketplace commission  | Freelancer | checkout `place_wallet_order` | ✅     | High   | UAT  | — (DB11)                                                                                 |
+| MW-64 | Every Standing rung is reachable         | Freelancer | `org.fn_recompute_standing`   | ❌     | Normal | PROD | Elite unreachable: an unwritten peer track halves reviews, so max 90 < 92 (#489; RV3)    |
 
 Public pricing is ID-04.
 
@@ -525,3 +526,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | SAC3 (#478): PJ-49 narrowed (read marks are the chat's POST after paint, never the page's GET); still 🟡 | 82% | 68% |  62% |
 | 2026-11-18 | MR2 (#479): PJ-41 ❌ → ✅, PJ-42 🟡 → ✅ (a brief settles its escrow before it cancels; nothing archives while money is held); MK-09 narrowed (Cancel below the lane breakpoint), still 🟡 (PRD-F24) | 82% | 69% |  63% |
 | 2026-11-18 | MR1 (#474): MK-09 🟡 → ✅ (an unclaimed escrow binds nobody until a claim: TTL, approval and Fair Exit refund it; a ticket nobody holds can't enter work; #479 closed its other gap) | 83% | 69% |  63% |
+| 2026-11-18 | RV3's ruling (#489): new MW-64 ❌ (no subject can reach Elite: a never-written peer track halves the review component, so the score tops out at 90 against Elite's 92; ruled B, RV3 builds it after RV2) | 83% | 69% | 63% |

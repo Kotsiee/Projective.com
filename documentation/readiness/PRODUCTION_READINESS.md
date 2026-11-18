@@ -319,6 +319,7 @@ Work orders for every open row, with the run order:
 | Plan gates while nothing can be bought (`business_plan_gates_enforced` is on)          | PRD-F14            | Ruled 2026-11-18 (#472): A, gates off for UAT and back on in SBP S4; the `00005001` switch is not made yet |
 | The checkout tax model: what the platform collects on, the display, the tax codes      | PRD-M5, PRD-M7     | Ruled 2026-11-18 (#490): A split by kind (digital products only), tax-exclusive, codes tabled; CK4 waits for DB21; counsel before any switch |
 | Reviews: the reveal rule, Client Trust Score v1, the warning; "Client" vs "Business Trust Score" | USER_FLOWS MK-33   | Ruled 2026-11-18 (#486): double-blind; a Bayesian mean less a lost-dispute deduction, shown from 3 reviews; below 3.00, demote + acknowledge; one score per client party. RV2 waits for RV1 |
+| Standing's review component: the schema's "peer" track vs PRODUCT_SPEC's two stances (RV3) | USER_FLOWS MW-64   | Ruled 2026-11-18 (#489): B, the client track alone; a review recomputes its subject (narrows #58 (e)); RV3 waits for RV2 |
 
 ## Doc drift to sweep (not scored)
 
