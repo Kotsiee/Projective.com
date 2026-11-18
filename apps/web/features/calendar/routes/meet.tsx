@@ -12,6 +12,11 @@ import { RoomBackendService } from "@server/services/integrations/RoomBackendSer
  * the calendar, an email or an external calendar entry, all of which carry only this address. Any other
  * state says why not and where to go next. The page is never cached, and sends no referrer to the
  * provider, because the address and the link are both a person's own.
+ *
+ * Opening the address records the join (`scheduling.room_join`) on the GET itself, by ruling: a
+ * calendar entry can only carry a link, and the owner kept the one-press join over a confirm step
+ * (#383, #478 (a)). It is ROUTING.md §A GET writes nothing's one accepted GET door that writes a
+ * person's own state.
  */
 
 /** What a person is told when there is no link to give them yet. */

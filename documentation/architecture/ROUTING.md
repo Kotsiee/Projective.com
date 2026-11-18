@@ -1273,12 +1273,13 @@ screens and the loaders they reach on every render are pinned by `apps/web/utils
   `org.get_workspace_detail` on every `/teams/*` and `/catalogue*` render, and through
   `GET /api/user/allowance`. The default notification-preferences row is written by
   `/settings/notifications`, `GET /api/user/notifications` and `GET /api/settings/notifications`.
+- **Meeting join** (`/meet/[roomSlug]`, by ruling). An open room `303`s to the person's own provider
+  link and records their join (`scheduling.room_join`: a `join_click` presence event and a provider
+  registrant), so a calendar or email entry joins in one press (#383). A cross-site navigation can
+  stamp a party's own attendance; the owner kept the GET join anyway (#478 (a), PRD-C30 ⏸).
 
 **Open exceptions, tracked.**
 
-- **`/meet/[roomSlug]`** records attendance on `GET` (`scheduling.room_join`: a `join_click`
-  presence event and a provider registrant), as Decision #383 rules ("one press from … an email or
-  an external calendar entry"). PRD-C30 awaits a ruling.
 - **FX quotes locked on `GET`.** The checkout pages and `GET /api/checkout/session` reuse a live
   quote. `GET /api/finance/escrow/quote` and the paid-revision quote lock a fresh `escrow_lock` row
   on every request (PRD-C31).
