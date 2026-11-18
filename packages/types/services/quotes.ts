@@ -23,7 +23,10 @@ export type QuoteRequestStatus = z.infer<typeof QuoteRequestStatus>;
 export const QuoteOfferStatus = z.enum(["pending", "accepted", "declined", "withdrawn"]);
 export type QuoteOfferStatus = z.infer<typeof QuoteOfferStatus>;
 
-/** An offer as read: the stored status, or `expired` for a pending one past its expiry (derived). */
+/**
+ * An offer as read: the stored status, or `expired` (derived) for a pending one, or an accepted one not
+ * yet paid for, past its expiry — the seller's expiry bounds payment too (CK7, owner ruling A).
+ */
 export const QuoteOfferState = z.enum(["pending", "accepted", "declined", "withdrawn", "expired"]);
 export type QuoteOfferState = z.infer<typeof QuoteOfferState>;
 
@@ -88,6 +91,7 @@ export type QuoteOfferRow = z.infer<typeof QuoteOfferRowSchema>;
 export const QuoteWithOfferRowSchema = z.object({
 	id: z.string().uuid(),
 	status: QuoteOfferStatus,
+	/** Past its expiry while still pending, or accepted and not yet paid for (`get_quotes_with`). */
 	expired: z.boolean(),
 	scope: z.string(),
 	deliverables: z.array(z.string()),
@@ -196,9 +200,11 @@ export type QuoteView = z.infer<typeof QuoteViewSchema>;
 export const QuoteListSchema = z.object({ quotes: z.array(QuoteViewSchema).max(20) });
 export type QuoteList = z.infer<typeof QuoteListSchema>;
 
-/** The offer as read, with `expired` folded into its state. */
+/** The offer as read, with `expired` folded into its state (a pending or an unpaid accepted offer). */
 function offerStateOf(offer: NonNullable<QuoteWithRow["offer"]>): QuoteOfferState {
-	return offer.status === "pending" && offer.expired ? "expired" : offer.status;
+	return offer.expired && (offer.status === "pending" || offer.status === "accepted")
+		? "expired"
+		: offer.status;
 }
 
 /** The acts the doors would accept from this viewer now (00001177). Pure. */
@@ -211,7 +217,12 @@ export function quoteActionsOf(row: QuoteWithRow): QuoteActionKind[] {
 			? ["send_offer", "withdraw_offer", "decline_request"]
 			: ["send_offer", "decline_request"];
 	}
-	if (row.status === "accepted") return row.ordered ? [] : ["checkout", "withdraw_request"];
+	// An accepted offer is paid for before its expiry; past it checkout refuses, so the buyer withdraws
+	// the request (its basket line goes with it) and may ask again.
+	if (row.status === "accepted") {
+		if (row.ordered) return [];
+		return offerState === "expired" ? ["withdraw_request"] : ["checkout", "withdraw_request"];
+	}
 	if (!open) return [];
 	return row.status === "answered" && offerState === "pending"
 		? ["accept_offer", "decline_offer", "withdraw_request"]

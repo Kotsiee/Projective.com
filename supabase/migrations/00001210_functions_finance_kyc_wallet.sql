@@ -1313,6 +1313,14 @@ and KYB verification (PK403 kyb_required).';
 --     the buyer's answers to the listing's own intake (`metadata.answers`) on its order line, reduced
 --     to the questions the listing asks (projects.fn_session_intake_answers, Decision #453). Every
 --     other kind (a whole project, a service) is still refused (PS501) rather than paid into nowhere.
+--   * A One-Off line that names an accepted quote offer (`metadata.quoteOfferId`, Decision #458; CK7)
+--     is priced from the OFFER, never from its listing or the line's snapshot: the buyer's own offer,
+--     accepted, not superseded, not yet paid for, in this order's currency, and not past its expiry —
+--     the seller's expiry bounds payment as well as acceptance (owner ruling A). The request is locked
+--     before the offer, the quote doors' order, so a withdrawal racing the payment waits or loses.
+--     Its terms (marketplace.fn_quote_offer_terms) reach fn_buy_scoped_service as `p_terms`: ONE
+--     milestone whose checklist is the offer's deliverables, held in one escrow at the offer's price,
+--     the offer's scope as the brief and today plus its turnaround as the target date.
 --   * The lines are priced in one currency, and the order is in it. The account pays from its wallet in
 --     that currency, or, with `p_fx_quote_id` (Decision #435), from its wallet in the quote's currency:
 --     the quote must price exactly this order's net for this basket, the spend gate counts what leaves
@@ -1406,6 +1414,9 @@ DECLARE
     v_scoped_price bigint;
     v_target date;
     v_bought jsonb;
+    v_offer marketplace.quote_offers;
+    v_request marketplace.quote_requests;
+    v_offer_terms jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1569,6 +1580,90 @@ BEGIN
             IF v_basket.owner_type NOT IN ('user', 'freelancer') THEN
                 RAISE EXCEPTION '% can only be bought from a personal account for now — switch to your personal account to buy it', v_line.title
                     USING ERRCODE = 'PU422';
+            END IF;
+            -- A line that buys an accepted quote offer (Decision #458; CK7): priced from the offer and
+            -- made its one-milestone engagement through the offer's own terms. Any listing the seller
+            -- sells may be quoted, so the listing's delivery model is not this line's to match.
+            IF v_line.metadata ? 'quoteOfferId' THEN
+                v_offer := NULL;
+                v_request := NULL;
+                IF v_line.item_type = 'one_off_service'
+                   AND (v_line.metadata ->> 'quoteOfferId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+                    SELECT qr.* INTO v_request
+                      FROM marketplace.quote_requests qr
+                     WHERE qr.id = (SELECT qo.quote_request_id FROM marketplace.quote_offers qo
+                                     WHERE qo.id = (v_line.metadata ->> 'quoteOfferId')::uuid)
+                     FOR UPDATE;
+                    SELECT qo.* INTO v_offer
+                      FROM marketplace.quote_offers qo
+                     WHERE qo.id = (v_line.metadata ->> 'quoteOfferId')::uuid
+                     FOR UPDATE;
+                END IF;
+                IF v_offer.id IS NULL OR v_request.id IS NULL
+                   OR v_basket.owner_type <> 'user' OR v_basket.owner_id IS DISTINCT FROM v_uid
+                   OR v_request.requester_user_id IS DISTINCT FROM v_uid
+                   OR v_request.blueprint_id IS DISTINCT FROM v_line.item_id
+                   OR v_offer.status <> 'accepted' OR v_request.status <> 'accepted'
+                   OR v_offer.superseded_by IS NOT NULL THEN
+                    RAISE EXCEPTION '% is no longer on offer — remove it from your basket', v_line.title
+                        USING ERRCODE = 'PC409';
+                END IF;
+                IF EXISTS (SELECT 1 FROM finance.basket_items bi
+                            WHERE bi.metadata ->> 'quoteOfferId' = v_offer.id::text
+                              AND bi.purchased_at IS NOT NULL AND bi.id <> v_line.id) THEN
+                    RAISE EXCEPTION '% is already paid for — remove it from your basket', v_line.title
+                        USING ERRCODE = 'PC409';
+                END IF;
+                IF v_offer.expires_at <= pg_catalog.now() THEN
+                    RAISE EXCEPTION 'The offer for % has expired — ask the seller for a new quote', v_line.title
+                        USING ERRCODE = 'PC409';
+                END IF;
+                SELECT sb.is_published,
+                       sb.freelancer_profile_id = v_uid OR (
+                           sb.owner_team_id IS NOT NULL AND EXISTS (
+                               SELECT 1 FROM org.team_members tm
+                                WHERE tm.team_id = sb.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active')
+                       ) AS own
+                  INTO v_scoped
+                  FROM marketplace.service_blueprints sb
+                 WHERE sb.id = v_line.item_id;
+                IF NOT FOUND OR NOT v_scoped.is_published THEN
+                    RAISE EXCEPTION '% is no longer offered', v_line.title USING ERRCODE = 'PC409';
+                END IF;
+                IF v_scoped.own THEN
+                    RAISE EXCEPTION 'You can''t buy your own service — remove % to pay for the rest', v_line.title
+                        USING ERRCODE = 'PU422';
+                END IF;
+                IF pg_catalog.upper(v_offer.currency) <> v_currency THEN
+                    RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(v_offer.currency), v_currency
+                        USING ERRCODE = 'PC409';
+                END IF;
+                IF p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+                   OR (p_units ->> v_line.id::text)::bigint <> v_offer.price_cents THEN
+                    RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                        USING ERRCODE = 'PC409';
+                END IF;
+                v_offer_terms := marketplace.fn_quote_offer_terms(v_offer.id, v_line.id);
+                v_subtotal := v_subtotal + v_offer.price_cents;
+                v_escrow_total := v_escrow_total + v_offer.price_cents;
+                v_lines := v_lines || pg_catalog.jsonb_build_object(
+                    'id', v_line.id,
+                    'item_id', v_line.item_id,
+                    'item_type', v_line.item_type,
+                    'title', v_line.title,
+                    'quantity', 1,
+                    'gross', v_offer.price_cents,
+                    'creator', 0,
+                    'scoped', true,
+                    'brief', v_offer_terms ->> 'brief',
+                    'answers', CASE WHEN pg_catalog.jsonb_typeof(v_line.metadata -> 'answers') = 'object'
+                                    THEN v_line.metadata -> 'answers' ELSE '{}'::jsonb END,
+                    'target_date', (v_offer_terms ->> 'target_date')::date,
+                    'whole', true,
+                    'terms', v_offer_terms -> 'terms',
+                    'quote_offer_id', v_offer.id
+                );
+                CONTINUE;
             END IF;
             SELECT sb.is_published, sb.delivery_model::text AS model, pg_catalog.upper(sb.currency) AS currency,
                    sb.freelancer_profile_id = v_uid OR (
@@ -2063,12 +2158,14 @@ BEGIN
             CONTINUE;
         END IF;
         -- A One-Off or a Task: the engagement is created and funded now, in this transaction, so a refused
-        -- hold refuses the order and an order never exists without its engagement (Decision #457).
+        -- hold refuses the order and an order never exists without its engagement (Decision #457). A quote
+        -- offer's line carries the offer's own terms (CK7); every other line builds from its listing's.
         IF v_line.l ? 'scoped' THEN
             v_bought := marketplace.fn_buy_scoped_service(
                 (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'brief', v_line.l -> 'answers',
                 (v_line.l ->> 'target_date')::date, (v_line.l ->> 'whole')::boolean,
-                'order:' || (v_line.l ->> 'id')
+                'order:' || (v_line.l ->> 'id'),
+                v_line.l -> 'terms'
             );
             IF (v_bought ->> 'amount_cents')::bigint IS DISTINCT FROM (v_line.l ->> 'gross')::bigint THEN
                 RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.l ->> 'title'
@@ -2080,7 +2177,8 @@ BEGIN
             ) VALUES (
                 v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
                 (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
-                CASE WHEN (v_line.l ->> 'whole')::boolean AND pg_catalog.jsonb_array_length(v_bought -> 'stage_ids') > 1
+                CASE WHEN v_line.l ? 'quote_offer_id' THEN 'Custom offer · escrow held'
+                     WHEN (v_line.l ->> 'whole')::boolean AND pg_catalog.jsonb_array_length(v_bought -> 'stage_ids') > 1
                      THEN 'Every milestone funded' ELSE 'Escrow held' END, 1,
                 (v_line.l ->> 'gross')::bigint, v_currency, 'engagement',
                 (v_bought -> 'stage_ids' ->> 0)::uuid, (v_bought ->> 'ticket_id')::uuid,
@@ -2232,14 +2330,18 @@ membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and se
 (projects.fn_session_intake_answers, Decision #453); and One-Offs and Tasks bought by a person for
 themselves (Decision #457), priced from the listing''s milestones (marketplace.fn_scoped_service_price)
 and settled by creating the funded engagement in this transaction (marketplace.fn_buy_scoped_service),
-the line linking its project and held escrow; every other kind is refused. The net must equal p_expected_minor (the
+the line linking its project and held escrow; a One-Off line naming an accepted quote offer (Decision
+#458; CK7) is priced from the offer — the buyer''s own, accepted, not superseded, unpaid, in this
+currency and not past its expiry — and becomes one milestone held at that price through the offer''s
+terms (marketplace.fn_quote_offer_terms as p_terms); every other kind is refused. The net must equal p_expected_minor (the
 total the buyer saw, in the order''s currency). With p_fx_quote_id (Decision #435) the account pays from
 its wallet in the quote''s currency, converted first at the locked quote, which must price exactly this
 net; the escrows are stamped with the conversion and the order names it. A promo is redeemed atomically
 against its cap and recorded on the order.
 Idempotent on the key, re-checked after the basket lock. Refusal SQLSTATEs: 42501 not allowed · PK403
 verification · PB404 basket gone · PC409 basket/price/promo/seat hold changed, price_changed (the net is
-not p_expected_minor), promo_exhausted (the cap was reached), or a session time that passed · PD422 a
+not p_expected_minor), promo_exhausted (the cap was reached), a session time that passed, or a quote
+offer no longer on offer, already paid for or past its expiry · PD422 a
 line needs a delivery address · PU422 your own listing (yours, or your team''s), or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
 session time was taken · PS501 not payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad
 attempt key, or a line''s intake answers malformed or over 32 KB.';

@@ -30,7 +30,7 @@ describe a draft three different ways.
 | `fn_write_blueprint_stages(p_project_id uuid, p_bp marketplace.service_blueprints, p_terms jsonb)` | INVOKER (internal) | Writes the stages of `p_terms`, else of `fn_blueprint_stage_terms(p_bp)`, into a new engagement and returns their ids in order. `p_terms` is a JSON array of rows in that shape, the seam another terms source writes through. Per stage: the row (its name, else `Stage N` or a Task's `Delivery`; its brief as HTML via `fn_plain_text_html`, a Task's falling back to the listing's; its deliverables as a default checklist and milestone line; its skills as `org.skills` slugs where a label matches; `status = 'assigned'`; its price and intensity terms, which `trg_stage_intensity_terms` freezes); its **start trigger** (below); the seller's `accepted` seat (a freelancer seat, or the team's for a team listing), so the seller claims a funded ticket with no hire step — inserted directly rather than through the hire door, whose overlapping-stage refusal does not apply to a service sold to many buyers at once (Decision #427); and the stage's room. Revision terms arrive through `trg_stage_revision_terms`, which reads `source_blueprint_id`. **Start triggers** (Decision #217), mapped as `stageTriggerToDb` maps them: the first stage, and any stage whose `startTrigger` is `on_project_start`, gets `start_trigger_type = on_project_start` with no dependency; `after_previous` (the default, also for a missing or unknown value) and `fixed_offset` get `dependent_on_stage` with `start_dependency_stage_id` = the previous stage and `start_dependency_lag_days` = `lagDays` (clamped 0–90) for `fixed_offset`, else 0; `chain_reaction` = `chainReaction` (default true). No terms is refused `22023`. |
 | `fn_intake_answers(p_fields jsonb, p_intake jsonb)` | IMMUTABLE (internal) | The buyer's answers reduced to the listing's own `intake_fields` ids. A non-object or an answer set over 32 KB is refused `22023`. |
 | `fn_scoped_service_price(p_blueprint_id uuid, p_whole boolean)` | STABLE SQL (internal) | What checkout charges for a One-Off or a Task: the first milestone's `price`, or every milestone's when `p_whole` (the buyer's whole-project prepay); a Task's one stage either way. NULL for any other delivery model or when a charged milestone has no price. |
-| `fn_buy_scoped_service(p_blueprint_id uuid, p_brief text, p_answers jsonb, p_target_date date, p_whole boolean, p_idempotency_key text, p_terms jsonb)` | DEFINER (internal) | A One-Off or Task paid at checkout becomes a funded engagement (below). |
+| `fn_buy_scoped_service(p_blueprint_id uuid, p_brief text, p_answers jsonb, p_target_date date, p_whole boolean, p_idempotency_key text, p_terms jsonb)` | DEFINER (internal) | A One-Off or Task paid at checkout becomes a funded engagement (below); with `p_terms` (a quote offer's, Decision #491), any listing the seller sells. |
 
 ### A One-Off or Task bought at checkout (Decision #457)
 
@@ -70,7 +70,7 @@ Pipeline projects only.
 | Not signed in | `28000` |
 | Under 18 (`org.fn_assert_adult`) | `PM403` |
 | Unknown or unpublished listing, or a minor seller | `P0002` |
-| Not a One-Off or Direct Deliverable, an unpriced stage, no brief, a key outside 8–120 characters, malformed or oversized answers | `22023` |
+| Not a One-Off or Direct Deliverable (checked only without `p_terms`: a quote offer may answer a Pipeline or a group-session listing and is bought as a one-milestone One-Off, Decision #491), an unpriced stage, no brief, a key outside 8–120 characters, malformed or oversized answers | `22023` |
 | A target date in the past | `22007` |
 | The buyer's own listing, or their team's | `PU422` |
 | The wallet cannot cover the hold (`fund_ticket`) | `PF402` |
@@ -161,7 +161,7 @@ age gate's `PM403` passes through. No door moves money.
 | `send_quote_offer(p_request, p_scope, p_deliverables, p_price_cents, p_turnaround_days, p_expires_in_days = 14)` | the host (adult) | `sent` / `answered` | a `pending` offer in the blueprint's currency; the previous `pending` one `withdrawn` + `superseded_by`; the request `answered` | buyer `quote.offer_received` |
 | `withdraw_quote_offer(p_offer)` | the host | a `pending` offer | `withdrawn` | buyer `quote.offer_withdrawn` |
 | `decline_quote_request(p_request, p_reason)` | the host | `sent` / `answered` | `declined` + reason; a `pending` offer `withdrawn` | buyer `quote.declined` |
-| `accept_quote_offer(p_offer)` | the buyer (adult) | an unexpired `pending` offer on an `answered` request | offer and request `accepted`; ONE `one_off_service` line in the buyer's default personal basket (`metadata.quoteOfferId`, `fundingScope: whole_project`). Idempotent: returns the live line, re-adds a removed one, refuses `already_ordered` once a line was paid for | host `quote.offer_accepted` (first accept only) |
+| `accept_quote_offer(p_offer)` | the buyer (adult) | an unexpired `pending` offer on an `answered` request | offer and request `accepted`; ONE `one_off_service` line in the buyer's default personal basket (`metadata.quoteOfferId`, `fundingScope: whole_project`). Idempotent: returns the live line, re-adds a removed one, refuses `already_ordered` once a line was paid for and `offer_expired` once the accepted offer is past `expires_at` (Decision #491) | host `quote.offer_accepted` (first accept only) |
 | `decline_quote_offer(p_offer)` | the buyer | an unexpired `pending` offer | `declined`; the request stays `answered` | host `quote.offer_declined` |
 | `withdraw_quote_request(p_request)` | the buyer | `sent` / `answered` / unpaid `accepted` | `withdrawn`; a `pending` offer `declined`; the accepted offer's live basket line removed (soft) | host `quote.withdrawn` |
 
@@ -174,17 +174,21 @@ Refusal codes: `not_signed_in`, `quote_not_found` (a stranger and a missing id a
 **Reads.** `get_quotes_with(p_counterpart)` returns every request between the caller and one person
 in either role, newest first and at most 20. Each entry carries the caller's `role`, the listing
 (slug, title, currency, delivery model, `free_revisions`), `offers_sent`, the current offer (the
-`pending` or `accepted` one, else the latest, with `expired` derived), the buyer's live
+`pending` or `accepted` one, else the latest, with `expired` derived: a `pending` offer, or an
+`accepted` one not yet paid for, past `expires_at`, Decision #491), the buyer's live
 `basket_item_id` and `ordered`. Notices link the host to `/catalogue?view=clients&client=@buyer` and
 the buyer to `/messages/dm-host` (`fn_quote_link`).
 
 **Checkout's terms.** `fn_quote_offer_terms(p_offer, p_basket_item)` is internal to
-`finance.place_wallet_order`, as the buyer. It refuses unless the offer and its request are
-`accepted`, the line is a live line in the caller's personal basket carrying this offer, and no other
-line has bought it. It returns `{offer_id, quote_request_id, blueprint_id, brief, target_date (today +
-turnaround), price_cents, currency, terms}`. `terms` is a one-row array in `fn_blueprint_stage_terms`'
-shape (one Standard, locked stage at the offer's price, its deliverables the stage checklist), which
-`fn_buy_scoped_service`'s `p_terms` writes through.
+`finance.place_wallet_order`, as the buyer, after that function has checked the same in checkout's
+own words (`database/finance/Functions.md`, Decision #491), so these refusals are its backstop. It
+refuses unless the offer and its request are `accepted`, the offer is not past `expires_at`
+(`offer_expired`), the line is a live line in the caller's personal basket carrying this offer, and
+no other line has bought it. It returns
+`{offer_id, quote_request_id, blueprint_id, brief, target_date (today + turnaround), price_cents, currency, terms}`.
+`terms` is a one-row array in `fn_blueprint_stage_terms`' shape (one Standard, locked stage at the
+offer's price, its deliverables the stage checklist), which `fn_buy_scoped_service`'s `p_terms`
+writes through.
 
 `EXECUTE` (`00002510`): the seven doors and the read go to `authenticated` and `service_role`. The
 helpers (`fn_lock_quote`, `fn_lock_quote_offer`, `fn_quote_party_name`, `fn_quote_link`,

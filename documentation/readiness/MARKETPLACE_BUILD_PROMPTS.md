@@ -42,8 +42,8 @@
 | MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB19 → DB21 → MONEY MR3 (⏳ CK1, DB16) | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section close here too, because their gap sits in checkout or in a
-door built below: **MK-16** (a quote offer is paid at its price) → **CK7**; **MK-12** (reserve a
-cohort seat) → **SC3**.
+door built below: **MK-16** (a quote offer is paid at its price) → **CK7** (built, #491; live run
+left); **MK-12** (reserve a cohort seat) → **SC3**.
 
 **Reviews**
 
@@ -100,8 +100,9 @@ and this file).
 1. **CK1** — MK-29, and the download record MONEY's DB21 delta asks for. It edits neither `00001240`
    nor `00000017`, so it can be the second SQL session beside MONEY's Wave 2 once `00002510` is
    free.
-2. **CK7 → CK2** — ⏳ CK1 (`00001210`). CK2's 🧑 is ruled (#485), and CK2 waits here for CK7 and for
-   FBP DB16, because #485 (a) adds a conservation-identity term.
+2. **CK7 → CK2** — CK7 ran ahead of CK1 by owner ruling (#491 (1)) and has landed; CK2 ⏳ CK1. CK2's
+   🧑 is ruled (#485), and CK2 waits here for CK7 and for FBP DB16, because #485 (a) adds a
+   conservation-identity term.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
 4. **CK4** — ⏳ DB21 (a refund reverses the tax); 🧑 ruled #490, ⚖️ counsel before the switch.
 5. **SC7** — ⏳ CK1, DB19 and DB21 (a refund reverses the royalty too, #493 (D)); 🧑 ruled #493, ⚖️
@@ -146,7 +147,7 @@ block, so a question you defer still stops the build at the right step.
 | :- | :----------------------------------------------------------------------------------------------- | :------------------ | :------------------------------------------------------------------------------------------------------ |
 | 1  | #393 A6: sale originals as a third zone, snapshotted at publish                                  | CK1                 | Yes, as the spec recommends                                                                             |
 | 2  | #393 A8 (⚖️): what "downloaded" means for the refund rule                                        | CK1                 | The first completed delivery (or a reader session, once one exists), expressly accepted before Pay      |
-| 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | The offer's own expiry bounds payment                                                                   |
+| 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | **Ruled #491:** the offer's own expiry bounds payment (A); built                                        |
 | 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
 | 6  | The tax model (⚖️)                                                                               | CK4                 | **Ruled #490:** Stripe Tax on digital products only, tax-exclusive; off until counsel                   |
@@ -178,7 +179,7 @@ Fix each in the prompt named, or in MKZ if that prompt has already landed.
 | :----------------------------------------------------- | :----------------------------------------------------- | :---------------------------------------------------------------------- | :----- |
 | USER_FLOWS MK-29                                       | `live-orders.ts:376`                                   | The note is `:359`; the download gate `:386`                            | CK1    |
 | `ASSET_DELIVERY_ARCHITECTURE.md` §2                    | `00001210:1892`, `live-orders.ts:342`                  | `:2153`, `:386`                                                         | CK1    |
-| USER_FLOWS MK-16                                       | "after LV2's checkout lands"                           | LV2 has landed (#457); the branch is still missing                      | CK7    |
+| USER_FLOWS MK-16                                       | "after LV2's checkout lands"                           | LV2 has landed (#457); the branch is still missing                      | #491   |
 | USER_FLOWS MK-40                                       | `schedule_sitting` has no caller, so SCH-WP7 closes it | No door opens a group cohort at all; WP7 schedules sittings of one      | SC3    |
 | USER_FLOWS MK-44                                       | "quotes cannot be acted on"                            | `QuotePanel only="host"` is in `ClientDrawerBody.tsx:213` (#458)        | SC6    |
 | USER_FLOWS MK-45                                       | "—"                                                    | #312 flags (a) and (e) are open                                         | SC6    |
@@ -708,6 +709,9 @@ CONTEXT (verified at b7280787):
 🧑 DECISION (before step 3): an accepted offer left unpaid. Recommended A: the offer's own
 seller-set expiry (3-30 days, #458) still bounds payment; past it the line refuses PC409 and the
 buyer may ask again. B: a fixed payment window after acceptance (a platform dial).
+  RULED #491 (2026-11-18): A, and CK7 runs ahead of CK1 in queue M. BUILT in #491's change; only
+  the live run (request → offer → accept → pay → board, the quote card captured) is left, so MK-16
+  stays 🟡 until it is recorded.
 
 STEPS:
   1. Red first: a probe. Accept a seeded offer priced below the listing, check out: today the

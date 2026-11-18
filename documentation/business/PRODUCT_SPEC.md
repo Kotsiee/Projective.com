@@ -841,6 +841,13 @@ for **a private cohort for their team** (above) is the same request on a group-s
   revision allotment and a due date of the turnaround from the day it is paid. Once accepted, the
   seller can no longer withdraw or reprice it; the buyer can still withdraw the request until they
   have paid, which takes the line out of their basket.
+- **The offer's expiry bounds payment too (Decision #491).** An accepted offer is paid for before
+  the date the seller set when they sent it; the card says "Pay by" that date. Past it, the offer
+  reads expired, checkout refuses its line and the basket says why. The buyer withdraws the request,
+  which takes the line out of their basket, and may ask again; the seller prices it afresh. There is
+  no separate platform payment window, so a buyer never holds a seller to a price longer than the
+  seller offered it. Any listing the seller sells may be quoted — a Pipeline's or a private cohort's
+  custom scope included — and a paid offer is always bought as that one-milestone One-Off.
 - **Each move tells the other party.** The seller is told of a request, an accepted or declined offer
   and a withdrawn request, from their client pipeline; the buyer of an offer, a revision, a withdrawn
   offer and a declined request, beside their conversation with the seller, where the offer and its

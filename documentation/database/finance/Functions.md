@@ -1048,6 +1048,24 @@ turnaround as the target date, `p_whole` true), so the order, its line and the o
 equal the offer. Its subtitle is "Custom offer · escrow held". Probe
 `supabase/probes/quote_checkout.sql`.
 
+**Quote offer lines (Decisions #458, #491).** A `one_off_service` line carrying
+`metadata.quoteOfferId` (put there by `marketplace.accept_quote_offer`) is priced from the OFFER,
+never from its listing's milestones or the line's snapshot. The request is locked, then the offer
+(the quote doors' order), and the line is refused in checkout's words: `PC409` "… is no longer on
+offer" unless the offer is the caller's own (its request's requester, in a personal `user` basket of
+theirs), `accepted` with an `accepted` request, not superseded and for this line's listing; `PC409`
+"… is already paid for" when another line bought it; `PC409` "The offer for … has expired — ask the
+seller for a new quote" at or past `expires_at` (the seller's expiry bounds payment as well as
+acceptance, owner ruling A); `PC409` "… is no longer offered" for an unpublished listing and `PU422`
+for the buyer's own; `PC409` for another currency, or a unit that is not the offer's `price_cents`.
+The listing's delivery model is not matched: a quote may answer any listing its seller sells. The
+line then settles as a One-Off line does, through `marketplace.fn_buy_scoped_service` with the
+offer's terms as `p_terms` (`marketplace.fn_quote_offer_terms`: one locked Standard milestone at the
+offer's price whose checklist is its deliverables, the offer's scope as the brief, today plus its
+turnaround as the target date, `p_whole` true), so the order, its line and the one held escrow all
+equal the offer. Its subtitle is "Custom offer · escrow held". Probe
+`supabase/probes/quote_checkout.sql`.
+
 **Ticket lines (Decisions #166, #430).** A `project_ticket` / `one_off_project` / `one_off_task` line
 that carries `ticket_id` is not a sale: it buys ONE stage of the ticket, the line's `stage_id` (a
 legacy stage-less line: the stage it is funded in, `projects.fn_ticket_funding_stage`, #428). It is
