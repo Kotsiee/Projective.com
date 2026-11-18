@@ -921,7 +921,9 @@ org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for re
 the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
 seeds/11_standing.sql:116); no standing probe exists yet; fn_recompute_standing (00001030:51)
 does not pin search_path = '', so RV3 pins it. #489 (a) ruled: the component is 0 until
-the subject's first client review, then the prior applies. RV3 waits for RV2, re-verified at HEAD.
+the subject's first client review, then the prior applies. #489 (b): dispute_free is also 0 until
+the first escrow (RV3 builds it with (a)). (c): a team's Standing reads only the team's reviews.
+RV3 waits for RV2, re-verified at HEAD.
 
 STEPS:
   1. Red first: a new review does not move Standing.
