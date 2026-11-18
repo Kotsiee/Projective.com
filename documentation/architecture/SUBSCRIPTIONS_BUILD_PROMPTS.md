@@ -15,7 +15,8 @@
 > **Status 2026-11-12 (re-verified in code at `8a3fd595`):** S0 is done (`94d22e84`). X1 and X2
 > are partly done: their 🧑 rulings and one PRODUCT_SPEC line each landed in `94d22e84`. S1–S8 and
 > Z1 have not started. Runnable now: S1, X1 and X2. S2 stops on the 🧑 Agency and Enterprise
-> storage figure, and S4 also waits for FINANCE_BUILD_PROMPTS DB2, which has not landed.
+> storage figure. **Re-checked 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** S1–S4 have
+> still not started, and S4's wait on FINANCE_BUILD_PROMPTS DB2 is met (`dd3986e5`).
 
 ---
 
@@ -375,6 +376,10 @@ PROMPT S4: Buying a plan — Stripe Billing Checkout and the subscription webhoo
 
 ROLE: Payments engineer. Evidence: SUBSCRIPTIONS_AUDIT §0 last row, L4, L6, L7, §4.4. Needs S3.
 
+RULED #252 (f) (2026-10-30; S0 recorded it in `94d22e84`): [1] Stripe Billing Checkout, the buyers
+and period-end downgrades as recommended below. Skip this stop. ALSO (#472, 2026-11-18): the
+business plan gates are off for UAT; this change switches `business_plan_gates_enforced` back to
+`true` in `00005001` and shows a gated control unlocking by purchase.
 STOP FIRST (🧑 DECISION, unless S0 recorded #252 (f)): how is a plan paid?
   [1] Stripe Billing Checkout, card only, recurring; the platform's own revenue, never the wallet
       (Recommended — the wallet holds client money bound for escrow; a platform-initiated debit

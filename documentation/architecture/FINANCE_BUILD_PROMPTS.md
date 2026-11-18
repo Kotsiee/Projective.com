@@ -10,14 +10,19 @@
 > items are FDD's, in the same file. The never-recorded "Decision #251" is superseded by #337, and
 > F0 is retired (ruling Q0.1).
 >
-> **Done, each re-verified in code on 2026-11-12 at `8a3fd595`:** A12 and CO20 (`660c9658`); DB1's
-> remainder, N1 and N5 (`172f9d66`; N1's cron job, `finance-sweep-card-payments`, is registered by
-> the Wave 1 jobs session in `e18489d4`); DB7 except the per-account promo cap and the refunded and
-> cancelled writers (`24cbab02`; the rest is DB19); SV1's Zod half (`4c9482a2`, `388d9952`; its two
-> CHECKs are DB8's); SV2 (`d4c4a194`); DB10 (`f408e708`); SV6 (`d2d7a07e`); SV3 (`fdeb3018`); SV4
-> (`f691a0bb`); DB11, step 6 included (ruled B, `9d15fcd0`). **Partly done:** UI1 (D6, D11), UI2
-> (D16), UI6 (step 3's accent, `8b63f2b0`) and DB14 (step 1's assignee half, built differently in
-> `660c9658`). Every other prompt has not started.
+> **Done, each re-verified in code on 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** A12 and
+> CO20 (`660c9658`); DB1's remainder, N1 and N5 (`172f9d66`; N1's cron job,
+> `finance-sweep-card-payments`, is registered by the Wave 1 jobs session in `e18489d4`); DB7 except
+> the per-account promo cap and the refunded and cancelled writers (`24cbab02`; the rest is DB19);
+> SV1's Zod half (`4c9482a2`, `388d9952`; its two CHECKs are DB8's); SV2 (`d4c4a194`); DB10
+> (`f408e708`); SV6 (`d2d7a07e`); SV3 (`fdeb3018`); SV4 (`f691a0bb`); DB11, step 6 included (ruled
+> B, `9d15fcd0`); DB2 (`dd3986e5`); DB4 (`b61486be`); DB12 (`4ff0ede2`); DB5 (`bc35b27b`); DB3, all
+> seven steps (`44382c08`). **Partly done:** UI1 (D6, D11), UI2 (D16), UI6 (step 3's accent,
+> `8b63f2b0`; steps 4–6 and the press scale, `1d8fc3e6`), DB14 (step 1's assignee half, built
+> differently in `660c9658`), and four that Decision #435 (`1d8fc3e6`) built in part: DB8 (step 4's
+> SQL exponent), DB9 (step 1, as `currencyForCountry`), SV5 (step 1's pins; its contract test is not
+> written) and DB18 (absorbed: conversion inside a purchase; the own-wallet Convert is not built).
+> Every other prompt has not started.
 >
 > **How to use it:** paste each prompt into its **own fresh session**, after the standard header
 > (§1), in the §0 order. A prompt marked **🧑 DECISION** stops at the named step and puts the
@@ -29,22 +34,31 @@
 
 ## 0. Run order, conflicts and open decisions
 
-**Re-verified in code 2026-11-12 at `8a3fd595`:** the header's Done and Partly-done sets hold, and
-no other prompt has started. None of the commits since `def078c2` built a finance step: `4c15a1b4`
-(Decision #392's room evidence; `00001155`, `00001260`) and `8a3fd595` (chosen sittings'
-`later_starts`; `00001155`, `00001210`) touch no prompt's deliverable. §0.5's DB11 stop is ruled (B,
-2026-10-31, #252) and built. Waits met: the jobs session (`e18489d4`) and SCH-WP2's interim
-(`6882e0be`); SCH-WP6, PM-WP4 and PM-GH1 have not started. Stale premises: DB13 step 2's
+**Re-verified in code 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** the header's Done and
+Partly-done sets hold at HEAD, and no other prompt has started. Since `8a3fd595`: DB2, DB4, DB12, DB5
+and DB3 landed (DB3 in `44382c08`, which also touched `00001155`, `00001220` and `00001895`);
+Decision #435 (`1d8fc3e6`) shipped conversion inside purchases and with it the partial DB8, DB9, SV5
+and DB18 steps above; #456 and #457 (`35dfe268`) changed how a bought service and a One-Off fund
+their escrow and rewrote parts of `00001210` and `00000017`. Waits met: the jobs session
+(`e18489d4`), SCH-WP2's interim (`6882e0be`), DB2 (SBP S4's) and DB3 (DB14's, PM-WP4's and
+PM-GH1's); SCH-WP6, PM-WP1, PM-WP4 and PM-GH1 have not started. Stale premises: DB13 step 2's
 `ck_projects_deadline_bonus_format` no longer exists (only a comment at `00001100:298` and the setup
 copy say "pipelines only"); DB14 step 1's assignee half is already refused outright (42501,
-`projects.fn_ticket_immutability_guard`), so only its work-status half remains.
+`projects.fn_ticket_immutability_guard`), so its work-status half and step 2 remain; DB8 step 4 is
+half done, because `fn_minor_units_text` (`00001240:261-272`) still hard-codes Stripe's zero-decimal
+list; DB8's "every INSERT writes `held`" no longer holds (`00001200:1098` inserts `reserved`, #430);
+DB8's reason list and DB16's classes lack `fx_conversion` and `fx_spread` (`00001200:69`) and the
+reasons #456 and #457 write; UI2 cites `canDecide` at `:474` (now `WalletHome.island.tsx:523`); and
+UI6's status note lists as open the `scale(0.99)`, `?edit=1` and dropped-params items `1d8fc3e6`
+fixed.
 
-**Since then (`git log`, 2026-11-12 16:00):** DB2 (`dd3986e5`), DB4 (`b61486be`), DB12 (`4ff0ede2`)
-and DB5 (`bc35b27b`) are committed, each awaiting the coordinator's re-verification. DB3 is
-uncommitted in `00001200`, `00001210`, `00001240` and `00002510`, and DB14 runs after it. Then one
-session runs DB16 → DB8 → DB9: DB16 first, because its reason classes and its seed rework are what
-DB8's reason CHECK needs. Their stops are ruled (#423, §0.5), and the facts gathered while they
-queued are the "Input" notes on each entry. Nothing of the three is built yet.
+**Since then:** every 🧑 stop in §0.5 is ruled (DB13 #468, DB17 #471, DB19 #469, DB21 #470), and
+[`readiness/MONEY_BUILD_PROMPTS.md`](../readiness/MONEY_BUILD_PROMPTS.md) now orders what remains
+against PRODUCTION_READINESS §F: DB16 first (its Wave 1), then DB6 → DB14 → DB15 among the UAT rows
+(Wave 2), then DB8 → DB9 → SV8 → DB13 → DB20 → DB19 → DB21 → DB17 (Wave 3). Its §4 gives each
+prompt here a readiness delta (what went stale, and which §F row it closes): paste it with the
+prompt. DB16 still runs before DB8, because its reason classes and its seed rework are what DB8's
+reason CHECK needs; the facts gathered while they queued are the "Input" notes on each entry.
 
 ### 0.1 Run order
 
@@ -60,11 +74,11 @@ lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide wha
 | 1    | ✅ DB10 per-currency thresholds (P0)                                                               | ✅ SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 styles (partly: D6, D11)    |
 | 2    | ✅ DB11 seller commission (P0)                                                                     | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
 | 3    | DB16 conservation identity                                                                         | UI2 island and money-verb tiers (partly: D16; after UI1)                                 |
-| 4    | ✅ DB12 bonus refused → ✅ DB2 webhooks → DB3 money doors → DB6 dispute freeze → SV8 failed payout | UI6 checkout gates (partly: step 3; after UI2)                                           |
+| 4    | ✅ DB12 bonus refused → ✅ DB2 webhooks → ✅ DB3 money doors → DB6 dispute freeze → SV8 failed payout | UI6 checkout gates (partly: steps 3–6; after UI2)                                        |
 | 5    | ✅ DB4 payout schedules → ✅ DB5 pots                                                              | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
 | 6    | DB14 ticket and funding gates (partly: step 1) → DB15 payout-ready gate                            | SV7 seller-side refusals (after DB15)                                                    |
 | 7    | DB13 bonus held → DB20 team splits                                                                 | —                                                                                        |
-| 8    | DB8 currency integrity → DB9 settlement and entity currency → DB17 FX feed → DB18 conversion       | SV5 currency honesty (after DB9) → UI5 estimates and MoneyView                           |
+| 8    | DB8 currency integrity (partly: step 4) → DB9 settlement and entity currency (partly: step 1) → DB17 FX feed → DB18 conversion (absorbed by #435 inside purchases) | SV5 currency honesty (partly: step 1; after DB9) → UI5 estimates and MoneyView |
 | 9    | DB19 order lifecycle and promo cap → DB21 buyer and provider refunds                               | —                                                                                        |
 | 10   | E3 paid-call contract (after SCH-WP6)                                                              | E1 money lifecycle E2E → E2 visual matrix (after every UI prompt)                        |
 | Last | Z1 docs sweep                                                                                      |                                                                                          |
@@ -108,7 +122,7 @@ Why this order:
 | Hot file                             | Finance prompts that write it                                                        | Other writers (never at the same time)                                                      |
 | :----------------------------------- | :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
 | `00001240` (finance money)           | DB2, DB3, DB4, DB5, DB6, DB8, DB15, DB18, DB21, SV8                                  | PM-WP4                                                                                      |
-| `00005060` (jobs)                    | DB4, DB16, DB17 (DB3's two rows are already seeded, dormant)                         | the Wave 1 jobs session (first); comms, PM, scheduling and security packages that add a job |
+| `00005060` (jobs)                    | DB4, DB16, DB17 (DB3's two rows register now that both functions exist)             | the Wave 1 jobs session (first); comms, PM, scheduling and security packages that add a job |
 | `00001155` (sessions)                | DB3 (L9's forfeit path), DB15 (booking backstops)                                    | every SCH work package                                                                      |
 | `00001020` (workspaces)              | DB9 (entity wallet currency), DB10 (a threshold reader)                              | identity rank, archive and seat items; SA G4                                                |
 | `00001060` (erasure)                 | none                                                                                 | identity erasure, SEC G16                                                                   |
@@ -156,11 +170,11 @@ Why this order:
 | Prompt      | Question                                                                                    | Recommendation                                                                                            |
 | :---------- | :------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
 | DB11 step 6 | Which fee an Agency's contract rate applies to: the new conflict with #187, flagged on #252 | B: an Agency contract covers its product-sale commission (and its payer fee when it buys); #187 unchanged |
-| DB13        | What "met" means for a deadline bonus, and against which deadline                           | A: per escrow, the ticket's due date; met when the work later approved was sent by it                     |
-| DB17        | The daily FX provider (it must quote all 12 display currencies, NGN and AED included)       | A: one reference-rate API that covers all 12                                                              |
+| DB13        | What "met" means for a deadline bonus, and against which deadline                           | **Ruled #468 (2026-11-18): A.** Per escrow, the ticket's due date; met when the work later approved was sent by it. #457's "no bonus" on a bought One-Off or Task was interim: after DB13 a buyer may add one |
+| DB17        | The daily FX provider (it must quote all 12 display currencies, NGN and AED included)       | **Ruled #471 (2026-11-18): A.** One commercial reference-rate API that covers all 12; the vendor and its plan are still the owner's |
 | DB18        | The conversion margin's value (Decision #337, ruling M5 (d))                                | **Ruled by Decision #435 (C):** `fx_spread_bp` = `{"default": 150}`, a per-currency map, seeded but switched off (`fx_checkout_enabled`) until counsel answers (d) below |
-| DB19        | What `cancelled` means beside `refunded`                                                    | A: refunded in full before any delivery began                                                             |
-| DB21        | A product dispute raised after the sale has cleared                                         | A: allowed only while the sale is still clearing                                                          |
+| DB19        | What `cancelled` means beside `refunded`                                                    | **Ruled #469 (2026-11-18): A.** Refunded in full before any delivery began |
+| DB21        | A product dispute raised after the sale has cleared                                         | **Ruled #470 (2026-11-18): A.** Allowed only while the sale is still clearing |
 | DB16 step 1 | How the nightly identity treats the simulator's `simulated_*` rows, which fit no class      | Ruled 2026-11-12 (#423 (A)): no class, so a simulated movement shows as an imbalance                      |
 | DB9 step 3  | What settles: Stripe's GB country spec cannot hold AED, INR or NGN (a new conflict)         | Ruled 2026-11-12 (#423 (B)): the nine a GB platform settles; AED, INR and NGN are display-only            |
 
@@ -181,13 +195,14 @@ logged; the coordinator logs them.
 - (a) **Deadline bonus.** `PRODUCT_SPEC.md` (One-offs; Pipelines "the same") pays it "only if the
   final stage is approved before the soft deadline"; `finance-model.md` §13 pays it "for delivery by
   a stage's deadline", per stage. Both were written in Wave 1.1 from ruling M7, which does not say
-  what "met" means. → DB13's stop.
+  what "met" means. → DB13's stop. **Ruled #468** (A), which also rules a new contradiction:
+  #457's "no bonus" on a bought One-Off or Task was interim.
 - (b) **Agency contracts.** `finance-model.md` §16.4 lets an Agency hold a
   `finance.negotiated_rates` contract, but that table's `subject_type` CHECK allows only `business`
   and `enterprise`. Part of #252's open flag. → DB11's stop.
 - (c) **Refunds after clearing.** Ruling M8 recovers a refunded digital product from the seller's
   pending row (per M3), and M3 never claws back cleared money, so a refund after the 7-day window is
-  unruled. → DB21's stop.
+  unruled. → DB21's stop. **Ruled #470** (A: only while the sale is still clearing).
 - (d) **Conversion and regulation.** Ruling M5 (c) converts held client balances between currencies.
   That may be a regulated currency-exchange service: counsel should confirm before the margin is set
   (DB18). A question, not a conflict between docs.
@@ -1168,7 +1183,9 @@ starting dial.
 🧑 DECISION (before step 3): what "met" means. PRODUCT_SPEC.md (One-offs; Pipelines "the same") pays
 the bonus "only if the final stage is approved before the soft deadline"; finance-model.md §13 pays
 it "for delivery by a stage's deadline … when the deadline was met". This is a new contradiction
-(§0.5 (a)). Put this to me:
+(§0.5 (a)). RULED #468 (2026-11-18): A, and #457's "no bonus" on a bought One-Off or Task was
+interim, so DB13 offers a held bonus there too (MONEY_BUILD_PROMPTS §4, the DB13 delta). Skip the
+question; the options stay for the record:
   A (recommended): per escrow, against the ticket's due date, which after a claim moves only with
      both sides' agreement (Decision #338, ruling P5 (c)); met ⇔ the submission that is later
      approved was SENT by it. The client's review time can never cost the freelancer the bonus.
@@ -1454,7 +1471,8 @@ within 15 minutes with no invalidation (RED's FX version key is optional).
 
 🧑 DECISION (before step 1): the provider. It must quote all 12 display currencies (GBP USD EUR CAD
 AUD JPY INR SGD CHF ZAR NGN AED) daily, allow display use under its licence, and keep its key in the
-env contract. Put this to me:
+env contract. RULED #471 (2026-11-18): A. Skip the question; the vendor and its paid plan are
+still the owner's to pick, so build against the provider interface until a key exists:
   A (recommended): one commercial reference-rate API that quotes all 12 against GBP, keyed in
      .env.local (FX_FEED_URL, FX_FEED_API_KEY; XXXX-XXXX in .env.example).
   B: the ECB reference rates (free, but 10 of the 12: no NGN or AED) plus a second source for those
@@ -1591,7 +1609,8 @@ awaiting_payment (ruling Q0.2 (e): in the enum comment only, never dropped); one
 account per code by default, configurable per code. The digital-product and session-forfeit refunds
 are DB21's.
 
-🧑 DECISION (step 3): what `cancelled` means beside `refunded`. No source defines it. Put this to me:
+🧑 DECISION (step 3): what `cancelled` means beside `refunded`. No source defines it. RULED #469
+(2026-11-18): A. Skip the question:
   A (recommended): a line is cancelled when it is refunded in full before any delivery began (no
      download, no sitting held, no work started), and refunded when it is refunded in full after.
      The order is cancelled when every line is cancelled, and refunded when every line is refunded
@@ -1699,7 +1718,8 @@ Read from the ruling's wording: before the first download, a buyer may cancel th
 DB6 (the on_hold machinery) and DB19 (the line states).
 
 🧑 DECISION (step 2): a product dispute raised after the seller's money has cleared. M3 never claws
-back cleared money; M8 recovers from the seller's pending row (§0.5 (c)). Put this to me:
+back cleared money; M8 recovers from the seller's pending row (§0.5 (c)). RULED #470 (2026-11-18):
+A. Skip the question:
   A (recommended): a product dispute may be opened only while the sale is still clearing (7 days),
      which is also when the seller's money can be held; the order page says so.
   B: allowed later, and a refund past the window is the platform's loss.
