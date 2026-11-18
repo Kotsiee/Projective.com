@@ -28,7 +28,7 @@
 | :---- | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
 | MK-18 | ✅ · High · UAT    | **CK5**                                          | An idle basket gets one nudge, within consent (note clears)                                                                            |
 | MK-19 | ✅ · High · UAT    | —                                                | —                                                                                                                                      |
-| MK-20 | 🟡 · Crit · PROD   | **CK4** (🧑 + ⚖️)                                | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
+| MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                         | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
 | MK-21 | ✅ · Crit · MVP    | — (CO17 is Planned, §0.5)                        | —                                                                                                                                      |
 | MK-22 | ✅ · Crit · MVP    | — (environment)                                  | —                                                                                                                                      |
 | MK-23 | 🟡 · High · UAT    | **CK6** + you, on a hosted domain                | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
@@ -102,7 +102,7 @@ and this file).
 2. **CK7 → CK2** — ⏳ CK1 (`00001210`). CK2's 🧑 is ruled (#485), and CK2 waits here for CK7 and for
    FBP DB16, because #485 (a) adds a conservation-identity term.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
-4. **CK4** — ⏳ DB21 (a refund reverses the tax), 🧑 + ⚖️.
+4. **CK4** — ⏳ DB21 (a refund reverses the tax); 🧑 ruled #490, ⚖️ counsel before the switch.
 5. **SC7** — ⏳ CK1 and DB19. The last change to the money path in this file.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
@@ -145,7 +145,7 @@ block, so a question you defer still stops the build at the right step.
 | 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | The offer's own expiry bounds payment                                                                   |
 | 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
-| 6  | The tax model (⚖️)                                                                               | CK4                 | Stripe Tax on every order, card and wallet alike, behind a switch that stays off until counsel          |
+| 6  | The tax model (⚖️)                                                                               | CK4                 | **Ruled #490:** Stripe Tax on digital products only, tax-exclusive; off until counsel                   |
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
 | 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
@@ -159,10 +159,11 @@ block, so a question you defer still stops the build at the right step.
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
 
 **For counsel** (build behind a switch that stays off; never switch it on): A8's wording, the tax
-obligation, the nudge's consent basis, SC7's licence wording, SC8's notice regime, and one question
-to add to MONEY MR7's brief: **may a buyer-started refund of a card-paid line land in the wallet?**
-UK consumer rules generally expect a refund to the original payment method unless the buyer agrees
-otherwise. DB21 credits the wallet and MR3 keeps card refunds operator-only.
+obligation and its tax-exclusive display (#490 (c)), the nudge's consent basis, SC7's licence
+wording, SC8's notice regime, and one question to add to MONEY MR7's brief: **may a buyer-started
+refund of a card-paid line land in the wallet?** UK consumer rules generally expect a refund to the
+original payment method unless the buyer agrees otherwise. DB21 credits the wallet and MR3 keeps
+card refunds operator-only.
 
 ### 0.4 Stale text found on 2026-11-18
 
@@ -176,7 +177,7 @@ Fix each in the prompt named, or in MKZ if that prompt has already landed.
 | USER_FLOWS MK-40                                       | `schedule_sitting` has no caller, so SCH-WP7 closes it | No door opens a group cohort at all; WP7 schedules sittings of one      | SC3    |
 | USER_FLOWS MK-44                                       | "quotes cannot be acted on"                            | `QuotePanel only="host"` is in `ClientDrawerBody.tsx:213` (#458)        | SC6    |
 | USER_FLOWS MK-45                                       | "—"                                                    | #312 flags (a) and (e) are open                                         | SC6    |
-| `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1407`                                                         | CK4    |
+| `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1413`                                                         | #490   |
 | `database/comms/Functions.md:131-135`                  | `fn_enqueue` has no caller                             | `00001510:3143` calls it                                                | CK5    |
 | `database/reviews/Tables.md:43`                        | the landing testimonials read the table                | `testimonials()` is dead (#349)                                         | RV1    |
 | `00002018:52-63`, `database/reviews/Policies.md:14-15` | no table records a product purchase                    | `finance.order_lines` does                                              | RV1    |
@@ -564,6 +565,11 @@ confirm the obligation before any switch goes on:
      follow.
   Either way, a table for me to confirm: which product tax code a digital product, a service
   engagement and a session each take.
+  RULED #490 (2026-11-18): A, split by kind · tax added at checkout (tax-exclusive) · the codes as
+  tabled in #490 (C) · wait for DB21. The engine is A's whole, but the platform collects only on
+  the kinds tax_collected_kinds names (digital_product by default); every other line says the
+  seller is responsible for any tax on their work. Skip this block when you run: re-verify DB21 at
+  HEAD and stop if it has not landed (#490 (f)). Counsel still confirms before any switch goes on.
 
 STEPS (for A; for B, steps 1, 3 and 5 only):
   1. Red first: a unit test that a GB consumer buying a digital product, with the switch on, sees

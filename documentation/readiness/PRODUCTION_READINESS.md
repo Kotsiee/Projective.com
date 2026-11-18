@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **60%** |           64 | 34 |  8 | 22 |           9 |
-| **Production**   | **41%** |          139 | 45 | 20 | 74 |          19 |
+| **Production**   | **40%** |          140 | 45 | 20 | 75 |          19 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -63,7 +63,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
 | K. Quality gates & testing         |    6 |  2 |  1 |  3 |   38% |
 | L. Design system & accessibility   |    6 |  1 |  2 |  3 |   33% |
-| M. Legal & compliance              |    6 |  1 |  1 |  4 |   29% |
+| M. Legal & compliance              |    7 |  1 |  1 |  5 |   25% |
 
 **Critical path per tier** (the open Critical rows, in suggested order):
 
@@ -290,8 +290,9 @@ Work orders for every open row, with the run order:
 | PRD-M2 | Sign-up records acceptance of the current terms and privacy notice      | ✅     | Critical | PROD | Built (#446). Every `/join` final step has an unticked box (Terms · AUP · Privacy linked). `org.legal_acceptances` is written inside the profile's own transaction at versions the database re-checks; a forged version is refused, and under 13 records nothing. A material version re-asks (`termsDue` → `/join?complete=terms`). Proved live through GoTrue and by `legal_acceptance.sql`. The text itself is PRD-M1 | AU1        |
 | PRD-M3 | Self-serve personal data export                                         | 🟡     | Normal   | PROD | Built (#450): Settings → Account → Download your data; `org.request_data_export` (recent sign-in, one open, one a day, none during erasure); the `account-data-exports` job writes a ZIP of 15 schema-validated domains to the service-only `data_exports` bucket, downloadable 7 days through a per-read link; erasure reaches it. Proved live (marisdelacroix, kwamemensah) and by `data_export.sql`. Remaining: the job's hosted dispatch (`ACCOUNT_CRON_SECRET` + `CRON_APP_URL` in the Vault, PRD-G6) | ST6        |
 | PRD-M4 | The legal IP chain of title (deeds of transfer on release, audit packs) | ❌     | High     | PROD | Specified (PRODUCT_SPEC §Identity, Taxes & Compliance 4); no deed table, generator or signing; placeholder pages only (PRD-A4)               | —          |
-| PRD-M5 | Tax documents (invoice tax lines, 1099 / W-9, VAT reverse charge)       | ❌     | High     | PROD | Planned (FINANCE A9); nothing generates them                                                                                                 | A9         |
+| PRD-M5 | Tax documents (invoice tax lines, 1099 / W-9, VAT reverse charge)       | ❌     | High     | PROD | Ruled #490: checkout and invoice tax through Stripe Tax, collected by the platform on digital products only, added at checkout, behind a switch off until counsel (CK4, after DB21). Nothing generates a tax document yet; 1099 / W-9 are payout-side (MARKETPLACE §0.5) | CK4 (#490) |
 | PRD-M6 | AML monitoring (round-tripping, churn, safety hold)                     | ❌     | Normal   | PROD | Signals not built; the programme stays off pending counsel (#336 I1)                                                                         | 🧑 counsel |
+| PRD-M7 | Tax on the platform's own fees (stage fee, commission, buyer fee)       | ❌     | High     | PROD | Found by CK4's ruling (#490 (a)): the 5% stage-completion fee, the marketplace commission and a `buyer_added` fee are supplies Projective itself makes, and no work order charges, records or invoices tax on them. CK4 taxes the buyer's order only | 🧑 counsel |
 
 ## Decisions awaiting a human (not scored)
 
@@ -316,6 +317,7 @@ Work orders for every open row, with the run order:
 | Manual Assignment: PRODUCT_SPEC §Assignment Modes says it ships; nothing calls it      | USER_FLOWS PJ-13   | Spec ↔ code gap: build, or re-scope the spec       |
 | Project completion: the handover rule assumes a completion step the app cannot perform | USER_FLOWS PJ-40   | Spec ↔ code gap                                    |
 | Plan gates while nothing can be bought (`business_plan_gates_enforced` is on)          | PRD-F14            | Ruled 2026-11-18 (#472): A, gates off for UAT and back on in SBP S4; the `00005001` switch is not made yet |
+| The checkout tax model: what the platform collects on, the display, the tax codes      | PRD-M5, PRD-M7     | Ruled 2026-11-18 (#490): A split by kind (digital products only), tax-exclusive, codes tabled; CK4 waits for DB21; counsel before any switch |
 | Reviews: the reveal rule, Client Trust Score v1, the warning; "Client" vs "Business Trust Score" | USER_FLOWS MK-33   | Ruled 2026-11-18 (#486): double-blind; a Bayesian mean less a lost-dispute deduction, shown from 3 reviews; below 3.00, demote + acknowledge; one score per client party. RV2 waits for RV1 |
 
 ## Doc drift to sweep (not scored)
@@ -378,3 +380,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC1 follow-up (#481): PRD-C26, C28, C29 ❌ → ✅ (party cards, a purchase owner's face and the free/busy helpers answer only what the caller may see; #481 (a) ruled A) | 58% | 58% |  40% |
 | 2026-11-18 | PRD-C27 (#482): PRD-C27 ❌ → ✅ (an inquiry takes nobody, so a DM or inquiry is only ever its pair's); new PRD-C33 ❌ (a group newcomer reads from joining, owner ruling) | 58% | 59% |  40% |
 | 2026-11-18 | SAC5 follow-up (#444 (c)): PRD-C25 ❌ → ✅ (sign-up asks the whole handle namespace; username shape left to the owner) | 58% | 60% |  41% |
+| 2026-11-18 | CK4 step 0 (#490): no row flips; the tax model ruled (A split by kind, tax-exclusive, codes tabled) and CK4 waits for DB21; new PRD-M7 ❌ (tax on the platform's own fees) | 58% | 60% | 40% |
