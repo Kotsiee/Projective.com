@@ -92,6 +92,7 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
 3. ✅ **CD1 · Q1 and Q2: ruled 2026-11-18 (#480).** Q1 Option A, Resend contacts (one provider); Q2
    yes, a new topic on a confirmed address needs the confirm link. The owner also chose to build
    steps 1–4 ahead of NT3; step 5 (the sync) waits for NT3, and a re-run of CD1 does step 5 only.
+   Step 5 built 2026-11-18 after NT3 (#502), with one open owner question, #502 flag (d).
 4. **§C's SAC5 · Decision #444 flag (c)**: when you rule which top-level segments to reserve,
    include `newsletter`. CD1's two pages live under it, so CD1 then never edits `00001020`. SAC5
    landed (`cd6d016f`) without it; ruled 2026-11-18 (#480): CD1 adds it with its routes.
@@ -106,8 +107,11 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
    - Push: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
    - Text (when you have them): the three Twilio keys, a Messaging Service, geo-permissions limited
      to launch markets, and the status callback `https://<origin>/api/comms/webhooks/twilio`.
-   - CD1 under Option A: the provider list id in `security.platform_params` and the
-     `newsletter.provider_sync` flag on.
+   - CD1 under Option A (#502; EPI §8.5 setup 8's runbook): in Resend, verify `news.<domain>`,
+     create the segment and the topics `General` and `Changelog` (default subscription opt_out),
+     and add the four `contact.*` events to the webhook. In `security.platform_params`, set
+     `newsletter_provider_segment_id`, `newsletter_provider_topic_ids` and `newsletter_mail_from`.
+     Then turn the `newsletter.provider_sync` flag on.
 
    No agent types, pastes or echoes a secret, and no agent changes a hosted setting.
 6. **Twilio tokens** (#339 flag (n)): you obtain them. PRD-E8 stays 🟡 until then.
@@ -190,10 +194,11 @@ Not in §E: SR1–SR4 (search) and Z1 (the comms docs sweep, which runs after th
 
 ### CD1 — The newsletter: double opt-in, a one-click unsubscribe, the list synced to the provider
 
-> **Status (2026-11-18, #480).** 🧑 Q1 and Q2 ruled (Option A; yes). Steps 1–4 are built, ahead of
-> NT3 by owner ruling; PRD-E11 is 🟡. Step 5 waits for NT3's `DeliveryEventService`. When it runs,
-> it also gives the newsletter its own sender (#480 (a), PRD-E14) and maps Resend's per-topic
-> unsubscribe to removing that topic (#480 (b)).
+> **Status (2026-11-18, #480, #502). Built.** 🧑 Q1 and Q2 ruled (Option A; yes). Steps 1–4 were
+> built ahead of NT3 by owner ruling (#480); step 5 was built after NT3 (#502). That step added the
+> sync job, the provider's contact events on NT3's webhook, the newsletter's own sender (PRD-E14 🟡)
+> and a per-topic unsubscribe that removes the topic. PRD-E11 and PRD-E14 are 🟡 until CD2 proves a
+> hosted send. Open: #502 flag (d), whether an opt-in made on Resend's preference page counts.
 
 ```text
 PROMPT CD1: The newsletter — double opt-in, a one-click unsubscribe, and the list synced to the

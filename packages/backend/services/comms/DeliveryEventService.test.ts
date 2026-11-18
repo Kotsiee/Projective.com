@@ -188,3 +188,39 @@ Deno.test("eventArgs — a delivered event with a single `to` string and no boun
 		},
 	);
 });
+
+// #region The newsletter's share (CD1 step 5)
+const CONTACT = JSON.stringify({
+	type: "contact.updated",
+	created_at: "2026-11-18T21:05:00.000Z",
+	data: { id: "ct-1", email: "reader@example.test", unsubscribed: true },
+});
+
+Deno.test("handleResend — a contact event is claimed, then handed to the newsletter, replays included", async () => {
+	for (const outcome of ["recorded", "replayed"] as const) {
+		const live = deps(() => Promise.resolve(outcome));
+		const seen: Array<[string, unknown]> = [];
+		const result = await DeliveryEventService.handleResend(CONTACT, await signed(CONTACT), {
+			...live.deps,
+			newsletter: (id, body) => {
+				seen.push([id, body]);
+				return Promise.resolve("unsubscribed");
+			},
+		});
+		assertEquals([result.status, result.data?.outcome], [200, outcome]);
+		assertEquals(live.calls[0].p_event_type, "contact.updated");
+		assertEquals(live.calls[0].p_recipient, null);
+		assertEquals(seen, [["msg_2p5Q", JSON.parse(CONTACT)]]);
+	}
+});
+
+Deno.test("handleResend — the newsletter's door failing asks for a redelivery (503)", async () => {
+	const live = deps(() => Promise.resolve("recorded"));
+	const result = await DeliveryEventService.handleResend(CONTACT, await signed(CONTACT), {
+		...live.deps,
+		newsletter: () =>
+			Promise.reject(new Error("community.record_newsletter_provider_event failed (57014)")),
+	});
+	assertEquals([result.ok, result.status], [false, 503]);
+});
+// #endregion

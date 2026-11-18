@@ -1669,7 +1669,11 @@ link works for seven days. An address already on one list confirms each new list
 Unsubscribing (one click in the mail client, or the link in any newsletter mail) holds until the
 owner subscribes again **and** confirms: typing the address into the form again only asks. The form
 answers the same way for every address, so it never tells anyone who is on the list (Decision
-#480). **Not built yet:** the issues themselves (sent from the mail provider, CD1 step 5).
+#480). Issues are composed and sent from the mail provider, to the confirmed addresses Projective
+keeps there, each issue on one list. The provider can take an address, or one list, off the
+newsletter (its own unsubscribe, a list left on its preference page, a spam complaint about any
+Projective mail), but it can never add one back: consent is given only through Projective's
+confirm link (CD1 step 5). **Not proved yet:** a real issue sent on a hosted environment (CD2).
 
 A muted chat stays muted on every device: the mute is kept on the server, not per device (Decision
 #339, ruling N3 (d)).

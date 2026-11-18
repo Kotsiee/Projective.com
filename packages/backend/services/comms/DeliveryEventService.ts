@@ -7,6 +7,7 @@ import {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { serverEnv } from "../../core/env.ts";
 import { getServiceClient, isAuthBackendLive } from "../../core/supabase.ts";
+import { applyNewsletterProviderEvent } from "../newsletter/provider-events.ts";
 
 /**
  * DeliveryEventService — the email provider's delivery webhook, `POST /api/comms/webhooks/resend`
@@ -19,6 +20,12 @@ import { getServiceClient, isAuthBackendLive } from "../../core/supabase.ts";
  * the effect in the same transaction: delivered, a hard bounce (the address suppressed for every
  * category and its owner told, Decision #339 ruling N3 (b)), a complaint (Marketing only), a failure,
  * or a plain record. A replay changes nothing.
+ *
+ * The same webhook carries the newsletter's share (CD1 step 5, Decision #480 Q1 A): Resend's contact
+ * events and a spam complaint also go, once claimed, to `applyNewsletterProviderEvent`, which takes
+ * the address off the newsletter or a topic off the address (one endpoint, one Svix secret). It runs
+ * on a replay too, since its door is idempotent and a first delivery may have been claimed before the
+ * newsletter's write failed.
  *
  * 2xx for handled, replayed and ignored events; 400 for a forged, stale or unreadable delivery (and
  * for every delivery while the secret is not configured, rather than trust an unsigned one); 503 only
@@ -169,6 +176,8 @@ export interface DeliveryEventDeps {
 	live: boolean;
 	secret: string | undefined;
 	record: RecordEvent;
+	/** The newsletter's share of a claimed event; throws when it could not be applied. */
+	newsletter: (eventId: string, body: unknown) => Promise<unknown>;
 	nowMs: number;
 }
 
@@ -176,6 +185,7 @@ const liveDeps = (): DeliveryEventDeps => ({
 	live: isAuthBackendLive(),
 	secret: serverEnv().resendWebhookSecret,
 	record: recordLive,
+	newsletter: (eventId, body) => applyNewsletterProviderEvent(eventId, body),
 	nowMs: Date.now(),
 });
 
@@ -208,6 +218,7 @@ export class DeliveryEventService {
 		try {
 			const outcome = await d.record(args);
 			console.info("[comms:resend]", eventId, args.p_event_type, "→", outcome);
+			await d.newsletter(eventId, body);
 			return ok({ received: true, outcome });
 		} catch (error) {
 			console.error(

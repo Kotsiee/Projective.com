@@ -1,11 +1,21 @@
 import type { EmailDeliveryOutcome } from "@projective/types/org";
 import {
 	NEWSLETTER_LINK_TTL_DAYS,
+	NEWSLETTER_PARAM_KEYS,
 	NEWSLETTER_PATHS,
 	NEWSLETTER_TOPIC_LABELS,
 	type NewsletterTopic,
 } from "@projective/types/community";
-import { deliverMail, type MailerDeps, type MailMessage } from "../mail/transport.ts";
+import {
+	configuredTransport,
+	deliverMail,
+	type MailerDeps,
+	type MailMessage,
+	type MailTransport,
+	resendTransport,
+} from "../mail/transport.ts";
+import { serverEnv } from "../../core/env.ts";
+import { getServiceClient } from "../../core/supabase.ts";
 
 /**
  * newsletter-mailer — the confirmation mail of the newsletter's double opt-in (PRD-E11). How it
@@ -16,7 +26,67 @@ import { deliverMail, type MailerDeps, type MailMessage } from "../mail/transpor
  * confirm and the link's token. Nothing else of the subscription row (its source, locale, history)
  * can reach it. Every newsletter mail carries the RFC 8058 pair, so a mail client can offer one-click
  * unsubscribe; the token is the credential both links carry.
+ *
+ * **The sender (Decision #480 (a), PRD-E14).** Newsletter mail leaves from its own subdomain
+ * (providers spec §8.5 setup 1), so a complaint about an unwanted confirmation lands on `news.`, never
+ * on the `notify.` subdomain that carries password resets. The address is the platform param
+ * `newsletter_mail_from`, set per environment once `news.<domain>` is verified; while it is unset or
+ * not an address, the mail falls back to `MAIL_FROM` and says so once in the log.
  */
+
+// #region Sender
+/** `Name <local@domain>` or a bare `local@domain`: one address, no header injection. */
+const SENDER_RE =
+	/^(?:[^<>\r\n"]{1,80} <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/;
+
+/** Whether `value` is a sender a provider will take as `from`. */
+export function isNewsletterSender(value: unknown): value is string {
+	return typeof value === "string" && SENDER_RE.test(value.trim());
+}
+
+const SENDER_TTL_MS = 60_000;
+let senderCache: { value: string | null; at: number } | null = null;
+let warnedFallback = false;
+
+/** `newsletter_mail_from`, reused for a minute; null when unset, unreadable or not an address. */
+export async function newsletterSender(
+	read: () => PromiseLike<{ data: unknown; error: unknown }> = () =>
+		getServiceClient().schema("security").from("platform_params").select("value")
+			.eq("key", NEWSLETTER_PARAM_KEYS.mailFrom).maybeSingle(),
+	now: number = Date.now(),
+): Promise<string | null> {
+	if (senderCache && now - senderCache.at < SENDER_TTL_MS) return senderCache.value;
+	let value: string | null = null;
+	try {
+		const { data, error } = await read();
+		const raw = (data as { value?: unknown } | null)?.value;
+		value = !error && isNewsletterSender(raw) ? raw.trim() : null;
+	} catch {
+		value = null;
+	}
+	senderCache = { value, at: now };
+	return value;
+}
+
+/**
+ * The transport newsletter mail leaves through: Resend from the newsletter's own sender, else the
+ * environment's transport (`MAIL_FROM`), else none.
+ */
+export async function newsletterTransport(
+	sender: () => Promise<string | null> = () => newsletterSender(),
+	warn: (line: string) => void = (line) => console.warn(line),
+): Promise<MailTransport | null> {
+	const { resendApiKey } = serverEnv();
+	if (!resendApiKey?.startsWith("re_")) return configuredTransport();
+	const from = await sender();
+	if (from) return resendTransport(resendApiKey, from);
+	if (!warnedFallback) {
+		warnedFallback = true;
+		warn("[newsletter] newsletter_mail_from is not set: newsletter mail leaves from MAIL_FROM");
+	}
+	return configuredTransport();
+}
+// #endregion
 
 // #region Links
 /** The subject every confirmation mail has. */
@@ -88,17 +158,23 @@ export interface NewsletterConfirmationMail {
 	appUrl: string;
 }
 
-/** Mail the confirmation link to `mail.to`, and say how it left. Never throws. */
-export function sendNewsletterConfirmation(
+/**
+ * Mail the confirmation link to `mail.to` from the newsletter's sender, and say how it left. Never
+ * throws. A `transport` in `deps` (tests) is used as given.
+ */
+export async function sendNewsletterConfirmation(
 	mail: NewsletterConfirmationMail,
 	deps: Partial<MailerDeps> = {},
 ): Promise<EmailDeliveryOutcome> {
 	const links = newsletterLinks(mail.appUrl, mail.token);
+	const transport = "transport" in deps
+		? deps.transport
+		: await newsletterTransport().catch(() => null);
 	return deliverMail(
 		newsletterConfirmationMessage(mail.to, mail.topics, links),
 		"newsletter confirmation",
 		`[dev mail] Confirm the newsletter for ${mail.to} -> ${links.confirm}`,
-		deps,
+		{ ...deps, transport: transport ?? null },
 	);
 }
 // #endregion

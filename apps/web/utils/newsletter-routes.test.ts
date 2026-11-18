@@ -3,7 +3,10 @@ import { assertSpyCallArgs, assertSpyCalls, stub } from "@std/testing/mock";
 import { CAPTCHA_REFUSAL } from "@projective/types/auth";
 import { fail, ok } from "@server/services/ServiceResult.ts";
 import { NewsletterBackendService } from "@server/services/newsletter/NewsletterBackendService.ts";
+import { NewsletterProviderSync } from "@server/services/newsletter/provider-sync.ts";
+import type { NewsletterSyncReport } from "@projective/types/community";
 import { handler as subscribeApi } from "../routes/api/newsletter/subscribe.ts";
+import { handler as syncApi } from "../routes/api/newsletter/cron/sync.ts";
 import { handler as confirmApi } from "../routes/api/newsletter/confirm.ts";
 import { handler as unsubscribeApi } from "../routes/api/newsletter/unsubscribe.ts";
 import {
@@ -23,6 +26,16 @@ import apiGuard from "../routes/api/_middleware.ts";
 type Handler = (ctx: unknown) => unknown;
 
 const BASE = "https://app.example.test";
+const CRON_SECRET = "c".repeat(48);
+const SYNC_REPORT: NewsletterSyncReport = {
+	skipped: null,
+	read: 2,
+	upserted: 1,
+	removed: 1,
+	refused: 0,
+	failed: 0,
+	stopped: null,
+};
 const TOKEN = "0b0e7d5c-34a1-4b7a-9d61-2f1f5c2e9a10";
 
 function context(req: Request, next?: () => unknown) {
@@ -296,6 +309,53 @@ Deno.test("the one-click endpoint takes a form or nothing: a JSON or text body i
 			assertEquals(res.status, 415, type);
 		}
 		assertSpyCalls(spy, 0);
+	} finally {
+		spy.restore();
+	}
+});
+// #endregion
+
+// #region The provider sync's scheduler door (CD1 step 5)
+Deno.test("the sync answers a wrong or missing bearer with a 404 and runs nothing", async () => {
+	const spy = stub(NewsletterProviderSync, "run", () => Promise.resolve(ok(SYNC_REPORT)));
+	try {
+		await withEnv({ COMMS_DISPATCH_SECRET: CRON_SECRET }, async () => {
+			for (
+				const authorization of [undefined, "Bearer wrong", `Bearer ${CRON_SECRET}x`, CRON_SECRET]
+			) {
+				const res = await guarded(
+					syncApi,
+					new Request(`${BASE}/api/newsletter/cron/sync`, {
+						method: "POST",
+						headers: authorization ? { authorization } : {},
+					}),
+				);
+				assertEquals(res.status, 404, String(authorization));
+				assertEquals(await res.text(), "");
+			}
+		});
+		assertSpyCalls(spy, 0);
+	} finally {
+		spy.restore();
+	}
+});
+
+Deno.test("the dispatcher's bearer runs one pass, through the /api guard with no Origin", async () => {
+	const spy = stub(NewsletterProviderSync, "run", () => Promise.resolve(ok(SYNC_REPORT)));
+	try {
+		await withEnv({ COMMS_DISPATCH_SECRET: CRON_SECRET }, async () => {
+			const res = await guarded(
+				syncApi,
+				new Request(`${BASE}/api/newsletter/cron/sync?limit=25`, {
+					method: "POST",
+					headers: { authorization: `Bearer ${CRON_SECRET}` },
+				}),
+			);
+			assertEquals(res.status, 200);
+			const body = await res.json();
+			assertEquals({ ...body, ok: undefined }, { ...SYNC_REPORT, ok: undefined });
+		});
+		assertSpyCallArgs(spy, 0, [25]);
 	} finally {
 		spy.restore();
 	}

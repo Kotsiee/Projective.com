@@ -304,3 +304,16 @@ SELECT 'account-data-exports', 'http', '9,24,39,54 * * * *', NULL, '/api/user/cr
  WHERE pg_catalog.to_regprocedure('security.claim_data_exports(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
+
+-- #region [newsletter] The newsletter's provider sync (CD1 step 5, Decision #480 Q1 A)
+-- Pushes each send-eligible newsletter address and its topics to the mail provider's contact list and
+-- deletes the contact of an address that left or is suppressed (NewsletterProviderSync.run). An http
+-- job on the dispatcher's own bearer, so outbound mail keeps one Vault entry. Every 5 minutes, off the
+-- quarter-hours; a run reads at most 50 rows and stops at a 429. It does nothing while the
+-- newsletter.provider_sync flag is off, which it is in every seed.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('newsletter-provider-sync', 'http', '2-59/5 * * * *',
+        NULL, '/api/newsletter/cron/sync?limit=50', 'COMMS_DISPATCH_SECRET',
+        'Syncs the newsletter list to the Resend segment: creates or updates the contact of each confirmed, unsuppressed address the provider is behind on, deletes the contact of each address that left (NewsletterProviderSync.run). Does nothing while newsletter.provider_sync is off.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion

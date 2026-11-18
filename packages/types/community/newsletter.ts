@@ -136,6 +136,16 @@ export const NewsletterTokenSchema = uuid;
 export const NewsletterUnsubscribeReason = z.enum(["link", "one_click"]);
 export type NewsletterUnsubscribeReason = z.infer<typeof NewsletterUnsubscribeReason>;
 
+/**
+ * Every reason a row's `unsubscribed_reason` may hold, value for value with
+ * `newsletter_subscriptions_unsubscribed_reason_check`: the link's two ({@link
+ * NewsletterUnsubscribeReason}), plus `provider` (the mail provider's own unsubscribe, its last
+ * topic opted out, or its contact deleted there) and `complaint` (a spam complaint), which only
+ * `community.record_newsletter_provider_event` writes.
+ */
+export const NewsletterUnsubscribedReason = z.enum(["link", "one_click", "provider", "complaint"]);
+export type NewsletterUnsubscribedReason = z.infer<typeof NewsletterUnsubscribedReason>;
+
 /** What a press of Confirm came to (`community.confirm_newsletter`). */
 export const NewsletterConfirmOutcome = z.enum([
 	"confirmed",
@@ -230,7 +240,8 @@ export const NewsletterSubscriptionRowSchema = z.object({
 	locale: z.string().nullable(),
 	confirmed_at: timestamp.nullable(),
 	unsubscribed_at: timestamp.nullable(),
-	unsubscribed_reason: z.string().nullable(),
+	/** Set exactly when `unsubscribed_at` is (the table's CHECK). */
+	unsubscribed_reason: NewsletterUnsubscribedReason.nullable(),
 	/**
 	 * Topics pending their owner's confirmation — on an unsubscribed address (a re-subscribe) or a
 	 * confirmed one (a new topic), sorted, distinct and never empty; NULL when nothing is pending.
@@ -240,9 +251,137 @@ export const NewsletterSubscriptionRowSchema = z.object({
 	resubscribe_requested_at: timestamp.nullable(),
 	/** When the last confirmation mail went to the mailer; NULL when none has. */
 	confirmation_sent_at: timestamp.nullable(),
+	/** The address's contact id at the mail provider; NULL while none is known (CD1 step 5). */
+	provider_contact_ref: z.string().min(1).max(128).nullable(),
+	/** The row version (`updated_at`) the provider last received; NULL = never, or due again. */
+	provider_synced_at: timestamp.nullable(),
+	/** The topics the provider's contact was last set to opt in to; NULL while no contact is known. */
+	provider_topics: z.array(NewsletterTopic).nullable(),
 	token: uuid,
 	created_at: timestamp,
 	updated_at: timestamp,
 });
 export type NewsletterSubscriptionRow = z.infer<typeof NewsletterSubscriptionRowSchema>;
+// #endregion
+
+// #region The provider's copy (CD1 step 5, Decision #480 Q1 A)
+/**
+ * The feature flag that switches the provider sync on, per environment (00005001). Off in every
+ * seed: `community.newsletter_sync_batch` answers no rows while it is.
+ */
+export const NEWSLETTER_PROVIDER_SYNC_FLAG = "newsletter.provider_sync";
+
+/** The `security.platform_params` keys the newsletter's sender and its provider copy read. */
+export const NEWSLETTER_PARAM_KEYS = Object.freeze({
+	mailFrom: "newsletter_mail_from",
+	segmentId: "newsletter_provider_segment_id",
+	topicIds: "newsletter_provider_topic_ids",
+});
+
+/** A provider id (a Resend segment, topic or contact id): opaque, bounded like the table's CHECK. */
+const providerId = z.string().trim().min(1).max(128);
+
+/**
+ * The provider configuration the sync needs, parsed from the batch's `segment_id` and `topic_ids`:
+ * the segment every eligible address joins and one topic id per {@link NEWSLETTER_TOPICS} entry.
+ * Anything missing or malformed means the sync is not configured and does nothing.
+ */
+export const NewsletterProviderConfigSchema = z.object({
+	segmentId: providerId,
+	topicIds: z.object({ general: providerId, changelog: providerId }),
+});
+export type NewsletterProviderConfig = z.infer<typeof NewsletterProviderConfigSchema>;
+
+/** What the sync does for one row: create or update its contact, or delete it. */
+export const NewsletterSyncAction = z.enum(["upsert", "remove"]);
+export type NewsletterSyncAction = z.infer<typeof NewsletterSyncAction>;
+
+/**
+ * One row of `community.newsletter_sync_batch`: the address, its topics, and the sync's own fields.
+ * Nothing else of the subscription reaches the sync, and the address goes only to the provider.
+ */
+export const NewsletterSyncRowSchema = z.object({
+	id: uuid,
+	email: z.string().min(3).max(NEWSLETTER_EMAIL_MAX),
+	topics: z.array(NewsletterTopic).min(1),
+	action: NewsletterSyncAction,
+	contact_ref: providerId.nullable(),
+	/** The row's `updated_at` when read: what record_newsletter_sync stamps. */
+	version: timestamp,
+	/** Confirmed since the provider last received the row: its provider-side opt-out may be lifted. */
+	reconfirmed: z.boolean(),
+}).strict();
+export type NewsletterSyncRow = z.infer<typeof NewsletterSyncRowSchema>;
+
+/**
+ * The JSON `community.newsletter_sync_batch` returns. `segment_id` and `topic_ids` are the raw
+ * param values (any JSON, or null when the row is missing); {@link NewsletterProviderConfigSchema}
+ * decides whether they configure anything.
+ */
+export const NewsletterSyncBatchSchema = z.object({
+	enabled: z.boolean(),
+	segment_id: z.unknown(),
+	topic_ids: z.unknown(),
+	rows: z.array(NewsletterSyncRowSchema),
+});
+export type NewsletterSyncBatch = z.infer<typeof NewsletterSyncBatchSchema>;
+
+/** What `community.record_newsletter_sync` is told one provider call did. */
+export const NewsletterSyncRecordAction = z.enum(["upserted", "refused", "removed"]);
+export type NewsletterSyncRecordAction = z.infer<typeof NewsletterSyncRecordAction>;
+
+/** What `community.record_newsletter_sync` answers. */
+export const NewsletterSyncRecordOutcome = z.enum(["recorded", "stale", "not_found"]);
+export type NewsletterSyncRecordOutcome = z.infer<typeof NewsletterSyncRecordOutcome>;
+
+/**
+ * One pass of the sync, as the cron route answers it: counts only, never an address. `skipped` says
+ * why nothing ran (`off`: the flag; `unconfigured`: no API key, segment or topic id; `stub`:
+ * `NEWSLETTER_BACKEND_LIVE` off). `stopped` says why a pass ended early (`rate_limited`: the
+ * provider's 429; `unavailable`: the provider is down; `budget`: the pass ran out of time).
+ */
+export interface NewsletterSyncReport {
+	skipped: "off" | "unconfigured" | "stub" | null;
+	read: number;
+	upserted: number;
+	removed: number;
+	refused: number;
+	failed: number;
+	stopped: "rate_limited" | "unavailable" | "budget" | null;
+}
+
+/**
+ * The provider's own news about an address, as `community.record_newsletter_provider_event` takes
+ * it: `unsubscribed` (its contact unsubscribed there), `complaint` (a spam complaint), `topics` (its
+ * topic preferences changed there), `present` (a contact exists there) and `deleted` (it was
+ * deleted there).
+ */
+export const NewsletterProviderEventKind = z.enum([
+	"unsubscribed",
+	"complaint",
+	"topics",
+	"present",
+	"deleted",
+]);
+export type NewsletterProviderEventKind = z.infer<typeof NewsletterProviderEventKind>;
+
+/** What `community.record_newsletter_provider_event` answers. */
+export const NewsletterProviderEventOutcome = z.enum([
+	"unsubscribed",
+	"already_unsubscribed",
+	"topics_removed",
+	"resync",
+	"unchanged",
+	"stale",
+	"not_found",
+]);
+export type NewsletterProviderEventOutcome = z.infer<typeof NewsletterProviderEventOutcome>;
+
+/** The JSON `community.record_newsletter_provider_event` returns. */
+export const NewsletterProviderEventRpcResultSchema = z.object({
+	outcome: NewsletterProviderEventOutcome,
+});
+export type NewsletterProviderEventRpcResult = z.infer<
+	typeof NewsletterProviderEventRpcResultSchema
+>;
 // #endregion

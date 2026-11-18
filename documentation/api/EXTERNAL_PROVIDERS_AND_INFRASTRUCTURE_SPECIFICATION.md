@@ -1651,10 +1651,12 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 **Setup.**
 
 1. **Domains.** Send transactional mail from `notify.<domain>`. Keep marketing and newsletter mail
-   on a different subdomain later (`news.<domain>`), so a marketing complaint cannot hurt a password
-   reset. Today the newsletter's **confirmation** mail still leaves from `MAIL_FROM`
-   (`notify.<domain>`): CD1 added no env key (Decision #480 flag (a), PRD-E14). Its broadcasts go
-   out from `news.<domain>` (setup 8).
+   on a different subdomain (`news.<domain>`), so a marketing complaint cannot hurt a password
+   reset. The newsletter's **confirmation** mail leaves from the platform param
+   `newsletter_mail_from` (CD1 step 5, Decision #480 flag (a), PRD-E14; no env key), e.g.
+   `Projective <news@news.<domain>>`; while it is unset it falls back to `MAIL_FROM` and the server
+   logs that once. Its broadcasts go out from `news.<domain>` (setup 8). Verify `news.<domain>` in
+   Resend with its own SPF, DKIM, Return-Path and DMARC (setup 2) before setting the param.
 2. **DNS.**
    - SPF (the provider's include);
    - DKIM (the provider's records);
@@ -1713,9 +1715,14 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
      transaction, so a replay is a 2xx no-op. It finds the delivery by Resend's message id, which
      the send recorded as `provider_ref`. Every send also carries the delivery id as Resend's
      `Idempotency-Key`.
+   - **The newsletter's share (CD1 step 5).** After the claim, a new delivery or a replay alike,
+     `contact.created`, `contact.updated`, `contact.deleted`, `contact.topics.updated` and
+     `email.complained` go to `community.record_newsletter_provider_event` (setup 8). Its failure is a
+     503, so Resend sends the event again.
    - **Runbook, per environment:** in Resend → Webhooks, add
      `https://<origin>/api/comms/webhooks/resend` with those four events plus `email.failed`, and
-     put its signing secret in the app's secret store as `RESEND_WEBHOOK_SECRET`. Prove it with
+     the four `contact.*` events above, and put its signing secret in the app's secret store as
+     `RESEND_WEBHOOK_SECRET`. Prove it with
      Resend's test recipients: `delivered@resend.dev` leads to `delivered`; `bounced@resend.dev`
      suppresses the address for every category; `complained@resend.dev` suppresses it for
      Marketing only (COMMS_DELIVERY CD2's `--send` cases).
@@ -1739,12 +1746,29 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
      `List-Unsubscribe: <https://<origin>/api/newsletter/unsubscribe?token=…>` and
      `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058; `MailMessage.headers`). The link
      opens `/newsletter/confirm`, whose button confirms; the link works for 7 days.
-   - **Proposed (CD1 step 5, after NT3).** Each confirmed, unsuppressed address syncs to Resend
-     **contacts** (global contacts, grouped by Segments, with Topics matching `NEWSLETTER_TOPICS`;
-     the address is the only data sent) by a `newsletter-provider-sync` job behind a
-     `newsletter.provider_sync` flag. Broadcasts are composed and sent in Resend's dashboard from
-     `news.<domain>`. Resend's own unsubscribe, including a per-topic one, comes back through
-     setup 6's signed webhook (one endpoint, one Svix secret) and writes the row (flag (b)).
+   - **Built (CD1 step 5): the provider's copy.** Resend **contacts** are global to the account,
+     grouped by Segments, with Topics a contact can leave one by one. The `newsletter-provider-sync`
+     http job (every 5 minutes, `POST /api/newsletter/cron/sync`, the dispatcher's
+     `COMMS_DISPATCH_SECRET`) keeps exactly one contact in the newsletter segment for each address that
+     is confirmed, not unsubscribed and not suppressed. It creates the contact subscribed with every topic set
+     explicitly (`opt_in` for what the row holds, `opt_out` for the rest), sets the topics of a known
+     one, and deletes the contact of an address that left or is suppressed. The address and its
+     topics are the only data sent. It never re-subscribes a contact Resend shows as unsubscribed
+     unless its owner has just confirmed again through Projective. It makes at most 5 calls a second
+     (half the team's limit, which transactional mail shares) and ends a pass at a 429.
+   - **Built: the provider's events.** Through setup 6's webhook (one endpoint, one Svix secret):
+     Resend's unsubscribe, a topic opt-out (only for a topic Resend had opted in, so the sync's own
+     echo changes nothing), a contact deleted in the dashboard, or a spam complaint takes the address
+     or the topic off the row (`unsubscribed_reason` `provider` / `complaint`). An opt-in made at
+     Resend is not consent: the row is re-synced, so Projective's topics win. The provider can take
+     an address off the list, never put one on.
+   - **Runbook, per environment (CD2):** create the segment, and the topics `General` and
+     `Changelog` with a **default subscription of opt_out**. Set `newsletter_provider_segment_id`,
+     `newsletter_provider_topic_ids` (`{"general": "<id>", "changelog": "<id>"}`) and
+     `newsletter_mail_from` in `security.platform_params`, then turn the `newsletter.provider_sync`
+     flag on. Always send a broadcast to the segment **with one topic**, so it reaches only the
+     contacts opted in to it. Use the account's contacts for the newsletter alone: the sync deletes a
+     contact it finds for an address that is not send-eligible.
 
 **Development and production.**
 
