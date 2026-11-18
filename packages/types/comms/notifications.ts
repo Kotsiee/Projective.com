@@ -197,6 +197,83 @@ export const NotificationDeliverySchema = z.object({
 export type NotificationDelivery = z.infer<typeof NotificationDeliverySchema>;
 // #endregion
 
+// #region Dispatch
+/**
+ * The body `comms.fn_dispatch_notification` posts to `POST /api/comms/dispatch`: the notification's
+ * id alone (snake_case, as SQL writes it). The dispatcher reads everything else itself.
+ */
+export const DispatchRequestSchema = z.object({ notification_id: uuid }).strict();
+export type DispatchRequest = z.infer<typeof DispatchRequestSchema>;
+
+/**
+ * Where one claimed delivery goes, resolved by `comms.fn_claim_deliveries` and present only on a
+ * `queued` row: the primary verified address, the confirmed phone, or the live device. It never
+ * leaves the dispatch service and is never logged.
+ */
+export const DeliveryDestinationSchema = z.union([
+	z.object({ address: z.string().min(1) }),
+	z.object({ phone: z.string().min(1) }),
+	z.object({
+		device_id: uuid,
+		provider: z.string(),
+		token: z.string(),
+		endpoint: z.string().nullable(),
+		p256dh: z.string().nullable(),
+		auth: z.string().nullable(),
+	}),
+]);
+export type DeliveryDestination = z.infer<typeof DeliveryDestinationSchema>;
+
+/** One row `comms.fn_claim_deliveries` returns, as the database writes it. */
+export const ClaimedDeliveryRowSchema = z.object({
+	delivery_id: uuid,
+	notification_id: uuid,
+	user_id: uuid,
+	channel: NotificationChannel,
+	/** `queued` to send now; `skipped` (no target) and `suppressed` are already final. */
+	status: DeliveryStatus,
+	attempts: z.number().int().min(0),
+	suppressed_reason: z.string().nullable(),
+	destination: DeliveryDestinationSchema.nullable(),
+	title: z.string(),
+	/** A same-origin path (comms.notifications' relative-link CHECK), or null. */
+	action_url: z.string().nullable(),
+	type: z.string(),
+	category: NotificationCategory,
+});
+export type ClaimedDeliveryRow = z.infer<typeof ClaimedDeliveryRowSchema>;
+
+/** A claimed delivery, mapped for the dispatch service. */
+export interface ClaimedDelivery {
+	deliveryId: string;
+	notificationId: string;
+	userId: string;
+	channel: NotificationChannel;
+	status: DeliveryStatus;
+	attempts: number;
+	suppressedReason: string | null;
+	destination: DeliveryDestination | null;
+	title: string;
+	actionUrl: string | null;
+	type: string;
+	category: NotificationCategory;
+}
+
+/** The outcomes `comms.fn_record_delivery_result` accepts. */
+export const DeliveryResultStatus = z.enum(["sent", "delivered", "failed"]);
+export type DeliveryResultStatus = z.infer<typeof DeliveryResultStatus>;
+
+/** What one dispatch pass did, by outcome. Counts only; no id, address or title. */
+export const DispatchTallySchema = z.object({
+	claimed: z.number().int().min(0),
+	sent: z.number().int().min(0),
+	failed: z.number().int().min(0),
+	skipped: z.number().int().min(0),
+	suppressed: z.number().int().min(0),
+});
+export type DispatchTally = z.infer<typeof DispatchTallySchema>;
+// #endregion
+
 // #region Scheduled sends
 /**
  * A row of `comms.notification_queue` — a PROMISE of a notification, not a notification.

@@ -301,6 +301,15 @@ export interface ServerEnv {
 	 */
 	integrationsCronSecret: string | undefined;
 	/**
+	 * The bearer token the notification dispatcher's two doors check, from `COMMS_DISPATCH_SECRET`
+	 * (Decision #344 (a); #339 ruling N3 (c)): `POST /api/comms/dispatch`, which the
+	 * `comms.notifications` trigger posts to through pg_net, and `POST /api/comms/cron/dispatch`, the
+	 * `comms-dispatch-sweep` job. Vault holds the same value under the same name. Like the cron routes
+	 * they answer 404 to anything else, including every request while this is unset, the `XXXX-XXXX`
+	 * placeholder or shorter than 32 characters; the dispatcher counts as not running until it is set.
+	 */
+	commsDispatchSecret: string | undefined;
+	/**
 	 * The Google Web Risk API key a link's reputation is checked against (Decision #340, ruling T5),
 	 * from `LINK_SAFETY_API_KEY`. Server-only, sent only in the `x-goog-api-key` header. The
 	 * `XXXX-XXXX` placeholder counts as absent (`files/link-reputation.ts`), and an absent key skips
@@ -425,6 +434,7 @@ export function serverEnv(): ServerEnv {
 		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
 		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
 		integrationsCronSecret: firstEnv("INTEGRATIONS_CRON_SECRET"),
+		commsDispatchSecret: firstEnv("COMMS_DISPATCH_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 		encryptionKey: firstEnv("ENCRYPTION_KEY"),

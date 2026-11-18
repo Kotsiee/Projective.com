@@ -495,7 +495,8 @@ BEGIN
     END IF;
 
     -- ── Delivery rows. `in_app` is already delivered the moment the row exists (Realtime streams
-    -- comms.notifications, migration 0206); the rest are picked up by the dispatch Edge Function.
+    -- comms.notifications, migration 0206); the rest wait `pending` for the dispatcher
+    -- (POST /api/comms/dispatch, which claims them through comms.fn_claim_deliveries).
     FOREACH v_ch IN ARRAY COALESCE(v_channels, '{}'::comms.notification_channel[]) LOOP
         IF v_ch = 'push' THEN
             -- One row per live device, so a per-device failure can retire exactly that token.
@@ -1143,51 +1144,311 @@ BEGIN
 END;
 $$;
 
+-- #endregion
+
+-- #region 10. Outbound dispatch — the signed webhook, the claim and the result (Decision #344 (a))
+-- The dispatcher is a Fresh route, POST /api/comms/dispatch, thin over NotificationDispatchService
+-- (Decision #344 flag (a), owner ruling 2026-11-18; ruling C4 (a) of #343 for the runtime). The
+-- trigger below posts each new notification to it with a Vault-held bearer (Decision #339, ruling
+-- N3 (c)); the comms-dispatch-sweep http job (00005060) re-drives whatever that post missed and
+-- every failure due a retry. Both doors end in comms.fn_claim_deliveries, so one switch,
+-- `comms.dispatch_webhook`, turns outbound delivery on and off for both.
+
+-- (a) The switch. The trigger, the claim and the app's channel liveness all read this one predicate.
+CREATE OR REPLACE FUNCTION comms.fn_dispatch_enabled()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT f.enabled FROM security.feature_flags f WHERE f.key = 'comms.dispatch_webhook'),
+        false
+    );
+$$;
+
+COMMENT ON FUNCTION comms.fn_dispatch_enabled() IS
+    'Whether outbound notification delivery (email, push, SMS) is switched on: the comms.dispatch_webhook feature flag, false when the row is missing. Read by fn_dispatch_notification, fn_claim_deliveries and the app''s channel liveness. Service role only.';
+
+-- (b) The trigger. pg_net queues the POST and sends it when the emitting transaction commits, so the
+-- dispatcher always finds the delivery rows fn_notify wrote after this row. The bearer and the origin
+-- are read from Vault exactly as ops.fn_dispatch_http_job reads them (00001650 §3).
 CREATE OR REPLACE FUNCTION comms.fn_dispatch_notification()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = comms, security, public
+SET search_path = ''
 AS $$
 DECLARE
-    v_enabled boolean;
-    v_url text;
+    v_base text;
+    v_bearer text;
 BEGIN
-    -- Fast exit on the default path.
-    SELECT enabled INTO v_enabled FROM security.feature_flags WHERE key = 'comms.dispatch_webhook';
-    IF NOT COALESCE(v_enabled, false) THEN
+    -- The default path: one indexed read, then out.
+    IF NOT comms.fn_dispatch_enabled() THEN
         RETURN NEW;
     END IF;
 
-    -- Nothing to fan out: the in-app row is already delivered by Realtime.
+    -- Nothing leaves Projective: the in-app row is the whole delivery.
     IF NEW.channels IS NULL
-       OR array_length(NEW.channels, 1) IS NULL
-       OR NEW.channels = ARRAY['in_app']::comms.notification_channel[] THEN
+       OR NOT (NEW.channels && ARRAY['push', 'email', 'sms']::comms.notification_channel[]) THEN
         RETURN NEW;
     END IF;
 
-    SELECT value #>> '{}' INTO v_url FROM security.platform_params WHERE key = 'comms_dispatch_url';
-    IF v_url IS NULL OR v_url = '' OR v_url = 'XXXX-XXXX' THEN
+    -- Each skip below leaves the deliveries pending for comms-dispatch-sweep, and logs in the
+    -- scheduler's style: a WARNING every time, one ops.log_entries row per reason a day.
+    IF pg_catalog.to_regprocedure('net.http_post(text,jsonb,jsonb,jsonb,integer)') IS NULL THEN
+        PERFORM ops.fn_log_scheduler_event('comms-dispatch', 'pg_net_unavailable', 'warn',
+            'pg_net is not installed, so a new notification was not posted to the dispatcher; comms-dispatch-sweep sends it.',
+            '{}'::jsonb, true);
+        RETURN NEW;
+    END IF;
+    IF pg_catalog.to_regclass('vault.decrypted_secrets') IS NULL THEN
+        PERFORM ops.fn_log_scheduler_event('comms-dispatch', 'vault_unavailable', 'warn',
+            'Supabase Vault is not installed, so the dispatcher has no bearer and a new notification was not posted.',
+            '{}'::jsonb, true);
         RETURN NEW;
     END IF;
 
-    -- Dynamic so the function still compiles where pg_net is not installed. Any failure is
-    -- swallowed: the cron worker re-drives pending deliveries, and a webhook problem must never
-    -- roll back the money movement that emitted this notification.
-    BEGIN
-        EXECUTE format(
-            'SELECT net.http_post(url := %L, body := %L::jsonb, headers := %L::jsonb)',
-            v_url,
-            jsonb_build_object('notification_id', NEW.id, 'user_id', NEW.user_id, 'type', NEW.type)::text,
-            jsonb_build_object('Content-Type', 'application/json')::text
-        );
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
+    SELECT s.decrypted_secret INTO v_base FROM vault.decrypted_secrets s WHERE s.name = 'CRON_APP_URL';
+    IF v_base IS NULL OR v_base !~ '^https?://[^/\s]+' THEN
+        PERFORM ops.fn_log_scheduler_event('comms-dispatch', 'app_url_missing', 'warn',
+            'Vault secret CRON_APP_URL is not an http(s) origin, so a new notification was not posted to the dispatcher.',
+            '{}'::jsonb, true);
+        RETURN NEW;
+    END IF;
 
+    SELECT s.decrypted_secret INTO v_bearer FROM vault.decrypted_secrets s WHERE s.name = 'COMMS_DISPATCH_SECRET';
+    IF v_bearer IS NULL OR pg_catalog.length(v_bearer) < 32 THEN
+        PERFORM ops.fn_log_scheduler_event('comms-dispatch', 'secret_missing', 'warn',
+            'Vault secret COMMS_DISPATCH_SECRET is missing or shorter than 32 characters, so a new notification was not posted to the dispatcher.',
+            pg_catalog.jsonb_build_object('secret_name', 'COMMS_DISPATCH_SECRET'), true);
+        RETURN NEW;
+    END IF;
+
+    -- The body is the id alone: the dispatcher reads everything else under the service role, and a
+    -- title or recipient never sits in pg_net's request log.
+    PERFORM net.http_post(
+        url := pg_catalog.rtrim(v_base, '/') || '/api/comms/dispatch',
+        body := pg_catalog.jsonb_build_object('notification_id', NEW.id),
+        headers := pg_catalog.jsonb_build_object(
+            'Authorization', 'Bearer ' || v_bearer,
+            'Content-Type', 'application/json'
+        ),
+        timeout_milliseconds := 30000
+    );
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    -- Rule 6: nothing in the notification engine may abort its caller. The deliveries stay pending
+    -- and the sweep sends them.
+    RAISE WARNING 'comms.fn_dispatch_notification: % not posted (SQLSTATE %)', NEW.id, SQLSTATE;
     RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_dispatch_notification() IS
-    'AFTER INSERT hook that pokes the dispatch Edge Function for the non-in_app channels. Feature-flagged off by default, placeholder URL, pg_net-optional, and failure-swallowing — it can never block or roll back the transaction that emitted the notification.';
+    'AFTER INSERT on comms.notifications: while comms.dispatch_webhook is on, POSTs {notification_id} to <CRON_APP_URL>/api/comms/dispatch with Authorization: Bearer <COMMS_DISPATCH_SECRET>, both read from Vault, for a notification with an email, push or SMS channel. A missing pg_net, Vault, origin or bearer logs a warning (ops.fn_log_scheduler_event, once a day per reason) and posts nothing; comms-dispatch-sweep then sends the deliveries. Never raises, so it can never roll back the transaction that emitted the notification.';
+
+-- (c) The claim. A row is offered to exactly one dispatcher (FOR UPDATE SKIP LOCKED) and only for a
+-- channel that dispatcher can send: a row of any other channel stays pending, untouched, so no attempt
+-- is burned on a transport that is not configured yet, and a provider turned on later sends what is
+-- still inside the window. Due rows are pending ones, failed ones whose backoff (2^attempts minutes)
+-- has run with attempts < 5, and queued ones whose 15-minute lease lapsed (a dispatcher that died
+-- mid-send). Only rows from the last 24 hours are sent: a notification is not news a day later, and
+-- the in-app row is the record, so an older pending row is closed as skipped ('expired'). The
+-- destination is resolved here and returned once; it never leaves the service and is never logged.
+CREATE OR REPLACE FUNCTION comms.fn_claim_deliveries(
+    p_channels comms.notification_channel[],
+    p_notification uuid DEFAULT NULL,
+    p_limit integer DEFAULT 200
+) RETURNS TABLE (
+    delivery_id uuid,
+    notification_id uuid,
+    user_id uuid,
+    channel comms.notification_channel,
+    status comms.delivery_status,
+    attempts smallint,
+    suppressed_reason text,
+    destination jsonb,
+    title text,
+    action_url text,
+    type text,
+    category comms.notification_category
+)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+BEGIN
+    IF NOT comms.fn_dispatch_enabled() OR COALESCE(cardinality(p_channels), 0) = 0 OR COALESCE(p_limit, 0) < 1 THEN
+        RETURN;
+    END IF;
+
+    UPDATE comms.notification_deliveries d
+       SET status = 'skipped', suppressed_reason = 'expired'
+     WHERE d.id IN (
+         SELECT e.id
+           FROM comms.notification_deliveries e
+          WHERE e.channel = ANY (p_channels)
+            AND (p_notification IS NULL OR e.notification_id = p_notification)
+            AND e.status = 'pending'
+            AND e.created_at <= pg_catalog.now() - interval '24 hours'
+          LIMIT p_limit
+            FOR UPDATE SKIP LOCKED
+     );
+
+    RETURN QUERY
+    WITH due AS MATERIALIZED (
+        SELECT d.id
+          FROM comms.notification_deliveries d
+         WHERE d.channel = ANY (p_channels)
+           AND (p_notification IS NULL OR d.notification_id = p_notification)
+           AND d.created_at > pg_catalog.now() - interval '24 hours'
+           AND (
+                d.status = 'pending'
+                OR (d.status = 'failed' AND d.attempts < 5
+                    AND d.updated_at <= pg_catalog.now() - pg_catalog.make_interval(mins => (2 ^ d.attempts)::integer))
+                OR (d.status = 'queued' AND d.attempts < 5
+                    AND d.queued_at <= pg_catalog.now() - interval '15 minutes')
+           )
+         ORDER BY d.created_at
+         LIMIT p_limit
+           FOR UPDATE OF d SKIP LOCKED
+    ),
+    resolved AS (
+        SELECT d.id,
+               d.channel,
+               n.category,
+               CASE d.channel
+                   WHEN 'email' THEN (
+                       SELECT pg_catalog.jsonb_build_object('address', ue.email)
+                         FROM org.user_emails ue
+                        WHERE ue.user_id = d.user_id AND ue.is_primary AND ue.verified_at IS NOT NULL
+                   )
+                   WHEN 'sms' THEN (
+                       SELECT pg_catalog.jsonb_build_object('phone', u.phone)
+                         FROM auth.users u
+                        WHERE u.id = d.user_id
+                          AND COALESCE(u.phone, '') <> ''
+                          AND u.phone_confirmed_at IS NOT NULL
+                   )
+                   WHEN 'push' THEN (
+                       SELECT pg_catalog.jsonb_build_object(
+                                  'device_id', t.id, 'provider', t.provider, 'token', t.token,
+                                  'endpoint', t.endpoint, 'p256dh', t.p256dh, 'auth', t.auth_key)
+                         FROM comms.device_tokens t
+                        WHERE t.id = d.device_token_id AND t.revoked_at IS NULL
+                   )
+               END AS destination
+          FROM due
+          JOIN comms.notification_deliveries d ON d.id = due.id
+          JOIN comms.notifications n ON n.id = d.notification_id
+    ),
+    decided AS (
+        SELECT r.id,
+               r.destination,
+               CASE
+                   WHEN r.destination IS NULL THEN 'skipped'::comms.delivery_status
+                   -- CAS N8: a hard bounce blocks every category, an unsubscribe Marketing only.
+                   WHEN comms.fn_is_suppressed(
+                       r.channel,
+                       COALESCE(r.destination ->> 'address', r.destination ->> 'phone',
+                                r.destination ->> 'endpoint', r.destination ->> 'token'),
+                       r.category
+                   ) THEN 'suppressed'::comms.delivery_status
+                   ELSE 'queued'::comms.delivery_status
+               END AS next_status
+          FROM resolved r
+    ),
+    claimed AS (
+        UPDATE comms.notification_deliveries d
+           SET status = x.next_status,
+               attempts = CASE WHEN x.next_status = 'queued' THEN d.attempts + 1 ELSE d.attempts END,
+               queued_at = CASE WHEN x.next_status = 'queued' THEN pg_catalog.now() ELSE d.queued_at END,
+               suppressed_reason = CASE x.next_status
+                   WHEN 'skipped' THEN 'no_target'
+                   WHEN 'suppressed' THEN 'suppressed_destination'
+               END
+          FROM decided x
+         WHERE d.id = x.id
+        RETURNING d.id, d.notification_id, d.user_id, d.channel, d.status, d.attempts,
+                  d.suppressed_reason, x.destination
+    )
+    SELECT c.id, c.notification_id, c.user_id, c.channel, c.status, c.attempts, c.suppressed_reason,
+           CASE WHEN c.status = 'queued' THEN c.destination END,
+           n.title, n.action_url, n.type, n.category
+      FROM claimed c
+      JOIN comms.notifications n ON n.id = c.notification_id;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_claim_deliveries(comms.notification_channel[], uuid, integer) IS
+    'Claims up to p_limit due outbound deliveries of p_channels (one notification''s, or any) with FOR UPDATE SKIP LOCKED, while comms.dispatch_webhook is on. A due row is pending, failed with attempts < 5 past its 2^attempts-minute backoff, or queued past a 15-minute lease, and younger than 24 hours (an older pending row is closed skipped/expired). Each is resolved to its destination (the primary verified org.user_emails address, the confirmed auth phone, or the unrevoked device) and marked queued (attempts + 1), skipped (no_target) or suppressed (suppressed_destination, through fn_is_suppressed). Returns every claimed row with its status; the destination only on a queued one. Service role only.';
+
+-- (d) The result of one send. Monotonic: a result moves a row only forward (queued → sent →
+-- delivered; queued or sent → failed), so a late or replayed answer cannot undo a later one.
+CREATE OR REPLACE FUNCTION comms.fn_record_delivery_result(
+    p_delivery uuid,
+    p_status comms.delivery_status,
+    p_provider text DEFAULT NULL,
+    p_provider_ref text DEFAULT NULL,
+    p_error text DEFAULT NULL
+) RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row comms.notification_deliveries%ROWTYPE;
+BEGIN
+    IF p_status IS NULL OR p_status NOT IN ('sent', 'delivered', 'failed') THEN
+        RAISE EXCEPTION 'A delivery result is sent, delivered or failed, not %', p_status
+            USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE comms.notification_deliveries d
+       SET status = p_status,
+           provider = COALESCE(p_provider, d.provider),
+           provider_ref = COALESCE(p_provider_ref, d.provider_ref),
+           error = CASE WHEN p_status = 'failed' THEN pg_catalog.left(p_error, 500) ELSE NULL END,
+           sent_at = CASE WHEN p_status IN ('sent', 'delivered') THEN COALESCE(d.sent_at, pg_catalog.now()) ELSE d.sent_at END,
+           delivered_at = CASE WHEN p_status = 'delivered' THEN pg_catalog.now() ELSE d.delivered_at END,
+           failed_at = CASE WHEN p_status = 'failed' THEN pg_catalog.now() ELSE d.failed_at END
+     WHERE d.id = p_delivery
+       AND CASE p_status
+               WHEN 'sent' THEN d.status = 'queued'
+               ELSE d.status IN ('queued', 'sent')
+           END
+    RETURNING d.* INTO v_row;
+
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    -- A push gateway's answer is also news about the device (comms.revoke_device's semantics).
+    IF v_row.channel = 'push' AND v_row.device_token_id IS NOT NULL THEN
+        IF p_status = 'failed' AND p_error = 'gone' THEN
+            -- The subscription no longer exists: retire the device and drop its keys. The row's next
+            -- claim finds no target and closes it as skipped.
+            UPDATE comms.device_tokens t
+               SET revoked_at = pg_catalog.now(), revoked_reason = 'gone', auth_key = NULL, p256dh = NULL
+             WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL;
+        ELSIF p_status = 'failed' THEN
+            UPDATE comms.device_tokens t SET failure_count = t.failure_count + 1
+             WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL;
+        ELSE
+            UPDATE comms.device_tokens t SET failure_count = 0
+             WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL AND t.failure_count > 0;
+        END IF;
+    END IF;
+
+    RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_record_delivery_result(uuid, comms.delivery_status, text, text, text) IS
+    'Records one send''s outcome on a claimed delivery: sent (sent_at), delivered (delivered_at) or failed (failed_at, the error cut to 500 characters), with the provider and its message id. Moves a row only forward (sent needs queued; delivered and failed need queued or sent) and returns whether it moved. For push, p_error = ''gone'' revokes the device and clears its keys, another failure counts against it, and a success resets its failure count. Service role only.';
+-- #endregion

@@ -131,19 +131,14 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'How many Stripe Identity checks one freelancer may START in any 24 hours (finance.begin_identity_verification). Every check is billed by the processor, so the ceiling lives in the database rather than in a per-process limiter.')
 ON CONFLICT (key) DO NOTHING;
 
--- from 20260724094000
+-- The one switch for outbound notification delivery (Decision #344 (a)). Off in every seed: turn it on
+-- per environment once Vault holds CRON_APP_URL and COMMS_DISPATCH_SECRET and at least one transport
+-- is configured (providers spec §8.1). The dispatcher's address is Vault's CRON_APP_URL, so no URL
+-- lives here.
 INSERT INTO security.feature_flags (key, enabled, payload)
 VALUES ('comms.dispatch_webhook', false, jsonb_build_object(
-    'description', 'When enabled, a comms.notifications INSERT calls the dispatch Edge Function via pg_net for push/email/SMS fan-out.'
+    'description', 'When enabled, a comms.notifications INSERT posts its id through pg_net to POST /api/comms/dispatch (Vault CRON_APP_URL, Bearer COMMS_DISPATCH_SECRET) for email, push and SMS, and comms-dispatch-sweep re-drives and retries; while off, no outbound delivery is claimed.'
 ))
-ON CONFLICT (key) DO NOTHING;
-
-INSERT INTO security.platform_params (key, value, description)
-VALUES (
-    'comms_dispatch_url',
-    to_jsonb('XXXX-XXXX'::text),
-    'Edge Function URL for notification dispatch (push/email/SMS). Placeholder — set per environment; never commit a real URL or key.'
-)
 ON CONFLICT (key) DO NOTHING;
 
 -- from 20260724104000

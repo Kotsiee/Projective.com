@@ -431,6 +431,28 @@
 			],
 			"port": 13472,
 			"autoPort": false
+		},
+		{
+			"name": "web-sac3",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13520'; deno task dev --port 13520 --strictPort"
+			],
+			"port": 13520,
+			"autoPort": false
+		},
+		{
+			"name": "web-sac2",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13530'; deno task dev --port 13530 --strictPort"
+			],
+			"port": 13530,
+			"autoPort": false
 		}
 	]
 }

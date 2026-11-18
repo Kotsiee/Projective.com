@@ -161,6 +161,15 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'SELECT comms.fn_compact_delivery_events();', NULL, NULL,
         'Empties the raw provider body of delivery callbacks older than 30 days; the row stays, as it is the idempotency key.')
 ON CONFLICT (name) DO NOTHING;
+
+-- The dispatcher's retry sweep (Decision #344 (a)): an http job on the dispatcher's own bearer, so the
+-- route and the trigger compare one value. It claims through the same flag-gated
+-- comms.fn_claim_deliveries as the trigger's post, so it does nothing while outbound delivery is off.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('comms-dispatch-sweep', 'http', '* * * * *',
+        NULL, '/api/comms/cron/dispatch?limit=200', 'COMMS_DISPATCH_SECRET',
+        'Sends every outbound delivery (email, push, SMS) the trigger''s post missed and retries each failed one after 2^attempts minutes, up to 5 attempts and within 24 hours (NotificationDispatchService.dispatch). Claims nothing while comms.dispatch_webhook is off.')
+ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
 -- #region [projects] Claim-TTL auto-release (Q0.3: #338 D1)

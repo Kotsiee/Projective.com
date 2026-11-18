@@ -415,7 +415,6 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   Released, refunded and matured money is not counted. `p_now` is the clock to age against, not a
   snapshot: a row created after it ages 0. Probe: `escrow_age.sql`.
 
-
 ## Stage-level wrappers (in `projects`, invoke this engine — migration `0305`)
 
 `projects.fund_stage`, `projects.approve_stage`, `projects.cancel_stage_fair_exit`,

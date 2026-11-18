@@ -79,27 +79,91 @@ COMMENT ON FUNCTION editorial.fn_guard_release_version_immutable() IS
 
 
 -- #region [community.newsletter]
--- community.subscribe_newsletter — the opt-in's one writer, called by the service role from
--- NewsletterBackendService (packages/backend/services/newsletter/). Its TypeScript twin is
--- planNewsletterSubscription (subscription-plan.ts), which the stub path runs and whose tests pin
--- the same four outcomes this function returns:
+-- The double opt-in (Decision #274 flag (c), resolved by PRD-E11's CD1). Four functions, every one
+-- service-role only (00002510) and called from NewsletterBackendService
+-- (packages/backend/services/newsletter/):
 --
---   created       no row for the address — insert it with the one requested topic;
+--   fn_newsletter_pending_topics  what a confirmation would apply to a row, or NULL (the one rule);
+--   fn_newsletter_suppressed      whether the suppression list refuses the address for marketing;
+--   subscribe_newsletter          the public form: records the request, reports a mail as due;
+--   read_newsletter_link          what the mailed link's pages show, writing nothing (a GET);
+--   confirm_newsletter            the Confirm button's POST: applies the pending request;
+--   unsubscribe_newsletter        the Unsubscribe button and the RFC 8058 one-click POST.
+--
+-- The token in the mailed link is the only credential the last three take, because the address has
+-- no account. A link is good for 7 days after its mail (confirmation_sent_at); an unsubscribe never
+-- expires, and nothing here deletes a row.
+
+-- community.fn_newsletter_pending_topics — what the confirm link would apply to this row: on an
+-- unsubscribed address the pending re-subscribe (NULL when none), on an unconfirmed one its whole
+-- topic set (the first confirmation covers it), on a confirmed one the pending topics (NULL when
+-- none, Decision #274 flag (c): each topic is consented to on its own). NULL means nothing awaits
+-- confirmation. Pure: it reads only its argument.
+CREATE OR REPLACE FUNCTION community.fn_newsletter_pending_topics(
+    p_row community.newsletter_subscriptions
+)
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN (p_row).unsubscribed_at IS NOT NULL THEN (p_row).resubscribe_topics
+        WHEN (p_row).confirmed_at IS NULL THEN (p_row).topics
+        ELSE (p_row).resubscribe_topics
+    END;
+$$;
+
+-- community.fn_newsletter_suppressed — whether comms.fn_is_suppressed refuses this address for
+-- marketing email: a hard bounce blocks every category, a complaint or an unsubscribe Marketing, and
+-- the newsletter is Marketing (ruling N3 (b)). SECURITY DEFINER because the service role holds no
+-- USAGE on `comms` (00002500); it answers one boolean for one address, and nothing else of `comms`
+-- is reachable through it.
+CREATE OR REPLACE FUNCTION community.fn_newsletter_suppressed(p_email text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT comms.fn_is_suppressed(
+        'email'::comms.notification_channel,
+        p_email,
+        'marketing'::comms.notification_category
+    );
+$$;
+
+-- community.subscribe_newsletter — the public form's writer. Its TypeScript twin is
+-- planNewsletterSubscription (subscription-plan.ts), which the stub path runs and whose tests pin
+-- the same five outcomes this function returns:
+--
+--   created       no row for the address — insert it, unconfirmed, with the one requested topic;
 --   resubscribed  the address had unsubscribed — RECORD the request and change nothing else: the
 --                 topic joins resubscribe_topics (sorted, distinct) and resubscribe_requested_at is
 --                 stamped, while unsubscribed_at / unsubscribed_reason (the only record of the
 --                 opt-out), topics and confirmed_at stay as they were, so the row stays unsendable.
 --                 Whoever typed the address into a public form has not proved they own it; the
---                 confirm link (not built yet) applies the request;
---   topic_added   active, and the topic is new — add it to the set (sorted, distinct);
+--                 confirm link applies the request;
+--   topic_added   active and unconfirmed, and the topic is new — add it to the set (sorted,
+--                 distinct); the first confirmation covers every topic the row holds;
+--   topic_pending active and confirmed, and the topic is new — record it in resubscribe_topics, as a
+--                 re-subscribe is recorded: a confirmed address consents to each topic on its own;
 --   unchanged     active, and the topic is already held — write nothing, not even updated_at.
 --
--- `already_subscribed` is true exactly for `unchanged`, so a repeat submission answers the same
--- success the first one did. The row is locked before it is read, and a concurrent first subscribe of
--- the same address is folded in rather than raised: INSERT … ON CONFLICT DO NOTHING, then loop to
--- lock the winner's row. Topic sets sort by code point (COLLATE "C"), as the TypeScript twin's
--- `normalizeTopics` does. The address guard refuses a malformed or over-long (> 254) address with
--- 22023; the table's CHECKs are the authority on `source` and `topic` (23514).
+-- Then, under the same lock: a confirmation mail is due when something awaits confirmation
+-- (fn_newsletter_pending_topics), the last one is NULL or more than 10 minutes old, and the
+-- suppression list does not refuse the address for marketing email (fn_newsletter_suppressed). A due mail
+-- stamps confirmation_sent_at, and only that column: it is not a change of the subscription, so
+-- updated_at is left alone. The answer carries the token and the topics to confirm only when the mail
+-- is due; the service sends it after this transaction commits.
+--
+-- `already_subscribed` is true exactly for `unchanged`. The service answers every outcome with the
+-- same public success, so neither field reaches the form. The row is locked before it is read, and a
+-- concurrent first subscribe of the same address is folded in rather than raised: INSERT … ON
+-- CONFLICT DO NOTHING, then loop to lock the winner's row. Topic sets sort by code point (COLLATE
+-- "C"), as the TypeScript twin's `normalizeTopics` does. The address guard refuses a malformed or
+-- over-long (> 254) address with 22023; the table's CHECKs are the authority on `source` and `topic`
+-- (23514).
 CREATE OR REPLACE FUNCTION community.subscribe_newsletter(
     p_email text,
     p_source text DEFAULT 'footer',
@@ -115,15 +179,17 @@ DECLARE
     v_email text := lower(btrim(p_email));
     v_source text := COALESCE(p_source, 'footer');
     v_topic text := COALESCE(p_topic, 'general');
-    v_prior community.newsletter_subscriptions%ROWTYPE;
+    v_row community.newsletter_subscriptions%ROWTYPE;
     v_outcome text;
+    v_pending text[];
+    v_due boolean;
 BEGIN
     IF v_email IS NULL OR v_email !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' OR char_length(v_email) > 254 THEN
         RAISE EXCEPTION 'A valid email address is required.' USING ERRCODE = '22023';
     END IF;
 
     LOOP
-        SELECT * INTO v_prior
+        SELECT * INTO v_row
         FROM community.newsletter_subscriptions
         WHERE email = v_email
         FOR UPDATE;
@@ -131,7 +197,8 @@ BEGIN
         IF NOT FOUND THEN
             INSERT INTO community.newsletter_subscriptions (email, source, topics)
             VALUES (v_email, v_source, ARRAY[v_topic])
-            ON CONFLICT (email) DO NOTHING;
+            ON CONFLICT (email) DO NOTHING
+            RETURNING * INTO v_row;
             IF FOUND THEN
                 v_outcome := 'created';
                 EXIT;
@@ -141,38 +208,204 @@ BEGIN
             CONTINUE;
         END IF;
 
-        IF v_prior.unsubscribed_at IS NOT NULL THEN
+        IF v_row.unsubscribed_at IS NOT NULL OR (
+            v_row.confirmed_at IS NOT NULL AND NOT (v_topic = ANY (v_row.topics))
+        ) THEN
             UPDATE community.newsletter_subscriptions
             SET resubscribe_topics = ARRAY(
                     SELECT DISTINCT t COLLATE "C"
-                    FROM unnest(COALESCE(v_prior.resubscribe_topics, '{}'::text[]) || v_topic) AS u (t)
+                    FROM unnest(COALESCE(v_row.resubscribe_topics, '{}'::text[]) || v_topic) AS u (t)
                     ORDER BY 1
                 ),
                 resubscribe_requested_at = now(),
                 updated_at = now()
-            WHERE id = v_prior.id;
-            v_outcome := 'resubscribed';
-        ELSIF v_topic = ANY (v_prior.topics) THEN
+            WHERE id = v_row.id
+            RETURNING * INTO v_row;
+            v_outcome := CASE WHEN v_row.unsubscribed_at IS NOT NULL THEN 'resubscribed' ELSE 'topic_pending' END;
+        ELSIF v_topic = ANY (v_row.topics) THEN
             v_outcome := 'unchanged';
         ELSE
             UPDATE community.newsletter_subscriptions
             SET topics = ARRAY(
-                    SELECT DISTINCT t COLLATE "C" FROM unnest(v_prior.topics || v_topic) AS u (t)
+                    SELECT DISTINCT t COLLATE "C" FROM unnest(v_row.topics || v_topic) AS u (t)
                     ORDER BY 1
                 ),
                 updated_at = now()
-            WHERE id = v_prior.id;
+            WHERE id = v_row.id
+            RETURNING * INTO v_row;
             v_outcome := 'topic_added';
         END IF;
         EXIT;
     END LOOP;
 
+    v_pending := community.fn_newsletter_pending_topics(v_row);
+    v_due := v_pending IS NOT NULL
+        AND (v_row.confirmation_sent_at IS NULL OR v_row.confirmation_sent_at < now() - interval '10 minutes')
+        AND NOT community.fn_newsletter_suppressed(v_email);
+    IF v_due THEN
+        UPDATE community.newsletter_subscriptions
+        SET confirmation_sent_at = now()
+        WHERE id = v_row.id;
+    END IF;
+
     RETURN jsonb_build_object(
         'email', v_email,
         'topic', v_topic,
         'outcome', v_outcome,
-        'already_subscribed', v_outcome = 'unchanged'
+        'already_subscribed', v_outcome = 'unchanged',
+        'confirmation_due', v_due,
+        'token', CASE WHEN v_due THEN v_row.token END,
+        'confirm_topics', CASE WHEN v_due THEN to_jsonb(v_pending) END
     );
+END;
+$$;
+
+-- community.read_newsletter_link — what the mailed link's two pages show for a token, writing
+-- nothing: a mail scanner opens every link, so a GET only reads (Decisions #445, #478). NULL for an
+-- unknown token (the page's 404). Otherwise the address's standing, and never the address itself:
+--
+--   subscribed      confirmed and not unsubscribed (send-eligible);
+--   unsubscribed    unsubscribed_at is set;
+--   topics          the topics the row holds now;
+--   pending_topics  what Confirm would apply (fn_newsletter_pending_topics), or NULL;
+--   expired         pending_topics is set but the mail that carried the link is more than 7 days old
+--                   (or was never sent), so Confirm would refuse it.
+CREATE OR REPLACE FUNCTION community.read_newsletter_link(p_token uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row community.newsletter_subscriptions%ROWTYPE;
+    v_pending text[];
+BEGIN
+    SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE token = p_token;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    v_pending := community.fn_newsletter_pending_topics(v_row);
+    RETURN jsonb_build_object(
+        'subscribed', v_row.confirmed_at IS NOT NULL AND v_row.unsubscribed_at IS NULL,
+        'unsubscribed', v_row.unsubscribed_at IS NOT NULL,
+        'topics', to_jsonb(v_row.topics),
+        'pending_topics', to_jsonb(v_pending),
+        'expired', v_pending IS NOT NULL AND (
+            v_row.confirmation_sent_at IS NULL OR v_row.confirmation_sent_at < now() - interval '7 days'
+        )
+    );
+END;
+$$;
+
+-- community.confirm_newsletter — the confirm page's button (a POST; never a GET). The row's one
+-- confirming write, applied under a row lock:
+--
+--   confirmed          something awaited confirmation and the link is fresh: topics become
+--                      resubscribe_topics (an unsubscribed address), topics ∪ resubscribe_topics (a
+--                      confirmed one) or stay (an unconfirmed one); confirmed_at = now(); and
+--                      unsubscribed_at, unsubscribed_reason and the pending pair are cleared, so an
+--                      opt-out ends only through a request its owner confirmed;
+--   already_confirmed  nothing awaits and the address is subscribed: the same success, no write;
+--   expired            something awaits but its mail is more than 7 days old (or was never sent):
+--                      nothing is written, and subscribing again mails a fresh link;
+--   unsubscribed       nothing awaits and the address has unsubscribed: no write;
+--   not_found          no row holds the token.
+--
+-- Answers {outcome, topics}: the topics the address now holds (empty for not_found).
+CREATE OR REPLACE FUNCTION community.confirm_newsletter(p_token uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row community.newsletter_subscriptions%ROWTYPE;
+    v_pending text[];
+    v_outcome text;
+BEGIN
+    SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE token = p_token FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('outcome', 'not_found', 'topics', '[]'::jsonb);
+    END IF;
+
+    v_pending := community.fn_newsletter_pending_topics(v_row);
+    IF v_pending IS NULL THEN
+        v_outcome := CASE WHEN v_row.unsubscribed_at IS NOT NULL THEN 'unsubscribed' ELSE 'already_confirmed' END;
+    ELSIF v_row.confirmation_sent_at IS NULL OR v_row.confirmation_sent_at < now() - interval '7 days' THEN
+        v_outcome := 'expired';
+    ELSE
+        UPDATE community.newsletter_subscriptions
+        SET topics = CASE
+                WHEN unsubscribed_at IS NOT NULL THEN resubscribe_topics
+                WHEN confirmed_at IS NULL THEN topics
+                ELSE ARRAY(
+                    SELECT DISTINCT t COLLATE "C" FROM unnest(topics || resubscribe_topics) AS u (t)
+                    ORDER BY 1
+                )
+            END,
+            confirmed_at = now(),
+            unsubscribed_at = NULL,
+            unsubscribed_reason = NULL,
+            resubscribe_topics = NULL,
+            resubscribe_requested_at = NULL,
+            updated_at = now()
+        WHERE id = v_row.id
+        RETURNING * INTO v_row;
+        v_outcome := 'confirmed';
+    END IF;
+
+    RETURN jsonb_build_object('outcome', v_outcome, 'topics', to_jsonb(v_row.topics));
+END;
+$$;
+
+-- community.unsubscribe_newsletter — the unsubscribe page's button (p_reason 'link') and a mail
+-- client's RFC 8058 one-click POST ('one_click'). Never a GET, never expires, idempotent:
+--
+--   unsubscribed          the address was on the list: unsubscribed_at = now(), the reason, and any
+--                         pending request cleared;
+--   already_unsubscribed  it had already left: the first opt-out's time and reason stay, and a
+--                         request pending since is cleared (its owner has just said no);
+--   not_found             no row holds the token.
+--
+-- Nothing is deleted: the row is the opt-out's only record. An unknown reason is refused (22023).
+CREATE OR REPLACE FUNCTION community.unsubscribe_newsletter(p_token uuid, p_reason text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row community.newsletter_subscriptions%ROWTYPE;
+BEGIN
+    IF p_reason IS NULL OR p_reason NOT IN ('link', 'one_click') THEN
+        RAISE EXCEPTION 'Unknown unsubscribe reason.' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_row FROM community.newsletter_subscriptions WHERE token = p_token FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('outcome', 'not_found');
+    END IF;
+
+    IF v_row.unsubscribed_at IS NOT NULL THEN
+        IF v_row.resubscribe_topics IS NOT NULL THEN
+            UPDATE community.newsletter_subscriptions
+            SET resubscribe_topics = NULL, resubscribe_requested_at = NULL, updated_at = now()
+            WHERE id = v_row.id;
+        END IF;
+        RETURN jsonb_build_object('outcome', 'already_unsubscribed');
+    END IF;
+
+    UPDATE community.newsletter_subscriptions
+    SET unsubscribed_at = now(),
+        unsubscribed_reason = p_reason,
+        resubscribe_topics = NULL,
+        resubscribe_requested_at = NULL,
+        updated_at = now()
+    WHERE id = v_row.id;
+    RETURN jsonb_build_object('outcome', 'unsubscribed');
 END;
 $$;
 -- #endregion

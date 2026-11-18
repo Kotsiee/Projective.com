@@ -23,9 +23,11 @@
 -- row has. Sends to this list are still gated by `comms.channel_suppressions` (bounces and
 -- complaints), which stays in `comms` with the rest of outbound delivery: a send job reads both.
 --
--- No client role holds any privilege on this table (00002520) and it has no policy (00002021). The
--- one writer is `community.subscribe_newsletter` (00001320), called by the service role from
--- NewsletterBackendService. The Zod SSOT is packages/types/community/newsletter.ts.
+-- No client role holds any privilege on this table (00002520) and it has no policy (00002021). Its
+-- writers are the three doors in 00001320, each called by the service role from
+-- NewsletterBackendService: `community.subscribe_newsletter` (the public form),
+-- `community.confirm_newsletter` and `community.unsubscribe_newsletter` (the mailed link's token).
+-- The Zod SSOT is packages/types/community/newsletter.ts.
 CREATE TABLE community.newsletter_subscriptions (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     -- Stored lowercase, and enforced, because the capture is public and anonymous: the address is
@@ -52,16 +54,27 @@ CREATE TABLE community.newsletter_subscriptions (
     confirmed_at timestamptz,
     -- The opt-out, and the only record of it. A public form never clears these: whoever types an
     -- unsubscribed address into it has not proved they own it, so the request is recorded below and
-    -- the address stays unsubscribed (and unsendable) until the confirm link applies it.
+    -- the address stays unsubscribed (and unsendable) until the confirm link applies it. The reason
+    -- is the door's: `link` (the unsubscribe page's button), `one_click` (an RFC 8058 POST from a
+    -- mail client), and the provider's own reasons once its events are read.
     unsubscribed_at timestamptz,
     unsubscribed_reason text,
-    -- A re-subscribe request on an unsubscribed address, pending its owner's confirmation: the topics
-    -- asked for since the unsubscribe (sorted, distinct, never empty) and when last asked. Both NULL
-    -- when nothing is pending, and only ever set while unsubscribed_at is. The confirm-link handler
-    -- (not built yet) applies it in one write: topics = resubscribe_topics, confirmed_at = now(),
-    -- and unsubscribed_at, unsubscribed_reason and both of these cleared.
+    -- Topics asked for by the public form and pending the owner's confirmation (Decision #274 flag
+    -- (c), ruled per topic): sorted, distinct, never empty, and when last asked. Both NULL when
+    -- nothing is pending. Set in two cases only: on an unsubscribed address (a re-subscribe; the
+    -- opt-out stands until confirmed) and on a confirmed address asking for a topic it does not hold
+    -- (each topic is consented to on its own). An unconfirmed address never holds one: a topic it
+    -- asks for joins `topics`, which its first confirmation covers whole. The name is historical. The
+    -- confirm door (community.confirm_newsletter) applies it in one write: on an unsubscribed address
+    -- topics = resubscribe_topics, on a confirmed one topics = topics ∪ resubscribe_topics; then
+    -- confirmed_at = now(), and unsubscribed_at, unsubscribed_reason and both of these cleared.
     resubscribe_topics text[],
     resubscribe_requested_at timestamptz,
+    -- When the last confirmation mail was due and handed to the mailer (NULL = never). Its writer,
+    -- community.subscribe_newsletter, mails at most once every 10 minutes per address, and the
+    -- confirm door refuses a link whose mail is more than 7 days old, so a link found in an old inbox
+    -- cannot confirm what its owner has since forgotten.
+    confirmation_sent_at timestamptz,
     -- The opaque handle carried in the confirm / unsubscribe link. One-click unsubscribe cannot ask
     -- the reader to sign in first, so the link itself has to be the credential.
     token uuid NOT NULL DEFAULT gen_random_uuid (),
@@ -83,10 +96,11 @@ CREATE TABLE community.newsletter_subscriptions (
         AND array_position(topics, NULL) IS NULL
         AND topics <@ ARRAY['general', 'changelog']::text[]
     ),
-    -- The same topic set as newsletter_subscriptions_topics_check, value for value.
+    -- The same topic set as newsletter_subscriptions_topics_check, value for value. Pending only on
+    -- an unsubscribed or a confirmed address, never on an unconfirmed active one.
     CONSTRAINT newsletter_subscriptions_resubscribe_check CHECK (
         (resubscribe_topics IS NULL) = (resubscribe_requested_at IS NULL)
-        AND (resubscribe_topics IS NULL OR unsubscribed_at IS NOT NULL)
+        AND (resubscribe_topics IS NULL OR unsubscribed_at IS NOT NULL OR confirmed_at IS NOT NULL)
         AND (
             resubscribe_topics IS NULL
             OR (
