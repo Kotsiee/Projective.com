@@ -1817,7 +1817,7 @@ BEGIN
     );
 
     PERFORM comms.fn_notify(
-        v_project.owner_user_id, 'project_cancelled', 'Service cancelled',
+        v_project.owner_user_id, 'service.cancelled', 'Service cancelled',
         format('"%s" was cancelled by its client. Claimed work was settled under Fair Exit and the rest of the escrow went back to the client.',
                COALESCE(v_project.title, 'Your service')),
         'projects', p_project_id,

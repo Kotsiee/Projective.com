@@ -62,6 +62,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"stage.funded",
 	"stage.approved",
 	"stage.cancelled",
+	"service.cancelled",
 	"stage.invite",
 	"stage.deadline_approaching",
 	"stage.deadline_missed",

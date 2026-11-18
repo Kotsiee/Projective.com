@@ -28,11 +28,16 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 113 keys
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 141 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
 `packages/types/comms/catalog.contract.test.ts` fails when a `comms.fn_notify` call in a migration,
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
+
+**Added 2026-11-18 (LV1; Decision #456):** `service.cancelled` (work · high · in_app + push + email,
+not mandatory, not digestible, audited; opens `/projects/{context_id}`) — sent by
+`projects.cancel_service` to a bought service's seller when its client cancels it. Seeded beside
+`stage.cancelled` in `00005010`.
 
 **Added 2026-11-04 (SCH-WP4a; Decision #343, ruling C4):** `integration.reconnect_required` (account ·
 high · in_app + email, not mandatory, not digestible; opens `/settings/integrations`) — sent by

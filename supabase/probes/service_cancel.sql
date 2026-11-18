@@ -278,6 +278,13 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS 6 every ticket and stage closed cancelled';
 
+    IF NOT EXISTS (SELECT 1 FROM comms.notifications n
+                    WHERE n.user_id = v_seller AND n.type = 'service.cancelled'
+                      AND n.entity_id = v_project AND n.category = 'work') THEN
+        RAISE EXCEPTION 'FAIL 6 the seller was not told through the catalogued service.cancelled key';
+    END IF;
+    RAISE NOTICE 'PASS 6 the seller is told (service.cancelled, routed as work)';
+
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_member, 'role', 'authenticated')::text, true);
     IF NOT projects.has_project_access(v_project) THEN
         RAISE EXCEPTION 'FAIL 6 the team member lost the cancelled engagement''s history';

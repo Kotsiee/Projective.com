@@ -1695,7 +1695,7 @@ engagement leaves that column NULL and is not one. All in `00001150`; grants in 
   round `awaiting_payment` `cancelled`;
   `set_project_status(…, 'cancelled', p_reason or "Cancelled by the client")`, whose guard re-checks
   that nothing is held or reserved, so a hold that slipped past aborts the whole cancellation; the
-  seller told (`project_cancelled`). Seats are kept, so both sides keep the history. Returns
+  seller told (`service.cancelled`). Seats are kept, so both sides keep the history. Returns
   `{ project_id, status, currency, stages, freelancer_paid_cents, fee_cents,
   client_refunded_cents, tickets_cancelled }`,
   where paid + fee + refunded equals everything that was held and reserved.
