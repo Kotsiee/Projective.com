@@ -144,16 +144,19 @@ Work orders for every open row, with the run order:
 
 ## D. Trust, safety & moderation
 
+Work orders for every open row, with the run order:
+[SAFETY_MODERATION_BUILD_PROMPTS.md](SAFETY_MODERATION_BUILD_PROMPTS.md).
+
 | ID      | Requirement                                                              | Status | Crit     | Gate | Evidence / what's missing                                                                                             | Track    |
 | :------ | :----------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------- | :------- |
 | PRD-D1  | P0s E1–E8 closed (client bucket writes, comms definers, search definers) | ✅     | Critical | UAT  | `TRUST_SAFETY_BUILD_PROMPTS.md` §0 (E8 `dd4206d3`)                                                                    | E1–E8    |
 | PRD-D2  | Upload admission: magic-byte sniff, full decode, sanitised SVG           | ✅     | High     | UAT  | Wave 0; #396                                                                                                          | —        |
 | PRD-D3  | A malware scan before an upload leaves quarantine                        | ❌     | Critical | UAT  | `services/files/live-uploads.ts:36-49, 349` promotes after sniff and decode only; contact attachments the same        | SN1      |
-| PRD-D4  | The link scan fails closed                                               | ❌     | High     | UAT  | Offline, it returns `safe` for any https URL (`services/files/link-scan.ts:203`) and `attachLink` stores that verdict | —        |
-| PRD-D5  | Link reputation is live                                                  | 🟡     | Normal   | PROD | Web Risk built (W1); without `LINK_SAFETY_API_KEY` no lookup runs                                                     | W1       |
+| PRD-D4  | The link scan fails closed                                               | ❌     | High     | UAT  | Offline, it returns `safe` for any https URL (`services/files/link-scan.ts:203`) and `attachLink` stores that verdict | LK1      |
+| PRD-D5  | Link reputation is live                                                  | 🟡     | Normal   | PROD | Web Risk built (W1); without `LINK_SAFETY_API_KEY` no lookup runs                                                     | W1, LK1  |
 | PRD-D6  | Tier 2 SQL masking floor (`comms.mask_pii`)                              | ✅     | High     | UAT  | Built; L8's new categories open                                                                                       | —        |
 | PRD-D7  | Tier 1 in-process leakage pre-filter                                     | ❌     | High     | PROD | Not built                                                                                                             | P1d      |
-| PRD-D8  | Public copy masked; protected phase widened                              | ❌     | High     | PROD | Not built                                                                                                             | P2a–P2d  |
+| PRD-D8  | Public copy masked; protected phase widened                              | ❌     | High     | PROD | Not built                                                                                                             | P2a–P2c  |
 | PRD-D9  | Report → review sink → reviewer → penalties → Standing                   | ❌     | Critical | PROD | No report vocabulary, sink or reviewer                                                                                | R1–R5    |
 | PRD-D10 | Publication gate on public media (NudeNet + OCR)                         | ❌     | Critical | PROD | Not built; the safety node is not in this repo                                                                        | SN2, SN3 |
 | PRD-D11 | Hosted toxicity, violence and hate-symbol check                          | ❌     | High     | PROD | Sightengine (ruling T2) not built                                                                                     | SN4      |
