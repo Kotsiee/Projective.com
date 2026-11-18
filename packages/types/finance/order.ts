@@ -5,6 +5,7 @@ import { PurchasableItemKind, PurchaseOwnerType, reference } from "./basket.ts";
 import { MoneyViewSchema } from "./wallet.ts";
 import { CheckoutTotalsSchema } from "./checkout.ts";
 import { BillingContextKind, PostalAddressSchema } from "./buyer.ts";
+import { IntakeAnswersSchema } from "../services/intake.ts";
 
 /**
  * finance order — the Zod SSOT for what a completed checkout produced: the order record, what each
@@ -185,6 +186,11 @@ export const OrderLineSchema = z.object({
 	calendar: CalendarLinksSchema.nullable(),
 	/** Seats held on a group-session line. */
 	seats: z.number().int().min(1).max(500).nullable(),
+	/**
+	 * The buyer's answers to the listing's own intake on a session, block or seat line, as the order
+	 * kept them (`finance.order_lines.intake_answers`, Decision #453); `{}` on every other line.
+	 */
+	intakeAnswers: IntakeAnswersSchema,
 	// #endregion
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;

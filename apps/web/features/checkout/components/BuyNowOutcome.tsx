@@ -1,5 +1,6 @@
 import type { JSX, Ref } from "preact";
 import { Icon } from "@projective/ui/icons";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { refusalLines } from "../core/business-gate.ts";
 import { Amount } from "./Amount.tsx";
@@ -28,6 +29,7 @@ export interface BuyNowOutcomeProps {
  */
 export function BuyNowOutcome(props: BuyNowOutcomeProps): JSX.Element {
 	const { result } = props;
+	const mask = useMaskFigures();
 	const lines = refusalLines(result, props.view);
 	const payment = result.status === "requires_action" ? result.payment : undefined;
 
@@ -61,7 +63,7 @@ export function BuyNowOutcome(props: BuyNowOutcomeProps): JSX.Element {
 							mode="payment"
 							clientSecret={payment.clientSecret}
 							publishableKey={payment.publishableKey}
-							submitLabel={`Pay ${payment.amount.display}`}
+							submitLabel={`Pay ${mask(payment.amount.display)}`}
 							busy={props.busy}
 							onOutcome={(outcome) => {
 								if (outcome.ok) props.onCardConfirmed(payment.paymentId);

@@ -201,6 +201,22 @@ excludes, so the group and the room it links to cannot disagree; a completed sta
 An unanswered invitation is not an assignment and never appears.
 `packages/types/projects/hired-teams.contract.test.ts` fails if the two status lists diverge.
 
+### `projects.get_viewer_stage_seats(p_project_id uuid) → TABLE (project_stage_id uuid, status text, team_id uuid)`
+
+Every seat on the project the **caller** holds, at any status: their own (a `freelancer` seat,
+`team_id` NULL) and each seat held by a team they are an active member of (`team_id` set).
+`SECURITY DEFINER`, `STABLE`, `search_path = ''`; `EXECUTE`: `authenticated` (`00002510`). Defined
+in `00001100`.
+
+It feeds the board's provider filter (`live-board.ts` `viewerStageIds`), which applies
+`countsAsOnboarded` to `status`, so a person's seat and a team's answer to one rule. A definer for
+`get_viewer_hired_teams`' reason: `stage_assignments` RLS shows a non-owner no seat on a private
+engagement, so a team service's members (and the seller who listed it, whose seat is the team's,
+Decision #427 (C)) were onboarded to nothing, and a hired freelancer could not read their own seat
+(Decision #456). Every row names the caller or a team they belong to. A live (`assigned` /
+`accepted`) team row is exactly a seat `fn_holds_live_seat` lets the caller claim on. Probe:
+`supabase/probes/viewer_stage_seats.sql`.
+
 ---
 
 ## Creation
@@ -1042,6 +1058,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.cancel_service(p_project_id uuid, p_tiers jsonb, p_reason text) → jsonb` | `00001150` | A bought service: unclaimed escrow back whole, each stage holding claimed work through `cancel_stage_fair_exit` at its tier, reservations refunded, project → `cancelled` (#456; § Lifecycle) | `authenticated`        | signed in + `can_review_project`; a bought service; project row locked; a tier for every stage holding claimed work |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
@@ -1050,7 +1067,8 @@ Grants are in `00002510` ("escrow settlement doors").
 
 **Fair Exit — the quote, the preview and the door (Decision #198).**
 `projects.fn_fair_exit_quote(p_stage_id uuid, p_tier integer) → jsonb` (`00001150`, internal, no
-grant) reads — without moving anything — what a Fair Exit at `p_tier` settles: every escrow still
+grant; the body is `fn_fair_exit_quote_scoped(…, false)` since Decision #456, see § Lifecycle) reads —
+without moving anything — what a Fair Exit at `p_tier` settles: every escrow still
 held on the tickets that hold escrow on the stage, split by `finance.fn_fair_exit_split` exactly as
 `finance.fn_fair_exit_release` splits it, a ticket holding a prepaid (unclaimed) escrow refunded
 whole. It answers `{ tier, ticket_count, held_cents, prepaid_cents, freelancer_paid_cents,
@@ -1623,11 +1641,82 @@ Publishing (`draft → active`) settles the staged seats: every `stage_assignmen
 blueprint-instantiated draft (`source_blueprint_id` set), whose seats stay parked until funded
 (Decision #139).
 
-**Who may transition (Decision #427).** Review authority drives every transition. On a seller-owned
-service (`client_user_id` set) its provider configures the engagement, so `can_edit_project_details`
-also admits the moves to `active` and `on_hold` (publishing it, holding it, resuming it); completing,
-cancelling and archiving stay the client's, whose money the escrow holds. On every other engagement the
-two predicates agree, so nothing changed there.
+**Who may transition (Decisions #427, #456).** Review authority drives every transition, and only it.
+A seller-owned service's provider configures the engagement but no longer sets its status: #427 let
+`can_edit_project_details` publish and hold it, and #456 retired that arm, because a bought service is
+a private engagement whose status follows its money (`draft → active` at its first held escrow,
+`fn_activate_funded_service` below; cancelled through `cancel_service`). Completing, cancelling and
+archiving stay the client's, whose money the escrow holds.
+
+**A bought service settles before it ends (Decision #456).** On a service with `client_user_id` set,
+`cancelled` and `archived` are refused while any escrow on its stages is `held` or `reserved`:
+`object_not_in_prerequisite_state` (`55000`), HINT `cancel_service`, "This service still holds
+escrow. Cancel it with Cancel service, which settles the escrow first." An unfunded draft still
+cancels or is archived here (Remove draft). A brief is unchanged: PRD-F22 is ruled for services
+only.
+
+### A bought service: activation and cancellation (Decision #456)
+
+A bought service is a seller-owned engagement with a client (`client_user_id` set, #427); a session
+engagement leaves that column NULL and is not one. All in `00001150`; grants in `00002510`.
+
+- `projects.fn_service_held_tickets(p_project_id uuid) → TABLE (ticket_id, stage_id, stage_name,
+  sort_order, stage_status, claimed, held_cents)` — internal, no grant. One row per (ticket, stage)
+  holding `held` escrow. **`claimed` is the ticket having an assignee**, not its escrow having a
+  payee: the seller is seated on every stage, so `finance.fn_ticket_payee` binds the seller as payee
+  when the escrow is held, before anybody claims (the prepaid rule, #197, reads `payee_id IS NULL`
+  and so never fires on a service).
+- `projects.fn_fair_exit_quote_scoped(p_stage_id uuid, p_tier integer, p_claimed_only boolean) →
+  jsonb` — internal, no grant. The Fair Exit quote itself; `fn_fair_exit_quote(stage, tier)` is now
+  `fn_fair_exit_quote_scoped(stage, tier, false)`, unchanged for its callers. `p_claimed_only`
+  narrows the stage's held tickets to those with an assignee: what `cancel_stage_fair_exit` settles
+  once `cancel_service` has refunded the rest.
+- `projects.preview_service_cancel(p_project_id uuid) → jsonb` — `authenticated`; signed in, then
+  `can_review_project` (`42501`, the seller included), then a bought service (`22023`). Moves
+  nothing.
+  `{ project_id, status, currency, cancellable, blocked, returned_cents, tickets_to_cancel,
+  stages }`:
+  `returned_cents` is every unclaimed ticket's held escrow plus every `reserved` escrow; `stages`
+  lists each stage holding claimed work with three `fn_fair_exit_quote_scoped(…, true)` quotes (25,
+  50, 75). `blocked` is `ended` (completed / cancelled / archived) or `settling` (a stage holding
+  claimed work is outside the unsettled set — approved, not yet paid).
+- `projects.cancel_service(p_project_id uuid, p_tiers jsonb DEFAULT '{}', p_reason text DEFAULT NULL)
+  → jsonb`
+  — `authenticated`; the same guards, then the project row `FOR UPDATE`, a terminal status refused
+  `55000`, `p_tiers` an object. Every stage holding claimed work needs a tier of 25, 50 or 75 keyed
+  by its uuid, checked before anything moves: `22023` with DETAIL
+  `{ reason: "tier_required",
+  stages: [{ stage_id, stage_name }] }`. Then, in order: each
+  unclaimed ticket's held escrow back whole (`finance.fn_refund_ticket_escrow`); each stage holding
+  claimed work ended through `cancel_stage_fair_exit` at its tier (its own locks, dispute check
+  `PD409`, notices); every `reserved` escrow refunded (`finance.fn_refund_ticket_reservations`,
+  reason `service_cancelled`); every ticket not `completed` / `cancelled` closed `cancelled` with a
+  `ticket_history` row (reason `service_cancelled`); every unsettled stage `cancelled`; a revision
+  round `awaiting_payment` `cancelled`;
+  `set_project_status(…, 'cancelled', p_reason or "Cancelled by the client")`, whose guard re-checks
+  that nothing is held or reserved, so a hold that slipped past aborts the whole cancellation; the
+  seller told (`project_cancelled`). Seats are kept, so both sides keep the history. Returns
+  `{ project_id, status, currency, stages, freelancer_paid_cents, fee_cents,
+  client_refunded_cents, tickets_cancelled }`,
+  where paid + fee + refunded equals everything that was held and reserved.
+- `projects.fn_activate_funded_service() → trigger` — `trg_escrows_activate_funded_service`,
+  `AFTER
+  INSERT OR UPDATE OF status ON finance.escrows WHEN (NEW.status = 'held' AND NEW.project_stage_id IS
+  NOT NULL)` (`00001830`). Moves a bought **Pipeline** service `draft → active` at its first held
+  escrow, writing the status-history and activity rows `set_project_status` writes (reason "First stage
+  funded", actor the funder or, for an automatic hold, the client person). A One-Off or Task bought at
+  checkout activates itself (`marketplace.fn_buy_scoped_service`, #457). `SECURITY DEFINER`, `search_path
+  = public, projects`.
+- `projects.fn_guard_escrow_on_ended_service() → trigger` — `trg_escrows_ended_service_guard`,
+  `BEFORE
+  INSERT ON finance.escrows WHEN (NEW.status IN ('held', 'reserved') AND NEW.project_stage_id IS NOT
+  NULL)`
+  (`00001830`). Refuses (`55000`) new escrow on a bought service that is `cancelled` or `archived`.
+  A `completed` one stays fundable (PRODUCT_SPEC §Extension Logic). `SECURITY DEFINER`,
+  `search_path = public, projects`.
+
+Probe: `supabase/probes/service_cancel.sql` (activation, every refusal, the settlement, conservation,
+the ended-service guard).
 
 ### `projects.fn_project_shape_lock() → trigger`
 
@@ -1689,8 +1778,9 @@ missing_permission: manage_projects`, BB2). A `NULL` `auth.uid()` (service role,
 `EXECUTE`: `authenticated`, `service_role`. Guard: unknown project `P0002`, then a `NULL` actor or not
 `can_review_project(p_project_id)` → `insufficient_privilege` (`42501`) — the owner or the client
 business (owner only before Decision #163). Every
-transition refusal is `check_violation` (`23514`); `archived` is reachable from any non-terminal state
-and is itself terminal. `fn_project_shape_lock` is `SECURITY DEFINER`, `search_path = public,
+transition refusal is `check_violation` (`23514`), except a bought service's cancel or archive while
+escrow is held (`55000`, Decision #456); `archived` is reachable from any non-terminal state and is
+itself terminal. `fn_project_shape_lock` is `SECURITY DEFINER`, `search_path = public,
 projects`, bound in `00001820`; `EXECUTE` moot (a trigger).
 
 ### `projects.tg_project_handover_on_complete() → trigger`
@@ -2214,6 +2304,7 @@ it holds **one escrow per sitting** (`finance.escrows.session_event_id`). Probe:
 
 | Function | Door | What it does |
 | :-- | :-- | :-- |
+| `projects.fn_session_intake_answers(blueprint uuid, answers jsonb) → jsonb` | Internal — only `finance.place_wallet_order` (a seat, session or block line's `metadata.answers`). REVOKEd from every role. | The buyer's answers to the listing's own intake as the order line keeps them (Decision #453): `NULL` → `{}`; not an object or over 32 KB → `22023`; otherwise only the keys the listing's `intake_fields[].id` declares — the rule `marketplace.instantiate_service_blueprint` holds a pipeline request's answers to. Required questions are the fat service's (`intakeRefusal`), run before the basket line is written. Probe `supabase/probes/session_intake_order_line.sql`. |
 | `projects.fn_book_session_slot(blueprint, buyer, payer_type, payer_id, unit_amount, sittings, currency, starts_at, order_line_id, later_starts timestamptz[]) → jsonb` | Internal — only `finance.place_wallet_order` (a `service_session` line, `sittings = 1`; a `set_session` line, `sittings = session_count`, `later_starts` from the line's `metadata.laterStarts`). REVOKEd from every role. | Asserts the buyer is an adult (`org.fn_assert_adult`, `PM403`), refuses more chosen times than the block holds (`22023`) and chosen times that overlap or run backwards (`PC409`, Decision #411), finds or makes the listing's session engagement (`fn_session_engagement_for`), re-tests the first slot and every chosen later one against the provider's schedule under a row lock — inside their working hours (`scheduling.fn_band_covers` with the blueprint: the listing's compiled availability preset, else the weekly bands, Decision #217) and free on `scheduling.fn_slot_is_free` (events, requested or confirmed discovery calls, blackouts, with the schedule's buffers — the slot grid's own rule; before 2026-10-30 calls were not tested, audit S-06), each else `PS409` — seats the buyer on a one-seat `active` cohort, writes the sittings (the first at the picked time, then each chosen later time, and every sitting left for later a week after the one before — all confirmed except those pencilled in; each titled from the listing's `session_plan` when the seller named it), holds one escrow per sitting from the paying wallet, mirrors each sitting onto the provider's calendar (`scheduling.events.source_session_event_id`, host + client on the roster), and on a block opens a round-0 `counterparty` / `collecting` reschedule round on every provisional (pencilled-in) sitting, due `set_session_schedule_hours` (72) after payment and never later than `session_cancel_notice_hours` before it. Notifies `session.booked` and, on a block, `session.scheduling_requested` to both. Refusals roll the order back: `22023` · `PU422` · `PF402` · `PC409` (time passed / listing gone) · `PM403` (a minor buyer) · `PS409` (outside the provider's hours, or taken). |
 | `projects.fn_session_engagement_for(blueprint) → (o_project_id, o_stage_id)` | Internal | ONE engagement per 1-1 listing (`format = 'session'`, `session_kind = 'normal'`, `unlisted`, `active`, one "Sessions" stage), made on the first booking under an advisory lock keyed to the listing. |
 | `projects.fn_session_host_schedule(project) → uuid` | Internal | The team's schedule for a team-owned engagement, else the owner's (freelancer first); `NULL` when none is published. |
@@ -2252,3 +2343,29 @@ Zod: `ScheduleSittingInputSchema`, `RetitleSittingInputSchema` and `SittingWrite
 (`@projective/types/projects`, `sessions.ts`). `sessions.contract.test.ts` pins the 200-character
 and 24-hour limits to the SQL. No route or service calls either door yet. The provider-side
 cohort UI that would call them is still to be built.
+
+## Sessions — cohort waitlist (`00001155` §1 / §15, Decision #455)
+
+A group-session listing's queue (`projects.waitlists`) is served first in, first out. When the
+listing's enrolling cohort has a seat nobody holds, the job invites the next person: their invite is
+an ordinary one-seat `projects.cohort_seat_holds` row lasting `waitlist_invite_hold_hours` (48), so it
+blocks everyone else through the same occupancy count `reserve_seat` reads. Until the job reaches a
+freed seat, the **queue fence** keeps it from anyone outside the queue. The lifecycle is
+`PRODUCT_MANAGEMENT.md` §3.5 (Cohort waitlist place). Probe: `supabase/probes/waitlist_invite.sql`.
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `projects.fn_cohort_seats_owed(cohort, user) → integer` | Internal | The fence: of the seats nobody holds (`max_seats − fn_cohort_seats_taken`), one per person `waiting` ahead of `user` on the cohort's listing (everyone waiting for a buyer outside the queue). An invited seat is a hold, so it is counted as taken, never here. |
+| `projects.get_cohort_offer(blueprint) → jsonb` | `anon`, `authenticated` | Its `taken` now adds `fn_cohort_seats_owed`, so the public count shows the queue's seats as taken. A queued buyer's own figure is `get_waitlist_place.seats_open`. |
+| `projects.reserve_seat(cohort, seats) → jsonb` | `authenticated` | Refuses what the fence keeps (`PS409` `full`, "held for the people on its waitlist", `remaining` net of it), and renews a live hold with `GREATEST(expires_at, now + seat_hold_minutes)`, so reserving never shortens an invite's 48-hour hold. |
+| `projects.fn_confirm_seat(…) → uuid` | Internal (`finance.place_wallet_order`) | A lapsed hold is honoured only if the seat is free once the fence is counted; on success the buyer's place on the listing's waitlist, in any state but `converted`, becomes `converted` (`resolved_at`). |
+| `projects.fn_waitlist_cohort(blueprint) → uuid` | Internal | The cohort a listing's waitlist seats into: `get_cohort_offer`'s choice (the enrolling cohort with the soonest first sitting) on a **published** blueprint only. |
+| `projects.join_waitlist(blueprint) → jsonb` | `authenticated` | Joins a published `group_session` listing's queue, or answers the place already held (`already: true`); an `expired` place re-queues at the back (fresh `queued_at`, invite fields cleared). Refusals: `42501` · `PM403` under 18 · `P0002` not a published listing · `PU422` not a group session, or the caller's own listing (theirs, or an active team's of theirs). Returns `{status, already}`. |
+| `projects.get_waitlist_place(blueprint) → jsonb` | `authenticated` | The caller's own place or `NULL`: `status` as it stands (an invite whose hold lapsed reads `expired` before the job writes it), `position` (1-based among the waiting), `hold_expires_at`, `seats_open` (what they could hold on the enrolling cohort now, the fence counted) and `invite_hold_hours`. |
+| `projects.get_listing_waitlist(listing, limit) → jsonb` | `authenticated` (whoever `catalogue.fn_manages_listing` admits: the owner, or a `publish_listings` holder on the owning team) | `{counts: {waiting, invited, expired, converted}, entries[]}` — the invited, then the queue in order (`position`), then the converted and expired, newest first; each by handle (`user_id`, `handle`, `status`, `position`, `queued_at`, `invited_at`, `invite_expires_at`, `resolved_at`). `limit` clamped 1–500. `P0002` for anyone else. |
+| `projects.fn_waitlist_dispatch(now) → jsonb` | pg_cron (`cohort-waitlist-invites`, every minute); REVOKEd from every role | First every `invited` place whose hold is no longer live: a converted hold makes it `converted`, any other lapse makes it `expired`, releases the hold and tells the buyer (`waitlist.invite_expired`). Then, per listing with people waiting, under the cohort row lock `reserve_seat` takes: one invite per free seat in queue order — a one-seat hold to `now + waitlist_invite_hold_hours`, the place `invited`, an in-app `waitlist.invited` linking to `/view/<slug>` that expires with the hold. Someone already seated converts; someone holding a live seat is passed over (already served); a lapsed hold locked by a payment in flight stops that listing for the run, keeping the order. Returns `{expired, invited}`. |
+
+Zod: `ViewerWaitlistPlaceSchema`, `ListingWaitlistSchema` (`@projective/types/projects`,
+`sessions.ts`). Readers: `SessionBackendService.joinWaitlist` / `.waitlistPlace` (the `/view`
+offer, `BookingBackendService`) and `CatalogueClientsBackendService.waitlist` (the workspace's
+Clients tab, `GET /api/catalogue/waitlist`).

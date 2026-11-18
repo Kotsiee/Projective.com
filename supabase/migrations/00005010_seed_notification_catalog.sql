@@ -79,6 +79,10 @@ VALUES
 ('session.scheduling_reminder', '{}',            'schedule',  'high',     ARRAY['in_app','email','push']::comms.notification_channel[], false, false, false, false, NULL,              '/projects/{context_id}/calendar',           NULL, 'A day before the deadline to agree a set-session block''s remaining times (Decision #211).'),
 ('session.scheduling_lapsed', '{}',              'schedule',  'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              '/projects/{context_id}/calendar',           NULL, 'No other time was agreed by the deadline, so a sitting keeps its pencilled-in time (Decision #211).'),
 ('availability.booking_request','{}',             'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              '/{handle}/availability',                    NULL, 'Someone requested a slot in your availability.'),
+-- A cohort waitlist (Decision #455). In-app only until email is wired (COMMS NT3); the template is NULL
+-- because a listing is addressed by its slug, which the emitter passes as `/view/{slug}`.
+('waitlist.invited',         '{}',                'schedule',  'high',     ARRAY['in_app']::comms.notification_channel[],                false, false, false, false, NULL,              NULL,                                        NULL, 'A seat on a group session you are waiting for is held for you until the invite lapses.'),
+('waitlist.invite_expired',  '{}',                'schedule',  'medium',   ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              NULL,                                        NULL, 'A held waitlist seat lapsed unused and passed to the next person in the queue.'),
 -- ── discovery ─────────────────────────────────────────────────────────────────────────────────
 ('catalogue.listing_published','{}',              'discovery', 'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              '/catalogue/{entity_id}',                    NULL, 'A listing went live.'),
 ('catalogue.listing_paused', '{}',                'discovery', 'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              '/catalogue/{entity_id}',                    NULL, 'A listing was paused.'),
@@ -90,13 +94,16 @@ VALUES
 ('search.saved_alert',       '{}',                'discovery', 'low',      ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, '1 day',           '/explore',                                  NULL, 'New results matched a saved search.'),
 -- ── account ───────────────────────────────────────────────────────────────────────────────────
 ('account.email_verified',   '{}',                'account',   'medium',   ARRAY['in_app']::comms.notification_channel[],                true,  false, false, true,  NULL,              '/settings',                                 NULL, 'An email address was confirmed.'),
+('account.sign_in_changed',  '{}',                'account',   'critical', ARRAY['in_app']::comms.notification_channel[],                true,  true,  false, false, NULL,              '/settings/account',                         NULL, 'The address the account signs in with was changed.'),
 ('account.password_changed', '{}',                'account',   'critical', ARRAY['in_app','email']::comms.notification_channel[],        true,  true,  false, true,  NULL,              '/settings',                                 NULL, 'The account password was changed.'),
 ('account.new_device_login', '{}',                'account',   'critical', ARRAY['in_app','email','push']::comms.notification_channel[], true,  true,  false, true,  NULL,              '/settings',                                 NULL, 'A sign-in came from an unrecognised device.'),
 ('account.kyc_submitted',    '{}',                'account',   'medium',   ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              '/settings',                                 NULL, 'Identity verification was submitted.'),
 ('account.kyc_verified',     '{}',                'account',   'high',     ARRAY['in_app','email','push']::comms.notification_channel[], true,  false, false, true,  NULL,              '/settings',                                 NULL, 'Identity verification succeeded.'),
 ('account.kyc_rejected',     '{}',                'account',   'high',     ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              '/settings',                                 NULL, 'Identity verification was rejected.'),
 ('account.role_changed',     '{}',                'account',   'medium',   ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              '/settings',                                 NULL, 'Your capabilities on the platform changed.'),
-('team.invite',              '{}',                'account',   'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, true,  NULL,              '/teams',                                    NULL, 'You were invited to a team.'),
+('account.data_export_ready', '{}',               'account',   'high',     ARRAY['in_app']::comms.notification_channel[],                true,  false, false, false, NULL,              '/settings/account',                         NULL, 'Your copy of your data is ready to download for 7 days.'),
+('account.data_export_failed', '{}',              'account',   'medium',   ARRAY['in_app']::comms.notification_channel[],                true,  false, false, false, NULL,              '/settings/account',                         NULL, 'Your copy of your data could not be prepared.'),
+('team.invite',             '{}',                'account',   'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, true,  NULL,              '/teams',                                    NULL, 'You were invited to a team.'),
 ('team.member_joined',       '{}',                'account',   'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, '1 hour',          '/teams',                                    NULL, 'Someone joined your team.'),
 ('team.member_removed',      '{}',                'account',   'medium',   ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              '/teams',                                    NULL, 'You were removed from a team.'),
 ('team.ownership_transferred','{}',               'account',   'high',     ARRAY['in_app','email']::comms.notification_channel[],        true,  false, false, true,  NULL,              '/teams',                                    NULL, 'Ownership of a team was transferred to you.'),
@@ -169,6 +176,24 @@ INSERT INTO comms.notification_types
     (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
 VALUES
 ('integration.reconnect_required', '{}',          'account',   'high',     ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              '/settings/integrations',                    NULL, 'A connected calendar or conferencing account stopped accepting Projective''s access, and needs reconnecting.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
+
+-- #region [quotes] Quote requests and offers (Decision #458)
+-- Sent by the doors in 00001177 to the other party. Each door passes its own link — the host to the
+-- buyer in their client pipeline, the buyer to the conversation with the host — so no template is
+-- set. A sales lead, so `work` and not digestible: a digest would sit on an offer that expires.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('quote.requested',          '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A buyer asked you to price custom scope on one of your services.'),
+('quote.offer_received',     '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A seller answered your quote request with a priced offer, or revised it.'),
+('quote.offer_withdrawn',    '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A seller withdrew the offer they sent you.'),
+('quote.declined',           '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A seller declined your quote request.'),
+('quote.offer_accepted',     '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A buyer accepted your offer; nothing is charged until they pay at checkout.'),
+('quote.offer_declined',     '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A buyer declined your offer.'),
+('quote.withdrawn',          '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, false, false, NULL,              NULL,                                        NULL, 'A buyer withdrew their quote request.')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
 

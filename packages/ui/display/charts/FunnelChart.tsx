@@ -13,7 +13,14 @@ import {
 	percentLabel,
 	stepIndex,
 } from "./geometry.ts";
-import { type ChartBox, type ChartColour, useChartCanvas, useChartTier } from "./useChart.ts";
+import {
+	type ChartBox,
+	type ChartColour,
+	useChartCanvas,
+	useChartTier,
+	useValuesHidden,
+} from "./useChart.ts";
+import { SCREEN_SHARE_MASK } from "../../utils/core/screen-share.ts";
 
 /** The SVG units one step's row takes; the bar fills the middle of it. */
 const ROW = 10;
@@ -28,6 +35,8 @@ export interface FunnelChartProps {
 	/** A step's value as the reader sees it (default: the number). */
 	formatValue?: (value: number) => ComponentChildren;
 	tierPolicy?: ChartTierPolicy;
+	/** Whether screen sharing mode masks its values (default `true`). */
+	sensitive?: boolean;
 	class?: string;
 }
 
@@ -47,7 +56,10 @@ export function FunnelChart(props: FunnelChartProps): JSX.Element {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const probeRef = useRef<HTMLSpanElement>(null);
 	const tier = useChartTier(n, props.tierPolicy ?? DEFAULT_TIER_POLICY);
-	const format = props.formatValue ?? ((v: number) => v.toLocaleString());
+	const hidden = useValuesHidden(props.sensitive);
+	const format = hidden
+		? () => SCREEN_SHARE_MASK
+		: props.formatValue ?? ((v: number) => v.toLocaleString());
 	const at = active.value;
 	const first = steps[0]?.label ?? "";
 
@@ -73,7 +85,7 @@ export function FunnelChart(props: FunnelChartProps): JSX.Element {
 
 	const announce = (i: number) => {
 		const s = steps[i];
-		const parts = [s.label, s.value.toLocaleString()];
+		const parts = [s.label, hidden ? SCREEN_SHARE_MASK : s.value.toLocaleString()];
 		if (i > 0) {
 			parts.push(`${percentLabel(s.ofFirst)} of ${first}`, `${percentLabel(s.dropOff)} drop-off`);
 		}

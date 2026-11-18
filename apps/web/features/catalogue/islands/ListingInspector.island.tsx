@@ -12,6 +12,7 @@ import type {
 } from "../types/catalogue-types.ts";
 import { LiveCardPreview } from "../components/inspector/LiveCardPreview.tsx";
 import { ReadinessList } from "../components/inspector/ReadinessList.tsx";
+import { PromotionPanel } from "../components/inspector/PromotionPanel.tsx";
 import ClientDrawer from "./ClientDrawer.island.tsx";
 import {
 	cardItem,
@@ -88,6 +89,7 @@ export default function ListingInspector(props: ListingInspectorProps): JSX.Elem
 					readiness={gate}
 					idBase={scope}
 				/>
+				<PromotionPanel slug={props.slug} idBase={scope} />
 			</div>
 		);
 	};

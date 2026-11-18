@@ -67,6 +67,12 @@ export interface State {
 	 * first paint (`utils/a11y-context.ts`, Decision #150). Presentation only.
 	 */
 	a11y?: A11yOverlays;
+	/**
+	 * Screen sharing mode (Decision #297): `true` only when the `pj.screen_share` cookie is exactly
+	 * `1`. Set by `routes/_middleware.ts` via `utils/screen-share-context.ts`; no group middleware may
+	 * overwrite it. Presentation only — services and `/api/*` routes never read it.
+	 */
+	screenShare?: boolean;
 	/** Active persona/profile handle, when resolved. */
 	handle?: string;
 	/**

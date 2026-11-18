@@ -6,6 +6,7 @@ import {
 	UNDER_MINIMUM_REFUSAL,
 	USERNAME_RE,
 } from "@projective/types/auth";
+import { currentLegalVersions } from "@projective/types/legal";
 import { localHandleRefusal } from "@projective/types/workspace";
 import {
 	AuthBackendService,
@@ -204,6 +205,7 @@ function joinEnterprise(owner = OWNER) {
 			departments: [],
 			purpose: [],
 		},
+		acceptTerms: true,
 		redirectTo: "/home",
 	};
 	return AuthBackendService.provisionAccount(input);
@@ -240,6 +242,11 @@ Deno.test("enterprise (live): create_enterprise gets the owner block; a taken ha
 			...OWNER,
 			username: "ada-lovelace-hq",
 		});
+		assertEquals(
+			(creates(calls)[1].p_payload as Record<string, unknown>).legalAcceptance,
+			currentLegalVersions(),
+			"the server stamps the versions in effect (Decision #446)",
+		);
 		assertEquals(discarded(calls), false);
 	});
 });
@@ -298,6 +305,7 @@ function completeOwner(overrides: { dob?: string; accessToken?: string | undefin
 		lastName: "Lovelace",
 		dob: overrides.dob ?? OWNER.dob,
 		timeZone: "UTC",
+		acceptTerms: true,
 		redirectTo: "/projects",
 	});
 }
@@ -352,6 +360,7 @@ Deno.test("owner completion (live): a private client profile at the first free h
 			visibility: "private",
 			locale: null,
 			display_currency: null,
+			legal_acceptance: currentLegalVersions(),
 		}]);
 		assert(
 			calls.every((c) => c.authorization === `Bearer ${OWNER_TOKEN}`),
@@ -543,6 +552,7 @@ function joinWithGoogle() {
 		dob: OWNER.dob,
 		timeZone: "UTC",
 		intent: "client",
+		acceptTerms: true,
 		redirectTo: "/projects",
 	});
 }
@@ -571,6 +581,68 @@ Deno.test("OAuth join (live): a username someone else holds is still refused", a
 		const result = await joinWithGoogle();
 		assertEquals(result.status, 422);
 		assertEquals(result.message, ONBOARDING_REFUSED);
+	});
+});
+// #endregion
+
+// #region Password recovery (live)
+function recoveryRoute(call: FakeCall): FakeAnswer {
+	if (call.path === "/auth/v1/verify") {
+		return {
+			json: {
+				access_token: "recovery-session-token",
+				refresh_token: "recovery-refresh",
+				token_type: "bearer",
+				expires_in: 3600,
+				expires_at: Math.floor(Date.now() / 1000) + 3600,
+				user: { id: OWNER_ID, email: "ada@example.com", aud: "authenticated" },
+			},
+		};
+	}
+	if (call.path === "/auth/v1/user") {
+		return { json: { id: OWNER_ID, email: "ada@example.com", aud: "authenticated" } };
+	}
+	return { status: 404, json: {} };
+}
+
+Deno.test("resetPassword (live) sets the password on the session its recovery code minted", async () => {
+	await withFake(recoveryRoute, async (calls) => {
+		const result = await AuthBackendService.resetPassword({
+			email: "ada@example.com",
+			code: "123456",
+			password: "Correct-horse-2",
+			redirectTo: "/projects",
+		});
+		assertEquals(result.ok, true, result.message);
+		const verify = calls.find((c) => c.path === "/auth/v1/verify");
+		assertEquals(
+			[verify?.body?.email, verify?.body?.token, verify?.body?.type],
+			["ada@example.com", "123456", "recovery"],
+		);
+		const update = calls.find((c) => c.method === "PUT" && c.path === "/auth/v1/user");
+		assert(update, "updateUser never reached GoTrue");
+		assertEquals(update.authorization, "Bearer recovery-session-token");
+		assertEquals(update.body?.password, "Correct-horse-2");
+	});
+});
+
+Deno.test("resetPassword (live) refuses a code GoTrue rejects without touching the password", async () => {
+	const refuse = (call: FakeCall): FakeAnswer =>
+		call.path === "/auth/v1/verify"
+			? {
+				status: 403,
+				json: { code: 403, error_code: "otp_expired", msg: "Token has expired or is invalid" },
+			}
+			: recoveryRoute(call);
+	await withFake(refuse, async (calls) => {
+		const result = await AuthBackendService.resetPassword({
+			email: "ada@example.com",
+			code: "654321",
+			password: "Correct-horse-2",
+			redirectTo: "/projects",
+		});
+		assertEquals(result.status, 422);
+		assertEquals(calls.some((c) => c.path === "/auth/v1/user"), false);
 	});
 });
 // #endregion

@@ -49,12 +49,11 @@ export function bottomNavDestinations(
 		},
 		{ key: "create", href: BOTTOM_NAV_CREATE_HREF, label: "Create", icon: "create", active: false },
 		{
-			// Workspace fuses the Projects + Services surfaces under one thumb target.
 			key: "workspace",
 			href: "/projects",
 			label: "Workspace",
 			icon: "projects",
-			active: on(path, "/projects") || on(path, "/services"),
+			active: on(path, "/projects"),
 		},
 		{
 			key: "calendar",

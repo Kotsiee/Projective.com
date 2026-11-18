@@ -229,9 +229,31 @@ functions below are `SECURITY DEFINER` with `SET search_path = public, org, pg_t
 | Function                                                                                                             | Role                                                                                                                                                                                                                              | `EXECUTE`                                                                                                                                            |
 | :------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `public.provision_user_profile(p_user_id uuid, p_email text, p_email_confirmed_at timestamptz, p_meta jsonb) → void` | Creates `users_public` (`unlisted`, or `private` when the metadata's `visibility` says so — sign-up metadata never makes a profile public), the primary `user_emails` row, the freelancer profile (objective `freelancer`/`seller`), `security.session_context` and the `user.onboarded` audit entry for the uid it is handed. Trusts every argument but `dob`, which `org.fn_check_dob` refuses before any write: `22023` missing, in the future or before 1900; `PM422` under 13 (Decision #190). | `service_role` only, explicitly `REVOKE`d from `PUBLIC`, `anon`, `authenticated`. Its callers are the two definers below and `public.create_enterprise` (an enterprise's owner, `private`), which run it as its owner. |
-| `public.handle_new_user() → trigger`                                                                                 | `on_auth_user_created`: provisions at once when the sign-up metadata carries `username` and `dob` (the email/password wizard); OAuth sign-ups stay profile-less. An under-13 `dob` aborts the GoTrue sign-up itself (`PM422`; GoTrue answers "Database error saving new user"), so a direct GoTrue sign-up cannot skip the age floor. | trigger, revoked from every client role.                                                                                                             |
-| `public.complete_onboarding(p_payload jsonb) → void`                                                                 | `/join` completion for an OAuth sign-up: `28000` signed out, `23505` already onboarded, `22023` without `username`/`dob`; then provisions `auth.uid()` with the GoTrue email — so `PM422` for a `dob` under 13. | `authenticated`, `service_role`.                                                                                                                     |
+| `public.handle_new_user() → trigger`                                                                                 | `on_auth_user_created`: provisions at once when the sign-up metadata carries `username` and `dob` (the email/password wizard), with the legal acceptance from its `legal_acceptance` stamp (Decision #446; a missing or forged stamp aborts the sign-up, `22023`); OAuth sign-ups stay profile-less. An under-13 `dob` aborts the GoTrue sign-up itself (`PM422`; GoTrue answers "Database error saving new user"), so a direct GoTrue sign-up cannot skip the age floor. | trigger, revoked from every client role.                                                                                                             |
+| `public.complete_onboarding(p_payload jsonb) → void`                                                                 | `/join` completion for an OAuth sign-up: `28000` signed out, `23505` already onboarded, `22023` without `username`/`dob`; then provisions `auth.uid()` with the GoTrue email — so `PM422` for a `dob` under 13 — and records the legal acceptance (`22023` without a current stamp, Decision #446). | `authenticated`, `service_role`.                                                                                                                     |
 | `public.handle_email_confirmed() → trigger`                                                                          | Mirrors GoTrue's first `email_confirmed_at` into `org.user_emails.verified_at`.                                                                                                                                                   | trigger, revoked from every client role.                                                                                                             |
+
+### Legal acceptance (`00001010` region "Legal acceptance", Decision #446)
+
+Every sign-up door records the Terms, Acceptable Use and Privacy versions inside the transaction that
+creates the profile, so the record and the profile commit or roll back together. The versions are the
+server's (`currentLegalVersions()` in `@projective/types/legal`), stamped by `AuthBackendService` as the
+sign-up metadata's `legal_acceptance` (email, OAuth, owner completion) or the `create_enterprise`
+payload's `legalAcceptance`, and re-checked here: a missing stamp, a forged version or a stale one is
+`22023` and the whole door unwinds. An under-13 `dob` is refused (`PM422`) before any of this runs.
+
+| Function | Role | `EXECUTE` |
+| :------- | :--- | :-------- |
+| `org.fn_legal_version_key(p_version text) → integer[]` | `MAJOR.MINOR` as integers, so `1.10` sorts after `1.9`. | `service_role` (org deny-by-default). |
+| `org.fn_current_legal_version(p_slug text) → text` | The version in effect today (UTC): the newest whose `effective_date` has arrived, else the oldest. | `service_role`. |
+| `org.fn_legal_acceptance_kind(p_slug text) → org.legal_acceptance_kind` | `shown` for `privacy`, else `accepted`. | `service_role`. |
+| `org.fn_record_legal_acceptance(p_user uuid, p_legal jsonb, p_surface org.legal_acceptance_surface, p_enterprise uuid = NULL) → integer` | `SECURITY DEFINER`. Refuses (`22023`) unless `p_legal` names today's version of every sign-up document, then writes one row per document not already recorded at that version (for `p_enterprise`, when given); returns the count. Trusts `p_user`, so it is internal to its definer callers: `handle_new_user` (`join`), `complete_onboarding` (`join_oauth`, or `join_enterprise` for a caller that owns an enterprise), `create_enterprise` (`join_enterprise`) and `accept_current_terms` (`reaccept`). | `service_role` only; `REVOKE`d from every client role by name. |
+| `org.fn_needs_reacceptance(p_user uuid) → boolean` | `SECURITY DEFINER`. `true` when the person has a profile and, for the Terms or the Acceptable Use Policy, no accepted version or only versions older than the newest `material` one in effect. The access-token hook stamps it as `termsDue`. | `service_role`. |
+| `public.accept_current_terms(p_legal jsonb) → integer` | `SECURITY DEFINER`. The re-accept door (`/join?complete=terms`): `28000` signed out, `42501` without a profile, `22023` for a stamp that is not today's; records `auth.uid()`'s acceptance on surface `reaccept`. Called by `LegalAcceptanceBackendService.reaccept` under the user's JWT. | `authenticated`, `service_role`. |
+| `org.trg_legal_acceptances_append_only() → trigger` | `BEFORE UPDATE OR DELETE` on `org.legal_acceptances`: refuses every rewrite, `55000`. | trigger. |
+
+`supabase/probes/legal_acceptance.sql` proves every door, every refusal, the read and write grants and
+the re-accept cycle.
 
 `supabase/probes/function_grants.sql` asserts that no client role can execute
 `provision_user_profile` and that every `SECURITY DEFINER` in `public` and `projects` pins its
@@ -310,11 +332,13 @@ adds cannot both pass the limit and concurrent primary switches cannot race the 
 **Refusals** are raised as the exception MESSAGE with SQLSTATE `P0001`, the message being exactly one
 `EmailRefusal` code — `email_invalid` · `email_exists` · `email_limit` · `email_not_found` ·
 `email_unverified` · `email_is_primary` · `email_is_sign_in` · `email_in_use` · `token_invalid` ·
-`token_expired` · `token_used` · `token_wrong_account`. Two conditions carry their own SQLSTATE instead:
+`token_expired` · `token_used` · `token_wrong_account` · `sign_in_already` · `sign_in_unverified` ·
+`sign_in_limit` · `sign_in_unavailable` · `account_closing` · `password_required` (the service adds
+`password_incorrect` itself, from GoTrue's password grant). Two conditions carry their own SQLSTATE instead:
 no signed-in subject → `28000 'not_authenticated'`; no `org.users_public` row yet (an OAuth sign-up mid
 onboarding) → `42501 'profile_required'` (`add_user_email` only). Every write appends a
 `security.audit_logs` row (`user.email_added` · `user.email_removed` · `user.email_primary_changed` ·
-`user.email_verified`) carrying no address.
+`user.email_verified` · `user.sign_in_changed`) carrying no address.
 
 | Function | Returns | Does / refuses |
 | :-- | :-- | :-- |
@@ -323,6 +347,8 @@ onboarding) → `42501 'profile_required'` (`add_user_email` only). Every write 
 | `org.remove_user_email(p_email_id uuid)` | `void` | Deletes one of the caller's secondary addresses (its tokens cascade). `email_not_found` (also for another person's row — one answer, so ids cannot be probed) · `email_is_primary` · `email_is_sign_in`. |
 | `org.set_primary_email(p_email_id uuid)` | `void` | Clears the old primary FIRST, then sets the new one (`uq_user_emails_one_primary` is partial, so never deferrable). The current primary again is a no-op. `email_not_found` · `email_unverified`. |
 | `org.confirm_user_email(p_token text)` | `uuid` (the address id) | Lower-cases + trims the token; anything not 64 hex chars is `token_invalid` without hashing. Looks up `sha256(token)` and checks, in order: `token_invalid` (no such hash) → `token_used` → `token_expired` → `token_wrong_account` (`token.user_id <> auth.uid()`) → `email_in_use` (another account holds the address VERIFIED; checked under an advisory lock on the lower-cased address so two accounts cannot both win). On success stamps `verified_at = now()` (only if NULL) and consumes EVERY outstanding token of the address. A refusal consumes nothing. |
+| `org.prepare_sign_in_change(p_email_id uuid)` | `TABLE (target_email text, current_email text)` | Step 1 of moving the sign-in address (Decision #451; `EmailsBackendService.makeSignIn`). `STABLE`, writes nothing. Checks, in order: `email_not_found` (not the caller's row) → `sign_in_already` (it equals `auth.users.email`) → `sign_in_unverified` → `sign_in_unavailable` (another non-SSO `auth.users` row holds it, mirroring GoTrue's `users_email_partial_key`, whose admin update reports the clash only as an opaque 500; said generically, to someone who has proved the inbox) → `account_closing` (a scheduled `account` row in `org.deletion_requests`) → `password_required` (`auth.users.encrypted_password` empty: a Google-only account) → `sign_in_limit` (two `user.sign_in_changed` audit rows in the last 3 days; DETAIL = when the second-newest leaves the window, ISO 8601 UTC; `SIGN_IN_CHANGE_LIMIT`). Returns the address to move to and the current sign-in address, which the service re-authenticates against with GoTrue's password grant. |
+| `org.record_sign_in_change(p_email_id uuid, p_previous_email_id uuid, p_make_primary boolean DEFAULT false)` | `void` | Step 2, after the service's GoTrue admin update. Takes the per-person advisory lock. `email_not_found` (the row, or a non-NULL previous row, is not the caller's) → `sign_in_unavailable` unless `auth.users.email` now IS the address (so a direct call records nothing that did not happen). Once per move (skipped when the newest `user.sign_in_changed` row already names this address): one `user.sign_in_changed` audit row, metadata `{ previous_email_id, made_primary }`, and `comms.fn_notify(…, 'account.sign_in_changed', …)` (critical, required, in-app, catalogued with `audit = false` so the move leaves exactly one audit row). `p_make_primary` then runs `org.set_primary_email` (its own `user.email_primary_changed` row). |
 
 ### `org.trg_user_emails_guard() → trigger`
 
@@ -368,11 +394,33 @@ is deny-by-default). **Refusals** are the exception MESSAGE with `P0001`, one `A
 | `org.cancel_deletion_request(p_scope)` / `org.fn_cancel_deletion(p_user, p_scope)` | `jsonb` / `boolean` | Republishes exactly what was paused, restores the persona (freelancer scope) or the visibility (account scope), and marks the request `cancelled`. `not_scheduled` · `scope_invalid`. |
 | `org.fn_pause_personal_listings` / `org.fn_restore_personal_listings` | `jsonb` / `void` | The pause and its inverse — personal listings only (`owner_team_id IS NULL`); team listings belong to the team. |
 | `org.fn_erase_freelancer_profile(p_user)` | `void` | Archives the personal listings (terminal), unpublishes services, clears the seller profile's skills, hire intake and identity reference, sets it unavailable. Standing, reviews and money records stay. |
-| `org.fn_erase_account(p_user)` | `void` | The seller half, then the profile becomes an anonymous tombstone (`deleted-<id>` handle, names, copy, location, photos cleared, private, DOB `1900-01-01`), addresses anonymised, `auth.users` email scrubbed and banned, `auth.identities` and `auth.sessions` removed. |
+| `org.fn_erase_account(p_user)` | `void` | The seller half, then the profile becomes an anonymous tombstone (`deleted-<id>` handle, names, copy, location, photos cleared, private, DOB `1900-01-01`), addresses anonymised, `auth.users` email scrubbed and banned, `auth.identities` and `auth.sessions` removed. Data exports (Decision #450): an open request fails `account_erased`, a ready archive's `expires_at` comes forward to now so the export job removes it. |
 | `org.fn_purge_due_deletions(p_limit = 100)` | `integer` | The sweep: every due `scheduled` request (`FOR UPDATE SKIP LOCKED`); one whose blockers came back is deferred (`metadata.deferred_by`), not forced. Reached by the service role through `security.purge_due_account_deletions`. |
 
 `org.enable_freelancer_profile` cancels an open `freelancer_profile` request (becoming a freelancer again
 inside the window restores everything) and refuses while an `account` deletion is scheduled.
+
+---
+
+## 📦 Data export (migration `00001061_functions_org_data_export.sql`, Decision #450)
+
+A person's copy of their own data. The two person doors are `SECURITY DEFINER`, act on `auth.uid()`
+alone and are granted to `authenticated`; every `fn_*` helper and collector is service-role only
+(the job reaches them through the `security` doors, `security/Functions.md`). Refusals are the
+exception message under SQLSTATE `P0001` (`DataExportRefusal`): `account_closing` · `already_pending` ·
+`rate_limited` (DETAIL = when the next may be filed) · `reauth_required`; no subject → `28000`, no
+profile → `42501 'profile_required'`. The request door takes the same `account-lifecycle` advisory lock
+as scheduling an erasure, so the two never interleave. Constants mirrored by `DATA_EXPORT_POLICY`.
+
+| Function | Returns | Does / refuses |
+| :-- | :-- | :-- |
+| `org.fn_session_signed_in_at()` | `timestamptz` | The newest `amr[].timestamp` on the verified access token (`auth.jwt()`): when the session signed in, by any method. A refresh keeps it; NULL without `amr`. |
+| `org.fn_data_export_state(p_user)` | `jsonb` | `{latest, next_request_at, sign_in_fresh, account_closing}`. `latest` is the newest request; a `ready` one past `expires_at` reads `expired`. `next_request_at` is the newest non-failed request + 24 h while in the future. `sign_in_fresh` = signed in within 10 minutes. |
+| `org.get_data_export()` | `jsonb` | The caller's state. |
+| `org.request_data_export()` | `jsonb` | Files a `pending` request and audits `account.data_export_requested`; refuses, in this order, `account_closing` (an account erasure is scheduled) · `already_pending` (one is `pending`/`building`) · `rate_limited` (a non-failed request inside 24 h) · `reauth_required` (no sign-in in the last 10 minutes) — the sign-in is asked for only once nothing else refuses. Minors may request. Answers the state. |
+| `org.fn_fail_data_export(p_request, p_reason)` | `void` | Fails an open request, tells the person in-app (`account.data_export_failed`, unless `account_erased`) and audits it. |
+| `org.fn_export_own_project_ids(p_user)` | `SETOF uuid` | Projects held personally: owned outside any workspace, or bought as the client. |
+| `org.fn_export_<domain>(p_user)` | `jsonb` | One collector per archive domain — `profile` · `emails` · `preferences` · `projects` · `contributions` · `messages` · `files` · `wallet` · `invoices` · `reviews` · `saved` · `calendar` · `notifications` · `search` · `security` — each selecting its columns by name (`DATA_EXPORT_DOMAIN_SCHEMAS`). Never: credentials or secrets (tokens, hashes, passcodes, share slugs, provider references, embeddings, storage paths), other people's messages, or another person's id on a shared row; other people appear only as thread participants' @handles. `messages` is what the person sent plus the metadata of every conversation they are in; `wallet` is their own `user`/`freelancer` wallets only; `files` lists their personal files with checksums, never bytes. |
 
 ---
 

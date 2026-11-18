@@ -14,7 +14,6 @@ export const RESTRICTED_PATH_PREFIXES: readonly string[] = [
 	"/basket",
 	"/checkout",
 	"/catalogue",
-	"/services",
 	"/products",
 	"/teams",
 	"/analytics",

@@ -24,6 +24,11 @@ import "@ui/display/styles/editorial.css";
  * and the 404 / 500 card painted as unstyled, left-aligned text.
  */
 import "@ui/utils/styles/empty-state.css";
+/*
+ * Screen sharing mode's `ui-obscure` treatments (DESIGN_SYSTEM.md §B.14): the pre-hydration fallback
+ * keys on `:root[data-screen-share="active"]` and must paint on every route before any island mounts.
+ */
+import "@ui/utils/styles/obscure.css";
 import "@web/styles/global.css";
 /*
  * The authenticated shell's own chrome sheet.

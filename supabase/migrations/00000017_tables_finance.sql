@@ -1311,12 +1311,22 @@ CREATE TABLE finance.order_lines (
     stage_id uuid REFERENCES projects.project_stages (id) ON DELETE SET NULL,
     -- The ticket whose escrow this line held (Decision #166). SET NULL: the receipt outlives the ticket.
     ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
+    -- The engagement a One-Off or Task line created and funded at payment, and the escrow it held there
+    -- (Decision #457; marketplace.fn_buy_scoped_service): what the receipt links, and what maps an
+    -- escrow refund back to its line. NULL on every other line. SET NULL: the receipt outlives both.
+    project_id uuid REFERENCES projects.projects (id) ON DELETE SET NULL,
+    escrow_id uuid REFERENCES finance.escrows (id) ON DELETE SET NULL,
     -- Session fulfilment.
     scheduled_at timestamptz,
     timezone text,
     duration_minutes integer CHECK (duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440),
     seats integer CHECK (seats IS NULL OR seats BETWEEN 1 AND 500),
     conferencing_provider text,
+    -- The buyer's answers to the listing's own intake (`IntakeAnswersSchema`, keyed by
+    -- `service_blueprints.intake_fields[].id`) on a session, block or seat line (Decision #453): what
+    -- the provider asked before the booking, kept with the receipt it was paid on. Reduced to the ids
+    -- the listing asks (projects.fn_session_intake_answers); `{}` on every other line.
+    intake_answers jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(intake_answers) = 'object'),
 
     position integer NOT NULL DEFAULT 0 CHECK (position >= 0),
     created_at timestamptz NOT NULL DEFAULT now()

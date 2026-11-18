@@ -39,10 +39,10 @@ by name. Never `ALL`: it carries `TRUNCATE`, `REFERENCES` and `TRIGGER`, which R
 
 | Table / view                                                                                                                                                       | `anon`   | `authenticated`                     |
 | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------- | :---------------------------------- |
-| `skills` · `supported_locales` · `education_entries` · `experience_entries` · `user_languages` · `certifications` · `profile_showcase_items` · `profile_settings` | `SELECT` | `SELECT`                            |
+| `skills` · `supported_locales` · `legal_document_versions` · `education_entries` · `experience_entries` · `user_languages` · `certifications` · `profile_showcase_items` · `profile_settings` | `SELECT` | `SELECT`                            |
 | `profile_follows`                                                                                                                                                  | `SELECT` | `SELECT` · `INSERT` · `DELETE`      |
 | `teams` · `team_members` · `team_roles` · `business_members` · `business_roles` · `enterprises` · `enterprise_members` · `freelancer_profiles`                     | —        | `SELECT`                            |
-| `user_emails` · `handle_changes` · `deletion_requests`                                                                                                             | —        | `SELECT`                            |
+| `user_emails` · `handle_changes` · `deletion_requests` · `legal_acceptances` · `data_export_requests`                                                                                       | —        | `SELECT`                            |
 | `recent_views`                                                                                                                                                     | —        | `SELECT` · `DELETE`                 |
 | `user_preferences`                                                                                                                                                 | —        | `SELECT` · `INSERT` · `UPDATE`      |
 | `user_bookmarks` · `user_bookmark_collections`                                                                                                                     | —        | all four row verbs                  |
@@ -164,6 +164,38 @@ USING (user_id = auth.uid() OR security.is_admin());
 CREATE POLICY "Users can view their own deletion requests"
 ON org.deletion_requests FOR SELECT TO authenticated
 USING (user_id = auth.uid() OR security.is_admin());
+```
+
+### `org.data_export_requests` (Decision #450)
+
+**SELECT only, owner only — not even an admin; no client write policy and only `SELECT` granted.**
+A request names an archive holding everything about one person, so no operator reads another
+person's through RLS. Written only by the 00001061 definers
+([Functions.md](Functions.md#-data-export-migration-00001061_functions_org_data_exportsql-decision-450));
+the export job reaches it as the service role through the `security` doors.
+
+```sql
+CREATE POLICY "Users can view their own data export requests"
+ON org.data_export_requests FOR SELECT TO authenticated
+USING (user_id = auth.uid());
+```
+
+### `org.legal_acceptances` / `org.legal_document_versions` (Decision #446)
+
+**Acceptances: SELECT only, owner or admin; no client write policy and no write grant.** Every row is
+written by a sign-up door or `public.accept_current_terms` through `org.fn_record_legal_acceptance`
+([Functions.md](Functions.md#legal-acceptance-00001010-region-legal-acceptance-decision-446)), and
+`trg_legal_acceptances_append_only` refuses `UPDATE`/`DELETE` even to the table owner. **Versions:**
+public reference data, read by anyone, written only by the seed.
+
+```sql
+CREATE POLICY "Users can view their own legal acceptances"
+ON org.legal_acceptances FOR SELECT TO authenticated
+USING (user_id = auth.uid() OR security.is_admin());
+
+CREATE POLICY "Anyone can read legal document versions"
+ON org.legal_document_versions FOR SELECT TO anon, authenticated
+USING (true);
 ```
 
 ### `org.email_verification_tokens`

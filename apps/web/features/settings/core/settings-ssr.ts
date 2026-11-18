@@ -15,15 +15,25 @@ import { ProfileBackendService } from "@server/services/profile/ProfileBackendSe
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 import { AccountLifecycleBackendService } from "@server/services/user/AccountLifecycleBackendService.ts";
+import { DataExportBackendService } from "@server/services/user/DataExportBackendService.ts";
 import { IdentitiesBackendService } from "@server/services/auth/IdentitiesBackendService.ts";
 import { PlanBackendService } from "@server/services/finance/PlanBackendService.ts";
 import { CardsBackendService } from "@server/services/finance/CardsBackendService.ts";
+import { channelLiveness } from "@server/services/comms/channel-liveness.ts";
 import { pendingSetupSteps, type ResolvedUiSettings } from "@projective/types/org";
+import {
+	CHANNEL_LIVENESS_OVERRIDE_COOKIE,
+	type ChannelLivenessOverride,
+	NO_LIVE_CHANNELS,
+	parseChannelLivenessOverride,
+} from "@projective/types/comms";
 import { cardExpiryCounts } from "./attention-model.ts";
 import { defaultMessagingRole } from "@features/messaging/core/conversation-model.ts";
 import { DEFAULT_MESSAGING_SETTINGS } from "@features/messaging/core/messaging-defaults.ts";
 import { resolveConnections } from "@features/files/core/integrations-ssr.ts";
 import type { A11yOverlays } from "@web/utils/a11y-context.ts";
+import { readCookies } from "@web/utils/auth-cookies.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
 
 /**
  * settings-ssr — the server-only composer behind every Settings surface (Decision #150): ONE read per
@@ -43,6 +53,17 @@ export interface SettingsReadInput {
 	actor: ReadActor;
 	/** The device's own overlays (the `pj.a11y` cookie) — the appearance fallback. */
 	a11y?: A11yOverlays | null;
+	/** The Dev Context Switcher's channel-delivery override ({@link deliveryOverrideOf}). */
+	deliveryOverride?: ChannelLivenessOverride | null;
+}
+
+/**
+ * The `pj.dev.notification-delivery` override on a request, or `null`. Honoured only when `DENO_ENV`
+ * is `development`, so no deploy can be made to claim a channel delivers.
+ */
+export function deliveryOverrideOf(req: Request): ChannelLivenessOverride | null {
+	if (!isDevelopmentEnv()) return null;
+	return parseChannelLivenessOverride(readCookies(req)[CHANNEL_LIVENESS_OVERRIDE_COOKIE]);
 }
 // #endregion
 
@@ -66,12 +87,13 @@ async function readSection(
 	const { actor, context } = input;
 	switch (key) {
 		case "account": {
-			const [identity, emails, policy, lifecycle, connected] = await Promise.all([
+			const [identity, emails, policy, lifecycle, connected, dataExport] = await Promise.all([
 				SettingsBackendService.identity(actor),
 				EmailsBackendService.list(actor),
 				AccountLifecycleBackendService.handlePolicy(actor),
 				AccountLifecycleBackendService.lifecycle(actor),
 				IdentitiesBackendService.list(actor),
+				DataExportBackendService.state(actor),
 			]);
 			const data: SettingsSectionData = {
 				section: "account",
@@ -80,6 +102,7 @@ async function readSection(
 				handlePolicy: policy.ok && policy.data ? policy.data.policy : null,
 				lifecycle: lifecycle.ok && lifecycle.data ? lifecycle.data.lifecycle : null,
 				connected: connected.ok && connected.data ? connected.data : null,
+				dataExport: dataExport.ok && dataExport.data ? dataExport.data.dataExport : null,
 			};
 			const error = !emails.ok
 				? emails.message ?? "Your email addresses couldn't be loaded."
@@ -134,7 +157,11 @@ async function readSection(
 		case "notifications": {
 			const res = await NotificationCenterBackendService.center(actor);
 			return {
-				data: { section: "notifications", center: res.ok && res.data ? res.data.center : null },
+				data: {
+					section: "notifications",
+					center: res.ok && res.data ? res.data.center : null,
+					delivery: channelLiveness(input.deliveryOverride ?? null),
+				},
 				error: res.ok
 					? res.message && res.data?.center.live === false ? res.message : null
 					: res.message ?? null,
@@ -194,6 +221,7 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 				handlePolicy: null,
 				lifecycle: null,
 				connected: null,
+				dataExport: null,
 			};
 		case "profile":
 			return { section: "profile", handle: null, visibility: null, settings: null };
@@ -214,7 +242,7 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 		case "shortcuts":
 			return { section: "shortcuts", uiSettings: deviceUi(input), live: false };
 		case "notifications":
-			return { section: "notifications", center: null };
+			return { section: "notifications", center: null, delivery: NO_LIVE_CHANNELS };
 		case "messaging":
 			return { section: "messaging", settings: DEFAULT_MESSAGING_SETTINGS };
 		case "scheduling":

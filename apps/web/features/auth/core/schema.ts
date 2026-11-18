@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EMAIL_RE } from "@projective/types/auth";
+import { CaptchaTokenSchema, EMAIL_RE, PasswordSchema } from "@projective/types/auth";
 import { isIdentifier } from "./validate.ts";
 
 /**
@@ -12,7 +12,6 @@ import { isIdentifier } from "./validate.ts";
 export { IndividualJoinSchema, JoinSchema, EnterpriseJoinSchema } from "@projective/types/auth";
 
 const email = z.string().trim().regex(EMAIL_RE, "Enter a valid email address.");
-const password = z.string().min(8, "Use at least 8 characters.").max(128);
 const redirectTo = z.string().default("/home");
 
 /**
@@ -29,6 +28,7 @@ export const LoginSchema = z.object({
 	password: z.string().min(1, "Password is required."),
 	remember: z.boolean().default(false),
 	redirectTo,
+	captchaToken: CaptchaTokenSchema,
 });
 
 /** Enterprise SSO domain lookup — resolves a corporate email domain to its SAML/OIDC IdP. */
@@ -40,12 +40,12 @@ export const SsoSchema = z.object({
 	redirectTo,
 });
 
-export const ForgotPasswordSchema = z.object({ email, redirectTo });
+export const ForgotPasswordSchema = z.object({ email, redirectTo, captchaToken: CaptchaTokenSchema });
 
 export const ResetPasswordSchema = z.object({
 	email,
 	code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code."),
-	password,
+	password: PasswordSchema,
 	redirectTo,
 });
 
@@ -55,7 +55,10 @@ export const VerifySchema = z.object({
 	redirectTo,
 });
 
-export const ResendSchema = z.object({ email: email.optional() });
+export const ResendSchema = z.object({
+	email: email.optional(),
+	captchaToken: CaptchaTokenSchema,
+});
 
 export const ConfirmLinkSchema = z.object({
 	token_hash: z.string().regex(/^[0-9a-f]{20,128}$/i),

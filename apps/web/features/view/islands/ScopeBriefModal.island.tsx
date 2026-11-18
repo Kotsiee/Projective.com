@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Button, FormControl, Textarea } from "@projective/ui/fields";
+import { Button, DatePicker, type DateValue, FormControl, Textarea } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
@@ -30,6 +30,7 @@ import type { ProjectStage } from "@projective/types/explore";
 import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
 import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx";
 import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
+import { earliestTargetDate, TARGET_DATE_HINT, targetDateOf } from "../core/target-date.ts";
 
 /**
  * ScopeBriefModal — the **Continue** dialog for the two scoped formats, in the shared two-column
@@ -77,6 +78,7 @@ export default function ScopeBriefModal(
 	const requirements = useSignal("");
 	const briefRefused = useSignal(false);
 	const scope = useSignal<StageFundingScope>("first_stage");
+	const target = useSignal<DateValue>(null);
 	const files = useSignal<readonly File[]>([]);
 	const fileNote = useSignal<string | null>(null);
 	const error = useSignal<string | null>(null);
@@ -94,6 +96,7 @@ export default function ScopeBriefModal(
 		requirements.value = "";
 		briefRefused.value = false;
 		scope.value = "first_stage";
+		target.value = null;
 		files.value = [];
 		fileNote.value = null;
 		error.value = null;
@@ -134,6 +137,7 @@ export default function ScopeBriefModal(
 				assetId: null,
 			})),
 			answers: intakeState.answers.value,
+			targetDate: targetDateOf(target.value),
 		});
 		if (out.simulated) return true;
 		const res = out.value;
@@ -190,6 +194,25 @@ export default function ScopeBriefModal(
 					</div>
 				</section>
 			)}
+
+			<section class="sbk__section">
+				<FormControl label="Target date (optional)" hint={TARGET_DATE_HINT}>
+					{(a) => (
+						<DatePicker
+							id={a.id}
+							aria-describedby={a.describedBy}
+							value={target}
+							selectionMode="single"
+							minDate={earliestTargetDate()}
+							dateFormat="dd M yy"
+							placeholder="No target date"
+							showIcon
+							showButtonBar
+							fluid
+						/>
+					)}
+				</FormControl>
+			</section>
 
 			<section class="sbk__section" ref={isOneOff.value ? undefined : firstRef} tabIndex={-1}>
 				<div ref={briefRef}>

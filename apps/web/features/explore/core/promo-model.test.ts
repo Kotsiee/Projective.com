@@ -1,8 +1,8 @@
 import { assertEquals } from "@std/assert";
 import {
-	featureInRail,
 	parseDismissed,
 	promosAfter,
+	promotedInRail,
 	promoVisible,
 	type PromoVisibilityInput,
 	withDismissed,
@@ -63,25 +63,15 @@ function gate(over: Partial<PromoVisibilityInput> = {}): PromoVisibilityInput {
 	};
 }
 
-Deno.test("a sponsored slot is featured in its own rail and removed from that rail's items", () => {
-	const promos: PromoSlot[] = [sponsored("s2", "services"), sponsored("p1", "products")];
-	const items = [{ id: "s1" }, { id: "s2" }, { id: "s3" }];
-	const { featured, rest } = featureInRail(items, promos, "services");
-	assertEquals(featured.map((p) => p.itemId), ["s2"]);
-	assertEquals(rest.map((it) => it.id), ["s1", "s3"]);
-});
-
-Deno.test("several sponsored slots in one rail keep feed order and are all de-duplicated", () => {
-	const promos: PromoSlot[] = [sponsored("s3", "services"), sponsored("s1", "services")];
-	const { featured, rest } = featureInRail([{ id: "s1" }, { id: "s2" }, { id: "s3" }], promos, "services");
-	assertEquals(featured.map((p) => p.itemId), ["s3", "s1"]);
-	assertEquals(rest.map((it) => it.id), ["s2"]);
-});
-
-Deno.test("a rail with no placement keeps every item", () => {
-	const { featured, rest } = featureInRail([{ id: "p1" }], [sponsored("s1", "services")], "products");
-	assertEquals(featured, []);
-	assertEquals(rest.map((it) => it.id), ["p1"]);
+Deno.test("a promoted slot heads only its own rail", () => {
+	const promos: PromoSlot[] = [
+		sponsored("s2", "services"),
+		sponsored("p1", "products"),
+		cta("c", "services"),
+	];
+	assertEquals(promotedInRail(promos, "services").map((p) => p.itemId), ["s2"]);
+	assertEquals(promotedInRail(promos, "products").map((p) => p.itemId), ["p1"]);
+	assertEquals(promotedInRail([cta("c", "services")], "services"), []);
 });
 
 Deno.test("promosAfter returns only the non-sponsored slots anchored to a section, in order", () => {

@@ -25,15 +25,19 @@ import {
 	verificationPollLimiter,
 } from "./verification-status.ts";
 import { refreshFailure, SESSION_EXPIRED_MESSAGE } from "./refresh-outcome.ts";
+import { captchaRefused, isGoTrueCaptchaRefusal } from "./captcha.ts";
 import { invalidateCatalog } from "../explore/live-catalog.ts";
 import type { CreateEnterprise, EnterpriseOwner } from "@projective/types/org";
 import { handleAlternatives, localHandleRefusal } from "@projective/types/workspace";
+import { currentLegalVersions } from "@projective/types/legal";
 import {
 	AGE_SQLSTATE,
 	type AgeBracket,
 	bracketFromDob,
 	ENTERPRISE_OWNER_MINOR_REFUSAL,
 	isJoinable,
+	LEGAL_ACCEPTANCE_REQUIRED,
+	passwordIssue,
 	UNDER_MINIMUM_REASON,
 	UNDER_MINIMUM_REFUSAL,
 	USERNAME_RE,
@@ -190,6 +194,8 @@ export interface ProvisionIndividualInput {
 	locale?: string;
 	/** An offerable display currency → `org.user_preferences.preferred_display_currency`. */
 	displayCurrency?: string;
+	/** The consent box (Decision #446); the versions are stamped here, never taken from the caller. */
+	acceptTerms: true;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
@@ -212,6 +218,8 @@ export interface ProvisionEnterpriseInput {
 	 * the `public.create_enterprise` RPC (migrations 0314/0315).
 	 */
 	enterprise: Omit<CreateEnterprise, "owner">;
+	/** The owner's consent box, for the enterprise (Decision #446). */
+	acceptTerms: true;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
@@ -234,6 +242,8 @@ export interface CompleteOwnerProfileInput {
 	locale?: string;
 	/** An offerable display currency for the owner's preferences, unless some are seeded already. */
 	displayCurrency?: string;
+	/** The consent box (Decision #446). */
+	acceptTerms: true;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
@@ -246,6 +256,8 @@ export interface AuthenticateInput {
 	/** "Keep me signed in": `false` (the default) ends the session with the browser session. */
 	remember?: boolean;
 	redirectTo: string;
+	/** The Turnstile token GoTrue's password grant requires while its CAPTCHA is on (Decision #447). */
+	captchaToken?: string;
 }
 
 /** A 6-digit email-confirmation attempt. */
@@ -366,9 +378,10 @@ export class AuthBackendService {
 	 * address already has an account.
 	 *
 	 * The admin create sends no mail of its own, so both unconfirmed paths dispatch explicitly through
-	 * {@link dispatchConfirmation}. A refused send does not fail the signup — the account already
-	 * exists, and a retry would only meet "already registered" — it is reported as
-	 * `verificationSent: false` so `/verify` offers Resend immediately.
+	 * {@link dispatchConfirmation}, with the service role, because the route already spent the
+	 * request's Turnstile token verifying the sign-up (Decision #447). A refused send does not fail the
+	 * signup — the account already exists, and a retry would only meet "already registered" — it is
+	 * reported as `verificationSent: false` so `/verify` offers Resend immediately.
 	 *
 	 * Stub path (default): reports `requiresVerification: true` and a simulated send without touching
 	 * Supabase.
@@ -415,12 +428,14 @@ export class AuthBackendService {
 		}
 		if (input.type === "individual") {
 			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
-			if (!input.oauth && (!input.password || input.password.length < 8)) {
-				return fail(422, { errors: { password: "Use at least 8 characters." } });
-			}
+			const passwordProblem = input.oauth ? null : passwordIssue(input.password ?? "");
+			if (passwordProblem) return fail(422, { errors: { password: passwordProblem } });
 		} else if (bracket === "restricted") {
 			// The owner holds the enterprise's seat, and no minor holds one (Decision #208).
 			return fail(422, { errors: { dob: ENTERPRISE_OWNER_MINOR_REFUSAL } });
+		}
+		if (input.acceptTerms !== true) {
+			return fail(422, { errors: { acceptTerms: LEGAL_ACCEPTANCE_REQUIRED } });
 		}
 
 		if (!isAuthBackendLive()) {
@@ -459,7 +474,11 @@ export class AuthBackendService {
 					for (const username of usernames) {
 						const { error: rpcError } = await admin.rpc("create_enterprise", {
 							p_owner: created.user.id,
-							p_payload: { ...input.enterprise, owner: { ...input.owner, username } },
+							p_payload: {
+								...input.enterprise,
+								owner: { ...input.owner, username },
+								legalAcceptance: currentLegalVersions(),
+							},
 						});
 						if (rpcError) console.error("[auth:create-enterprise]", rpcError.code);
 						rpcFailed = !!rpcError;
@@ -474,7 +493,9 @@ export class AuthBackendService {
 				}
 				return ok({
 					requiresVerification: true,
-					verificationSent: await AuthBackendService.dispatchConfirmation(input.corporateEmail),
+					verificationSent:
+						await AuthBackendService.dispatchConfirmation(input.corporateEmail, "provisioned") ===
+							"sent",
 					redirectTo: input.redirectTo,
 				}, { pendingVerification: await AuthBackendService.pendingTokenFor(created.user.id) });
 			}
@@ -491,6 +512,8 @@ export class AuthBackendService {
 				interests: input.interests ?? [],
 				locale: input.locale ?? null,
 				display_currency: input.displayCurrency ?? null,
+				// The versions in effect today, re-checked by the database (Decision #446).
+				legal_acceptance: currentLegalVersions(),
 			};
 
 			if (input.oauth) {
@@ -529,7 +552,8 @@ export class AuthBackendService {
 			invalidateCatalog();
 			return ok({
 				requiresVerification: true,
-				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
+				verificationSent:
+					await AuthBackendService.dispatchConfirmation(input.email, "provisioned") === "sent",
 				redirectTo: input.redirectTo,
 			}, { pendingVerification: await AuthBackendService.pendingTokenFor(created.user.id) });
 		} catch (e) {
@@ -579,6 +603,9 @@ export class AuthBackendService {
 	): Promise<ServiceResult<AuthPayload>> {
 		const bracket = bracketFromDob(input.dob, input.timeZone);
 		if (bracket === "unknown") return fail(422, { errors: { dob: "Enter a real date of birth." } });
+		if (input.acceptTerms !== true) {
+			return fail(422, { errors: { acceptTerms: LEGAL_ACCEPTANCE_REQUIRED } });
+		}
 		if (!isAuthBackendLive()) {
 			return bracket === "full"
 				? ok({ requiresVerification: false, redirectTo: input.redirectTo })
@@ -600,6 +627,7 @@ export class AuthBackendService {
 			visibility: "private",
 			locale: input.locale ?? null,
 			display_currency: input.displayCurrency ?? null,
+			legal_acceptance: currentLegalVersions(),
 		};
 		try {
 			for (const username of ownerHandleCandidates(input.firstName, input.lastName)) {
@@ -686,7 +714,9 @@ export class AuthBackendService {
 	 *
 	 * Every failure — unknown username, unknown email, wrong password — answers with ONE generic
 	 * refusal. A distinct "no such username" would turn the sign-in form into a handle-enumeration
-	 * oracle, and the discovery surfaces already decide which handles are public.
+	 * oracle, and the discovery surfaces already decide which handles are public. GoTrue's CAPTCHA
+	 * refusal is the one exception: it is decided before any account is looked at, so it reveals
+	 * nothing, and it answers with the retryable CAPTCHA message.
 	 */
 	static async authenticate(input: AuthenticateInput): Promise<ServiceResult<AuthPayload>> {
 		if (!isAuthBackendLive()) {
@@ -702,7 +732,9 @@ export class AuthBackendService {
 			const { data, error } = await anon.auth.signInWithPassword({
 				email,
 				password: input.password,
+				options: { captchaToken: input.captchaToken },
 			});
+			if (isGoTrueCaptchaRefusal(error)) return captchaRefused();
 			if (error) {
 				// GoTrue reports an unconfirmed email distinctly (and only AFTER the password checks
 				// out); everything else is a credential failure, kept generic.
@@ -959,13 +991,20 @@ export class AuthBackendService {
 	}
 
 	/**
-	 * Re-issue the verification email. Live: GoTrue resend. Always reports success whatever the send
-	 * did — a distinct refusal (e.g. GoTrue's per-user frequency limit) exists only for a real
-	 * account, so surfacing it would make this endpoint an account-enumeration oracle.
+	 * Re-issue the verification email. Live: GoTrue resend, carrying the person's Turnstile token.
+	 * Reports success whatever the send did — a distinct refusal (e.g. GoTrue's per-user frequency
+	 * limit) exists only for a real account, so surfacing it would make this endpoint an
+	 * account-enumeration oracle. A CAPTCHA refusal is decided before any account is looked at, so it
+	 * alone is answered (Decision #447).
 	 */
-	static async resendVerification(input: { email?: string }): Promise<ServiceResult<AuthPayload>> {
+	static async resendVerification(
+		input: { email?: string; captchaToken?: string },
+	): Promise<ServiceResult<AuthPayload>> {
 		if (isAuthBackendLive() && input.email) {
-			await AuthBackendService.dispatchConfirmation(input.email);
+			const sent = await AuthBackendService.dispatchConfirmation(input.email, {
+				captchaToken: input.captchaToken,
+			});
+			if (sent === "captcha") return captchaRefused();
 		}
 		return ok({});
 	}
@@ -976,50 +1015,87 @@ export class AuthBackendService {
 	 * endpoints do — so this is the one door every confirmation email leaves through. supabase-js
 	 * RETURNS a refused send as `{ error }` rather than throwing, so the result is read, not assumed.
 	 *
+	 * GoTrue's resend is CAPTCHA-gated (Decision #447). A person's resend carries their token through
+	 * the anon client. The send that follows `/join` (`"provisioned"`) goes through the service client
+	 * instead: the app already spent that request's single-use token verifying the sign-up, and
+	 * GoTrue's check skips admin credentials.
+	 *
 	 * `emailRedirectTo` is the app's bare origin: `confirmation.html` builds its button and logo URLs
 	 * on `{{ .RedirectTo }}`, and GoTrue substitutes `site_url` (also a bare origin) when it refuses a
 	 * redirect, so either value yields a working link.
 	 */
-	private static async dispatchConfirmation(email: string): Promise<boolean> {
+	private static async dispatchConfirmation(
+		email: string,
+		via: "provisioned" | { captchaToken: string | undefined },
+	): Promise<"sent" | "failed" | "captcha"> {
 		try {
-			const { error } = await getAnonClient().auth.resend({
+			const client = via === "provisioned" ? getServiceClient() : getAnonClient();
+			const { error } = await client.auth.resend({
 				type: "signup",
 				email,
-				options: { emailRedirectTo: appOrigin() },
+				options: {
+					emailRedirectTo: appOrigin(),
+					captchaToken: via === "provisioned" ? undefined : via.captchaToken,
+				},
 			});
-			return !error;
-		} catch {
-			return false;
+			if (isGoTrueCaptchaRefusal(error)) return "captcha";
+			if (error) console.error("[auth:confirmation-send]", error.code ?? error.status);
+			return error ? "failed" : "sent";
+		} catch (e) {
+			console.error("[auth:confirmation-send]", e instanceof Error ? e.name : "error");
+			return "failed";
 		}
 	}
 	// #endregion
 
 	// #region Password recovery
 	/**
-	 * Begin password recovery. Anti-enumeration: always reports success regardless of whether the
-	 * address has an account. Live: GoTrue sends the recovery email (recovery.html template), whose
-	 * links hang off the bare origin passed as `redirectTo` (see {@link dispatchConfirmation}).
+	 * Begin password recovery. Anti-enumeration: reports success regardless of whether the address
+	 * has an account. Live: GoTrue sends the recovery email (recovery.html template), whose links hang
+	 * off the bare origin passed as `redirectTo` (see {@link dispatchConfirmation}). GoTrue's recover is
+	 * CAPTCHA-gated, so the person's Turnstile token rides along; its refusal is decided before any
+	 * account is looked at, so it alone is answered (Decision #447).
+	 *
+	 * `signedInUserId` is a verified session's user (Settings → Password's "Email me a link"). When the
+	 * address is that account's own sign-in email, the link goes out through the service client, which
+	 * GoTrue's CAPTCHA skips: the person already passed it at sign-in. Any other address still needs
+	 * a token.
 	 */
 	static async requestPasswordReset(
-		input: { email: string; redirectTo: string },
+		input: { email: string; redirectTo: string; captchaToken?: string; signedInUserId?: string },
 	): Promise<ServiceResult<AuthPayload>> {
 		if (isAuthBackendLive()) {
 			try {
-				await getAnonClient().auth.resetPasswordForEmail(input.email, {
+				const ownAddress = input.signedInUserId
+					? await AuthBackendService.isSignInEmailOf(input.signedInUserId, input.email)
+					: false;
+				const client = ownAddress ? getServiceClient() : getAnonClient();
+				const { error } = await client.auth.resetPasswordForEmail(input.email, {
 					redirectTo: appOrigin(),
+					captchaToken: ownAddress ? undefined : input.captchaToken,
 				});
-			} catch {
-				// Swallow — never reveal whether the address exists.
+				if (isGoTrueCaptchaRefusal(error)) return captchaRefused();
+				if (error) console.error("[auth:recover]", error.code ?? error.status);
+			} catch (e) {
+				console.error("[auth:recover]", e instanceof Error ? e.name : "error");
 			}
 		}
 		return ok({});
 	}
 
+	/** Whether `email` is the GoTrue identity email of `userId` (case-insensitive). */
+	private static async isSignInEmailOf(userId: string, email: string): Promise<boolean> {
+		const { data, error } = await getServiceClient().auth.admin.getUserById(userId);
+		if (error || !data.user?.email) return false;
+		return data.user.email.trim().toLowerCase() === email.trim().toLowerCase();
+	}
+
 	/**
 	 * Complete password recovery: verify the recovery code, then set the new password as the
-	 * now-authenticated user. Live: GoTrue `verifyOtp(type:"recovery")` → `updateUser`. Stub: rejects
-	 * the sentinel `000000`. No session cookie is minted — the flow returns to `/login` to sign in
-	 * fresh.
+	 * now-authenticated user. Live: GoTrue `verifyOtp(type:"recovery")` → `updateUser` on the same
+	 * per-call client, the only one holding the fresh recovery session (`updateUser` reads the
+	 * client's own session, never a bearer header). Stub: rejects the sentinel `000000`. No session
+	 * cookie is minted — the flow returns to `/login` to sign in fresh.
 	 */
 	static async resetPassword(input: ResetPasswordInput): Promise<ServiceResult<AuthPayload>> {
 		if (input.code === SENTINEL_BAD_CODE) {
@@ -1029,8 +1105,8 @@ export class AuthBackendService {
 			return ok({ redirectTo: input.redirectTo });
 		}
 		try {
-			const anon = getAnonClient();
-			const { data, error } = await anon.auth.verifyOtp({
+			const recovery = getAnonClient();
+			const { data, error } = await recovery.auth.verifyOtp({
 				email: input.email,
 				token: input.code,
 				type: "recovery",
@@ -1038,8 +1114,7 @@ export class AuthBackendService {
 			if (error || !data.session) {
 				return fail(422, { message: "That code didn't match or has expired." });
 			}
-			const authed = getUserClient(data.session.access_token);
-			const { error: updateError } = await authed.auth.updateUser({ password: input.password });
+			const { error: updateError } = await recovery.auth.updateUser({ password: input.password });
 			if (updateError) {
 				return fail(422, { message: updateError.message ?? "We couldn't update your password." });
 			}

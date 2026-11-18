@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { itemKindMeta } from "@projective/types/finance";
+import { itemKindMeta, sittingsLabel } from "@projective/types/finance";
 import { ProgressiveImage } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { itemKindLabel } from "../core/basket-model.ts";
@@ -8,12 +8,14 @@ import { groupIconName } from "./checkout-glyphs.tsx";
 import type { BasketItem } from "../types/checkout-types.ts";
 
 /**
- * The one detail line beneath an order line: WHICH instance of the purchasable this is — a session's
- * slot, a ticket's stage or a product's licence, else the kind's own noun. Both halves are strings the
- * server already formatted; it carries no price, because the line states its money once.
+ * The one detail line beneath an order line: WHICH instance of the purchasable this is — how much of a
+ * block is timed, a session's slot, a ticket's stage or a product's licence, else the kind's own noun.
+ * Every part is a string the server already formatted; it carries no price, because the line states
+ * its money once.
  */
 function detailOf(item: BasketItem): string {
-	const base = item.scheduledLabel ?? item.stageLabel ?? item.subtitle ?? itemKindLabel(item);
+	const base = (item.sittings ? sittingsLabel(item.sittings) : null) ?? item.scheduledLabel ??
+		item.stageLabel ?? item.subtitle ?? itemKindLabel(item);
 	const seats = item.seats !== null && item.seats > 1 ? ` · ${item.seats} seats` : "";
 	return `${base}${seats}`;
 }
@@ -60,6 +62,20 @@ export function OrderLines(props: OrderLinesProps): JSX.Element {
 							<span class="cko-rail__slotlabel">{detailOf(item)}</span>
 							{item.quantity > 1 && <span class="cko-rail__qty">{`× ${item.quantity}`}</span>}
 						</span>
+						{item.sittings && (
+							<span
+								class="cko-rail__sittings"
+								role="list"
+								aria-label={`Scheduled sittings of ${item.title}`}
+							>
+								{item.sittings.scheduled.map((sitting, i) => (
+									<span key={sitting.at} class="cko-rail__sitting" role="listitem">
+										<span class="cko-rail__sittingnum">Session {i + 1}</span>
+										<span class="cko-rail__sittingwhen">{sitting.label}</span>
+									</span>
+								))}
+							</span>
+						)}
 						{item.available ? null : (
 							<span class="cko-rail__flag" role="status">
 								<Icon name="warning" size="xs" />

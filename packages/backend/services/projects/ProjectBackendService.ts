@@ -132,21 +132,28 @@ import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./dr
 import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
+	cancelServiceRow,
 	exitStageRow,
 	fairExitMessage,
 	previewFairExitRow,
+	previewServiceCancelRow,
 	requestPaidRevisionRow,
 	reviewSubmissionRow,
+	serviceCancelledMessage,
 } from "./live-settlement.ts";
 import { recordStubReview } from "./write-store.ts";
 import type {
 	ApproveStage,
+	CancelService,
 	CancelStageFairExit,
 	FairExitPreview,
 	PaidRevisionRaised,
+	PreviewServiceCancel,
 	PreviewStageFairExit,
 	RequestPaidRevision,
 	ReviewSubmission,
+	ServiceCancelled,
+	ServiceCancelPreview,
 	StageApproved,
 	StageExited,
 	SubmissionReviewed,
@@ -3576,6 +3583,67 @@ export class ProjectBackendService {
 			clientRefundedCents: 0,
 			currency: "USD",
 		}, { message: "Stage cancelled (simulated — no escrow moved)." });
+	}
+
+	/**
+	 * What cancelling a bought service would settle (`projects.preview_service_cancel`, Decision #456):
+	 * what comes back at once, and three Fair Exit quotes for each stage holding claimed work. The
+	 * service's client only, refused 403 by the function for anyone else. Live only, like
+	 * {@link previewStageFairExit}: the stub store holds no escrow.
+	 */
+	static async previewServiceCancel(
+		input: PreviewServiceCancel,
+		actor: ReadActor,
+	): Promise<ServiceResult<ServiceCancelPreview>> {
+		const denied = settlementDenied<ServiceCancelPreview>(actor, "cancel a service");
+		if (denied) return denied;
+		if (!isProjectsBackendLive() || !canReadLive(actor)) {
+			return fail(503, { message: "Cancelling a service needs the live backend." });
+		}
+		try {
+			const outcome = await previewServiceCancelRow(actor, input);
+			if (outcome === null) return noSuchProject(input.projectId);
+			if ("refusal" in outcome) return refused<ServiceCancelPreview>(outcome.refusal);
+			return ok(outcome.data);
+		} catch (error) {
+			liveFailed("previewServiceCancel", error);
+			return fail(502, {
+				message: "What cancelling settles could not be read — please try again.",
+			});
+		}
+	}
+
+	/**
+	 * Cancel a bought service (`projects.cancel_service`, Decision #456): every unclaimed ticket's
+	 * escrow back to the client whole, each stage holding claimed work settled under Fair Exit at the
+	 * tier chosen for it, the open tickets and stages closed, then Cancelled. The client only.
+	 */
+	static async cancelService(
+		input: CancelService,
+		actor: ReadActor,
+	): Promise<ServiceResult<ServiceCancelled>> {
+		const denied = settlementDenied<ServiceCancelled>(actor, "cancel a service");
+		if (denied) return denied;
+
+		const live = await liveWrite<ServiceCancelled>(
+			"cancelService",
+			actor,
+			input.projectId,
+			serviceCancelledMessage,
+			(a) => cancelServiceRow(a, input),
+			"project",
+		);
+		if (live) return live;
+
+		if (!findProjectDetail(input.projectId)) return noSuchProject(input.projectId);
+		return ok({
+			status: "cancelled",
+			currency: "USD",
+			freelancerPaidCents: 0,
+			feeCents: 0,
+			clientRefundedCents: 0,
+			ticketsCancelled: 0,
+		}, { message: "Service cancelled (simulated — no escrow moved)." });
 	}
 	// #endregion
 

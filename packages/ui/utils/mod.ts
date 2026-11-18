@@ -34,6 +34,30 @@ export { Captcha } from "./islands/Captcha.tsx";
 export type { CaptchaProps, CaptchaRenderContext } from "./islands/Captcha.tsx";
 // #endregion
 
+// #region Screen sharing mode
+export { Obscure } from "./components/Obscure.tsx";
+export type { ObscureProps, ObscureTier } from "./components/Obscure.tsx";
+export { RevealHold } from "./components/RevealHold.tsx";
+export type { RevealHoldProps } from "./components/RevealHold.tsx";
+export {
+	hydrateScreenShareFromDom,
+	maskFigures,
+	SCREEN_SHARE_ACTIVE,
+	SCREEN_SHARE_AMOUNT_LABEL,
+	SCREEN_SHARE_ATTRIBUTE,
+	SCREEN_SHARE_HIDDEN_LABEL,
+	SCREEN_SHARE_MASK,
+	screenShareActive,
+	ScreenShareContext,
+	setAmbientScreenShareResolver,
+	setScreenShareActive,
+	useHoldToReveal,
+	useMaskFigures,
+	useScreenShareActive,
+} from "./core/screen-share.ts";
+export type { HoldToReveal, ScreenShareView } from "./core/screen-share.ts";
+// #endregion
+
 // #region Directives
 export { FocusTrap } from "./islands/FocusTrap.tsx";
 export type { FocusTrapProps } from "./islands/FocusTrap.tsx";

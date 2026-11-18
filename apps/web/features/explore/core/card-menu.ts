@@ -2,7 +2,7 @@ import type { MenuItem } from "@ui/types/mod.ts";
 import { composeMenu, linkActionItems, linkOpenItem } from "@ui/navigation/core/link-actions.ts";
 import { withRedirect } from "@features/auth/core/redirect.ts";
 import { offerFor } from "@features/view/core/entity-archetype.ts";
-import { messageHrefFor, signInHref } from "@features/view/core/view-model.ts";
+import { messageHrefFor, messageRecipient, signInHref } from "@features/view/core/view-model.ts";
 import { withViewIntent } from "@features/view/core/view-intent.ts";
 import { type HrefContext, itemHref, profileHref } from "./routing.ts";
 import type {
@@ -22,7 +22,7 @@ import type {
  *    in the product whatever the card's type.
  * 2. **The item's own verbs** — what its `/view` page leads with, where a row can start it without a
  *    write: Book session and Contact seller open the page's own panel through `?intent=`; Apply to
- *    project likewise; Message reaches a person's DM.
+ *    project likewise; Message reaches a person — a team's or a business's owner (Decision #422 (b)).
  * 3. **The creator** — View profile, naming them, for every item that is not itself a profile.
  */
 
@@ -36,7 +36,7 @@ export interface CardMenuFacts {
 	href: string;
 	/** A service's delivery model; absent on every other type. */
 	serviceType?: ServiceType;
-	owner: Pick<ExploreOwner, "handle" | "name" | "kind">;
+	owner: Pick<ExploreOwner, "handle" | "name" | "kind" | "messageTo">;
 	/** Where the card renders — a profile page offers no row back to itself. */
 	ctx: HrefContext;
 }
@@ -58,9 +58,6 @@ const PROFILE_TYPES: ReadonlySet<ExploreEntity> = new Set([
 	"businesses",
 ]);
 
-/** A DM addressed to the owner's own handle reaches a person; a team's or business's reaches nobody. */
-const PERSON_KINDS: ReadonlySet<ExploreOwner["kind"]> = new Set(["user", "freelancer"]);
-
 function bareHandle(handle: string): string {
 	return handle.replace(/^@+/, "").toLowerCase();
 }
@@ -73,30 +70,44 @@ export function cardMenuFacts(item: ExploreItem, ctx: HrefContext): CardMenuFact
 		title: item.title,
 		href: itemHref(item, ctx),
 		serviceType: item.type === "services" ? item.serviceType : undefined,
-		owner: { handle: item.owner.handle, name: item.owner.name, kind: item.owner.kind },
+		owner: {
+			handle: item.owner.handle,
+			name: item.owner.name,
+			kind: item.owner.kind,
+			messageTo: item.owner.messageTo,
+		},
 		ctx,
 	};
 }
 
 // #region Rows
+/**
+ * The Message row, or `null` when nobody answers for the owner. A row that reaches a team's or a
+ * business's owner names that person as its hint, so the reader knows who the DM is with.
+ */
 function messageRow(
 	facts: CardMenuFacts,
 	label: string,
 	guestHref: string,
 	authed: boolean,
-): MenuItem {
+): MenuItem | null {
+	const to = messageRecipient(facts.owner);
+	const href = messageHrefFor(facts);
+	if (!to || href === null) return null;
 	return {
 		key: "item-message",
 		label,
 		icon: "message",
-		url: authed ? messageHrefFor(facts) : guestHref,
+		url: authed ? href : guestHref,
+		hint: to.handle === facts.owner.handle ? undefined : to.name,
 	};
 }
 
 /**
  * The item's own verbs. A row is offered only where pressing it is safe from a URL — Buy now, Add to
  * projects and Reserve seat write on press, so their cards offer Open instead — and where it reaches
- * someone: a team's or business's DM has no person behind it, so those owners get no Message row.
+ * someone: a team's or a business's Message goes to its owner, and an entity that names none gets no
+ * Message row, because `dm-{slug}` reaches nobody.
  */
 export function itemActionRows(facts: CardMenuFacts, authed: boolean): MenuItem[] {
 	const contact: MenuItem = {
@@ -127,15 +138,21 @@ export function itemActionRows(facts: CardMenuFacts, authed: boolean): MenuItem[
 				icon: "user-plus",
 				url: withViewIntent(facts.href, "apply"),
 			};
-			return PERSON_KINDS.has(facts.owner.kind)
-				? [apply, messageRow(facts, "Message client", signInHref(facts, facts.ctx), authed)]
-				: [apply];
+			const message = messageRow(
+				facts,
+				"Message client",
+				signInHref(facts, facts.ctx),
+				authed,
+			);
+			return message ? [apply, message] : [apply];
 		}
 		case "users":
 		case "freelancers":
-			return PERSON_KINDS.has(facts.owner.kind)
-				? [messageRow(facts, "Message", withRedirect("/login", facts.href), authed)]
-				: [];
+		case "teams":
+		case "businesses": {
+			const message = messageRow(facts, "Message", withRedirect("/login", facts.href), authed);
+			return message ? [message] : [];
+		}
 		default:
 			return [];
 	}

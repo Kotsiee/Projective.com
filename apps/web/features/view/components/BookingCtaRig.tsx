@@ -1,5 +1,8 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
+import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
+import { previewWaitlistOffer, type WaitlistPreview } from "../core/waitlist-preview.ts";
 import { Icon } from "@projective/ui/icons";
 import { Button } from "@projective/ui/fields";
 import { CtaButton, CtaLink } from "./CtaButton.tsx";
@@ -71,8 +74,19 @@ export interface BookingCtaRigProps {
 
 export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 	const { offer: ssrOffer, onPrimaryPurchase, onAddToBasket, inBasket, layout = "lane" } = props;
-	const offer = useComputed(() => currentOffer.value ?? ssrOffer);
+	const preview = useSignal<WaitlistPreview | undefined>(undefined);
+	const mounted = useSignal(false);
+	const offer = useComputed(() =>
+		previewWaitlistOffer(currentOffer.value ?? ssrOffer, preview.value, Date.now())
+	);
 	const cta = offer.value.cta;
+
+	useEffect(() => {
+		mounted.value = true;
+		const sync = () => (preview.value = readDevSeam()?.waitlistPlace);
+		sync();
+		return subscribeDevSeam(sync);
+	}, []);
 
 	const primary = useCtaFeedback();
 	const secondary = useCtaFeedback();
@@ -123,8 +137,11 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				announce(
 					res.data.already
 						? "You were already on the waitlist for this listing."
-						: "You're on the waitlist for the next cohort.",
+						: "You're on the waitlist. When a seat is yours, it's held for you.",
 				);
+				// Re-read so BOTH regions state the place the server gave (the queue position).
+				const fresh = await BookingService.offer(offer.value.subjectId);
+				if (fresh.ok && fresh.data) applyOffer(fresh.data.offer);
 				return true;
 			}
 
@@ -202,6 +219,20 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 	const draft = offer.value.draft;
 	const waitlist = cta.primary.kind === "join_waitlist";
 	const joined = waitlist && waitlistJoined.value;
+	const heldUntil = mounted.value && offer.value.waitlist?.status === "invited"
+		? offer.value.waitlist.holdExpiresAt
+		: null;
+	const privateCohort = waitlist && (
+		<button
+			type="button"
+			class="evp-cta__inline"
+			onClick={() => {
+				if (!bouncedGuest()) openBookingPanel("quote");
+			}}
+		>
+			Request a private cohort for your team
+		</button>
+	);
 
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
@@ -238,22 +269,23 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 			*/
 			}
 			{cta.primary.disabled && cta.primary.disabledReason && (
-				<p class="evp-cta__reason">{cta.primary.disabledReason}</p>
+				<p class="evp-cta__reason">
+					{cta.primary.disabledReason}
+					{privateCohort && " "}
+					{privateCohort}
+				</p>
 			)}
 			{!cta.primary.disabled && cta.primary.note && (
 				<p class="evp-cta__reason">
-					{cta.primary.note}{" "}
-					{waitlist && (
-						<button
-							type="button"
-							class="evp-cta__inline"
-							onClick={() => {
-								if (!bouncedGuest()) openBookingPanel("quote");
-							}}
-						>
-							Request a private cohort for your team
-						</button>
+					{cta.primary.note}
+					{heldUntil && (
+						<>
+							{" Reserve it by "}
+							<time dateTime={heldUntil}>{HELD_UNTIL.format(new Date(heldUntil))}</time>.
+						</>
 					)}
+					{privateCohort && " "}
+					{privateCohort}
 				</p>
 			)}
 
@@ -330,6 +362,14 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 }
 
 // #region Copy
+const HELD_UNTIL = new Intl.DateTimeFormat(undefined, {
+	weekday: "short",
+	day: "numeric",
+	month: "short",
+	hour: "numeric",
+	minute: "2-digit",
+});
+
 /** The glyph a primary carries at rest, per action kind. */
 function primaryGlyph(
 	kind: BookingActionKind,

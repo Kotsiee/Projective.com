@@ -82,7 +82,7 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_enterprise_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer, isOperator, onboarded, isRestricted, belongsToTeam, belongsToBusiness, businessHeadroom, displayCurrency, locale, dateFormat }` the web
+   `{ type, id, role, handle, isClient, isFreelancer, isOperator, onboarded, isRestricted, termsDue, belongsToTeam, belongsToBusiness, businessHeadroom, displayCurrency, locale, dateFormat }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
    `type` is the four-context matrix (`personal` | `team` | `business` | `enterprise`); `role`
    is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
@@ -121,6 +121,13 @@ the token's claims:
 > `false` for a profile-less account. Derived from `users_public.dob` on every mint, so it clears at
 > the first refresh after the 18th birthday. Chrome only, like the rest: `resolveUserContext` reads
 > only an explicit `true`, and `org.fn_assert_adult` (`PM403`) is what refuses in every buy/sell door.
+
+> **`termsDue` — the re-accept claim (Decision #446).** `org.fn_needs_reacceptance(user_id)` at mint
+> time, `false` for a profile-less account: the person has accepted no version of the Terms or the
+> Acceptable Use Policy, or only versions older than the newest **material** one in effect
+> (`org.legal_document_versions.material`). The dashboard guard sends a `true` to
+> `/join?complete=terms` after one renewal; `public.accept_current_terms` clears it at the next mint.
+> Chrome only: `resolveUserContext` reads only an explicit `true`, and no door refuses on it.
 
 > **`belongsToTeam` · `belongsToBusiness` · `businessHeadroom` — account facts (BUSINESSES_AUDIT
 > BF3, BB1).** The same in every context the person acts in: an `active` seat in a non-archived
@@ -313,6 +320,25 @@ let those columns be set at birth were removed in the same change (`org/Policies
 `USAGE` on `security` and not on `org`. Called by `POST /api/user/cron/erasures` (bearer
 `ACCOUNT_CRON_SECRET`); answers how many requests completed. That route is dispatched daily at 04:10
 UTC by the `account-erasures` job (`ops.scheduled_jobs`, pg_cron + pg_net, Decision #203).
+
+## Personal data exports (Decision #450)
+
+**Migration:** [`00001061_functions_org_data_export.sql`](../../../supabase/migrations/00001061_functions_org_data_export.sql)
+§3–4 · every door `SECURITY DEFINER`, `SET search_path = ''` · **Grant:** `service_role` only
+(`REVOKE ALL` from `PUBLIC`, `anon`, `authenticated` in `00002510`). The export job's doors onto
+`org.data_export_requests` and the `org.fn_export_*` collectors, called by
+`DataExportBackendService.sweep` from `POST /api/user/cron/data-exports` (bearer
+`ACCOUNT_CRON_SECRET`), dispatched at :09, :24, :39 and :54 past every hour by the
+`account-data-exports` job.
+
+| Door | Returns | Does |
+| :-- | :-- | :-- |
+| `security.claim_data_exports(p_limit = 5)` | `jsonb` | Claims up to `p_limit` (≤ 50) open requests oldest first — every `pending`, and a `building` one started over 30 minutes ago — `FOR UPDATE SKIP LOCKED`, counting an attempt; one that has used three fails `build_failed`. `[{id, user_id, attempts, requested_at}]`. |
+| `security.collect_data_export(p_request, p_domain)` | `jsonb` | One domain of a `building` request (`P0002 not_building` otherwise; `22023 domain_invalid` for an unknown domain). |
+| `security.complete_data_export(p_request, p_path, p_bytes, p_manifest_version)` | `boolean` | Settles a `building` request `ready` for 7 days; the path must be `{user_id}/{id}.zip` (`22023 path_mismatch`). Tells the person in-app (`account.data_export_ready`, linked to `/settings/account#data-export`, never to the archive) and audits it. `false` when the request is no longer building (an erasure failed it), so the job removes what it uploaded. |
+| `security.release_data_export(p_request, p_reason)` | `text` | Hands a claim back: `build_failed` with attempts left → `pending`; otherwise (`too_large`, or out of attempts) → `failed` with a notice. NULL when it was not building. |
+| `security.due_data_export_expiries(p_limit = 50)` | `jsonb` | `[{id, storage_path}]` — `ready` archives past `expires_at`, oldest first. |
+| `security.expire_data_export(p_request)` | `boolean` | Marks a past-expiry archive `expired` once the job has removed its object; the row stays. |
 
 ## Email verification tokens (2026-10-06)
 

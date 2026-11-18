@@ -207,11 +207,14 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts. On: Settings → Account → Connected accounts
 # links and unlinks sign-in providers (linkIdentity / unlinkIdentity).
 enable_manual_linking = true
-# Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
-# Passwords that do not meet the following requirements will be rejected as weak. Supported values
-# are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+# The password rule is @projective/types/auth PasswordSchema; these two must equal it, and
+# packages/types/auth/gotrue-config.contract.test.ts fails test:unit when they drift. GoTrue also
+# refuses more than 72 UTF-8 bytes (bcrypt), which the schema mirrors. Hosted: SYSTEM_ARCHITECTURE.md
+# §Authentication & Identity.
+minimum_password_length = 8
+# Supported values: `letters_digits`, `lower_upper_letters_digits`,
+# `lower_upper_letters_digits_symbols`.
+password_requirements = "lower_upper_letters_digits"
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
@@ -229,11 +232,17 @@ token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
-# Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
-# [auth.captcha]
-# enabled = true
-# provider = "hcaptcha"
-# secret = ""
+# Cloudflare Turnstile on GoTrue's anonymous endpoints: signup, the password grant, recover, resend,
+# otp, magiclink and sso refuse a request without a valid token (Decision #447). Admin (service-role)
+# calls skip the check. The app forwards the widget's token (AuthBackendService); /join creates its
+# account with the service role, so the app verifies that one itself. Locally the secret is
+# Cloudflare's always-pass TEST secret from .env.local (.env.example); an unset variable reaches
+# GoTrue as an invalid secret and every sign-in is refused. Hosted: Dashboard → Authentication →
+# Bot and Abuse Protection, with the environment's real secret.
+[auth.captcha]
+enabled = true
+provider = "turnstile"
+secret = "env(SUPABASE_AUTH_CAPTCHA_SECRET)"
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -241,32 +250,41 @@ enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
-# If enabled, users need to confirm their email address before signing in.
-# Disabled for local dev so email sign-ups are usable without the Inbucket step
-# (http://127.0.0.1:54324). Re-enable before any non-local deployment.
+# If enabled, users need to confirm their email address before signing in. On locally too: the
+# confirmation email lands in Mailpit (http://127.0.0.1:54324).
 enable_confirmations = true
-# If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
-# Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# If enabled, a password change needs a session under 24 hours old or a reauthentication code. The
+# app's every change is a recovery-code reset, whose verify mints a fresh session.
+secure_password_change = true
+# The minimum gap between two auth emails to one address. It equals the app's resend cooldown
+# (RESEND_COOLDOWN_S in apps/web/features/auth/core/resend-cooldown.ts), so Resend never unlocks
+# into a refusal; apps/web/features/auth/core/gotrue-mail.test.ts fails test:unit when they drift.
+max_frequency = "30s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# The production sender (Resend, Decision #391 ruling (4); EPI §8.5). Off here, so local mail stays
+# in Mailpit; hosted, Dashboard → Authentication → SMTP Settings holds these values, and a
+# `supabase config push` must run with SUPABASE_AUTH_EMAIL_SMTP_ENABLED=true or it switches hosted
+# SMTP off. pass is the Resend sending key; admin_email is the bare address inside MAIL_FROM.
+[auth.email.smtp]
+enabled = false
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(SUPABASE_AUTH_SMTP_PASS)"
+admin_email = "env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)"
+sender_name = "Projective"
 
-# Custom transactional email templates. Links and the logo hang off {{ .RedirectTo }}, which the
-# server sets to APP_URL (GoTrue falls back to site_url): confirmation -> /api/auth/confirm (token_hash,
-# verified server-side, cross-device safe), recovery -> /forgot-password at the code step.
+# One branded template per email GoTrue can send; the inventory, with why each type is or isn't
+# wired, is apps/web/features/auth/core/gotrue-mail.test.ts. Template content_path is relative to
+# the repo root, notification content_path to supabase/ (the CLI resolves them differently).
+# Confirmation and recovery build on {{ .RedirectTo }}, which the server sets to APP_URL: confirmation
+# -> /verify/confirm (token_hash, spent by a POST), recovery -> /forgot-password at the code step,
+# never carrying the address. Every other type builds on {{ .SiteURL }}: GoTrue passes those no
+# RedirectTo, and magic_link and email_change carry no link a caller can spend (Decision #448).
 # Locally GoTrue fetches these (bind-mounted, so edits are live) from Kong's :8088 template server.
 # A `kong reload` rebuilds Kong's nginx.conf without that server and GoTrue silently sends its
 # default email instead: if that email reappears, run `docker restart supabase_kong_<project_id>`.
@@ -278,6 +296,43 @@ content_path = "./supabase/templates/confirmation.html"
 subject = "Reset your Projective password"
 content_path = "./supabase/templates/recovery.html"
 
+[auth.email.template.reauthentication]
+subject = "Your Projective security code"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.template.magic_link]
+subject = "Sign-in link requested for your Projective account"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Your Projective sign-in address hasn't changed"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your Projective password was changed"
+content_path = "./templates/password_changed_notification.html"
+
+[auth.email.notification.identity_linked]
+enabled = true
+subject = "A sign-in method was connected to your Projective account"
+content_path = "./templates/identity_linked_notification.html"
+
+[auth.email.notification.identity_unlinked]
+enabled = true
+subject = "A sign-in method was removed from your Projective account"
+content_path = "./templates/identity_unlinked_notification.html"
+
+[auth.email.notification.mfa_factor_enrolled]
+enabled = true
+subject = "Two-step verification method added to your Projective account"
+content_path = "./templates/mfa_factor_enrolled_notification.html"
+
+[auth.email.notification.mfa_factor_unenrolled]
+enabled = true
+subject = "Two-step verification method removed from your Projective account"
+content_path = "./templates/mfa_factor_unenrolled_notification.html"
+
 # Enterprise SSO (SAML 2.0). The login page's "Enterprise SSO" flow calls signInWithSSO({ domain }),
 # which requires SAML to be enabled here AND a provider registered per corporate domain via the CLI
 # (`supabase sso add --project-ref <ref> --type saml --metadata-url <idp> --domains acme.com`).
@@ -286,17 +341,6 @@ content_path = "./supabase/templates/recovery.html"
 # [auth.sso.saml]
 # enabled = true
 # private_key = "env(SAML_PRIVATE_KEY)"
-
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
-
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./templates/password_changed_notification.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
@@ -375,7 +419,7 @@ redirect_uri = ""
 # Overrides the default auth provider URL. Used to support self-hosted gitlab, single-tenant Azure,
 # or any other third-party OIDC providers.
 url = ""
-# If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
+# If enabled, the ID-token grant's nonce check is skipped. Keep it off (see [auth.external.google]).
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
@@ -456,4 +500,6 @@ client_id = "env(GOOGLE_CLIENT_ID)"
 secret = "env(GOOGLE_CLIENT_SECRET)"
 # The redirect URI should match what you put in Google Console
 redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
-skip_nonce_check = true # Often necessary for local testing
+# The nonce check guards ID-token sign-in (signInWithIdToken / One Tap), which the app does not use;
+# its PKCE redirect never meets it. Keep it on: an ID-token flow must plumb a nonce instead.
+skip_nonce_check = false

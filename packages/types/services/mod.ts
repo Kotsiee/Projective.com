@@ -35,6 +35,7 @@
 export * from "./common.ts";
 export * from "./offer.ts";
 export * from "./contact.ts";
+export * from "./quotes.ts";
 export * from "./booking.ts";
 export * from "./pipeline.ts";
 export * from "./intake.ts";

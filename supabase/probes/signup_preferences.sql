@@ -15,6 +15,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 DO $$
 DECLARE
     v_email uuid := gen_random_uuid();
@@ -37,18 +45,18 @@ BEGIN
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data)
     VALUES
         (v_email, 'prefs-probe-' || v_email || '@projective.invalid', 'authenticated', 'authenticated',
-            jsonb_build_object('username', 'prefsprobe_a_' || v_tag, 'dob', v_adult, 'first_name', 'Ada',
+            jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'prefsprobe_a_' || v_tag, 'dob', v_adult, 'first_name', 'Ada',
                 'last_name', 'Probe', 'objective', 'client', 'locale', 'en-US', 'display_currency', 'USD',
                 'timezone', 'America/New_York')),
         (v_bad, 'prefs-probe-' || v_bad || '@projective.invalid', 'authenticated', 'authenticated',
-            jsonb_build_object('username', 'prefsprobe_b_' || v_tag, 'dob', v_adult, 'first_name', 'Bea',
+            jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'prefsprobe_b_' || v_tag, 'dob', v_adult, 'first_name', 'Bea',
                 'last_name', 'Probe', 'objective', 'client', 'locale', 'xx-YY', 'display_currency', 'XYZ',
                 'timezone', 'Mars/Olympus_Mons')),
         (v_none, 'prefs-probe-' || v_none || '@projective.invalid', 'authenticated', 'authenticated',
-            jsonb_build_object('username', 'prefsprobe_c_' || v_tag, 'dob', v_adult, 'first_name', 'Cy',
+            jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'prefsprobe_c_' || v_tag, 'dob', v_adult, 'first_name', 'Cy',
                 'last_name', 'Probe', 'objective', 'client')),
         (v_case, 'prefs-probe-' || v_case || '@projective.invalid', 'authenticated', 'authenticated',
-            jsonb_build_object('username', 'prefsprobe_d_' || v_tag, 'dob', v_adult, 'first_name', 'Di',
+            jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'prefsprobe_d_' || v_tag, 'dob', v_adult, 'first_name', 'Di',
                 'last_name', 'Probe', 'objective', 'freelancer', 'locale', ' fr_fr ', 'display_currency', 'eur'));
     -- #endregion
 
@@ -96,7 +104,7 @@ BEGIN
         jsonb_build_object('locale', 'en'), now());
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_oauth, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'prefsprobe_e_' || v_tag, 'dob', v_adult, 'first_name', 'Eve', 'last_name', 'Probe',
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'prefsprobe_e_' || v_tag, 'dob', v_adult, 'first_name', 'Eve', 'last_name', 'Probe',
         'objective', 'client', 'locale', 'de-DE', 'display_currency', 'CHF', 'timezone', 'Europe/Zurich'));
     PERFORM set_config('request.jwt.claims', '', true);
 
@@ -119,7 +127,7 @@ BEGIN
     v_label := 'a profile-less identity cannot open an enterprise (no DoB, fn_is_minor fails closed: PM403)';
     BEGIN
         PERFORM public.create_enterprise(v_owner, jsonb_build_object(
-            'legalName', 'Prefs Probe ' || v_tag || ' Ltd', 'handle', 'prefsorg' || v_tag,
+            'legalAcceptance', pg_temp.legal_stamp(), 'legalName', 'Prefs Probe ' || v_tag || ' Ltd', 'handle', 'prefsorg' || v_tag,
             'corporateEmail', 'owner-' || v_tag || '@projective.invalid'));
         v_failures := v_failures || (v_label || ' — it went through');
     EXCEPTION WHEN SQLSTATE 'PM403' THEN
@@ -130,7 +138,7 @@ BEGIN
     -- An onboarded person who creates an enterprise keeps the preferences they already chose.
     UPDATE org.user_preferences SET locale = 'it-IT', preferred_display_currency = 'EUR' WHERE user_id = v_email;
     PERFORM public.create_enterprise(v_email, jsonb_build_object(
-        'legalName', 'Prefs Probe Two ' || v_tag || ' Ltd', 'handle', 'prefsorgb' || v_tag,
+        'legalAcceptance', pg_temp.legal_stamp(), 'legalName', 'Prefs Probe Two ' || v_tag || ' Ltd', 'handle', 'prefsorgb' || v_tag,
         'corporateEmail', 'owner-b-' || v_tag || '@projective.invalid'));
     SELECT * INTO v_up FROM org.user_preferences WHERE user_id = v_email;
     v_label := 'an existing owner''s chosen preferences are not overwritten';

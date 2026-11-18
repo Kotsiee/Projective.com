@@ -18,6 +18,8 @@
 --                                 `verified_at` on a secondary address
 --   org.set_primary_email         moves the contact address to a VERIFIED row
 --   org.remove_user_email         drops a secondary address (never the primary or the sign-in one)
+--   org.prepare_sign_in_change    may the caller move their sign-in to a confirmed address now?
+--   org.record_sign_in_change     records a sign-in move the service made through GoTrue's admin API
 --   org.get_my_emails             the caller's addresses, primary first
 --
 -- Refusals are raised as the exception MESSAGE with SQLSTATE `P0001`, and the message is exactly one
@@ -324,6 +326,171 @@ $$;
 
 COMMENT ON FUNCTION org.confirm_user_email(text) IS
 'Redeems a verification token for the signed-in owner: stamps verified_at, consumes the address''s tokens, returns the address id. Refuses token_invalid / token_used / token_expired / token_wrong_account / email_in_use.';
+
+-- Moving the sign-in address (Decision #451), step 1: may the caller move their sign-in to this
+-- address now? Everything the person's own state decides, checked before the service asks GoTrue for
+-- their password: the address is theirs (`email_not_found`), not already the sign-in one
+-- (`sign_in_already`), confirmed (`sign_in_unverified`) and not another account's sign-in
+-- (`sign_in_unavailable`, never "taken"); the account is not scheduled for deletion
+-- (`account_closing`); it has a password to re-authenticate with (`password_required`: an account
+-- that only signs in with Google sets one first); and fewer than two moves landed in the last three
+-- days (`sign_in_limit`, DETAIL = when the next is allowed, ISO 8601 UTC; SIGN_IN_CHANGE_LIMIT in
+-- packages/types/org/user-emails.ts). Writes nothing. Returns the address to move to and the current
+-- sign-in address, which the service re-authenticates against.
+CREATE OR REPLACE FUNCTION org.prepare_sign_in_change(p_email_id uuid)
+RETURNS TABLE (target_email text, current_email text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_row org.user_emails%ROWTYPE;
+    v_current text;
+    v_password text;
+    v_next timestamptz;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'not_authenticated' USING ERRCODE = '28000';
+    END IF;
+
+    SELECT * INTO v_row FROM org.user_emails e WHERE e.id = p_email_id AND e.user_id = v_uid;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'email_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT u.email, u.encrypted_password INTO v_current, v_password
+      FROM auth.users u WHERE u.id = v_uid;
+
+    IF lower(COALESCE(v_current, '')) = lower(v_row.email) THEN
+        RAISE EXCEPTION 'sign_in_already' USING ERRCODE = 'P0001';
+    END IF;
+
+    IF v_row.verified_at IS NULL THEN
+        RAISE EXCEPTION 'sign_in_unverified' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- Mirrors GoTrue's users_email_partial_key (non-SSO rows), whose admin update reports the clash
+    -- only as an opaque 500. Said to someone who has proved they hold the inbox, and generically.
+    IF EXISTS (
+        SELECT 1 FROM auth.users u
+         WHERE lower(u.email) = lower(v_row.email) AND u.id <> v_uid AND NOT u.is_sso_user
+    ) THEN
+        RAISE EXCEPTION 'sign_in_unavailable' USING ERRCODE = 'P0001';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM org.deletion_requests d
+         WHERE d.user_id = v_uid AND d.scope = 'account' AND d.status = 'scheduled'
+    ) THEN
+        RAISE EXCEPTION 'account_closing' USING ERRCODE = 'P0001';
+    END IF;
+
+    IF v_current IS NULL OR COALESCE(v_password, '') = '' THEN
+        RAISE EXCEPTION 'password_required' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- A slot frees when the second-newest move inside the window leaves it.
+    SELECT a.created_at + interval '3 days' INTO v_next
+      FROM security.audit_logs a
+     WHERE a.user_id = v_uid
+       AND a.action = 'user.sign_in_changed'
+       AND a.created_at > now() - interval '3 days'
+     ORDER BY a.created_at DESC
+    OFFSET 1 LIMIT 1;
+    IF v_next IS NOT NULL THEN
+        RAISE EXCEPTION 'sign_in_limit' USING ERRCODE = 'P0001',
+            DETAIL = to_char(v_next AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
+    END IF;
+
+    RETURN QUERY SELECT v_row.email, v_current;
+END;
+$$;
+
+COMMENT ON FUNCTION org.prepare_sign_in_change(uuid) IS
+'Step 1 of moving the caller''s sign-in address (Decision #451): returns (target_email, current_email) or refuses email_not_found / sign_in_already / sign_in_unverified / sign_in_unavailable (another non-SSO account signs in with it) / account_closing / password_required / sign_in_limit (DETAIL = next allowed, ISO UTC; 2 per rolling 3 days). Writes nothing.';
+
+-- Moving the sign-in address, step 2: record a move GoTrue has already made. Between the two steps
+-- the service moves auth.users.email with the admin API, so this door refuses unless that address
+-- IS now the caller's sign-in (`sign_in_unavailable`): called directly, it records nothing that did
+-- not happen. It writes the ONE `user.sign_in_changed` audit row (ids, never addresses) and the
+-- mandatory in-app `account.sign_in_changed` notice, once per move (a repeat call for the same move
+-- is a no-op), and with `p_make_primary` also makes the address the primary (org.set_primary_email,
+-- with its own audit row). `p_previous_email_id` is the caller's old sign-in row, or NULL when the
+-- old address had no row.
+CREATE OR REPLACE FUNCTION org.record_sign_in_change(
+    p_email_id uuid,
+    p_previous_email_id uuid,
+    p_make_primary boolean DEFAULT false
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_row org.user_emails%ROWTYPE;
+    v_current text;
+    v_last uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'not_authenticated' USING ERRCODE = '28000';
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(hashtext('user-emails:' || v_uid::text));
+
+    SELECT * INTO v_row
+    FROM org.user_emails e
+    WHERE e.id = p_email_id AND e.user_id = v_uid
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'email_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    IF p_previous_email_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM org.user_emails e
+         WHERE e.id = p_previous_email_id AND e.user_id = v_uid AND e.id <> v_row.id
+    ) THEN
+        RAISE EXCEPTION 'email_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT u.email INTO v_current FROM auth.users u WHERE u.id = v_uid;
+    IF lower(COALESCE(v_current, '')) <> lower(v_row.email) THEN
+        RAISE EXCEPTION 'sign_in_unavailable' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT a.entity_id INTO v_last
+      FROM security.audit_logs a
+     WHERE a.user_id = v_uid AND a.action = 'user.sign_in_changed'
+     ORDER BY a.created_at DESC
+     LIMIT 1;
+
+    IF v_last IS DISTINCT FROM v_row.id THEN
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_uid, 'user.sign_in_changed', 'org.user_emails', v_row.id,
+                jsonb_build_object(
+                    'previous_email_id', p_previous_email_id,
+                    'made_primary', p_make_primary AND NOT v_row.is_primary
+                ));
+
+        PERFORM comms.fn_notify(
+            v_uid, 'account.sign_in_changed', 'Your sign-in address changed',
+            'You now sign in with ' || v_row.email || '. If this wasn''t you, contact support at once.',
+            'user_emails', v_row.id, '{}'::jsonb, v_uid, NULL, NULL, NULL, '/settings/account'
+        );
+    END IF;
+
+    IF p_make_primary AND NOT v_row.is_primary THEN
+        PERFORM org.set_primary_email(v_row.id);
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION org.record_sign_in_change(uuid, uuid, boolean) IS
+'Step 2 of moving the caller''s sign-in address (Decision #451), after the service''s GoTrue admin update: refuses sign_in_unavailable unless auth.users.email now IS the address, email_not_found for a row (or previous row) not the caller''s; writes one user.sign_in_changed audit row + the account.sign_in_changed notice once per move; optionally makes the address primary.';
 -- #endregion
 
 -- #region 3. Issue (service role only)

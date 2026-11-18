@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { InlineNotice } from "@projective/ui/feedback";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { type CurrentPlan, formatMoney, type PlanOffer } from "@projective/types/finance";
 import { SettingsBlock, StatusMark } from "../../SettingsParts.tsx";
 import { longDate } from "../../../core/settings-dates.ts";
@@ -50,6 +51,7 @@ function stateLine(plan: CurrentPlan, locale: string): string | null {
  */
 export function PlanBlock(props: PlanBlockProps): JSX.Element {
 	const { plan } = props;
+	const mask = useMaskFigures();
 	return (
 		<SettingsBlock
 			anchor="plan"
@@ -68,7 +70,7 @@ export function PlanBlock(props: PlanBlockProps): JSX.Element {
 									{priceLine(plan.current, props.locale) !== plan.current.label
 										? (
 											<span class="stg-facts__note stg-tabular">
-												{priceLine(plan.current, props.locale)}
+												{mask(priceLine(plan.current, props.locale))}
 											</span>
 										)
 										: null}
@@ -99,7 +101,7 @@ export function PlanBlock(props: PlanBlockProps): JSX.Element {
 												: null}
 										</div>
 										<span class="stg-plans__price stg-tabular">
-											{priceLine(offer, props.locale)}
+											{mask(priceLine(offer, props.locale))}
 										</span>
 									</li>
 								);

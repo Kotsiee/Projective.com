@@ -1,5 +1,7 @@
-import type { ExploreItem } from "@projective/types/explore";
+import type { ExploreItem, ExploreOwner, MessageTarget } from "@projective/types/explore";
+import { dmConversationId } from "@projective/types/messaging";
 import type { HrefContext } from "@features/explore/core/routing.ts";
+import { conversationHref } from "@features/messaging/core/conversation-model.ts";
 import {
 	type CardSignal,
 	FAST_REPLY_MINUTES,
@@ -98,9 +100,28 @@ export function backLabelFor(ctx: HrefContext): string {
 	return ctx.scope === "profile" ? "Back to profile" : "Back to Explore";
 }
 
-/** The direct-message deep link for the "Message" CTA (canonical DM namespace). */
-export function messageHrefFor(item: { owner: Pick<ExploreItem["owner"], "handle"> }): string {
-	return `/messages/dm-${item.owner.handle.replace(/^@/, "")}`;
+/** The owner facts a Message control needs. */
+export type MessageOwner = Pick<ExploreOwner, "handle" | "name" | "kind" | "messageTo">;
+
+/**
+ * The person a Message to this owner reaches: a person themselves; a team's or a business's owner
+ * (`messageTo`); `null` when an entity names nobody, because `dm-{slug}` reaches nobody (Decisions
+ * #244 (C), #422 (b)).
+ */
+export function messageRecipient(owner: MessageOwner): MessageTarget | null {
+	if (owner.kind === "user" || owner.kind === "freelancer") {
+		return { handle: owner.handle, name: owner.name };
+	}
+	return owner.messageTo ?? null;
+}
+
+/**
+ * The direct-message deep link for a Message control — the recipient's `dm-{handle}` thread
+ * (ROUTING §Messages) — or `null` when nobody is reachable, so the control is withheld.
+ */
+export function messageHrefFor(item: { owner: MessageOwner }): string | null {
+	const to = messageRecipient(item.owner);
+	return to ? conversationHref(dmConversationId(to.handle)) : null;
 }
 
 /** The sign-in bounce that returns to the current item after auth. */

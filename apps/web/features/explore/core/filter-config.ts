@@ -1,4 +1,5 @@
 import {
+	type ExploreSort,
 	type Facet,
 	type FacetInput,
 	type FacetOption,
@@ -28,13 +29,29 @@ export type FilterOption = FacetOption;
 // #endregion
 
 // #region Sort
-/** Sort options; `recommended` is the default (matches explore-state DEFAULT_SORT). */
-export const SORT_OPTIONS: FacetOption[] = [
-	{ value: "recommended", label: "Recommended" },
-	{ value: "rating", label: "Top rated" },
-	{ value: "price_asc", label: "Price: low to high" },
-	{ value: "newest", label: "Newest" },
-];
+/**
+ * Every order's label, as a TOTAL record over the SSOT's `ExploreSort`, so an order added there fails
+ * the type-check here instead of shipping without a label.
+ */
+const SORT_LABELS: Record<ExploreSort, string> = {
+	best_match: "Best match",
+	recommended: "Recommended",
+	rating: "Top rated",
+	price_asc: "Price: low to high",
+	newest: "Newest",
+};
+
+/** Every sort option, in menu order. */
+export const SORT_OPTIONS: FacetOption[] = Object.entries(SORT_LABELS)
+	.map(([value, label]) => ({ value, label }));
+
+/**
+ * The options the sort menu offers for `q`. Best match needs words to match, so it is offered only
+ * with a query; without one it would order exactly as Recommended does.
+ */
+export function sortOptionsFor(q: string): FacetOption[] {
+	return q.trim() ? SORT_OPTIONS : SORT_OPTIONS.filter((o) => o.value !== "best_match");
+}
 // #endregion
 
 // #region Vocabularies

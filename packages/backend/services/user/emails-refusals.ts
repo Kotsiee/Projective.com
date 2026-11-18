@@ -2,10 +2,11 @@ import {
 	EmailRefusal,
 	type EmailVerifyOutcome,
 	MAX_USER_EMAILS,
+	SIGN_IN_CHANGE_LIMIT,
 	type UserEmail,
 	UserEmailSchema,
 } from "@projective/types/org";
-import { fail, type ServiceResult } from "../ServiceResult.ts";
+import { fail, type FailureDetails, type ServiceResult } from "../ServiceResult.ts";
 
 /**
  * emails-refusals — the pure half of {@link EmailsBackendService}: turning what the 00001050 email
@@ -62,6 +63,36 @@ const REFUSALS: Record<EmailRefusal, RefusalCopy> = {
 		message:
 			"That confirmation link belongs to a different account. Sign in to that account to use it.",
 	},
+	sign_in_already: { status: 409, message: "You already sign in with that address." },
+	sign_in_unverified: {
+		status: 409,
+		message: "Confirm that address first — only a confirmed address can be used to sign in.",
+	},
+	sign_in_limit: {
+		status: 429,
+		message:
+			`You can change your sign-in address ${SIGN_IN_CHANGE_LIMIT.max} times in ${SIGN_IN_CHANGE_LIMIT.windowDays} days. Try again later.`,
+	},
+	sign_in_unavailable: {
+		status: 409,
+		message: "We couldn't move your sign-in to that address. Contact support and we'll help.",
+	},
+	account_closing: {
+		status: 409,
+		message:
+			"Your account is scheduled for deletion, so its sign-in address can't change. Cancel the deletion first.",
+	},
+	password_required: {
+		status: 409,
+		message: "Your account doesn't have a password yet. Set one under Password, then try again.",
+	},
+	password_incorrect: { status: 422, message: "That password isn't right." },
+};
+
+/** The form field a refusal belongs to, so a form can show it beside that field. */
+const REFUSAL_FIELD: Partial<Record<EmailRefusal, string>> = {
+	email_invalid: "email",
+	password_incorrect: "password",
 };
 
 /** The sentence a person reads for one refusal code. */
@@ -70,37 +101,53 @@ export function emailRefusalMessage(code: EmailRefusal): string {
 }
 
 /**
- * The {@link ServiceResult} for one refusal code — its status and sentence, with `errors.email` on
- * `email_invalid` (so a form can key it to the field) and the code itself in `details.refusal` (so a
- * client can branch without parsing the sentence).
+ * The {@link ServiceResult} for one refusal code — its status and sentence, keyed to its form field
+ * in `errors` where it has one (`email_invalid`, `password_incorrect`), and the code itself in
+ * `details.refusal` (so a client can branch without parsing the sentence). `extra` adds facts such
+ * as `retryAt`.
  */
-export function emailRefusal(code: EmailRefusal): ServiceResult<never> {
+export function emailRefusal(
+	code: EmailRefusal,
+	extra: FailureDetails = {},
+): ServiceResult<never> {
 	const { status, message } = REFUSALS[code];
-	return code === "email_invalid"
-		? fail(status, { message, errors: { email: message }, details: { refusal: code } })
-		: fail(status, { message, details: { refusal: code } });
+	const field = REFUSAL_FIELD[code];
+	const details = { ...extra, refusal: code };
+	return field
+		? fail(status, { message, errors: { [field]: message }, details })
+		: fail(status, { message, details });
+}
+
+/** An RPC error as PostgREST returns it: `details` carries the exception's DETAIL. */
+export interface RpcError {
+	code?: string;
+	message?: string;
+	details?: string | null;
 }
 
 /** Read a refusal code off an RPC error, or `null` when the error is not one of ours. */
-export function emailRefusalCode(
-	error: { code?: string; message?: string } | null | undefined,
-): EmailRefusal | null {
+export function emailRefusalCode(error: RpcError | null | undefined): EmailRefusal | null {
 	if (!error || error.code !== "P0001") return null;
 	const parsed = EmailRefusal.safeParse(error.message?.trim());
 	return parsed.success ? parsed.data : null;
 }
 
+/** `sign_in_limit`'s DETAIL is when the next move is allowed; anything else carries no time. */
+function retryAtOf(code: EmailRefusal, error: RpcError): FailureDetails {
+	if (code !== "sign_in_limit" || !error.details) return {};
+	const at = Date.parse(error.details);
+	return Number.isFinite(at) ? { retryAt: new Date(at).toISOString() } : {};
+}
+
 /**
  * Map an email-function error to a {@link ServiceResult} refusal. A refusal code becomes
- * {@link emailRefusal}; `28000` and a stale
+ * {@link emailRefusal} (`sign_in_limit` with `details.retryAt`); `28000` and a stale
  * bearer are a lapsed session; `42501` is an account that has not finished onboarding; anything else
  * is reported as an outage, never as success.
  */
-export function emailFailure(
-	error: { code?: string; message?: string },
-): ServiceResult<never> {
+export function emailFailure(error: RpcError): ServiceResult<never> {
 	const code = emailRefusalCode(error);
-	if (code) return emailRefusal(code);
+	if (code) return emailRefusal(code, retryAtOf(code, error));
 	switch (error.code) {
 		// No subject in the token (the definer's own check), or PostgREST refusing a stale bearer:
 		// "JWT expired" (PGRST301), "no authorization" (PGRST302), "JWT invalid" (PGRST303).
@@ -130,9 +177,7 @@ const OUTCOMES: Partial<Record<EmailRefusal, EmailVerifyOutcome>> = {
  * The `?email=` outcome a refused confirmation lands back on `/settings/account` with, or `null` when
  * the error is not a confirmation refusal (an outage, a lapsed session) — which has no outcome.
  */
-export function verifyOutcomeFor(
-	error: { code?: string; message?: string } | null | undefined,
-): EmailVerifyOutcome | null {
+export function verifyOutcomeFor(error: RpcError | null | undefined): EmailVerifyOutcome | null {
 	const code = emailRefusalCode(error);
 	return code ? OUTCOMES[code] ?? null : null;
 }

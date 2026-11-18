@@ -17,6 +17,27 @@ CREATE INDEX IF NOT EXISTS idx_listings_owner_team
 -- #region marketplace.quote_requests — the pipeline's quote arm
 CREATE INDEX IF NOT EXISTS idx_quote_requests_blueprint
     ON marketplace.quote_requests (blueprint_id, created_at DESC);
+-- The pair read (`get_quotes_with`), from the buyer's side; the host's side starts from the blueprint.
+CREATE INDEX IF NOT EXISTS idx_quote_requests_requester
+    ON marketplace.quote_requests (requester_user_id, created_at DESC);
+-- One open request per buyer per listing (Decision #458): `request_quote` refuses a second, and this
+-- holds against two concurrent first asks.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_requests_open
+    ON marketplace.quote_requests (requester_user_id, blueprint_id)
+    WHERE status IN ('sent', 'answered');
+-- #endregion
+
+-- #region marketplace.quote_offers — one live offer per request
+CREATE INDEX IF NOT EXISTS idx_quote_offers_request
+    ON marketplace.quote_offers (quote_request_id, created_at DESC);
+-- A revision withdraws the pending offer before it inserts its successor, so a request holds at most
+-- one pending and at most one accepted offer whatever order two doors commit in.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_offers_one_pending
+    ON marketplace.quote_offers (quote_request_id)
+    WHERE status = 'pending';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_offers_one_accepted
+    ON marketplace.quote_offers (quote_request_id)
+    WHERE status = 'accepted';
 -- #endregion
 
 -- #region marketplace.promoted_placements — a listing's paid history (catalogue.fn_listing_engagements)

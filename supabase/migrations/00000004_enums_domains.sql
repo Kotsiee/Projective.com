@@ -86,8 +86,12 @@ CREATE TYPE finance.entitlement_key AS ENUM (
     'enterprise_businesses',
     'departments',
     -- Capability flags
+    -- Allocates the seller's one live labelled "Promoted" slot (marketplace.promote_listing, #454).
     'promoted_placement',
     'advanced_analytics',
+    -- RETIRED (Decision #454, resolves #178 (a)): organic ranking is never for sale, so nothing reads
+    -- this flag and no plan may be granted it. Kept, not dropped. The earned newcomer Discovery Boost
+    -- is the `search.search_weights` coefficient of the same name, which no plan touches.
     'discovery_boost',
     'instant_payouts_included',
     'pooled_wallet_full',

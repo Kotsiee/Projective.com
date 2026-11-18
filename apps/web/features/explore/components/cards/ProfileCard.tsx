@@ -2,7 +2,6 @@ import type { JSX } from "preact";
 import { Avatar, ProgressiveImage, RatingStars } from "@projective/ui/display";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
-import { PromotedBadge } from "../PromotedBadge.tsx";
 import { StatusChip } from "../StatusChip.tsx";
 import { VerifiedBadge } from "../VerifiedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
@@ -83,7 +82,6 @@ export function ProfileCard(
 						{signals.map((s) => <StatusChip signal={s} key={s.id} />)}
 					</span>
 				)}
-				{item.sponsored && <PromotedBadge />}
 			</div>
 
 			<div class="ex-pcard__body">

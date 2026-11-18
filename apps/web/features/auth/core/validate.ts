@@ -7,7 +7,7 @@
  * Every validator returns `null` when valid, or a short human-readable error string.
  */
 
-import { EMAIL_RE, PHONE_RE, USERNAME_RE } from "@projective/types/auth";
+import { EMAIL_RE, passwordIssue, PHONE_RE, USERNAME_RE } from "@projective/types/auth";
 import { RESERVED_HANDLES } from "./options.ts";
 
 export { EMAIL_RE, PHONE_RE, USERNAME_RE };
@@ -89,11 +89,7 @@ export function suggestHandle(firstName: string, lastName: string): string {
 
 export function passwordError(value: string): string | null {
 	if (value.length === 0) return "Password is required.";
-	if (value.length < 8) return "Use at least 8 characters.";
-	if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value)) {
-		return "Mix upper- and lower-case letters and a number.";
-	}
-	return null;
+	return passwordIssue(value);
 }
 
 export function confirmError(password: string, confirm: string): string | null {

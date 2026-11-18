@@ -11,7 +11,7 @@ import type { StepId } from "../core/wizardStore.ts";
  * whole auth suite reads as one premium system rather than two visual languages. The glass "passport"
  * card is intentionally gone here too; the illustration is the single focal point.
  */
-type SceneVariant = "login" | "forgot" | "verify";
+type SceneVariant = "login" | "forgot" | "verify" | "confirm";
 
 interface SceneCopy {
 	/** All-caps kicker. */
@@ -52,6 +52,14 @@ const COPY: Record<SceneVariant, SceneCopy> = {
 		lede: "Enter the 6-digit code we emailed to activate your account.",
 		motif: "credentials",
 		progress: 0.7,
+	},
+	confirm: {
+		kicker: "One quick check",
+		lead: "Confirm",
+		strong: "it's really you.",
+		lede: "One press activates your account, right here.",
+		motif: "credentials",
+		progress: 0.9,
 	},
 };
 

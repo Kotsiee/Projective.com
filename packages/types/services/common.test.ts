@@ -107,6 +107,62 @@ Deno.test("a full cohort offers the waitlist with its reason, never a disabled d
 	assertEquals(rig.primary.note, "Every seat in this cohort is taken.");
 });
 
+Deno.test("an invited buyer is offered the seat held for them, even when the count reads full", () => {
+	const rig = resolveCta({
+		...base,
+		format: "cohort",
+		seatsRemaining: 0,
+		waitlist: { status: "invited", position: null },
+	});
+	assertEquals(rig.primary.kind, "reserve_seat");
+	assertEquals(rig.primary.disabled, false);
+	assertEquals(rig.primary.label, "Reserve your held seat");
+	assertEquals(rig.primary.note, "A seat is held for you from the waitlist.");
+	// The invite seats into the enrolling cohort; with none enrolling there is nothing to hold.
+	const closed = resolveCta({
+		...base,
+		format: "cohort",
+		seatsRemaining: 0,
+		cohortOpen: false,
+		waitlist: { status: "invited", position: null },
+	});
+	assertEquals(closed.primary.kind, "join_waitlist");
+});
+
+Deno.test("a waiting buyer is told their place, not offered a second join", () => {
+	const rig = resolveCta({
+		...base,
+		format: "cohort",
+		seatsRemaining: 0,
+		waitlist: { status: "waiting", position: 3 },
+	});
+	assertEquals(rig.primary.kind, "join_waitlist");
+	assertEquals(rig.primary.label, "On the waitlist");
+	assertEquals(rig.primary.disabled, true);
+	assertEquals(rig.primary.disabledReason?.startsWith("You're number 3 in the queue."), true);
+	// A seat open to them (their turn, before the job runs) is theirs to reserve straight away.
+	const open = resolveCta({
+		...base,
+		format: "cohort",
+		seatsRemaining: 1,
+		waitlist: { status: "waiting", position: 1 },
+	});
+	assertEquals(open.primary.kind, "reserve_seat");
+});
+
+Deno.test("an expired buyer may join again, told it is the back of the queue", () => {
+	const rig = resolveCta({
+		...base,
+		format: "cohort",
+		seatsRemaining: 0,
+		waitlist: { status: "expired", position: null },
+	});
+	assertEquals(rig.primary.kind, "join_waitlist");
+	assertEquals(rig.primary.disabled, false);
+	assertEquals(rig.primary.label, "Join the waitlist again");
+	assertEquals(rig.primary.note?.includes("back of the queue"), true);
+});
+
 Deno.test("a provider taking no bookings refuses the session primary with a reason", () => {
 	const rig = resolveCta({ ...base, format: "session", bookingsOpen: false });
 	assertEquals(rig.primary.disabled, true);

@@ -3,10 +3,10 @@ import {
 	type Catalog,
 	entityKey,
 	loadCatalog,
-	type PlacementSurface,
 	readProjectPreview,
 	stampOf,
 } from "./live-catalog.ts";
+import { homePromotedSlots, resultPromotedSlots } from "./promoted-slots.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
@@ -54,7 +54,6 @@ import type {
 	PromoSlot,
 	SearchPayload,
 	ServiceItem,
-	SponsoredPromo,
 	Suggestions,
 	SuggestQuery,
 	Testimonial,
@@ -111,9 +110,6 @@ const CTA_TEAM: CtaPromo = {
 	audience: "everyone",
 	dismissible: true,
 };
-
-/** The placement inventory the Home feed sells (`marketplace.promoted_placements.surface`). */
-const HOME_SURFACE: PlacementSurface = "explore_home";
 // #endregion
 
 // #region Composition
@@ -182,37 +178,6 @@ const ofType = <T extends ExploreItem["type"]>(catalog: Catalog, type: T) =>
 	catalog.items.filter((it): it is Extract<ExploreItem, { type: T }> => it.type === type);
 
 /**
- * The sponsored slots — one per ACTIVE placement bought for `surface`, oldest flight first, each built
- * from the listing it promotes. A placement whose item is not a sponsored service or product is
- * skipped: an advert for something a visitor cannot open, or that carries no disclosure, is not one
- * worth showing. A listing placed twice on the same surface is featured once.
- */
-function sponsoredPromos(catalog: Catalog, surface: PlacementSurface): SponsoredPromo[] {
-	const seen = new Set<string>();
-	const out: SponsoredPromo[] = [];
-	for (const placement of catalog.placements) {
-		if (placement.surface !== surface || seen.has(placement.itemId)) continue;
-		const it = catalog.byId.get(placement.itemId);
-		if (!it || (it.type !== "services" && it.type !== "products") || !it.sponsored) continue;
-		seen.add(it.id);
-		out.push({
-			variant: "sponsored",
-			id: `sp-${it.id}`,
-			rail: it.type,
-			itemId: it.id,
-			title: it.title,
-			body: it.summary,
-			media: it.media ?? "",
-			mediaPlaceholder: it.mediaPlaceholder,
-			owner: it.owner,
-			href: `/view/${it.id}`,
-			cta: it.type === "services" ? "View service" : "View product",
-		});
-	}
-	return out;
-}
-
-/**
  * The help centre's library for the editorial break, or `null` when it cannot be read: a help outage
  * drops the strip (`helpStripFrom`), never the Home feed. The read is `HelpBackendService`'s cached
  * snapshot, so it costs one table read per five minutes.
@@ -231,10 +196,18 @@ async function readHelpLibrary(): Promise<HelpCentreLibrary | null> {
 	return null;
 }
 
-/** Every Home promo slot, in feed order. `help` is the editorial break (`helpStripFrom`), if any. */
-function homePromos(catalog: Catalog, help: EditorialPromo | null): PromoSlot[] {
+/**
+ * Every Home promo slot, in feed order. `help` is the editorial break (`helpStripFrom`), if any; the
+ * promoted slots ride only when `showPromoted` (never for a 13–17 viewer, Decision #454).
+ */
+function homePromos(
+	catalog: Catalog,
+	help: EditorialPromo | null,
+	showPromoted: boolean,
+	now: number,
+): PromoSlot[] {
 	return [
-		...sponsoredPromos(catalog, HOME_SURFACE),
+		...(showPromoted ? homePromotedSlots(catalog, now) : []),
 		CTA_FREELANCER,
 		...(help ? [help] : []),
 		CTA_TEAM,
@@ -253,12 +226,14 @@ function effectiveDiscoverySim(sim: DiscoverySim | undefined): DiscoverySim {
 /**
  * The SHARED Home feed, from one catalogue load: the same for every viewer, so it is computed from the
  * anon-cached catalogue alone (and the help centre's cached library, for the editorial break). The
- * personal rails start empty; the viewer pass fills them.
+ * personal rails start empty; the viewer pass fills them. The organic sections never depend on
+ * `showPromoted`: a promoted slot is added beside them, never into them.
  */
 function homeFeedFrom(
 	catalog: Catalog,
 	sim: DiscoverySim,
 	help: HelpCentreLibrary | null,
+	showPromoted: boolean,
 ): HomeFeed {
 	const services = ofType(catalog, "services") as ServiceItem[];
 	const products = ofType(catalog, "products") as ProductItem[];
@@ -274,7 +249,7 @@ function homeFeedFrom(
 		projects,
 		products,
 		articles: ofType(catalog, "articles") as ArticleItem[],
-		promos: homePromos(catalog, helpStripFrom(help)),
+		promos: homePromos(catalog, helpStripFrom(help), showPromoted, Date.now()),
 		recommended: {
 			services: rankRecommended(services, catalog.scoreById),
 			products: rankRecommended(products, catalog.scoreById),
@@ -286,18 +261,26 @@ function homeFeedFrom(
 	};
 }
 
-/** Compute a search page. The isolated feed pages over the REAL result set — no padded pool. */
+/**
+ * Compute a search page. The isolated feed pages over the REAL result set — no padded pool. The
+ * promoted slots are chosen from the matched set after ranking and returned beside it, so `items`
+ * and `groups` are the same with or without them.
+ */
 function searchFrom(
 	catalog: Catalog,
 	params: ExploreParams,
 	offset: number,
 	limit: number,
+	showPromoted: boolean,
 	similarity?: SemanticSimilarity,
 ): SearchPayload {
 	const results = similarity
-		? semanticResults(catalog.items, params, catalog.scoreById, similarity)
-		: getResults(catalog.items, params, catalog.scoreById);
+		? semanticResults(catalog.items, params, catalog.scoreById, similarity, catalog.weights)
+		: getResults(catalog.items, params, catalog.scoreById, catalog.weights);
 	const related = relatedSearches(catalog.items, params);
+	const promoted = showPromoted
+		? resultPromotedSlots(catalog, results, params.category, offset, Date.now())
+		: [];
 	if (params.category === "all") {
 		return {
 			count: results.length,
@@ -307,6 +290,7 @@ function searchFrom(
 			groups: groupResults(results),
 			related,
 			hasMore: false,
+			promoted,
 		};
 	}
 	return {
@@ -317,6 +301,7 @@ function searchFrom(
 		groups: [],
 		related,
 		hasMore: offset + limit < results.length,
+		promoted,
 	};
 }
 
@@ -331,6 +316,9 @@ export class ExploreBackendService {
 	 * query, the results are re-ranked and topped up with voyage-4 similarity; any Voyage or database
 	 * failure falls back to the heuristic search for this request (logged once), and `ranking` says
 	 * which one ran.
+	 *
+	 * `showPromoted` is the caller's statement that the viewer may see promoted slots — never a 13–17
+	 * account (Decision #454). A caller that does not say gets none.
 	 */
 	static async search(
 		input: {
@@ -339,6 +327,7 @@ export class ExploreBackendService {
 			limit?: number;
 			actor?: ReadActor;
 			semantic?: boolean;
+			showPromoted?: boolean;
 		},
 	): Promise<RankedResult<SearchPayload>> {
 		const offset = Math.max(0, input.offset ?? 0);
@@ -349,7 +338,14 @@ export class ExploreBackendService {
 			const semantic = input.semantic && input.params.q.trim()
 				? await querySimilarity(catalog, input.params)
 				: null;
-			const payload = searchFrom(catalog, input.params, offset, limit, semantic?.similarity);
+			const payload = searchFrom(
+				catalog,
+				input.params,
+				offset,
+				limit,
+				input.showPromoted === true,
+				semantic?.similarity,
+			);
 			// A later page of the same feed is not a new search, so only the first page is logged.
 			if (offset === 0) {
 				const { category } = input.params;
@@ -381,9 +377,11 @@ export class ExploreBackendService {
 	 * A failed viewer pass is logged and the shared feed is served: personalisation is never worth
 	 * taking discovery down for — and likewise an unreadable help centre only drops the editorial
 	 * break. `sim` is the Dev Context Switcher's cold-start simulation, honoured in development only.
+	 * `showPromoted` is as for {@link ExploreBackendService.search}: no promoted slot unless the caller
+	 * says the viewer may see one.
 	 */
 	static async home(
-		input: { actor: ReadActor; sim?: DiscoverySim },
+		input: { actor: ReadActor; sim?: DiscoverySim; showPromoted?: boolean },
 	): Promise<ServiceResult<HomeFeed>> {
 		const sim = effectiveDiscoverySim(input.sim);
 		const help = readHelpLibrary();
@@ -393,7 +391,7 @@ export class ExploreBackendService {
 		} catch (error) {
 			return unavailable(error);
 		}
-		const feed = homeFeedFrom(catalog, sim, await help);
+		const feed = homeFeedFrom(catalog, sim, await help, input.showPromoted === true);
 		if (!canReadLive(input.actor)) return ok(feed);
 		try {
 			const signals = await readViewerSignals(input.actor, catalog, sim.viewer, Date.now());

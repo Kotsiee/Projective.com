@@ -1177,7 +1177,8 @@ $$;
 --   • active|on_hold -> completed : every ticket must be terminal (completed/cancelled) AND no
 --                                   escrow may still be held (funds must be settled first).
 --   • active -> on_hold           : always allowed by the owner.
---   • draft|active|on_hold -> cancelled : always allowed by the owner.
+--   • draft|active|on_hold -> cancelled : always allowed by the owner, except a bought service
+--                                         holding escrow, which ends through projects.cancel_service.
 --   • terminal states (completed/cancelled) are immutable.
 -- Returns the new status. RAISE LOG lines carry the telemetry mandate's structured tags.
 CREATE OR REPLACE FUNCTION projects.set_project_status(
@@ -1194,6 +1195,7 @@ DECLARE
     v_actor       uuid := auth.uid();
     v_from        project_status;
     v_owner       uuid;
+    v_client      uuid;
     v_title       text;
     v_stage_count integer;
     v_open_ticket integer;
@@ -1203,8 +1205,8 @@ BEGIN
     RAISE LOG '[PROJECT_LIFECYCLE_RPC] set_project_status begin ts=% actor=% project=% target=%',
         v_started_at, v_actor, p_project_id, p_to_status;
 
-    SELECT status, owner_user_id, title
-        INTO v_from, v_owner, v_title
+    SELECT status, owner_user_id, client_user_id, title
+        INTO v_from, v_owner, v_client, v_title
     FROM projects.projects
     WHERE id = p_project_id;
 
@@ -1213,14 +1215,10 @@ BEGIN
     END IF;
 
     -- Review authority (the client person, or an active member of the paying client business) drives
-    -- every transition. On a seller-owned service (Decision #427) its provider configures the
-    -- engagement, so it may also publish it and put it on or off hold; completing, cancelling and
-    -- archiving stay the client's, whose money the escrow holds. Elsewhere the two predicates agree.
-    IF v_actor IS NULL OR NOT (
-        projects.can_review_project(p_project_id)
-        OR (p_to_status IN ('active'::project_status, 'on_hold'::project_status)
-            AND projects.can_edit_project_details(p_project_id))
-    ) THEN
+    -- every transition. A seller-owned service's provider configures it (Decision #427) but never sets
+    -- its status: a bought service is a private engagement whose status follows its money — active at
+    -- its first held escrow, cancelled through projects.cancel_service (Decision #456).
+    IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
         RAISE WARNING '[PROJECT_LIFECYCLE_RPC] denied actor=% has no review authority owner=% project=%',
             v_actor, v_owner, p_project_id;
         RAISE EXCEPTION 'Only the project owner or its client business may change the project status.'
@@ -1289,16 +1287,22 @@ BEGIN
                 USING ERRCODE = 'check_violation';
         END IF;
 
-    ELSIF p_to_status = 'cancelled'::project_status THEN
-        -- Allowed from any non-terminal state (already guarded above).
-        NULL;
-
-    ELSIF p_to_status = 'archived'::project_status THEN
-        -- Archiving is the soft DELETE, so it is reachable from any non-terminal state and asks for
-        -- nothing: an owner putting an engagement away must not be blocked by the same conditions
-        -- that gate finishing it. It is deliberately one-way — `archived` joins the terminal set
-        -- guarded above, so an archived project cannot be quietly re-activated behind its history.
-        NULL;
+    ELSIF p_to_status IN ('cancelled'::project_status, 'archived'::project_status) THEN
+        -- Both are reachable from any non-terminal state (already guarded above). Archiving is the soft
+        -- DELETE and asks for nothing: an owner putting an engagement away must not be blocked by the
+        -- conditions that gate finishing it, and `archived` is one-way, so an archived project cannot be
+        -- quietly re-activated behind its history. A bought service holding escrow is the exception
+        -- (Decision #456): the money is the client's and the seller's earnings, so it settles first,
+        -- through projects.cancel_service, which then lands here with nothing held.
+        IF v_client IS NOT NULL AND EXISTS (
+            SELECT 1
+            FROM finance.escrows e
+            JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+            WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
+        ) THEN
+            RAISE EXCEPTION 'This service still holds escrow. Cancel it with Cancel service, which settles the escrow first.'
+                USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'cancel_service';
+        END IF;
 
     ELSE
         RAISE EXCEPTION 'Unsupported target status %.', p_to_status USING ERRCODE = 'check_violation';
@@ -1526,6 +1530,37 @@ AS $$
         AND tm.user_id = auth.uid()
         AND tm.status = 'active'
     ORDER BY ps.sort_order, sa.created_at;
+$$;
+
+-- Every seat on this project the CALLER holds, whatever its status: their own, or one held by a team
+-- they are an active member of. The board's provider filter reads it for the stages its viewer is
+-- onboarded to and applies its one deny-list to `status`, so a person's seat and a team's answer to
+-- the same rule. A definer for get_viewer_hired_teams' reason: `stage_assignments` is readable by the
+-- owner, review authority or on an active public project alone, so a hired freelancer cannot read
+-- their own seat on a private engagement, nor a team member their team's. Every row names the caller
+-- or a team they belong to.
+CREATE OR REPLACE FUNCTION projects.get_viewer_stage_seats(p_project_id uuid)
+RETURNS TABLE (project_stage_id uuid, status text, team_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT sa.project_stage_id, sa.status, NULL::uuid
+    FROM projects.stage_assignments sa
+    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+    WHERE ps.project_id = p_project_id
+        AND sa.assignee_type = 'freelancer'
+        AND sa.freelancer_profile_id = auth.uid()
+    UNION ALL
+    SELECT sa.project_stage_id, sa.status, sa.team_id
+    FROM projects.stage_assignments sa
+    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+    JOIN org.team_members tm ON tm.team_id = sa.team_id
+    WHERE ps.project_id = p_project_id
+        AND sa.assignee_type = 'team'
+        AND tm.user_id = auth.uid()
+        AND tm.status = 'active';
 $$;
 
 -- TRUE while the project is still in its protected phase (before the Projective Unlock). Defaults to

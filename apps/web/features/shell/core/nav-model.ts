@@ -175,8 +175,7 @@ export function globalNav(
 			active: isActive(path, "/files"),
 		},
 		// Catalogue (Products & Services) — freelancers and teams only; the seller-side management
-		// surface, repointed from the `/services` placeholder to the `/catalogue` console (Decision #53);
-		// disclosure is STRICTLY the seller's offerings.
+		// console (Decisions #53, #443); disclosure is STRICTLY the seller's offerings.
 		showServices
 			? {
 				key: "catalogue",

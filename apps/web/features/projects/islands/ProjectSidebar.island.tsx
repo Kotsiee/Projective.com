@@ -16,6 +16,8 @@ import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStagePopover, type StageAnchor } from "../components/CreateStagePopover.tsx";
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
+import { CancelServiceDialog } from "../components/CancelServiceDialog.tsx";
+import { effectiveServiceRole } from "../core/service-cancel-model.ts";
 import {
 	projectNavArchetype,
 	projectViewLinks,
@@ -54,7 +56,11 @@ import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import { resolveBoardAccess } from "../core/board-access.ts";
-import { canArchiveEngagement, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
+import {
+	canArchiveEngagement,
+	canCancelService,
+	QUIET_NAV_ACTIVITY,
+} from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { currentNavView } from "../core/nav-activity-model.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
@@ -166,6 +172,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// The kebab's Archive project confirmation, and the write it guards while in flight.
 	const archiveOpen = useSignal<boolean>(false);
 	const archiving = useSignal<boolean>(false);
+	// The kebab's Cancel service confirmation on a bought service (Decision #456).
+	const cancelOpen = useSignal<boolean>(false);
 	/** Mounted only when no other island has already put a stack up (they share one signal). */
 	const toastMounted = useSignal<boolean>(false);
 	const toast = useToast();
@@ -363,8 +371,9 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	}
 
 	function onMenuAction(action: SidebarMenuAction): void {
-		// Open and Share resolve inside the header; Archive is the one action that writes.
+		// Open and Share resolve inside the header; Archive and Cancel service write, after a confirm.
 		if (action === "archive") archiveOpen.value = true;
+		if (action === "cancel") cancelOpen.value = true;
 	}
 
 	/** Push a toast, mounting a stack first when the page has none (they all render one signal). */
@@ -481,6 +490,11 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					starred={starred.value}
 					onToggleStar={toggleStar}
 					canArchive={canArchiveEngagement(view.kind, view.viewerRole)}
+					canCancel={canCancelService(
+						view.kind,
+						effectiveServiceRole(view.kind, view.viewerRole, seam.value?.serviceSide),
+						view.status,
+					)}
 					onMenuAction={onMenuAction}
 				/>
 
@@ -588,6 +602,13 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				visible={archiveOpen}
 				title={view.title}
 				onAccept={() => void archiveProject()}
+			/>
+
+			<CancelServiceDialog
+				open={cancelOpen}
+				projectId={view.slug}
+				title={view.title}
+				onCancelled={() => globalThis.location.reload()}
 			/>
 
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}

@@ -17,6 +17,8 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Negative-consent window (hours) after a session completes before payout auto-releases.'),
     ('seat_hold_minutes', '15'::jsonb,
         'Minutes a reserved cohort seat is held for its buyer while they pay (projects.reserve_seat, Decision #171).'),
+    ('waitlist_invite_hold_hours', '48'::jsonb,
+        'Hours a cohort waitlist invite holds its seat for the invited buyer; unused by then, the invite expires and the next person in the queue is invited (projects.fn_waitlist_dispatch, Decision #455).'),
     ('session_join_lead_minutes', '10'::jsonb,
         'Minutes before a sitting starts that its join link opens (projects.session_join_link).'),
     ('session_presence_minutes', '15'::jsonb,

@@ -4,6 +4,7 @@
  */
 
 import type { OAuthPrefill } from "../core/oauth.ts";
+import type { ReacceptDocument } from "@features/legal/core/reaccept.ts";
 
 /** The two onboarding shapes: a lean individual account, or a comprehensive enterprise. */
 export type AccountType = "individual" | "enterprise";
@@ -82,8 +83,15 @@ export interface JoinFormProps {
 	/** Initial intent, or `""` when unchosen (Step 1.2 requires an explicit pick). */
 	intent: UserIntent | "";
 	prefill: OAuthPrefill | null;
-	/** `"owner"` on `/join?complete=owner`: a signed-in enterprise owner with no profile yet. */
-	complete?: "owner" | null;
+	/**
+	 * `"owner"` on `/join?complete=owner`: a signed-in enterprise owner with no profile yet; `"terms"` on
+	 * `/join?complete=terms`: a signed-in person accepting a material new version (Decision #446).
+	 */
+	complete?: "owner" | "terms" | null;
+	/** The documents the re-accept step lists; set only with `complete: "terms"`. */
+	reaccept?: readonly ReacceptDocument[];
+	/** The Turnstile site key the final step's bot check renders with; `null` renders none (#447). */
+	captchaSiteKey?: string | null;
 }
 
 /** Shape returned by the auth API stubs. */

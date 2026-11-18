@@ -37,7 +37,7 @@ FROM finance.plans p, (VALUES
     ('businesses_joined',         'limit', NULL,          true,  false, 'none',          10000, 'Uncapped, same reasoning.'),
     ('promoted_placement',        'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, 'Basic analytics remain free.'),
-    ('discovery_boost',           'flag',  NULL,          false, false, 'none',          10000, 'Free users still get the availability/new-talent Discovery Boost — that is EARNED, not sold.'),
+    ('discovery_boost',           'flag',  NULL,          false, false, 'none',          10000, 'RETIRED (Decision #454): never read. The availability/new-talent Discovery Boost is EARNED, not sold, on every plan.'),
     ('instant_payouts_included',  'flag',  NULL,          false, false, 'none',          10000, 'Available pay-per-use on Free.'),
     ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, '25 GiB of stored assets. MEBIBYTES, never bytes: limit_value is integer and 25 GB in bytes (26,843,545,600) overflows int4.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
@@ -59,7 +59,7 @@ FROM finance.plans p, (VALUES
     ('businesses_joined',         'limit', NULL,          true,  false, 'none',          10000, NULL),
     ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
-    ('discovery_boost',           'flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('discovery_boost',           'flag',  NULL,          false, false, 'none',          10000, 'RETIRED (Decision #454): organic ranking is never for sale; nothing reads this flag. Pro''s paid visibility is promoted_placement.'),
     ('instant_payouts_included',  'flag',  NULL,          false, true,  'none',          10000, 'Instant payout fee magnitude remains TBD platform-wide (Decision #55).'),
     ('storage_megabytes',         'limit', 153600,        false, false, 'none',          10000, '150 GiB — 6x the free tier. Storage is a footprint lever, so Pro raises the ceiling rather than removing it.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)

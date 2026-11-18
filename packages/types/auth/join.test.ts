@@ -5,7 +5,9 @@ import {
 	EnterpriseJoinSchema,
 	IndividualJoinSchema,
 	JoinSchema,
+	LEGAL_ACCEPTANCE_REQUIRED,
 	OwnerCompletionSchema,
+	TermsReacceptSchema,
 } from "./join.ts";
 
 /** The date `years` years (and `days` days) before today in `zone`, as an ISO date. */
@@ -19,11 +21,12 @@ const individual = {
 	type: "individual",
 	intent: "client",
 	email: "ada@example.com",
-	password: "correct horse",
+	password: "Correct horse 1",
 	firstName: "Ada",
 	lastName: "Lovelace",
 	username: "ada",
 	timeZone: "UTC",
+	acceptTerms: true,
 };
 
 function dobIssue(dob: string, timeZone = "UTC"): string | undefined {
@@ -60,10 +63,11 @@ const enterprise = {
 	address: { street: "1 Acme Way", city: "London", postcode: "EC1A 1AA", country: "GB" },
 	employeeTier: "1-50",
 	industry: "software",
-	password: "correct horse",
+	password: "Correct horse 1",
 	ownerFirstName: "Grace",
 	ownerLastName: "Hopper",
 	timeZone: "UTC",
+	acceptTerms: true,
 };
 
 function ownerDobIssue(dob: string | undefined): string | undefined {
@@ -83,7 +87,13 @@ Deno.test("join: an enterprise owner must be 18 or over", () => {
 	assertEquals(ownerDobIssue(isoYearsAgo(18)), undefined);
 });
 
-const owner = { type: "owner", firstName: "Grace", lastName: "Hopper", timeZone: "UTC" };
+const owner = {
+	type: "owner",
+	firstName: "Grace",
+	lastName: "Hopper",
+	timeZone: "UTC",
+	acceptTerms: true,
+};
 
 function completionIssue(value: Record<string, unknown>, field: string): string | undefined {
 	const parsed = OwnerCompletionSchema.safeParse(value);
@@ -115,6 +125,42 @@ Deno.test("join: the one endpoint schema routes an owner's completion by its typ
 	const parsed = JoinSchema.parse({ ...owner, dob: isoYearsAgo(40), email: "x@acme.example" });
 	assertEquals(parsed.type, "owner");
 	assert(!("email" in parsed), "the account's email is GoTrue's, never the body's");
+});
+
+Deno.test("join: every path refuses a final step without the consent box ticked (Decision #446)", () => {
+	const cases = [
+		[IndividualJoinSchema, { ...individual, dob: isoYearsAgo(30) }],
+		[IndividualJoinSchema, { ...individual, oauth: true, password: undefined, dob: isoYearsAgo(30) }],
+		[EnterpriseJoinSchema, { ...enterprise, dob: isoYearsAgo(40) }],
+		[OwnerCompletionSchema, { ...owner, dob: isoYearsAgo(40) }],
+		[TermsReacceptSchema, { type: "terms", acceptTerms: true }],
+	] as const;
+	for (const [schema, body] of cases) {
+		assert(schema.safeParse(body).success, `${body.type} with the box ticked`);
+		for (const acceptTerms of [undefined, false, "true", 1]) {
+			const parsed = schema.safeParse({ ...body, acceptTerms });
+			assert(!parsed.success, `${body.type} with acceptTerms ${String(acceptTerms)}`);
+			assertEquals(
+				parsed.error.issues.find((i) => i.path[0] === "acceptTerms")?.message,
+				LEGAL_ACCEPTANCE_REQUIRED,
+			);
+		}
+	}
+});
+
+Deno.test("join: a client cannot name the versions it accepts", () => {
+	const parsed = JoinSchema.parse({
+		...individual,
+		dob: isoYearsAgo(30),
+		legalAcceptance: { terms: "1.0" },
+		legal_acceptance: { terms: "1.0" },
+	});
+	assert(!("legalAcceptance" in parsed) && !("legal_acceptance" in parsed));
+});
+
+Deno.test("join: the one endpoint schema routes a re-acceptance by its type", () => {
+	const parsed = JoinSchema.parse({ type: "terms", acceptTerms: true });
+	assertEquals(parsed, { type: "terms", acceptTerms: true, redirectTo: "/home" });
 });
 
 Deno.test("join: an unknown time zone is dropped, so the age counts in UTC", () => {

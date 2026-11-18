@@ -51,6 +51,7 @@ export const EntitlementKey = z.enum([
 	// Capability flags
 	"promoted_placement",
 	"advanced_analytics",
+	// Retired (Decision #454): never read, never granted; ranking is not for sale.
 	"discovery_boost",
 	"instant_payouts_included",
 	"pooled_wallet_full",

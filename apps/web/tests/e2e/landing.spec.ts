@@ -15,7 +15,8 @@ import { type Browser, type BrowserContext, chromium, type Page } from "npm:play
  *   `{origin}/explore?q={search_term_string}` and no FAQPage; on `/features` a WebPage, an ItemList
  *   of the printed rows and a FAQPage whose every question and answer is the visible FAQ's text. The
  *   head tags must also sit in the document's `<head>`, where crawlers read them. Then
- *   `/sitemap.xml` lists both pages and `robots.txt` lets crawlers in.
+ *   the sitemap's pages file (`/sitemap.xml?section=pages`) lists both pages and `robots.txt` lets
+ *   crawlers in.
  * - **Smoke** at 375 / 768 / 1280 / 1600 px, light and dark, on both pages: no console error or
  *   uncaught throw, no failed or ≥ 400 subresource request (an unresolved `/test_images` path, a
  *   missing chunk or font), every image decodes (lazy ones forced eager), no horizontal scroll, one
@@ -607,7 +608,7 @@ Deno.test({
 		const browser = await launch();
 		const context = await browser.newContext({ baseURL: BASE });
 		try {
-			const sitemap = await context.request.get("/sitemap.xml");
+			const sitemap = await context.request.get("/sitemap.xml?section=pages");
 			assertEquals(sitemap.status(), 200);
 			assert(/xml/.test(sitemap.headers()["content-type"] ?? ""), "the sitemap is XML");
 			const locs = [...(await sitemap.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);

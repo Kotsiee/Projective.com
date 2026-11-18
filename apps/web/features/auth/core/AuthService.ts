@@ -35,7 +35,9 @@ export const AuthService = {
 	},
 
 	/** Begin password recovery (emails a reset code). */
-	forgotPassword(payload: { email: string; redirectTo: string }): Promise<AuthResult> {
+	forgotPassword(
+		payload: { email: string; redirectTo: string; captchaToken?: string },
+	): Promise<AuthResult> {
 		return postAuth("/api/auth/forgot-password", payload);
 	},
 
@@ -45,7 +47,7 @@ export const AuthService = {
 	},
 
 	/** Re-send the email verification code. */
-	resend(payload: { email?: string }): Promise<AuthResult> {
+	resend(payload: { email?: string; captchaToken?: string }): Promise<AuthResult> {
 		return postAuth("/api/auth/resend", payload);
 	},
 

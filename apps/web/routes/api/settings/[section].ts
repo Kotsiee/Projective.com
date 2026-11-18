@@ -2,7 +2,10 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { isSettingsSectionKey } from "@projective/types/settings";
-import { resolveSettingsSection } from "@features/settings/core/settings-ssr.ts";
+import {
+	deliveryOverrideOf,
+	resolveSettingsSection,
+} from "@features/settings/core/settings-ssr.ts";
 
 /**
  * `GET /api/settings/:section` — one Settings section's payload, for the contextual modal (Decision
@@ -32,6 +35,7 @@ export const handler = define.handlers({
 			context: asAuthenticatedContext(ctx.state.userContext),
 			actor,
 			a11y: ctx.state.a11y,
+			deliveryOverride: deliveryOverrideOf(ctx.req),
 		});
 		return Response.json({ ok: true, ...envelope }, { headers: { "cache-control": "no-store" } });
 	},

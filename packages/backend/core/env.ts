@@ -369,6 +369,19 @@ export interface ServerEnv {
 	resendApiKey: string | undefined;
 	/** Who mail is from, `Projective <no-reply@notify.<domain>>`, from `MAIL_FROM`. */
 	mailFrom: string | undefined;
+	/**
+	 * The Cloudflare Turnstile site key (public), from `TURNSTILE_SITE_KEY` (Decision #447). It reaches
+	 * the widget only through a page handler or `GET /api/auth/captcha`. Absent: no widget renders.
+	 * Read through `resolveTurnstileKeys` (`core/turnstile.ts`), which drops the placeholder and, outside
+	 * development, Cloudflare's test keys.
+	 */
+	turnstileSiteKey: string | undefined;
+	/**
+	 * The Turnstile secret, from `TURNSTILE_SECRET_KEY`. Server-only: sent only to Cloudflare's
+	 * siteverify, for `/join`, the one write GoTrue's own check cannot see. GoTrue reads the same value
+	 * as `SUPABASE_AUTH_CAPTCHA_SECRET` through `supabase/config.toml`, never through this reader.
+	 */
+	turnstileSecretKey: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -430,5 +443,7 @@ export function serverEnv(): ServerEnv {
 		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
 		resendApiKey: firstEnv("RESEND_API_KEY"),
 		mailFrom: firstEnv("MAIL_FROM"),
+		turnstileSiteKey: firstEnv("TURNSTILE_SITE_KEY"),
+		turnstileSecretKey: firstEnv("TURNSTILE_SECRET_KEY"),
 	};
 }

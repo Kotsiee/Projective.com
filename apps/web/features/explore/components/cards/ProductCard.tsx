@@ -4,7 +4,6 @@ import { MoneyView } from "@projective/ui/display/money";
 import { productMediaAspect } from "@projective/types/explore";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
-import { PromotedBadge } from "../PromotedBadge.tsx";
 import { StatusChip } from "../StatusChip.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
@@ -102,7 +101,6 @@ export function ProductCard(
 						{signals.map((s) => <StatusChip signal={s} key={s.id} />)}
 					</span>
 				)}
-				{item.sponsored && <PromotedBadge />}
 			</div>
 
 			<div class="ex-prod">

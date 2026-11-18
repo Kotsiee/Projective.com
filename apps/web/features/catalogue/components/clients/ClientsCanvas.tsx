@@ -14,6 +14,7 @@ import {
 	readPipeline,
 } from "../../core/client-store.ts";
 import { ClientPipelineBoard } from "./ClientPipelineBoard.tsx";
+import { WaitlistSection } from "./WaitlistSection.tsx";
 
 /** Props for {@link ClientsCanvas}. */
 export interface ClientsCanvasProps {
@@ -25,6 +26,8 @@ export interface ClientsCanvasProps {
 	hrefFor: (handle: string) => string;
 	/** The way out an empty board offers (back to Listings, back to Edit). */
 	emptyAction: { label: string; onPress: () => void };
+	/** A group-session listing's slug, whose waitlist follows the board (Decision #455). */
+	waitlist?: string;
 }
 
 const MINUTE = 60_000;
@@ -127,6 +130,7 @@ export function ClientsCanvas(props: ClientsCanvasProps): JSX.Element {
 					now={now.value}
 				/>
 			)}
+			{props.waitlist && <WaitlistSection listing={props.waitlist} now={now.value} />}
 		</div>
 	);
 }

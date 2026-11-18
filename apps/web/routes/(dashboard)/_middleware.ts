@@ -2,7 +2,7 @@ import { HttpError } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { ensureSession, renewSession } from "@web/utils/session.ts";
 import { decodeAccessClaims, resolveTokenContext } from "@web/utils/user-context.ts";
-import { resolveOnboardingBounce } from "@features/auth/core/auth-routing.ts";
+import { resolveOnboardingBounce, resolveTermsBounce } from "@features/auth/core/auth-routing.ts";
 import { oauthPrefillFromClaims } from "@features/auth/core/oauth.ts";
 import {
 	isRestrictedPath,
@@ -12,6 +12,7 @@ import {
 } from "@features/shell/core/restricted-surfaces.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { mayUseTeamsRequest } from "@web/utils/operator-mode.ts";
+import { isTermsDueRequest } from "@web/utils/terms-gate.ts";
 
 /**
  * Dashboard auth guard — scoped to the authenticated app (route group `(dashboard)`).
@@ -38,6 +39,8 @@ import { mayUseTeamsRequest } from "@web/utils/operator-mode.ts";
  * surfaces as a 500 against whichever field the writer happened to name. An enterprise owner created
  * before step 1.6 asked for a person is profile-less too, and is sent to `/join?complete=owner`
  * (Decision #336, ruling I2). See {@link resolveOnboardingBounce} for which accounts are sent back.
+ * An onboarded account whose token says `termsDue` is sent to `/join?complete=terms` until it accepts
+ * the material new version (Decision #446, {@link resolveTermsBounce}).
  *
  * **3. May this account see the page?** A restricted (13–17) account is sent home from every
  * surface {@link isRestrictedPath} names. Then `/teams*` is freelancer-only (Decision #228 (A)): a
@@ -89,7 +92,9 @@ export default define.middleware(async (ctx) => {
 	// access-token hook re-runs on the refresh grant, so one renewal is the whole cure, and it is the
 	// same refresh-before-redirect move gate 1 already makes. Skipped when this request already
 	// refreshed (that token is as fresh as it gets) and never reached for an onboarded account.
-	if (ctx.state.userContext?.onboarded === false && !session.refreshed) {
+	let fresh = session.refreshed;
+	if (ctx.state.userContext?.onboarded === false && !fresh) {
+		fresh = true;
 		const renewed = await renewSession(ctx.req);
 		if (renewed?.accessToken) {
 			accessToken = renewed.accessToken;
@@ -110,6 +115,33 @@ export default define.middleware(async (ctx) => {
 		const res = new Response(null, {
 			status: 302,
 			headers: { location: new URL(onboarding, ctx.url).href },
+		});
+		for (const cookie of setCookies) res.headers.append("set-cookie", cookie);
+		return res;
+	}
+
+	// **2b. Has the person accepted the terms in effect?** (Decision #446) A material new version of
+	// the Terms or the Acceptable Use Policy holds them on `/join?complete=terms` until they accept it.
+	// A STALE `termsDue: true` is re-read first, for the reason the onboarding gate gives: accepting
+	// writes the row and leaves the token in the browser saying it is still due.
+	if (ctx.state.userContext?.termsDue === true && !fresh) {
+		const renewed = await renewSession(ctx.req);
+		if (renewed?.accessToken) {
+			accessToken = renewed.accessToken;
+			setCookies.push(...renewed.setCookies);
+			ctx.state.accessToken = accessToken;
+			ctx.state.userContext = resolveTokenContext(accessToken);
+		}
+	}
+	const terms = resolveTermsBounce(
+		ctx.state.userContext,
+		isTermsDueRequest(ctx.req, ctx.state.userContext),
+		ctx.url,
+	);
+	if (terms) {
+		const res = new Response(null, {
+			status: 302,
+			headers: { location: new URL(terms, ctx.url).href },
 		});
 		for (const cookie of setCookies) res.headers.append("set-cookie", cookie);
 		return res;

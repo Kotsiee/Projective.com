@@ -82,27 +82,70 @@ refused field-named, never masked; no CHECK or trigger enforces it. **Not yet en
 | `cover_file_id`   | uuid → `files.items` | The card hero. For a catalogue listing it mirrors showcase slot 1 (rendition, else original), written by `catalogue.apply_listing_media`. |
 | `rating_average` / `rating_count` | numeric / integer | **Derived** from `reviews.entity_reviews` (`reviews.recalculate_entity_rating`). A client write is refused by `trg_service_blueprints_derived` (`security.fn_guard_derived_columns`). |
 
-## `marketplace.promoted_placements` — the paid-placement ledger
+## `marketplace.promoted_placements` — the promoted-placement ledger
 
-One row per paid promotion: `sponsor_user_id`, the promoted `entity_type`
+One row per promotion: `sponsor_user_id`, the promoted `entity_type`
 (`service` · `product` · `freelancer` · `team` · `project`) and `entity_id`, the `surface`
 (`explore_home` · `explore_results` · `view_rail`), the flight window `starts_at` → `ends_at`
 (`ends_at > starts_at`), an optional `cancelled_at` inside the window, and `spend_cents` + `currency`.
+Zod: `PromotedPlacementRowSchema` (`@projective/types/catalogue`).
 
-A card renders the "AD" disclosure only when an ACTIVE placement exists for it
-(`cancelled_at IS NULL AND starts_at <= now() < ends_at`) — `catalogue.listings.promoted` alone buys
-nothing. The seed writes one placement per sponsored corpus listing (a 30-day window starting a week
-ago).
+**Organic ranking is never for sale (Decision #454).** A live placement
+(`cancelled_at IS NULL AND starts_at <= now() < ends_at`) buys a separately labelled "Promoted" slot
+at a fixed position, never a place in the ranked order, and never a mark on the listing's organic
+card. Its only writers are the `marketplace.promote_listing` / `stop_listing_promotion` doors
+([Functions.md](Functions.md)): a seller whose plan holds `promoted_placement` runs **one** live
+placement at a time, a 7-day flight from now on `explore_home` or `explore_results` for a published
+service or product, `spend_cents` 0 (allocated by the plan while plans cannot be bought, PRD-F14). A
+stop sets `cancelled_at`; a row is never deleted. `catalogue.listings.promoted` is kept in step by the
+doors as a console hint, and every reader answers from this ledger's window instead. The seed writes
+one 7-day flight per sponsored corpus listing, at most one per seller (Atelier Nova's service on
+`explore_home`, Maris Delacroix's product on `explore_results`).
 
-`surface` is read by the discovery load (`live-catalog.ts`, oldest `starts_at` first): the Explore
-Home features each active `explore_home` placement as a sponsored `PromoSlot` inside the rail of the
-listing it promotes, one slot per listing, any number of slots (Decision #175). `explore_results` and
-`view_rail` are read but not yet rendered.
+`surface` is read by the discovery load (`live-catalog.ts`, oldest `starts_at` first) and placed by
+`promoted-slots.ts`: one slot per services / products rail, rotating hourly among live flights, at
+the head of the Home rail (`explore_home`), or of a grouped results rail or before an isolated
+services / products results feed (`explore_results`) — drawn only from listings that already match
+the search, on the first page, and never for a 13–17 viewer. `view_rail` is not sold or rendered.
 
 ## `marketplace.quote_requests` — "Request a custom quote"
 
 A buyer (`requester_user_id`) describes a `scope` against a published blueprint (`blueprint_id`) and
 its seller (`host_user_id`), with an optional soft budget (`budget_cents` requires `currency`) and a
-free-text `timeline`. `status`: `sent` · `answered` (requires `answered_at`) · `withdrawn`. Nothing is
-reserved, charged or escrowed. The parties and the blueprint cannot change once written
-(`trg_quote_requests_parties`, `security.fn_guard_immutable_columns`).
+free-text `timeline`. Nothing is reserved, charged or escrowed. The parties and the blueprint cannot
+change once written (`trg_quote_requests_parties`, `security.fn_guard_immutable_columns`).
+
+| Column           | Type          | Notes                                                                                          |
+| :--------------- | :------------ | :--------------------------------------------------------------------------------------------- |
+| `status`         | `text`        | `sent` · `answered` · `accepted` · `declined` · `withdrawn` (Decision #458; PRODUCT_MANAGEMENT §3.5). |
+| `answered_at`    | `timestamptz` | Set by the first offer. Required while `answered` or `accepted`.                              |
+| `closed_at`      | `timestamptz` | Set exactly when `accepted`, `declined` or `withdrawn` (`quote_requests_closed_at_check`).      |
+| `decline_reason` | `text`        | The host's reason, at most 280 characters, only on a `declined` row.                           |
+
+One open (`sent` / `answered`) request per buyer per blueprint: `uq_quote_requests_open` (00004012),
+which `marketplace.request_quote` refuses ahead of as `already_open`. Indexed by blueprint for the
+pipeline's quote arm and by requester for the pair read.
+
+## `marketplace.quote_offers` — the host's priced answer (Decision #458)
+
+One row per offer sent on a request; a revision is a new row, so history stays.
+
+| Column             | Type          | Notes                                                                                    |
+| :----------------- | :------------ | :--------------------------------------------------------------------------------------- |
+| `id`               | `uuid` PK     |                                                                                          |
+| `quote_request_id` | `uuid` FK     | `marketplace.quote_requests(id)`, `ON DELETE CASCADE`.                                   |
+| `author_user_id`   | `uuid` FK     | The request's host when they priced it; `org.users_public`.                              |
+| `scope`            | `text`        | 1–4000 characters; the engagement's brief once paid for.                                 |
+| `deliverables`     | `text[]`      | A checklist inside one escrow, at most 12 items of 160 characters (the stage writer's bounds). |
+| `price_cents`      | `bigint`      | `> 0`, in `currency`.                                                                    |
+| `currency`         | `text`        | The blueprint's own currency, set by the door, never by the caller.                     |
+| `turnaround_days`  | `smallint`    | 1–90, the blueprint's own range; the paid engagement's due date is payment + this.       |
+| `expires_at`       | `timestamptz` | 3–30 days after `created_at` (`quote_offers_expiry_window_check`).                       |
+| `status`           | `text`        | `pending` · `accepted` · `declined` · `withdrawn`. `expired` is derived: `pending` past `expires_at`. |
+| `superseded_by`    | `uuid` FK     | Self-reference to the offer that replaced it; only on a `withdrawn` row; `ON DELETE SET NULL`. |
+| `decided_at`       | `timestamptz` | Set exactly when it leaves `pending`.                                                    |
+
+At most one `pending` and one `accepted` offer per request (`uq_quote_offers_one_pending`,
+`uq_quote_offers_one_accepted`, 00004012). An accepted offer's basket line carries its id in
+`finance.basket_items.metadata ->> 'quoteOfferId'`, and `uq_basket_items_live_quote_offer` (00004005)
+allows one live line per offer across every basket.

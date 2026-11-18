@@ -17,6 +17,8 @@ import {
 import { consoleHref } from "../types/catalogue-types.ts";
 import type { ClientDetail, ClientPipeline } from "../types/catalogue-types.ts";
 import type { CatalogueResult } from "../types/results.ts";
+import type { ListingWaitlist } from "@projective/types/projects";
+import { waitlistPath } from "./waitlist-model.ts";
 
 /**
  * client-store — the Clients surfaces' shared state: which surface holds the board (the console's
@@ -37,6 +39,11 @@ export const pipelineRevision = signal(0);
 /** The board for a scope, with the `clientPipeline` dev axis when one is set. */
 export function readPipeline(scope: ClientReadScope): Promise<CatalogueResult<ClientPipeline>> {
 	return getCatalogue<ClientPipeline>(clientPipelinePath(scope, catalogueSim("clientPipeline")));
+}
+
+/** A group-session listing's waitlist (Decision #455), with the `clientPipeline` dev axis when set. */
+export function readWaitlist(listing: string): Promise<CatalogueResult<ListingWaitlist>> {
+	return getCatalogue<ListingWaitlist>(waitlistPath(listing, catalogueSim("clientPipeline")));
 }
 
 /** One buyer for the drawer. */

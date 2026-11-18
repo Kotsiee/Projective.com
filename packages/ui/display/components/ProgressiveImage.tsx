@@ -1,5 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/progressive-image.css";
+import { useScreenShareActive } from "../../utils/core/screen-share.ts";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { Icon } from "../../icons/mod.ts";
@@ -50,6 +52,12 @@ export interface ProgressiveImageProps {
 	 * the registry's `image` glyph in muted ink. An avatar passes its initials.
 	 */
 	fallback?: ComponentChildren;
+	/**
+	 * Screen sharing mode (DESIGN_SYSTEM.md §B.14 C): `blur` blurs the picture inside its frame;
+	 * `ground` — for dense surfaces (boards, tables, card grids, virtual lists) — shows only the
+	 * BlurHash ground and never requests the image. Absent: the picture is not sensitive.
+	 */
+	obscure?: "blur" | "ground";
 	/** Class for the frame. */
 	class?: string;
 	/** Class for the `<img>` itself, for sheets that select the image element. */
@@ -102,11 +110,18 @@ export function ProgressiveImage(props: ProgressiveImageProps): JSX.Element {
 		height,
 		draggable,
 		fallback,
+		obscure,
 		class: className,
 		imgClass,
 		style,
 	} = props;
 
+	const screenShare = useScreenShareActive();
+	const grounded = obscure === "ground" && screenShare;
+	const host = useRef<HTMLSpanElement>(null);
+	useEffect(() => {
+		if (obscure && host.current) host.current.dataset.obscureLive = "1";
+	}, []);
 	const source = src?.trim() ?? "";
 	const rawHash = placeholder?.blurhash;
 	const hash = isBlurHash(rawHash) ? rawHash : undefined;
@@ -117,18 +132,21 @@ export function ProgressiveImage(props: ProgressiveImageProps): JSX.Element {
 
 	return (
 		<span
+			ref={host}
 			class={cx("ui-pimg", fit === "contain" && "ui-pimg--contain", className)}
 			data-pimg=""
 			data-blurhash={hash}
-			data-state={source ? undefined : "error"}
+			data-state={source || grounded ? undefined : "error"}
+			data-obscure={obscure}
+			data-obscure-masked={obscure && screenShare ? "" : undefined}
 			role={named ? "img" : undefined}
 			aria-label={named ? alt : undefined}
 			style={styleVars({ "--pimg-color": ground }, style)}
 		>
-			{source
+			{source && !grounded
 				? (
 					<img
-						class={cx("ui-pimg__img", imgClass)}
+						class={cx("ui-pimg__img", obscure === "blur" && "ui-obscure--blur", imgClass)}
 						src={source}
 						srcset={srcset || undefined}
 						sizes={srcset ? sizes : undefined}

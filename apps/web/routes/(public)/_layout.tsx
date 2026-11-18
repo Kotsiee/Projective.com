@@ -13,7 +13,7 @@ import { LandingShell } from "@features/landing/components/LandingShell.tsx";
 import LazyChatHost from "@features/landing/islands/LazyChatHost.island.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
-const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
+const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify", "/verify/confirm"]);
 
 /**
  * The off-system marketing page (Decision #280) renders in its own LandingShell for guests AND
@@ -29,9 +29,9 @@ const LANDING_PATHS = new Set(["/features"]);
  * the unified {@link UserShell} L-shell so Home & Explore match the authenticated app exactly
  * (site-wide auth is resolved in the global middleware).
  *
- * The `(auth)` group (join/login/forgot-password/verify) is exempted: those pages own a full-window
- * split-screen shell, so both shells are suppressed for them. The landing page (`/features`) is
- * exempted too: it renders in {@link LandingShell} whatever the auth state.
+ * The `(auth)` group (join/login/forgot-password/verify, verify/confirm) is exempted: those pages
+ * own a full-window split-screen shell, so both shells are suppressed for them. The landing page
+ * (`/features`) is exempted too: it renders in {@link LandingShell} whatever the auth state.
  */
 export default define.page(function PublicLayout(ctx) {
 	if (AUTH_PATHS.has(ctx.url.pathname)) {

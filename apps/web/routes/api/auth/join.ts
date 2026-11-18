@@ -3,7 +3,9 @@ import { fieldErrors, JoinSchema } from "@features/auth/core/schema.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
 import { authSubject, refuseIfThrottled } from "@features/auth/core/throttle.ts";
+import { refuseIfCaptchaFails } from "@features/auth/core/captcha.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
+import { LegalAcceptanceBackendService } from "@server/services/legal/LegalAcceptanceBackendService.ts";
 import type { EmployeeScale } from "@projective/types/org";
 import {
 	JOIN_AGE_LOCK_COOKIE,
@@ -45,9 +47,10 @@ function readAccessToken(req: Request): string | undefined {
 }
 
 /**
- * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR enterprise payload, or a
- * profile-less owner's completion (`type: "owner"`, from `/join?complete=owner`), then delegate to the
- * fat {@link AuthBackendService}, which enforces eligibility (age-gate, password rule) and provisions.
+ * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR enterprise payload, a
+ * profile-less owner's completion (`type: "owner"`, from `/join?complete=owner`) or a re-acceptance of
+ * the Terms (`type: "terms"`, from `/join?complete=terms`, Decision #446), then delegate to the fat
+ * {@link AuthBackendService} (or {@link LegalAcceptanceBackendService}), which enforces eligibility (age-gate, password rule) and provisions.
  * Islands are dumb: they POST here and act on the result.
  */
 export const handler = define.handlers({
@@ -95,6 +98,17 @@ export const handler = define.handlers({
 
 		const redirectTo = safeRedirect(data.redirectTo);
 
+		if (data.type === "terms") {
+			return toAuthResponse(
+				ctx.req,
+				await LegalAcceptanceBackendService.reaccept({
+					accessToken: ctx.state.isAuthenticated ? readAccessToken(ctx.req) : undefined,
+					acceptTerms: data.acceptTerms,
+					redirectTo,
+				}),
+			);
+		}
+
 		if (data.type === "owner") {
 			// The owner is signed in: only a verified session's token is handed on.
 			return withAgeLock(
@@ -108,9 +122,22 @@ export const handler = define.handlers({
 					timeZone: data.timeZone,
 					locale: data.locale,
 					displayCurrency: data.displayCurrency,
+					acceptTerms: data.acceptTerms,
 					redirectTo,
 				}),
 			);
+		}
+
+		// A password sign-up is the one anonymous auth write GoTrue's CAPTCHA cannot see: the account is
+		// created with the service role (Decision #447). An OAuth completion is already signed in.
+		if (data.type === "enterprise" || !data.oauth) {
+			const botRefusal = await refuseIfCaptchaFails(
+				ctx.req,
+				ctx.info.remoteAddr,
+				"join",
+				data.captchaToken,
+			);
+			if (botRefusal) return botRefusal;
 		}
 
 		if (data.type === "individual") {
@@ -132,6 +159,7 @@ export const handler = define.handlers({
 					interests: data.purpose,
 					locale: data.locale,
 					displayCurrency: data.displayCurrency,
+					acceptTerms: data.acceptTerms,
 					redirectTo,
 				}),
 			);
@@ -170,6 +198,7 @@ export const handler = define.handlers({
 					departments: data.departments,
 					purpose: data.purpose,
 				},
+				acceptTerms: data.acceptTerms,
 				redirectTo,
 			}),
 		);

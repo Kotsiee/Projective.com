@@ -3,7 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { DEFAULT_SETTINGS_SECTION, isSettingsSectionKey } from "@projective/types/settings";
-import { resolveSettingsSection } from "../core/settings-ssr.ts";
+import { deliveryOverrideOf, resolveSettingsSection } from "../core/settings-ssr.ts";
 import { sectionMeta, settingsHref } from "../core/settings-registry.ts";
 import SettingsConsole from "../islands/SettingsConsole.island.tsx";
 
@@ -31,6 +31,7 @@ export const handler = define.handlers({
 			context,
 			actor: readActor(ctx),
 			a11y: ctx.state.a11y,
+			deliveryOverride: deliveryOverrideOf(ctx.req),
 		});
 		ctx.state.title = `${sectionMeta(key).label} · Settings · Projective`;
 		return page({ section: key, context, initial });

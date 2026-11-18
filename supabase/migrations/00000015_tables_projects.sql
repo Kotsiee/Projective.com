@@ -1036,18 +1036,44 @@ CREATE TABLE projects.lesson_progress (
 -- #endregion
 
 
+-- #region Cohort waitlists (Decisions #424, #455)
+-- One place per buyer per group-session listing. Written only by the definers in 00001155 §15
+-- (join_waitlist, fn_waitlist_dispatch, fn_confirm_seat): a client never writes its status or its
+-- place in the queue.
 CREATE TABLE projects.waitlists (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	service_blueprint_id uuid NOT NULL,
 	user_id uuid NOT NULL,
 	status projects.waitlist_status NOT NULL DEFAULT 'waiting'::projects.waitlist_status,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
+	-- The place in the listing's queue, first in, first out by (queued_at, id). Set on joining and again
+	-- on rejoining after an expired invite, so a rejoin goes to the back.
+	queued_at timestamp with time zone NOT NULL DEFAULT now(),
+	-- The invite: the cohort it seats into, the seat hold that keeps its seat, and when it went out and
+	-- lapses (waitlist_invite_hold_hours after it went out). Kept once the invite ends, as its record,
+	-- until a rejoin starts a fresh place.
+	cohort_id uuid,
+	hold_id uuid,
+	invited_at timestamp with time zone,
+	invite_expires_at timestamp with time zone,
+	-- When the place reached `converted` (a seat was bought) or `expired` (an invite lapsed unused).
+	resolved_at timestamp with time zone,
 
 	CONSTRAINT waitlists_pkey PRIMARY KEY (id),
 	CONSTRAINT waitlists_service_blueprint_id_fkey FOREIGN KEY (service_blueprint_id) REFERENCES marketplace.service_blueprints(id),
 	CONSTRAINT waitlists_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public(user_id),
-	CONSTRAINT waitlists_unique_user UNIQUE (service_blueprint_id, user_id)
+	CONSTRAINT waitlists_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
+	CONSTRAINT waitlists_hold_id_fkey FOREIGN KEY (hold_id) REFERENCES projects.cohort_seat_holds(id),
+	CONSTRAINT waitlists_unique_user UNIQUE (service_blueprint_id, user_id),
+	CONSTRAINT ck_waitlists_invite CHECK (
+		status <> 'invited'::projects.waitlist_status
+		OR (cohort_id IS NOT NULL AND hold_id IS NOT NULL AND invited_at IS NOT NULL AND invite_expires_at IS NOT NULL)
+	),
+	CONSTRAINT ck_waitlists_resolved CHECK (
+		(status IN ('converted'::projects.waitlist_status, 'expired'::projects.waitlist_status)) = (resolved_at IS NOT NULL)
+	)
 );
+-- #endregion
 
 -- #region Stage invite links (Decision #145)
 -- A shareable link that lets anyone signed in ASK to join one stage. Holding it grants nothing:

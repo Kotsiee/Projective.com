@@ -13,6 +13,7 @@ import type { PopoutState } from "@web/features/messaging/core/popout-state.ts";
 import { EventRescheduleTab } from "@web/features/calendar/components/tabs/EventRescheduleTab.tsx";
 import { rescheduleView } from "@web/features/calendar/core/event-view.ts";
 import { ScheduleService } from "@web/features/calendar/core/ScheduleService.ts";
+import { QuotePanel } from "@web/features/quotes/components/QuotePanel.tsx";
 import type { ClientDetail, ClientEngagement } from "../../types/catalogue-types.ts";
 import {
 	ACTION_LABELS,
@@ -208,6 +209,16 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 					))}
 				</ul>
 			</section>
+
+			<QuotePanel
+				handle={handle}
+				only="host"
+				idBase={`cat-cdrawer-${props.idBase}`}
+				heading="Quotes"
+				sectionClass="cat-cdrawer__sec"
+				headingClass="cat-cdrawer__sec-head"
+				onChanged={() => pipelineRevision.value++}
+			/>
 
 			<section class="cat-cdrawer__sec" aria-labelledby={id("chat")}>
 				<h3 class="cat-cdrawer__sec-head" id={id("chat")}>Conversation</h3>

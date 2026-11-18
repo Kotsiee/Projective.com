@@ -21,10 +21,7 @@ export function bookingActorFrom(request: SessionContext): BookingActor {
 	if (!state.isAuthenticated) return ANONYMOUS_ACTOR;
 	const ctx = state.userContext;
 	return {
-		// The token every live write is made with. `ctx.state` first — a session the dashboard guard
-		// just renewed lives there while the request's cookie is still the stale one — then the cookie,
-		// because `/api/*` sits outside that guard and never has it set (`api-session.ts`).
-		accessToken: state.accessToken ?? readCookies(request.req)[SB_ACCESS_COOKIE] ?? null,
+		accessToken: sessionTokenOf(request),
 		// The chrome context's user id, bare. `null` when the JWT failed to decode, which degrades to
 		// the anonymous refusal rather than to a partially-identified write.
 		userId: ctx?.userId ?? null,
@@ -43,15 +40,31 @@ export function bookingActorFrom(request: SessionContext): BookingActor {
  * three lines each in two places, which is how a lane and a body come to disagree about whose basket
  * a CTA is adding to.
  */
-export function bookingActorFromContext(context: UserContext): BookingActor {
+export function bookingActorFromContext(
+	context: UserContext,
+	accessToken: string | null = null,
+): BookingActor {
 	if (context.role === "guest") return ANONYMOUS_ACTOR;
 	return {
+		accessToken,
 		userId: context.userId ?? null,
 		handle: normaliseHandle(context.handle),
 		owner: ownerScopeOf(context),
 		workspaceId: context.contextType === "personal" ? null : context.contextId ?? null,
 		display: context.displayCurrency ?? null,
 	};
+}
+
+/**
+ * The request's session token — what every live read and write runs as, RLS included. `ctx.state`
+ * first, because a session the dashboard guard just renewed lives there while the request's cookie
+ * is still the stale one; then the cookie, because `/api/*` sits outside that guard and never has it
+ * set (`api-session.ts`). `null` for a guest. The listing routes pass it to the SSR offer, so the
+ * viewer's own facts (a waitlist place, a pipeline draft) are right in the first byte.
+ */
+export function sessionTokenOf(request: SessionContext): string | null {
+	if (!request.state.isAuthenticated) return null;
+	return request.state.accessToken ?? readCookies(request.req)[SB_ACCESS_COOKIE] ?? null;
 }
 
 /**

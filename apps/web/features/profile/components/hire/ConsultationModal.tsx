@@ -4,6 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { Button, SelectButton, Textarea, TimeTumbler } from "@projective/ui/fields";
 import { Dialog, Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { formatMoney } from "@projective/types/finance";
 import type {
 	CallType,
@@ -81,6 +82,7 @@ export default function ConsultationModal(
 	{ open, handle, sellerName, offer, authed, onNotice, from = null }: ConsultationModalProps,
 ): JSX.Element {
 	const callType = useSignal<CallType>(defaultCallType(offer));
+	const mask = useMaskFigures();
 	const grid = useSignal<SlotGrid | null>(null);
 	const windowFrom = useSignal<number | null>(null);
 	const selectedDay = useSignal<string | null>(null);
@@ -328,7 +330,7 @@ export default function ConsultationModal(
 	const paid = callType.value === "paid";
 	const duration = callDuration(offer, callType.value);
 	const rate = paid && offer.feeAmountMinor !== null && offer.feeCurrency
-		? formatMoney(offer.feeAmountMinor, offer.feeCurrency)
+		? mask(formatMoney(offer.feeAmountMinor, offer.feeCurrency))
 		: "Free";
 	const hour12 = (() => {
 		try {
@@ -425,7 +427,7 @@ export default function ConsultationModal(
 									<span class="pf-consult__typemeta">
 										{offer.paidDurationMinutes} min ·{" "}
 										{offer.feeAmountMinor !== null && offer.feeCurrency
-											? formatMoney(offer.feeAmountMinor, offer.feeCurrency)
+											? mask(formatMoney(offer.feeAmountMinor, offer.feeCurrency))
 											: "Priced on request"}
 									</span>
 								</button>

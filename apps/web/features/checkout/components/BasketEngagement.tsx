@@ -4,6 +4,7 @@ import { ProgressiveImage } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Button, Checkbox } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { sittingsLabel, sittingsLaterLabel } from "@projective/types/finance";
 import { Amount } from "./Amount.tsx";
 import { ParkAction, RemoveAction } from "./LineAction.tsx";
 import { groupIconName } from "./checkout-glyphs.tsx";
@@ -253,6 +254,10 @@ interface EngagementLineProps {
  * the kind chip and the whole price block, every one of which the engagement header above has already
  * said. Repeating them per row is what made four tickets read as four purchases.
  *
+ * A set-session block's row is titled by how much of the block is timed ("2 of 6 sittings scheduled")
+ * and lists every chosen time beneath it, so the line is never read as its first sitting alone
+ * (Decision #453).
+ *
  * The title is a **button, not a link**. It opens the board's ticket surface in place, and a reader
  * who lands there from the basket must be able to come back to a basket that still holds their
  * selection and their scroll position — which a navigation would throw away.
@@ -261,6 +266,8 @@ function EngagementLine(props: EngagementLineProps): JSX.Element {
 	const { item, session, signals, busy } = props;
 	const slot = session ? localSlotLabel(item) : null;
 	const platform = session ? conferencingLabel(item) : null;
+	const sittings = session ? item.sittings ?? null : null;
+	const later = sittings ? sittingsLaterLabel(sittings) : null;
 	const reasonId = `bsk-reason-${item.id}`;
 
 	return (
@@ -287,8 +294,23 @@ function EngagementLine(props: EngagementLineProps): JSX.Element {
 					disabled={busy}
 					onClick={() => props.onOpen(item)}
 				>
-					{session ? (slot ?? item.scheduledLabel ?? "No time chosen yet") : item.title}
+					{sittings
+						? sittingsLabel(sittings)
+						: session
+						? (slot ?? item.scheduledLabel ?? "No time chosen yet")
+						: item.title}
 				</button>
+
+				{sittings && (
+					<ol class="bsk-sub__sittings" aria-label={`Scheduled sittings of ${item.title}`}>
+						{sittings.scheduled.map((sitting, i) => (
+							<li key={sitting.at} class="bsk-sub__sitting">
+								<span class="bsk-sub__sittingnum">Session {i + 1}</span>
+								<span class="bsk-sub__sittingwhen">{sitting.label}</span>
+							</li>
+						))}
+					</ol>
+				)}
 
 				{
 					/*
@@ -302,6 +324,7 @@ function EngagementLine(props: EngagementLineProps): JSX.Element {
 						? (
 							<>
 								{item.timezone && <span class="bsk-sub__fact">{item.timezone}</span>}
+								{later && <span class="bsk-sub__fact">{later}</span>}
 								{platform
 									? (
 										<span class="bsk-sub__fact">

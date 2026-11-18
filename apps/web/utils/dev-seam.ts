@@ -75,6 +75,12 @@ export type DevMemberClient = "auto" | "business" | "individual";
  */
 export type DevEngagementOrigin = "auto" | "project" | "service";
 /**
+ * Which side of a bought service the viewer stands on (Decision #456): its `client` (reads it, funds
+ * it, cancels it) or its `provider` (configures and delivers it). `auto` defers to the server. It also
+ * rides the `pj.dev.landing` cookie, because the service's landing is dispatched server-side.
+ */
+export type DevServiceSide = "auto" | "client" | "provider";
+/**
  * The acting inbox view the Context Switcher can simulate for `/messages` (task §4) — selects which
  * advanced-filter SET the sidebar shows and whether auto-responses are offered: a `freelancer` sees
  * provider-side filters (Service · Product · Client · Co-Freelancers · Teams · Team Members) and
@@ -192,6 +198,14 @@ export type DevSessionState =
 	| "held_for_review"
 	| "no_room";
 
+/**
+ * The viewer's simulated place on a group-session listing's waitlist (Decision #455) — the states only
+ * a real queue, a freed seat and the invite job produce: `waiting` (number 3 in the queue, the cohort
+ * full), `invited` (a seat held for 48 hours) and `expired` (the hold lapsed; join again at the back).
+ * `auto` shows the server's answer. Client-side only: the database still decides who holds a seat.
+ */
+export type DevWaitlistPlace = "auto" | "waiting" | "invited" | "expired";
+
 /** How a picked `/calendar` entry opens, whatever the reader's setting says (Decision #388). */
 export type DevCalendarInspect = "auto" | "panel" | "popover";
 
@@ -287,6 +301,14 @@ export type DevTeamSettings =
  * only: the thin `NotificationService` substitutes its answers; nothing is written to the server.
  */
 export type DevNotifications = "auto" | "empty" | "many" | "burst";
+
+/**
+ * Settings → Notifications' channel delivery: `auto` follows the server's liveness map
+ * (`services/comms/channel-liveness.ts`); `live` draws email, push and SMS as delivering, `off` none.
+ * Reaches the server through the `pj.dev.notification-delivery` cookie, which only a development
+ * build reads; nothing is sent either way.
+ */
+export type DevNotificationDelivery = "auto" | "live" | "off";
 
 /**
  * The simulated basket (the header drawer and its switcher): `empty` answers a basket with no lines;
@@ -429,6 +451,21 @@ export type DevBusinessPlanGates = "auto" | "enforced" | "free";
 export type DevOperatorMode = "auto" | "on" | "off";
 
 /**
+ * The re-accept gate (Decision #446): `auto` follows the session token's `termsDue` claim; `due` sends
+ * the session to `/join?complete=terms` as a material new version of the Terms would; `current` keeps
+ * it out. Reaches the server through the `pj.dev.terms` cookie, which only a development build reads.
+ */
+export type DevTermsAcceptance = "auto" | "due" | "current";
+
+/**
+ * The auth forms' bot check (Decision #447): `auto` uses the environment's Turnstile keys; `pass`,
+ * `fail` and `interactive` swap in Cloudflare's matching test pair, for the widget and for `/join`'s
+ * own verification. `fail` yields no token, so GoTrue refuses sign-in, recovery and resend too.
+ * Reaches the server through the `pj.dev.captcha` cookie, which only a development build reads.
+ */
+export type DevCaptcha = "auto" | "pass" | "fail" | "interactive";
+
+/**
  * The operator dispute desk (`/admin/disputes`, Decision #212) — a capability only `ops.admin_users`
  * holds, which no page control grants. `auto` lets the database decide (a non-operator gets the 404);
  * `queue` renders the desk with sample cases (one per live status plus an overdue one), `empty` with
@@ -460,6 +497,14 @@ export type DevClientPipeline = "auto" | "empty" | "action_required" | "busy";
  * no call window to fall outside working hours.
  */
 export type DevAvailabilityConflict = "auto" | "empty_horizon";
+
+/**
+ * The listing workspace's Promote control (Decision #454): follow the server's answer, or draw it as
+ * a seller without `promoted_placement`, one free to promote, one whose flight runs on this listing,
+ * or one whose single live flight runs on another listing. Client-only: a promote or stop still meets
+ * the real door, which refuses what the plan does not allow.
+ */
+export type DevPromotionState = "auto" | "not_entitled" | "available" | "live" | "elsewhere";
 
 /**
  * The inspector's Access tab (Decision #402): follow the server's answer, or draw the tab as the
@@ -499,6 +544,22 @@ export type DevAccountLifecycle =
 	| "handle-locked"
 	| "removal-scheduled"
 	| "deletion-scheduled";
+
+/**
+ * Settings → Account's "Download your data" (Decision #450). `auto` shows the real read; the others
+ * substitute the request's state — none yet, being prepared, ready to download, expired, failed, a
+ * stale sign-in, or an erasure scheduled. The ANSWER is faked — the request button still calls the
+ * real door, which still decides.
+ */
+export type DevDataExport =
+	| "auto"
+	| "none"
+	| "preparing"
+	| "ready"
+	| "expired"
+	| "failed"
+	| "reauth"
+	| "closing";
 
 /**
  * The proposal allowance (Decision #154) — the account popover's meter, the conversion lane's
@@ -564,6 +625,8 @@ export interface DevSeamState {
 	memberClient: DevMemberClient;
 	/** Whether the open engagement is a client project or a bought service (stage authorship, #421). */
 	engagementOrigin: DevEngagementOrigin;
+	/** Which side of a bought service the viewer stands on (Decision #456). Absent reads as `auto`. */
+	serviceSide?: DevServiceSide;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
@@ -582,6 +645,8 @@ export interface DevSeamState {
 	settingsAttention?: DevSettingsAttention;
 	/** The simulated account lifecycle. Optional like `walletAurora`; absent reads as `auto`. */
 	accountLifecycle?: DevAccountLifecycle;
+	/** The simulated data export. Optional like `walletAurora`; absent reads as `auto`. */
+	dataExport?: DevDataExport;
 	/** The simulated proposal allowance. Optional like `walletAurora`; absent reads as `auto`. */
 	proposalAllowance?: DevProposalAllowance;
 	/** The simulated verification stamp. Optional like `walletAurora`; absent reads as `auto`. */
@@ -604,6 +669,8 @@ export interface DevSeamState {
 	teamSettings?: DevTeamSettings;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
+	/** The simulated waitlist place. Optional like `walletAurora`; absent reads as `auto`. */
+	waitlistPlace?: DevWaitlistPlace;
 	/** The simulated discovery call. Optional like `walletAurora`; absent reads as `auto`. */
 	discoveryCall?: DevDiscoveryCall;
 	/** How a picked calendar entry opens. Optional like `walletAurora`; absent reads as `auto`. */
@@ -616,6 +683,8 @@ export interface DevSeamState {
 	disputeState?: DevDisputeState;
 	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
 	notifications?: DevNotifications;
+	/** The simulated channel delivery. Optional like `walletAurora`; absent reads as `auto`. */
+	notificationDelivery?: DevNotificationDelivery;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
@@ -646,6 +715,10 @@ export interface DevSeamState {
 	businessPlanGates?: DevBusinessPlanGates;
 	/** The simulated operator mode. Optional like `walletAurora`; absent reads as `auto`. */
 	operatorMode?: DevOperatorMode;
+	/** The simulated re-accept gate. Optional like `walletAurora`; absent reads as `auto`. */
+	termsAcceptance?: DevTermsAcceptance;
+	/** The simulated bot check. Optional like `walletAurora`; absent reads as `auto`. */
+	captcha?: DevCaptcha;
 	/** The operator-desk preview. Optional like `walletAurora`; absent reads as `auto`. */
 	operatorDesk?: DevOperatorDesk;
 	/** The simulated catalogue analytics. Optional like `walletAurora`; absent reads as `auto`. */
@@ -654,6 +727,8 @@ export interface DevSeamState {
 	clientPipeline?: DevClientPipeline;
 	/** The simulated availability conflict. Optional like `walletAurora`; absent reads as `auto`. */
 	availabilityConflict?: DevAvailabilityConflict;
+	/** The simulated Promote control. Optional like `walletAurora`; absent reads as `auto`. */
+	promotionState?: DevPromotionState;
 	/** The simulated Access tab standing. Optional like `walletAurora`; absent reads as `auto`. */
 	fileAccess?: DevFileAccess;
 }
@@ -723,6 +798,7 @@ const MEMBER_ROLES: readonly DevMemberRole[] = [
 ];
 const MEMBER_CLIENTS: readonly DevMemberClient[] = ["auto", "business", "individual"];
 const ENGAGEMENT_ORIGINS: readonly DevEngagementOrigin[] = ["auto", "project", "service"];
+const SERVICE_SIDES: readonly DevServiceSide[] = ["auto", "client", "provider"];
 const STAGE_ASSIGNMENTS: readonly DevStageAssignment[] = ["assigned", "unassigned"];
 const MESSAGING_ROLES: readonly DevMessagingRole[] = ["freelancer", "client", "business"];
 const MIC_PERMISSIONS: readonly DevMicPermission[] = [
@@ -754,6 +830,16 @@ const ACCOUNT_LIFECYCLES: readonly DevAccountLifecycle[] = [
 	"handle-locked",
 	"removal-scheduled",
 	"deletion-scheduled",
+];
+const DATA_EXPORTS: readonly DevDataExport[] = [
+	"auto",
+	"none",
+	"preparing",
+	"ready",
+	"expired",
+	"failed",
+	"reauth",
+	"closing",
 ];
 const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"auto",
@@ -808,6 +894,7 @@ const SESSION_STATES: readonly DevSessionState[] = [
 	"held_for_review",
 	"no_room",
 ];
+const WAITLIST_PLACES: readonly DevWaitlistPlace[] = ["auto", "waiting", "invited", "expired"];
 const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"auto",
 	"none",
@@ -839,6 +926,7 @@ const TEAM_SETTINGS_SIMS: readonly DevTeamSettings[] = [
 	"archived_draft",
 ];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
+const NOTIFICATION_DELIVERIES: readonly DevNotificationDelivery[] = ["auto", "live", "off"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
 	"auto",
 	"empty",
@@ -888,10 +976,19 @@ const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"
 const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
 const BUSINESS_PLAN_GATES: readonly DevBusinessPlanGates[] = ["auto", "enforced", "free"];
 const OPERATOR_MODES: readonly DevOperatorMode[] = ["auto", "on", "off"];
+const TERMS_ACCEPTANCES: readonly DevTermsAcceptance[] = ["auto", "due", "current"];
+const CAPTCHAS: readonly DevCaptcha[] = ["auto", "pass", "fail", "interactive"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
 const CLIENT_PIPELINES: readonly DevClientPipeline[] = ["auto", "empty", "action_required", "busy"];
 const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = ["auto", "empty_horizon"];
+const PROMOTION_STATES: readonly DevPromotionState[] = [
+	"auto",
+	"not_entitled",
+	"available",
+	"live",
+	"elsewhere",
+];
 const FILE_ACCESSES: readonly DevFileAccess[] = ["auto", "owner", "editor", "viewer", "signed-out"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
@@ -933,6 +1030,7 @@ export function readDevSeam(): DevSeamState | null {
 		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
 		memberClient: coerce(ds.devMemberClient, MEMBER_CLIENTS, "auto"),
 		engagementOrigin: coerce(ds.devEngagementOrigin, ENGAGEMENT_ORIGINS, "auto"),
+		serviceSide: coerce(ds.devServiceSide, SERVICE_SIDES, "auto"),
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
@@ -942,6 +1040,7 @@ export function readDevSeam(): DevSeamState | null {
 		walletAurora: coerce(ds.devWalletAurora, WALLET_AURORAS, "auto"),
 		settingsAttention: coerce(ds.devSettingsAttention, SETTINGS_ATTENTIONS, "auto"),
 		accountLifecycle: coerce(ds.devAccountLifecycle, ACCOUNT_LIFECYCLES, "auto"),
+		dataExport: coerce(ds.devDataExport, DATA_EXPORTS, "auto"),
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
 		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
 		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),
@@ -953,12 +1052,14 @@ export function readDevSeam(): DevSeamState | null {
 		businessKyb: coerce(ds.devBusinessKyb, BUSINESS_KYBS, "auto"),
 		teamSettings: coerce(ds.devTeamSettings, TEAM_SETTINGS_SIMS, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
+		waitlistPlace: coerce(ds.devWaitlistPlace, WAITLIST_PLACES, "auto"),
 		discoveryCall: coerce(ds.devDiscoveryCall, DISCOVERY_CALLS, "auto"),
 		calendarInspect: coerce(ds.devCalendarInspect, CALENDAR_INSPECTS, "auto"),
 		conferencingConnection: coerce(ds.devConferencingConnection, CONFERENCING_CONNECTIONS, "auto"),
 		calendarConnection: coerce(ds.devCalendarConnection, CALENDAR_CONNECTIONS, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
+		notificationDelivery: coerce(ds.devNotificationDelivery, NOTIFICATION_DELIVERIES, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		// Absent = `ok`, its inert value: `reflect()` omits the attribute while nothing is simulated.
@@ -975,10 +1076,13 @@ export function readDevSeam(): DevSeamState | null {
 		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
 		businessPlanGates: coerce(ds.devBusinessPlanGates, BUSINESS_PLAN_GATES, "auto"),
 		operatorMode: coerce(ds.devOperator, OPERATOR_MODES, "auto"),
+		termsAcceptance: coerce(ds.devTerms, TERMS_ACCEPTANCES, "auto"),
+		captcha: coerce(ds.devCaptcha, CAPTCHAS, "auto"),
 		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
 		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),
 		clientPipeline: coerce(ds.devClientPipeline, CLIENT_PIPELINES, "auto"),
 		availabilityConflict: coerce(ds.devAvailabilityConflict, AVAILABILITY_CONFLICTS, "auto"),
+		promotionState: coerce(ds.devPromotionState, PROMOTION_STATES, "auto"),
 		fileAccess: coerce(ds.devFileAccess, FILE_ACCESSES, "auto"),
 	};
 }

@@ -4,42 +4,39 @@ import { useEffect } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { isSaveableEntity } from "@projective/types/explore";
 import { requestShare, shareAnchor } from "@web/features/share/core/share-request.ts";
-import { hydrateSaved, savedIds, setSaved } from "../core/bookmark-state.ts";
+import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
 import { type HrefContext, itemHref } from "../core/routing.ts";
 import type { ExploreItem } from "../types/explore-types.ts";
 
 /**
  * DetailTools — the Search Results drawer's header tools beside Close: Save and Share as muted,
- * icon-only ghost buttons (Decision #182). Save shares the cards' page-wide bookmark store, so
- * starring here stars the card behind the drawer too; a signed-out reader gets the same control as a
- * sign-in link, and a type `org.user_bookmarks` cannot name gets no Save at all.
+ * icon-only ghost buttons (Decision #182). Save is the shared saved system (Decision #180): the same
+ * `savedFlag` the card behind the drawer reads and the same `/api/saved` write, so starring here
+ * stars that card too and the save lists on `/saved`. A signed-out reader gets the same control as a
+ * sign-in link.
  */
 export function DetailTools(
 	{ item, ctx, authed }: { item: ExploreItem; ctx: HrefContext; authed: boolean },
 ): JSX.Element {
 	const href = itemHref(item, ctx);
-	const saveable = isSaveableEntity(item.type);
-	const saved = savedIds.value.has(item.id);
+	const kind = savedTypeOf(item.type);
+	const flag = authed ? savedFlag(kind, item.id) : null;
+	const saved = flag?.value === true;
 	const status = useSignal("");
-
-	useEffect(() => {
-		if (authed && saveable) void hydrateSaved();
-	}, [authed, saveable]);
 
 	useEffect(() => {
 		status.value = "";
 	}, [item.id]);
 
 	async function toggleSave(): Promise<void> {
-		const res = await setSaved(item.id, !saved);
-		status.value = res.message;
+		const out = await toggleFlag(kind, item.id);
+		if (out.message) status.value = out.message;
 	}
 
 	return (
 		<>
-			{saveable && (authed
+			{flag
 				? (
 					<Tooltip content={saved ? "Remove from saved" : "Save"} placement="bottom">
 						<Button
@@ -52,6 +49,7 @@ export function DetailTools(
 							icon={<Icon name="star" size="sm" filled={saved} />}
 							aria-label="Save"
 							aria-pressed={saved}
+							aria-busy={flag.value === null}
 							onClick={toggleSave}
 						/>
 					</Tooltip>
@@ -68,7 +66,7 @@ export function DetailTools(
 							</span>
 						</a>
 					</Tooltip>
-				))}
+				)}
 			<Tooltip content="Share" placement="bottom">
 				<Button
 					iconOnly

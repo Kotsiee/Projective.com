@@ -14,6 +14,7 @@ import {
 import { Icon } from "@projective/ui/icons";
 import { useIsMobile } from "@projective/ui/hooks";
 import { MoneyView } from "@projective/ui/display/money";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { profileHref } from "@features/projects/core/routing.ts";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
 import {
@@ -292,7 +293,8 @@ function MoveDialog(
 	const minor = action === "fund_escrow"
 		? (stage ? heldIn(stage.amount).minor : 0)
 		: (toMinorUnits(amount.value, currency) ?? 0);
-	const figure = formatMoney(minor, currency);
+	const mask = useMaskFigures();
+	const figure = mask(formatMoney(minor, currency));
 
 	const source = { scope: overview.ref.scope, id: overview.ref.id };
 	const walletName = overview.ref.scope === "personal" ? "Your wallet" : overview.ref.name;
@@ -755,6 +757,7 @@ function ConfigDialog(
 ): JSX.Element {
 	const { overview, action } = props;
 	const closing = useClosing(props.id);
+	const mask = useMaskFigures();
 	const phase = useSignal<"form" | "saving" | "done">("form");
 	const schedule = action === "set_payout" ? props.schedule : null;
 	const threshold = schedule?.threshold ? heldIn(schedule.threshold) : null;
@@ -938,7 +941,15 @@ function ConfigDialog(
 								{(smoother.feeBp / 100).toLocaleString("en-GB")}% fee
 								{(toMinorUnits(amount.value, currency) ?? 0) > 0 &&
 									` — ${
-										formatMoney(incomeSmootherFeeMinor(toMinorUnits(amount.value, currency) ?? 0, smoother.feeBp), currency)
+										mask(
+											formatMoney(
+												incomeSmootherFeeMinor(
+													toMinorUnits(amount.value, currency) ?? 0,
+													smoother.feeBp,
+												),
+												currency,
+											),
+										)
 									} a month at this target`}.
 							</p>
 						)}
@@ -1135,6 +1146,7 @@ function LineDialog(
 	{ id, line, position }: { id: number; line: LedgerLine; position: Position },
 ): JSX.Element {
 	const closing = useClosing(id);
+	const mask = useMaskFigures();
 	const credit = line.direction === "credit";
 	const when = new Date(line.at);
 	const origin = line.amount.origin;
@@ -1205,7 +1217,7 @@ function LineDialog(
 						<div class="wlt-dlg__fact">
 							<dt>Original</dt>
 							<dd>
-								{origin.display} {origin.currency} · 1 {origin.currency} ={" "}
+								{mask(origin.display)} {origin.currency} · 1 {origin.currency} ={" "}
 								{origin.fxRate.toLocaleString("en-GB", { maximumFractionDigits: 4 })} {line.amount.currency}
 							</dd>
 						</div>

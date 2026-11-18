@@ -116,7 +116,7 @@ This matters for the eleven remaining `USING`-only `FOR ALL` policies in this sc
 (`project_stages`, `stage_assignments`, `stage_staffing_roles`, `stage_open_seats`,
 `project_participants`, `cohorts`, `cohort_memberships`, `session_events`, `maintenance_contracts`,
 `stage_budget_rules` — `project_application_targets` and `stage_revision_requests` have only a `SELECT`
-policy; the SQL comment's "twelve" counts the first, and the second had a `FOR ALL` until 2026-10-10) plus the `USING`-only `UPDATE` _Manage waitlists_: **do not treat them
+policy; the SQL comment's "twelve" counts the first, and the second had a `FOR ALL` until 2026-10-10; the `USING`-only `UPDATE` _Manage waitlists_ was removed by Decision #455): **do not treat them
 as open on the strength of a missing `WITH CHECK`.** Each may still deserve a NARROWER post-image
 predicate than its `USING` — that is a per-table judgement about which columns a caller may move a
 row across — but the default is a mirror, not an absence.
@@ -357,7 +357,7 @@ none, and a direct `INSERT` is refused.
 | `projects.cohort_memberships`             | Self, or the cohort's project owner.                     | Definer RPCs only (no client write grant, `00002520`). |
 | `projects.session_events`                 | Member of **this row's** cohort (`is_cohort_member(session_events.cohort_id)`), or project owner. | Definer RPCs only (no client write grant, `00002520`): the payout sweep releases on a sitting's `status` and `end_time`, so an owner able to write one could be paid for a session that never happened (2026-10-29). A provider adds a group sitting through `projects.schedule_sitting` and renames one through `projects.retitle_sitting` ([Functions.md](Functions.md) § Sessions — group sittings); neither changes a status or a room. |
 | `projects.session_attendance`             | Self, or project owner.                                  | Definer only (`scheduling.record_presence`); no client `INSERT`. |
-| `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
+| `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Definer RPCs only for `INSERT` / `UPDATE` (no policy and no client grant, `00002520`; Decision #455): the queue is first in, first out by `queued_at`, so a writable place could jump it or invite itself. `projects.join_waitlist` joins and rejoins, the invite job invites and expires, `fn_confirm_seat` converts ([Functions.md](Functions.md) § Sessions — cohort waitlist). A buyer may `DELETE` their own place while it holds no seat (`waiting` / `expired`). The seller's full queue is `projects.get_listing_waitlist`, which also admits a team's `publish_listings` holders. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
 | `projects.project_attachments`            | `has_project_access` or `can_review_project`.            | `can_review_project` `INSERT` / `DELETE`; no `UPDATE`. |
 
@@ -368,8 +368,8 @@ own or owned applications_; _View application targets_; _View revisions_;
 _View workload reports_ / _File workload report_; _Project owner can view activity_ / _Users can
 insert their own activity_; _View project status history_; _View cohorts_; _View
 cohort memberships_; _View session events_;
-_View own attendance_; _View waitlists_ / _Join waitlist_ / _Manage waitlists_
-(`UPDATE`) / _Leave waitlist_ (`DELETE`); _Users can view/manage own contracts_; and the three
+_View own attendance_; _View waitlists_ / _Leave waitlist_ (`DELETE`, a place holding no seat);
+_Users can view/manage own contracts_; and the three
 attachment policies below. The public-active read arms are `status = 'active' AND visibility =
 'public'`; _View seat skills_ is wider — project access **or any `active` project** whatever its
 visibility. _View assignments_ gained its review-authority arm so the setup write path's onboarding

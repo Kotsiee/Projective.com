@@ -94,6 +94,20 @@ export type SkillRef = z.infer<typeof SkillRefSchema>;
 // #endregion
 
 // #region Owner attribution
+/**
+ * The person a Message reaches when that is not the entity itself — a team's or a business's owner,
+ * because a direct message is person-to-person (PRODUCT_SPEC §Direct & Group Conversations). Read from
+ * `org.profiles_index.contact_*` on discovery and from `org.get_profile_view`'s `contact` on a profile
+ * (Decisions #244 (C), #422 (b)).
+ */
+export const MessageTargetSchema = z.object({
+	/** The person's canonical `@handle` (the `dm-{handle}` thread). */
+	handle: z.string().max(41),
+	/** Their display name, for the conversation's title and a menu row's hint. */
+	name: z.string().max(120),
+});
+export type MessageTarget = z.infer<typeof MessageTargetSchema>;
+
 /** The owner attribution shown on every card — the individual, team, or business behind the item. */
 export const ExploreOwnerSchema = z.object({
 	handle: z.string(),
@@ -110,6 +124,12 @@ export const ExploreOwnerSchema = z.object({
 	 * `stampForVerifiedOwner` (Decision #155(g)).
 	 */
 	verificationStamp: VerificationStampSchema.optional(),
+	/**
+	 * Who a Message to this owner reaches when it is not the owner itself — a team's or a business's
+	 * owner. Absent for a person, who is their own recipient, and for an entity whose read names none,
+	 * which then offers no Message: `dm-{slug}` reaches nobody (Decision #422 (b)).
+	 */
+	messageTo: MessageTargetSchema.optional(),
 });
 export type ExploreOwner = z.infer<typeof ExploreOwnerSchema>;
 // #endregion
@@ -131,8 +151,6 @@ const itemBase = {
 	 * image's bytes — never a plausible default (`files/metadata.ts`).
 	 */
 	mediaPlaceholder: ImagePlaceholderSchema.optional(),
-	/** Promoted/sponsored placement flag. */
-	sponsored: z.boolean().optional(),
 	/** ISO date — feeds the "Newest" sort. */
 	createdAt: z.string(),
 };
@@ -405,8 +423,10 @@ export const HelpArticleSchema = z.object({
 export type HelpArticle = z.infer<typeof HelpArticleSchema>;
 
 /**
- * A paid placement (`marketplace.promoted_placements`, surface `explore_home`), featured as a wide
- * cell inside the rail of the item it promotes. `itemId` de-duplicates it against that rail.
+ * A promoted placement (`marketplace.promoted_placements`, Decision #454): a labelled "Promoted" slot
+ * at a fixed position — the head of the Home or results rail named by `rail`, or before an isolated
+ * results feed — outside the ranked order. The listing `itemId` names keeps its own organic position,
+ * unlabelled; the slot is the only place the disclosure appears.
  */
 export const SponsoredPromoSchema = z.object({
 	variant: z.literal("sponsored"),

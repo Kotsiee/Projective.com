@@ -3,10 +3,14 @@ import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
+import { sessionTokenOf } from "@features/view/core/booking-actor.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { guestIntentRedirect, readViewIntent } from "@features/view/core/view-intent.ts";
+import { viewPageMeta } from "@features/view/core/view-canonical.ts";
+import { applyPageMeta } from "@features/marketing/core/seo.ts";
+import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 
 /**
  * `/view/[item_id]?type=[entity_type]` — the public standalone Entity View page (the Explore click
@@ -24,9 +28,9 @@ export const handler = define.handlers({
 			ctx.params.entity,
 			semanticRankingFor(ctx.req),
 		);
-		ctx.state.title = view ? `${view.item.title} · Projective` : "Not found · Projective";
+		ctx.state.title = "Not found · Projective";
 		if (view) {
-			ctx.state.description = view.item.summary;
+			applyPageMeta(ctx.state, viewPageMeta(view.item, siteOrigin(ctx.url)));
 			recordViewInBackground(ctx, view.item.id);
 		}
 		// The booking offer is resolved HERE, server-side: the CTA is the reason this route exists, and it
@@ -34,7 +38,11 @@ export const handler = define.handlers({
 		// reader's cursor.
 		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		const commerce = view
-			? await resolveEntityCommerce(view, { context: ctx.state.userContext, handle: null })
+			? await resolveEntityCommerce(view, {
+				context: ctx.state.userContext,
+				handle: null,
+				accessToken: sessionTokenOf(ctx),
+			})
 			: { offer: null };
 		return page({
 			view,

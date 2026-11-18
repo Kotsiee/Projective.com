@@ -595,25 +595,13 @@ SELECT TO public USING (
         )
     );
 
-CREATE POLICY "Join waitlist" ON projects.waitlists FOR
-INSERT
-    TO public
-WITH
-    CHECK (user_id = auth.uid ());
-
-CREATE POLICY "Manage waitlists" ON projects.waitlists FOR
-UPDATE TO public USING (
+-- No client INSERT or UPDATE (Decision #455): the queue is first in, first out by `queued_at`, so a
+-- place is written only by projects.join_waitlist, the invite job and fn_confirm_seat. A buyer may
+-- still leave a place that holds no seat.
+CREATE POLICY "Leave waitlist" ON projects.waitlists FOR DELETE TO public USING (
     user_id = auth.uid ()
-    OR EXISTS (
-        SELECT 1
-        FROM marketplace.service_blueprints sb
-        WHERE
-            sb.id = service_blueprint_id
-            AND sb.freelancer_profile_id = auth.uid ()
-    )
+    AND status IN ('waiting'::projects.waitlist_status, 'expired'::projects.waitlist_status)
 );
-
-CREATE POLICY "Leave waitlist" ON projects.waitlists FOR DELETE TO public USING (user_id = auth.uid ());
 
 -- --- from 0208_files.sql ---
 

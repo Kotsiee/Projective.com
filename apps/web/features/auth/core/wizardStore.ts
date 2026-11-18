@@ -1,6 +1,7 @@
 import { computed, type ReadonlySignal, type Signal, signal } from "@preact/signals";
 import type { AccountType, UserIntent } from "../types/mod.ts";
 import type { OAuthPrefill } from "./oauth.ts";
+import type { ReacceptDocument } from "@features/legal/core/reaccept.ts";
 
 /**
  * The onboarding wizard's shared state. A single store instance is created per JoinExperience mount
@@ -26,8 +27,10 @@ export interface JoinInit {
 	accountType: AccountType;
 	intent: UserIntent | "";
 	prefill: OAuthPrefill | null;
-	/** `"owner"` on `/join?complete=owner`: a signed-in enterprise owner with no profile yet. */
-	complete?: "owner" | null;
+	/** `"owner"` on `/join?complete=owner`; `"terms"` on `/join?complete=terms` (Decision #446). */
+	complete?: "owner" | "terms" | null;
+	/** The documents the re-accept step lists. */
+	reaccept?: readonly ReacceptDocument[];
 }
 
 export interface JoinStore {
@@ -41,6 +44,13 @@ export interface JoinStore {
 	 * date of birth. The corporate email and password are already theirs.
 	 */
 	readonly ownerCompletion: boolean;
+	/**
+	 * True on `/join?complete=terms`: a signed-in person held by the dashboard guard until they accept a
+	 * material new version of the Terms (Decision #446). The wizard is one step: the consent box.
+	 */
+	readonly termsCompletion: boolean;
+	/** The documents the re-accept step lists, at today's versions. */
+	readonly reaccept: readonly ReacceptDocument[];
 
 	// selections
 	accountType: Signal<AccountType>;
@@ -85,6 +95,8 @@ export interface JoinStore {
 	confirm: Signal<string>;
 	corpEmail: Signal<string>;
 	phone: Signal<string>;
+	/** The consent box on the final step (Decision #446); unticked until the person ticks it. */
+	acceptTerms: Signal<boolean>;
 
 	// navigation & submission
 	stepIndex: Signal<number>;
@@ -119,9 +131,12 @@ function buildSteps(
 	intent: Signal<UserIntent | "">,
 	isOAuth: boolean,
 	ownerCompletion: boolean,
+	termsCompletion: boolean,
 ): StepMeta[] {
 	// A profile-less owner completes step 1.6's owner half only; everything else exists already.
 	if (ownerCompletion) return [{ id: "credentials", tag: "1.6", label: "Owner", optional: false }];
+	// A person re-accepting the terms has an account and a profile; the consent box is all there is.
+	if (termsCompletion) return [{ id: "credentials", tag: "terms", label: "Terms", optional: false }];
 	const enterprise = accountType.value === "enterprise";
 	const steps: StepMeta[] = [];
 	// OAuth arrivals already have a verified provider identity AND are individuals by definition, so
@@ -165,6 +180,7 @@ export function createJoinStore(init: JoinInit): JoinStore {
 	const isOAuth = !!prefill;
 	// An OAuth pre-fill outranks the owner marker: only a federated identity carries one.
 	const ownerCompletion = !isOAuth && init.complete === "owner";
+	const termsCompletion = !isOAuth && init.complete === "terms";
 	// OAuth sign-up is individual-only (Google onboarding never provisions an enterprise), so pin
 	// the account type to "individual" regardless of any stray `?type=` param on the return URL. An
 	// owner completing step 1.6 is an enterprise's, whatever `?type=` says.
@@ -177,7 +193,9 @@ export function createJoinStore(init: JoinInit): JoinStore {
 	const lastName = signal(prefill?.lastName ?? "");
 	const email = signal(prefill?.email ?? "");
 
-	const steps = computed(() => buildSteps(accountType, intent, isOAuth, ownerCompletion));
+	const steps = computed(() =>
+		buildSteps(accountType, intent, isOAuth, ownerCompletion, termsCompletion)
+	);
 	const stepIndex = signal(0);
 	const current = computed(() => steps.value[clamp(stepIndex.value, 0, steps.value.length - 1)]);
 	const stepCount = computed(() => steps.value.length);
@@ -216,10 +234,12 @@ export function createJoinStore(init: JoinInit): JoinStore {
 		prefill,
 		isOAuth,
 		ownerCompletion,
+		termsCompletion,
+		reaccept: init.reaccept ?? [],
 		accountType,
 		// OAuth arrivals are always individuals mid-flow, and a completing owner is an enterprise's, so
 		// their choice is already made.
-		accountChosen: signal<boolean>(isOAuth || ownerCompletion),
+		accountChosen: signal<boolean>(isOAuth || ownerCompletion || termsCompletion),
 		intent,
 		purpose: signal<string[]>([]),
 		skills: signal<string[]>([]),
@@ -245,6 +265,7 @@ export function createJoinStore(init: JoinInit): JoinStore {
 		confirm: signal(""),
 		corpEmail,
 		phone: signal(""),
+		acceptTerms: signal(false),
 		stepIndex,
 		direction: signal<1 | -1>(1),
 		errors: signal<Record<string, string | null>>({}),

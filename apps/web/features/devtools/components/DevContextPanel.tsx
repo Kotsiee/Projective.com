@@ -8,6 +8,7 @@ import {
 	DEV_AGE_RESTRICTIONS,
 	DEV_AUTO_FUND_MODES,
 	DEV_AVAILABILITY_CONFLICTS,
+	DEV_PROMOTION_STATES,
 	DEV_BASKET_SCENARIOS,
 	DEV_BUSINESS_KYBS,
 	DEV_BUSINESS_PAGES,
@@ -16,6 +17,7 @@ import {
 	DEV_CHECKOUT_GATES,
 	DEV_CHECKOUT_PAYMENTS,
 	DEV_CLIENT_PIPELINES,
+	DEV_DATA_EXPORTS,
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISPUTE_STATES,
@@ -32,9 +34,12 @@ import {
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_NOTIFICATION_DELIVERIES,
 	DEV_NOTIFICATIONS,
 	DEV_OPERATOR_DESKS,
 	DEV_OPERATOR_MODES,
+	DEV_TERMS_ACCEPTANCES,
+	DEV_CAPTCHAS,
 	DEV_PAYOUT_READINESS,
 	DEV_PROFILE_SETUPS,
 	DEV_PROJECT_ACCESSES,
@@ -46,6 +51,7 @@ import {
 	DEV_REVISION_ALLOTMENTS,
 	DEV_ROLES,
 	DEV_SAVED,
+	DEV_SERVICE_SIDES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
 	DEV_CALENDAR_CONNECTIONS,
@@ -53,6 +59,7 @@ import {
 	DEV_CALENDAR_INSPECTS,
 	DEV_DISCOVERY_CALLS,
 	DEV_SESSION_STATES,
+	DEV_WAITLIST_PLACES,
 	DEV_SETTINGS_ATTENTIONS,
 	DEV_SPEND_REQUESTS,
 	DEV_STAGE_ASSIGNMENTS,
@@ -385,7 +392,8 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 				{
 					/* `/projects/[slug]` dispatches SERVER-side on access × status (Decision #144): an owner's
 				    or a participant's Overview, a draft owner sent to Details, a prospect sent to the public
-				    listing. The pair rides the `pj.dev.landing` cookie, so a change reloads the page to apply. */
+				    listing; on a bought service, its client's view or its provider's. All three ride the
+				    `pj.dev.landing` cookie, so a change reloads the page to apply. */
 				}
 				<Field label="Viewer access" hint="reloads">
 					<Segment
@@ -408,6 +416,19 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(projectStatus) => {
 							patchDevContext({ projectStatus });
+							reloadProjectPage();
+						}}
+					/>
+				</Field>
+
+				<Field label="Service side" hint="reloads">
+					<Segment
+						name="Service side"
+						options={DEV_SERVICE_SIDES}
+						value={o.serviceSide}
+						disabled={!o.enabled}
+						onChange={(serviceSide) => {
+							patchDevContext({ serviceSide });
 							reloadProjectPage();
 						}}
 					/>
@@ -549,6 +570,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.availabilityConflict}
 						disabled={!o.enabled}
 						onChange={(availabilityConflict) => patchDevContext({ availabilityConflict })}
+					/>
+				</Field>
+
+				<Field label="Promotion" hint="Promote control">
+					<Segment
+						name="Promotion state"
+						options={DEV_PROMOTION_STATES}
+						value={o.promotionState}
+						disabled={!o.enabled}
+						onChange={(promotionState) => patchDevContext({ promotionState })}
 					/>
 				</Field>
 
@@ -771,6 +802,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					/>
 				</Field>
 
+				<Field label="Waitlist" hint="waiting · held seat · lapsed">
+					<Segment
+						name="Waitlist place"
+						options={DEV_WAITLIST_PLACES}
+						value={o.waitlistPlace}
+						disabled={!o.enabled}
+						onChange={(waitlistPlace) => patchDevContext({ waitlistPlace })}
+					/>
+				</Field>
+
 				{
 					/* A discovery call on `/calendar` (Decision #343, ruling C3): what its modal offers each
 				    side at each stage. The moves are still judged by the database. */
@@ -842,6 +883,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.notifications}
 						disabled={!o.enabled}
 						onChange={(notifications) => patchDevContext({ notifications })}
+					/>
+				</Field>
+
+				<Field label="Notification delivery" hint="Settings → Notifications · reload">
+					<Segment
+						name="Notification delivery"
+						options={DEV_NOTIFICATION_DELIVERIES}
+						value={o.notificationDelivery}
+						disabled={!o.enabled}
+						onChange={(notificationDelivery) => patchDevContext({ notificationDelivery })}
 					/>
 				</Field>
 
@@ -1034,6 +1085,26 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					/>
 				</Field>
 
+				<Field label="Terms acceptance" hint="/join?complete=terms">
+					<Segment
+						name="Terms acceptance"
+						options={DEV_TERMS_ACCEPTANCES}
+						value={o.termsAcceptance}
+						disabled={!o.enabled}
+						onChange={(termsAcceptance) => patchDevContext({ termsAcceptance })}
+					/>
+				</Field>
+
+				<Field label="Bot check" hint="Turnstile · reload">
+					<Segment
+						name="Bot check"
+						options={DEV_CAPTCHAS}
+						value={o.captcha}
+						disabled={!o.enabled}
+						onChange={(captcha) => patchDevContext({ captcha })}
+					/>
+				</Field>
+
 				{
 					/* The operator dispute desk (`/admin/disputes`, Decision #212): only an `ops.admin_users` row
 				    opens it, and no page control writes one. Server-side via `pj.dev.operator`; reload to apply.
@@ -1086,6 +1157,15 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.accountLifecycle}
 						disabled={!o.enabled}
 						onChange={(accountLifecycle) => patchDevContext({ accountLifecycle })}
+					/>
+				</Field>
+				<Field label="Data export" hint="Settings → Account">
+					<Segment
+						name="Data export"
+						options={DEV_DATA_EXPORTS}
+						value={o.dataExport}
+						disabled={!o.enabled}
+						onChange={(dataExport) => patchDevContext({ dataExport })}
 					/>
 				</Field>
 

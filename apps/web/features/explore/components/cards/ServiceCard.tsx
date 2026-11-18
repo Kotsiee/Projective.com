@@ -4,7 +4,6 @@ import { MoneyView } from "@projective/ui/display/money";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
-import { PromotedBadge } from "../PromotedBadge.tsx";
 import { StatusChip } from "../StatusChip.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
@@ -18,8 +17,8 @@ import type { ExploreItem, ServiceItem } from "../../types/explore-types.ts";
 /**
  * ServiceCard — a bookable service in the discovery grid.
  *
- * Anatomy: a 16:10 media frame carrying the earned trust chips (top-left) and the paid-placement
- * disclosure (top-right); a creator row naming the seller directly under the image; the title, clamped
+ * Anatomy: a 16:10 media frame carrying the earned trust chips (top-left) — never a paid mark: a
+ * promotion is its own labelled slot, not this card (Decision #454); a creator row naming the seller directly under the image; the title, clamped
  * to two lines; the delivery-model chip with the turnaround right-aligned beside it; then a foot that
  * splits the star rating from the price.
  *
@@ -73,7 +72,6 @@ export function ServiceCard(
 						{signals.map((s) => <StatusChip signal={s} key={s.id} />)}
 					</span>
 				)}
-				{item.sponsored && <PromotedBadge />}
 			</div>
 
 			<div class="ex-card__body">

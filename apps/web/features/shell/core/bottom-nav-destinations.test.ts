@@ -31,7 +31,6 @@ Deno.test("bottom nav: each primary lights on its own surface only", () => {
 	assertEquals(lit("/@kenji"), ["explore"]);
 	assertEquals(lit("/@juno"), []);
 	assertEquals(lit("/projects/prj-abc/overview"), ["workspace"]);
-	assertEquals(lit("/services"), ["workspace"]);
 	assertEquals(lit("/calendar"), ["calendar"]);
 	assertEquals(lit("/wallet"), []);
 });

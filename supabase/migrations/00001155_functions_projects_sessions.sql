@@ -5,7 +5,8 @@
 -- stage carries one or more COHORTS (a 1-1 session is a cohort of one seat). Everything money- or
 -- evidence-shaped about a sitting goes through a definer here:
 --
---   1. Occupancy           fn_cohort_seats_taken — paid seats + unexpired holds
+--   1. Occupancy           fn_cohort_seats_taken — paid seats + unexpired holds; fn_cohort_seats_owed —
+--                          the free seats the listing's waitlist has first call on (Decision #455)
 --   2. The listing's offer get_cohort_offer      — the public read the entity view and Book flow use
 --   3. Reserve             reserve_seat          — a TTL hold, under a row lock on the cohort
 --   4. Confirm             fn_confirm_seat       — hold → membership + escrow, when the order settles
@@ -25,6 +26,9 @@
 --  12. Auto-release        finance.auto_release_session_escrow (scheduled in 00005060) — every session
 --                          escrow, per sitting on a 1-1 (Decision #211)
 --  13. Workspace read      get_session_workspace — one definer read behind the session sidebars
+--  15. Waitlist            join_waitlist · fn_waitlist_dispatch (scheduled in 00005060) · the buyer's
+--                          and the seller's reads — invited in order, a held seat, converted or expired
+--                          (Decision #455)
 --
 -- The escrow lifetime is PRODUCT_SPEC §Escrow Lifetimes' Sessions row: locked at booking, released
 -- `session_payout_hours` after the session ends unless a no-show claim is open.
@@ -65,6 +69,42 @@ AS $$
           )
     );
 $$;
+
+-- The buyer's answers to a session listing's own intake as its order line keeps them (Decision #453):
+-- an object of bounded size, reduced to the ids the listing's intake declares — the rule
+-- marketplace.instantiate_service_blueprint holds a pipeline request's answers to. Required-field
+-- enforcement is the Zod SSOT's (`intakeRefusal`), run by the fat service before the basket line is
+-- written. A line that carries none reads `{}`. Refusals: 22023 not an object · 22023 over 32 KB.
+CREATE OR REPLACE FUNCTION projects.fn_session_intake_answers(p_blueprint_id uuid, p_answers jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_answers IS NULL OR pg_catalog.jsonb_typeof(p_answers) = 'null' THEN
+        RETURN '{}'::jsonb;
+    END IF;
+    IF pg_catalog.jsonb_typeof(p_answers) <> 'object' THEN
+        RAISE EXCEPTION 'The answers to this listing''s questions are malformed' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.pg_column_size(p_answers) > 32768 THEN
+        RAISE EXCEPTION 'The answers to this listing''s questions are too long' USING ERRCODE = '22023';
+    END IF;
+    RETURN COALESCE((
+        SELECT pg_catalog.jsonb_object_agg(a.key, a.value)
+          FROM pg_catalog.jsonb_each(p_answers) AS a
+         WHERE a.key IN (
+             SELECT f ->> 'id'
+               FROM marketplace.service_blueprints sb
+              CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
+                  CASE WHEN pg_catalog.jsonb_typeof(sb.intake_fields) = 'array'
+                       THEN sb.intake_fields ELSE '[]'::jsonb END) AS f
+              WHERE sb.id = p_blueprint_id)
+    ), '{}'::jsonb);
+END;
+$$;
 -- #endregion
 
 -- #region 1. Occupancy
@@ -93,6 +133,46 @@ AS $$
         ), 0)
     )::integer;
 $$;
+
+-- The queue fence (Decision #455): of the seats nobody holds, those the listing's waitlist has first
+-- call on — one for each person waiting ahead of `p_user` (everyone waiting, for a buyer who is not in
+-- the queue, or when `p_user` is NULL). An invited place already holds its seat, so it is counted by
+-- fn_cohort_seats_taken, never here. A buyer may hold only `max_seats - taken(except them) - owed`, so a
+-- seat that frees between two runs of the invite job goes to the queue, not to a walk-in.
+CREATE OR REPLACE FUNCTION projects.fn_cohort_seats_owed(p_cohort_id uuid, p_user uuid DEFAULT NULL)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH c AS (
+        SELECT c.max_seats, p.source_blueprint_id AS blueprint_id
+          FROM projects.cohorts c
+          JOIN projects.projects p ON p.id = c.project_id
+         WHERE c.id = p_cohort_id
+    ),
+    me AS (
+        SELECT w.queued_at, w.id
+          FROM projects.waitlists w, c
+         WHERE w.service_blueprint_id = c.blueprint_id
+           AND w.user_id = p_user
+           AND w.status = 'waiting'
+    )
+    SELECT COALESCE((
+        SELECT LEAST(
+            GREATEST(c.max_seats - projects.fn_cohort_seats_taken(p_cohort_id), 0),
+            (SELECT count(*)
+               FROM projects.waitlists w
+              WHERE w.service_blueprint_id = c.blueprint_id
+                AND w.status = 'waiting'
+                AND w.user_id IS DISTINCT FROM p_user
+                AND (NOT EXISTS (SELECT 1 FROM me)
+                     OR (w.queued_at, w.id) < (SELECT me.queued_at, me.id FROM me)))
+        )::integer
+          FROM c
+    ), 0);
+$$;
 -- #endregion
 
 -- #region 2. The listing's cohort offer
@@ -101,7 +181,9 @@ $$;
 -- sittings and its curriculum (the stage's standing plan, then the cohort's own). Public: the entity
 -- view is read by guests, and every figure here is one the listing must disclose before purchase
 -- (PRODUCT_SPEC §The Entity View, "remaining capacity"). It returns no person, no URL and no money
--- beyond the seat count. NULL when the listing has no enrolling cohort.
+-- beyond the seat count. NULL when the listing has no enrolling cohort. `taken` counts the free seats
+-- its waitlist has first call on (fn_cohort_seats_owed, Decision #455): to anyone outside the queue they
+-- are not for sale. A queued buyer's own figure is projects.get_waitlist_place's.
 CREATE OR REPLACE FUNCTION projects.get_cohort_offer(p_blueprint_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -132,7 +214,7 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    v_taken := LEAST(projects.fn_cohort_seats_taken(v.id), v.max_seats);
+    v_taken := LEAST(projects.fn_cohort_seats_taken(v.id) + projects.fn_cohort_seats_owed(v.id), v.max_seats);
 
     RETURN pg_catalog.jsonb_build_object(
         'cohort_id', v.id,
@@ -176,7 +258,9 @@ $$;
 -- The cohort row is locked FOR UPDATE before occupancy is counted, so the count and the insert are
 -- one serialised step: two buyers racing for the last seat queue on the lock and the second one sees
 -- the first one's hold. One live hold per buyer per cohort (`uq_cohort_seat_holds_live`) — asking
--- again renews it rather than stacking a second.
+-- again renews it rather than stacking a second, and a renewal never shortens it: a waitlist invite's
+-- hold keeps its own end (Decision #455). The seats the listing's waitlist has first call on are not
+-- for the caller to take (fn_cohort_seats_owed): they are refused as `full`, with what is left.
 --
 -- Refusals: 42501 signed out · 22023 a seat count outside 1–500 · P0002 no such cohort · PU422 your
 -- own session · PS409 closed / full / already seated, with DETAIL {reason, remaining}.
@@ -191,6 +275,7 @@ DECLARE
     v_uid uuid := auth.uid();
     v_cohort projects.cohorts;
     v_taken integer;
+    v_owed integer;
     v_hold projects.cohort_seat_holds;
     v_expires timestamptz;
 BEGIN
@@ -222,20 +307,24 @@ BEGIN
     END IF;
 
     v_taken := projects.fn_cohort_seats_taken(p_cohort_id, v_uid);
-    IF v_taken + p_seats > v_cohort.max_seats THEN
+    v_owed := projects.fn_cohort_seats_owed(p_cohort_id, v_uid);
+    IF v_taken + v_owed + p_seats > v_cohort.max_seats THEN
         RAISE EXCEPTION USING ERRCODE = 'PS409',
-            MESSAGE = CASE WHEN v_taken >= v_cohort.max_seats THEN 'Every seat in this cohort is taken'
-                ELSE pg_catalog.format('Only %s seat%s left in this cohort', v_cohort.max_seats - v_taken,
-                    CASE WHEN v_cohort.max_seats - v_taken = 1 THEN '' ELSE 's' END) END,
+            MESSAGE = CASE
+                WHEN v_taken >= v_cohort.max_seats THEN 'Every seat in this cohort is taken'
+                WHEN v_taken + v_owed >= v_cohort.max_seats
+                    THEN 'The open seats in this cohort are held for the people on its waitlist'
+                ELSE pg_catalog.format('Only %s seat%s left in this cohort', v_cohort.max_seats - v_taken - v_owed,
+                    CASE WHEN v_cohort.max_seats - v_taken - v_owed = 1 THEN '' ELSE 's' END) END,
             DETAIL = pg_catalog.jsonb_build_object(
-                'reason', 'full', 'remaining', GREATEST(v_cohort.max_seats - v_taken, 0))::text;
+                'reason', 'full', 'remaining', GREATEST(v_cohort.max_seats - v_taken - v_owed, 0))::text;
     END IF;
 
     v_expires := pg_catalog.now() + pg_catalog.make_interval(
         mins => projects.fn_session_param('seat_hold_minutes', 15));
 
     UPDATE projects.cohort_seat_holds
-       SET seats = p_seats, expires_at = v_expires, updated_at = pg_catalog.now()
+       SET seats = p_seats, expires_at = GREATEST(expires_at, v_expires), updated_at = pg_catalog.now()
      WHERE cohort_id = p_cohort_id AND user_id = v_uid AND status = 'held'
     RETURNING * INTO v_hold;
     IF NOT FOUND THEN
@@ -250,15 +339,16 @@ BEGIN
         'seats', v_hold.seats,
         'expires_at', v_hold.expires_at,
         'max_seats', v_cohort.max_seats,
-        'remaining', v_cohort.max_seats - v_taken - p_seats
+        'remaining', v_cohort.max_seats - v_taken - v_owed - p_seats
     );
 END;
 $$;
 
 COMMENT ON FUNCTION projects.reserve_seat(uuid, integer) IS
-'Hold seats on an enrolling cohort for seat_hold_minutes (renewing the caller''s live hold), under a row
-lock on the cohort so the last seat cannot be sold twice. Refusals: 42501 · 22023 · P0002 · PU422 own
-session · PS409 closed/full/already seated (DETAIL {reason, remaining}).';
+'Hold seats on an enrolling cohort for seat_hold_minutes (renewing the caller''s live hold, never
+shortening it), under a row lock on the cohort so the last seat cannot be sold twice; the seats the
+listing''s waitlist has first call on are refused (Decision #455). Refusals: 42501 · 22023 · P0002 ·
+PU422 own session · PS409 closed/full/already seated (DETAIL {reason, remaining}).';
 -- #endregion
 
 -- #region 4. Confirm a seat — when the order that paid for it settles
@@ -268,9 +358,11 @@ session · PS409 closed/full/already seated (DETAIL {reason, remaining}).';
 -- ("Booking: escrow locked"). Nothing reaches the seller here: the escrow releases after the session.
 --
 -- A hold that lapsed while the buyer paid (a slow card, a 3-D Secure prompt) is honoured if the seat
--- is still free — the cohort is locked and occupancy re-counted — and refused if someone else took it,
--- so a seat is never sold twice and a buyer is never charged for a seat they did not get (the whole
--- order rolls back with the refusal).
+-- is still free — the cohort is locked and occupancy re-counted, the waitlist's first call included —
+-- and refused if someone else took it, so a seat is never sold twice and a buyer is never charged for a
+-- seat they did not get (the whole order rolls back with the refusal).
+--
+-- The buyer's place on the listing's waitlist, if any, becomes `converted` (Decision #455).
 CREATE OR REPLACE FUNCTION projects.fn_confirm_seat(
     p_hold_id uuid,
     p_buyer uuid,
@@ -305,7 +397,8 @@ BEGIN
         RAISE EXCEPTION 'This cohort stopped taking bookings while you were paying' USING ERRCODE = 'PS409';
     END IF;
     IF v_hold.expires_at <= pg_catalog.now()
-       AND projects.fn_cohort_seats_taken(v_cohort.id, p_buyer) + v_hold.seats > v_cohort.max_seats THEN
+       AND projects.fn_cohort_seats_taken(v_cohort.id, p_buyer) + projects.fn_cohort_seats_owed(v_cohort.id, p_buyer)
+           + v_hold.seats > v_cohort.max_seats THEN
         RAISE EXCEPTION 'Your reservation lapsed and the seat was taken — nothing was charged'
             USING ERRCODE = 'PS409';
     END IF;
@@ -353,6 +446,11 @@ BEGIN
     UPDATE projects.cohort_seat_holds
        SET status = 'converted', membership_id = v_membership, updated_at = pg_catalog.now()
      WHERE id = v_hold.id;
+    UPDATE projects.waitlists
+       SET status = 'converted', resolved_at = pg_catalog.now()
+     WHERE service_blueprint_id = v_project.source_blueprint_id
+       AND user_id = p_buyer
+       AND status <> 'converted';
     PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
 
     PERFORM comms.fn_notify(
@@ -2241,4 +2339,373 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+-- #endregion
+
+-- #region 15. Waitlist — invited in order, a held seat, converted or expired (Decision #455)
+-- A group-session listing's queue (`projects.waitlists`, one place per buyer per listing). When its
+-- enrolling cohort has a seat nobody holds, the job below invites the people waiting, first in first
+-- out, one per free seat: each invite is a `cohort_seat_holds` row of one seat that lasts
+-- `waitlist_invite_hold_hours` (48), so it blocks everyone else through the ordinary occupancy count and
+-- reserve_seat renews it without shortening it. An invite whose hold lapses unused is `expired` and the
+-- next person is invited; buying a seat makes the place `converted` (fn_confirm_seat); an expired
+-- buyer may join again, at the back. Until the job reaches a freed seat, fn_cohort_seats_owed keeps it
+-- from anyone outside the queue.
+
+-- The cohort a listing's waitlist seats into: the enrolling cohort of a session engagement built from
+-- the PUBLISHED blueprint whose first sitting is soonest — the cohort get_cohort_offer sells, without
+-- its seller-preview arm (nobody is invited to a listing the public cannot see).
+CREATE OR REPLACE FUNCTION projects.fn_waitlist_cohort(p_blueprint_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT c.id
+      FROM projects.cohorts c
+      JOIN projects.projects p ON p.id = c.project_id
+      JOIN marketplace.service_blueprints sb ON sb.id = p.source_blueprint_id
+     WHERE p.source_blueprint_id = p_blueprint_id
+       AND p.format = 'session'
+       AND p.status IN ('draft', 'active')
+       AND c.status = 'enrolling'
+       AND sb.is_published
+     ORDER BY (SELECT min(se.start_time) FROM projects.session_events se
+                WHERE se.cohort_id = c.id AND se.status = 'scheduled') NULLS LAST,
+              c.created_at
+     LIMIT 1;
+$$;
+
+-- Join a group-session listing's waitlist, or answer the place already held. A place that expired
+-- (its invite lapsed unused) joins again at the back: a fresh `queued_at` and no invite. Idempotent on
+-- the (listing, buyer) key. Answers {status, already}.
+--
+-- Refusals: 42501 signed out · PM403 under 18 · P0002 no such published listing · PU422 not a group
+-- session, or the caller's own listing.
+CREATE OR REPLACE FUNCTION projects.join_waitlist(p_blueprint_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_bp marketplace.service_blueprints;
+    v_place projects.waitlists;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to join the waitlist' USING ERRCODE = '42501';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+
+    SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = p_blueprint_id;
+    IF NOT FOUND OR NOT v_bp.is_published THEN
+        RAISE EXCEPTION 'That listing isn''t available' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_bp.delivery_model <> 'group_session'::marketplace.service_delivery_model THEN
+        RAISE EXCEPTION 'Only a group session has a waitlist' USING ERRCODE = 'PU422';
+    END IF;
+    IF v_bp.freelancer_profile_id = v_uid OR (v_bp.owner_team_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM org.team_members tm
+         WHERE tm.team_id = v_bp.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active'
+    )) THEN
+        RAISE EXCEPTION 'You can''t join the waitlist for your own listing' USING ERRCODE = 'PU422';
+    END IF;
+
+    INSERT INTO projects.waitlists (service_blueprint_id, user_id)
+    VALUES (p_blueprint_id, v_uid)
+    ON CONFLICT (service_blueprint_id, user_id) DO NOTHING
+    RETURNING * INTO v_place;
+    IF FOUND THEN
+        RETURN pg_catalog.jsonb_build_object('status', v_place.status, 'already', false);
+    END IF;
+
+    UPDATE projects.waitlists
+       SET status = 'waiting', queued_at = pg_catalog.now(), cohort_id = NULL, hold_id = NULL,
+           invited_at = NULL, invite_expires_at = NULL, resolved_at = NULL
+     WHERE service_blueprint_id = p_blueprint_id AND user_id = v_uid AND status = 'expired'
+    RETURNING * INTO v_place;
+    IF FOUND THEN
+        RETURN pg_catalog.jsonb_build_object('status', v_place.status, 'already', false);
+    END IF;
+
+    SELECT * INTO v_place FROM projects.waitlists
+     WHERE service_blueprint_id = p_blueprint_id AND user_id = v_uid;
+    RETURN pg_catalog.jsonb_build_object('status', v_place.status, 'already', true);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.join_waitlist(uuid) IS
+'Join a published group-session listing''s waitlist (Decision #455), or answer the place already held;
+an expired place joins again at the back. {status, already}. Refusals: 42501 · PM403 · P0002 · PU422.';
+
+-- The caller's own place on a listing's waitlist, or NULL when they hold none. `status` is the place as
+-- it stands now: an invite whose hold has lapsed reads `expired` before the job writes it. `position`
+-- is 1-based among the people waiting (NULL unless waiting); `hold_expires_at` the live invite's end;
+-- `seats_open` how many seats of the listing's enrolling cohort the caller could hold right now, the
+-- queue's first call counted (NULL with no enrolling cohort).
+CREATE OR REPLACE FUNCTION projects.get_waitlist_place(p_blueprint_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_place projects.waitlists;
+    v_status projects.waitlist_status;
+    v_position integer;
+    v_hold_until timestamptz;
+    v_cohort projects.cohorts;
+    v_open integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_place FROM projects.waitlists
+     WHERE service_blueprint_id = p_blueprint_id AND user_id = v_uid;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    v_status := v_place.status;
+    IF v_status = 'waiting' THEN
+        SELECT count(*)::integer + 1 INTO v_position
+          FROM projects.waitlists w
+         WHERE w.service_blueprint_id = p_blueprint_id
+           AND w.status = 'waiting'
+           AND (w.queued_at, w.id) < (v_place.queued_at, v_place.id);
+    ELSIF v_status = 'invited' THEN
+        SELECT h.expires_at INTO v_hold_until
+          FROM projects.cohort_seat_holds h
+         WHERE h.id = v_place.hold_id AND h.status = 'held' AND h.expires_at > pg_catalog.now();
+        IF v_hold_until IS NULL THEN
+            v_status := 'expired';
+        END IF;
+    END IF;
+
+    SELECT * INTO v_cohort FROM projects.cohorts WHERE id = projects.fn_waitlist_cohort(p_blueprint_id);
+    IF FOUND THEN
+        v_open := GREATEST(v_cohort.max_seats - projects.fn_cohort_seats_taken(v_cohort.id, v_uid)
+            - projects.fn_cohort_seats_owed(v_cohort.id, v_uid), 0);
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'status', v_status,
+        'position', v_position,
+        'hold_expires_at', v_hold_until,
+        'seats_open', v_open,
+        'invite_hold_hours', projects.fn_session_param('waitlist_invite_hold_hours', 48)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.get_waitlist_place(uuid) IS
+'The caller''s own place on a listing''s waitlist (Decision #455): {status, position, hold_expires_at,
+seats_open, invite_hold_hours}, or NULL. A lapsed invite reads expired.';
+
+-- The seller's view of a listing's waitlist: how many places are in each state, and the places — the
+-- invited first, then the queue in order (`position` 1-based), then the converted and expired, newest
+-- first. Answers only to whoever manages the listing (catalogue.fn_manages_listing: its owner, or a
+-- `publish_listings` holder on the owning team); anyone else is told it does not exist. Each place
+-- names the buyer by handle only, for the profile directory to dress. `p_limit` is clamped to 1–500.
+CREATE OR REPLACE FUNCTION projects.get_listing_waitlist(p_listing uuid, p_limit integer DEFAULT 200)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_blueprint uuid;
+    v_limit integer := LEAST(GREATEST(COALESCE(p_limit, 200), 1), 500);
+BEGIN
+    IF NOT COALESCE(catalogue.fn_manages_listing(p_listing), false) THEN
+        RAISE EXCEPTION 'No such listing' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT l.service_blueprint_id INTO v_blueprint FROM catalogue.listings l WHERE l.id = p_listing;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'counts', (
+            SELECT pg_catalog.jsonb_build_object(
+                'waiting', count(*) FILTER (WHERE w.status = 'waiting'),
+                'invited', count(*) FILTER (WHERE w.status = 'invited'),
+                'expired', count(*) FILTER (WHERE w.status = 'expired'),
+                'converted', count(*) FILTER (WHERE w.status = 'converted'))
+              FROM projects.waitlists w
+             WHERE w.service_blueprint_id = v_blueprint
+        ),
+        'entries', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'user_id', e.user_id,
+                       'handle', e.handle,
+                       'status', e.status,
+                       'position', e.position,
+                       'queued_at', e.queued_at,
+                       'invited_at', e.invited_at,
+                       'invite_expires_at', e.invite_expires_at,
+                       'resolved_at', e.resolved_at
+                   ) ORDER BY e.band, e.open_at, e.resolved_at DESC, e.id)
+              FROM (
+                  SELECT w.id, w.user_id, u.username AS handle, w.status, w.queued_at, w.invited_at,
+                         w.invite_expires_at, w.resolved_at,
+                         CASE w.status WHEN 'invited' THEN 0 WHEN 'waiting' THEN 1 ELSE 2 END AS band,
+                         CASE w.status WHEN 'invited' THEN w.invited_at WHEN 'waiting' THEN w.queued_at END AS open_at,
+                         CASE WHEN w.status = 'waiting'
+                              THEN pg_catalog.row_number() OVER (PARTITION BY w.status ORDER BY w.queued_at, w.id)
+                         END AS position
+                    FROM projects.waitlists w
+                    JOIN org.users_public u ON u.user_id = w.user_id
+                   WHERE w.service_blueprint_id = v_blueprint
+                   ORDER BY band, open_at, resolved_at DESC, id
+                   LIMIT v_limit
+              ) e
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.get_listing_waitlist(uuid, integer) IS
+'A listing''s waitlist for whoever manages it (catalogue.fn_manages_listing; Decision #455): counts per
+state and the places (invited, then the queue in order, then converted and expired), by handle.
+Refusals: P0002 not a listing the caller manages.';
+
+-- The waitlist job (`cohort-waitlist-invites`, 00005060, every minute). First every invite whose hold
+-- is no longer live: a hold that converted makes the place `converted`; any other lapse makes it
+-- `expired`, releases the hold and tells the buyer. Then, per listing with people waiting, under the
+-- cohort row lock reserve_seat takes, one invite per seat nobody holds, in queue order: a one-seat hold
+-- until `p_now + waitlist_invite_hold_hours`, the place `invited`, and an in-app notice linking to the
+-- listing. Someone already seated converts; someone holding a live seat already is being served and is
+-- passed over; a lapsed hold being paid for right now (locked) stops the listing for this run, so the
+-- order is kept. Internal — run by pg_cron, not granted. Answers {expired, invited}.
+CREATE OR REPLACE FUNCTION projects.fn_waitlist_dispatch(p_now timestamptz DEFAULT pg_catalog.now())
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_hours integer := projects.fn_session_param('waitlist_invite_hold_hours', 48);
+    v_until timestamptz := p_now + pg_catalog.make_interval(hours => v_hours);
+    r record;
+    v_blueprint uuid;
+    v_slug text;
+    v_title text;
+    v_cohort projects.cohorts;
+    v_free integer;
+    v_hold uuid;
+    v_expired integer := 0;
+    v_invited integer := 0;
+BEGIN
+    FOR r IN
+        SELECT w.id, w.user_id, w.hold_id, h.status AS hold_status, sb.slug, sb.title
+          FROM projects.waitlists w
+          JOIN projects.cohort_seat_holds h ON h.id = w.hold_id
+          JOIN marketplace.service_blueprints sb ON sb.id = w.service_blueprint_id
+         WHERE w.status = 'invited'
+           AND NOT (h.status = 'held' AND h.expires_at > p_now)
+         ORDER BY w.invite_expires_at, w.id
+           FOR UPDATE OF w, h SKIP LOCKED
+    LOOP
+        IF r.hold_status = 'converted' THEN
+            UPDATE projects.waitlists SET status = 'converted', resolved_at = p_now WHERE id = r.id;
+            CONTINUE;
+        END IF;
+        UPDATE projects.cohort_seat_holds
+           SET status = 'released', updated_at = pg_catalog.now()
+         WHERE id = r.hold_id AND status = 'held';
+        UPDATE projects.waitlists SET status = 'expired', resolved_at = p_now WHERE id = r.id;
+        v_expired := v_expired + 1;
+        PERFORM comms.fn_notify(
+            r.user_id, 'waitlist.invite_expired', 'Your held seat was released',
+            pg_catalog.format('The seat held for you on "%s" has passed to the next person on the waitlist. Join the waitlist again to be offered a later one.', r.title),
+            'projects.waitlists', r.id,
+            pg_catalog.jsonb_build_object('listing', r.slug),
+            p_action_url => '/view/' || r.slug
+        );
+    END LOOP;
+
+    FOR v_blueprint IN
+        SELECT DISTINCT w.service_blueprint_id FROM projects.waitlists w WHERE w.status = 'waiting'
+    LOOP
+        SELECT c.* INTO v_cohort
+          FROM projects.cohorts c
+         WHERE c.id = projects.fn_waitlist_cohort(v_blueprint)
+           FOR UPDATE;
+        CONTINUE WHEN NOT FOUND OR v_cohort.status <> 'enrolling';
+        v_free := v_cohort.max_seats - projects.fn_cohort_seats_taken(v_cohort.id);
+        CONTINUE WHEN v_free <= 0;
+        SELECT sb.slug, sb.title INTO v_slug, v_title
+          FROM marketplace.service_blueprints sb WHERE sb.id = v_blueprint;
+
+        FOR r IN
+            SELECT w.id, w.user_id
+              FROM projects.waitlists w
+             WHERE w.service_blueprint_id = v_blueprint AND w.status = 'waiting'
+             ORDER BY w.queued_at, w.id
+               FOR UPDATE
+        LOOP
+            EXIT WHEN v_free <= 0;
+            IF EXISTS (
+                SELECT 1 FROM projects.cohort_memberships cm
+                 WHERE cm.cohort_id = v_cohort.id AND cm.user_id = r.user_id AND cm.status = 'active'
+            ) THEN
+                UPDATE projects.waitlists SET status = 'converted', resolved_at = p_now WHERE id = r.id;
+                CONTINUE;
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM projects.cohort_seat_holds h
+                 WHERE h.cohort_id = v_cohort.id AND h.user_id = r.user_id
+                   AND h.status = 'held' AND h.expires_at > pg_catalog.now()
+            ) THEN
+                CONTINUE;
+            END IF;
+
+            BEGIN
+                SELECT h.id INTO v_hold
+                  FROM projects.cohort_seat_holds h
+                 WHERE h.cohort_id = v_cohort.id AND h.user_id = r.user_id AND h.status = 'held'
+                   FOR UPDATE NOWAIT;
+            EXCEPTION WHEN lock_not_available THEN
+                EXIT;
+            END;
+            IF v_hold IS NOT NULL THEN
+                UPDATE projects.cohort_seat_holds
+                   SET seats = 1, expires_at = v_until, updated_at = pg_catalog.now()
+                 WHERE id = v_hold;
+            ELSE
+                INSERT INTO projects.cohort_seat_holds (cohort_id, user_id, seats, expires_at)
+                VALUES (v_cohort.id, r.user_id, 1, v_until)
+                RETURNING id INTO v_hold;
+            END IF;
+
+            UPDATE projects.waitlists
+               SET status = 'invited', cohort_id = v_cohort.id, hold_id = v_hold,
+                   invited_at = p_now, invite_expires_at = v_until
+             WHERE id = r.id;
+            v_free := v_free - 1;
+            v_invited := v_invited + 1;
+            PERFORM comms.fn_notify(
+                r.user_id, 'waitlist.invited', 'A seat is held for you',
+                pg_catalog.format('A seat on "%s" is held for you for %s hours. Reserve it before then, or it passes to the next person on the waitlist.', v_title, v_hours),
+                'projects.waitlists', r.id,
+                pg_catalog.jsonb_build_object('listing', v_slug, 'cohort_id', v_cohort.id, 'hold_id', v_hold,
+                    'expires_at', v_until),
+                p_action_url => '/view/' || v_slug,
+                p_expires_at => v_until
+            );
+        END LOOP;
+    END LOOP;
+
+    RETURN pg_catalog.jsonb_build_object('expired', v_expired, 'invited', v_invited);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_waitlist_dispatch(timestamptz) IS
+'The cohort waitlist job (Decision #455): expires lapsed invites (releasing their holds), then invites
+the people waiting in queue order, one per free seat, each holding its seat for
+waitlist_invite_hold_hours. Internal; scheduled in 00005060. {expired, invited}.';
 -- #endregion

@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { EmailRefusal } from "@projective/types/org";
 import {
 	emailFailure,
+	emailRefusal,
 	emailRefusalCode,
 	emailRefusalMessage,
 	toUserEmails,
@@ -45,6 +46,13 @@ Deno.test("emailFailure — refusals carry their status and code", () => {
 		["token_expired", 410],
 		["token_used", 409],
 		["token_wrong_account", 403],
+		["sign_in_already", 409],
+		["sign_in_unverified", 409],
+		["sign_in_limit", 429],
+		["sign_in_unavailable", 409],
+		["account_closing", 409],
+		["password_required", 409],
+		["password_incorrect", 422],
 	];
 	for (const [code, status] of cases) {
 		const result = emailFailure({ code: "P0001", message: code });
@@ -56,6 +64,37 @@ Deno.test("emailFailure — refusals carry their status and code", () => {
 		emailFailure({ code: "P0001", message: "email_limit" }).message?.includes("5"),
 		true,
 	);
+});
+
+Deno.test("emailRefusal — a wrong password is keyed to the password field", () => {
+	const result = emailRefusal("password_incorrect");
+	assertEquals(result.status, 422);
+	assertEquals(result.errors, { password: emailRefusalMessage("password_incorrect") });
+	assertEquals(result.details?.refusal, "password_incorrect");
+});
+
+Deno.test("emailFailure — sign_in_limit carries the definer's DETAIL as retryAt", () => {
+	const limited = emailFailure({
+		code: "P0001",
+		message: "sign_in_limit",
+		details: "2026-11-21T09:30:00Z",
+	});
+	assertEquals(limited.status, 429);
+	assertEquals(limited.details, { retryAt: "2026-11-21T09:30:00.000Z", refusal: "sign_in_limit" });
+	assertEquals(
+		emailFailure({ code: "P0001", message: "sign_in_limit", details: "soon" }).details,
+		{ refusal: "sign_in_limit" },
+	);
+	assertEquals(
+		emailFailure({ code: "P0001", message: "email_exists", details: "2026-11-21T09:30:00Z" })
+			.details,
+		{ refusal: "email_exists" },
+	);
+});
+
+Deno.test("emailRefusal — the sign-in conflict never says the address is taken", () => {
+	const sentence = emailRefusalMessage("sign_in_unavailable");
+	assertEquals(/taken|in use|another|already|registered/i.test(sentence), false, sentence);
 });
 
 Deno.test("emailFailure — session, onboarding and anything else", () => {

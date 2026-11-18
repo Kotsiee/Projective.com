@@ -20,8 +20,10 @@ import {
 	type ChartColour,
 	useChartCanvas,
 	useChartTier,
+	useValuesHidden,
 	viewPath,
 } from "./useChart.ts";
+import { SCREEN_SHARE_MASK } from "../../utils/core/screen-share.ts";
 
 /** One series of an {@link AreaChart}. */
 export interface AreaChartSeries {
@@ -72,6 +74,8 @@ export interface AreaChartProps {
 	 */
 	empty?: ComponentChildren;
 	tierPolicy?: ChartTierPolicy;
+	/** Whether screen sharing mode masks its values (default `true`). */
+	sensitive?: boolean;
 	class?: string;
 }
 
@@ -95,7 +99,9 @@ const X_TICKS = 5;
  * readout names every series there; a pointer does the same by the nearest bucket. Nothing tweens.
  */
 export function AreaChart(props: AreaChartProps): JSX.Element {
-	const { labels, series, formatValue } = props;
+	const { labels, series } = props;
+	const hidden = useValuesHidden(props.sensitive);
+	const formatValue = hidden ? () => SCREEN_SHARE_MASK : props.formatValue;
 	const active = useSignal<number | null>(null);
 	const captionId = useId(undefined, "ui-chart-caption");
 	const washId = useId(undefined, "ui-chart-wash");
@@ -115,7 +121,9 @@ export function AreaChart(props: AreaChartProps): JSX.Element {
 		(a.s.mark === "line" ? 0 : 1) - (b.s.mark === "line" ? 0 : 1)
 	);
 	const nameOf = (i: number) => props.bucketName?.(labels[i] ?? "", i) ?? labels[i] ?? "";
-	const tick = props.formatTick ?? ((v: number) => v.toLocaleString());
+	const tick = hidden
+		? () => SCREEN_SHARE_MASK
+		: props.formatTick ?? ((v: number) => v.toLocaleString());
 	const setActive = (next: number | null) => {
 		if (active.peek() === next) return;
 		active.value = next;

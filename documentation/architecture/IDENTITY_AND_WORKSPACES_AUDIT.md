@@ -810,7 +810,9 @@ password.
 
 **Ruled:** I3 (a) = A ⭐ (Decision #336 (g)); recorded in PS (§13). The AAL2 checks inside the
 payout doors (MFA3) wait for the finance SQL lane, `begin_payout` and `record_payout_account` (FBP
-§0, "Identity").
+§0, "Identity"). **Amended 2026-11-18 (Decision #451, ST1):** a change of sign-in address is a sixth
+step-up action. Until MFA2 it re-authenticates with the current password; after MFA2 a person with a
+factor steps up to AAL2.
 
 ### F8. Minors in workspaces, and the EU consent ages
 

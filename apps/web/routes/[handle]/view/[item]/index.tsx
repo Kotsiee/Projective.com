@@ -3,16 +3,21 @@ import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
+import { sessionTokenOf } from "@features/view/core/booking-actor.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import { guestIntentRedirect, readViewIntent } from "@features/view/core/view-intent.ts";
+import { viewPageMeta } from "@features/view/core/view-canonical.ts";
+import { applyPageMeta } from "@features/marketing/core/seo.ts";
+import { siteOrigin } from "@features/marketing/core/site-origin.ts";
 
 /**
  * `/[handle]/view/[item_id]?type=[entity_type]` — the profile-scoped Entity View page. This is the
  * Explore click-matrix target for items opened FROM a profile page (vs the public `/view/[id]`). Same
  * polymorphic {@link EntityViewPage}, rendered inside the `[handle]` profile shell with the sidebar
  * action lane (resolved by `viewLaneFor` in the `[handle]` layout) and back links honouring the handle.
+ * Its canonical is the public `/view/:slug` (Decision #452), so the listing is indexed once.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -22,9 +27,10 @@ export const handler = define.handlers({
 			ctx.params.item,
 			semanticRankingFor(ctx.req),
 		);
-		ctx.state.title = view ? `${view.item.title} · ${ctx.params.handle}` : "Not found · Projective";
+		ctx.state.title = "Not found · Projective";
 		if (view) {
-			ctx.state.description = view.item.summary;
+			applyPageMeta(ctx.state, viewPageMeta(view.item, siteOrigin(ctx.url)));
+			ctx.state.title = `${view.item.title} · ${ctx.params.handle}`;
 			recordViewInBackground(ctx, view.item.id);
 		}
 		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
@@ -32,6 +38,7 @@ export const handler = define.handlers({
 			? await resolveEntityCommerce(view, {
 				context: ctx.state.userContext,
 				handle: ctx.params.handle,
+				accessToken: sessionTokenOf(ctx),
 			})
 			: { offer: null };
 		return page({

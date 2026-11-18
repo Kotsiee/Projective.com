@@ -18,7 +18,9 @@ import {
 	colourBlindActive,
 	useChartCanvas,
 	useChartTier,
+	useValuesHidden,
 } from "./useChart.ts";
+import { SCREEN_SHARE_MASK } from "../../utils/core/screen-share.ts";
 
 /** The gap around each cell, in cell units. */
 const CELL_INSET = 0.06;
@@ -39,6 +41,8 @@ export interface HeatmapGridProps {
 	/** The hidden table's corner header (default "Day"). */
 	rowHeader?: string;
 	tierPolicy?: ChartTierPolicy;
+	/** Whether screen sharing mode masks its values (default `true`). */
+	sensitive?: boolean;
 	class?: string;
 }
 
@@ -63,7 +67,10 @@ export function HeatmapGrid(props: HeatmapGridProps): JSX.Element {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const probeRef = useRef<HTMLSpanElement>(null);
 	const tier = useChartTier(nr * nc, props.tierPolicy ?? DEFAULT_TIER_POLICY);
-	const format = props.formatValue ?? ((v: number) => v.toLocaleString());
+	const hidden = useValuesHidden(props.sensitive);
+	const format = hidden
+		? () => SCREEN_SHARE_MASK
+		: props.formatValue ?? ((v: number) => v.toLocaleString());
 	const every = props.columnLabelEvery ?? Math.max(1, Math.round(nc / 6));
 	const at = active.value;
 	const valueAt = (r: number, c: number) => values[r]?.[c] ?? 0;
@@ -109,7 +116,7 @@ export function HeatmapGrid(props: HeatmapGridProps): JSX.Element {
 	});
 
 	const describe = (r: number, c: number) =>
-		`${rows[r]}, ${columns[c]}: ${valueAt(r, c).toLocaleString()}`;
+		`${rows[r]}, ${columns[c]}: ${hidden ? SCREEN_SHARE_MASK : valueAt(r, c).toLocaleString()}`;
 
 	return (
 		<figure

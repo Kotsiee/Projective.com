@@ -99,7 +99,9 @@ export function reprojectServerMoney(
 	table: CurrencyRateTable | null,
 ): void {
 	if (typeof document === "undefined") return;
-	const nodes = document.querySelectorAll<HTMLElement>("[data-money]:not([data-money-live])");
+	const nodes = document.querySelectorAll<HTMLElement>(
+		"[data-money]:not([data-money-live]):not([data-money-masked])",
+	);
 
 	for (const node of nodes) {
 		const minor = Number.parseInt(node.dataset.moneyMinor ?? "", 10);

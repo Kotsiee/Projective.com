@@ -14,6 +14,7 @@
 		"./files": "./files/mod.ts",
 		"./integrations": "./integrations/mod.ts",
 		"./invites": "./invites/mod.ts",
+		"./legal": "./legal/mod.ts",
 		"./links": "./links/mod.ts",
 		"./catalogue": "./catalogue/mod.ts",
 		"./comms": "./comms/mod.ts",

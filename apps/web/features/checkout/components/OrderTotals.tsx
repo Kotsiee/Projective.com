@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Skeleton } from "@projective/ui/feedback";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { feeDisclosure, listedReference } from "../core/checkout-model.ts";
 import { Amount } from "./Amount.tsx";
 import { FxBreakdown } from "./FxBreakdown.tsx";
@@ -43,6 +44,7 @@ export function PendingAmount(props: { size: "body" | "hero"; width: string }): 
  */
 export function OrderTotals(props: OrderTotalsProps): JSX.Element {
 	const { view, id = "cko-summary", pending = false } = props;
+	const mask = useMaskFigures();
 	const { totals } = view;
 	const fee = feeDisclosure(totals);
 	const hasTax = totals.taxes.minor > 0 || totals.taxNote !== null;
@@ -196,7 +198,7 @@ export function OrderTotals(props: OrderTotalsProps): JSX.Element {
 						</p>
 						{!pending && (
 							<p class="cko-rail__listed">
-								Listed at {reference.value.display} {reference.value.currency} at{" "}
+								Listed at {mask(reference.value.display)} {reference.value.currency} at{" "}
 								{reference.rateLabel}
 							</p>
 						)}

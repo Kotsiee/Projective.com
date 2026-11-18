@@ -21,6 +21,7 @@ import {
 	type ExploreOwner,
 	listingCardItem,
 	type ListingCardSource,
+	type MessageTarget,
 	type ProductItem,
 	type ProfileItem,
 	type ProjectItem,
@@ -101,6 +102,20 @@ export function stampOf(raw: string | null | undefined): VerificationStamp | und
 	return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * Who a Message to a directory row reaches when it is not the row itself: a team's or a business's
+ * owner, as `org.profiles_index.contact_*` names them (Decision #422 (b)). `undefined` for a person,
+ * who is their own recipient, and for an entity whose row names nobody — never the entity's own slug.
+ */
+export function messageTargetOf(
+	row: Pick<ProfileRow, "entity_type" | "contact_handle" | "contact_name">,
+): MessageTarget | undefined {
+	if (row.entity_type !== "team" && row.entity_type !== "business") return undefined;
+	const handle = row.contact_handle?.trim();
+	if (!handle) return undefined;
+	return { handle: `@${handle}`, name: row.contact_name?.trim() || handle };
+}
+
 /** One row of the public profile directory (`org.profiles_index`). */
 export interface ProfileRow {
 	entity_id: string;
@@ -156,9 +171,13 @@ export interface ProfileRow {
 	workload_cap: number | string | null;
 	/** The owner's verification crest — the same derivation `org.get_profile_view` uses. */
 	verification_stamp: string | null;
+	/** A team's or a business's owner — who its Message reaches; `null` for a person. */
+	contact_handle?: string | null;
+	contact_name?: string | null;
 }
 
-interface ListingRow {
+/** One `catalogue.listings` row, as the discovery load selects it. */
+export interface ListingRow {
 	id: string;
 	owner_user_id: string;
 	owner_team_id: string | null;
@@ -255,8 +274,10 @@ export interface ArticleRow {
 	summary: string;
 	cover_file_id: string | null;
 	read_minutes: number;
+	status: ListingRow["status"];
 	published_at: string | null;
 	created_at: string;
+	updated_at: string;
 }
 
 /** The public project columns every discovery surface and the view page read. */
@@ -382,6 +403,12 @@ export interface CatalogEntity {
 	id: string;
 }
 
+/** Where a listing or an article stands, as its own row says, and when that row last changed. */
+export interface CatalogPublication {
+	status: ListingRow["status"];
+	updatedAt: string;
+}
+
 /** The lookup key {@link Catalog.itemIdByEntity} is keyed by. */
 export function entityKey(kind: string, id: string): string {
 	return `${kind}:${id}`;
@@ -426,12 +453,12 @@ export interface Catalog {
 	listingIdById: Map<string, string>;
 	/** Item id → the listing's search terms (services and products), for the embedding text. */
 	listingTermsById: Map<string, ListingSearchTerms>;
+	/** Item id → its row's status and last change (services, products and articles; the sitemap). */
+	publicationById: Map<string, CatalogPublication>;
 	/** Owner `@handle` → the profile row (for seller facts on the view page). */
 	profileByHandle: Map<string, ProfileRow>;
 	/** Entity id (user / team / business uuid) → the profile row (review authors, project clients). */
 	profileById: Map<string, ProfileRow>;
-	/** The subject ids (blueprint / product uuid) of every active paid placement. */
-	sponsoredSubjects: Set<string>;
 	/** Every active placement on a published listing, oldest flight first. */
 	placements: CatalogPlacement[];
 	/** Every `org.skills` label — the skills typeahead matches against it without a read of its own. */
@@ -757,7 +784,7 @@ async function readCatalog(): Promise<Catalog> {
 				"entity_id",
 				() =>
 					db.schema("org").from("profiles_index").select(
-						"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap, verification_stamp",
+						"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap, verification_stamp, contact_handle, contact_name",
 					),
 			),
 			readTable<ListingRow>(
@@ -772,7 +799,7 @@ async function readCatalog(): Promise<Catalog> {
 				"id",
 				() =>
 					db.schema("catalogue").from("articles").select(
-						"id, slug, owner_user_id, owner_team_id, title, topic, summary, cover_file_id, read_minutes, published_at, created_at",
+						"id, slug, owner_user_id, owner_team_id, title, topic, summary, cover_file_id, read_minutes, status, published_at, created_at, updated_at",
 					).eq("status", "published"),
 			),
 			readTable<ProjectRow>(
@@ -1279,7 +1306,6 @@ export function assemble(input: Inputs): Catalog {
 	const profileById = new Map(input.profiles.map((p) => [p.entity_id, p]));
 	const blueprintById = new Map(input.blueprints.map((b) => [b.id, b]));
 	const productById = new Map(input.products.map((p) => [p.id, p]));
-	const sponsoredSubjects = new Set(input.placements.map((p) => p.entity_id));
 
 	const urlOf = (file: FileRow | undefined) =>
 		file ? publicObjectUrl(file.bucket_id, file.storage_path) ?? "" : "";
@@ -1288,6 +1314,7 @@ export function assemble(input: Inputs): Catalog {
 	const ownerOf = (userId: string, teamId: string | null): ExploreOwner | null => {
 		const row = profileById.get(teamId ?? userId);
 		if (!row) return null;
+		const messageTo = messageTargetOf(row);
 		return {
 			handle: `@${row.handle}`,
 			name: row.name,
@@ -1295,12 +1322,14 @@ export function assemble(input: Inputs): Catalog {
 			kind: row.entity_type,
 			verified: row.verified,
 			verificationStamp: stampOf(row.verification_stamp),
+			...(messageTo ? { messageTo } : {}),
 		};
 	};
 
 	const galleryById = new Map<string, CatalogMedia[]>();
 	const listingIdById = new Map<string, string>();
 	const listingTermsById = new Map<string, ListingSearchTerms>();
+	const publicationById = new Map<string, CatalogPublication>();
 	const tagsByListing = new Map<string, string[]>();
 	for (const t of input.listingTags ?? []) {
 		const list = tagsByListing.get(t.listing_id) ?? [];
@@ -1387,7 +1416,6 @@ export function assemble(input: Inputs): Catalog {
 								null,
 					},
 					metrics: { avgRating: num(bp.rating_average), ratingCount: bp.rating_count ?? 0 },
-					promoted: l.promoted && sponsoredSubjects.has(bp.id),
 					tieredIntensity: bp.allow_tiered_intensity === true,
 				} satisfies ListingCardSource,
 			);
@@ -1398,6 +1426,7 @@ export function assemble(input: Inputs): Catalog {
 			galleryById.set(item.id, gallery);
 			listingIdById.set(item.id, l.id);
 			listingTermsById.set(item.id, termsOf(l));
+			publicationById.set(item.id, { status: l.status, updatedAt: l.updated_at });
 			const unit = serviceType === "Pipeline"
 				? item.ticketPrice
 				: serviceType === "Session" || serviceType === "Group Session"
@@ -1431,7 +1460,6 @@ export function assemble(input: Inputs): Catalog {
 						extraRevisionPrice: null,
 					},
 					metrics: { avgRating: num(pr.rating_average), ratingCount: pr.rating_count ?? 0 },
-					promoted: l.promoted && sponsoredSubjects.has(pr.id),
 					span: spanOf(pr.span),
 				} satisfies ListingCardSource,
 			);
@@ -1442,6 +1470,7 @@ export function assemble(input: Inputs): Catalog {
 			galleryById.set(item.id, gallery);
 			listingIdById.set(item.id, l.id);
 			listingTermsById.set(item.id, termsOf(l));
+			publicationById.set(item.id, { status: l.status, updatedAt: l.updated_at });
 			productCountByOwner.set(ownerKey, (productCountByOwner.get(ownerKey) ?? 0) + 1);
 		}
 	}
@@ -1470,6 +1499,7 @@ export function assemble(input: Inputs): Catalog {
 		};
 		articles.push(item);
 		articleBySlug.set(item.id, a);
+		publicationById.set(item.id, { status: a.status, updatedAt: a.updated_at });
 		if (cover) {
 			const dims = dimensionsOf(coverFile);
 			galleryById.set(item.id, [{
@@ -1574,6 +1604,7 @@ export function assemble(input: Inputs): Catalog {
 		const prices = servicePricesByOwner.get(handle) ?? [];
 		const priceCurrencies = serviceCurrenciesByOwner.get(handle);
 		const load = utilisationOf(p) ?? 0;
+		const messageTo = messageTargetOf(p);
 		const item: ProfileItem = {
 			id: p.handle,
 			type,
@@ -1585,6 +1616,7 @@ export function assemble(input: Inputs): Catalog {
 				kind: p.entity_type,
 				verified: p.verified,
 				verificationStamp: stampOf(p.verification_stamp),
+				...(messageTo ? { messageTo } : {}),
 			},
 			skills,
 			rating: dualRating(p),
@@ -1678,9 +1710,9 @@ export function assemble(input: Inputs): Catalog {
 		galleryById,
 		listingIdById,
 		listingTermsById,
+		publicationById,
 		profileByHandle,
 		profileById,
-		sponsoredSubjects,
 		placements,
 		skillLabels: input.skillRows.map((s) => s.label),
 		loadedAt: Date.now(),

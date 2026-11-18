@@ -56,3 +56,7 @@
 - [ ] Consistent with the §8 Resolved Decisions; any **new** cross-doc conflict is flagged + logged,
       not silently resolved.
 - [ ] No page/business logic added before the foundational doc + package layer is in place.
+- [ ] A change that closes, opens or narrows a tracked gap updates its row in
+      `readiness/PRODUCTION_READINESS.md` and/or `readiness/USER_FLOWS.md` (status + evidence),
+      recomputes that file's scoreboard by its published formula and adds a §Score history line; a
+      newly found gap gets a row (Decision #444).

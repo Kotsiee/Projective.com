@@ -154,7 +154,8 @@ projects only what is safe to show anyone. The viewer's own signals are read und
 by `anon`, `authenticated`, `service_role`. Every `search.search_weights` row's coefficient and
 switch, nothing else — the table itself stays admin-read (its rows also carry labels and
 `updated_by`). The catalogue resolves the keys `ranking.ts` reads (`review_sentiment`,
-`review_count`, `workload`, `discovery_boost`, `penalty`, `interest_history`): an inactive key scores
+`review_count`, `workload`, `discovery_boost`, `penalty`, `interest_history`, and `text_relevance`
+for Best match, Decision #459): an inactive key scores
 0, and a missing one scores 0 and is logged once per process.
 
 ### `search.trending_entities(p_days integer DEFAULT 7, p_limit integer DEFAULT 24)`

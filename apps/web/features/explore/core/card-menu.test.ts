@@ -1,10 +1,12 @@
 import { assertEquals } from "@std/assert";
 import type { MenuItem } from "@ui/types/mod.ts";
-import { cardMenu, type CardMenuFacts, type CardMenuHandlers } from "./card-menu.ts";
+import type { ProjectItem } from "@projective/types/explore";
+import { cardMenu, type CardMenuFacts, cardMenuFacts, type CardMenuHandlers } from "./card-menu.ts";
 
 /**
  * The Explore card menu (Decision #422), pinned: which verbs each card type offers, where each row
- * goes for a member and for a guest, and that a row never reaches a DM with nobody behind it.
+ * goes for a member and for a guest, that a team's or a business's Message reaches its owner, and that
+ * a row never reaches a DM with nobody behind it.
  */
 
 function facts(over: Partial<CardMenuFacts> = {}): CardMenuFacts {
@@ -109,6 +111,8 @@ Deno.test("a project offers Apply, and Message client only when a person posted 
 		`/login?redirectTo=${encodeURIComponent("/view/prj-brief?type=projects")}`,
 	);
 
+	assertEquals(row(member, "Message client")?.hint, undefined);
+
 	const business = cardMenu(
 		{ ...project, owner: { handle: "@acme", name: "Acme", kind: "business" } },
 		handlers(),
@@ -118,6 +122,50 @@ Deno.test("a project offers Apply, and Message client only when a person posted 
 		row(business, "Apply to project")?.url,
 		"/view/prj-brief?type=projects&intent=apply",
 	);
+});
+
+Deno.test("a brief a business or a team posted messages its owner, named in the hint", () => {
+	const project = facts({
+		id: "prj-brief",
+		type: "projects",
+		href: "/view/prj-brief?type=projects",
+		serviceType: undefined,
+	});
+	for (
+		const owner of [
+			{
+				handle: "@heliafinance",
+				name: "Helia Finance",
+				kind: "business" as const,
+				messageTo: { handle: "@priyaraman", name: "Priya Raman" },
+			},
+			{
+				handle: "@northloop",
+				name: "North Loop",
+				kind: "team" as const,
+				messageTo: { handle: "@kwamemensah", name: "Kwame Mensah" },
+			},
+		]
+	) {
+		const member = cardMenu({ ...project, owner }, handlers());
+		assertEquals(labels(member).slice(5), [
+			"Apply to project",
+			"Message client",
+			"---",
+			"View profile",
+		], owner.handle);
+		const message = row(member, "Message client");
+		assertEquals(message?.url, `/messages/dm-${owner.messageTo.handle.slice(1)}`, owner.handle);
+		assertEquals(message?.hint, owner.messageTo.name, owner.handle);
+		assertEquals(row(member, "View profile")?.url, `/${owner.handle}`, owner.handle);
+
+		const guest = cardMenu({ ...project, owner }, handlers({ authed: false, save: undefined }));
+		assertEquals(
+			row(guest, "Message client")?.url,
+			`/login?redirectTo=${encodeURIComponent("/view/prj-brief?type=projects")}`,
+			owner.handle,
+		);
+	}
 });
 
 Deno.test("a person's profile card: the Open row reads View profile, plus Message, no twin row", () => {
@@ -137,19 +185,93 @@ Deno.test("a person's profile card: the Open row reads View profile, plus Messag
 	assertEquals(row(guest, "Message")?.url, `/login?redirectTo=${encodeURIComponent("/@juno")}`);
 });
 
-Deno.test("a team or business profile card offers no Message", () => {
-	const team = cardMenu(
-		facts({
+Deno.test("a team or business profile card's Message reaches its owner", () => {
+	for (
+		const [type, kind] of [["teams", "team"], ["businesses", "business"]] as const
+	) {
+		const entity = facts({
 			id: "@studio",
-			type: "teams",
+			type,
 			title: "Studio",
 			href: "/@studio",
 			serviceType: undefined,
-			owner: { handle: "@studio", name: "Studio", kind: "team" },
-		}),
-		handlers(),
-	);
-	assertEquals(labels(team), ["View profile", "Copy link", "Share", "Save"]);
+			owner: {
+				handle: "@studio",
+				name: "Studio",
+				kind,
+				messageTo: { handle: "@saoirsebyrne", name: "Saoirse Byrne" },
+			},
+		});
+		const menu = cardMenu(entity, handlers());
+		assertEquals(
+			labels(menu),
+			["View profile", "Copy link", "Share", "Save", "---", "Message"],
+			kind,
+		);
+		assertEquals(row(menu, "Message")?.url, "/messages/dm-saoirsebyrne", kind);
+		assertEquals(row(menu, "Message")?.hint, "Saoirse Byrne", kind);
+
+		const guest = cardMenu(entity, handlers({ authed: false, save: undefined }));
+		assertEquals(
+			row(guest, "Message")?.url,
+			`/login?redirectTo=${encodeURIComponent("/@studio")}`,
+			kind,
+		);
+	}
+});
+
+Deno.test("a team or business that names no owner offers no Message, never dm-{slug}", () => {
+	for (
+		const [type, kind] of [["teams", "team"], ["businesses", "business"]] as const
+	) {
+		const menu = cardMenu(
+			facts({
+				id: "@studio",
+				type,
+				title: "Studio",
+				href: "/@studio",
+				serviceType: undefined,
+				owner: { handle: "@studio", name: "Studio", kind },
+			}),
+			handlers(),
+		);
+		assertEquals(labels(menu), ["View profile", "Copy link", "Share", "Save"], kind);
+		assertEquals(menu.some((r) => r.url?.startsWith("/messages/") ?? false), false, kind);
+	}
+});
+
+Deno.test("cardMenuFacts carries the owner's message target to the island", () => {
+	const owner = {
+		handle: "@northloop",
+		name: "North Loop",
+		avatar: "",
+		kind: "team" as const,
+		messageTo: { handle: "@kwamemensah", name: "Kwame Mensah" },
+	};
+	const brief: ProjectItem = {
+		id: "prj-brief",
+		type: "projects",
+		title: "Brand refresh",
+		owner,
+		skills: [],
+		summary: "",
+		createdAt: "2026-11-18T00:00:00.000Z",
+		org: "North Loop",
+		stage: "Discovery",
+		budget: "",
+		currency: "USD",
+		classification: "one-off",
+		roles: [],
+		phases: [],
+	};
+	const out = cardMenuFacts(brief, { scope: "explore" });
+	assertEquals(out.owner, {
+		handle: "@northloop",
+		name: "North Loop",
+		kind: "team",
+		messageTo: { handle: "@kwamemensah", name: "Kwame Mensah" },
+	});
+	assertEquals(row(cardMenu(out, handlers()), "Message client")?.url, "/messages/dm-kwamemensah");
 });
 
 Deno.test("an article offers only its author's profile after the link rows", () => {

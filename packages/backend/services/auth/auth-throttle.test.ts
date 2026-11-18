@@ -19,6 +19,11 @@ const RULES: Record<AuthAction, AuthThrottleRule> = {
 	},
 	verify: { client: { max: 5, windowMs: 1_000 } },
 	reset: { client: { max: 5, windowMs: 1_000 } },
+	confirm: { client: { max: 5, windowMs: 1_000 } },
+	reauth: {
+		client: { max: 5, windowMs: 1_000 },
+		identifier: { max: 2, windowMs: 1_000, counts: "failure" },
+	},
 	join: {
 		client: { max: 5, windowMs: 1_000 },
 		identifier: { max: 2, windowMs: 1_000, counts: "every" },
@@ -56,6 +61,23 @@ Deno.test("login: failed guesses close the identifier from every client address"
 	// Another account from the same address is unaffected.
 	assertEquals(
 		throttle.admit("login", { clientKey: "ip-9", identifier: "bo@example.com" }, 10),
+		null,
+	);
+});
+
+Deno.test("reauth: wrong passwords (422) close the account's re-authentication", () => {
+	const throttle = new AuthThrottle(RULES);
+	const userId = "7d1f0c4e-0000-4000-8000-000000000001";
+	const wrong = fail(422, { message: "That password isn't right." });
+	for (let i = 0; i < 2; i++) {
+		const subject = { clientKey: `ip-${i}`, identifier: userId };
+		assertEquals(throttle.admit("reauth", subject, i), null);
+		throttle.record("reauth", subject, wrong, i);
+	}
+	const refused = throttle.admit("reauth", { clientKey: "ip-9", identifier: userId }, 10);
+	assertEquals(refused?.status, 429);
+	assertEquals(
+		throttle.admit("reauth", { clientKey: "ip-9", identifier: "another-user" }, 10),
 		null,
 	);
 });

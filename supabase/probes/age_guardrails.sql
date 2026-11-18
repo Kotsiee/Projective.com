@@ -15,6 +15,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 DO $$
 DECLARE
     v_kid uuid := gen_random_uuid();
@@ -36,7 +44,7 @@ BEGIN
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_kid, 'role', 'authenticated')::text, true);
     BEGIN
         PERFORM public.complete_onboarding(jsonb_build_object(
-            'username', 'ageprobe_kid_' || v_tag, 'dob', (CURRENT_DATE - interval '12 years')::date));
+            'legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_kid_' || v_tag, 'dob', (CURRENT_DATE - interval '12 years')::date));
         RAISE EXCEPTION 'FAIL complete_onboarding accepted a 12-year-old';
     EXCEPTION WHEN SQLSTATE 'PM422' THEN
         RAISE NOTICE 'PASS complete_onboarding refuses a 12-year-old (PM422)';
@@ -44,7 +52,7 @@ BEGIN
 
     BEGIN
         PERFORM public.complete_onboarding(jsonb_build_object(
-            'username', 'ageprobe_kid_' || v_tag, 'dob', (CURRENT_DATE + 1)));
+            'legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_kid_' || v_tag, 'dob', (CURRENT_DATE + 1)));
         RAISE EXCEPTION 'FAIL complete_onboarding accepted a date of birth in the future';
     EXCEPTION WHEN SQLSTATE '22023' THEN
         RAISE NOTICE 'PASS complete_onboarding refuses a future date of birth (22023)';
@@ -54,7 +62,7 @@ BEGIN
     BEGIN
         INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data)
         VALUES (gen_random_uuid(), 'age-probe-gotrue-' || v_tag || '@projective.invalid', 'authenticated', 'authenticated',
-                jsonb_build_object('username', 'ageprobe_gt_' || v_tag, 'dob', (CURRENT_DATE - interval '12 years')::date));
+                jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_gt_' || v_tag, 'dob', (CURRENT_DATE - interval '12 years')::date));
         RAISE EXCEPTION 'FAIL a direct GoTrue signup provisioned a 12-year-old';
     EXCEPTION WHEN SQLSTATE 'PM422' THEN
         RAISE NOTICE 'PASS direct GoTrue signup refuses a 12-year-old (PM422)';
@@ -64,13 +72,13 @@ BEGIN
     -- #region Provision the restricted and unrestricted accounts
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_teen, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'ageprobe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date));
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_eve, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'ageprobe_eve_' || v_tag, 'dob', (CURRENT_DATE - interval '18 years' + interval '1 day')::date));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_eve_' || v_tag, 'dob', (CURRENT_DATE - interval '18 years' + interval '1 day')::date));
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_adult, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'ageprobe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '18 years')::date));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'ageprobe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '18 years')::date));
     RAISE NOTICE 'PASS 16-, 17- and 18-year-olds are provisioned';
 
     IF org.fn_is_minor(v_teen) AND org.fn_is_minor(v_eve) AND NOT org.fn_is_minor(v_adult) THEN

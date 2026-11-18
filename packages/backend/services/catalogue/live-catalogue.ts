@@ -27,6 +27,7 @@ import { PLATFORM_BASE_CURRENCY, toMajorUnits } from "@projective/types/finance"
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { resolveSkill } from "../explore/skills.ts";
+import { messageTargetOf } from "../explore/live-catalog.ts";
 import { fetchPublicMedia } from "../files/public-media.ts";
 import { projectorFor } from "../finance/commerce-money.ts";
 import { FxService } from "../finance/FxService.ts";
@@ -384,7 +385,9 @@ async function withChildren(db: SupabaseClient, listings: CatalogueListingRow[])
 	const bpIds = listings.flatMap((l) => l.service_blueprint_id ? [l.service_blueprint_id] : []);
 	const prodIds = listings.flatMap((l) => l.product_id ? [l.product_id] : []);
 	const ids = listings.map((l) => l.id);
-	const [bps, prods, media] = await Promise.all([
+	const subjectIds = [...bpIds, ...prodIds];
+	const now = new Date().toISOString();
+	const [bps, prods, media, live] = await Promise.all([
 		bpIds.length
 			? db.schema("marketplace").from("service_blueprints").select(BLUEPRINT_COLUMNS).in(
 				"id",
@@ -400,12 +403,25 @@ async function withChildren(db: SupabaseClient, listings: CatalogueListingRow[])
 				ids,
 			)
 			: Promise.resolve({ data: [], error: null }),
+		subjectIds.length
+			? db.schema("marketplace").from("promoted_placements").select("entity_id")
+				.in("entity_id", subjectIds).is("cancelled_at", null).lte("starts_at", now).gt(
+					"ends_at",
+					now,
+				)
+			: Promise.resolve({ data: [], error: null }),
 	]);
 	if (bps.error) {
 		throw new Error(`marketplace.service_blueprints read failed: ${bps.error.message}`);
 	}
 	if (prods.error) throw new Error(`catalogue.products read failed: ${prods.error.message}`);
 	if (media.error) throw new Error(`catalogue.listing_media read failed: ${media.error.message}`);
+	if (live.error) {
+		throw new Error(`marketplace.promoted_placements read failed: ${live.error.message}`);
+	}
+	const promotedSubjects = new Set(
+		((live.data ?? []) as Array<{ entity_id: string }>).map((p) => p.entity_id),
+	);
 
 	const blueprints = new Map(((bps.data ?? []) as CatalogueBlueprintRow[]).map((b) => [b.id, b]));
 	const mediaRows = (media.data ?? []) as ListingMediaRow[];
@@ -414,7 +430,10 @@ async function withChildren(db: SupabaseClient, listings: CatalogueListingRow[])
 		bindingsFor(db, [...blueprints.values()]),
 	]);
 	return {
-		listings,
+		listings: listings.map((l) => ({
+			...l,
+			promoted: promotedSubjects.has(l.service_blueprint_id ?? l.product_id ?? ""),
+		})),
 		blueprints,
 		products: new Map(((prods.data ?? []) as CatalogueProductRow[]).map((p) => [p.id, p])),
 		media: mediaRowsByListing(mediaRows),
@@ -541,7 +560,9 @@ function detailOf(
 /** The owner a console listing credits: its team when team-owned, else the seller themselves. */
 async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 	const { data } = await getAnonClient().schema("org").from("profiles_index")
-		.select("handle, name, avatar_bucket, avatar_path, entity_type, verified, verification_stamp")
+		.select(
+			"handle, name, avatar_bucket, avatar_path, entity_type, verified, verification_stamp, contact_handle, contact_name",
+		)
 		.eq("entity_id", scope.teamId ?? scope.userId)
 		.maybeSingle();
 	const row = data as
@@ -553,8 +574,11 @@ async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 			entity_type: ExploreOwner["kind"];
 			verified: boolean;
 			verification_stamp: string | null;
+			contact_handle: string | null;
+			contact_name: string | null;
 		}
 		| null;
+	const messageTo = row ? messageTargetOf(row) : undefined;
 	return {
 		handle: row ? `@${row.handle}` : "",
 		name: row?.name ?? "",
@@ -562,6 +586,7 @@ async function ownerFor(scope: Scope): Promise<ExploreOwner> {
 		kind: row?.entity_type ?? "freelancer",
 		verified: row?.verified ?? false,
 		verificationStamp: VerificationStampSchema.safeParse(row?.verification_stamp).data,
+		...(messageTo ? { messageTo } : {}),
 	};
 }
 

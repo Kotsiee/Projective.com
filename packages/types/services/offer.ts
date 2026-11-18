@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ServiceBookingFormat, ServiceCtaRigSchema } from "./common.ts";
 import { ContactOfferSchema } from "./contact.ts";
 import { PipelineDraftSchema } from "./pipeline.ts";
-import { CohortOfferSchema } from "../projects/sessions.ts";
+import { CohortOfferSchema, ViewerWaitlistPlaceSchema } from "../projects/sessions.ts";
 
 /**
  * services.offer — the **resolved commercial offer** for one listing and one viewer: what the primary
@@ -61,6 +61,12 @@ export const ServiceBookingOfferSchema = z.object({
 	 * a group session with no enrolling cohort (which then cannot be reserved).
 	 */
 	cohort: CohortOfferSchema.nullable().default(null),
+	/**
+	 * The viewer's own place on a group-session listing's waitlist (Decision #455): waiting with a queue
+	 * position, invited with a held seat, or expired. `null` for a guest, a viewer with no place and
+	 * every other format. With a place, `capacity` is this viewer's (an invited seat is theirs).
+	 */
+	waitlist: ViewerWaitlistPlaceSchema.nullable().default(null),
 	/**
 	 * The pipeline draft this buyer already has for this service, or `null`.
 	 *

@@ -21,6 +21,11 @@ import {
  *   address cannot be mail-bombed from many clients.
  * - **Session upkeep** (`refresh`, `logout`, `sso`) counts per client address only, with ceilings no
  *   person reaches by hand.
+ * - **Link confirmation** (`confirm`) counts per client address only: its `token_hash` hides the
+ *   account it belongs to, so there is no identifier to count against.
+ * - **Re-authentication** (`reauth`: the password a signed-in person types to move their sign-in
+ *   address, Decision #451) counts like a credential guess, its identifier the account's user id,
+ *   so a stolen session cannot sweep the password.
  *
  * Refusals are uniform: the same 429 and copy whether or not the identifier has an account, so the
  * limiter reveals nothing an attacker could not already see. Per process, like every limiter here
@@ -33,6 +38,8 @@ export type AuthAction =
 	| "login"
 	| "join"
 	| "verify"
+	| "confirm"
+	| "reauth"
 	| "resend"
 	| "forgot"
 	| "reset"
@@ -61,6 +68,11 @@ export const AUTH_THROTTLE_RULES: Readonly<Record<AuthAction, AuthThrottleRule>>
 	reset: {
 		client: { max: 30, windowMs: 10 * MINUTE },
 		identifier: { max: 10, windowMs: 15 * MINUTE, counts: "failure" },
+	},
+	confirm: { client: { max: 30, windowMs: 10 * MINUTE } },
+	reauth: {
+		client: { max: 30, windowMs: 10 * MINUTE },
+		identifier: { max: 5, windowMs: 15 * MINUTE, counts: "failure" },
 	},
 	join: {
 		client: { max: 20, windowMs: 60 * MINUTE },

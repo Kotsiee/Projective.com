@@ -94,7 +94,9 @@ is_active, updated_at, updated_by)`.
 The discovery catalogue reads it through `search.ranking_weights()` (key · weight · is_active only,
 [Functions.md](Functions.md)) and its quality score (`packages/backend/services/explore/ranking.ts`,
 Decision #178) uses `review_sentiment`, `review_count`, `workload`, `discovery_boost` (seeded 1.25 for
-the newcomer Discovery Boost — earned, never sold), `penalty` and `interest_history`. The other keys
+the newcomer Discovery Boost — earned, never sold), `penalty` and `interest_history`; a typed
+search's Best match order adds `text_relevance` (seeded 6.00) × how well the item matches the words
+(Decision #459). The other keys
 belong to the SQL ranking RPCs. `verification` is deliberately NOT read by the catalogue's score:
 discovery weight comes from Standing alone (PRODUCT_SPEC §Reputation & Discovery 5).
 

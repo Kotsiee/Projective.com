@@ -137,6 +137,13 @@ export const LocalKeys = {
 	 * cookie was cleared. Literal key MUST match that script.
 	 */
 	A11Y_PREFERENCES: "pj.local.a11y",
+	/**
+	 * Screen sharing mode on THIS device (`"1"`; removed when off) — Decision #297. The durable copy:
+	 * its `storage` event flips every open tab, and `_app.tsx`'s pre-paint restorer re-paints the mode
+	 * (and re-writes the `pj.screen_share` cookie) when the cookie was cleared. Never synced to the
+	 * account. Literal key MUST match `SCREEN_SHARE_PREPAINT_SCRIPT` in `utils/screen-share-context.ts`.
+	 */
+	SCREEN_SHARE: "pj.local.screenShare",
 	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/**

@@ -61,7 +61,7 @@
 								</h1>
 								<p class="pj-body" style="margin: 0; font-size: 16px; line-height: 1.6; color: #3f484a">
 									We received a request to reset your Projective password. Enter this code on the reset
-									screen, or use the button below to choose a new password.
+									screen to choose a new password. Closed it? The button below opens it again.
 								</p>
 							</td>
 						</tr>
@@ -86,7 +86,7 @@
 						<tr>
 							<td class="pj-px" align="left" style="padding: 24px 32px 0 32px">
 								<!--[if mso]>
-								<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .RedirectTo }}/forgot-password?email={{ .Email }}&step=reset" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="25%" stroke="f" fillcolor="#007680">
+								<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .RedirectTo }}/forgot-password?step=reset" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="25%" stroke="f" fillcolor="#007680">
 								<w:anchorlock/>
 								<center style="color:#ebfdff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:600;">Choose a new password</center>
 								</v:roundrect>
@@ -95,7 +95,7 @@
 								<table role="presentation" cellpadding="0" cellspacing="0">
 									<tr>
 										<td align="center" bgcolor="#007680" style="border-radius: 12px">
-											<a href="{{ .RedirectTo }}/forgot-password?email={{ .Email }}&step=reset" style="display: inline-block; padding: 14px 32px; font-size: 16px; line-height: 20px; font-weight: 600; color: #ebfdff; text-decoration: none; border-radius: 12px">
+											<a href="{{ .RedirectTo }}/forgot-password?step=reset" style="display: inline-block; padding: 14px 32px; font-size: 16px; line-height: 20px; font-weight: 600; color: #ebfdff; text-decoration: none; border-radius: 12px">
 												Choose a new password
 											</a>
 										</td>
@@ -111,7 +111,7 @@
 									Button not working? Paste this link into your browser:
 								</p>
 								<p style="margin: 0; font-size: 13px; line-height: 1.6; word-break: break-all">
-									<a class="pj-link" href="{{ .RedirectTo }}/forgot-password?email={{ .Email }}&step=reset" style="color: #007680">{{ .RedirectTo }}/forgot-password?email={{ .Email }}&amp;step=reset</a>
+									<a class="pj-link" href="{{ .RedirectTo }}/forgot-password?step=reset" style="color: #007680">{{ .RedirectTo }}/forgot-password?step=reset</a>
 								</p>
 							</td>
 						</tr>

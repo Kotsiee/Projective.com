@@ -8,7 +8,9 @@ import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts"
 /**
  * `POST /api/auth/forgot-password` — thin route: begin password recovery. Anti-enumeration: it
  * responds `ok` regardless of whether the address has an account, so an attacker can't probe which
- * emails are registered. The fat {@link AuthBackendService} (live) asks GoTrue to send the email.
+ * emails are registered. The fat {@link AuthBackendService} (live) asks GoTrue to send the email,
+ * with the Turnstile token, or, for a verified session asking about its own sign-in address
+ * (Settings → Password), without one (Decision #447).
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -36,6 +38,10 @@ export const handler = define.handlers({
 			await AuthBackendService.requestPasswordReset({
 				email: parsed.data.email,
 				redirectTo: safeRedirect(parsed.data.redirectTo),
+				captchaToken: parsed.data.captchaToken,
+				signedInUserId: ctx.state.isAuthenticated
+					? ctx.state.userContext?.userId ?? undefined
+					: undefined,
 			}),
 		);
 	},

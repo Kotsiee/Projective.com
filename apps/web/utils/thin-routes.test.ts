@@ -158,11 +158,12 @@ const INDIVIDUAL = {
 	type: "individual",
 	intent: "client",
 	email: "kid@example.test",
-	password: "long-enough",
+	password: "Long-enough-1",
 	firstName: "Kid",
 	lastName: "Example",
 	username: "kidexample",
 	dob: "2000-01-01",
+	acceptTerms: true,
 };
 
 Deno.test("auth/join: no body is a 400; a malformed one a 422", async () => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CaptchaTokenSchema } from "../auth/captcha.ts";
 
 /**
  * org.user_emails — the Zod SSOT for a person's email addresses and the verification handshake that
@@ -76,7 +77,8 @@ export const EMAIL_TOKEN_TTL_HOURS = 24;
 
 /**
  * The refusal codes the email definer functions raise (as the exception MESSAGE, SQLSTATE `P0001`),
- * so a service can map each to a sentence without parsing prose.
+ * so a service can map each to a sentence without parsing prose. `password_incorrect` is the one the
+ * sign-in change answers itself, from GoTrue's password grant.
  */
 export const EmailRefusal = z.enum([
 	"email_invalid",
@@ -91,6 +93,13 @@ export const EmailRefusal = z.enum([
 	"token_expired",
 	"token_used",
 	"token_wrong_account",
+	"sign_in_already",
+	"sign_in_unverified",
+	"sign_in_limit",
+	"sign_in_unavailable",
+	"account_closing",
+	"password_required",
+	"password_incorrect",
 ]);
 export type EmailRefusal = z.infer<typeof EmailRefusal>;
 
@@ -100,4 +109,36 @@ export const MAX_USER_EMAILS = 5;
 /** The `?email=` outcome the verify link lands back on `/settings/account` with. */
 export const EmailVerifyOutcome = z.enum(["verified", "expired", "invalid", "used", "wrong-account", "in-use", "unavailable"]);
 export type EmailVerifyOutcome = z.infer<typeof EmailVerifyOutcome>;
+// #endregion
+
+// #region Sign-in change
+/**
+ * How often the sign-in address may move: two changes in any rolling three days. Mirrors
+ * `org.prepare_sign_in_change`, which counts the `user.sign_in_changed` audit rows.
+ */
+export const SIGN_IN_CHANGE_LIMIT = { max: 2, windowDays: 3 } as const;
+
+/** The longest password the re-authentication accepts before GoTrue is even asked. */
+export const REAUTH_PASSWORD_MAX_LENGTH = 1024;
+
+/**
+ * `POST /api/user/emails/:id/sign-in` — sign in with one of the caller's CONFIRMED addresses from
+ * now on. The current password re-authenticates the person (GoTrue's password grant, so the bot
+ * check rides along as `captchaToken`); `makePrimary` also moves the contact address there.
+ */
+export const MakeSignInSchema = z.object({
+	password: z.string().min(1, "Enter your password.").max(REAUTH_PASSWORD_MAX_LENGTH),
+	captchaToken: CaptchaTokenSchema,
+	makePrimary: z.boolean().default(false),
+}).strict();
+export type MakeSignIn = z.infer<typeof MakeSignInSchema>;
+
+/** The result of a sign-in change: the fresh list, and how the notice to the old address left. */
+export const SignInChangedSchema = z.object({
+	emails: z.array(UserEmailSchema),
+	notice: EmailDeliveryOutcome,
+	/** `false` when the other sessions could not be ended; signing out ends them all. */
+	otherSessionsEnded: z.boolean(),
+});
+export type SignInChanged = z.infer<typeof SignInChangedSchema>;
 // #endregion

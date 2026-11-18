@@ -16,14 +16,21 @@ import { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 /** The cookie the Dev Context Switcher writes and `resolveProjectAccess` reads in development. */
 export const LANDING_SIM_COOKIE = "pj.dev.landing";
 
-/** One simulation: either axis may be left alone (`null` = defer to the server's real value). */
+/** The side of a bought service a simulation stands on (Decision #456). */
+export type LandingServiceSide = "client" | "provider";
+
+const SERVICE_SIDES: readonly LandingServiceSide[] = ["client", "provider"];
+
+/** One simulation: any axis may be left alone (`null` = defer to the server's real value). */
 export interface LandingSim {
 	access: ProjectAccess | null;
 	status: ProjectStatus | null;
+	/** On a bought service only: its client's view or its provider's. */
+	side: LandingServiceSide | null;
 }
 
 /** No simulation. */
-export const NO_LANDING_SIM: LandingSim = { access: null, status: null };
+export const NO_LANDING_SIM: LandingSim = { access: null, status: null, side: null };
 // #endregion
 
 // #region Codec
@@ -35,6 +42,7 @@ export function encodeLandingSim(sim: LandingSim): string | null {
 	const params = new URLSearchParams();
 	if (sim.access) params.set("access", sim.access);
 	if (sim.status) params.set("status", sim.status);
+	if (sim.side) params.set("side", sim.side);
 	const value = params.toString();
 	return value.length > 0 ? value : null;
 }
@@ -48,14 +56,31 @@ export function parseLandingSim(raw: string | null | undefined): LandingSim {
 	const params = new URLSearchParams(raw);
 	const access = ProjectAccess.safeParse(params.get("access"));
 	const status = ProjectStatus.safeParse(params.get("status"));
+	const side = SERVICE_SIDES.find((s) => s === params.get("side")) ?? null;
 	return {
 		access: access.success ? access.data : null,
 		status: status.success ? status.data : null,
+		side,
 	};
 }
 
 /** Whether a simulation changes anything. */
 export function isLandingSimActive(sim: LandingSim): boolean {
-	return sim.access !== null || sim.status !== null;
+	return sim.access !== null || sim.status !== null || sim.side !== null;
+}
+
+/**
+ * How a simulated side of a bought service stands toward it (Decision #427): its client is on the
+ * owner side and never configures it, its provider is a participant who does. `null` off a service or
+ * without a side, so the caller keeps the server's answer.
+ */
+export function serviceSideAccess(
+	sim: LandingSim,
+	service: boolean,
+): { access: ProjectAccess; canConfigure: boolean } | null {
+	if (!service || sim.side === null) return null;
+	return sim.side === "client"
+		? { access: "owner", canConfigure: false }
+		: { access: "participant", canConfigure: true };
 }
 // #endregion

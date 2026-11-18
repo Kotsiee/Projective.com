@@ -39,6 +39,12 @@ CREATE INDEX idx_handle_changes_old_handle ON org.handle_changes (lower(old_hand
 -- One open request per person per scope; the sweep reads the due ones.
 CREATE UNIQUE INDEX uq_deletion_requests_one_open ON org.deletion_requests (user_id, scope) WHERE status = 'scheduled';
 CREATE INDEX idx_deletion_requests_due ON org.deletion_requests (scheduled_for) WHERE status = 'scheduled';
+-- One open data export per person; the 24-hour limit and the status read take the latest; the job
+-- claims the open ones oldest first and sweeps the ready ones past their expiry (Decision #450).
+CREATE UNIQUE INDEX uq_data_export_requests_one_open ON org.data_export_requests (user_id) WHERE status IN ('pending', 'building');
+CREATE INDEX idx_data_export_requests_user_requested ON org.data_export_requests (user_id, requested_at DESC);
+CREATE INDEX idx_data_export_requests_open ON org.data_export_requests (requested_at) WHERE status IN ('pending', 'building');
+CREATE INDEX idx_data_export_requests_expiry ON org.data_export_requests (expires_at) WHERE status = 'ready';
 -- #endregion
 
 -- #region Workspace membership invariants (Decision #122)
@@ -92,6 +98,11 @@ CREATE INDEX idx_enterprises_owner ON org.enterprises (owner_user_id);
 CREATE INDEX idx_enterprises_handle ON org.enterprises (lower(handle));
 CREATE INDEX idx_enterprise_members_user ON org.enterprise_members (user_id);
 CREATE INDEX idx_enterprise_members_org ON org.enterprise_members (enterprise_id);
+
+-- #region Legal acceptance (00001010, Decision #446)
+CREATE INDEX idx_legal_acceptances_user_document ON org.legal_acceptances (user_id, document_slug, kind);
+CREATE INDEX idx_legal_acceptances_enterprise ON org.legal_acceptances (enterprise_id) WHERE enterprise_id IS NOT NULL;
+-- #endregion
 
 -- #region Public profile resolution + the profile detail ledgers (00001040)
 -- org.fn_resolve_profile matches a handle case-insensitively in four namespaces; without these the

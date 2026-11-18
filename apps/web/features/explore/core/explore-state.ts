@@ -1,5 +1,6 @@
 import type { ExploreCategory, ExploreParams, Facet } from "../types/explore-types.ts";
 import { facetIsDefault } from "../types/explore-types.ts";
+import { defaultExploreSort, resolveExploreSort } from "@projective/types/explore";
 
 export type { ExploreParams };
 
@@ -27,9 +28,6 @@ const CATEGORIES = new Set<ExploreCategory>([
 	"products",
 	"articles",
 ]);
-
-/** The default sort — "Recommended" (PRODUCT_SPEC §Reputation & Discovery ranking). */
-export const DEFAULT_SORT = "recommended";
 // #endregion
 
 // #region Parse
@@ -42,7 +40,8 @@ function toCategory(raw: string | null): ExploreCategory {
 /**
  * Parse a query string (or `URLSearchParams`) into normalised {@link ExploreParams}. Accepts both the
  * canonical `?category=` and the legacy `?type=` the hero search historically emitted. Filter facets
- * accept repeated keys (`?stage=hiring&stage=live`) or comma lists (`?roles=ios,android`).
+ * accept repeated keys (`?stage=hiring&stage=live`) or comma lists (`?roles=ios,android`). With no
+ * `?sort=`, a search with a query takes Best match and one without takes Recommended.
  */
 export function parseExploreParams(search: string | URLSearchParams): ExploreParams {
 	const sp = typeof search === "string" ? new URLSearchParams(search) : search;
@@ -54,27 +53,42 @@ export function parseExploreParams(search: string | URLSearchParams): ExplorePar
 		);
 		if (values.length) filters[key] = values;
 	}
+	const q = (sp.get("q") ?? "").trim();
 	return {
-		q: (sp.get("q") ?? "").trim(),
+		q,
 		category: toCategory(sp.get("category") ?? sp.get("type")),
-		sort: sp.get("sort") ?? DEFAULT_SORT,
+		sort: resolveExploreSort(sp.get("sort"), q),
 		filters,
 	};
 }
 // #endregion
 
 // #region Serialise + derive
-/** Serialise {@link ExploreParams} back to a canonical `/explore?…` path (stable key order). */
+/**
+ * Serialise {@link ExploreParams} back to a canonical `/explore?…` path (stable key order). `?sort=` is
+ * written only when it differs from the query's default order.
+ */
 export function serializeExploreParams(p: ExploreParams): string {
 	const sp = new URLSearchParams();
 	if (p.q) sp.set("q", p.q);
 	if (p.category && p.category !== "all") sp.set("category", p.category);
-	if (p.sort && p.sort !== DEFAULT_SORT) sp.set("sort", p.sort);
+	const sort = resolveExploreSort(p.sort, p.q);
+	if (sort !== defaultExploreSort(p.q)) sp.set("sort", sort);
 	for (const [key, values] of Object.entries(p.filters)) {
 		for (const v of values) sp.append(key, v);
 	}
 	const qs = sp.toString();
 	return qs ? `/explore?${qs}` : "/explore";
+}
+
+/**
+ * Immutably replace the free-text query. A sort that was the old query's default follows to the new
+ * query's default (typing a first query lands on Best match); a sort the reader picked is kept.
+ */
+export function withQuery(p: ExploreParams, q: string): ExploreParams {
+	const next = q.trim();
+	const sort = p.sort === defaultExploreSort(p.q) ? defaultExploreSort(next) : p.sort;
+	return { ...p, q: next, sort: resolveExploreSort(sort, next) };
 }
 
 /**

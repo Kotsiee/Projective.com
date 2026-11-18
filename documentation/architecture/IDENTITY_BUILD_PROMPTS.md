@@ -52,6 +52,18 @@ No deliverable of HK1, ERA1–ERA4, SSO1, ARC1, MFA1–MFA3, MIN1, MIN2, RLS1 or
 so each is not started, and X1, X2 and Z1 are unstarted. Runnable now: HK1, SSO1, MFA1, MIN1 and
 LOW1; X1 and X2 stop at their 🧑 at once.
 
+2026-11-18, AU1 (Decision #446): `org.legal_acceptances` adds a new FK onto `org.users_public`
+(`RESTRICT`) and one onto `org.enterprises`. ERA1 classifies the table HOLD (consent and
+terms-acceptance records, finance-model §17), and `account_erasure_scope.sql` must list it. No
+other item here changes.
+
+2026-11-18, AU5 (Decision #448): MFA1 inherits two wired GoTrue notices, `mfa_factor_enrolled` and
+`mfa_factor_unenrolled`. They fire once `[auth.mfa.totp]` enrolment is on, so MFA1 has no email
+work left. `email_change.html` is a credential-free notice. ST1 (Decision #451) moves the sign-in
+address through GoTrue's admin API and the app's own mail, so it stays that way and `email_change`
+keeps its place in `features/auth/core/gotrue-mail.test.ts`. The
+recovery link no longer carries the address; LOW1 item 4 (the same flaw on `/join`) is unchanged.
+
 ### 0.1 Run order
 
 | Phase                         | Prompts                   | Lane                   | Why this order                                                                                                                                                      |
@@ -156,7 +168,9 @@ contract rate applies to) touch no identity prompt.
 **🧑 stops in this file:**
 
 1. **HK1 (conditional).** Keep `security.turnstile_verifications` if #335 (h) has since adopted it.
-   Recommended: drop it, as Q0.2 (b) rules.
+   Recommended: drop it, as Q0.2 (b) rules. Unchanged by Decision #447 (AU3, 2026-11-18): it built
+   Turnstile's layer 1 (GoTrue, plus `/join`'s own siteverify) with no table write; the row write
+   stays Proposed with layer 2 (newsletter, feedback), so (a) below is still open.
 2. **ERA3.** Which seats the freelancer-profile scope leaves. Recommended: team seats only.
 3. **ERA4.** Where the PII-free erasure tombstone lives outside the database. Recommended: export it
    before any restore, plus a nightly copy to an external write-only bucket.
@@ -625,8 +639,10 @@ CONTEXT:
   - What survives follows the owner's retention table (finance-model.md §17, ⚖️ pending counsel).
     ERASED with the account: messages, files and profiles that are not under a hold. KEPT, linked
     only to the anonymous tombstone: ledger, escrow, payout, invoice, order and fee rows; disputes
-    with their evidence and attached messages; reviews and Standing (#156 (a)); consent records;
-    and security logs (12 months).
+    with their evidence and attached messages; reviews and Standing (#156 (a)); consent records,
+    including the sign-up acceptances in org.legal_acceptances (Decision #446: HOLD, life of the
+    account + 6 years; its person FK is RESTRICT and the table is append-only, so the erasure must
+    not delete or blank it); and security logs (12 months).
   The legal-hold identity record is ERA4. The 12-month security-log prune is ERA2.
 
 FILES:
@@ -1198,8 +1214,8 @@ STEPS:
      - A failed verify counts against the per-identifier throttle.
      - Unenrolling needs an aal2 session; GoTrue enforces that, so map its refusal to a step-up
        answer.
-  3. The Settings entry and section: enrol, confirm, list and remove. The copy names the five
-     actions that will ask for the code (MFA2).
+  3. The Settings entry and section: enrol, confirm, list and remove. The copy names the six
+     actions that will ask for the code (MFA2; the sixth, a sign-in address change, is #451).
   4. StepUpDialog takes a factor id, runs challenge + verify, then resolves so the caller can
      retry. With no factor enrolled, it explains and links to Settings → Account → Two-step.
   5. Build recovery per the 🧑 ruling.
@@ -1218,7 +1234,7 @@ ACCEPTANCE:
 ### MFA2 — The sensitive-route guard: AAL2 step-up and a live-session check
 
 ```text
-PROMPT MFA2: The sensitive-route guard: an AAL2 step-up and a live-session check on five actions
+PROMPT MFA2: The sensitive-route guard: an AAL2 step-up and a live-session check on six actions
 
 ROLE: Auth and security engineer. SQL lane for steps 2 and 3 (00001001, 00001020, 00001060); app
 lane for the rest. ⏳ MFA1; ⏳ ARC1 (00001020) and ERA4 (00001060).
@@ -1228,12 +1244,12 @@ CONTEXT:
   or signed-out-elsewhere token keeps acting until it expires (SA:2197-2200).
   Ruled (Decision #336, ruling I3 (a), (b)):
   - a mandatory AAL2 step-up for withdrawals, payout-account changes, ownership transfer, co-owner
-    grants and erasure;
+    grants and erasure, and (Decision #451, amending I3) a change of sign-in address;
   - keep the 1-hour JWT, and check auth.sessions (KV-cached) on the same money, authority and
     erasure routes.
   The AAL2 checks inside the money RPCs are MFA3, ⏳ the F·DB phase.
 
-THE FIVE ACTIONS (routes → SQL doors):
+THE SIX ACTIONS (routes → SQL doors):
   - Withdrawal: POST /api/wallet/payouts, and /api/wallet/action with withdraw →
     finance.begin_payout (00001240:248; MFA3).
   - Payout-account change: /api/finance/connect/onboarding and /refresh →
@@ -1245,6 +1261,10 @@ THE FIVE ACTIONS (routes → SQL doors):
     one up needs no step-up.
   - Erasure: POST /api/user/lifecycle, account scope and ERA2's explicit freelancer erasure →
     org.schedule_account_deletion and schedule_freelancer_removal(p_explicit) (00001060).
+  - Sign-in address change (Decision #451, built by ST1): POST /api/user/emails/:id/sign-in →
+    org.prepare_sign_in_change (00001050). ST1 re-authenticates with the current password through
+    GoTrue's password grant. MFA2 adds AAL2 for a person with a verified factor (auth.mfa_factors);
+    one without keeps the password check. SignInChangeDialog opens StepUpDialog on a stepUp answer.
 
 FILES:
   - supabase/migrations/00001001_functions_security_context.sql, two helpers:
@@ -1265,20 +1285,21 @@ FILES:
     by session id. No cache when KV is unavailable. Logout deletes the key.
   - apps/web/utils/sensitive-guard.ts (new; route-level, like utils/age-gate.ts):
     requireLiveSession and requireStepUp, wired into the routes above. Thin routes stay thin.
-  - The islands that start the five actions open StepUpDialog on a stepUp answer, then retry:
+  - The islands that start the six actions open StepUpDialog on a stepUp answer, then retry:
     - wallet withdraw (features/wallet). ⏳ F·UI2/UI3, who own WalletDialogs.tsx and
       WalletHome.island.tsx: touch only the submit handler, or hand them the helper;
     - Settings' payout account;
     - the workspace transfer dialog;
     - the member editor's reserved-grant confirm;
-    - the account-delete dialog.
+    - the account-delete dialog;
+    - Settings' SignInChangeDialog (Email addresses → "Use to sign in").
   - supabase/probes/step_up_guard.sql (new); unit tests for the mapper, the guard and the cache.
   - Docs:
     - SYSTEM_ARCHITECTURE.md §Authentication and §Session Integrity: the guard, the cache TTL, and
       the revocation window that remains;
     - PRODUCT_SPEC.md, the "Two-step verification" marker: built, except inside the payout doors,
       which MFA3 finishes;
-    - ROUTING.md: the 401 step-up answer on the five routes.
+    - ROUTING.md: the 401 step-up answer on the six routes.
 
 STEPS:
   1. Reproduce: sign in twice, then sign out everywhere from one session. The other token still
@@ -1304,7 +1325,7 @@ ACCEPTANCE:
     - aal2 with a live session → passes;
     - a deleted auth.sessions row → session_revoked;
     - the service role passes.
-  - Live: each of the five actions asks for the code once, then completes. A session signed out
+  - Live: each of the six actions asks for the code once, then completes. A session signed out
     elsewhere is refused within the cache TTL.
   - `deno task test:probes` green; your own clean `deno task test:probes:fresh`; check, lint and
     test:unit green.

@@ -28,6 +28,15 @@ import type { ExploreItem, RankingWeightRow } from "@projective/types/explore";
  *   alone (§Reputation & Discovery 5), and nothing here can be bought.
  * - **Trust penalty.** Active discovery-rank penalties (`search.profiles_index.discovery_penalty`)
  *   subtract, unscaled by Standing, so a rung never shields a penalised owner.
+ *
+ * A typed search's default "Best match" order adds one term to that score, in the same units:
+ *
+ * ```
+ * best match = total + text_relevance × lexical
+ * ```
+ *
+ * where `lexical` (0–1, `./lexical.ts`) is how well the item matches the words typed. The quality
+ * score itself never reads the query, so "recommended" means the same thing with or without one.
  */
 
 // #region Weights
@@ -40,6 +49,7 @@ export const RANKING_WEIGHT_KEYS = [
 	"discovery_boost",
 	"penalty",
 	"interest_history",
+	"text_relevance",
 ] as const;
 
 /** One coefficient the score reads. */
@@ -80,6 +90,7 @@ export function resolveWeights(rows: readonly RankingWeightRow[]): ResolvedWeigh
 			discovery_boost: weightOf("discovery_boost"),
 			penalty: weightOf("penalty"),
 			interest_history: weightOf("interest_history"),
+			text_relevance: weightOf("text_relevance"),
 		},
 		missing: RANKING_WEIGHT_KEYS.filter((key) => !byKey.has(key)),
 	};
@@ -240,6 +251,14 @@ export function scoreItem(signals: RankSignals, context: RankContext): ScoreBrea
 		penalty,
 		total: standing * (sentiment + volume + availability + boost) + penalty,
 	};
+}
+
+/**
+ * An item's Best match score: its quality score plus `text_relevance` × how well it matches the words
+ * typed (`lexical`, clamped to 0–1). With the coefficient switched off it is the quality score.
+ */
+export function bestMatchScore(quality: number, lexical: number, weights: RankingWeights): number {
+	return quality + weights.text_relevance * clamp(lexical, 0, 1);
 }
 
 /**

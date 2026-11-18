@@ -54,7 +54,7 @@ function discovery() {
 		listingTags: fixtureTags(),
 		requiredSkills: [],
 		skillRows: FIXTURE_SKILLS,
-		// A promoted listing is sponsored only with a live placement; every promoted fixture has one.
+		// Every promoted fixture holds a live placement, which must leave its organic card unmarked.
 		placements: FIXTURE_LISTINGS.filter((f) => f.listing.promoted).map((f) => ({
 			entity_type: f.blueprint ? "service_blueprint" : "product",
 			entity_id: (f.blueprint ?? f.product)?.id ?? "",
@@ -116,7 +116,11 @@ Deno.test(
 			pipeline.media,
 			`${STORAGE}/storage/v1/object/public/showcase/00000000-0000-4000-8000-0000000000a1/showcase/f0a1/md.webp`,
 		);
-		assertEquals(pipeline.sponsored, true);
+		assertEquals(
+			"sponsored" in pipeline,
+			false,
+			"a promoted listing's organic card carries no mark",
+		);
 		assertEquals(pipeline.ticketPrice, 600);
 
 		const product = card("prd-dashkit001");

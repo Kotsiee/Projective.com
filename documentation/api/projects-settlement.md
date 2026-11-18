@@ -1,7 +1,7 @@
 # Projects — settlement endpoints
 
-The three client decisions that move deliverables and money, plus the Fair Exit confirmation's
-read. Each is a thin route over one fat
+The client decisions that move deliverables and money, plus the Fair Exit and service-cancellation
+confirmations' reads. Each is a thin route over one fat
 `ProjectBackendService` method, and each method makes **one** call to a guarded `SECURITY DEFINER`
 door under the caller's own JWT. The door's review-authority check (`projects.can_review_project`)
 is the security of the path: no route or service repeats it (Decision #53(b)). Function contracts:
@@ -21,6 +21,8 @@ engagement cannot be addressed through this one's URL.
 | `POST /api/projects/:id/stages/:stageId/approve` | `ApproveStageSchema` → `StageApproved` | `approveStage` → `projects.approve_stage` | Releases every held escrow on the stage; the stage settles straight to `paid`. `handoverUnlocked` reports the Contact Handover. |
 | `GET /api/projects/:id/stages/:stageId/fair-exit` | `PreviewStageFairExitSchema` → `FairExitPreview` | `previewStageFairExit` → `projects.preview_stage_fair_exit` | What ending the stage would settle at each tier (Decision #198): `tiers[]` (25, 50, 75 — `freelancerPaidCents`, `feeCents`, `clientRefundedCents` and their server-formatted labels), `heldLabel`, `prepaidLabel`, `ticketsToCancel`, and `exitable` / `blocked` (`settled` · `nothing_held`). Moves nothing. Live only (`503` on the stub store). |
 | `POST /api/projects/:id/stages/:stageId/cancel` | `CancelStageFairExitSchema` → `StageExited` | `cancelStageFairExit` → `projects.cancel_stage_fair_exit` | `tier: 25 \| 50 \| 75` — the freelancer's share in percent; the remainder is refunded to the payer. Answers the same quote the preview showed (`freelancerPaidCents`, `feeCents`, `clientRefundedCents`, `currency`), `cancelledCount` (tickets settled) and `ticketsCancelled` (tickets closed); the message names the money that moved. |
+| `GET /api/projects/:id/cancel` | `PreviewServiceCancelSchema` → `ServiceCancelPreview` | `previewServiceCancel` → `projects.preview_service_cancel` | What cancelling a bought service settles (Decision #456): `returnedCents` (every unclaimed ticket's escrow and every later-stage reservation, back whole), and `stages[]` — each stage holding claimed work with three quotes over its claimed tickets (`freelancerPaidCents`, `feeCents`, `clientRefundedCents`); `ticketsToCancel`; `cancellable` / `blocked` (`ended` · `settling`). The service's client only (the seller is `403`). Moves nothing. Live only (`503` on the stub store). |
+| `POST /api/projects/:id/cancel` | `CancelServiceSchema` → `ServiceCancelled` | `cancelService` → `projects.cancel_service` | `tiers: { [stageUuid]: 25 \| 50 \| 75 }` — required for every stage the preview lists (`422` naming them otherwise), `reason` optional. Refunds the unclaimed escrow, settles each listed stage under Fair Exit at its tier, refunds the reservations, closes the open tickets and stages, then lands the service `cancelled`. Answers `freelancerPaidCents`, `feeCents`, `clientRefundedCents`, `ticketsCancelled`, `currency`. A plain status write to `cancelled` / `archived` on a bought service holding escrow is `409` (`set_project_status`). |
 
 ## Status mapping
 
@@ -40,5 +42,6 @@ and by the function's wording second:
 **Fail-closed.** With `PROJECTS_BACKEND_LIVE` on, none of these writes ever reaches the stub. A
 thrown write is a 502, and a signed-in caller without an access token gets a 401 rather than the
 in-memory store. With the gate off, the stub records a submission verdict (folded onto the
-explorer's read) and reports zero money moved for an approval or a Fair Exit. The Fair Exit preview has no stub: it
-answers `503`, because fixture figures would promise a settlement nothing could match.
+explorer's read) and reports zero money moved for an approval, a Fair Exit or a service
+cancellation. Neither preview has a stub: each answers `503`, because fixture figures would promise
+a settlement nothing could match.

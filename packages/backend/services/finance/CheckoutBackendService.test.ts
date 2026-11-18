@@ -132,6 +132,7 @@ interface Line {
 	kind?: BasketItem["itemType"];
 	ticketId?: string;
 	selected?: boolean;
+	metadata?: Record<string, unknown>;
 }
 
 /** The facts one test's checkout reads; every money call it makes is recorded. */
@@ -159,6 +160,8 @@ interface World {
 	quotes?: FxConversionQuote[];
 	/** The ids of those a card payment has already paid on. */
 	paidQuotes?: string[];
+	/** The account the basket is paid from (default the person's own). */
+	ownerType?: ResolvedOwner["ownerType"];
 }
 
 /** What a test's checkout did: each read of the basket, each standing asked for, each money call. */
@@ -185,10 +188,10 @@ function projector(display: string): MoneyProjector {
 	});
 }
 
-function owner(display: string): ResolvedOwner {
+function owner(display: string, ownerType: ResolvedOwner["ownerType"] = "user"): ResolvedOwner {
 	return {
 		key: "personal",
-		ownerType: "user",
+		ownerType,
 		ownerId: OWNER,
 		name: "Ada Lovelace",
 		handle: null,
@@ -229,7 +232,7 @@ function itemOf(money: MoneyProjector, line: Line): BasketItem {
 		isSelectedForCheckout: line.selected ?? true,
 		savedForLater: false,
 		destinationEmail: "ada@example.com",
-		metadata: {},
+		metadata: line.metadata ?? {},
 		createdAt: "2026-10-30T09:00:00.000Z",
 		updatedAt: "2026-10-30T09:00:00.000Z",
 		thumbnail: null,
@@ -356,7 +359,7 @@ async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Pro
 			const money = projector((query.display ?? "GBP").toUpperCase());
 			const items = world.lines.map((line) => itemOf(money, line));
 			const view = {
-				owner: owner(money.display),
+				owner: owner(money.display, world.ownerType),
 				money,
 				baskets: [],
 				basket: { id: BASKET, items } as unknown as BasketView["basket"],
@@ -986,6 +989,72 @@ Deno.test("#435: a quote for a total that has since moved is price_changed; the 
 		}));
 		assertEquals(result.blockers[0]?.code, "price_changed");
 		assertEquals(spy.orders.length, 0);
+	});
+});
+// #endregion
+
+// #region One-Offs and Tasks (Decision #457)
+const oneOff = (over: Partial<Line> = {}): Line => ({
+	id: "line-one-off",
+	minor: 40_000,
+	currency: "GBP",
+	kind: "one_off_service",
+	metadata: { requirements: "A landing page for the launch.", fundingScope: "first_stage" },
+	...over,
+});
+
+Deno.test("a One-Off carrying its brief is paid from the wallet: the order door re-prices its unit", async () => {
+	const world: World = { lines: [oneOff()] };
+	await withCheckout(world, async (spy) => {
+		const session = await sessionOf();
+		assertEquals(session.blockers, []);
+		const result = await create(
+			payFor(world, { expectedCharge: { minor: 40_000, currency: "GBP" } }),
+		);
+		assertEquals(result.status, "succeeded");
+		assertEquals(
+			spy.orders.map((
+				{ door, args },
+			) => [door, (args.p_units as Record<string, number>)["line-one-off"]]),
+			[["place_wallet_order", 40_000]],
+		);
+	});
+});
+
+Deno.test("a One-Off or Task with no brief is not refused as unpayable: it is sent back to its listing", async () => {
+	for (const kind of ["one_off_service", "single_service_task"] as const) {
+		const world: World = { lines: [oneOff({ kind, metadata: { requirements: "   " } })] };
+		await withCheckout(world, async (spy) => {
+			const session = await sessionOf();
+			assertEquals(session.blockers.map((b) => b.code), ["no_provider"]);
+			assertStringIncludes(session.blockers[0].message, "Reopen Brush pack from its listing");
+			const result = await create(
+				payFor(world, { expectedCharge: { minor: 40_000, currency: "GBP" } }),
+			);
+			assertEquals([result.status, spy.orders.length, spy.charges.length], ["failed", 0, 0]);
+		});
+	}
+});
+
+Deno.test("a business account is told before Pay that a One-Off is bought from a personal account", async () => {
+	const world: World = { lines: [oneOff()], ownerType: "business" };
+	await withCheckout(world, async (spy) => {
+		const session = await sessionOf();
+		const blocker = session.blockers.find((b) => b.itemId === "line-one-off");
+		assertEquals(blocker?.code, "no_provider");
+		assertStringIncludes(blocker?.message ?? "", "personal account");
+		const result = await create(
+			payFor(world, { expectedCharge: { minor: 40_000, currency: "GBP" } }),
+		);
+		assertEquals([result.status, spy.orders.length, spy.charges.length], ["failed", 0, 0]);
+	});
+});
+
+Deno.test("no promo code applies beside a One-Off: it is an escrow line", async () => {
+	const world: World = { lines: [oneOff(), product("line-gbp", 4_000)], promoCode: "SAVE10" };
+	await withCheckout(world, async () => {
+		const session = await sessionOf();
+		assertEquals(session.blockers.map((b) => b.code), ["promo_not_applicable"]);
 	});
 });
 // #endregion

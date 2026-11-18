@@ -2,6 +2,7 @@ import { z } from "zod";
 import { currency, timestamp } from "./common.ts";
 import { WalletOwnerType } from "./ledger.ts";
 import { MoneyViewSchema } from "./wallet.ts";
+import { SittingScheduleSchema } from "./sittings.ts";
 
 /**
  * finance basket — the Zod SSOT for the purchasable vocabulary and the `/basket` read + write
@@ -301,6 +302,11 @@ export const BasketItemSchema = z.object({
 	scheduledLabel: z.string().max(80).nullable(),
 	/** IANA timezone the slot is expressed in. */
 	timezone: z.string().max(64).nullable(),
+	/**
+	 * A set-session block's sittings — the block's size and every time the buyer chose, session 1
+	 * first (Decision #453). `null`/absent on every other line, where `scheduledLabel` says it all.
+	 */
+	sittings: SittingScheduleSchema.nullable().optional(),
 	/** Resolved stage name for a ticket line ("Stage 2 · Design system"). */
 	stageLabel: z.string().max(120).nullable(),
 	/** Seats held on a group-session line; `null` for every other kind. */

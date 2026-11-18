@@ -147,6 +147,24 @@ Deno.test("extras — pass the same facets and scope, and are capped", () => {
 	assertEquals(semanticResults(many, params("zz"), undefined, crowd).length, SEMANTIC_EXTRA_LIMIT);
 });
 
+Deno.test("re-rank — under Best match an exact title stays first, whatever the similarity", () => {
+	const kit = service("svc-kit", "Brand kit", "branding", 300);
+	const system = service("svc-kit-system", "Brand kit and logo system", "branding", 900, OWNER_B);
+	const corpus = [kit, system];
+	const similarity = new Map([["svc-kit-system", 0.42], ["svc-kit", 0.05]]);
+	assertEquals(
+		ids(
+			semanticResults(corpus, params("brand kit", { sort: "best_match" }), undefined, similarity),
+		),
+		["svc-kit", "svc-kit-system"],
+	);
+	assertEquals(
+		ids(semanticResults(corpus, params("brand kit"), undefined, similarity)),
+		["svc-kit-system", "svc-kit"],
+		"Recommended has no exact-title rule, so meaning alone moves it",
+	);
+});
+
 Deno.test("extras — an explicit sort the reader chose still decides the order", () => {
 	const p = params("logo", { sort: "price_asc" });
 	const similarity = new Map([["svc-pack", 0.5], ["svc-brand", 0.45], ["svc-logo", 0.1]]);

@@ -22,6 +22,11 @@ import {
 } from "../SettingsParts.tsx";
 import { SettingsService } from "../../core/SettingsService.ts";
 import { sectionMeta } from "../../core/settings-registry.ts";
+import {
+	CHANNEL_LABEL,
+	channelDescription,
+	requiredDeliveryNote,
+} from "../../core/notifications-model.ts";
 
 /**
  * Settings → Notifications (Decision #150; PRODUCT_SPEC §Notifications): the four channel masters,
@@ -33,23 +38,12 @@ import { sectionMeta } from "../../core/settings-registry.ts";
  * master (`COALESCE(category, global)`), so turning a master on or off also resets that column's
  * cells — the master then means what it says. Mandatory catalog events ignore all of it; they are
  * drawn as locked rows, never as switches that would look like they could stop them.
+ *
+ * A channel's copy claims delivery only while the server's liveness map (`data.delivery`) says it
+ * delivers; until then it says nothing is sent yet, and its switch still saves.
  */
 
 // #region Vocabulary
-const CHANNEL_LABEL: Readonly<Record<PersonalChannel, string>> = {
-	in_app: "In-app",
-	push: "Push",
-	email: "Email",
-	sms: "Text",
-};
-
-const CHANNEL_DESC: Readonly<Record<PersonalChannel, string>> = {
-	in_app: "Your inbox on Projective — always real time.",
-	push: "Alerts on devices where you've allowed notifications.",
-	email: "Sent to your primary email address.",
-	sms: "Nothing is sent by text message yet — this choice applies once text alerts launch.",
-};
-
 const CATEGORY_LABEL: Readonly<Record<NotificationCategory, string>> = {
 	money: "Money",
 	work: "Work",
@@ -161,6 +155,7 @@ export interface NotificationsSectionProps {
 
 export function NotificationsSection(props: NotificationsSectionProps): JSX.Element {
 	const meta = sectionMeta("notifications");
+	const delivery = props.data.delivery;
 	const center = useSignal<NotificationCenter | null>(props.data.center);
 	const status = useSignal<SaveState>(IDLE);
 	const c = center.value;
@@ -283,7 +278,7 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 						key={channel}
 						label={CHANNEL_LABEL[channel]}
 						descId={`stg-channel-${channel}-desc`}
-						description={CHANNEL_DESC[channel]}
+						description={channelDescription(channel, delivery)}
 						control={
 							<Cell
 								value={c.prefs[PREF_KEY[channel]]}
@@ -385,9 +380,7 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 									r.mandatory === 1 ? "alert" : "alerts"
 								}`}
 								descId={`stg-required-${r.category}-desc`}
-								description={`${REQUIRED_NOTE} Sent by ${
-									r.channels.map((ch) => CHANNEL_LABEL[ch].toLowerCase()).join(", ")
-								}.`}
+								description={`${REQUIRED_NOTE} ${requiredDeliveryNote(r.channels, delivery)}`}
 								control={
 									<Tooltip content={REQUIRED_NOTE} placement="top">
 										<span class="stg-locked-control">
@@ -409,7 +402,7 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 			<SettingsBlock
 				anchor="quiet-hours"
 				title="Quiet hours"
-				description={`Push and text alerts wait until morning; your inbox and email still arrive. Times are in ${c.prefs.timezone}.`}
+				description={`Push and text alerts wait until morning; your inbox and email are never held. Times are in ${c.prefs.timezone}.`}
 			>
 				<SettingsRow
 					label="Quiet hours"

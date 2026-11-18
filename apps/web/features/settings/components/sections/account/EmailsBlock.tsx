@@ -13,6 +13,7 @@ import {
 	StatusMark,
 } from "../../SettingsParts.tsx";
 import { SettingsService } from "../../../core/SettingsService.ts";
+import { SignInChangeDialog } from "./SignInChangeDialog.tsx";
 
 // #region Copy
 const DELIVERY_COPY: Readonly<Record<EmailDeliveryOutcome, (email: string) => string>> = {
@@ -65,8 +66,9 @@ export interface EmailsBlockProps {
 }
 
 /**
- * Email addresses — add, resend, make primary and remove. An address is only ever VERIFIED by the
- * link mailed to it; this block can never mark one verified (`org.user_emails` is definer-written).
+ * Email addresses — add, resend, make primary, use to sign in ({@link SignInChangeDialog}) and
+ * remove. An address is only ever VERIFIED by the link mailed to it; this block can never mark one
+ * verified (`org.user_emails` is definer-written).
  */
 export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 	const { emails } = props;
@@ -76,6 +78,8 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 	const confirming = useSignal<string | null>(null);
 	const status = useSignal<SaveState>(IDLE);
 	const verify = useSignal<EmailVerifyOutcome | null>(null);
+	const signInOpen = useSignal(false);
+	const signInTarget = useSignal<UserEmail | null>(null);
 
 	useEffect(() => {
 		verify.value = takeVerifyOutcome();
@@ -215,6 +219,20 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 													/>
 												)
 												: null}
+											{e.verifiedAt && !e.isSignIn
+												? (
+													<Button
+														size="sm"
+														variant="text"
+														label="Use to sign in"
+														aria-label={`Sign in with ${e.email}`}
+														onClick={() => {
+															signInTarget.value = e;
+															signInOpen.value = true;
+														}}
+													/>
+												)
+												: null}
 											{!e.isPrimary && !e.isSignIn
 												? (
 													<Button
@@ -267,6 +285,15 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 				)
 				: null}
 			<SaveStatus state={status.value} />
+			<SignInChangeDialog
+				open={signInOpen}
+				target={signInTarget.value}
+				current={list?.find((e) => e.isSignIn) ?? null}
+				onChanged={(saved, message) => {
+					emails.value = saved.emails;
+					status.value = { tone: "saved", text: message };
+				}}
+			/>
 		</SettingsBlock>
 	);
 }

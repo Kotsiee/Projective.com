@@ -3,12 +3,21 @@ import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { resolveCssColor } from "../../gantt/core/theme-bridge.ts";
+import { useScreenShareActive } from "../../utils/core/screen-share.ts";
 import {
 	type ChartTier,
 	chartTier,
 	type ChartTierPolicy,
 	DEFAULT_TIER_POLICY,
 } from "./geometry.ts";
+
+/**
+ * Whether a chart paints its exact values as the mask run: screen sharing mode is on and the chart
+ * is `sensitive` (the default — a chart of harmless counts opts out). DESIGN_SYSTEM.md §B.14 (2).
+ */
+export function useValuesHidden(sensitive: boolean | undefined): boolean {
+	return useScreenShareActive() && (sensitive ?? true);
+}
 
 /**
  * The charts' two runtime seams: which renderer draws (SVG ↔ Canvas2D, #217(m) / §C.5) and how a

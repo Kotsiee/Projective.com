@@ -2,9 +2,9 @@ import { z } from "zod";
 import { SubmissionStatus } from "./submissions.ts";
 
 /**
- * projects.settlement — the Zod SSOT for the three client decisions that move deliverables and money:
- * reviewing one submission, approving a stage (releasing its escrow), and cancelling a stage under
- * the Fair Exit split.
+ * projects.settlement — the Zod SSOT for the client decisions that move deliverables and money:
+ * reviewing one submission, approving a stage (releasing its escrow), cancelling a stage under the
+ * Fair Exit split, and cancelling a bought service (`projects.cancel_service`).
  *
  * Each maps onto exactly one guarded Postgres door — `projects.review_submission`,
  * `projects.approve_stage`, `projects.cancel_stage_fair_exit` — and each of those checks review
@@ -218,4 +218,69 @@ export const FairExitPreviewSchema = z.object({
 	tiers: z.array(FairExitQuoteSchema).length(3),
 });
 export type FairExitPreview = z.infer<typeof FairExitPreviewSchema>;
+// #endregion
+
+// #region Cancelling a bought service (Decision #456)
+/**
+ * Cancel a bought service (`projects.cancel_service`). `tiers` names the Fair Exit share for every
+ * stage holding claimed work, keyed by the stage's uuid as the preview lists it; an unclaimed ticket
+ * and a later-stage reservation go back whole and need none.
+ */
+export const CancelServiceSchema = z.object({
+	projectId: ProjectRef,
+	tiers: z.record(z.string().uuid(), FairExitTier).default({}),
+	reason: z.string().trim().max(400).optional(),
+});
+export type CancelService = z.infer<typeof CancelServiceSchema>;
+
+/** Read what cancelling a bought service settles. The address is the whole request. */
+export const PreviewServiceCancelSchema = z.object({ projectId: ProjectRef });
+export type PreviewServiceCancel = z.infer<typeof PreviewServiceCancelSchema>;
+
+/** One tier's settlement of one stage's claimed tickets — `projects.fn_fair_exit_quote_scoped`. */
+export const ServiceExitQuoteSchema = z.object({
+	tier: FairExitTier,
+	ticketCount: z.number().int().min(0),
+	freelancerPaidCents: z.number().int().min(0),
+	feeCents: z.number().int().min(0),
+	clientRefundedCents: z.number().int().min(0),
+});
+export type ServiceExitQuote = z.infer<typeof ServiceExitQuoteSchema>;
+
+/** A stage holding claimed work: the client picks its tier from these three quotes. */
+export const ServiceCancelStageSchema = z.object({
+	stageId: z.string().uuid(),
+	stageName: z.string().min(1).max(200),
+	tiers: z.array(ServiceExitQuoteSchema).length(3),
+});
+export type ServiceCancelStage = z.infer<typeof ServiceCancelStageSchema>;
+
+/** Why a bought service cannot be cancelled now: it has ended, or a stage is mid-settlement. */
+export const ServiceCancelBlocked = z.enum(["ended", "settling"]);
+export type ServiceCancelBlocked = z.infer<typeof ServiceCancelBlocked>;
+
+/**
+ * The cancellation's read (`projects.preview_service_cancel`): `returnedCents` comes back to the client
+ * whatever is chosen, and each listed stage settles at the tier picked for it.
+ */
+export const ServiceCancelPreviewSchema = z.object({
+	currency: z.string().length(3),
+	cancellable: z.boolean(),
+	blocked: ServiceCancelBlocked.nullable(),
+	returnedCents: z.number().int().min(0),
+	ticketsToCancel: z.number().int().min(0),
+	stages: z.array(ServiceCancelStageSchema).max(60),
+});
+export type ServiceCancelPreview = z.infer<typeof ServiceCancelPreviewSchema>;
+
+/** What the cancellation moved: the seller's Fair Exit pay, the fee on it, and everything refunded. */
+export const ServiceCancelledSchema = z.object({
+	status: z.literal("cancelled"),
+	currency: z.string().length(3),
+	freelancerPaidCents: z.number().int().min(0),
+	feeCents: z.number().int().min(0),
+	clientRefundedCents: z.number().int().min(0),
+	ticketsCancelled: z.number().int().min(0),
+});
+export type ServiceCancelled = z.infer<typeof ServiceCancelledSchema>;
 // #endregion

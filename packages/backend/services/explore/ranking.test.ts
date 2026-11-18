@@ -1,5 +1,6 @@
 import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
+	bestMatchScore,
 	byScore,
 	DISCOVERY_BOOST,
 	earnsDiscoveryBoost,
@@ -66,7 +67,7 @@ Deno.test("an inactive, negative or absent weight scores as switched off; absent
 	assertEquals(weights.review_sentiment, 1.75);
 	assertEquals(weights.review_count, 0);
 	assertEquals(weights.workload, 0);
-	assertEquals(missing, ["discovery_boost", "penalty", "interest_history"]);
+	assertEquals(missing, ["discovery_boost", "penalty", "interest_history", "text_relevance"]);
 	assertEquals(total(seller({ rating: { value: 5, count: 40 } }), NO_WEIGHTS), 0);
 });
 
@@ -191,6 +192,17 @@ Deno.test("the prior mean is the review-weighted corpus mean, with a fallback wh
 		4.75,
 	);
 	assertEquals(priorMeanOf([undefined, { value: 2, count: 0 }]), FALLBACK_PRIOR_MEAN);
+});
+
+Deno.test("best match adds text_relevance × the lexical match (0–1) to the quality score", () => {
+	assertAlmostEquals(bestMatchScore(2, 0.5, WEIGHTS), 2 + WEIGHTS.text_relevance * 0.5);
+	assertAlmostEquals(bestMatchScore(2, 1.7, WEIGHTS), 2 + WEIGHTS.text_relevance);
+	assertEquals(bestMatchScore(2, -1, WEIGHTS), 2);
+	assertEquals(
+		bestMatchScore(-1.5, 0.9, NO_WEIGHTS),
+		-1.5,
+		"switched off, it is the quality score",
+	);
 });
 
 Deno.test("byScore orders best first, then newest, then by id — never a tie", () => {

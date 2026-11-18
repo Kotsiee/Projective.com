@@ -393,3 +393,82 @@ Deno.test("fileAccess — an unknown attribute value reads as auto", async () =>
 	});
 });
 // #endregion
+
+// #region termsAcceptance (the re-accept gate, server-side through a cookie, Decision #446)
+const TERMS_ATTR = "data-dev-terms";
+
+Deno.test("termsAcceptance — auto is inert; due and current reach the server through pj.dev.terms", async () => {
+	assertEquals(ctx.DEV_DEFAULTS.termsAcceptance, "auto");
+	assertEquals(ctx.DEV_TERMS_ACCEPTANCES.map((o) => o.value), ["auto", "due", "current"]);
+	const last = (writes: readonly string[]) => writes.filter((w) => w.startsWith("pj.dev.terms=")).at(-1);
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, termsAcceptance: "due" });
+		assertEquals(root.attributes.get(TERMS_ATTR), "due");
+		assertEquals(seam.readDevSeam()?.termsAcceptance, "due");
+		assertEquals(last(writes), "pj.dev.terms=due; path=/; samesite=lax");
+
+		ctx.patchDevContext({ termsAcceptance: "auto" });
+		assertFalse(root.attributes.has(TERMS_ATTR));
+		assertEquals(last(writes), "pj.dev.terms=; path=/; max-age=0; samesite=lax");
+
+		ctx.patchDevContext({ termsAcceptance: "current" });
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(TERMS_ATTR));
+		assertEquals(last(writes), "pj.dev.terms=; path=/; max-age=0; samesite=lax");
+	});
+});
+// #endregion
+
+// #region captcha (the auth forms' bot check, server-side through a cookie, Decision #447)
+const CAPTCHA_ATTR = "data-dev-captcha";
+
+Deno.test("captcha — auto is inert; pass, fail and interactive reach the server through pj.dev.captcha", async () => {
+	assertEquals(ctx.DEV_DEFAULTS.captcha, "auto");
+	assertEquals(ctx.DEV_CAPTCHAS.map((o) => o.value), ["auto", "pass", "fail", "interactive"]);
+	const last = (writes: readonly string[]) => writes.filter((w) => w.startsWith("pj.dev.captcha=")).at(-1);
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, captcha: "fail" });
+		assertEquals(root.attributes.get(CAPTCHA_ATTR), "fail");
+		assertEquals(seam.readDevSeam()?.captcha, "fail");
+		assertEquals(last(writes), "pj.dev.captcha=fail; path=/; samesite=lax");
+
+		ctx.patchDevContext({ captcha: "auto" });
+		assertFalse(root.attributes.has(CAPTCHA_ATTR));
+		assertEquals(last(writes), "pj.dev.captcha=; path=/; max-age=0; samesite=lax");
+
+		ctx.patchDevContext({ captcha: "interactive" });
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(CAPTCHA_ATTR));
+		assertEquals(last(writes), "pj.dev.captcha=; path=/; max-age=0; samesite=lax");
+	});
+});
+// #endregion
+
+// #region notificationDelivery (Settings → Notifications' channel liveness, server-side through a cookie)
+const DELIVERY_ATTR = "data-dev-notification-delivery";
+const DELIVERY_COOKIE = "pj.dev.notification-delivery";
+
+Deno.test("notificationDelivery — auto is inert; live and off reach the server through pj.dev.notification-delivery", async () => {
+	assertEquals(ctx.DEV_DEFAULTS.notificationDelivery, "auto");
+	assertEquals(ctx.DEV_NOTIFICATION_DELIVERIES.map((o) => o.value), ["auto", "live", "off"]);
+	const last = (writes: readonly string[]) =>
+		writes.filter((w) => w.startsWith(`${DELIVERY_COOKIE}=`)).at(-1);
+	await withCookieJar((root, writes) => {
+		ctx.patchDevContext({ enabled: true, notificationDelivery: "live" });
+		assertEquals(root.attributes.get(DELIVERY_ATTR), "live");
+		assertEquals(seam.readDevSeam()?.notificationDelivery, "live");
+		assertEquals(last(writes), `${DELIVERY_COOKIE}=live; path=/; samesite=lax`);
+
+		ctx.patchDevContext({ notificationDelivery: "auto" });
+		assertFalse(root.attributes.has(DELIVERY_ATTR));
+		assertEquals(seam.readDevSeam()?.notificationDelivery, "auto");
+		assertEquals(last(writes), `${DELIVERY_COOKIE}=; path=/; max-age=0; samesite=lax`);
+
+		ctx.patchDevContext({ notificationDelivery: "off" });
+		assertEquals(last(writes), `${DELIVERY_COOKIE}=off; path=/; samesite=lax`);
+		ctx.setDevEnabled(false);
+		assertFalse(root.attributes.has(DELIVERY_ATTR));
+		assertEquals(last(writes), `${DELIVERY_COOKIE}=; path=/; max-age=0; samesite=lax`);
+	});
+});
+// #endregion

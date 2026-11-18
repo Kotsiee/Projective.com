@@ -94,6 +94,14 @@ export const UserContextSchema = z.object({
 	 * refuses a minor in the database (`org.fn_assert_adult`, SQLSTATE `PM403`) whatever this says.
 	 */
 	restricted: z.boolean(),
+	/**
+	 * Whether the person must accept the Terms again before using the app (Decision #446): no accepted
+	 * version, or one older than the newest material version in effect (`org.fn_needs_reacceptance`).
+	 * Only an explicit `true` gates; the dashboard guard then sends them to `/join?complete=terms`.
+	 *
+	 * Chrome only: it decides which screen is painted, never what a door permits.
+	 */
+	termsDue: z.boolean().optional(),
 	// Account facts — the same in every context the person acts in, unlike the flags above. The
 	// access-token hook stamps all three at every mint; ABSENT means the token did not say (a stub or
 	// `dev:mock` session's hand-made token, or one minted before the claim existed), and the shell then
@@ -182,6 +190,8 @@ export interface ActiveContextClaim {
 	onboarded?: boolean;
 	/** `org.fn_is_minor` at mint time — see {@link UserContextSchema.shape.restricted}. */
 	isRestricted?: boolean;
+	/** `org.fn_needs_reacceptance` at mint time — see {@link UserContextSchema.shape.termsDue}. */
+	termsDue?: boolean;
 	/** An active seat in a live team — see {@link UserContextSchema.shape.belongsToTeam}. */
 	belongsToTeam?: boolean;
 	/** An active seat in a live business — see {@link UserContextSchema.shape.belongsToBusiness}. */
@@ -351,6 +361,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		isOperator,
 		onboarded,
 		restricted,
+		...(active.termsDue === true ? { termsDue: true } : {}),
 		belongsToTeam: fact(active.belongsToTeam),
 		belongsToBusiness: fact(active.belongsToBusiness),
 		businessHeadroom: fact(active.businessHeadroom),
@@ -381,5 +392,21 @@ export function parseOperatorModeOverride(
 ): OperatorModeOverride | null {
 	const value = raw?.trim();
 	return value === "on" || value === "off" ? value : null;
+}
+
+/**
+ * The Dev Context Switcher's terms-acceptance override (Decision #446): `due` sends the session to the
+ * re-accept step as a material new version would, `current` keeps it out. Absent = follow the token's
+ * `termsDue`. The dashboard guard honours it in development only; the database never reads it.
+ */
+export type TermsDueOverride = "due" | "current";
+
+/** The cookie that carries {@link TermsDueOverride}. */
+export const TERMS_DUE_OVERRIDE_COOKIE = "pj.dev.terms";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseTermsDueOverride(raw: string | null | undefined): TermsDueOverride | null {
+	const value = raw?.trim();
+	return value === "due" || value === "current" ? value : null;
 }
 // #endregion

@@ -5,6 +5,9 @@ CREATE INDEX idx_penalties_source ON security.penalties (source_type, source_id)
 -- One entity's trail by action — org.fn_workspace_restore_target reads a team's or a business's
 -- `{kind}.status_changed` rows to decide where a restore lands.
 CREATE INDEX idx_audit_logs_entity ON security.audit_logs (entity_id, action);
+-- One person's trail by action, newest first — org.prepare_sign_in_change counts the
+-- `user.sign_in_changed` rows of the last three days, and org.record_sign_in_change reads the newest.
+CREATE INDEX idx_audit_logs_user_action ON security.audit_logs (user_id, action, created_at DESC);
 
 -- Indexes: ops
 

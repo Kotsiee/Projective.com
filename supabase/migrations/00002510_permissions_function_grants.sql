@@ -315,6 +315,13 @@ EXECUTE ON FUNCTION public.complete_onboarding (jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION public.discard_underage_signup (date, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.discard_underage_signup (date, text) TO authenticated, service_role;
 
+-- The re-accept door: the caller's own acceptance of today's versions (Decision #446). The recorder
+-- it calls trusts the user it is handed, so it stays internal to its definer callers.
+REVOKE ALL ON FUNCTION public.accept_current_terms (jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.accept_current_terms (jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION org.fn_record_legal_acceptance (uuid, jsonb, org.legal_acceptance_surface, uuid)
+FROM PUBLIC, anon, authenticated;
+
 -- --- from 0309_business_finance_overview.sql ---
 
 -- #endregion
@@ -1459,7 +1466,18 @@ GRANT EXECUTE ON FUNCTION projects.preview_stage_fair_exit (uuid, uuid) TO authe
 -- Internal to preview_stage_fair_exit / cancel_stage_fair_exit; the split helper is pure arithmetic
 -- shared with finance.fn_fair_exit_release.
 REVOKE ALL ON FUNCTION projects.fn_fair_exit_quote (uuid, integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_fair_exit_quote_scoped (uuid, integer, boolean) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_fair_exit_split (bigint, integer, integer) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Cancelling a bought service (Decision #456): the preview and the door check the client person
+-- themselves; the held-ticket read is theirs alone, and the two escrow triggers are never called.
+REVOKE ALL ON FUNCTION projects.preview_service_cancel (uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.preview_service_cancel (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.cancel_service (uuid, jsonb, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.cancel_service (uuid, jsonb, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_service_held_tickets (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_activate_funded_service () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_guard_escrow_on_ended_service () FROM PUBLIC, anon, authenticated, service_role;
 
 -- Internal to review_submission / approve_stage (Decision #194): the settler releases escrow and the
 -- notifier writes to anybody's inbox, so neither is callable directly.
@@ -2104,6 +2122,15 @@ FROM public, anon;
 GRANT
 EXECUTE ON FUNCTION projects.get_viewer_hired_teams (uuid) TO authenticated;
 
+-- --- the board's provider filter (00001100: get_viewer_stage_seats) ---
+--
+-- The caller's own seats and their active teams' seats on one project; a guest has none.
+REVOKE ALL ON FUNCTION projects.get_viewer_stage_seats (uuid)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION projects.get_viewer_stage_seats (uuid) TO authenticated;
+
 -- --- the Members tab's Requests section (00001130 §7b: reject_application) ---
 --
 -- The managing side's decline of an applicant. The function checks `can_manage_project_members` itself, so a signed-in
@@ -2341,7 +2368,7 @@ GRANT EXECUTE ON FUNCTION scheduling.fn_resolved_slot_fee (uuid, timestamptz) TO
 
 -- #region Email addresses (00001050, 2026-10-06)
 -- org.user_emails is read-only to a client; these definers are its write doors. Each resolves the
--- caller from auth.uid() and touches only the caller's own rows, so all five are safe for a signed-in
+-- caller from auth.uid() and touches only the caller's own rows, so every one is safe for a signed-in
 -- caller and none for a guest. (The org schema is deny-by-default at the top of this file; the guard
 -- trigger function stays unreachable — EXECUTE on a trigger function is checked at CREATE TRIGGER.)
 GRANT EXECUTE ON FUNCTION org.get_my_emails () TO authenticated;
@@ -2349,6 +2376,10 @@ GRANT EXECUTE ON FUNCTION org.add_user_email (text) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.remove_user_email (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.set_primary_email (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION org.confirm_user_email (text) TO authenticated;
+-- Moving the sign-in address (Decision #451): both act on the caller alone, and the record step
+-- refuses unless GoTrue already holds the new address, so neither can move anything by itself.
+GRANT EXECUTE ON FUNCTION org.prepare_sign_in_change (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.record_sign_in_change (uuid, uuid, boolean) TO authenticated;
 -- The token mint returns a RAW verification token, so it is the service role's alone. It lives in
 -- `security` because the service role holds USAGE there and not on `org`; `authenticated` holds USAGE
 -- on `security` too, which is why the revoke names it explicitly.
@@ -2370,6 +2401,25 @@ REVOKE ALL ON FUNCTION security.purge_due_account_deletions (integer) FROM PUBLI
 GRANT EXECUTE ON FUNCTION security.purge_due_account_deletions (integer) TO service_role;
 -- #endregion
 
+-- #region Data export (00001061, Decision #450)
+-- The person's two doors act on the caller alone (auth.uid()). Every step of the export job is the
+-- service role's alone, through its security-schema doors; the org fn_* collectors stay internal.
+GRANT EXECUTE ON FUNCTION org.get_data_export () TO authenticated;
+GRANT EXECUTE ON FUNCTION org.request_data_export () TO authenticated;
+REVOKE ALL ON FUNCTION security.claim_data_exports (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.claim_data_exports (integer) TO service_role;
+REVOKE ALL ON FUNCTION security.collect_data_export (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.collect_data_export (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION security.complete_data_export (uuid, text, bigint, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.complete_data_export (uuid, text, bigint, integer) TO service_role;
+REVOKE ALL ON FUNCTION security.release_data_export (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.release_data_export (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION security.due_data_export_expiries (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.due_data_export_expiries (integer) TO service_role;
+REVOKE ALL ON FUNCTION security.expire_data_export (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.expire_data_export (uuid) TO service_role;
+-- #endregion
+
 -- #region Auto-replies (00001300)
 -- Whether a person is away, busy or out of hours is theirs to keep: the status predicate is reached
 -- only from inside the definer trigger, never as an RPC (the comms schema does not revoke PUBLIC by
@@ -2384,7 +2434,11 @@ REVOKE ALL ON FUNCTION comms.tg_dm_auto_reply () FROM PUBLIC, anon, authenticate
 -- it is handed — are reachable only from the definers that call them.
 REVOKE ALL ON FUNCTION projects.fn_session_param (text, integer) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_is_session_host (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_session_intake_answers (uuid, jsonb) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_cohort_seats_taken (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_cohort_seats_owed (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_waitlist_cohort (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_waitlist_dispatch (timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_confirm_seat (uuid, uuid, text, uuid, bigint, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_session_presence (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fn_session_presence (uuid) TO service_role;
@@ -2398,6 +2452,14 @@ REVOKE ALL ON FUNCTION projects.reserve_seat (uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.reserve_seat (uuid, integer) TO authenticated;
 REVOKE ALL ON FUNCTION projects.cancel_cohort_membership (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.cancel_cohort_membership (uuid) TO authenticated;
+-- The waitlist (Decision #455): joining, the buyer's own place, and the seller's queue (which asks
+-- catalogue.fn_manages_listing itself).
+REVOKE ALL ON FUNCTION projects.join_waitlist (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.join_waitlist (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.get_waitlist_place (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_waitlist_place (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.get_listing_waitlist (uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_listing_waitlist (uuid, integer) TO authenticated;
 REVOKE ALL ON FUNCTION projects.record_host_attendance (uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.record_host_attendance (uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.claim_session_no_show (uuid, text) FROM PUBLIC, anon;
@@ -2516,6 +2578,73 @@ REVOKE ALL ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, t
 GRANT EXECUTE ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION marketplace.archive_service_draft (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION marketplace.archive_service_draft (text, text) TO authenticated, service_role;
+-- A One-Off or Task bought at checkout (Decision #457): written only by finance.place_wallet_order, as
+-- the buyer, so no client role executes the purchase door or the helpers it shares with the doors above.
+REVOKE ALL ON FUNCTION marketplace.fn_blueprint_stage_terms (marketplace.service_blueprints) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_blueprint_stage_terms (marketplace.service_blueprints) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_write_blueprint_stages (uuid, marketplace.service_blueprints, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_write_blueprint_stages (uuid, marketplace.service_blueprints, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_scoped_service_price (uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_scoped_service_price (uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_intake_answers (jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_intake_answers (jsonb, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_buy_scoped_service (uuid, text, jsonb, date, boolean, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_buy_scoped_service (uuid, text, jsonb, date, boolean, text, jsonb) TO service_role;
+-- #endregion
+
+-- #region Promoted placements (00001176, Decision #454)
+-- The three doors authorise the caller inside (auth.uid(), catalogue.fn_manages_listing); the flight
+-- length and the live-placement lookup run only inside them, as their owner.
+REVOKE ALL ON FUNCTION marketplace.fn_promotion_flight () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_promotion_flight () TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_live_listing_promotions (uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_live_listing_promotions (uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.promote_listing (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.promote_listing (uuid, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.stop_listing_promotion (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.stop_listing_promotion (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.get_listing_promotion (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.get_listing_promotion (uuid) TO authenticated, service_role;
+-- #endregion
+
+-- #region Quote requests and offers (00001177, Decision #458)
+-- The seven doors and the read authorise the caller with auth.uid() inside. The helpers run only
+-- inside them, as their owner. Checkout's terms are called by finance.place_wallet_order as the buyer,
+-- so no client role executes them directly.
+REVOKE ALL ON FUNCTION marketplace.fn_lock_quote (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_lock_quote (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_lock_quote_offer (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_lock_quote_offer (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_party_name (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_party_name (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_link (marketplace.quote_requests, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_link (marketplace.quote_requests, uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_notify_quote (marketplace.quote_requests, uuid, text, text, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_notify_quote (marketplace.quote_requests, uuid, text, text, text, uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_listing_title (marketplace.quote_requests) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_listing_title (marketplace.quote_requests) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_basket (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_basket (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_offer_line (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_offer_line (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_offer_terms (uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_offer_terms (uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.send_quote_offer (uuid, text, text[], bigint, integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.send_quote_offer (uuid, text, text[], bigint, integer, integer) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.withdraw_quote_offer (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.withdraw_quote_offer (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.decline_quote_request (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.decline_quote_request (uuid, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.accept_quote_offer (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.accept_quote_offer (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.decline_quote_offer (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.decline_quote_offer (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.withdraw_quote_request (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.withdraw_quote_request (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.get_quotes_with (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.get_quotes_with (uuid) TO authenticated, service_role;
 -- #endregion
 
 -- #region Listing analytics and the client pipeline (Decision #217, C5)

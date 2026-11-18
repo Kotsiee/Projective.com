@@ -40,6 +40,9 @@ import {
  * glyphs, so nothing needs a menu to stay reachable on a phone.
  *
  * **Publish is absent once the project is live**, and for a personal project, which is never listed.
+ * **Neither Publish nor Archive renders on a bought service** (Decision #456): its seller configures it
+ * but never sets its status, which its money moves (active at the first held escrow), and only its
+ * client cancels it, from the lane.
  * **Publish is locked, not absent, while a required step is outstanding** — it keeps its lock glyph,
  * stays focusable, refuses on press and names what is missing in its Tooltip, so the control teaches
  * the path instead of hiding it.
@@ -98,7 +101,8 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 	const saving = setupSaving.value;
 	const autoSave = autoSaveEnabled.value;
 	const archived = live.archivedAt !== null;
-	const canPublish = live.status === "draft" && !live.personal;
+	const service = live.kind === "service";
+	const canPublish = live.status === "draft" && !live.personal && !service;
 	const publishLocked = !live.previewReady || saving;
 	const publishReason = live.previewReady
 		? "Saving…"
@@ -157,7 +161,7 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 			/>
 
 			<div class="psu-rig__actions">
-				{!archived && (
+				{!archived && !service && (
 					<RigIcon
 						label="Archive project"
 						icon="archive-box"

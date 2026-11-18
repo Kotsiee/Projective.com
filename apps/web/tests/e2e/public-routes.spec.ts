@@ -649,27 +649,51 @@ Deno.test({
 				assert(await parses(await res.text(), "rss"), "the feed is not well-formed RSS");
 			});
 
-			await t.step("the sitemap parses and every URL in it answers 200", async () => {
-				const res = await context.request.get("/sitemap.xml");
-				assertEquals(res.status(), 200);
-				assert(/xml/.test(res.headers()["content-type"] ?? ""), res.headers()["content-type"]);
-				const text = await res.text();
-				assert(await parses(text, "urlset"), "the sitemap is not a well-formed urlset");
-				const locs = [...text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-				assert(locs.length > 0, "an empty sitemap");
-				const origin = new URL(BASE).origin;
-				const broken: string[] = [];
-				for (const loc of locs) {
-					const url = new URL(loc);
-					if (url.origin !== origin) broken.push(`${loc} is off-origin`);
-					const hit = await context.request.get(url.pathname + url.search, { maxRedirects: 0 });
-					if (hit.status() !== 200) broken.push(`${loc} answered ${hit.status()}`);
-				}
-				assertEquals(broken, []);
-				for (const path of ["/legal/workspace", "/feedback?feedback=open", "/api/"]) {
-					assert(!locs.some((l) => new URL(l).pathname + new URL(l).search === path), path);
-				}
-			});
+			await t.step(
+				"the sitemap index and its files parse, and every URL in them answers 200",
+				async () => {
+					const origin = new URL(BASE).origin;
+					const locsOf = (text: string) =>
+						[...text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].replaceAll("&amp;", "&"));
+					const index = await context.request.get("/sitemap.xml");
+					assertEquals(index.status(), 200);
+					assert(
+						/xml/.test(index.headers()["content-type"] ?? ""),
+						index.headers()["content-type"],
+					);
+					const indexText = await index.text();
+					assert(
+						await parses(indexText, "sitemapindex"),
+						"the index is not a well-formed sitemapindex",
+					);
+					const files = locsOf(indexText);
+					assert(files.some((f) => f.endsWith("/sitemap.xml?section=pages")), "no pages file");
+					const locs: string[] = [];
+					for (const file of files) {
+						const url = new URL(file);
+						assertEquals(url.origin, origin, `${file} is off-origin`);
+						assertEquals(url.pathname, "/sitemap.xml", `${file} is not in the index's directory`);
+						const res = await context.request.get(url.pathname + url.search);
+						assertEquals(res.status(), 200, file);
+						const text = await res.text();
+						assert(await parses(text, "urlset"), `${file} is not a well-formed urlset`);
+						locs.push(...locsOf(text));
+					}
+					assert(locs.length > 0, "an empty sitemap");
+					assertEquals(new Set(locs).size, locs.length, "a URL listed twice");
+					const broken: string[] = [];
+					for (const loc of locs) {
+						const url = new URL(loc);
+						if (url.origin !== origin) broken.push(`${loc} is off-origin`);
+						const hit = await context.request.get(url.pathname + url.search, { maxRedirects: 0 });
+						if (hit.status() !== 200) broken.push(`${loc} answered ${hit.status()}`);
+					}
+					assertEquals(broken, []);
+					for (const path of ["/legal/workspace", "/feedback?feedback=open", "/api/"]) {
+						assert(!locs.some((l) => new URL(l).pathname + new URL(l).search === path), path);
+					}
+				},
+			);
 
 			await t.step("robots.txt keeps crawlers out of the app and names the sitemap", async () => {
 				const res = await context.request.get("/robots.txt");

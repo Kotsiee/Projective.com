@@ -2,6 +2,8 @@ import { z } from "zod";
 import { isDisplayCurrency } from "../finance/fx.ts";
 import { toSupportedLocale } from "../org/locales.ts";
 import { bracketFromDob, isTimeZone, UNDER_MINIMUM_REFUSAL } from "./age.ts";
+import { passwordIssue, PasswordSchema } from "./password.ts";
+import { CaptchaTokenSchema } from "./captcha.ts";
 
 /**
  * auth/join — the Zod SSOT for the `/join` request body (SYSTEM_ARCHITECTURE.md §Security: every API
@@ -52,7 +54,6 @@ export type Industry = typeof INDUSTRY_VALUES[number];
 
 // #region Schemas
 const email = z.string().trim().regex(EMAIL_RE, "Enter a valid email address.");
-const password = z.string().min(8, "Use at least 8 characters.").max(128);
 const name = z.string().trim().min(1).max(60);
 const redirectTo = z.string().default("/home");
 const strList = z.array(z.string().trim().min(1).max(60)).max(50).default([]);
@@ -82,15 +83,25 @@ const timeZone = z.string().trim().max(64).optional().transform((zone) =>
 /** The join-form copy for an enterprise owner aged 13–17: the owner holds the enterprise's seat. */
 export const ENTERPRISE_OWNER_MINOR_REFUSAL = "An enterprise's owner must be 18 or over.";
 
+/** The copy for a final step sent without the consent box ticked (Decision #446). */
+export const LEGAL_ACCEPTANCE_REQUIRED =
+	"Agree to the Terms of Service and the Acceptable Use Policy to continue.";
+
+/**
+ * The consent box on every path's final step (Decision #446): `true` only. It carries no version:
+ * the service stamps today's from `@projective/types/legal`, and the database refuses any other.
+ */
+const acceptTerms = z.literal(true, { error: LEGAL_ACCEPTANCE_REQUIRED });
+
 /**
  * Individual (quick) onboarding. `password` is optional because SSO/OAuth signups skip password
- * setup (`oauth: true`); the service requires it only when `oauth` is false.
+ * setup (`oauth: true`); otherwise it must pass {@link PasswordSchema}'s rule.
  */
 export const IndividualJoinSchema = z.object({
 	type: z.literal("individual"),
 	intent: z.enum(["client", "freelancer"]),
 	email,
-	password: z.string().max(128).optional(),
+	password: z.string().optional(),
 	oauth: z.boolean().default(false),
 	firstName: name,
 	lastName: name,
@@ -101,7 +112,10 @@ export const IndividualJoinSchema = z.object({
 	displayCurrency,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
 	skills: z.array(z.string().max(40)).max(50).default([]),
+	acceptTerms,
 	redirectTo,
+	/** The bot check `/api/auth/join` verifies itself on a password sign-up (Decision #447). */
+	captchaToken: CaptchaTokenSchema,
 }).superRefine((value, ctx) => {
 	// Old enough to hold an account (PRODUCT_SPEC §Age guardrails), counted in the person's zone.
 	// 13–17 passes: the database derives the restriction from the stored date (`org.fn_is_minor`),
@@ -112,6 +126,10 @@ export const IndividualJoinSchema = z.object({
 	}
 	if (bracket === "blocked") {
 		ctx.addIssue({ code: "custom", path: ["dob"], message: UNDER_MINIMUM_REFUSAL });
+	}
+	const passwordProblem = value.oauth ? null : passwordIssue(value.password ?? "");
+	if (passwordProblem) {
+		ctx.addIssue({ code: "custom", path: ["password"], message: passwordProblem });
 	}
 });
 export type IndividualJoin = z.infer<typeof IndividualJoinSchema>;
@@ -150,8 +168,11 @@ export const EnterpriseJoinSchema = z.object({
 	ownerLastName: name,
 	dob,
 	timeZone,
-	password,
+	password: PasswordSchema,
+	acceptTerms,
 	redirectTo,
+	/** The bot check `/api/auth/join` verifies itself (Decision #447). */
+	captchaToken: CaptchaTokenSchema,
 }).superRefine((value, ctx) => {
 	// The owner holds the enterprise's seat, and no minor holds one (Decision #208): the database
 	// refuses 13–17 anyway (PM403), so the form says why first.
@@ -183,6 +204,7 @@ export const OwnerCompletionSchema = z.object({
 	timeZone,
 	locale,
 	displayCurrency,
+	acceptTerms,
 	redirectTo,
 }).superRefine((value, ctx) => {
 	if (bracketFromDob(value.dob, value.timeZone) === "unknown") {
@@ -191,11 +213,23 @@ export const OwnerCompletionSchema = z.object({
 });
 export type OwnerCompletion = z.infer<typeof OwnerCompletionSchema>;
 
+/**
+ * A signed-in person accepting a material new version of the Terms (Decision #446): the dashboard
+ * guard sends them to `/join?complete=terms` while their token says `termsDue`.
+ */
+export const TermsReacceptSchema = z.object({
+	type: z.literal("terms"),
+	acceptTerms,
+	redirectTo,
+});
+export type TermsReaccept = z.infer<typeof TermsReacceptSchema>;
+
 /** Discriminated on `type` so one endpoint validates every onboarding shape. */
 export const JoinSchema = z.discriminatedUnion("type", [
 	IndividualJoinSchema,
 	EnterpriseJoinSchema,
 	OwnerCompletionSchema,
+	TermsReacceptSchema,
 ]);
 export type Join = z.infer<typeof JoinSchema>;
 // #endregion

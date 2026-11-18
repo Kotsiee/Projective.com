@@ -117,6 +117,14 @@ CREATE INDEX IF NOT EXISTS idx_curriculum_modules_cohort
     ON projects.curriculum_modules (cohort_id, position) WHERE cohort_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_curriculum_lessons_module ON projects.curriculum_lessons (module_id, position);
 CREATE INDEX IF NOT EXISTS idx_lesson_progress_user ON projects.lesson_progress (user_id);
+-- The waitlist queue in order (the invite job, the queue fence, a buyer's position), and the invites
+-- the job checks for a lapsed hold (Decision #455).
+CREATE INDEX IF NOT EXISTS idx_waitlists_queue
+    ON projects.waitlists (service_blueprint_id, queued_at, id)
+    WHERE status = 'waiting';
+CREATE INDEX IF NOT EXISTS idx_waitlists_invited
+    ON projects.waitlists (invite_expires_at)
+    WHERE status = 'invited';
 -- #endregion
 
 -- The request behind each instantiated draft: the blueprint FK is ON DELETE SET NULL, so a

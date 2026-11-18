@@ -84,6 +84,7 @@ async function pressEveryCta(): Promise<unknown[]> {
 			stageIds: [],
 			attachments: [],
 			answers: {},
+			targetDate: null,
 		}),
 		await commitContact({ kind: "ask_question", handle: "ivy", subjectId: ITEM.id, message: "Hi" }),
 		await commitContact({

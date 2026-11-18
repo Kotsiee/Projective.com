@@ -8,6 +8,11 @@ import {
 	CLOSED_STATUSES,
 } from "@projective/types/catalogue";
 import { PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
+import {
+	type ListingWaitlist,
+	type ListingWaitlistEntry,
+	WaitlistStatusSchema,
+} from "@projective/types/projects";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { projectorFor } from "../finance/commerce-money.ts";
@@ -252,5 +257,90 @@ export async function liveClient(
 		openRounds(db, actor, mine, now),
 	]);
 	return { ...summarise(mine, display, convert), threadId, reschedules };
+}
+// #endregion
+
+// #region Waitlist
+interface RawWaitlistEntry {
+	user_id: string;
+	handle: string;
+	status: string;
+	position: number | null;
+	queued_at: string;
+	invited_at: string | null;
+	invite_expires_at: string | null;
+	resolved_at: string | null;
+}
+
+interface RawListingWaitlist {
+	counts: Record<string, number>;
+	entries: RawWaitlistEntry[];
+}
+
+/** What a live waitlist read found: the queue, no listing of the caller's, or not a group session. */
+export type LiveWaitlistRead = { kind: "ok"; data: ListingWaitlist } | { kind: "missing" } | {
+	kind: "not_cohort";
+};
+
+function isoOrNull(value: string | null): string | null {
+	return value ? new Date(value).toISOString() : null;
+}
+
+/**
+ * One group-session listing's waitlist as its seller reads it (`projects.get_listing_waitlist`,
+ * Decision #455), each place dressed from the profile directory.
+ */
+export async function liveWaitlist(
+	listingSlug: string,
+	actor: ReadActor & { accessToken: string },
+): Promise<LiveWaitlistRead> {
+	const db = getUserClient(actor.accessToken);
+	const listing = (await loadScopedListings(db, actor)).find((l) => l.slug === listingSlug);
+	if (!listing) return { kind: "missing" };
+	if (listing.model !== "group_session") return { kind: "not_cohort" };
+
+	const { data, error } = await db.schema("projects").rpc("get_listing_waitlist", {
+		p_listing: listing.id,
+	});
+	if (error) {
+		if (error.code === "P0002") return { kind: "missing" };
+		throw new Error(`projects.get_listing_waitlist failed: ${error.message}`);
+	}
+	const raw = (data ?? { counts: {}, entries: [] }) as RawListingWaitlist;
+	const keys = raw.entries.flatMap((e) => {
+		const key = toClientKey(e.handle);
+		return key ? [key] : [];
+	});
+	const people = await identitiesFor(keys);
+	const entries = raw.entries.flatMap((e): ListingWaitlistEntry[] => {
+		const key = toClientKey(e.handle);
+		const status = WaitlistStatusSchema.safeParse(e.status);
+		if (!key || !status.success) return [];
+		const who = people.get(key);
+		return [{
+			userId: e.user_id,
+			handle: key,
+			name: who?.name ?? key.slice(1),
+			avatar: who?.avatar ?? "",
+			status: status.data,
+			position: e.position ?? null,
+			queuedAt: new Date(e.queued_at).toISOString(),
+			invitedAt: isoOrNull(e.invited_at),
+			inviteExpiresAt: isoOrNull(e.invite_expires_at),
+			resolvedAt: isoOrNull(e.resolved_at),
+		}];
+	});
+	return {
+		kind: "ok",
+		data: {
+			counts: {
+				waiting: raw.counts.waiting ?? 0,
+				invited: raw.counts.invited ?? 0,
+				expired: raw.counts.expired ?? 0,
+				converted: raw.counts.converted ?? 0,
+			},
+			entries,
+		},
+	};
 }
 // #endregion

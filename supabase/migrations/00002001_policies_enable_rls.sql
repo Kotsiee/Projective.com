@@ -121,6 +121,9 @@ ALTER TABLE org.handle_changes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.deletion_requests ENABLE ROW LEVEL SECURITY;
 
+-- Read-own, definer-written (00001061).
+ALTER TABLE org.data_export_requests ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.user_skills ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.users_public ENABLE ROW LEVEL SECURITY;
@@ -343,6 +346,11 @@ ALTER TABLE projects.project_application_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE org.enterprises ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.enterprise_members ENABLE ROW LEVEL SECURITY;
+
+-- Read-own evidence, definer-written and append-only (00001010, Decision #446); reference data.
+ALTER TABLE org.legal_acceptances ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.legal_document_versions ENABLE ROW LEVEL SECURITY;
 
 
 -- --- from 20260723090000_finance_currency_fx.sql ---
@@ -657,6 +665,8 @@ ALTER TABLE finance.processor_customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace.promoted_placements ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE marketplace.quote_requests ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE marketplace.quote_offers ENABLE ROW LEVEL SECURITY;
 
 
 -- --- catalogue: the seller publication layer ---

@@ -18,6 +18,7 @@ const REAL: SettingsSectionDataOf<"account"> = {
 	},
 	lifecycle: null,
 	connected: null,
+	dataExport: null,
 };
 
 Deno.test("account simulation — auto passes the real reads through untouched", () => {

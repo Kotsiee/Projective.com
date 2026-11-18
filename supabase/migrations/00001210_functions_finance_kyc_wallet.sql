@@ -1288,8 +1288,10 @@ and KYB verification (PK403 kyb_required).';
 --     `set_session` line (a 1-1 session or a block, Decision #211) settles the same way: priced from
 --     its listing's session price (× session_count for a block) at the time the line carries
 --     (`scheduled_at`, still ahead), and projects.fn_book_session_slot seats the buyer on a one-seat
---     cohort and holds ONE escrow PER SITTING from this wallet. Every other kind (a whole project, a
---     service) is still refused (PS501) rather than paid into nowhere.
+--     cohort and holds ONE escrow PER SITTING from this wallet. A seat, session or block line keeps
+--     the buyer's answers to the listing's own intake (`metadata.answers`) on its order line, reduced
+--     to the questions the listing asks (projects.fn_session_intake_answers, Decision #453). Every
+--     other kind (a whole project, a service) is still refused (PS501) rather than paid into nowhere.
 --   * The lines are priced in one currency, and the order is in it. The account pays from its wallet in
 --     that currency, or, with `p_fx_quote_id` (Decision #435), from its wallet in the quote's currency:
 --     the quote must price exactly this order's net for this basket, the spend gate counts what leaves
@@ -1379,6 +1381,10 @@ DECLARE
     v_sess_unit bigint;
     v_booking jsonb;
     v_funded jsonb;
+    v_scoped record;
+    v_scoped_price bigint;
+    v_target date;
+    v_bought jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1534,6 +1540,76 @@ BEGIN
             );
             CONTINUE;
         END IF;
+        -- A One-Off or a Task (Decision #457): bought by a person for themselves, priced NOW from the
+        -- listing's own milestones (milestone 1, or every one under the whole-project prepay), and made
+        -- a funded engagement below by marketplace.fn_buy_scoped_service as this buyer. Checked here in
+        -- checkout's own words, so the door's refusals are a backstop a buyer never reads.
+        IF v_line.item_type IN ('one_off_service', 'single_service_task') THEN
+            IF v_basket.owner_type NOT IN ('user', 'freelancer') THEN
+                RAISE EXCEPTION '% can only be bought from a personal account for now — switch to your personal account to buy it', v_line.title
+                    USING ERRCODE = 'PU422';
+            END IF;
+            SELECT sb.is_published, sb.delivery_model::text AS model, pg_catalog.upper(sb.currency) AS currency,
+                   sb.freelancer_profile_id = v_uid OR (
+                       sb.owner_team_id IS NOT NULL AND EXISTS (
+                           SELECT 1 FROM org.team_members tm
+                            WHERE tm.team_id = sb.owner_team_id AND tm.user_id = v_uid AND tm.status = 'active')
+                   ) AS own
+              INTO v_scoped
+              FROM marketplace.service_blueprints sb
+             WHERE sb.id = v_line.item_id;
+            IF NOT FOUND OR NOT v_scoped.is_published
+               OR v_scoped.model <> (CASE v_line.item_type WHEN 'one_off_service' THEN 'one_off' ELSE 'direct_deliverable' END) THEN
+                RAISE EXCEPTION '% is no longer offered', v_line.title USING ERRCODE = 'PC409';
+            END IF;
+            IF v_scoped.own THEN
+                RAISE EXCEPTION 'You can''t buy your own service — remove % to pay for the rest', v_line.title
+                    USING ERRCODE = 'PU422';
+            END IF;
+            IF v_scoped.currency <> v_currency THEN
+                RAISE EXCEPTION 'This order is priced in %, not %', v_scoped.currency, v_currency
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF pg_catalog.btrim(COALESCE(v_line.metadata ->> 'requirements', '')) = '' THEN
+                RAISE EXCEPTION 'Describe what you need for % before paying — reopen it from its listing', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_target := CASE WHEN COALESCE(v_line.metadata ->> 'targetDate', '') ~ '^\d{4}-\d{2}-\d{2}$'
+                             THEN (v_line.metadata ->> 'targetDate')::date END;
+            IF v_target IS NOT NULL AND v_target < current_date THEN
+                RAISE EXCEPTION 'The target date for % has passed — pick a new one from its listing', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_scoped_price := marketplace.fn_scoped_service_price(
+                v_line.item_id, v_line.metadata ->> 'fundingScope' = 'whole_project');
+            IF v_scoped_price IS NULL THEN
+                RAISE EXCEPTION '% has no price for every stage yet — the provider confirms it before you pay', v_line.title
+                    USING ERRCODE = 'PS501';
+            END IF;
+            IF p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+               OR (p_units ->> v_line.id::text)::bigint <> v_scoped_price THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_subtotal := v_subtotal + v_scoped_price;
+            v_escrow_total := v_escrow_total + v_scoped_price;
+            v_lines := v_lines || pg_catalog.jsonb_build_object(
+                'id', v_line.id,
+                'item_id', v_line.item_id,
+                'item_type', v_line.item_type,
+                'title', v_line.title,
+                'quantity', 1,
+                'gross', v_scoped_price,
+                'creator', 0,
+                'scoped', true,
+                'brief', v_line.metadata ->> 'requirements',
+                'answers', CASE WHEN pg_catalog.jsonb_typeof(v_line.metadata -> 'answers') = 'object'
+                                THEN v_line.metadata -> 'answers' ELSE '{}'::jsonb END,
+                'target_date', v_target,
+                'whole', COALESCE(v_line.metadata ->> 'fundingScope', '') = 'whole_project'
+            );
+            CONTINUE;
+        END IF;
         -- A ticket line (Decisions #166, #430): ONE stage of the ticket, priced there NOW and paid by the
         -- project's own client, whose wallet the hold — or, for a later stage, the reservation — debits;
         -- the stage passes projects.fn_ticket_stage_fundable here, and fund_ticket's gates below.
@@ -1632,7 +1708,8 @@ BEGIN
                 'creator', 0,
                 'hold_id', v_seat.hold_id,
                 'seats', v_seat.hold_seats,
-                'seat_stage_id', v_seat.project_stage_id
+                'seat_stage_id', v_seat.project_stage_id,
+                'intake_answers', projects.fn_session_intake_answers(v_seat.blueprint_id, v_line.metadata -> 'answers')
             );
             CONTINUE;
         END IF;
@@ -1697,7 +1774,8 @@ BEGIN
                     THEN (SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY n), '[]'::jsonb)
                             FROM pg_catalog.jsonb_array_elements(v_line.metadata -> 'laterStarts') WITH ORDINALITY AS t (x, n)
                            WHERE pg_catalog.jsonb_typeof(x) = 'string')
-                    ELSE '[]'::jsonb END
+                    ELSE '[]'::jsonb END,
+                'intake_answers', projects.fn_session_intake_answers(v_sess.id, v_line.metadata -> 'answers')
             );
             CONTINUE;
         END IF;
@@ -1963,12 +2041,42 @@ BEGIN
              WHERE id = (v_line.l ->> 'id')::uuid;
             CONTINUE;
         END IF;
+        -- A One-Off or a Task: the engagement is created and funded now, in this transaction, so a refused
+        -- hold refuses the order and an order never exists without its engagement (Decision #457).
+        IF v_line.l ? 'scoped' THEN
+            v_bought := marketplace.fn_buy_scoped_service(
+                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'brief', v_line.l -> 'answers',
+                (v_line.l ->> 'target_date')::date, (v_line.l ->> 'whole')::boolean,
+                'order:' || (v_line.l ->> 'id')
+            );
+            IF (v_bought ->> 'amount_cents')::bigint IS DISTINCT FROM (v_line.l ->> 'gross')::bigint THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.l ->> 'title'
+                    USING ERRCODE = 'PC409';
+            END IF;
+            INSERT INTO finance.order_lines (
+                order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
+                currency, fulfilment, stage_id, ticket_id, project_id, escrow_id, intake_answers, position
+            ) VALUES (
+                v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
+                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
+                CASE WHEN (v_line.l ->> 'whole')::boolean AND pg_catalog.jsonb_array_length(v_bought -> 'stage_ids') > 1
+                     THEN 'Every milestone funded' ELSE 'Escrow held' END, 1,
+                (v_line.l ->> 'gross')::bigint, v_currency, 'engagement',
+                (v_bought -> 'stage_ids' ->> 0)::uuid, (v_bought ->> 'ticket_id')::uuid,
+                (v_bought ->> 'project_id')::uuid, (v_bought ->> 'escrow_id')::uuid,
+                COALESCE(v_bought -> 'intake_answers', '{}'::jsonb), v_i - 1
+            );
+            UPDATE finance.basket_items
+               SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE id = (v_line.l ->> 'id')::uuid;
+            CONTINUE;
+        END IF;
         -- A 1-1 session or block: the order line is its receipt, written first so the seat can name it;
         -- the booking then names the stage the line fulfils.
         IF v_line.l ? 'session_count' THEN
             INSERT INTO finance.order_lines (
                 order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-                currency, fulfilment, scheduled_at, timezone, duration_minutes, seats, position
+                currency, fulfilment, scheduled_at, timezone, duration_minutes, seats, intake_answers, position
             ) VALUES (
                 v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
                 (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
@@ -1976,7 +2084,7 @@ BEGIN
                      THEN 'Block booked · escrow held per session' ELSE 'Session booked · escrow held' END,
                 1, (v_line.l ->> 'gross')::bigint, v_currency, 'session',
                 (v_line.l ->> 'scheduled_at')::timestamptz, v_line.l ->> 'timezone',
-                (v_line.l ->> 'duration_minutes')::integer, 1, v_i - 1
+                (v_line.l ->> 'duration_minutes')::integer, 1, v_line.l -> 'intake_answers', v_i - 1
             )
             RETURNING id INTO v_order_line;
             v_booking := projects.fn_book_session_slot((v_line.l ->> 'item_id')::uuid, v_uid,
@@ -1997,12 +2105,12 @@ BEGIN
         IF v_line.l ? 'hold_id' THEN
             INSERT INTO finance.order_lines (
                 order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-                currency, fulfilment, stage_id, seats, position
+                currency, fulfilment, stage_id, seats, intake_answers, position
             ) VALUES (
                 v_order_id, (v_line.l ->> 'id')::uuid, 'course_group_session', (v_line.l ->> 'item_id')::uuid,
                 v_line.l ->> 'title', 'Seat confirmed · escrow held', 1, (v_line.l ->> 'gross')::bigint,
                 v_currency, 'session', (v_line.l ->> 'seat_stage_id')::uuid, (v_line.l ->> 'seats')::integer,
-                v_i - 1
+                v_line.l -> 'intake_answers', v_i - 1
             )
             RETURNING id INTO v_order_line;
             PERFORM projects.fn_confirm_seat((v_line.l ->> 'hold_id')::uuid, v_uid, v_wallet.owner_type,
@@ -2099,7 +2207,11 @@ escrow lines are charged at release) and its lines, consume the basket lines. Di
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
 membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks
 (Decision #211), which settle into a one-seat cohort with one escrow per sitting
-(projects.fn_book_session_slot); every other kind is refused. The net must equal p_expected_minor (the
+(projects.fn_book_session_slot); a seat, session or block order line keeps the buyer''s intake answers
+(projects.fn_session_intake_answers, Decision #453); and One-Offs and Tasks bought by a person for
+themselves (Decision #457), priced from the listing''s milestones (marketplace.fn_scoped_service_price)
+and settled by creating the funded engagement in this transaction (marketplace.fn_buy_scoped_service),
+the line linking its project and held escrow; every other kind is refused. The net must equal p_expected_minor (the
 total the buyer saw, in the order''s currency). With p_fx_quote_id (Decision #435) the account pays from
 its wallet in the quote''s currency, converted first at the locked quote, which must price exactly this
 net; the escrows are stamped with the conversion and the order names it. A promo is redeemed atomically
@@ -2109,7 +2221,7 @@ verification · PB404 basket gone · PC409 basket/price/promo/seat hold changed,
 not p_expected_minor), promo_exhausted (the cap was reached), or a session time that passed · PD422 a
 line needs a delivery address · PU422 your own listing (yours, or your team''s), or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
 session time was taken · PS501 not payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad
-attempt key.';
+attempt key, or a line''s intake answers malformed or over 32 KB.';
 
 -- The marketplace commission as the SELLER sees it (Decision #337, ruling M1): the rate their next
 -- product sale is charged — finance.fn_effective_commission_bp, the resolver place_wallet_order charges

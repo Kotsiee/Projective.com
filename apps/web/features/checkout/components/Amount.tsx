@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { cx } from "@ui/core/cx.ts";
 import { type MoneyReference, type MoneySize, MoneyView } from "@projective/ui/display/money";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import type { MoneyView as MoneyViewValue } from "../types/checkout-types.ts";
 
 /**
@@ -107,6 +108,7 @@ const SIZE: Record<NonNullable<AmountProps["size"]>, MoneySize> = {
 /** Render one server-formatted amount, live to the viewer's display currency. */
 export function Amount(props: AmountProps): JSX.Element {
 	const { value, size = "body", tone = "default", sign = null, srLabel } = props;
+	const mask = useMaskFigures();
 
 	return (
 		<span
@@ -133,7 +135,7 @@ export function Amount(props: AmountProps): JSX.Element {
 				exact={props.exact}
 				reference={props.reference}
 			/>
-			{srLabel ? <span class="ui-visually-hidden">{srLabel}</span> : null}
+			{srLabel ? <span class="ui-visually-hidden">{mask(srLabel)}</span> : null}
 		</span>
 	);
 }

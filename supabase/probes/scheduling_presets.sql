@@ -25,6 +25,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 DO $$
 DECLARE
     v_tag text := substr(md5(random()::text), 1, 8);
@@ -78,10 +86,10 @@ BEGIN
       FROM unnest(ARRAY[v_teen, v_adult]) AS u;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_teen, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'presetprobe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date, 'timezone', 'UTC'));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'presetprobe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date, 'timezone', 'UTC'));
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_adult, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'presetprobe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date, 'timezone', 'UTC'));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'presetprobe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date, 'timezone', 'UTC'));
     INSERT INTO scheduling.schedules (owner_type, owner_id, timezone)
     VALUES ('user', v_teen, 'UTC') RETURNING id INTO v_teen_schedule;
     -- #endregion

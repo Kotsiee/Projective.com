@@ -116,6 +116,21 @@ VALUES (
     ) ON CONFLICT (id) DO NOTHING;
 -- #endregion
 
+-- #region [data_exports] a person's copy of their own data (Decision #450)
+-- One ZIP per org.data_export_requests row at `{user_id}/{request_id}.zip`, written and removed by the
+-- data export job alone. No storage policy at all (00002017): the service role mints a short-lived
+-- download link only after the request door has read the row under the person's own JWT.
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'data_exports',
+        'data_exports',
+        false,
+        52428800,
+        ARRAY['application/zip']
+    ) ON CONFLICT (id) DO NOTHING;
+-- #endregion
+
 -- #endregion
 
 -- #region Public edge-cached buckets

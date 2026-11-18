@@ -11,6 +11,13 @@ import { useHoldRepeat } from "../hooks/useHoldRepeat.ts";
 import { useId } from "../hooks/useId.ts";
 import { type ScrubAxis, useScrub } from "../hooks/useScrub.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
+import { Button } from "../components/Button.tsx";
+import {
+	SCREEN_SHARE_AMOUNT_LABEL,
+	SCREEN_SHARE_MASK,
+	useHoldToReveal,
+	useScreenShareActive,
+} from "../../utils/core/screen-share.ts";
 import {
 	caretAfterSanitize,
 	clampNumber,
@@ -135,6 +142,11 @@ export interface NumberInputProps extends BaseFieldProps {
 	buttonLayout?: StepperLayout;
 	/** Hide the +/− steppers. */
 	hideSteppers?: boolean;
+	/**
+	 * Whether screen sharing mode masks the value (DESIGN_SYSTEM.md §B.14 tier A), with a
+	 * press-and-hold Show. Default: a `currency` field is masked, a plain count is not.
+	 */
+	sensitive?: boolean;
 	/** Surface treatment. */
 	variant?: FieldVariant;
 	class?: string;
@@ -203,6 +215,7 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 		inputMode,
 		buttonLayout = "adjacent",
 		hideSteppers,
+		sensitive,
 		variant = "outlined",
 		fluid,
 		size = "md",
@@ -225,6 +238,9 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 	const focused = useSignal(false);
 	const draft = useSignal("");
 	const locked = disabled || readOnly;
+	const hold = useHoldToReveal();
+	const obscurable = useScreenShareActive() && (sensitive ?? mode === "currency");
+	const hidden = obscurable && !hold.revealing;
 
 	// #region Formatting
 	/**
@@ -291,7 +307,8 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 	const hasValue = current !== null && current !== undefined;
 	const formatted = hasValue ? displayFormatter.format(current) : "";
 	const spoken = hasValue && spokenFormatter ? spokenFormatter.format(current) : formatted;
-	const display = focused.value ? draft.value : formatted;
+	const shown = focused.value ? draft.value : formatted;
+	const display = hidden && shown !== "" ? SCREEN_SHARE_MASK : shown;
 	/**
 	 * The field's own zero, formatted exactly as a real value would be, so the hint shows the shape
 	 * the box expects. Derived from the display formatter rather than written as a literal `"0.00"`,
@@ -549,6 +566,28 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 		el.setSelectionRange(caret, caret);
 	};
 
+	/**
+	 * While the value is masked, the box keeps showing the fixed mask run: each edit is applied to
+	 * the draft here and cancelled in the DOM, so neither the digits nor their count reach the screen.
+	 */
+	const onBeforeInput = (event: JSX.TargetedInputEvent<HTMLInputElement>) => {
+		if (!hidden) return;
+		event.preventDefault();
+		const el = event.currentTarget;
+		const whole = el.value.length > 0 && el.selectionStart === 0 &&
+			el.selectionEnd === el.value.length;
+		const type = event.inputType;
+		let next = draft.value;
+		if (type.startsWith("insert")) {
+			const text = event.data ?? event.dataTransfer?.getData("text/plain") ?? "";
+			next = (whole ? "" : draft.value) + text;
+		} else if (whole || (type.startsWith("delete") && type.endsWith("Backward"))) {
+			next = whole || type !== "deleteContentBackward" ? "" : draft.value.slice(0, -1);
+		}
+		draft.value = sanitizeNumericInput(next, filterOptions);
+		el.setSelectionRange(el.value.length, el.value.length);
+	};
+
 	const onFocus = () => {
 		const v = ctrl.get();
 		draft.value = v === null || v === undefined ? "" : String(v);
@@ -586,6 +625,23 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 			>
 				{icon ? <Icon name={icon} /> : leadingSymbol}
 			</span>
+		)
+		: null;
+
+	const show = obscurable
+		? (
+			<Button
+				type="button"
+				variant="text"
+				severity="secondary"
+				size="sm"
+				class="ui-number-input__show"
+				icon={<Icon name="eye" size="xs" />}
+				label="Show"
+				aria-controls={inputId}
+				disabled={disabled}
+				{...hold.handlers}
+			/>
 		)
 		: null;
 
@@ -637,10 +693,13 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 		>
 			{split ? stepper(-1) : lead}
 			{split && lead}
+			{hidden && name
+				? <input type="hidden" name={name} value={hasValue ? String(current) : ""} />
+				: null}
 			<input
 				ref={inputRef}
 				id={inputId}
-				name={name}
+				name={hidden ? undefined : name}
 				type="text"
 				inputMode={resolvedInputMode}
 				role="spinbutton"
@@ -654,18 +713,24 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 				aria-invalid={ariaInvalid(status)}
 				aria-required={required || undefined}
 				aria-busy={loading || undefined}
-				aria-valuenow={hasValue ? current : undefined}
+				aria-valuenow={hasValue && !hidden ? current : undefined}
 				aria-valuemin={min}
 				aria-valuemax={max}
 				// Omitted when it would only repeat `aria-valuenow` — a listener gains nothing from
 				// hearing "1500, 1500" and loses the signal that the text is saying something extra.
-				aria-valuetext={hasValue && spoken !== String(current) ? spoken : undefined}
+				aria-valuetext={hidden
+					? SCREEN_SHARE_AMOUNT_LABEL
+					: hasValue && spoken !== String(current)
+					? spoken
+					: undefined}
 				onFocus={onFocus}
+				onBeforeInput={onBeforeInput}
 				onInput={onInput}
 				onBlur={onBlur}
 				onKeyDown={onKeyDown}
 				{...aria}
 			/>
+			{show}
 			{suffix !== undefined && <span class="ui-number-input__suffix">{suffix}</span>}
 			{!hideSteppers && (split ? stepper(1) : (
 				<span

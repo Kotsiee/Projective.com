@@ -409,6 +409,12 @@ interface AssignmentRow {
 	status: string | null;
 }
 
+interface ViewerSeatRow {
+	project_stage_id: string;
+	status: string | null;
+	team_id: string | null;
+}
+
 // #endregion
 
 // #region Scalars
@@ -1687,6 +1693,15 @@ async function fetchAssignments(
 	return (data ?? []) as unknown as AssignmentRow[];
 }
 
+async function fetchViewerSeats(
+	db: SupabaseClient,
+	projectId: string,
+): Promise<ViewerSeatRow[]> {
+	const { data, error } = await db.rpc("get_viewer_stage_seats", { p_project_id: projectId });
+	if (error || !Array.isArray(data)) return [];
+	return data as ViewerSeatRow[];
+}
+
 // #endregion
 
 // #region The read
@@ -1707,7 +1722,7 @@ async function fetchAssignments(
  * latency to every board render:
  *
  *  1. the project (its own resolver, which also settles visibility);
- *  2. currency, stages and tickets, all keyed on the project id;
+ *  2. currency, stages, tickets and a provider viewer's own seats, all keyed on the project id;
  *  3. history, participants and stage assignments, keyed on the ids wave 2 returned;
  *  4. parties, which needs every user id the first three waves collected — assignees, ticket
  *     owners, audit actors, checklist completers, participants and stage rosters — resolved in one
@@ -1732,16 +1747,19 @@ export async function fetchBoardPage(
 	if (!summary) return null;
 
 	const db = projectsDb(actor);
+	const viewerIsClient = viewerIsClientOf(summary.kind, summary.viewerRole);
 
 	// Wave 2 — everything keyed on the project id.
 	const [
 		{ currency, structure, clientBusinessId, personal, dueDatesEnabled },
 		stageRows,
 		ticketRows,
+		viewerSeats,
 	] = await Promise.all([
 		fetchProjectFacts(db, summary.id),
 		fetchStages(db, summary.id),
 		fetchTickets(db, summary.id),
+		viewerIsClient ? Promise.resolve<ViewerSeatRow[]>([]) : fetchViewerSeats(db, summary.id),
 	]);
 
 	const stageIds = stageRows.map((s) => s.id);
@@ -1864,18 +1882,21 @@ export async function fetchBoardPage(
 	/*
 	 * Provider visibility — applied on the READ, never left to the island.
 	 *
-	 * The stages this viewer is onboarded to are the ones where they hold a `stage_assignments` row
-	 * that {@link countsAsOnboarded} (the same deny-list guard the setup surface's locks read, so the
-	 * two cannot disagree about what "onboarded" means), plus the stage of any ticket they currently
-	 * hold — an assignee IS onboarded to the stage of their own ticket, whether or not the assignment
-	 * row was ever written. A team assignment carries `team_id` and no user, so a viewer onboarded only
-	 * THROUGH a team resolves to nothing here (the `org` membership read belongs to another module —
-	 * flagged, not guessed). RLS's `"View tickets"` policy lets any participant read every ticket of
-	 * the project; this is the layer that turns that into "only what you are paid and seated for".
+	 * The stages this viewer is onboarded to are the ones where they hold a seat that
+	 * {@link countsAsOnboarded} (the same deny-list guard the setup surface's locks read, so the two
+	 * cannot disagree about what "onboarded" means) — their own, or one held by a team they are an
+	 * active member of (`projects.get_viewer_stage_seats`; RLS shows a non-owner neither, and the
+	 * RLS-read rows stay as the fallback when that read fails) — plus the stage of any ticket they
+	 * currently hold: an assignee IS onboarded to the stage of their own ticket, whether or not the
+	 * assignment row was ever written. RLS's `"View tickets"` policy lets any participant read every
+	 * ticket of the project; this is the layer that turns that into "only what you are paid and seated
+	 * for".
 	 */
-	const viewerIsClient = viewerIsClientOf(summary.kind, summary.viewerRole);
 	const viewerStageIds = viewerIsClient ? [] : [
 		...new Set([
+			...viewerSeats
+				.filter((seat) => countsAsOnboarded(seat.status ?? ""))
+				.map((seat) => seat.project_stage_id),
 			...assignmentRows
 				.filter((row) =>
 					row.assignee_type === "freelancer" && row.freelancer_profile_id === actor.userId &&

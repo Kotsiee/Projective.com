@@ -23,6 +23,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 CREATE FUNCTION pg_temp.check(p_label text, p_ok boolean, p_got text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     IF p_ok IS DISTINCT FROM true THEN
@@ -53,7 +61,7 @@ $$;
 CREATE FUNCTION pg_temp.payload(p_handle text, p_email text, p_username text, p_age integer) RETURNS jsonb
 LANGUAGE sql AS $$
     SELECT jsonb_build_object(
-        'legalName', 'Owner Probe ' || p_handle || ' Ltd', 'handle', p_handle, 'corporateEmail', p_email,
+        'legalAcceptance', pg_temp.legal_stamp(), 'legalName', 'Owner Probe ' || p_handle || ' Ltd', 'handle', p_handle, 'corporateEmail', p_email,
         'owner', jsonb_build_object(
             'firstName', 'Ada', 'lastName', 'Probe', 'username', p_username,
             'dob', (CURRENT_DATE - make_interval(years => p_age))::date, 'timeZone', 'Asia/Tokyo'));
