@@ -99,7 +99,8 @@ and this file).
 1. **CK1** — MK-29, and the download record MONEY's DB21 delta asks for. It edits neither `00001240`
    nor `00000017`, so it can be the second SQL session beside MONEY's Wave 2 once `00002510` is
    free.
-2. **CK7 → CK2** — ⏳ CK1 (`00001210`). CK2's 🧑 is ruled (#485), and CK2 waits here for CK7.
+2. **CK7 → CK2** — ⏳ CK1 (`00001210`). CK2's 🧑 is ruled (#485), and CK2 waits here for CK7 and for
+   FBP DB16, because #485 (a) adds a conservation-identity term.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
 4. **CK4** — ⏳ DB21 (a refund reverses the tax), 🧑 + ⚖️.
 5. **SC7** — ⏳ CK1 and DB19. The last change to the money path in this file.
@@ -142,7 +143,7 @@ block, so a question you defer still stops the build at the right step.
 | 1  | #393 A6: sale originals as a third zone, snapshotted at publish                                  | CK1                 | Yes, as the spec recommends                                                                             |
 | 2  | #393 A8 (⚖️): what "downloaded" means for the refund rule                                        | CK1                 | The first completed delivery (or a reader session, once one exists), expressly accepted before Pay      |
 | 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | The offer's own expiry bounds payment                                                                   |
-| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; platform-code funding open (#485 (a))      |
+| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
 | 6  | The tax model (⚖️)                                                                               | CK4                 | Stripe Tax on every order, card and wallet alike, behind a switch that stays off until counsel          |
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
@@ -447,8 +448,10 @@ CONTEXT (verified at b7280787; re-check every line):
   B: as A, and a seller's code may also cover their session lines.
   C: platform codes only; an ops door replaces the seller one.
   RULED #485 (2026-11-18): A. The team issuer asks catalogue.fn_manages_listing /
-  org.fn_member_can('team', …, 'publish_listings') (#485 (b)). Who funds a platform code is
-  #485 (a), still open: CK2 leaves platform codes as they are.
+  org.fn_member_can('team', …, 'publish_listings') (#485 (b)). #485 (a) RULED: the platform
+  pays for a platform code. The seller is credited as if the code had not applied (commission on
+  the line before the platform's share). The cost is a new v_conservation_identity term, so CK2
+  also waits for FBP DB16.
 
 STEPS:
   1. Red first: extend supabase/probes/promo_redemption_concurrency.sql. Today the same
@@ -476,7 +479,8 @@ route draws 429s. finance_invariants.sql passes. Screenshots of the Promotions v
 
 SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 6 and finance-model.md §15 (the per-account
 marker removed; the issuer rule as ruled); FBP DB19 (step 1 marked done by CK2); FINANCE_AUDIT.md
-CO7 and CO22; documentation/database/finance/*; Zod; ROUTING.md; the decision row.
+CO7 and CO22; finance-model.md §1.2 ("after any seller-funded promo", #485 (a));
+documentation/database/finance/*; Zod; ROUTING.md; the decision row.
 ```
 
 §1.2 rows: **MK-26** 🟡 → ✅.
