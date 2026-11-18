@@ -271,7 +271,10 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 > checked nightly beside `finance.fn_reconcile_wallets` with an ops reader — **Not built yet**. B: a
 > **shadow double-entry** journal written by every money definer — **Planned**, built when any of
 > three triggers fires: live money beyond a pilot, an enterprise audit-trail ask, or an auditor or
-> regulator. Derived balances by a big-bang rewrite are not on the table.
+> regulator. The first is ruled to fire at the public launch (Decision #463), so B is built before
+> PROD, after the conservation view. Each money definer posts one balanced entry per movement in its
+> own transaction; a trigger on `finance.transactions` is not enough, because escrow and fee moves
+> write no `transactions` row. Derived balances by a big-bang rewrite are not on the table.
 
 ## 7. Wallet States & the Financial State Machine
 

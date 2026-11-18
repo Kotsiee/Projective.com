@@ -211,9 +211,12 @@ logged; the coordinator logs them.
 - **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (the root `CLAUDE.md` edit
   `f1f10e31`). No prompt here touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),
-  instant payouts and maintenance cycles (ruling P3), the shadow double-entry journal and the
-  Stripe-balance reconciliation (ruling M2 B; FA L6), tax computation (A9) and the wallet-plus-card
-  split payment (CO17).
+  instant payouts and maintenance cycles (ruling P3), the Stripe-balance reconciliation (ruling M2
+  B; FA L6), tax computation (A9) and the wallet-plus-card split payment (CO17).
+- **The shadow double-entry journal (ruling M2 B) left "Planned"** (#463, owner rulings A · A,
+  2026-11-18): the public launch is its trigger, so it is built before PROD, and the money doors
+  write it in each movement's own transaction, as `readiness/MONEY_BUILD_PROMPTS.md` MR8a → MR8b,
+  once DB16 and MR5 have landed.
 
 ---
 
