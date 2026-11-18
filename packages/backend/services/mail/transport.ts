@@ -22,6 +22,11 @@ export interface MailMessage {
 	to: string;
 	subject: string;
 	text: string;
+	/**
+	 * Extra message headers, passed through as given: the newsletter's RFC 8058 pair
+	 * (`List-Unsubscribe`, `List-Unsubscribe-Post`). Never an address beyond `to`, never a secret.
+	 */
+	headers?: Readonly<Record<string, string>>;
 }
 
 /** Something that can put a message in an inbox. Throws when it could not. */
@@ -51,6 +56,7 @@ export function resendTransport(
 					to: [message.to],
 					subject: message.subject,
 					text: message.text,
+					...(message.headers ? { headers: { ...message.headers } } : {}),
 				}),
 				signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
 			});

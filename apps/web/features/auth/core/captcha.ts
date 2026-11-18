@@ -47,6 +47,24 @@ function appHostnames(): string[] {
 }
 
 /**
+ * The app-verified bot check for an anonymous write outside auth (the newsletter opt-in), bound to
+ * this request: its key pair (honouring the development override), its client address and the app's
+ * hostname. The fat service calls it before its write; `null` admits the request, otherwise it is
+ * the {@link ServiceResult} refusal to answer with.
+ */
+export function appCaptchaGate(req: Request, remoteAddr: Deno.Addr, action: CaptchaAction) {
+	return (token: string | undefined) =>
+		checkJoinCaptcha({
+			token,
+			keys: captchaKeysFor(req),
+			action,
+			remoteIp: clientKey(remoteAddr, req.headers),
+			allowedHostnames: appHostnames(),
+			development: isDevelopmentEnv(),
+		});
+}
+
+/**
  * Verify a token the app checks itself (`/join`). `null` admits the request; otherwise the response
  * to refuse it with (400 for a failed token, 503 when the check cannot run). Stub auth writes no
  * account, so it checks nothing.

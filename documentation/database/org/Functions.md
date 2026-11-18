@@ -820,7 +820,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   (Teams P1), found by the namespace guard — the same contract test fails when any top-level segment
   under `apps/web/routes/` is missing from the list — and `changelog`, `feedback` and `features`,
   the public editorial routes and the landing track's `/features` (2026-10-17, probed by
-  `supabase/probes/reserved_handles.sql`); the reasons per entry are in `ROUTING.md`
+  `supabase/probes/reserved_handles.sql`), and `newsletter`, the newsletter link pages (2026-11-18,
+#480); the reasons per entry are in `ROUTING.md`
   §Reserved-handle precedence. The 68 words from `analytics` on are `PLANNED_SEGMENTS` (2026-11-18,
   Decision #444 flag (c)): reserved ahead of any route file, with each word's source beside it in
   `reserved.ts`. The contract test requires every one in both lists, and the probe pins `analytics`,

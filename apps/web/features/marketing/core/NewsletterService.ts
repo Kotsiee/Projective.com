@@ -17,16 +17,18 @@ import type { NewsletterResult } from "../types/newsletter.ts";
 export const NewsletterService = {
 	/**
 	 * Subscribe an email to one newsletter topic (`general` unless the capture says otherwise, e.g.
-	 * `changelog` on the changelog). Client-side Zod validation short-circuits an obviously malformed
-	 * address into a field error (no wasted request); a clean submission is forwarded to the route,
-	 * which re-validates and delegates to the fat service.
+	 * `changelog` on the changelog), carrying the form's Turnstile token when its widget produced one.
+	 * Client-side Zod validation short-circuits an obviously malformed address into a field error (no
+	 * wasted request); a clean submission is forwarded to the route, which re-validates and delegates
+	 * to the fat service.
 	 */
 	async subscribe(
 		email: string,
 		source: NewsletterSource = "footer",
 		topic: NewsletterTopic = "general",
+		captchaToken?: string,
 	): Promise<NewsletterResult> {
-		const parsed = NewsletterSubscribeSchema.safeParse({ email, source, topic });
+		const parsed = NewsletterSubscribeSchema.safeParse({ email, source, topic, captchaToken });
 		if (!parsed.success) {
 			const first = parsed.error.issues[0];
 			return {

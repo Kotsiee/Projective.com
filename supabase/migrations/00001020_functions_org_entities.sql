@@ -990,6 +990,7 @@ AS $$
         'about', 'explore', 'help', 'view', 'join', 'login', 'register', 'signin', 'signup', 'logout',
         'forgot-password', 'reset-password', 'verify', 'index', 'home', 'pricing', 'terms', 'privacy',
         'legal', 'contact', 'blog', 'careers', 'status', 'changelog', 'feedback', 'features',
+        'newsletter',
         'dashboard', 'projects', 'project', 'business',
         'businesses', 'teams', 'team', 'messages', 'inbox', 'files', 'file', 'inspect', 'share', 'exit', 'wallet', 'billing',
         'settings', 'services', 'service', 'products', 'portfolio', 'reviews', 'articles', 'members',

@@ -182,10 +182,23 @@ GRANT EXECUTE ON FUNCTION comms.mask_pii (text) TO authenticated;
 
 
 -- #region [community.newsletter]
--- The opt-in's one writer. Service role only: the public form reaches it through
--- /api/newsletter/subscribe → NewsletterBackendService, never as a browser RPC (00002021).
+-- The double opt-in's doors (00001320), every one service role only: the public form reaches them
+-- through /api/newsletter/subscribe, and the mailed link through /api/newsletter/{confirm,unsubscribe}
+-- and the two /newsletter pages, each via NewsletterBackendService, never as a browser RPC (00002021).
+-- The region at the top already closes them; they are named here so the list is complete.
+-- fn_newsletter_suppressed is a definer over comms.fn_is_suppressed, so a client must never hold it.
 REVOKE ALL ON FUNCTION community.subscribe_newsletter (text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION community.subscribe_newsletter (text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION community.read_newsletter_link (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.read_newsletter_link (uuid) TO service_role;
+REVOKE ALL ON FUNCTION community.confirm_newsletter (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.confirm_newsletter (uuid) TO service_role;
+REVOKE ALL ON FUNCTION community.unsubscribe_newsletter (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.unsubscribe_newsletter (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION community.fn_newsletter_pending_topics (community.newsletter_subscriptions) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.fn_newsletter_pending_topics (community.newsletter_subscriptions) TO service_role;
+REVOKE ALL ON FUNCTION community.fn_newsletter_suppressed (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION community.fn_newsletter_suppressed (text) TO service_role;
 -- #endregion
 
 

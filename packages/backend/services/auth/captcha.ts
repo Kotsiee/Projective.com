@@ -37,7 +37,8 @@ export interface JoinCaptchaInput {
 }
 
 /**
- * Verify a token the app must check itself (`/join`, whose account GoTrue's check never sees).
+ * Verify a token the app must check itself: `/join`, whose account GoTrue's check never sees, and the
+ * newsletter opt-in (action `newsletter`), which mails whatever address it is given.
  * `null` admits the request; otherwise the refusal to answer with.
  */
 export async function checkJoinCaptcha(

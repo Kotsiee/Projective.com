@@ -453,6 +453,17 @@
 			],
 			"port": 13530,
 			"autoPort": false
+		},
+		{
+			"name": "web-newsletter",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13540'; $env:NEWSLETTER_BACKEND_LIVE = 'true'; deno task dev --port 13540 --strictPort"
+			],
+			"port": 13540,
+			"autoPort": false
 		}
 	]
 }

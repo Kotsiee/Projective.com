@@ -38,6 +38,25 @@ Deno.test("resendTransport — one POST with the key and the sender", async () =
 	});
 });
 
+Deno.test("resendTransport — a message's own headers ride the POST as Resend's `headers`", async () => {
+	const bodies: unknown[] = [];
+	const send = ((_url: string, init: RequestInit) => {
+		bodies.push(JSON.parse(String(init.body)));
+		return Promise.resolve(new Response("{}", { status: 200 }));
+	}) as typeof fetch;
+	const headers = {
+		"List-Unsubscribe": "<https://app.example.test/api/newsletter/unsubscribe?token=t>",
+		"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+	};
+
+	await resendTransport("re_test", "Projective <no-reply@notify.example.com>", send).send({
+		...MESSAGE,
+		headers,
+	});
+
+	assertEquals((bodies[0] as { headers: unknown }).headers, headers);
+});
+
 Deno.test("resendTransport — a refusal throws the status, and never the recipient", async () => {
 	const send = (() => Promise.resolve(new Response("nope", { status: 422 }))) as typeof fetch;
 	const error = await assertRejects(() =>

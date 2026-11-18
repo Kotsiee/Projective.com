@@ -14,31 +14,86 @@ Tables: [Tables.md](Tables.md) · Policies: [Policies.md](Policies.md).
 
 ## Newsletter
 
+The double opt-in (Decision #480, PRD-E11). Every function below is `search_path = ''` and **service
+role only** (`00002510`, `[community.newsletter]`), called from `NewsletterBackendService`
+(`packages/backend/services/newsletter/`). The last three take only the mailed link's token, the
+address's one credential. The probe `supabase/probes/newsletter_double_opt_in.sql` pins them.
+
+### `community.fn_newsletter_pending_topics(p_row community.newsletter_subscriptions) → text[]`
+
+What a confirmation would apply to the row, or NULL when nothing awaits: on an unsubscribed address
+the pending re-subscribe, on an unconfirmed one its whole `topics`, on a confirmed one the pending
+topics. `IMMUTABLE`, reads only its argument. The one rule the three doors below share.
+
+### `community.fn_newsletter_suppressed(p_email text) → boolean`
+
+Whether `comms.fn_is_suppressed('email', p_email, 'marketing')` refuses the address: a hard bounce
+blocks every category, a complaint or unsubscribe Marketing, and the newsletter is Marketing.
+`SECURITY DEFINER`, so the newsletter's doors need nothing of `comms` but this one boolean for one
+address, whatever `USAGE` the service role holds there (`00002500`).
+
 ### `community.subscribe_newsletter(p_email text, p_source text DEFAULT 'footer', p_topic text DEFAULT 'general') → jsonb`
 
-The opt-in's **one writer**. `SECURITY INVOKER`, `search_path = ''`, **service role only** — called
-by `NewsletterBackendService` (`packages/backend/services/newsletter/`) behind
+The public form's writer. `SECURITY INVOKER`, `search_path = ''`, **service role only** — called by
+`NewsletterBackendService` (`packages/backend/services/newsletter/`) behind
 `NEWSLETTER_BACKEND_LIVE`. It lowercases and trims the address (`22023` when it is not an address or
 is longer than 254 characters, `NEWSLETTER_EMAIL_MAX`), locks the address's row, and decides one of
-four outcomes:
+five outcomes:
 
-| Outcome        | When                                  | Writes                                                                                                                                                                                                                                                                                                                                                                                                             |
-| :------------- | :------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `created`      | no row for the address                | INSERT with `topics = {p_topic}`, unconfirmed.                                                                                                                                                                                                                                                                                                                                                                     |
-| `resubscribed` | the address had unsubscribed          | Records the request only: `p_topic` joins `resubscribe_topics` (sorted, distinct) and `resubscribe_requested_at` is stamped. `unsubscribed_at` / `unsubscribed_reason` (the only record of the opt-out), `topics` and `confirmed_at` are untouched, so the row stays unsendable until the confirm link applies the request — a public form proves nobody owns the address. A second request joins the pending set. |
-| `topic_added`  | active, and `p_topic` is new          | `p_topic` joins `topics` (sorted by code point, distinct); `updated_at` set. `source` keeps the first capture.                                                                                                                                                                                                                                                                                                     |
-| `unchanged`    | active, and `p_topic` is already held | Nothing — not even `updated_at`.                                                                                                                                                                                                                                                                                                                                                                                   |
+| Outcome         | When                                         | Writes                                                                                                                                                                                                                                                                                                                                                                                                             |
+| :-------------- | :------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `created`       | no row for the address                       | INSERT with `topics = {p_topic}`, unconfirmed.                                                                                                                                                                                                                                                                                                                                                                     |
+| `resubscribed`  | the address had unsubscribed                 | Records the request only: `p_topic` joins `resubscribe_topics` (sorted, distinct) and `resubscribe_requested_at` is stamped. `unsubscribed_at` / `unsubscribed_reason` (the only record of the opt-out), `topics` and `confirmed_at` are untouched, so the row stays unsendable until the confirm link applies the request — a public form proves nobody owns the address. A second request joins the pending set. |
+| `topic_added`   | active and unconfirmed, and `p_topic` is new | `p_topic` joins `topics` (sorted by code point, distinct); `updated_at` set. `source` keeps the first capture. The first confirmation covers it.                                                                                                                                                                                                                                                                   |
+| `topic_pending` | active and confirmed, and `p_topic` is new   | `p_topic` joins `resubscribe_topics` and `resubscribe_requested_at` is stamped, as a re-subscribe is recorded: what the address holds keeps going out, and the new topic waits for its own confirmation (#274 flag (c)).                                                                                                                                                                                           |
+| `unchanged`     | active, and `p_topic` is already held        | Nothing — not even `updated_at`.                                                                                                                                                                                                                                                                                                                                                                                   |
 
-Returns `{ email, topic, outcome, already_subscribed }`, with `already_subscribed` true exactly for
-`unchanged`, so a repeat submission answers the same success the first one did — and the answer
-never names the address's other topics. A concurrent first subscribe of the same address is folded
-in, not raised (`INSERT … ON CONFLICT DO NOTHING`, then loop to lock the winner's row). `p_source`
-and `p_topic` are checked by the table's CHECKs (`23514`); NULL falls back to the defaults. Topic
-sets are sorted `COLLATE "C"` (code point), the order the TypeScript twin's `normalizeTopics`
-produces.
+Then, under the same lock, **a confirmation mail is due** when `fn_newsletter_pending_topics` is not
+NULL, `confirmation_sent_at` is NULL or more than 10 minutes old, and `fn_newsletter_suppressed` is
+false; a due mail stamps `confirmation_sent_at` (and only it: `updated_at` stays). Returns
+`{ email, topic, outcome, already_subscribed, confirmation_due, token, confirm_topics }`; `token`
+and `confirm_topics` are present only when the mail is due, and the service sends it once the
+transaction commits. `already_subscribed` is true exactly for `unchanged`; the service answers every
+outcome with the same public success, so neither field reaches the form. A concurrent first
+subscribe of the same address is folded in, not raised (`INSERT … ON CONFLICT DO NOTHING`, then loop
+to lock the winner's row). `p_source` and `p_topic` are checked by the table's CHECKs (`23514`);
+NULL falls back to the defaults. Topic sets are sorted `COLLATE "C"` (code point), the order the
+TypeScript twin's `normalizeTopics` produces.
 
-Its TypeScript twin is `planNewsletterSubscription` (`subscription-plan.ts`, unit-tested); the probe
-`supabase/probes/community_editorial_schemas.sql` pins the same four outcomes in SQL.
+Its TypeScript twin is `planNewsletterSubscription` (`subscription-plan.ts`, unit-tested); the
+probes `community_editorial_schemas.sql` and `newsletter_double_opt_in.sql` pin the same five
+outcomes in SQL.
+
+### `community.read_newsletter_link(p_token uuid) → jsonb`
+
+What the link's two pages show, writing nothing (a mail scanner opens every link; Decisions #445,
+#478). `STABLE`, `SECURITY INVOKER`. NULL for an unknown token; otherwise
+`{ subscribed, unsubscribed, topics, pending_topics, expired }` — never the address. `expired` is
+true when something awaits confirmation but the mail that carried the link is more than 7 days old
+(or none was sent).
+
+### `community.confirm_newsletter(p_token uuid) → jsonb`
+
+The confirm page's button (`POST /api/newsletter/confirm`), under a row lock. Returns
+`{ outcome, topics }`:
+
+| Outcome             | When                                                            | Writes                                                                                                                                                                                                        |
+| :------------------ | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `confirmed`         | something awaits and the link's mail is at most 7 days old      | `topics` = the pending re-subscribe (unsubscribed), `topics ∪ resubscribe_topics` (confirmed) or unchanged (unconfirmed); `confirmed_at = now()`; `unsubscribed_at`, its reason and the pending pair cleared. |
+| `already_confirmed` | nothing awaits, and the address is subscribed                   | Nothing: the same success.                                                                                                                                                                                    |
+| `expired`           | something awaits, but the mail is older than 7 days (or unsent) | Nothing. Subscribing again mails a fresh link.                                                                                                                                                                |
+| `unsubscribed`      | nothing awaits, and the address has unsubscribed                | Nothing.                                                                                                                                                                                                      |
+| `not_found`         | no row holds the token                                          | Nothing.                                                                                                                                                                                                      |
+
+An opt-out therefore ends only through a request its owner confirmed.
+
+### `community.unsubscribe_newsletter(p_token uuid, p_reason text) → jsonb`
+
+The unsubscribe page's button (`p_reason = 'link'`) and a mail client's RFC 8058 one-click POST
+(`'one_click'`); any other reason is `22023`. Never expires and is idempotent: `unsubscribed` (sets
+`unsubscribed_at`, the reason, and clears a pending request), `already_unsubscribed` (the first
+opt-out's time and reason stay; a request pending since is cleared), `not_found`. Nothing is
+deleted.
 
 ## Help feedback
 

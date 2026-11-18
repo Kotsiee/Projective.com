@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **58%** |           64 | 32 |  8 | 24 |           9 |
-| **Production**   | **38%** |          137 | 40 | 19 | 78 |          19 |
+| **Production**   | **38%** |          138 | 40 | 20 | 78 |          19 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -55,7 +55,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
 | C. Security & access control       |   31 | 13 |  4 | 14 |   55% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
-| E. Communications & delivery       |   13 |  2 |  2 |  9 |   22% |
+| E. Communications & delivery       |   14 |  2 |  3 |  9 |   23% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
@@ -182,9 +182,10 @@ Work orders for every open row, with the run order:
 | PRD-E8  | SMS                                                         | ❌     | Normal   | PROD | No Twilio transport                                                                                                                                                         | NT5      |
 | PRD-E9  | Chat events notify (`message.*`) and chat controls persist  | ❌     | High     | UAT  | Not built                                                                                                                                                                   | MS4, MS5 |
 | PRD-E10 | Bounce and complaint suppression honoured                   | ❌     | High     | PROD | The dispatcher's claim now consults `comms.fn_is_suppressed` (NT2, CAS N8: a suppressed address comes back `suppressed`, probe `comms_dispatch.sql`). Still nothing writes a suppression: no signed provider webhook, no `RESEND_WEBHOOK_SECRET` (#339) | NT3      |
-| PRD-E11 | Newsletter double opt-in and provider sync                  | ❌     | Normal   | PROD | `services/newsletter/NewsletterBackendService.ts:29`                                                                                                                        | —        |
+| PRD-E11 | Newsletter double opt-in and provider sync                  | 🟡     | Normal   | PROD | #480 (CD1 steps 1–4): `subscribe_newsletter` reports a confirmation as due and the mail goes through `deliverMail` with the RFC 8058 pair; `/newsletter/confirm`'s button → `confirm_newsletter` (7-day link); `/api/newsletter/unsubscribe` takes the one-click POST with no Origin check; Turnstile on the opt-in; a confirmed address's new topic is confirmed on its own (probe `newsletter_double_opt_in.sql`, route and unit tests). Left: the Resend contacts sync (step 5, after NT3) and a hosted send (CD2) | CD1 → CD2 |
 | PRD-E12 | A waitlist is told when a seat opens                        | ✅     | Normal   | UAT  | #455: the `cohort-waitlist-invites` job invites the queue in order, one per free seat, each holding its seat 48 hours, with an in-app `waitlist.invited` (probe `waitlist_invite.sql`). Its email rides PRD-E5 | LV4      |
 | PRD-E13 | Project rooms carry read marks                              | ❌     | Normal   | PROD | #478 (g), CAS M10's other half: project rooms have no read-mark writer and always report `unread: false` (`live-detail.ts`); only DM threads mark read (#478) | —        |
+| PRD-E14 | Newsletter mail leaves from its own subdomain              | ❌     | Normal   | PROD | #480 (a): the confirmation mail rides `MAIL_FROM` (`notify.<domain>`), so a complaint about an unwanted confirmation lands on the transactional subdomain (EPI §8.5 setup 1); CD1 added no env key (COMMS_DELIVERY §0.2) | CD1 step 5 / CD2 |
 
 ## F. Money, ledger & reconciliation
 
@@ -370,3 +371,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC1 (#477): PRD-C6, C7, C9, C10 ❌ → ✅ (deny-by-default EXECUTE, one probe over every schema); new PRD-C26–C29 ❌ | 58% | 54% |  37% |
 | 2026-11-18 | MR1 (#474): PRD-F24 ❌ → ✅ (an unclaimed escrow binds nobody until a claim: refunded, never paid out) | 58% | 57% |  38% |
 | 2026-11-18 | NT2 (#344 (a)): PRD-E4 ❌ → 🟡 (the Fresh dispatcher, its Vault-signed trigger, claim, retries and sweep; hosted proof left, CD2) | 58% | 58% |  38% |
+| 2026-11-18 | CD1 (#480): PRD-E11 ❌ → 🟡 (newsletter double opt-in, per-topic consent, one-click unsubscribe; the provider sync and a hosted send left); new PRD-E14 ❌ | 58% | 58% |  38% |

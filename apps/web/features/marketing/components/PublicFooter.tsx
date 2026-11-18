@@ -101,7 +101,8 @@ export function PublicFooter(
 				{/* #endregion */}
 
 				{/* #region Lane 5 — newsletter capture + social row */}
-				<div class="lp-footer__news">
+				{/* `#newsletter` is where the newsletter link pages send "Subscribe again" (PRD-E11). */}
+				<div class="lp-footer__news" id="newsletter">
 					<span class="lp-footer__news-title">Stay updated</span>
 					<p class="lp-footer__news-lede">
 						New teams, new features, and the odd good idea. No spam, ever.

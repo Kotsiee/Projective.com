@@ -1648,7 +1648,9 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 
 1. **Domains.** Send transactional mail from `notify.<domain>`. Keep marketing and newsletter mail
    on a different subdomain later (`news.<domain>`), so a marketing complaint cannot hurt a password
-   reset.
+   reset. Today the newsletter's **confirmation** mail still leaves from `MAIL_FROM`
+   (`notify.<domain>`): CD1 added no env key (Decision #480 flag (a), PRD-E14). Its broadcasts go
+   out from `news.<domain>` (setup 8).
 2. **DNS.**
    - SPF (the provider's include);
    - DKIM (the provider's records);
@@ -1705,6 +1707,20 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
    Commercial note: repeatedly sending to a hard-bounced address hurts sender reputation. If the
    bounce rate ever threatens deliverability, raise it as a business-rule change. Do not quietly
    suppress transactional mail.
+8. **The newsletter (Decision #480, PRD-E11).** Postgres is the record
+   (`community.newsletter_subscriptions`) and the opt-in is double:
+   - **Built.** A subscribe that leaves something awaiting confirmation mails a link
+     (`newsletter-mailer.ts`, through `deliverMail`, at most once every 10 minutes per address, never
+     to an address `comms.fn_is_suppressed` refuses for marketing). Every newsletter mail carries
+     `List-Unsubscribe: <https://<origin>/api/newsletter/unsubscribe?token=…>` and
+     `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058; `MailMessage.headers`). The link
+     opens `/newsletter/confirm`, whose button confirms; the link works for 7 days.
+   - **Proposed (CD1 step 5, after NT3).** Each confirmed, unsuppressed address syncs to Resend
+     **contacts** (global contacts, grouped by Segments, with Topics matching `NEWSLETTER_TOPICS`;
+     the address is the only data sent) by a `newsletter-provider-sync` job behind a
+     `newsletter.provider_sync` flag. Broadcasts are composed and sent in Resend's dashboard from
+     `news.<domain>`. Resend's own unsubscribe, including a per-topic one, comes back through
+     setup 6's signed webhook (one endpoint, one Svix secret) and writes the row (flag (b)).
 
 **Development and production.**
 
@@ -1743,7 +1759,7 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 | `/login` and the sign-in dialog, `/forgot-password`, `/verify` resend          | GoTrue | **Built** (Decision #447): the token rides the password grant, recover and resend                                                                           |
 | `/join` (password and enterprise sign-up)                                      | App    | **Built** (Decision #447): `/api/auth/join` verifies before `createUser`; the confirmation that follows goes through the service role                       |
 | Direct `/auth/v1/signup`, `/otp`, `/magiclink`, `/sso` with the anon key       | GoTrue | **Built**: refused without a token. `/sso` forwards none yet (flag (b) of #447)                                                                             |
-| Newsletter opt-in (`POST /api/newsletter/subscribe`)                           | App    | **Proposed**                                                                                                                                                |
+| Newsletter opt-in (`POST /api/newsletter/subscribe`)                           | App    | **Built** (Decision #480): action `newsletter`, verified before the write; the footer form loads the widget on its first focus                             |
 | Feedback board and help-vote writes (`community`, open to signed-out visitors) | App    | **Proposed**                                                                                                                                                |
 | `/contact`                                                                     | none   | **Excluded.** PUBLIC_ROUTES P3 rules "No CAPTCHA dependency" (honeypot + per-IP and per-email ceilings, Decision #276). Revisit only by a ruling (flag (h)) |
 

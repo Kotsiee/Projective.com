@@ -116,9 +116,9 @@ $$;
 
 -- community.fn_newsletter_suppressed — whether comms.fn_is_suppressed refuses this address for
 -- marketing email: a hard bounce blocks every category, a complaint or an unsubscribe Marketing, and
--- the newsletter is Marketing (ruling N3 (b)). SECURITY DEFINER because the service role holds no
--- USAGE on `comms` (00002500); it answers one boolean for one address, and nothing else of `comms`
--- is reachable through it.
+-- the newsletter is Marketing (ruling N3 (b)). SECURITY DEFINER so the newsletter's doors need
+-- nothing of `comms` but this one boolean for one address, whatever USAGE the service role holds
+-- there (00002500); nothing else of `comms` is reachable through it.
 CREATE OR REPLACE FUNCTION community.fn_newsletter_suppressed(p_email text)
 RETURNS boolean
 LANGUAGE sql

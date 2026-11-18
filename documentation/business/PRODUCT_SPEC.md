@@ -1651,6 +1651,14 @@ Three product rules govern the whole surface:
    the user is asked in the app to fix their email (Decision #339, ruling N3 (b)). **Not built
    yet:** no email is sent yet, so neither rule is applied, and the in-app prompt does not exist.
 
+**The newsletter is double opt-in, list by list.** Anyone can type an address into a public
+subscribe form, so nothing is sent to it until its owner confirms from the link mailed to it; the
+link works for seven days. An address already on one list confirms each new list on its own.
+Unsubscribing (one click in the mail client, or the link in any newsletter mail) holds until the
+owner subscribes again **and** confirms: typing the address into the form again only asks. The form
+answers the same way for every address, so it never tells anyone who is on the list (Decision
+#480). **Not built yet:** the issues themselves (sent from the mail provider, CD1 step 5).
+
 A muted chat stays muted on every device: the mute is kept on the server, not per device (Decision
 #339, ruling N3 (d)).
 

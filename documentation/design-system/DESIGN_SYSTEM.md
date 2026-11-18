@@ -3679,7 +3679,9 @@ All legal documents). Lane 5 is the newsletter capture with the social row under
 presses at `--btn-press-scale-icon`; its focus is the form-control family's `--fld-focus-bd` border
 and `--fld-focus-glow` (the one indicator `global.css` keeps), and its outcome — a retry warning in
 `--danger` or the success line — is one always-rendered `role="status"` line at a reserved two-line
-height, so nothing moves when it speaks. The social row is five 32px `--radius-full` targets with
+height, so nothing moves when it speaks. Its Turnstile check (action `newsletter`, #480) arms on the
+first focus inside the form and stays concealed, out of layout; only when Cloudflare asks for a click
+does its frame open between the field and the status line. The social row is five 32px `--radius-full` targets with
 18px brand marks (`brand-marks.tsx`: X · LinkedIn · YouTube · Instagram · TikTok), `--text-secondary`
 at rest, `--on-surface` on a `--surface-2` lift on hover, each `target="_blank"
 rel="noopener noreferrer"` with a "Follow Projective on …" name. Below 900px the lanes stack in

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { timestamp, uuid } from "./common.ts";
 import { isStorableText } from "../content/text.ts";
+import { CaptchaTokenSchema } from "../auth/captcha.ts";
 
 /**
  * community.newsletter — the Zod SSOT for the public "stay updated" capture and its table,
@@ -9,10 +10,11 @@ import { isStorableText } from "../content/text.ts";
  * One request shape, used in three places so they can never drift: the client `NewsletterService`
  * validates a submission against it before hitting the network, the thin `/api/newsletter/subscribe`
  * route re-validates the body, and the fat `NewsletterBackendService` consumes the parsed result and
- * hands it to `community.subscribe_newsletter`. The row and the writer's result are described here
- * too, and the allowed topic and source sets mirror the table's CHECKs value for value (root
- * CLAUDE.md §1, the Zod SSOT rule). Only regex/enum primitives are used so it is stable across Zod
- * majors (matching `explore/items.ts`, `org/enterprises.ts`).
+ * hands it to `community.subscribe_newsletter`. The row and the answers of the double opt-in's doors
+ * (subscribe, the link read, confirm, unsubscribe; PRD-E11) are described here too, and the allowed
+ * topic and source sets mirror the table's CHECKs value for value (root CLAUDE.md §1, the Zod SSOT
+ * rule). Only regex/enum primitives are used so it is stable across Zod majors (matching
+ * `explore/items.ts`, `org/enterprises.ts`).
  */
 
 // #region Primitives
@@ -51,16 +53,50 @@ export const NEWSLETTER_TOPICS = ["general", "changelog"] as const;
 export const NewsletterTopic = z.enum(NEWSLETTER_TOPICS);
 export type NewsletterTopic = z.infer<typeof NewsletterTopic>;
 
+/** What each topic is called to a reader: in the confirmation mail and on the link's pages. */
+export const NEWSLETTER_TOPIC_LABELS: Readonly<Record<NewsletterTopic, string>> = Object.freeze({
+	general: "The Projective newsletter",
+	changelog: "Release notes",
+});
+
 /**
- * What a subscribe did, as `community.subscribe_newsletter` reports it: `created` (a new address),
- * `resubscribed` (an unsubscribed address: the request is recorded as pending, and the opt-out stands
- * until the confirm link applies it), `topic_added` (an active address gained the topic) or
- * `unchanged` (it already held it — nothing was written).
+ * The shortest gap between two confirmation mails to one address, in minutes: the writer's
+ * `interval '10 minutes'`. A repeat inside it stores the request and mails nothing, so the public
+ * form cannot flood an inbox.
+ */
+export const NEWSLETTER_RESEND_AFTER_MINUTES = 10;
+
+/**
+ * How long a confirmation link works after its mail, in days: the confirm door's
+ * `interval '7 days'`. An older link answers "expired", and subscribing again mails a fresh one.
+ */
+export const NEWSLETTER_LINK_TTL_DAYS = 7;
+
+/**
+ * Where the mailed link leads. The pages render and write nothing (a mail scanner opens every link);
+ * their one button posts to the endpoint beside them. A mail client's RFC 8058 one-click POST goes to
+ * the unsubscribe endpoint directly, which is why the `List-Unsubscribe` header names it.
+ */
+export const NEWSLETTER_PATHS = Object.freeze({
+	confirmPage: "/newsletter/confirm",
+	unsubscribePage: "/newsletter/unsubscribe",
+	confirmEndpoint: "/api/newsletter/confirm",
+	unsubscribeEndpoint: "/api/newsletter/unsubscribe",
+});
+
+/**
+ * What a subscribe did, as `community.subscribe_newsletter` reports it: `created` (a new address,
+ * unconfirmed), `resubscribed` (an unsubscribed address: the request is recorded as pending, and the
+ * opt-out stands until the confirm link applies it), `topic_added` (an unconfirmed address gained
+ * the topic, which its first confirmation covers), `topic_pending` (a confirmed address asked for a
+ * new topic: it waits for its own confirmation, Decision #274 flag (c)) or `unchanged` (it already
+ * held it — nothing was written).
  */
 export const NewsletterSubscribeOutcome = z.enum([
 	"created",
 	"resubscribed",
 	"topic_added",
+	"topic_pending",
 	"unchanged",
 ]);
 export type NewsletterSubscribeOutcome = z.infer<typeof NewsletterSubscribeOutcome>;
@@ -70,25 +106,70 @@ export type NewsletterSubscribeOutcome = z.infer<typeof NewsletterSubscribeOutco
 /**
  * A newsletter opt-in submission. `source` defaults to the global footer capture and `topic` to the
  * platform newsletter, so a body carrying only `email` subscribes exactly as it always did.
+ * `captchaToken` is the Turnstile token the form's widget produced (action `newsletter`); whether
+ * one is required is the verifier's decision, never the schema's (`auth/captcha.ts`).
  */
 export const NewsletterSubscribeSchema = z.object({
 	email,
 	source: NewsletterSource.default("footer"),
 	topic: NewsletterTopic.default("general"),
+	captchaToken: CaptchaTokenSchema,
 });
 export type NewsletterSubscribe = z.infer<typeof NewsletterSubscribeSchema>;
 
-/** The success payload the `/api/newsletter/subscribe` route returns. */
+/**
+ * The success payload the `/api/newsletter/subscribe` route returns. The same for every address,
+ * whatever it already held and whether a mail went out: the answer never says whether an address is
+ * on the list (no enumeration).
+ */
 export interface NewsletterSubscribeResult {
 	/** Echoed (normalised) address, so the UI can confirm exactly what was captured. */
 	email: string;
 	/** The topic this submission asked for. */
 	topic: NewsletterTopic;
-	/**
-	 * True when this address already held this topic, so nothing changed — the UI still shows a
-	 * friendly success. It never reveals which OTHER topics an address holds.
-	 */
-	alreadySubscribed: boolean;
+}
+
+/** The mailed link's credential: the row's `token`, a UUID. */
+export const NewsletterTokenSchema = uuid;
+
+/** Why an address left the list, as `community.unsubscribe_newsletter` accepts it. */
+export const NewsletterUnsubscribeReason = z.enum(["link", "one_click"]);
+export type NewsletterUnsubscribeReason = z.infer<typeof NewsletterUnsubscribeReason>;
+
+/** What a press of Confirm came to (`community.confirm_newsletter`). */
+export const NewsletterConfirmOutcome = z.enum([
+	"confirmed",
+	"already_confirmed",
+	"expired",
+	"unsubscribed",
+	"not_found",
+]);
+export type NewsletterConfirmOutcome = z.infer<typeof NewsletterConfirmOutcome>;
+
+/** What an unsubscribe came to (`community.unsubscribe_newsletter`). */
+export const NewsletterUnsubscribeOutcome = z.enum([
+	"unsubscribed",
+	"already_unsubscribed",
+	"not_found",
+]);
+export type NewsletterUnsubscribeOutcome = z.infer<typeof NewsletterUnsubscribeOutcome>;
+
+/**
+ * What the mailed link's pages show for a token: the address's standing, never the address.
+ * `pendingTopics` is what Confirm would apply (null when nothing awaits), and `expired` says Confirm
+ * would refuse it because the link's mail is more than {@link NEWSLETTER_LINK_TTL_DAYS} days old.
+ */
+export interface NewsletterLinkView {
+	/** Confirmed and not unsubscribed: mail is sent to this address. */
+	subscribed: boolean;
+	/** The address has left the list. */
+	unsubscribed: boolean;
+	/** The topics the address holds. */
+	topics: NewsletterTopic[];
+	/** What Confirm would apply, or null. */
+	pendingTopics: NewsletterTopic[] | null;
+	/** Confirm would refuse the pending topics: the link is too old. */
+	expired: boolean;
 }
 // #endregion
 
@@ -103,8 +184,37 @@ export const NewsletterSubscribeRpcResultSchema = z.object({
 	topic: NewsletterTopic,
 	outcome: NewsletterSubscribeOutcome,
 	already_subscribed: z.boolean(),
+	/** A confirmation mail is due now; the service sends it once the write has committed. */
+	confirmation_due: z.boolean(),
+	/** The link's credential, present only when the mail is due. Never leaves the server. */
+	token: uuid.nullable(),
+	/** The topics the mail asks the owner to confirm, present only when the mail is due. */
+	confirm_topics: z.array(NewsletterTopic).min(1).nullable(),
 });
 export type NewsletterSubscribeRpcResult = z.infer<typeof NewsletterSubscribeRpcResultSchema>;
+
+/** The JSON `community.read_newsletter_link` returns; null for an unknown token. */
+export const NewsletterLinkRpcResultSchema = z.object({
+	subscribed: z.boolean(),
+	unsubscribed: z.boolean(),
+	topics: z.array(NewsletterTopic).min(1),
+	pending_topics: z.array(NewsletterTopic).min(1).nullable(),
+	expired: z.boolean(),
+}).nullable();
+export type NewsletterLinkRpcResult = z.infer<typeof NewsletterLinkRpcResultSchema>;
+
+/** The JSON `community.confirm_newsletter` returns: the outcome and the topics now held. */
+export const NewsletterConfirmRpcResultSchema = z.object({
+	outcome: NewsletterConfirmOutcome,
+	topics: z.array(NewsletterTopic),
+});
+export type NewsletterConfirmRpcResult = z.infer<typeof NewsletterConfirmRpcResultSchema>;
+
+/** The JSON `community.unsubscribe_newsletter` returns. */
+export const NewsletterUnsubscribeRpcResultSchema = z.object({
+	outcome: NewsletterUnsubscribeOutcome,
+});
+export type NewsletterUnsubscribeRpcResult = z.infer<typeof NewsletterUnsubscribeRpcResultSchema>;
 
 /**
  * One `community.newsletter_subscriptions` row, as PostgREST returns it. Service-role only: `token`
@@ -122,12 +232,14 @@ export const NewsletterSubscriptionRowSchema = z.object({
 	unsubscribed_at: timestamp.nullable(),
 	unsubscribed_reason: z.string().nullable(),
 	/**
-	 * A re-subscribe request pending its owner's confirmation — set only while unsubscribed, sorted,
-	 * distinct and never empty; NULL when nothing is pending. Applied by the confirm link, never by
-	 * the public form.
+	 * Topics pending their owner's confirmation — on an unsubscribed address (a re-subscribe) or a
+	 * confirmed one (a new topic), sorted, distinct and never empty; NULL when nothing is pending.
+	 * Applied by the confirm link, never by the public form.
 	 */
 	resubscribe_topics: z.array(NewsletterTopic).min(1).nullable(),
 	resubscribe_requested_at: timestamp.nullable(),
+	/** When the last confirmation mail went to the mailer; NULL when none has. */
+	confirmation_sent_at: timestamp.nullable(),
 	token: uuid,
 	created_at: timestamp,
 	updated_at: timestamp,

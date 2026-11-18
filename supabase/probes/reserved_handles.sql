@@ -1,7 +1,8 @@
 -- =============================================================================================
 -- Probe: reserved handles (org.fn_is_reserved_handle and the refusal the create / rename doors read,
--- org.fn_handle_refusal) — the public editorial routes `/changelog` and `/feedback` and the landing
--- track's `/features` are top-level words no handle may take; so are the planned segments
+-- org.fn_handle_refusal) — the public editorial routes `/changelog` and `/feedback`, the landing
+-- track's `/features` and the newsletter link pages under `/newsletter` (#480) are top-level words no
+-- handle may take; so are the planned segments
 -- (PLANNED_SEGMENTS, Decision #444 flag (c)), at the team door and at both doors that mint a person
 -- (the GoTrue sign-up trigger and public.complete_onboarding, through public.provision_user_profile).
 --
@@ -21,7 +22,7 @@ DO $$
 DECLARE
     v_handle text;
 BEGIN
-    FOREACH v_handle IN ARRAY ARRAY['changelog', 'feedback', 'features', 'Changelog', '  FEATURES ', 'Feedback']
+    FOREACH v_handle IN ARRAY ARRAY['changelog', 'feedback', 'features', 'Changelog', '  FEATURES ', 'Feedback', 'newsletter', ' Newsletter ']
     LOOP
         IF NOT org.fn_is_reserved_handle(v_handle) THEN
             RAISE EXCEPTION 'FAIL "%" is not reserved', v_handle;

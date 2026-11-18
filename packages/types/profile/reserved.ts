@@ -144,6 +144,8 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"changelog",
 	"feedback",
 	"features",
+	// The newsletter link pages (`/newsletter/confirm`, `/newsletter/unsubscribe`; PRD-E11, #480).
+	"newsletter",
 	// Dashboard / app surfaces
 	"dashboard",
 	"projects",

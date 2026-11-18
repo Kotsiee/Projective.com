@@ -90,8 +90,13 @@ export default define.page(function PublicLayout(ctx) {
 			</UserShell>
 		);
 	}
+	// A newsletter link's page carries its credential in `?token=`: the header's sign-in links get no
+	// `redirectTo`, so the token is never copied into `/login` or `/join` (PRD-E11, #480).
+	const returnTo = ctx.url.pathname.startsWith("/newsletter/")
+		? undefined
+		: ctx.url.pathname + ctx.url.search;
 	return (
-		<GuestShell lane={filterLane} header={viewHeader} returnTo={ctx.url.pathname + ctx.url.search}>
+		<GuestShell lane={filterLane} header={viewHeader} returnTo={returnTo}>
 			{
 				/* A guest never opens a ticket; the host only strips a `?tkv=` that reached this page, so a
 			    pasted link does not sit in the address bar promising something it cannot show. */

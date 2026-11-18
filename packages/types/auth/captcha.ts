@@ -15,8 +15,12 @@ import { z } from "zod";
  */
 export const CaptchaTokenSchema = z.string().trim().min(1).max(2048).optional();
 
-/** The Turnstile `action` each protected form runs under; app verification checks it. */
-export type CaptchaAction = "join" | "login" | "recover" | "resend";
+/**
+ * The Turnstile `action` each protected form runs under; app verification checks it. `newsletter` is
+ * the public opt-in (`/api/newsletter/subscribe`), which the app verifies itself because a
+ * confirmation mail follows it (PRD-E11).
+ */
+export type CaptchaAction = "join" | "login" | "recover" | "resend" | "newsletter";
 
 /** The one refusal a failed, missing or expired bot check answers with. Retryable. */
 export const CAPTCHA_REFUSAL = "We couldn't complete the security check. Please try again.";

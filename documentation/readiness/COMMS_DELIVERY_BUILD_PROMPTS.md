@@ -89,11 +89,12 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
    Vault bearer. NT2 skips its stop and adds no decision row; it amends SA:2531 and EPI §8.1.
 2. ✅ **MS2 · Decision #444 flag (a): ruled 2026-11-18, `cht-`.** #339 ruling N1 had already chosen
    `cht-`, and the owner confirmed it. MS2 updates ROUTING to match, with no stop.
-3. **CD1 · Q1**, where the list lives for sending (recommended: Resend contacts, one provider) and
-   **Q2**, per-topic consent (recommended: a new topic on a confirmed address needs the confirm
-   link).
+3. ✅ **CD1 · Q1 and Q2: ruled 2026-11-18 (#480).** Q1 Option A, Resend contacts (one provider); Q2
+   yes, a new topic on a confirmed address needs the confirm link. The owner also chose to build
+   steps 1–4 ahead of NT3; step 5 (the sync) waits for NT3, and a re-run of CD1 does step 5 only.
 4. **§C's SAC5 · Decision #444 flag (c)**: when you rule which top-level segments to reserve,
-   include `newsletter`. CD1's two pages live under it, so CD1 then never edits `00001020`.
+   include `newsletter`. CD1's two pages live under it, so CD1 then never edits `00001020`. SAC5
+   landed (`cd6d016f`) without it; ruled 2026-11-18 (#480): CD1 adds it with its routes.
 5. **Hosted (CD2).** A hosted staging Supabase project and a deployed app at a public HTTPS origin
    (the staging slice of PRD-G8). You set every secret and every dashboard setting yourself:
    - Vault: `CRON_APP_URL`, `COMMS_DISPATCH_SECRET` (the PRD-G6 pattern), and the
@@ -188,6 +189,11 @@ Not in §E: SR1–SR4 (search) and Z1 (the comms docs sweep, which runs after th
 ## 3. New prompts
 
 ### CD1 — The newsletter: double opt-in, a one-click unsubscribe, the list synced to the provider
+
+> **Status (2026-11-18, #480).** 🧑 Q1 and Q2 ruled (Option A; yes). Steps 1–4 are built, ahead of
+> NT3 by owner ruling; PRD-E11 is 🟡. Step 5 waits for NT3's `DeliveryEventService`. When it runs,
+> it also gives the newsletter its own sender (#480 (a), PRD-E14) and maps Resend's per-topic
+> unsubscribe to removing that topic (#480 (b)).
 
 ```text
 PROMPT CD1: The newsletter — double opt-in, a one-click unsubscribe, and the list synced to the
