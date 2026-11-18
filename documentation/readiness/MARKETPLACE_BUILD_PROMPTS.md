@@ -67,8 +67,8 @@ cohort seat) → **SC3**.
 | MK-41 | 🟡 · Crit · PROD   | **SC4** + T&S SN2 → SN3                           | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                               |
 | MK-43 | 🟡 · Normal · UAT  | **SC5**                                           | Views are written and counted; 90 days are seeded                                      |
-| MK-44 | 🟡 · Normal · UAT  | **SC6**                                           | Slug links; a team or business buyer is named                                          |
-| MK-45 | ✅ · High · UAT    | **SC6** (🧑 #312 (a), (e))                        | The note states the ruled team-editing scope                                           |
+| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ CK1, SC4)                       | Slug links; a team or business buyer is named                                          |
+| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ CK1, SC4)                 | The note states the ruled team-editing scope                                           |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
 | MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands |
 
@@ -153,7 +153,7 @@ block, so a question you defer still stops the build at the right step.
 | 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
 | 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
 | 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
-| 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | Members holding the team's catalogue capability; deleting stays with the creator and admins             |
+| 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | **Ruled #500:** A, tightened: holders edit any team listing and create; delete: the creator or an admin |
 | 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |
 | 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
@@ -1199,6 +1199,11 @@ CONTEXT (verified at b7280787):
 member holding the team's catalogue capability (read the team role matrix) may edit, publish,
 pause and duplicate any team listing; deleting stays with the creator and the team's admins;
 presets follow the same scope. B: creator-only stays, and the UI says so.
+RULED #500 (2026-11-18): A, tightened. Any active publish_listings holder edits, publishes,
+pauses and duplicates any team listing, and create_listing for a team needs it too; deleting is
+the creator while still a holder, or a member at the admin or owner rank; a team listing's
+presets live on the team's own schedule. ?event= stays (ROUTING, #388; PRD-J1), so ACCEPTANCE
+reads "no uuid in any Clients href but ?event=". SC6 waits for CK1 (#488) and SC4 (#494).
 
 STEPS:
   1. Red first: a probe for the uuid hrefs and the missing team buyer.

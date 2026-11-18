@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **61%** |           64 | 34 |  9 | 21 |           8 |
-| **Production**   | **42%** |          142 | 45 | 24 | 73 |          18 |
+| **UAT**          | **60%** |           65 | 34 |  9 | 22 |           8 |
+| **Production**   | **42%** |          143 | 45 | 24 | 74 |          18 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -53,7 +53,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   32 | 18 |  4 | 10 |   65% |
+| C. Security & access control       |   33 | 18 |  4 | 11 |   63% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   16 |  2 |  5 |  9 |   30% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
@@ -146,6 +146,7 @@ Work orders for every open row, with the run order:
 | PRD-C31 | No FX quote is locked by a GET                                                            | ❌     | Normal   | PROD | #478 (d): checkout pages and `GET /api/checkout/session` lock (or reuse) an `fx_quotes` row; `GET /api/finance/escrow/quote` and the paid-revision quote insert a fresh `escrow_lock` row on every request, unbounded | #478 (d)   |
 | PRD-C32 | The integrations OAuth callback checks the caller before it spends the state              | ❌     | Normal   | PROD | #478 (e): `IntegrationsBackendService.ts:780-781` consumes the consent `state` before comparing `consent.user_id` to the caller, so a cross-site GET carrying someone else's state burns it | #478 (e)   |
 | PRD-C33 | A group newcomer reads only what was written after they joined                            | ❌     | High     | PROD | #482 (b) (owner ruling): `view_dm_messages_if_participant` and `comms.can_read_message` ask membership only, so anyone added to a group reads its whole history; the bound is `dm_participants.joined_at`, entity channels exempt; the thread preview, unread counts and attachment reads need it too | #482 (b)   |
+| PRD-C34 | A team listing's write doors ask the team's `publish_listings`                            | ❌     | High     | UAT  | #500 (A): `save_listing`, `apply_listing_media`, `set_listing_status`, `duplicate_listing` and `delete_listing` ask only the creator (`00001170:317`, `:810`, `:914`, `:1149`, `:1336`) and `create_listing` any active member (`:58`), so a plain member creates and publishes for the team with their own JWT (only the app's `?team=` scope asks `publish_listings`); `delete_listing`, a definer, lets a creator who has left the team hard-delete its listings with no buyer history | SC6 (#500) |
 
 ## D. Trust, safety & moderation
 
@@ -325,6 +326,7 @@ Work orders for every open row, with the run order:
 | Request to Sell: the royalty, who may request and grant, a royalty after erasure (SC7) | USER_FLOWS MK-46   | Ruled 2026-11-18 (#493): agreed per request, 0–50% of the seller's net after commission; released `exclusive_transfer` and `licensed_use` stages, the client approving or declining the rate (re-ruled, #493 (G)); stops on erasure. ⚖️ licence wording; SC7 waits for CK1, DB19, DB21 |
 | #393 A2: does "no signed URL reaches a browser" cover uploads (ASSET phase 1, SC9)        | USER_FLOWS MK-47   | Ruled 2026-11-18 (#499): reads only; signed upload URLs stay, write-only on `quarantine`; phase 1 waits for CK1 |
 | Inbound copyright notices: the valid-notice fields, the counter-notice, the repeat-infringer rule, the designated agent (SC8) | USER_FLOWS MK-47, PRD-D9 | ⚖️ Pending counsel. The mechanism was ruled 2026-11-18 (#496): a `notice` source on `ops.reports` that needs no account, and a takedown hold the seller cannot lift; SC8 waits for T&S R1 → R2 |
+| Who may edit a team's listing, and whose presets it binds (#312 (a), (e))            | PRD-C34, USER_FLOWS MK-45 | Ruled 2026-11-18 (#500): A, tightened. Any active `publish_listings` holder edits, publishes and duplicates any team listing, and creating one needs it; deleting is the creator while still a holder, or an admin or owner; presets on the team's own schedule. SC6 waits for CK1 and SC4 |
 
 ## Doc drift to sweep (not scored)
 
@@ -389,3 +391,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | CK4 step 0 (#490): no row flips; the tax model ruled (A split by kind, tax-exclusive, codes tabled) and CK4 waits for DB21; new PRD-M7 ❌ (tax on the platform's own fees) | 58% | 60% | 40% |
 | 2026-11-18 | NT3 (#339 N3): PRD-E5 ❌ → 🟡 (notification email through Resend), PRD-E10 ❌ → 🟡 (signed bounces: a hard bounce blocks every category, Confirm again lifts it); new PRD-E15, PRD-E16 ❌ | 58% | 61% |  41% |
 | 2026-11-18 | FBP DB16 (#483): PRD-F7 ❌ → 🟡 (the conservation identity, checked nightly; DB8, DB9 left), PRD-F9 ❌ → 🟡 (the `/admin/ledger` reader; MR4's alert left); PRD-F15 stays ❌ (its Escrow age section is built) | 58% | 61% | 42% |
+| 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 58% | 60% | 42% |
