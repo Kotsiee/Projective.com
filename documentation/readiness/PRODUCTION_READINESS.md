@@ -43,9 +43,9 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
-| **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **62%** |           65 | 35 |  9 | 21 |           8 |
-| **Production**   | **42%** |          144 | 46 | 25 | 73 |          18 |
+| **Investor MVP** | **67%** |           13 |  9 |  0 |  4 |           3 |
+| **UAT**          | **64%** |           65 | 36 |  9 | 20 |           7 |
+| **Production**   | **43%** |          145 | 47 | 25 | 73 |          17 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -55,7 +55,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | B. Live data paths & feature flags |    7 |  2 |  2 |  3 |   50% |
 | C. Security & access control       |   33 | 18 |  4 | 11 |   63% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
-| E. Communications & delivery       |   16 |  2 |  6 |  8 |   32% |
+| E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
@@ -67,7 +67,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
 **Critical path per tier** (the open Critical rows, in suggested order):
 
-- **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E2 + PRD-E3 (chat send door and live refresh) →
+- **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E3 (chat live refresh; the send door landed, #508) →
   PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
   SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 (claim sweep, ghosting timer) → PRD-G6
@@ -176,7 +176,7 @@ Work orders for every open row, with the run order:
 | ID      | Requirement                                                 | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                                   | Track    |
 | :------ | :---------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------- |
 | PRD-E1  | In-app notification engine                                  | ✅     | High     | MVP  | NT1 (`2f9a9bb6`)                                                                                                                                                            | NT1      |
-| PRD-E2  | Chat has one send door and `cht-` addresses                 | ❌     | Critical | MVP  | Two stores and two send doors; the live resolver takes raw uuids (`services/messaging/live-threads.ts:63`)                                                                  | MS2      |
+| PRD-E2  | Chat has one send door and `cht-` addresses                 | ✅     | Critical | MVP  | #508 (MS2): `MessagingBackendService.sendMessage(actor, ref: ChatRef, input)` serves both stores behind both send routes (30 a minute per sender), `/messages/cht-…` is the only routed form (`dm-<handle>` 303s, a uuid is a real 404) and every address builder emits `cht-`; proved in the app (a DM sent from Noor's project's Private Messages group reached Juno's `/messages`, and back) | MS2      |
 | PRD-E3  | Chat updates without a reload                               | ❌     | Critical | MVP  | No subscriber, poll or long-poll in `features/messaging`; the realtime publication (`00002600`) is unused                                                                   | MS3      |
 | PRD-E4  | A notification dispatcher (runtime decided, claim, retries) | 🟡     | Critical | UAT  | NT2 (#344 (a)): `POST /api/comms/dispatch` (Fresh), posted to by the trigger with a Vault `COMMS_DISPATCH_SECRET` bearer, plus the `comms-dispatch-sweep` job; `comms.fn_claim_deliveries` (`SKIP LOCKED`, `2^n` backoff, 5 attempts, 15-min lease, 24 h window) and forward-only `fn_record_delivery_result`; probes `comms_dispatch.sql`, `comms_dispatch_race.sql`. The transport registry ships empty (NT3–NT5). Left: the hosted Vault secrets and flag, proved on staging (CD2) | NT2, CD2 |
 | PRD-E5  | Notification email                                          | 🟡     | Critical | UAT  | NT3 (#339 N3): the dispatcher's email transport (`email-transport.ts`, Resend). It sends the title, one sentence and the link; never the body. The delivery id is the Idempotency-Key, Resend's id is the `provider_ref`, and Marketing carries RFC 8058 one-click to `/api/comms/unsubscribe`. Settings → Notifications shows email live once the dispatcher runs with a key. `waitlist.invited` now emails (#455). Left: a hosted send (CD2) | NT3, CD2 |
@@ -191,6 +191,7 @@ Work orders for every open row, with the run order:
 | PRD-E14 | Newsletter mail leaves from its own subdomain              | 🟡     | Normal   | PROD | #502 (#480 (a)): the confirmation mail leaves from the platform param `newsletter_mail_from` (one address, validated against header injection), falling back to `MAIL_FROM` with one warning while it is unset (`newsletter-mailer.test.ts`). Left: verify `news.<domain>` in Resend and set the param per environment (CD2) | CD2 |
 | PRD-E15 | Daily and weekly digest emails are sent                     | ❌     | Normal   | PROD | Found by NT3: `comms.fn_build_digests` writes `comms.notification_digests` rows (`pending`), but nothing claims or mails them. NT2's step 5 left this for the mail transport, which NT3 built, and it needs a claim with a lease (the table has no `queued` state). Someone who chose a digest gets nothing by email | — |
 | PRD-E16 | Turning Marketing email back on lifts a one-click unsubscribe | ❌     | Normal   | PROD | Found by NT3: `/api/comms/unsubscribe` writes a Marketing-only suppression (`comms.fn_unsubscribe_marketing`), but re-enabling Marketing email in Settings → Notifications only flips the preference, so the suppression keeps blocking. The settings save should lift a `reason = 'unsubscribe'` row for the person's primary address | — |
+| PRD-E17 | A project DM is complete inside the project                 | ❌     | Normal   | PROD | #508 (c)–(f): under `/projects/:slug/cht-…` only Chat works (the Files and Members tabs read project rooms), reading there marks nothing read, the group lists only threads already stamped with the project (no control stamps an existing pair DM; the Members "Message" opens `/messages/dm-…`), and stamped groups are not drawn | — |
 
 ## F. Money, ledger & reconciliation
 
@@ -258,7 +259,7 @@ Work orders for every open row, with the run order:
 
 | ID     | Requirement                                     | Status | Crit   | Gate | Evidence / what's missing                                                                                                                                                                                 | Track |
 | :----- | :---------------------------------------------- | :----- | :----- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
-| PRD-J1 | No uuid in a user-facing URL (#88)              | 🟡     | High   | UAT  | uuid thread links (`services/saved/live-saved.ts:593`, `BookingBackendService.ts:1258`); `/api/sessions/*/[id]`; `/calendar?event=`; known exceptions `/inspect/:fileId` (#161 a), private rooms (#162 h) | MS2   |
+| PRD-J1 | No uuid in a user-facing URL (#88)              | 🟡     | High   | UAT  | thread links now `cht-` (#508, MS2); `/api/sessions/*/[id]`; `/calendar?event=`; known exceptions `/inspect/:fileId` (#161 a), private rooms (#162 h) | MS2   |
 | PRD-J2 | Every route type-checks; no dead route          | ✅     | High   | MVP  | `deno task check` exit 0; every route import resolves                                                                                                                                                     | —     |
 | PRD-J3 | robots disallows every app path                 | ✅     | Normal | PROD | `robots.test.ts` pins `APP_PATHS` to the route tree                                                                                                                                                       | —     |
 | PRD-J4 | The sitemap lists listings and profiles         | ✅     | High   | PROD | #452: `/sitemap.xml` is an index; public listings and posts at canonical `/view/:slug`, public profiles at `/@handle`, via `ExploreSitemapService` (anon); `sitemap.test.ts` end to end                  | DS2   |
@@ -310,7 +311,7 @@ Work orders for every open row, with the run order:
 | System wallets and double-entry (MR8)                                                  | PRD-F16            | Ruled 2026-11-18 (#463): A · A, a journal before PROD, written in the money doors; MR8a waits for DB16, MR5 |
 | Whether the sitemap lists listings and profiles                                        | PRD-J4             | Decided 2026-11-18 (#452, ruling A); built         |
 | The focus indicator's design                                                           | PRD-L3             | Deferred to the owner (#341)                       |
-| Conversation addresses: PRODUCT_SPEC `cht-…` vs ROUTING thread id / `dm-{handle}`      | PRD-J1, PRD-E2     | New contradiction, #444 flag (a)                   |
+| Conversation addresses: PRODUCT_SPEC `cht-…` vs ROUTING thread id / `dm-{handle}`      | PRD-J1, PRD-E2     | Ruled 2026-11-18 (#444 (a)): `cht-`; built (#508)  |
 | `/view/[entity]/schedule`: PRODUCT_SPEC live leaf vs #411's 308                        | —                  | New contradiction, #444 flag (b)                   |
 | The PRODUCT_SPEC sitemap's routes with no file, and which segments to reserve          | PRD-C22            | Ruled 2026-11-18 (#444 (c)): all 68 words reserved, sourced and speculative; SAC5 built it |
 | A person's username shape: `USERNAME_RE` (`.`, `_`, capitals) vs the namespace pattern  | —                  | Left by the owner 2026-11-18 (#444 (c), with PRD-C25). Sign-up allows the wider shape, but the rename door refuses it. Tightening it needs a sign-up-only rule, because sign-in reads `USERNAME_RE` to recognise existing usernames |
@@ -397,3 +398,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 58% | 60% | 42% |
 | 2026-11-18 | LD2 (#497): PRD-B3 ❌ → ✅ (every money write passes one chokepoint, 503 with `FINANCE_BACKEND_LIVE` off; reads stay live); new PRD-B7 ❌ (a project's lifecycle moves money outside the switch) | 58% | 62% | 42% |
 | 2026-11-18 | CD1 step 5 (#502): PRD-E14 ❌ → 🟡 (the confirmation mail leaves from `newsletter_mail_from` on `news.`); PRD-E11 stays 🟡 (the Resend contacts sync, the provider's contact events and the per-topic unsubscribe are built; a hosted send left, CD2) | 58% | 62% |  42% |
+| 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 64% |  43% |

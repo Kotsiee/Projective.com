@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **70%** |           190 | 95 |  75 | 20 |              26 |
-| **Production**   | **63%** |           245 | 100 | 102 | 43 |              37 |
+| **UAT**          | **70%** |           190 | 95 |  76 | 19 |              26 |
+| **Production**   | **63%** |           245 | 100 | 103 | 42 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    57 | 24 | 21 | 10 |  2 |   64% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 35 | 13 |  2 |   61% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 36 | 12 |  2 |   61% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -329,8 +329,8 @@ The operator's ruling is MW-59.
 | :---- | :------------------------------------------------------- | :-------------------------- | :------------------------------------------ | :----- | :------- | :--- | :----------------------------------------------------------------------------------------------------------------- |
 | PJ-47 | Stage room and Discussion chat                           | Client, Freelancer          | `/discussion`, `[channelId]/chat`           | 🟡     | Critical | MVP  | No live delivery (PRD-E3); no edit or delete; reactions local; archived rooms accept posts (SEC G5)                |
 | PJ-48 | Team and business private project rooms                  | Team admin, Business member | stage tree                                  | 🟡     | Normal   | UAT  | RLS-scoped; how rooms are created is unchecked                                                                     |
-| PJ-49 | DMs and groups (create, members, photo)                  | Any                         | `/messages/:id`, `/api/messaging/*`         | 🟡     | Critical | MVP  | No live delivery; no `cht-` route (PRD-E2); group photo unscreened. Read marks are the chat's POST after paint (SAC3, PRD-C11) |
-| PJ-50 | Project DMs shown inside the project                     | Client, Freelancer          | —                                           | ❌     | Normal   | UAT  | Stamped (MS1) but not drawn (MS2)                                                                                  |
+| PJ-49 | DMs and groups (create, members, photo)                  | Any                         | `/messages/:id`, `/api/messaging/*`         | 🟡     | Critical | MVP  | No live delivery (PRD-E3); group photo unscreened. Addressed by `cht-` refs through one send door (#508). Read marks are the chat's POST after paint (SAC3, PRD-C11) |
+| PJ-50 | Project DMs shown inside the project                     | Client, Freelancer          | `/projects/:slug/cht-…`                     | 🟡     | Normal   | UAT  | #508 (MS2): the Private Messages group lists the viewer's project-stamped DMs and opens each in the project; only Chat works there, it marks nothing read, and an unstamped pair DM cannot be brought in (PRD-E17) |
 | PJ-51 | Inbox folders: Primary, Requests, Archived               | Any                         | `/api/messaging/conversations/[id]/folder`  | ✅     | High     | MVP  | —                                                                                                                  |
 | PJ-52 | Mute or delete a conversation                            | Any                         | `/messages` menus                           | 🟡     | Normal   | UAT  | localStorage only; the server `mute` route is unused there (MS5)                                                   |
 | PJ-53 | Context panel (accept, decline, fund and confirm a seat) | Client, Freelancer          | `/api/messaging/conversations/[id]/context` | ✅     | High     | MVP  | —                                                                                                                  |
@@ -533,3 +533,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | FBP DB16 (#483): MW-62 ❌ → 🟡 (`/admin/ledger` reads the conservation identity, its nightly checks and the open drift; Stripe reconciliation and the alert left) | 83% | 70% | 63% |
 | 2026-11-18 | SC4 step 1 (#494): new MK-57 🟡 (a published listing's currency, questions, delivery model and showcase files are locked only in the doors; a direct write skips them); MK-41 still 🟡, its note names the publish-gate bypass (a bare UPDATE or INSERT publishes past the gate) | 83% | 70% | 63% |
 | 2026-11-18 | CK7 (#491): MK-16 narrowed (an accepted quote offer is paid at its price into a one-milestone One-Off; the seller's expiry bounds payment); still 🟡 (the live run in the app is left) | 83% | 70% | 63% |
+| 2026-11-18 | MS2 (#508): PJ-50 ❌ → 🟡 (a project's Private Messages group draws its stamped DMs; only Chat works there, PRD-E17); PJ-49 narrowed (`cht-` addresses, one send door) | 83% | 70% | 63% |
