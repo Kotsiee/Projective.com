@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **58%** |           64 | 32 |  8 | 24 |           9 |
-| **Production**   | **38%** |          138 | 40 | 20 | 78 |          19 |
+| **Production**   | **40%** |          138 | 43 | 20 | 75 |          19 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -53,7 +53,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   31 | 13 |  4 | 14 |   55% |
+| C. Security & access control       |   31 | 16 |  4 | 11 |   60% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   14 |  2 |  3 |  9 |   23% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
@@ -138,10 +138,10 @@ Work orders for every open row, with the run order:
 | PRD-C23 | Dead `security` tables and the finance cascades cleaned up                                | ❌     | Normal   | PROD | `IDENTITY_AND_WORKSPACES_AUDIT.md` "still open" (2026-11-12)                                                                                                          | HK1        |
 | PRD-C24 | Auth low findings closed                                                                  | ❌     | Normal   | PROD | `safeRedirect` accepts `/api/*` (LOW1-7); OAuth email and name ride the `/join` query string (LOW1-4); `/join` ignores the under-13 lock cookie in a new tab (LOW1-5) | LOW1       |
 | PRD-C25 | A person's sign-up asks the whole handle namespace                                        | ❌     | High     | UAT  | `public.provision_user_profile` (`00001010`) skips `org.fn_handle_taken`: a new person can sign up as a team's or business's handle (`@northloop` reproduced, SAC5), and `fn_resolve_profile` then ranks the person first, so the team's page is unreachable. `USERNAME_RE` also allows `.`, `_` and capitals, which the namespace rule refuses | —          |
-| PRD-C26 | `org.get_party_cards` respects a private profile                                          | ❌     | Normal   | PROD | Any signed-in caller gets a private profile's name, username and provider picture for any id: no `fn_profile_visible` filter (SAC1 review, #477; see PRD-C21)         | —          |
+| PRD-C26 | `org.get_party_cards` respects a private profile                                          | ✅     | Normal   | PROD | #481 (a) ruled A (owner): a person's card reaches a caller only when `org.fn_party_visible` admits it, meaning visible, or a conversation, a notification they caused, a team, business or enterprise, or a project the two share; a stranger gets nothing and no caller changed; pinned by `definer_visibility.sql` (eleven context arms) | SAC1       |
 | PRD-C27 | A widened inquiry thread is never reused for someone else's DM                            | ❌     | High     | UAT  | `comms.add_dm_thread_members` adds people to a `service_inquiry` thread without converting it, and the pair lookup in `get_or_create_dm_thread` / `send_request_message` can then return it for two other people; found by reading, not reproduced (#477) | —          |
-| PRD-C28 | `finance.get_purchase_owner` names only entities the caller may see                       | ❌     | Normal   | PROD | Returns name, handle and avatar path for any team or business id, drafts and archived ones too (#477)                                                                 | —          |
-| PRD-C29 | The public free/busy helpers answer only for a published schedule                         | ❌     | Normal   | PROD | `scheduling.fn_slot_is_free`, `fn_has_conflicting_event` and `fn_is_blacked_out` (anon) answer for any schedule id (#477)                                             | —          |
+| PRD-C28 | `finance.get_purchase_owner` names only entities the caller may see                       | ✅     | Normal   | PROD | #481: a non-member gets a team's or business's face only while `org.fn_profile_visible` admits it (active, public or unlisted), else `NULL`; the avatar path leaves only while the file is public, uploaded and not deleted; pinned by `definer_visibility.sql` | SAC1       |
+| PRD-C29 | The public free/busy helpers answer only for a published schedule                         | ✅     | Normal   | PROD | #481: no client calls them, so `fn_slot_is_free`, `fn_has_conflicting_event`, `fn_is_blacked_out`, `fn_band_covers` and `fn_call_window_covers` are service-role only (anon and a stranger → 42501); a guest reads free/busy through `get_free_busy` / `get_public_blackouts`, which ask `fn_schedule_is_public`; pinned by `definer_visibility.sql` | SAC1       |
 | PRD-C30 | Joining a meeting room is a person's act, not a GET                                       | ⏸     | High     | UAT  | #478 (a), ruled 2026-11-18 by the owner: keep the GET join. `/meet/[roomSlug]` records attendance (`scheduling.room_join`) on GET, as #383 rules, so a calendar or email link joins in one press; a cross-site navigation can stamp a party's own attendance, accepted (ROUTING.md §A GET writes nothing) | #478 (a)   |
 | PRD-C31 | No FX quote is locked by a GET                                                            | ❌     | Normal   | PROD | #478 (d): checkout pages and `GET /api/checkout/session` lock (or reuse) an `fx_quotes` row; `GET /api/finance/escrow/quote` and the paid-revision quote insert a fresh `escrow_lock` row on every request, unbounded | #478 (d)   |
 | PRD-C32 | The integrations OAuth callback checks the caller before it spends the state              | ❌     | Normal   | PROD | #478 (e): `IntegrationsBackendService.ts:780-781` consumes the consent `state` before comparing `consent.user_id` to the caller, so a cross-site GET carrying someone else's state burns it | #478 (e)   |
@@ -372,3 +372,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | MR1 (#474): PRD-F24 ❌ → ✅ (an unclaimed escrow binds nobody until a claim: refunded, never paid out) | 58% | 57% |  38% |
 | 2026-11-18 | NT2 (#344 (a)): PRD-E4 ❌ → 🟡 (the Fresh dispatcher, its Vault-signed trigger, claim, retries and sweep; hosted proof left, CD2) | 58% | 58% |  38% |
 | 2026-11-18 | CD1 (#480): PRD-E11 ❌ → 🟡 (newsletter double opt-in, per-topic consent, one-click unsubscribe; the provider sync and a hosted send left); new PRD-E14 ❌ | 58% | 58% |  38% |
+| 2026-11-18 | SAC1 follow-up (#481): PRD-C26, C28, C29 ❌ → ✅ (party cards, a purchase owner's face and the free/busy helpers answer only what the caller may see; #481 (a) ruled A) | 58% | 58% |  40% |

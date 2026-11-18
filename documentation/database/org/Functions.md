@@ -563,6 +563,7 @@ labels, tiers and URLs are decided once, in TypeScript
 | `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team or a business whoever holds the `edit_profile` workspace capability there (`org.fn_member_can` — the owner and admin presets, or a custom role or override that grants it; since 2026-09-28); an enterprise its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
 | `can_manage_profile(owner_type, owner_id)` | `authenticated`           | The same predicate as an RPC, so the fat service can refuse an unauthorised media upload **before** it spends a decode on it.                                                                                                                                                                                         |
 | `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member (Teams P1 pins it — a draft, archived or `invite_only` team is missing to everyone outside it on every reader, `supabase/probes/team_profile_visibility.sql`); an `active` business that is `public`/`unlisted`, or its active member (BP1, Decision #244 — a draft, archived or `invite_only` business is missing to everyone outside it, on its profile, every section read, `get_profile_cards` and its public schedule; probe `supabase/probes/business_public_profile.sql`); an `active` enterprise or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings), and — through `scheduling.fn_schedule_is_public` (since 2026-09-28) — the reason a hidden profile's published schedule is not visitor-readable. |
+| `fn_party_visible(user_id)`                | revoked from every client | May the caller see this person's identity CARD (name, handle, picture)? `fn_profile_visible('user', …)`, or a conversation, a notification they caused, a team, business or enterprise, or a project the two share (PRD-C26, Decision #481; the table under `get_party_cards` below). |
 | `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an enterprise. It ignores visibility, which is why it is internal.                                                         |
 
 ### Reads (`anon` · `authenticated`)
@@ -603,6 +604,28 @@ are resolved for any surface that shows OTHER people — project rosters and fee
 contact pickers, the nav's own account button — so an avatar change reaches every one of them on its
 next read instead of living in a dozen copies, and it is the one door that reads other people's
 `users_public` rows without exposing `dob` and the rest.
+
+**Who is answered (PRD-C26, Decision #481, ruled by the owner).** Only a person
+`org.fn_party_visible(user_id)` admits: an id the caller may not see is simply absent, so the
+callers' existing "Unknown" fallback covers it and no caller changed. "Private" hides a person's
+page and directory entry, not their name where they act, so the predicate is
+`org.fn_profile_visible('user', id)` (self, an admin, a `public` or `unlisted` person) **or a
+context the two share**:
+
+| Context                    | Counts when                                                                                                                                                                                                                                                                  |
+| :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A conversation             | Both are participants of one `comms.dm_participants` thread (a DM or a group).                                                                                                                                                                                               |
+| A notification             | The person is the `actor_user_id` of a `comms.notifications` row addressed to the caller.                                                                                                                                                                                    |
+| A team, business, enterprise | Each is its owner, an `active` member, or (team and business) the target of a `pending` `org.org_invitations` row to it. A member who has `left` and a revoked or declined invitation do not count.                                                                       |
+| A project                  | The person is a party to it (owner or client, a freelancer participant, the owner of a business participant, a live stage seat directly or through an active team, a live cohort seat, a `pending` or `accepted` invitation either way, or an application), and the caller passes `projects.has_project_access` or holds their own `pending` / `accepted` invitation or application there. A declined invitation does not count. |
+
+`fn_party_visible` is `STABLE` · `SECURITY DEFINER` · `search_path = ''`, granted to no client role
+(`get_party_cards` calls it as its owner), and PL/pgSQL because `projects.has_project_access` is
+created later, in `00001100`. The cheap arms run first and a visible person never reaches the
+context arms; the project arm walks only that person's own projects. Pinned by
+`supabase/probes/definer_visibility.sql` (a stranger account given one context at a time). RLS1
+moves the remaining invoker readers of other people's names onto this door, so it is also the rule
+they inherit.
 
 Wrapped caller-side by `packages/backend/services/profile/party-cards.ts` (`fetchPartyCards` /
 `fetchPartyRows`, chunked to the 500 cap). Every party reader in `projects/` and `messaging/` resolves

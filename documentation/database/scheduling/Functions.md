@@ -4,10 +4,19 @@
 `PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
 functions created later, so a client role holds only what `00002510` grants by name. `anon` may
 execute only the public booking calendar's readers (`get_free_busy`, `get_public_blackouts`,
-`fn_slot_is_free`, `fn_has_conflicting_event`, `fn_is_blacked_out`, `fn_band_covers`,
-`fn_call_window_covers`, `fn_resolved_slot_fee`, `fn_preset_for_blueprint`, `fn_schedule_is_public`,
-the two local-time helpers), the read predicates `fn_owner_visible` and `fn_can_view_schedule`. The
-full allowlist, one reason per line, is in `supabase/probes/function_grants.sql`.
+`fn_resolved_slot_fee`, `fn_preset_for_blueprint`, `fn_schedule_is_public`, the two local-time
+helpers), the read predicates `fn_owner_visible` and `fn_can_view_schedule`. The full allowlist, one
+reason per line, is in `supabase/probes/function_grants.sql`.
+
+**The free/busy helpers are no client's to call (PRD-C29, Decision #481).** `fn_slot_is_free`,
+`fn_has_conflicting_event`, `fn_is_blacked_out`, `fn_band_covers` and `fn_call_window_covers` take
+any schedule id and ask no published check, so while `anon` held them a guest could read whether an
+unpublished schedule was busy, blacked out or inside working hours at any minute. No client calls
+them: every caller is a definer that runs them as its owner (`fn_call_request_refusal`,
+`comms.fn_auto_reply_status`, the 1-1 session and group-sitting doors in `00001155`), and a guest
+reads free/busy only through `get_free_busy` / `get_public_blackouts`, which ask
+`fn_schedule_is_public` or `fn_can_view_schedule` first. So `00002510` grants them to no client role
+(service role only), and `supabase/probes/definer_visibility.sql` pins it.
 
 The booking engine. Every predicate is pure and `STABLE`, so **the same function backs the
 pre-flight "is this slot bookable?" check the UI makes and the hard gate the trigger applies at
@@ -1070,7 +1079,7 @@ number of spans written.
 The preset a blueprint's bookings are judged against: the bound preset, else the owner schedule's
 live default, else NULL. An archived preset never answers. Between an individual's two possible
 schedules, the `freelancer` one wins, as in `projects.fn_session_host_schedule`. Granted to every
-client role, like `fn_band_covers`.
+client role: it names a published service's preset, which the booking grid already shows.
 
 ### `scheduling.fn_occurrence_covers(preset, kind, from, to) → boolean`
 

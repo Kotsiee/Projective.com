@@ -857,7 +857,12 @@ Never converts currency. EXECUTE is granted to authenticated only.';
 -- all — so the web server either reads them with the service-role key or through one guarded door.
 -- This is the door: SECURITY DEFINER, and it answers ONLY about the caller themselves and about the
 -- entities the caller is an active member of. A non-member gets a team's or business's PUBLIC face
--- (the name and avatar the profile directory already shows) and nothing billable.
+-- (the name and avatar the profile directory already shows) and nothing billable, and only while
+-- that face is public: an active, public or unlisted entity (org.fn_profile_visible). A draft,
+-- archived or invite-only one is NULL to a non-member, exactly as its `/@handle` is "not found"
+-- (PRD-C28, Decision #481). The avatar leaves only while its file is public, uploaded and not
+-- deleted (the files.fn_public_media_ref rule), for members too: a stale path names an object
+-- nobody may fetch.
 --
 -- The object shape is the same for every kind so the application maps it once:
 --   owner_type · owner_id · name · handle · avatar_bucket · avatar_path · is_member · can_spend ·
@@ -911,6 +916,8 @@ BEGIN
         INTO v_out
         FROM org.users_public up
         LEFT JOIN files.items av ON av.id = up.avatar_file_id
+            AND av.deleted_at IS NULL AND av.visibility = 'public'::files.file_visibility
+            AND av.status = 'uploaded'::files.file_status AND av.source = 'supabase'::files.file_source
         LEFT JOIN org.user_preferences pr ON pr.user_id = up.user_id
         LEFT JOIN LATERAL (
             SELECT ue.email FROM org.user_emails ue
@@ -920,6 +927,12 @@ BEGIN
         ) em ON true
         WHERE up.user_id = p_owner_id;
         RETURN v_out;
+    END IF;
+
+    -- A team or business a non-member may not open (draft, archived, invite-only) is not named.
+    IF p_owner_type IN ('team', 'business') AND NOT v_member
+       AND NOT org.fn_profile_visible (p_owner_type, p_owner_id) THEN
+        RETURN NULL;
     END IF;
 
     IF p_owner_type = 'team' THEN
@@ -944,6 +957,8 @@ BEGIN
         INTO v_out
         FROM org.teams t
         LEFT JOIN files.items av ON av.id = t.avatar_file_id
+            AND av.deleted_at IS NULL AND av.visibility = 'public'::files.file_visibility
+            AND av.status = 'uploaded'::files.file_status AND av.source = 'supabase'::files.file_source
         WHERE t.id = p_owner_id;
         RETURN v_out;
     END IF;
@@ -979,6 +994,8 @@ BEGIN
         INTO v_out
         FROM org.business_profiles b
         LEFT JOIN files.items av ON av.id = b.logo_file_id
+            AND av.deleted_at IS NULL AND av.visibility = 'public'::files.file_visibility
+            AND av.status = 'uploaded'::files.file_status AND av.source = 'supabase'::files.file_source
         WHERE b.id = p_owner_id;
         RETURN v_out;
     END IF;
@@ -1023,6 +1040,8 @@ BEGIN
         INTO v_out
         FROM org.enterprises o
         LEFT JOIN files.items av ON av.id = o.logo_file_id
+            AND av.deleted_at IS NULL AND av.visibility = 'public'::files.file_visibility
+            AND av.status = 'uploaded'::files.file_status AND av.source = 'supabase'::files.file_source
         WHERE o.id = p_owner_id;
         RETURN v_out;
     END IF;
@@ -1033,9 +1052,11 @@ $$;
 
 COMMENT ON FUNCTION finance.fn_purchase_owner_json(text, uuid) IS
 'The checkout identity of one purchase owner, as the CALLER may see it: a person answers only about
-themselves; a team or business answers its public face to anyone and its KYB, invoicing and billing
-facts to members only; an enterprise answers members only. NULL when there is nothing the caller
-may know. The shape is identical for every kind.';
+themselves; a team or business answers its public face to a non-member only while it is active and
+public or unlisted (org.fn_profile_visible), and its KYB, invoicing and billing facts to members
+only; an enterprise answers members only. The avatar is named only while its file is public,
+uploaded and not deleted. NULL when there is nothing the caller may know. The shape is identical for
+every kind.';
 
 -- The owner a basket or checkout is scoped to, with the platform fee rate a payment from it is charged
 -- (finance.fn_effective_platform_fee_bp: the payer's rate place_wallet_order stamps on the order and an

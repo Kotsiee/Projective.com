@@ -914,6 +914,146 @@ $$;
 -- photo. It is user-writable metadata, so it leaves here RAW and the caller renders it only after the
 -- provider-host allowlist (`safeOAuthAvatarUrl`) accepts it. Only the one picture key is projected —
 -- never the rest of `raw_user_meta_data`.
+--
+-- WHO is answered (PRD-C26, Decision #481, ruled by the owner): a person whose card the caller may
+-- see (org.fn_party_visible below). A private person is withheld from a stranger, so an id cannot be
+-- turned into a name, and still renders for everyone they deal with.
+
+-- May the caller see this person's identity CARD (name, handle, picture), as opposed to their profile
+-- page? "Private" hides the page and the directory entry, not a name where the person acts (a private
+-- member stays on a team roster, a private person on a business bench: PRODUCT_SPEC). So: anyone
+-- org.fn_profile_visible admits (self, an admin, a public or unlisted person), or a person who shares
+-- a context with the caller:
+--   · a project both are parties to: owner or client, a participant, a live stage seat (directly or
+--     through an active team), a live cohort seat, a pending or accepted invitation either way, or an
+--     application. The caller's side is projects.has_project_access, or their own invitation or
+--     application on that project;
+--   · a team, business or enterprise both belong to (owner or active member), or a pending
+--     invitation to it on either side;
+--   · a conversation both are in (a DM or group thread);
+--   · a notification that person caused for the caller.
+-- Not granted to any client role: get_party_cards calls it as its owner. PL/pgSQL for the file-order
+-- reason below (projects.has_project_access is created in 00001100). The cheap arms run first; the
+-- project arm walks only that person's own projects.
+CREATE OR REPLACE FUNCTION org.fn_party_visible(p_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me uuid := auth.uid ();
+BEGIN
+    IF p_user_id IS NULL THEN
+        RETURN false;
+    END IF;
+    IF org.fn_profile_visible ('user', p_user_id) THEN
+        RETURN true;
+    END IF;
+    IF v_me IS NULL THEN
+        RETURN false;
+    END IF;
+
+    -- A conversation both are in.
+    IF EXISTS (
+        SELECT 1
+        FROM comms.dm_participants a
+        JOIN comms.dm_participants b ON b.thread_id = a.thread_id
+        WHERE a.user_id = v_me AND b.user_id = p_user_id
+    ) THEN
+        RETURN true;
+    END IF;
+
+    -- A notification that person caused for the caller.
+    IF EXISTS (
+        SELECT 1 FROM comms.notifications n
+        WHERE n.user_id = v_me AND n.actor_user_id = p_user_id
+    ) THEN
+        RETURN true;
+    END IF;
+
+    -- A team, business or enterprise both belong to, or are invited to.
+    IF EXISTS (
+        WITH party AS (
+            SELECT 'team'::text AS kind, tm.team_id AS entity, tm.user_id
+            FROM org.team_members tm
+            WHERE tm.status = 'active' AND tm.user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT 'team', t.id, t.owner_user_id
+            FROM org.teams t WHERE t.owner_user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT 'business', bm.business_id, bm.user_id
+            FROM org.business_members bm
+            WHERE bm.status = 'active' AND bm.user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT 'business', b.id, b.owner_user_id
+            FROM org.business_profiles b WHERE b.owner_user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT 'enterprise', em.enterprise_id, em.user_id
+            FROM org.enterprise_members em
+            WHERE em.status = 'active' AND em.user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT 'enterprise', o.id, o.owner_user_id
+            FROM org.enterprises o WHERE o.owner_user_id IN (v_me, p_user_id)
+            UNION ALL
+            SELECT CASE WHEN i.team_id IS NOT NULL THEN 'team' ELSE 'business' END,
+                   COALESCE(i.team_id, i.business_id), i.target_user_id
+            FROM org.org_invitations i
+            WHERE i.status = 'pending' AND i.target_user_id IN (v_me, p_user_id)
+        )
+        SELECT 1 FROM party a
+        JOIN party b ON b.kind = a.kind AND b.entity = a.entity
+        WHERE a.user_id = v_me AND b.user_id = p_user_id
+    ) THEN
+        RETURN true;
+    END IF;
+
+    -- A project both are parties to.
+    RETURN EXISTS (
+        WITH theirs AS (
+            SELECT p.id FROM projects.projects p
+            WHERE p_user_id IN (p.owner_user_id, p.client_user_id)
+            UNION
+            SELECT pp.project_id FROM projects.project_participants pp
+            WHERE pp.profile_type = 'freelancer' AND pp.profile_id = p_user_id
+            UNION
+            SELECT pp.project_id FROM projects.project_participants pp
+            JOIN org.business_profiles bp ON bp.id = pp.profile_id
+            WHERE pp.profile_type = 'business' AND bp.owner_user_id = p_user_id
+            UNION
+            SELECT ps.project_id FROM projects.stage_assignments sa
+            JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+            WHERE sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = p_user_id
+                AND sa.status NOT IN ('declined', 'cancelled', 'released')
+            UNION
+            SELECT ps.project_id FROM projects.stage_assignments sa
+            JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+            JOIN org.team_members tm ON tm.team_id = sa.team_id AND tm.status = 'active'
+            WHERE sa.assignee_type = 'team' AND tm.user_id = p_user_id
+                AND sa.status NOT IN ('declined', 'cancelled', 'released')
+            UNION
+            SELECT c.project_id FROM projects.cohort_memberships cm
+            JOIN projects.cohorts c ON c.id = cm.cohort_id
+            WHERE cm.user_id = p_user_id AND cm.status <> 'cancelled'
+            UNION
+            SELECT pi.project_id FROM projects.project_invitations pi
+            WHERE p_user_id IN (pi.target_user_id, pi.inviter_user_id) AND pi.status IN ('pending', 'accepted')
+            UNION
+            SELECT pa.project_id FROM projects.project_applications pa
+            WHERE pa.applicant_user_id = p_user_id
+        )
+        SELECT 1 FROM theirs t
+        WHERE projects.has_project_access (t.id)
+            OR EXISTS (SELECT 1 FROM projects.project_invitations pi
+                       WHERE pi.project_id = t.id AND pi.target_user_id = v_me
+                           AND pi.status IN ('pending', 'accepted'))
+            OR EXISTS (SELECT 1 FROM projects.project_applications pa
+                       WHERE pa.project_id = t.id AND pa.applicant_user_id = v_me)
+    );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION org.get_party_cards(p_user_ids uuid[])
 RETURNS TABLE (
     user_id uuid,
@@ -937,7 +1077,8 @@ BEGIN
                     NULLIF(au.raw_user_meta_data->>'picture', ''))
     FROM org.users_public u
     LEFT JOIN auth.users au ON au.id = u.user_id
-    WHERE u.user_id = ANY (p_user_ids[1:500]);
+    WHERE u.user_id = ANY (p_user_ids[1:500])
+        AND org.fn_party_visible (u.user_id);
 END;
 $$;
 

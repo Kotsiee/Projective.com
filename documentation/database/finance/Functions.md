@@ -832,9 +832,17 @@ the public face.
 | Owner kind     | Who gets an answer                    | What a non-member sees                                   |
 | :------------- | :------------------------------------ | :------------------------------------------------------- |
 | `user`         | the person themselves (or admin)      | `NULL` — a person answers only about themselves          |
-| `team`         | anyone                                | the public face (name, handle, avatar); no billing facts |
-| `business`     | anyone                                | the public face; KYB, currency, invoicing and `billing` are `NULL` |
+| `team`         | a member; anyone while it is active and public or unlisted | the public face (name, handle, avatar); no billing facts. `NULL` for a draft, archived or invite-only team |
+| `business`     | a member; anyone while it is active and public or unlisted | the public face; KYB, currency, invoicing and `billing` are `NULL`. `NULL` for a draft, archived or invite-only business |
 | `enterprise` | members only                          | `NULL` — not even that the id exists                     |
+
+A non-member is told a team's or business's face only when `org.fn_profile_visible` admits them,
+the same rule its `/@handle` follows, so a draft, archived or invite-only entity is as missing here
+as its page is (PRD-C28, Decision #481). `avatar_bucket` / `avatar_path` name the file only while it
+is public, uploaded and not deleted (`files.fn_public_media_ref`'s rule), for every caller, so a
+deleted avatar never leaves as a path. A consequence: a ledger line whose counterparty business was
+later archived shows that business without a face to a payee who is not its member
+(`wallet-ledger.ts` falls back), and `list_ledger`'s search no longer matches its name for them.
 
 `can_spend` is `fn_can_manage_basket`, so "may pay from this account" has one answer in the schema.
 `person` (first/last name, primary email, city, country) is filled for the caller's own identity only

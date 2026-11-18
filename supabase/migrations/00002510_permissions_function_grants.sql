@@ -613,21 +613,13 @@ GRANT EXECUTE ON FUNCTION integrations.fn_reset_outbound_calendar (uuid) TO serv
 
 -- --- from 20260724102000_scheduling_events.sql ---
 
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_has_conflicting_event (
-    uuid,
-    timestamptz,
-    timestamptz
-) TO anon,
-authenticated;
-
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_is_blacked_out (
-    uuid,
-    timestamptz,
-    timestamptz
-) TO anon,
-authenticated;
+-- The free/busy helpers are granted to NO client role (PRD-C29, Decision #481):
+-- fn_has_conflicting_event, fn_is_blacked_out, fn_band_covers, fn_call_window_covers and
+-- fn_slot_is_free take any schedule id and ask no published check, so a guest could read whether an
+-- unpublished schedule is busy, blacked out or working at any minute. Every caller is a definer that
+-- runs them as its owner (fn_call_request_refusal, comms.fn_auto_reply_status, the 1-1 session
+-- doors in 00001155), and a guest reads free/busy only through get_free_busy / get_public_blackouts,
+-- which ask fn_schedule_is_public or fn_can_view_schedule first. Pinned by definer_visibility.sql.
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 
@@ -657,33 +649,6 @@ authenticated;
 
 GRANT
 EXECUTE ON FUNCTION scheduling.fn_local_weekday (timestamptz, text) TO anon,
-authenticated;
-
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_band_covers (
-    uuid,
-    scheduling.availability_kind,
-    timestamptz,
-    timestamptz,
-    uuid
-) TO anon,
-authenticated;
-
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_call_window_covers (
-    uuid,
-    timestamptz,
-    timestamptz
-) TO anon,
-authenticated;
-
-GRANT
-EXECUTE ON FUNCTION scheduling.fn_slot_is_free (
-    uuid,
-    timestamptz,
-    timestamptz,
-    uuid
-) TO anon,
 authenticated;
 
 -- scheduling.fn_call_request_refusal and its boolean twin fn_can_request_call answer for any
