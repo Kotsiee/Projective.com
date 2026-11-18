@@ -7,6 +7,7 @@ import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
+import { addressAfterSend } from "@web/features/messaging/core/conversation-model.ts";
 import {
 	type ChatSurface,
 	MESSAGE_REPLY_EVENT,
@@ -373,6 +374,13 @@ export default function ChatComposer(
 			return;
 		}
 		clearSent(sent);
+		// The first message to a `dm-<handle>` created the pair's thread: the page takes the thread's
+		// `cht-` address in place, so a reload or a copied link names the thread (Decision #339 N1).
+		if (scope === "conversation") {
+			const { pathname, search, hash } = globalThis.location;
+			const next = addressAfterSend(pathname, channelId, outcome.ref);
+			if (next) globalThis.history.replaceState(globalThis.history.state, "", next + search + hash);
+		}
 		// Tell whatever feed is on the page that a row now exists. The composer cannot reach the
 		// feed directly — they are separate hydration roots in different bands — and without this
 		// the message lands in the database while the surface shows nothing, which reads to the

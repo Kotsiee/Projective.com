@@ -2,18 +2,16 @@ import { type ChatMessage, messageDeltaText } from "@projective/types/projects";
 import {
 	dmHandleOf,
 	OpenedDmThreadSchema,
-	type SendConversationMessage,
+	type SendMessageInput,
 } from "@projective/types/messaging";
+import { isSlug } from "@projective/types/slugs";
 import type { ReadActor } from "../read-actor.ts";
-import { refusalFrom, type WriteOutcome } from "../projects/live-writes.ts";
+import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
 import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
-import { UUID_RE } from "../projects/live-support.ts";
+import { projectsDb, UUID_RE } from "../projects/live-support.ts";
 import { REPLY_REFUSAL_MESSAGE, replyRefusal } from "../projects/message-replies.ts";
 import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
-
-/** The DM shield refused the thread (Decision #208) — distinct from "no such conversation". */
-const SHIELDED = Symbol("dm-shielded");
 import {
 	commsClient,
 	DM_MESSAGE_COLUMNS,
@@ -24,22 +22,25 @@ import {
 	orgClient,
 	toChatMessage,
 } from "./live-queries.ts";
+import { type LiveThread, threadByRef } from "./live-threads.ts";
 
 /**
  * live-writes — the RLS-scoped Postgres WRITE path for the global inbox: posting one message into a
- * DM thread. The messaging counterpart of `../projects/live-writes.ts#insertProjectMessage`, and it
- * shares that module's refusal mapping rather than restating it.
+ * DM thread. The messaging counterpart of `../projects/live-writes.ts#insertRoomMessage`, and it
+ * shares that module's refusal mapping rather than restating it. Both halves are called by the one
+ * send door, `MessagingBackendService.sendMessage`, which resolves where a message goes
+ * ({@link resolveSendThread}) before it inserts anything ({@link insertThreadMessage}).
  *
- * ## Resolving the thread is the whole difficulty
+ * ## Resolving the thread
  *
- * A conversation arrives under one of two identities. The inbox's live reads address a thread by its
- * `comms.dm_threads` uuid, which is passed through untouched. The profile's "Message" control, the
- * project sidebar and the fixture corpus address the SAME conversation by the unified `dm-{handle}`
- * id (PRODUCT_SPEC §Unified Messaging), and that id names a PERSON rather than a row — so it is
- * resolved through `comms.get_or_create_dm_thread(target_user_id)`, the schema's own idempotent
- * "my thread with this person" lookup, after the handle is turned into a user id through
- * `org.users_public`. Two callers sending to `dm-juno` therefore land in one thread rather than
- * minting one each, which is the property the unified contract depends on.
+ * A conversation arrives under one of two identities. Its `cht-…` ref (`comms.dm_threads.ref`,
+ * Decision #339 ruling N1) names the thread, and is read under the caller's own RLS, so a thread the
+ * caller is not in resolves to nothing. The unified `dm-{handle}` id (PRODUCT_SPEC §Unified Messaging)
+ * names a PERSON rather than a row, so it is resolved through `comms.get_or_create_dm_thread
+ * (target_user_id)`, the schema's own idempotent "my thread with this person" lookup, after the
+ * handle is turned into a user id through `org.users_public`. Two callers sending to `dm-juno`
+ * therefore land in one thread rather than minting one each, which is the property the unified
+ * contract depends on. A bare uuid addresses nothing (Decision #88).
  *
  * The RPC is `SECURITY DEFINER` and inserts the thread and BOTH participant rows in one call, so a
  * first message to somebody creates the conversation as a side effect of sending — there is no
@@ -60,17 +61,23 @@ interface IdentityRow {
 	user_id: string;
 }
 
+/** Where a thread send lands: the thread, a refusal (the DM shield, Decision #208), or nowhere. */
+export type SendThread = { thread: LiveThread } | { refusal: WriteRefusal } | null;
+
 /**
- * Resolve the thread a conversation id addresses, or `null` when it names nobody the caller can
- * reach. A uuid is taken as a thread id; a `dm-{handle}` is resolved through the person it names.
- * Anything else (a fixture-only group id) has no live representation and resolves to nothing.
+ * Resolve the thread a send addresses, or `null` when it names nobody the caller can reach. A `cht-`
+ * ref is the thread when the caller is in it; a `dm-{handle}` is the pair's thread, minted on the
+ * first send. Anything else (a uuid, a fixture-only group id) has no live address and is nothing.
  */
-async function resolveThreadId(
+export async function resolveSendThread(
 	actor: ReadActor & { accessToken: string },
-	conversationId: string,
-): Promise<string | null | typeof SHIELDED> {
-	if (UUID_RE.test(conversationId)) return conversationId;
-	const handle = dmHandleOf(conversationId);
+	address: string,
+): Promise<SendThread> {
+	if (isSlug(address, "thread")) {
+		const thread = await threadByRef(actor, address);
+		return thread ? { thread } : null;
+	}
+	const handle = dmHandleOf(address);
 	if (!handle) return null;
 
 	const identity = await orgClient(actor)
@@ -86,29 +93,48 @@ async function resolveThreadId(
 	// miss here keeps it a 404 rather than a failed write.
 	if (target === actor.userId) return null;
 
-	const thread = await commsClient(actor).rpc("get_or_create_dm_thread", {
+	const opened = await commsClient(actor).rpc("get_or_create_dm_thread", {
 		target_user_id: target,
 	});
-	if (isAgeRestricted(thread.error)) return SHIELDED;
-	if (thread.error) {
-		throw new Error(`comms.get_or_create_dm_thread failed: ${thread.error.message}`);
+	if (isAgeRestricted(opened.error)) return { refusal: { ...DM_SHIELDED } };
+	if (opened.error) {
+		throw new Error(`comms.get_or_create_dm_thread failed: ${opened.error.message}`);
 	}
-	return openedThreadId(thread.data);
+	const thread = openedThread(opened.data);
+	return thread ? { thread } : null;
 }
 
 /**
- * The thread id `comms.get_or_create_dm_thread` answered (`{ thread_id, thread_ref }`), or `null`
- * when the answer is not that shape.
+ * The thread `comms.get_or_create_dm_thread` answered (`{ thread_id, thread_ref }`), or `null` when
+ * the answer is not that shape.
  */
-export function openedThreadId(data: unknown): string | null {
+export function openedThread(data: unknown): LiveThread | null {
 	const opened = OpenedDmThreadSchema.safeParse(data);
-	return opened.success ? opened.data.thread_id : null;
+	return opened.success ? { id: opened.data.thread_id, ref: opened.data.thread_ref } : null;
+}
+
+/**
+ * The project a thread message is stamped with, by its `prj-` slug, as the caller may read it; `null`
+ * when the slug names nothing the caller can see, and the message then goes unstamped.
+ */
+export async function projectStampOf(
+	actor: ReadActor & { accessToken: string },
+	projectSlug: string | undefined,
+): Promise<string | null> {
+	if (!projectSlug) return null;
+	const { data, error } = await projectsDb(actor)
+		.from("projects")
+		.select("id")
+		.eq("slug", projectSlug)
+		.maybeSingle();
+	if (error) throw new Error(`projects.projects read failed: ${error.message}`);
+	return (data as { id?: string } | null)?.id ?? null;
 }
 // #endregion
 
 // #region Insert
 /**
- * Post one message into a DM thread and return the row as the feed renders it.
+ * Post one message into a resolved DM thread and return the row as the feed renders it.
  *
  * Attachments are registered in BOTH places the schema keeps them, and the two speak different
  * vocabularies: `comms.message_attachments.message_table` is schema-qualified (`'comms.dm_messages'`)
@@ -116,22 +142,25 @@ export function openedThreadId(data: unknown): string | null {
  * rows and raises nothing, so the file would never appear in the conversation's Files tab and nothing
  * would say why. A failed attachment link does NOT fail the send — the message is already committed.
  *
- * A reply is held to the rule `insertProjectMessage` states for a channel, scoped to the THREAD: the
+ * A reply is held to the rule `insertRoomMessage` states for a channel, scoped to the THREAD: the
  * original must be a message of this thread the caller can read, or the send is the one
  * `replyRefusal` before anything is written (`comms.tg_guard_dm_message_reply` is the backstop). The
  * echo is mapped from the row the insert reads back, so a body `comms.tg_mask_dm_message_pii` masked
  * — and whose formatting it dropped — reaches the sender exactly as the other participants see it.
+ *
+ * `projectId` is the project the message was sent inside (`/projects/prj-…/cht-…`), written to
+ * `dm_messages.project_id`; `comms.tg_bind_dm_project` keeps it only when the sender and every other
+ * participant are parties to that project, and otherwise derives one or leaves it NULL.
  */
-export async function insertDmMessage(
+export async function insertThreadMessage(
 	actor: ReadActor & { accessToken: string },
-	input: SendConversationMessage,
+	thread: LiveThread,
+	input: SendMessageInput,
+	projectId: string | null = null,
 	now: number = Date.now(),
 ): Promise<WriteOutcome<ChatMessage>> {
-	const threadId = await resolveThreadId(actor, input.conversationId);
-	if (threadId === SHIELDED) return { refusal: { ...DM_SHIELDED } };
-	if (!threadId) return null;
-
 	const db = commsClient(actor);
+	const threadId = thread.id;
 
 	let original: DmMessageRow | undefined;
 	if (input.replyToId !== null) {
@@ -167,6 +196,7 @@ export async function insertDmMessage(
 			reply_to_id: original?.id ?? null,
 			has_attachments: fileIds.length > 0,
 			is_audio: input.audio !== null,
+			...(projectId ? { project_id: projectId } : {}),
 		})
 		.select(DM_MESSAGE_COLUMNS)
 		.maybeSingle();

@@ -3,7 +3,10 @@ import {
 	dmConversationId,
 	dmHandleOf,
 	type SendConversationMessage,
+	sendInputOf,
+	threadChatRef,
 } from "@projective/types/messaging";
+import type { ReadActor } from "../read-actor.ts";
 import {
 	messageDeltaText,
 	type MessagePage,
@@ -125,6 +128,15 @@ function send(
 	};
 }
 
+/** Post a wire payload through the one send door, as `/api/messaging/messages/send` does. */
+function post(payload: SendConversationMessage, actor: ReadActor) {
+	return MessagingBackendService.sendMessage(
+		actor,
+		threadChatRef(payload.conversationId),
+		sendInputOf(payload),
+	);
+}
+
 /** `text` bolded end to end — a Delta that spells it exactly. */
 function bolded(text: string) {
 	return normalizeMessageDelta([{ insert: text, attributes: { bold: true } }]);
@@ -164,7 +176,7 @@ Deno.test("a stub reply quotes its original — corpus or the viewer's own — a
 	const corpus = findConversationMessagePage({ conversationId: "dm-mara" })!.messages;
 	const own = corpus.find((m) => m.text === "Could we tighten the spacing a touch?")!;
 
-	const reply = await MessagingBackendService.sendMessage(
+	const reply = await post(
 		send("dm-mara", "Done — tightened.", { replyToId: own.id }),
 		me,
 	);
@@ -179,7 +191,7 @@ Deno.test("a stub reply quotes its original — corpus or the viewer's own — a
 	});
 
 	// A message sent a moment ago is as quotable as the corpus — it is on the page the composer shows.
-	const followUp = await MessagingBackendService.sendMessage(
+	const followUp = await post(
 		send("dm-mara", "And the gutters.", { replyToId: reply.data!.message.id }),
 		me,
 	);
@@ -191,7 +203,7 @@ Deno.test("a stub reply quotes its original — corpus or the viewer's own — a
 	// the database trigger raises — and nothing stored.
 	const foreign = findConversationMessagePage({ conversationId: "dm-theo" })!.messages.at(-1)!;
 	for (const replyToId of [foreign.id, "dm-mara-m-9999"]) {
-		const refused = await MessagingBackendService.sendMessage(
+		const refused = await post(
 			send("dm-mara", "Lost quote.", { replyToId }),
 			me,
 		);
@@ -207,7 +219,7 @@ Deno.test("a stub send keeps its Delta only while it spells the text actually st
 	const me = { userId: "u-format", contextId: "", contextType: "personal" as const };
 
 	const text = "Ship it today";
-	const kept = await MessagingBackendService.sendMessage(
+	const kept = await post(
 		send("dm-mara", text, { delta: bolded(text) }),
 		me,
 	);
@@ -217,7 +229,7 @@ Deno.test("a stub send keeps its Delta only while it spells the text actually st
 	// dm-marcus is a pending hiring request, so the stub contact filter rewrites the body — and the
 	// Delta, which spells the unmasked address, has to go with it (comms.tg_mask_dm_message_pii).
 	const leaky = "Write to me at juno@example.com";
-	const masked = await MessagingBackendService.sendMessage(
+	const masked = await post(
 		send("dm-marcus", leaky, { delta: bolded(leaky) }),
 		me,
 	);

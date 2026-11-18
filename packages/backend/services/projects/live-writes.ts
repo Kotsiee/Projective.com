@@ -39,7 +39,6 @@ import {
 	type ProjectStructure,
 	reconcileSetup,
 	ROLE_INSTRUCTIONS_MAX,
-	type SendProjectMessage,
 	SHAPE_LOCK_REASON,
 	shapeLocked,
 	SKILL_LABEL_MAX,
@@ -56,6 +55,7 @@ import {
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
+import type { SendMessageInput } from "@projective/types/messaging";
 import { flattenRichText, plainTextToHtml } from "@projective/types/richtext";
 import type { SupabaseClient } from "supabaseClient";
 import { businessAuthorityRefusalFromMessage } from "../../core/business-authority.ts";
@@ -2599,7 +2599,48 @@ function dayLabel(iso: string, now: number): string {
 }
 
 /**
- * Post one message into a project channel and return the row as the feed renders it.
+ * The room a project send addresses — `projectSlug` (the route's `prj-…`) and the channel segment it
+ * names (`discussion`, a `stg-…`, a room id) — resolved under the caller's own policies, or `null`
+ * when either names nothing the caller can see. A miss, never an outage: a query FAILURE throws.
+ *
+ * The composer posts to whatever the URL addressed, and for a stage that is a `stg-…` slug rather
+ * than a room id. Resolving it needs the project's row id, so the route's own project slug is
+ * resolved first.
+ */
+export async function resolveSendRoom(
+	actor: ReadActor & { accessToken: string },
+	projectSlug: string,
+	channelRef: string,
+): Promise<string | null> {
+	const projectRow = await projectsDb(actor)
+		.from("projects")
+		.select("id")
+		.eq("slug", projectSlug)
+		.maybeSingle();
+	if (projectRow.error) {
+		throw new Error(`projects.projects read failed: ${projectRow.error.message}`);
+	}
+	if (!projectRow.data) return null;
+	const channelId = await resolveChannelRef(
+		actor,
+		(projectRow.data as unknown as { id: string }).id,
+		channelRef,
+	);
+	if (!channelId) return null;
+
+	const { data: channel, error: channelError } = await commsDb(actor)
+		.from("project_channels")
+		.select("id, project_id")
+		.eq("id", channelId)
+		.maybeSingle();
+	if (channelError) throw new Error(`comms.project_channels read failed: ${channelError.message}`);
+	return channel ? channelId : null;
+}
+
+/**
+ * Post one message into a resolved project room ({@link resolveSendRoom}) and return the row as the
+ * feed renders it. The one send door, `MessagingBackendService.sendMessage`, resolves first and
+ * inserts second, so a pre-filter can sit between the two.
  *
  * Attachments are registered in BOTH places the schema keeps them, and the two speak different
  * vocabularies: `comms.message_attachments.message_table` is schema-qualified
@@ -2625,37 +2666,13 @@ function dayLabel(iso: string, now: number): string {
  * project's protected phase, and the stored body may be clamped; the sender's own bubble has to show
  * exactly what everybody else will read, or the masking is invisible to the one person it changed.
  */
-export async function insertProjectMessage(
+export async function insertRoomMessage(
 	actor: ReadActor & { accessToken: string },
-	input: SendProjectMessage,
+	channelId: string,
+	input: SendMessageInput,
 	now: number = Date.now(),
 ): Promise<WriteOutcome<ChatMessage>> {
 	const db = commsDb(actor);
-
-	// The composer posts to whatever the URL addressed, and for a stage that is a `stg-…` slug rather
-	// than a room id. Resolving it needs the project's row id, so the route's own project slug is
-	// resolved first; an unresolvable project is a miss, not an outage.
-	const projectRow = await projectsDb(actor)
-		.from("projects")
-		.select("id")
-		.eq("slug", input.projectId)
-		.maybeSingle();
-	if (projectRow.error) throw new Error(`projects.projects read failed: ${projectRow.error.message}`);
-	if (!projectRow.data) return null;
-	const channelId = await resolveChannelRef(
-		actor,
-		(projectRow.data as unknown as { id: string }).id,
-		input.channelId,
-	);
-	if (!channelId) return null;
-
-	const { data: channel, error: channelError } = await db
-		.from("project_channels")
-		.select("id, project_id")
-		.eq("id", channelId)
-		.maybeSingle();
-	if (channelError) throw new Error(`comms.project_channels read failed: ${channelError.message}`);
-	if (!channel) return null;
 
 	// The original a reply quotes, read under the caller's own policy and scoped to THIS channel — the
 	// scope is the rule, not a filter: an id from another room the caller happens to belong to is a

@@ -1,5 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
-import type { InboxFolder } from "@projective/types/messaging";
+import {
+	type InboxFolder,
+	type SendConversationMessage,
+	sendInputOf,
+	threadChatRef,
+} from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { MessagingBackendService } from "./MessagingBackendService.ts";
 import { clearStubFolders } from "./folder-store.ts";
@@ -17,6 +22,15 @@ const actorOf = (userId: string): ReadActor => ({
 	contextType: "personal",
 });
 
+/** Post a wire payload through the one send door, as `/api/messaging/messages/send` does. */
+function post(payload: SendConversationMessage, actor: ReadActor) {
+	return MessagingBackendService.sendMessage(
+		actor,
+		threadChatRef(payload.conversationId),
+		sendInputOf(payload),
+	);
+}
+
 async function idsIn(folder: InboxFolder, actor: ReadActor): Promise<string[]> {
 	const res = await MessagingBackendService.conversations({ folder }, actor);
 	assert(res.ok && res.data, res.message);
@@ -29,7 +43,7 @@ Deno.test("a hiring request opens in Requests, and replying files the replier's 
 	assert((await idsIn("requests", me)).includes("dm-marcus"));
 	assert(!(await idsIn("primary", me)).includes("dm-marcus"));
 
-	const sent = await MessagingBackendService.sendMessage(
+	const sent = await post(
 		{
 			conversationId: "dm-marcus",
 			text: "Thanks — happy to talk.",
@@ -54,7 +68,7 @@ Deno.test("a folder is per participant: one viewer's reply leaves another's Requ
 	clearStubFolders();
 	const replier = actorOf("folders-replier");
 	const bystander = actorOf("folders-bystander");
-	const sent = await MessagingBackendService.sendMessage(
+	const sent = await post(
 		{
 			conversationId: "dm-ivy",
 			text: "Let's set up a call.",
@@ -95,7 +109,7 @@ Deno.test("a reply into an archived conversation leaves it archived", async () =
 	clearStubFolders();
 	const me = actorOf("folders-archived-reply");
 	assert((await MessagingBackendService.setFolder("dm-marcus", "archived", me)).ok);
-	const sent = await MessagingBackendService.sendMessage(
+	const sent = await post(
 		{
 			conversationId: "dm-marcus",
 			text: "One more thing.",

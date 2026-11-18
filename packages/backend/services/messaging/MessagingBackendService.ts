@@ -1,5 +1,6 @@
 import type {
 	AddConversationMembers,
+	ChatRef,
 	ContactList,
 	ContactSuggestionParams,
 	ConversationContext,
@@ -19,21 +20,28 @@ import type {
 	MessagingRole,
 	MessagingSettings,
 	RankedContactList,
-	SendConversationMessage,
+	SendMessageInput,
+	SentMessage,
 	SetGroupPhoto,
 } from "@projective/types/messaging";
-import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
+import {
+	conversationPath,
+	dmHandleOf,
+	threadChatRef,
+	uniqueContactIds,
+} from "@projective/types/messaging";
+import { isSlug } from "@projective/types/slugs";
 import { maskPii } from "@projective/types/comms";
 import type {
 	AttachmentSource,
-	ChatMessage,
 	FileListPage,
 	FileListParams,
 	MemberRosterPage,
 	MessagePage,
 } from "@projective/types/projects";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { isMessagingBackendLive } from "../../core/supabase.ts";
+import { isMessagingBackendLive, isProjectsBackendLive } from "../../core/supabase.ts";
+import { type RateLimitRule, SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import {
 	cachedRead,
 	cacheKey,
@@ -78,12 +86,25 @@ import { fetchContacts } from "./live-contacts.ts";
 import { fetchMessagingSettings } from "./live-settings.ts";
 import { saveLiveSettings } from "./live-settings-write.ts";
 import { fetchConversationFilePage, fetchConversationRoster } from "./live-workspace.ts";
-import { insertDmMessage } from "./live-writes.ts";
+import { insertThreadMessage, projectStampOf, resolveSendThread } from "./live-writes.ts";
 import {
 	addLiveMembers,
 	createLiveConversation,
 	INQUIRY_CLOSED_MESSAGE,
 } from "./live-conversation-writes.ts";
+import { insertRoomMessage, resolveSendRoom } from "../projects/live-writes.ts";
+import {
+	findChannelMessage,
+	findMessagePage,
+	viewerSenderFor,
+} from "../projects/messages-fixtures.ts";
+import {
+	appendChannelMessage,
+	buildStubMessage,
+	findSentMessage,
+	sentMessageCount,
+	writeOwnerOf as projectWriteOwnerOf,
+} from "../projects/write-store.ts";
 import { renderGroupPhoto, setLiveGroupPhoto } from "./live-group-photo.ts";
 import { fetchRankedContacts } from "./live-suggestions.ts";
 import { findRankedContacts } from "./suggestion-fixtures.ts";
@@ -106,7 +127,7 @@ import {
 } from "./write-store.ts";
 import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store.ts";
 import { inPartition } from "./partition.ts";
-import { resolveThreadRef, virtualSummary } from "./live-threads.ts";
+import { resolveLiveThread, resolveThreadRef, virtualSummary } from "./live-threads.ts";
 import { markLiveRead, setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
 import { setMessagePin } from "./live-message-marks.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
@@ -144,6 +165,15 @@ import { findConversationContext } from "./context-fixtures.ts";
  * people and messages under their own name, and `dm-{handle}` ids that could resolve to real
  * accounts on the next send. A failure is logged through {@link liveFailed} so a broken live path is
  * visible in a log.
+ *
+ * ## One send door, and conversations addressed by `cht-`
+ *
+ * {@link MessagingBackendService.sendMessage} is the ONE door every message goes through, wherever it
+ * is posted (Decision #339 ruling N1; CAS M3): a thread (`comms.dm_messages`) or a project room
+ * (`comms.project_messages`), named by a `ChatRef`. Both send routes are thin wrappers over it, so the
+ * send rate limit (CAS M23) and the trust track's Tier 1 pre-filter (SEC §2.3) each have one home.
+ * A live conversation is addressed by its `cht-` ref; a `dm-{handle}` names the pair (and 303s to its
+ * thread once one exists, {@link MessagingBackendService.route}); a bare uuid addresses nothing.
  *
  * ## Every method reaches Postgres
  *
@@ -228,9 +258,9 @@ async function liveRead<T>(
 }
 
 /**
- * One conversation on the live path, by uuid or by `dm-{handle}`. A handle resolves to the pair's
- * existing thread, or to a VIRTUAL conversation (the person, no thread) — reading never mints one.
- * `null` is a genuine miss: an unknown handle, oneself, or a thread the viewer is not in.
+ * One conversation on the live path, by its `cht-` ref or by `dm-{handle}`. A handle resolves to the
+ * pair's existing thread, or to a VIRTUAL conversation (the person, no thread) — reading never mints
+ * one. `null` is a genuine miss: a uuid, an unknown handle, oneself, or a thread the viewer is not in.
  */
 async function liveConversation(
 	actor: ReadActor & { accessToken: string },
@@ -256,6 +286,262 @@ function stubIsProtected(summary: ConversationSummary): boolean {
 	);
 }
 
+// #endregion
+
+/** What a `/messages/{address}` route renders: the conversation, or where its address moved to. */
+export interface ConversationRoute {
+	detail: ConversationDetail;
+	/** `/messages/cht-…` when the address was a `dm-{handle}` whose pair has a thread; else null. */
+	location: string | null;
+}
+
+// #region Send door
+/**
+ * At most thirty messages a minute per sender, per process (CAS M23). Bounds a stuck double-press or
+ * a scripted burst at the one door every message passes; the database throttle against direct
+ * PostgREST writes is the trust track's (SEC G6).
+ */
+export const MESSAGE_SEND_RULE: RateLimitRule = { max: 30, windowMs: 60_000 };
+
+const sendLimiter = new SlidingWindowLimiter(MESSAGE_SEND_RULE);
+
+/** Overrides for {@link MessagingBackendService.sendMessage}; tests pass them. */
+export interface SendDeps {
+	/** The send rate limiter; defaults to the process-wide one. */
+	limiter?: SlidingWindowLimiter;
+}
+
+/**
+ * Where a message goes, once the door has authorised it: the write into the store that owns it, and
+ * the read caches that write makes stale. `insert` never throws — a failed write is its own 502.
+ */
+interface SendTarget {
+	insert: (input: SendMessageInput) => Promise<ServiceResult<SentMessage>>;
+	bump: () => void;
+}
+
+/** A send the door refused before anything was written. */
+type Refused = { refused: ServiceResult<never> };
+
+/** The 429 a sender over {@link MESSAGE_SEND_RULE} receives; `details.retryAt` says when to retry. */
+function admitSend(actor: ReadActor, deps: SendDeps): ServiceResult<never> | null {
+	const now = Date.now();
+	const decision = (deps.limiter ?? sendLimiter).take(actor.userId, now);
+	if (decision.allowed) return null;
+	return fail(429, {
+		message: "You're sending messages too quickly. Wait a moment, then try again.",
+		details: { retryAt: new Date(now + decision.retryAfterMs).toISOString() },
+	});
+}
+
+/** A write's refusal, in the database's own words. */
+function refusedWith(refusal: {
+	status: number;
+	message: string;
+	errors?: Record<string, string>;
+	details?: Record<string, string | number | boolean | null>;
+}): ServiceResult<never> {
+	return fail(refusal.status, {
+		message: refusal.message,
+		errors: refusal.errors,
+		details: refusal.details,
+	});
+}
+
+/** Drop every cached read of this tenant in `cache` — the sender's view of what they just changed. */
+function bumpTenant(cache: typeof messagingReadCache | typeof projectsReadCache, actor: ReadActor) {
+	invalidatePrefix(cache, tenantPrefix(tenantOf(actor)));
+}
+
+/**
+ * Authorise a send: resolve the ref to the thread or room it names, as the caller, or refuse — a 401
+ * without a usable session, a 404 for an address the caller cannot reach (a uuid, a thread they are
+ * not in, a room they cannot see), the DM shield's refusal, or a 502 when the lookup itself failed.
+ */
+async function sendTargetOf(actor: ReadActor, ref: ChatRef): Promise<SendTarget | Refused> {
+	return ref.kind === "thread" ? await threadTargetOf(actor, ref) : await roomTargetOf(actor, ref);
+}
+
+/** The `comms.dm_messages` half of {@link sendTargetOf}. */
+async function threadTargetOf(
+	actor: ReadActor,
+	ref: Extract<ChatRef, { kind: "thread" }>,
+): Promise<SendTarget | Refused> {
+	if (isMessagingBackendLive()) {
+		if (!canReadLive(actor)) return { refused: sessionRequired() };
+		const failed = () =>
+			fail(502, { message: "That message could not be sent — please try again." });
+		try {
+			const [resolved, projectId] = await Promise.all([
+				resolveSendThread(actor, ref.ref),
+				projectStampOf(actor, ref.project),
+			]);
+			if (resolved === null) {
+				return { refused: fail(404, { message: `No conversation found for "${ref.ref}".` }) };
+			}
+			if ("refusal" in resolved) return { refused: refusedWith(resolved.refusal) };
+			const { thread } = resolved;
+			return {
+				async insert(input) {
+					try {
+						const outcome = await insertThreadMessage(actor, thread, input, projectId);
+						if (outcome === null) return fail(404, { message: "No such conversation." });
+						if ("refusal" in outcome) return refusedWith(outcome.refusal);
+						return ok({ message: outcome.data, ref: thread.ref }, { message: "Message sent." });
+					} catch (error) {
+						liveFailed("sendMessage", error);
+						return failed();
+					}
+				},
+				bump() {
+					bumpTenant(messagingReadCache, actor);
+					// A stamped message changes the project's Private Messages group too.
+					if (ref.project) bumpTenant(projectsReadCache, actor);
+				},
+			};
+		} catch (error) {
+			liveFailed("sendMessage", error);
+			return { refused: failed() };
+		}
+	}
+
+	const conversationId = ref.ref;
+	if (!findConversationMessagePage({ conversationId })) {
+		return { refused: fail(404, { message: "No such conversation." }) };
+	}
+	return {
+		insert: (input) => Promise.resolve(stubThreadSend(actor, conversationId, input)),
+		bump() {},
+	};
+}
+
+/**
+ * The fixture backend's thread send. A reply's original must be a message of THIS conversation —
+ * its fixture history or the viewer's own sent overlay — or the send is the one `replyRefusal`,
+ * resolved BEFORE the folder promotion below, so a refused send changes nothing, as a refused insert
+ * changes nothing live.
+ */
+function stubThreadSend(
+	actor: ReadActor,
+	conversationId: string,
+	input: SendMessageInput,
+): ServiceResult<SentMessage> {
+	const owner = writeOwnerOf(actor);
+	const replyTo = input.replyToId === null ? null : replyFromMessage(
+		findConversationMessage(conversationId, input.replyToId) ??
+			findSentConversationMessage(owner, conversationId, input.replyToId),
+	);
+	if (input.replyToId !== null && !replyTo) return refusedWith(replyRefusal());
+	const summary = findConversationSummary(conversationId);
+	// The stub twins of the BEFORE INSERT triggers on comms.dm_messages: the protected phase's
+	// contact filter (which drops the formatting of a body it rewrites — `buildStubConversationMessage`
+	// keeps a Delta only while it spells the stored text), and a reply moving the sender's own copy
+	// of a request into Primary.
+	const masked = summary && stubIsProtected(summary) ? maskPii(input.text).masked : input.text;
+	if (summary) promoteStubOnSend(owner, summary.id, withStubFolder(owner, summary).folder);
+	const message = buildStubConversationMessage(
+		{ ...input, conversationId, text: masked },
+		stubViewerSender(),
+		sentConversationCount(owner, conversationId),
+		Date.now(),
+		replyTo,
+	);
+	appendConversationMessage(owner, conversationId, message);
+	// A first message to somebody the corpus has no thread for (a profile's Message control) is
+	// what CREATES the conversation, so it is remembered here — or it would post fine and never
+	// join the inbox list. Only a synthesised DM: a corpus thread already lists, and remembering it
+	// would replace its row with a poorer summary. Idempotent, so a second message is free.
+	const handle = dmHandleOf(conversationId);
+	if (handle && !isCorpusConversation(conversationId)) {
+		const contact = findContact(handle);
+		if (contact) rememberCreatedDm(actor, contact);
+	}
+	return ok({ message }, { message: "Message sent." });
+}
+
+/**
+ * The `comms.project_messages` half of {@link sendTargetOf} — the project chat's write, moved here
+ * from `ProjectBackendService.sendMessage` with its validation and refusals, behind its own gate
+ * (`PROJECTS_BACKEND_LIVE`, the store's).
+ */
+async function roomTargetOf(
+	actor: ReadActor,
+	ref: Extract<ChatRef, { kind: "room" }>,
+): Promise<SendTarget | Refused> {
+	const projectId = ref.ref;
+	const channelId = ref.channel;
+	if (isProjectsBackendLive()) {
+		if (!canReadLive(actor)) {
+			return {
+				refused: fail(401, { message: "Your session has expired — sign in again to save this." }),
+			};
+		}
+		const failed = () =>
+			fail(502, { message: "That change could not be saved — please try again." });
+		try {
+			const room = await resolveSendRoom(actor, projectId, channelId);
+			if (!room) {
+				return { refused: fail(404, { message: `No channel found for "${channelId}".` }) };
+			}
+			return {
+				async insert(input) {
+					try {
+						const outcome = await insertRoomMessage(actor, room, input);
+						if (outcome === null) {
+							return fail(404, { message: `No channel found for "${channelId}".` });
+						}
+						if ("refusal" in outcome) return refusedWith(outcome.refusal);
+						return ok({ message: outcome.data }, { message: "Message sent." });
+					} catch (error) {
+						liveFailed("sendMessage", error);
+						return failed();
+					}
+				},
+				bump: () => bumpTenant(projectsReadCache, actor),
+			};
+		} catch (error) {
+			liveFailed("sendMessage", error);
+			return { refused: failed() };
+		}
+	}
+
+	if (!findMessagePage({ projectId, channelId })) {
+		return { refused: fail(404, { message: "No such project channel." }) };
+	}
+	return {
+		insert: (input) => Promise.resolve(stubRoomSend(actor, projectId, channelId, input)),
+		bump: () => bumpTenant(projectsReadCache, actor),
+	};
+}
+
+/**
+ * The fixture backend's room send. A reply's original is resolved under the live rule — a message of
+ * THIS channel, or the one `replyRefusal` (422 on `replyToId`): the channel's whole fixture history,
+ * then the viewer's own sent overlay, which together are everything the stub feed can show; a system
+ * notice is not repliable, having no live counterpart to point at.
+ */
+function stubRoomSend(
+	actor: ReadActor,
+	projectId: string,
+	channelId: string,
+	input: SendMessageInput,
+): ServiceResult<SentMessage> {
+	const owner = projectWriteOwnerOf(actor);
+	const replyTo = input.replyToId === null ? null : replyFromMessage(
+		findChannelMessage(projectId, channelId, input.replyToId) ??
+			findSentMessage(owner, projectId, channelId, input.replyToId),
+	);
+	if (input.replyToId !== null && !replyTo) return refusedWith(replyRefusal());
+	const message = buildStubMessage(
+		{ ...input, projectId, channelId },
+		viewerSenderFor(projectId, channelId),
+		sentMessageCount(owner, projectId, channelId),
+		Date.now(),
+		replyTo,
+	);
+	appendChannelMessage(owner, projectId, channelId, message);
+	return ok({ message }, { message: "Message sent." });
+}
 // #endregion
 
 /**
@@ -288,7 +574,13 @@ async function applyStubGroupPhoto(
 }
 
 export class MessagingBackendService {
-	/** A filtered, paged page of the viewer's conversations (the inbox sidebar list). */
+	/**
+	 * A filtered, paged page of the viewer's conversations (the inbox sidebar list).
+	 *
+	 * Live, the ROWS are cached once per tenant and the params are applied after (RED D-13): a key
+	 * that carried the params made every page, folder, search and filter of one inbox refetch the
+	 * whole inbox. A send, a move or a read mark drops the tenant's entries, rows included.
+	 */
 	static async conversations(
 		params: ConversationListParams,
 		actor: ReadActor,
@@ -305,12 +597,13 @@ export class MessagingBackendService {
 		}
 		if (!canReadLive(actor)) return sessionRequired();
 		try {
-			const key = cacheKey(tenantOf(actor), "messaging.conversations", params);
-			const page = await cachedRead(messagingReadCache, key, async () => {
-				const rows = await fetchConversations(actor, clock());
-				return applyConversationParams(rows, params);
-			});
-			return ok({ page });
+			const key = cacheKey(tenantOf(actor), "messaging.conversations");
+			const rows = await cachedRead(
+				messagingReadCache,
+				key,
+				() => fetchConversations(actor, clock()),
+			);
+			return ok({ page: applyConversationParams(rows, params) });
 		} catch (error) {
 			liveFailed("conversations", error);
 			return liveUnavailable();
@@ -344,6 +637,26 @@ export class MessagingBackendService {
 		const detail = findConversationDetail(id, stubOverlay(actor));
 		if (!detail) return fail(404, { message: "No such conversation." });
 		return ok({ detail });
+	}
+
+	/**
+	 * What `/messages/{address}` answers (Decision #339 ruling N1; CAS M25 / D9): the conversation, at
+	 * its `cht-` address; a `303` to the pair's `cht-` thread for a `dm-{handle}` that has one
+	 * (`location`); a `dm-{handle}` with no thread yet renders the VIRTUAL conversation, whose first
+	 * message creates it; and anything else — a uuid, a thread the viewer is not in, an unknown
+	 * handle — is a real `404`. The fixture backend keeps its own ids and never redirects.
+	 */
+	static async route(
+		address: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<ConversationRoute>> {
+		const read = await MessagingBackendService.conversation(address, actor);
+		if (!read.ok || !read.data) return fail(read.status, { message: read.message });
+		const { detail } = read.data;
+		if (detail.id !== address && isSlug(detail.id, "thread")) {
+			return ok({ detail, location: conversationPath(detail.id) }, { status: 303 });
+		}
+		return ok({ detail, location: null });
 	}
 
 	/** A bottom-anchored page of a conversation's messages (the chat feed). */
@@ -411,89 +724,53 @@ export class MessagingBackendService {
 	}
 
 	/**
-	 * Post one message into a conversation — the inbox's first WRITE, and the send the profile's
-	 * floating messenger, the pop-out chat and `/messages/[conversationId]` all share.
+	 * The ONE send door (Decision #339 ruling N1; CAS M3): post one message wherever `ref` names — a
+	 * thread into `comms.dm_messages`, a project room into `comms.project_messages`. Both send routes,
+	 * the profile's floating messenger, the pop-out chat, the project chat, a hire's intro and a new
+	 * conversation's opening message all come through here. The two stores stay separate; this is
+	 * where a message is dispatched to the one that owns it.
 	 *
-	 * The live branch resolves the thread (a uuid as-is, a unified `dm-{handle}` through the schema's
-	 * own `get_or_create_dm_thread`), so a first message to somebody creates the conversation in the
-	 * same act as sending it. A live write that THROWS surfaces as a 502 rather than falling back to
-	 * the stub: falling back would store the message in memory and answer `ok` for a row Postgres
-	 * never accepted, which is the one outcome worse than reporting a failure.
+	 * The shape is kept plain on purpose — parse, authorise, [Tier 1], insert, bump — so the trust
+	 * track's pre-filter (SEC §2.3) has exactly one place to go:
 	 *
-	 * The stub branch appends to the per-process store, which {@link messages} folds back onto the
-	 * latest page, so the message survives a reload exactly as a live one would.
+	 *  1. **Parse** — an identity (401) and the per-sender rate limit, thirty a minute (CAS M23, a 429
+	 *     with `details.retryAt`). The routes have already parsed the payload with Zod.
+	 *  2. **Authorise** — the ref resolves, as the caller, to a thread they are in (a `cht-` ref; a
+	 *     `dm-{handle}`, whose first message creates the pair's thread through
+	 *     `get_or_create_dm_thread`) or to a room they can see; anything else — a uuid included — is a
+	 *     404.
+	 *  3. **Insert** — RLS pins the author and membership again. A reply's original must be a message
+	 *     of THIS conversation on every branch, or the send is the one `replyRefusal` (422 on
+	 *     `replyToId`). A live write that THROWS is a 502, never a fall-through to the stub: storing the
+	 *     message in memory and answering `ok` for a row Postgres never accepted is the one outcome
+	 *     worse than reporting a failure.
+	 *  4. **Bump and notify** — the sender's read caches; `message.*` notifications are the database's
+	 *     (MS4).
 	 *
-	 * A reply's original must be a message of THIS conversation on both branches, or the send is the
-	 * one `replyRefusal` (422 on `replyToId`) — live through the RLS read in `insertDmMessage` (and
-	 * `comms.tg_guard_dm_message_reply` behind it), stub through the conversation's fixture history and
-	 * the viewer's own sent overlay. The stub resolves it BEFORE the folder promotion below, so a
-	 * refused send changes nothing, as a refused insert changes nothing live.
+	 * A thread's answer carries its `cht-` ref, so a page opened on `/messages/dm-<handle>` can move to
+	 * the thread its first message created. On the fixture backend each store's stub answers and keeps
+	 * its own ids; the stub appends to the per-process store its feed folds back onto the latest page.
 	 */
 	static async sendMessage(
-		input: SendConversationMessage,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ message: ChatMessage }>> {
+		ref: ChatRef,
+		input: SendMessageInput,
+		deps: SendDeps = {},
+	): Promise<ServiceResult<SentMessage>> {
 		if (actor.userId.length === 0) {
 			return fail(401, { message: "Sign in to send a message." });
 		}
+		const limited = admitSend(actor, deps);
+		if (limited) return limited;
 
-		if (isMessagingBackendLive()) {
-			if (!canReadLive(actor)) return sessionRequired();
-			try {
-				const outcome = await insertDmMessage(actor, input);
-				if (outcome === null) {
-					return fail(404, { message: `No conversation found for "${input.conversationId}".` });
-				}
-				if ("refusal" in outcome) {
-					return fail(outcome.refusal.status, {
-						message: outcome.refusal.message,
-						errors: outcome.refusal.errors,
-					});
-				}
-				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
-				return ok({ message: outcome.data }, { message: "Message sent." });
-			} catch (error) {
-				liveFailed("sendMessage", error);
-				return fail(502, { message: "That message could not be sent — please try again." });
-			}
-		}
+		const target = await sendTargetOf(actor, ref);
+		if ("refused" in target) return target.refused;
 
-		const page = findConversationMessagePage({ conversationId: input.conversationId });
-		if (!page) return fail(404, { message: "No such conversation." });
-		const owner = writeOwnerOf(actor);
-		const replyTo = input.replyToId === null ? null : replyFromMessage(
-			findConversationMessage(input.conversationId, input.replyToId) ??
-				findSentConversationMessage(owner, input.conversationId, input.replyToId),
-		);
-		if (input.replyToId !== null && !replyTo) {
-			const refusal = replyRefusal();
-			return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
-		}
-		const summary = findConversationSummary(input.conversationId);
-		// The stub twins of the BEFORE INSERT triggers on comms.dm_messages: the protected phase's
-		// contact filter (which drops the formatting of a body it rewrites — `buildStubConversationMessage`
-		// keeps a Delta only while it spells the stored text), and a reply moving the sender's own copy
-		// of a request into Primary.
-		const masked = summary && stubIsProtected(summary) ? maskPii(input.text).masked : input.text;
-		if (summary) promoteStubOnSend(owner, summary.id, withStubFolder(owner, summary).folder);
-		const message = buildStubConversationMessage(
-			{ ...input, text: masked },
-			stubViewerSender(),
-			sentConversationCount(owner, input.conversationId),
-			Date.now(),
-			replyTo,
-		);
-		appendConversationMessage(owner, input.conversationId, message);
-		// A first message to somebody the corpus has no thread for (a profile's Message control) is
-		// what CREATES the conversation, so it is remembered here — or it would post fine and never
-		// join the inbox list. Only a synthesised DM: a corpus thread already lists, and remembering it
-		// would replace its row with a poorer summary. Idempotent, so a second message is free.
-		const handle = dmHandleOf(input.conversationId);
-		if (handle && !isCorpusConversation(input.conversationId)) {
-			const contact = findContact(handle);
-			if (contact) rememberCreatedDm(actor, contact);
-		}
-		return ok({ message }, { message: "Message sent." });
+		// Tier 1 (SEC §2.3): the trust track's pre-filter goes here, before either store is written.
+
+		const sent = await target.insert(input);
+		if (sent.ok) target.bump();
+		return sent;
 	}
 
 	/**
@@ -728,8 +1005,11 @@ export class MessagingBackendService {
 	 * several or a named group → a new group — posting an optional opening message in the same act.
 	 *
 	 * On the live path the threads are minted by definer RPCs (`get_or_create_dm_thread`,
-	 * `create_group_thread`) and the answer is the thread's uuid, which every `/messages` route
-	 * addresses it by. A live write that THROWS is a 502, never a fall-through to the stub — a
+	 * `create_group_thread`) and the answer is the thread's `cht-` ref, which every `/messages` route
+	 * addresses it by. The opening message goes through the one send door like any other, so it is
+	 * rate-limited and pre-filtered with the rest; a message that does not land costs the message
+	 * (`messageAccepted: false`), never the conversation, except a refused link share, which is the
+	 * sender's to fix. A live write that THROWS is a 502, never a fall-through to the stub — a
 	 * conversation stored in memory and reported `ok` for rows Postgres never accepted is the one
 	 * outcome worse than a failure. The stub mints into the per-process conversation store, which
 	 * `findConversationSummary` consults first, so the new group resolves through detail, messages
@@ -759,21 +1039,46 @@ export class MessagingBackendService {
 						errors: outcome.refusal.errors,
 					});
 				}
+				const { thread, kind, created } = outcome.data;
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+
+				let messageAccepted = false;
+				const text = (input.message ?? "").trim();
+				const attachmentIds = input.attachmentIds ?? [];
+				const linkedFileIds = input.linkedFileIds ?? [];
+				if (text.length > 0 || attachmentIds.length + linkedFileIds.length > 0) {
+					const sent = await MessagingBackendService.sendMessage(actor, threadChatRef(thread.ref), {
+						text,
+						delta: null,
+						replyToId: null,
+						attachmentIds,
+						linkedFileIds,
+						audio: null,
+					});
+					// A refused link share is the sender's to fix ("send a copy instead"), so it is
+					// reported in its own words; the thread exists either way.
+					if (!sent.ok && sent.errors?.linkedFileIds) {
+						return fail(sent.status, { message: sent.message, errors: sent.errors });
+					}
+					messageAccepted = sent.ok;
+				}
+
 				let photoApplied: boolean | undefined;
-				if (input.photo && outcome.data.kind === "group") {
+				if (input.photo && kind === "group") {
 					// The group exists first, so a photo that fails costs the photo, never the group: the
 					// caller opens it and says so, and the photo can be set again from its header.
 					try {
-						const set = await setLiveGroupPhoto(actor, outcome.data.id, input.photo);
+						const set = await setLiveGroupPhoto(actor, thread.ref, input.photo);
 						photoApplied = !!set && "data" in set;
 					} catch (error) {
 						liveFailed("createConversation.photo", error);
 						photoApplied = false;
 					}
+					invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
 				}
-				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				const opened: CreatedConversation = { id: thread.ref, kind, created, messageAccepted };
 				return ok(
-					photoApplied === undefined ? outcome.data : { ...outcome.data, photoApplied },
+					photoApplied === undefined ? opened : { ...opened, photoApplied },
 					{ message: "Conversation started." },
 				);
 			} catch (error) {
@@ -816,18 +1121,14 @@ export class MessagingBackendService {
 		const attachmentIds = input.attachmentIds ?? [];
 		const linkedFileIds = input.linkedFileIds ?? [];
 		if (text.length > 0 || attachmentIds.length + linkedFileIds.length > 0) {
-			const sent = await MessagingBackendService.sendMessage(
-				{
-					conversationId: summary.id,
-					text,
-					delta: null,
-					replyToId: null,
-					attachmentIds,
-					linkedFileIds,
-					audio: null,
-				},
-				actor,
-			);
+			const sent = await MessagingBackendService.sendMessage(actor, threadChatRef(summary.id), {
+				text,
+				delta: null,
+				replyToId: null,
+				attachmentIds,
+				linkedFileIds,
+				audio: null,
+			});
 			messageAccepted = sent.ok;
 		}
 
@@ -973,7 +1274,10 @@ export class MessagingBackendService {
 			actor,
 			"messaging.files",
 			params,
-			(a) => fetchConversationFilePage(a, params),
+			async (a) => {
+				const thread = await resolveLiveThread(a, params.channelId || params.projectId);
+				return thread ? await fetchConversationFilePage(a, params, thread) : null;
+			},
 		);
 		if (live) {
 			if ("refused" in live) return live.refused;
@@ -991,8 +1295,9 @@ export class MessagingBackendService {
 	 *
 	 * Live, every row is RLS-scoped to the caller (`view_attachments_if_member`, then each message
 	 * table's own policy) and soft-deleted messages are excluded, so an empty list means "never posted
-	 * anywhere you can read". `conversationId` narrows to one thread or room: a uuid is matched as is, a
-	 * `dm-{handle}` resolves to its thread first (no thread yet → nothing), and any other shape (a route
+	 * anywhere you can read". `conversationId` narrows to one thread or room: a `cht-` ref or a
+	 * `dm-{handle}` resolves to its thread first (none the caller is in → nothing), a project room's
+	 * uuid is matched as is (an identity compared, never a route), and any other shape (a route
 	 * segment such as `stg-…`) leaves the list unnarrowed. Anonymous callers get an empty list. The
 	 * fixture branch searches one fixture conversation, where tiles carry no `files.items` id.
 	 */
@@ -1011,10 +1316,10 @@ export class MessagingBackendService {
 			{ assetId, scope },
 			async (a) => {
 				let conversationId: string | null = null;
-				if (scope && dmHandleOf(scope)) {
-					const ref = await resolveThreadRef(a, scope);
-					if (!ref || ref.kind !== "thread") return [];
-					conversationId = ref.threadId;
+				if (scope && (isSlug(scope, "thread") || dmHandleOf(scope))) {
+					const thread = await resolveLiveThread(a, scope);
+					if (!thread) return [];
+					conversationId = thread.id;
 				} else if (scope && UUID_RE.test(scope)) {
 					conversationId = scope;
 				}
@@ -1041,7 +1346,10 @@ export class MessagingBackendService {
 			actor,
 			"messaging.members",
 			{ conversationId },
-			(a) => fetchConversationRoster(a, conversationId),
+			async (a) => {
+				const thread = await resolveLiveThread(a, conversationId);
+				return thread ? await fetchConversationRoster(a, thread) : null;
+			},
 		);
 		if (live) {
 			if ("refused" in live) return live.refused;
@@ -1173,11 +1481,15 @@ function toDetail(summary: ConversationSummaryLike): ConversationDetail {
 
 	return {
 		id: summary.id,
+		...(summary.ref ? { ref: summary.ref } : {}),
 		kind: summary.kind,
 		relation: summary.relation,
 		title: summary.title,
 		avatar: summary.avatar,
 		sub: sub.slice(0, 160),
+		...(summary.lastMessageAt !== undefined
+			? { lastMessageAt: summary.lastMessageAt, lastMessageId: summary.lastMessageId ?? null }
+			: {}),
 		participants: summary.participants,
 		starred: summary.starred,
 		muted: summary.muted,

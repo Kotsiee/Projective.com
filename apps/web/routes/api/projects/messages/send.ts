@@ -1,12 +1,16 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { SendProjectMessageSchema } from "@projective/types/projects";
+import { projectChatRef, sendInputOf } from "@projective/types/messaging";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
-import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
+import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
 
 /**
- * `POST /api/projects/messages/send` — thin route: Zod-validate one composer payload and delegate to
- * the fat {@link ProjectBackendService}, which returns the persisted message.
+ * `POST /api/projects/messages/send` — thin route: Zod-validate one composer payload and hand it to
+ * the ONE send door, {@link MessagingBackendService.sendMessage} (Decision #339 ruling N1), which
+ * returns the persisted message. The `(projectId, channelId)` pair names a `ChatRef`
+ * (`projectChatRef`): a room of the project, or — for a `cht-` channel — the thread the project's
+ * Private Messages group opens, stamped with the project.
  *
  * **No bytes pass through here.** Attachments arrive as `files.items` ids, already uploaded through
  * the files handshake (`/api/files/upload-init` → a direct PUT at the signed URL →
@@ -45,6 +49,12 @@ export const handler = define.handlers({
 			);
 		}
 
-		return toProjectsResponse(await ProjectBackendService.sendMessage(parsed.data, actor));
+		return toProjectsResponse(
+			await MessagingBackendService.sendMessage(
+				actor,
+				projectChatRef(parsed.data.projectId, parsed.data.channelId),
+				sendInputOf(parsed.data),
+			),
+		);
 	},
 });

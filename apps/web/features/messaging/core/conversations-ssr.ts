@@ -1,5 +1,10 @@
 import type { UserContext } from "@projective/types/auth";
-import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
+import {
+	type ConversationRoute,
+	MessagingBackendService,
+} from "@server/services/messaging/MessagingBackendService.ts";
+import type { ServiceResult } from "@server/services/ServiceResult.ts";
+import { once } from "@web/utils/request-memo.ts";
 import type { FileListPage, MemberRosterPage } from "@projective/types/projects";
 import type {
 	ConversationContext,
@@ -39,12 +44,34 @@ export async function resolveConversationList(
 	return { page, role };
 }
 
-/** Resolve a single conversation's metadata (the view header + Members tab), or null. */
+/**
+ * What `/messages/{address}` answers — the conversation, a 303 to its `cht-` thread, or a 404
+ * ({@link MessagingBackendService.route}) — read ONCE per request (RED D-06): the route's middleware,
+ * the page and the header, footer and panel slots all ask, and share this one read through the
+ * request memo, keyed on the request's own `url` object and the reader.
+ */
+export function resolveConversationRoute(
+	url: URL,
+	id: string,
+	actor: ReadActor,
+): Promise<ServiceResult<ConversationRoute>> {
+	return once(
+		url,
+		`messaging|route|${actor.userId}|${actor.contextId}|${id}`,
+		() => MessagingBackendService.route(id, actor),
+	);
+}
+
+/**
+ * Resolve a single conversation's metadata (the view header + Members tab), or null — the request's
+ * one {@link resolveConversationRoute} read.
+ */
 export async function resolveConversation(
+	url: URL,
 	id: string,
 	actor: ReadActor,
 ): Promise<ConversationDetail | null> {
-	const res = await MessagingBackendService.conversation(id, actor);
+	const res = await resolveConversationRoute(url, id, actor);
 	return res.ok && res.data ? res.data.detail : null;
 }
 

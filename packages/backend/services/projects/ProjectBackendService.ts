@@ -9,7 +9,7 @@ import {
 	projectsReadCache,
 	tenantPrefix,
 } from "../../core/cache.ts";
-import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
+import { ANONYMOUS_READER, canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
 import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-queries.ts";
 import { fetchBoardPage, fetchTicketLocation } from "./live-board.ts";
 import { fetchProjectDetail } from "./live-detail.ts";
@@ -46,7 +46,6 @@ import {
 	commitTicketRow,
 	fetchProjectSetup,
 	insertProject,
-	insertProjectMessage,
 	insertSubmission,
 	moveTicketRow,
 	type WriteOutcome,
@@ -62,17 +61,14 @@ import {
 } from "./setup-fixtures.ts";
 import { findProjectOverview } from "./overview-fixtures.ts";
 import {
-	appendChannelMessage,
 	appendHireInvites,
 	appendSubmission,
 	buildStubCard,
-	buildStubMessage,
 	buildStubSubmissionUnit,
 	claimedStubCard,
 	createdDetail,
 	createdMemberRoster,
 	createdSummary,
-	findSentMessage,
 	hireInviteCount,
 	isStoredArchived,
 	mergeSetupPatch,
@@ -98,7 +94,6 @@ import {
 	recordRoleChange,
 	recordTicketDeletion,
 	recordTicketManager,
-	sentMessageCount,
 	setupPatchFrom,
 	storedCreatedProject,
 	storedTicketCard,
@@ -121,8 +116,7 @@ import {
 	withResolvableScope,
 } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
-import { findChannelMessage, findMessagePage } from "./messages-fixtures.ts";
-import { replyFromMessage, replyRefusal } from "./message-replies.ts";
+import { findMessagePage, viewerSenderFor } from "./messages-fixtures.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
@@ -228,7 +222,13 @@ import {
 import type { EntityView, ServiceItem } from "@projective/types/explore";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
-import { dmConversationId } from "@projective/types/messaging";
+import {
+	dmConversationId,
+	projectChatRef,
+	sendInputOf,
+	type SentMessage,
+	threadChatRef,
+} from "@projective/types/messaging";
 import { maskPii } from "@projective/types/comms";
 import {
 	acceptApplicationLive,
@@ -270,7 +270,6 @@ import type {
 	BoardListParams,
 	BoardPage,
 	BoardStageRef,
-	ChatMessage,
 	CommitTicket,
 	CreatedInvitation,
 	CreatedProject,
@@ -294,7 +293,6 @@ import type {
 	MemberRosterParams,
 	MessagePage,
 	MessagePageParams,
-	MessageSender,
 	MoveTicket,
 	ProjectDetail,
 	ProjectFeedParams,
@@ -828,7 +826,8 @@ async function postIntro(
 			projectId,
 			actor,
 		);
-		return posted?.threadId ?? null;
+		// The conversation's address, never its uuid (Decision #88).
+		return posted?.threadRef ?? null;
 	} catch (error) {
 		liveFailed("postIntro", error);
 		return null;
@@ -885,17 +884,6 @@ async function liveWrite<T>(
 	}
 }
 
-/**
- * The identity a stub-written row is authored by.
- *
- * Read out of the corpus rather than minted, by finding the viewer's own most recent message in the
- * channel. The fixture corpus already has a face and a name for the acting viewer, and a second
- * identity built here would put two different people's avatars on one person's messages inside a
- * single conversation.
- *
- * The fallback is deliberately plain. A message with an unnamed author is legible; one attributed to
- * a fabricated participant is a claim about who said it.
- */
 // #region Create plumbing
 /**
  * Mint an unused project slug for the STUB path.
@@ -1050,19 +1038,6 @@ function draftWriteOwner(actor: { userId: string | null }, workspaceId: string |
 		contextId: workspaceId ?? actor.userId ?? "",
 		contextType: workspaceId ? "team" : "personal",
 	});
-}
-// #endregion
-
-function viewerSenderFor(projectId: string, channelId: string | null): MessageSender {
-	const channels = channelId
-		? [channelId]
-		: findProjectDetail(projectId)?.channels.general.map((channel) => channel.id) ?? [];
-	for (const id of channels) {
-		const page = findMessagePage({ projectId, channelId: id });
-		const own = page?.messages.filter((message) => message.isOwn).at(-1);
-		if (own?.sender) return own.sender;
-	}
-	return { id: "viewer", name: "You", avatar: null, handle: null };
 }
 // #endregion
 
@@ -1223,6 +1198,14 @@ export class ProjectBackendService {
 		params: MessagePageParams,
 		actor?: ReadActor,
 	): Promise<ServiceResult<{ page: MessagePage }>> {
+		// A `cht-` segment is a thread seen through the project (`/projects/prj-…/cht-…`, Decision #339
+		// ruling N1): the same history `/messages` reads, from the same service.
+		if (isSlug(params.channelId, "thread")) {
+			return await MessagingBackendService.messages(
+				{ conversationId: params.channelId, before: params.before, limit: params.limit },
+				actor ?? ANONYMOUS_READER,
+			);
+		}
 		const live = await liveRead(
 			"messages",
 			actor,
@@ -2003,8 +1986,9 @@ export class ProjectBackendService {
 		let conversationId: string | null = null;
 		if (intro) {
 			const sent = await MessagingBackendService.sendMessage(
+				actor,
+				threadChatRef(dmConversationId(handle)),
 				{
-					conversationId: dmConversationId(handle),
 					text: intro,
 					delta: null,
 					replyToId: null,
@@ -2012,7 +1996,6 @@ export class ProjectBackendService {
 					linkedFileIds: [],
 					audio: null,
 				},
-				actor,
 			);
 			conversationId = sent.ok ? dmConversationId(handle) : null;
 		}
@@ -3314,60 +3297,20 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * Post one message into a project channel.
-	 *
-	 * Attachments arrive as `files.items` ids, never as bytes: the device upload already went through
-	 * the files handshake before this call, which is why `/api/files/upload-init` exists. An
-	 * application route is not a file transport.
-	 *
-	 * A reply's original is resolved on both branches under the same rule — a message of THIS channel,
-	 * or the one `replyRefusal` (422 on `replyToId`). The stub looks in the channel's whole fixture
-	 * history and then in the viewer's own sent overlay, which together are everything the stub feed
-	 * can show; a system notice is not repliable, having no live counterpart to point at.
+	 * Post one message into a project channel — a delegate of the one send door,
+	 * `MessagingBackendService.sendMessage` (Decision #339 ruling N1), which owns the room write, its
+	 * validation, its refusals and the send rate limit. A `cht-` channel is a thread seen through the
+	 * project (`projectChatRef`).
 	 */
-	static async sendMessage(
+	static sendMessage(
 		input: SendProjectMessage,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ message: ChatMessage }>> {
-		const denied = requireIdentity<{ message: ChatMessage }>(actor, "send a message");
-		if (denied) return denied;
-
-		const live = await liveWrite<{ message: ChatMessage }>(
-			"sendMessage",
+	): Promise<ServiceResult<SentMessage>> {
+		return MessagingBackendService.sendMessage(
 			actor,
-			input.channelId,
-			"Message sent.",
-			async (a) => {
-				const outcome = await insertProjectMessage(a, input);
-				if (outcome === null || "refusal" in outcome) return outcome;
-				return { data: { message: outcome.data } };
-			},
-			"channel",
+			projectChatRef(input.projectId, input.channelId),
+			sendInputOf(input),
 		);
-		if (live) return live;
-
-		const page = findMessagePage({ projectId: input.projectId, channelId: input.channelId });
-		if (!page) return fail(404, { message: "No such project channel." });
-
-		const owner = writeOwnerOf(actor);
-		const replyTo = input.replyToId === null ? null : replyFromMessage(
-			findChannelMessage(input.projectId, input.channelId, input.replyToId) ??
-				findSentMessage(owner, input.projectId, input.channelId, input.replyToId),
-		);
-		if (input.replyToId !== null && !replyTo) {
-			const refusal = replyRefusal();
-			return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
-		}
-		const message = buildStubMessage(
-			input,
-			viewerSenderFor(input.projectId, input.channelId),
-			sentMessageCount(owner, input.projectId, input.channelId),
-			Date.now(),
-			replyTo,
-		);
-		appendChannelMessage(owner, input.projectId, input.channelId, message);
-		invalidateProjects(actor);
-		return ok({ message }, { message: "Message sent." });
 	}
 
 	/**

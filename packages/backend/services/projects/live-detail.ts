@@ -760,6 +760,100 @@ async function fetchBusinesses(
  * whole rather than per project: a person stars few rooms, and the read then joins the first wave. A
  * failed read stars nothing.
  */
+/** How many stamped messages the Private Messages read scans for their threads. */
+const PROJECT_DM_SCAN = 500;
+
+/** One row of the project's Private Messages group, before its counterpart is named. */
+interface ProjectDmRow {
+	/** The thread's `cht-` address — the row's `chatId`, and the segment it routes by. */
+	ref: string;
+	/** The other participant; `null` when the roster could not say. */
+	otherUserId: string | null;
+	unread: boolean;
+	/** The newest message's instant, for the group's order. */
+	lastAt: string;
+}
+
+/**
+ * The project's Private Messages group (Decision #339 ruling N1): the viewer's one-to-one threads —
+ * a DM or a service inquiry — that hold a message stamped with this project
+ * (`comms.dm_messages.project_id`, through `idx_dm_messages_project`), newest first. A stamp exists
+ * only where `comms.tg_bind_dm_project` found the sender and every other participant parties to the
+ * project, so the group lists exactly the threads the project may draw, and each opens the SAME
+ * thread `/messages` does, at `/projects/:projectSlug/cht-…`.
+ *
+ * Every read runs under the caller's own RLS (`view_dm_messages_if_participant` keeps the scan to the
+ * viewer's own threads). Secondary throughout: a failed read draws no group rather than failing the
+ * project, and a preview that could not be read leaves its row unmarked.
+ */
+async function fetchProjectDms(
+	actor: ReadActor & { accessToken: string },
+	projectId: string,
+): Promise<ProjectDmRow[]> {
+	const comms = commsDb(actor);
+	const stamped = await comms.from("dm_messages")
+		.select("thread_id")
+		.eq("project_id", projectId)
+		.is("deleted_at", null)
+		.limit(PROJECT_DM_SCAN);
+	if (stamped.error) return [];
+	const ids = [
+		...new Set(((stamped.data ?? []) as { thread_id: string }[]).map((r) => r.thread_id)),
+	];
+	if (ids.length === 0) return [];
+
+	const [threads, mine, roster, tails] = await Promise.all([
+		comms.from("dm_threads").select("id, ref, kind, created_at").in("id", ids)
+			.in("kind", ["dm", "service_inquiry"]),
+		comms.from("dm_participants").select("thread_id, last_read_at")
+			.eq("user_id", actor.userId).is("deleted_at", null).in("thread_id", ids),
+		comms.rpc("dm_thread_roster", { p_thread_ids: ids }),
+		comms.rpc("inbox_tails", { p_thread_ids: ids.slice(0, 200), p_k: 1 }),
+	]);
+	if (threads.error || mine.error) return [];
+
+	const readAt = new Map(
+		((mine.data ?? []) as { thread_id: string; last_read_at: string | null }[]).map((
+			r,
+		) => [r.thread_id, r.last_read_at]),
+	);
+	const other = new Map<string, string>();
+	for (
+		const row of (roster.error ? [] : roster.data ?? []) as { thread_id: string; user_id: string }[]
+	) {
+		if (row.user_id !== actor.userId && !other.has(row.thread_id)) {
+			other.set(row.thread_id, row.user_id);
+		}
+	}
+	const tail = new Map<string, { sender_user_id: string; created_at: string }>();
+	for (
+		const row of (tails.error ? [] : tails.data ?? []) as {
+			thread_id: string;
+			sender_user_id: string;
+			created_at: string;
+		}[]
+	) {
+		if (!tail.has(row.thread_id)) tail.set(row.thread_id, row);
+	}
+
+	return ((threads.data ?? []) as { id: string; ref: string; created_at: string }[])
+		// A thread the viewer has deleted for themselves stays out of the project as it does the inbox.
+		.filter((t) => readAt.has(t.id))
+		.map((t) => {
+			const last = tail.get(t.id);
+			const read = readAt.get(t.id) ?? null;
+			return {
+				ref: t.ref,
+				otherUserId: other.get(t.id) ?? null,
+				// The inbox's own rule: news only when someone else wrote after the viewer last read.
+				unread: !!last && last.sender_user_id !== actor.userId &&
+					(!read || Date.parse(last.created_at) > Date.parse(read)),
+				lastAt: last?.created_at ?? t.created_at,
+			};
+		})
+		.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+}
+
 async function fetchStarredChannelIds(actor: ReadActor & { accessToken: string }): Promise<Set<string>> {
 	const { data, error } = await getUserClient(actor.accessToken).schema("org").from("user_bookmarks")
 		.select("entity_id")
@@ -870,12 +964,11 @@ function buildMembers(
  *
  * ## Fields with no column, returned neutral rather than invented
  *
- * - **`channels.dms` is always empty.** A DM channel's `chatId` is the unified thread id the global
- *   inbox opens, and the sidebar routes a DM row by that value. There is no `chatId` column anywhere,
- *   and `comms.dm_threads.id` is a v4 uuid — so the fixtures' `dm-{handle}` convention cannot be
- *   reproduced, and a synthesised id would not round-trip to any primary key. Nothing writes
- *   `comms.dm_messages.project_id` either, and the project chat route reads project rooms only — so
- *   the Private Messages group is simply not drawn on this path, rather than drawn with dead links.
+ * - **`channels.dms`** is the viewer's one-to-one threads holding a message stamped with this project
+ *   (`fetchProjectDms`), each by its `cht-` ref — the SAME address the inbox opens it by, so the row
+ *   routes to `/projects/:projectSlug/cht-…` and renders the thread `/messages` does (Decision #339
+ *   ruling N1). A DM sent inside the project is what stamps it (the send door writes
+ *   `dm_messages.project_id`).
  * - **`bannerImage` is always `null`.** No banner column exists on `projects.projects`, and the
  *   service blueprint that would carry one lives in `marketplace`, which PostgREST does not expose.
  * - **`starred`** is inherited from the summary (`projects.user_preferences.is_starred`); each
@@ -908,17 +1001,27 @@ export async function fetchProjectDetail(
 	const db = projectsDb(actor);
 	// Six independent reads over one project. Issued together because none depends on another's
 	// result, and awaiting them in series would add all six latencies to every sidebar render.
-	const [detailRow, stages, participants, channelRows, hired, hasAccess, fundingRows, starredRooms] =
-		await Promise.all([
-			fetchDetailRow(db, slug),
-			fetchStages(db, summary.id),
-			fetchParticipants(db, summary.id),
-			fetchChannels(actor, summary.id),
-			fetchViewerHiredTeams(db, summary.id),
-			fetchHasAccess(db, summary.id),
-			fetchFundingRows(db, summary.id),
-			fetchStarredChannelIds(actor),
-		]);
+	const [
+		detailRow,
+		stages,
+		participants,
+		channelRows,
+		hired,
+		hasAccess,
+		fundingRows,
+		starredRooms,
+		dmRows,
+	] = await Promise.all([
+		fetchDetailRow(db, slug),
+		fetchStages(db, summary.id),
+		fetchParticipants(db, summary.id),
+		fetchChannels(actor, summary.id),
+		fetchViewerHiredTeams(db, summary.id),
+		fetchHasAccess(db, summary.id),
+		fetchFundingRows(db, summary.id),
+		fetchStarredChannelIds(actor),
+		fetchProjectDms(actor, summary.id),
+	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
 
@@ -939,6 +1042,7 @@ export async function fetchProjectDetail(
 		fetchParties(actor, [
 			...participants.filter((row) => row.profile_type !== "business").map((r) => r.profile_id),
 			...(clientUserId ? [clientUserId] : []),
+			...dmRows.flatMap((row) => (row.otherUserId ? [row.otherUserId] : [])),
 		]),
 	]);
 
@@ -1011,8 +1115,13 @@ export async function fetchProjectDetail(
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
 			teams: buildTeamChannels(hired, privateRooms, stageNames, teamNames, marks),
-			// See the docblock: a DM thread has no reproducible unified id on the live path.
-			dms: [],
+			// The threads stamped with this project, by their `cht-` refs (see `fetchProjectDms`).
+			dms: dmRows.map((row) => ({
+				chatId: row.ref,
+				party: partyOf(row.otherUserId ? parties.get(row.otherUserId) : undefined),
+				unread: row.unread,
+				hasProjectContext: true,
+			})),
 		}, starredRooms),
 		funding,
 	};

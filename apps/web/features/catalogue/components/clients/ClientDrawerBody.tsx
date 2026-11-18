@@ -184,7 +184,7 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 		);
 	}
 
-	const conversationId = data.threadId ?? dmConversationId(handle);
+	const conversationId = data.threadRef ?? dmConversationId(handle);
 	const chat: PopoutState = {
 		scope: "conversation",
 		projectId: conversationId,

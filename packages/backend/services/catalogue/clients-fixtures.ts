@@ -157,9 +157,9 @@ function rowOf(
 	const at = new Date(now - seed.hoursAgo * HOUR).toISOString();
 	const eventId = seed.eventInHours === undefined ? null : uuidOf(index, "e");
 	const engagementId = uuidOf(index, "c");
-	const href = seed.kind === "inquiry"
-		? `/messages/${engagementId}`
-		: eventId
+	// An inquiry opens the pair's conversation by its `dm-` address: a thread's uuid does not route
+	// (Decision #88), and the fixture corpus has no `cht-` refs.
+	const href = seed.kind !== "inquiry" && eventId
 		? `/calendar?event=${eventId}`
 		: seed.kind === "pipeline_project"
 		? "/projects/prj-fixture01"
@@ -222,7 +222,6 @@ export function fixtureClient(
 		e.client.handle === handle
 	);
 	if (mine.length === 0) return null;
-	const inquiry = mine.find((e) => e.kind === "inquiry");
 	const reschedules: ClientReschedule[] = mine
 		.filter((e) => e.actionReasons.includes("reschedule_open") && e.nextEventAt)
 		.map((e) => {
@@ -292,7 +291,8 @@ export function fixtureClient(
 		});
 	return {
 		...summarise(mine, display, null),
-		threadId: inquiry ? inquiry.id.slice("inquiry-".length) : null,
+		// The fixture corpus has no thread rows, so the drawer opens the pair's `dm-<handle>`.
+		threadRef: null,
 		reschedules,
 	};
 }

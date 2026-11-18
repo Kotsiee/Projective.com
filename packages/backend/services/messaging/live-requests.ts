@@ -1,6 +1,7 @@
 import { type InboxFolder, InboxFolder as InboxFolderSchema } from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { commsClient } from "./live-queries.ts";
+import { threadRefOf } from "./live-threads.ts";
 
 /**
  * live-requests — posting a hiring request's opening message (an invitation's intro, an
@@ -13,6 +14,8 @@ import { commsClient } from "./live-queries.ts";
 /** What posting a request message did. */
 export interface RequestPosted {
 	threadId: string;
+	/** The thread's `cht-` address, which a link to it names (Decision #339 ruling N1); null unread. */
+	threadRef: string | null;
 	messageId: string;
 	/** The request opened the thread (it was new, empty, or restored for the recipient). */
 	opened: boolean;
@@ -42,8 +45,11 @@ export async function postRequestMessage(
 	if (!row.thread_id || !row.message_id) {
 		throw new Error("comms.send_request_message returned no thread");
 	}
+	// The message is committed; a failed address read costs the link, never the request.
+	const threadRef = await threadRefOf(actor, row.thread_id).catch(() => null);
 	return {
 		threadId: row.thread_id,
+		threadRef,
 		messageId: row.message_id,
 		opened: row.opened === true,
 		routedTo: InboxFolderSchema.safeParse(row.routed_to).data ?? null,

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { EventRescheduleSchema } from "../scheduling/coordination.ts";
 import { CalendarEventSchema } from "../scheduling/scheduling.ts";
+import { ThreadRefSchema } from "../messaging/send.ts";
 import { ClientKey } from "./url.ts";
 
 /**
@@ -209,10 +210,11 @@ export type ClientReschedule = z.infer<typeof ClientRescheduleSchema>;
 /** The client drawer: one buyer, their engagements in scope, the inline thread and open rounds. */
 export const ClientDetailSchema = ClientSummarySchema.extend({
 	/**
-	 * The seller's one DM thread with the buyer (unified messaging keeps one per pair), `null` until
-	 * either of them writes; the drawer then opens `/messages/dm-<handle>`, which mints it.
+	 * The seller's one DM thread with the buyer (unified messaging keeps one per pair), by its `cht-`
+	 * address (Decision #339 ruling N1), `null` until either of them writes; the drawer then opens
+	 * `/messages/dm-<handle>`, whose first message mints it.
 	 */
-	threadId: z.string().uuid().nullable(),
+	threadRef: ThreadRefSchema.nullable(),
 	reschedules: z.array(ClientRescheduleSchema).max(20),
 });
 export type ClientDetail = z.infer<typeof ClientDetailSchema>;

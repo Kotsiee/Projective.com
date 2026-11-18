@@ -1,6 +1,6 @@
 import type { UserContext } from "@projective/types/auth";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
-import { CONVERSATION_PICTURE_FALLBACK_URL } from "@projective/types/messaging";
+import { CONVERSATION_PICTURE_FALLBACK_URL, dmHandleOf } from "@projective/types/messaging";
 import type {
 	ConversationKind,
 	ConversationRelation,
@@ -19,9 +19,39 @@ import type {
 /** The inbox root. */
 export const MESSAGES_ROOT = "/messages";
 
-/** The route for a conversation: `/messages/{conversationId}`. */
+/**
+ * The route for a conversation: `/messages/{address}` — its `cht-` ref, or the `dm-{handle}` of a pair
+ * (which 303s to the pair's thread once there is one). A uuid does not route (Decision #88).
+ */
 export function conversationHref(id: string): string {
 	return `${MESSAGES_ROOT}/${encodeURIComponent(id)}`;
+}
+
+/**
+ * Where a page moves once a send created its conversation's thread: `/messages/dm-<handle>[/tab]`
+ * becomes `/messages/cht-…[/tab]` (Decision #339 ruling N1), so a reload, a copied link and the inbox's
+ * active row all name the thread. `null` when nothing moves: the send went to an address that was
+ * not a `dm-` (already the thread, or a fixture id), the answer carried no ref, or the page is not
+ * that conversation (a pop-out over another page).
+ */
+export function addressAfterSend(
+	pathname: string,
+	sentTo: string,
+	ref: string | null | undefined,
+): string | null {
+	if (!ref || ref === sentTo || !dmHandleOf(sentTo)) return null;
+	const base = conversationHref(sentTo);
+	if (pathname !== base && !pathname.startsWith(`${base}/`)) return null;
+	return `${conversationHref(ref)}${pathname.slice(base.length)}`;
+}
+
+/**
+ * Where a `/messages/{address}[/tab]` request is sent when its address moved — a `dm-<handle>` whose
+ * pair has a thread, to that thread's `location` (`/messages/cht-…`) — keeping the tab and the query.
+ */
+export function movedConversationHref(url: URL, location: string): string {
+	const rest = url.pathname.split("/").filter(Boolean).slice(2);
+	return `${location}${rest.length > 0 ? `/${rest.join("/")}` : ""}${url.search}`;
 }
 // #endregion
 

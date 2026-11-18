@@ -1503,8 +1503,7 @@ context without "ping fatigue."
   three or more people, or one created with a name. One send path writes every message, a thread is
   addressed by its own opaque `cht-…` slug (`/messages/dm-<handle>` answers 303 to it), and a DM
   sent inside a project is stamped with that project so the project shows the same thread the inbox
-  does; the two message stores stay separate (Decision #339, ruling N1). **Not built yet:** today
-  the unified thread exists only in the fixtures, and a project does not draw its DMs.
+  does; the two message stores stay separate (Decision #339, ruling N1).
 - **Creating one:** from the `/messages` root (the empty state's _New message_ / _New group_), the
   inbox lane, or a listing/profile. One pick starts (or reopens) the pair's DM; several picks —
   or a named pick — start a group. An optional opening message is posted **in the same act**, so
@@ -4340,7 +4339,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/catalogue/[listing slug]` | `edit`                 | One listing's workspace — the Edit tab (basics, media showcase, SEO and reach, with the live feed card and the publish checklist beside it), then Preview, Analytics and Clients. Autosaves; the footer holds the save status, the publish gate and the lifecycle actions (Decision #304) |
 |               | `/catalogue/[listing slug]/simulate` | `simulate`    | The owner's buyer simulation (Decision #217(j)) — the real listing page, framed by the Preview tab with no shell; every buyer action shows what would happen and nothing is booked or charged. Owner only; anyone else gets a 404 |
 |               | `/messages`               | `index`                  | The inbox with no conversation open — the conversation list is the lane                        |
-|               | `/messages/[conversation]` | `index`                  | The conversation's Chat. A conversation is addressed by its opaque `cht-…` slug, and `/messages/dm-<handle>` answers 303 to the conversation with that person (Decision #339, ruling N1; **Not built yet** for the `cht-` slug) |
+|               | `/messages/[conversation]` | `index`                  | The conversation's Chat. A conversation is addressed by its opaque `cht-…` slug, and `/messages/dm-<handle>` answers 303 to the conversation with that person (Decision #339, ruling N1) |
 |               |                           | `files`                  | The files shared in the conversation                                                           |
 |               |                           | `members`                | The conversation's members                                                                     |
 |               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |

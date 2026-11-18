@@ -9,6 +9,7 @@ import {
 	type ConversationRelation,
 	type ConversationSummary,
 	InboxFolder,
+	InboxTailRowSchema,
 } from "@projective/types/messaging";
 import {
 	type ChatMessage,
@@ -42,21 +43,20 @@ import { replyFromRow } from "../projects/message-replies.ts";
  *    into it truncated `timestamptz` to milliseconds and silently skipped every message sharing the
  *    boundary millisecond.
  *
- * 3. **`dm_threads` carries almost nothing `ConversationSummary` needs.** No `updated_at`, no
- *    `last_message_at`, no `message_count`, no `preview`, and no column anywhere for `relation`,
- *    `productId`/`productName` or `entityId`/`entityName`. The activity timestamp, the preview and
- *    the count are all aggregates over `dm_messages`; the rest are returned as their neutral values
- *    rather than being invented. See {@link toConversationSummary}.
+ * 3. **`dm_threads` carries only its newest message.** The thread summary (`last_message_at`,
+ *    `last_message_id`, moved by `comms.tg_dm_thread_summary`) dates the thread; the preview comes
+ *    from `comms.inbox_tails`, which reads every listed thread's newest message in ONE round trip
+ *    (RED D-04). There is no `message_count`, and no column anywhere for `relation`,
+ *    `productId`/`productName` or `entityId`/`entityName`; those are returned as their neutral
+ *    values rather than being invented. See {@link toConversationSummary}.
  *
- * ## The unified-chatId contract does not survive the trip to Postgres
+ * ## A conversation is addressed by its `cht-` ref
  *
- * `ConversationSummary.id` and a project channel's `chatId` must be the SAME string for a DM opened
- * inside a project and from the inbox to be one continuous record (Decisions #21/#22/#49). The
- * fixtures achieve that by minting `dm-{handle}` on both sides. Live, `comms.dm_threads.id` is a v4
- * uuid and `comms.project_channels` has no `chatId` column at all, so the two cannot agree. This
- * module returns the thread's real uuid — the honest answer for a row that exists — and the
- * reconciliation is flagged for a human rather than papered over with a synthesised `dm-{username}`
- * that would not round-trip to a primary key.
+ * `ConversationSummary.id` is the thread's `cht-…` ref (`comms.dm_threads.ref`, Decision #339 ruling
+ * N1), the opaque address every `/messages` route, link and per-conversation API call names it by —
+ * the project's Private Messages group included, whose `chatId` is the same ref, so a DM opened inside
+ * a project and from the inbox are one record. The thread's uuid stays an internal key: it never
+ * routes (Decision #88).
  */
 
 // #region Constants
@@ -110,10 +110,18 @@ interface ThreadRow {
 	owner_entity_id?: string | null;
 	/** An entity channel's name (`general`); null on every other kind. */
 	slug?: string | null;
+	/** The conversation's `cht-` address (Decision #339 ruling N1) — what `ConversationSummary.id` is. */
+	ref: string;
+	/** The thread summary: its newest message, both null while it holds none. */
+	last_message_at?: string | null;
+	last_message_id?: string | null;
 }
 
 const THREAD_COLUMNS =
-	"id, kind, title, photo_file_id, created_by_user_id, created_at, owner_type, owner_entity_id, slug";
+	"id, ref, kind, title, photo_file_id, created_by_user_id, created_at, owner_type, owner_entity_id, slug, last_message_at, last_message_id";
+
+/** `comms.inbox_tails` reads the first 200 ids it is given (00001300); a longer list is chunked. */
+const INBOX_TAILS_MAX_IDS = 200;
 
 /** One `comms.dm_participants` row — where all per-viewer conversation state lives. */
 interface ParticipantRow {
@@ -146,9 +154,9 @@ interface RosterRow {
 /**
  * One `comms.dm_messages` row as the inbox TAIL reads it — the preview and the count, never a bubble.
  *
- * Kept narrower than {@link DmMessageRow} on purpose: the tail reads up to `THREAD_COUNT_CAP` rows per
- * thread on every inbox render, and a Delta is the one column on the row that can be larger than the
- * body itself, for a preview that renders plain text either way.
+ * Kept narrower than {@link DmMessageRow} on purpose: it is the shape `comms.inbox_tails` answers on
+ * every inbox render, and a Delta is the one column on the row that can be larger than the body
+ * itself, for a preview that renders plain text either way.
  */
 export interface DmTailRow {
 	id: string;
@@ -339,7 +347,7 @@ export interface ConversationContext {
 	parties: Map<string, PartyRow>;
 	/** The newest non-deleted message, if any. */
 	last: DmTailRow | undefined;
-	/** How many non-deleted messages the thread holds — the visibility gate. */
+	/** A floor on the non-deleted messages the thread holds (1 once it has one) — the visibility gate. */
 	messageCount: number;
 	/** Wall clock for the activity label. */
 	now: number;
@@ -392,7 +400,9 @@ export function toConversationSummary(
 	const folder = InboxFolder.safeParse(ctx.viewer?.inbox_folder).data ?? "primary";
 
 	return {
-		id: row.id,
+		// The address, never the row id: a uuid does not route (Decision #88).
+		id: row.ref,
+		ref: row.ref,
 		kind,
 		// An entity channel's one relationship is to its owner; every other thread stays neutral.
 		relation: (channel && row.owner_type === "business"
@@ -418,6 +428,8 @@ export function toConversationSummary(
 		lastActivityLabel: activityLabel(lastAt, ctx.now),
 		lastActivityShort: compactActivityLabel(lastAt, ctx.now),
 		updatedAt: lastAt,
+		lastMessageAt: row.last_message_at ?? null,
+		lastMessageId: row.last_message_id ?? null,
 		// NULL `last_read_at` means never opened, which is deliberately distinct from "opened and read
 		// nothing" — so a thread with any message in it is unread until the watermark exists. The
 		// watermark moves when the viewer opens it (`comms.mark_dm_read`); a latest message of their
@@ -446,24 +458,21 @@ export function toConversationSummary(
 /**
  * Every conversation the viewer participates in, mapped to the inbox projection.
  *
- * The shape of this is dictated by what `dm_threads` does not carry. There is no activity
- * timestamp, no message count and no preview on the thread, so the read is:
+ * The read is four requests, whatever the number of threads (RED D-04):
  *
  *   1. the viewer's own `dm_participants` rows (which is also the membership filter),
- *   2. the threads they name,
+ *   2. the threads they name, with their `cht-` refs and summaries,
  *   3. the identity-only roster for those threads (`comms.dm_thread_roster`),
- *   4. a bounded tail PER THREAD, folded into that thread's count + newest message.
+ *   4. every thread's newest message, through ONE `comms.inbox_tails(ids, 1)` call.
  *
- * Step 4 is the honest cost of the schema: with no `message_count` and no `last_message_at` there is
- * no way to order or gate the list without touching the message rows. It is one request per thread,
- * issued together — deliberately not one global window, because a window ordered ACROSS threads is
- * filled by whichever conversations are busiest and reports zero for the rest, which the visibility
- * rule then deletes from the inbox. A `last_message_at` column maintained by a trigger is the real
- * fix, and it is a migration rather than a query.
+ * Steps 2–4 run together. Step 4 used to be one request per thread — deliberately not one global
+ * window, because a window ordered ACROSS threads is filled by whichever conversations are busiest
+ * and reports zero for the rest. `inbox_tails` takes each thread's own newest row (a LATERAL per
+ * thread, through `dm_threads.last_message_id`), so it has neither cost. It reads the first 200 ids it
+ * is given, so a longer inbox is read in 200-id chunks, side by side.
  *
- * Deleted rows are excluded explicitly. Nothing in the schema does it for you — there is no view
- * that hides them and no partial index — so a missing `.is("deleted_at", null)` silently resurrects
- * soft-deleted messages into a preview.
+ * Deleted messages never reach a preview: `inbox_tails` skips them, falling back to the thread's
+ * newest undeleted message when its summary points at one that was deleted since.
  */
 export async function fetchConversations(
 	actor: ReadActor & { accessToken: string },
@@ -494,22 +503,25 @@ export async function fetchConversations(
 type ParticipationScope = "inbox" | "any";
 
 /**
- * Every thread the viewer participates in, mapped to the inbox projection, with NO visibility rule —
- * plus the ids whose message tail could not be read. {@link fetchConversations} gates the inbox list
- * on it; {@link fetchConversation} deliberately does not (see there).
+ * Every thread the viewer participates in — or the ONE thread `only` names — mapped to the inbox
+ * projection, with NO visibility rule, plus the refs whose preview could not be read.
+ * {@link fetchConversations} gates the inbox list on it; {@link fetchConversation} deliberately does
+ * not (see there).
  */
 async function fetchParticipatingConversations(
 	actor: ReadActor & { accessToken: string },
 	now: number,
 	scope: ParticipationScope,
+	only?: string,
 ): Promise<
 	{ summaries: ConversationSummary[]; unmeasured: Set<string>; startedByViewer: Set<string> }
 > {
 	const db = commsClient(actor);
 
 	// The inbox filters on the thread's kind in the same request (an inner embed), so a member of many
-	// channels pays no per-channel tail read for rows it would then drop.
-	const participation = scope === "inbox"
+	// channels pays no tail read for rows it would then drop. A single-thread read narrows to the
+	// viewer's one participant row (RED D-05).
+	let participation = scope === "inbox"
 		? db.from("dm_participants")
 			.select(`${PARTICIPANT_COLUMNS}, dm_threads!inner(kind)`)
 			.eq("user_id", actor.userId)
@@ -519,6 +531,7 @@ async function fetchParticipatingConversations(
 			.select(PARTICIPANT_COLUMNS)
 			.eq("user_id", actor.userId)
 			.is("deleted_at", null);
+	if (only) participation = participation.eq("thread_id", only);
 	const { data: mine, error: mineErr } = await participation;
 
 	if (mineErr) throw new Error(`comms.dm_participants read failed: ${mineErr.message}`);
@@ -529,7 +542,7 @@ async function fetchParticipatingConversations(
 
 	const threadIds = viewerRows.map((r) => r.thread_id);
 
-	const [threadsRes, rosterRes, tailRes] = await Promise.all([
+	const [threadsRes, rosterRes, tails] = await Promise.all([
 		db.from("dm_threads")
 			.select(THREAD_COLUMNS)
 			.in("id", threadIds),
@@ -537,12 +550,7 @@ async function fetchParticipatingConversations(
 		// co-participant's private state (`is_muted`, `is_archived`, `deleted_at`, `last_read_at`)
 		// cannot be read; this definer function answers the roster question without it.
 		db.rpc("dm_thread_roster", { p_thread_ids: threadIds }),
-		// One bounded tail PER THREAD, not one global window. A single
-		// `.in(threadIds).order(created_at desc).limit(N)` is ordered ACROSS threads, so a handful of
-		// busy conversations fill the window and every quieter thread comes back with zero rows —
-		// which this function then reads as `messageCount: 0` and the visibility rule removes from the
-		// inbox entirely. The user would open `/messages` and see three of their forty conversations.
-		Promise.all(threadIds.map((id) => fetchThreadTail(db, id))),
+		fetchInboxTails(db, threadIds),
 	]);
 
 	if (threadsRes.error) {
@@ -560,16 +568,6 @@ async function fetchParticipatingConversations(
 		others.set(row.thread_id, list);
 	}
 
-	const newest = new Map<string, DmTailRow>();
-	const counts = new Map<string, number>();
-	const unmeasured = new Set<string>();
-	for (const tail of tailRes) {
-		if (!tail) continue;
-		if (tail.newest) newest.set(tail.threadId, tail.newest);
-		counts.set(tail.threadId, tail.count);
-		if (!tail.measured) unmeasured.add(tail.threadId);
-	}
-
 	const viewerByThread = new Map(viewerRows.map((r) => [r.thread_id, r]));
 	const [parties, photos] = await Promise.all([
 		fetchParties(actor, [...others.values()].flat()),
@@ -577,22 +575,73 @@ async function fetchParticipatingConversations(
 		fetchPublicMedia(getUserClient(actor.accessToken), threads.map((t) => t.photo_file_id)),
 	]);
 
-	const summaries = threads.map((row) =>
-		toConversationSummary(row, {
+	const summaries = threads.map((row) => {
+		const last = tails.newest.get(row.id);
+		return toConversationSummary(row, {
 			viewer: viewerByThread.get(row.id),
 			otherIds: others.get(row.id) ?? [],
 			parties,
-			last: newest.get(row.id),
-			messageCount: counts.get(row.id) ?? 0,
+			last,
+			// A floor, not a count: the gate needs only "does it hold a message", and no reader renders
+			// the number. A thread whose preview could not be read is unmeasured, never empty.
+			messageCount: last ? 1 : 0,
 			now,
 			viewerId: actor.userId,
 			photoUrl: row.photo_file_id ? mediaUrl(photos.get(row.photo_file_id), "sm") : null,
-		})
+		});
+	});
+	const unmeasured = new Set(
+		threads.filter((t) => tails.unmeasured.has(t.id)).map((t) => t.ref),
 	);
 	const startedByViewer = new Set(
-		threads.filter((t) => t.created_by_user_id === actor.userId).map((t) => t.id),
+		threads.filter((t) => t.created_by_user_id === actor.userId).map((t) => t.ref),
 	);
 	return { summaries, unmeasured, startedByViewer };
+}
+
+/** Every listed thread's newest undeleted message, and the threads whose preview could not be read. */
+interface InboxTails {
+	newest: Map<string, DmTailRow>;
+	/**
+	 * Threads whose read FAILED, as distinct from threads with no message. The two must not be
+	 * conflated, because the visibility rule deletes a conversation that holds nothing: a thread we
+	 * failed to read is not an empty thread, and hiding it would make a transient broker error look
+	 * exactly like a conversation the user never had.
+	 */
+	unmeasured: Set<string>;
+}
+
+/**
+ * The previews of `threadIds` through `comms.inbox_tails(ids, 1)` — one call for up to 200 threads,
+ * and 200-id chunks side by side beyond that. SECURITY INVOKER, so RLS on `dm_threads` /
+ * `dm_messages` is the guard. A failed chunk costs its threads their previews, never their place in
+ * the inbox: they come back unmeasured.
+ */
+async function fetchInboxTails(
+	db: SupabaseClient,
+	threadIds: readonly string[],
+): Promise<InboxTails> {
+	const newest = new Map<string, DmTailRow>();
+	const unmeasured = new Set<string>();
+	const chunks: string[][] = [];
+	for (let i = 0; i < threadIds.length; i += INBOX_TAILS_MAX_IDS) {
+		chunks.push(threadIds.slice(i, i + INBOX_TAILS_MAX_IDS));
+	}
+	const answers = await Promise.all(
+		chunks.map((ids) => db.rpc("inbox_tails", { p_thread_ids: ids, p_k: 1 })),
+	);
+	answers.forEach((answer, index) => {
+		if (answer.error) {
+			for (const id of chunks[index]) unmeasured.add(id);
+			return;
+		}
+		for (const raw of (answer.data ?? []) as unknown[]) {
+			const parsed = InboxTailRowSchema.safeParse(raw);
+			if (!parsed.success || newest.has(parsed.data.thread_id)) continue;
+			newest.set(parsed.data.thread_id, { ...parsed.data, deleted_at: null });
+		}
+	});
+	return { newest, unmeasured };
 }
 
 /**
@@ -837,65 +886,16 @@ export function toMessagePage(
 }
 
 /**
- * How many messages of ONE thread are counted before `messageCount` becomes a floor.
- *
- * The count exists to drive the visibility rule (`> 0`) and nothing else renders it, so an exact
- * total on a ten-thousand-message thread would be paid for on every inbox render and read by nobody.
- * What matters is that the bound is PER THREAD: the previous global cap meant a few busy
- * conversations could consume the entire window and every quieter thread reported zero, which the
- * visibility rule then removed from the inbox altogether.
- */
-const THREAD_COUNT_CAP = 200;
-
-/** A thread's newest message and how many it holds (up to {@link THREAD_COUNT_CAP}). */
-interface ThreadTail {
-	threadId: string;
-	newest: DmTailRow | undefined;
-	count: number;
-	/**
-	 * Whether the count is a MEASUREMENT or merely the absence of one.
-	 *
-	 * The two must not be conflated, because the visibility rule deletes a conversation whose count is
-	 * zero. A thread we failed to read is not an empty thread, and hiding it would make a transient
-	 * broker error look exactly like a conversation the user never had.
-	 */
-	measured: boolean;
-}
-
-/**
- * Read one thread's newest message and a bounded count.
- *
- * `head: true` with `count: "exact"` would give a true total in one round trip, but PostgREST
- * returns it in a `Content-Range` header that supabase-js surfaces only as `count` — and it is a
- * second query either way. Taking a bounded page and measuring it keeps the newest row and the
- * count in ONE request per thread, which is what the inbox actually needs.
- */
-async function fetchThreadTail(db: SupabaseClient, threadId: string): Promise<ThreadTail> {
-	const { data, error } = await db
-		.from("dm_messages")
-		.select(DM_TAIL_COLUMNS)
-		.eq("thread_id", threadId)
-		.is("deleted_at", null)
-		.order("created_at", { ascending: false })
-		.order("id", { ascending: false })
-		.limit(THREAD_COUNT_CAP);
-
-	// A per-thread failure costs that thread's PREVIEW, not its existence: the other threads resolved
-	// fine, and `measured: false` keeps the visibility rule from mistaking an unread count for an
-	// empty conversation.
-	if (error) return { threadId, newest: undefined, count: 0, measured: false };
-	const rows = (data ?? []) as unknown as DmTailRow[];
-	return { threadId, newest: rows[0], count: rows.length, measured: true };
-}
-
-/**
  * One conversation by thread id, or `null` when the viewer is not a participant.
+ *
+ * It reads the viewer's ONE participant row for the thread, then the thread, its roster and
+ * `inbox_tails([thread])` — never the whole inbox's fan-out to keep one row of it (RED D-05).
  *
  * Membership is the ONLY gate here — never the inbox's visibility rule. That rule decides what a
  * LIST shows (a thread nobody has written in stays out of the inbox), but a thread the viewer is in
  * and addresses directly exists whether or not it has a message yet. Gating this read on it made a
  * conversation started from the picker (which opens the thread with no message, then navigates to
- * its uuid) answer "Conversation not found" on its own page, its context panel 404, and the first
+ * its address) answer "Conversation not found" on its own page, its context panel 404, and the first
  * message impossible to send from the view the create had just opened.
  */
 export async function fetchConversation(
@@ -903,8 +903,8 @@ export async function fetchConversation(
 	threadId: string,
 	now: number,
 ): Promise<ConversationSummary | null> {
-	const { summaries } = await fetchParticipatingConversations(actor, now, "any");
-	return summaries.find((c) => c.id === threadId) ?? null;
+	const { summaries } = await fetchParticipatingConversations(actor, now, "any", threadId);
+	return summaries[0] ?? null;
 }
 
 /**

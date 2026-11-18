@@ -6,6 +6,7 @@ import {
 	type SavedState,
 	type SavedToggle,
 } from "@projective/types/org";
+import { conversationPath } from "@projective/types/messaging";
 import type { ProfileKind } from "@projective/types/profile";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
@@ -298,17 +299,19 @@ export async function readSavedRows(
 	}
 	if (want.has("conversation")) {
 		reads.push((async () => {
+			// Keyed by the thread's `cht-` ref, the address the inbox routes it by (Decision #339 ruling
+			// N1) — never its uuid, which does not route (Decision #88).
 			const { data, error } = await db(actor, "comms").from("dm_participants")
-				.select("thread_id, starred_at").eq("user_id", actor.userId).eq("is_starred", true).is(
-					"deleted_at",
-					null,
-				)
+				.select("thread_id, starred_at, dm_threads!inner(ref)").eq("user_id", actor.userId)
+				.eq("is_starred", true).is("deleted_at", null)
 				.limit(STORE_CAP);
 			if (error) throw new Error(`comms.dm_participants read failed: ${error.message}`);
-			return ((data ?? []) as { thread_id: string; starred_at: string | null }[]).map((r) => ({
-				...bare("conversation", r.thread_id),
-				savedAt: r.starred_at,
-			}));
+			type Row = { starred_at: string | null; dm_threads: { ref?: string } | null };
+			return ((data ?? []) as unknown as Row[]).flatMap((r) =>
+				r.dm_threads?.ref
+					? [{ ...bare("conversation", r.dm_threads.ref), savedAt: r.starred_at }]
+					: []
+			);
 		})());
 	}
 	if (want.has("message")) {
@@ -539,7 +542,7 @@ async function resolveConversations(actor: Actor, rows: SavedRow[], out: Resolve
 			title: c.title,
 			meta: c.lastActivityLabel ? `Conversation · ${c.lastActivityLabel}` : "Conversation",
 			thumbnail: c.avatar,
-			href: `/messages/${encodeURIComponent(c.id)}`,
+			href: conversationPath(c.id),
 		});
 	}
 }
@@ -550,8 +553,10 @@ async function resolveMessages(actor: Actor, rows: SavedRow[], out: Resolved): P
 	const dmIds = ids("comms.dm_messages");
 	const roomIds = ids("comms.project_messages");
 	const [dm, room] = await Promise.all([
+		// A DM's link names its thread's `cht-` ref, read in the same request.
 		dmIds.length
-			? db(actor, "comms").from("dm_messages").select("id, thread_id, sender_user_id, body")
+			? db(actor, "comms").from("dm_messages")
+				.select("id, thread_id, sender_user_id, body, dm_threads!inner(ref)")
 				.in("id", dmIds).is("deleted_at", null)
 			: Promise.resolve({ data: [], error: null }),
 		roomIds.length
@@ -567,6 +572,7 @@ async function resolveMessages(actor: Actor, rows: SavedRow[], out: Resolved): P
 		channel_id?: string;
 		sender_user_id: string;
 		body: string | null;
+		dm_threads?: { ref?: string } | null;
 	};
 	const messages = [...(dm.data ?? []), ...(room.data ?? [])] as Msg[];
 	const [senders, places] = await Promise.all([
@@ -583,6 +589,8 @@ async function resolveMessages(actor: Actor, rows: SavedRow[], out: Resolved): P
 		const anchor = `?m=${encodeURIComponent(m.id)}`;
 		const place = m.channel_id ? places.get(m.channel_id) : undefined;
 		if (m.channel_id && !place) continue;
+		const thread = m.dm_threads?.ref;
+		if (!m.channel_id && !thread) continue;
 		out.set(row, {
 			ref: m.id,
 			title: snippet(m.body) || "Attachment",
@@ -590,7 +598,7 @@ async function resolveMessages(actor: Actor, rows: SavedRow[], out: Resolved): P
 			thumbnail: null,
 			href: place
 				? `/projects/${place.project.slug}/${place.segment}/chat${anchor}`
-				: `/messages/${encodeURIComponent(m.thread_id!)}${anchor}`,
+				: conversationPath(thread!, m.id),
 		});
 	}
 }

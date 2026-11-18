@@ -29,7 +29,7 @@ import {
 	type SlotQuery,
 } from "@projective/types/scheduling";
 import type { AddBasketItem, PurchasableItemKind } from "@projective/types/finance";
-import type { CreateConversation } from "@projective/types/messaging";
+import { conversationPath, type CreateConversation } from "@projective/types/messaging";
 import type { EntityView, ExploreItem } from "@projective/types/explore";
 import { resolveListing } from "../explore/listing-source.ts";
 import type { Catalog } from "../explore/live-catalog.ts";
@@ -1323,7 +1323,8 @@ async function askQuestion(
 			kind: "ask_question",
 			referenceId: created.data.id,
 			confirmation: "Message sent.",
-			navigateTo: `/messages/${created.data.id}`,
+			// The conversation's `cht-` address (its fixture id on the fixture backend), never a uuid.
+			navigateTo: conversationPath(created.data.id),
 		},
 	}, { status: 201 });
 }

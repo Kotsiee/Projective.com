@@ -136,12 +136,13 @@ Deno.test("a room's message link names the message in the query, by slug only", 
 	assertEquals(channelMessageHref(ROOM_UUID, ROOM_UUID, "m-1"), null);
 });
 
-Deno.test("a conversation's message link is the inbox route, never a project path", () => {
+Deno.test("a conversation's message link is the inbox route by its address, never a uuid", () => {
 	assertEquals(
-		conversationMessageHref(ROOM_UUID, "m-1"),
-		`/messages/${ROOM_UUID}?m=m-1`,
+		conversationMessageHref("cht-2345678abc", "m-1"),
+		"/messages/cht-2345678abc?m=m-1",
 	);
 	assertEquals(conversationMessageHref("dm-mara", "m-1"), "/messages/dm-mara?m=m-1");
+	assertEquals(conversationMessageHref(ROOM_UUID, "m-1"), null);
 });
 
 Deno.test("the anchor is read from ?m=, else a legacy #m- fragment", () => {

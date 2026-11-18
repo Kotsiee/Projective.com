@@ -3,15 +3,16 @@ import type {
 	ConversationKind,
 	ConversationMembersAdded,
 	CreateConversation,
-	CreatedConversation,
 } from "@projective/types/messaging";
 import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
+import { isSlug } from "@projective/types/slugs";
 import type { ReadActor } from "../read-actor.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
 import { UUID_RE } from "../projects/live-support.ts";
 import { commsClient, orgClient } from "./live-queries.ts";
 import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
-import { insertDmMessage, openedThreadId } from "./live-writes.ts";
+import { openedThread } from "./live-writes.ts";
+import { type LiveThread, threadByRef, threadRefOf } from "./live-threads.ts";
 
 /**
  * live-conversation-writes — the RLS-scoped Postgres WRITE path for STARTING a conversation and for
@@ -38,9 +39,11 @@ import { insertDmMessage, openedThreadId } from "./live-writes.ts";
  * ## A DM is one thread per pair, and an opening message is part of the create
  *
  * One person → the pair's thread, reopened if it exists (the `created` flag says which). Several,
- * or a named group → a new group thread. If the caller sent an opening message it is posted through
- * `insertDmMessage` in the same call, so the "Message seller" inquiry and the share modal's
- * "Send to…" never leave an empty thread behind a question that failed to land (Decision #79).
+ * or a named group → a new group thread. The answer carries the thread's `cht-` address, which every
+ * `/messages` route addresses it by (Decision #339 ruling N1). An opening message is posted by
+ * `MessagingBackendService.createConversation` through the one send door in the same request, so the
+ * "Message seller" inquiry and the share modal's "Send to…" never leave an empty thread behind a
+ * question that failed to land (Decision #79).
  */
 
 // #region Resolution
@@ -81,11 +84,12 @@ async function resolveMemberIds(actor: Actor, contactIds: readonly string[]): Pr
 }
 
 /**
- * The thread a conversation id addresses: a uuid as-is, a unified `dm-{handle}` through the
- * person it names (minting the pair's thread if needed), anything else → nothing.
+ * The thread a conversation address names: a `cht-` ref the caller is in, a unified `dm-{handle}`
+ * through the person it names (minting the pair's thread if needed), anything else — a uuid
+ * included (Decision #88) — nothing.
  */
-async function resolveThreadId(actor: Actor, conversationId: string): Promise<string | null> {
-	if (UUID_RE.test(conversationId)) return conversationId;
+async function resolveThread(actor: Actor, conversationId: string): Promise<LiveThread | null> {
+	if (isSlug(conversationId, "thread")) return await threadByRef(actor, conversationId);
 	const handle = dmHandleOf(conversationId);
 	if (!handle) return null;
 	const [target] = await resolveMemberIds(actor, [handle]);
@@ -96,7 +100,7 @@ async function resolveThreadId(actor: Actor, conversationId: string): Promise<st
 	if (thread.error) {
 		throw new Error(`comms.get_or_create_dm_thread failed: ${thread.error.message}`);
 	}
-	return openedThreadId(thread.data);
+	return openedThread(thread.data);
 }
 
 /**
@@ -147,24 +151,29 @@ export function dmThreadArgs(
 		: { target_user_id: targetUserId };
 }
 
+/** A conversation {@link createLiveConversation} opened (or reopened), before any message is posted. */
+export interface OpenedConversation {
+	thread: LiveThread;
+	kind: ConversationKind;
+	/** Whether this request minted the thread rather than finding the pair's existing one. */
+	created: boolean;
+}
+
 /**
- * Start a conversation. Returns `null` only when the ids resolve to nobody at all — the caller
- * maps that to a 404-shaped "no such person", which is what a picker id that names no row is.
+ * Start a conversation — the thread only; its opening message is the caller's to post through the
+ * send door. Returns `null` only when the ids resolve to nobody at all — the caller maps that to a
+ * 404-shaped "no such person", which is what a picker id that names no row is.
  */
 export async function createLiveConversation(
 	actor: Actor,
 	input: CreateConversation,
 	now: number = Date.now(),
-): Promise<WriteOutcome<CreatedConversation>> {
+): Promise<WriteOutcome<OpenedConversation>> {
 	const members = await resolveMemberIds(actor, input.contactIds);
 	if (members.length === 0) return null;
 
 	const db = commsClient(actor);
 	const wantsGroup = members.length > 1 || (input.groupName ?? "").trim().length > 0;
-
-	let threadId: string;
-	let kind: ConversationKind;
-	let created: boolean;
 
 	if (wantsGroup) {
 		const res = await db.rpc("create_group_thread", {
@@ -176,67 +185,54 @@ export async function createLiveConversation(
 		if (typeof id !== "string" || !UUID_RE.test(id)) {
 			return { refusal: refusalFrom("create_group_thread returned no id", "contactIds") };
 		}
-		threadId = id;
-		kind = "group";
-		created = true;
-	} else {
-		const before = now;
-		let res = await db.rpc("get_or_create_dm_thread", dmThreadArgs(members[0], input));
-		// A listing that stopped selling between the page and the press must not cost the question:
-		// the pair's thread opens without the subject instead.
-		if (res.error?.code === "22023" && input.subjectListingId) {
-			res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
+		// The RPC answers the row id; the address is the ref the guard minted on its insert.
+		const ref = await threadRefOf(actor, id);
+		if (!ref) {
+			return { refusal: refusalFrom("create_group_thread returned no thread", "contactIds") };
 		}
-		if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
-		const id = openedThreadId(res.data);
-		if (!id) {
-			return { refusal: refusalFrom("get_or_create_dm_thread returned no id", "contactIds") };
-		}
-		threadId = id;
-		kind = "dm";
-		// The RPC is silent about whether it minted or found the thread; a thread whose row was
-		// created at or after this request began is one this request created.
-		const row = await db.from("dm_threads").select("created_at, kind").eq("id", id).maybeSingle();
-		const createdAt = (row.data as { created_at?: string; kind?: string } | null)?.created_at;
-		created = !!createdAt && Date.parse(createdAt) >= before - 1_000;
-		const rowKind = (row.data as { kind?: string } | null)?.kind;
-		if (rowKind === "service_inquiry") kind = "service_inquiry";
+		return { data: { thread: { id, ref }, kind: "group", created: true } };
 	}
 
-	let messageAccepted = false;
-	const text = (input.message ?? "").trim();
-	const attachmentIds = input.attachmentIds ?? [];
-	const linkedFileIds = input.linkedFileIds ?? [];
-	if (text.length > 0 || attachmentIds.length + linkedFileIds.length > 0) {
-		const sent = await insertDmMessage(actor, {
-			conversationId: threadId,
-			text,
-			delta: null,
-			replyToId: null,
-			attachmentIds,
-			linkedFileIds,
-			audio: null,
-		}, now);
-		// A refused link share is the sender's to fix ("send a copy instead"), so it is reported in its
-		// own words; the thread exists either way.
-		if (sent && "refusal" in sent && sent.refusal.errors?.linkedFileIds) {
-			return { refusal: sent.refusal };
-		}
-		messageAccepted = !!sent && "data" in sent;
+	const before = now;
+	let res = await db.rpc("get_or_create_dm_thread", dmThreadArgs(members[0], input));
+	// A listing that stopped selling between the page and the press must not cost the question:
+	// the pair's thread opens without the subject instead.
+	if (res.error?.code === "22023" && input.subjectListingId) {
+		res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
 	}
-
-	return { data: { id: threadId, kind, created, messageAccepted } };
+	if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
+	const thread = openedThread(res.data);
+	if (!thread) {
+		return { refusal: refusalFrom("get_or_create_dm_thread returned no id", "contactIds") };
+	}
+	// The RPC is silent about whether it minted or found the thread; a thread whose row was
+	// created at or after this request began is one this request created.
+	const row = await db.from("dm_threads").select("created_at, kind").eq("id", thread.id)
+		.maybeSingle();
+	const createdAt = (row.data as { created_at?: string; kind?: string } | null)?.created_at;
+	const rowKind = (row.data as { kind?: string } | null)?.kind;
+	return {
+		data: {
+			thread,
+			kind: rowKind === "service_inquiry" ? "service_inquiry" : "dm",
+			created: !!createdAt && Date.parse(createdAt) >= before - 1_000,
+		},
+	};
 }
 // #endregion
 
 // #region Add members
-/** Add people to a conversation the caller is in. `null` when the conversation resolves to nothing. */
+/**
+ * Add people to a conversation the caller is in. `null` when the conversation resolves to nothing.
+ * The answer is addressed by the thread's `cht-` ref.
+ */
 export async function addLiveMembers(
 	actor: Actor,
 	input: AddConversationMembers,
 ): Promise<WriteOutcome<ConversationMembersAdded>> {
-	const threadId = await resolveThreadId(actor, input.conversationId);
-	if (!threadId) return null;
+	const thread = await resolveThread(actor, input.conversationId);
+	if (!thread) return null;
+	const threadId = thread.id;
 	const members = await resolveMemberIds(actor, input.contactIds);
 	if (members.length === 0) {
 		return {
@@ -262,6 +258,6 @@ export async function addLiveMembers(
 		? rowKind
 		: "dm";
 
-	return { data: { id: threadId, kind, added: Number.isFinite(added) ? added : 0 } };
+	return { data: { id: thread.ref, kind, added: Number.isFinite(added) ? added : 0 } };
 }
 // #endregion

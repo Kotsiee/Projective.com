@@ -32,7 +32,7 @@ export default define.page(async function ConversationChatPage(ctx) {
 	const { conversationId } = ctx.params;
 	const actor = readActor(ctx);
 	const [detail, page] = await Promise.all([
-		resolveConversation(conversationId, actor),
+		resolveConversation(ctx.url, conversationId, actor),
 		resolveConversationMessages(conversationId, actor),
 	]);
 	if (!detail) return <ConversationNotFound />;

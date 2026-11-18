@@ -77,9 +77,12 @@ export interface DispatchTarget {
 	actingOwnerId: () => Promise<string | null>;
 }
 
-/** The result of {@link dispatchDraft}: the stored row on success, a phrased failure otherwise. */
+/**
+ * The result of {@link dispatchDraft}: the stored row on success — with, for a conversation, its
+ * `cht-` ref when the server answered one — or a phrased failure otherwise.
+ */
 export type DispatchOutcome =
-	| { ok: true; message: unknown }
+	| { ok: true; message: unknown; ref: string | null }
 	| { ok: false; failure: SendFailure };
 // #endregion
 
@@ -229,10 +232,11 @@ export async function dispatchDraft(
 			peaks: memo.peaks,
 		}
 		: null;
-	// One payload, two doors. The conversation door is addressed by the conversation's own id (the
-	// `channelId` slot — a conversation mount passes it in both), the project door by the pair.
-	const res = scope === "conversation"
-		? await MessagingService.send({
+	// One payload, two routes to the one server door. The conversation route is addressed by the
+	// conversation's own id (the `channelId` slot — a conversation mount passes it in both), the
+	// project route by the pair.
+	if (scope === "conversation") {
+		const res = await MessagingService.send({
 			conversationId: channelId,
 			text: draft.text,
 			delta: draft.delta,
@@ -240,24 +244,29 @@ export async function dispatchDraft(
 			attachmentIds,
 			linkedFileIds,
 			audio,
-		})
-		: await MessagesService.send({
-			projectId,
-			channelId,
-			text: draft.text,
-			delta: draft.delta,
-			replyToId: draft.replyToId,
-			attachmentIds,
-			linkedFileIds,
-			audio,
 		});
-	if (res.ok) return { ok: true, message: res.data?.message ?? null };
+		if (res.ok) return { ok: true, message: res.data?.message ?? null, ref: res.data?.ref ?? null };
+		return { ok: false, failure: sendFailureOf(res.message) };
+	}
+	const res = await MessagesService.send({
+		projectId,
+		channelId,
+		text: draft.text,
+		delta: draft.delta,
+		replyToId: draft.replyToId,
+		attachmentIds,
+		linkedFileIds,
+		audio,
+	});
+	if (res.ok) return { ok: true, message: res.data?.message ?? null, ref: null };
+	return { ok: false, failure: sendFailureOf(res.message) };
+}
+
+/** A refused send, phrased for the inline notice. */
+function sendFailureOf(message: string | undefined): SendFailure {
 	return {
-		ok: false,
-		failure: {
-			title: res.message ?? "That message could not be sent.",
-			detail: "Nothing was cleared — press Send to try again.",
-		},
+		title: message ?? "That message could not be sent.",
+		detail: "Nothing was cleared — press Send to try again.",
 	};
 }
 // #endregion

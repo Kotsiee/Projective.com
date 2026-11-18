@@ -28,8 +28,10 @@ import {
  * addressed by its own `stg-…` slug — never by the id of the room it opens, which is a
  * `comms.project_channels` uuid that says nothing about what it addresses and is provisioned lazily,
  * so a link built from it cannot exist until somebody has already been there. Everything else carries
- * its own channel id (`general`, a team room's id, a DM's unified `dm-mara`). The prefix is what keeps
- * the two apart with no lookup: a stage slug is not a legal uuid and a uuid is not a legal slug.
+ * its own channel id (`general`, a team room's id). A Private Messages row carries its thread's `cht-…`
+ * ref (`/projects/{projectId}/cht-…`, Decision #339 ruling N1) — the address `/messages` opens the same
+ * thread by — and the fixtures' DM its unified `dm-mara`. The prefix is what keeps them apart with no
+ * lookup: a stage slug is not a legal uuid and a uuid is not a legal slug.
  */
 export function channelHref(projectId: string, channelId: string): string {
 	return `/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(channelId)}`;
@@ -127,8 +129,15 @@ export function channelMessageHref(
 	return `${channelHref(projectSlug, channelRef)}/chat?${query}`;
 }
 
-/** A deep link to a message in a conversation: `/messages/{conversationId}?m={messageId}`. */
-export function conversationMessageHref(conversationId: string, messageId: string): string {
+/**
+ * A deep link to a message in a conversation: `/messages/{address}?m={messageId}`, by the
+ * conversation's `cht-` ref (or a `dm-{handle}`, or a fixture id).
+ *
+ * `null` for a uuid: a conversation routes by its `cht-` ref, never its thread's database id
+ * (Decision #88; #339 ruling N1), exactly as {@link channelMessageHref} refuses one.
+ */
+export function conversationMessageHref(conversationId: string, messageId: string): string | null {
+	if (UUID.test(conversationId)) return null;
 	const query = new URLSearchParams({ [MESSAGE_ANCHOR_PARAM]: messageId });
 	return `/messages/${encodeURIComponent(conversationId)}?${query}`;
 }

@@ -1,4 +1,6 @@
+import { HttpError } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
+import { isSlug } from "@projective/types/slugs";
 import { readActor, type SessionContext } from "@web/utils/api-session.ts";
 import { resolveChannelMeta } from "./channel-view.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
@@ -19,6 +21,12 @@ import { withNoticeParam } from "./project-notice.ts";
  * General, the discussion, a stage, a team room, a DM), so the guard can never refuse a room the
  * header would have drawn. A project that resolves to nothing is left to the route's own miss path.
  *
+ * A `cht-` ref is a conversation seen through the project (Decision #339 ruling N1): it resolves only
+ * when it is one of the project's Private Messages — a thread the viewer is in that holds a message
+ * stamped with this project, which `comms.tg_bind_dm_project` allows only while every participant is
+ * a party to it. Any other thread address is a real 404 (the root error page), never the flash, so
+ * the project's address cannot be used to learn which conversations exist.
+ *
  * Kept out of `discussion-guard.ts` because `channel-view.ts` reaches `import.meta.env` through the dev
  * seam, and that module's unit tests run under `deno test`.
  */
@@ -37,6 +45,7 @@ export async function unknownRoomRedirect(
 		readActor(ctx),
 	);
 	if (!detail || resolveChannelMeta(detail, ref)) return null;
+	if (isSlug(ref, "thread")) throw new HttpError(404);
 
 	return seeOther(withNoticeParam(projectHref(slug), "room-not-found"));
 }

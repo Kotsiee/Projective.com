@@ -10,6 +10,7 @@ import {
 	senderOf,
 } from "../projects/live-support.ts";
 import { assetIdOf } from "@projective/types/files";
+import { conversationPath } from "@projective/types/messaging";
 import {
 	type AttachmentSource,
 	attachmentSourceExcerpt,
@@ -31,10 +32,11 @@ import { fmtDay, fmtTime } from "../files/asset-row.ts";
  * Every hop is a keyed `.in()` stitched in TypeScript — the link table's `message_id` has no foreign key
  * (it points at two parents), so PostgREST cannot embed through it.
  *
- * A project message's route uses the room's public address, never its uuid (Decision #88): a stage's
- * shared room is its `stg-…` slug, and the engagement's primary room is `discussion`. A private
- * talent/client room or a secondary project-wide room has no other address, so its room id is the
- * segment there — exactly what the channel tree links to.
+ * A message's route uses its conversation's public address, never a uuid (Decision #88): a DM's
+ * thread is its `cht-…` ref (Decision #339 ruling N1); a stage's shared room is its `stg-…` slug, and
+ * the engagement's primary room is `discussion`. A private talent/client room or a secondary
+ * project-wide room has no other address, so its room id is the segment there — exactly what the
+ * channel tree links to.
  */
 
 // #region Constants
@@ -76,6 +78,8 @@ interface ProjectMessageRow {
 
 interface ThreadRow {
 	id: string;
+	/** The thread's `cht-` address, which its messages' links name. */
+	ref: string;
 	kind: string | null;
 	title: string | null;
 }
@@ -93,9 +97,12 @@ export interface ChannelRow {
 
 // #region Pure helpers
 
-/** `/messages/<conversation>?m=<message>` — a conversation message's deep link. */
-export function dmMessageHref(conversationId: string, messageId: string): string {
-	return `/messages/${encodeURIComponent(conversationId)}?m=${encodeURIComponent(messageId)}`;
+/**
+ * `/messages/<conversation>?m=<message>` — a conversation message's deep link, by the conversation's
+ * address: its `cht-` ref live, its fixture id on the fixture backend. Never a thread's uuid.
+ */
+export function dmMessageHref(address: string, messageId: string): string {
+	return conversationPath(address, messageId);
 }
 
 /** `/projects/<prj-…>/<segment>/chat?m=<message>` — a project room message's deep link. */
@@ -180,10 +187,12 @@ async function dmSources(
 	const threadIds = [...new Set(rows.map((row) => row.thread_id))];
 	const threads = new Map<string, ThreadRow>();
 	if (threadIds.length === 0) return { rows, threads };
-	const threadRead = await db.from("dm_threads").select("id, kind, title").in("id", threadIds);
-	if (!threadRead.error) {
-		for (const row of (threadRead.data ?? []) as unknown as ThreadRow[]) threads.set(row.id, row);
+	// Primary since the thread's ref is the message's address: an outage here is not "never posted".
+	const threadRead = await db.from("dm_threads").select("id, ref, kind, title").in("id", threadIds);
+	if (threadRead.error) {
+		throw new Error(`comms.dm_threads read failed: ${threadRead.error.message}`);
 	}
+	for (const row of (threadRead.data ?? []) as unknown as ThreadRow[]) threads.set(row.id, row);
 	return { rows, threads };
 }
 
@@ -272,8 +281,8 @@ async function projectSources(
  * thread id or a project room id) when `conversationId` is given. An empty list is a real answer:
  * the asset was never posted anywhere this caller can read.
  *
- * Throws on a failed primary read (the link rows, a message table, the room or project rows) so the
- * service can tell an outage from "never posted"; the thread titles and the party lookup degrade.
+ * Throws on a failed primary read (the link rows, a message table, the thread, room or project rows)
+ * so the service can tell an outage from "never posted"; the party lookup degrades.
  */
 export async function fetchAttachmentSources(
 	actor: ReadActor & { accessToken: string },
@@ -309,14 +318,16 @@ export async function fetchAttachmentSources(
 	const out: AttachmentSource[] = [];
 	for (const row of dm.rows) {
 		const thread = dm.threads.get(row.thread_id);
-		const title = thread?.title?.trim() ?? "";
+		// A thread that did not come back has no address to link to, as a room with no slug has none.
+		if (!thread?.ref) continue;
+		const title = thread.title?.trim() ?? "";
 		out.push(toSource(
 			row,
 			{
 				kind: "dm",
 				conversationId: row.thread_id,
 				channelLabel: title ? clamp(title, 160) : null,
-				href: dmMessageHref(row.thread_id, row.id),
+				href: dmMessageHref(thread.ref, row.id),
 			},
 			parties.get(row.sender_user_id),
 			now,

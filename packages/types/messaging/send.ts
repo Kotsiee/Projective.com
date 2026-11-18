@@ -6,20 +6,22 @@ import {
 	sendFilesAgree,
 } from "../projects/messages.ts";
 import { MessageDeltaSchema } from "../projects/message-rich.ts";
-import { slugPattern } from "../slugs/slug.ts";
+import type { ChatMessage } from "../projects/messages.ts";
+import { isSlug, slugPattern } from "../slugs/slug.ts";
 
 /**
- * messaging.send — the Zod SSOT for posting ONE message into a global-inbox conversation
- * (`POST /api/messaging/messages/send`), the messaging counterpart of
- * {@link ../projects/messages.ts | SendProjectMessageSchema}.
+ * messaging.send — the Zod SSOT for posting ONE message, wherever it is posted: the address every
+ * conversation surface shares ({@link ChatRefSchema}), the message itself
+ * ({@link SendMessageInputSchema}), and the two wire shapes the send routes parse — the inbox's
+ * `POST /api/messaging/messages/send` ({@link SendConversationMessageSchema}) and the project chat's
+ * `POST /api/projects/messages/send` (`SendProjectMessageSchema`, mapped onto a ChatRef by
+ * {@link projectChatRef}). Both routes hand the one door, `MessagingBackendService.sendMessage(actor,
+ * ref, input)`, a ChatRef and the same input (Decision #339, ruling N1).
  *
- * The two shapes are deliberately one field apart. A project channel is addressed by the pair
- * `(projectId, channelId)` because a stage room is resolved THROUGH its project; a conversation is
- * addressed by its own id alone — the unified `dm-{handle}` identity a project DM and the inbox
- * share (PRODUCT_SPEC §Unified Messaging), or the `comms.dm_threads` uuid on the live path. Reusing
- * the project schema with a dummy `projectId` would make every conversation send carry a field the
- * route has to know to ignore, which is exactly the kind of "same string in two slots" the composer's
- * own scope guard exists to catch.
+ * A conversation is addressed by its own id alone: its `cht-…` ref, or — for a pair nobody has
+ * written in yet — the unified `dm-{handle}` that names the person, whose first message creates the
+ * thread. A project room is addressed through its project, because a stage room is resolved THROUGH
+ * it. The fixture backend keeps its own conversation ids (`dm-{handle}`, `grp-…`, `ch-…`).
  *
  * Attachments arrive as `files.items` ids, already uploaded through the files handshake — bytes never
  * transit an application route — so a library-picked attachment and a just-uploaded one are the same
@@ -49,18 +51,49 @@ export type RoomRef = z.infer<typeof RoomRefSchema>;
  * is a `comms.project_channels` room, resolved through its stage or project, with `channel` the room
  * key `/api/projects/messages/send` takes as `channelId`. The two message stores stay separate; this
  * is what the one send door dispatches on.
+ *
+ * A thread opened inside a project (`/projects/prj-…/cht-…`) carries that project as `project`, and
+ * the door stamps the message with it (`comms.dm_messages.project_id`) so the project's Private
+ * Messages group draws the thread the inbox opens. `comms.tg_bind_dm_project` keeps the stamp only
+ * when the sender and every other participant are parties to that project.
  */
 export const ChatRefSchema = z.discriminatedUnion("kind", [
-	z.object({ kind: z.literal("thread"), ref: ThreadRefSchema }),
+	z.object({
+		kind: z.literal("thread"),
+		ref: ThreadRefSchema,
+		project: z.string().regex(slugPattern("project")).optional(),
+	}),
 	z.object({ kind: z.literal("room"), ref: RoomRefSchema, channel: z.string().min(1).max(120) }),
 ]);
 export type ChatRef = z.infer<typeof ChatRefSchema>;
+
+/**
+ * The address a conversation-scope send names, as the door takes it: a {@link ChatRef} thread whose
+ * `ref` is the conversation's `cht-` address — or, for a pair with no thread yet, the `dm-{handle}`
+ * whose first message creates it — and, on the fixture backend, the fixture's own id.
+ */
+export function threadChatRef(conversationId: string): Extract<ChatRef, { kind: "thread" }> {
+	return { kind: "thread", ref: conversationId };
+}
+
+/**
+ * The ChatRef a project chat send names (`POST /api/projects/messages/send`): a `cht-` channel
+ * segment is a thread seen through its project (`/projects/prj-…/cht-…`, Decision #339 ruling N1),
+ * anything else (`discussion`, a `stg-…`, a team room, a fixture DM) a room of the project.
+ */
+export function projectChatRef(projectId: string, channelId: string): ChatRef {
+	if (isSlug(channelId, "thread")) {
+		return isSlug(projectId, "project")
+			? { kind: "thread", ref: channelId, project: projectId }
+			: { kind: "thread", ref: channelId };
+	}
+	return { kind: "room", ref: projectId, channel: channelId };
+}
 // #endregion
 
 // #region Send payload
-export const SendConversationMessageSchema = z.object({
-	/** The conversation id — a unified `dm-{handle}` / `grp-…` id, or a `comms.dm_threads` uuid. */
-	conversationId: z.string().min(1).max(120),
+/** The fields of one message, wherever it is posted — the shape both send wires carry. */
+const messageFields = {
 	text: z.string().max(8000),
 	/** The body's formatting; null for an unformatted send. Must spell exactly `text`. */
 	delta: MessageDeltaSchema.nullable().default(null),
@@ -72,19 +105,60 @@ export const SendConversationMessageSchema = z.object({
 	linkedFileIds: MessageFileIdsSchema.default([]),
 	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
 	audio: MessageAudioSchema.nullable().default(null),
-}).refine(
-	(v) =>
-		v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.linkedFileIds.length > 0 ||
-		v.audio !== null,
-	{ message: "Write a message, attach a file, or record a memo." },
-).refine(sendDeltaAgrees, {
-	message: "The formatted body does not match the message text.",
-	path: ["delta"],
-}).refine(sendFilesAgree, {
-	message: "A message carries up to 20 files, each sent once.",
-	path: ["linkedFileIds"],
-});
+};
+
+/** The send rules every wire shares: a message has content, its Delta spells it, its files fit. */
+function withSendRules<T extends z.ZodType<z.infer<z.ZodObject<typeof messageFields>>>>(schema: T) {
+	return schema.refine(
+		(v) =>
+			v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.linkedFileIds.length > 0 ||
+			v.audio !== null,
+		{ message: "Write a message, attach a file, or record a memo." },
+	).refine(sendDeltaAgrees, {
+		message: "The formatted body does not match the message text.",
+		path: ["delta"],
+	}).refine(sendFilesAgree, {
+		message: "A message carries up to 20 files, each sent once.",
+		path: ["linkedFileIds"],
+	});
+}
+
+/** The message the one send door posts, with no address: the door takes that as a {@link ChatRef}. */
+export const SendMessageInputSchema = withSendRules(z.object(messageFields));
+export type SendMessageInput = z.infer<typeof SendMessageInputSchema>;
+
+/**
+ * `POST /api/messaging/messages/send` — the composer's conversation-scope wire: the message and the
+ * conversation it is posted into (see {@link threadChatRef}).
+ */
+export const SendConversationMessageSchema = withSendRules(z.object({
+	/** The conversation's `cht-` ref, a `dm-{handle}` with no thread yet, or a fixture id. */
+	conversationId: z.string().min(1).max(120),
+	...messageFields,
+}));
 export type SendConversationMessage = z.infer<typeof SendConversationMessageSchema>;
+
+/** A wire payload's message, without its address. */
+export function sendInputOf(payload: SendMessageInput): SendMessageInput {
+	return {
+		text: payload.text,
+		delta: payload.delta,
+		replyToId: payload.replyToId,
+		attachmentIds: payload.attachmentIds,
+		linkedFileIds: payload.linkedFileIds,
+		audio: payload.audio,
+	};
+}
+
+/**
+ * What the one send door answers: the stored row, and — for a thread — the conversation's `cht-`
+ * address, so a page opened on `/messages/dm-<handle>` can move to the thread its first message
+ * created (`history.replaceState`). Absent for a room, and on the fixture backend.
+ */
+export interface SentMessage {
+	message: ChatMessage;
+	ref?: ThreadRef;
+}
 // #endregion
 
 // #region Identity helpers
@@ -104,5 +178,15 @@ export function dmHandleOf(conversationId: string): string | null {
 	if (!conversationId.startsWith("dm-")) return null;
 	const handle = conversationId.slice(3);
 	return handle.length > 0 ? handle : null;
+}
+
+/**
+ * The inbox route of a conversation, `/messages/{address}`, optionally landing on one message
+ * (`?m=`). `address` is the conversation's `cht-` ref or a `dm-{handle}`; a uuid does not route
+ * (Decision #88), so the server-side link builders all go through here.
+ */
+export function conversationPath(address: string, messageId?: string): string {
+	const base = `/messages/${encodeURIComponent(address)}`;
+	return messageId ? `${base}?m=${encodeURIComponent(messageId)}` : base;
 }
 // #endregion

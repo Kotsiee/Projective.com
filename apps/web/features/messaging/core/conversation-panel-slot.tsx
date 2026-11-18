@@ -29,7 +29,8 @@ export async function conversationPanelFor(
 	}
 
 	const [detail, context] = await Promise.all([
-		resolveConversation(conversationId, actor),
+		// The request's one conversation read, shared with the page and the other slots (RED D-06).
+		resolveConversation(url, conversationId, actor),
 		resolveConversationContext(conversationId, actor),
 	]);
 	if (!detail || detail.kind === "group") return null;

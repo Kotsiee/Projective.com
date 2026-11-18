@@ -133,10 +133,17 @@ export const MessagingService = {
 	 * `ChatComposer` posts to in its `conversation` scope — the profile's floating messenger, the
 	 * pop-out chat and `/messages/[conversationId]` all send through it. The row that comes back is
 	 * the SERVER's message (its real id and timestamp), which the caller announces on
-	 * `MESSAGE_SENT_EVENT` so every feed on the page appends what was actually stored.
+	 * `MESSAGE_SENT_EVENT` so every feed on the page appends what was actually stored, and — live — the
+	 * conversation's `cht-` ref, which a page on `/messages/dm-<handle>` moves to once the first
+	 * message has created the thread.
 	 */
-	send(payload: SendConversationMessage): Promise<MessagingResult<{ message: ChatMessage }>> {
-		return postMessaging<{ message: ChatMessage }>("/api/messaging/messages/send", payload);
+	send(
+		payload: SendConversationMessage,
+	): Promise<MessagingResult<{ message: ChatMessage; ref?: string }>> {
+		return postMessaging<{ message: ChatMessage; ref?: string }>(
+			"/api/messaging/messages/send",
+			payload,
+		);
 	},
 
 	/** Move a conversation between the viewer's own folders (Primary · Requests · Archived). */

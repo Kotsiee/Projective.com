@@ -13,6 +13,8 @@ export interface MessagingResult<T> {
 	message?: string;
 	/** Field-keyed validation errors, when the route rejected the query. */
 	errors?: Record<string, string>;
+	/** Machine-readable facts about a refusal — e.g. `{ retryAt }` on the send rate limit. */
+	details?: Record<string, string | number | boolean | null>;
 	/** The success payload; present when `ok`. */
 	data?: T;
 }

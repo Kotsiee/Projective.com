@@ -44,6 +44,7 @@ import {
 	toAssetSource,
 	withMediaFacts,
 } from "../files/asset-row.ts";
+import type { LiveThread } from "./live-threads.ts";
 
 /**
  * live-workspace — the RLS-scoped Postgres read path for a DM thread's **Files** and **Members**
@@ -522,7 +523,7 @@ function linkOf(row: ItemRow, source: AssetSource): LinkAttachment | null {
 
 /** The per-file provenance a {@link FileItem} needs that the asset row does not carry. */
 interface FileContext {
-	/** The thread the attachment was posted in — `FileItem.channelId`. */
+	/** The thread the attachment was posted in, by its `cht-` address — `FileItem.channelId`. */
 	threadId: string;
 	/** The thread's display name — `FileItem.channelName`, which is `min(1)`. */
 	threadName: string;
@@ -782,9 +783,10 @@ function sortFiles(rows: FileItem[], key: FileSortKey, dir: FileSortDir): FileIt
  * A page of a DM thread's shared attachments, or `null` when the conversation does not exist or the
  * viewer is not in it.
  *
- * `params.projectId` carries the conversation id (the params shape is shared across all three
- * scopes) and `params.channelId`, when present, carries it too — the same precedence the fixture
- * pager uses, so the island's existing call sites need no change. `now` defaults to the wall clock
+ * `thread` is the conversation the service resolved from the address in `params.channelId` /
+ * `params.projectId` (the params shape is shared across all three scopes); its id keys the reads and
+ * its `cht-` ref is what the page is addressed by, so the island's refetch names the same route the
+ * page is on — never the thread's uuid (Decision #88). `now` defaults to the wall clock
  * and is a parameter only so the caller can pass the same reference instant it uses elsewhere in one
  * request; the labels it feeds are relative ("Today"), so two different clocks in one response would
  * be visible.
@@ -814,9 +816,11 @@ function sortFiles(rows: FileItem[], key: FileSortKey, dir: FileSortDir): FileIt
 export async function fetchConversationFilePage(
 	actor: ReadActor & { accessToken: string },
 	params: FileListParams,
+	live: LiveThread,
 	now: number = Date.now(),
 ): Promise<FileListPage | null> {
-	const threadId = params.channelId || params.projectId;
+	const threadId = live.id;
+	const address = live.ref;
 	const db = commsDb(actor);
 
 	const thread = await resolveThread(db, actor, threadId);
@@ -865,7 +869,7 @@ export async function fetchConversationFilePage(
 		if (!item || !message) continue;
 		all.push(
 			toFileItem(item, link.id, {
-				threadId,
+				threadId: address,
 				threadName,
 				message,
 				parties,
@@ -897,7 +901,7 @@ export async function fetchConversationFilePage(
 	// One channel, because a conversation IS the channel. `count` is the whole readable thread,
 	// independent of the active filter — it drives the tree's secondary figure, not the page caption.
 	const channel: FileChannelRef = {
-		id: threadId,
+		id: address,
 		name: threadName,
 		kind: "dm",
 		count: all.length,
@@ -905,8 +909,8 @@ export async function fetchConversationFilePage(
 
 	return {
 		scope: "conversation",
-		projectId: threadId,
-		channelId: threadId,
+		projectId: address,
+		channelId: address,
 		items: page,
 		channels: [channel],
 		projectFileCount: 0,
@@ -1027,14 +1031,16 @@ async function fetchItemRows(
  */
 export async function fetchConversationRoster(
 	actor: ReadActor & { accessToken: string },
-	conversationId: string,
+	live: LiveThread,
 ): Promise<MemberRosterPage | null> {
 	const db = commsDb(actor);
+	// Addressed by the ref the route is on; the thread's id only keys the reads.
+	const conversationId = live.ref;
 
-	const thread = await resolveThread(db, actor, conversationId);
+	const thread = await resolveThread(db, actor, live.id);
 	if (!thread) return null;
 
-	const roster = await fetchRoster(db, conversationId, true);
+	const roster = await fetchRoster(db, live.id, true);
 	const parties = await fetchParties(actor, roster.map((row) => row.user_id));
 	const title = threadTitle(thread, roster, parties, actor.userId);
 

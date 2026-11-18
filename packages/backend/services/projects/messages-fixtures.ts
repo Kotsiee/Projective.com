@@ -524,4 +524,27 @@ export function findChannelMessage(
 	const pool = buildPool(detail, channelId, `/projects/${projectId}/${channelId}`);
 	return pool.find((m) => m.id === messageId) ?? null;
 }
+
+/**
+ * The identity a stub-written row is authored by.
+ *
+ * Read out of the corpus rather than minted, by finding the viewer's own most recent message in the
+ * channel. The fixture corpus already has a face and a name for the acting viewer, and a second
+ * identity built here would put two different people's avatars on one person's messages inside a
+ * single conversation.
+ *
+ * The fallback is deliberately plain. A message with an unnamed author is legible; one attributed to
+ * a fabricated participant is a claim about who said it.
+ */
+export function viewerSenderFor(projectId: string, channelId: string | null): MessageSender {
+	const channels = channelId
+		? [channelId]
+		: findProjectDetail(projectId)?.channels.general.map((channel) => channel.id) ?? [];
+	for (const id of channels) {
+		const page = findMessagePage({ projectId, channelId: id });
+		const own = page?.messages.filter((message) => message.isOwn).at(-1);
+		if (own?.sender) return own.sender;
+	}
+	return { id: "viewer", name: "You", avatar: null, handle: null };
+}
 // #endregion

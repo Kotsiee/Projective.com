@@ -25,7 +25,8 @@ export async function conversationHeaderFor(
 	if (segs[0] !== "messages" || segs.length < 2) return null;
 
 	const conversationId = segs[1];
-	const detail = await resolveConversation(conversationId, actor);
+	// The request's one conversation read, shared with the page and the other slots (RED D-06).
+	const detail = await resolveConversation(url, conversationId, actor);
 	if (!detail) return null;
 
 	const base = conversationHref(conversationId);

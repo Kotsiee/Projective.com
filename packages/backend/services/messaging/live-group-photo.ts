@@ -6,8 +6,8 @@ import { readLibrarySource } from "../media/library.ts";
 import { MediaRejectedError, MediaUnavailableError } from "../media/pipeline.ts";
 import { type Rendition, retireRendition, writeRendition } from "../media/showcase-rendition.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
-import { UUID_RE } from "../projects/live-support.ts";
 import { commsClient } from "./live-queries.ts";
+import { resolveLiveThread } from "./live-threads.ts";
 
 /**
  * live-group-photo — a GROUP conversation's own picture.
@@ -96,15 +96,17 @@ function photoRefusal(message: string): WriteRefusal {
 }
 
 /**
- * Set (or clear, with `null`) a group's photo. `null` outcome when the id addresses no thread — a
- * group is always a uuid-addressed thread on the live path.
+ * Set (or clear, with `null`) a group's photo. `null` outcome when the address names no thread the
+ * caller is in — a group is always a `cht-`-addressed thread on the live path. The answer is
+ * addressed by that ref.
  */
 export async function setLiveGroupPhoto(
 	actor: Actor,
 	conversationId: string,
 	photo: GroupPhotoInput | null,
 ): Promise<WriteOutcome<GroupPhotoSet>> {
-	if (!UUID_RE.test(conversationId)) return null;
+	const thread = await resolveLiveThread(actor, conversationId);
+	if (!thread) return null;
 
 	let rendered: RenderedGroupPhoto | null = null;
 	if (photo) {
@@ -114,12 +116,12 @@ export async function setLiveGroupPhoto(
 	}
 
 	const { error } = await commsClient(actor).rpc("set_group_photo", {
-		p_thread_id: conversationId,
+		p_thread_id: thread.id,
 		p_file_id: rendered?.rendition.id ?? null,
 	});
 	if (error) {
 		if (rendered) await retireRendition(rendered.rendition);
 		return { refusal: photoRefusal(error.message) };
 	}
-	return { data: { id: conversationId, avatar: rendered?.url ?? null } };
+	return { data: { id: thread.ref, avatar: rendered?.url ?? null } };
 }
