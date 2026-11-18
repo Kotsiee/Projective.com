@@ -421,7 +421,8 @@ MS Teams or Google Calendar, but with integrated financial protection.
   `.ical`, `.vcs`), picked from Import or dropped on the calendar, is saved as the person's own
   events, which they edit, move, colour, give a room and file under a routine like any other; it does
   not follow later changes to the original, which is what connecting a calendar is for. A whole-day
-  block is a whole-day entry however the file wrote it. Nothing is written twice: an entry already on
+  block is a whole-day entry however the file wrote it, and an entry the file marks as free time comes
+  in Passive, so it does not start blocking bookings. Nothing is written twice: an entry already on
   the calendar, or repeated inside the file, is left out, and a cancelled one is not imported. A
   repeating series stays one repeating entry, and so do several identical entries on a regular
   pattern. A larger file (more than eight entries) is reviewed before anything is saved, where entries

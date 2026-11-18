@@ -451,5 +451,17 @@ Deno.test("every occurrence of a series names its rule, and an entry names its j
 	const single = parseIcsCalendar(calendar("UID:s", "DTSTART:20261102T090000Z", "SUMMARY:One"));
 	assertEquals(single.events[0].rrule, undefined);
 	assertEquals(single.events[0].url, undefined);
+	assertEquals(single.events[0].transparent, undefined);
+});
+
+Deno.test("an entry marked TRANSP:TRANSPARENT says its time is free", () => {
+	const free = parseIcsCalendar(
+		calendar("UID:f", "DTSTART;VALUE=DATE:20261120", "TRANSP:TRANSPARENT", "SUMMARY:Holiday"),
+	);
+	assertEquals(free.events[0].transparent, true);
+	const busy = parseIcsCalendar(
+		calendar("UID:b", "DTSTART:20261120T090000Z", "TRANSP:OPAQUE", "SUMMARY:Focus"),
+	);
+	assertEquals(busy.events[0].transparent, undefined);
 });
 // #endregion

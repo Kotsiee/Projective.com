@@ -60,6 +60,8 @@ export interface ImportItem {
 	rrule: string | null;
 	/** A join link the file named. */
 	url: string | null;
+	/** The file marks its time free (`TRANSP:TRANSPARENT`), so it is imported Passive. */
+	transparent: boolean;
 }
 
 /** Where a group came from, which is what the review says about it. */
@@ -135,6 +137,7 @@ export function importItemsOf(
 			allDay: e.allDay,
 			rrule: e.rrule ?? null,
 			url: e.url ?? null,
+			transparent: e.transparent === true,
 		});
 	}
 	items.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -318,6 +321,7 @@ export function buildImportPlan(
 			item.end - item.start,
 			norm(item.description),
 			norm(item.location),
+			item.transparent ? "free" : "busy",
 		].join("\u0000");
 		const list = runs.get(sig);
 		if (list) list.push(item);
@@ -542,8 +546,10 @@ export function importRoomOf(
 }
 
 /**
- * One item as the fields the event door writes: an Event, or a Reminder when it has no length, holding
- * its time, with the file's agenda and place. Every one is the host's own and edits like any other.
+ * One item as the fields the event door writes: an Event, or a Reminder when it has no length, with
+ * the file's agenda and place. It holds its time unless the file marked it free, when it is Passive —
+ * so a "Free" all-day block from Google, or a passive entry `/calendar` itself exported, does not
+ * start blocking bookings. Every one is the host's own and edits like any other.
  */
 export function entryFieldsOf(item: ImportItem): EntryFields {
 	const instant = item.end <= item.start;
@@ -552,7 +558,7 @@ export function entryFieldsOf(item: ImportItem): EntryFields {
 		kind: instant ? "general" : "sync",
 		start: item.start,
 		end: Math.max(item.end, item.start),
-		availabilityBehavior: "disruptive",
+		availabilityBehavior: item.transparent ? "passive" : "disruptive",
 	};
 	if (item.allDay && !instant) fields.allDay = true;
 	const location = item.location?.trim();

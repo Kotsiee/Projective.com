@@ -4119,7 +4119,7 @@ overlay family's scrim tone over the body and one drop target in the middle (a d
 border, being the one interactive thing on screen; `--warning` and "That isn't one calendar file" when
 the drag names another media type or several files; pointer-transparent, so the surface keeps the
 drop). A midnight-to-midnight block is read as the whole days it covers, so it lands in the all-day
-lane. Up to `IMPORT_REVIEW_THRESHOLD` (8) entries are saved at once with a toast; a larger file opens
+lane, and a `TRANSP:TRANSPARENT` entry arrives Passive (the hatched ghost). Up to `IMPORT_REVIEW_THRESHOLD` (8) entries are saved at once with a toast; a larger file opens
 **Review import** first: a Meta summary line, then one row per thing the import writes — a selection
 box, the title, and one Meta line of facts (`Weekly on Monday · 09:00 · 12 events · 2 Nov – 18 Jan ·
 Repeats in the file`, `Already on your calendar`, `New routine: Fitness`, `Left out`), nothing boxed or

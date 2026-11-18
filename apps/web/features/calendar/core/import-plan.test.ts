@@ -42,6 +42,7 @@ function item(start: number, extra: Partial<ImportItem> = {}): ImportItem {
 		allDay: false,
 		rrule: null,
 		url: null,
+		transparent: false,
 		...extra,
 	};
 }
@@ -229,6 +230,13 @@ Deno.test("entryFieldsOf — an Event, an all-day Event, or a Reminder, each hol
 	const reminder = entryFieldsOf(item(MON, { end: MON }));
 	assertEquals(reminder.kind, "general");
 	assertEquals(entryFieldsOf(item(MON, { title: "   " })).title, "Untitled event");
+	// A block the file marks free is imported Passive, so it never starts blocking bookings.
+	assertEquals(entryFieldsOf(item(MON, { transparent: true })).availabilityBehavior, "passive");
+});
+
+Deno.test("buildImportPlan — free and busy copies of one entry are never merged together", () => {
+	const items = [0, 7, 14].map((d) => item(MON + d * DAY, { transparent: d === 7 }));
+	assert(plan(items).groups.every((g) => g.origin === "single"));
 });
 
 Deno.test("agendaHtml — plain text becomes escaped paragraphs; HTML passes to the sanitiser", () => {

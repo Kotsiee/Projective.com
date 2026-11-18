@@ -169,6 +169,11 @@ export interface IcsEvent {
 	 * names none. Not checked here; an importer decides whether it is a meeting room.
 	 */
 	url?: string;
+	/**
+	 * `TRANSP:TRANSPARENT` — the entry leaves its time free (Google's "Free", Outlook's free time, and
+	 * what `/calendar`'s own export writes for a passive entry). Absent means opaque, the RFC default.
+	 */
+	transparent?: boolean;
 }
 
 /** What one file yielded. */
@@ -762,6 +767,7 @@ function readEntry(props: IcsProps, ctx: IcsReadContext, index: number): IcsEntr
 		status,
 	};
 	if (url) base.url = url;
+	if (first(props, "TRANSP")?.value.trim().toUpperCase() === "TRANSPARENT") base.transparent = true;
 	return { start, base };
 }
 
